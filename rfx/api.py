@@ -35,6 +35,9 @@ from rfx.simulation import (
     make_source, make_probe, make_port_source,
     run as _run, SimResult, SourceSpec, ProbeSpec,
 )
+from rfx.farfield import (
+    NTFFBox, make_ntff_box, compute_far_field, FarFieldResult,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +80,17 @@ class Result(NamedTuple):
         ``compute_s_params=True``).
     freqs : (n_freqs,) float or None
         Frequency array for S-parameters.
+    ntff_data : NTFFData or None
+        Raw NTFF DFT data (use ``compute_far_field`` for radiation pattern).
+    ntff_box : NTFFBox or None
+        NTFF box specification (needed for ``compute_far_field``).
     """
     state: object
     time_series: jnp.ndarray
     s_params: np.ndarray | None
     freqs: np.ndarray | None
+    ntff_data: object = None
+    ntff_box: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +178,7 @@ class Simulation:
         self._geometry: list[_GeometryEntry] = []
         self._ports: list[_PortEntry] = []
         self._probes: list[_ProbeEntry] = []
+        self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
 
     # ---- material registration ----
 
@@ -257,6 +267,32 @@ class Simulation:
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             raise ValueError(f"component must be a field name, got {component!r}")
         self._probes.append(_ProbeEntry(position=position, component=component))
+        return self
+
+    # ---- NTFF ----
+
+    def add_ntff_box(
+        self,
+        corner_lo: tuple[float, float, float],
+        corner_hi: tuple[float, float, float],
+        freqs=None,
+        n_freqs: int = 50,
+    ) -> "Simulation":
+        """Add a near-to-far-field transform box for radiation patterns.
+
+        Parameters
+        ----------
+        corner_lo, corner_hi : (x, y, z) in metres
+            Opposite corners of the Huygens box.
+        freqs : array or None
+            Frequencies (Hz). Default: n_freqs points from freq_max/10
+            to freq_max.
+        n_freqs : int
+            Number of frequencies if freqs is None.
+        """
+        if freqs is None:
+            freqs = jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs)
+        self._ntff = (corner_lo, corner_hi, freqs)
         return self
 
     # ---- build helpers ----
@@ -364,6 +400,12 @@ class Simulation:
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
 
+        # NTFF box
+        ntff_box = None
+        if self._ntff is not None:
+            corner_lo, corner_hi, freqs = self._ntff
+            ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
+
         # Main simulation
         sim_result = _run(
             grid, materials, n_steps,
@@ -371,6 +413,7 @@ class Simulation:
             debye=debye,
             sources=sources,
             probes=probes,
+            ntff=ntff_box,
             checkpoint=checkpoint,
         )
 
@@ -400,6 +443,8 @@ class Simulation:
             time_series=sim_result.time_series,
             s_params=s_params,
             freqs=freqs_out,
+            ntff_data=sim_result.ntff_data,
+            ntff_box=ntff_box,
         )
 
     def __repr__(self) -> str:

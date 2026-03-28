@@ -51,9 +51,12 @@ class SimResult(NamedTuple):
 
     time_series : (n_steps, n_probes) float array, or (n_steps, 0) if
         no probes were specified.
+    ntff_data : NTFFData or None
+        Accumulated near-to-far-field DFT data (if NTFF box was used).
     """
     state: FDTDState
     time_series: jnp.ndarray
+    ntff_data: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +124,7 @@ def run(
     debye: tuple | None = None,
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
+    ntff: object | None = None,
     checkpoint: bool = False,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
@@ -135,6 +139,8 @@ def run(
     debye : (DebyeCoeffs, DebyeState) tuple, or None
     sources : list of SourceSpec (precomputed waveforms)
     probes : list of ProbeSpec (point time-series recorders)
+    ntff : NTFFBox or None
+        If provided, accumulate near-to-far-field DFT on a Huygens box.
     checkpoint : bool
         If True, wrap the scan body with ``jax.checkpoint`` to
         trade compute for memory during reverse-mode AD.  Reduces
@@ -142,7 +148,7 @@ def run(
 
     Returns
     -------
-    SimResult with final state and (n_steps, n_probes) time series.
+    SimResult with final state, time series, and optional NTFF data.
     """
     sources = sources or []
     probes = probes or []
@@ -153,6 +159,7 @@ def run(
     # ---- subsystem flags (resolved at trace time) ----
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
     use_debye = debye is not None
+    use_ntff = ntff is not None
 
     # ---- initialise states ----
     fdtd = init_state(grid.shape)
@@ -168,6 +175,10 @@ def run(
         from rfx.materials.debye import update_e_debye
         debye_coeffs, debye_state = debye
         carry_init["debye"] = debye_state
+
+    if use_ntff:
+        from rfx.farfield import init_ntff_data, accumulate_ntff
+        carry_init["ntff"] = init_ntff_data(ntff)
 
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
     if sources:
@@ -215,12 +226,19 @@ def run(
                    for pi, pj, pk, pc in prb_meta]
         output = jnp.stack(samples) if samples else jnp.zeros(0)
 
+        # NTFF accumulation
+        if use_ntff:
+            ntff_new = accumulate_ntff(
+                carry["ntff"], st, ntff, dt, _step_idx)
+
         # Rebuild carry
         new_carry: dict = {"fdtd": st}
         if use_cpml:
             new_carry["cpml"] = cpml_new
         if use_debye:
             new_carry["debye"] = debye_new
+        if use_ntff:
+            new_carry["ntff"] = ntff_new
 
         return new_carry, output
 
@@ -232,4 +250,5 @@ def run(
     return SimResult(
         state=final_carry["fdtd"],
         time_series=time_series,
+        ntff_data=final_carry.get("ntff"),
     )
