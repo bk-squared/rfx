@@ -121,6 +121,7 @@ def run(
     debye: tuple | None = None,
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
+    checkpoint: bool = False,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -134,6 +135,10 @@ def run(
     debye : (DebyeCoeffs, DebyeState) tuple, or None
     sources : list of SourceSpec (precomputed waveforms)
     probes : list of ProbeSpec (point time-series recorders)
+    checkpoint : bool
+        If True, wrap the scan body with ``jax.checkpoint`` to
+        trade compute for memory during reverse-mode AD.  Reduces
+        backward-pass memory from O(n_steps) to O(1) per step.
 
     Returns
     -------
@@ -220,8 +225,9 @@ def run(
         return new_carry, output
 
     # ---- run ----
+    body = jax.checkpoint(step_fn) if checkpoint else step_fn
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
-    final_carry, time_series = jax.lax.scan(step_fn, carry_init, xs)
+    final_carry, time_series = jax.lax.scan(body, carry_init, xs)
 
     return SimResult(
         state=final_carry["fdtd"],
