@@ -11,16 +11,19 @@ Validates:
 import numpy as np
 import jax.numpy as jnp
 
+from rfx.api import Simulation
 from rfx.grid import Grid, C0
 from rfx.core.yee import (
     FDTDState, init_state, init_materials, update_h, EPS_0, MU_0,
 )
 from rfx.boundaries.pec import apply_pec
+from rfx.geometry.csg import Box
 from rfx.materials.lorentz import (
     LorentzPole, LorentzCoeffs, LorentzState,
     drude_pole, lorentz_pole,
     init_lorentz, update_e_lorentz,
 )
+from rfx.materials.debye import DebyePole, init_debye
 
 
 def _total_energy(state, dx):
@@ -158,3 +161,65 @@ def test_lorentz_simulation_runner():
     assert result.state.ex.shape == grid.shape
     # Should have run without error
     print(f"\nLorentz simulation runner: {n_steps} steps OK, shape={grid.shape}")
+
+
+def test_mixed_debye_and_lorentz_runner():
+    """A simulation with both Debye and Lorentz dispersion should run."""
+    from rfx.simulation import run, make_source, SimResult
+
+    grid = Grid(freq_max=12e9, domain=(0.02, 0.02, 0.02))
+    materials = init_materials(grid.shape)
+    materials = materials._replace(
+        eps_r=jnp.full(grid.shape, 2.0, dtype=jnp.float32)
+    )
+
+    debye = init_debye(
+        [DebyePole(delta_eps=1.5, tau=8e-12)],
+        materials,
+        grid.dt,
+    )
+    lorentz = init_lorentz(
+        [LorentzPole(omega_0=2 * np.pi * 9e9, delta=2e9, kappa=(2 * np.pi * 9e9) ** 2)],
+        materials,
+        grid.dt,
+    )
+
+    from rfx.sources.sources import GaussianPulse
+
+    src = make_source(
+        grid,
+        (0.01, 0.01, 0.01),
+        "ez",
+        GaussianPulse(f0=6e9, bandwidth=0.8),
+        40,
+    )
+    result = run(grid, materials, 40, debye=debye, lorentz=lorentz, sources=[src])
+
+    assert isinstance(result, SimResult)
+    assert float(jnp.max(jnp.abs(result.state.ez))) > 0.0
+
+
+def test_lorentz_poles_stay_scoped_to_their_material():
+    """Distinct Lorentz poles should only apply inside their own materials."""
+    pole_a = lorentz_pole(1.0, 2 * np.pi * 3e9, 1e8)
+    pole_b = lorentz_pole(2.0, 2 * np.pi * 5e9, 2e8)
+
+    sim = Simulation(freq_max=8e9, domain=(0.02, 0.01, 0.01), boundary="pec")
+    sim.add_material("mat_a", eps_r=2.0, lorentz_poles=[pole_a])
+    sim.add_material("mat_b", eps_r=2.5, lorentz_poles=[pole_b])
+    sim.add(Box((0.000, 0.000, 0.000), (0.009, 0.010, 0.010)), material="mat_a")
+    sim.add(Box((0.011, 0.000, 0.000), (0.020, 0.010, 0.010)), material="mat_b")
+
+    grid = sim._build_grid()
+    _, _, lorentz = sim._build_materials(grid)
+    coeffs, _ = lorentz
+
+    mask_a = Box((0.000, 0.000, 0.000), (0.009, 0.010, 0.010)).mask(grid)
+    mask_b = Box((0.011, 0.000, 0.000), (0.020, 0.010, 0.010)).mask(grid)
+    ia = tuple(np.argwhere(np.array(mask_a))[0])
+    ib = tuple(np.argwhere(np.array(mask_b))[0])
+
+    assert float(coeffs.c[0][ia]) > 0.0
+    assert float(coeffs.c[1][ia]) == 0.0
+    assert float(coeffs.c[0][ib]) == 0.0
+    assert float(coeffs.c[1][ib]) > 0.0

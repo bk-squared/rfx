@@ -133,6 +133,10 @@ class _ProbeEntry:
     component: str
 
 
+_DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
+_LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
+
+
 # ---------------------------------------------------------------------------
 # Simulation builder
 # ---------------------------------------------------------------------------
@@ -341,18 +345,20 @@ class Simulation:
             cpml_layers=self._cpml_layers,
         )
 
-    def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
-        """Build material arrays and optional Debye/Lorentz coefficients."""
+    def _assemble_materials(
+        self,
+        grid: Grid,
+    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None]:
+        """Build material arrays plus per-pole dispersion masks."""
         # Start with vacuum
         eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
         sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
         mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
 
-        # Collect all Debye/Lorentz poles with their masks
-        all_debye_poles: list[DebyePole] = []
-        debye_mask = jnp.zeros(grid.shape, dtype=bool)
-        all_lorentz_poles: list[LorentzPole] = []
-        lorentz_mask = jnp.zeros(grid.shape, dtype=bool)
+        # Collect per-pole masks so distinct materials do not inherit
+        # each other's dispersion poles.
+        debye_masks_by_pole: dict[DebyePole, jnp.ndarray] = {}
+        lorentz_masks_by_pole: dict[LorentzPole, jnp.ndarray] = {}
 
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
@@ -362,16 +368,18 @@ class Simulation:
             mu_r = jnp.where(mask, mat.mu_r, mu_r)
 
             if mat.debye_poles:
-                debye_mask = debye_mask | mask
                 for pole in mat.debye_poles:
-                    if pole not in all_debye_poles:
-                        all_debye_poles.append(pole)
+                    if pole in debye_masks_by_pole:
+                        debye_masks_by_pole[pole] = debye_masks_by_pole[pole] | mask
+                    else:
+                        debye_masks_by_pole[pole] = mask
 
             if mat.lorentz_poles:
-                lorentz_mask = lorentz_mask | mask
                 for pole in mat.lorentz_poles:
-                    if pole not in all_lorentz_poles:
-                        all_lorentz_poles.append(pole)
+                    if pole in lorentz_masks_by_pole:
+                        lorentz_masks_by_pole[pole] = lorentz_masks_by_pole[pole] | mask
+                    else:
+                        lorentz_masks_by_pole[pole] = mask
 
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
@@ -379,22 +387,45 @@ class Simulation:
         for tc in self._thin_conductors:
             materials = apply_thin_conductor(grid, tc, materials)
 
-        # Build Debye if any dispersive materials present
+        debye_spec = None
+        if debye_masks_by_pole:
+            debye_poles = list(debye_masks_by_pole)
+            debye_masks = [debye_masks_by_pole[pole] for pole in debye_poles]
+            debye_spec = (debye_poles, debye_masks)
+
+        lorentz_spec = None
+        if lorentz_masks_by_pole:
+            lorentz_poles = list(lorentz_masks_by_pole)
+            lorentz_masks = [lorentz_masks_by_pole[pole] for pole in lorentz_poles]
+            lorentz_spec = (lorentz_poles, lorentz_masks)
+
+        return materials, debye_spec, lorentz_spec
+
+    @staticmethod
+    def _init_dispersion(
+        materials: MaterialArrays,
+        dt: float,
+        debye_spec: _DebyeSpec | None,
+        lorentz_spec: _LorentzSpec | None,
+    ) -> tuple[MaterialArrays, tuple | None, tuple | None]:
+        """Initialize Debye/Lorentz coefficients for the given materials."""
         debye = None
-        if all_debye_poles:
-            debye = init_debye(
-                all_debye_poles, materials, grid.dt,
-                mask=debye_mask,
-            )
+        if debye_spec is not None:
+            debye_poles, debye_masks = debye_spec
+            debye = init_debye(debye_poles, materials, dt, mask=debye_masks)
 
-        # Build Lorentz if any dispersive materials present
         lorentz = None
-        if all_lorentz_poles:
-            lorentz = init_lorentz(
-                all_lorentz_poles, materials, grid.dt,
-                mask=lorentz_mask,
-            )
+        if lorentz_spec is not None:
+            lorentz_poles, lorentz_masks = lorentz_spec
+            lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks)
 
+        return materials, debye, lorentz
+
+    def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
+        """Build material arrays and optional Debye/Lorentz coefficients."""
+        materials, debye_spec, lorentz_spec = self._assemble_materials(grid)
+        _, debye, lorentz = self._init_dispersion(
+            materials, grid.dt, debye_spec, lorentz_spec)
         return materials, debye, lorentz
 
     # ---- run ----
@@ -433,7 +464,8 @@ class Simulation:
         Result
         """
         grid = self._build_grid()
-        materials, debye, lorentz = self._build_materials(grid)
+        base_materials, debye_spec, lorentz_spec = self._assemble_materials(grid)
+        materials = base_materials
 
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
@@ -455,6 +487,9 @@ class Simulation:
 
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
+
+        _, debye, lorentz = self._init_dispersion(
+            materials, grid.dt, debye_spec, lorentz_spec)
 
         # NTFF box
         ntff_box = None
@@ -488,11 +523,12 @@ class Simulation:
                 )
             freqs_out = np.array(s_param_freqs)
 
-            # Re-build clean materials (without port sigma already folded)
-            base_materials, _, _ = self._build_materials(grid)
             s_params = extract_s_matrix(
                 grid, base_materials, lumped_ports, s_param_freqs,
                 n_steps=s_param_n_steps,
+                boundary=self._boundary,
+                debye_spec=debye_spec,
+                lorentz_spec=lorentz_spec,
             )
 
         return Result(

@@ -76,7 +76,7 @@ def init_debye(
     poles: list[DebyePole],
     materials: MaterialArrays,
     dt: float,
-    mask: jnp.ndarray | None = None,
+    mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,
 ) -> tuple[DebyeCoeffs, DebyeState]:
     """Initialize Debye ADE coefficients and auxiliary state.
 
@@ -88,8 +88,9 @@ def init_debye(
         Base material arrays (eps_r = ε_∞, sigma, mu_r).
     dt : float
         Timestep in seconds.
-    mask : (nx, ny, nz) bool array, optional
-        Where to apply Debye dispersion. If None, apply everywhere.
+    mask : (nx, ny, nz) bool array or per-pole mask list, optional
+        Where to apply Debye dispersion. If a list/tuple is provided,
+        it must align one-to-one with ``poles``.
 
     Returns
     -------
@@ -102,18 +103,28 @@ def init_debye(
     eps_inf = materials.eps_r * EPS_0  # (nx, ny, nz)
     sigma = materials.sigma
 
+    if isinstance(mask, (list, tuple)):
+        if len(mask) != n_poles:
+            raise ValueError(
+                f"Expected {n_poles} Debye masks, got {len(mask)}"
+            )
+        pole_masks = [jnp.asarray(mask_i, dtype=bool) for mask_i in mask]
+    else:
+        shared_mask = None if mask is None else jnp.asarray(mask, dtype=bool)
+        pole_masks = [shared_mask] * n_poles
+
     # Per-pole coefficients
     alpha_list = []
     beta_list = []
-    for pole in poles:
+    for pole, pole_mask in zip(poles, pole_masks):
         tau = pole.tau
         de = pole.delta_eps
         a = (2.0 * tau - dt) / (2.0 * tau + dt)
         b = EPS_0 * de * dt / (2.0 * tau + dt)
 
-        if mask is not None:
-            a_arr = jnp.where(mask, a, 0.0)
-            b_arr = jnp.where(mask, b, 0.0)
+        if pole_mask is not None:
+            a_arr = jnp.where(pole_mask, a, 0.0)
+            b_arr = jnp.where(pole_mask, b, 0.0)
         else:
             a_arr = jnp.full(shape, a, dtype=jnp.float32)
             b_arr = jnp.full(shape, b, dtype=jnp.float32)

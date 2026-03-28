@@ -126,8 +126,8 @@ def optimize(
         """Forward pass: latent -> eps -> simulation -> objective."""
         eps_design = _latent_to_eps(lat, eps_min, eps_max)
 
-        # Build materials with design region override
-        materials, debye = sim._build_materials(grid)
+        # Build materials with design-region override.
+        materials, debye_spec, lorentz_spec = sim._assemble_materials(grid)
         eps_r = materials.eps_r
 
         # Inject design region
@@ -157,10 +157,14 @@ def optimize(
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
 
+        _, debye, lorentz = sim._init_dispersion(
+            materials, grid.dt, debye_spec, lorentz_spec)
+
         result = _run(
             grid, materials, n_steps,
             boundary=sim._boundary,
             debye=debye,
+            lorentz=lorentz,
             sources=sources,
             probes=probes,
             checkpoint=True,

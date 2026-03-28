@@ -113,3 +113,51 @@ def test_touchstone_custom_z0():
         _, _, z0 = read_touchstone(path)
 
     assert z0 == 75.0
+
+
+def test_touchstone_reader_uses_touchstone_port_order():
+    """Reader should parse standard S11, S21, S12, S22 ordering."""
+    text = "\n".join([
+        "! explicit 2-port ordering check",
+        "# GHz S RI R 50",
+        "1.0 11 0 21 0 12 0 22 0",
+    ])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "ordered.s2p"
+        path.write_text(text)
+        s_read, freqs, z0 = read_touchstone(path)
+
+    assert z0 == 50.0
+    np.testing.assert_allclose(freqs, np.array([1e9]))
+    assert s_read[0, 0, 0] == 11 + 0j
+    assert s_read[1, 0, 0] == 21 + 0j
+    assert s_read[0, 1, 0] == 12 + 0j
+    assert s_read[1, 1, 0] == 22 + 0j
+
+
+def test_touchstone_writer_uses_touchstone_port_order():
+    """Writer should emit standard S11, S21, S12, S22 ordering."""
+    s_params = np.zeros((2, 2, 1), dtype=np.complex128)
+    s_params[0, 0, 0] = 11 + 0j
+    s_params[0, 1, 0] = 12 + 0j
+    s_params[1, 0, 0] = 21 + 0j
+    s_params[1, 1, 0] = 22 + 0j
+    freqs = np.array([1e9])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "ordered.s2p"
+        write_touchstone(path, s_params, freqs, fmt="RI")
+        data_line = [
+            line for line in path.read_text().splitlines()
+            if line and not line.startswith("!")
+        ][1]
+
+    tokens = data_line.split()
+    assert tokens[0] == "1.000000000e+00"
+    assert tokens[1:9] == [
+        "1.100000000e+01", "0.000000000e+00",
+        "2.100000000e+01", "0.000000000e+00",
+        "1.200000000e+01", "0.000000000e+00",
+        "2.200000000e+01", "0.000000000e+00",
+    ]

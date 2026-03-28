@@ -399,6 +399,11 @@ def extract_s_matrix(
     ports: list,
     freqs: jnp.ndarray,
     n_steps: int | None = None,
+    *,
+    boundary: str = "pec",
+    cpml_axes: str = "xyz",
+    debye_spec: tuple[list, list[jnp.ndarray]] | None = None,
+    lorentz_spec: tuple[list, list[jnp.ndarray]] | None = None,
 ) -> jnp.ndarray:
     """Extract full N-port S-parameter matrix.
 
@@ -414,6 +419,11 @@ def extract_s_matrix(
     freqs : (n_freqs,) Hz
     n_steps : int or None
         Defaults to ``grid.num_timesteps(num_periods=30)``.
+    boundary : "pec" or "cpml"
+    cpml_axes : axes string for CPML (default "xyz")
+    debye_spec, lorentz_spec : optional ``(poles, masks)`` tuples
+        Used to rebuild dispersive coefficients after port loading is
+        folded into ``materials``.
 
     Returns
     -------
@@ -422,8 +432,11 @@ def extract_s_matrix(
         exciting port *j*).
     """
     import numpy as np
-    from rfx.core.yee import init_state, update_e, update_h
+    from rfx.core.yee import init_state, update_h
     from rfx.boundaries.pec import apply_pec
+    from rfx.materials.debye import init_debye
+    from rfx.materials.lorentz import init_lorentz
+    from rfx.simulation import _update_e_with_optional_dispersion
     from rfx.sources.sources import setup_lumped_port, apply_lumped_port
 
     n_ports = len(ports)
@@ -432,22 +445,55 @@ def extract_s_matrix(
         n_steps = grid.num_timesteps(num_periods=30)
 
     dt, dx = grid.dt, grid.dx
+    use_cpml = boundary == "cpml" and grid.cpml_layers > 0
+
+    if use_cpml:
+        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
+        cpml_params, cpml_state_init = init_cpml(grid)
 
     # Fold ALL port impedances into materials (once)
     mats = materials
     for p in ports:
         mats = setup_lumped_port(grid, p, mats)
 
+    debye = None
+    if debye_spec is not None:
+        debye_poles, debye_masks = debye_spec
+        debye = init_debye(debye_poles, mats, dt, mask=debye_masks)
+
+    lorentz = None
+    if lorentz_spec is not None:
+        lorentz_poles, lorentz_masks = lorentz_spec
+        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks)
+
     S = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
 
     for j in range(n_ports):
         state = init_state(grid.shape)
         sprobes = [init_sparam_probe(grid, p, freqs) for p in ports]
+        cpml_state = cpml_state_init if use_cpml else None
+        debye_state = debye[1] if debye is not None else None
+        lorentz_state = lorentz[1] if lorentz is not None else None
 
         for step in range(n_steps):
             t = step * dt
             state = update_h(state, mats, dt, dx)
-            state = update_e(state, mats, dt, dx)
+            if use_cpml:
+                state, cpml_state = apply_cpml_h(
+                    state, cpml_params, cpml_state, grid, cpml_axes)
+
+            state, debye_state, lorentz_state = _update_e_with_optional_dispersion(
+                state,
+                mats,
+                dt,
+                dx,
+                debye=(debye[0], debye_state) if debye is not None else None,
+                lorentz=(lorentz[0], lorentz_state) if lorentz is not None else None,
+            )
+
+            if use_cpml:
+                state, cpml_state = apply_cpml_e(
+                    state, cpml_params, cpml_state, grid, cpml_axes)
             state = apply_pec(state)
 
             # Excite only port j

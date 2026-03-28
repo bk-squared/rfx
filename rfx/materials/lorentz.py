@@ -105,7 +105,7 @@ def init_lorentz(
     poles: list[LorentzPole],
     materials,
     dt: float,
-    mask: jnp.ndarray | None = None,
+    mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,
 ) -> tuple[LorentzCoeffs, LorentzState]:
     """Initialize Lorentz/Drude ADE coefficients and state.
 
@@ -123,12 +123,22 @@ def init_lorentz(
     shape = materials.eps_r.shape
     n_poles = len(poles)
 
+    if isinstance(mask, (list, tuple)):
+        if len(mask) != n_poles:
+            raise ValueError(
+                f"Expected {n_poles} Lorentz masks, got {len(mask)}"
+            )
+        pole_masks = [jnp.asarray(mask_i, dtype=bool) for mask_i in mask]
+    else:
+        shared_mask = None if mask is None else jnp.asarray(mask, dtype=bool)
+        pole_masks = [shared_mask] * n_poles
+
     eps_inf = materials.eps_r * EPS_0
     sigma = materials.sigma
 
     a_list, b_list, c_list = [], [], []
 
-    for pole in poles:
+    for pole, pole_mask in zip(poles, pole_masks):
         w0, d, k = pole.omega_0, pole.delta, pole.kappa
         denom = 1.0 + d * dt
 
@@ -136,10 +146,10 @@ def init_lorentz(
         b_val = -(1.0 - d * dt) / denom
         c_val = EPS_0 * k * dt ** 2 / denom
 
-        if mask is not None:
-            a_arr = jnp.where(mask, a_val, 0.0)
-            b_arr = jnp.where(mask, b_val, 0.0)
-            c_arr = jnp.where(mask, c_val, 0.0)
+        if pole_mask is not None:
+            a_arr = jnp.where(pole_mask, a_val, 0.0)
+            b_arr = jnp.where(pole_mask, b_val, 0.0)
+            c_arr = jnp.where(pole_mask, c_val, 0.0)
         else:
             a_arr = jnp.full(shape, a_val, dtype=jnp.float32)
             b_arr = jnp.full(shape, b_val, dtype=jnp.float32)

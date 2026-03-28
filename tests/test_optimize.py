@@ -6,10 +6,10 @@ Validates:
 3. OptimizeResult structure
 """
 
-import numpy as np
 import jax.numpy as jnp
 
-from rfx.optimize import DesignRegion, OptimizeResult, _latent_to_eps
+from rfx.api import Simulation
+from rfx.optimize import DesignRegion, OptimizeResult, _latent_to_eps, optimize
 
 
 def test_design_region():
@@ -63,3 +63,29 @@ def test_optimize_result_structure():
     assert len(result.loss_history) == 3
     assert result.eps_design.shape == (5, 5, 1)
     assert result.latent.shape == (5, 5, 1)
+
+
+def test_optimize_runs_single_iteration():
+    """The public optimize() API should complete at least one iteration."""
+    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim.add_port((0.005, 0.0075, 0.0075), "ez")
+    sim.add_probe((0.01, 0.0075, 0.0075), "ez")
+
+    region = DesignRegion(
+        corner_lo=(0.006, 0.006, 0.006),
+        corner_hi=(0.009, 0.009, 0.009),
+        eps_range=(1.0, 4.4),
+    )
+
+    result = optimize(
+        sim,
+        region,
+        lambda run_result: -jnp.sum(run_result.time_series ** 2),
+        n_iters=1,
+        lr=0.01,
+        verbose=False,
+    )
+
+    assert isinstance(result, OptimizeResult)
+    assert len(result.loss_history) == 1
+    assert result.eps_design.shape == result.latent.shape

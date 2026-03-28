@@ -58,8 +58,10 @@ def write_touchstone(
             freq_scaled = freqs[fi] / scale
             parts = [f"{freq_scaled:.9e}"]
 
-            for i in range(n_ports):
-                for j in range(n_ports):
+            # Touchstone stores network data column-major:
+            # S11, S21, ..., SN1, S12, S22, ..., SN2, ...
+            for j in range(n_ports):
+                for i in range(n_ports):
                     s = s_params[i, j, fi]
                     if fmt == "RI":
                         parts.append(f"{s.real:.9e}")
@@ -129,8 +131,6 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
     # Parse data
     freqs_list = []
     s_data = []
-    n_vals_per_line = 1 + 2 * n_ports * n_ports
-
     for line in data_lines:
         vals = [float(x) for x in line.split()]
         freqs_list.append(vals[0] * freq_scale)
@@ -150,12 +150,13 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
     freqs = np.array(freqs_list)
     n_freqs = len(freqs)
 
-    # Reshape: data is stored as S11, S21, S12, S22 (column-major for 2-port)
+    # Touchstone stores network data column-major:
+    # S11, S21, ..., SN1, S12, S22, ..., SN2, ...
     s_params = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     for fi in range(n_freqs):
         idx = 0
-        for i in range(n_ports):
-            for j in range(n_ports):
+        for j in range(n_ports):
+            for i in range(n_ports):
                 s_params[i, j, fi] = s_data[fi][idx]
                 idx += 1
 

@@ -16,7 +16,7 @@ import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
-    update_e, update_h, EPS_0,
+    update_e, update_h, EPS_0, _shift_bwd,
 )
 from rfx.boundaries.pec import apply_pec
 
@@ -75,9 +75,8 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps):
     n_steps : int
     """
     idx = grid.position_to_index(position)
-    waveform = jnp.array(
-        [float(waveform_fn(step * grid.dt)) for step in range(n_steps)]
-    )
+    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    waveform = jax.vmap(waveform_fn)(times)
     return SourceSpec(i=idx[0], j=idx[1], k=idx[2],
                       component=component, waveform=waveform)
 
@@ -91,15 +90,13 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     idx = grid.position_to_index(port.position)
     i, j, k = idx
 
-    eps = float(materials.eps_r[i, j, k]) * EPS_0
-    sigma = float(materials.sigma[i, j, k])
+    eps = materials.eps_r[i, j, k] * EPS_0
+    sigma = materials.sigma[i, j, k]
     loss = sigma * grid.dt / (2.0 * eps)
     cb = (grid.dt / eps) / (1.0 + loss)
 
-    waveform = jnp.array([
-        float(port.excitation(step * grid.dt)) * cb / grid.dx
-        for step in range(n_steps)
-    ])
+    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    waveform = (cb / grid.dx) * jax.vmap(port.excitation)(times)
     return SourceSpec(i=i, j=j, k=k,
                       component=port.component, waveform=waveform)
 
@@ -108,6 +105,129 @@ def make_probe(grid: Grid, position, component):
     """Create a ProbeSpec from a physical position."""
     idx = grid.position_to_index(position)
     return ProbeSpec(i=idx[0], j=idx[1], k=idx[2], component=component)
+
+
+def _update_e_with_optional_dispersion(
+    state: FDTDState,
+    materials: MaterialArrays,
+    dt: float,
+    dx: float,
+    *,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    periodic: tuple = (False, False, False),
+) -> tuple[FDTDState, object | None, object | None]:
+    """Update E with standard, Debye, Lorentz, or mixed dispersion."""
+    if debye is None and lorentz is None:
+        return update_e(state, materials, dt, dx, periodic=periodic), None, None
+
+    if debye is not None and lorentz is None:
+        from rfx.materials.debye import update_e_debye
+
+        debye_coeffs, debye_state = debye
+        new_state, new_debye = update_e_debye(
+            state, debye_coeffs, debye_state, dt, dx, periodic=periodic)
+        return new_state, new_debye, None
+
+    if lorentz is not None and debye is None:
+        from rfx.materials.lorentz import update_e_lorentz
+
+        lorentz_coeffs, lorentz_state = lorentz
+        new_state, new_lorentz = update_e_lorentz(
+            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic)
+        return new_state, None, new_lorentz
+
+    # Mixed Debye + Lorentz update.
+    from rfx.materials.debye import DebyeState
+    from rfx.materials.lorentz import LorentzState
+
+    debye_coeffs, debye_state = debye
+    lorentz_coeffs, lorentz_state = lorentz
+
+    def bwd(arr, axis):
+        if periodic[axis]:
+            return jnp.roll(arr, 1, axis)
+        return _shift_bwd(arr, axis)
+
+    hx, hy, hz = state.hx, state.hy, state.hz
+
+    curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
+    curl_y = ((hx - bwd(hx, 2)) - (hz - bwd(hz, 0))) / dx
+    curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
+
+    ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
+
+    # Explicit Lorentz polarization update first.
+    px_l_new = (
+        lorentz_coeffs.a * lorentz_state.px
+        + lorentz_coeffs.b * lorentz_state.px_prev
+        + lorentz_coeffs.c * ex_old[None]
+    )
+    py_l_new = (
+        lorentz_coeffs.a * lorentz_state.py
+        + lorentz_coeffs.b * lorentz_state.py_prev
+        + lorentz_coeffs.c * ey_old[None]
+    )
+    pz_l_new = (
+        lorentz_coeffs.a * lorentz_state.pz
+        + lorentz_coeffs.b * lorentz_state.pz_prev
+        + lorentz_coeffs.c * ez_old[None]
+    )
+
+    dpx_l = jnp.sum(px_l_new - lorentz_state.px, axis=0)
+    dpy_l = jnp.sum(py_l_new - lorentz_state.py, axis=0)
+    dpz_l = jnp.sum(pz_l_new - lorentz_state.pz, axis=0)
+
+    beta_sum = jnp.sum(debye_coeffs.beta, axis=0)
+    gamma_base = 1.0 / lorentz_coeffs.cc
+    gamma_total = jnp.maximum(gamma_base + beta_sum, EPS_0 * 1e-10)
+    numer_base = lorentz_coeffs.ca * gamma_base
+
+    ca = (numer_base - beta_sum) / gamma_total
+    cb = dt / gamma_total
+    cc_debye = (1.0 - debye_coeffs.alpha) / gamma_total
+    cc_lorentz = 1.0 / gamma_total
+
+    ex_new = (
+        ca * ex_old
+        + cb * curl_x
+        + jnp.sum(cc_debye * debye_state.px, axis=0)
+        - cc_lorentz * dpx_l
+    )
+    ey_new = (
+        ca * ey_old
+        + cb * curl_y
+        + jnp.sum(cc_debye * debye_state.py, axis=0)
+        - cc_lorentz * dpy_l
+    )
+    ez_new = (
+        ca * ez_old
+        + cb * curl_z
+        + jnp.sum(cc_debye * debye_state.pz, axis=0)
+        - cc_lorentz * dpz_l
+    )
+
+    new_fdtd = state._replace(
+        ex=ex_new,
+        ey=ey_new,
+        ez=ez_new,
+        step=state.step + 1,
+    )
+    new_debye = DebyeState(
+        px=debye_coeffs.alpha * debye_state.px + debye_coeffs.beta * (ex_new[None] + ex_old[None]),
+        py=debye_coeffs.alpha * debye_state.py + debye_coeffs.beta * (ey_new[None] + ey_old[None]),
+        pz=debye_coeffs.alpha * debye_state.pz + debye_coeffs.beta * (ez_new[None] + ez_old[None]),
+    )
+    new_lorentz = LorentzState(
+        px=px_l_new,
+        py=py_l_new,
+        pz=pz_l_new,
+        px_prev=lorentz_state.px,
+        py_prev=lorentz_state.py,
+        pz_prev=lorentz_state.pz,
+    )
+
+    return new_fdtd, new_debye, new_lorentz
 
 
 # ---------------------------------------------------------------------------
@@ -175,12 +295,10 @@ def run(
         carry_init["cpml"] = cpml_state
 
     if use_debye:
-        from rfx.materials.debye import update_e_debye
         debye_coeffs, debye_state = debye
         carry_init["debye"] = debye_state
 
     if use_lorentz:
-        from rfx.materials.lorentz import update_e_lorentz
         lorentz_coeffs, lorentz_state = lorentz
         carry_init["lorentz"] = lorentz_state
 
@@ -209,15 +327,14 @@ def run(
             st, cpml_new = apply_cpml_h(
                 st, cpml_params, carry["cpml"], grid, cpml_axes)
 
-        # E update (Debye, Lorentz, or standard)
-        if use_debye:
-            st, debye_new = update_e_debye(
-                st, debye_coeffs, carry["debye"], dt, dx)
-        elif use_lorentz:
-            st, lorentz_new = update_e_lorentz(
-                st, lorentz_coeffs, carry["lorentz"], dt, dx)
-        else:
-            st = update_e(st, materials, dt, dx)
+        st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
+            st,
+            materials,
+            dt,
+            dx,
+            debye=(debye_coeffs, carry["debye"]) if use_debye else None,
+            lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
+        )
 
         if use_cpml:
             st, cpml_new = apply_cpml_e(

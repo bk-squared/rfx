@@ -20,6 +20,7 @@ from rfx.api import Simulation, Result, MATERIAL_LIBRARY, MaterialSpec
 from rfx.geometry.csg import Box, Sphere
 from rfx.sources.sources import GaussianPulse
 from rfx.materials.debye import DebyePole
+from rfx.materials.lorentz import lorentz_pole
 
 
 def test_basic_simulation():
@@ -154,3 +155,41 @@ def test_material_library_has_common_entries():
     """Material library contains expected RF materials."""
     for name in ["vacuum", "fr4", "copper", "aluminum", "ptfe", "alumina"]:
         assert name in MATERIAL_LIBRARY, f"Missing library material: {name}"
+
+
+def test_sparams_respond_to_lorentz_dispersion():
+    """API S-parameter extraction should reflect Lorentz materials."""
+    freqs = np.linspace(1e9, 4e9, 5)
+
+    sim_plain = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), boundary="pec")
+    sim_plain.add_material("mat", eps_r=2.0)
+    sim_plain.add(Box((0.0, 0.0, 0.0), (0.01, 0.01, 0.01)), material="mat")
+    sim_plain.add_port((0.002, 0.005, 0.005), "ez")
+    sim_plain.add_port((0.008, 0.005, 0.005), "ez")
+
+    sim_lorentz = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), boundary="pec")
+    sim_lorentz.add_material(
+        "mat",
+        eps_r=2.0,
+        lorentz_poles=[lorentz_pole(2.0, 2 * np.pi * 3e9, 1e8)],
+    )
+    sim_lorentz.add(Box((0.0, 0.0, 0.0), (0.01, 0.01, 0.01)), material="mat")
+    sim_lorentz.add_port((0.002, 0.005, 0.005), "ez")
+    sim_lorentz.add_port((0.008, 0.005, 0.005), "ez")
+
+    plain = sim_plain.run(
+        n_steps=20,
+        compute_s_params=True,
+        s_param_freqs=freqs,
+        s_param_n_steps=20,
+    )
+    lorentz = sim_lorentz.run(
+        n_steps=20,
+        compute_s_params=True,
+        s_param_freqs=freqs,
+        s_param_n_steps=20,
+    )
+
+    assert plain.s_params is not None
+    assert lorentz.s_params is not None
+    assert np.max(np.abs(plain.s_params - lorentz.s_params)) > 1e-6
