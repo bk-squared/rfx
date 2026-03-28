@@ -3,4 +3,4 @@
 __version__ = "0.1.0"
 
 from rfx.grid import Grid
-from rfx.simulation import Simulation
+from rfx.simulation import run, make_source, make_probe, make_port_source, SimResult

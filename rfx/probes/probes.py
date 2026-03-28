@@ -393,6 +393,87 @@ def update_dft_plane_probe(
     return probe._replace(accumulator=new_acc)
 
 
+def extract_s_matrix(
+    grid,
+    materials,
+    ports: list,
+    freqs: jnp.ndarray,
+    n_steps: int | None = None,
+) -> jnp.ndarray:
+    """Extract full N-port S-parameter matrix.
+
+    Runs N simulations (one per excitation port).  All port impedances
+    are active in every run so that port loading is consistent.
+
+    Parameters
+    ----------
+    grid : Grid
+    materials : MaterialArrays
+        Base materials **without** port impedances folded in.
+    ports : list of LumpedPort
+    freqs : (n_freqs,) Hz
+    n_steps : int or None
+        Defaults to ``grid.num_timesteps(num_periods=30)``.
+
+    Returns
+    -------
+    S : (n_ports, n_ports, n_freqs) complex array
+        ``S[i, j, :]`` is S_{i+1, j+1} (response at port *i* when
+        exciting port *j*).
+    """
+    import numpy as np
+    from rfx.core.yee import init_state, update_e, update_h
+    from rfx.boundaries.pec import apply_pec
+    from rfx.sources.sources import setup_lumped_port, apply_lumped_port
+
+    n_ports = len(ports)
+    n_freqs = len(freqs)
+    if n_steps is None:
+        n_steps = grid.num_timesteps(num_periods=30)
+
+    dt, dx = grid.dt, grid.dx
+
+    # Fold ALL port impedances into materials (once)
+    mats = materials
+    for p in ports:
+        mats = setup_lumped_port(grid, p, mats)
+
+    S = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+
+    for j in range(n_ports):
+        state = init_state(grid.shape)
+        sprobes = [init_sparam_probe(grid, p, freqs) for p in ports]
+
+        for step in range(n_steps):
+            t = step * dt
+            state = update_h(state, mats, dt, dx)
+            state = update_e(state, mats, dt, dx)
+            state = apply_pec(state)
+
+            # Excite only port j
+            state = apply_lumped_port(state, grid, ports[j], t, mats)
+
+            # Record V / I at all ports
+            for i in range(n_ports):
+                sprobes[i] = update_sparam_probe(
+                    sprobes[i], state, grid, ports[i], dt)
+
+        # Incident wave at excitation port j
+        z0_j = ports[j].impedance
+        a_j = (sprobes[j].v_dft + z0_j * sprobes[j].i_dft) / (
+            2.0 * np.sqrt(z0_j))
+        safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
+
+        # Response at each receiving port i
+        for i in range(n_ports):
+            z0_i = ports[i].impedance
+            b_i = (sprobes[i].v_dft - z0_i * sprobes[i].i_dft) / (
+                2.0 * np.sqrt(z0_i))
+            S[i, j, :] = np.array(b_i / safe_a)
+
+    return S
+
+
 def extract_s11_normalised(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
     """Compute S11 normalised against the incident source DFT.
 
