@@ -122,6 +122,7 @@ def run(
     boundary: str = "pec",
     cpml_axes: str = "xyz",
     debye: tuple | None = None,
+    lorentz: tuple | None = None,
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
     ntff: object | None = None,
@@ -137,6 +138,7 @@ def run(
     boundary : "pec" or "cpml"
     cpml_axes : axes string for CPML (default "xyz")
     debye : (DebyeCoeffs, DebyeState) tuple, or None
+    lorentz : (LorentzCoeffs, LorentzState) tuple, or None
     sources : list of SourceSpec (precomputed waveforms)
     probes : list of ProbeSpec (point time-series recorders)
     ntff : NTFFBox or None
@@ -159,6 +161,7 @@ def run(
     # ---- subsystem flags (resolved at trace time) ----
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
     use_debye = debye is not None
+    use_lorentz = lorentz is not None
     use_ntff = ntff is not None
 
     # ---- initialise states ----
@@ -175,6 +178,11 @@ def run(
         from rfx.materials.debye import update_e_debye
         debye_coeffs, debye_state = debye
         carry_init["debye"] = debye_state
+
+    if use_lorentz:
+        from rfx.materials.lorentz import update_e_lorentz
+        lorentz_coeffs, lorentz_state = lorentz
+        carry_init["lorentz"] = lorentz_state
 
     if use_ntff:
         from rfx.farfield import init_ntff_data, accumulate_ntff
@@ -201,10 +209,13 @@ def run(
             st, cpml_new = apply_cpml_h(
                 st, cpml_params, carry["cpml"], grid, cpml_axes)
 
-        # E update (Debye or standard)
+        # E update (Debye, Lorentz, or standard)
         if use_debye:
             st, debye_new = update_e_debye(
                 st, debye_coeffs, carry["debye"], dt, dx)
+        elif use_lorentz:
+            st, lorentz_new = update_e_lorentz(
+                st, lorentz_coeffs, carry["lorentz"], dt, dx)
         else:
             st = update_e(st, materials, dt, dx)
 
@@ -237,6 +248,8 @@ def run(
             new_carry["cpml"] = cpml_new
         if use_debye:
             new_carry["debye"] = debye_new
+        if use_lorentz:
+            new_carry["lorentz"] = lorentz_new
         if use_ntff:
             new_carry["ntff"] = ntff_new
 

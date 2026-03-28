@@ -30,6 +30,8 @@ from rfx.core.yee import MaterialArrays, init_materials, EPS_0
 from rfx.geometry.csg import Shape, Box, Sphere, Cylinder, rasterize
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port
 from rfx.materials.debye import DebyePole, init_debye
+from rfx.materials.lorentz import LorentzPole, init_lorentz, drude_pole, lorentz_pole
+from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
 from rfx.probes.probes import extract_s_matrix
 from rfx.simulation import (
     make_source, make_probe, make_port_source,
@@ -99,11 +101,12 @@ class Result(NamedTuple):
 
 @dataclass(frozen=True)
 class MaterialSpec:
-    """Material definition with optional Debye dispersion."""
+    """Material definition with optional Debye/Lorentz dispersion."""
     eps_r: float = 1.0
     sigma: float = 0.0
     mu_r: float = 1.0
     debye_poles: list[DebyePole] | None = None
+    lorentz_poles: list[LorentzPole] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +181,7 @@ class Simulation:
         self._geometry: list[_GeometryEntry] = []
         self._ports: list[_PortEntry] = []
         self._probes: list[_ProbeEntry] = []
+        self._thin_conductors: list[ThinConductor] = []
         self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
 
     # ---- material registration ----
@@ -190,10 +194,12 @@ class Simulation:
         sigma: float = 0.0,
         mu_r: float = 1.0,
         debye_poles: list[DebyePole] | None = None,
+        lorentz_poles: list[LorentzPole] | None = None,
     ) -> "Simulation":
         """Register a named material."""
         self._materials[name] = MaterialSpec(
-            eps_r=eps_r, sigma=sigma, mu_r=mu_r, debye_poles=debye_poles,
+            eps_r=eps_r, sigma=sigma, mu_r=mu_r,
+            debye_poles=debye_poles, lorentz_poles=lorentz_poles,
         )
         return self
 
@@ -208,6 +214,7 @@ class Simulation:
                 sigma=lib.get("sigma", 0.0),
                 mu_r=lib.get("mu_r", 1.0),
                 debye_poles=lib.get("debye_poles"),
+                lorentz_poles=lib.get("lorentz_poles"),
             )
         raise KeyError(
             f"Unknown material {name!r}. "
@@ -221,6 +228,35 @@ class Simulation:
         """Add a geometric shape filled with a named material."""
         self._resolve_material(material)  # validate early
         self._geometry.append(_GeometryEntry(shape=shape, material_name=material))
+        return self
+
+    # ---- thin conductors ----
+
+    def add_thin_conductor(
+        self,
+        shape: Shape,
+        *,
+        sigma_bulk: float = 5.8e7,
+        thickness: float = 35e-6,
+        eps_r: float = 1.0,
+    ) -> "Simulation":
+        """Add a thin conductor with subcell correction.
+
+        Parameters
+        ----------
+        shape : Shape
+            Geometric region of the conductor.
+        sigma_bulk : float
+            Bulk conductivity (S/m). Default: copper (5.8e7).
+        thickness : float
+            Physical thickness (metres). Default: 35 µm (1 oz copper).
+        eps_r : float
+            Relative permittivity (default 1.0).
+        """
+        self._thin_conductors.append(ThinConductor(
+            shape=shape, sigma_bulk=sigma_bulk,
+            thickness=thickness, eps_r=eps_r,
+        ))
         return self
 
     # ---- ports ----
@@ -305,16 +341,18 @@ class Simulation:
             cpml_layers=self._cpml_layers,
         )
 
-    def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None]:
-        """Build material arrays and optional Debye coefficients."""
+    def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
+        """Build material arrays and optional Debye/Lorentz coefficients."""
         # Start with vacuum
         eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
         sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
         mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
 
-        # Collect all Debye poles with their masks
+        # Collect all Debye/Lorentz poles with their masks
         all_debye_poles: list[DebyePole] = []
         debye_mask = jnp.zeros(grid.shape, dtype=bool)
+        all_lorentz_poles: list[LorentzPole] = []
+        lorentz_mask = jnp.zeros(grid.shape, dtype=bool)
 
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
@@ -329,7 +367,17 @@ class Simulation:
                     if pole not in all_debye_poles:
                         all_debye_poles.append(pole)
 
+            if mat.lorentz_poles:
+                lorentz_mask = lorentz_mask | mask
+                for pole in mat.lorentz_poles:
+                    if pole not in all_lorentz_poles:
+                        all_lorentz_poles.append(pole)
+
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+
+        # Apply thin conductors
+        for tc in self._thin_conductors:
+            materials = apply_thin_conductor(grid, tc, materials)
 
         # Build Debye if any dispersive materials present
         debye = None
@@ -339,7 +387,15 @@ class Simulation:
                 mask=debye_mask,
             )
 
-        return materials, debye
+        # Build Lorentz if any dispersive materials present
+        lorentz = None
+        if all_lorentz_poles:
+            lorentz = init_lorentz(
+                all_lorentz_poles, materials, grid.dt,
+                mask=lorentz_mask,
+            )
+
+        return materials, debye, lorentz
 
     # ---- run ----
 
@@ -377,7 +433,7 @@ class Simulation:
         Result
         """
         grid = self._build_grid()
-        materials, debye = self._build_materials(grid)
+        materials, debye, lorentz = self._build_materials(grid)
 
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
@@ -411,6 +467,7 @@ class Simulation:
             grid, materials, n_steps,
             boundary=self._boundary,
             debye=debye,
+            lorentz=lorentz,
             sources=sources,
             probes=probes,
             ntff=ntff_box,
@@ -432,7 +489,7 @@ class Simulation:
             freqs_out = np.array(s_param_freqs)
 
             # Re-build clean materials (without port sigma already folded)
-            base_materials, _ = self._build_materials(grid)
+            base_materials, _, _ = self._build_materials(grid)
             s_params = extract_s_matrix(
                 grid, base_materials, lumped_ports, s_param_freqs,
                 n_steps=s_param_n_steps,
