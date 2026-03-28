@@ -35,7 +35,7 @@ from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
 from rfx.probes.probes import extract_s_matrix
 from rfx.simulation import (
     make_source, make_probe, make_port_source,
-    run as _run, SimResult, SourceSpec, ProbeSpec,
+    run as _run, SimResult, SourceSpec, ProbeSpec, SnapshotSpec,
 )
 from rfx.farfield import (
     NTFFBox, make_ntff_box, compute_far_field, FarFieldResult,
@@ -86,6 +86,8 @@ class Result(NamedTuple):
         Raw NTFF DFT data (use ``compute_far_field`` for radiation pattern).
     ntff_box : NTFFBox or None
         NTFF box specification (needed for ``compute_far_field``).
+    snapshots : dict[str, ndarray] or None
+        Field snapshots keyed by component name.
     """
     state: object
     time_series: jnp.ndarray
@@ -93,6 +95,7 @@ class Result(NamedTuple):
     freqs: np.ndarray | None
     ntff_data: object = None
     ntff_box: object = None
+    snapshots: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -149,13 +152,16 @@ class Simulation:
     freq_max : float
         Maximum simulation frequency (Hz).
     domain : (Lx, Ly, Lz) in metres
-        Physical domain size.
+        Physical domain size.  For 2D modes Lz is ignored.
     boundary : "pec" or "cpml"
         Boundary condition. Default "cpml".
     cpml_layers : int
         Number of CPML layers per face. Default 10 (ignored for "pec").
     dx : float or None
         Cell size override (metres). Auto-computed if None.
+    mode : str
+        ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
+        ``"2d_tez"`` (Hz, Ex, Ey).
     """
 
     def __init__(
@@ -166,6 +172,7 @@ class Simulation:
         boundary: str = "cpml",
         cpml_layers: int = 10,
         dx: float | None = None,
+        mode: str = "3d",
     ):
         if boundary not in ("pec", "cpml"):
             raise ValueError(f"boundary must be 'pec' or 'cpml', got {boundary!r}")
@@ -179,6 +186,7 @@ class Simulation:
         self._boundary = boundary
         self._cpml_layers = cpml_layers if boundary == "cpml" else 0
         self._dx = dx
+        self._mode = mode
 
         # Registered items
         self._materials: dict[str, MaterialSpec] = {}
@@ -343,6 +351,7 @@ class Simulation:
             domain=self._domain,
             dx=self._dx,
             cpml_layers=self._cpml_layers,
+            mode=self._mode,
         )
 
     def _assemble_materials(
@@ -439,6 +448,7 @@ class Simulation:
         compute_s_params: bool | None = None,
         s_param_freqs: jnp.ndarray | None = None,
         s_param_n_steps: int | None = None,
+        snapshot: SnapshotSpec | None = None,
     ) -> Result:
         """Run the simulation.
 
@@ -506,6 +516,7 @@ class Simulation:
             sources=sources,
             probes=probes,
             ntff=ntff_box,
+            snapshot=snapshot,
             checkpoint=checkpoint,
         )
 
@@ -538,6 +549,7 @@ class Simulation:
             freqs=freqs_out,
             ntff_data=sim_result.ntff_data,
             ntff_box=ntff_box,
+            snapshots=sim_result.snapshots,
         )
 
     def __repr__(self) -> str:

@@ -53,10 +53,15 @@ class SimResult(NamedTuple):
         no probes were specified.
     ntff_data : NTFFData or None
         Accumulated near-to-far-field DFT data (if NTFF box was used).
+    snapshots : dict[str, ndarray] or None
+        Field snapshots keyed by component name.  Each array has shape
+        (n_steps, ...) where ``...`` is either the full grid shape or
+        a 2-D slice depending on SnapshotSpec.
     """
     state: FDTDState
     time_series: jnp.ndarray
     ntff_data: object = None
+    snapshots: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +239,25 @@ def _update_e_with_optional_dispersion(
 # Compiled runner
 # ---------------------------------------------------------------------------
 
+class SnapshotSpec(NamedTuple):
+    """Mid-simulation field snapshot specification.
+
+    interval : int
+        Record a snapshot every *interval* timesteps.
+    components : tuple of str
+        Field components to capture, e.g. ("ez",) or ("ex", "hy").
+    slice_axis : int or None
+        If not None, capture a 2-D slice at *slice_index* along this axis
+        instead of the full 3-D field (saves memory).
+    slice_index : int or None
+        Index along *slice_axis*.
+    """
+    interval: int = 10
+    components: tuple = ("ez",)
+    slice_axis: int | None = None
+    slice_index: int | None = None
+
+
 def run(
     grid: Grid,
     materials: MaterialArrays,
@@ -246,6 +270,7 @@ def run(
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
     ntff: object | None = None,
+    snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
@@ -263,6 +288,8 @@ def run(
     probes : list of ProbeSpec (point time-series recorders)
     ntff : NTFFBox or None
         If provided, accumulate near-to-far-field DFT on a Huygens box.
+    snapshot : SnapshotSpec or None
+        If provided, record field snapshots at regular intervals.
     checkpoint : bool
         If True, wrap the scan body with ``jax.checkpoint`` to
         trade compute for memory during reverse-mode AD.  Reduces
@@ -278,11 +305,19 @@ def run(
     dt = grid.dt
     dx = grid.dx
 
+    # ---- 2D mode: periodic z ----
+    periodic = (False, False, False)
+    if grid.is_2d:
+        periodic = (False, False, True)
+        # In 2D, skip CPML on z axis
+        cpml_axes = cpml_axes.replace("z", "")
+
     # ---- subsystem flags (resolved at trace time) ----
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None
     use_ntff = ntff is not None
+    use_snapshot = snapshot is not None
 
     # ---- initialise states ----
     fdtd = init_state(grid.shape)
@@ -316,13 +351,35 @@ def run(
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
 
+    # ---- snapshot setup ----
+    if use_snapshot:
+        snap_components = snapshot.components
+        snap_slice_axis = snapshot.slice_axis
+        snap_slice_index = snapshot.slice_index
+    else:
+        snap_components = ()
+        snap_slice_axis = None
+        snap_slice_index = None
+
+    def _take_snapshot(st):
+        """Extract snapshot fields from state."""
+        snaps = []
+        for comp in snap_components:
+            field = getattr(st, comp)
+            if snap_slice_axis is not None and snap_slice_index is not None:
+                sl = [slice(None)] * 3
+                sl[snap_slice_axis] = snap_slice_index
+                field = field[tuple(sl)]
+            snaps.append(field)
+        return snaps
+
     # ---- scan body ----
     def step_fn(carry, xs):
         _step_idx, src_vals = xs
         st = carry["fdtd"]
 
         # H update
-        st = update_h(st, materials, dt, dx)
+        st = update_h(st, materials, dt, dx, periodic=periodic)
         if use_cpml:
             st, cpml_new = apply_cpml_h(
                 st, cpml_params, carry["cpml"], grid, cpml_axes)
@@ -334,14 +391,18 @@ def run(
             dx,
             debye=(debye_coeffs, carry["debye"]) if use_debye else None,
             lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
+            periodic=periodic,
         )
 
         if use_cpml:
             st, cpml_new = apply_cpml_e(
                 st, cpml_params, cpml_new, grid, cpml_axes)
 
-        # PEC
-        st = apply_pec(st)
+        # PEC: skip z-axis in 2D (periodic z, not PEC-bounded)
+        if grid.is_2d:
+            st = apply_pec(st, axes="xy")
+        else:
+            st = apply_pec(st)
 
         # Soft sources
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
@@ -352,12 +413,19 @@ def run(
         # Probe samples
         samples = [getattr(st, pc)[pi, pj, pk]
                    for pi, pj, pk, pc in prb_meta]
-        output = jnp.stack(samples) if samples else jnp.zeros(0)
+        probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
 
         # NTFF accumulation
         if use_ntff:
             ntff_new = accumulate_ntff(
                 carry["ntff"], st, ntff, dt, _step_idx)
+
+        # Snapshot output
+        if use_snapshot:
+            snap_fields = _take_snapshot(st)
+            output = (probe_out, snap_fields)
+        else:
+            output = (probe_out,)
 
         # Rebuild carry
         new_carry: dict = {"fdtd": st}
@@ -375,10 +443,20 @@ def run(
     # ---- run ----
     body = jax.checkpoint(step_fn) if checkpoint else step_fn
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
-    final_carry, time_series = jax.lax.scan(body, carry_init, xs)
+    final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+
+    if use_snapshot:
+        time_series = outputs[0]
+        # outputs[1] is a list of arrays, each (n_steps, ...)
+        snapshots = {comp: outputs[1][i]
+                     for i, comp in enumerate(snap_components)}
+    else:
+        time_series = outputs[0]
+        snapshots = None
 
     return SimResult(
         state=final_carry["fdtd"],
         time_series=time_series,
         ntff_data=final_carry.get("ntff"),
+        snapshots=snapshots,
     )
