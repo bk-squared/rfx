@@ -50,9 +50,18 @@
 - `5ed1f16` Add enhanced physics tests and JAX vs NumPy benchmark
 - `ae7194d` Add periodic BC, per-axis CPML, and TFSF-based Fresnel tests
 
-## Next steps (priority order)
-1. **Waveguide port** — modal excitation/extraction for rectangular waveguide, needed for filter/antenna S-parameters
-2. **DFT probes** — frequency-domain field monitors (running DFT accumulation during timestepping)
-3. **Lossy conductors** — finite conductivity σ in materials, surface impedance BC for thin conductors
-4. **Dispersive materials** — Debye/Lorentz/Drude models via auxiliary differential equation (ADE)
-5. **Stage 3: Differentiation MVP** — `jax.checkpoint` + reverse-mode AD, custom VJP, gradient validation
+## Waveguide Port (added same session)
+- Analytical TE_mn/TM_mn mode profiles for rectangular waveguide
+- Modal voltage/current via overlap integral with mode profiles
+- S21 extraction via DFT: V_probe(f) / V_inc(f)
+- TE10 propagation validated: |S21| = -4.2 dB above cutoff (soft source → half each way)
+- Evanescent below cutoff: |S21| = -10.7 dB
+- V/I wave decomposition for S11 deferred: leapfrog E/H time offset makes overlap tricky
+
+## Next steps (priority order, per Codex review)
+1. **Compiled runner** — integrate CPML + TFSF + ports + probes into simulation.py (currently only manual loops)
+2. **DFT probes** — already partially exist in probes.py, need spatial monitors (line/surface)
+3. **Multiport S-parameters** — proper S21/S12 with power normalization and reference planes
+4. **Lossy conductors** — σ already in Yee E-update, need thin conductor surface impedance BC
+5. **Dispersive materials** — Debye first (simplest ADE, best RF payoff), then Drude, then Lorentz
+6. **Stage 3: Differentiation MVP** — start with tiny grids, continuous params, 3-way validation (reverse-mode, JVP, finite difference)
