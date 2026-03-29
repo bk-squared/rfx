@@ -5,9 +5,11 @@ Validates that:
 2. Named materials and library materials work
 3. Geometry rasterization through the builder works
 4. Port + probe simulation produces non-zero results
-5. S-parameter extraction through the API works
-6. Differentiable mode (checkpoint) works through the API
-7. Validation catches bad inputs
+5. DFT plane probes work through the API
+6. TFSF plane-wave setup works through the API
+7. S-parameter extraction through the API works
+8. Differentiable mode (checkpoint) works through the API
+9. Validation catches bad inputs
 """
 
 import numpy as np
@@ -18,9 +20,11 @@ import pytest
 import rfx
 from rfx.api import Simulation, Result, MATERIAL_LIBRARY, MaterialSpec
 from rfx.geometry.csg import Box, Sphere
-from rfx.sources.sources import GaussianPulse
+from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port
+from rfx.sources.waveguide_port import extract_waveguide_s21
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import lorentz_pole
+from rfx.simulation import make_port_source, make_probe, run as low_level_run
 
 
 def test_basic_simulation():
@@ -60,6 +64,321 @@ def test_library_material():
     assert result.time_series.shape[0] == 30
 
 
+def test_tfsf_source_through_api():
+    """High-level API should drive the compiled TFSF path."""
+    sim = Simulation(
+        freq_max=8e9,
+        domain=(0.08, 0.006, 0.006),
+        boundary="cpml",
+        cpml_layers=8,
+        dx=0.001,
+    )
+    sim.add_tfsf_source(f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3)
+    sim.add_probe((0.02, 0.003, 0.003), "ez")
+
+    result = sim.run(n_steps=120, compute_s_params=False)
+
+    assert result.time_series.shape == (120, 1)
+    peak = float(jnp.max(jnp.abs(result.time_series[:, 0])))
+    assert peak > 0.0, "Probe should detect the injected plane wave"
+
+
+def test_tfsf_ey_polarization_through_api():
+    """High-level API should support Ey-polarized normal-incidence TFSF."""
+    sim = Simulation(
+        freq_max=8e9,
+        domain=(0.08, 0.006, 0.006),
+        boundary="cpml",
+        cpml_layers=8,
+        dx=0.001,
+    )
+    sim.add_tfsf_source(f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ey")
+    sim.add_probe((0.02, 0.003, 0.003), "ey")
+
+    result = sim.run(n_steps=120, compute_s_params=False)
+
+    assert result.time_series.shape == (120, 1)
+    peak = float(jnp.max(jnp.abs(result.time_series[:, 0])))
+    assert peak > 0.0, "Probe should detect the Ey-polarized plane wave"
+
+
+def test_tfsf_negative_x_direction_through_api():
+    """High-level API should support reverse-propagating normal-incidence TFSF."""
+    sim = Simulation(
+        freq_max=8e9,
+        domain=(0.08, 0.006, 0.006),
+        boundary="cpml",
+        cpml_layers=8,
+        dx=0.001,
+    )
+    sim.add_tfsf_source(
+        f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3,
+        polarization="ez", direction="-x",
+    )
+    sim.add_probe((0.02, 0.003, 0.003), "ez")
+
+    result = sim.run(n_steps=120, compute_s_params=False)
+
+    assert result.time_series.shape == (120, 1)
+    peak = float(jnp.max(jnp.abs(result.time_series[:, 0])))
+    assert peak > 0.0, "Probe should detect the reverse-propagating plane wave"
+
+
+def test_tfsf_oblique_incidence_through_api():
+    """High-level API should support oblique Ez-polarized TFSF."""
+    sim = Simulation(
+        freq_max=5e9,
+        domain=(0.12, 0.12, 0.006),
+        boundary="cpml",
+        cpml_layers=8,
+        dx=0.004,
+    )
+    sim.add_tfsf_source(
+        f0=5e9, bandwidth=0.2, amplitude=1.0,
+        margin=3, polarization="ez", angle_deg=30.0,
+    )
+    sim.add_probe((0.04, 0.06, 0.003), "ez")
+
+    result = sim.run(n_steps=120, compute_s_params=False)
+
+    assert result.time_series.shape == (120, 1)
+    peak = float(jnp.max(jnp.abs(result.time_series[:, 0])))
+    assert peak > 0.0, "Probe should detect the obliquely incident plane wave"
+
+
+def test_dft_plane_probe_through_api():
+    """High-level API should expose plane DFT monitors."""
+    sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+    sim.add_port((0.015, 0.015, 0.015), "ez")
+    sim.add_dft_plane_probe(
+        axis="x",
+        coordinate=0.015,
+        component="ez",
+        freqs=jnp.array([2e9, 3e9, 4e9]),
+        name="mid_ez",
+    )
+
+    result = sim.run(n_steps=40, compute_s_params=False)
+
+    assert result.dft_planes is not None
+    assert "mid_ez" in result.dft_planes
+    plane = result.dft_planes["mid_ez"]
+    assert plane.accumulator.shape[0] == 3
+    assert plane.accumulator.shape[1:] == result.state.ez.shape[1:]
+    assert float(jnp.max(jnp.abs(plane.accumulator))) > 0.0
+
+
+def test_waveguide_port_through_api():
+    """High-level API should expose the rectangular-waveguide workflow."""
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        boundary="cpml",
+        cpml_layers=10,
+        dx=0.002,
+    )
+    sim.add_waveguide_port(
+        0.01,
+        mode=(1, 0),
+        mode_type="TE",
+        freqs=jnp.linspace(4.5e9, 8e9, 12),
+        f0=6e9,
+        probe_offset=15,
+        ref_offset=3,
+        name="wg0",
+    )
+
+    result = sim.run(n_steps=300, compute_s_params=False)
+
+    assert result.waveguide_ports is not None
+    assert "wg0" in result.waveguide_ports
+    s21 = np.abs(np.array(extract_waveguide_s21(result.waveguide_ports["wg0"])))
+    assert np.max(s21) > 0.05, "Waveguide response should be nontrivial above cutoff"
+
+
+def test_waveguide_port_rejects_unsupported_configuration():
+    """Waveguide API should fail loudly on unsupported setups."""
+    sim_pec = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02), boundary="pec")
+    with pytest.raises(ValueError, match="boundary='cpml'"):
+        sim_pec.add_waveguide_port(0.01)
+
+    sim_tfsf = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        boundary="cpml",
+        cpml_layers=10,
+        dx=0.002,
+    )
+    sim_tfsf.add_tfsf_source()
+    with pytest.raises(ValueError, match="TFSF"):
+        sim_tfsf.add_waveguide_port(0.01)
+
+    sim_geom = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        boundary="cpml",
+        cpml_layers=10,
+        dx=0.002,
+    )
+    sim_geom.add(Box((0, 0, 0), (0.01, 0.01, 0.01)), material="vacuum")
+    sim_geom.add_waveguide_port(0.01)
+
+
+def test_waveguide_port_geometry_changes_response():
+    """Waveguide API should support non-empty guide geometries."""
+    base_kwargs = dict(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        boundary="cpml",
+        cpml_layers=10,
+        dx=0.002,
+    )
+
+    sim_empty = Simulation(**base_kwargs)
+    sim_empty.add_waveguide_port(
+        0.01,
+        mode=(1, 0),
+        mode_type="TE",
+        freqs=jnp.linspace(4.5e9, 8e9, 12),
+        f0=6e9,
+        probe_offset=15,
+        ref_offset=3,
+        name="wg0",
+    )
+
+    sim_loaded = Simulation(**base_kwargs)
+    sim_loaded.add_material("diel", eps_r=2.5)
+    sim_loaded.add(Box((0.04, 0.0, 0.0), (0.08, 0.04, 0.02)), material="diel")
+    sim_loaded.add_waveguide_port(
+        0.01,
+        mode=(1, 0),
+        mode_type="TE",
+        freqs=jnp.linspace(4.5e9, 8e9, 12),
+        f0=6e9,
+        probe_offset=15,
+        ref_offset=3,
+        name="wg0",
+    )
+
+    empty = sim_empty.run(n_steps=300, compute_s_params=False)
+    loaded = sim_loaded.run(n_steps=300, compute_s_params=False)
+
+    s21_empty = np.array(extract_waveguide_s21(empty.waveguide_ports["wg0"]))
+    s21_loaded = np.array(extract_waveguide_s21(loaded.waveguide_ports["wg0"]))
+    assert np.max(np.abs(s21_empty - s21_loaded)) > 1e-3
+
+
+def test_periodic_axes_reject_specialized_source_conflicts():
+    """Manual periodic overrides should not mix with specialized boundary setups."""
+    sim_tfsf = Simulation(
+        freq_max=8e9,
+        domain=(0.08, 0.006, 0.006),
+        boundary="cpml",
+        cpml_layers=8,
+        dx=0.001,
+    )
+    sim_tfsf.set_periodic_axes("y")
+    with pytest.raises(ValueError, match="periodic-axis overrides"):
+        sim_tfsf.add_tfsf_source()
+
+    sim_wg = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        boundary="cpml",
+        cpml_layers=10,
+        dx=0.002,
+    )
+    sim_wg.set_periodic_axes("x")
+    with pytest.raises(ValueError, match="periodic-axis overrides"):
+        sim_wg.add_waveguide_port(0.01)
+
+
+def test_periodic_axes_through_api_matches_low_level():
+    """High-level periodic-axis control should match low-level runner behavior."""
+    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim.set_periodic_axes("y")
+    sim.add_port((0.005, 0.001, 0.0075), "ez")
+    sim.add_probe((0.005, 0.014, 0.0075), "ez")
+
+    api_result = sim.run(n_steps=40, compute_s_params=False)
+
+    grid = sim._build_grid()
+    materials, _, _ = sim._build_materials(grid)
+    port_entry = sim._ports[0]
+    port = LumpedPort(
+        position=port_entry.position,
+        component=port_entry.component,
+        impedance=port_entry.impedance,
+        excitation=port_entry.waveform,
+    )
+    materials = setup_lumped_port(grid, port, materials)
+    src = make_port_source(grid, port, materials, 40)
+    prb = make_probe(grid, sim._probes[0].position, sim._probes[0].component)
+    low_result = low_level_run(
+        grid,
+        materials,
+        40,
+        boundary="pec",
+        periodic=(False, True, False),
+        sources=[src],
+        probes=[prb],
+    )
+
+    diff = float(jnp.max(jnp.abs(api_result.time_series - low_result.time_series)))
+    assert diff < 1e-6, f"High-level periodic control diverged from low-level runner: {diff}"
+
+
+def test_tfsf_requires_supported_configuration():
+    """Unsupported TFSF configurations should fail clearly."""
+    sim_pec = Simulation(freq_max=8e9, domain=(0.08, 0.006, 0.006), boundary="pec")
+    with pytest.raises(ValueError, match="boundary='cpml'"):
+        sim_pec.add_tfsf_source()
+
+    sim_no_cpml = Simulation(
+        freq_max=8e9,
+        domain=(0.08, 0.006, 0.006),
+        boundary="cpml",
+        cpml_layers=0,
+    )
+    with pytest.raises(ValueError, match="cpml_layers > 0"):
+        sim_no_cpml.add_tfsf_source()
+
+    sim_ports = Simulation(
+        freq_max=8e9,
+        domain=(0.08, 0.006, 0.006),
+        boundary="cpml",
+        cpml_layers=8,
+        dx=0.001,
+    )
+    sim_ports.add_tfsf_source()
+    with pytest.raises(ValueError, match="Lumped ports|lumped ports"):
+        sim_ports.add_port((0.01, 0.003, 0.003), "ez")
+
+    with pytest.raises(ValueError, match="polarization"):
+        sim_ports.add_tfsf_source(polarization="ex")
+    with pytest.raises(ValueError, match="direction"):
+        sim_ports.add_tfsf_source(direction="y")
+    with pytest.raises(ValueError, match="abs\\(angle_deg\\)"):
+        sim_ports.add_tfsf_source(angle_deg=90.0)
+
+
+def test_tfsf_rejects_non_vacuum_boundary_buffer():
+    """TFSF should fail loudly if geometry touches the TFSF boundary planes."""
+    sim = Simulation(
+        freq_max=8e9,
+        domain=(0.08, 0.006, 0.006),
+        boundary="cpml",
+        cpml_layers=8,
+        dx=0.001,
+    )
+    sim.add_material("fill", eps_r=4.0)
+    sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.006, 0.006)), material="fill")
+    sim.add_tfsf_source()
+
+    with pytest.raises(ValueError, match="vacuum"):
+        sim.run(n_steps=10, compute_s_params=False)
+
+
 def test_unknown_material_raises():
     """Unknown material name raises KeyError."""
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03))
@@ -83,6 +402,12 @@ def test_validation_errors():
         sim.add_port((0.01, 0.01, 0.01), "bz")
     with pytest.raises(ValueError, match="impedance"):
         sim.add_port((0.01, 0.01, 0.01), "ez", impedance=-50)
+    with pytest.raises(ValueError, match="axis"):
+        sim.add_dft_plane_probe(axis="q", coordinate=0.01)
+    with pytest.raises(ValueError, match="outside"):
+        sim.add_dft_plane_probe(axis="x", coordinate=1.0)
+    with pytest.raises(ValueError, match="periodic axes"):
+        sim.set_periodic_axes("q")
 
 
 def test_fluent_api():

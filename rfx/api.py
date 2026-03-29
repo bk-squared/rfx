@@ -32,7 +32,8 @@ from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz, drude_pole, lorentz_pole
 from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
-from rfx.probes.probes import extract_s_matrix
+from rfx.probes.probes import extract_s_matrix, init_dft_plane_probe
+from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
 from rfx.simulation import (
     make_source, make_probe, make_port_source,
     run as _run, SimResult, SourceSpec, ProbeSpec, SnapshotSpec,
@@ -86,6 +87,10 @@ class Result(NamedTuple):
         Raw NTFF DFT data (use ``compute_far_field`` for radiation pattern).
     ntff_box : NTFFBox or None
         NTFF box specification (needed for ``compute_far_field``).
+    dft_planes : dict[str, DFTPlaneProbe] or None
+        Frequency-domain plane probes keyed by name.
+    waveguide_ports : dict[str, WaveguidePortConfig] or None
+        Final accumulated waveguide-port configs keyed by name.
     snapshots : dict[str, ndarray] or None
         Field snapshots keyed by component name.
     """
@@ -95,6 +100,8 @@ class Result(NamedTuple):
     freqs: np.ndarray | None
     ntff_data: object = None
     ntff_box: object = None
+    dft_planes: dict | None = None
+    waveguide_ports: dict | None = None
     snapshots: dict | None = None
 
 
@@ -134,6 +141,42 @@ class _PortEntry:
 class _ProbeEntry:
     position: tuple[float, float, float]
     component: str
+
+
+@dataclass(frozen=True)
+class _TFSFEntry:
+    f0: float | None
+    bandwidth: float
+    amplitude: float
+    margin: int
+    polarization: str
+    direction: str
+    angle_deg: float
+
+
+@dataclass(frozen=True)
+class _DFTPlaneEntry:
+    name: str
+    axis: str
+    coordinate: float
+    component: str
+    freqs: jnp.ndarray | None
+    n_freqs: int
+
+
+@dataclass(frozen=True)
+class _WaveguidePortEntry:
+    name: str
+    x_position: float
+    mode: tuple[int, int]
+    mode_type: str
+    freqs: jnp.ndarray | None
+    n_freqs: int
+    f0: float | None
+    bandwidth: float
+    amplitude: float
+    probe_offset: int
+    ref_offset: int
 
 
 _DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
@@ -195,6 +238,10 @@ class Simulation:
         self._probes: list[_ProbeEntry] = []
         self._thin_conductors: list[ThinConductor] = []
         self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
+        self._tfsf: _TFSFEntry | None = None
+        self._dft_planes: list[_DFTPlaneEntry] = []
+        self._waveguide_ports: list[_WaveguidePortEntry] = []
+        self._periodic_axes: str = ""
 
     # ---- material registration ----
 
@@ -290,6 +337,10 @@ class Simulation:
         impedance : port impedance in ohms (default 50)
         waveform : excitation pulse (default: GaussianPulse at freq_max/2)
         """
+        if self._tfsf is not None:
+            raise ValueError(
+                "Lumped ports are not supported together with the TFSF plane-wave source"
+            )
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         if impedance <= 0:
@@ -304,6 +355,150 @@ class Simulation:
         ))
         return self
 
+    def add_tfsf_source(
+        self,
+        *,
+        f0: float | None = None,
+        bandwidth: float = 0.5,
+        amplitude: float = 1.0,
+        margin: int = 3,
+        polarization: str = "ez",
+        direction: str = "+x",
+        angle_deg: float = 0.0,
+    ) -> "Simulation":
+        """Add a normal-incidence plane-wave TFSF source.
+
+        Current scope is intentionally narrow: x-directed propagation,
+        ``ez``/``ey`` polarization, 3D mode, and CPML boundaries. For
+        oblique incidence, only the single transverse-axis plane implied
+        by the chosen polarization is supported.
+        """
+        if self._boundary != "cpml":
+            raise ValueError("TFSF plane-wave source requires boundary='cpml'")
+        if self._cpml_layers <= 0:
+            raise ValueError("TFSF plane-wave source requires cpml_layers > 0")
+        if self._mode != "3d":
+            raise ValueError("TFSF plane-wave source currently supports only mode='3d'")
+        if self._periodic_axes:
+            raise ValueError("TFSF plane-wave source is not supported with manual periodic-axis overrides")
+        if self._ports:
+            raise ValueError(
+                "TFSF plane-wave source is not supported together with lumped ports"
+            )
+        if f0 is not None and f0 <= 0:
+            raise ValueError(f"f0 must be positive when provided, got {f0}")
+        if bandwidth <= 0:
+            raise ValueError(f"bandwidth must be positive, got {bandwidth}")
+        if margin < 1:
+            raise ValueError(f"margin must be >= 1, got {margin}")
+        if polarization not in ("ez", "ey"):
+            raise ValueError(f"polarization must be 'ez' or 'ey', got {polarization!r}")
+        if direction not in ("+x", "-x"):
+            raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
+        if abs(angle_deg) >= 90.0:
+            raise ValueError(f"abs(angle_deg) must be < 90, got {angle_deg}")
+
+        self._tfsf = _TFSFEntry(
+            f0=f0,
+            bandwidth=bandwidth,
+            amplitude=amplitude,
+            margin=margin,
+            polarization=polarization,
+            direction=direction,
+            angle_deg=angle_deg,
+        )
+        return self
+
+    def add_waveguide_port(
+        self,
+        x_position: float,
+        *,
+        mode: tuple[int, int] = (1, 0),
+        mode_type: str = "TE",
+        freqs: jnp.ndarray | None = None,
+        n_freqs: int = 50,
+        f0: float | None = None,
+        bandwidth: float = 0.5,
+        amplitude: float = 1.0,
+        probe_offset: int = 10,
+        ref_offset: int = 3,
+        name: str | None = None,
+    ) -> "Simulation":
+        """Add a rectangular waveguide port using the full y-z domain.
+
+        Current scope is intentionally narrow: x-directed propagation using
+        the full y-z domain as the waveguide cross-section, `boundary='cpml'`,
+        and `mode='3d'`.
+        """
+        if self._boundary != "cpml":
+            raise ValueError("Waveguide port requires boundary='cpml'")
+        if self._cpml_layers <= 0:
+            raise ValueError("Waveguide port requires cpml_layers > 0")
+        if self._mode != "3d":
+            raise ValueError("Waveguide port currently supports only mode='3d'")
+        if self._periodic_axes:
+            raise ValueError("Waveguide port is not supported with manual periodic-axis overrides")
+        if self._ports:
+            raise ValueError("Waveguide port is not supported together with lumped ports")
+        if self._tfsf is not None:
+            raise ValueError("Waveguide port is not supported together with TFSF")
+        if x_position < 0 or x_position > self._domain[0]:
+            raise ValueError(
+                f"x_position {x_position} m is outside the x-domain [0, {self._domain[0]}]"
+            )
+        if mode_type not in ("TE", "TM"):
+            raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
+        if bandwidth <= 0:
+            raise ValueError(f"bandwidth must be positive, got {bandwidth}")
+        if probe_offset <= 0 or ref_offset <= 0:
+            raise ValueError("probe_offset and ref_offset must be positive")
+        if freqs is None:
+            if n_freqs <= 0:
+                raise ValueError(f"n_freqs must be positive, got {n_freqs}")
+            freqs_arr = None
+        else:
+            freqs_arr = jnp.asarray(freqs)
+            if freqs_arr.ndim != 1 or freqs_arr.size == 0:
+                raise ValueError("freqs must be a non-empty 1-D array")
+
+        if name is None:
+            name = f"waveguide_{len(self._waveguide_ports)}"
+
+        self._waveguide_ports.append(_WaveguidePortEntry(
+            name=name,
+            x_position=x_position,
+            mode=mode,
+            mode_type=mode_type,
+            freqs=freqs_arr,
+            n_freqs=n_freqs,
+            f0=f0,
+            bandwidth=bandwidth,
+            amplitude=amplitude,
+            probe_offset=probe_offset,
+            ref_offset=ref_offset,
+        ))
+        return self
+
+    def set_periodic_axes(self, axes: str = "xyz") -> "Simulation":
+        """Set periodic boundary axes for high-level runs.
+
+        Parameters
+        ----------
+        axes : str
+            Any combination of ``x``, ``y``, ``z``. Empty string disables
+            manual periodic overrides.
+        """
+        normalized = "".join(axis for axis in "xyz" if axis in axes)
+        invalid = sorted(set(axes) - set("xyz"))
+        if invalid:
+            raise ValueError(f"periodic axes must be drawn from 'xyz', got invalid axes {invalid}")
+        if self._tfsf is not None:
+            raise ValueError("Manual periodic-axis overrides are not supported together with TFSF")
+        if self._waveguide_ports:
+            raise ValueError("Manual periodic-axis overrides are not supported together with waveguide ports")
+        self._periodic_axes = normalized
+        return self
+
     # ---- probes ----
 
     def add_probe(
@@ -315,6 +510,65 @@ class Simulation:
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             raise ValueError(f"component must be a field name, got {component!r}")
         self._probes.append(_ProbeEntry(position=position, component=component))
+        return self
+
+    def add_dft_plane_probe(
+        self,
+        *,
+        axis: str,
+        coordinate: float,
+        component: str = "ez",
+        freqs: jnp.ndarray | None = None,
+        n_freqs: int = 50,
+        name: str | None = None,
+    ) -> "Simulation":
+        """Add a frequency-domain 2D plane probe.
+
+        Parameters
+        ----------
+        axis : "x", "y", or "z"
+            Plane normal axis.
+        coordinate : float
+            Physical coordinate in metres along the selected axis.
+        component : field component name
+            One of ex/ey/ez/hx/hy/hz.
+        freqs : array or None
+            Probe frequencies in Hz. Default: linspace(freq_max/10, freq_max, n_freqs).
+        n_freqs : int
+            Number of frequencies if freqs is None.
+        name : str or None
+            Optional result key.
+        """
+        if axis not in ("x", "y", "z"):
+            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+        if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
+            raise ValueError(f"component must be a field name, got {component!r}")
+
+        axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
+        if coordinate < 0 or coordinate > self._domain[axis_idx]:
+            raise ValueError(
+                f"coordinate {coordinate} m is outside the {axis}-domain [0, {self._domain[axis_idx]}]"
+            )
+        if freqs is None:
+            if n_freqs <= 0:
+                raise ValueError(f"n_freqs must be positive, got {n_freqs}")
+            freqs_arr = None
+        else:
+            freqs_arr = jnp.asarray(freqs)
+            if freqs_arr.ndim != 1 or freqs_arr.size == 0:
+                raise ValueError("freqs must be a non-empty 1-D array")
+
+        if name is None:
+            name = f"{component}_{axis}_{len(self._dft_planes)}"
+
+        self._dft_planes.append(_DFTPlaneEntry(
+            name=name,
+            axis=axis,
+            coordinate=coordinate,
+            component=component,
+            freqs=freqs_arr,
+            n_freqs=n_freqs,
+        ))
         return self
 
     # ---- NTFF ----
@@ -346,6 +600,15 @@ class Simulation:
     # ---- build helpers ----
 
     def _build_grid(self) -> Grid:
+        if self._waveguide_ports:
+            return Grid(
+                freq_max=self._freq_max,
+                domain=self._domain,
+                dx=self._dx,
+                cpml_layers=self._cpml_layers,
+                cpml_axes="x",
+                mode=self._mode,
+            )
         return Grid(
             freq_max=self._freq_max,
             domain=self._domain,
@@ -437,6 +700,35 @@ class Simulation:
             materials, grid.dt, debye_spec, lorentz_spec)
         return materials, debye, lorentz
 
+    @staticmethod
+    def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg) -> None:
+        """Ensure the TFSF x-boundary planes remain vacuum.
+
+        The current TFSF correction assumes vacuum on and immediately
+        adjacent to the TFSF x boundaries. Fail loudly instead of
+        allowing silently wrong scattered fields.
+        """
+        boundary_slices = (
+            ("x_lo-1", slice(tfsf_cfg.x_lo - 1, tfsf_cfg.x_lo)),
+            ("x_lo", slice(tfsf_cfg.x_lo, tfsf_cfg.x_lo + 1)),
+            ("x_hi", slice(tfsf_cfg.x_hi, tfsf_cfg.x_hi + 1)),
+            ("x_hi+1", slice(tfsf_cfg.x_hi + 1, tfsf_cfg.x_hi + 2)),
+        )
+
+        for plane_name, xs in boundary_slices:
+            eps = np.asarray(materials.eps_r[xs, :, :])
+            sigma = np.asarray(materials.sigma[xs, :, :])
+            mu = np.asarray(materials.mu_r[xs, :, :])
+            if not (
+                np.allclose(eps, 1.0)
+                and np.allclose(sigma, 0.0)
+                and np.allclose(mu, 1.0)
+            ):
+                raise ValueError(
+                    "TFSF plane-wave source requires vacuum on and adjacent to "
+                    f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
+                )
+
     # ---- run ----
 
     def run(
@@ -483,6 +775,23 @@ class Simulation:
         # Build sources and probes for the compiled runner
         sources: list[SourceSpec] = []
         probes: list[ProbeSpec] = []
+        dft_planes = []
+        waveguide_ports = []
+        periodic = None
+        cpml_axes = "xyz"
+        pec_axes = None
+        tfsf = None
+
+        if self._tfsf is not None and self._ports:
+            raise ValueError(
+                "TFSF plane-wave source is not supported together with lumped ports"
+            )
+        if self._waveguide_ports and (self._ports or self._tfsf):
+            raise ValueError(
+                "Waveguide ports are not supported together with lumped ports or TFSF"
+            )
+        if self._periodic_axes:
+            periodic = tuple(axis in self._periodic_axes for axis in "xyz")
 
         # Port sources — fold impedances into materials first
         lumped_ports: list[LumpedPort] = []
@@ -498,6 +807,79 @@ class Simulation:
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
 
+        axis_to_index = {"x": 0, "y": 1, "z": 2}
+        for pe in self._dft_planes:
+            axis_idx = axis_to_index[pe.axis]
+            plane_pos = [0.0, 0.0, 0.0]
+            plane_pos[axis_idx] = pe.coordinate
+            grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
+            freqs_arr = (
+                pe.freqs
+                if pe.freqs is not None
+                else jnp.linspace(self._freq_max / 10, self._freq_max, pe.n_freqs)
+            )
+            dft_planes.append(
+                init_dft_plane_probe(
+                    axis=axis_idx,
+                    index=grid_index,
+                    component=pe.component,
+                    freqs=freqs_arr,
+                    grid_shape=grid.shape,
+                )
+            )
+
+        if self._waveguide_ports:
+            cpml_axes = "x"
+            pec_axes = "yz"
+            for pe in self._waveguide_ports:
+                x_index = grid.position_to_index((pe.x_position, 0.0, 0.0))[0]
+                freqs_arr = (
+                    pe.freqs
+                    if pe.freqs is not None
+                    else jnp.linspace(self._freq_max / 10, self._freq_max, pe.n_freqs)
+                )
+                port = WaveguidePort(
+                    x_index=x_index,
+                    y_slice=(0, grid.ny),
+                    z_slice=(0, grid.nz),
+                    a=self._domain[1],
+                    b=self._domain[2],
+                    mode=pe.mode,
+                    mode_type=pe.mode_type,
+                )
+                waveguide_ports.append(
+                    init_waveguide_port(
+                        port,
+                        grid.dx,
+                        freqs_arr,
+                        f0=pe.f0 if pe.f0 is not None else self._freq_max / 2,
+                        bandwidth=pe.bandwidth,
+                        amplitude=pe.amplitude,
+                        probe_offset=pe.probe_offset,
+                        ref_offset=pe.ref_offset,
+                    )
+                )
+
+        if self._tfsf is not None:
+            from rfx.sources.tfsf import init_tfsf
+
+            tfsf = init_tfsf(
+                grid.nx,
+                grid.dx,
+                grid.dt,
+                cpml_layers=grid.cpml_layers,
+                tfsf_margin=self._tfsf.margin,
+                f0=self._tfsf.f0 if self._tfsf.f0 is not None else self._freq_max / 2,
+                bandwidth=self._tfsf.bandwidth,
+                amplitude=self._tfsf.amplitude,
+                polarization=self._tfsf.polarization,
+                direction=self._tfsf.direction,
+                angle_deg=self._tfsf.angle_deg,
+            )
+            self._validate_tfsf_vacuum_boundary(materials, tfsf[0])
+            periodic = (False, True, True)
+            cpml_axes = "x"
+
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec)
 
@@ -511,10 +893,16 @@ class Simulation:
         sim_result = _run(
             grid, materials, n_steps,
             boundary=self._boundary,
+            cpml_axes=cpml_axes,
+            pec_axes=pec_axes,
+            periodic=periodic,
             debye=debye,
             lorentz=lorentz,
+            tfsf=tfsf,
             sources=sources,
             probes=probes,
+            dft_planes=dft_planes,
+            waveguide_ports=waveguide_ports,
             ntff=ntff_box,
             snapshot=snapshot,
             checkpoint=checkpoint,
@@ -549,6 +937,22 @@ class Simulation:
             freqs=freqs_out,
             ntff_data=sim_result.ntff_data,
             ntff_box=ntff_box,
+            dft_planes=(
+                {
+                    entry.name: probe
+                    for entry, probe in zip(self._dft_planes, sim_result.dft_planes or ())
+                }
+                if self._dft_planes
+                else None
+            ),
+            waveguide_ports=(
+                {
+                    entry.name: cfg
+                    for entry, cfg in zip(self._waveguide_ports, sim_result.waveguide_ports or ())
+                }
+                if self._waveguide_ports
+                else None
+            ),
             snapshots=sim_result.snapshots,
         )
 
@@ -564,5 +968,9 @@ class Simulation:
             f"  geometry={len(self._geometry)} shapes,\n"
             f"  ports={len(self._ports)},\n"
             f"  probes={len(self._probes)},\n"
+            f"  dft_planes={len(self._dft_planes)},\n"
+            f"  waveguide_ports={len(self._waveguide_ports)},\n"
+            f"  periodic_axes={self._periodic_axes!r},\n"
+            f"  tfsf={self._tfsf is not None},\n"
             f")"
         )

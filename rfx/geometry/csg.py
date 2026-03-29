@@ -33,11 +33,11 @@ class Box:
     def mask(self, grid: Grid) -> jnp.ndarray:
         nx, ny, nz = grid.shape
         dx = grid.dx
-        pad = grid.cpml_layers
+        pad_x, pad_y, pad_z = grid.axis_pads
 
-        ix = jnp.arange(nx) - pad
-        iy = jnp.arange(ny) - pad
-        iz = jnp.arange(nz) - pad
+        ix = jnp.arange(nx) - pad_x
+        iy = jnp.arange(ny) - pad_y
+        iz = jnp.arange(nz) - pad_z
 
         x = ix * dx
         y = iy * dx
@@ -62,11 +62,11 @@ class Cylinder:
     def mask(self, grid: Grid) -> jnp.ndarray:
         nx, ny, nz = grid.shape
         dx = grid.dx
-        pad = grid.cpml_layers
+        pad_x, pad_y, pad_z = grid.axis_pads
 
-        x = (jnp.arange(nx) - pad) * dx - self.center[0]
-        y = (jnp.arange(ny) - pad) * dx - self.center[1]
-        z = (jnp.arange(nz) - pad) * dx - self.center[2]
+        x = (jnp.arange(nx) - pad_x) * dx - self.center[0]
+        y = (jnp.arange(ny) - pad_y) * dx - self.center[1]
+        z = (jnp.arange(nz) - pad_z) * dx - self.center[2]
 
         x3 = x[:, None, None]
         y3 = y[None, :, None]
@@ -95,11 +95,11 @@ class Sphere:
     def mask(self, grid: Grid) -> jnp.ndarray:
         nx, ny, nz = grid.shape
         dx = grid.dx
-        pad = grid.cpml_layers
+        pad_x, pad_y, pad_z = grid.axis_pads
 
-        x = (jnp.arange(nx) - pad) * dx - self.center[0]
-        y = (jnp.arange(ny) - pad) * dx - self.center[1]
-        z = (jnp.arange(nz) - pad) * dx - self.center[2]
+        x = (jnp.arange(nx) - pad_x) * dx - self.center[0]
+        y = (jnp.arange(ny) - pad_y) * dx - self.center[1]
+        z = (jnp.arange(nz) - pad_z) * dx - self.center[2]
 
         r2 = x[:, None, None]**2 + y[None, :, None]**2 + z[None, None, :]**2
         return r2 <= self.radius**2

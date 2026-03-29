@@ -4,22 +4,34 @@ Validates that:
 1. Compiled runner matches a manual Python loop
 2. Source injection and probe recording work through scan
 3. Multiport S-matrix has reciprocity (S12 = S21)
+4. TFSF + periodic-boundary integration matches the manual loop
 """
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx.grid import Grid, C0
 from rfx.core.yee import (
     FDTDState, init_state, init_materials, update_e, update_h, EPS_0, MU_0,
 )
 from rfx.boundaries.pec import apply_pec
+from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port
+from rfx.sources.tfsf import (
+    init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e, apply_tfsf_h, apply_tfsf_e,
+)
 from rfx.simulation import (
     SourceSpec, ProbeSpec, SimResult,
     make_source, make_probe, make_port_source, run,
 )
-from rfx.probes.probes import extract_s_matrix
+from rfx.probes.probes import (
+    extract_s_matrix, init_dft_plane_probe, update_dft_plane_probe,
+)
+from rfx.sources.waveguide_port import (
+    WaveguidePort, init_waveguide_port, inject_waveguide_port,
+    update_waveguide_port_probe, extract_waveguide_s21,
+)
 
 
 def _total_energy(state, dx):
@@ -124,6 +136,388 @@ def test_compiled_runner_matches_python_loop():
     max_err = np.max(np.abs(compiled_ts - manual_ts))
     print(f"\nCompiled vs manual loop max error: {max_err:.2e}")
     assert max_err < 1e-5, f"Compiled runner diverged from Python loop: {max_err:.2e}"
+
+
+def test_compiled_runner_dft_plane_matches_manual_loop():
+    """Compiled runner should match manual DFT plane accumulation."""
+    grid = Grid(freq_max=5e9, domain=(0.03, 0.03, 0.03), cpml_layers=0)
+    materials = init_materials(grid.shape)
+    n_steps = 80
+
+    pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
+    src = make_source(grid, (0.015, 0.015, 0.015), "ez", pulse, n_steps)
+    plane_probe = init_dft_plane_probe(
+        axis=0,
+        index=grid.nx // 2,
+        component="ez",
+        freqs=jnp.array([2e9, 3e9, 4e9]),
+        grid_shape=grid.shape,
+    )
+
+    result = run(grid, materials, n_steps, sources=[src], dft_planes=[plane_probe])
+    assert result.dft_planes is not None
+    compiled_acc = np.array(result.dft_planes[0].accumulator)
+
+    state = init_state(grid.shape)
+    manual_probe = plane_probe
+    si, sj, sk = grid.position_to_index((0.015, 0.015, 0.015))
+    for step in range(n_steps):
+        state = update_h(state, materials, grid.dt, grid.dx)
+        state = update_e(state, materials, grid.dt, grid.dx)
+        state = apply_pec(state)
+        val = float(pulse(step * grid.dt))
+        state = state._replace(ez=state.ez.at[si, sj, sk].add(val))
+        manual_probe = update_dft_plane_probe(manual_probe, state, grid.dt)
+
+    manual_acc = np.array(manual_probe.accumulator)
+    max_err = np.max(np.abs(compiled_acc - manual_acc))
+    print(f"\nCompiled DFT plane vs manual loop max error: {max_err:.2e}")
+    assert max_err < 1e-5, f"Compiled DFT plane runner diverged from manual loop: {max_err:.2e}"
+
+
+def test_compiled_runner_tfsf_matches_manual_loop():
+    """Compiled runner should preserve the manual TFSF leapfrog ordering."""
+    grid = Grid(freq_max=8e9, domain=(0.08, 0.006, 0.006), dx=0.001, cpml_layers=8)
+    materials = init_materials(grid.shape)
+    periodic = (False, True, True)
+    n_steps = 120
+
+    tfsf_cfg, tfsf_state0 = init_tfsf(
+        grid.nx,
+        grid.dx,
+        grid.dt,
+        cpml_layers=grid.cpml_layers,
+        tfsf_margin=3,
+        f0=4e9,
+        bandwidth=0.5,
+        amplitude=1.0,
+    )
+    probe = ProbeSpec(
+        i=tfsf_cfg.x_lo + 8,
+        j=grid.ny // 2,
+        k=grid.nz // 2,
+        component="ez",
+    )
+
+    compiled = run(
+        grid,
+        materials,
+        n_steps,
+        boundary="cpml",
+        cpml_axes="x",
+        periodic=periodic,
+        tfsf=(tfsf_cfg, tfsf_state0),
+        probes=[probe],
+    )
+
+    state = init_state(grid.shape)
+    cp, cpml_state = init_cpml(grid)
+    tfsf_state = tfsf_state0
+    manual_ts = []
+
+    for step in range(n_steps):
+        t = step * grid.dt
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+        state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
+        tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+        state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
+        state = apply_pec(state, axes="x")
+        tfsf_state = update_tfsf_1d_e(tfsf_cfg, tfsf_state, grid.dx, grid.dt, t)
+        manual_ts.append(float(state.ez[probe.i, probe.j, probe.k]))
+
+    compiled_ts = np.array(compiled.time_series[:, 0])
+    manual_ts = np.array(manual_ts)
+    max_err = np.max(np.abs(compiled_ts - manual_ts))
+
+    print(f"\nCompiled TFSF vs manual loop max error: {max_err:.2e}")
+    assert max_err < 1e-5, f"Compiled TFSF runner diverged from manual loop: {max_err:.2e}"
+
+
+def test_compiled_runner_tfsf_ey_matches_manual_loop():
+    """Compiled runner should preserve Ey-polarized TFSF ordering."""
+    grid = Grid(freq_max=8e9, domain=(0.08, 0.006, 0.006), dx=0.001, cpml_layers=8)
+    materials = init_materials(grid.shape)
+    periodic = (False, True, True)
+    n_steps = 120
+
+    tfsf_cfg, tfsf_state0 = init_tfsf(
+        grid.nx,
+        grid.dx,
+        grid.dt,
+        cpml_layers=grid.cpml_layers,
+        tfsf_margin=3,
+        f0=4e9,
+        bandwidth=0.5,
+        amplitude=1.0,
+        polarization="ey",
+    )
+    probe = ProbeSpec(
+        i=tfsf_cfg.x_lo + 8,
+        j=grid.ny // 2,
+        k=grid.nz // 2,
+        component="ey",
+    )
+
+    compiled = run(
+        grid,
+        materials,
+        n_steps,
+        boundary="cpml",
+        cpml_axes="x",
+        periodic=periodic,
+        tfsf=(tfsf_cfg, tfsf_state0),
+        probes=[probe],
+    )
+
+    state = init_state(grid.shape)
+    cp, cpml_state = init_cpml(grid)
+    tfsf_state = tfsf_state0
+    manual_ts = []
+
+    for step in range(n_steps):
+        t = step * grid.dt
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+        state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
+        tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+        state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
+        state = apply_pec(state, axes="x")
+        tfsf_state = update_tfsf_1d_e(tfsf_cfg, tfsf_state, grid.dx, grid.dt, t)
+        manual_ts.append(float(state.ey[probe.i, probe.j, probe.k]))
+
+    compiled_ts = np.array(compiled.time_series[:, 0])
+    manual_ts = np.array(manual_ts)
+    max_err = np.max(np.abs(compiled_ts - manual_ts))
+
+    print(f"\nCompiled TFSF Ey vs manual loop max error: {max_err:.2e}")
+    assert max_err < 1e-5, f"Compiled Ey-polarized TFSF runner diverged from manual loop: {max_err:.2e}"
+
+
+def test_compiled_runner_tfsf_negative_x_matches_manual_loop():
+    """Compiled runner should preserve reverse-propagating TFSF ordering."""
+    grid = Grid(freq_max=8e9, domain=(0.08, 0.006, 0.006), dx=0.001, cpml_layers=8)
+    materials = init_materials(grid.shape)
+    periodic = (False, True, True)
+    n_steps = 120
+
+    tfsf_cfg, tfsf_state0 = init_tfsf(
+        grid.nx,
+        grid.dx,
+        grid.dt,
+        cpml_layers=grid.cpml_layers,
+        tfsf_margin=3,
+        f0=4e9,
+        bandwidth=0.5,
+        amplitude=1.0,
+        polarization="ez",
+        direction="-x",
+    )
+    probe = ProbeSpec(
+        i=tfsf_cfg.x_lo + 8,
+        j=grid.ny // 2,
+        k=grid.nz // 2,
+        component="ez",
+    )
+
+    compiled = run(
+        grid,
+        materials,
+        n_steps,
+        boundary="cpml",
+        cpml_axes="x",
+        periodic=periodic,
+        tfsf=(tfsf_cfg, tfsf_state0),
+        probes=[probe],
+    )
+
+    state = init_state(grid.shape)
+    cp, cpml_state = init_cpml(grid)
+    tfsf_state = tfsf_state0
+    manual_ts = []
+
+    for step in range(n_steps):
+        t = step * grid.dt
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+        state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
+        tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+        state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
+        state = apply_pec(state, axes="x")
+        tfsf_state = update_tfsf_1d_e(tfsf_cfg, tfsf_state, grid.dx, grid.dt, t)
+        manual_ts.append(float(state.ez[probe.i, probe.j, probe.k]))
+
+    compiled_ts = np.array(compiled.time_series[:, 0])
+    manual_ts = np.array(manual_ts)
+    max_err = np.max(np.abs(compiled_ts - manual_ts))
+
+    print(f"\nCompiled TFSF -x vs manual loop max error: {max_err:.2e}")
+    assert max_err < 1e-5, f"Compiled reverse-direction TFSF runner diverged from manual loop: {max_err:.2e}"
+
+
+def test_compiled_runner_tfsf_oblique_matches_manual_loop():
+    """Compiled runner should preserve oblique-incidence TFSF ordering."""
+    grid = Grid(freq_max=5e9, domain=(0.12, 0.12, 0.006), dx=0.004, cpml_layers=8)
+    materials = init_materials(grid.shape)
+    periodic = (False, True, True)
+    n_steps = 120
+
+    tfsf_cfg, tfsf_state0 = init_tfsf(
+        grid.nx,
+        grid.dx,
+        grid.dt,
+        cpml_layers=grid.cpml_layers,
+        tfsf_margin=3,
+        f0=5e9,
+        bandwidth=0.2,
+        amplitude=1.0,
+        polarization="ez",
+        angle_deg=30.0,
+    )
+    probe = ProbeSpec(
+        i=tfsf_cfg.x_lo + 5,
+        j=grid.ny // 2,
+        k=grid.nz // 2,
+        component="ez",
+    )
+
+    compiled = run(
+        grid,
+        materials,
+        n_steps,
+        boundary="cpml",
+        cpml_axes="x",
+        periodic=periodic,
+        tfsf=(tfsf_cfg, tfsf_state0),
+        probes=[probe],
+    )
+
+    state = init_state(grid.shape)
+    cp, cpml_state = init_cpml(grid)
+    tfsf_state = tfsf_state0
+    manual_ts = []
+
+    for step in range(n_steps):
+        t = step * grid.dt
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+        state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
+        tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
+        state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
+        state = apply_pec(state, axes="x")
+        tfsf_state = update_tfsf_1d_e(tfsf_cfg, tfsf_state, grid.dx, grid.dt, t)
+        manual_ts.append(float(state.ez[probe.i, probe.j, probe.k]))
+
+    compiled_ts = np.array(compiled.time_series[:, 0])
+    manual_ts = np.array(manual_ts)
+    max_err = np.max(np.abs(compiled_ts - manual_ts))
+
+    print(f"\nCompiled TFSF oblique vs manual loop max error: {max_err:.2e}")
+    assert max_err < 1e-5, f"Compiled oblique TFSF runner diverged from manual loop: {max_err:.2e}"
+
+
+class _CompiledWgGrid:
+    """Minimal grid with x-CPML padding and y/z waveguide walls."""
+
+    def __init__(self, length, a_wg, b_wg, dx, cpml_layers, freq_max=10e9):
+        self.freq_max = freq_max
+        self.dx = dx
+        self.cpml_layers = cpml_layers
+        self.dt = 0.99 * dx / (C0 * np.sqrt(3))
+        self.nx = int(np.ceil(length / dx)) + 1 + 2 * cpml_layers
+        self.ny = int(np.ceil(a_wg / dx)) + 1
+        self.nz = int(np.ceil(b_wg / dx)) + 1
+        self.shape = (self.nx, self.ny, self.nz)
+        self.is_2d = False
+
+    def position_to_index(self, pos):
+        return (
+            int(round(pos[0] / self.dx)) + self.cpml_layers,
+            int(round(pos[1] / self.dx)),
+            int(round(pos[2] / self.dx)),
+        )
+
+    def num_timesteps(self, num_periods):
+        return int(num_periods / (self.freq_max * self.dt))
+
+
+def test_compiled_runner_waveguide_port_matches_manual_loop():
+    """Compiled runner should preserve waveguide-port source/probe behavior."""
+    a_wg = 0.04
+    b_wg = 0.02
+    length = 0.12
+    dx = 0.002
+    nc = 10
+    f0 = 6e9
+
+    grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
+    materials = init_materials(grid.shape)
+    freqs = jnp.linspace(4.5e9, 8e9, 12)
+    n_steps = grid.num_timesteps(num_periods=30)
+
+    port = WaveguidePort(
+        x_index=nc + 5,
+        y_slice=(0, grid.ny),
+        z_slice=(0, grid.nz),
+        a=(grid.ny - 1) * dx,
+        b=(grid.nz - 1) * dx,
+        mode=(1, 0),
+        mode_type="TE",
+    )
+    cfg0 = init_waveguide_port(
+        port, dx, freqs, f0=f0, bandwidth=0.5,
+        amplitude=1.0, probe_offset=15, ref_offset=3,
+    )
+
+    compiled = run(
+        grid,
+        materials,
+        n_steps,
+        boundary="cpml",
+        cpml_axes="x",
+        pec_axes="yz",
+        waveguide_ports=[cfg0],
+    )
+    assert compiled.waveguide_ports is not None
+    compiled_cfg = compiled.waveguide_ports[0]
+
+    state = init_state(grid.shape)
+    cp, cs = init_cpml(grid)
+    manual_cfg = cfg0
+    for step in range(n_steps):
+        t = step * grid.dt
+        state = update_h(state, materials, grid.dt, grid.dx)
+        state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
+        state = update_e(state, materials, grid.dt, grid.dx)
+        state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
+        state = apply_pec(state, axes="yz")
+        state = inject_waveguide_port(state, manual_cfg, t, grid.dt, grid.dx)
+        manual_cfg = update_waveguide_port_probe(manual_cfg, state, grid.dt, grid.dx)
+
+    s21_compiled = np.array(extract_waveguide_s21(compiled_cfg))
+    s21_manual = np.array(extract_waveguide_s21(manual_cfg))
+    max_err = np.max(np.abs(s21_compiled - s21_manual))
+    print(f"\nCompiled waveguide vs manual loop max S21 error: {max_err:.2e}")
+    assert max_err < 1e-3, f"Compiled waveguide runner diverged from manual loop: {max_err:.2e}"
+
+
+def test_init_tfsf_rejects_impossible_geometry():
+    """Oversized CPML+margin should fail loudly instead of misconfiguring TFSF."""
+    dt = Grid.courant_dt(0.001)
+    with pytest.raises(ValueError, match="too large for the grid"):
+        init_tfsf(nx=21, dx=0.001, dt=dt, cpml_layers=4, tfsf_margin=6)
 
 
 def test_s_matrix_two_port_reciprocity():

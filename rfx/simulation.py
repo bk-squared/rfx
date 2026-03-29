@@ -1,9 +1,10 @@
 """Compiled FDTD simulation runner.
 
-Composes Yee updates, boundaries, sources, and probes into a single
-JIT-compiled time loop via jax.lax.scan.  All subsystem selection
-(CPML, Debye) is resolved at Python trace-time so the compiled
-function contains only the needed code paths.
+Composes Yee updates, boundaries, sources, probes, and optional TFSF
+plane-wave injection into a single JIT-compiled time loop via
+``jax.lax.scan``. All subsystem selection (CPML, dispersion, TFSF) is
+resolved at Python trace-time so the compiled function contains only
+the needed code paths.
 """
 
 from __future__ import annotations
@@ -53,6 +54,10 @@ class SimResult(NamedTuple):
         no probes were specified.
     ntff_data : NTFFData or None
         Accumulated near-to-far-field DFT data (if NTFF box was used).
+    dft_planes : tuple[DFTPlaneProbe, ...] or None
+        Final accumulated DFT plane probes.
+    waveguide_ports : tuple[WaveguidePortConfig, ...] or None
+        Final accumulated waveguide-port configs.
     snapshots : dict[str, ndarray] or None
         Field snapshots keyed by component name.  Each array has shape
         (n_steps, ...) where ``...`` is either the full grid shape or
@@ -61,6 +66,8 @@ class SimResult(NamedTuple):
     state: FDTDState
     time_series: jnp.ndarray
     ntff_data: object = None
+    dft_planes: tuple | None = None
+    waveguide_ports: tuple | None = None
     snapshots: dict | None = None
 
 
@@ -265,10 +272,15 @@ def run(
     *,
     boundary: str = "pec",
     cpml_axes: str = "xyz",
+    pec_axes: str | None = None,
+    periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
+    tfsf: tuple | None = None,
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
+    dft_planes: list | None = None,
+    waveguide_ports: list | None = None,
     ntff: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
@@ -282,10 +294,25 @@ def run(
     n_steps : int
     boundary : "pec" or "cpml"
     cpml_axes : axes string for CPML (default "xyz")
+    pec_axes : axes string or None
+        Axes on which to enforce PEC after each update. If None, uses
+        all non-periodic axes.
+    periodic : (bool, bool, bool) or None
+        Per-axis periodic boundary flags. If None, defaults to
+        ``(False, False, False)`` in 3D and ``(False, False, True)``
+        in 2D modes.
     debye : (DebyeCoeffs, DebyeState) tuple, or None
     lorentz : (LorentzCoeffs, LorentzState) tuple, or None
+    tfsf : (TFSFConfig, TFSFState) tuple, or None
+        Optional total-field/scattered-field plane-wave source. When
+        provided, the 1D auxiliary FDTD is interleaved with the 3D Yee
+        updates using the Taflove leapfrog ordering.
     sources : list of SourceSpec (precomputed waveforms)
     probes : list of ProbeSpec (point time-series recorders)
+    dft_planes : list of DFTPlaneProbe or None
+        Optional running frequency-domain plane probes.
+    waveguide_ports : list of WaveguidePortConfig or None
+        Optional waveguide-port source/probe configs.
     ntff : NTFFBox or None
         If provided, accumulate near-to-far-field DFT on a Huygens box.
     snapshot : SnapshotSpec or None
@@ -301,22 +328,45 @@ def run(
     """
     sources = sources or []
     probes = probes or []
+    dft_planes = dft_planes or []
+    waveguide_ports = waveguide_ports or []
 
     dt = grid.dt
     dx = grid.dx
 
-    # ---- 2D mode: periodic z ----
-    periodic = (False, False, False)
+    # ---- boundary configuration ----
+    if periodic is None:
+        periodic = (False, False, False)
+    else:
+        if len(periodic) != 3:
+            raise ValueError(f"periodic must have length 3, got {periodic!r}")
+        periodic = tuple(bool(v) for v in periodic)
+
     if grid.is_2d:
-        periodic = (False, False, True)
-        # In 2D, skip CPML on z axis
-        cpml_axes = cpml_axes.replace("z", "")
+        periodic = (periodic[0], periodic[1], True)
+
+    # Skip CPML / PEC on periodic axes.
+    axis_names = ("x", "y", "z")
+    for axis_name, is_periodic in zip(axis_names, periodic):
+        if is_periodic:
+            cpml_axes = cpml_axes.replace(axis_name, "")
+    default_pec_axes = "".join(
+        axis_name for axis_name, is_periodic in zip(axis_names, periodic)
+        if not is_periodic
+    )
+    if pec_axes is None:
+        pec_axes = default_pec_axes
+    else:
+        pec_axes = "".join(axis for axis in pec_axes if axis in default_pec_axes)
 
     # ---- subsystem flags (resolved at trace time) ----
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None
+    use_tfsf = tfsf is not None
     use_ntff = ntff is not None
+    use_dft_planes = len(dft_planes) > 0
+    use_waveguide_ports = len(waveguide_ports) > 0
     use_snapshot = snapshot is not None
 
     # ---- initialise states ----
@@ -337,9 +387,34 @@ def run(
         lorentz_coeffs, lorentz_state = lorentz
         carry_init["lorentz"] = lorentz_state
 
+    if use_tfsf:
+        from rfx.sources.tfsf import (
+            update_tfsf_1d_e,
+            update_tfsf_1d_h,
+            apply_tfsf_e,
+            apply_tfsf_h,
+        )
+
+        tfsf_cfg, tfsf_state = tfsf
+        carry_init["tfsf"] = tfsf_state
+
     if use_ntff:
         from rfx.farfield import init_ntff_data, accumulate_ntff
         carry_init["ntff"] = init_ntff_data(ntff)
+
+    if use_dft_planes:
+        carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
+    if use_waveguide_ports:
+        carry_init["waveguide_port_accs"] = tuple(
+            (
+                cfg.v_probe_dft,
+                cfg.v_ref_dft,
+                cfg.i_probe_dft,
+                cfg.i_ref_dft,
+                cfg.v_inc_dft,
+            )
+            for cfg in waveguide_ports
+        )
 
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
     if sources:
@@ -350,6 +425,11 @@ def run(
     # Static source/probe metadata (captured by closure)
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
+    dft_meta = tuple(
+        (probe.component, probe.axis, probe.index, probe.freqs)
+        for probe in dft_planes
+    )
+    waveguide_meta = tuple(waveguide_ports)
 
     # ---- snapshot setup ----
     if use_snapshot:
@@ -377,12 +457,17 @@ def run(
     def step_fn(carry, xs):
         _step_idx, src_vals = xs
         st = carry["fdtd"]
+        tfsf_h_state = None
 
         # H update
         st = update_h(st, materials, dt, dx, periodic=periodic)
+        if use_tfsf:
+            st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], dx, dt)
         if use_cpml:
             st, cpml_new = apply_cpml_h(
                 st, cpml_params, carry["cpml"], grid, cpml_axes)
+        if use_tfsf:
+            tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], dx, dt)
 
         st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
             st,
@@ -394,21 +479,52 @@ def run(
             periodic=periodic,
         )
 
+        if use_tfsf:
+            st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, dx, dt)
         if use_cpml:
             st, cpml_new = apply_cpml_e(
                 st, cpml_params, cpml_new, grid, cpml_axes)
 
-        # PEC: skip z-axis in 2D (periodic z, not PEC-bounded)
-        if grid.is_2d:
-            st = apply_pec(st, axes="xy")
-        else:
-            st = apply_pec(st)
+        if pec_axes:
+            st = apply_pec(st, axes=pec_axes)
 
         # Soft sources
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
             field = getattr(st, sc)
             field = field.at[si, sj, sk].add(src_vals[idx_s])
             st = st._replace(**{sc: field})
+
+        t = _step_idx.astype(jnp.float32) * dt
+
+        if use_tfsf:
+            tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
+
+        if use_waveguide_ports:
+            from rfx.sources.waveguide_port import (
+                inject_waveguide_port,
+                update_waveguide_port_probe,
+            )
+
+            new_waveguide_port_accs = []
+            for accs, cfg_meta in zip(carry["waveguide_port_accs"], waveguide_meta):
+                cfg = cfg_meta._replace(
+                    v_probe_dft=accs[0],
+                    v_ref_dft=accs[1],
+                    i_probe_dft=accs[2],
+                    i_ref_dft=accs[3],
+                    v_inc_dft=accs[4],
+                )
+                st = inject_waveguide_port(st, cfg_meta, t, dt, dx)
+                cfg_updated = update_waveguide_port_probe(cfg, st, dt, dx)
+                new_waveguide_port_accs.append(
+                    (
+                        cfg_updated.v_probe_dft,
+                        cfg_updated.v_ref_dft,
+                        cfg_updated.i_probe_dft,
+                        cfg_updated.i_ref_dft,
+                        cfg_updated.v_inc_dft,
+                    )
+                )
 
         # Probe samples
         samples = [getattr(st, pc)[pi, pj, pk]
@@ -419,6 +535,22 @@ def run(
         if use_ntff:
             ntff_new = accumulate_ntff(
                 carry["ntff"], st, ntff, dt, _step_idx)
+
+        if use_dft_planes:
+            t_plane = st.step * dt
+            new_dft_planes = []
+            for acc, (component, axis, index, freqs) in zip(carry["dft_planes"], dft_meta):
+                field = getattr(st, component)
+                if axis == 0:
+                    plane = field[index, :, :]
+                elif axis == 1:
+                    plane = field[:, index, :]
+                else:
+                    plane = field[:, :, index]
+                phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
+                new_dft_planes.append(
+                    acc + plane[None, :, :] * phase[:, None, None] * dt
+                )
 
         # Snapshot output
         if use_snapshot:
@@ -435,8 +567,14 @@ def run(
             new_carry["debye"] = debye_new
         if use_lorentz:
             new_carry["lorentz"] = lorentz_new
+        if use_tfsf:
+            new_carry["tfsf"] = tfsf_new
         if use_ntff:
             new_carry["ntff"] = ntff_new
+        if use_dft_planes:
+            new_carry["dft_planes"] = tuple(new_dft_planes)
+        if use_waveguide_ports:
+            new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
 
         return new_carry, output
 
@@ -454,9 +592,31 @@ def run(
         time_series = outputs[0]
         snapshots = None
 
+    final_dft_planes = None
+    if use_dft_planes:
+        final_dft_planes = tuple(
+            probe._replace(accumulator=acc)
+            for probe, acc in zip(dft_planes, final_carry["dft_planes"])
+        )
+
+    final_waveguide_ports = None
+    if use_waveguide_ports:
+        final_waveguide_ports = tuple(
+            cfg_meta._replace(
+                v_probe_dft=accs[0],
+                v_ref_dft=accs[1],
+                i_probe_dft=accs[2],
+                i_ref_dft=accs[3],
+                v_inc_dft=accs[4],
+            )
+            for cfg_meta, accs in zip(waveguide_meta, final_carry["waveguide_port_accs"])
+        )
+
     return SimResult(
         state=final_carry["fdtd"],
         time_series=time_series,
         ntff_data=final_carry.get("ntff"),
+        dft_planes=final_dft_planes,
+        waveguide_ports=final_waveguide_ports,
         snapshots=snapshots,
     )

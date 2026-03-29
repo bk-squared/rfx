@@ -7,6 +7,11 @@ from rfx.simulation import run, make_source, make_probe, make_port_source, SimRe
 from rfx.api import Simulation, Result, MATERIAL_LIBRARY
 from rfx.geometry.csg import Box, Sphere, Cylinder
 from rfx.sources.sources import GaussianPulse
+from rfx.sources.waveguide_port import (
+    WaveguidePort, WaveguidePortConfig,
+    init_waveguide_port, inject_waveguide_port, update_waveguide_port_probe,
+    extract_waveguide_s11, extract_waveguide_s21,
+)
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole, drude_pole, lorentz_pole
 from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
