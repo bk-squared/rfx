@@ -120,3 +120,10 @@ If you use `rfx` in academic work, please cite:
 ## Acknowledgments
 
 Developed by [Byungkwan Kim](https://github.com/BK3536) at the **Radar & ElectroMagnetic Intelligence (REMI) Laboratory**, Chungnam National University.
+
+### AI Development Credits
+
+This project was developed with significant contributions from AI coding assistants:
+
+- **Claude** (Anthropic) — Architecture design, code review, quality management, validation strategy, physics verification
+- **Codex** (OpenAI) — Feature implementation, test generation, documentation drafting
