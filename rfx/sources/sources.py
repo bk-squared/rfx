@@ -171,3 +171,51 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     field = getattr(state, port.component)
     field = field.at[i, j, k].add(cb * v_src / dx)
     return state._replace(**{port.component: field})
+
+
+@dataclass(frozen=True)
+class CWSource:
+    """Continuous-wave sinusoidal source with smooth ramp-up.
+
+    Parameters
+    ----------
+    f0 : float
+        Frequency in Hz.
+    amplitude : float
+        Peak amplitude.
+    ramp_steps : int
+        Number of source-frequency cycles over which to apply a cosine
+        taper onset.  0 means instant full-amplitude.
+    """
+
+    f0: float
+    amplitude: float = 1.0
+    ramp_steps: int = 50
+
+    def __call__(self, t: float) -> float:
+        """Evaluate CW source at time *t* (seconds)."""
+        if self.ramp_steps <= 0:
+            envelope = 1.0
+        else:
+            n_cycles = t * self.f0
+            progress = jnp.clip(n_cycles / self.ramp_steps, 0.0, 1.0)
+            envelope = 0.5 * (1.0 - jnp.cos(jnp.pi * progress))
+        return self.amplitude * jnp.sin(2.0 * jnp.pi * self.f0 * t) * envelope
+
+
+@dataclass(frozen=True)
+class CustomWaveform:
+    """User-defined waveform wrapper.
+
+    Parameters
+    ----------
+    func : callable
+        Function ``f(t: float) -> float`` returning the source amplitude
+        at time *t*.
+    """
+
+    func: object  # callable; use ``object`` for frozen dataclass compat
+
+    def __call__(self, t: float) -> float:
+        """Evaluate the user-defined waveform at time *t*."""
+        return self.func(t)

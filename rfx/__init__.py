@@ -6,7 +6,7 @@ from rfx.grid import Grid
 from rfx.simulation import run, make_source, make_probe, make_port_source, SimResult
 from rfx.api import Simulation, Result, WaveguideSParamResult, WaveguideSMatrixResult, MATERIAL_LIBRARY
 from rfx.geometry.csg import Box, Sphere, Cylinder
-from rfx.sources.sources import GaussianPulse
+from rfx.sources.sources import GaussianPulse, CWSource, CustomWaveform
 from rfx.sources.waveguide_port import (
     WaveguidePort, WaveguidePortConfig,
     init_waveguide_port, inject_waveguide_port, update_waveguide_port_probe,
