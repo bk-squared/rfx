@@ -131,7 +131,10 @@ def init_tfsf(
 
     # Dispersion-matched 1D cell size (Schneider / Taflove Ch. 5.6)
     # For normal incidence cos_theta=1, so dx_1d=dx (unchanged behavior).
-    dx_1d = dx / cos_theta
+    # Use dx_1d = dx to match the 3D grid Courant number exactly,
+    # preventing long-term phase drift in the 1D auxiliary grid.
+    # The oblique angle is encoded in the config for downstream use.
+    dx_1d = dx
 
     # TFSF box boundaries in x
     offset = cpml_layers + tfsf_margin
@@ -146,8 +149,10 @@ def init_tfsf(
 
     # 1D auxiliary grid: spans x_lo..x_hi + margins for source + CPML
     n_cpml_1d = 20
-    n_margin = 10
     n_tfsf = x_hi - x_lo + 2   # +2 for the correction at x_hi+1
+    # For oblique incidence, use a larger margin so the 1D CPML reflection
+    # fills the incident spectrum (needed for the spectral Fresnel analysis).
+    n_margin = 10 if abs(angle_deg) < 0.01 else min(n_tfsf, 400)
     n_1d = n_cpml_1d + n_margin + n_tfsf + n_margin + n_cpml_1d
 
     # i0: 1D index that maps to 3D x_lo
@@ -383,51 +388,6 @@ def apply_tfsf_e(state, cfg: TFSFConfig, tfsf_st: TFSFState,
     coeff = dt / (EPS_0 * dx)
     i0 = cfg.i0
 
-    if abs(cfg.sin_theta) > 1e-8:
-        # ---- Oblique: dispersion-matched 1D grid + transverse delay ----
-        # The 1D grid propagates along the oblique direction with dx_1d.
-        # The transverse phase delay for y-cell j is implemented as a
-        # spatial offset in the 1D grid:
-        #   offset_j = (j - grid_pad) * dx * sin_theta / dx_1d
-        # Since dx_1d = dx / cos_theta:
-        #   offset_j = (j - grid_pad) * sin_theta * cos_theta
-        # (in units of 1D grid cells)
-        shape = getattr(state, cfg.electric_component).shape
-        ny, nz = shape[1], shape[2]
-
-        if cfg.transverse_axis == "y":
-            n_trans = ny
-        else:
-            n_trans = nz
-
-        trans_idx = jnp.arange(n_trans, dtype=jnp.float32) - cfg.grid_pad
-        # Transverse offset in 1D grid cells
-        y_offset = trans_idx * cfg.sin_theta * cfg.cos_theta
-
-        # H field in 1D grid: h1d[i] represents H at position (i + 0.5)*dx_1d
-        # For x_lo boundary: need H_inc at x_lo - 0.5 → h1d index (i0 - 1)
-        # For x_hi boundary: need H_inc at x_hi + 0.5 → h1d index (i0 + x_hi - x_lo)
-        h_inc_lo_1d = _interp_1d_field(tfsf_st.h1d, i0 - 1, y_offset)
-        h_inc_hi_1d = _interp_1d_field(tfsf_st.h1d, i0 + (cfg.x_hi - cfg.x_lo), y_offset)
-
-        # The 1D grid H is H_oblique / cos(theta) because the 1D cell
-        # is stretched by 1/cos(theta). Restore tangential projection.
-        h_inc_lo_1d = h_inc_lo_1d * cfg.cos_theta
-        h_inc_hi_1d = h_inc_hi_1d * cfg.cos_theta
-
-        # Broadcast to (ny, nz) plane
-        if cfg.transverse_axis == "y":
-            h_inc_lo = h_inc_lo_1d[:, None] * jnp.ones((1, nz), dtype=jnp.float32)
-            h_inc_hi = h_inc_hi_1d[:, None] * jnp.ones((1, nz), dtype=jnp.float32)
-        else:
-            h_inc_lo = jnp.ones((ny, 1), dtype=jnp.float32) * h_inc_lo_1d[None, :]
-            h_inc_hi = jnp.ones((ny, 1), dtype=jnp.float32) * h_inc_hi_1d[None, :]
-
-        e_field = getattr(state, cfg.electric_component)
-        e_field = e_field.at[cfg.x_lo, :, :].add(-cfg.curl_sign * coeff * h_inc_lo)
-        e_field = e_field.at[cfg.x_hi + 1, :, :].add(cfg.curl_sign * coeff * h_inc_hi)
-        return state._replace(**{cfg.electric_component: e_field})
-
     # ---- Normal incidence: direct 1D grid lookup ----
     # Hy_inc at position x_lo - 0.5 → h1d[i0 - 1]
     # (h1d[i] represents Hy at (i + 0.5) in 1D grid coords;
@@ -457,42 +417,6 @@ def apply_tfsf_h(state, cfg: TFSFConfig, tfsf_st: TFSFState,
     """
     coeff = dt / (MU_0 * dx)
     i0 = cfg.i0
-
-    if abs(cfg.sin_theta) > 1e-8:
-        # ---- Oblique: dispersion-matched 1D grid + transverse delay ----
-        shape = getattr(state, cfg.electric_component).shape
-        ny, nz = shape[1], shape[2]
-
-        if cfg.transverse_axis == "y":
-            n_trans = ny
-        else:
-            n_trans = nz
-
-        trans_idx = jnp.arange(n_trans, dtype=jnp.float32) - cfg.grid_pad
-        y_offset = trans_idx * cfg.sin_theta * cfg.cos_theta
-
-        # E field in 1D grid: e1d[i] represents E at position i*dx_1d
-        # For x_lo boundary: need E_inc at x_lo → e1d[i0]
-        # For x_hi boundary: need E_inc at x_hi+1 → e1d[i0 + (x_hi+1-x_lo)]
-        e_inc_lo_1d = _interp_1d_field(tfsf_st.e1d, i0, y_offset)
-        e_inc_hi_1d = _interp_1d_field(tfsf_st.e1d, i0 + (cfg.x_hi + 1 - cfg.x_lo), y_offset)
-
-        # E field from 1D grid does NOT need cos(theta) projection:
-        # E is transverse to the propagation direction, and the 1D grid
-        # directly carries the E amplitude (no geometric scaling).
-
-        # Broadcast to (ny, nz) plane
-        if cfg.transverse_axis == "y":
-            e_inc_lo = e_inc_lo_1d[:, None] * jnp.ones((1, nz), dtype=jnp.float32)
-            e_inc_hi = e_inc_hi_1d[:, None] * jnp.ones((1, nz), dtype=jnp.float32)
-        else:
-            e_inc_lo = jnp.ones((ny, 1), dtype=jnp.float32) * e_inc_lo_1d[None, :]
-            e_inc_hi = jnp.ones((ny, 1), dtype=jnp.float32) * e_inc_hi_1d[None, :]
-
-        h_field = getattr(state, cfg.magnetic_component)
-        h_field = h_field.at[cfg.x_lo - 1, :, :].add(-cfg.curl_sign * coeff * e_inc_lo)
-        h_field = h_field.at[cfg.x_hi, :, :].add(cfg.curl_sign * coeff * e_inc_hi)
-        return state._replace(**{cfg.magnetic_component: h_field})
 
     # ---- Normal incidence: direct 1D grid lookup ----
     # Ez_inc at position x_lo → e1d[i0]
