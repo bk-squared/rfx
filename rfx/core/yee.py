@@ -177,3 +177,75 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         ex=ex, ey=ey, ez=ez,
         step=state.step + 1,
     )
+
+
+@partial(jax.jit, static_argnums=(7,))
+def update_e_aniso(state: FDTDState, materials: MaterialArrays,
+                   eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
+                   dt: float, dx: float,
+                   periodic: tuple = (False, False, False)) -> FDTDState:
+    """Electric field update with per-component anisotropic permittivity.
+
+    Same as :func:`update_e` but uses separate permittivity arrays for
+    each E-field component (Ex, Ey, Ez) to support subpixel smoothing.
+
+    The conductivity from ``materials.sigma`` is still applied isotropically.
+
+    Parameters
+    ----------
+    state : FDTDState
+    materials : MaterialArrays
+        Used only for ``sigma`` (conductivity).
+    eps_ex, eps_ey, eps_ez : jnp.ndarray
+        Per-component relative permittivity arrays, each of shape (Nx, Ny, Nz).
+    dt, dx : float
+    periodic : tuple of 3 bools
+    """
+    def bwd(arr, axis):
+        if periodic[axis]:
+            return jnp.roll(arr, 1, axis)
+        return _shift_bwd(arr, axis)
+
+    hx, hy, hz = state.hx, state.hy, state.hz
+    sigma = materials.sigma
+
+    # Per-component absolute permittivity
+    abs_eps_ex = eps_ex * EPS_0
+    abs_eps_ey = eps_ey * EPS_0
+    abs_eps_ez = eps_ez * EPS_0
+
+    # Per-component lossy update coefficients
+    loss_ex = sigma * dt / (2.0 * abs_eps_ex)
+    ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
+    cb_ex = (dt / abs_eps_ex) / (1.0 + loss_ex)
+
+    loss_ey = sigma * dt / (2.0 * abs_eps_ey)
+    ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
+    cb_ey = (dt / abs_eps_ey) / (1.0 + loss_ey)
+
+    loss_ez = sigma * dt / (2.0 * abs_eps_ez)
+    ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
+    cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
+
+    # curl H (same as update_e)
+    curl_x = (
+        (hz - bwd(hz, 1)) / dx
+        - (hy - bwd(hy, 2)) / dx
+    )
+    curl_y = (
+        (hx - bwd(hx, 2)) / dx
+        - (hz - bwd(hz, 0)) / dx
+    )
+    curl_z = (
+        (hy - bwd(hy, 0)) / dx
+        - (hx - bwd(hx, 1)) / dx
+    )
+
+    ex = ca_ex * state.ex + cb_ex * curl_x
+    ey = ca_ey * state.ey + cb_ey * curl_y
+    ez = ca_ez * state.ez + cb_ez * curl_z
+
+    return state._replace(
+        ex=ex, ey=ey, ez=ez,
+        step=state.step + 1,
+    )
