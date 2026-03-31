@@ -747,15 +747,24 @@ def extract_waveguide_s_params_normalized(
 ) -> jnp.ndarray:
     """Two-run normalized waveguide S-matrix.
 
-    Cancels Yee-grid numerical dispersion by dividing device S-params
-    by reference (empty waveguide) S-params element-wise:
+    Cancels Yee-grid numerical dispersion by normalizing device outgoing
+    waves against reference-run waves measured at the **same** port
+    location.
 
-        S_ij_norm(f) = S_ij_device(f) / S_ij_reference(f)
+    For each driven port j:
+      1. Run reference (empty guide) with port j driven.
+      2. Run device with port j driven.
+      3. Off-diagonal (i != j):
+           S_ij = b_out_device[i] / b_out_reference[i]
+         The reference b_out[i] captures the wave as it arrives at port i,
+         including all numerical dispersion, so dividing cancels the bias.
+      4. Diagonal (i == j):
+           S_jj = b_out_device[j] / a_inc_reference[j]
+         The reference reflection is near zero for an empty guide, so we
+         normalize the device reflection by the incident wave instead.
 
-    For transmission terms (i != j) this effectively cancels the
-    phase/amplitude bias from Yee dispersion. For reflection terms
-    (i == j) the reference S_ii is typically near zero, so we leave
-    those un-normalized (take device values directly).
+    This avoids the small/small blow-up of element-wise S_dev/S_ref for
+    reflection terms while still cancelling dispersion for transmission.
 
     Parameters
     ----------
@@ -787,49 +796,110 @@ def extract_waveguide_s_params_normalized(
         raise ValueError(
             "extract_waveguide_s_params_normalized requires at least two waveguide ports"
         )
+    if ref_shifts is None:
+        ref_shifts = tuple(0.0 for _ in port_cfgs)
+    if len(ref_shifts) != len(port_cfgs):
+        raise ValueError("ref_shifts must match the number of waveguide ports when provided")
 
-    common_kw = dict(
+    from rfx.simulation import run as run_simulation
+
+    template_cfgs = tuple(port_cfgs)
+    n_ports = len(template_cfgs)
+    n_freqs = len(template_cfgs[0].freqs)
+    s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+
+    def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
+        zeros = jnp.zeros_like(cfg.v_probe_dft)
+        return cfg._replace(
+            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            v_probe_dft=zeros,
+            v_ref_dft=zeros,
+            i_probe_dft=zeros,
+            i_ref_dft=zeros,
+            v_inc_dft=zeros,
+        )
+
+    common_run_kw = dict(
         boundary=boundary,
         cpml_axes=cpml_axes,
         pec_axes=pec_axes,
         periodic=periodic,
-        ref_shifts=ref_shifts,
     )
 
-    # Run 1: Reference (empty waveguide) S-matrix
-    s_ref = extract_waveguide_s_matrix(
-        grid, ref_materials, list(port_cfgs), n_steps,
-        debye=ref_debye, lorentz=ref_lorentz, **common_kw,
-    )
-
-    # Run 2: Device S-matrix
-    s_dev = extract_waveguide_s_matrix(
-        grid, materials, list(port_cfgs), n_steps,
-        debye=debye, lorentz=lorentz, **common_kw,
-    )
-
-    n_ports = len(port_cfgs)
-    s_ref = np.array(s_ref)
-    s_dev = np.array(s_dev)
-    s_norm = np.zeros_like(s_dev)
-
-    for i in range(n_ports):
-        for j in range(n_ports):
-            ref_mag = np.abs(s_ref[i, j, :])
-            # Only normalize where reference has meaningful signal.
-            # For transmission terms (i != j) the reference S_ij should be
-            # substantial (close to 1 for a lossless empty guide).
-            # For reflection terms (i == j), the reference S_ii is near zero
-            # so we keep the device value directly.
-            threshold = 0.01
-            significant = ref_mag > threshold
-            s_norm[i, j, :] = np.where(
-                significant,
-                s_dev[i, j, :] / np.where(significant, s_ref[i, j, :], 1.0),
-                s_dev[i, j, :],
+    for drive_idx in range(n_ports):
+        # --- Reference run: extract waves at all ports ---
+        ref_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+            for idx, cfg in enumerate(template_cfgs)
+        ]
+        ref_result = run_simulation(
+            grid, ref_materials, n_steps,
+            debye=ref_debye, lorentz=ref_lorentz,
+            waveguide_ports=ref_cfgs, **common_run_kw,
+        )
+        ref_final_cfgs = ref_result.waveguide_ports or ()
+        if len(ref_final_cfgs) != n_ports:
+            raise RuntimeError(
+                "waveguide S-matrix extraction expected one final config per port"
             )
 
-    return jnp.asarray(s_norm)
+        # Incident wave at the driven port (for diagonal normalization)
+        a_inc_ref, _ = extract_waveguide_port_waves(
+            ref_final_cfgs[drive_idx],
+            ref_shift=ref_shifts[drive_idx],
+        )
+        a_inc_ref_np = np.array(a_inc_ref)
+        safe_a_inc = np.where(
+            np.abs(a_inc_ref_np) > 1e-30,
+            a_inc_ref_np,
+            np.ones_like(a_inc_ref_np),
+        )
+
+        # Outgoing waves at all ports (for off-diagonal normalization)
+        b_out_ref = []
+        for recv_idx in range(n_ports):
+            _, b_ref_i = extract_waveguide_port_waves(
+                ref_final_cfgs[recv_idx],
+                ref_shift=ref_shifts[recv_idx],
+            )
+            b_out_ref.append(np.array(b_ref_i))
+
+        # --- Device run: extract outgoing waves at every port ---
+        dev_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+            for idx, cfg in enumerate(template_cfgs)
+        ]
+        dev_result = run_simulation(
+            grid, materials, n_steps,
+            debye=debye, lorentz=lorentz,
+            waveguide_ports=dev_cfgs, **common_run_kw,
+        )
+        dev_final_cfgs = dev_result.waveguide_ports or ()
+        if len(dev_final_cfgs) != n_ports:
+            raise RuntimeError(
+                "waveguide S-matrix extraction expected one final config per port"
+            )
+
+        for recv_idx, cfg in enumerate(dev_final_cfgs):
+            _, b_recv_dev = extract_waveguide_port_waves(
+                cfg,
+                ref_shift=ref_shifts[recv_idx],
+            )
+            b_recv_dev_np = np.array(b_recv_dev)
+
+            if recv_idx == drive_idx:
+                # Diagonal: normalize reflection by incident wave
+                s_matrix[recv_idx, drive_idx, :] = b_recv_dev_np / safe_a_inc
+            else:
+                # Off-diagonal: normalize by reference outgoing at same port
+                safe_b_ref = np.where(
+                    np.abs(b_out_ref[recv_idx]) > 1e-30,
+                    b_out_ref[recv_idx],
+                    np.ones_like(b_out_ref[recv_idx]),
+                )
+                s_matrix[recv_idx, drive_idx, :] = b_recv_dev_np / safe_b_ref
+
+    return jnp.asarray(s_matrix)
 
 
 
