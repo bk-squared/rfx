@@ -679,3 +679,108 @@ def extract_waveguide_s_matrix(
             s_matrix[recv_idx, drive_idx, :] = np.array(b_recv / safe_a)
 
     return jnp.asarray(s_matrix)
+
+
+
+def extract_waveguide_s_params_normalized(
+    grid,
+    materials,
+    ref_materials,
+    port_cfgs: list[WaveguidePortConfig],
+    n_steps: int,
+    *,
+    boundary: str = "cpml",
+    cpml_axes: str = "x",
+    pec_axes: str = "yz",
+    periodic: tuple[bool, bool, bool] | None = None,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    ref_debye: tuple | None = None,
+    ref_lorentz: tuple | None = None,
+    ref_shifts: list[float] | tuple[float, ...] | None = None,
+) -> jnp.ndarray:
+    """Two-run normalized waveguide S-matrix.
+
+    Cancels Yee-grid numerical dispersion by dividing device S-params
+    by reference (empty waveguide) S-params element-wise:
+
+        S_ij_norm(f) = S_ij_device(f) / S_ij_reference(f)
+
+    For transmission terms (i != j) this effectively cancels the
+    phase/amplitude bias from Yee dispersion. For reflection terms
+    (i == j) the reference S_ii is typically near zero, so we leave
+    those un-normalized (take device values directly).
+
+    Parameters
+    ----------
+    grid : Grid
+        Simulation grid.
+    materials : MaterialArrays
+        Device material arrays.
+    ref_materials : MaterialArrays
+        Reference (empty waveguide) material arrays.
+    port_cfgs : list[WaveguidePortConfig]
+        Port configurations (same for both runs).
+    n_steps : int
+        Number of timesteps for each run.
+    boundary, cpml_axes, pec_axes, periodic : str / tuple
+        Boundary conditions (same for both runs).
+    debye, lorentz : tuple or None
+        Dispersion specs for the device run.
+    ref_debye, ref_lorentz : tuple or None
+        Dispersion specs for the reference run.
+    ref_shifts : list[float] or None
+        Optional reference-plane shifts per port.
+
+    Returns
+    -------
+    jnp.ndarray
+        Normalized S-matrix of shape (n_ports, n_ports, n_freqs), complex.
+    """
+    if len(port_cfgs) < 2:
+        raise ValueError(
+            "extract_waveguide_s_params_normalized requires at least two waveguide ports"
+        )
+
+    common_kw = dict(
+        boundary=boundary,
+        cpml_axes=cpml_axes,
+        pec_axes=pec_axes,
+        periodic=periodic,
+        ref_shifts=ref_shifts,
+    )
+
+    # Run 1: Reference (empty waveguide) S-matrix
+    s_ref = extract_waveguide_s_matrix(
+        grid, ref_materials, list(port_cfgs), n_steps,
+        debye=ref_debye, lorentz=ref_lorentz, **common_kw,
+    )
+
+    # Run 2: Device S-matrix
+    s_dev = extract_waveguide_s_matrix(
+        grid, materials, list(port_cfgs), n_steps,
+        debye=debye, lorentz=lorentz, **common_kw,
+    )
+
+    n_ports = len(port_cfgs)
+    s_ref = np.array(s_ref)
+    s_dev = np.array(s_dev)
+    s_norm = np.zeros_like(s_dev)
+
+    for i in range(n_ports):
+        for j in range(n_ports):
+            ref_mag = np.abs(s_ref[i, j, :])
+            # Only normalize where reference has meaningful signal.
+            # For transmission terms (i != j) the reference S_ij should be
+            # substantial (close to 1 for a lossless empty guide).
+            # For reflection terms (i == j), the reference S_ii is near zero
+            # so we keep the device value directly.
+            threshold = 0.01
+            significant = ref_mag > threshold
+            s_norm[i, j, :] = np.where(
+                significant,
+                s_dev[i, j, :] / np.where(significant, s_ref[i, j, :], 1.0),
+                s_dev[i, j, :],
+            )
+
+    return jnp.asarray(s_norm)

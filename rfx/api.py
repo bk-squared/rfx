@@ -38,13 +38,15 @@ from rfx.probes.probes import extract_s_matrix, init_dft_plane_probe
 from rfx.sources.waveguide_port import (
     WaveguidePort,
     extract_waveguide_s_matrix,
+    extract_waveguide_s_params_normalized,
     extract_waveguide_sparams,
     init_waveguide_port,
     waveguide_plane_positions,
 )
 from rfx.simulation import (
     make_source, make_probe, make_port_source,
-    run as _run, SimResult, SourceSpec, ProbeSpec, SnapshotSpec,
+    run as _run, run_until_decay as _run_until_decay,
+    SimResult, SourceSpec, ProbeSpec, SnapshotSpec,
 )
 from rfx.farfield import (
     NTFFBox, make_ntff_box, compute_far_field, FarFieldResult,
@@ -996,8 +998,18 @@ class Simulation:
         *,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        normalize: bool = False,
     ) -> WaveguideSMatrixResult:
-        """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix."""
+        """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
+
+        Parameters
+        ----------
+        normalize : bool
+            When True, run a two-run normalization that cancels Yee-grid
+            numerical dispersion.  A reference simulation with vacuum (no
+            user geometry) is run automatically, and the device S-params
+            are divided by the reference incident waves.
+        """
         if self._ports or self._tfsf:
             raise ValueError(
                 "compute_waveguide_s_matrix() is not supported together with lumped ports or TFSF"
@@ -1070,18 +1082,38 @@ class Simulation:
             )
             ref_shifts.append(desired_ref - waveguide_plane_positions(cfg)["reference"])
 
-        s_params = extract_waveguide_s_matrix(
-            grid,
-            materials,
-            cfgs,
-            n_steps,
-            boundary="cpml",
-            cpml_axes=grid.cpml_axes,
-            pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
-            debye=debye,
-            lorentz=lorentz,
-            ref_shifts=ref_shifts,
-        )
+        if normalize:
+            # Build reference materials: vacuum everywhere (no user geometry).
+            from rfx.core.yee import init_materials as _init_vacuum_materials
+            ref_materials = _init_vacuum_materials(grid.shape)
+            s_params = extract_waveguide_s_params_normalized(
+                grid,
+                materials,
+                ref_materials,
+                cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
+                debye=debye,
+                lorentz=lorentz,
+                ref_debye=None,
+                ref_lorentz=None,
+                ref_shifts=ref_shifts,
+            )
+        else:
+            s_params = extract_waveguide_s_matrix(
+                grid,
+                materials,
+                cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
+                debye=debye,
+                lorentz=lorentz,
+                ref_shifts=ref_shifts,
+            )
         reference_planes = np.array(
             [
                 entry.reference_plane
@@ -1135,11 +1167,18 @@ class Simulation:
         *,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        until_decay: float | None = None,
+        decay_check_interval: int = 50,
+        decay_min_steps: int = 100,
+        decay_max_steps: int = 50_000,
+        decay_monitor_component: str = "ez",
+        decay_monitor_position: tuple[float, float, float] | None = None,
         checkpoint: bool = False,
         compute_s_params: bool | None = None,
         s_param_freqs: jnp.ndarray | None = None,
         s_param_n_steps: int | None = None,
         snapshot: SnapshotSpec | None = None,
+        subpixel_smoothing: bool = False,
     ) -> Result:
         """Run the simulation.
 
@@ -1159,6 +1198,19 @@ class Simulation:
         s_param_n_steps : int or None
             Timesteps for S-parameter simulation (may need more than
             the main simulation for frequency resolution).
+        until_decay : float or None
+            When provided, overrides *n_steps* and runs until field
+            energy decays to this fraction of peak. E.g. ``1e-3``.
+        decay_check_interval : int
+            Check decay every N steps (default 50).
+        decay_min_steps : int
+            Always run at least this many steps (default 100).
+        decay_max_steps : int
+            Hard upper limit on steps (default 50000).
+        decay_monitor_component : str
+            Field component to monitor (default ``"ez"``).
+        decay_monitor_position : tuple or None
+            Physical position to monitor. If None, use domain center.
 
         Returns
         -------
@@ -1167,6 +1219,17 @@ class Simulation:
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec = self._assemble_materials(grid)
         materials = base_materials
+
+        # Compute per-component smoothed permittivity if requested
+        aniso_eps = None
+        if subpixel_smoothing:
+            from rfx.geometry.smoothing import compute_smoothed_eps
+            shape_eps_pairs = [
+                (entry.shape, self._resolve_material(entry.material_name).eps_r)
+                for entry in self._geometry
+            ]
+            if shape_eps_pairs:
+                aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
@@ -1273,23 +1336,50 @@ class Simulation:
             ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
         # Main simulation
-        sim_result = _run(
-            grid, materials, n_steps,
-            boundary=self._boundary,
-            cpml_axes=cpml_axes,
-            pec_axes=pec_axes,
-            periodic=periodic,
-            debye=debye,
-            lorentz=lorentz,
-            tfsf=tfsf,
-            sources=sources,
-            probes=probes,
-            dft_planes=dft_planes,
-            waveguide_ports=waveguide_ports,
-            ntff=ntff_box,
-            snapshot=snapshot,
-            checkpoint=checkpoint,
-        )
+        if until_decay is not None:
+            sim_result = _run_until_decay(
+                grid, materials,
+                decay_by=until_decay,
+                check_interval=decay_check_interval,
+                min_steps=decay_min_steps,
+                max_steps=decay_max_steps,
+                monitor_component=decay_monitor_component,
+                monitor_position=decay_monitor_position,
+                boundary=self._boundary,
+                cpml_axes=cpml_axes,
+                pec_axes=pec_axes,
+                periodic=periodic,
+                debye=debye,
+                lorentz=lorentz,
+                tfsf=tfsf,
+                sources=sources,
+                probes=probes,
+                dft_planes=dft_planes,
+                waveguide_ports=waveguide_ports,
+                ntff=ntff_box,
+                snapshot=snapshot,
+                checkpoint=checkpoint,
+                aniso_eps=aniso_eps,
+            )
+        else:
+            sim_result = _run(
+                grid, materials, n_steps,
+                boundary=self._boundary,
+                cpml_axes=cpml_axes,
+                pec_axes=pec_axes,
+                periodic=periodic,
+                debye=debye,
+                lorentz=lorentz,
+                tfsf=tfsf,
+                sources=sources,
+                probes=probes,
+                dft_planes=dft_planes,
+                waveguide_ports=waveguide_ports,
+                ntff=ntff_box,
+                snapshot=snapshot,
+                checkpoint=checkpoint,
+                aniso_eps=aniso_eps,
+            )
 
         # S-parameters (separate Python-loop simulation for accuracy)
         if compute_s_params is None:
