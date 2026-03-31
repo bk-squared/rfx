@@ -415,6 +415,52 @@ def modal_current(state, cfg: WaveguidePortConfig, x_idx: int,
     return jnp.sum(h_u_sim * cfg.hy_profile + h_v_sim * cfg.hz_profile) * dx * dx
 
 
+def mode_self_overlap(cfg: WaveguidePortConfig, dx: float) -> float:
+    """Mode self-overlap: C = ∫∫ (e_mode × h*_mode) · n̂ dA.
+
+    For x-normal: (e_mode × h_mode) · x̂ = ey*hz - ez*hy.
+    Returns a positive real scalar for a properly defined mode.
+    """
+    cross = (cfg.ey_profile * cfg.hz_profile
+             - cfg.ez_profile * cfg.hy_profile)
+    return float(jnp.sum(cross) * dx * dx)
+
+
+def overlap_modal_amplitude(
+    state, cfg: WaveguidePortConfig, x_idx: int, dx: float,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Forward/backward modal amplitudes via overlap integral.
+
+    Uses the Lorentz reciprocity overlap:
+      P1 = ∫∫ (E_sim × H*_mode) · n̂ dA
+      P2 = ∫∫ (E*_mode × H_sim) · n̂ dA
+      a_forward  = (P1 + P2) / (2 * C_mode)
+      a_backward = (P1 - P2) / (2 * C_mode)
+
+    For x-normal port with n̂ = x̂:
+      (E × H_mode) · x̂ = Ey_sim * Hz_mode - Ez_sim * Hy_mode
+      (E_mode × H) · x̂ = Ey_mode * Hz_sim - Ez_mode * Hy_sim
+
+    Returns (a_forward, a_backward) as scalars.
+    """
+    e_u_sim = _plane_field(getattr(state, cfg.e_u_component), cfg, x_idx)
+    e_v_sim = _plane_field(getattr(state, cfg.e_v_component), cfg, x_idx)
+    h_u_sim = _plane_h_field(getattr(state, cfg.h_u_component), cfg, x_idx)
+    h_v_sim = _plane_h_field(getattr(state, cfg.h_v_component), cfg, x_idx)
+
+    # P1 = ∫ (E_sim × H_mode) · n̂ dA
+    p1 = jnp.sum(e_u_sim * cfg.hz_profile - e_v_sim * cfg.hy_profile) * dx * dx
+    # P2 = ∫ (E_mode × H_sim) · n̂ dA
+    p2 = jnp.sum(cfg.ey_profile * h_v_sim - cfg.ez_profile * h_u_sim) * dx * dx
+
+    c_mode = mode_self_overlap(cfg, dx)
+    safe_c = max(abs(c_mode), 1e-30)
+
+    a_fwd = (p1 + p2) / (2.0 * safe_c)
+    a_bwd = (p1 - p2) / (2.0 * safe_c)
+    return a_fwd, a_bwd
+
+
 def update_waveguide_port_probe(cfg: WaveguidePortConfig, state,
                                 dt: float, dx: float) -> WaveguidePortConfig:
     """Accumulate DFT of modal V and I at ref and probe planes."""
@@ -784,3 +830,203 @@ def extract_waveguide_s_params_normalized(
             )
 
     return jnp.asarray(s_norm)
+
+
+# ---------------------------------------------------------------------------
+# Overlap integral modal extraction (Spec 6E4)
+# ---------------------------------------------------------------------------
+
+
+def overlap_mode_normalization(
+    cfg: WaveguidePortConfig,
+    dx: float,
+) -> jnp.ndarray:
+    """Mode self-overlap normalization constant.
+
+    C_mode = ∫∫ (e_mode × h*_mode) · n̂ dA
+
+    For x-normal and z-normal ports (right-handed tangential frame):
+        (E × H) · n̂ = e_u * h_v - e_v * h_u
+
+    For y-normal ports (left-handed tangential frame stored with flipped H):
+        The stored H profiles already carry the sign flip, so the same
+        formula applies.
+
+    With the stored normalization ∫(ey² + ez²) dA = 1 and the relation
+    h_mode = (-ez, ey) (before any axis flip), C_mode evaluates to
+    ∫(ey² + ez²) dA = 1.  We compute it explicitly here for correctness
+    with arbitrary mode profiles.
+
+    Returns
+    -------
+    float scalar
+        Real, positive normalization constant.
+    """
+    dA = dx * dx
+    # Cross product (e_mode × h*_mode) · n̂ = eu_mode * hv_mode - ev_mode * hu_mode
+    # Mode profiles are real, so conjugate is identity.
+    integrand = cfg.ey_profile * cfg.hz_profile - cfg.ez_profile * cfg.hy_profile
+    return jnp.sum(integrand) * dA
+
+
+def overlap_modal_amplitude(
+    state,
+    cfg: WaveguidePortConfig,
+    x_idx: int,
+    dx: float,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Compute forward and backward modal amplitudes via overlap integral.
+
+    Returns (a_forward, a_backward) as scalars.
+
+    The overlap integral for a mode with profile (e_mode, h_mode):
+      P_forward  = ∫∫ (E_sim × H*_mode) · n̂ dA
+      P_backward = ∫∫ (E*_mode × H_sim) · n̂ dA
+      a_forward  = 0.5 * (P_forward + P_backward) / C_mode
+      a_backward = 0.5 * (P_forward - P_backward) / C_mode
+
+    where C_mode = ∫∫ (e_mode × h*_mode) · n̂ dA (mode normalization).
+
+    For x-normal port: n̂ = x̂
+      (E × H) · x̂ = Ey*Hz - Ez*Hy
+
+    H fields are averaged to the E plane to handle Yee stagger.
+    """
+    dA = dx * dx
+
+    # Extract simulation fields on the aperture
+    e_u_sim = _plane_field(getattr(state, cfg.e_u_component), cfg, x_idx)
+    e_v_sim = _plane_field(getattr(state, cfg.e_v_component), cfg, x_idx)
+    h_u_sim = _plane_h_field(getattr(state, cfg.h_u_component), cfg, x_idx)
+    h_v_sim = _plane_h_field(getattr(state, cfg.h_v_component), cfg, x_idx)
+
+    # P_forward = ∫(E_sim × H*_mode) · n̂ dA
+    #   = ∫(eu_sim * hv_mode - ev_sim * hu_mode) dA
+    p_forward = jnp.sum(
+        e_u_sim * cfg.hz_profile - e_v_sim * cfg.hy_profile
+    ) * dA
+
+    # P_backward = ∫(E*_mode × H_sim) · n̂ dA
+    #   = ∫(eu_mode * hv_sim - ev_mode * hu_sim) dA
+    p_backward = jnp.sum(
+        cfg.ey_profile * h_v_sim - cfg.ez_profile * h_u_sim
+    ) * dA
+
+    c_mode = overlap_mode_normalization(cfg, dx)
+    # Guard against zero normalization
+    safe_c = jnp.where(jnp.abs(c_mode) > 1e-30, c_mode,
+                       1e-30 * jnp.ones_like(c_mode))
+
+    a_forward = 0.5 * (p_forward + p_backward) / safe_c
+    a_backward = 0.5 * (p_forward - p_backward) / safe_c
+
+    return a_forward, a_backward
+
+
+class OverlapDFTAccumulators(NamedTuple):
+    """DFT accumulators for overlap-based modal extraction.
+
+    Stores frequency-domain forward/backward wave amplitudes at
+    reference and probe planes.
+    """
+    a_fwd_ref_dft: jnp.ndarray    # (n_freqs,) complex
+    a_bwd_ref_dft: jnp.ndarray    # (n_freqs,) complex
+    a_fwd_probe_dft: jnp.ndarray  # (n_freqs,) complex
+    a_bwd_probe_dft: jnp.ndarray  # (n_freqs,) complex
+
+
+def init_overlap_dft(freqs: jnp.ndarray) -> OverlapDFTAccumulators:
+    """Initialize zero-valued overlap DFT accumulators."""
+    nf = len(freqs)
+    zeros_c = jnp.zeros(nf, dtype=jnp.complex64)
+    return OverlapDFTAccumulators(
+        a_fwd_ref_dft=zeros_c,
+        a_bwd_ref_dft=zeros_c,
+        a_fwd_probe_dft=zeros_c,
+        a_bwd_probe_dft=zeros_c,
+    )
+
+
+def update_overlap_dft(
+    acc: OverlapDFTAccumulators,
+    cfg: WaveguidePortConfig,
+    state,
+    dt: float,
+    dx: float,
+) -> OverlapDFTAccumulators:
+    """Accumulate overlap-based DFT at reference and probe planes.
+
+    Computes time-domain overlap modal amplitudes at each timestep and
+    accumulates the running DFT.
+    """
+    t = state.step * dt
+
+    a_fwd_ref, a_bwd_ref = overlap_modal_amplitude(state, cfg, cfg.ref_x, dx)
+    a_fwd_probe, a_bwd_probe = overlap_modal_amplitude(state, cfg, cfg.probe_x, dx)
+
+    phase = jnp.exp(-1j * 2.0 * jnp.pi * cfg.freqs * t)
+    weight = _dft_window_weight(
+        state.step, cfg.dft_total_steps, cfg.dft_window, cfg.dft_window_alpha
+    )
+
+    return OverlapDFTAccumulators(
+        a_fwd_ref_dft=acc.a_fwd_ref_dft + a_fwd_ref * phase * dt * weight,
+        a_bwd_ref_dft=acc.a_bwd_ref_dft + a_bwd_ref * phase * dt * weight,
+        a_fwd_probe_dft=acc.a_fwd_probe_dft + a_fwd_probe * phase * dt * weight,
+        a_bwd_probe_dft=acc.a_bwd_probe_dft + a_bwd_probe * phase * dt * weight,
+    )
+
+
+def extract_waveguide_sparams_overlap(
+    acc: OverlapDFTAccumulators,
+    cfg: WaveguidePortConfig,
+    *,
+    ref_shift: float = 0.0,
+    probe_shift: float = 0.0,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Extract (S11, S21) from overlap-integral DFT accumulators.
+
+    Parameters
+    ----------
+    acc : OverlapDFTAccumulators
+        Accumulated overlap DFTs from the simulation.
+    cfg : WaveguidePortConfig
+        Port configuration (for frequency and cutoff info).
+    ref_shift : float
+        Metres to shift the reference-plane reporting location.
+    probe_shift : float
+        Metres to shift the probe-plane reporting location.
+
+    Returns
+    -------
+    (s11, s21) : tuple of jnp.ndarray
+        S-parameters at the (optionally shifted) planes.
+    """
+    beta = _compute_beta(cfg.freqs, cfg.f_cutoff)
+
+    # Port-local wave mapping: for positive-direction ports, incident = fwd
+    if cfg.direction.startswith("+"):
+        a_inc_ref = acc.a_fwd_ref_dft
+        a_out_ref = acc.a_bwd_ref_dft
+        a_inc_probe = acc.a_fwd_probe_dft
+    else:
+        a_inc_ref = acc.a_bwd_ref_dft
+        a_out_ref = acc.a_fwd_ref_dft
+        a_inc_probe = acc.a_bwd_probe_dft
+
+    # Apply reference-plane shifts
+    a_inc_ref, a_out_ref = _shift_modal_waves(a_inc_ref, a_out_ref, beta, ref_shift)
+    a_inc_probe, _ = _shift_modal_waves(
+        a_inc_probe,
+        jnp.zeros_like(a_inc_probe),
+        beta,
+        probe_shift,
+    )
+
+    safe_ref = jnp.where(
+        jnp.abs(a_inc_ref) > 0, a_inc_ref, jnp.ones_like(a_inc_ref)
+    )
+    s11 = a_out_ref / safe_ref
+    s21 = a_inc_probe / safe_ref
+
+    return s11, s21
