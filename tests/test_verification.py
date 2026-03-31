@@ -193,11 +193,6 @@ def test_gradient_through_dft_plane():
 # Test 3: Oblique TFSF produces correct Fresnel TE reflection
 # =========================================================================
 
-@pytest.mark.xfail(
-    reason="Dispersion-matched 1D aux grid reduces leakage from 27% to 25% "
-           "but not below 5%. Needs finer transverse interpolation or 2D aux grid.",
-    strict=False,
-)
 def test_oblique_tfsf_fresnel():
     """Oblique TFSF (angle_deg=30) reflection matches Fresnel TE coefficient.
 
