@@ -68,7 +68,7 @@ sim.add_port(
 )
 
 print(f"Domain: {dom_x*1e3:.0f}x{dom_y*1e3:.0f}x{dom_z*1e3:.0f} mm, dx={dx*1e3:.1f} mm")
-print(f"Feed: ({feed_x*1e3:.1f}, {feed_y*1e3:.1f}, {feed_z*1e3:.1f}) mm")
+print(f"Feed: ({feed_x*1e3:.1f}, {feed_y*1e3:.1f}) mm, extent={h*1e3:.1f} mm")
 print("Running...")
 
 result = sim.run(n_steps=4000, compute_s_params=True,
