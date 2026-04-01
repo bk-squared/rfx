@@ -82,10 +82,15 @@ def compute_thin_wire_correction(
     hi_idx = int(round(hi / dx)) + int(pad[axis])
 
     # Holland correction factors
-    # Effective permittivity: eps_eff = eps_0 / (2*pi*ln(dx/(2*r)))
-    # This replaces the cell's eps along the wire axis
-    ln_ratio = np.log(dx / (2 * r)) if dx > 2 * r else 0.1
-    eps_eff_factor = 1.0 / (2 * np.pi * ln_ratio)
+    # Effective relative permittivity: eps_r_eff = 2*pi / ln(dx/(2*r))
+    # Reference: Holland & Simpson, IEEE TEMC 23(2), 1981
+    if dx <= 2 * r:
+        raise ValueError(
+            f"Thin wire radius {r} must be << cell size {dx}. "
+            f"Holland model requires dx > 2*r (got dx/{2*r:.4f} = {dx/(2*r):.2f})"
+        )
+    ln_ratio = np.log(dx / (2 * r))
+    eps_eff_factor = 2.0 * np.pi / ln_ratio
 
     # Effective conductivity: sigma_eff = sigma * pi * r^2 / dx^2
     sigma_eff = wire.conductivity * np.pi * r ** 2 / dx ** 2
