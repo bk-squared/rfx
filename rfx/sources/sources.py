@@ -174,6 +174,93 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
 
 
 @dataclass(frozen=True)
+class WirePort:
+    """Multi-cell lumped port spanning multiple grid cells along one axis.
+
+    Models a vertical probe feed (e.g., coaxial probe through substrate)
+    as a distributed voltage source with impedance split across N cells.
+
+    Parameters
+    ----------
+    start : (x, y, z) in meters — one end of the wire
+    end : (x, y, z) in meters — other end (must be axis-aligned with start)
+    component : str — E-field component ("ex", "ey", or "ez")
+    impedance : float — total port impedance in ohms (default 50)
+    excitation : callable — source waveform
+    """
+
+    start: tuple[float, float, float]
+    end: tuple[float, float, float]
+    component: str
+    impedance: float = 50.0
+    excitation: object = None  # GaussianPulse or similar
+
+
+def _wire_port_cells(grid, port):
+    """Return list of (i, j, k) cell indices along the wire."""
+    import numpy as np
+    s = np.array(port.start)
+    e = np.array(port.end)
+    diff = e - s
+    nonzero = np.abs(diff) > 1e-10
+    if np.sum(nonzero) != 1:
+        raise ValueError("WirePort start and end must be axis-aligned")
+    axis = int(np.argmax(nonzero))
+
+    idx_s = grid.position_to_index(tuple(s))
+    idx_e = grid.position_to_index(tuple(e))
+
+    lo = min(idx_s[axis], idx_e[axis])
+    hi = max(idx_s[axis], idx_e[axis])
+
+    cells = []
+    for a in range(lo, hi + 1):
+        cell = list(idx_s)
+        cell[axis] = a
+        cells.append(tuple(cell))
+    return cells
+
+
+def setup_wire_port(grid, port, materials):
+    """Distribute port impedance across all wire cells.
+
+    Each cell gets sigma_port = 1 / (Z0_total * dx) / N_cells,
+    equivalent to N resistors in series.
+    """
+    cells = _wire_port_cells(grid, port)
+    n_cells = max(len(cells), 1)
+    sigma_per_cell = 1.0 / (port.impedance * grid.dx) / n_cells
+
+    sigma = materials.sigma
+    for cell in cells:
+        sigma = sigma.at[cell[0], cell[1], cell[2]].add(sigma_per_cell)
+    return materials._replace(sigma=sigma)
+
+
+def apply_wire_port(state, grid, port, t, materials):
+    """Inject source voltage distributed across all wire cells.
+
+    Each cell gets V_src / N_cells, with Cb computed from local materials.
+    """
+    cells = _wire_port_cells(grid, port)
+    n_cells = max(len(cells), 1)
+    v_src = port.excitation(t) / n_cells
+    dx = grid.dx
+    dt = grid.dt
+
+    field = getattr(state, port.component)
+    for cell in cells:
+        i, j, k = cell
+        eps = float(materials.eps_r[i, j, k]) * EPS_0
+        sigma = float(materials.sigma[i, j, k])
+        loss = sigma * dt / (2.0 * eps)
+        cb = (dt / eps) / (1.0 + loss)
+        field = field.at[i, j, k].add(cb * v_src / dx)
+
+    return state._replace(**{port.component: field})
+
+
+@dataclass(frozen=True)
 class CWSource:
     """Continuous-wave sinusoidal source with smooth ramp-up.
 
