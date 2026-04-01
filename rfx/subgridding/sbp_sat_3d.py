@@ -134,48 +134,137 @@ def _update_3d(ex, ey, ez, hx, hy, hz, dt, dx):
     return state.ex, state.ey, state.ez, state.hx, state.hy, state.hz
 
 
-def _sat_coupling_3d(ez_c, ez_f, config):
-    """SAT penalty coupling for Ez on 6 faces. Returns corrected (ez_c, ez_f).
+def _downsample_2d(fine_face, n_coarse_j, n_coarse_k, ratio):
+    """Downsample a 2D fine-grid face to coarse resolution via block averaging."""
+    nj_f = n_coarse_j * ratio
+    nk_f = n_coarse_k * ratio
+    trimmed = fine_face[:nj_f, :nk_f]
+    # Reshape into (n_coarse_j, ratio, n_coarse_k, ratio) then average
+    return jnp.mean(trimmed.reshape(n_coarse_j, ratio, n_coarse_k, ratio), axis=(1, 3))
 
-    Simplified: couples only Ez for initial validation. Full 3D would
-    couple all 6 field components on all 6 faces.
+
+def _upsample_2d(coarse_face, ny_f, nz_f, ratio):
+    """Upsample coarse face to fine resolution by repeating."""
+    return jnp.repeat(jnp.repeat(coarse_face, ratio, axis=0), ratio, axis=1)[:ny_f, :nz_f]
+
+
+def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
+    """Shared-node interface coupling for all tangential E-components on 6 faces.
+
+    Uses the combined SBP norm p_shared = dx_c/2 + dx_f/2, matching the
+    1D/2D shared-node approach for energy conservation.
+
+    For each interface face, tangential E-components are synchronized:
+    the coarse boundary value is set to the average of coarse and
+    fine (downsampled) values, weighted by SBP norms.
     """
-    tau = config.tau
+    ex_c, ey_c, ez_c = state_c_fields[:3]
+    ex_f, ey_f, ez_f = state_f_fields[:3]
+
     ratio = config.ratio
     fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
     ni = config.fi_hi - fi
     nj = config.fj_hi - fj
     nk = config.fk_hi - fk
+    w_c = config.dx_c / 2.0
+    w_f = config.dx_f / 2.0
+    w_total = w_c + w_f
 
-    def _ds(arr, n):
-        """Downsample by averaging blocks of ratio."""
-        trimmed = arr[:n * ratio]
-        return jnp.mean(trimmed.reshape(n, ratio), axis=1)
+    # Helper: weighted average of coarse and fine boundary values
+    def _sync(ec_face, ef_face_ds):
+        """Weighted average: (w_c * ec + w_f * ef_ds) / (w_c + w_f)."""
+        return (w_c * ec_face + w_f * ef_face_ds) / w_total
 
-    def _us(diff, n_fine):
-        """Upsample by repeating."""
-        return jnp.repeat(diff, ratio)[:n_fine]
+    # === x-lo face (i = fi_lo): tangential = Ey, Ez ===
+    if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
+        # Ey
+        ec = ey_c[fi, fj:fj+nj, fk:fk+nk]
+        ef_ds = _downsample_2d(ey_f[0, :, :], nj, nk, ratio)
+        synced = _sync(ec, ef_ds)
+        ey_c = ey_c.at[fi, fj:fj+nj, fk:fk+nk].set(synced)
+        ey_f = ey_f.at[0, :, :].set(_upsample_2d(synced, config.ny_f, config.nz_f, ratio))
 
-    # x-lo face: ez_c[fi, fj:fj+nj, fk:fk+nk] ↔ ez_f[0, :, :]
-    for k_c in range(nk):
-        k_f_s = k_c * ratio
-        k_f_e = min(k_f_s + ratio, config.nz_f)
-        ec_line = ez_c[fi, fj:fj + nj, fk + k_c]
-        ef_line = _ds(ez_f[0, :, k_f_s], nj) if config.ny_f >= nj * ratio else ec_line
-        # Skip if shapes don't match
-        if ec_line.shape == ef_line.shape:
-            diff = ec_line - ef_line
-            ez_c = ez_c.at[fi, fj:fj + nj, fk + k_c].add(-tau * diff)
+        # Ez
+        ec = ez_c[fi, fj:fj+nj, fk:fk+nk]
+        ef_ds = _downsample_2d(ez_f[0, :, :], nj, nk, ratio)
+        synced = _sync(ec, ef_ds)
+        ez_c = ez_c.at[fi, fj:fj+nj, fk:fk+nk].set(synced)
+        ez_f = ez_f.at[0, :, :].set(_upsample_2d(synced, config.ny_f, config.nz_f, ratio))
 
-    # x-hi face
-    for k_c in range(nk):
-        ec_line = ez_c[config.fi_hi - 1, fj:fj + nj, fk + k_c]
-        ef_line = _ds(ez_f[-1, :, min(k_c * ratio, config.nz_f - 1)], nj) if config.ny_f >= nj * ratio else ec_line
-        if ec_line.shape == ef_line.shape:
-            diff = ec_line - ef_line
-            ez_c = ez_c.at[config.fi_hi - 1, fj:fj + nj, fk + k_c].add(-tau * diff)
+    # === x-hi face (i = fi_hi - 1): tangential = Ey, Ez ===
+    if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
+        i_c = config.fi_hi - 1
+        ec = ey_c[i_c, fj:fj+nj, fk:fk+nk]
+        ef_ds = _downsample_2d(ey_f[-1, :, :], nj, nk, ratio)
+        synced = _sync(ec, ef_ds)
+        ey_c = ey_c.at[i_c, fj:fj+nj, fk:fk+nk].set(synced)
+        ey_f = ey_f.at[-1, :, :].set(_upsample_2d(synced, config.ny_f, config.nz_f, ratio))
 
-    return ez_c, ez_f
+        ec = ez_c[i_c, fj:fj+nj, fk:fk+nk]
+        ef_ds = _downsample_2d(ez_f[-1, :, :], nj, nk, ratio)
+        synced = _sync(ec, ef_ds)
+        ez_c = ez_c.at[i_c, fj:fj+nj, fk:fk+nk].set(synced)
+        ez_f = ez_f.at[-1, :, :].set(_upsample_2d(synced, config.ny_f, config.nz_f, ratio))
+
+    # === y-lo face (j = fj_lo): tangential = Ex, Ez ===
+    if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
+        ec = ex_c[fi:fi+ni, fj, fk:fk+nk]
+        ef_ds = _downsample_2d(ex_f[:, 0, :], ni, nk, ratio)
+        synced = _sync(ec, ef_ds)
+        ex_c = ex_c.at[fi:fi+ni, fj, fk:fk+nk].set(synced)
+        ex_f = ex_f.at[:, 0, :].set(_upsample_2d(synced, config.nx_f, config.nz_f, ratio))
+
+        ec = ez_c[fi:fi+ni, fj, fk:fk+nk]
+        ef_ds = _downsample_2d(ez_f[:, 0, :], ni, nk, ratio)
+        synced = _sync(ec, ef_ds)
+        ez_c = ez_c.at[fi:fi+ni, fj, fk:fk+nk].set(synced)
+        ez_f = ez_f.at[:, 0, :].set(_upsample_2d(synced, config.nx_f, config.nz_f, ratio))
+
+    # === y-hi face (j = fj_hi - 1): tangential = Ex, Ez ===
+    if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
+        j_c = config.fj_hi - 1
+        ec = ex_c[fi:fi+ni, j_c, fk:fk+nk]
+        ef_ds = _downsample_2d(ex_f[:, -1, :], ni, nk, ratio)
+        synced = _sync(ec, ef_ds)
+        ex_c = ex_c.at[fi:fi+ni, j_c, fk:fk+nk].set(synced)
+        ex_f = ex_f.at[:, -1, :].set(_upsample_2d(synced, config.nx_f, config.nz_f, ratio))
+
+        ec = ez_c[fi:fi+ni, j_c, fk:fk+nk]
+        ef_ds = _downsample_2d(ez_f[:, -1, :], ni, nk, ratio)
+        synced = _sync(ec, ef_ds)
+        ez_c = ez_c.at[fi:fi+ni, j_c, fk:fk+nk].set(synced)
+        ez_f = ez_f.at[:, -1, :].set(_upsample_2d(synced, config.nx_f, config.nz_f, ratio))
+
+    # === z-lo face (k = fk_lo): tangential = Ex, Ey ===
+    if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
+        ec = ex_c[fi:fi+ni, fj:fj+nj, fk]
+        ef_ds = _downsample_2d(ex_f[:, :, 0], ni, nj, ratio)
+        synced = _sync(ec, ef_ds)
+        ex_c = ex_c.at[fi:fi+ni, fj:fj+nj, fk].set(synced)
+        ex_f = ex_f.at[:, :, 0].set(_upsample_2d(synced, config.nx_f, config.ny_f, ratio))
+
+        ec = ey_c[fi:fi+ni, fj:fj+nj, fk]
+        ef_ds = _downsample_2d(ey_f[:, :, 0], ni, nj, ratio)
+        synced = _sync(ec, ef_ds)
+        ey_c = ey_c.at[fi:fi+ni, fj:fj+nj, fk].set(synced)
+        ey_f = ey_f.at[:, :, 0].set(_upsample_2d(synced, config.nx_f, config.ny_f, ratio))
+
+    # === z-hi face (k = fk_hi - 1): tangential = Ex, Ey ===
+    if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
+        k_c = config.fk_hi - 1
+        ec = ex_c[fi:fi+ni, fj:fj+nj, k_c]
+        ef_ds = _downsample_2d(ex_f[:, :, -1], ni, nj, ratio)
+        synced = _sync(ec, ef_ds)
+        ex_c = ex_c.at[fi:fi+ni, fj:fj+nj, k_c].set(synced)
+        ex_f = ex_f.at[:, :, -1].set(_upsample_2d(synced, config.nx_f, config.ny_f, ratio))
+
+        ec = ey_c[fi:fi+ni, fj:fj+nj, k_c]
+        ef_ds = _downsample_2d(ey_f[:, :, -1], ni, nj, ratio)
+        synced = _sync(ec, ef_ds)
+        ey_c = ey_c.at[fi:fi+ni, fj:fj+nj, k_c].set(synced)
+        ey_f = ey_f.at[:, :, -1].set(_upsample_2d(synced, config.nx_f, config.ny_f, ratio))
+
+    return (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f)
 
 
 def step_subgrid_3d(
@@ -200,8 +289,9 @@ def step_subgrid_3d(
         state.hx_f, state.hy_f, state.hz_f,
         dt, config.dx_f)
 
-    # SAT interface coupling (Ez only for initial validation)
-    ez_c, ez_f = _sat_coupling_3d(ez_c, ez_f, config)
+    # Shared-node coupling: all tangential E on all 6 faces, bidirectional
+    (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = _shared_node_coupling_3d(
+        (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f), config)
 
     return SubgridState3D(
         ex_c=ex_c, ey_c=ey_c, ez_c=ez_c,
