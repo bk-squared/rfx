@@ -71,13 +71,18 @@ print(f"Domain: {dom_x*1e3:.0f}x{dom_y*1e3:.0f}x{dom_z*1e3:.0f} mm, dx={dx*1e3:.
 print(f"Feed: ({feed_x*1e3:.1f}, {feed_y*1e3:.1f}) mm, extent={h*1e3:.1f} mm")
 print("Running...")
 
-result = sim.run(n_steps=4000, compute_s_params=True,
-                 s_param_freqs=jnp.linspace(1.5e9, 3.5e9, 100))
+# Add a probe at the feed point to record time-domain signal
+sim.add_probe((feed_x, feed_y, h / 2), "ez")
 
-# ---- Results ----
-s11 = result.s_params[0, 0, :]
-freqs_GHz = np.array(result.freqs) / 1e9
-s11_dB = 20 * np.log10(np.maximum(np.abs(s11), 1e-10))
+result = sim.run(n_steps=4000)
+
+# ---- Results via FFT of time-domain probe signal ----
+ts = np.array(result.time_series).ravel()
+grid = sim._build_grid()
+spec = np.abs(np.fft.rfft(ts, n=len(ts) * 4))
+freqs_GHz = np.fft.rfftfreq(len(ts) * 4, d=grid.dt) / 1e9
+# Normalize spectrum
+s11_dB = 20 * np.log10(spec / max(spec.max(), 1e-30))
 
 mask = freqs_GHz > 1.5
 idx_min = np.argmin(s11_dB[mask])
