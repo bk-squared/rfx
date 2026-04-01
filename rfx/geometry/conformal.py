@@ -177,13 +177,36 @@ def compute_conformal_weights(
 
 
 def apply_conformal_pec(state, w_ex, w_ey, w_ez):
-    """Apply conformal PEC weights to E-fields.
+    """Apply conformal PEC: zero E inside PEC, leave partial cells to update coefficients.
 
-    Call AFTER update_e. Multiplies each E-component by its conformal weight.
-    Cells fully inside PEC get E=0, boundary cells get fractional scaling.
+    For cells with w=0 (fully inside PEC): force E=0.
+    For cells with 0<w<1 (partial PEC): do NOT multiply E by w every step.
+    The Dey-Mittra correction for partial cells should be applied by modifying
+    the material eps_r via `conformal_eps_correction()` once at setup time.
+
+    Call AFTER update_e each timestep.
     """
+    # Only zero out fully-PEC cells (w == 0), not partial cells
+    pec_mask_ex = (w_ex == 0.0)
+    pec_mask_ey = (w_ey == 0.0)
+    pec_mask_ez = (w_ez == 0.0)
     return state._replace(
-        ex=state.ex * w_ex,
-        ey=state.ey * w_ey,
-        ez=state.ez * w_ez,
+        ex=jnp.where(pec_mask_ex, 0.0, state.ex),
+        ey=jnp.where(pec_mask_ey, 0.0, state.ey),
+        ez=jnp.where(pec_mask_ez, 0.0, state.ez),
     )
+
+
+def conformal_eps_correction(eps_r, w_ex, w_ey, w_ez):
+    """Modify eps_r to account for Dey-Mittra conformal PEC.
+
+    For partial PEC cells (0 < w < 1), the effective permittivity is
+    scaled by 1/w to account for the reduced cell area. This is applied
+    ONCE at setup, not every timestep.
+
+    Returns (eps_ex, eps_ey, eps_ez) per-component arrays.
+    """
+    safe_wx = jnp.where(w_ex > 0, w_ex, 1.0)
+    safe_wy = jnp.where(w_ey > 0, w_ey, 1.0)
+    safe_wz = jnp.where(w_ez > 0, w_ez, 1.0)
+    return eps_r / safe_wx, eps_r / safe_wy, eps_r / safe_wz
