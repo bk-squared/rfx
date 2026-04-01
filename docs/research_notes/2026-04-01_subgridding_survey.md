@@ -151,6 +151,31 @@ Phase 4: High-level API
 | Already fits in GPU memory | **No** — overhead not worth it |
 | Need > 200³ on single GPU | **Yes** — critical enabler |
 
+## 6. Latest Updates (2025-2026)
+
+### 3D SBP-SAT now available
+Cheng et al. published the **3D extension** of SBP-SAT FDTD, theoretically
+stable with multiple mesh blocks of different sizes. Also a variant using
+staggered Yee grids **without modifying field components** (via boundary
+extrapolation to satisfy SBP). This significantly simplifies integration
+into existing Yee-based codes like rfx.
+
+### Time-reversal AD (ACS Photonics, 2024)
+98% memory reduction vs standard AD by recording fields only at lossy
+boundaries and replaying time-reversed FDTD. Relevant for rfx: could
+complement jax.checkpoint for even larger simulations with subgridding.
+
+### GPU-native AMR (CFD, 2025-2026)
+Block-based octree AMR running entirely on GPU (no CPU-GPU transfers)
+is now standard in CFD (lattice Boltzmann, compressible flows). The
+pattern — forest of octrees with CUDA kernels — could be adapted for
+FDTD subgridding on GPU. No FDTD-specific GPU AMR published yet.
+
+### No one else has differentiable subgridding
+Neither FDTDX, Meep, OpenEMS, nor any published framework combines
+differentiable FDTD with subgridding. **rfx implementing SBP-SAT +
+jax.grad would be a genuine first.**
+
 ## Sources
 
 - [SBP-SAT FDTD Subgridding (Cheng et al., 2023)](https://arxiv.org/abs/2110.09054)
