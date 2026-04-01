@@ -1,20 +1,9 @@
-"""Example 4: Microstrip Patch Antenna at 2.4 GHz (WIP)
+"""Example 4: Microstrip Patch Antenna at 2.4 GHz
 
-Rectangular patch antenna on FR4 substrate with probe feed.
+Rectangular patch antenna on FR4 substrate with probe feed using WirePort
+(multi-cell lumped port spanning ground to patch through substrate).
 
-STATUS: This example demonstrates the geometry setup but does NOT yet
-produce correct S11 results. The current lumped port is a single-cell
-voltage source that cannot properly excite the patch cavity mode
-through a multi-cell substrate.
-
-KNOWN LIMITATION: rfx needs a multi-cell lumped port (vertical wire port)
-to properly model probe-fed patch antennas. This is tracked as a v1.1
-feature. Workarounds:
-  - Use dx = substrate_thickness (loses z-resolution)
-  - Use the low-level API with manual multi-cell source injection
-  - Use waveguide port feeding instead of probe feed
-
-The analytical design values are correct and can be used as reference.
+Expected: S11 dip near 2.4 GHz.
 """
 
 import numpy as np
@@ -40,8 +29,8 @@ L = C0 / (2 * f0 * np.sqrt(eps_eff)) - 2 * dL
 
 print(f"Patch: {L*1e3:.1f} x {W*1e3:.1f} mm, substrate h={h*1e3:.1f} mm")
 
-# ---- Grid: dx = h so 1 cell = substrate thickness ----
-dx = h  # 1.6 mm
+# ---- Grid: dx = 0.5mm for proper substrate resolution (3 cells) ----
+dx = 0.5e-3
 margin = 20e-3
 dom_x = L + 2 * margin
 dom_y = W + 2 * margin
@@ -67,15 +56,15 @@ sim.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="FR4")
 px0, py0 = margin, margin
 sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h + dx)), material="pec")
 
-# ---- Feed: lumped port at L/3 from edge, mid-substrate ----
+# ---- Feed: WirePort spanning ground to patch ----
 feed_x = px0 + L / 3
 feed_y = py0 + W / 2
-feed_z = h / 2  # single cell spans ground to patch
 
 sim.add_port(
-    position=(feed_x, feed_y, feed_z),
+    position=(feed_x, feed_y, dx),  # start just above ground
     component="ez",
     waveform=GaussianPulse(f0=f0, bandwidth=0.8),
+    extent=h - 2 * dx,  # span through substrate (ground+dx to patch-dx)
 )
 
 print(f"Domain: {dom_x*1e3:.0f}x{dom_y*1e3:.0f}x{dom_z*1e3:.0f} mm, dx={dx*1e3:.1f} mm")
