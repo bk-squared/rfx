@@ -41,3 +41,4 @@ from rfx.optimize_objectives import (
     maximize_bandwidth,
     maximize_directivity,
 )
+from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
