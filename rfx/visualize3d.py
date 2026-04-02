@@ -505,6 +505,108 @@ def save_field_vtk(
 # Convenience: save geometry + field screenshot
 # ---------------------------------------------------------------------------
 
+def save_field_animation(
+    snapshots: dict,
+    grid,
+    filename: str = "rfx_animation",
+    *,
+    component: str = "ez",
+    slice_axis: str = "z",
+    slice_index: int | None = None,
+    fps: int = 15,
+    cmap: str = "RdBu_r",
+    scale: float = 1e3,
+    dpi: int = 100,
+) -> str:
+    """Create a field animation (GIF/MP4) from snapshot data.
+
+    Parameters
+    ----------
+    snapshots : dict
+        From ``result.snapshots`` — keys are component names,
+        values are (n_frames, ...) arrays.
+    grid : Grid
+    filename : str
+        Output filename (without extension). GIF by default.
+    component : str
+        Field component to animate.
+    slice_axis : "x", "y", or "z"
+        Axis for 2D slice.
+    slice_index : int or None
+        Index along axis (default: center).
+    fps : int
+        Frames per second.
+    cmap : colormap name.
+    scale : coordinate scale factor.
+    dpi : image resolution.
+
+    Returns
+    -------
+    str : path to saved animation file.
+    """
+    _require_mpl()
+
+    if component not in snapshots:
+        raise ValueError(f"Component {component!r} not in snapshots: {list(snapshots.keys())}")
+
+    data = np.asarray(snapshots[component])  # (n_frames, nx, ny) or (n_frames, ...)
+    n_frames = data.shape[0]
+    if n_frames == 0:
+        raise ValueError("No frames in snapshot data")
+
+    axis_idx = {"x": 0, "y": 1, "z": 2}[slice_axis]
+
+    # If data is 3D per frame (full volume snapshots)
+    if data.ndim == 4:
+        if slice_index is None:
+            slice_index = data.shape[axis_idx + 1] // 2
+        if axis_idx == 0:
+            data = data[:, slice_index, :, :]
+        elif axis_idx == 1:
+            data = data[:, :, slice_index, :]
+        else:
+            data = data[:, :, :, slice_index]
+
+    # data is now (n_frames, n1, n2)
+    vmax = float(np.max(np.abs(data))) or 1.0
+    dx = grid.dx * scale
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    im = ax.imshow(data[0].T, origin="lower", cmap=cmap,
+                   vmin=-vmax, vmax=vmax, aspect="equal")
+    fig.colorbar(im, ax=ax, label=component)
+    title = ax.set_title(f"{component} (frame 0/{n_frames})")
+
+    axis_labels = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
+    xlabel, ylabel = axis_labels[slice_axis]
+    ax.set_xlabel(f"{xlabel} (cells)")
+    ax.set_ylabel(f"{ylabel} (cells)")
+
+    def _update(frame):
+        im.set_data(data[frame].T)
+        title.set_text(f"{component} (frame {frame}/{n_frames})")
+        return [im, title]
+
+    try:
+        from matplotlib.animation import FuncAnimation, PillowWriter
+        anim = FuncAnimation(fig, _update, frames=n_frames, blit=True, interval=1000//fps)
+        out_path = f"{filename}.gif"
+        anim.save(out_path, writer=PillowWriter(fps=fps), dpi=dpi)
+        plt.close(fig)
+        return out_path
+    except Exception:
+        # Fallback: save individual frames
+        import os
+        frame_dir = f"{filename}_frames"
+        os.makedirs(frame_dir, exist_ok=True)
+        for i in range(min(n_frames, 100)):
+            im.set_data(data[i].T)
+            title.set_text(f"{component} (frame {i}/{n_frames})")
+            fig.savefig(f"{frame_dir}/frame_{i:04d}.png", dpi=dpi)
+        plt.close(fig)
+        return frame_dir
+
+
 def save_screenshot(
     sim,
     state=None,
