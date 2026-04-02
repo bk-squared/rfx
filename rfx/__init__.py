@@ -31,6 +31,7 @@ from rfx.visualize import (
 )
 from rfx.visualize3d import (
     plot_geometry_3d, plot_field_3d, save_field_vtk, save_screenshot,
+    save_field_animation,
 )
 from rfx.simulation import SnapshotSpec
 from rfx.checkpoint import (
@@ -45,6 +46,8 @@ from rfx.optimize_objectives import (
     maximize_directivity,
 )
 from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
+from rfx.auto_config import auto_configure, SimConfig, analyze_features
+from rfx.harminv import harminv, harminv_from_probe, HarminvMode
 from rfx.probes.probes import (
     wire_port_voltage, wire_port_current,
     init_wire_sparam_probe, update_wire_sparam_probe,

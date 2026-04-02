@@ -116,6 +116,34 @@ class Result(NamedTuple):
     waveguide_ports: dict | None = None
     waveguide_sparams: dict | None = None
     snapshots: dict | None = None
+    dt: float | None = None
+    freq_range: tuple | None = None
+
+    def find_resonances(self, freq_range=None, probe_idx=0, source_decay_time=0.0):
+        """Extract resonant modes from probe time series via Harminv.
+
+        Parameters
+        ----------
+        freq_range : (f_min, f_max) in Hz, or None to use stored range
+        probe_idx : which probe to analyze
+        source_decay_time : time (s) after which source has decayed
+
+        Returns
+        -------
+        list of HarminvMode
+        """
+        from rfx.harminv import harminv_from_probe
+        ts = np.asarray(self.time_series)
+        if ts.ndim == 2:
+            ts = ts[:, probe_idx]
+        ts = ts.ravel()
+        if self.dt is None:
+            raise ValueError("dt not available in Result — run with store_dt=True")
+        fr = freq_range or self.freq_range
+        if fr is None:
+            raise ValueError("freq_range not specified")
+        return harminv_from_probe(ts, self.dt, fr,
+                                  source_decay_time=source_decay_time)
 
 
 # ---------------------------------------------------------------------------
@@ -1774,6 +1802,8 @@ class Simulation:
             waveguide_ports=waveguide_ports_result,
             waveguide_sparams=waveguide_sparams_result,
             snapshots=sim_result.snapshots,
+            dt=grid.dt,
+            freq_range=(self._freq_max / 10, self._freq_max),
         )
 
     def __repr__(self) -> str:
@@ -1794,3 +1824,44 @@ class Simulation:
             f"  tfsf={self._tfsf is not None},\n"
             f")"
         )
+
+    @classmethod
+    def auto(
+        cls,
+        freq_range: tuple[float, float],
+        *,
+        accuracy: str = "standard",
+        **kwargs,
+    ) -> "Simulation":
+        """Create a Simulation with auto-derived parameters.
+
+        Parameters
+        ----------
+        freq_range : (f_min, f_max) in Hz
+            Analysis frequency range. All parameters (dx, domain, CPML,
+            n_steps) are derived from this.
+        accuracy : "draft", "standard", or "high"
+        **kwargs : additional Simulation constructor args (override auto values)
+
+        Returns
+        -------
+        Simulation with optimal configuration for the frequency range.
+
+        Example
+        -------
+        >>> sim = Simulation.auto(freq_range=(1.5e9, 3.5e9))
+        >>> sim.add(Box(...), material="pec")
+        >>> result = sim.run(until_decay=1e-5)
+        >>> modes = result.find_resonances()
+        """
+        from rfx.auto_config import auto_configure
+        config = auto_configure([], freq_range, accuracy=accuracy)
+
+        if config.warnings:
+            import warnings
+            for w in config.warnings:
+                warnings.warn(f"auto_config: {w}")
+
+        sim_kwargs = config.to_sim_kwargs()
+        sim_kwargs.update(kwargs)
+        return cls(**sim_kwargs)
