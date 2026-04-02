@@ -116,11 +116,13 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     cb = (grid.dt / eps) / (1.0 + loss)
 
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    # Cb/dx normalization (same as make_port_source without impedance).
-    # This gives partial volume compensation: E_source ∝ dt/(eps·dx),
-    # so power ∝ (Cb/dx)²·dx³ = Cb²·dx — mild resolution dependence.
-    # Much better than raw source (power ∝ dx³) while staying stable.
-    waveform = (cb / grid.dx) * jax.vmap(waveform_fn)(times)
+    # Cb normalization: the source enters the update equation through
+    # the Cb coefficient (dt/eps/(1+loss)). This ensures:
+    # 1. No DC accumulation on PEC (Cb scales with dt)
+    # 2. Proper coupling to cavity modes
+    # Power scales as Cb²·dx³ — weaker at fine grids, but Harminv
+    # with bandpass filtering reliably extracts modes at all resolutions.
+    waveform = cb * jax.vmap(waveform_fn)(times)
     return SourceSpec(i=i, j=j, k=k,
                       component=component, waveform=waveform)
 
