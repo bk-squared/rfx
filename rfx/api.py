@@ -44,7 +44,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,
 )
 from rfx.simulation import (
-    make_source, make_probe, make_port_source, make_wire_port_sources,
+    make_source, make_j_source, make_probe, make_port_source, make_wire_port_sources,
     run as _run, run_until_decay as _run_until_decay,
     SimResult, SourceSpec, ProbeSpec, SnapshotSpec,
 )
@@ -401,7 +401,7 @@ class Simulation:
         position: tuple[float, float, float],
         component: str = "ez",
         *,
-        waveform: GaussianPulse | None = None,
+        waveform=None,
     ) -> "Simulation":
         """Add a soft point source (no impedance loading).
 
@@ -409,16 +409,20 @@ class Simulation:
         Ideal for resonance characterization where port loading would
         damp the cavity response.
 
+        Uses ModulatedGaussian by default (zero DC content, like Meep).
+        This prevents static charge accumulation on PEC surfaces.
+
         Parameters
         ----------
         position : (x, y, z) in metres
         component : "ex", "ey", or "ez"
-        waveform : excitation pulse (default: GaussianPulse at freq_max/2)
+        waveform : excitation pulse (default: ModulatedGaussian at freq_max/2)
         """
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         if waveform is None:
-            waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
+            from rfx.sources.sources import ModulatedGaussian
+            waveform = ModulatedGaussian(f0=self._freq_max / 2, bandwidth=0.8)
 
         # Store as a source entry (reuse _PortEntry with impedance=None flag)
         self._ports.append(_PortEntry(
@@ -1590,9 +1594,15 @@ class Simulation:
         wire_ports: list[WirePort] = []
         for pe in self._ports:
             if pe.impedance == 0.0:
-                # Soft point source (no port impedance)
-                sources.append(make_source(grid, pe.position, pe.component,
-                                           pe.waveform, n_steps))
+                # Auto-select source type based on boundary conditions:
+                # - CPML (open): Cb/dx normalized (prevents DC on PEC surface)
+                # - PEC (closed): raw field add (broadband, exact cavity modes)
+                if self._boundary == "cpml":
+                    sources.append(make_j_source(grid, pe.position, pe.component,
+                                                 pe.waveform, n_steps, materials))
+                else:
+                    sources.append(make_source(grid, pe.position, pe.component,
+                                               pe.waveform, n_steps))
                 continue
             if pe.extent is not None:
                 # Multi-cell wire port

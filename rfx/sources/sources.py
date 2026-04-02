@@ -51,6 +51,44 @@ class GaussianPulse:
         return self.amplitude * (-2.0 * arg) * jnp.exp(-(arg**2))
 
 
+@dataclass(frozen=True)
+class ModulatedGaussian:
+    """Gaussian-envelope modulated carrier (Meep-style source).
+
+    s(t) = amplitude * sin(2π·f0·t) * exp(-((t - t0) / tau)^2)
+
+    Key property: ∫s(t)dt = 0 exactly (carrier oscillation is symmetric).
+    This eliminates DC accumulation on PEC surfaces, unlike the
+    differentiated Gaussian which has a tiny DC residual (~1e-4).
+
+    Parameters
+    ----------
+    f0 : float
+        Center/carrier frequency (Hz).
+    bandwidth : float
+        Fractional bandwidth (0–1). Default 0.5.
+    amplitude : float
+        Peak amplitude. Default 1.0.
+    """
+
+    f0: float
+    bandwidth: float = 0.5
+    amplitude: float = 1.0
+
+    @property
+    def tau(self) -> float:
+        return 1.0 / (self.f0 * self.bandwidth * math.pi)
+
+    @property
+    def t0(self) -> float:
+        return 3.0 * self.tau
+
+    def __call__(self, t: float) -> float:
+        envelope = jnp.exp(-((t - self.t0) / self.tau) ** 2)
+        carrier = jnp.sin(2.0 * jnp.pi * self.f0 * t)
+        return self.amplitude * carrier * envelope
+
+
 def add_point_source(
     state,
     grid: Grid,

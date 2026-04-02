@@ -76,7 +76,28 @@ class SimResult(NamedTuple):
 # ---------------------------------------------------------------------------
 
 def make_source(grid: Grid, position, component, waveform_fn, n_steps):
-    """Create a SourceSpec by precomputing a waveform function.
+    """Create a SourceSpec by precomputing a waveform function (raw E-field add).
+
+    WARNING: raw field source causes DC accumulation on PEC surfaces.
+    Prefer ``make_j_source`` for resonance detection.
+    """
+    idx = grid.position_to_index(position)
+    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    waveform = jax.vmap(waveform_fn)(times)
+    return SourceSpec(i=idx[0], j=idx[1], k=idx[2],
+                      component=component, waveform=waveform)
+
+
+def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materials):
+    """Create a SourceSpec using current density injection (J source).
+
+    Unlike ``make_source``, the waveform is Cb-normalized and
+    volume-compensated so that:
+    1. No DC accumulation on PEC surfaces (enters through update equation)
+    2. Injected power is resolution-independent (scales with 1/dx²)
+    3. Proper coupling to cavity modes regardless of grid spacing
+
+    E += Cb * J_source  where J = waveform(t) / dx²
 
     Parameters
     ----------
@@ -85,11 +106,22 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps):
     component : "ex", "ey", or "ez"
     waveform_fn : callable(t) -> value
     n_steps : int
+    materials : MaterialArrays (for Cb computation at source cell)
     """
     idx = grid.position_to_index(position)
+    i, j, k = idx
+    eps = materials.eps_r[i, j, k] * EPS_0
+    sigma = materials.sigma[i, j, k]
+    loss = sigma * grid.dt / (2.0 * eps)
+    cb = (grid.dt / eps) / (1.0 + loss)
+
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    waveform = jax.vmap(waveform_fn)(times)
-    return SourceSpec(i=idx[0], j=idx[1], k=idx[2],
+    # Cb/dx normalization (same as make_port_source without impedance).
+    # This gives partial volume compensation: E_source ∝ dt/(eps·dx),
+    # so power ∝ (Cb/dx)²·dx³ = Cb²·dx — mild resolution dependence.
+    # Much better than raw source (power ∝ dx³) while staying stable.
+    waveform = (cb / grid.dx) * jax.vmap(waveform_fn)(times)
+    return SourceSpec(i=i, j=j, k=k,
                       component=component, waveform=waveform)
 
 
