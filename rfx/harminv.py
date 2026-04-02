@@ -202,4 +202,20 @@ def harminv_from_probe(
         return []
 
     f_min, f_max = freq_range
+
+    # FFT-based bandpass filter to isolate modes in freq_range.
+    # This removes DC surface charge artifacts and out-of-band modes
+    # that can overwhelm the target resonance (especially at fine dx).
+    fft_data = np.fft.rfft(windowed)
+    fft_freqs = np.fft.rfftfreq(len(windowed), d=dt)
+    bp_mask = (fft_freqs >= f_min * 0.8) & (fft_freqs <= f_max * 1.2)
+    windowed = np.fft.irfft(fft_data * bp_mask, n=len(windowed))
+
+    # Subsample for Harminv speed (SVD scales as N³)
+    max_samples = kwargs.pop("max_samples", 3000)
+    if len(windowed) > max_samples:
+        step = len(windowed) // max_samples
+        windowed = windowed[::step][:max_samples]
+        dt = dt * step
+
     return harminv(windowed, dt, f_min, f_max, **kwargs)
