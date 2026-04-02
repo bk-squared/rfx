@@ -47,6 +47,25 @@ class ProbeSpec(NamedTuple):
     component: str
 
 
+class WirePortSParamSpec(NamedTuple):
+    """Wire port S-param DFT specification for the compiled runner.
+
+    Pre-computed metadata for inline V/I DFT accumulation inside
+    jax.lax.scan, avoiding the separate Python-loop S-param extraction.
+
+    mid_i, mid_j, mid_k: midpoint cell for V and I measurement.
+    component: 'ez', 'ex', or 'ey'.
+    freqs: (n_freqs,) frequency array.
+    impedance: port reference impedance (Z0).
+    """
+    mid_i: int
+    mid_j: int
+    mid_k: int
+    component: str
+    freqs: jnp.ndarray
+    impedance: float
+
+
 class SimResult(NamedTuple):
     """Compiled simulation output.
 
@@ -58,16 +77,17 @@ class SimResult(NamedTuple):
         Final accumulated DFT plane probes.
     waveguide_ports : tuple[WaveguidePortConfig, ...] or None
         Final accumulated waveguide-port configs.
+    wire_port_sparams : tuple | None
+        Final V/I/V_inc DFT accumulators for wire port S-params.
     snapshots : dict[str, ndarray] or None
-        Field snapshots keyed by component name.  Each array has shape
-        (n_steps, ...) where ``...`` is either the full grid shape or
-        a 2-D slice depending on SnapshotSpec.
+        Field snapshots keyed by component name.
     """
     state: FDTDState
     time_series: jnp.ndarray
     ntff_data: object = None
     dft_planes: tuple | None = None
     waveguide_ports: tuple | None = None
+    wire_port_sparams: tuple | None = None
     snapshots: dict | None = None
 
 
@@ -362,6 +382,7 @@ def run(
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
     pec_mask: object | None = None,
+    wire_port_sparams: list | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -447,6 +468,8 @@ def run(
     use_waveguide_ports = len(waveguide_ports) > 0
     use_snapshot = snapshot is not None
     use_pec_mask = pec_mask is not None
+    wire_port_sparams = wire_port_sparams or []
+    use_wire_sparams = len(wire_port_sparams) > 0
 
     # ---- initialise states ----
     fdtd = init_state(grid.shape)
@@ -494,6 +517,17 @@ def run(
             )
             for cfg in waveguide_ports
         )
+    if use_wire_sparams:
+        # Initialize V, I, V_inc DFT accumulators per wire port
+        carry_init["wire_sparam_accs"] = tuple(
+            (
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_dft
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # i_dft
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_inc_dft
+            )
+            for wp in wire_port_sparams
+        )
+        wire_sparam_meta = tuple(wire_port_sparams)
 
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
     if sources:
@@ -610,6 +644,29 @@ def run(
                     )
                 )
 
+        # Wire port S-param DFT accumulation (JIT-integrated)
+        if use_wire_sparams:
+            new_wire_accs = []
+            for accs, wp_meta in zip(carry["wire_sparam_accs"], wire_sparam_meta):
+                v_dft, i_dft, vinc_dft = accs
+                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
+                v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
+                if wp_meta.component == "ez":
+                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
+                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dx
+                elif wp_meta.component == "ex":
+                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
+                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dx
+                else:
+                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
+                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dx
+                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs * t) * dt
+                new_wire_accs.append((
+                    v_dft + v * phase,
+                    i_dft + i_val * phase,
+                    vinc_dft,
+                ))
+
         # Probe samples
         samples = [getattr(st, pc)[pi, pj, pk]
                    for pi, pj, pk, pc in prb_meta]
@@ -659,6 +716,8 @@ def run(
             new_carry["dft_planes"] = tuple(new_dft_planes)
         if use_waveguide_ports:
             new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
+        if use_wire_sparams:
+            new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
 
         return new_carry, output
 
@@ -696,12 +755,20 @@ def run(
             for cfg_meta, accs in zip(waveguide_meta, final_carry["waveguide_port_accs"])
         )
 
+    final_wire_sparams = None
+    if use_wire_sparams:
+        final_wire_sparams = tuple(
+            (wp_meta, accs)
+            for wp_meta, accs in zip(wire_sparam_meta, final_carry["wire_sparam_accs"])
+        )
+
     return SimResult(
         state=final_carry["fdtd"],
         time_series=time_series,
         ntff_data=final_carry.get("ntff"),
         dft_planes=final_dft_planes,
         waveguide_ports=final_waveguide_ports,
+        wire_port_sparams=final_wire_sparams,
         snapshots=snapshots,
     )
 
