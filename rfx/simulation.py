@@ -327,6 +327,7 @@ def run(
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
+    pec_mask: object | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -411,6 +412,7 @@ def run(
     use_dft_planes = len(dft_planes) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
     use_snapshot = snapshot is not None
+    use_pec_mask = pec_mask is not None
 
     # ---- initialise states ----
     fdtd = init_state(grid.shape)
@@ -531,6 +533,10 @@ def run(
 
         if pec_axes:
             st = apply_pec(st, axes=pec_axes)
+
+        if use_pec_mask:
+            from rfx.boundaries.pec import apply_pec_mask
+            st = apply_pec_mask(st, pec_mask)
 
         # Soft sources
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
@@ -695,6 +701,7 @@ def run_until_decay(
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
+    pec_mask: object | None = None,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -763,6 +770,7 @@ def run_until_decay(
     use_ntff = ntff is not None
     use_dft_planes = len(dft_planes) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
+    use_pec_mask = pec_mask is not None
 
     # ---- initialise states ----
     fdtd = init_state(grid.shape)
@@ -858,6 +866,10 @@ def run_until_decay(
 
         if pec_axes:
             st = apply_pec(st, axes=pec_axes)
+
+        if use_pec_mask:
+            from rfx.boundaries.pec import apply_pec_mask
+            st = apply_pec_mask(st, pec_mask)
 
         # Soft sources
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):

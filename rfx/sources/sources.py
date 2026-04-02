@@ -224,12 +224,13 @@ def _wire_port_cells(grid, port):
 def setup_wire_port(grid, port, materials):
     """Distribute port impedance across all wire cells.
 
-    Each cell gets sigma_port = 1 / (Z0_total * dx) / N_cells,
-    equivalent to N resistors in series.
+    For N cells in series with total impedance Z0:
+      R_cell = Z0 / N
+      sigma_cell = 1/(R_cell * dx) = N / (Z0 * dx)
     """
     cells = _wire_port_cells(grid, port)
     n_cells = max(len(cells), 1)
-    sigma_per_cell = 1.0 / (port.impedance * grid.dx) / n_cells
+    sigma_per_cell = n_cells / (port.impedance * grid.dx)
 
     sigma = materials.sigma
     for cell in cells:

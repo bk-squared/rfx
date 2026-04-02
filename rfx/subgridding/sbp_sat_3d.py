@@ -113,23 +113,38 @@ def init_subgrid_3d(
     return config, state
 
 
-def _update_3d(ex, ey, ez, hx, hy, hz, dt, dx):
-    """Full 3D Yee update using rfx core kernels."""
+def _update_3d(ex, ey, ez, hx, hy, hz, dt, dx,
+               mats=None, pec_mask=None, boundary_pec=True):
+    """Full 3D Yee update using rfx core kernels.
+
+    Parameters
+    ----------
+    mats : MaterialArrays or None
+        If None, uses vacuum.
+    pec_mask : array or None
+        Boolean mask for interior PEC geometry.
+    boundary_pec : bool
+        If True, apply PEC at domain boundaries.
+    """
     from rfx.core.yee import FDTDState, MaterialArrays, update_h, update_e
-    from rfx.boundaries.pec import apply_pec
+    from rfx.boundaries.pec import apply_pec, apply_pec_mask
 
     shape = ex.shape
     state = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
                       step=jnp.array(0, dtype=jnp.int32))
-    mats = MaterialArrays(
-        eps_r=jnp.ones(shape, dtype=jnp.float32),
-        sigma=jnp.zeros(shape, dtype=jnp.float32),
-        mu_r=jnp.ones(shape, dtype=jnp.float32),
-    )
+    if mats is None:
+        mats = MaterialArrays(
+            eps_r=jnp.ones(shape, dtype=jnp.float32),
+            sigma=jnp.zeros(shape, dtype=jnp.float32),
+            mu_r=jnp.ones(shape, dtype=jnp.float32),
+        )
 
     state = update_h(state, mats, dt, dx)
     state = update_e(state, mats, dt, dx)
-    state = apply_pec(state)
+    if boundary_pec:
+        state = apply_pec(state)
+    if pec_mask is not None:
+        state = apply_pec_mask(state, pec_mask)
 
     return state.ex, state.ey, state.ez, state.hx, state.hy, state.hz
 
@@ -149,14 +164,15 @@ def _upsample_2d(coarse_face, ny_f, nz_f, ratio):
 
 
 def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
-    """Shared-node interface coupling for all tangential E-components on 6 faces.
+    """SAT penalty coupling for tangential E-components on 6 faces.
 
-    Uses the combined SBP norm p_shared = dx_c/2 + dx_f/2, matching the
-    1D/2D shared-node approach for energy conservation.
+    Uses SAT (Simultaneous Approximation Terms) instead of hard
+    synchronization. Adds correction proportional to the mismatch
+    between coarse and fine boundary values, preserving outgoing
+    wave information while coupling the two grids.
 
-    For each interface face, tangential E-components are synchronized:
-    the coarse boundary value is set to the average of coarse and
-    fine (downsampled) values, weighted by SBP norms.
+    SAT penalty: E += alpha * (E_other - E_self)
+    where alpha = tau * min(dx_other/dx_self, 1.0) for stability.
     """
     ex_c, ey_c, ez_c = state_c_fields[:3]
     ex_f, ey_f, ez_f = state_f_fields[:3]
@@ -166,103 +182,67 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
     ni = config.fi_hi - fi
     nj = config.fj_hi - fj
     nk = config.fk_hi - fk
-    w_c = config.dx_c / 2.0
-    w_f = config.dx_f / 2.0
-    w_total = w_c + w_f
 
-    # Helper: weighted average of coarse and fine boundary values
-    def _sync(ec_face, ef_face_ds):
-        """Weighted average: (w_c * ec + w_f * ef_ds) / (w_c + w_f)."""
-        return (w_c * ec_face + w_f * ef_face_ds) / w_total
+    # SAT penalty strengths: coarse gets less correction (larger cell),
+    # fine gets more correction (smaller cell, tighter CFL)
+    tau = config.tau
+    alpha_c = tau / ratio   # gentle correction on coarse side
+    alpha_f = tau            # stronger correction on fine side
+
+    def _sat_couple(ec_arr, ef_arr, c_slice, f_slice,
+                    nj_ds, nk_ds, ny_up, nz_up):
+        """Apply SAT penalty on one face for one E-component."""
+        ec_face = ec_arr[c_slice]
+        ef_face = ef_arr[f_slice]
+        ef_ds = _downsample_2d(ef_face, nj_ds, nk_ds, ratio)
+        ec_us = _upsample_2d(ec_face, ny_up, nz_up, ratio)
+
+        # Penalty corrections (additive, not replacement)
+        ec_arr = ec_arr.at[c_slice].add(alpha_c * (ef_ds - ec_face))
+        ef_arr = ef_arr.at[f_slice].add(alpha_f * (ec_us - ef_face))
+        return ec_arr, ef_arr
 
     # === x-lo face (i = fi_lo): tangential = Ey, Ez ===
     if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
-        # Ey
-        ec = ey_c[fi, fj:fj+nj, fk:fk+nk]
-        ef_ds = _downsample_2d(ey_f[0, :, :], nj, nk, ratio)
-        synced = _sync(ec, ef_ds)
-        ey_c = ey_c.at[fi, fj:fj+nj, fk:fk+nk].set(synced)
-        ey_f = ey_f.at[0, :, :].set(_upsample_2d(synced, config.ny_f, config.nz_f, ratio))
+        c_sl = (fi, slice(fj, fj+nj), slice(fk, fk+nk))
+        f_sl = (0, slice(None), slice(None))
+        ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
+        ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
 
-        # Ez
-        ec = ez_c[fi, fj:fj+nj, fk:fk+nk]
-        ef_ds = _downsample_2d(ez_f[0, :, :], nj, nk, ratio)
-        synced = _sync(ec, ef_ds)
-        ez_c = ez_c.at[fi, fj:fj+nj, fk:fk+nk].set(synced)
-        ez_f = ez_f.at[0, :, :].set(_upsample_2d(synced, config.ny_f, config.nz_f, ratio))
-
-    # === x-hi face (i = fi_hi - 1): tangential = Ey, Ez ===
+    # === x-hi face ===
     if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
-        i_c = config.fi_hi - 1
-        ec = ey_c[i_c, fj:fj+nj, fk:fk+nk]
-        ef_ds = _downsample_2d(ey_f[-1, :, :], nj, nk, ratio)
-        synced = _sync(ec, ef_ds)
-        ey_c = ey_c.at[i_c, fj:fj+nj, fk:fk+nk].set(synced)
-        ey_f = ey_f.at[-1, :, :].set(_upsample_2d(synced, config.ny_f, config.nz_f, ratio))
-
-        ec = ez_c[i_c, fj:fj+nj, fk:fk+nk]
-        ef_ds = _downsample_2d(ez_f[-1, :, :], nj, nk, ratio)
-        synced = _sync(ec, ef_ds)
-        ez_c = ez_c.at[i_c, fj:fj+nj, fk:fk+nk].set(synced)
-        ez_f = ez_f.at[-1, :, :].set(_upsample_2d(synced, config.ny_f, config.nz_f, ratio))
+        c_sl = (config.fi_hi - 1, slice(fj, fj+nj), slice(fk, fk+nk))
+        f_sl = (-1, slice(None), slice(None))
+        ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
+        ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
 
     # === y-lo face (j = fj_lo): tangential = Ex, Ez ===
     if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
-        ec = ex_c[fi:fi+ni, fj, fk:fk+nk]
-        ef_ds = _downsample_2d(ex_f[:, 0, :], ni, nk, ratio)
-        synced = _sync(ec, ef_ds)
-        ex_c = ex_c.at[fi:fi+ni, fj, fk:fk+nk].set(synced)
-        ex_f = ex_f.at[:, 0, :].set(_upsample_2d(synced, config.nx_f, config.nz_f, ratio))
+        c_sl = (slice(fi, fi+ni), fj, slice(fk, fk+nk))
+        f_sl = (slice(None), 0, slice(None))
+        ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
+        ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
 
-        ec = ez_c[fi:fi+ni, fj, fk:fk+nk]
-        ef_ds = _downsample_2d(ez_f[:, 0, :], ni, nk, ratio)
-        synced = _sync(ec, ef_ds)
-        ez_c = ez_c.at[fi:fi+ni, fj, fk:fk+nk].set(synced)
-        ez_f = ez_f.at[:, 0, :].set(_upsample_2d(synced, config.nx_f, config.nz_f, ratio))
-
-    # === y-hi face (j = fj_hi - 1): tangential = Ex, Ez ===
+    # === y-hi face ===
     if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
-        j_c = config.fj_hi - 1
-        ec = ex_c[fi:fi+ni, j_c, fk:fk+nk]
-        ef_ds = _downsample_2d(ex_f[:, -1, :], ni, nk, ratio)
-        synced = _sync(ec, ef_ds)
-        ex_c = ex_c.at[fi:fi+ni, j_c, fk:fk+nk].set(synced)
-        ex_f = ex_f.at[:, -1, :].set(_upsample_2d(synced, config.nx_f, config.nz_f, ratio))
-
-        ec = ez_c[fi:fi+ni, j_c, fk:fk+nk]
-        ef_ds = _downsample_2d(ez_f[:, -1, :], ni, nk, ratio)
-        synced = _sync(ec, ef_ds)
-        ez_c = ez_c.at[fi:fi+ni, j_c, fk:fk+nk].set(synced)
-        ez_f = ez_f.at[:, -1, :].set(_upsample_2d(synced, config.nx_f, config.nz_f, ratio))
+        c_sl = (slice(fi, fi+ni), config.fj_hi - 1, slice(fk, fk+nk))
+        f_sl = (slice(None), -1, slice(None))
+        ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
+        ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
 
     # === z-lo face (k = fk_lo): tangential = Ex, Ey ===
     if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
-        ec = ex_c[fi:fi+ni, fj:fj+nj, fk]
-        ef_ds = _downsample_2d(ex_f[:, :, 0], ni, nj, ratio)
-        synced = _sync(ec, ef_ds)
-        ex_c = ex_c.at[fi:fi+ni, fj:fj+nj, fk].set(synced)
-        ex_f = ex_f.at[:, :, 0].set(_upsample_2d(synced, config.nx_f, config.ny_f, ratio))
+        c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), fk)
+        f_sl = (slice(None), slice(None), 0)
+        ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
+        ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
 
-        ec = ey_c[fi:fi+ni, fj:fj+nj, fk]
-        ef_ds = _downsample_2d(ey_f[:, :, 0], ni, nj, ratio)
-        synced = _sync(ec, ef_ds)
-        ey_c = ey_c.at[fi:fi+ni, fj:fj+nj, fk].set(synced)
-        ey_f = ey_f.at[:, :, 0].set(_upsample_2d(synced, config.nx_f, config.ny_f, ratio))
-
-    # === z-hi face (k = fk_hi - 1): tangential = Ex, Ey ===
+    # === z-hi face ===
     if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
-        k_c = config.fk_hi - 1
-        ec = ex_c[fi:fi+ni, fj:fj+nj, k_c]
-        ef_ds = _downsample_2d(ex_f[:, :, -1], ni, nj, ratio)
-        synced = _sync(ec, ef_ds)
-        ex_c = ex_c.at[fi:fi+ni, fj:fj+nj, k_c].set(synced)
-        ex_f = ex_f.at[:, :, -1].set(_upsample_2d(synced, config.nx_f, config.ny_f, ratio))
-
-        ec = ey_c[fi:fi+ni, fj:fj+nj, k_c]
-        ef_ds = _downsample_2d(ey_f[:, :, -1], ni, nj, ratio)
-        synced = _sync(ec, ef_ds)
-        ey_c = ey_c.at[fi:fi+ni, fj:fj+nj, k_c].set(synced)
-        ey_f = ey_f.at[:, :, -1].set(_upsample_2d(synced, config.nx_f, config.ny_f, ratio))
+        c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), config.fk_hi - 1)
+        f_sl = (slice(None), slice(None), -1)
+        ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
+        ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
 
     return (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f)
 
@@ -270,24 +250,38 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
 def step_subgrid_3d(
     state: SubgridState3D,
     config: SubgridConfig3D,
+    *,
+    mats_c=None,
+    mats_f=None,
+    pec_mask_c=None,
+    pec_mask_f=None,
 ) -> SubgridState3D:
     """One timestep of coupled 3D coarse + fine grids.
 
     Both grids use the SAME dt (global timestep) for energy conservation.
+
+    Parameters
+    ----------
+    mats_c, mats_f : MaterialArrays or None
+        Materials for coarse/fine grids. None = vacuum.
+    pec_mask_c, pec_mask_f : array or None
+        Boolean PEC masks for coarse/fine grids.
     """
     dt = config.dt
 
-    # Update coarse grid
+    # Update coarse grid (with boundary PEC)
     ex_c, ey_c, ez_c, hx_c, hy_c, hz_c = _update_3d(
         state.ex_c, state.ey_c, state.ez_c,
         state.hx_c, state.hy_c, state.hz_c,
-        dt, config.dx_c)
+        dt, config.dx_c, mats=mats_c, pec_mask=pec_mask_c,
+        boundary_pec=True)
 
-    # Update fine grid
+    # Update fine grid (no boundary PEC — interfaces handled by coupling)
     ex_f, ey_f, ez_f, hx_f, hy_f, hz_f = _update_3d(
         state.ex_f, state.ey_f, state.ez_f,
         state.hx_f, state.hy_f, state.hz_f,
-        dt, config.dx_f)
+        dt, config.dx_f, mats=mats_f, pec_mask=pec_mask_f,
+        boundary_pec=False)
 
     # Shared-node coupling: all tangential E on all 6 faces, bidirectional
     (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = _shared_node_coupling_3d(

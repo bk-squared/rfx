@@ -29,6 +29,9 @@ from rfx.visualize import (
     plot_field_slice, plot_s_params, plot_radiation_pattern, plot_time_series,
     plot_rcs,
 )
+from rfx.visualize3d import (
+    plot_geometry_3d, plot_field_3d, save_field_vtk, save_screenshot,
+)
 from rfx.simulation import SnapshotSpec
 from rfx.checkpoint import (
     save_state, load_state, save_snapshots, load_snapshots,
@@ -42,3 +45,8 @@ from rfx.optimize_objectives import (
     maximize_directivity,
 )
 from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
+from rfx.probes.probes import (
+    wire_port_voltage, wire_port_current,
+    init_wire_sparam_probe, update_wire_sparam_probe,
+    extract_s_matrix_wire,
+)

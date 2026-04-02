@@ -34,7 +34,7 @@ from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port, Wi
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz, drude_pole, lorentz_pole
 from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
-from rfx.probes.probes import extract_s_matrix, init_dft_plane_probe
+from rfx.probes.probes import extract_s_matrix, extract_s_matrix_wire, init_dft_plane_probe
 from rfx.sources.waveguide_port import (
     WaveguidePort,
     extract_waveguide_s_matrix,
@@ -285,6 +285,40 @@ class Simulation:
         self._dft_planes: list[_DFTPlaneEntry] = []
         self._waveguide_ports: list[_WaveguidePortEntry] = []
         self._periodic_axes: str = ""
+        self._refinement: dict | None = None
+
+    # ---- refinement (subgridding) ----
+
+    def add_refinement(
+        self,
+        z_range: tuple[float, float],
+        *,
+        ratio: int = 4,
+        xy_margin: float | None = None,
+    ) -> "Simulation":
+        """Add a z-axis refinement region for SBP-SAT subgridding.
+
+        The fine grid covers the specified z-range (plus xy_margin around
+        geometry) at dx_fine = dx_coarse / ratio.
+
+        Parameters
+        ----------
+        z_range : (z_lo, z_hi) in metres
+            Physical z-range for the fine region.
+        ratio : int
+            Refinement ratio (fine cells per coarse cell). Default 4.
+        xy_margin : float or None
+            Extra xy margin around geometry for the fine region.
+            Default: 2 * dx_coarse.
+        """
+        if self._refinement is not None:
+            raise ValueError("Only one refinement region is supported")
+        self._refinement = {
+            "z_range": z_range,
+            "ratio": ratio,
+            "xy_margin": xy_margin,
+        }
+        return self
 
     # ---- material registration ----
 
@@ -825,15 +859,25 @@ class Simulation:
             mode=self._mode,
         )
 
+    # Threshold above which sigma is treated as PEC (use mask instead).
+    _PEC_SIGMA_THRESHOLD = 1e6
+
     def _assemble_materials(
         self,
         grid: Grid,
-    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None]:
-        """Build material arrays plus per-pole dispersion masks."""
+    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None]:
+        """Build material arrays plus per-pole dispersion masks.
+
+        Returns
+        -------
+        materials, debye_spec, lorentz_spec, pec_mask
+            pec_mask is a boolean array (True at PEC cells) or None.
+        """
         # Start with vacuum
         eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
         sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
         mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
+        pec_mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
 
         # Collect per-pole masks so distinct materials do not inherit
         # each other's dispersion poles.
@@ -843,9 +887,14 @@ class Simulation:
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
             mask = entry.shape.mask(grid)
-            eps_r = jnp.where(mask, mat.eps_r, eps_r)
-            sigma = jnp.where(mask, mat.sigma, sigma)
-            mu_r = jnp.where(mask, mat.mu_r, mu_r)
+
+            if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
+                # True PEC: mark in mask, keep eps/sigma at vacuum values
+                pec_mask = pec_mask | mask
+            else:
+                eps_r = jnp.where(mask, mat.eps_r, eps_r)
+                sigma = jnp.where(mask, mat.sigma, sigma)
+                mu_r = jnp.where(mask, mat.mu_r, mu_r)
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:
@@ -879,7 +928,8 @@ class Simulation:
             lorentz_masks = [lorentz_masks_by_pole[pole] for pole in lorentz_poles]
             lorentz_spec = (lorentz_poles, lorentz_masks)
 
-        return materials, debye_spec, lorentz_spec
+        has_pec = bool(jnp.any(pec_mask))
+        return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None
 
     @staticmethod
     def _init_dispersion(
@@ -903,7 +953,7 @@ class Simulation:
 
     def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Build material arrays and optional Debye/Lorentz coefficients."""
-        materials, debye_spec, lorentz_spec = self._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, _ = self._assemble_materials(grid)
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec)
         return materials, debye, lorentz
@@ -1042,7 +1092,7 @@ class Simulation:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, _ = self._assemble_materials(grid)
         materials = base_materials
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
@@ -1168,6 +1218,203 @@ class Simulation:
                     f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
                 )
 
+    # ---- subgridded run ----
+
+    def _run_subgridded(self, grid_coarse, base_materials_coarse, pec_mask_coarse,
+                        n_steps):
+        """Run simulation using SBP-SAT subgridding."""
+        from rfx.subgridding.sbp_sat_3d import SubgridConfig3D, SubgridState3D
+        from rfx.subgridding.runner import run_subgridded as _run_sg
+
+        ref = self._refinement
+        ratio = ref["ratio"]
+        z_lo, z_hi = ref["z_range"]
+        dx_c = grid_coarse.dx
+        dx_f = dx_c / ratio
+        xy_margin = ref["xy_margin"] if ref["xy_margin"] is not None else 2 * dx_c
+
+        # Map z_range to coarse grid indices
+        cpml = grid_coarse.cpml_layers
+        fk_lo = max(int(round(z_lo / dx_c)) + cpml, cpml)
+        fk_hi = min(int(round(z_hi / dx_c)) + cpml + 1, grid_coarse.nz - cpml)
+
+        # Fine region covers full x,y for simplicity (with cpml margin)
+        fi_lo = cpml
+        fi_hi = grid_coarse.nx - cpml
+        fj_lo = cpml
+        fj_hi = grid_coarse.ny - cpml
+
+        # Fine grid dimensions
+        nx_f = (fi_hi - fi_lo) * ratio
+        ny_f = (fj_hi - fj_lo) * ratio
+        nz_f = (fk_hi - fk_lo) * ratio
+
+        # Global timestep (limited by fine grid CFL)
+        import numpy as np_
+        from rfx.core.yee import EPS_0, MU_0
+        C0_val = 1.0 / np_.sqrt(float(EPS_0) * float(MU_0))
+        dt = 0.45 * dx_f / (C0_val * np_.sqrt(3))
+
+        config = SubgridConfig3D(
+            nx_c=grid_coarse.nx, ny_c=grid_coarse.ny, nz_c=grid_coarse.nz,
+            dx_c=dx_c,
+            fi_lo=fi_lo, fi_hi=fi_hi,
+            fj_lo=fj_lo, fj_hi=fj_hi,
+            fk_lo=fk_lo, fk_hi=fk_hi,
+            nx_f=nx_f, ny_f=ny_f, nz_f=nz_f,
+            dx_f=dx_f, dt=float(dt), ratio=ratio, tau=0.5,
+        )
+
+        # Build fine-grid materials by rasterizing geometry at fine resolution
+        shape_f = (nx_f, ny_f, nz_f)
+
+        # Create a Grid for fine region (for position_to_index utility)
+        fine_domain = (nx_f * dx_f, ny_f * dx_f, nz_f * dx_f)
+        fine_grid = Grid(
+            freq_max=self._freq_max,
+            domain=fine_domain,
+            dx=dx_f,
+            cpml_layers=0,
+        )
+        # Override shape to match exactly (Grid may add +1 rounding)
+        fine_grid._shape_override = shape_f
+
+        # Rasterize geometry into fine grid materials
+        eps_r_f = jnp.ones(shape_f, dtype=jnp.float32)
+        sigma_f = jnp.zeros(shape_f, dtype=jnp.float32)
+        mu_r_f = jnp.ones(shape_f, dtype=jnp.float32)
+        pec_mask_f = jnp.zeros(shape_f, dtype=jnp.bool_)
+
+        # Offset: fine grid origin in physical coords
+        x_off = (fi_lo - cpml) * dx_c
+        y_off = (fj_lo - cpml) * dx_c
+        z_off = (fk_lo - cpml) * dx_c
+
+        for entry in self._geometry:
+            mat = self._resolve_material(entry.material_name)
+            shape = entry.shape
+            if hasattr(shape, 'corner1') and hasattr(shape, 'corner2'):
+                from rfx.geometry.csg import Box
+                # Offset shape to fine grid local coordinates
+                c1 = shape.corner1
+                c2 = shape.corner2
+                # Map physical coords to fine grid indices
+                i0 = max(0, int(round((c1[0] - x_off) / dx_f)))
+                i1 = min(nx_f, int(round((c2[0] - x_off) / dx_f)))
+                j0 = max(0, int(round((c1[1] - y_off) / dx_f)))
+                j1 = min(ny_f, int(round((c2[1] - y_off) / dx_f)))
+                k0 = max(0, int(round((c1[2] - z_off) / dx_f)))
+                k1 = min(nz_f, int(round((c2[2] - z_off) / dx_f)))
+                if i0 < i1 and j0 < j1 and k0 < k1:
+                    mask = jnp.zeros(shape_f, dtype=jnp.bool_)
+                    mask = mask.at[i0:i1, j0:j1, k0:k1].set(True)
+                    if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
+                        pec_mask_f = pec_mask_f | mask
+                    else:
+                        eps_r_f = jnp.where(mask, mat.eps_r, eps_r_f)
+                        sigma_f = jnp.where(mask, mat.sigma, sigma_f)
+                        mu_r_f = jnp.where(mask, mat.mu_r, mu_r_f)
+
+        mats_f = MaterialArrays(eps_r=eps_r_f, sigma=sigma_f, mu_r=mu_r_f)
+        has_pec_f = bool(jnp.any(pec_mask_f))
+
+        # Helper: convert physical position to fine-grid index
+        def _pos_to_fine_idx(pos):
+            return (
+                int(round((pos[0] - x_off) / dx_f)),
+                int(round((pos[1] - y_off) / dx_f)),
+                int(round((pos[2] - z_off) / dx_f)),
+            )
+
+        # Build sources on fine grid
+        import jax
+        sources_f = []
+        times = jnp.arange(n_steps, dtype=jnp.float32) * dt
+
+        for pe in self._ports:
+            axis_map = {"ex": 0, "ey": 1, "ez": 2}
+            axis = axis_map[pe.component]
+
+            if pe.extent is not None:
+                # Wire port: compute cells manually
+                pos_f = (pe.position[0] - x_off, pe.position[1] - y_off,
+                         pe.position[2] - z_off)
+                idx_start = _pos_to_fine_idx(pe.position)
+                end_pos = list(pe.position)
+                end_pos[axis] += pe.extent
+                idx_end = _pos_to_fine_idx(tuple(end_pos))
+
+                lo = min(idx_start[axis], idx_end[axis])
+                hi = max(idx_start[axis], idx_end[axis])
+                cells = []
+                for a in range(lo, hi + 1):
+                    cell = list(idx_start)
+                    cell[axis] = a
+                    cells.append(tuple(cell))
+
+                n_cells = max(len(cells), 1)
+                # Distribute port impedance
+                sigma_port_per_cell = n_cells / (pe.impedance * dx_f)
+                for cell in cells:
+                    i, j, k = cell
+                    mats_f = mats_f._replace(
+                        sigma=mats_f.sigma.at[i, j, k].add(sigma_port_per_cell))
+                    pec_mask_f = pec_mask_f.at[i, j, k].set(False)
+
+                # Precompute Cb-corrected waveforms
+                for cell in cells:
+                    i, j, k = cell
+                    eps = float(mats_f.eps_r[i, j, k]) * EPS_0
+                    sigma_val = float(mats_f.sigma[i, j, k])
+                    loss = sigma_val * dt / (2.0 * eps)
+                    cb = (dt / eps) / (1.0 + loss)
+                    waveform = (cb / dx_f) * jax.vmap(pe.waveform)(times) / n_cells
+                    sources_f.append((i, j, k, pe.component, np.array(waveform)))
+            else:
+                # Lumped port
+                idx = _pos_to_fine_idx(pe.position)
+                i, j, k = idx
+                sigma_port = 1.0 / (pe.impedance * dx_f)
+                mats_f = mats_f._replace(
+                    sigma=mats_f.sigma.at[i, j, k].add(sigma_port))
+                pec_mask_f = pec_mask_f.at[i, j, k].set(False)
+
+                eps = float(mats_f.eps_r[i, j, k]) * EPS_0
+                sigma_val = float(mats_f.sigma[i, j, k])
+                loss = sigma_val * dt / (2.0 * eps)
+                cb = (dt / eps) / (1.0 + loss)
+                waveform = (cb / dx_f) * jax.vmap(pe.waveform)(times)
+                sources_f.append((i, j, k, pe.component, np.array(waveform)))
+
+        # Build probes on fine grid
+        probe_indices_f = []
+        probe_components = []
+        for pe in self._probes:
+            idx = _pos_to_fine_idx(pe.position)
+            probe_indices_f.append(idx)
+            probe_components.append(pe.component)
+
+        result = _run_sg(
+            grid_coarse,
+            base_materials_coarse,
+            None,  # fine_grid not used directly
+            mats_f,
+            config,
+            n_steps,
+            pec_mask_c=pec_mask_coarse,
+            pec_mask_f=pec_mask_f if has_pec_f else None,
+            sources_f=sources_f,
+            probe_indices_f=probe_indices_f,
+            probe_components=probe_components,
+        )
+
+        return Result(
+            state=result["state_f"],
+            time_series=result["time_series"],
+            s_params=None,
+            freqs=None,
+        )
+
     # ---- run ----
 
     def run(
@@ -1225,8 +1472,15 @@ class Simulation:
         Result
         """
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, pec_mask = self._assemble_materials(grid)
         materials = base_materials
+
+        # ---- Subgridded path ----
+        if self._refinement is not None:
+            return self._run_subgridded(
+                grid, base_materials, pec_mask,
+                n_steps=n_steps or grid.num_timesteps(num_periods=num_periods),
+            )
 
         # Compute per-component smoothed permittivity if requested
         aniso_eps = None
@@ -1269,6 +1523,7 @@ class Simulation:
 
         # Port sources — fold impedances into materials first
         lumped_ports: list[LumpedPort] = []
+        wire_ports: list[WirePort] = []
         for pe in self._ports:
             if pe.extent is not None:
                 # Multi-cell wire port
@@ -1281,8 +1536,14 @@ class Simulation:
                     component=pe.component,
                     impedance=pe.impedance, excitation=pe.waveform,
                 )
+                wire_ports.append(wp)
                 materials = setup_wire_port(grid, wp, materials)
                 sources.extend(make_wire_port_sources(grid, wp, materials, n_steps))
+                # Clear PEC mask at wire cells (probe pierces ground plane)
+                if pec_mask is not None:
+                    from rfx.sources.sources import _wire_port_cells
+                    for cell in _wire_port_cells(grid, wp):
+                        pec_mask = pec_mask.at[cell[0], cell[1], cell[2]].set(False)
             else:
                 # Single-cell lumped port
                 lp = LumpedPort(
@@ -1292,6 +1553,10 @@ class Simulation:
                 lumped_ports.append(lp)
                 materials = setup_lumped_port(grid, lp, materials)
                 sources.append(make_port_source(grid, lp, materials, n_steps))
+                # Clear PEC mask at lumped port cell
+                if pec_mask is not None:
+                    idx = grid.position_to_index(pe.position)
+                    pec_mask = pec_mask.at[idx[0], idx[1], idx[2]].set(False)
 
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -1383,6 +1648,7 @@ class Simulation:
                 snapshot=snapshot,
                 checkpoint=checkpoint,
                 aniso_eps=aniso_eps,
+                pec_mask=pec_mask,
             )
         else:
             sim_result = _run(
@@ -1402,29 +1668,40 @@ class Simulation:
                 snapshot=snapshot,
                 checkpoint=checkpoint,
                 aniso_eps=aniso_eps,
+                pec_mask=pec_mask,
             )
 
         # S-parameters (separate Python-loop simulation for accuracy)
         if compute_s_params is None:
-            compute_s_params = len(lumped_ports) > 0
+            compute_s_params = len(lumped_ports) > 0 or len(wire_ports) > 0
 
         s_params = None
         freqs_out = None
 
-        if compute_s_params and lumped_ports:
+        if compute_s_params and (lumped_ports or wire_ports):
             if s_param_freqs is None:
                 s_param_freqs = jnp.linspace(
                     self._freq_max / 10, self._freq_max, 50,
                 )
             freqs_out = np.array(s_param_freqs)
 
-            s_params = extract_s_matrix(
-                grid, base_materials, lumped_ports, s_param_freqs,
-                n_steps=s_param_n_steps,
-                boundary=self._boundary,
-                debye_spec=debye_spec,
-                lorentz_spec=lorentz_spec,
-            )
+            if wire_ports:
+                s_params = extract_s_matrix_wire(
+                    grid, base_materials, wire_ports, s_param_freqs,
+                    n_steps=s_param_n_steps,
+                    boundary=self._boundary,
+                    debye_spec=debye_spec,
+                    lorentz_spec=lorentz_spec,
+                    pec_mask=pec_mask,
+                )
+            else:
+                s_params = extract_s_matrix(
+                    grid, base_materials, lumped_ports, s_param_freqs,
+                    n_steps=s_param_n_steps,
+                    boundary=self._boundary,
+                    debye_spec=debye_spec,
+                    lorentz_spec=lorentz_spec,
+                )
 
         waveguide_ports_result = (
             {
