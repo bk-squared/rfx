@@ -7,7 +7,7 @@ Validates:
 """
 import numpy as np
 import time
-from rfx import Simulation, Box, ModulatedGaussian
+from rfx import Simulation, Box, GaussianPulse
 from rfx.harminv import harminv_from_probe
 from rfx.grid import C0
 
@@ -25,7 +25,7 @@ print("="*50)
 a,b,d = 0.03, 0.03, 0.01
 f_tm110 = C0/2*np.sqrt((1/a)**2+(1/b)**2)
 sim = Simulation(freq_max=10e9, domain=(a,b,d), boundary='pec', dx=1e-3)
-sim.add_source((a/3,b/3,d/2), 'ez', waveform=ModulatedGaussian(f0=6e9, bandwidth=0.8))
+sim.add_source((a/3,b/3,d/2), 'ez', waveform=GaussianPulse(f0=6e9, bandwidth=0.8))
 sim.add_probe((a/3,b/3,d/2), 'ez')
 r = sim.run(n_steps=3000)
 modes = r.find_resonances(freq_range=(4e9,10e9), source_decay_time=0.2e-9)
@@ -50,7 +50,7 @@ for label, dx in [("0.5mm", 0.5e-3), ("0.25mm", 0.25e-3)]:
     sim.add(Box((px0,py0,h),(px0+L,py0+W,h+dx)), material='pec')
 
     sim.add_source((px0+L/3, py0+W/2, h/2), 'ez',
-                   waveform=ModulatedGaussian(f0=f0, bandwidth=0.8))
+                   waveform=GaussianPulse(f0=f0, bandwidth=0.8))
     sim.add_probe((px0+L/3, py0+W/2, h/2), 'ez')
 
     grid = sim._build_grid()

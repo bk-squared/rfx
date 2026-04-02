@@ -1,6 +1,6 @@
-name: rfx-patch-antenna-v2
-description: "Patch antenna with S11 extraction + far-field on GPU"
-tags: [rfx, patch-antenna, gpu, s-param, far-field]
+name: rfx-patch-subgrid
+description: "Patch antenna with SBP-SAT subgridding (6 substrate cells)"
+tags: [rfx, patch-antenna, subgridding, sbp-sat, gpu]
 resources:
   cluster: remilab-c0
   preset: gpu-rtx4090
@@ -12,8 +12,8 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   cd /root/workspace/byungkwan-workspace/research/rfx
-  echo "=== Patch Antenna S11 + Far-field on GPU ===" && echo "Node:$(hostname)" && echo "Start:$(date)"
+  echo "=== Patch Antenna + SBP-SAT Subgridding ===" && echo "Node:$(hostname)" && echo "Start:$(date)"
   pip install -q -e .
   python -c "import jax; print(f'Backend: {jax.default_backend()}, Devices: {jax.devices()}')"
-  python examples/04_patch_antenna.py
+  python examples/05_patch_antenna_subgrid.py
   echo "=== Done $(date) ==="

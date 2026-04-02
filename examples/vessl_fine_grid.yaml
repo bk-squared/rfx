@@ -1,0 +1,17 @@
+name: rfx-fine-grid-025mm
+description: "dx=0.25mm patch antenna + subpixel smoothing"
+tags: [rfx, fine-grid, subpixel, accuracy]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.04-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  pip install -q -e .
+  python -c "import jax; print(f'Backend: {jax.default_backend()}')"
+  python examples/15_fine_grid_test.py

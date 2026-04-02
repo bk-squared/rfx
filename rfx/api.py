@@ -119,7 +119,8 @@ class Result(NamedTuple):
     dt: float | None = None
     freq_range: tuple | None = None
 
-    def find_resonances(self, freq_range=None, probe_idx=0, source_decay_time=0.0):
+    def find_resonances(self, freq_range=None, probe_idx=0,
+                         source_decay_time=0.0, bandpass=None):
         """Extract resonant modes from probe time series via Harminv.
 
         Parameters
@@ -127,23 +128,51 @@ class Result(NamedTuple):
         freq_range : (f_min, f_max) in Hz, or None to use stored range
         probe_idx : which probe to analyze
         source_decay_time : time (s) after which source has decayed
+        bandpass : bool or None
+            Apply FFT bandpass before Harminv. Default: auto (True for
+            CPML results where DC/surface-wave artifacts exist, False
+            for PEC cavities where signal is clean).
 
         Returns
         -------
         list of HarminvMode
         """
-        from rfx.harminv import harminv_from_probe
+        from rfx.harminv import harminv, harminv_from_probe
         ts = np.asarray(self.time_series)
         if ts.ndim == 2:
             ts = ts[:, probe_idx]
         ts = ts.ravel()
         if self.dt is None:
             raise ValueError("dt not available in Result — run with store_dt=True")
-        fr = freq_range or self.freq_range
+        fr = freq_range
+        if fr is None:
+            fr = self.freq_range
         if fr is None:
             raise ValueError("freq_range not specified")
-        return harminv_from_probe(ts, self.dt, fr,
-                                  source_decay_time=source_decay_time)
+        # Extract boundary from stored freq_range if present
+        stored_boundary = 'cpml'
+        if len(fr) > 2:
+            stored_boundary = fr[2]
+            fr = (fr[0], fr[1])
+
+        if bandpass is None:
+            bandpass = stored_boundary == 'cpml'
+
+        if bandpass:
+            return harminv_from_probe(ts, self.dt, fr,
+                                      source_decay_time=source_decay_time)
+        else:
+            # Direct Harminv without bandpass (for PEC cavities)
+            start = int(np.ceil(source_decay_time / self.dt))
+            start = min(start, max(len(ts) - 20, 0))
+            w = ts[start:] - np.mean(ts[start:])
+            if len(w) > 3000:
+                step = len(w) // 3000
+                w = w[::step][:3000]
+                dt_h = self.dt * step
+            else:
+                dt_h = self.dt
+            return harminv(w, dt_h, fr[0], fr[1])
 
 
 # ---------------------------------------------------------------------------
@@ -421,8 +450,7 @@ class Simulation:
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         if waveform is None:
-            from rfx.sources.sources import ModulatedGaussian
-            waveform = ModulatedGaussian(f0=self._freq_max / 2, bandwidth=0.8)
+            waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
 
         # Store as a source entry (reuse _PortEntry with impedance=None flag)
         self._ports.append(_PortEntry(
@@ -1854,7 +1882,7 @@ class Simulation:
             waveguide_sparams=waveguide_sparams_result,
             snapshots=sim_result.snapshots,
             dt=grid.dt,
-            freq_range=(self._freq_max / 10, self._freq_max),
+            freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
         )
 
     def __repr__(self) -> str:

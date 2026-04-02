@@ -1,0 +1,17 @@
+name: rfx-subpixel-test
+description: "Subpixel smoothing impact on patch antenna accuracy"
+tags: [rfx, subpixel, accuracy]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.04-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  pip install -q -e .
+  python -c "import jax; print(f'Backend: {jax.default_backend()}')"
+  python examples/14_subpixel_test.py

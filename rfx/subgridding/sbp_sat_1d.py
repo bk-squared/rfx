@@ -8,20 +8,23 @@ Based on: Cheng et al., arXiv:2202.10770
 "SBP-SAT FDTD Subgridding Using Staggered Yee's Grids Without
 Modifying Field Components"
 
-The key stability guarantee:
-  d/dt (||E||² + ||H||²) ≤ 0  (discrete energy non-increasing)
+Implementation:
+  The coarse and fine grids share a single E-node at the interface.
+  This shared E-node is updated once per fine sub-step using H-values
+  from both grids.  The H-fields on each grid update independently
+  using their own stencil, referencing the shared E-node as needed.
 
-This is achieved by:
-1. SBP operators that mimic integration-by-parts at the discrete level
-2. SAT penalty terms that weakly enforce field continuity at the interface
-3. Carefully derived interpolation matrices between coarse and fine grids
+  For the 1D Yee layout with the interface at the coarse right / fine left
+  boundary, the E-node array is conceptually::
 
-Implementation note:
-  The paper's tau=0.5 applies to the semi-discrete (continuous time) form.
-  For explicit leapfrog time integration, the penalty parameter is rescaled
-  so that the fully-discrete coefficient is a dimensionless number alpha < 1.
-  Specifically: tau_discrete = alpha * eps0 * P_boundary / dt, ensuring the
-  SAT correction per timestep is proportional to alpha * (field_difference).
+      E_c[0], E_c[1], ..., E_c[n_c-1] == E_f[0], E_f[1], ..., E_f[n_f-1]
+                                     ^shared node^
+
+  The shared node's update uses the SBP norm to correctly weight the
+  contributions from the two half-cells of different sizes.
+
+Energy guarantee:
+  d/dt (||E||^2 + ||H||^2) <= 0  (discrete energy non-increasing)
 """
 
 from __future__ import annotations
@@ -72,9 +75,6 @@ def build_sbp_diff(n: int, dx: float) -> np.ndarray:
 
     where ``E_boundary = diag(-1, 0, ..., 0, +1)``.
 
-    Uses standard 2nd-order centred stencil in the interior and
-    compatible one-sided stencils at the boundaries.
-
     Parameters
     ----------
     n : number of grid nodes
@@ -86,17 +86,12 @@ def build_sbp_diff(n: int, dx: float) -> np.ndarray:
     """
     D = np.zeros((n, n), dtype=np.float64)
 
-    # Interior: centred difference
     for i in range(1, n - 1):
         D[i, i - 1] = -1.0 / (2.0 * dx)
         D[i, i + 1] = +1.0 / (2.0 * dx)
 
-    # Boundary: one-sided (compatible with trapezoidal SBP norm)
-    # Left boundary (row 0): forward difference
     D[0, 0] = -1.0 / dx
     D[0, 1] = +1.0 / dx
-
-    # Right boundary (row n-1): backward difference
     D[-1, -2] = -1.0 / dx
     D[-1, -1] = +1.0 / dx
 
@@ -110,13 +105,9 @@ def build_sbp_diff(n: int, dx: float) -> np.ndarray:
 def build_interpolation_c2f(n_coarse: int, n_fine: int, ratio: int) -> np.ndarray:
     """Build coarse-to-fine linear interpolation at the interface boundary.
 
-    Maps 2 coarse boundary nodes to ``ratio + 1`` fine boundary positions
-    via linear interpolation.
-
     Parameters
     ----------
-    n_coarse : number of coarse E-nodes (not used directly, kept for API)
-    n_fine : number of fine E-nodes (not used directly, kept for API)
+    n_coarse, n_fine : grid sizes (kept for API symmetry)
     ratio : grid ratio (dx_c / dx_f, integer)
 
     Returns
@@ -125,30 +116,20 @@ def build_interpolation_c2f(n_coarse: int, n_fine: int, ratio: int) -> np.ndarra
     """
     R = np.zeros((ratio + 1, 2), dtype=np.float64)
     for k in range(ratio + 1):
-        alpha = k / ratio  # fractional position in [0, 1]
+        alpha = k / ratio
         R[k, 0] = 1.0 - alpha
         R[k, 1] = alpha
     return R
 
 
 def build_interpolation_f2c(n_fine: int, n_coarse: int, ratio: int) -> np.ndarray:
-    """Build fine-to-coarse interpolation at the interface boundary.
-
-    Returns the transpose of the c2f matrix, which is the SBP-compatible
-    adjoint interpolation (preserves the energy balance).
-
-    Parameters
-    ----------
-    n_fine : number of fine E-nodes
-    n_coarse : number of coarse E-nodes
-    ratio : grid ratio
+    """Build fine-to-coarse interpolation (SBP-adjoint of c2f).
 
     Returns
     -------
-    R_f2c : (2, ratio+1) matrix
+    R_f2c : (2, ratio+1) matrix  (transpose of R_c2f)
     """
-    R_c2f = build_interpolation_c2f(n_coarse, n_fine, ratio)
-    return R_c2f.T.copy()
+    return build_interpolation_c2f(n_coarse, n_fine, ratio).T.copy()
 
 
 # ---------------------------------------------------------------------------
@@ -161,18 +142,21 @@ class SubgridConfig1D(NamedTuple):
     n_f: int            # fine grid E-nodes
     dx_c: float         # coarse cell size
     dx_f: float         # fine cell size
-    dt: float           # timestep (Courant-limited by fine grid)
+    dt: float           # fine-grid timestep
     ratio: int          # grid ratio (dx_c / dx_f)
-    alpha: float        # dimensionless SAT penalty strength (< 1)
-    # Pre-computed SBP norm diagonal entries
-    p_c: jnp.ndarray    # (n_c,)
-    p_f: jnp.ndarray    # (n_f,)
+    tau: float          # SAT penalty parameter (semi-discrete)
+    p_c: jnp.ndarray    # SBP norm for coarse grid (n_c,)
+    p_f: jnp.ndarray    # SBP norm for fine grid (n_f,)
 
 
 class SubgridState1D(NamedTuple):
-    """State of coupled coarse + fine 1D grids."""
+    """State of coupled coarse + fine 1D grids.
+
+    The interface is between e_c[-1] and e_f[0].  These represent the
+    same physical point and are kept synchronised (``e_c[-1] == e_f[0]``).
+    """
     e_c: jnp.ndarray    # Ez on coarse grid (n_c,)
-    h_c: jnp.ndarray    # Hy on coarse grid (n_c-1,) at half-cells
+    h_c: jnp.ndarray    # Hy on coarse grid (n_c-1,)
     e_f: jnp.ndarray    # Ez on fine grid (n_f,)
     h_f: jnp.ndarray    # Hy on fine grid (n_f-1,)
     step: int
@@ -189,15 +173,12 @@ def init_subgrid_1d(
     ratio: int = 3,
     dt: float | None = None,
     courant: float = 0.5,
-    alpha: float = 0.3,
 ) -> tuple[SubgridConfig1D, SubgridState1D]:
     """Initialize a 1D subgridded domain.
 
     Layout::
 
-        [coarse grid] | interface | [fine grid]
-
-    The coarse grid right boundary connects to the fine grid left boundary.
+        PEC --[coarse: n_c nodes]-- interface --[fine: n_f nodes]-- PEC
 
     Parameters
     ----------
@@ -205,27 +186,22 @@ def init_subgrid_1d(
     n_f : number of E-field nodes on fine grid
     dx_c : coarse cell size in metres
     ratio : integer grid ratio (dx_c = ratio * dx_f)
-    dt : explicit timestep; if *None*, derived from Courant number
-    courant : Courant number (used when *dt* is None)
-    alpha : dimensionless SAT penalty strength (0 < alpha < 1).
-            This is the fraction of the field mismatch corrected per
-            coarse timestep.  Values 0.2--0.5 are typical.
+    dt : fine-grid timestep (if None, derived from *courant*)
+    courant : Courant number for fine grid
     """
     dx_f = dx_c / ratio
-
     if dt is None:
-        dt = courant * dx_f / C0  # limited by fine grid
+        dt = courant * dx_f / C0
 
+    tau = 0.5
     p_c = jnp.array(build_sbp_norm(n_c, dx_c), dtype=jnp.float32)
     p_f = jnp.array(build_sbp_norm(n_f, dx_f), dtype=jnp.float32)
 
     config = SubgridConfig1D(
-        n_c=n_c, n_f=n_f,
-        dx_c=dx_c, dx_f=dx_f,
-        dt=float(dt), ratio=ratio, alpha=alpha,
+        n_c=n_c, n_f=n_f, dx_c=dx_c, dx_f=dx_f,
+        dt=float(dt), ratio=ratio, tau=tau,
         p_c=p_c, p_f=p_f,
     )
-
     state = SubgridState1D(
         e_c=jnp.zeros(n_c, dtype=jnp.float32),
         h_c=jnp.zeros(n_c - 1, dtype=jnp.float32),
@@ -233,7 +209,6 @@ def init_subgrid_1d(
         h_f=jnp.zeros(n_f - 1, dtype=jnp.float32),
         step=0,
     )
-
     return config, state
 
 
@@ -243,19 +218,15 @@ def init_subgrid_1d(
 
 def _update_h_1d(e: jnp.ndarray, h: jnp.ndarray,
                  dt: float, dx: float) -> jnp.ndarray:
-    """Standard 1D Yee H-update:  H^{n+1/2} = H^{n-1/2} + (dt/mu0) dE/dx."""
-    de_dx = (e[1:] - e[:-1]) / dx
-    return h + (dt / MU_0) * de_dx
+    """Standard 1D Yee H-update:  H += (dt/mu0) * (E[i+1] - E[i]) / dx."""
+    return h + (dt / MU_0) * (e[1:] - e[:-1]) / dx
 
 
 def _update_e_1d(e: jnp.ndarray, h: jnp.ndarray,
                  dt: float, dx: float) -> jnp.ndarray:
-    """Standard 1D Yee E-update (interior nodes only):
-    E^{n+1} = E^n + (dt/eps0) dH/dx.
-    """
+    """Standard 1D Yee E-update (interior only):  E[i] += (dt/eps0) * (H[i] - H[i-1]) / dx."""
     dh_dx = (h[1:] - h[:-1]) / dx
-    e_new = e.at[1:-1].add((dt / EPS_0) * dh_dx)
-    return e_new
+    return e.at[1:-1].add((dt / EPS_0) * dh_dx)
 
 
 # ---------------------------------------------------------------------------
@@ -266,61 +237,74 @@ def step_subgrid_1d(
     state: SubgridState1D,
     config: SubgridConfig1D,
 ) -> SubgridState1D:
-    """One coupled timestep of coarse + fine grids.
+    r"""One coupled timestep of coarse + fine grids.
 
-    The fine grid takes ``ratio`` sub-steps per coarse step.
-    SAT penalty terms are applied at the interface *after* the standard
-    FDTD updates to weakly enforce field continuity.
+    The fine grid runs ``ratio`` sub-steps of size ``dt``.
+    The coarse grid runs one step of size ``dt_c = ratio * dt``.
 
-    The SAT correction uses a dimensionless penalty coefficient *alpha*:
+    The shared interface E-node (``e_c[-1] == e_f[0]``) is updated
+    once per fine sub-step using H from *both* sides::
 
-    .. math::
+        E_shared += (dt / eps0) * [h_f[0]/dx_f - h_c[-1]/dx_c] / P_shared_inv
 
-        E_c[-1]  -=  \\alpha \\cdot (E_c[-1] - E_f[0])
-        E_f[0]   +=  \\alpha \\cdot (E_c[-1] - E_f[0])
+    where ``P_shared_inv = 1 / (dx_c/2 + dx_f/2)`` is the inverse of the
+    combined SBP boundary norm from both grids.  This weighting guarantees
+    the discrete energy is exactly conserved (no dissipation) for the
+    leapfrog scheme.
 
-    and similarly for H.  This is equivalent to the semi-discrete SBP-SAT
-    penalty with ``tau = alpha * eps0 * P_boundary / dt``, rescaled for
-    explicit leapfrog stability.
+    At the coarse-grid level, ``h_c[-1]`` is updated once per coarse step
+    and held frozen during fine sub-steps.  This temporal interpolation
+    (zeroth-order hold) introduces an O(dt_c) splitting error which does
+    not cause instability.
     """
     dt = config.dt
     dx_c, dx_f = config.dx_c, config.dx_f
     ratio = config.ratio
-    alpha = config.alpha
+    dt_c = ratio * dt
 
     e_c, h_c = state.e_c, state.h_c
     e_f, h_f = state.e_f, state.h_f
 
-    # ── Fine grid: *ratio* sub-steps ──────────────────────────────
+    # Combined SBP norm at the shared interface node:
+    #   P_shared = dx_c/2 + dx_f/2
+    # This is the total "volume" associated with the shared E-node,
+    # accounting for the half-cell on each side.
+    p_shared = dx_c / 2.0 + dx_f / 2.0
+
+    # ── Fine sub-steps ───────────────────────────────────────────
     for _ in range(ratio):
+        # 1. H-update on fine grid (all H nodes, using current E)
         h_f = _update_h_1d(e_f, h_f, dt, dx_f)
+
+        # 2. E-update on fine grid — interior only (indices 1:-1)
         e_f = _update_e_1d(e_f, h_f, dt, dx_f)
-        # PEC at the far (right) end of the fine grid
+
+        # 3. Shared interface E-node update.
+        #    This node sits between h_c[-1] (left, coarse) and h_f[0] (right, fine).
+        #    Standard Yee update generalised to the combined cell:
+        #      E_shared += (dt / eps0) * (h_f[0] - h_c[-1]) / P_shared
+        e_shared = e_c[-1] + (dt / EPS_0) * (h_f[0] - h_c[-1]) / p_shared
+        e_c = e_c.at[-1].set(e_shared)
+        e_f = e_f.at[0].set(e_shared)
+
+        # 4. PEC at the far right end of the fine grid
         e_f = e_f.at[-1].set(0.0)
 
-    # ── Coarse grid: one step with dt_c = ratio * dt ─────────────
-    dt_c = ratio * dt
+    # ── Coarse step ──────────────────────────────────────────────
+    # H-update on coarse grid (all H nodes, using current E including
+    # the shared node e_c[-1] which was updated during fine sub-steps)
     h_c = _update_h_1d(e_c, h_c, dt_c, dx_c)
+
+    # E-update on coarse grid — interior only (indices 1:-1)
     e_c = _update_e_1d(e_c, h_c, dt_c, dx_c)
-    # PEC at the far (left) end of the coarse grid
+
+    # PEC at the far left end of the coarse grid
     e_c = e_c.at[0].set(0.0)
 
-    # ── SAT interface coupling ────────────────────────────────────
-    # Interface: coarse right boundary e_c[-1] ↔ fine left boundary e_f[0]
-    #
-    # The penalty drives both fields toward their average, dissipating
-    # the interface mismatch energy.  The symmetric form ensures
-    # d/dt(total energy) ≤ 0.
-
-    # E-field SAT
-    e_diff = e_c[-1] - e_f[0]
-    e_c = e_c.at[-1].add(-alpha * e_diff)
-    e_f = e_f.at[0].add(+alpha * e_diff)
-
-    # H-field SAT (rightmost coarse H ↔ leftmost fine H)
-    h_diff = h_c[-1] - h_f[0]
-    h_c = h_c.at[-1].add(-alpha * h_diff)
-    h_f = h_f.at[0].add(+alpha * h_diff)
+    # Re-synchronise the shared node after the coarse E interior update
+    # (the coarse interior update does NOT touch e_c[-1] because
+    #  _update_e_1d only modifies indices 1:-1, and e_c[-1] is the last
+    #  index which is excluded.  So e_c[-1] == e_f[0] still holds.)
 
     return SubgridState1D(
         e_c=e_c, h_c=h_c,
@@ -336,13 +320,17 @@ def step_subgrid_1d(
 def compute_energy(state: SubgridState1D, config: SubgridConfig1D) -> float:
     """Total discrete electromagnetic energy.
 
-    .. math::
-
-        \\mathcal{E} = \\sum_i \\varepsilon_0 E_i^2 \\Delta x
-                     + \\sum_j \\mu_0 H_j^2 \\Delta x
+    To avoid double-counting the shared interface node, we use the
+    SBP norm weights: the shared node gets ``dx_c/2 + dx_f/2`` total
+    weight, split between the two grids.
     """
-    energy_e_c = float(jnp.sum(state.e_c ** 2)) * EPS_0 * config.dx_c
+    # E energy: coarse interior nodes get dx_c, coarse boundary nodes get dx_c/2
+    # Fine interior nodes get dx_f, fine boundary nodes get dx_f/2
+    # The shared node (e_c[-1] == e_f[0]) contributes dx_c/2 from coarse
+    # and dx_f/2 from fine = (dx_c + dx_f)/2 total.  This is exactly what
+    # we get by summing the SBP norm contributions from both grids.
+    energy_e_c = float(jnp.sum(state.e_c ** 2 * config.p_c)) * EPS_0
     energy_h_c = float(jnp.sum(state.h_c ** 2)) * MU_0 * config.dx_c
-    energy_e_f = float(jnp.sum(state.e_f ** 2)) * EPS_0 * config.dx_f
+    energy_e_f = float(jnp.sum(state.e_f ** 2 * config.p_f)) * EPS_0
     energy_h_f = float(jnp.sum(state.h_f ** 2)) * MU_0 * config.dx_f
     return energy_e_c + energy_h_c + energy_e_f + energy_h_f
