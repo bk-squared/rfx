@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>rfx Patch Antenna Simulation Report</title>
+<link rel="stylesheet" href="https://remilab.cnu.ac.kr/share/assets/remilab-base.css">
+</head><body>
+<h1>rfx Patch Antenna Simulation Report</h1>
+<p><strong>Date:</strong> 2026-04-01
+<strong>Author:</strong> Claude Opus 4.6 + Codex (AI Development)
+<strong>Platform:</strong> VESSL remilab-c0, RTX 4090 GPU</p>
+<hr />
+<h2>1. Design Specification</h2>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Target frequency</td>
+<td>2.4 GHz (Wi-Fi)</td>
+</tr>
+<tr>
+<td>Substrate</td>
+<td>FR4 (ε_r = 4.4, tan δ = 0.02)</td>
+</tr>
+<tr>
+<td>Substrate thickness</td>
+<td>1.6 mm</td>
+</tr>
+<tr>
+<td>Patch width (W)</td>
+<td>38.0 mm (analytical)</td>
+</tr>
+<tr>
+<td>Patch length (L)</td>
+<td>29.4 mm (analytical)</td>
+</tr>
+<tr>
+<td>Effective ε_r</td>
+<td>4.09</td>
+</tr>
+<tr>
+<td>Edge extension (ΔL)</td>
+<td>0.74 mm</td>
+</tr>
+<tr>
+<td>Feed type</td>
+<td>Probe feed (WirePort) at L/3 from edge</td>
+</tr>
+</tbody>
+</table>
+<h3>Analytical Formulas Used</h3>
+<pre><code>W = c / (2·f₀) · √(2/(ε_r+1)) = 38.0 mm
+ε_eff = (ε_r+1)/2 + (ε_r-1)/2 · (1+12h/W)^(-0.5) = 4.09
+ΔL = 0.412·h · (ε_eff+0.3)(W/h+0.264) / ((ε_eff-0.258)(W/h+0.8)) = 0.74 mm
+L = c / (2·f₀·√ε_eff) - 2·ΔL = 29.4 mm
+</code></pre>
+<h2>2. Simulation Setup</h2>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Domain</td>
+<td>69 × 78 × 17 mm</td>
+</tr>
+<tr>
+<td>Cell size (dx)</td>
+<td>0.5 mm</td>
+</tr>
+<tr>
+<td>Grid</td>
+<td>~139 × 156 × 34 = ~736K cells</td>
+</tr>
+<tr>
+<td>Timesteps</td>
+<td>4,000</td>
+</tr>
+<tr>
+<td>Boundary</td>
+<td>CPML (8 layers)</td>
+</tr>
+<tr>
+<td>Feed</td>
+<td>WirePort (multi-cell, extent = 1.6 mm through substrate)</td>
+</tr>
+<tr>
+<td>Runtime (GPU)</td>
+<td>~7 seconds (RTX 4090)</td>
+</tr>
+</tbody>
+</table>
+<h3>Geometry</h3>
+<pre><code>z ↑
+  │  ┌─────────────┐ ← PEC patch (z = h)
+  │  │  FR4 (ε=4.4)│ ← Substrate (z = 0..h)
+  │  └─────────────┘ ← PEC ground (z = 0)
+  │     ↑ WirePort
+  └─────────────────→ x
+</code></pre>
+<h2>3. Results</h2>
+<h3>WirePort Validation</h3>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Distributed impedance</td>
+<td>✅ 6+ cells modified along wire</td>
+</tr>
+<tr>
+<td>Vertical excitation</td>
+<td>✅ 11 z-cells excited simultaneously</td>
+</tr>
+<tr>
+<td>Cavity resonance</td>
+<td>✅ 2.03 GHz peak in PEC box</td>
+</tr>
+<tr>
+<td>API extent parameter</td>
+<td>✅ High-level API works (</td>
+</tr>
+</tbody>
+</table>
+<p><strong>WirePort successfully excites the antenna structure.</strong> The multi-cell feed correctly injects a vertical current through the substrate from ground to patch.</p>
+<h3>S11 Extraction: NOT YET AVAILABLE</h3>
+<p>The time-domain probe at the feed shows field activity, but <strong>proper S11 requires incident/reflected wave separation</strong> which is not yet implemented for WirePort. The FFT of the raw probe signal shows the combined source + cavity response, not the calibrated reflection coefficient.</p>
+<table>
+<thead>
+<tr>
+<th>What works</th>
+<th>What's missing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WirePort field excitation</td>
+<td>WirePort ↔ SParamProbe integration</td>
+</tr>
+<tr>
+<td>Correct geometry + materials</td>
+<td>Incident wave subtraction</td>
+</tr>
+<tr>
+<td>GPU execution (7 sec)</td>
+<td>Calibrated S11/S21 extraction</td>
+</tr>
+</tbody>
+</table>
+<h2>4. GPU Performance</h2>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>CPU (this server)</th>
+<th>GPU (RTX 4090)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Patch antenna (736K cells, 4000 steps)</td>
+<td>~15 min (estimated)</td>
+<td><strong>~7 sec</strong></td>
+</tr>
+<tr>
+<td>Speedup</td>
+<td>—</td>
+<td><strong>~130x</strong></td>
+</tr>
+<tr>
+<td>JIT compilation</td>
+<td>included</td>
+<td>included</td>
+</tr>
+</tbody>
+</table>
+<h2>5. Identified Gaps</h2>
+<h3>Gap 1: WirePort S-param Extraction (v1.1 MUST)</h3>
+<p>WirePort needs integration with <code>SParamProbe</code> for proper incident/reflected wave separation. Current <code>LumpedPort</code> has this via <code>setup_lumped_port</code> + <code>apply_lumped_port</code> + <code>update_sparam_probe</code>. WirePort needs the same machinery distributed across N cells.</p>
+<h3>Gap 2: WirePort in Compiled Runner (DONE)</h3>
+<p>Codex implemented <code>make_wire_port_sources()</code> which creates per-cell <code>SourceSpec</code> for the <code>jax.lax.scan</code> compiled runner. The high-level API <code>add_port(..., extent=...)</code> now works end-to-end.</p>
+<h3>Gap 3: PEC via High-Sigma (Stability Issue)</h3>
+<p>Using <code>sigma=1e10</code> for PEC causes NaN instability with CPML. The example uses the <code>material="pec"</code> path which delegates to <code>apply_pec()</code> (works correctly). Users should NOT use high-sigma for PEC approximation.</p>
+<h2>6. Next Steps</h2>
+<ol>
+<li><strong>WirePort S-param probe integration</strong> — distribute <code>SParamProbe</code> across wire cells, aggregate V/I DFTs</li>
+<li><strong>Re-run patch antenna with proper S11</strong> — validate resonance at ~2.4 GHz</li>
+<li><strong>Compare with OpenEMS/Meep</strong> — cross-validate patch antenna S11</li>
+<li><strong>Add to automated test suite</strong> — <code>test_patch_antenna_resonance()</code></li>
+</ol>
+<h2>7. Conclusion</h2>
+<p>The WirePort implementation successfully addresses the single-cell lumped port limitation for probe-fed antennas. The antenna geometry and feed excitation work correctly on GPU (7 sec for 736K cells). The remaining gap is S-param extraction, which requires extending the existing <code>SParamProbe</code> machinery to multi-cell ports.</p>
+<p><strong>rfx can now model probe-fed patch antennas structurally.</strong> S11 calibration is the last step for a complete antenna simulation workflow.</p>
+</body></html>

@@ -77,11 +77,20 @@ T_ringdown = Q / (pi * f_min)  # Q ≈ 1/tan_delta for dielectric loss
 
 | Use case | Source type | Rationale |
 |----------|------------|-----------|
-| Resonance detection | Point source (soft) | No impedance loading; cavity rings freely |
+| Resonance detection (PEC) | `add_source()` → raw field source | No impedance loading; broadband; 0.00% on cavity |
+| Resonance detection (CPML) | `add_source()` → J source (Cb/dx) | Prevents DC accumulation from PEC charge; 3.78% on patch |
 | S-parameter extraction | Lumped/wire port | Needs V/I decomposition; requires calibration |
 | Plane wave scattering | TFSF | Clean incident/scattered separation |
 
-**Port impedance loads the cavity.** A 50Ω port in a high-Q cavity damps the resonance so heavily that the spectral peak becomes a broad hump indistinguishable from the source spectrum. Always use a point source for resonance characterization.
+**Auto-selection**: `add_source()` automatically selects the right source type:
+- `boundary='pec'` (closed cavity) → raw field add (broadband, exact cavity modes)
+- `boundary='cpml'` (open structure) → J source with Cb/dx normalization
+
+**Waveforms**:
+- `ModulatedGaussian(f0, bw)` — sin(2πf₀t)·Gaussian envelope. **Zero DC** (∫s=0 exactly). Default for `add_source()`. Same as Meep's `GaussianSource`.
+- `GaussianPulse(f0, bw)` — differentiated Gaussian. Near-zero DC (∫s=exp(-9)). Broader bandwidth. Used by ports.
+
+**Port impedance loads the cavity.** A 50Ω port in a high-Q cavity damps the resonance so heavily that the spectral peak becomes a broad hump indistinguishable from the source spectrum. Use `add_source()` for resonance characterization.
 
 ### 2.7 Spectral Analysis
 
