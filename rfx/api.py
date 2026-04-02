@@ -394,6 +394,40 @@ class Simulation:
         self._geometry.append(_GeometryEntry(shape=shape, material_name=material))
         return self
 
+    # ---- sources (non-port) ----
+
+    def add_source(
+        self,
+        position: tuple[float, float, float],
+        component: str = "ez",
+        *,
+        waveform: GaussianPulse | None = None,
+    ) -> "Simulation":
+        """Add a soft point source (no impedance loading).
+
+        Unlike ``add_port()``, this does NOT add a resistive load.
+        Ideal for resonance characterization where port loading would
+        damp the cavity response.
+
+        Parameters
+        ----------
+        position : (x, y, z) in metres
+        component : "ex", "ey", or "ez"
+        waveform : excitation pulse (default: GaussianPulse at freq_max/2)
+        """
+        if component not in ("ex", "ey", "ez"):
+            raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+        if waveform is None:
+            waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
+
+        # Store as a source entry (reuse _PortEntry with impedance=None flag)
+        self._ports.append(_PortEntry(
+            position=position, component=component,
+            impedance=0.0,  # 0 = no port impedance (soft source)
+            waveform=waveform, extent=None,
+        ))
+        return self
+
     # ---- thin conductors ----
 
     def add_thin_conductor(
@@ -1555,6 +1589,11 @@ class Simulation:
         lumped_ports: list[LumpedPort] = []
         wire_ports: list[WirePort] = []
         for pe in self._ports:
+            if pe.impedance == 0.0:
+                # Soft point source (no port impedance)
+                sources.append(make_source(grid, pe.position, pe.component,
+                                           pe.waveform, n_steps))
+                continue
             if pe.extent is not None:
                 # Multi-cell wire port
                 axis_map = {"ex": 0, "ey": 1, "ez": 2}
