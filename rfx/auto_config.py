@@ -126,6 +126,8 @@ class SimConfig:
     margin: float
     dt: float
     accuracy: str
+    source_type: str = "j_source"   # "j_source" or "raw"
+    source_info: str = ""           # Human-readable explanation
     warnings: list[str] = field(default_factory=list)
     dz_profile: np.ndarray | None = None
 
@@ -164,6 +166,7 @@ class SimConfig:
             f"  cpml = {self.cpml_layers} layers ({self.cpml_layers*self.dx*1e3:.1f} mm)",
             f"  n_steps = {self.n_steps} ({self.sim_time_ns:.1f} ns)",
             f"  freq = {self.freq_range[0]/1e9:.2f} – {self.freq_range[1]/1e9:.2f} GHz",
+            f"  source = {self.source_type} ({self.source_info})" if self.source_info else f"  source = {self.source_type}",
         ]
         if self.dz_profile is not None:
             dz_min = np.min(self.dz_profile) * 1e3
@@ -182,6 +185,7 @@ def auto_configure(
     materials: dict | None = None,
     accuracy: str = "standard",
     *,
+    boundary: str = "cpml",
     dx_override: float | None = None,
     margin_override: float | None = None,
     n_steps_override: int | None = None,
@@ -197,6 +201,10 @@ def auto_configure(
         draft:    10 cells/λ, 0.15λ margin  (fast, ~10% error)
         standard: 20 cells/λ, 0.25λ margin  (~3% error)
         high:     40 cells/λ, 0.50λ margin  (~1% error)
+    boundary : "cpml" or "pec"
+        Boundary condition type. Determines source type recommendation:
+        - "cpml": J-source with Cb/dV normalization (Meep convention)
+        - "pec": raw E-field source (no Cb normalization needed)
     dx_override : force specific cell size
     margin_override : force specific margin
     n_steps_override : force specific step count
@@ -331,6 +339,14 @@ def auto_configure(
         warnings.append(f"Estimated {n_steps} steps (high Q={Q_est:.0f}). Consider reducing freq_range or using decay-based stopping.")
         n_steps = min(n_steps, 500000)
 
+    # Source auto-selection based on boundary type
+    if boundary == "pec":
+        source_type = "raw"
+        source_info = "PEC boundary: raw E-field source (no Cb normalization needed)"
+    else:
+        source_type = "j_source"
+        source_info = "CPML boundary: J-source with Cb/dV normalization (Meep convention)"
+
     return SimConfig(
         dx=dx,
         domain=domain,
@@ -340,6 +356,8 @@ def auto_configure(
         margin=margin,
         dt=dt,
         accuracy=accuracy,
+        source_type=source_type,
+        source_info=source_info,
         warnings=warnings,
         dz_profile=dz_profile,
     )
