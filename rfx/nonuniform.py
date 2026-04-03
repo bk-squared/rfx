@@ -147,6 +147,8 @@ def run_nonuniform(
     pec_mask=None,
     sources: list = None,
     probes: list = None,
+    wire_ports: list = None,
+    s_param_freqs=None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -154,10 +156,15 @@ def run_nonuniform(
     ----------
     sources : list of (i, j, k, component, waveform_array)
     probes : list of (i, j, k, component)
+    wire_ports : list of dict with keys:
+        mid_i, mid_j, mid_k, component, impedance, waveform_array
+    s_param_freqs : (n_freqs,) array for S-param DFT
     """
     sources = sources or []
     probes = probes or []
+    wire_ports = wire_ports or []
     dt = grid.dt
+    use_wire_ports = len(wire_ports) > 0
 
     # CPML: create a uniform-dx proxy grid for CPML coefficient computation.
     # CPML operates on the outer shell (cpml_layers cells on each face).
@@ -197,6 +204,21 @@ def run_nonuniform(
 
     carry_init = {"fdtd": state, "cpml": cpml_state_init}
 
+    # Wire port S-param DFT accumulators
+    if use_wire_ports and s_param_freqs is not None:
+        sp_freqs = jnp.asarray(s_param_freqs, dtype=jnp.float32)
+        nf = len(sp_freqs)
+        carry_init["wire_sparams"] = tuple(
+            (jnp.zeros(nf, dtype=jnp.complex64),  # v_dft
+             jnp.zeros(nf, dtype=jnp.complex64),  # i_dft
+             jnp.zeros(nf, dtype=jnp.complex64))   # v_inc_dft
+            for _ in wire_ports
+        )
+        wp_meta = [(wp['mid_i'], wp['mid_j'], wp['mid_k'],
+                     wp['component'], wp['impedance']) for wp in wire_ports]
+    else:
+        use_wire_ports = False
+
     def step_fn(carry, xs):
         step_idx, src_vals = xs
         st = carry["fdtd"]
@@ -216,23 +238,70 @@ def run_nonuniform(
         if use_pec_mask:
             st = apply_pec_mask(st, pec_mask)
 
-        # Sources
+        # Sources (point sources + wire port excitation)
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
             field = getattr(st, sc)
             field = field.at[si, sj, sk].add(src_vals[idx_s])
             st = st._replace(**{sc: field})
 
+        # Wire port V/I DFT accumulation
+        t = step_idx.astype(jnp.float32) * dt
+        new_wire_sp = None
+        if use_wire_ports:
+            new_wire_sp = []
+            for (v_dft, i_dft, vinc_dft), (mi, mj, mk, comp, z0) in \
+                    zip(carry.get("wire_sparams", ()), wp_meta):
+                # V = -E_comp[midpoint] * dx (using local dz for non-uniform)
+                v = -getattr(st, comp)[mi, mj, mk] * grid.dx
+                # I = H-loop at midpoint
+                if comp == "ez":
+                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
+                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * grid.dx
+                elif comp == "ex":
+                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
+                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * grid.dx
+                else:
+                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
+                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * grid.dx
+                phase = jnp.exp(-1j * 2.0 * jnp.pi * sp_freqs * t) * dt
+                new_wire_sp.append((
+                    v_dft + v * phase,
+                    i_dft + i_val * phase,
+                    vinc_dft,
+                ))
+
         # Probes
         samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
         probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
 
-        return {"fdtd": st, "cpml": cpml_new}, probe_out
+        new_carry = {"fdtd": st, "cpml": cpml_new}
+        if use_wire_ports and new_wire_sp is not None:
+            new_carry["wire_sparams"] = tuple(new_wire_sp)
+        return new_carry, probe_out
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
     final, time_series = jax.lax.scan(step_fn, carry_init, xs)
 
-    return {
+    result = {
         "state": final["fdtd"],
         "time_series": time_series,
         "dt": dt,
     }
+
+    # Extract S-params from wire port DFTs
+    if use_wire_ports and "wire_sparams" in final:
+        import numpy as _np
+        n_wp = len(wire_ports)
+        nf = len(sp_freqs)
+        S = _np.zeros((n_wp, n_wp, nf), dtype=_np.complex64)
+        for j, ((v_dft, i_dft, _), (_, _, _, _, z0)) in enumerate(
+                zip(final["wire_sparams"], wp_meta)):
+            # Wave decomposition: S11 = (V - Z0*I) / (V + Z0*I)
+            a = (v_dft + z0 * i_dft) / (2.0 * _np.sqrt(z0))
+            safe_a = jnp.where(jnp.abs(a) > 0, a, jnp.ones_like(a))
+            b = (v_dft - z0 * i_dft) / (2.0 * _np.sqrt(z0))
+            S[j, j, :] = _np.array(b / safe_a)
+        result["s_params"] = S
+        result["s_param_freqs"] = _np.array(sp_freqs)
+
+    return result
