@@ -24,22 +24,49 @@ def design_patch(f0, eps_r, h, tan_d=0.02):
     return L, W, eps_eff, sigma
 
 
-def simulate_patch(f0, eps_r, h, tan_d=0.02, dx=0.5e-3):
+def auto_dx_for_patch(f0, eps_r, h):
+    """Auto-select LATERAL dx from wavelength only.
+
+    Substrate h is handled by non-uniform dz separately.
+    dx is for x/y (lateral patch dimensions), NOT z (substrate).
+    """
+    lam_min = C0 / (f0 * 1.5) / np.sqrt(eps_r)
+    dx = lam_min / 20
+    # Cap at 0.5mm (proven stable for source detection)
+    dx = min(dx, 0.5e-3)
+    # Round down to nice value
+    nice = [0.1e-3, 0.125e-3, 0.15e-3, 0.2e-3, 0.25e-3, 0.3e-3, 0.4e-3, 0.5e-3]
+    dx = max([d for d in nice if d <= dx + 1e-9], default=nice[0])
+    return dx
+
+
+def simulate_patch(f0, eps_r, h, tan_d=0.02, dx=None):
     """Run patch antenna simulation with non-uniform Yee + CPML."""
     L, W, eps_eff, sigma_sub = design_patch(f0, eps_r, h, tan_d)
     lam0 = C0/f0
     margin = lam0/4
-    cpml = 12
 
-    # Choose dz that snaps to h
-    n_sub = max(2, int(round(h / dx)))
-    if abs(n_sub * dx - h) / h > 0.01:
-        # dx doesn't divide h well — find better dz
-        for n in range(2, 20):
-            dz_try = h / n
-            if dz_try <= dx:
-                n_sub = n
-                break
+    # Auto-select dx if not specified
+    if dx is None:
+        dx = auto_dx_for_patch(f0, eps_r, h)
+
+    # Scale CPML with wavelength: at least λ/10 physical thickness
+    cpml_thickness = max(lam0/10, 6e-3)
+    cpml = max(12, min(int(np.ceil(cpml_thickness / dx)), 24))  # cap at 24 to avoid OOM
+
+    # Choose dz that snaps to h with at least 4 cells
+    n_sub = max(4, int(np.ceil(h / dx)))
+    # Find n_sub that divides h most evenly
+    best_n = n_sub
+    best_err = abs(h / n_sub * n_sub - h)
+    for n in range(4, 20):
+        dz_try = h / n
+        if dz_try <= dx:
+            err = abs(n * dz_try - h)
+            if err < best_err:
+                best_n = n
+                best_err = err
+    n_sub = best_n
     dz_sub = h / n_sub
 
     dz_profile = np.concatenate([
@@ -124,8 +151,9 @@ print("=" * 70)
 results = []
 for name, f0, eps_r, h, tan_d in designs:
     L, W, _, _ = design_patch(f0, eps_r, h, tan_d)
+    dx_auto = auto_dx_for_patch(f0, eps_r, h)
     print(f"\n--- {name} ---")
-    print(f"  f0={f0/1e9:.3f}GHz, eps_r={eps_r}, h={h*1e3:.3f}mm, L={L*1e3:.1f}mm")
+    print(f"  f0={f0/1e9:.3f}GHz, eps_r={eps_r}, h={h*1e3:.3f}mm, L={L*1e3:.1f}mm, auto_dx={dx_auto*1e3:.2f}mm")
 
     f_res, err, Q, elapsed, n_sub, dz = simulate_patch(f0, eps_r, h, tan_d)
     results.append((name, f0, f_res, err, Q, elapsed, n_sub))
