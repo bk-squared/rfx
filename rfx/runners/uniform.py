@@ -293,6 +293,10 @@ def run_uniform(
 
     if compute_s_params and wire_ports and sim_result.wire_port_sparams:
         # Extract S-params from JIT-accumulated DFTs (100x faster)
+        # NOTE: The JIT scan body accumulates V/I after source injection.
+        # For accurate S-params the Python-loop path
+        # (extract_s_matrix_wire) should be preferred; this fast path
+        # gives a usable but less accurate approximation.
         n_wp = len(wire_ports)
         if s_param_freqs is None:
             s_param_freqs = wire_ports[0].excitation.f0  # placeholder
@@ -307,10 +311,10 @@ def run_uniform(
         for j, (wp_meta, accs) in enumerate(sim_result.wire_port_sparams):
             v_dft, i_dft, _ = accs
             z0 = wp_meta.impedance
-            # Wave decomposition
-            a_j = (v_dft + z0 * i_dft) / (2.0 * np.sqrt(z0))
+            # Wave decomposition with FDTD sign convention (V = -E·dx)
+            a_j = (-v_dft + z0 * i_dft) / (2.0 * np.sqrt(z0))
             safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-            b_j = (v_dft - z0 * i_dft) / (2.0 * np.sqrt(z0))
+            b_j = (-v_dft - z0 * i_dft) / (2.0 * np.sqrt(z0))
             S[j, j, :] = np.array(b_j / safe_a)
 
         s_params = S
@@ -322,10 +326,14 @@ def run_uniform(
             )
         freqs_out = np.array(s_param_freqs)
 
+        # Default to the main simulation's n_steps so the S-param
+        # extraction runs long enough for high-Q cavities to ring down.
+        sp_n_steps = s_param_n_steps if s_param_n_steps is not None else n_steps
+
         if wire_ports:
             s_params = extract_s_matrix_wire(
                 grid, base_materials, wire_ports, s_param_freqs,
-                n_steps=s_param_n_steps,
+                n_steps=sp_n_steps,
                 boundary=sim._boundary,
                 debye_spec=debye_spec,
                 lorentz_spec=lorentz_spec,
@@ -334,7 +342,7 @@ def run_uniform(
         else:
             s_params = extract_s_matrix(
                 grid, base_materials, lumped_ports, s_param_freqs,
-                n_steps=s_param_n_steps,
+                n_steps=sp_n_steps,
                 boundary=sim._boundary,
                 debye_spec=debye_spec,
                 lorentz_spec=lorentz_spec,
