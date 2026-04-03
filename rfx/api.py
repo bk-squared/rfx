@@ -34,6 +34,7 @@ from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform,
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port, WirePort, setup_wire_port
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz, drude_pole, lorentz_pole
+from rfx.lumped import LumpedRLCSpec
 from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
 from rfx.probes.probes import extract_s_matrix, extract_s_matrix_wire, init_dft_plane_probe
 from rfx.sources.waveguide_port import (
@@ -377,6 +378,7 @@ class Simulation:
         self._waveguide_ports: list[_WaveguidePortEntry] = []
         self._periodic_axes: str = ""
         self._refinement: dict | None = None
+        self._lumped_rlc: list[LumpedRLCSpec] = []
 
     # ---- refinement (subgridding) ----
 
@@ -649,6 +651,52 @@ class Simulation:
             position=position, component=component,
             impedance=impedance, waveform=waveform,
             extent=extent,
+        ))
+        return self
+
+    def add_lumped_rlc(
+        self,
+        position: tuple[float, float, float],
+        component: str = "ez",
+        *,
+        R: float = 0.0,
+        L: float = 0.0,
+        C: float = 0.0,
+        topology: str = "series",
+    ) -> "Simulation":
+        """Add a lumped RLC element at a single cell.
+
+        The element is modelled via Auxiliary Differential Equations
+        (ADE) that are updated each timestep alongside the standard
+        Yee update.  Any combination of R, L, C is valid (set unused
+        components to 0).
+
+        Parameters
+        ----------
+        position : (x, y, z) in metres
+        component : "ex", "ey", or "ez"
+        R : float
+            Resistance in ohms (default 0).
+        L : float
+            Inductance in henries (default 0).
+        C : float
+            Capacitance in farads (default 0).
+        topology : "series" or "parallel"
+        """
+        if component not in ("ex", "ey", "ez"):
+            raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+        if topology not in ("series", "parallel"):
+            raise ValueError(f"topology must be 'series' or 'parallel', got {topology!r}")
+        if R < 0 or L < 0 or C < 0:
+            raise ValueError(f"R, L, C must be non-negative, got R={R}, L={L}, C={C}")
+        if R == 0 and L == 0 and C == 0:
+            raise ValueError("At least one of R, L, C must be non-zero")
+
+        self._lumped_rlc.append(LumpedRLCSpec(
+            R=R, L=L, C=C,
+            topology=topology,
+            position=position,
+            component=component,
         ))
         return self
 

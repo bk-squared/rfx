@@ -383,6 +383,7 @@ def run(
     aniso_eps: tuple | None = None,
     pec_mask: object | None = None,
     wire_port_sparams: list | None = None,
+    lumped_rlc: list | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -470,6 +471,8 @@ def run(
     use_pec_mask = pec_mask is not None
     wire_port_sparams = wire_port_sparams or []
     use_wire_sparams = len(wire_port_sparams) > 0
+    lumped_rlc = lumped_rlc or []
+    use_lumped_rlc = len(lumped_rlc) > 0
 
     # ---- initialise states ----
     fdtd = init_state(grid.shape)
@@ -534,6 +537,11 @@ def run(
             for wp in wire_port_sparams
         )
         wire_sparam_meta = tuple(wire_port_sparams)
+
+    if use_lumped_rlc:
+        from rfx.lumped import init_rlc_state, update_rlc_element
+        carry_init["rlc_states"] = tuple(init_rlc_state() for _ in lumped_rlc)
+        rlc_meta = tuple(lumped_rlc)  # list of RLCCellMeta
 
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
     if sources:
@@ -614,6 +622,13 @@ def run(
         if use_pec_mask:
             from rfx.boundaries.pec import apply_pec_mask
             st = apply_pec_mask(st, pec_mask)
+
+        # Lumped RLC ADE update (after E update + boundaries, before sources)
+        if use_lumped_rlc:
+            new_rlc_states = []
+            for rlc_st, meta in zip(carry["rlc_states"], rlc_meta):
+                st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
+                new_rlc_states.append(rlc_st_new)
 
         # Soft sources
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
@@ -731,6 +746,8 @@ def run(
             new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
         if use_wire_sparams:
             new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
+        if use_lumped_rlc:
+            new_carry["rlc_states"] = tuple(new_rlc_states)
 
         return new_carry, output
 
