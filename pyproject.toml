@@ -4,19 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rfx"
-version = "0.1.0"
-description = "JAX-based RF FDTD electromagnetic simulator"
+version = "1.0.0"
+description = "JAX-native 3D FDTD electromagnetic simulator for RF engineering"
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 requires-python = ">=3.10"
-authors = [
-    {name = "Byungkwan Kim", email = "byungkwan.kim@cnu.ac.kr"},
-]
+authors = [{name = "REMI Lab", email = "byungkwan.kim@cnu.ac.kr"}]
 keywords = ["fdtd", "electromagnetics", "jax", "rf", "simulation"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
@@ -29,13 +31,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-xdist",
-]
-opt = [
-    "optax>=0.1.7",
-]
+optimization = ["optax>=0.1.7"]
+visualization = ["matplotlib>=3.7", "pillow"]
+dev = ["pytest>=7.0", "pytest-xdist", "ruff"]
+all = ["rfx[optimization,visualization,dev]"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
