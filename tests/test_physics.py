@@ -300,10 +300,11 @@ def test_two_port_reciprocity():
             state = update_h(state, materials, dt, dx)
             state = update_e(state, materials, dt, dx)
             state = apply_pec(state)
-            # Only drive the active port
-            state = apply_lumped_port(state, grid, driven_port, t, materials)
+            # Sample V/I before source injection
             sprobe_driven = update_sparam_probe(sprobe_driven, state, grid, driven_port, dt)
             sprobe_passive = update_sparam_probe(sprobe_passive, state, grid, passive_port, dt)
+            # Only drive the active port
+            state = apply_lumped_port(state, grid, driven_port, t, materials)
 
         s_driven = extract_s11(sprobe_driven, z0=50.0)  # S11 or S22
         # S21/S12: use voltage at passive port normalized by incident wave at driven port

@@ -254,9 +254,11 @@ def update_sparam_probe(
 ) -> SParamProbe:
     """Accumulate one timestep of V, I, and V_inc into the DFT.
 
-    Call this every timestep *after* update_e() and apply_lumped_port()
-    have been applied so that the port cell fields reflect the driven
-    state.
+    Call this every timestep *after* update_e() / apply_pec() but
+    **before** apply_lumped_port() so that the sampled port voltage
+    reflects only the cavity/load response, not the source injection.
+    Sampling after source injection contaminates V with the driving
+    waveform, making the wave-decomposition S11 meaningless.
 
     X(f) += x(t) * exp(-j*2π*f*t) * dt
 
@@ -264,7 +266,7 @@ def update_sparam_probe(
     ----------
     probe : SParamProbe
     state : FDTDState
-        Current simulation state (after E and H updates).
+        Current simulation state (after E update, before source).
     grid : Grid
     port : LumpedPort
     dt : float
@@ -292,24 +294,18 @@ def update_sparam_probe(
 def extract_s11(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
     """Compute S11 from accumulated DFT data.
 
-    Uses the wave-decomposition definition:
+    Uses the input-impedance definition:
 
-        a = (V + Z0 * I) / (2 * sqrt(Z0))   # incident wave
-        b = (V - Z0 * I) / (2 * sqrt(Z0))   # reflected wave
-        S11 = b / a
+        Z_in = -V / I        (V = -E·dx follows FDTD sign convention)
+        S11  = (Z_in - Z0) / (Z_in + Z0)
 
-    which simplifies to:
+    which, after substitution, becomes:
 
-        S11 = (V - Z0 * I) / (V + Z0 * I)
+        S11 = (V + Z0 · I) / (V - Z0 · I)
 
-    Alternatively, when the excitation is known, S11 is normalised
-    against the incident DFT:
-
-        S11 = (V - Z0 * I) / (2 * V_inc)
-
-    Both forms are returned:  this function uses the wave-decomposition
-    form (first equation) which is self-contained and does not require
-    a separate incident simulation.
+    The probe must be accumulated **before** source injection
+    (see :func:`update_sparam_probe`) so that V reflects only the
+    cavity/load response.
 
     Parameters
     ----------
@@ -322,10 +318,10 @@ def extract_s11(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
     -------
     s11 : (n_freqs,) complex array
     """
-    denom = probe.v_dft + z0 * probe.i_dft
+    denom = probe.v_dft - z0 * probe.i_dft
     # Guard against division by zero at DC or unexcited frequencies
     safe_denom = jnp.where(jnp.abs(denom) > 0.0, denom, jnp.ones_like(denom))
-    s11 = (probe.v_dft - z0 * probe.i_dft) / safe_denom
+    s11 = (probe.v_dft + z0 * probe.i_dft) / safe_denom
     return s11
 
 
@@ -543,9 +539,11 @@ def update_wire_sparam_probe(
 ) -> SParamProbe:
     """Accumulate one timestep of V, I, and V_inc for a WirePort.
 
-    Call this every timestep after update_e() and apply_wire_port().
-    V and I are measured at the midpoint cell. V_inc uses the per-cell
-    source voltage (V_src / N_cells) to match the single-cell measurement.
+    Call this every timestep after update_e() / apply_pec() but
+    **before** apply_wire_port() so that the sampled voltage reflects
+    only the load/cavity response.  V and I are measured at the midpoint
+    cell.  V_inc uses the per-cell source voltage (V_src / N_cells) to
+    match the single-cell measurement.
     """
     from rfx.sources.sources import _wire_port_cells
 
@@ -668,24 +666,29 @@ def extract_s_matrix(
                     state, cpml_params, cpml_state, grid, cpml_axes)
             state = apply_pec(state)
 
-            # Excite only port j
-            state = apply_lumped_port(state, grid, ports[j], t, mats)
-
-            # Record V / I at all ports
+            # Record V / I at all ports BEFORE source injection so that
+            # the sampled voltage reflects only the load/cavity response
+            # and is not contaminated by the driving waveform.
             for i in range(n_ports):
                 sprobes[i] = update_sparam_probe(
                     sprobes[i], state, grid, ports[i], dt)
 
+            # Excite only port j
+            state = apply_lumped_port(state, grid, ports[j], t, mats)
+
+        # Wave decomposition with FDTD sign convention (V = -E·dx):
+        #   a = (-V + Z0·I) / (2·√Z0)   # incident
+        #   b = (-V - Z0·I) / (2·√Z0)   # reflected
         # Incident wave at excitation port j
         z0_j = ports[j].impedance
-        a_j = (sprobes[j].v_dft + z0_j * sprobes[j].i_dft) / (
+        a_j = (-sprobes[j].v_dft + z0_j * sprobes[j].i_dft) / (
             2.0 * np.sqrt(z0_j))
         safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
 
         # Response at each receiving port i
         for i in range(n_ports):
             z0_i = ports[i].impedance
-            b_i = (sprobes[i].v_dft - z0_i * sprobes[i].i_dft) / (
+            b_i = (-sprobes[i].v_dft - z0_i * sprobes[i].i_dft) / (
                 2.0 * np.sqrt(z0_i))
             S[i, j, :] = np.array(b_i / safe_a)
 
@@ -695,9 +698,11 @@ def extract_s_matrix(
 def extract_s11_normalised(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
     """Compute S11 normalised against the incident source DFT.
 
-    Uses:
+    Uses the reflected-wave definition with FDTD sign convention
+    (V = -E·dx):
 
-        S11 = (V - Z0 * I) / (2 * V_inc)
+        b ∝ (-V - Z0 · I)
+        S11 = -(V + Z0 · I) / (2 · V_inc)
 
     This form requires that v_inc_dft has been accumulated and that a
     matched-load reference (or the excitation alone) was recorded.
@@ -713,7 +718,7 @@ def extract_s11_normalised(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
     """
     v_ref = 2.0 * probe.v_inc_dft
     safe_ref = jnp.where(jnp.abs(v_ref) > 0.0, v_ref, jnp.ones_like(v_ref))
-    s11 = (probe.v_dft - z0 * probe.i_dft) / safe_ref
+    s11 = -(probe.v_dft + z0 * probe.i_dft) / safe_ref
     return s11
 
 
@@ -824,25 +829,24 @@ def extract_s_matrix_wire(
                 from rfx.boundaries.pec import apply_pec_mask
                 state = apply_pec_mask(state, pec_mask)
 
-            # Excite only port j
-            state = apply_wire_port(state, grid, ports[j], t, mats)
-
-            # Record V / I at all ports
+            # Record V / I at all ports BEFORE source injection so that
+            # the sampled voltage reflects only the load/cavity response.
             for i in range(n_ports):
                 sprobes[i] = update_wire_sparam_probe(
                     sprobes[i], state, grid, ports[i], dt)
 
-        # Wave decomposition at the midpoint cell.
-        # Since V and I are measured at a single cell with per-cell
-        # impedance Z0_cell = Z0/N, extract Z_in from the DFTs and
-        # compute S11 against the total port impedance Z0.
+            # Excite only port j
+            state = apply_wire_port(state, grid, ports[j], t, mats)
+
+        # Wave decomposition at the midpoint cell with FDTD sign
+        # convention (V = -E·dx → Z_in = -V/I).
         z0_j = ports[j].impedance
         safe_i = jnp.where(
             jnp.abs(sprobes[j].i_dft) > 0,
             sprobes[j].i_dft,
             jnp.ones_like(sprobes[j].i_dft) * 1e-30,
         )
-        z_in_j = sprobes[j].v_dft / safe_i  # measured input impedance
+        z_in_j = -sprobes[j].v_dft / safe_i  # measured input impedance
 
         for i in range(n_ports):
             z0_i = ports[i].impedance
@@ -852,14 +856,14 @@ def extract_s_matrix_wire(
                     (z_in_j - z0_i) / (z_in_j + z0_i)
                 )
             else:
-                # Sij: use wave decomposition with per-cell Z for balancing
+                # Sij: wave decomposition with negated V (FDTD sign)
                 n_cells_i = len(_wire_port_cells(grid, ports[i]))
                 z0_cell_i = z0_i / max(n_cells_i, 1)
-                b_i = (sprobes[i].v_dft - z0_cell_i * sprobes[i].i_dft) / (
+                b_i = (-sprobes[i].v_dft - z0_cell_i * sprobes[i].i_dft) / (
                     2.0 * np.sqrt(z0_cell_i))
                 n_cells_j = len(_wire_port_cells(grid, ports[j]))
                 z0_cell_j = z0_j / max(n_cells_j, 1)
-                a_j = (sprobes[j].v_dft + z0_cell_j * sprobes[j].i_dft) / (
+                a_j = (-sprobes[j].v_dft + z0_cell_j * sprobes[j].i_dft) / (
                     2.0 * np.sqrt(z0_cell_j))
                 safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
                 S[i, j, :] = np.array(b_i / safe_a)

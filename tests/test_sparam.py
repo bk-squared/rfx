@@ -53,8 +53,8 @@ def test_lumped_port_pec_cavity_s11():
         state = update_h(state, materials, dt, dx)
         state = update_e(state, materials, dt, dx)
         state = apply_pec(state)
-        state = apply_lumped_port(state, grid, port, t, materials)
         sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
+        state = apply_lumped_port(state, grid, port, t, materials)
 
     s11 = extract_s11(sprobe, z0=50.0)
     s11_db = 20 * np.log10(np.maximum(np.abs(np.array(s11)), 1e-10))
