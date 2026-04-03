@@ -462,6 +462,91 @@ class Simulation:
         ))
         return self
 
+    def add_polarized_source(
+        self,
+        position: tuple[float, float, float],
+        *,
+        polarization: str | tuple = "ez",
+        waveform=None,
+    ) -> "Simulation":
+        """Add a polarized point source.
+
+        Parameters
+        ----------
+        position : (x, y, z) in metres
+        polarization : str or tuple
+            - "ez", "ex", "ey" — linear single-component
+            - "circular" or "rhcp" — right-hand circular (Ex + jEy)
+            - "lhcp" — left-hand circular (Ex - jEy)
+            - (Ex, Ey) tuple — arbitrary Jones vector (complex)
+            - "slant45" — 45° linear (Ex = Ey)
+        waveform : excitation pulse (default: GaussianPulse)
+        """
+        if waveform is None:
+            waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
+
+        if isinstance(polarization, str):
+            if polarization in ("ex", "ey", "ez"):
+                self.add_source(position, polarization, waveform=waveform)
+                return self
+            pol_map = {
+                "circular": (1.0, 1j),
+                "rhcp": (1.0, 1j),
+                "lhcp": (1.0, -1j),
+                "slant45": (1.0, 1.0),
+            }
+            if polarization not in pol_map:
+                raise ValueError(f"Unknown polarization: {polarization!r}")
+            jones = pol_map[polarization]
+        else:
+            jones = tuple(polarization)
+
+        # Normalize Jones vector
+        import numpy as _np
+        norm = _np.sqrt(abs(jones[0])**2 + abs(jones[1])**2)
+        if norm < 1e-30:
+            raise ValueError("Jones vector magnitude is zero")
+        jx, jy = jones[0] / norm, jones[1] / norm
+
+        # For complex Jones (circular): use two sources with phase-shifted waveforms
+        if _np.isreal(jx) and _np.isreal(jy):
+            # Real Jones — simple amplitude scaling
+            if abs(float(jx.real)) > 1e-10:
+                from rfx.sources.sources import GaussianPulse as GP
+                wx = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
+                        amplitude=waveform.amplitude * float(jx.real))
+                self.add_source(position, "ex", waveform=wx)
+            if abs(float(jy.real)) > 1e-10:
+                wy = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
+                        amplitude=waveform.amplitude * float(jy.real))
+                self.add_source(position, "ey", waveform=wy)
+        else:
+            # Complex Jones — use CW-modulated source for phase control
+            from rfx.sources.sources import ModulatedGaussian as MG
+            # Ex component (reference phase)
+            if abs(jx) > 1e-10:
+                wx = MG(f0=waveform.f0, bandwidth=waveform.bandwidth,
+                        amplitude=waveform.amplitude * float(abs(jx)))
+                self.add_source(position, "ex", waveform=wx)
+            # Ey component (90° phase shift for circular)
+            if abs(jy) > 1e-10:
+                # Phase of jy relative to jx
+                import cmath
+                phase = cmath.phase(jy) - cmath.phase(jx) if abs(jx) > 1e-10 else 0
+                # For ±90° (circular): use cosine instead of sine carrier
+                from rfx.sources.sources import CustomWaveform
+                import jax.numpy as _jnp
+                tau = 1.0 / (waveform.f0 * waveform.bandwidth * 3.14159)
+                t0 = 3.0 * tau
+                amp_y = waveform.amplitude * float(abs(jy))
+                def _ey_func(t):
+                    envelope = _jnp.exp(-((t - t0) / tau)**2)
+                    carrier = _jnp.cos(2.0 * _jnp.pi * waveform.f0 * t + float(phase))
+                    return amp_y * carrier * envelope
+                self.add_source(position, "ey", waveform=CustomWaveform(func=_ey_func))
+
+        return self
+
     # ---- thin conductors ----
 
     def add_thin_conductor(
@@ -839,6 +924,19 @@ class Simulation:
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             raise ValueError(f"component must be a field name, got {component!r}")
         self._probes.append(_ProbeEntry(position=position, component=component))
+        return self
+
+    def add_vector_probe(
+        self,
+        position: tuple[float, float, float],
+    ) -> "Simulation":
+        """Add a vector probe that records ALL 6 field components.
+
+        Records Ex, Ey, Ez, Hx, Hy, Hz at the same position.
+        Results accessible via result.time_series columns [0..5].
+        """
+        for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
+            self._probes.append(_ProbeEntry(position=position, component=comp))
         return self
 
     def add_dft_plane_probe(

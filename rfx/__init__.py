@@ -20,6 +20,7 @@ from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
 from rfx.farfield import (
     NTFFBox, NTFFData, FarFieldResult,
     make_ntff_box, compute_far_field, radiation_pattern, directivity,
+    axial_ratio, axial_ratio_dB, polarization_tilt, polarization_sense,
 )
 from rfx.rcs import compute_rcs, RCSResult
 from rfx.gpu import device_info, benchmark

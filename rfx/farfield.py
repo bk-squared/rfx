@@ -371,3 +371,75 @@ def directivity(ff: FarFieldResult) -> np.ndarray:
 
     D = 4 * np.pi * U_max / safe_P
     return 10 * np.log10(np.maximum(D, 1e-10))
+
+
+def axial_ratio(ff: FarFieldResult) -> np.ndarray:
+    """Axial ratio (AR) of far-field polarization.
+
+    AR = |E_major| / |E_minor| (≥ 1). AR = 1 for circular, ∞ for linear.
+
+    Returns (n_freqs, n_theta, n_phi) array.
+    """
+    E_th = ff.E_theta
+    E_ph = ff.E_phi
+
+    # Polarization ellipse from E_theta and E_phi (complex phasors)
+    # Semi-major and semi-minor from eigenvalues of the coherency matrix
+    a2 = np.abs(E_th)**2
+    b2 = np.abs(E_ph)**2
+    c = E_th * np.conj(E_ph)
+
+    # Stokes parameters
+    S0 = a2 + b2
+    S1 = a2 - b2
+    S3 = 2 * np.imag(c)
+
+    # Axial ratio from Stokes
+    L = np.sqrt(S1**2 + S3**2)
+    safe_S0 = np.where(S0 > 0, S0, 1.0)
+
+    # sin(2χ) = S3/S0 where χ is ellipticity angle
+    sin2chi = np.clip(S3 / safe_S0, -1.0, 1.0)
+    chi = 0.5 * np.arcsin(sin2chi)
+
+    # AR = |1/tan(χ)| (cot of ellipticity angle)
+    tan_chi = np.tan(chi)
+    safe_tan = np.where(np.abs(tan_chi) > 1e-10, tan_chi, 1e-10)
+    AR = np.abs(1.0 / safe_tan)
+    AR = np.minimum(AR, 1000.0)  # cap at 1000 (essentially linear)
+    return AR
+
+
+def axial_ratio_dB(ff: FarFieldResult) -> np.ndarray:
+    """Axial ratio in dB. 0 dB = circular, large = linear."""
+    return 20 * np.log10(axial_ratio(ff))
+
+
+def polarization_tilt(ff: FarFieldResult) -> np.ndarray:
+    """Polarization tilt angle (orientation of major axis) in radians.
+
+    Returns (n_freqs, n_theta, n_phi) array.
+    """
+    E_th = ff.E_theta
+    E_ph = ff.E_phi
+
+    a2 = np.abs(E_th)**2
+    b2 = np.abs(E_ph)**2
+    c = E_th * np.conj(E_ph)
+
+    S1 = a2 - b2
+    S2 = 2 * np.real(c)
+
+    # Tilt angle τ = 0.5 * atan2(S2, S1)
+    return 0.5 * np.arctan2(S2, S1)
+
+
+def polarization_sense(ff: FarFieldResult) -> np.ndarray:
+    """Polarization sense: +1 = RHCP, -1 = LHCP, 0 = linear.
+
+    Returns (n_freqs, n_theta, n_phi) array of integers.
+    """
+    E_th = ff.E_theta
+    E_ph = ff.E_phi
+    S3 = 2 * np.imag(E_th * np.conj(E_ph))
+    return np.sign(S3).astype(int)
