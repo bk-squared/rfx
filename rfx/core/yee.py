@@ -179,6 +179,86 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     )
 
 
+# ---------------------------------------------------------------------------
+# Non-uniform mesh updates
+# ---------------------------------------------------------------------------
+
+def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
+                inv_dx_h: jnp.ndarray, inv_dy_h: jnp.ndarray, inv_dz_h: jnp.ndarray,
+                ) -> FDTDState:
+    """H update for non-uniform Yee grid.
+
+    H uses forward differences with MEAN spacing between adjacent cells.
+
+    Parameters
+    ----------
+    inv_dx_h, inv_dy_h, inv_dz_h : (N,) arrays
+        Pre-padded: inv_d_h[j] = 2/(d[j]+d[j+1]) for j<N-1, inv_d_h[N-1]=0.
+    """
+    ex, ey, ez = state.ex, state.ey, state.ez
+    mu = materials.mu_r * MU_0
+
+    # Forward differences with same shape (zero-pad via _shift_fwd)
+    curl_x = (
+        (_shift_fwd(ez, 1) - ez) * inv_dy_h[None, :, None]
+        - (_shift_fwd(ey, 2) - ey) * inv_dz_h[None, None, :]
+    )
+    curl_y = (
+        (_shift_fwd(ex, 2) - ex) * inv_dz_h[None, None, :]
+        - (_shift_fwd(ez, 0) - ez) * inv_dx_h[:, None, None]
+    )
+    curl_z = (
+        (_shift_fwd(ey, 0) - ey) * inv_dx_h[:, None, None]
+        - (_shift_fwd(ex, 1) - ex) * inv_dy_h[None, :, None]
+    )
+
+    hx = state.hx - (dt / mu) * curl_x
+    hy = state.hy - (dt / mu) * curl_y
+    hz = state.hz - (dt / mu) * curl_z
+
+    return state._replace(hx=hx, hy=hy, hz=hz)
+
+
+def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
+                inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
+                ) -> FDTDState:
+    """E update for non-uniform Yee grid.
+
+    E uses backward differences with LOCAL cell spacing.
+
+    Parameters
+    ----------
+    inv_dx, inv_dy, inv_dz : (N,) arrays — 1/dx[i] per cell
+    """
+    hx, hy, hz = state.hx, state.hy, state.hz
+    eps = materials.eps_r * EPS_0
+    sigma = materials.sigma
+
+    sigma_dt_2eps = sigma * dt / (2.0 * eps)
+    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
+    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
+
+    # Backward differences with same shape (zero-pad via _shift_bwd)
+    curl_x = (
+        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
+        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
+    )
+    curl_y = (
+        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
+        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
+    )
+    curl_z = (
+        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
+        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
+    )
+
+    ex = ca * state.ex + cb * curl_x
+    ey = ca * state.ey + cb * curl_y
+    ez = ca * state.ez + cb * curl_z
+
+    return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
+
+
 @partial(jax.jit, static_argnums=(7,))
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
