@@ -1,199 +1,259 @@
-"""Example 4: Microstrip Patch Antenna at 2.4 GHz
+"""Example 4: 2.4 GHz Microstrip Patch Antenna on FR4
 
-Rectangular patch antenna on FR4 substrate with probe feed using WirePort.
-Demonstrates:
-  - WirePort excitation through substrate
-  - Time-domain spectral S11 estimation via FFT
-  - Near-to-far-field transform for radiation pattern
-  - 3D geometry visualization
+Showcase example demonstrating non-uniform mesh (graded dz for thin substrate),
+analytical patch design via Hammerstad formula, Harminv resonance extraction,
+and comprehensive 6-panel visualization.
 
-Note: Calibrated S11 via wave decomposition requires a coaxial port model
-for thin substrates (h << lambda). The FFT-based approach below shows the
-resonance structure but is not a calibrated reflection coefficient.
+Design flow:
+  1. Hammerstad formula → patch length L, width W, effective eps_eff
+  2. Simulation(dz_profile=...) for non-uniform z-grid (fine in substrate)
+  3. add_source + add_probe for soft excitation and ring-down recording
+  4. find_resonances() via Harminv for accurate frequency and Q extraction
+  5. 6-panel figure: geometry (2 slices + PEC mask) + results (time, spectrum, annotation)
+
+Saves: examples/04_patch_antenna.png
 """
 
-import numpy as np
-import jax.numpy as jnp
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 
-from rfx import Simulation, Box, GaussianPulse
-from rfx.visualize3d import save_screenshot
+from rfx import Simulation, Box
+from rfx.sources.sources import GaussianPulse
 
-# ---- Design ----
+# ---- Physical constants ----
+C0 = 2.998e8   # speed of light (m/s)
+
+# ---- Design parameters ----
 f0 = 2.4e9
-C0 = 3e8
-eps_r = 4.4
-h = 1.6e-3  # substrate thickness
+eps_r = 4.4          # FR4 relative permittivity
+tan_d = 0.02         # loss tangent
+h = 1.6e-3           # substrate thickness
 
-# Analytical patch dimensions
-W = C0 / (2 * f0) * np.sqrt(2 / (eps_r + 1))
-eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 * (1 + 12 * h / W) ** (-0.5)
-dL = 0.412 * h * ((eps_eff + 0.3) * (W / h + 0.264) /
-                   ((eps_eff - 0.258) * (W / h + 0.8)))
-L = C0 / (2 * f0 * np.sqrt(eps_eff)) - 2 * dL
+# ---- Hammerstad patch dimensions ----
+W = C0 / (2 * f0) * np.sqrt(2.0 / (eps_r + 1.0))
+eps_eff = (eps_r + 1.0) / 2.0 + (eps_r - 1.0) / 2.0 * (1.0 + 12.0 * h / W) ** (-0.5)
+dL = 0.412 * h * (
+    (eps_eff + 0.3) * (W / h + 0.264) /
+    ((eps_eff - 0.258) * (W / h + 0.8))
+)
+L = C0 / (2.0 * f0 * np.sqrt(eps_eff)) - 2.0 * dL
 
-print(f"Patch: {L*1e3:.1f} x {W*1e3:.1f} mm, substrate h={h*1e3:.1f} mm")
+print(f"Patch dimensions : L={L * 1e3:.2f} mm  W={W * 1e3:.2f} mm")
+print(f"Substrate        : h={h * 1e3:.1f} mm  eps_r={eps_r}  tan_d={tan_d}")
+print(f"eps_eff          : {eps_eff:.4f}")
 
-# ---- Grid ----
-dx = 0.5e-3
-margin = 20e-3
+# ---- Mesh parameters ----
+dx = 0.5e-3           # lateral cell size (0.5 mm)
+margin = 15e-3        # air margin around patch
 dom_x = L + 2 * margin
 dom_y = W + 2 * margin
-dom_z = h + 15e-3
+
+# ---- Non-uniform z-profile: fine cells in substrate, coarse in air ----
+n_sub = max(4, int(np.ceil(h / dx)))   # at least 4 cells through substrate
+dz_sub = h / n_sub                     # fine z cell
+n_air = max(6, int(np.ceil(margin / dx)))
+dz_profile = np.concatenate([
+    np.full(n_sub, dz_sub),            # substrate region
+    np.full(n_air, dx),                # air above substrate
+])
+dom_z_total = float(np.sum(dz_profile))
+
+print(f"\nDomain           : {dom_x * 1e3:.0f} x {dom_y * 1e3:.0f} x {dom_z_total * 1e3:.1f} mm")
+print(f"dz_sub           : {dz_sub * 1e3:.3f} mm  ({n_sub} cells in substrate)")
+print(f"dx               : {dx * 1e3:.1f} mm")
+
+# ---- Build simulation ----
+sigma_sub = 2.0 * np.pi * f0 * 8.854e-12 * eps_r * tan_d
 
 sim = Simulation(
-    freq_max=4e9,
-    domain=(dom_x, dom_y, dom_z),
-    boundary="cpml",
-    cpml_layers=8,
+    freq_max=f0 * 2.0,
+    domain=(dom_x, dom_y, 0),   # z=0 sentinel; actual z from dz_profile
     dx=dx,
+    dz_profile=dz_profile,
+    cpml_layers=12,
 )
 
-# ---- Materials & geometry ----
-sigma_fr4 = 2 * np.pi * f0 * 8.854e-12 * eps_r * 0.02
-sim.add_material("FR4", eps_r=eps_r, sigma=sigma_fr4)
+# ---- Materials ----
+sim.add_material("substrate", eps_r=eps_r, sigma=sigma_sub)
 
-# Ground plane (z=0)
-sim.add(Box((0, 0, 0), (dom_x, dom_y, dx)), material="pec")
-# Substrate
-sim.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="FR4")
-# Patch (z = h)
+# ---- Geometry ----
+# Ground plane: bottom face of substrate (z=0 plane, 1 cell thick)
+sim.add(Box((0, 0, 0), (dom_x, dom_y, 0)), material="pec")
+# FR4 substrate
+sim.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="substrate")
+# Patch: top surface of substrate
 px0, py0 = margin, margin
-sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h + dx)), material="pec")
+sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h)), material="pec")
 
-# ---- Feed: WirePort spanning ground to patch ----
-feed_x = px0 + L / 3
-feed_y = py0 + W / 2
+# ---- Source: soft point source near feed point ----
+# Feed at L/3 from edge, center in y — standard edge-feed offset
+src_x = px0 + L / 3.0
+src_y = py0 + W / 2.0
+src_z = h / 2.0    # inside substrate
 
-sim.add_port(
-    position=(feed_x, feed_y, 0),
+sim.add_source(
+    (src_x, src_y, src_z),
     component="ez",
     waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-    extent=h,
 )
-
-# ---- NTFF box for far-field ----
-ntff_margin = 5e-3
-sim.add_ntff_box(
-    corner_lo=(ntff_margin, ntff_margin, ntff_margin),
-    corner_hi=(dom_x - ntff_margin, dom_y - ntff_margin, dom_z - ntff_margin),
-    freqs=jnp.array([f0]),
-)
-
-# Probe at the feed for time-domain signal
-sim.add_probe((feed_x, feed_y, h / 2), "ez")
-
-print(f"Domain: {dom_x*1e3:.0f}x{dom_y*1e3:.0f}x{dom_z*1e3:.0f} mm, dx={dx*1e3:.1f} mm")
-print(f"Feed: ({feed_x*1e3:.1f}, {feed_y*1e3:.1f}) mm, extent={h*1e3:.1f} mm")
-
-# ---- 3D Geometry visualization ----
-print("\nRendering geometry...")
-save_screenshot(sim, filename="examples/04_patch_geometry", dpi=150)
-print("Saved: examples/04_patch_geometry.png")
+sim.add_probe((src_x, src_y, src_z), component="ez")
 
 # ---- Run simulation ----
-n_steps = 4000
-print(f"\nRunning simulation ({n_steps} steps)...")
-from rfx.simulation import SnapshotSpec
-result = sim.run(n_steps=n_steps, compute_s_params=False)
+nu_grid = sim._build_nonuniform_grid()
+# Run ~15 ns for good Harminv ring-down
+n_steps = int(np.ceil(15e-9 / nu_grid.dt))
+print(f"\nRunning {n_steps} steps  (dt={nu_grid.dt * 1e12:.3f} ps) ...")
+result = sim.run(n_steps=n_steps)
 
-# ---- Field visualization ----
-print("Saving field slice...")
-from rfx.visualize import plot_field_slice
-grid = sim._build_grid()
-fig = plot_field_slice(result.state, grid, component="ez", axis="z",
-                       index=grid.position_to_index((0, 0, h/2))[2],
-                       title=f"Ez field at z=h/2 (substrate mid-plane)")
-fig.savefig('examples/04_patch_field_ez.png', dpi=150)
+# ---- Resonance extraction ----
+modes = result.find_resonances(
+    freq_range=(f0 * 0.5, f0 * 1.5),
+    probe_idx=0,
+)
+
+if modes:
+    best = min(modes, key=lambda m: abs(m.freq - f0))
+    f_sim = best.freq
+    Q_sim = best.Q
+    print(f"Harminv modes found: {len(modes)}")
+else:
+    # FFT fallback
+    ts_arr = np.asarray(result.time_series).ravel()
+    spectrum_fb = np.abs(np.fft.rfft(ts_arr, n=len(ts_arr) * 8))
+    freqs_fb = np.fft.rfftfreq(len(ts_arr) * 8, d=result.dt)
+    band = (freqs_fb > f0 * 0.5) & (freqs_fb < f0 * 1.5)
+    f_sim = freqs_fb[np.argmax(spectrum_fb * band)]
+    Q_sim = float("nan")
+    print("Harminv found no modes; using FFT peak")
+
+err_pct = abs(f_sim - f0) / f0 * 100
+print(f"\nDesign frequency : {f0 / 1e9:.4f} GHz")
+print(f"Simulated        : {f_sim / 1e9:.4f} GHz")
+print(f"Error            : {err_pct:.2f} %")
+if not np.isnan(Q_sim):
+    print(f"Q factor         : {Q_sim:.1f}")
+
+# ---- Assemble materials for geometry visualization ----
+materials_nu, pec_mask_nu = sim._assemble_materials_nu(nu_grid)
+eps_r_arr = np.asarray(materials_nu.eps_r)
+pec_arr = np.asarray(pec_mask_nu) if pec_mask_nu is not None else np.zeros(
+    (nu_grid.nx, nu_grid.ny, nu_grid.nz), dtype=bool)
+
+# Grid index helpers
+cpml = nu_grid.cpml_layers
+dz_np = np.array(nu_grid.dz)
+z_cumsum = np.cumsum(dz_np)
+z_cumsum = np.insert(z_cumsum, 0, 0.0)
+z_offset = z_cumsum[cpml]
+iz_sub_mid = cpml + int(np.argmin(np.abs(
+    z_cumsum[cpml:] - z_offset - h / 2.0)))
+ix_ctr = nu_grid.nx // 2
+iy_ctr = nu_grid.ny // 2
+
+ts_arr = np.asarray(result.time_series)
+if ts_arr.ndim == 2:
+    ts_probe = ts_arr[:, 0]
+else:
+    ts_probe = ts_arr.ravel()
+
+# FFT spectrum
+nfft = len(ts_probe) * 8
+spectrum = np.abs(np.fft.rfft(ts_probe, n=nfft))
+freqs_fft = np.fft.rfftfreq(nfft, d=result.dt) / 1e9   # GHz
+
+# ---- 6-panel figure ----
+fig = plt.figure(figsize=(16, 10))
+fig.suptitle(
+    f"2.4 GHz Patch Antenna on FR4  "
+    f"(L={L * 1e3:.1f} mm, W={W * 1e3:.1f} mm, h={h * 1e3:.1f} mm)",
+    fontsize=13, fontweight="bold",
+)
+gs = fig.add_gridspec(2, 3, hspace=0.38, wspace=0.35)
+
+# Panel 1: eps_r slice at z = h/2 (substrate mid-plane) — top view
+ax1 = fig.add_subplot(gs[0, 0])
+eps_xy = eps_r_arr[:, :, iz_sub_mid]
+im1 = ax1.imshow(eps_xy.T, origin="lower", cmap="viridis", aspect="equal")
+fig.colorbar(im1, ax=ax1, label="eps_r")
+ax1.set_xlabel("x (cells)")
+ax1.set_ylabel("y (cells)")
+ax1.set_title(f"eps_r  z=h/2 (xy view)")
+
+# Panel 2: eps_r slice at y=center — side view showing layers
+ax2 = fig.add_subplot(gs[0, 1])
+eps_xz = eps_r_arr[:, iy_ctr, :]
+im2 = ax2.imshow(eps_xz.T, origin="lower", cmap="viridis", aspect="auto")
+fig.colorbar(im2, ax=ax2, label="eps_r")
+ax2.axhline(iz_sub_mid, color="white", ls="--", lw=0.8, label=f"z=h/2 (k={iz_sub_mid})")
+ax2.set_xlabel("x (cells)")
+ax2.set_ylabel("z (cells)")
+ax2.set_title("eps_r  y=center (xz view)")
+ax2.legend(fontsize=7)
+
+# Panel 3: PEC mask slice at z = h/2 showing ground + patch outline
+ax3 = fig.add_subplot(gs[0, 2])
+pec_xy = pec_arr[:, :, iz_sub_mid].astype(float)
+ax3.imshow(pec_xy.T, origin="lower", cmap="binary", aspect="equal")
+ax3.set_xlabel("x (cells)")
+ax3.set_ylabel("y (cells)")
+ax3.set_title("PEC mask  z=h/2 (patch)")
+
+# Panel 4: Time-domain probe signal
+ax4 = fig.add_subplot(gs[1, 0])
+t_ns = np.arange(len(ts_probe)) * result.dt * 1e9
+ax4.plot(t_ns, ts_probe, lw=0.6)
+ax4.set_xlabel("Time (ns)")
+ax4.set_ylabel("Ez amplitude")
+ax4.set_title("Probe time series")
+ax4.grid(True, alpha=0.3)
+
+# Panel 5: Frequency spectrum with resonance marked
+ax5 = fig.add_subplot(gs[1, 1])
+spec_db = 20 * np.log10(np.maximum(spectrum / (spectrum.max() or 1.0), 1e-10))
+band_mask = (freqs_fft > f0 * 0.4 / 1e9) & (freqs_fft < f0 * 1.6 / 1e9)
+ax5.plot(freqs_fft[band_mask], spec_db[band_mask], lw=1.0)
+ax5.axvline(f0 / 1e9, color="g", ls="--", lw=1.5,
+            label=f"Design {f0 / 1e9:.2f} GHz")
+ax5.axvline(f_sim / 1e9, color="r", ls=":", lw=1.5,
+            label=f"Simulated {f_sim / 1e9:.3f} GHz")
+ax5.set_xlabel("Frequency (GHz)")
+ax5.set_ylabel("Normalized (dB)")
+ax5.set_title("Frequency spectrum")
+ax5.set_ylim(-60, 5)
+ax5.legend(fontsize=8)
+ax5.grid(True, alpha=0.3)
+
+# Panel 6: Summary annotation
+ax6 = fig.add_subplot(gs[1, 2])
+ax6.axis("off")
+lines = [
+    "Patch Antenna Summary",
+    "─" * 28,
+    f"Design freq  : {f0 / 1e9:.4f} GHz",
+    f"Simulated    : {f_sim / 1e9:.4f} GHz",
+    f"Error        : {err_pct:.3f} %",
+]
+if not np.isnan(Q_sim):
+    lines.append(f"Q factor     : {Q_sim:.1f}")
+lines += [
+    "",
+    f"L = {L * 1e3:.2f} mm",
+    f"W = {W * 1e3:.2f} mm",
+    f"h = {h * 1e3:.1f} mm  (FR4)",
+    f"eps_eff = {eps_eff:.4f}",
+    "",
+    f"dx = {dx * 1e3:.1f} mm",
+    f"dz_sub = {dz_sub * 1e3:.3f} mm",
+    f"Steps = {n_steps}",
+    f"dt = {result.dt * 1e12:.3f} ps",
+]
+ax6.text(0.05, 0.97, "\n".join(lines), transform=ax6.transAxes,
+         va="top", ha="left", fontsize=9, family="monospace",
+         bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.85))
+
+out_path = "examples/04_patch_antenna.png"
+plt.savefig(out_path, dpi=150)
 plt.close(fig)
-print("Saved: examples/04_patch_field_ez.png")
-
-# ---- S11 via time-domain FFT ----
-ts = np.array(result.time_series).ravel()
-grid = sim._build_grid()
-
-# Source waveform for normalization
-pulse = GaussianPulse(f0=f0, bandwidth=0.8)
-times = np.arange(n_steps) * grid.dt
-src_signal = np.array([float(pulse(t)) for t in times])
-
-# FFT
-nfft = len(ts) * 4
-spec_probe = np.abs(np.fft.rfft(ts, n=nfft))
-spec_src = np.abs(np.fft.rfft(src_signal, n=nfft))
-freqs_GHz = np.fft.rfftfreq(nfft, d=grid.dt) / 1e9
-
-# Find resonance: peak in probe spectrum (cavity amplifies at resonance)
-band = (freqs_GHz > 1.5) & (freqs_GHz < 3.5)
-if np.any(band):
-    idx_peak = np.argmax(spec_probe[band])
-    f_res = freqs_GHz[band][idx_peak]
-    peak_db = 20 * np.log10(spec_probe[band][idx_peak] / max(spec_probe[band].max(), 1e-30))
-else:
-    f_res = 0
-    peak_db = 0
-
-print(f"\n=== Resonance Results ===")
-print(f"Resonance: {f_res:.2f} GHz (design: {f0/1e9:.1f} GHz)")
-if f_res > 0:
-    print(f"Freq error: {abs(f_res - f0/1e9) / (f0/1e9) * 100:.1f}%")
-
-bw = s11_approx[band] < (s11_min + 3)
-if np.any(bw):
-    f_lo = freqs_GHz[band][bw][0]
-    f_hi = freqs_GHz[band][bw][-1]
-    print(f"-3dB BW:   {f_lo:.2f}-{f_hi:.2f} GHz ({(f_hi-f_lo)/f_res*100:.1f}%)")
-
-# ---- S11 Plot ----
-fig, ax = plt.subplots(figsize=(8, 5))
-mask = (freqs_GHz > 1.5) & (freqs_GHz < 3.5)
-ax.plot(freqs_GHz[mask], s11_approx[mask], 'b-', linewidth=1.5)
-ax.axvline(f0/1e9, color='g', ls='--', alpha=0.5, label=f'Design {f0/1e9:.1f} GHz')
-ax.axvline(f_res, color='r', ls=':', alpha=0.5, label=f'Resonance {f_res:.2f} GHz')
-ax.set_xlabel('Frequency (GHz)')
-ax.set_ylabel('Normalized |S11| (dB)')
-ax.set_title(f'Patch Antenna Spectral Response (L={L*1e3:.1f}mm, W={W*1e3:.1f}mm, FR4)')
-ax.set_xlim(1.5, 3.5)
-ax.legend()
-ax.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig('examples/04_patch_antenna_s11.png', dpi=150)
-print(f"\nS11 plot saved: examples/04_patch_antenna_s11.png")
-
-# ---- Far-field radiation pattern ----
-if result.ntff_data is not None and result.ntff_box is not None:
-    from rfx.farfield import compute_far_field, radiation_pattern, directivity
-
-    theta = np.linspace(0, np.pi, 181)
-    phi = np.array([0.0, np.pi / 2])
-
-    ff = compute_far_field(result.ntff_data, result.ntff_box, grid, theta, phi)
-
-    D = directivity(ff)
-    print(f"\n=== Far-field Results ===")
-    print(f"Directivity: {D[0]:.1f} dBi at {f0/1e9:.1f} GHz")
-
-    pat = radiation_pattern(ff)
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6),
-                                     subplot_kw={"projection": "polar"})
-
-    for ax, phi_idx, plane_name in [(ax1, 0, "E-plane"), (ax2, 1, "H-plane")]:
-        r = pat[0, :, phi_idx]
-        r = np.maximum(r, -40)
-        r_shifted = r + 40
-        ax.plot(theta, r_shifted, linewidth=1.5)
-        ax.plot(-theta + 2 * np.pi, r_shifted, linewidth=1.5, alpha=0.5)
-        ax.set_title(f"{plane_name} ({f0/1e9:.1f} GHz)\nD={D[0]:.1f} dBi")
-        ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
-
-    plt.tight_layout()
-    plt.savefig('examples/04_patch_antenna_farfield.png', dpi=150)
-    print(f"Far-field plot saved: examples/04_patch_antenna_farfield.png")
-else:
-    print("\nNTFF data not available")
-
-print("\n=== Done ===")
+print(f"\nPlot saved: {out_path}")

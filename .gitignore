@@ -5,9 +5,15 @@ __pycache__/
 .omc/
 .omx/
 docs-site/
+CLAUDE.md
+AGENTS.md
 
 # Internal development artifacts (not for public repo)
 docs/research_notes/
 docs/codex_specs/
 docs/reports/
 examples/vessl_*.yaml
+examples/benchmark_jax_vs_numpy.py
+
+# Generated plots (examples produce these at runtime)
+examples/*.png

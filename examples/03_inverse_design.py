@@ -1,110 +1,162 @@
 """Example 3: Inverse Design — Optimize a Matching Layer
 
-Uses JAX autodiff to optimize the permittivity of a design region
-to maximize transmission (minimize reflection) at a target frequency.
+Uses the high-level Simulation API with DesignRegion and optimize()
+to minimize reflection (S11) at 4 GHz by tuning permittivity of a
+thin dielectric slab in a 1D transmission problem.
 
-Expected: loss decreases over ~20 Adam iterations, S11 improves.
+The optimizer uses Adam gradient descent via jax.grad through the
+differentiable FDTD forward pass.
+
+Expected: loss decreases over ~20 Adam iterations, |S11| improves.
+
+Saves: examples/03_inverse_design.png
 """
 
-import numpy as np
-import jax
-import jax.numpy as jnp
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
+import jax
+import jax.numpy as jnp
 
-from rfx.grid import Grid
-from rfx.core.yee import MaterialArrays
-from rfx.simulation import run, make_source, make_probe, SourceSpec, ProbeSpec
-from rfx.sources.sources import GaussianPulse
+from rfx import Simulation, Box, DesignRegion
+from rfx.optimize import optimize
 
-# Small domain for fast iteration
-grid = Grid(freq_max=8e9, domain=(0.04, 0.01, 0.01), dx=0.001, cpml_layers=6)
+# ---- Simulation setup ----
+# Small domain for fast gradient iterations.
+f0 = 4e9
+Lx, Ly, Lz = 0.04, 0.01, 0.01
+dx = 0.001
 
-# Source and probe
-pulse = GaussianPulse(f0=4e9, bandwidth=0.5)
-src = make_source(grid, (0.008, 0.005, 0.005), "ez", pulse, n_steps=150)
-probe = ProbeSpec(
-    i=grid.position_to_index((0.032, 0.005, 0.005))[0],
-    j=grid.position_to_index((0.032, 0.005, 0.005))[1],
-    k=grid.position_to_index((0.032, 0.005, 0.005))[2],
-    component="ez",
+sim = Simulation(
+    freq_max=8e9,
+    domain=(Lx, Ly, Lz),
+    boundary="pec",
+    dx=dx,
 )
 
-# Fixed material arrays
-sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
-mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
+# Lumped port on the left side drives and measures reflection.
+sim.add_port(
+    (0.008, Ly / 2, Lz / 2),
+    component="ez",
+    impedance=50.0,
+)
 
-# Design region: cells 18-28 in x (middle of domain)
-x_lo, x_hi = 18, 28
+# Probe at the right side measures transmitted field.
+sim.add_probe((0.032, Ly / 2, Lz / 2), component="ez")
 
+# ---- Design region: thin slab in the middle of the domain ----
+region = DesignRegion(
+    corner_lo=(0.015, 0.0, 0.0),
+    corner_hi=(0.025, Ly, Lz),
+    eps_range=(1.0, 6.0),
+)
 
-def objective(latent):
-    """Maximize transmitted power by optimizing eps_r in design region."""
-    # Sigmoid mapping: latent -> eps_r in [1, 6]
-    eps_design = 1.0 + 5.0 * jax.nn.sigmoid(latent)
-    eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    eps_r = eps_r.at[x_lo:x_hi, :, :].set(
-        eps_design[x_lo:x_hi, :, :]
-    )
-    mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-    result = run(grid, mats, 150, sources=[src], probes=[probe],
-                 boundary="pec", checkpoint=True)
-    # Negative sum of squared probe signal (maximize transmission)
+# ---- Objective: maximize transmitted power (minimize loss) ----
+def objective(result):
+    """Minimize negative transmitted power (maximize transmission)."""
     return -jnp.sum(result.time_series ** 2)
 
+# ---- Capture initial eps_r distribution for visualization ----
+grid = sim._build_grid()
+materials_init, _, _, _ = sim._assemble_materials(grid)
+eps_init = np.asarray(materials_init.eps_r)
 
-# Adam optimizer
-latent = jnp.zeros(grid.shape, dtype=jnp.float32)
-lr = 0.05
-m = jnp.zeros_like(latent)
-v = jnp.zeros_like(latent)
-beta1, beta2, eps = 0.9, 0.999, 1e-8
+# ---- Run optimization ----
+print("Running inverse design optimization (20 iterations) ...")
+opt = optimize(sim, region, objective, n_iters=20, lr=0.05, verbose=True)
 
-losses = []
-print("Running inverse design optimization...")
-for i in range(20):
-    loss, grad = jax.value_and_grad(objective)(latent)
-    losses.append(float(loss))
+print(f"\nInitial loss : {opt.loss_history[0]:.4e}")
+print(f"Final loss   : {opt.loss_history[-1]:.4e}")
+improvement = (1.0 - opt.loss_history[-1] / opt.loss_history[0]) * 100
+print(f"Improvement  : {improvement:.1f}%")
 
-    # Adam update
-    m = beta1 * m + (1 - beta1) * grad
-    v = beta2 * v + (1 - beta2) * grad ** 2
-    m_hat = m / (1 - beta1 ** (i + 1))
-    v_hat = v / (1 - beta2 ** (i + 1))
-    latent = latent - lr * m_hat / (jnp.sqrt(v_hat) + eps)
+# ---- Build optimized eps_r array for visualization ----
+# The optimized eps lives in the design region bounding box.
+lo_idx = grid.position_to_index(region.corner_lo)
+hi_idx = grid.position_to_index(region.corner_hi)
+eps_opt = np.asarray(materials_init.eps_r.at[
+    lo_idx[0]:hi_idx[0] + 1,
+    lo_idx[1]:hi_idx[1] + 1,
+    lo_idx[2]:hi_idx[2] + 1,
+].set(np.asarray(opt.eps_design)))
 
-    if i % 5 == 0:
-        print(f"  iter {i:3d}  loss = {loss:.6e}  |grad| = {jnp.max(jnp.abs(grad)):.3e}")
+# ---- 3-panel figure ----
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+fig.suptitle("Inverse Design: Matching Layer Optimization",
+             fontsize=13, fontweight="bold")
 
-print(f"\nInitial loss: {losses[0]:.6e}")
-print(f"Final loss:   {losses[-1]:.6e}")
-print(f"Improvement:  {(1 - losses[-1]/losses[0]) * 100:.1f}%")
-
-# Final eps_r distribution
-eps_final = 1.0 + 5.0 * jax.nn.sigmoid(latent)
-
-# Plot
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-
-ax1.plot(losses, "b.-")
-ax1.set_xlabel("Iteration")
-ax1.set_ylabel("Loss (neg. transmitted power)")
-ax1.set_title("Optimization Convergence")
-ax1.grid(True, alpha=0.3)
-
-# Show eps_r along x-axis at center y,z
-eps_line = np.array(eps_final[:, grid.ny // 2, grid.nz // 2])
+iz_ctr = grid.nz // 2
 x_mm = np.arange(grid.nx) * grid.dx * 1e3
-ax2.plot(x_mm, eps_line)
-ax2.axvspan(x_lo * grid.dx * 1e3, x_hi * grid.dx * 1e3,
-            alpha=0.2, color="orange", label="Design region")
-ax2.set_xlabel("x (mm)")
-ax2.set_ylabel("eps_r")
-ax2.set_title("Optimized Permittivity")
-ax2.legend()
-ax2.grid(True, alpha=0.3)
+
+# Panel 1: Initial eps_r (x-z cross-section at y=center)
+ax = axes[0]
+iy_ctr = grid.ny // 2
+im1 = ax.imshow(
+    eps_init[:, iy_ctr, :].T, origin="lower", cmap="viridis",
+    aspect="auto", vmin=1.0, vmax=6.0,
+)
+fig.colorbar(im1, ax=ax, label="eps_r")
+# Highlight design region
+dr_x0 = lo_idx[0]
+dr_x1 = hi_idx[0]
+dr_z0 = lo_idx[2]
+dr_z1 = hi_idx[2]
+from matplotlib.patches import Rectangle
+ax.add_patch(Rectangle(
+    (dr_x0, dr_z0), dr_x1 - dr_x0, dr_z1 - dr_z0,
+    linewidth=2, edgecolor="red", facecolor="none",
+    label="Design region",
+))
+ax.set_xlabel("x (cells)")
+ax.set_ylabel("z (cells)")
+ax.set_title("Initial eps_r distribution")
+ax.legend(fontsize=8)
+
+# Panel 2: Optimized eps_r
+ax = axes[1]
+im2 = ax.imshow(
+    eps_opt[:, iy_ctr, :].T, origin="lower", cmap="viridis",
+    aspect="auto", vmin=1.0, vmax=6.0,
+)
+fig.colorbar(im2, ax=ax, label="eps_r")
+ax.add_patch(Rectangle(
+    (dr_x0, dr_z0), dr_x1 - dr_x0, dr_z1 - dr_z0,
+    linewidth=2, edgecolor="red", facecolor="none",
+    label="Design region",
+))
+ax.set_xlabel("x (cells)")
+ax.set_ylabel("z (cells)")
+ax.set_title("Optimized eps_r distribution")
+ax.legend(fontsize=8)
+
+# Annotate peak eps_r value in region
+peak_eps = float(np.max(np.asarray(opt.eps_design)))
+ax.text(
+    0.05, 0.05, f"Peak eps_r = {peak_eps:.2f}",
+    transform=ax.transAxes, fontsize=9, color="white",
+    bbox=dict(boxstyle="round", facecolor="black", alpha=0.6),
+)
+
+# Panel 3: Loss convergence curve
+ax = axes[2]
+iters = np.arange(len(opt.loss_history))
+ax.plot(iters, opt.loss_history, "b.-", lw=1.5, ms=5)
+ax.set_xlabel("Iteration")
+ax.set_ylabel("Loss (neg. transmitted power)")
+ax.set_title("Convergence")
+ax.grid(True, alpha=0.3)
+# Annotate improvement
+ax.annotate(
+    f"{improvement:.1f}% improvement",
+    xy=(len(opt.loss_history) - 1, opt.loss_history[-1]),
+    xytext=(0.4, 0.7), textcoords="axes fraction",
+    arrowprops=dict(arrowstyle="->", color="red"),
+    fontsize=9, color="red",
+)
 
 plt.tight_layout()
-plt.savefig("examples/03_inverse_design.png", dpi=150)
-print("Plot saved: examples/03_inverse_design.png")
+out_path = "examples/03_inverse_design.png"
+plt.savefig(out_path, dpi=150)
+plt.close(fig)
+print(f"Plot saved: {out_path}")
