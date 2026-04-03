@@ -34,8 +34,9 @@ from rfx.visualize import (
 )
 from rfx.visualize3d import (
     plot_geometry_3d, plot_field_3d, save_field_vtk, save_screenshot,
-    save_field_animation,
+    save_field_animation as _save_field_animation_legacy,
 )
+from rfx.animation import save_field_animation
 from rfx.simulation import SnapshotSpec
 from rfx.checkpoint import (
     save_state, load_state, save_snapshots, load_snapshots,
