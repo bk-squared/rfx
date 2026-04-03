@@ -4,3 +4,10 @@ __pycache__/
 .pytest_cache/
 .omc/
 .omx/
+docs-site/
+
+# Internal development artifacts (not for public repo)
+docs/research_notes/
+docs/codex_specs/
+docs/reports/
+examples/vessl_*.yaml

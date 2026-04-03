@@ -1,4 +1,4 @@
-# `rfx`
+# rfx
 
 ```text
 ██████╗ ███████╗██╗  ██╗
@@ -9,156 +9,188 @@
 ╚═╝  ╚═╝╚═╝     ╚═╝  ╚═╝
 ```
 
-JAX-based differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering.
+**Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-[![PyPI](https://img.shields.io/badge/PyPI-coming_soon-lightgrey)](#installation)
-[![Tests](https://img.shields.io/badge/tests-placeholder-lightgrey)](#)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](#license)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://github.com/BK3536/rfx/actions/workflows/test.yml/badge.svg)](https://github.com/BK3536/rfx/actions)
+[![Docs](https://img.shields.io/badge/docs-remilab.ai%2Frfx-blue)](https://remilab.ai/rfx/)
 
-## What is rfx?
+## Highlights
 
-`rfx` is a JAX-native finite-difference time-domain (FDTD) simulator built for differentiable electromagnetic modeling in RF and microwave engineering. It supports end-to-end automatic differentiation, so gradients can flow through the entire simulation with `jax.grad` for optimization and inverse design workflows. The project targets practical RF and microwave regimes up to X-band (10 GHz), with a focus on simulation workflows that remain programmable, composable, and accelerator-friendly. It is positioned to be competitive with tools such as Meep and OpenEMS while adding native autodiff as a first-class capability.
-
-## Key Features
-
-- **3D and 2D FDTD** with CFS-CPML absorbing boundaries
-- **Differentiable** simulation with `jax.grad` and `jax.checkpoint` for reverse-mode AD
-- **Sources:** Gaussian pulse, CW, custom waveforms, TFSF plane wave, lumped ports, and waveguide ports
-- **Materials:** dispersive (Debye, Lorentz/Drude), magnetic (`mu_r`), thin conductors, and subpixel smoothing
-- **S-parameters:** N-port extraction, waveguide modal decomposition, and two-run normalization
-- **Far-field:** NTFF, radiation patterns, and radar cross section (RCS) computation
-- **Inverse design:** Adam optimizer with design regions
-- **I/O:** Touchstone (`.sNp`) files and HDF5 checkpoints
-- **GPU accelerated** via JAX
-- **187 tests**, cross-validated against Meep and OpenEMS
+| | |
+|---|---|
+| **GPU-accelerated** | ~3,000 Mcells/s on RTX 4090 via `jax.lax.scan` JIT |
+| **Differentiable** | `jax.grad` through full time-stepping for inverse design |
+| **Cross-validated** | 0.000--0.007% agreement vs Meep and OpenEMS |
+| **Non-uniform mesh** | Graded z-profiles for thin substrates without global refinement |
+| **Auto-configuration** | `auto_configure()` derives dx, domain, CPML, timesteps from geometry |
+| **260+ tests** | PEC cavities, dielectric materials, S-params, far-field, optimization |
 
 ## Installation
 
-Install the base package from PyPI:
-
 ```bash
-pip install rfx
+# From source (recommended)
+git clone https://github.com/BK3536/rfx.git
+cd rfx
+pip install -e ".[dev]"
 ```
 
-For GPU-enabled workflows:
-
-```bash
-pip install rfx[gpu]
-```
-
-> **Note:** For CUDA or other accelerator backends, complete the appropriate
-> [JAX GPU setup](https://jax.readthedocs.io/en/latest/installation.html)
-> for your platform before running large simulations.
-
-### GPU Performance (RTX 4090)
-
-| Grid | Steps | GPU Time | Throughput |
-|------|-------|----------|------------|
-| 23³ | 200 | 0.087s | 28 Mcells/s |
-| 33³ | 300 | 0.086s | 125 Mcells/s |
-| 43³ | 400 | 0.103s | 310 Mcells/s |
-| 63³ | 500 | 0.095s | **1,310 Mcells/s** |
-
-Gradient computation (reverse-mode AD): **~0.31s** for all grid sizes on GPU.
+> **GPU:** Complete the [JAX GPU setup](https://jax.readthedocs.io/en/latest/installation.html) for your platform before running large simulations.
 
 ## Quick Start
 
-The example below creates a PEC-walled cavity with a dielectric slab, excites it with a lumped port, runs the simulation, and plots S11 versus frequency.
-
 ```python
-import numpy as np
-import matplotlib.pyplot as plt
 from rfx import Simulation, Box, GaussianPulse
+import numpy as np
 
-# 48 mm × 32 mm × 32 mm PEC cavity, simulate up to 10 GHz
+# PEC cavity with dielectric slab — simulate up to 10 GHz
 sim = Simulation(freq_max=10e9, domain=(0.048, 0.032, 0.032), boundary="pec")
-
-# Dielectric slab filling the centre third of the cavity
 sim.add_material("slab", eps_r=2.2)
-sim.add(Box((0.016, 0.008, 0.008), (0.032, 0.024, 0.024)), material="slab")
+sim.add(Box((0.016, 0, 0), (0.032, 0.032, 0.032)), material="slab")
 
-# Lumped port at one end, probe at the other
+# Lumped port + probe
 sim.add_port((0.006, 0.016, 0.016), "ez", impedance=50.0,
              waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
 sim.add_probe((0.042, 0.016, 0.016), "ez")
 
 result = sim.run(num_periods=30)
 
-# S11 versus frequency
-freqs = result.freqs
-s11_db = 20 * np.log10(np.abs(result.s_params[0, 0, :]) + 1e-12)
-plt.plot(freqs / 1e9, s11_db)
-plt.xlabel("Frequency [GHz]")
-plt.ylabel("|S11| [dB]")
-plt.title("PEC cavity with dielectric slab")
-plt.show()
+# S11
+s11_dB = 20 * np.log10(np.abs(result.s_params[0, 0, :]) + 1e-12)
 ```
 
-## Inverse Design Example
-
-This example optimises the permittivity inside a design region to minimise reflected power at a lumped port.
+## Patch Antenna with Non-Uniform Mesh
 
 ```python
+from rfx import Simulation, Box, GaussianPulse, auto_configure
 import numpy as np
-import matplotlib.pyplot as plt
+
+# Auto-configure from geometry and frequency range
+geometry = [
+    (Box((0, 0, 0), (0.06, 0.06, 0.0016)), "fr4"),
+    (Box((0, 0, 0), (0.06, 0.06, 0)), "pec"),
+    (Box((0.015, 0.011, 0.0016), (0.0444, 0.049, 0.0016)), "pec"),
+]
+materials = {"fr4": {"eps_r": 4.4, "sigma": 0.025}, "pec": {"eps_r": 1.0, "sigma": 1e10}}
+config = auto_configure(geometry, (1e9, 4e9), materials=materials, accuracy="standard")
+print(config.summary())  # Shows dx, non-uniform dz, CPML, n_steps
+
+# Build simulation from auto-config
+sim = Simulation(**config.to_sim_kwargs())
+sim.add_material("fr4", eps_r=4.4, sigma=0.025)
+for shape, mat in geometry:
+    sim.add(shape, material=mat)
+sim.add_source((0.025, 0.03, 0.0008), "ez", waveform=GaussianPulse(f0=2.4e9))
+sim.add_probe((0.025, 0.03, 0.0008), "ez")
+
+result = sim.run(n_steps=config.n_steps)
+modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
+for m in modes:
+    print(f"f={m.freq/1e9:.4f} GHz, Q={m.Q:.0f}")
+```
+
+## Inverse Design
+
+```python
 from rfx import Simulation, Box, GaussianPulse
 from rfx.optimize import DesignRegion, optimize
+from rfx.optimize_objectives import minimize_s11
 
 sim = Simulation(freq_max=10e9, domain=(0.048, 0.032, 0.032), boundary="pec")
 sim.add_port((0.006, 0.016, 0.016), "ez", impedance=50.0,
              waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
-sim.add_probe((0.042, 0.016, 0.016), "ez")
 
-# Optimisable region between the port and the far wall
 region = DesignRegion(
     corner_lo=(0.016, 0.008, 0.008),
     corner_hi=(0.032, 0.024, 0.024),
     eps_range=(1.0, 4.4),
 )
 
-def objective(result):
-    # Minimise reflected power averaged over all S-param frequencies
-    return float(np.mean(np.abs(result.s_params[0, 0, :]) ** 2))
-
-opt_result = optimize(sim, region, objective, n_iters=40, lr=0.05)
-
-plt.plot(opt_result.loss_history)
-plt.xlabel("Iteration")
-plt.ylabel("Mean |S11|²")
-plt.title("Inverse design convergence")
-plt.show()
+result = optimize(sim, region, minimize_s11, n_iters=40, lr=0.05)
+print(f"Final loss: {result.loss_history[-1]:.4f}")
 ```
+
+## Key Features
+
+### Simulation Engine
+- 3D/2D Yee solver with CFS-CPML absorbing boundaries
+- True PEC mask (component-specific tangential zeroing)
+- Non-uniform z mesh for thin substrates (auto-detected)
+- Periodic boundaries, TFSF plane-wave source
+
+### Sources & Ports
+- GaussianPulse, ModulatedGaussian, CW, custom waveforms
+- Lumped ports and multi-cell wire ports (conductor-to-conductor)
+- Waveguide ports with modal decomposition
+- Polarized sources (Jones vector: circular, LHCP, slant45)
+
+### Materials
+- Dispersive: Debye, Lorentz/Drude
+- Magnetic (`mu_r` validated)
+- Thin conductors with subcell correction
+- Subpixel smoothing (Farjadpour/Kottke)
+- Built-in library: PEC, FR4, Rogers 4003C, copper, alumina, PTFE, water
+
+### Analysis
+- S-parameters: lumped, wire (JIT-DFT), waveguide (N-port matrix)
+- Harminv resonance extraction (Matrix Pencil Method)
+- NTFF far-field, radiation patterns, RCS
+- Far-field polarization (axial ratio, tilt, sense)
+- Touchstone I/O, HDF5 checkpoints, VTK export
+
+### Optimization
+- Design regions with `jax.grad` through full simulation
+- Adam optimizer, gradient checkpointing
+- Objective library: minimize_s11, maximize_s21, target_impedance, maximize_bandwidth
+
+## Cross-Validation
+
+Three-way validation against Meep and OpenEMS:
+
+| Geometry | rfx vs Meep | rfx vs OpenEMS | rfx vs Analytical |
+|----------|-------------|----------------|-------------------|
+| PEC cavity TM110 | 0.010% | **0.000%** | 0.013% |
+| FR4 cavity (eps=4.4) | 0.006% | — | 0.013% |
+| Rogers (eps=3.55) | 0.007% | — | 0.026% |
+| PTFE (eps=2.2) | 0.004% | — | 0.004% |
+| Alumina (eps=9.8) | 0.005% | — | 0.038% |
+
+## GPU Performance (RTX 4090)
+
+| Grid | Steps | Time | Throughput |
+|------|-------|------|------------|
+| 23^3 | 200 | 0.087s | 28 Mcells/s |
+| 33^3 | 300 | 0.086s | 125 Mcells/s |
+| 43^3 | 400 | 0.103s | 310 Mcells/s |
+| 63^3 | 500 | 0.095s | 1,310 Mcells/s |
+
+Gradient (reverse-mode AD): ~0.31s for all grid sizes.
 
 ## Documentation
 
-Documentation is currently centered around in-code docstrings and runnable examples in the `examples/` directory. Start with the builder API examples and then inspect individual object and method docstrings for parameter details and simulation options.
+Full documentation: **[remilab.ai/rfx](https://remilab.ai/rfx/)**
+
+- [User Guide](https://remilab.ai/rfx/guide/) — Installation, API, materials, sources, probes
+- [AI Agent Guide](https://remilab.ai/rfx/agent/) — Auto-configuration, prompt templates, design workflows
 
 ## Citation
 
-If you use `rfx` in academic work, please cite:
-
 ```bibtex
-@software{kim_rfx,
+@software{kim_rfx_2026,
   author       = {Byungkwan Kim},
   title        = {rfx: JAX-based differentiable 3D FDTD simulator},
   institution  = {REMI Lab, Chungnam National University},
   year         = {2026},
-  url          = {https://github.com/BK3536/rfx},
-  note         = {BibTeX placeholder -- update after formal release}
+  url          = {https://github.com/BK3536/rfx}
 }
 ```
 
 ## License
 
-`rfx` is released under the [MIT License](LICENSE).
+MIT License. See [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-Developed by [Byungkwan Kim](https://github.com/BK3536) at the **Radar & ElectroMagnetic Intelligence (REMI) Laboratory**, Chungnam National University.
+Developed by [Byungkwan Kim](https://remilab.cnu.ac.kr) at the **Radar & ElectroMagnetic Intelligence (REMI) Laboratory**, Chungnam National University.
 
-### AI Development Credits
-
-This project was developed with significant contributions from AI coding assistants:
-
-- **Claude** (Anthropic) — Architecture design, code review, quality management, validation strategy, physics verification
-- **Codex** (OpenAI) — Feature implementation, test generation, documentation drafting
+AI-assisted development: Claude (Anthropic), Codex (OpenAI).
