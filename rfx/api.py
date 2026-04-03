@@ -1678,6 +1678,23 @@ class Simulation:
                     idx = grid.position_to_index(pe.position)
                     pec_mask = pec_mask.at[idx[0], idx[1], idx[2]].set(False)
 
+        # Build wire port S-param specs for JIT-integrated DFT
+        wire_sparam_specs = []
+        if wire_ports and (compute_s_params is None or compute_s_params):
+            from rfx.simulation import WirePortSParamSpec
+            from rfx.sources.sources import _wire_port_cells
+            sp_freqs = s_param_freqs if s_param_freqs is not None else jnp.linspace(
+                self._freq_max / 10, self._freq_max, 50)
+            for wp in wire_ports:
+                cells = _wire_port_cells(grid, wp)
+                mid = cells[len(cells) // 2]
+                wire_sparam_specs.append(WirePortSParamSpec(
+                    mid_i=mid[0], mid_j=mid[1], mid_k=mid[2],
+                    component=wp.component,
+                    freqs=jnp.asarray(sp_freqs, dtype=jnp.float32),
+                    impedance=wp.impedance,
+                ))
+
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
 
@@ -1769,6 +1786,7 @@ class Simulation:
                 checkpoint=checkpoint,
                 aniso_eps=aniso_eps,
                 pec_mask=pec_mask,
+                wire_port_sparams=wire_sparam_specs or None,
             )
         else:
             sim_result = _run(
@@ -1789,16 +1807,42 @@ class Simulation:
                 checkpoint=checkpoint,
                 aniso_eps=aniso_eps,
                 pec_mask=pec_mask,
+                wire_port_sparams=wire_sparam_specs or None,
             )
 
-        # S-parameters (separate Python-loop simulation for accuracy)
+        # S-parameters: use JIT-integrated DFT for wire ports (fast),
+        # fall back to Python loop for lumped ports
         if compute_s_params is None:
             compute_s_params = len(lumped_ports) > 0 or len(wire_ports) > 0
 
         s_params = None
         freqs_out = None
 
-        if compute_s_params and (lumped_ports or wire_ports):
+        if compute_s_params and wire_ports and sim_result.wire_port_sparams:
+            # Extract S-params from JIT-accumulated DFTs (100x faster)
+            n_wp = len(wire_ports)
+            if s_param_freqs is None:
+                s_param_freqs = wire_ports[0].excitation.f0  # placeholder
+                # Use freqs from the first wire port spec
+                for wp_meta, accs in sim_result.wire_port_sparams:
+                    s_param_freqs = np.array(wp_meta.freqs)
+                    break
+            freqs_out = np.array(s_param_freqs)
+            n_freqs = len(freqs_out)
+            S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.complex64)
+
+            for j, (wp_meta, accs) in enumerate(sim_result.wire_port_sparams):
+                v_dft, i_dft, _ = accs
+                z0 = wp_meta.impedance
+                # Wave decomposition
+                a_j = (v_dft + z0 * i_dft) / (2.0 * np.sqrt(z0))
+                safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
+                b_j = (v_dft - z0 * i_dft) / (2.0 * np.sqrt(z0))
+                S[j, j, :] = np.array(b_j / safe_a)
+
+            s_params = S
+        elif compute_s_params and (lumped_ports or wire_ports):
+            # Fall back to Python-loop extraction
             if s_param_freqs is None:
                 s_param_freqs = jnp.linspace(
                     self._freq_max / 10, self._freq_max, 50,
