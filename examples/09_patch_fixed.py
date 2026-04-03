@@ -63,10 +63,10 @@ sim.add(Box((px0, py0, h), (px0+L, py0+W, h+pec_t)), material='pec')
 
 # ---- Excitation: high-impedance port = soft source (negligible loading) ----
 # Z0=1e6 gives sigma_port ≈ 0 — acts as a soft source without damping the cavity
-sim.add_port(position=(feed_x, feed_y, dx), component='ez',
+sim.add_port(position=(feed_x, feed_y, 0), component='ez',
              impedance=1e6,
              waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-             extent=h - 2*dx)
+             extent=h)
 
 # ---- Probe ----
 sim.add_probe((feed_x, feed_y, h/2), 'ez')

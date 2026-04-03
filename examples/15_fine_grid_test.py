@@ -26,10 +26,10 @@ sim.add(Box((px0,py0,h),(px0+L,py0+W,h+dx)), material='pec')
 # Use moderate-impedance port (Z0=500Ω) to:
 # 1. Selectively damp substrate surface waves (they couple to port)
 # 2. Still allow patch cavity to resonate (Q_loaded ≈ Q/2 at 500Ω)
-sim.add_port(position=(px0+L/3,py0+W/2,dx), component='ez',
+sim.add_port(position=(px0+L/3,py0+W/2,0), component='ez',
              impedance=500.0,
              waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-             extent=h-2*dx)
+             extent=h)
 sim.add_probe((px0+L/3,py0+W/2,h/2), 'ez')
 
 grid=sim._build_grid()

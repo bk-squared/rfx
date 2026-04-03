@@ -22,8 +22,8 @@ for label, dx in [("0.5mm", 0.5e-3), ("0.25mm", 0.25e-3)]:
     sim.add(Box((0,0,0),(dom_x,dom_y,dx)), material='pec')
     sim.add(Box((0,0,0),(dom_x,dom_y,h)), material='FR4')
     sim.add(Box((px0,py0,h),(px0+L,py0+W,h+dx)), material='pec')
-    sim.add_port(position=(feed_x,feed_y,dx), component='ez',
-                 waveform=GaussianPulse(f0=f0, bandwidth=0.8), extent=h-2*dx)
+    sim.add_port(position=(feed_x,feed_y,0), component='ez',
+                 waveform=GaussianPulse(f0=f0, bandwidth=0.8), extent=h)
     sim.add_probe((feed_x,feed_y,h/2), 'ez')
 
     grid = sim._build_grid()

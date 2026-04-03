@@ -63,10 +63,10 @@ sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h + dx_f)), material="pec")  # pat
 feed_x = px0 + L / 3
 feed_y = py0 + W / 2
 sim.add_port(
-    position=(feed_x, feed_y, dx_f),  # just above ground
+    position=(feed_x, feed_y, 0),  # ground plane
     component="ez",
     waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-    extent=h - 2 * dx_f,  # span through substrate
+    extent=h,  # span ground to patch (full conductor-to-conductor)
 )
 
 sim.add_probe((feed_x, feed_y, h / 2), "ez")

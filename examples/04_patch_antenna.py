@@ -68,10 +68,10 @@ feed_x = px0 + L / 3
 feed_y = py0 + W / 2
 
 sim.add_port(
-    position=(feed_x, feed_y, dx),
+    position=(feed_x, feed_y, 0),
     component="ez",
     waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-    extent=h - 2 * dx,
+    extent=h,
 )
 
 # ---- NTFF box for far-field ----
@@ -86,7 +86,7 @@ sim.add_ntff_box(
 sim.add_probe((feed_x, feed_y, h / 2), "ez")
 
 print(f"Domain: {dom_x*1e3:.0f}x{dom_y*1e3:.0f}x{dom_z*1e3:.0f} mm, dx={dx*1e3:.1f} mm")
-print(f"Feed: ({feed_x*1e3:.1f}, {feed_y*1e3:.1f}) mm, extent={(h-2*dx)*1e3:.1f} mm")
+print(f"Feed: ({feed_x*1e3:.1f}, {feed_y*1e3:.1f}) mm, extent={h*1e3:.1f} mm")
 
 # ---- 3D Geometry visualization ----
 print("\nRendering geometry...")
