@@ -18,6 +18,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,
 )
 from rfx.farfield import make_ntff_box
+from rfx.lumped import setup_rlc_materials, build_rlc_meta
 
 
 def run_uniform(
@@ -66,6 +67,10 @@ def run_uniform(
     from rfx.api import Result, WaveguideSParamResult
 
     materials = base_materials
+
+    # Fold RLC R and C into material arrays before port/source setup
+    for spec in sim._lumped_rlc:
+        materials = setup_rlc_materials(grid, spec, materials)
 
     # Compute per-component smoothed permittivity if requested
     aniso_eps = None
@@ -233,6 +238,11 @@ def run_uniform(
         corner_lo, corner_hi, freqs = sim._ntff
         ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
+    # Lumped RLC elements
+    rlc_metas = None
+    if sim._lumped_rlc:
+        rlc_metas = [build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc]
+
     # Main simulation
     if until_decay is not None:
         sim_result = _run_until_decay(
@@ -281,6 +291,7 @@ def run_uniform(
             aniso_eps=aniso_eps,
             pec_mask=pec_mask,
             wire_port_sparams=wire_sparam_specs or None,
+            lumped_rlc=rlc_metas,
         )
 
     # S-parameters: use JIT-integrated DFT for wire ports (fast),
