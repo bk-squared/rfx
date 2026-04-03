@@ -11,11 +11,23 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
+**v1.0.0** -- Production-stable release with 260+ tests and 0.000% cross-validation agreement vs OpenEMS.
+
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://github.com/BK3536/rfx/actions/workflows/test.yml/badge.svg)](https://github.com/BK3536/rfx/actions)
 [![Docs](https://img.shields.io/badge/docs-remilab.ai%2Frfx-blue)](https://remilab.ai/rfx/)
 
-## Highlights
+## v1.0.0 Highlights
+
+- Non-uniform mesh with JIT-compiled subgridding
+- Lumped RLC elements (series/parallel/shunt)
+- Via and curved patch geometry primitives
+- Oblique-incidence TFSF plane-wave source
+- Field animation export (`save_field_animation`)
+- Auto-configuration from geometry and frequency
+- 260+ tests, three-way cross-validation (rfx / Meep / OpenEMS)
+
+## At a Glance
 
 | | |
 |---|---|
@@ -24,6 +36,9 @@
 | **Cross-validated** | 0.000--0.007% agreement vs Meep and OpenEMS |
 | **Non-uniform mesh** | Graded z-profiles for thin substrates without global refinement |
 | **Auto-configuration** | `auto_configure()` derives dx, domain, CPML, timesteps from geometry |
+| **Lumped RLC** | Series, parallel, and shunt lumped elements in any cell |
+| **Via & curved patch** | First-class geometry primitives for PCB and antenna design |
+| **Animation** | Time-domain field animation export (MP4/GIF) |
 
 ## Installation
 
@@ -114,13 +129,20 @@ print(f"Final loss: {result.loss_history[-1]:.4f}")
 ### Simulation Engine
 - 3D/2D Yee solver with CFS-CPML absorbing boundaries
 - True PEC mask (component-specific tangential zeroing)
-- Non-uniform z mesh for thin substrates (auto-detected)
-- Periodic boundaries, TFSF plane-wave source
+- Non-uniform z mesh with JIT-compiled subgridding for thin substrates
+- Periodic boundaries, oblique-incidence TFSF plane-wave source
+- Auto-configuration: `auto_configure()` derives dx, domain, CPML, timesteps
+- Lumped RLC elements (series, parallel, shunt configurations)
+
+### Geometry
+- CSG primitives: Box, Sphere, Cylinder
+- Curved patch for conformal antenna surfaces
+- Via for PCB through-hole and blind-via modeling
 
 ### Sources & Ports
 - GaussianPulse, ModulatedGaussian, CW, custom waveforms
 - Lumped ports and multi-cell wire ports (conductor-to-conductor)
-- Waveguide ports with modal decomposition
+- Waveguide ports with modal decomposition (eigenmode solver)
 - Polarized sources (Jones vector: circular, LHCP, slant45)
 
 ### Materials
@@ -136,11 +158,12 @@ print(f"Final loss: {result.loss_history[-1]:.4f}")
 - NTFF far-field, radiation patterns, RCS
 - Far-field polarization (axial ratio, tilt, sense)
 - Touchstone I/O, HDF5 checkpoints, VTK export
+- Time-domain field animation (MP4/GIF via `save_field_animation`)
 
 ### Optimization
 - Design regions with `jax.grad` through full simulation
 - Adam optimizer, gradient checkpointing
-- Objective library: minimize_s11, maximize_s21, target_impedance, maximize_bandwidth
+- Objective library: minimize_s11, maximize_s21, target_impedance, maximize_bandwidth, maximize_directivity
 
 ## Cross-Validation
 
