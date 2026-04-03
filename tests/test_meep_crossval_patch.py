@@ -160,6 +160,8 @@ def run_meep_2d_cavity(a, b, eps_r, sigma, m, n, dx=None):
                          ids=["FR4", "Rogers", "GPS"])
 def test_rfx_vs_meep_dielectric_cavity(case):
     """rfx and Meep should agree within 0.5% on substrate-filled cavity."""
+    pytest.importorskip("meep")
+
     a, b, eps_r = case["a"], case["b"], case["eps_r"]
     sigma = case["sigma"]
     m, n = case["mode"]

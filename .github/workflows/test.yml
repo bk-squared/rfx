@@ -31,6 +31,8 @@ jobs:
         run: >
           pytest -x -q
           --ignore=tests/test_meep_crossval.py
+          --ignore=tests/test_meep_crossval_patch.py
           --ignore=tests/test_openems_crossval.py
+          --ignore=tests/test_crossval_comprehensive.py
           --ignore=tests/test_subpixel.py
           -k "not slow"
