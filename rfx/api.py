@@ -149,8 +149,10 @@ class Result(NamedTuple):
             fr = self.freq_range
         if fr is None:
             raise ValueError("freq_range not specified")
-        # Extract boundary from stored freq_range if present
+        # Extract boundary from stored freq_range (always check stored, not arg)
         stored_boundary = 'cpml'
+        if self.freq_range is not None and len(self.freq_range) > 2:
+            stored_boundary = self.freq_range[2]
         if len(fr) > 2:
             stored_boundary = fr[2]
             fr = (fr[0], fr[1])
