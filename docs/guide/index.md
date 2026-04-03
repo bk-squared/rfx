@@ -15,6 +15,9 @@
 | [Advanced Features](advanced.md) | Dispersive materials, CFS-CPML, subpixel smoothing |
 | [Geometry & Limitations](geometry_and_limitations.md) | Primitives, CSG, what rfx can/can't do, tool comparison |
 | [Visualization & AI Analysis](visualization_and_analysis.md) | Plots, post-processing, LLM-assisted design, ML surrogates |
+| [Migration Guide](migration.md) | Coming from Meep or OpenEMS? Start here |
+| [Changelog](changelog.md) | Version history and release notes |
+| [Contributing](contributing.md) | Dev setup, testing, PR workflow |
 
 ## Quick Links
 
