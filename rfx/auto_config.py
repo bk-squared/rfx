@@ -277,10 +277,12 @@ def auto_configure(
     # Ensure minimum domain > 4*dx per dimension
     domain = tuple(max(d, 8 * dx) for d in domain)
 
-    # 3. CPML layers — based on cells needed for grading, not physical thickness
-    # 8-16 cells is sufficient for well-tuned CPML regardless of wavelength
+    # 3. CPML layers — ensure physical thickness >= 0.4*λ_max (Meep/OpenEMS convention)
+    # with a floor from accuracy preset for well-tuned CFS-CPML grading.
+    min_cpml_thickness = 0.4 * lambda_max
+    min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
     cpml_cells = {"draft": 8, "standard": 12, "high": 16}[accuracy]
-    cpml_layers = cpml_cells
+    cpml_layers = max(min_cpml_cells, cpml_cells)
 
     # 4. Non-uniform z profile
     dz_profile = None

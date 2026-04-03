@@ -124,18 +124,23 @@ def _cpml_profile(
     )
 
 
-def init_cpml(grid: Grid, *, kappa_max: float = 1.0) -> tuple[CPMLParams, CPMLState]:
+def init_cpml(grid: Grid, *, kappa_max: float | None = None) -> tuple[CPMLParams, CPMLState]:
     """Initialize CPML parameters and zero-valued auxiliary fields.
 
     Parameters
     ----------
     grid : Grid
-        Simulation grid.
-    kappa_max : float
-        Maximum κ stretching parameter for CFS-CPML. Default 1.0 gives
-        standard CPML behavior (backward compatible). Values > 1 (e.g. 5)
+        Simulation grid. If the grid carries a ``kappa_max`` attribute
+        (set by the high-level Simulation API), it is used as the default
+        when the caller does not pass an explicit *kappa_max*.
+    kappa_max : float or None
+        Maximum κ stretching parameter for CFS-CPML. When None, reads
+        ``grid.kappa_max`` if available, otherwise defaults to 1.0
+        (standard CPML, backward compatible). Values > 1 (e.g. 5)
         improve absorption of evanescent and low-frequency fields.
     """
+    if kappa_max is None:
+        kappa_max = getattr(grid, "kappa_max", None) or 1.0
     n = grid.cpml_layers
     params = _cpml_profile(n, grid.dt, grid.dx, kappa_max=kappa_max)
 
