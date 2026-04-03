@@ -1,0 +1,17 @@
+name: rfx-patch-sub1pct
+description: "dx=0.125mm patch antenna targeting <1% error (A6000 48GB)"
+tags: [rfx, sub1pct, fine-grid, a6000]
+resources:
+  cluster: remilab-c0
+  preset: gpu-a6000-1-hi-mem
+image: nvcr.io/nvidia/jax:24.04-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  pip install -q -e .
+  python -c "import jax; d=jax.devices()[0]; print(f'Backend: {jax.default_backend()}, GPU: {d.device_kind}, Memory: {d.memory_stats()[\"bytes_limit\"]/1e9:.1f}GB')"
+  python examples/24_patch_sub1pct.py
