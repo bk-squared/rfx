@@ -159,18 +159,26 @@ def run_nonuniform(
     probes = probes or []
     dt = grid.dt
 
-    # CPML (using min cell size for profile — conservative)
+    # CPML: create a uniform-dx proxy grid for CPML coefficient computation.
+    # CPML operates on the outer shell (cpml_layers cells on each face).
+    # Using dx as the reference cell size is conservative and correct for
+    # the x/y faces. Z-faces use the boundary dz (first/last cells).
     from rfx.grid import Grid as UniformGrid
-    cpml_grid = UniformGrid(freq_max=1e10, domain=(grid.nx*grid.dx, grid.ny*grid.dy, grid.nz*float(grid.dz.min())),
-                            dx=float(grid.dz.min()), cpml_layers=grid.cpml_layers)
-    cpml_grid.dt = dt
-    # Actually, CPML with non-uniform mesh needs special handling.
-    # For now, use uniform CPML with the fine cell size.
     from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
+
+    # CPML proxy: lightweight object mimicking Grid with exact shape
+    class _CpmlProxy:
+        def __init__(self, g):
+            self.nx = g.nx; self.ny = g.ny; self.nz = g.nz
+            self.dx = g.dx; self.dt = dt
+            self.cpml_layers = g.cpml_layers
+            self.shape = (g.nx, g.ny, g.nz)
+            self.is_2d = False
+    cpml_proxy = _CpmlProxy(grid)
+    cpml_params, cpml_state_init = init_cpml(cpml_proxy)
 
     use_pec_mask = pec_mask is not None
 
-    # Source waveforms
     if sources:
         src_waveforms = jnp.stack([jnp.array(s[4]) for s in sources], axis=-1)
     else:
@@ -180,7 +188,6 @@ def run_nonuniform(
 
     state = init_state((grid.nx, grid.ny, grid.nz))
 
-    # Pre-extract arrays for scan closure
     inv_dx_h = grid.inv_dx_h
     inv_dy_h = grid.inv_dy_h
     inv_dz_h = grid.inv_dz_h
@@ -188,19 +195,23 @@ def run_nonuniform(
     inv_dy = grid.inv_dy
     inv_dz = grid.inv_dz
 
-    carry_init = {"fdtd": state}
+    carry_init = {"fdtd": state, "cpml": cpml_state_init}
 
     def step_fn(carry, xs):
         step_idx, src_vals = xs
         st = carry["fdtd"]
 
-        # H update (non-uniform)
+        # H update (non-uniform) + CPML
         st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h)
+        st, cpml_new = apply_cpml_h(st, cpml_params, carry["cpml"],
+                                     cpml_proxy, "xyz")
 
-        # E update (non-uniform)
+        # E update (non-uniform) + CPML
         st = update_e_nu(st, materials, dt, inv_dx, inv_dy, inv_dz)
+        st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
+                                     cpml_proxy, "xyz")
 
-        # PEC boundary
+        # PEC
         st = apply_pec(st)
         if use_pec_mask:
             st = apply_pec_mask(st, pec_mask)
@@ -215,7 +226,7 @@ def run_nonuniform(
         samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
         probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
 
-        return {"fdtd": st}, probe_out
+        return {"fdtd": st, "cpml": cpml_new}, probe_out
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
     final, time_series = jax.lax.scan(step_fn, carry_init, xs)
