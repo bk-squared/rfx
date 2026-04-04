@@ -39,3 +39,6 @@ all = ["rfx[optimization,visualization,dashboard,dev]"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]

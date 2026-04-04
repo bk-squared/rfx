@@ -27,7 +27,7 @@
 | **Topology optimization** | Density-based with filtering, projection, and beta continuation |
 | **Conformal PEC** | Dey-Mittra method for 2nd-order accuracy on curved conductors |
 | **Multi-GPU** | `jax.pmap` distributed FDTD with 1D slab decomposition |
-| **SBP-SAT subgridding** | JIT-compiled local mesh refinement with provable stability |
+| **SBP-SAT subgridding** | JIT-compiled local mesh refinement (experimental in 3D) |
 | **Multi-mode ports** | Analytical TE/TM eigenmodes for waveguide S-matrix |
 | **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC |
 | **Accuracy validated** | 5-case benchmark against Balanis/Pozar (patch 1.97%, cavity 0.016%) |
@@ -107,7 +107,7 @@ Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavities and waveguides.
 ### Core Simulator
 - 3D/2D Yee FDTD with CFS-CPML (kappa=5.0, < -40 dB reflectivity)
 - Conformal PEC via Dey-Mittra (2nd-order on curved surfaces)
-- SBP-SAT subgridding with JIT (jax.lax.scan)
+- SBP-SAT subgridding with JIT (experimental in 3D, stable in 1D/2D)
 - Non-uniform z-mesh for thin substrates
 - Multi-GPU via jax.pmap (1D slab decomposition, PEC+CPML+dispersion)
 - Mixed precision (float16 fields, 2x memory reduction)
