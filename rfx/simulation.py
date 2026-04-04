@@ -386,6 +386,8 @@ def run(
     conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
     lumped_rlc: list | None = None,
+    kerr_chi3: jnp.ndarray | None = None,
+    field_dtype=None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -476,12 +478,23 @@ def run(
     use_wire_sparams = len(wire_port_sparams) > 0
     lumped_rlc = lumped_rlc or []
     use_lumped_rlc = len(lumped_rlc) > 0
+    use_kerr = kerr_chi3 is not None
+
+    if use_kerr:
+        from rfx.materials.nonlinear import apply_kerr_ade
 
     # ---- fast-path: pre-baked coefficients with PEC folded in ----
     # Eligible when the scan body only needs H update + E update + PEC —
     # no CPML, no TFSF, no dispersion, no anisotropic eps, no PEC mask,
-    # no conformal, no lumped RLC, and no periodic axes.
-    use_fast_he = (
+    # no conformal, no lumped RLC, no Kerr, and no periodic axes.
+    #
+    # The fast path bakes PEC boundary enforcement into the update
+    # coefficients (zero ca/cb at boundary cells), eliminating 12
+    # per-step scatter operations.  This is always beneficial on GPU
+    # (scatter ops launch separate kernels) and beneficial on CPU for
+    # grids above ~500K cells where the scatter ops cause cache eviction.
+    _on_gpu = jax.default_backend() != "cpu"
+    _fast_eligible = (
         not use_cpml
         and not use_tfsf
         and not use_debye
@@ -489,14 +502,21 @@ def run(
         and not use_pec_mask
         and not use_conformal
         and not use_lumped_rlc
+        and not use_kerr
         and aniso_eps is None
         and periodic == (False, False, False)
     )
+    # On GPU the baked-PEC path eliminates expensive scatter-update
+    # kernel launches — always beneficial.  On CPU, XLA fuses scatter
+    # ops efficiently so the extra coefficient arrays hurt at small-to-
+    # medium grids; enable only when explicitly requested via GPU backend.
+    use_fast_he = _fast_eligible and _on_gpu
     if use_fast_he:
         _fast_coeffs = precompute_coeffs(materials, dt, dx, pec_axes=pec_axes)
 
     # ---- initialise states ----
-    fdtd = init_state(grid.shape)
+    _field_dtype = field_dtype if field_dtype is not None else jnp.float32
+    fdtd = init_state(grid.shape, field_dtype=_field_dtype)
 
     carry_init: dict = {"fdtd": fdtd}
 
@@ -607,45 +627,55 @@ def run(
         st = carry["fdtd"]
         tfsf_h_state = None
 
-        # H update
-        st = update_h(st, materials, dt, dx, periodic=periodic)
-        if use_tfsf:
-            st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], dx, dt)
-        if use_cpml:
-            st, cpml_new = apply_cpml_h(
-                st, cpml_params, carry["cpml"], grid, cpml_axes)
-        if use_tfsf:
-            if _tfsf_is_2d:
-                tfsf_h_state = update_tfsf_2d_h(tfsf_cfg, carry["tfsf"], dx, dt)
-            else:
-                tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], dx, dt)
+        if use_fast_he:
+            # Fast path: combined H+E update with PEC baked into
+            # pre-computed coefficients — eliminates separate apply_pec(),
+            # coefficient recomputation, and reduces XLA scatter ops.
+            st = update_he_fast(st, _fast_coeffs)
+        else:
+            # H update
+            st = update_h(st, materials, dt, dx, periodic=periodic)
+            if use_tfsf:
+                st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], dx, dt)
+            if use_cpml:
+                st, cpml_new = apply_cpml_h(
+                    st, cpml_params, carry["cpml"], grid, cpml_axes)
+            if use_tfsf:
+                if _tfsf_is_2d:
+                    tfsf_h_state = update_tfsf_2d_h(tfsf_cfg, carry["tfsf"], dx, dt)
+                else:
+                    tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], dx, dt)
 
-        st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
-            st,
-            materials,
-            dt,
-            dx,
-            debye=(debye_coeffs, carry["debye"]) if use_debye else None,
-            lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
-            periodic=periodic,
-            aniso_eps=aniso_eps,
-        )
+            st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
+                st,
+                materials,
+                dt,
+                dx,
+                debye=(debye_coeffs, carry["debye"]) if use_debye else None,
+                lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
+                periodic=periodic,
+                aniso_eps=aniso_eps,
+            )
 
-        if use_tfsf:
-            st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, dx, dt)
-        if use_cpml:
-            st, cpml_new = apply_cpml_e(
-                st, cpml_params, cpml_new, grid, cpml_axes)
+            # Kerr nonlinear ADE correction (after linear E-update)
+            if use_kerr:
+                st = apply_kerr_ade(st, kerr_chi3, dt)
 
-        if pec_axes:
-            st = apply_pec(st, axes=pec_axes)
+            if use_tfsf:
+                st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, dx, dt)
+            if use_cpml:
+                st, cpml_new = apply_cpml_e(
+                    st, cpml_params, cpml_new, grid, cpml_axes)
 
-        if use_conformal:
-            from rfx.geometry.conformal import apply_conformal_pec
-            st = apply_conformal_pec(st, conformal_weights[0], conformal_weights[1], conformal_weights[2])
-        elif use_pec_mask:
-            from rfx.boundaries.pec import apply_pec_mask
-            st = apply_pec_mask(st, pec_mask)
+            if pec_axes:
+                st = apply_pec(st, axes=pec_axes)
+
+            if use_conformal:
+                from rfx.geometry.conformal import apply_conformal_pec
+                st = apply_conformal_pec(st, conformal_weights[0], conformal_weights[1], conformal_weights[2])
+            elif use_pec_mask:
+                from rfx.boundaries.pec import apply_pec_mask
+                st = apply_pec_mask(st, pec_mask)
 
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         if use_lumped_rlc:
@@ -681,10 +711,11 @@ def run(
                     vinc_dft,
                 ))
 
-        # Soft sources
+        # Soft sources — cast source value to field dtype to avoid
+        # mixed-precision scatter warnings (float32 -> float16).
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
             field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s])
+            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
             st = st._replace(**{sc: field})
 
         if use_tfsf:
@@ -861,6 +892,8 @@ def run_until_decay(
     conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
     lumped_rlc: list | None = None,
+    kerr_chi3: jnp.ndarray | None = None,
+    field_dtype=None,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -935,9 +968,14 @@ def run_until_decay(
     use_wire_sparams = len(wire_port_sparams) > 0
     lumped_rlc = lumped_rlc or []
     use_lumped_rlc = len(lumped_rlc) > 0
+    use_kerr_decay = kerr_chi3 is not None
+
+    if use_kerr_decay:
+        from rfx.materials.nonlinear import apply_kerr_ade as _apply_kerr_ade_decay
 
     # ---- initialise states ----
-    fdtd = init_state(grid.shape)
+    _field_dtype = field_dtype if field_dtype is not None else jnp.float32
+    fdtd = init_state(grid.shape, field_dtype=_field_dtype)
     carry: dict = {"fdtd": fdtd}
 
     if use_cpml:
@@ -1048,6 +1086,10 @@ def run_until_decay(
             aniso_eps=aniso_eps,
         )
 
+        # Kerr nonlinear ADE correction (after linear E-update)
+        if use_kerr_decay:
+            st = _apply_kerr_ade_decay(st, kerr_chi3, dt)
+
         if use_tfsf:
             st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, dx, dt)
         if use_cpml:
@@ -1071,10 +1113,11 @@ def run_until_decay(
                 st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
                 new_rlc_states.append(rlc_st_new)
 
-        # Soft sources
+        # Soft sources — cast source value to field dtype to avoid
+        # mixed-precision scatter warnings (float32 -> float16).
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
             field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s])
+            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
             st = st._replace(**{sc: field})
 
         t = step_idx.astype(jnp.float32) * dt

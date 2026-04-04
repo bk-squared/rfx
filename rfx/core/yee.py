@@ -39,9 +39,18 @@ class MaterialArrays(NamedTuple):
     mu_r: jnp.ndarray
 
 
-def init_state(shape: tuple[int, int, int]) -> FDTDState:
-    """Initialize zero-valued FDTD state."""
-    zeros = jnp.zeros(shape, dtype=jnp.float32)
+def init_state(shape: tuple[int, int, int], *, field_dtype=jnp.float32) -> FDTDState:
+    """Initialize zero-valued FDTD state.
+
+    Parameters
+    ----------
+    shape : (Nx, Ny, Nz)
+    field_dtype : jnp dtype
+        Data type for field arrays.  Use ``jnp.float16`` for mixed-
+        precision mode (material coefficients and accumulators stay
+        float32; only field storage is reduced).
+    """
+    zeros = jnp.zeros(shape, dtype=field_dtype)
     return FDTDState(
         ex=zeros, ey=zeros, ez=zeros,
         hx=zeros, hy=zeros, hz=zeros,
@@ -98,7 +107,11 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
             return jnp.roll(arr, -1, axis)
         return _shift_fwd(arr, axis)
 
-    ex, ey, ez = state.ex, state.ey, state.ez
+    # Upcast to float32 for arithmetic when using reduced-precision fields
+    _fdtype = state.ex.dtype
+    ex = state.ex.astype(jnp.float32)
+    ey = state.ey.astype(jnp.float32)
+    ez = state.ez.astype(jnp.float32)
     mu = materials.mu_r * MU_0
 
     # curl E components via forward differences (zero-padded, no wraparound)
@@ -118,9 +131,9 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         - (fwd(ex, 1) - ex) / dx
     )
 
-    hx = state.hx - (dt / mu) * curl_x
-    hy = state.hy - (dt / mu) * curl_y
-    hz = state.hz - (dt / mu) * curl_z
+    hx = (state.hx.astype(jnp.float32) - (dt / mu) * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(jnp.float32) - (dt / mu) * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(jnp.float32) - (dt / mu) * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -143,7 +156,11 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
             return jnp.roll(arr, 1, axis)
         return _shift_bwd(arr, axis)
 
-    hx, hy, hz = state.hx, state.hy, state.hz
+    # Upcast to float32 for arithmetic when using reduced-precision fields
+    _fdtype = state.ex.dtype
+    hx = state.hx.astype(jnp.float32)
+    hy = state.hy.astype(jnp.float32)
+    hz = state.hz.astype(jnp.float32)
     eps = materials.eps_r * EPS_0
     sigma = materials.sigma
 
@@ -169,9 +186,9 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         - (hx - bwd(hx, 1)) / dx
     )
 
-    ex = ca * state.ex + cb * curl_x
-    ey = ca * state.ey + cb * curl_y
-    ez = ca * state.ez + cb * curl_z
+    ex = (ca * state.ex.astype(jnp.float32) + cb * curl_x).astype(_fdtype)
+    ey = (ca * state.ey.astype(jnp.float32) + cb * curl_y).astype(_fdtype)
+    ez = (ca * state.ez.astype(jnp.float32) + cb * curl_z).astype(_fdtype)
 
     return state._replace(
         ex=ex, ey=ey, ez=ez,
@@ -195,7 +212,10 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     inv_dx_h, inv_dy_h, inv_dz_h : (N,) arrays
         Pre-padded: inv_d_h[j] = 2/(d[j]+d[j+1]) for j<N-1, inv_d_h[N-1]=0.
     """
-    ex, ey, ez = state.ex, state.ey, state.ez
+    _fdtype = state.ex.dtype
+    ex = state.ex.astype(jnp.float32)
+    ey = state.ey.astype(jnp.float32)
+    ez = state.ez.astype(jnp.float32)
     mu = materials.mu_r * MU_0
 
     # Forward differences with same shape (zero-pad via _shift_fwd)
@@ -212,9 +232,9 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         - (_shift_fwd(ex, 1) - ex) * inv_dy_h[None, :, None]
     )
 
-    hx = state.hx - (dt / mu) * curl_x
-    hy = state.hy - (dt / mu) * curl_y
-    hz = state.hz - (dt / mu) * curl_z
+    hx = (state.hx.astype(jnp.float32) - (dt / mu) * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(jnp.float32) - (dt / mu) * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(jnp.float32) - (dt / mu) * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -230,7 +250,10 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     ----------
     inv_dx, inv_dy, inv_dz : (N,) arrays — 1/dx[i] per cell
     """
-    hx, hy, hz = state.hx, state.hy, state.hz
+    _fdtype = state.ex.dtype
+    hx = state.hx.astype(jnp.float32)
+    hy = state.hy.astype(jnp.float32)
+    hz = state.hz.astype(jnp.float32)
     eps = materials.eps_r * EPS_0
     sigma = materials.sigma
 
@@ -252,9 +275,9 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
     )
 
-    ex = ca * state.ex + cb * curl_x
-    ey = ca * state.ey + cb * curl_y
-    ez = ca * state.ez + cb * curl_z
+    ex = (ca * state.ex.astype(jnp.float32) + cb * curl_x).astype(_fdtype)
+    ey = (ca * state.ey.astype(jnp.float32) + cb * curl_y).astype(_fdtype)
+    ez = (ca * state.ez.astype(jnp.float32) + cb * curl_z).astype(_fdtype)
 
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
@@ -329,7 +352,6 @@ def precompute_coeffs(
         nx, ny, nz = materials.eps_r.shape
         if "x" in pec_axes:
             # Ey, Ez tangential on x-faces
-            jnp.zeros((1, ny, nz), dtype=jnp.float32)
             ca_ey = ca_ey.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
             ca_ez = ca_ez.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
             cb_ey = cb_ey.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
@@ -360,10 +382,13 @@ def update_h_fast(state: FDTDState, ch: jnp.ndarray) -> FDTDState:
     Avoids recomputing material coefficients each timestep.
     Non-periodic boundaries only (uses ``_shift_fwd``).
     """
-    ex, ey, ez = state.ex, state.ey, state.ez
-    hx = state.hx - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))
-    hy = state.hy - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))
-    hz = state.hz - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))
+    _fdtype = state.ex.dtype
+    ex = state.ex.astype(jnp.float32)
+    ey = state.ey.astype(jnp.float32)
+    ez = state.ez.astype(jnp.float32)
+    hx = (state.hx.astype(jnp.float32) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
+    hy = (state.hy.astype(jnp.float32) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
+    hz = (state.hz.astype(jnp.float32) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
@@ -380,10 +405,13 @@ def update_e_fast(
 
     Non-periodic boundaries only (uses ``_shift_bwd``).
     """
-    hx, hy, hz = state.hx, state.hy, state.hz
-    ex = ca_ex * state.ex + cb_ex * ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2)))
-    ey = ca_ey * state.ey + cb_ey * ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0)))
-    ez = ca_ez * state.ez + cb_ez * ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1)))
+    _fdtype = state.ex.dtype
+    hx = state.hx.astype(jnp.float32)
+    hy = state.hy.astype(jnp.float32)
+    hz = state.hz.astype(jnp.float32)
+    ex = (ca_ex * state.ex.astype(jnp.float32) + cb_ex * ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2)))).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(jnp.float32) + cb_ey * ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0)))).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(jnp.float32) + cb_ez * ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1)))).astype(_fdtype)
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
@@ -394,16 +422,23 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs) -> FDTDState:
     PEC baked into the coefficients.  This is the fastest path for the
     common case of non-periodic boundaries with uniform mesh.
     """
-    # --- H update ---
-    ex, ey, ez = state.ex, state.ey, state.ez
+    _fdtype = state.ex.dtype
+    # --- H update (upcast to float32 for arithmetic) ---
+    ex = state.ex.astype(jnp.float32)
+    ey = state.ey.astype(jnp.float32)
+    ez = state.ez.astype(jnp.float32)
     ch = coeffs.ch
-    hx = state.hx - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))
-    hy = state.hy - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))
-    hz = state.hz - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))
+    hx = (state.hx.astype(jnp.float32) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
+    hy = (state.hy.astype(jnp.float32) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
+    hz = (state.hz.astype(jnp.float32) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
     # --- E update (with PEC baked into coefficients) ---
-    ex = coeffs.ca_ex * ex + coeffs.cb_ex * ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2)))
-    ey = coeffs.ca_ey * ey + coeffs.cb_ey * ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0)))
-    ez = coeffs.ca_ez * ez + coeffs.cb_ez * ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1)))
+    # Upcast newly computed H fields back to float32 for curl computation
+    hx_f = hx.astype(jnp.float32)
+    hy_f = hy.astype(jnp.float32)
+    hz_f = hz.astype(jnp.float32)
+    ex = (coeffs.ca_ex * ex + coeffs.cb_ex * ((hz_f - _shift_bwd(hz_f, 1)) - (hy_f - _shift_bwd(hy_f, 2)))).astype(_fdtype)
+    ey = (coeffs.ca_ey * ey + coeffs.cb_ey * ((hx_f - _shift_bwd(hx_f, 2)) - (hz_f - _shift_bwd(hz_f, 0)))).astype(_fdtype)
+    ez = (coeffs.ca_ez * ez + coeffs.cb_ez * ((hy_f - _shift_bwd(hy_f, 0)) - (hx_f - _shift_bwd(hx_f, 1)))).astype(_fdtype)
     return FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
                      step=state.step + 1)
 
@@ -435,7 +470,10 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
             return jnp.roll(arr, 1, axis)
         return _shift_bwd(arr, axis)
 
-    hx, hy, hz = state.hx, state.hy, state.hz
+    _fdtype = state.ex.dtype
+    hx = state.hx.astype(jnp.float32)
+    hy = state.hy.astype(jnp.float32)
+    hz = state.hz.astype(jnp.float32)
     sigma = materials.sigma
 
     # Per-component absolute permittivity
@@ -470,9 +508,9 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
         - (hx - bwd(hx, 1)) / dx
     )
 
-    ex = ca_ex * state.ex + cb_ex * curl_x
-    ey = ca_ey * state.ey + cb_ey * curl_y
-    ez = ca_ez * state.ez + cb_ez * curl_z
+    ex = (ca_ex * state.ex.astype(jnp.float32) + cb_ex * curl_x).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(jnp.float32) + cb_ey * curl_y).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(jnp.float32) + cb_ez * curl_z).astype(_fdtype)
 
     return state._replace(
         ex=ex, ey=ey, ez=ez,
