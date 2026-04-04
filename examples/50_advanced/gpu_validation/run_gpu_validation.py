@@ -15,9 +15,9 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 cases = [
-    ("01_patch_opt_validation.py",  "Patch bandwidth optimization"),
+    ("01_patch_opt_validation.py",  "Topology optimization pipeline (air->fr4, energy objective)"),
     ("02_filter_validation.py",     "PEC cavity resonance via Harminv (Pozar Ch 6)"),
-    ("03_matching_validation.py",   "Series RLC resonance frequency (Pozar Ch 5)"),
+    ("03_matching_validation.py",   "Series RLC resonance via FFT (Pozar Ch 5)"),
     ("04_coupling_validation.py",   "Free-space energy decay with CPML (Balanis Ch 2)"),
     ("05_lens_validation.py",       "Dielectric lens focusing"),
     ("06_matfit_validation.py",     "Debye material characterization"),

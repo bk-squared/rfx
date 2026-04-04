@@ -11,11 +11,15 @@ Physics:
 
   A lumped RLC element driven by a broadband pulse will ring at its
   natural resonance.  We extract this resonance from the time-domain
-  probe signal via Harminv (with FFT fallback) and compare with the
-  analytical prediction.
+  probe signal via zero-padded FFT and compare with the analytical
+  prediction.
 
   CPML boundaries are used to prevent PEC cavity modes from
   contaminating the RLC resonance measurement.
+
+  Note: Harminv (Matrix Pencil Method) can fail with SVD non-convergence
+  on RLC signals in CPML.  Zero-padded FFT with 16x padding provides
+  robust and sufficient frequency resolution for this validation.
 
 Validation criteria:
   - Resonance frequency within 5% of analytical f_res
@@ -47,11 +51,15 @@ OUT_DIR = SCRIPT_DIR
 THRESHOLD_PCT = 5.0  # max allowed frequency error
 
 
-def run_rlc_sim(L_val, C_val, R_val=5.0, dx=1.0e-3, n_steps=5000):
+def run_rlc_sim(L_val, C_val, R_val=5.0, dx=1.0e-3, n_steps=None):
     """Run a CPML-bounded simulation with a lumped series RLC element.
 
     Uses CPML (absorbing) boundaries instead of PEC to avoid cavity
     modes contaminating the RLC resonance extraction.
+
+    If n_steps is None, automatically choose enough steps for the RLC
+    oscillation to develop (at least 30 periods at the lowest frequency
+    component, minimum 5000 steps).
     """
     f0_est = 1.0 / (2 * np.pi * np.sqrt(L_val * C_val))
     f_max = f0_est * 3
@@ -89,53 +97,80 @@ def run_rlc_sim(L_val, C_val, R_val=5.0, dx=1.0e-3, n_steps=5000):
     # Probe at the RLC element location to observe the resonance
     sim.add_probe((center, center, center), component="ez")
 
+    # Compute n_steps if not provided: ensure enough oscillation cycles
+    if n_steps is None:
+        # Need the simulation dt to compute required steps
+        grid = sim._build_grid()
+        dt = grid.dt
+        # At least 30 periods at f0, minimum 5000 steps
+        n_steps = max(5000, int(30.0 / (f0_est * dt)))
+
     result = sim.run(n_steps=n_steps, compute_s_params=False)
     return result
 
 
-def extract_peak_freq(time_series, dt, f_min, f_max):
-    """Extract the dominant frequency from a probe signal via Harminv + FFT.
+def extract_peak_freq_fft(time_series, dt, f_min, f_max):
+    """Extract the dominant frequency via zero-padded FFT.
 
-    Uses Harminv (Matrix Pencil Method) as the primary extraction method
-    for superior frequency resolution on short time series. Falls back
-    to zero-padded FFT if Harminv finds no modes.
+    Uses 16x zero-padding for high frequency resolution.  This is more
+    robust than Harminv for RLC signals in CPML, which can trigger SVD
+    non-convergence in the Matrix Pencil Method.
+
+    Parameters
+    ----------
+    time_series : 1D array
+        Probe signal.
+    dt : float
+        Time step in seconds.
+    f_min, f_max : float
+        Frequency search window in Hz.
+
+    Returns
+    -------
+    f_peak : float or None
+        Peak frequency in Hz.
+    freqs : 1D array
+        FFT frequency axis.
+    spectrum : 1D array
+        FFT magnitude spectrum.
     """
     signal = np.asarray(time_series).ravel()
-    # Skip the first portion (source excitation)
-    skip = len(signal) // 3
+
+    # Skip the first quarter (source excitation transient)
+    skip = len(signal) // 4
     signal_ring = signal[skip:]
+
+    # Remove DC offset
     signal_ring = signal_ring - np.mean(signal_ring)
 
-    # Primary: Harminv for accurate resonance extraction
-    from rfx.harminv import harminv_from_probe
-    f_center = (f_min + f_max) / 2
-    modes = harminv_from_probe(
-        signal, dt,
-        freq_range=(f_min, f_max),
-        source_decay_time=skip * dt,
-        min_Q=2.0,
-    )
+    # Apply Hann window to reduce spectral leakage
+    window = np.hanning(len(signal_ring))
+    signal_windowed = signal_ring * window
 
-    # For FFT plot data (always compute)
-    nfft = len(signal_ring) * 8  # generous zero-padding for resolution
-    spectrum = np.abs(np.fft.rfft(signal_ring, n=nfft))
-    freqs = np.fft.rfftfreq(nfft, d=dt)
+    # 16x zero-padding for fine frequency resolution
+    n_pad = len(signal_windowed) * 16
+    spectrum = np.abs(np.fft.rfft(signal_windowed, n=n_pad))
+    freqs = np.fft.rfftfreq(n_pad, d=dt)
 
-    if modes:
-        # Pick the mode closest to the expected center frequency
-        best = min(modes, key=lambda m: abs(m.freq - f_center))
-        return best.freq, freqs, spectrum
-
-    # Fallback: zero-padded FFT peak
+    # Search for peak in the specified frequency band
     mask = (freqs >= f_min) & (freqs <= f_max)
     if not np.any(mask):
-        return None, None, None
+        return None, freqs, spectrum
 
-    spectrum_masked = spectrum.copy()
-    spectrum_masked[~mask] = 0
+    # Find indices where mask is True
+    masked_indices = np.where(mask)[0]
+    spectrum_in_band = spectrum[masked_indices]
 
-    peak_idx = np.argmax(spectrum_masked)
-    return freqs[peak_idx], freqs, spectrum
+    peak_local_idx = np.argmax(spectrum_in_band)
+    peak_idx = masked_indices[peak_local_idx]
+    f_peak = freqs[peak_idx]
+
+    # Sanity check: the peak should be significantly above noise floor
+    noise_floor = np.median(spectrum_in_band)
+    if spectrum[peak_idx] < noise_floor * 3.0:
+        return None, freqs, spectrum
+
+    return f_peak, freqs, spectrum
 
 
 def main():
@@ -155,6 +190,7 @@ def main():
     print(f"R_fixed  : {R_fixed:.1f} ohm")
     print(f"L values : {L_values[0]*1e9:.0f} to {L_values[-1]*1e9:.0f} nH ({len(L_values)} points)")
     print(f"dx       : {dx*1e3:.1f} mm")
+    print(f"Method   : zero-padded FFT (16x padding, Hann window)")
     print()
 
     analytical_freqs = []
@@ -168,27 +204,33 @@ def main():
 
         print(f"  L = {L_val*1e9:.0f} nH -> f_analytical = {f_analytical/1e9:.3f} GHz ...", end=" ")
 
-        result = run_rlc_sim(L_val, C_fixed, R_val=R_fixed, dx=dx, n_steps=5000)
-        dt = float(result.dt)
-        ts = np.asarray(result.time_series)
+        try:
+            result = run_rlc_sim(L_val, C_fixed, R_val=R_fixed, dx=dx)
+            dt = float(result.dt)
+            ts = np.asarray(result.time_series)
 
-        f_peak, freqs_fft, spectrum = extract_peak_freq(
-            ts[:, 0], dt,
-            f_min=f_analytical * 0.3,
-            f_max=f_analytical * 3.0,
-        )
+            f_peak, freqs_fft, spectrum = extract_peak_freq_fft(
+                ts[:, 0], dt,
+                f_min=f_analytical * 0.5,
+                f_max=f_analytical * 1.5,
+            )
 
-        if f_peak is not None:
-            err = abs(f_peak - f_analytical) / f_analytical * 100
-            measured_freqs.append(f_peak)
-            freq_errors.append(err)
-            all_spectra.append((freqs_fft, spectrum, f_analytical, f_peak))
-            print(f"f_measured = {f_peak/1e9:.3f} GHz, error = {err:.2f}%")
-        else:
+            if f_peak is not None:
+                err = abs(f_peak - f_analytical) / f_analytical * 100
+                measured_freqs.append(f_peak)
+                freq_errors.append(err)
+                all_spectra.append((freqs_fft, spectrum, f_analytical, f_peak))
+                print(f"f_measured = {f_peak/1e9:.3f} GHz, error = {err:.2f}%")
+            else:
+                measured_freqs.append(None)
+                freq_errors.append(100.0)
+                all_spectra.append(None)
+                print("no peak found")
+        except Exception as e:
             measured_freqs.append(None)
             freq_errors.append(100.0)
             all_spectra.append(None)
-            print("no peak found")
+            print(f"ERROR: {e}")
 
     analytical_freqs = np.array(analytical_freqs)
     freq_errors = np.array(freq_errors)
@@ -278,6 +320,7 @@ def main():
         f"C = {C_fixed*1e12:.1f} pF, R = {R_fixed:.0f} ohm",
         f"dx = {dx*1e3:.1f} mm",
         f"L sweep: {L_values[0]*1e9:.0f} - {L_values[-1]*1e9:.0f} nH ({len(L_values)} pts)",
+        f"Method: FFT (16x zero-pad, Hann window)",
         "",
         f"Max freq error   : {max_error:.2f}%",
         f"Mean freq error  : {mean_error:.2f}%",
