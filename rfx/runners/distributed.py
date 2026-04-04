@@ -1140,6 +1140,10 @@ def run_distributed(sim, *, n_steps, devices=None, **kwargs):
     CPML boundaries, soft sources, point probes, lumped ports, and
     Debye/Lorentz dispersive materials.
 
+    TFSF plane-wave sources and waveguide ports are not yet supported
+    in the distributed runner.  When detected, the runner issues a
+    warning and transparently falls back to the single-device path.
+
     Parameters
     ----------
     sim : Simulation
@@ -1153,6 +1157,28 @@ def run_distributed(sim, *, n_steps, devices=None, **kwargs):
     -------
     Result
     """
+    import warnings
+
+    # ------------------------------------------------------------------
+    # Graceful fallback for features that require the full domain on a
+    # single device (TFSF auxiliary grid, waveguide eigenmode solver).
+    # ------------------------------------------------------------------
+    if sim._tfsf is not None:
+        warnings.warn(
+            "Distributed runner does not yet support TFSF plane-wave "
+            "sources. Falling back to single-device execution.",
+            stacklevel=2,
+        )
+        return sim.run(n_steps=n_steps)
+
+    if sim._waveguide_ports:
+        warnings.warn(
+            "Distributed runner does not yet support waveguide ports. "
+            "Falling back to single-device execution.",
+            stacklevel=2,
+        )
+        return sim.run(n_steps=n_steps)
+
     from rfx.api import Result
 
     if devices is None:
@@ -1321,13 +1347,13 @@ def run_distributed(sim, *, n_steps, devices=None, **kwargs):
                 # 1. H update (local)
                 st = _update_h_local(st, materials_slab, dt, dx)
 
-                # 2. Exchange H ghost cells
-                st = _exchange_h_ghosts(st, n_devices, "devices")
-
-                # 3. CPML H correction
+                # 2. CPML H correction (before ghost exchange)
                 st, cpml_st = _apply_cpml_h_distributed(
                     st, cpml_params, cpml_st, n_cpml, dt, dx,
                     n_devices, ghost=ghost, axis_name="devices")
+
+                # 3. Exchange H ghost cells
+                st = _exchange_h_ghosts(st, n_devices, "devices")
 
                 # 4. E update (local)
                 _debye_arg = (debye_coeffs_dev, db_st) if has_debye else None
@@ -1340,13 +1366,13 @@ def run_distributed(sim, *, n_steps, devices=None, **kwargs):
                 if has_lorentz:
                     lr_st = new_lr
 
-                # 5. Exchange E ghost cells
-                st = _exchange_e_ghosts(st, n_devices, "devices")
-
-                # 6. CPML E correction
+                # 5. CPML E correction (before ghost exchange)
                 st, cpml_st = _apply_cpml_e_distributed(
                     st, cpml_params, cpml_st, n_cpml, dt, dx,
                     n_devices, ghost=ghost, axis_name="devices")
+
+                # 6. Exchange E ghost cells
+                st = _exchange_e_ghosts(st, n_devices, "devices")
 
                 # 7. Source injection (only on owning device)
                 for idx_s in range(n_src):

@@ -909,4 +909,4 @@ def test_floquet_broadside_vs_tfsf():
     print(f"  Floquet peak: {peak_floquet:.4e}")
     print(f"  TFSF peak:    {peak_tfsf:.4e}")
     print(f"  Peak ratio:   {ratio:.4f}")
-    print(f"  (Amplitude difference expected: soft source vs hard TFSF correction)")
+    print("  (Amplitude difference expected: soft source vs hard TFSF correction)")

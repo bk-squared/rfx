@@ -529,3 +529,112 @@ class TestDistributedLorentz:
         ts4 = np.array(r4.time_series)
         err = np.max(np.abs(ts1 - ts4)) / (np.max(np.abs(ts1)) + 1e-30)
         assert err < 0.01, f"Lorentz distributed vs single error {err:.2e}"
+
+
+class TestDistributedFallback:
+    """Tests for graceful fallback when distributed runner encounters
+    unsupported features (TFSF, waveguide ports)."""
+
+    def test_tfsf_falls_back_with_warning(self):
+        """TFSF source should trigger fallback to single-device with a warning."""
+        import warnings as _warnings
+
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.13, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_tfsf_source(f0=2.5e9, bandwidth=0.5)
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+
+        with _warnings.catch_warnings(record=True) as w:
+            _warnings.simplefilter("always")
+            result = sim.run(n_steps=50, devices=jax.devices()[:4])
+
+        # Should have issued a TFSF fallback warning
+        tfsf_warnings = [x for x in w if "TFSF" in str(x.message)]
+        assert len(tfsf_warnings) >= 1, (
+            f"Expected TFSF fallback warning, got: {[str(x.message) for x in w]}"
+        )
+        # Result should be valid (non-None, correct shape)
+        assert result is not None
+        assert result.time_series.shape[0] == 50
+
+    def test_tfsf_fallback_produces_valid_signal(self):
+        """TFSF fallback should produce a non-zero probe signal."""
+        import warnings as _warnings
+
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.13, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_tfsf_source(f0=2.5e9, bandwidth=0.5)
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+
+        with _warnings.catch_warnings(record=True):
+            _warnings.simplefilter("always")
+            result = sim.run(n_steps=50, devices=jax.devices()[:4])
+
+        ts = np.array(result.time_series).ravel()
+        assert np.max(np.abs(ts)) > 0, "TFSF fallback produced zero signal"
+
+    def test_tfsf_fallback_matches_single_device(self):
+        """TFSF fallback result should match explicit single-device result."""
+        import warnings as _warnings
+
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.13, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_tfsf_source(f0=2.5e9, bandwidth=0.5)
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+
+        n_steps = 50
+
+        # Single-device (no devices argument)
+        result_single = sim.run(n_steps=n_steps)
+
+        # Multi-device request -> should fall back
+        with _warnings.catch_warnings(record=True):
+            _warnings.simplefilter("always")
+            result_multi = sim.run(n_steps=n_steps, devices=jax.devices()[:4])
+
+        ts_s = np.array(result_single.time_series)
+        ts_m = np.array(result_multi.time_series)
+        np.testing.assert_allclose(ts_m, ts_s, atol=1e-6,
+                                   err_msg="TFSF fallback differs from single-device")
+
+    def test_waveguide_port_falls_back_with_warning(self):
+        """Waveguide port should trigger fallback to single-device with a warning."""
+        import warnings as _warnings
+
+        sim = Simulation(
+            freq_max=10e9,
+            domain=(0.13, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_waveguide_port(
+            x_position=0.01,
+            y_range=(0.005, 0.035),
+            z_range=(0.005, 0.035),
+            mode=(1, 0),
+            mode_type="TE",
+            direction="+x",
+            f0=5e9,
+            bandwidth=0.5,
+        )
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+
+        with _warnings.catch_warnings(record=True) as w:
+            _warnings.simplefilter("always")
+            result = sim.run(n_steps=50, devices=jax.devices()[:4])
+
+        # Should have issued a waveguide port fallback warning
+        wg_warnings = [x for x in w if "waveguide" in str(x.message).lower()]
+        assert len(wg_warnings) >= 1, (
+            f"Expected waveguide port fallback warning, got: {[str(x.message) for x in w]}"
+        )
+        assert result is not None
+        assert result.time_series.shape[0] == 50
