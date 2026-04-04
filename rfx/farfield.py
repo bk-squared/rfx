@@ -334,6 +334,153 @@ def compute_far_field(
 
 
 # ---------------------------------------------------------------------------
+# JAX-differentiable far-field (for use inside optimize / jax.grad)
+# ---------------------------------------------------------------------------
+
+def _surface_currents_jax(fields, axis, sign):
+    """JAX version of _surface_currents."""
+    f0, f1, f2, f3 = (fields[..., i] for i in range(4))
+    z = jnp.zeros_like(f0)
+    s = sign
+    if axis == 0:
+        J = jnp.stack([z, -s * f3, s * f2], axis=-1)
+        M = jnp.stack([z, s * f1, -s * f0], axis=-1)
+    elif axis == 1:
+        J = jnp.stack([s * f3, z, -s * f2], axis=-1)
+        M = jnp.stack([-s * f1, z, s * f0], axis=-1)
+    else:
+        J = jnp.stack([-s * f3, s * f2, z], axis=-1)
+        M = jnp.stack([s * f1, -s * f0, z], axis=-1)
+    return J, M
+
+
+def _face_positions_jax(axis, idx, other_ranges, dx, cpml):
+    """JAX version of _face_positions."""
+    x_fixed = (idx - cpml) * dx
+    if axis == 0:
+        j_range, k_range = other_ranges
+        y = (jnp.arange(j_range[0], j_range[1]) - cpml) * dx
+        z = (jnp.arange(k_range[0], k_range[1]) - cpml) * dx
+        Y, Z = jnp.meshgrid(y, z, indexing="ij")
+        X = jnp.full_like(Y, x_fixed)
+    elif axis == 1:
+        i_range, k_range = other_ranges
+        x = (jnp.arange(i_range[0], i_range[1]) - cpml) * dx
+        z = (jnp.arange(k_range[0], k_range[1]) - cpml) * dx
+        X, Z = jnp.meshgrid(x, z, indexing="ij")
+        Y = jnp.full_like(X, x_fixed)
+    else:
+        i_range, j_range = other_ranges
+        x = (jnp.arange(i_range[0], i_range[1]) - cpml) * dx
+        y = (jnp.arange(j_range[0], j_range[1]) - cpml) * dx
+        X, Y = jnp.meshgrid(x, y, indexing="ij")
+        Z = jnp.full_like(X, x_fixed)
+    return jnp.stack([X, Y, Z], axis=-1)
+
+
+def compute_far_field_jax(
+    ntff_data,
+    box,
+    grid,
+    theta,
+    phi,
+):
+    """JAX-differentiable far-field computation for use inside jax.grad.
+
+    Same physics as ``compute_far_field`` but uses ``jnp`` throughout,
+    enabling end-to-end differentiation for far-field optimization
+    objectives (e.g., beam steering, gain maximization).
+
+    Parameters
+    ----------
+    ntff_data : NTFFData (JAX arrays from lax.scan accumulation)
+    box : NTFFBox
+    grid : Grid
+    theta : array in radians
+    phi : array in radians
+
+    Returns
+    -------
+    FarFieldResult with JAX arrays
+    """
+    theta = jnp.asarray(theta, dtype=jnp.float32)
+    phi = jnp.asarray(phi, dtype=jnp.float32)
+    freqs = jnp.asarray(box.freqs, dtype=jnp.float32)
+    nf = freqs.shape[0]
+    k_arr = 2 * jnp.pi * freqs / C0
+
+    dx = grid.dx
+    dS = dx * dx
+    cpml = grid.cpml_layers
+    i0, i1 = box.i_lo, box.i_hi
+    j0, j1 = box.j_lo, box.j_hi
+    k0, k1 = box.k_lo, box.k_hi
+
+    TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
+    sth, cth = jnp.sin(TH), jnp.cos(TH)
+    sph, cph = jnp.sin(PH), jnp.cos(PH)
+
+    r_hat = jnp.stack([sth * cph, sth * sph, cth], axis=-1)
+    th_hat = jnp.stack([cth * cph, cth * sph, -sth], axis=-1)
+    ph_hat = jnp.stack([-sph, cph, jnp.zeros_like(sth)], axis=-1)
+
+    n_th, n_ph = theta.shape[0], phi.shape[0]
+    r_flat = r_hat.reshape(-1, 3)
+    n_dir = r_flat.shape[0]
+
+    N_total = jnp.zeros((nf, n_dir, 3), dtype=jnp.complex64)
+    L_total = jnp.zeros((nf, n_dir, 3), dtype=jnp.complex64)
+
+    face_specs = [
+        (ntff_data.x_lo, 0, -1, i0, ((j0, j1), (k0, k1))),
+        (ntff_data.x_hi, 0, +1, i1, ((j0, j1), (k0, k1))),
+        (ntff_data.y_lo, 1, -1, j0, ((i0, i1), (k0, k1))),
+        (ntff_data.y_hi, 1, +1, j1, ((i0, i1), (k0, k1))),
+        (ntff_data.z_lo, 2, -1, k0, ((i0, i1), (j0, j1))),
+        (ntff_data.z_hi, 2, +1, k1, ((i0, i1), (j0, j1))),
+    ]
+
+    for face_dft, axis, sign, face_idx, other_ranges in face_specs:
+        face = jnp.asarray(face_dft, dtype=jnp.complex64)
+        n1, n2 = face.shape[1], face.shape[2]
+        if n1 == 0 or n2 == 0:
+            continue
+
+        pos = _face_positions_jax(axis, face_idx, other_ranges, dx, cpml)
+        pos_flat = pos.reshape(-1, 3)
+        fields_flat = face.reshape(nf, -1, 4)
+
+        J, M = _surface_currents_jax(fields_flat, axis, sign)
+
+        dot = r_flat @ pos_flat.T  # (n_dir, nc)
+
+        # Vectorized over frequency (no Python loop)
+        phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])  # (nf, n_dir, nc)
+        N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J) * dS
+        L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M) * dS
+
+    th_flat = th_hat.reshape(-1, 3)
+    ph_flat = ph_hat.reshape(-1, 3)
+
+    N_th = jnp.sum(N_total * th_flat[None, :, :], axis=-1)
+    N_ph = jnp.sum(N_total * ph_flat[None, :, :], axis=-1)
+    L_th = jnp.sum(L_total * th_flat[None, :, :], axis=-1)
+    L_ph = jnp.sum(L_total * ph_flat[None, :, :], axis=-1)
+
+    jk = 1j * k_arr[:, None]  # (nf, 1)
+    E_theta = -jk / (4 * jnp.pi) * (L_ph + ETA_0 * N_th)
+    E_phi = jk / (4 * jnp.pi) * (L_th - ETA_0 * N_ph)
+
+    return FarFieldResult(
+        E_theta=E_theta.reshape(nf, n_th, n_ph),
+        E_phi=E_phi.reshape(nf, n_th, n_ph),
+        theta=theta,
+        phi=phi,
+        freqs=freqs,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Convenience functions
 # ---------------------------------------------------------------------------
 
