@@ -144,10 +144,13 @@ class SimConfig:
     def estimated_memory_mb(self) -> float:
         """Estimate GPU memory (MB) for forward + reverse-mode AD gradient.
 
-        Accounts for 6 field arrays (Ex, Ey, Ez, Hx, Hy, Hz), material
-        coefficient arrays, and roughly 3x overhead for reverse-mode AD
-        checkpointing.  This is a conservative estimate; actual usage
-        depends on JAX compilation and checkpoint granularity.
+        Accounts for:
+        - 6 field arrays (Ex, Ey, Ez, Hx, Hy, Hz)
+        - ~6 material coefficient arrays (eps_r, sigma, mu_r, Ca, Cb, etc.)
+        - CPML auxiliary fields (~12 arrays in absorbing region)
+        - NTFF DFT accumulators (6 faces × n_freqs × face_cells × 4 components)
+        - Debye/Lorentz auxiliary polarization fields (2 per pole)
+        - ~3x overhead for reverse-mode AD checkpointing
 
         Returns
         -------
@@ -156,8 +159,15 @@ class SimConfig:
         """
         nx, ny, nz = self.grid_shape
         cells = nx * ny * nz
-        # 6 field arrays (float32, 4 bytes each) + ~6 material arrays
-        forward_bytes = cells * 12 * 4
+        # 6 field + 6 material arrays (float32, 4 bytes each)
+        base_bytes = cells * 12 * 4
+        # CPML: ~12 auxiliary arrays in absorbing region (~15% of domain)
+        cpml_bytes = int(cells * 0.15 * 12 * 4) if self.cpml_layers > 0 else 0
+        # NTFF: 6 faces, each ~sqrt(cells) surface cells × n_freqs × 4 × 8 bytes
+        ntff_bytes = int(6 * (cells ** 0.67) * 10 * 4 * 8)  # ~10 freqs estimate
+        # Dispersion: 2 auxiliary arrays per Debye/Lorentz pole (~2 poles typical)
+        disp_bytes = cells * 4 * 4  # 4 arrays × float32
+        forward_bytes = base_bytes + cpml_bytes + ntff_bytes + disp_bytes
         # Reverse-mode AD: ~3x forward for checkpointing
         total_bytes = forward_bytes * 3
         return total_bytes / 1e6

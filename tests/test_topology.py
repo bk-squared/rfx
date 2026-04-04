@@ -212,7 +212,7 @@ class TestDensityToEps:
         rho = jnp.linspace(0.0, 1.0, 100).reshape(10, 10)
 
         for beta in [1.0, 8.0, 64.0]:
-            eps = density_to_eps(rho, eps_bg, eps_fg, beta=beta)
+            eps, _ = density_to_eps(rho, eps_bg, eps_fg, beta=beta)
             min_eps = float(jnp.min(eps))
             max_eps = float(jnp.max(eps))
             assert min_eps >= eps_bg - 1e-5, (
@@ -227,7 +227,7 @@ class TestDensityToEps:
         """Pipeline with filtering should also keep eps in range."""
         eps_bg, eps_fg = 1.0, 9.8
         rho = jnp.linspace(0.0, 1.0, 64).reshape(8, 8)
-        eps = density_to_eps(rho, eps_bg, eps_fg,
+        eps, _ = density_to_eps(rho, eps_bg, eps_fg,
                              filter_radius_cells=2.0, beta=4.0)
         assert float(jnp.min(eps)) >= eps_bg - 1e-4
         assert float(jnp.max(eps)) <= eps_fg + 1e-4
@@ -239,8 +239,8 @@ class TestDensityToEps:
         rho_zero = jnp.zeros((3, 3), dtype=jnp.float32)
         rho_one = jnp.ones((3, 3), dtype=jnp.float32)
 
-        eps_at_0 = density_to_eps(rho_zero, eps_bg, eps_fg, beta=64.0)
-        eps_at_1 = density_to_eps(rho_one, eps_bg, eps_fg, beta=64.0)
+        eps_at_0, _ = density_to_eps(rho_zero, eps_bg, eps_fg, beta=64.0)
+        eps_at_1, _ = density_to_eps(rho_one, eps_bg, eps_fg, beta=64.0)
 
         assert float(jnp.max(jnp.abs(eps_at_0 - eps_bg))) < 0.1
         assert float(jnp.max(jnp.abs(eps_at_1 - eps_fg))) < 0.1
@@ -249,7 +249,7 @@ class TestDensityToEps:
         """3D density field should work."""
         eps_bg, eps_fg = 1.0, 4.4
         rho = 0.5 * jnp.ones((5, 5, 3), dtype=jnp.float32)
-        eps = density_to_eps(rho, eps_bg, eps_fg, beta=1.0)
+        eps, _ = density_to_eps(rho, eps_bg, eps_fg, beta=1.0)
         assert eps.shape == (5, 5, 3)
         # At rho=0.5, projection(0.5)=0.5, so eps should be midpoint
         expected = eps_bg + 0.5 * (eps_fg - eps_bg)
@@ -268,8 +268,8 @@ class TestGradientFlow:
         eps_bg, eps_fg = 1.0, 4.4
 
         def loss_fn(rho):
-            eps = density_to_eps(rho, eps_bg, eps_fg,
-                                 filter_radius_cells=2.0, beta=4.0)
+            eps, _ = density_to_eps(rho, eps_bg, eps_fg,
+                                    filter_radius_cells=2.0, beta=4.0)
             # Minimize total permittivity (drives rho toward 0)
             return jnp.sum(eps)
 
@@ -288,7 +288,7 @@ class TestGradientFlow:
         eps_bg, eps_fg = 1.0, 4.4
 
         def loss_fn(rho):
-            eps = density_to_eps(rho, eps_bg, eps_fg, beta=2.0)
+            eps, _ = density_to_eps(rho, eps_bg, eps_fg, beta=2.0)
             return jnp.sum(eps ** 2)
 
         rho = 0.5 * jnp.ones((5, 5, 3), dtype=jnp.float32)
@@ -302,7 +302,7 @@ class TestGradientFlow:
         eps_bg, eps_fg = 1.0, 4.4
 
         def loss_fn(rho):
-            eps = density_to_eps(rho, eps_bg, eps_fg, beta=64.0)
+            eps, _ = density_to_eps(rho, eps_bg, eps_fg, beta=64.0)
             return jnp.sum(eps)
 
         rho = 0.5 * jnp.ones((8, 8), dtype=jnp.float32)
