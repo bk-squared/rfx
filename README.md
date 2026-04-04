@@ -182,7 +182,7 @@ Developed by [Byungkwan Kim](https://remilab.cnu.ac.kr) at the **Radar & Electro
 
 ### AI-Assisted Development
 
-This project was developed with AI coding assistants orchestrated via [oh-my-claudecode](https://github.com/anthropics/oh-my-claudecode):
+This project was developed with AI coding assistants orchestrated via [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode):
 
 - **Claude** (Anthropic) — Architecture design, physics validation, cross-validation, code review, documentation
 - **Codex** (OpenAI) — Feature implementation, test generation, review, debugging
