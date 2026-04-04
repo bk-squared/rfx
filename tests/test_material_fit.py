@@ -295,3 +295,274 @@ def test_fit_debye_fixed_eps_inf():
     result = fit_debye(freqs, eps_meas, n_poles=1, eps_inf=eps_inf_true)
     assert result.eps_inf == pytest.approx(eps_inf_true)
     assert result.fit_error < 0.05
+
+
+# ---------------------------------------------------------------------------
+# Robustness tests — noise, overfitting, outliers (GitHub issue #1)
+# ---------------------------------------------------------------------------
+
+class TestDebyeNoiseRobustness:
+    """Debye fitting under measurement noise."""
+
+    def test_fit_debye_with_5pct_noise(self):
+        """Debye fit should recover tau within 30% under 5% Gaussian noise."""
+        freqs = np.linspace(1e9, 10e9, 100)
+        eps_inf, deps, tau = 4.0, 2.0, 5e-11
+        omega = 2 * np.pi * freqs
+        eps_clean = eps_inf + deps / (1 + 1j * omega * tau)
+
+        rng = np.random.RandomState(42)
+        noise = 0.05 * np.abs(eps_clean) * (
+            rng.randn(100) + 1j * rng.randn(100)
+        )
+        eps_noisy = eps_clean + noise
+
+        result = fit_debye(freqs, eps_noisy, n_poles=1)
+
+        # tau recovery within 30%
+        assert abs(result.poles[0].tau - tau) / tau < 0.30, (
+            f"tau recovery failed: fitted {result.poles[0].tau:.3e} vs "
+            f"true {tau:.3e}"
+        )
+        # eps_inf recovery within 20%
+        assert abs(result.eps_inf - eps_inf) / eps_inf < 0.20
+        # delta_eps recovery within 30%
+        assert abs(result.poles[0].delta_eps - deps) / deps < 0.30
+        # Fit error should still be reasonable (dominated by noise floor)
+        assert result.fit_error < 0.15
+
+    def test_fit_debye_with_10pct_noise(self):
+        """Debye fit should not diverge under 10% noise."""
+        freqs = np.logspace(8, 11, 80)
+        eps_inf, deps, tau = 3.0, 1.5, 1e-10
+
+        eps_clean = _make_debye_data(freqs, eps_inf, [(deps, tau)])
+
+        rng = np.random.RandomState(99)
+        noise = 0.10 * np.abs(eps_clean) * (
+            rng.randn(len(freqs)) + 1j * rng.randn(len(freqs))
+        )
+        eps_noisy = eps_clean + noise
+
+        result = fit_debye(freqs, eps_noisy, n_poles=1)
+
+        # Should not produce absurd values
+        assert 0.5 < result.eps_inf < 10.0, (
+            f"eps_inf out of plausible range: {result.eps_inf}"
+        )
+        assert result.poles[0].tau > 0
+        assert result.poles[0].delta_eps > 0
+        # Fit error bounded (noise floor ~ 10%)
+        assert result.fit_error < 0.25
+
+    def test_fit_debye_noise_determinism(self):
+        """Same noise seed should give identical results."""
+        freqs = np.linspace(1e9, 10e9, 60)
+        eps_clean = _make_debye_data(freqs, 4.0, [(2.0, 5e-11)])
+
+        results = []
+        for _ in range(2):
+            rng = np.random.RandomState(123)
+            noise = 0.05 * np.abs(eps_clean) * (
+                rng.randn(len(freqs)) + 1j * rng.randn(len(freqs))
+            )
+            results.append(fit_debye(freqs, eps_clean + noise, n_poles=1))
+
+        assert results[0].eps_inf == pytest.approx(results[1].eps_inf)
+        assert results[0].poles[0].tau == pytest.approx(results[1].poles[0].tau)
+
+
+class TestLorentzNoiseRobustness:
+    """Lorentz fitting under measurement noise."""
+
+    def test_fit_lorentz_with_5pct_noise(self):
+        """Lorentz fit with 5% noise should still find the resonance."""
+        f_center = 5e9
+        freqs = np.linspace(1e9, 10e9, 100)
+        eps_inf_true = 1.5
+        delta_eps_true = 2.0
+        omega_0_true = 2 * np.pi * f_center
+        gamma_true = 2 * np.pi * 0.5e9
+
+        eps_clean = _make_lorentz_data(
+            freqs, eps_inf_true,
+            [(delta_eps_true, omega_0_true, gamma_true)]
+        )
+
+        rng = np.random.RandomState(42)
+        noise = 0.05 * np.abs(eps_clean) * (
+            rng.randn(len(freqs)) + 1j * rng.randn(len(freqs))
+        )
+        eps_noisy = eps_clean + noise
+
+        result = fit_lorentz(freqs, eps_noisy, n_poles=1)
+
+        # Resonance frequency recovery within 20%
+        assert abs(result.poles[0].omega_0 - omega_0_true) / omega_0_true < 0.20, (
+            f"omega_0 recovery failed: fitted {result.poles[0].omega_0:.3e} "
+            f"vs true {omega_0_true:.3e}"
+        )
+        # Fit error reasonable
+        assert result.fit_error < 0.15
+
+    def test_fit_lorentz_with_10pct_noise(self):
+        """Lorentz fit should not diverge under 10% noise."""
+        f_center = 3e9
+        freqs = np.linspace(0.5e9, 8e9, 80)
+        omega_0 = 2 * np.pi * f_center
+        gamma = 2 * np.pi * 0.3e9
+
+        eps_clean = _make_lorentz_data(freqs, 2.0, [(1.5, omega_0, gamma)])
+
+        rng = np.random.RandomState(77)
+        noise = 0.10 * np.abs(eps_clean) * (
+            rng.randn(len(freqs)) + 1j * rng.randn(len(freqs))
+        )
+        eps_noisy = eps_clean + noise
+
+        result = fit_lorentz(freqs, eps_noisy, n_poles=1)
+
+        # Should produce finite, positive parameters
+        assert result.poles[0].omega_0 > 0
+        assert result.poles[0].kappa > 0
+        assert np.isfinite(result.fit_error)
+        assert result.fit_error < 0.30
+
+
+class TestOverfitting:
+    """Fitting more poles than the data warrants."""
+
+    def test_debye_overfitting_3_poles_on_1_pole_data(self):
+        """Fitting 3 poles to 1-pole data should not crash or give absurd results."""
+        freqs = np.logspace(8, 11, 60)
+        eps_inf_true = 3.0
+        deps_true = 2.0
+        tau_true = 5e-11
+
+        eps_meas = _make_debye_data(freqs, eps_inf_true, [(deps_true, tau_true)])
+
+        result = fit_debye(freqs, eps_meas, n_poles=3)
+
+        assert len(result.poles) == 3
+        # Fit error should be at least as good as the 1-pole case
+        assert result.fit_error < 0.05, (
+            f"Overfit model error {result.fit_error:.4f} unexpectedly large"
+        )
+
+        # All delta_eps should be non-negative (enforced by log parameterization)
+        for i, pole in enumerate(result.poles):
+            assert pole.delta_eps > 0, f"Pole {i} has non-positive delta_eps"
+            assert pole.tau > 0, f"Pole {i} has non-positive tau"
+
+        # Sum of delta_eps should approximate the true value (within 50%)
+        total_deps = sum(p.delta_eps for p in result.poles)
+        assert abs(total_deps - deps_true) / deps_true < 0.50, (
+            f"Total delta_eps {total_deps:.3f} far from true {deps_true:.3f}"
+        )
+
+    def test_lorentz_overfitting_2_poles_on_1_pole_data(self):
+        """Fitting 2 Lorentz poles to 1-pole data should still converge."""
+        freqs = np.linspace(1e9, 10e9, 60)
+        omega_0 = 2 * np.pi * 5e9
+        gamma = 2 * np.pi * 0.5e9
+
+        eps_meas = _make_lorentz_data(freqs, 1.5, [(2.0, omega_0, gamma)])
+
+        result = fit_lorentz(freqs, eps_meas, n_poles=2)
+
+        assert len(result.poles) == 2
+        assert result.fit_error < 0.05
+        # All poles should have positive physical parameters
+        for i, pole in enumerate(result.poles):
+            assert pole.omega_0 > 0, f"Pole {i} has non-positive omega_0"
+            assert pole.kappa > 0, f"Pole {i} has non-positive kappa"
+
+    def test_debye_overfit_does_not_degrade(self):
+        """3-pole fit error should be <= 1-pole fit error on 1-pole data."""
+        freqs = np.logspace(8, 11, 50)
+        eps_meas = _make_debye_data(freqs, 2.5, [(1.5, 5e-11)])
+
+        result_1 = fit_debye(freqs, eps_meas, n_poles=1)
+        result_3 = fit_debye(freqs, eps_meas, n_poles=3)
+
+        # More poles should not make fit worse (with small tolerance for
+        # optimizer variability)
+        assert result_3.fit_error <= result_1.fit_error + 0.01, (
+            f"3-pole error {result_3.fit_error:.4f} worse than "
+            f"1-pole error {result_1.fit_error:.4f}"
+        )
+
+
+class TestOutlierRobustness:
+    """Fitting with outlier-corrupted data points."""
+
+    def test_debye_with_outliers(self):
+        """A few large outliers should not destroy the Debye fit."""
+        freqs = np.linspace(1e9, 10e9, 100)
+        eps_inf, deps, tau = 4.0, 2.0, 5e-11
+        eps_clean = _make_debye_data(freqs, eps_inf, [(deps, tau)])
+        eps_corrupted = eps_clean.copy()
+
+        # Inject 3 large outliers at random positions
+        rng = np.random.RandomState(42)
+        outlier_idx = rng.choice(100, size=3, replace=False)
+        eps_corrupted[outlier_idx] *= 5.0  # 5x magnitude spike
+
+        result = fit_debye(freqs, eps_corrupted, n_poles=1)
+
+        # Fit should not crash
+        assert np.isfinite(result.fit_error)
+        assert result.poles[0].tau > 0
+        assert result.poles[0].delta_eps > 0
+        # tau should still be in the right order of magnitude
+        assert 1e-12 < result.poles[0].tau < 1e-8, (
+            f"tau {result.poles[0].tau:.3e} out of plausible range"
+        )
+
+    def test_lorentz_with_outliers(self):
+        """A few large outliers should not destroy the Lorentz fit."""
+        freqs = np.linspace(1e9, 10e9, 80)
+        omega_0 = 2 * np.pi * 5e9
+        gamma = 2 * np.pi * 0.5e9
+
+        eps_clean = _make_lorentz_data(freqs, 1.5, [(2.0, omega_0, gamma)])
+        eps_corrupted = eps_clean.copy()
+
+        rng = np.random.RandomState(17)
+        outlier_idx = rng.choice(80, size=3, replace=False)
+        eps_corrupted[outlier_idx] *= 5.0
+
+        result = fit_lorentz(freqs, eps_corrupted, n_poles=1)
+
+        # Should not crash or produce NaN
+        assert np.isfinite(result.fit_error)
+        assert result.poles[0].omega_0 > 0
+        assert result.poles[0].kappa > 0
+
+    def test_debye_single_outlier_at_edge(self):
+        """Single outlier at the lowest frequency should not dominate fit."""
+        freqs = np.logspace(8, 11, 50)
+        eps_inf, deps, tau = 3.0, 1.5, 1e-10
+        eps_clean = _make_debye_data(freqs, eps_inf, [(deps, tau)])
+        eps_corrupted = eps_clean.copy()
+
+        # Corrupt the first (lowest frequency) point — this is where
+        # the static permittivity estimate comes from
+        eps_corrupted[0] *= 10.0
+
+        result = fit_debye(freqs, eps_corrupted, n_poles=1)
+
+        # Evaluate fit quality on the clean data (excluding the outlier)
+        eps_fitted = eval_debye(freqs, result.eps_inf, result.poles)
+        residual_clean = np.abs(eps_fitted[1:] - eps_clean[1:])
+        norm_clean = np.sqrt(np.mean(np.abs(eps_clean[1:]) ** 2))
+        rms_on_clean = np.sqrt(np.mean(residual_clean ** 2)) / norm_clean
+
+        # A 10x edge outlier biases the initial guess heavily; the fitter
+        # should still keep the fit in a reasonable ballpark (< 60% RMS on
+        # clean data).  This is intentionally lenient — it documents that
+        # edge outliers do degrade the current L-BFGS-B fitter.
+        assert rms_on_clean < 0.60, (
+            f"RMS on clean portion {rms_on_clean:.4f} too large after "
+            f"edge outlier"
+        )
