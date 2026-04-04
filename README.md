@@ -179,3 +179,10 @@ MIT License. See [LICENSE](LICENSE).
 ## Acknowledgments
 
 Developed by [Byungkwan Kim](https://remilab.cnu.ac.kr) at the **Radar & ElectroMagnetic Intelligence (REMI) Laboratory**, Chungnam National University.
+
+### AI-Assisted Development
+
+This project was developed with AI coding assistants orchestrated via [oh-my-claudecode](https://github.com/anthropics/oh-my-claudecode):
+
+- **Claude** (Anthropic) — Architecture design, physics validation, cross-validation, code review, documentation
+- **Codex** (OpenAI) — Feature implementation, test generation, review, debugging
