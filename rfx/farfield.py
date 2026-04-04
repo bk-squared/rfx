@@ -96,18 +96,24 @@ def make_ntff_box(
 
 
 def init_ntff_data(box: NTFFBox) -> NTFFData:
-    """Initialize zeroed NTFF DFT accumulators."""
+    """Initialize zeroed NTFF DFT accumulators.
+
+    Uses complex128 (float64 real/imag) to avoid catastrophic cancellation
+    during long DFT accumulations over thousands of timesteps.  At coarse
+    dx (e.g., 2 mm at 5 GHz), the phase rotation in each step is small
+    (dt ~ 4 ps), and float32 accumulation can lose the signal entirely.
+    """
     nf = len(box.freqs)
     ni = box.i_hi - box.i_lo
     nj = box.j_hi - box.j_lo
     nk = box.k_hi - box.k_lo
     return NTFFData(
-        x_lo=jnp.zeros((nf, nj, nk, 4), dtype=jnp.complex64),
-        x_hi=jnp.zeros((nf, nj, nk, 4), dtype=jnp.complex64),
-        y_lo=jnp.zeros((nf, ni, nk, 4), dtype=jnp.complex64),
-        y_hi=jnp.zeros((nf, ni, nk, 4), dtype=jnp.complex64),
-        z_lo=jnp.zeros((nf, ni, nj, 4), dtype=jnp.complex64),
-        z_hi=jnp.zeros((nf, ni, nj, 4), dtype=jnp.complex64),
+        x_lo=jnp.zeros((nf, nj, nk, 4), dtype=jnp.complex128),
+        x_hi=jnp.zeros((nf, nj, nk, 4), dtype=jnp.complex128),
+        y_lo=jnp.zeros((nf, ni, nk, 4), dtype=jnp.complex128),
+        y_hi=jnp.zeros((nf, ni, nk, 4), dtype=jnp.complex128),
+        z_lo=jnp.zeros((nf, ni, nj, 4), dtype=jnp.complex128),
+        z_hi=jnp.zeros((nf, ni, nj, 4), dtype=jnp.complex128),
     )
 
 
@@ -126,8 +132,9 @@ def accumulate_ntff(
 
     Called from the scan body.  ``step_idx`` comes from the scan xs.
     """
-    t = step_idx * dt
-    phase = jnp.exp(-1j * 2 * jnp.pi * box.freqs * t) * dt  # (nf,)
+    t = jnp.float64(step_idx) * jnp.float64(dt)
+    freqs_64 = jnp.asarray(box.freqs, dtype=jnp.float64)
+    phase = jnp.exp(-1j * 2 * jnp.pi * freqs_64 * t) * dt  # (nf,) complex128
     ph = phase[:, None, None, None]  # broadcast to (nf, n1, n2, 4)
 
     i0, i1 = box.i_lo, box.i_hi
@@ -453,7 +460,8 @@ def compute_far_field_jax(
     ]
 
     for face_dft, axis, sign, face_idx, other_ranges in face_specs:
-        face = jnp.asarray(face_dft, dtype=jnp.complex64)
+        # Keep DFT precision from accumulation (complex128 if available)
+        face = jnp.asarray(face_dft)
         n1, n2 = face.shape[1], face.shape[2]
         if n1 == 0 or n2 == 0:
             continue

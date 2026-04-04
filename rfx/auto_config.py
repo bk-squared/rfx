@@ -147,10 +147,13 @@ class SimConfig:
         Accounts for:
         - 6 field arrays (Ex, Ey, Ez, Hx, Hy, Hz)
         - ~6 material coefficient arrays (eps_r, sigma, mu_r, Ca, Cb, etc.)
-        - CPML auxiliary fields (~12 arrays in absorbing region)
+        - CPML auxiliary fields (~24 psi arrays in absorbing region)
         - NTFF DFT accumulators (6 faces × n_freqs × face_cells × 4 components)
         - Debye/Lorentz auxiliary polarization fields (2 per pole)
-        - ~3x overhead for reverse-mode AD checkpointing
+        - ~10x overhead for reverse-mode AD through jax.lax.scan
+          (XLA compilation buffers, reverse-mode tape for scan unrolling,
+          CPML auxiliary arrays replicated for AD, jax.checkpoint reduces
+          but does not eliminate this)
 
         Returns
         -------
@@ -161,15 +164,16 @@ class SimConfig:
         cells = nx * ny * nz
         # 6 field + 6 material arrays (float32, 4 bytes each)
         base_bytes = cells * 12 * 4
-        # CPML: ~12 auxiliary arrays in absorbing region (~15% of domain)
-        cpml_bytes = int(cells * 0.15 * 12 * 4) if self.cpml_layers > 0 else 0
+        # CPML: ~24 auxiliary psi arrays in absorbing region (~15% of domain)
+        cpml_bytes = int(cells * 0.15 * 24 * 4) if self.cpml_layers > 0 else 0
         # NTFF: 6 faces, each ~sqrt(cells) surface cells × n_freqs × 4 × 8 bytes
         ntff_bytes = int(6 * (cells ** 0.67) * 10 * 4 * 8)  # ~10 freqs estimate
         # Dispersion: 2 auxiliary arrays per Debye/Lorentz pole (~2 poles typical)
         disp_bytes = cells * 4 * 4  # 4 arrays × float32
         forward_bytes = base_bytes + cpml_bytes + ntff_bytes + disp_bytes
-        # Reverse-mode AD: ~3x forward for checkpointing
-        total_bytes = forward_bytes * 3
+        # Reverse-mode AD: ~10x forward for jax.grad through lax.scan
+        # (empirically measured at 9-30x; 10x is a conservative lower bound)
+        total_bytes = forward_bytes * 10
         return total_bytes / 1e6
 
     @property
@@ -388,8 +392,9 @@ def auto_configure(
             _ny = int(math.ceil(_domain[1] / dx)) + 1 + 2 * _cpml
             _nz = int(math.ceil(_domain[2] / dx)) + 1 + 2 * _cpml
             _cells = _nx * _ny * _nz
-            # 12 arrays * 4 bytes * 3x for AD checkpointing
-            _est_mb = _cells * 12 * 4 * 3 / 1e6
+            # 12 field/mat arrays + CPML psi overhead, ×10 for AD through lax.scan
+            _cpml_frac = 0.15 if _cpml > 0 else 0.0
+            _est_mb = _cells * (12 + 24 * _cpml_frac) * 4 * 10 / 1e6
             if _est_mb <= max_memory_mb:
                 # Accept this dx and update domain/cpml to match
                 domain = _domain
