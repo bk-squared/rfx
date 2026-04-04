@@ -105,3 +105,6 @@ from rfx.material_fit import (
 from rfx.differentiable_material_fit import (
     differentiable_material_fit, MaterialFitResult, sparam_loss,
 )
+from rfx.ris import RISUnitCell, RISSweepResult
+from rfx.amr import compute_error_indicator, suggest_refinement_regions, auto_refine
+from rfx.surrogate import export_training_data, export_geometry_sdf
