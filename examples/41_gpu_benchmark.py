@@ -263,7 +263,7 @@ def benchmark_multi_gpu():
     results = []
     device_counts = [n for n in [1, 2, 3] if n <= n_available]
 
-    print(f"  Grid target: {nx_adjusted}x{ny}x{nz} ({cells:,} cells), {n_steps} steps")
+    print(f"  Grid target: {actual_nx}x{ny}x{nz} ({cells:,} cells), {n_steps} steps")
     print(f"  {'Devices':>8s}  {'Mcells/s':>10s}  {'Time (s)':>9s}  "
           f"{'Speedup':>8s}  {'Efficiency':>10s}")
     print("-" * 64)
