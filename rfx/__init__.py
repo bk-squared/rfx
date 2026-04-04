@@ -15,6 +15,8 @@ from rfx.sources.waveguide_port import (
     extract_waveguide_port_waves, extract_waveguide_s_matrix,
     extract_waveguide_sparams, extract_waveguide_s11, extract_waveguide_s21,
     waveguide_plane_positions,
+    solve_rectangular_modes, init_multimode_waveguide_port,
+    extract_multimode_s_matrix,
 )
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole, drude_pole, lorentz_pole
@@ -32,6 +34,7 @@ from rfx.visualize import (
     plot_field_slice, plot_s_params, plot_radiation_pattern, plot_time_series,
     plot_rcs,
 )
+from rfx.smith import plot_smith
 from rfx.visualize3d import (
     plot_geometry_3d, plot_field_3d, save_field_vtk, save_screenshot,
     save_field_animation as _save_field_animation_legacy,
@@ -69,3 +72,4 @@ from rfx.probes.probes import (
     init_wire_sparam_probe, update_wire_sparam_probe,
     extract_s_matrix_wire,
 )
+from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
