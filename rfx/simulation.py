@@ -833,6 +833,8 @@ def run_until_decay(
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
     pec_mask: object | None = None,
+    wire_port_sparams: list | None = None,
+    lumped_rlc: list | None = None,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -902,6 +904,10 @@ def run_until_decay(
     use_dft_planes = len(dft_planes) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
     use_pec_mask = pec_mask is not None
+    wire_port_sparams = wire_port_sparams or []
+    use_wire_sparams = len(wire_port_sparams) > 0
+    lumped_rlc = lumped_rlc or []
+    use_lumped_rlc = len(lumped_rlc) > 0
 
     # ---- initialise states ----
     fdtd = init_state(grid.shape)
@@ -953,6 +959,22 @@ def run_until_decay(
             )
             for cfg in waveguide_ports
         )
+    if use_wire_sparams:
+        # Initialize V, I, V_inc DFT accumulators per wire port
+        carry["wire_sparam_accs"] = tuple(
+            (
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_dft
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # i_dft
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_inc_dft
+            )
+            for wp in wire_port_sparams
+        )
+        wire_sparam_meta = tuple(wire_port_sparams)
+
+    if use_lumped_rlc:
+        from rfx.lumped import init_rlc_state, update_rlc_element
+        carry["rlc_states"] = tuple(init_rlc_state() for _ in lumped_rlc)
+        rlc_meta = tuple(lumped_rlc)  # list of RLCCellMeta
 
     # Static source/probe metadata
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
@@ -1011,6 +1033,13 @@ def run_until_decay(
             from rfx.boundaries.pec import apply_pec_mask
             st = apply_pec_mask(st, pec_mask)
 
+        # Lumped RLC ADE update (after E update + boundaries, before sources)
+        if use_lumped_rlc:
+            new_rlc_states = []
+            for rlc_st, meta in zip(carry_in["rlc_states"], rlc_meta):
+                st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
+                new_rlc_states.append(rlc_st_new)
+
         # Soft sources
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
             field = getattr(st, sc)
@@ -1043,6 +1072,30 @@ def run_until_decay(
                     cfg_updated.v_probe_dft, cfg_updated.v_ref_dft,
                     cfg_updated.i_probe_dft, cfg_updated.i_ref_dft,
                     cfg_updated.v_inc_dft,
+                ))
+
+        # Wire port S-param DFT accumulation (JIT-integrated)
+        if use_wire_sparams:
+            new_wire_accs = []
+            for accs, wp_meta in zip(carry_in["wire_sparam_accs"], wire_sparam_meta):
+                v_dft, i_dft, vinc_dft = accs
+                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
+                v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
+                if wp_meta.component == "ez":
+                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
+                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dx
+                elif wp_meta.component == "ex":
+                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
+                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dx
+                else:
+                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
+                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dx
+                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
+                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                new_wire_accs.append((
+                    v_dft + v * phase,
+                    i_dft + i_val * phase,
+                    vinc_dft,
                 ))
 
         # Probe samples
@@ -1090,6 +1143,10 @@ def run_until_decay(
             new_carry["dft_planes"] = tuple(new_dft_planes)
         if use_waveguide_ports:
             new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
+        if use_wire_sparams:
+            new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
+        if use_lumped_rlc:
+            new_carry["rlc_states"] = tuple(new_rlc_states)
 
         return new_carry, probe_out, monitor_val
 
@@ -1144,11 +1201,19 @@ def run_until_decay(
             for cfg_meta, accs in zip(waveguide_meta, carry["waveguide_port_accs"])
         )
 
+    final_wire_sparams = None
+    if use_wire_sparams:
+        final_wire_sparams = tuple(
+            (wp_meta, accs)
+            for wp_meta, accs in zip(wire_sparam_meta, carry["wire_sparam_accs"])
+        )
+
     return SimResult(
         state=carry["fdtd"],
         time_series=time_series,
         ntff_data=carry.get("ntff"),
         dft_planes=final_dft_planes,
         waveguide_ports=final_waveguide_ports,
+        wire_port_sparams=final_wire_sparams,
         snapshots=None,
     )

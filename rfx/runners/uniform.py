@@ -270,6 +270,7 @@ def run_uniform(
             aniso_eps=aniso_eps,
             pec_mask=pec_mask,
             wire_port_sparams=wire_sparam_specs or None,
+            lumped_rlc=rlc_metas,
         )
     else:
         sim_result = _run(
