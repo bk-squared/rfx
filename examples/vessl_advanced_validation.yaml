@@ -1,0 +1,15 @@
+name: rfx-advanced-validation
+description: "GPU accuracy validation for advanced examples with theoretical comparison"
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.04-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  pip install -q -e .
+  python examples/50_advanced/gpu_validation/run_gpu_validation.py
