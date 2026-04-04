@@ -432,3 +432,189 @@ class TestAPIMultiMode:
             sim.add_waveguide_port(0.005, direction="+x", n_modes=0)
         with pytest.raises(ValueError, match="n_modes must be a positive integer"):
             sim.add_waveguide_port(0.005, direction="+x", n_modes=-1)
+
+
+# ---------------------------------------------------------------------------
+# Near-cutoff robustness and degenerate-mode handling (GitHub issue #1)
+# ---------------------------------------------------------------------------
+
+
+class TestNearCutoffRobustness:
+    """Multi-mode waveguide behaviour near cutoff and with degenerate modes."""
+
+    def test_modes_near_cutoff_stability(self):
+        """Modes near cutoff frequency should not produce NaN or instability.
+
+        WR-90: TE10 cutoff at ~6.56 GHz.
+        With freq_max=7 GHz, only TE10 barely propagates; others are below cutoff.
+        Mode profiles must be finite and properly normalized.
+        """
+        from rfx.sources.waveguide_port import (
+            solve_rectangular_modes,
+            _te_mode_profiles,
+            _tm_mode_profiles,
+        )
+        a, b = 22.86e-3, 10.16e-3  # WR-90
+        modes = solve_rectangular_modes(a, b, freq_max=7e9, n_modes=3)
+
+        # Should get at least TE10 (the only mode below 7 GHz)
+        assert len(modes) >= 1, f"Expected at least 1 mode, got {len(modes)}"
+        assert modes[0]["f_cutoff"] < 7e9
+
+        # All returned modes must have cutoff below freq_max
+        for m_info in modes:
+            assert m_info["f_cutoff"] <= 7e9
+
+        # Verify mode profiles have no NaN/Inf
+        n_pts = 20
+        y_coords = np.linspace(0.5e-4, a - 0.5e-4, n_pts)
+        z_coords = np.linspace(0.5e-4, b - 0.5e-4, n_pts)
+        for m_info in modes:
+            m_idx, n_idx = m_info["m"], m_info["n"]
+            if m_info["mode_type"] == "TE":
+                ey, ez, hy, hz = _te_mode_profiles(a, b, m_idx, n_idx, y_coords, z_coords)
+            else:
+                ey, ez, hy, hz = _tm_mode_profiles(a, b, m_idx, n_idx, y_coords, z_coords)
+            for label, arr in [("ey", ey), ("ez", ez), ("hy", hy), ("hz", hz)]:
+                assert not np.any(np.isnan(arr)), (
+                    f"NaN in {label} for {m_info['mode_type']}{m_idx}{n_idx}"
+                )
+                assert not np.any(np.isinf(arr)), (
+                    f"Inf in {label} for {m_info['mode_type']}{m_idx}{n_idx}"
+                )
+
+    def test_near_cutoff_port_config_stability(self):
+        """Port config for a frequency just above cutoff must not contain NaN.
+
+        Operating at 6.6 GHz with WR-90 (TE10 cutoff ~6.56 GHz) means the
+        mode barely propagates. The compiled WaveguidePortConfig must still
+        have finite profiles and a valid cutoff frequency.
+        """
+        a, b = 22.86e-3, 10.16e-3
+        dx = 1e-3
+        ny, nz = int(round(a / dx)), int(round(b / dx))
+        nc = 10
+        freqs = jnp.linspace(6.6e9, 7e9, 5)  # Just above TE10 cutoff
+        port = WaveguidePort(
+            x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+            a=a, b=b, mode=(1, 0), mode_type="TE", direction="+x",
+        )
+        cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=1, f0=6.6e9)
+        assert len(cfgs) == 1
+        cfg = cfgs[0]
+
+        # Cutoff must be finite and close to expected value
+        fc_expected = C0 / (2 * a)
+        assert np.isfinite(cfg.f_cutoff)
+        assert abs(cfg.f_cutoff - fc_expected) / fc_expected < 0.01
+
+        # Profiles must be finite
+        for label, arr in [("ey", cfg.ey_profile), ("ez", cfg.ez_profile),
+                           ("hy", cfg.hy_profile), ("hz", cfg.hz_profile)]:
+            arr_np = np.array(arr)
+            assert not np.any(np.isnan(arr_np)), f"NaN in {label} profile"
+            assert not np.any(np.isinf(arr_np)), f"Inf in {label} profile"
+
+    def test_nearly_degenerate_modes(self):
+        """Square waveguide has degenerate TE10/TE01 -- should handle correctly.
+
+        For a square cross-section (a == b), TE10 and TE01 share the same
+        cutoff frequency. solve_rectangular_modes must return both without
+        error, and their cutoff frequencies must be numerically equal.
+        """
+        a, b = 20e-3, 20e-3  # Square waveguide
+        modes = solve_rectangular_modes(a, b, freq_max=15e9, n_modes=5)
+
+        # Must return at least 2 modes
+        assert len(modes) >= 2, f"Expected at least 2 modes, got {len(modes)}"
+
+        cutoffs = [m["f_cutoff"] for m in modes]
+
+        # TE10 and TE01 should have identical cutoff (within floating-point tolerance)
+        assert abs(cutoffs[0] - cutoffs[1]) / cutoffs[0] < 1e-10, (
+            f"First two modes not degenerate: {cutoffs[0]:.6e} vs {cutoffs[1]:.6e}"
+        )
+
+        # The two degenerate modes should be TE10 and TE01 (or TE01 and TE10)
+        first_two = {(m["mode_type"], m["m"], m["n"]) for m in modes[:2]}
+        assert ("TE", 1, 0) in first_two, f"TE10 missing from first two modes: {first_two}"
+        assert ("TE", 0, 1) in first_two, f"TE01 missing from first two modes: {first_two}"
+
+    def test_degenerate_mode_profiles_orthogonal(self):
+        """Degenerate TE10 and TE01 in a square guide must be orthogonal.
+
+        Even though their cutoff frequencies coincide, their spatial profiles
+        must remain linearly independent (zero overlap integral).
+        """
+        from rfx.sources.waveguide_port import _te_mode_profiles
+        a = b = 20e-3
+        n_pts = 30
+        y_coords = np.linspace(0.5e-4, a - 0.5e-4, n_pts)
+        z_coords = np.linspace(0.5e-4, b - 0.5e-4, n_pts)
+        dy = y_coords[1] - y_coords[0]
+        dz = z_coords[1] - z_coords[0]
+
+        ey_10, ez_10, _, _ = _te_mode_profiles(a, b, 1, 0, y_coords, z_coords)
+        ey_01, ez_01, _, _ = _te_mode_profiles(a, b, 0, 1, y_coords, z_coords)
+
+        overlap = np.sum(ey_10 * ey_01 + ez_10 * ez_01) * dy * dz
+        self_10 = np.sum(ey_10**2 + ez_10**2) * dy * dz
+        self_01 = np.sum(ey_01**2 + ez_01**2) * dy * dz
+
+        assert self_10 > 1e-20, "TE10 self-norm is effectively zero"
+        assert self_01 > 1e-20, "TE01 self-norm is effectively zero"
+
+        normalized_overlap = abs(overlap) / np.sqrt(self_10 * self_01)
+        assert normalized_overlap < 0.05, (
+            f"Degenerate TE10/TE01 not orthogonal: overlap = {normalized_overlap:.6f}"
+        )
+
+    def test_degenerate_multimode_port_configs(self):
+        """Multi-mode port on a square guide must produce distinct configs
+        for the degenerate pair TE10/TE01."""
+        a = b = 20e-3
+        dx = 1e-3
+        ny, nz = int(round(a / dx)), int(round(b / dx))
+        nc = 10
+        freqs = jnp.linspace(8e9, 12e9, 10)
+        port = WaveguidePort(
+            x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+            a=a, b=b, mode=(1, 0), mode_type="TE", direction="+x",
+        )
+        cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=2, f0=10e9)
+        assert len(cfgs) == 2
+
+        # Both cutoffs should be nearly equal (degenerate)
+        assert abs(cfgs[0].f_cutoff - cfgs[1].f_cutoff) / cfgs[0].f_cutoff < 1e-10
+
+        # But profiles must differ — at least one component should be substantially different
+        ey_diff = np.max(np.abs(np.array(cfgs[0].ey_profile) - np.array(cfgs[1].ey_profile)))
+        ez_diff = np.max(np.abs(np.array(cfgs[0].ez_profile) - np.array(cfgs[1].ez_profile)))
+        assert ey_diff > 0.01 or ez_diff > 0.01, (
+            "Degenerate mode configs have identical profiles — modes not resolved"
+        )
+
+    def test_near_cutoff_single_mode_only(self):
+        """When freq_max barely exceeds TE10 cutoff, only one mode is returned."""
+        a, b = 22.86e-3, 10.16e-3
+        fc_te10 = C0 / (2 * a)  # ~6.557 GHz
+
+        # freq_max is 1% above TE10 cutoff
+        modes = solve_rectangular_modes(a, b, freq_max=fc_te10 * 1.01, n_modes=10)
+        assert len(modes) == 1, f"Expected exactly 1 mode, got {len(modes)}"
+        assert modes[0]["mode_type"] == "TE"
+        assert modes[0]["m"] == 1 and modes[0]["n"] == 0
+
+    def test_square_guide_higher_degenerate_pairs(self):
+        """Square guide TE11/TM11 should also be degenerate."""
+        a = b = 20e-3
+        # TE11 and TM11 cutoff = c * sqrt(2) / (2a) ~ 10.6 GHz for a=20mm
+        modes = solve_rectangular_modes(a, b, freq_max=12e9, n_modes=10)
+
+        te11 = [m for m in modes if m["mode_type"] == "TE" and m["m"] == 1 and m["n"] == 1]
+        tm11 = [m for m in modes if m["mode_type"] == "TM" and m["m"] == 1 and m["n"] == 1]
+        assert len(te11) == 1, "TE11 not found"
+        assert len(tm11) == 1, "TM11 not found"
+        assert abs(te11[0]["f_cutoff"] - tm11[0]["f_cutoff"]) / te11[0]["f_cutoff"] < 1e-10, (
+            "TE11 and TM11 cutoffs should be identical in a square guide"
+        )
