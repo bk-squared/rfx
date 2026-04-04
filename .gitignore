@@ -13,11 +13,21 @@ docs/research_notes/
 docs/codex_specs/
 docs/reports/
 docs/superpowers/
-examples/vessl_*.yaml
-examples/benchmark_jax_vs_numpy.py
 
-# Generated plots (examples produce these at runtime)
-examples/*.png
+# VESSL cluster configs (internal infra)
+**/vessl*.yaml
+**/vessl*.yml
+
+# Dev trial/slop examples (only 01-08, 40_*, 50_* are public)
+examples/benchmark_jax_vs_numpy.py
+examples/gpu_benchmark.py
+examples/gpu_benchmark_results.json
+
+# Generated artifacts (runtime output — never commit)
+**/*.png
+**/*.gif
+**/benchmark_results.json
+examples/*.json
 
 # Generated API docs (pdoc)
 docs/api/
