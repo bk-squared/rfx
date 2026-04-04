@@ -35,6 +35,9 @@ def run_uniform(
     s_param_n_steps=None,
     snapshot=None,
     subpixel_smoothing: bool = False,
+    conformal_pec: bool = False,
+    conformal_min_weight: float = 0.1,
+    pec_shapes=None,
     # pre-built grid and materials passed in from Simulation.run()
     grid=None,
     base_materials=None,
@@ -56,6 +59,12 @@ def run_uniform(
         Material arrays (before port impedance loading).
     debye_spec, lorentz_spec : dispersion specs or None
     pec_mask : jnp.ndarray or None
+    conformal_pec : bool
+        Enable Dey-Mittra conformal PEC (default False).
+    conformal_min_weight : float
+        Minimum conformal weight for CFL stability (default 0.1).
+    pec_shapes : list or None
+        List of PEC Shape objects (needed for conformal weights).
     All other parameters mirror Simulation.run().
 
     Returns
@@ -80,6 +89,37 @@ def run_uniform(
         ]
         if shape_eps_pairs:
             aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
+
+    # Conformal PEC: compute weights and produce anisotropic eps
+    conformal_weights = None
+    if conformal_pec and pec_shapes:
+        from rfx.geometry.conformal import (
+            compute_conformal_weights_sdf,
+            clamp_conformal_weights,
+            conformal_eps_correction,
+        )
+        w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
+        w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, conformal_min_weight)
+        conformal_weights = (w_ex, w_ey, w_ez)
+
+        # Compute conformal eps correction
+        eps_base = materials.eps_r
+        eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(eps_base, w_ex, w_ey, w_ez)
+
+        if aniso_eps is not None:
+            # Merge: conformal PEC overrides smoothed eps at PEC boundary cells
+            s_ex, s_ey, s_ez = aniso_eps
+            boundary_ex = w_ex < 1.0
+            boundary_ey = w_ey < 1.0
+            boundary_ez = w_ez < 1.0
+            eps_ex_c = jnp.where(boundary_ex, eps_ex_c, s_ex)
+            eps_ey_c = jnp.where(boundary_ey, eps_ey_c, s_ey)
+            eps_ez_c = jnp.where(boundary_ez, eps_ez_c, s_ez)
+
+        aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
+
+        # Conformal replaces binary pec_mask
+        pec_mask = None
 
     # Build sources and probes for the compiled runner
     sources = []
@@ -324,6 +364,7 @@ def run_uniform(
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
             pec_mask=pec_mask,
+            conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_rlc=rlc_metas,
         )
@@ -346,6 +387,7 @@ def run_uniform(
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
             pec_mask=pec_mask,
+            conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_rlc=rlc_metas,
         )

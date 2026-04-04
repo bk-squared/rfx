@@ -126,7 +126,7 @@ def optimize(
         eps_design = _latent_to_eps(lat, eps_min, eps_max)
 
         # Build materials with design-region override.
-        materials, debye_spec, lorentz_spec, _ = sim._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, _, _ = sim._assemble_materials(grid)
         eps_r = materials.eps_r
 
         # Inject design region

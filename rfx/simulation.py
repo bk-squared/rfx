@@ -382,6 +382,7 @@ def run(
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
     pec_mask: object | None = None,
+    conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
     lumped_rlc: list | None = None,
 ) -> SimResult:
@@ -469,6 +470,7 @@ def run(
     use_waveguide_ports = len(waveguide_ports) > 0
     use_snapshot = snapshot is not None
     use_pec_mask = pec_mask is not None
+    use_conformal = conformal_weights is not None
     wire_port_sparams = wire_port_sparams or []
     use_wire_sparams = len(wire_port_sparams) > 0
     lumped_rlc = lumped_rlc or []
@@ -619,7 +621,10 @@ def run(
         if pec_axes:
             st = apply_pec(st, axes=pec_axes)
 
-        if use_pec_mask:
+        if use_conformal:
+            from rfx.geometry.conformal import apply_conformal_pec
+            st = apply_conformal_pec(st, conformal_weights[0], conformal_weights[1], conformal_weights[2])
+        elif use_pec_mask:
             from rfx.boundaries.pec import apply_pec_mask
             st = apply_pec_mask(st, pec_mask)
 
@@ -834,6 +839,7 @@ def run_until_decay(
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
     pec_mask: object | None = None,
+    conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
     lumped_rlc: list | None = None,
 ) -> SimResult:
@@ -905,6 +911,7 @@ def run_until_decay(
     use_dft_planes = len(dft_planes) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
     use_pec_mask = pec_mask is not None
+    use_conformal = conformal_weights is not None
     wire_port_sparams = wire_port_sparams or []
     use_wire_sparams = len(wire_port_sparams) > 0
     lumped_rlc = lumped_rlc or []
@@ -1019,6 +1026,7 @@ def run_until_decay(
             debye=(debye_coeffs, carry_in["debye"]) if use_debye else None,
             lorentz=(lorentz_coeffs, carry_in["lorentz"]) if use_lorentz else None,
             periodic=periodic,
+            aniso_eps=aniso_eps,
         )
 
         if use_tfsf:
@@ -1030,7 +1038,10 @@ def run_until_decay(
         if pec_axes:
             st = apply_pec(st, axes=pec_axes)
 
-        if use_pec_mask:
+        if use_conformal:
+            from rfx.geometry.conformal import apply_conformal_pec
+            st = apply_conformal_pec(st, conformal_weights[0], conformal_weights[1], conformal_weights[2])
+        elif use_pec_mask:
             from rfx.boundaries.pec import apply_pec_mask
             st = apply_pec_mask(st, pec_mask)
 
