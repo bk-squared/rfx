@@ -1,16 +1,53 @@
 """Touchstone (.sNp) S-parameter file I/O.
 
-Reads and writes industry-standard Touchstone format for interoperability
+Reads and writes industry-standard Touchstone v1 format for interoperability
 with ADS, CST, HFSS, and other RF tools.
 
-Supports Touchstone v1 format with RI (real/imaginary), MA (magnitude/angle),
-and DB (dB/angle) data formats.
+Supports:
+- .s1p (1-port), .s2p (2-port), .s4p (4-port), .snp (N-port)
+- Data formats: RI (real/imaginary), MA (magnitude/angle), DB (dB/angle)
+- Frequency units: Hz, kHz, MHz, GHz
+
+Multi-port layout (Touchstone v1):
+- 1-port and 2-port: all S-parameter data on one line per frequency
+- 3+ ports: max 4 S-parameter pairs per line; first line starts with
+  frequency, continuation lines are indented without a frequency column.
+  Column-major order: S11, S21, ..., SN1, S12, ..., SNN.
 """
 
 from __future__ import annotations
 
 import numpy as np
 from pathlib import Path
+
+# Maximum number of S-parameter pairs per line for N>=3 ports (Touchstone v1).
+_MAX_PAIRS_PER_LINE = 4
+
+
+def _format_pair(s: complex, fmt: str) -> tuple[str, str]:
+    """Format a single complex S-parameter into two string tokens."""
+    if fmt == "RI":
+        return f"{s.real:.9e}", f"{s.imag:.9e}"
+    elif fmt == "MA":
+        return f"{abs(s):.9e}", f"{np.degrees(np.angle(s)):.6f}"
+    elif fmt == "DB":
+        mag_db = 20 * np.log10(max(abs(s), 1e-15))
+        return f"{mag_db:.6f}", f"{np.degrees(np.angle(s)):.6f}"
+    else:
+        raise ValueError(f"Unknown format: {fmt!r}")
+
+
+def _parse_pair(v1: float, v2: float, fmt: str) -> complex:
+    """Convert two raw Touchstone values into a complex S-parameter."""
+    if fmt == "RI":
+        return complex(v1, v2)
+    elif fmt == "MA":
+        return v1 * np.exp(1j * np.radians(v2))
+    elif fmt == "DB":
+        mag = 10 ** (v1 / 20)
+        return mag * np.exp(1j * np.radians(v2))
+    else:
+        raise ValueError(f"Unknown format: {fmt!r}")
 
 
 def write_touchstone(
@@ -22,7 +59,7 @@ def write_touchstone(
     fmt: str = "RI",
     comments: list[str] | None = None,
 ) -> None:
-    """Write S-parameters to a Touchstone file.
+    """Write S-parameters to a Touchstone v1 file.
 
     Parameters
     ----------
@@ -53,32 +90,51 @@ def write_touchstone(
         # Option line
         f.write(f"# {freq_unit} S {fmt} R {z0:.1f}\n")
 
-        # Data
+        # Data — layout depends on port count
         for fi in range(n_freqs):
             freq_scaled = freqs[fi] / scale
-            parts = [f"{freq_scaled:.9e}"]
 
-            # Touchstone stores network data column-major:
+            # Collect all S-parameter pairs in column-major order:
             # S11, S21, ..., SN1, S12, S22, ..., SN2, ...
+            pairs: list[tuple[str, str]] = []
             for j in range(n_ports):
                 for i in range(n_ports):
-                    s = s_params[i, j, fi]
-                    if fmt == "RI":
-                        parts.append(f"{s.real:.9e}")
-                        parts.append(f"{s.imag:.9e}")
-                    elif fmt == "MA":
-                        parts.append(f"{abs(s):.9e}")
-                        parts.append(f"{np.degrees(np.angle(s)):.6f}")
-                    elif fmt == "DB":
-                        mag_db = 20 * np.log10(max(abs(s), 1e-15))
-                        parts.append(f"{mag_db:.6f}")
-                        parts.append(f"{np.degrees(np.angle(s)):.6f}")
+                    pairs.append(_format_pair(s_params[i, j, fi], fmt))
 
-            f.write(" ".join(parts) + "\n")
+            if n_ports <= 2:
+                # 1-port and 2-port: everything on one line
+                tokens = [f"{freq_scaled:.9e}"]
+                for p1, p2 in pairs:
+                    tokens.extend([p1, p2])
+                f.write(" ".join(tokens) + "\n")
+            else:
+                # 3+ ports: first line has freq + up to 4 pairs,
+                # continuation lines have up to 4 pairs each.
+                idx = 0
+                first_line_tokens = [f"{freq_scaled:.9e}"]
+                for _ in range(min(_MAX_PAIRS_PER_LINE, len(pairs))):
+                    p1, p2 = pairs[idx]
+                    first_line_tokens.extend([p1, p2])
+                    idx += 1
+                f.write(" ".join(first_line_tokens) + "\n")
+
+                # Continuation lines
+                while idx < len(pairs):
+                    chunk_end = min(idx + _MAX_PAIRS_PER_LINE, len(pairs))
+                    cont_tokens: list[str] = []
+                    while idx < chunk_end:
+                        p1, p2 = pairs[idx]
+                        cont_tokens.extend([p1, p2])
+                        idx += 1
+                    # Indent continuation lines to distinguish from freq lines
+                    f.write("  " + " ".join(cont_tokens) + "\n")
 
 
 def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float]:
-    """Read S-parameters from a Touchstone file.
+    """Read S-parameters from a Touchstone v1 file.
+
+    Handles both single-line (1- and 2-port) and multi-line (3+ port) data
+    blocks.  Inline comments (``! ...``) after data values are stripped.
 
     Parameters
     ----------
@@ -103,7 +159,7 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
     fmt = "RI"
     z0 = 50.0
 
-    data_lines = []
+    raw_data_lines: list[str] = []
 
     with open(filepath) as f:
         for line in f:
@@ -126,29 +182,55 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
                     i += 1
                 continue
 
-            data_lines.append(line)
+            # Strip inline comments: "1.0 0.5 0.3 ! my comment"
+            if "!" in line:
+                line = line[:line.index("!")]
+            line = line.strip()
+            if line:
+                raw_data_lines.append(line)
 
-    # Parse data
-    freqs_list = []
-    s_data = []
-    for line in data_lines:
+    # Number of value pairs expected per frequency point
+    n_pairs = n_ports * n_ports  # one complex pair per S-parameter
+    n_values_expected = 1 + 2 * n_pairs  # freq + 2 floats per pair
+
+    # Merge raw lines into logical frequency-point blocks.
+    # For 1- and 2-port files every raw line is a complete block.
+    # For 3+ port files, continuation lines lack a frequency column
+    # and must be merged with the preceding frequency line.
+    all_values: list[float] = []
+    for line in raw_data_lines:
         vals = [float(x) for x in line.split()]
-        freqs_list.append(vals[0] * freq_scale)
-        pairs = vals[1:]
-        row = []
-        for k in range(0, len(pairs), 2):
-            v1, v2 = pairs[k], pairs[k + 1]
-            if fmt == "RI":
-                row.append(complex(v1, v2))
-            elif fmt == "MA":
-                row.append(v1 * np.exp(1j * np.radians(v2)))
-            elif fmt == "DB":
-                mag = 10 ** (v1 / 20)
-                row.append(mag * np.exp(1j * np.radians(v2)))
+        all_values.extend(vals)
+
+    # Each frequency point contributes exactly n_values_expected floats
+    if len(all_values) % n_values_expected != 0:
+        raise ValueError(
+            f"Data length {len(all_values)} is not a multiple of "
+            f"expected {n_values_expected} values per frequency point "
+            f"(n_ports={n_ports})"
+        )
+
+    n_freqs = len(all_values) // n_values_expected
+
+    # Parse into structured arrays
+    freqs_list: list[float] = []
+    s_data: list[list[complex]] = []
+
+    offset = 0
+    for _ in range(n_freqs):
+        freq_val = all_values[offset] * freq_scale
+        freqs_list.append(freq_val)
+        offset += 1
+
+        row: list[complex] = []
+        for _ in range(n_pairs):
+            v1 = all_values[offset]
+            v2 = all_values[offset + 1]
+            row.append(_parse_pair(v1, v2, fmt))
+            offset += 2
         s_data.append(row)
 
     freqs = np.array(freqs_list)
-    n_freqs = len(freqs)
 
     # Touchstone stores network data column-major:
     # S11, S21, ..., SN1, S12, S22, ..., SN2, ...

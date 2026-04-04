@@ -6,6 +6,9 @@ Validates:
 3. Write and read round-trip (DB format)
 4. Port count inference from extension
 5. Frequency unit handling
+6. Multi-port support (.s2p, .s4p, .snp) with multi-line data blocks
+7. DB format parsing for multi-port files
+8. Frequency unit round-trip across all supported units
 """
 
 import tempfile
@@ -161,3 +164,211 @@ def test_touchstone_writer_uses_touchstone_port_order():
         "1.200000000e+01", "0.000000000e+00",
         "2.200000000e+01", "0.000000000e+00",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Multi-port tests (.s2p, .s3p, .s4p, .snp)
+# ---------------------------------------------------------------------------
+
+def test_write_read_s2p_roundtrip():
+    """2-port RI round-trip: write then read should recover identical data."""
+    s_params, freqs = _make_test_sparams(n_ports=2, n_freqs=20)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "filter.s2p"
+        write_touchstone(path, s_params, freqs, fmt="RI")
+        s_read, f_read, z0 = read_touchstone(path)
+
+    assert s_read.shape == (2, 2, 20)
+    assert z0 == 50.0
+    np.testing.assert_allclose(f_read, freqs, rtol=1e-6)
+    np.testing.assert_allclose(s_read, s_params, atol=1e-6)
+
+
+def test_write_read_s3p_roundtrip():
+    """3-port round-trip exercises multi-line data blocks (9 pairs > 4 per line)."""
+    s_params, freqs = _make_test_sparams(n_ports=3, n_freqs=8)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "coupler.s3p"
+        write_touchstone(path, s_params, freqs, fmt="RI")
+
+        # Verify multi-line layout: each freq should span 3 lines
+        # (first line: freq + 4 pairs, second: 4 pairs, third: 1 pair)
+        content = path.read_text()
+        s_read, f_read, z0 = read_touchstone(path)
+
+    assert s_read.shape == (3, 3, 8)
+    np.testing.assert_allclose(f_read, freqs, rtol=1e-6)
+    np.testing.assert_allclose(s_read, s_params, atol=1e-6)
+
+    # Check that continuation lines are present (indented, no freq column)
+    data_lines = [
+        l for l in content.splitlines()
+        if l.strip() and not l.strip().startswith("!") and not l.strip().startswith("#")
+    ]
+    # 3-port: 9 pairs = first line (4 pairs) + 2 continuation lines (4+1)
+    # So 3 raw lines per frequency, 8 freqs -> 24 data lines
+    assert len(data_lines) == 8 * 3
+
+
+def test_write_s4p():
+    """4-port write produces valid multi-line Touchstone and round-trips."""
+    s_params, freqs = _make_test_sparams(n_ports=4, n_freqs=5)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "diff_pair.s4p"
+        write_touchstone(path, s_params, freqs, fmt="RI")
+
+        content = path.read_text()
+        s_read, f_read, z0 = read_touchstone(path)
+
+    assert s_read.shape == (4, 4, 5)
+    np.testing.assert_allclose(f_read, freqs, rtol=1e-6)
+    np.testing.assert_allclose(s_read, s_params, atol=1e-6)
+
+    # 4-port: 16 pairs. First line: freq + 4 pairs, then 3 cont lines of 4 pairs.
+    # => 4 raw lines per frequency point.
+    data_lines = [
+        l for l in content.splitlines()
+        if l.strip() and not l.strip().startswith("!") and not l.strip().startswith("#")
+    ]
+    assert len(data_lines) == 5 * 4
+
+
+def test_write_read_s6p_roundtrip():
+    """6-port (.s6p) — general N-port beyond standard .s4p."""
+    s_params, freqs = _make_test_sparams(n_ports=6, n_freqs=3)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "network.s6p"
+        write_touchstone(path, s_params, freqs, fmt="RI")
+        s_read, f_read, z0 = read_touchstone(path)
+
+    assert s_read.shape == (6, 6, 3)
+    np.testing.assert_allclose(f_read, freqs, rtol=1e-6)
+    np.testing.assert_allclose(s_read, s_params, atol=1e-6)
+
+
+def test_read_s2p_db_format():
+    """Read a hand-crafted 2-port DB-format file and verify decoded values."""
+    # S11 = -20 dB @ -45 deg, S21 = -3 dB @ -90 deg
+    # S12 = -3 dB @ -90 deg, S22 = -20 dB @ -45 deg
+    text = "\n".join([
+        "! 2-port filter in dB/angle format",
+        "# GHz S DB R 50",
+        "1.0  -20.0 -45.0  -3.0 -90.0  -3.0 -90.0  -20.0 -45.0",
+        "2.0  -15.0 -30.0  -1.0 -60.0  -1.0 -60.0  -15.0 -30.0",
+    ])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "filter_db.s2p"
+        path.write_text(text)
+        s_read, freqs, z0 = read_touchstone(path)
+
+    assert s_read.shape == (2, 2, 2)
+    assert z0 == 50.0
+    np.testing.assert_allclose(freqs, [1e9, 2e9])
+
+    # S11 at f=1 GHz: mag = 10^(-20/20) = 0.1, angle = -45 deg
+    s11_mag = np.abs(s_read[0, 0, 0])
+    s11_ang = np.degrees(np.angle(s_read[0, 0, 0]))
+    np.testing.assert_allclose(s11_mag, 0.1, rtol=1e-6)
+    np.testing.assert_allclose(s11_ang, -45.0, atol=1e-3)
+
+    # S21 at f=1 GHz: mag = 10^(-3/20) ~ 0.7079, angle = -90 deg
+    s21_mag = np.abs(s_read[1, 0, 0])
+    s21_ang = np.degrees(np.angle(s_read[1, 0, 0]))
+    np.testing.assert_allclose(s21_mag, 10**(-3/20), rtol=1e-4)
+    np.testing.assert_allclose(s21_ang, -90.0, atol=1e-3)
+
+
+def test_frequency_units_multiport():
+    """All four frequency units round-trip correctly for a 4-port file."""
+    s_params, freqs = _make_test_sparams(n_ports=4, n_freqs=5)
+
+    for unit in ["Hz", "kHz", "MHz", "GHz"]:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.s4p"
+            write_touchstone(path, s_params, freqs, freq_unit=unit, fmt="RI")
+            s_read, f_read, z0 = read_touchstone(path)
+
+        np.testing.assert_allclose(f_read, freqs, rtol=1e-5,
+                                   err_msg=f"Freq unit {unit} failed for 4-port")
+        np.testing.assert_allclose(s_read, s_params, atol=1e-6,
+                                   err_msg=f"S-param mismatch for unit {unit}")
+
+
+def test_s4p_ma_roundtrip():
+    """4-port MA (magnitude/angle) round-trip."""
+    s_params, freqs = _make_test_sparams(n_ports=4, n_freqs=5)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test.s4p"
+        write_touchstone(path, s_params, freqs, fmt="MA")
+        s_read, f_read, z0 = read_touchstone(path)
+
+    np.testing.assert_allclose(np.abs(s_read), np.abs(s_params), rtol=1e-4)
+    np.testing.assert_allclose(np.angle(s_read), np.angle(s_params), atol=1e-3)
+
+
+def test_s4p_db_roundtrip():
+    """4-port DB (dB/angle) round-trip."""
+    s_params, freqs = _make_test_sparams(n_ports=4, n_freqs=5)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test.s4p"
+        write_touchstone(path, s_params, freqs, fmt="DB")
+        s_read, f_read, z0 = read_touchstone(path)
+
+    np.testing.assert_allclose(np.abs(s_read), np.abs(s_params), rtol=1e-3)
+
+
+def test_read_s4p_multiline_handcrafted():
+    """Read a hand-written 4-port file with explicit multi-line layout."""
+    # 4-port: 16 pairs. Line 1: freq + 4 pairs, then 3 continuation lines.
+    # Column-major order: S11 S21 S31 S41 | S12 S22 S32 S42 | S13 ... | S14 ...
+    text = "\n".join([
+        "! Hand-crafted 4-port RI",
+        "# MHz S RI R 50",
+        "100.0  1 0 2 0 3 0 4 0",
+        "  5 0 6 0 7 0 8 0",
+        "  9 0 10 0 11 0 12 0",
+        "  13 0 14 0 15 0 16 0",
+    ])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "hand.s4p"
+        path.write_text(text)
+        s_read, freqs, z0 = read_touchstone(path)
+
+    assert s_read.shape == (4, 4, 1)
+    np.testing.assert_allclose(freqs, [100e6])
+
+    # Verify column-major mapping:
+    # vals 1..4 -> S11,S21,S31,S41 (column j=0)
+    # vals 5..8 -> S12,S22,S32,S42 (column j=1)
+    # etc.
+    assert s_read[0, 0, 0] == 1 + 0j   # S11
+    assert s_read[1, 0, 0] == 2 + 0j   # S21
+    assert s_read[2, 0, 0] == 3 + 0j   # S31
+    assert s_read[3, 0, 0] == 4 + 0j   # S41
+    assert s_read[0, 1, 0] == 5 + 0j   # S12
+    assert s_read[1, 1, 0] == 6 + 0j   # S22
+    assert s_read[3, 3, 0] == 16 + 0j  # S44
+
+
+def test_inline_comments_ignored():
+    """Inline comments after data values should be stripped."""
+    text = "\n".join([
+        "# GHz S RI R 50",
+        "1.0  0.5 0.1  0.8 -0.2  0.8 -0.2  0.5 0.1 ! some inline comment",
+    ])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "commented.s2p"
+        path.write_text(text)
+        s_read, freqs, z0 = read_touchstone(path)
+
+    assert s_read.shape == (2, 2, 1)
+    np.testing.assert_allclose(s_read[0, 0, 0], 0.5 + 0.1j, atol=1e-9)
