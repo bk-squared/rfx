@@ -297,15 +297,7 @@ def _build_full_scan_fn(
     This wraps ``simulation.run()`` into a vmappable form by making
     ``materials`` an explicit argument rather than a closure capture.
     """
-    from rfx.runners.uniform import run_uniform
-
     boundary = sim._boundary
-
-    # We need to build all sources and probes once.  The challenge is that
-    # port sources depend on materials (Cb coefficient).  For material sweeps
-    # the source waveform varies with eps_r/sigma.  For simple sweeps
-    # (non-port sources), this is fine.  For port-based sweeps, we use the
-    # base materials for source construction (approximate).
 
     # Detect if simulation uses features incompatible with simple vmap
     has_ports = any(pe.impedance != 0.0 for pe in sim._ports)
@@ -313,19 +305,25 @@ def _build_full_scan_fn(
     has_waveguide = len(sim._waveguide_ports) > 0
     has_dispersion = debye_spec is not None or lorentz_spec is not None
 
-    # For the full path, we simply call simulation.run() which is already
-    # JIT-compiled via lax.scan.  We construct a wrapper that replaces
-    # materials in the call.
-
-    # Build sources and probes from the simulation (using base materials)
+    # Build sources and probes from the simulation.
+    # For CPML J-sources the Cb coefficient depends on material properties
+    # at the source cell, so we store *raw* (un-normalized) waveforms and
+    # the source cell indices so Cb can be computed dynamically inside the
+    # vmapped function from the actual material arrays.
     sources = []
+    j_source_raw_info: list[tuple[int, int, int, str, jnp.ndarray]] = []
     probes = []
 
     for pe in sim._ports:
         if pe.impedance == 0.0:
             if boundary == "cpml":
-                sources.append(make_j_source(grid, pe.position, pe.component,
-                                             pe.waveform, n_steps, base_materials))
+                # Store raw waveform + cell info for dynamic Cb computation
+                idx = grid.position_to_index(pe.position)
+                times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+                raw_waveform = jax.vmap(pe.waveform)(times)
+                j_source_raw_info.append(
+                    (idx[0], idx[1], idx[2], pe.component, raw_waveform)
+                )
             else:
                 sources.append(make_source(grid, pe.position, pe.component,
                                            pe.waveform, n_steps))
@@ -358,6 +356,7 @@ def _build_full_scan_fn(
             return _build_cpml_scan_fn(
                 grid, n_steps,
                 sources=sources,
+                j_source_raw_info=j_source_raw_info,
                 probes=probes,
                 periodic=periodic,
                 cpml_axes=cpml_axes,
@@ -384,23 +383,30 @@ def _build_cpml_scan_fn(
     n_steps: int,
     *,
     sources: list[SourceSpec] | None = None,
+    j_source_raw_info: list[tuple] | None = None,
     probes: list[ProbeSpec] | None = None,
     periodic: tuple[bool, bool, bool] = (False, False, False),
     cpml_axes: str = "xyz",
     pec_axes: str = "xyz",
     pec_mask=None,
 ):
-    """Build a vmappable FDTD scan function with CPML boundaries."""
+    """Build a vmappable FDTD scan function with CPML boundaries.
+
+    J-sources (Cb-normalized) are computed dynamically from the actual
+    material arrays so that the Cb coefficient is correct for each
+    batch element in the vmap sweep.
+    """
     from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 
     dt = grid.dt
     dx = grid.dx
     sources = sources or []
+    j_source_raw_info = j_source_raw_info or []
     probes = probes or []
 
     use_pec_mask = pec_mask is not None
 
-    # Precompute source waveform matrix
+    # Precompute non-J source waveform matrix (these don't depend on materials)
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
     else:
@@ -409,6 +415,15 @@ def _build_cpml_scan_fn(
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
 
+    # J-source metadata: cell indices + component + raw (un-Cb-normalized) waveforms
+    j_src_meta = [(i, j, k, comp) for i, j, k, comp, _ in j_source_raw_info]
+    if j_source_raw_info:
+        j_src_raw_waveforms = jnp.stack(
+            [raw_wf for _, _, _, _, raw_wf in j_source_raw_info], axis=-1
+        )  # (n_steps, n_j_sources)
+    else:
+        j_src_raw_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+
     # Initialize CPML once (shared across batch)
     cpml_params, cpml_state_init = init_cpml(grid)
 
@@ -416,8 +431,24 @@ def _build_cpml_scan_fn(
         fdtd = init_state(grid.shape)
         cpml_state = cpml_state_init
 
+        # Compute Cb-normalized J-source waveforms from the actual materials.
+        # Cb = (dt / eps) / (1 + loss) where eps = eps_r * EPS_0, loss = sigma * dt / (2 * eps)
+        if j_source_raw_info:
+            j_cb_scales = []
+            for si, sj, sk, sc in j_src_meta:
+                eps = materials.eps_r[si, sj, sk] * EPS_0
+                sigma_val = materials.sigma[si, sj, sk]
+                loss = sigma_val * dt / (2.0 * eps)
+                cb = (dt / eps) / (1.0 + loss)
+                j_cb_scales.append(cb)
+            j_cb_arr = jnp.stack(j_cb_scales)  # (n_j_sources,)
+            # Scale raw waveforms: (n_steps, n_j_sources) * (n_j_sources,)
+            j_src_waveforms = j_src_raw_waveforms * j_cb_arr[None, :]
+        else:
+            j_src_waveforms = j_src_raw_waveforms
+
         def step_fn(carry, xs):
-            _step_idx, src_vals = xs
+            _step_idx, src_vals, j_src_vals = xs
             st, cpml_st = carry
 
             # H update
@@ -436,10 +467,16 @@ def _build_cpml_scan_fn(
                 from rfx.boundaries.pec import apply_pec_mask
                 st = apply_pec_mask(st, pec_mask)
 
-            # Soft sources
+            # Non-J soft sources (raw field add, no Cb dependence)
             for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
                 field = getattr(st, sc)
                 field = field.at[si, sj, sk].add(src_vals[idx_s])
+                st = st._replace(**{sc: field})
+
+            # J-sources (Cb-normalized, material-dependent)
+            for idx_j, (si, sj, sk, sc) in enumerate(j_src_meta):
+                field = getattr(st, sc)
+                field = field.at[si, sj, sk].add(j_src_vals[idx_j])
                 st = st._replace(**{sc: field})
 
             # Probe samples
@@ -449,7 +486,11 @@ def _build_cpml_scan_fn(
 
             return (st, cpml_new), probe_out
 
-        xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
+        xs = (
+            jnp.arange(n_steps, dtype=jnp.int32),
+            src_waveforms,
+            j_src_waveforms,
+        )
         _, time_series = jax.lax.scan(step_fn, (fdtd, cpml_state), xs)
         return time_series
 
