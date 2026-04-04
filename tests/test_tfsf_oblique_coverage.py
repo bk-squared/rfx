@@ -125,6 +125,28 @@ class TestObliqueTFSFCoverage:
         print(f"\nez oblique 45-deg TFSF: leakage={leakage:.6f}")
         assert leakage < 0.001, f"ez oblique 45 deg leakage {leakage:.5f} > 0.1%"
 
+    def test_negative_x_direction_oblique_30_ez(self, grid_params):
+        """-x direction with ez at 30 deg oblique should have < 1% leakage."""
+        nx, ny, nz, dx, dt = grid_params
+        leakage = _run_tfsf_leakage(
+            nx, ny, nz, dx, dt,
+            angle_deg=30.0, polarization="ez",
+            direction="-x", n_steps=500,
+        )
+        print(f"\nez oblique 30-deg -x TFSF: leakage={leakage:.6f}")
+        assert leakage < 0.01, f"-x ez oblique 30 deg leakage {leakage:.4f} > 1%"
+
+    def test_negative_x_direction_normal_ez(self, grid_params):
+        """-x direction normal incidence ez."""
+        nx, ny, nz, dx, dt = grid_params
+        leakage = _run_tfsf_leakage(
+            nx, ny, nz, dx, dt,
+            angle_deg=0.0, polarization="ez",
+            direction="-x", n_steps=300,
+        )
+        print(f"\nez normal -x TFSF: leakage={leakage:.6f}")
+        assert leakage < 0.001, f"-x normal leakage {leakage:.5f} > 0.1%"
+
     def test_init_tfsf_2d_ey_normal_allowed(self):
         """ey polarization at normal incidence dispatches to 1D (no 2D grid)."""
         dx = 1e-3
