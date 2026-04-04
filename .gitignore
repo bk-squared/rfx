@@ -25,6 +25,7 @@ examples/gpu_benchmark_results.json
 
 # Generated artifacts (runtime output — never commit)
 **/*.png
+!docs/guide/images/*.png
 **/*.gif
 **/benchmark_results.json
 examples/*.json
