@@ -343,10 +343,24 @@ def test_oblique_tfsf_fresnel():
     print(f"  Numerical |R|:   {R_mean:.4f}")
     print(f"  Error: {abs(R_mean - R_analytic) / R_analytic * 100:.1f}%")
 
-    # Allow 30% tolerance.  The 2D auxiliary grid now produces a true
-    # oblique plane wave (unlike the old 1D code which applied
-    # normal-incidence corrections).  The single-point probe
-    # normalization is approximate for oblique waves, so the tolerance
-    # is wider than the normal-incidence Fresnel tests.
+    # Allow 30% tolerance — diagnosed as a probe normalization artifact,
+    # NOT a 2D auxiliary grid physics error.
+    #
+    # Root cause (see tests/test_fresnel_investigation.py):
+    #   The scattered-field probe sits at x_lo-3 while the incident-field
+    #   normalization probe sits at x_lo+5.  For oblique incidence the
+    #   transverse phase front shifts between these x-positions, so the
+    #   spectral ratio at a single y-cell depends on which phase of the
+    #   oblique wavefront is sampled.  Per-y-cell analysis shows that the
+    #   best-aligned cell matches analytic |R_TE| to ~2.6%, confirming the
+    #   2D aux grid amplitude and Fresnel physics are correct.
+    #
+    # The max-over-y incident amplitude ratio (oblique/normal) is 1.02,
+    # proving the 2D grid preserves plane-wave amplitude.
+    #
+    # Tightening this tolerance would require either:
+    #   (a) matching scattered/incident probe x-positions (not possible
+    #       with TFSF: one must be inside, one outside the box), or
+    #   (b) a DFT plane probe with oblique phase de-rotation.
     assert abs(R_mean - R_analytic) / R_analytic < 0.30, \
         f"Oblique TFSF Fresnel error {abs(R_mean - R_analytic)/R_analytic*100:.1f}% exceeds 30%"
