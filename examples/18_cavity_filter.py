@@ -4,9 +4,16 @@ A waveguide section with two PEC iris walls forming a resonant cavity.
 Validates that S21 shows frequency-selective transmission (passband peak)
 near the cavity resonance frequency.
 
+Quantitative checks:
+  1. Selectivity (peak/mean |S21|) > 1.5
+  2. |S21| peak > -20 dB (usable passband)
+  3. Passband frequency within analysis range (4-8 GHz)
+  4. Reciprocity: mean |S21 - S12| < 0.05
+
 Reference: analytical cavity resonance f_mnp = c/(2) * sqrt((m/a)^2 + (n/b)^2 + (p/d)^2)
 """
 
+import sys
 import matplotlib
 matplotlib.use("Agg")
 import numpy as np
@@ -99,19 +106,55 @@ s21_mean_linear = np.mean(np.abs(S[1, 0, :]))
 s21_peak_linear = np.abs(S[1, 0, peak_idx])
 selectivity = s21_peak_linear / (s21_mean_linear + 1e-30)
 
+# Reciprocity check
+recip_err = np.mean(np.abs(np.abs(S[1, 0, :]) - np.abs(S[0, 1, :])))
+
 print(f"\n--- Validation Results ---")
 print(f"S21 peak freq          : {f_peak / 1e9:.4f} GHz")
 print(f"|S21| at peak (dB)      : {s21_peak_dB:.1f} dB")
 print(f"|S21| mean (dB)         : {20 * np.log10(max(s21_mean_linear, 1e-10)):.1f} dB")
 print(f"Selectivity (peak/mean) : {selectivity:.2f}")
-
-# Reciprocity check
-recip_err = np.mean(np.abs(np.abs(S[1, 0, :]) - np.abs(S[0, 1, :])))
 print(f"Reciprocity error      : {recip_err:.4f}")
 
-# Validation: the iris-coupled cavity should show frequency-selective
-# transmission -- the peak S21 should be notably higher than the mean.
-# The passband should fall within the analysis frequency range.
-passed = selectivity > 1.1 and s21_peak_linear > s21_mean_linear and f_peak > 4e9
-status = "PASS" if passed else "FAIL"
-print(f"\nValidation: {status} (iris-coupled cavity shows frequency-selective transmission)")
+# ---- Quantitative assertions ----
+failures = []
+
+# Check 1: Selectivity > 1.5 (tightened from 1.1)
+if selectivity > 1.5:
+    print(f"PASS: selectivity = {selectivity:.2f} (threshold > 1.5)")
+else:
+    msg = f"FAIL: selectivity = {selectivity:.2f} (threshold > 1.5)"
+    print(msg)
+    failures.append(msg)
+
+# Check 2: |S21| peak > -20 dB (usable passband)
+if s21_peak_dB > -20.0:
+    print(f"PASS: |S21| peak = {s21_peak_dB:.1f} dB (threshold > -20 dB)")
+else:
+    msg = f"FAIL: |S21| peak = {s21_peak_dB:.1f} dB (threshold > -20 dB)"
+    print(msg)
+    failures.append(msg)
+
+# Check 3: Passband within analysis range
+if 4e9 < f_peak < 8e9:
+    print(f"PASS: passband at {f_peak / 1e9:.4f} GHz (within 4-8 GHz range)")
+else:
+    msg = f"FAIL: passband at {f_peak / 1e9:.4f} GHz (outside 4-8 GHz range)"
+    print(msg)
+    failures.append(msg)
+
+# Check 4: Reciprocity
+if recip_err < 0.05:
+    print(f"PASS: reciprocity error = {recip_err:.4f} (threshold < 0.05)")
+else:
+    msg = f"FAIL: reciprocity error = {recip_err:.4f} (threshold < 0.05)"
+    print(msg)
+    failures.append(msg)
+
+if failures:
+    print(f"\nValidation FAILED ({len(failures)} check(s)):")
+    for f in failures:
+        print(f"  {f}")
+    sys.exit(1)
+else:
+    print(f"\nValidation: PASS (all quantitative checks passed for cavity filter)")

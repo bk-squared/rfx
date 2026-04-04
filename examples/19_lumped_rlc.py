@@ -7,9 +7,16 @@ Approach: Run two PEC cavity simulations (with and without RLC) and
 compare their spectra near f0. The RLC element should measurably
 change the spectral content around its resonance.
 
+Quantitative checks:
+  1. Analytical f0 = 1/(2*pi*sqrt(LC)) matches design value
+  2. Max spectral difference occurs near f0 (within 50%)
+  3. Spectral modification > 20% near f0
+  4. Time-domain difference > 5%
+
 Reference: analytical resonance f0 = 1/(2*pi*sqrt(LC)).
 """
 
+import sys
 import matplotlib
 matplotlib.use("Agg")
 import numpy as np
@@ -100,8 +107,56 @@ print(f"Max spectral change     : {max_spectral_change * 100:.1f}%")
 print(f"Max difference at freq  : {f_max_diff / 1e9:.4f} GHz")
 print(f"RLC modifies spectrum   : {'Yes' if max_spectral_change > 0.1 else 'No'}")
 
-# Validation: the RLC element must measurably modify the electromagnetic
-# response. A 10% spectral change near f0 demonstrates the element is active.
-passed = max_spectral_change > 0.1 and time_diff_rel > 0.01
-status = "PASS" if passed else "FAIL"
-print(f"\nValidation: {status} (RLC element produces {max_spectral_change * 100:.0f}% spectral change near f0)")
+# ---- Quantitative assertions ----
+failures = []
+
+# Check 1: Analytical f0 sanity (must be a valid frequency)
+f0_expected = 1.0 / (2.0 * np.pi * np.sqrt(L * C))
+f0_check_err = abs(f0_analytical - f0_expected) / f0_expected * 100
+if f0_check_err < 0.01:
+    print(f"PASS: f0 = {f0_analytical / 1e9:.4f} GHz matches 1/(2*pi*sqrt(LC)) (error = {f0_check_err:.4f}%)")
+else:
+    msg = f"FAIL: f0 computation mismatch (error = {f0_check_err:.4f}%)"
+    print(msg)
+    failures.append(msg)
+
+# Check 2: Spectral change is significant specifically near f0
+# Measure the change in a narrow band around f0 (within +/- 30%)
+near_f0 = (freqs > f0_analytical * 0.7) & (freqs < f0_analytical * 1.3)
+if np.any(near_f0):
+    ratio_near_f0 = spec_rlc[near_f0] / np.maximum(spec_ref[near_f0], 1e-30)
+    change_near_f0 = np.max(np.abs(ratio_near_f0 - 1.0))
+    if change_near_f0 > 0.05:
+        print(f"PASS: spectral change near f0 = {change_near_f0 * 100:.1f}% (threshold > 5%)")
+    else:
+        msg = f"FAIL: spectral change near f0 = {change_near_f0 * 100:.1f}% (threshold > 5%)"
+        print(msg)
+        failures.append(msg)
+else:
+    msg = "FAIL: no frequency bins near f0"
+    print(msg)
+    failures.append(msg)
+
+# Check 3: Spectral modification > 20% near f0 (tightened from 10%)
+if max_spectral_change > 0.20:
+    print(f"PASS: max spectral change = {max_spectral_change * 100:.1f}% (threshold > 20%)")
+else:
+    msg = f"FAIL: max spectral change = {max_spectral_change * 100:.1f}% (threshold > 20%)"
+    print(msg)
+    failures.append(msg)
+
+# Check 4: Time-domain difference > 5% (tightened from 1%)
+if time_diff_rel > 0.05:
+    print(f"PASS: time-domain difference = {time_diff_rel * 100:.1f}% (threshold > 5%)")
+else:
+    msg = f"FAIL: time-domain difference = {time_diff_rel * 100:.1f}% (threshold > 5%)"
+    print(msg)
+    failures.append(msg)
+
+if failures:
+    print(f"\nValidation FAILED ({len(failures)} check(s)):")
+    for f in failures:
+        print(f"  {f}")
+    sys.exit(1)
+else:
+    print(f"\nValidation: PASS (all quantitative checks passed for lumped RLC)")

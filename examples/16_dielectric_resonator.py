@@ -4,11 +4,17 @@ High-permittivity dielectric sphere in a PEC cavity.
 Validates resonant frequency extraction via Harminv against
 analytical formula for a dielectric-loaded cavity.
 
+Quantitative checks:
+  1. Simulated resonance below empty-cavity TM110
+  2. Simulated resonance within 15% of perturbation-theory estimate
+  3. Q factor positive (if Harminv available)
+
 Reference: For a dielectric sphere of radius a with eps_r in a PEC cavity,
 resonant modes shift proportionally to sqrt(eps_r). We compare against
 the known empty-cavity TM110 mode scaled by the dielectric loading.
 """
 
+import sys
 import matplotlib
 matplotlib.use("Agg")
 import numpy as np
@@ -94,8 +100,6 @@ else:
     print("\nHarminv found no modes; using FFT peak")
 
 # ---- Validation ----
-# The loaded resonance should be lower than the empty cavity
-# and within reasonable range of the approximate formula
 error_vs_approx = abs(f_sim - f_expected_approx) / f_expected_approx * 100
 
 print(f"\n--- Validation Results ---")
@@ -107,7 +111,39 @@ if not np.isnan(Q_sim):
     print(f"Q factor             : {Q_sim:.1f}")
 print(f"Frequency lowered    : {'Yes' if f_sim < f_empty else 'No'}")
 
-# The dielectric sphere must lower the resonance from the empty cavity value
-passed = f_sim < f_empty and f_sim > 0
-status = "PASS" if passed else "FAIL"
-print(f"\nValidation: {status} (dielectric loading lowers resonant frequency)")
+# ---- Quantitative assertions ----
+failures = []
+
+# Check 1: Loaded resonance must be below empty cavity TM110
+if f_sim < f_empty and f_sim > 0:
+    shift_pct = (f_empty - f_sim) / f_empty * 100
+    print(f"PASS: f_sim = {f_sim / 1e9:.4f} GHz < f_empty = {f_empty / 1e9:.4f} GHz (shift = {shift_pct:.1f}%)")
+else:
+    msg = f"FAIL: f_sim = {f_sim / 1e9:.4f} GHz not below f_empty = {f_empty / 1e9:.4f} GHz"
+    print(msg)
+    failures.append(msg)
+
+# Check 2: Simulated resonance within 15% of perturbation-theory estimate
+if error_vs_approx < 15.0:
+    print(f"PASS: resonance error = {error_vs_approx:.1f}% (reference = {f_expected_approx / 1e9:.4f} GHz, threshold = 15%)")
+else:
+    msg = f"FAIL: resonance error = {error_vs_approx:.1f}% (reference = {f_expected_approx / 1e9:.4f} GHz, threshold = 15%)"
+    print(msg)
+    failures.append(msg)
+
+# Check 3: Q factor positive (if Harminv succeeded)
+if not np.isnan(Q_sim):
+    if Q_sim > 0:
+        print(f"PASS: Q factor = {Q_sim:.1f} > 0")
+    else:
+        msg = f"FAIL: Q factor = {Q_sim:.1f} (expected > 0)"
+        print(msg)
+        failures.append(msg)
+
+if failures:
+    print(f"\nValidation FAILED ({len(failures)} check(s)):")
+    for f in failures:
+        print(f"  {f}")
+    sys.exit(1)
+else:
+    print(f"\nValidation: PASS (all quantitative checks passed for dielectric resonator)")

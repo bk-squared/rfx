@@ -3,10 +3,16 @@
 Two parallel microstrip lines on FR4 with gap coupling.
 Validates that S21 shows bandpass behavior (coupling near design frequency).
 
-Reference: qualitative -- coupled lines should exhibit frequency-selective
-energy transfer.
+Quantitative checks:
+  1. Coupling peak frequency within 40% of design f0
+  2. Selectivity (peak/mean S21 energy) > 1.3
+  3. Coupled/through energy ratio > 1e-3
+
+Reference: coupled-line filter theory -- quarter-wave coupling length
+produces frequency-selective energy transfer near f0.
 """
 
+import sys
 import matplotlib
 matplotlib.use("Agg")
 import numpy as np
@@ -139,7 +145,52 @@ print(f"Coupling peak freq     : {f_peak / 1e9:.2f} GHz (design: {f0 / 1e9:.1f} 
 print(f"Coupled/through energy : {coupling_ratio:.4f}")
 print(f"Coupled signal present : {'Yes' if coupling_ratio > 1e-4 else 'No'}")
 
-# Validation: coupling should be measurable (energy transfer exists)
-passed = coupling_ratio > 1e-4 and coupled_energy > 0
-status = "PASS" if passed else "FAIL"
-print(f"\nValidation: {status} (measurable energy transfer between coupled lines)")
+# Selectivity metric: ratio of peak coupled energy to mean in-band
+band_wide = (freqs_Hz > f0 * 0.2) & (freqs_Hz < f0 * 2.0)
+if np.any(band_wide):
+    spec_coupled_band = spec_coupled[band_wide]
+    selectivity = np.max(spec_coupled_band) / (np.mean(spec_coupled_band) + 1e-30)
+else:
+    selectivity = 0.0
+print(f"Spectral selectivity   : {selectivity:.2f}")
+
+# ---- Quantitative assertions ----
+failures = []
+
+# Check 1: Coupling peak frequency within 40% of design f0
+if f_peak > 0:
+    freq_err_pct = abs(f_peak - f0) / f0 * 100
+    if freq_err_pct < 40.0:
+        print(f"PASS: coupling peak = {f_peak / 1e9:.2f} GHz (reference = {f0 / 1e9:.1f} GHz, error = {freq_err_pct:.1f}%)")
+    else:
+        msg = f"FAIL: coupling peak = {f_peak / 1e9:.2f} GHz (reference = {f0 / 1e9:.1f} GHz, error = {freq_err_pct:.1f}%)"
+        print(msg)
+        failures.append(msg)
+else:
+    msg = "FAIL: no coupling peak found"
+    print(msg)
+    failures.append(msg)
+
+# Check 2: Selectivity > 1.3 (frequency-selective, not flat)
+if selectivity > 1.3:
+    print(f"PASS: selectivity = {selectivity:.2f} (threshold = 1.3)")
+else:
+    msg = f"FAIL: selectivity = {selectivity:.2f} (threshold = 1.3)"
+    print(msg)
+    failures.append(msg)
+
+# Check 3: Coupled/through energy ratio > 1e-3
+if coupling_ratio > 1e-3:
+    print(f"PASS: coupling ratio = {coupling_ratio:.4f} (threshold = 1e-3)")
+else:
+    msg = f"FAIL: coupling ratio = {coupling_ratio:.4f} (threshold = 1e-3)"
+    print(msg)
+    failures.append(msg)
+
+if failures:
+    print(f"\nValidation FAILED ({len(failures)} check(s)):")
+    for f in failures:
+        print(f"  {f}")
+    sys.exit(1)
+else:
+    print(f"\nValidation: PASS (all quantitative checks passed for coupled filter)")
