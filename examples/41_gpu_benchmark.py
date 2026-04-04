@@ -235,16 +235,30 @@ def benchmark_multi_gpu():
     print(f"  Available: {n_available} x {all_devices[0].device_kind}")
     print()
 
-    # Use nx divisible by 1,2,3 (for up to 3xA6000)
+    # Use PEC boundary for multi-GPU to get exact grid dimensions.
+    # nx must be divisible by all tested device counts (1,2,3).
     nx = 120  # divisible by 1,2,3,4,6
     ny, nz = 60, 60
-    cells = nx * ny * nz  # 432,000 cells
     n_steps = 300
+
+    # Verify actual grid dimensions match expected
+    test_sim = Simulation(freq_max=FREQ_MAX, domain=(nx * DX, ny * DX, nz * DX),
+                          dx=DX, boundary="pec")
+    actual_grid = test_sim._build_grid()
+    actual_nx = actual_grid.shape[0]
+    # Adjust nx to actual grid size, ensure divisible by LCM(1,2,3)=6
+    nx_adjusted = actual_nx - (actual_nx % 6)
+    if nx_adjusted != actual_nx:
+        # Rebuild with adjusted domain
+        domain_x = nx_adjusted * DX
+    else:
+        domain_x = nx * DX
+    cells = nx_adjusted * ny * nz
 
     results = []
     device_counts = [n for n in [1, 2, 3] if n <= n_available]
 
-    print(f"  Grid: {nx}x{ny}x{nz} ({cells:,} cells), {n_steps} steps")
+    print(f"  Grid target: {nx_adjusted}x{ny}x{nz} ({cells:,} cells), {n_steps} steps")
     print(f"  {'Devices':>8s}  {'Mcells/s':>10s}  {'Time (s)':>9s}  "
           f"{'Speedup':>8s}  {'Efficiency':>10s}")
     print("-" * 64)
@@ -252,12 +266,17 @@ def benchmark_multi_gpu():
     for n_dev in device_counts:
         sim = Simulation(
             freq_max=FREQ_MAX,
-            domain=(nx * DX, ny * DX, nz * DX),
+            domain=(domain_x, ny * DX, nz * DX),
             dx=DX,
             boundary="pec",
         )
-        sim.add_source((nx * DX / 2, ny * DX / 2, nz * DX / 2), component="ez")
-        sim.add_probe((nx * DX / 2, ny * DX / 2, nz * DX / 2), component="ez")
+        # Verify divisibility
+        g = sim._build_grid()
+        if g.shape[0] % n_dev != 0:
+            print(f"  {n_dev} GPU: SKIP (nx={g.shape[0]} not divisible by {n_dev})")
+            continue
+        sim.add_source((domain_x / 2, ny * DX / 2, nz * DX / 2), component="ez")
+        sim.add_probe((domain_x / 2, ny * DX / 2, nz * DX / 2), component="ez")
 
         devs = all_devices[:n_dev] if n_dev > 1 else None
 
