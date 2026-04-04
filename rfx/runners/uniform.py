@@ -44,6 +44,8 @@ def run_uniform(
     debye_spec=None,
     lorentz_spec=None,
     pec_mask=None,
+    kerr_chi3=None,
+    field_dtype=None,
 ):
     """Run the uniform-grid simulation path.
 
@@ -367,6 +369,8 @@ def run_uniform(
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_rlc=rlc_metas,
+            kerr_chi3=kerr_chi3,
+            field_dtype=field_dtype,
         )
     else:
         sim_result = _run(
@@ -390,6 +394,8 @@ def run_uniform(
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_rlc=rlc_metas,
+            kerr_chi3=kerr_chi3,
+            field_dtype=field_dtype,
         )
 
     # S-parameters: use JIT-integrated DFT for wire ports (fast),

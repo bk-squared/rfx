@@ -1195,7 +1195,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     # Build grid and materials (full domain)
     grid = sim._build_grid()
-    base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes = (
+    base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _ = (
         sim._assemble_materials(grid)
     )
     materials = base_materials

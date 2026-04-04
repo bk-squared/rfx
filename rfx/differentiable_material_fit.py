@@ -384,7 +384,7 @@ def differentiable_material_fit(
         sim = sim_factory(eps_inf, debye_poles, lorentz_poles)
 
         # Assemble materials (geometry masks are static, but eps_inf flows through)
-        materials, debye_spec, lorentz_spec, pec_mask, _ = sim._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, pec_mask, _, _ = sim._assemble_materials(grid)
 
         # Setup ports (fold port impedance into materials)
         for pe in sim._ports:
