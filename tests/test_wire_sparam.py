@@ -3,6 +3,7 @@
 import numpy as np
 import jax.numpy as jnp
 
+from rfx.geometry.csg import Box
 from rfx.grid import Grid
 from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0
 from rfx.boundaries.pec import apply_pec
@@ -193,3 +194,35 @@ def test_wire_sparam_api_integration():
     print(f"  |S11| range: {s11_mag.min():.3f} - {s11_mag.max():.3f}")
 
     assert not np.any(np.isnan(result.s_params)), "No NaN in S-params"
+
+
+def test_wire_port_jit_scan_s11_passivity():
+    """Wire port S11 via JIT scan should satisfy |S11| <= 1.
+
+    This test exercises the JIT ``lax.scan`` path in ``Simulation.run()``
+    and verifies that wire-port DFT accumulation happens before source
+    injection, so the sampled V/I is not contaminated by the drive signal.
+    """
+    from rfx.api import Simulation
+    from rfx.sources.sources import GaussianPulse
+
+    sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+    sim.add(
+        Box(corner_lo=(0.005, 0.005, 0.005),
+            corner_hi=(0.025, 0.025, 0.025)),
+        material="fr4",
+    )
+    sim.add_port(
+        position=(0.015, 0.015, 0.015),
+        component="ez",
+        impedance=50,
+        extent=0.005,
+    )
+    result = sim.run(n_steps=3000, compute_s_params=True)
+
+    assert result.s_params is not None, "S-params should be computed"
+    s11 = np.abs(np.array(result.s_params[0, 0, :]))
+    max_s11 = np.max(s11)
+    print(f"\nJIT scan wire port S11 passivity:")
+    print(f"  |S11| range: {s11.min():.4f} - {max_s11:.4f}")
+    assert max_s11 <= 1.05, f"S11 passivity violation: max|S11|={max_s11:.3f}"

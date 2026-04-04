@@ -630,13 +630,38 @@ def run(
                 st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
                 new_rlc_states.append(rlc_st_new)
 
+        t = _step_idx.astype(jnp.float32) * dt
+
+        # Wire port S-param DFT accumulation BEFORE source injection so
+        # that sampled V/I reflects only the load/cavity response.
+        if use_wire_sparams:
+            new_wire_accs = []
+            for accs, wp_meta in zip(carry["wire_sparam_accs"], wire_sparam_meta):
+                v_dft, i_dft, vinc_dft = accs
+                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
+                v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
+                if wp_meta.component == "ez":
+                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
+                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dx
+                elif wp_meta.component == "ex":
+                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
+                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dx
+                else:
+                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
+                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dx
+                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
+                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                new_wire_accs.append((
+                    v_dft + v * phase,
+                    i_dft + i_val * phase,
+                    vinc_dft,
+                ))
+
         # Soft sources
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
             field = getattr(st, sc)
             field = field.at[si, sj, sk].add(src_vals[idx_s])
             st = st._replace(**{sc: field})
-
-        t = _step_idx.astype(jnp.float32) * dt
 
         if use_tfsf:
             if _tfsf_is_2d:
@@ -670,30 +695,6 @@ def run(
                         cfg_updated.v_inc_dft,
                     )
                 )
-
-        # Wire port S-param DFT accumulation (JIT-integrated)
-        if use_wire_sparams:
-            new_wire_accs = []
-            for accs, wp_meta in zip(carry["wire_sparam_accs"], wire_sparam_meta):
-                v_dft, i_dft, vinc_dft = accs
-                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
-                v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
-                if wp_meta.component == "ez":
-                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
-                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dx
-                elif wp_meta.component == "ex":
-                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
-                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dx
-                else:
-                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
-                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_wire_accs.append((
-                    v_dft + v * phase,
-                    i_dft + i_val * phase,
-                    vinc_dft,
-                ))
 
         # Probe samples
         samples = [getattr(st, pc)[pi, pj, pk]
