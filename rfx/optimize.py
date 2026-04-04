@@ -173,6 +173,13 @@ def optimize(
         _, debye, lorentz = sim._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec)
 
+        # NTFF box for far-field objectives
+        ntff_box_local = None
+        if sim._ntff is not None:
+            from rfx.farfield import make_ntff_box
+            corner_lo, corner_hi, freqs = sim._ntff
+            ntff_box_local = make_ntff_box(grid, corner_lo, corner_hi, freqs)
+
         result = _run(
             grid, materials, n_steps,
             boundary=sim._boundary,
@@ -180,8 +187,14 @@ def optimize(
             lorentz=lorentz,
             sources=sources,
             probes=probes,
+            ntff=ntff_box_local,
             checkpoint=True,
         )
+        # Pass ntff_box via inspect if objective accepts it, else call without
+        import inspect
+        sig = inspect.signature(objective)
+        if 'ntff_box' in sig.parameters:
+            return objective(result, ntff_box=ntff_box_local)
         return objective(result)
 
     grad_fn = jax.value_and_grad(forward)
