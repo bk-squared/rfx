@@ -236,24 +236,29 @@ def benchmark_multi_gpu():
     print()
 
     # Use PEC boundary for multi-GPU to get exact grid dimensions.
-    # nx must be divisible by all tested device counts (1,2,3).
-    nx = 120  # divisible by 1,2,3,4,6
+    # Try increasing domain until actual grid nx is divisible by 6 (LCM of 1,2,3).
     ny, nz = 60, 60
     n_steps = 300
+    lcm = 6
 
-    # Verify actual grid dimensions match expected
-    test_sim = Simulation(freq_max=FREQ_MAX, domain=(nx * DX, ny * DX, nz * DX),
-                          dx=DX, boundary="pec")
-    actual_grid = test_sim._build_grid()
-    actual_nx = actual_grid.shape[0]
-    # Adjust nx to actual grid size, ensure divisible by LCM(1,2,3)=6
-    nx_adjusted = actual_nx - (actual_nx % 6)
-    if nx_adjusted != actual_nx:
-        # Rebuild with adjusted domain
-        domain_x = nx_adjusted * DX
-    else:
-        domain_x = nx * DX
-    cells = nx_adjusted * ny * nz
+    # Search for a domain that gives nx divisible by lcm
+    domain_x = None
+    actual_nx = None
+    for nx_try in range(120, 180):
+        test_sim = Simulation(freq_max=FREQ_MAX,
+                              domain=(nx_try * DX, ny * DX, nz * DX),
+                              dx=DX, boundary="pec")
+        g = test_sim._build_grid()
+        if g.shape[0] % lcm == 0:
+            domain_x = nx_try * DX
+            actual_nx = g.shape[0]
+            break
+
+    if domain_x is None:
+        print("  Could not find grid divisible by 6 — skipping multi-GPU")
+        return []
+
+    cells = actual_nx * ny * nz
 
     results = []
     device_counts = [n for n in [1, 2, 3] if n <= n_available]
