@@ -43,6 +43,7 @@ If you are new to `rfx`, the shortest path is usually:
 | Guide | Description |
 |---|---|
 | [Migration Guide](migration.md) | Mapping Meep/OpenEMS workflows into rfx |
+| [Comparison](comparison.md) | Fair comparison with Meep, OpenEMS, FDTDX, and commercial tools |
 | [Changelog](changelog.md) | Release notes and major capability changes |
 | [Contributing](contributing.md) | Developer / maintainer workflow, testing, and coding conventions |
 

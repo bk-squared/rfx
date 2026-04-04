@@ -4,6 +4,58 @@ All notable changes to rfx are documented here.
 
 ---
 
+## v1.2.0 (2026-04-03)
+
+### New Features
+
+- **Multi-GPU distributed FDTD** via `jax.pmap` with 1D slab decomposition
+  along the x-axis and ghost-cell exchange via `ppermute`.
+  - Phase 1: PEC boundaries, soft sources, point probes.
+  - Phase 2: Full CPML support -- distributed CPML matches single-device
+    within 5.4e-06.
+  - Phase 3: Lumped port and dispersive material (Debye/Lorentz/Drude)
+    support -- ADE polarization state carried through scan loop with purely
+    local updates (no cross-device exchange needed).
+  - API: `sim.run(devices=jax.devices()[:N])`.
+- **Core FDTD performance optimizations** -- pre-baked Cb/Ca coefficient
+  arrays eliminate per-step division; fused curl+update operations in Yee
+  kernel.
+- **Configurable ghost exchange interval** -- reduced multi-GPU
+  synchronization frequency yields ~14% speedup at `exchange_interval=2`.
+
+### Bug Fixes
+
+- **Topology optimization `_assemble_materials` 5-tuple unpack** -- fixed
+  unpacking mismatch introduced by conformal PEC support (closes #1).
+- **SBP-SAT alpha test** and **optimizer convergence test** updated for
+  5-tuple material returns.
+
+### Robustness Verification
+
+- **Floquet normalization at oblique incidence** -- power conservation and
+  phase consistency verified for 0--60 deg; `|S11|^2` matches `|Gamma|^2`
+  at all tested angles.
+- **Multi-mode waveguide near-cutoff** -- 7 new tests: NaN/Inf checks on
+  mode profiles near cutoff, degenerate mode orthogonality in square guide,
+  single-mode filter, and higher-order TE11/TM11 degeneracy verification.
+- **Material fitting robustness** -- 11 new tests: Debye/Lorentz recovery
+  under 5% and 10% Gaussian noise, overfitting with excess poles, outlier
+  resilience (random 5x spikes and edge 10x outliers), noise determinism.
+- **Conformal PEC coupling** -- conformal + CPML boundary, conformal +
+  Debye dispersive medium, and conformal + `jax.grad` reverse-mode AD all
+  verified (no NaN/Inf, non-zero gradients).
+- **Multi-GPU graceful fallback** -- TFSF and waveguide port paths degrade
+  gracefully when distributed runner encounters unsupported configurations.
+
+### Infrastructure
+
+- Multi-GPU scaling benchmark script (`examples/33_distributed_benchmark.py`).
+- 30 new distributed tests, 7 multi-mode waveguide tests, 11 material
+  fitting tests, 3 Floquet tests, 3 conformal coupling tests -- total test
+  file count now 80.
+
+---
+
 ## v1.0.0 (2026-04-02)
 
 ### New Features
