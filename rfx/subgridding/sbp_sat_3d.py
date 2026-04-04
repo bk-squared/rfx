@@ -191,21 +191,21 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
     nk = config.fk_hi - fk
 
     # SBP-SAT penalty from Cheng et al. 2025 energy analysis.
-    # ΔE = Cb × (2τ/dx) × (E_other - E_self) at interface.
-    # τ = 0.5 is the minimum for energy stability (dE/dt ≤ 0).
-    # Cb = dt/eps for vacuum. The penalty enters the semi-discrete
-    # equation and is integrated by leapfrog.
+    # The additive correction is: E += alpha * (E_other - E_self).
+    # alpha is a dimensionless blending fraction in (0, 1].
+    #
+    # Scaling: alpha = tau * min(dx_other / dx_self, 1.0)
+    #   - Coarse side: alpha_c = tau * (dx_f / dx_c) = tau / ratio
+    #     (smaller correction — coarse grid has larger cells)
+    #   - Fine side:   alpha_f = tau * min(dx_c / dx_f, 1.0) = tau
+    #     (capped at tau to prevent over-correction)
+    #
+    # tau = 0.5 (default) gives moderate coupling; tau = 1.0 gives
+    # maximum coupling (full replacement on the fine side).
     tau = config.tau  # default 0.5
-    dt = config.dt
 
-    # Cb for vacuum at the interface (assumes vacuum at interface zone)
-    cb_vac = dt / EPS_0
-
-    # SAT penalty coefficients: Cb × 2τ/dx
-    # These are large (~98 for standard CFL) but energy-stable per paper.
-    # Cap at 0.5 to avoid numerical overshoot from interpolation errors.
-    alpha_c = min(cb_vac * 2 * tau / config.dx_c, 0.5)
-    alpha_f = min(cb_vac * 2 * tau / config.dx_f, 0.5)
+    alpha_c = tau * min(config.dx_f / config.dx_c, 1.0)
+    alpha_f = tau * min(config.dx_c / config.dx_f, 1.0)
 
     def _sat_couple(ec_arr, ef_arr, c_slice, f_slice,
                     nj_ds, nk_ds, ny_up, nz_up):
