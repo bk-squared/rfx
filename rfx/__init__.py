@@ -108,3 +108,7 @@ from rfx.differentiable_material_fit import (
 from rfx.ris import RISUnitCell, RISSweepResult
 from rfx.amr import compute_error_indicator, suggest_refinement_regions, auto_refine
 from rfx.surrogate import export_training_data, export_geometry_sdf
+from rfx.convergence import (
+    convergence_study, ConvergenceResult, richardson_extrapolation,
+    quick_convergence,
+)
