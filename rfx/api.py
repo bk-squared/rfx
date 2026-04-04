@@ -1269,19 +1269,21 @@ class Simulation:
     def _assemble_materials(
         self,
         grid: Grid,
-    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None]:
+    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list]:
         """Build material arrays plus per-pole dispersion masks.
 
         Returns
         -------
-        materials, debye_spec, lorentz_spec, pec_mask
+        materials, debye_spec, lorentz_spec, pec_mask, pec_shapes
             pec_mask is a boolean array (True at PEC cells) or None.
+            pec_shapes is a list of Shape objects that are PEC.
         """
         # Start with vacuum
         eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
         sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
         mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
         pec_mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
+        pec_shapes = []
 
         # Collect per-pole masks so distinct materials do not inherit
         # each other's dispersion poles.
@@ -1295,6 +1297,7 @@ class Simulation:
             if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
                 # True PEC: mark in mask, keep eps/sigma at vacuum values
                 pec_mask = pec_mask | mask
+                pec_shapes.append(entry.shape)
             else:
                 eps_r = jnp.where(mask, mat.eps_r, eps_r)
                 sigma = jnp.where(mask, mat.sigma, sigma)
@@ -1333,7 +1336,7 @@ class Simulation:
             lorentz_spec = (lorentz_poles, lorentz_masks)
 
         has_pec = bool(jnp.any(pec_mask))
-        return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None
+        return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes
 
     @staticmethod
     def _init_dispersion(
@@ -1357,7 +1360,7 @@ class Simulation:
 
     def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Build material arrays and optional Debye/Lorentz coefficients."""
-        materials, debye_spec, lorentz_spec, _ = self._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, _, _ = self._assemble_materials(grid)
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec)
         return materials, debye, lorentz
@@ -1510,7 +1513,7 @@ class Simulation:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask_wg = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, pec_mask_wg, _ = self._assemble_materials(grid)
         # Waveguide S-matrix runner doesn't support pec_mask yet.
         # Fold PEC mask back into high sigma for compatibility.
         if pec_mask_wg is not None:
@@ -1759,6 +1762,8 @@ class Simulation:
         s_param_n_steps: int | None = None,
         snapshot: SnapshotSpec | None = None,
         subpixel_smoothing: bool = False,
+        conformal_pec: bool = False,
+        conformal_min_weight: float = 0.1,
     ) -> Result:
         """Run the simulation.
 
@@ -1791,6 +1796,12 @@ class Simulation:
             Field component to monitor (default ``"ez"``).
         decay_monitor_position : tuple or None
             Physical position to monitor. If None, use domain center.
+        conformal_pec : bool
+            Enable Dey-Mittra conformal PEC for second-order accuracy
+            on curved PEC surfaces. Default False (staircase PEC).
+        conformal_min_weight : float
+            Minimum conformal weight for CFL stability clamping.
+            Default 0.1. Recommended range: 0.05-0.3.
 
         Returns
         -------
@@ -1809,7 +1820,7 @@ class Simulation:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes = self._assemble_materials(grid)
 
         # ---- Subgridded path ----
         if self._refinement is not None:
@@ -1838,6 +1849,9 @@ class Simulation:
             s_param_n_steps=s_param_n_steps,
             snapshot=snapshot,
             subpixel_smoothing=subpixel_smoothing,
+            conformal_pec=conformal_pec,
+            conformal_min_weight=conformal_min_weight,
+            pec_shapes=pec_shapes,
             grid=grid,
             base_materials=base_materials,
             debye_spec=debye_spec,
