@@ -7,14 +7,14 @@
       "platform": "gpu"
     }
   ],
-  "host": "run-execution-9y2a6psy44jw-0",
+  "host": "run-execution-l2lx0j8xktd4-0",
   "single_gpu": [
     {
       "grid": "30x30x30",
       "cells": 27000,
       "n_steps": 500,
       "mcells_per_s": 47.9,
-      "elapsed_s": 0.2821,
+      "elapsed_s": 0.2819,
       "ms_per_step": 0.564,
       "peak_mem_mb": 2.9
     },
@@ -22,54 +22,54 @@
       "grid": "50x50x50",
       "cells": 125000,
       "n_steps": 500,
-      "mcells_per_s": 449.2,
-      "elapsed_s": 0.1391,
-      "ms_per_step": 0.278,
+      "mcells_per_s": 454.7,
+      "elapsed_s": 0.1375,
+      "ms_per_step": 0.275,
       "peak_mem_mb": 13.6
     },
     {
       "grid": "80x80x80",
       "cells": 512000,
       "n_steps": 500,
-      "mcells_per_s": 1527.8,
-      "elapsed_s": 0.1676,
-      "ms_per_step": 0.335,
+      "mcells_per_s": 1540.0,
+      "elapsed_s": 0.1662,
+      "ms_per_step": 0.332,
       "peak_mem_mb": 56.1
     },
     {
       "grid": "100x100x100",
       "cells": 1000000,
       "n_steps": 500,
-      "mcells_per_s": 2343.9,
-      "elapsed_s": 0.2133,
-      "ms_per_step": 0.427,
+      "mcells_per_s": 2502.4,
+      "elapsed_s": 0.1998,
+      "ms_per_step": 0.4,
       "peak_mem_mb": 116.6
     },
     {
       "grid": "120x120x120",
       "cells": 1728000,
       "n_steps": 500,
-      "mcells_per_s": 3507.6,
-      "elapsed_s": 0.2463,
-      "ms_per_step": 0.493,
+      "mcells_per_s": 3509.9,
+      "elapsed_s": 0.2462,
+      "ms_per_step": 0.492,
       "peak_mem_mb": 211.0
     },
     {
       "grid": "150x150x150",
       "cells": 3375000,
       "n_steps": 500,
-      "mcells_per_s": 4817.4,
-      "elapsed_s": 0.3503,
-      "ms_per_step": 0.701,
+      "mcells_per_s": 4796.9,
+      "elapsed_s": 0.3518,
+      "ms_per_step": 0.704,
       "peak_mem_mb": 394.8
     },
     {
       "grid": "200x200x200",
       "cells": 8000000,
       "n_steps": 500,
-      "mcells_per_s": 5896.3,
-      "elapsed_s": 0.6784,
-      "ms_per_step": 1.357,
+      "mcells_per_s": 5846.6,
+      "elapsed_s": 0.6842,
+      "ms_per_step": 1.368,
       "peak_mem_mb": 880.8
     }
   ],
@@ -77,30 +77,30 @@
     {
       "grid": "30x30x30",
       "cells": 27000,
-      "fwd_s": 0.2805,
-      "grad_s": 0.41,
+      "fwd_s": 0.2819,
+      "grad_s": 0.4125,
       "overhead_x": 1.46
     },
     {
       "grid": "50x50x50",
       "cells": 125000,
-      "fwd_s": 0.1357,
-      "grad_s": 0.4187,
+      "fwd_s": 0.1333,
+      "grad_s": 0.4118,
       "overhead_x": 3.09
     },
     {
       "grid": "80x80x80",
       "cells": 512000,
-      "fwd_s": 0.1446,
-      "grad_s": 0.4887,
-      "overhead_x": 3.38
+      "fwd_s": 0.1454,
+      "grad_s": 0.4884,
+      "overhead_x": 3.36
     },
     {
       "grid": "100x100x100",
       "cells": 1000000,
-      "fwd_s": 0.1616,
-      "grad_s": 0.642,
-      "overhead_x": 3.97
+      "fwd_s": 0.1603,
+      "grad_s": 0.5238,
+      "overhead_x": 3.27
     }
   ],
   "multi_gpu": []

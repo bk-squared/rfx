@@ -257,7 +257,7 @@ class TestMaximizeTransmittedEnergy:
         """Default output_probe_idx=-1 should use the last probe column."""
         result = _make_mock_result_no_sparams(n_probes=3)
         obj = maximize_transmitted_energy()  # default -1
-        loss = obj(result)
+        obj(result)
         # Should not crash; the mock has 2 probes but we asked for 3,
         # so we need a 3-probe mock
         t = jnp.arange(200, dtype=jnp.float32)
