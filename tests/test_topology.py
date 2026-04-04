@@ -405,3 +405,73 @@ class TestTopologyOptimize:
         assert result.density.shape == (5, 5, 1)
         assert result.eps_design.shape == (5, 5, 1)
         assert result.final_result is None
+
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("optax"),
+        reason="optax not installed",
+    )
+    def test_topology_optimize_with_cpml(self):
+        """Topology optimization should work with CPML boundary.
+
+        Verifies that the design-region index clamping prevents
+        the design region from overlapping with CPML padding cells.
+        This is the scenario that caused shape mismatch errors before
+        the fix in topology.py.
+        """
+        from rfx.api import Simulation
+
+        # Use CPML boundary (the default) — this adds padding cells
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.015, 0.015, 0.015),
+            boundary="cpml",
+            cpml_layers=8,
+        )
+        sim.add_port((0.005, 0.0075, 0.0075), "ez")
+        sim.add_probe((0.01, 0.0075, 0.0075), "ez")
+
+        # Design region well inside the domain (should not overlap CPML)
+        region = TopologyDesignRegion(
+            corner_lo=(0.006, 0.006, 0.006),
+            corner_hi=(0.009, 0.009, 0.009),
+            material_bg="air",
+            material_fg="fr4",
+            beta_projection=1.0,
+        )
+
+        def obj(result):
+            return -jnp.sum(result.time_series ** 2)
+
+        # Should not raise — the CPML index clamping prevents mismatch
+        result = topology_optimize(
+            sim, region, obj,
+            n_iterations=2,
+            learning_rate=0.05,
+            beta_schedule=[(0, 1.0)],
+            verbose=False,
+        )
+
+        assert isinstance(result, TopologyResult)
+        assert len(result.history) == 2
+        assert result.density.ndim == 3
+        assert result.eps_design.ndim == 3
+
+        # Verify the grid uses CPML
+        grid = sim._build_grid()
+        assert grid.pad_x == 8
+        assert grid.pad_y == 8
+        assert grid.pad_z == 8
+
+        # Verify design region indices are within interior
+        lo = grid.position_to_index(region.corner_lo)
+        hi = grid.position_to_index(region.corner_hi)
+        for d in range(3):
+            pad = (grid.pad_x, grid.pad_y, grid.pad_z)[d]
+            dim = (grid.nx, grid.ny, grid.nz)[d]
+            assert lo[d] >= pad, (
+                f"lo_idx[{d}]={lo[d]} inside CPML (pad={pad})"
+            )
+            assert hi[d] <= dim - 1 - pad, (
+                f"hi_idx[{d}]={hi[d]} inside CPML (max={dim-1-pad})"
+            )
+        print(f"\n  CPML topology: grid={grid.shape}, pads=({grid.pad_x},{grid.pad_y},{grid.pad_z})")

@@ -360,28 +360,43 @@ def auto_configure(
     cpml_cells = {"draft": 8, "standard": 12, "high": 16}[accuracy]
     cpml_layers = max(min_cpml_cells, cpml_cells)
 
-    # 3b. Memory budget — coarsen dx until estimated memory fits
+    # 3b. Memory budget — coarsen dx until estimated memory fits.
+    # The physical domain extent is fixed (bbox + margins); only the
+    # cell count changes as dx grows.  The 8*dx floor prevents
+    # degenerate tiny grids but is re-applied each iteration.
     if max_memory_mb is not None and dx_override is None:
+        # Store the fixed physical extent so it doesn't inflate with dx.
+        _phys_extent = tuple(
+            (bbox_hi[i] - bbox_lo[i]) + 2 * margin for i in range(3)
+        )
         for _ in range(20):  # safety limit on iterations
-            _nx = int(math.ceil(domain[0] / dx)) + 1 + 2 * cpml_layers
-            _ny = int(math.ceil(domain[1] / dx)) + 1 + 2 * cpml_layers
-            _nz = int(math.ceil(domain[2] / dx)) + 1 + 2 * cpml_layers
+            _domain = tuple(max(d, 8 * dx) for d in _phys_extent)
+            _cpml_cells_now = int(np.ceil(min_cpml_thickness / dx))
+            _cpml = max(_cpml_cells_now, cpml_cells)
+            _nx = int(math.ceil(_domain[0] / dx)) + 1 + 2 * _cpml
+            _ny = int(math.ceil(_domain[1] / dx)) + 1 + 2 * _cpml
+            _nz = int(math.ceil(_domain[2] / dx)) + 1 + 2 * _cpml
             _cells = _nx * _ny * _nz
             # 12 arrays * 4 bytes * 3x for AD checkpointing
             _est_mb = _cells * 12 * 4 * 3 / 1e6
             if _est_mb <= max_memory_mb:
+                # Accept this dx and update domain/cpml to match
+                domain = _domain
+                cpml_layers = _cpml
                 break
-            dx *= 1.25
-            dx = _round_dx(dx)
-            # Recompute domain and CPML with new dx
-            domain = tuple(
-                (bbox_hi[i] - bbox_lo[i]) + 2 * margin
-                for i in range(3)
-            )
-            domain = tuple(max(d, 8 * dx) for d in domain)
-            min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
-            cpml_layers = max(min_cpml_cells, cpml_cells)
+            # Coarsen dx.  _round_dx rounds DOWN, so we must ensure
+            # the rounded result is strictly larger than the old dx.
+            old_dx = dx
+            dx = _round_dx(dx * 1.5)
+            if dx <= old_dx:
+                dx = _round_dx(dx * 2.0)
+            if dx <= old_dx:
+                # Force a jump to the next power-of-ten tier
+                dx = old_dx * 2.0
         else:
+            # Loop exhausted — apply final values and warn
+            domain = _domain
+            cpml_layers = _cpml
             warnings.append(
                 f"Could not fit within {max_memory_mb:.0f} MB budget "
                 f"(estimated {_est_mb:.0f} MB at dx={dx*1e3:.3f} mm). "
