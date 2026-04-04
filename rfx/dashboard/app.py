@@ -39,8 +39,13 @@ st.set_page_config(
     layout="wide",
 )
 
+try:
+    from rfx import __version__ as _rfx_version
+except ImportError:
+    _rfx_version = "unknown"
+
 st.title("rfx — JAX FDTD Simulator")
-st.caption("Interactive electromagnetic simulation powered by rfx v1.0")
+st.caption(f"Interactive electromagnetic simulation powered by rfx v{_rfx_version}")
 
 # ---------------------------------------------------------------------------
 # Material library (populated from rfx)
@@ -62,20 +67,27 @@ except ImportError:
 with st.sidebar:
     st.header("Simulation Setup")
 
-    st.subheader("Frequency")
-    freq_min = st.number_input(
-        "Min Frequency (GHz)", value=1.0, step=0.5, min_value=0.1, key="freq_min",
-    )
-    freq_max = st.number_input(
-        "Max Frequency (GHz)", value=4.0, step=0.5, min_value=0.1, key="freq_max",
-    )
+    st.subheader("Frequency range")
+    col_fmin, col_fmax = st.columns(2)
+    with col_fmin:
+        freq_min = st.number_input(
+            "f_min [GHz]", value=1.0, step=0.5, min_value=0.1, key="freq_min",
+        )
+    with col_fmax:
+        freq_max = st.number_input(
+            "f_max [GHz]", value=4.0, step=0.5, min_value=0.1, key="freq_max",
+        )
     if freq_min >= freq_max:
-        st.warning("Min frequency must be less than max frequency.")
+        st.warning("f_min must be less than f_max.")
 
-    st.subheader("Domain")
-    dom_x = st.number_input("Lx (mm)", value=50.0, step=5.0, min_value=1.0, key="dom_x")
-    dom_y = st.number_input("Ly (mm)", value=50.0, step=5.0, min_value=1.0, key="dom_y")
-    dom_z = st.number_input("Lz (mm)", value=25.0, step=5.0, min_value=1.0, key="dom_z")
+    st.subheader("Domain size")
+    col_dx, col_dy, col_dz = st.columns(3)
+    with col_dx:
+        dom_x = st.number_input("Lx [mm]", value=50.0, step=5.0, min_value=1.0, key="dom_x")
+    with col_dy:
+        dom_y = st.number_input("Ly [mm]", value=50.0, step=5.0, min_value=1.0, key="dom_y")
+    with col_dz:
+        dom_z = st.number_input("Lz [mm]", value=25.0, step=5.0, min_value=1.0, key="dom_z")
 
     st.subheader("Solver")
     boundary = st.selectbox("Boundary Condition", ["cpml", "pec"], key="boundary")
@@ -99,7 +111,7 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.caption("rfx v1.0 — JAX-native 3D FDTD")
+    st.caption(f"rfx v{_rfx_version} — JAX-native 3D FDTD")
 
 # ---------------------------------------------------------------------------
 # Main area: tabs
@@ -263,6 +275,9 @@ with tab_results:
         except Exception as exc:
             progress_bar.empty()
             st.error(f"Simulation failed: {exc}")
+            with st.expander("Show full traceback"):
+                import traceback
+                st.code(traceback.format_exc(), language="python")
             st.stop()
 
         # --- Display results ---
