@@ -37,7 +37,12 @@ from rfx.simulation import (
     make_source,
     make_j_source,
     make_probe,
+    make_port_source,
+    _update_e_with_optional_dispersion,
 )
+from rfx.sources.sources import LumpedPort, setup_lumped_port
+from rfx.materials.debye import DebyeCoeffs, DebyeState, init_debye
+from rfx.materials.lorentz import LorentzCoeffs, LorentzState, init_lorentz
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +157,101 @@ def _split_materials(materials, n_devices, ghost=1):
         eps_r=split_array_x(materials.eps_r, n_devices, ghost, pad_value=1.0),
         sigma=split_array_x(materials.sigma, n_devices, ghost, pad_value=0.0),
         mu_r=split_array_x(materials.mu_r, n_devices, ghost, pad_value=1.0),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dispersive material (Debye / Lorentz) splitting
+# ---------------------------------------------------------------------------
+
+def _split_debye_coeffs(coeffs: DebyeCoeffs, n_devices, ghost=1):
+    """Split DebyeCoeffs arrays along x into per-device slabs.
+
+    3-D arrays (nx, ny, nz) are split with ghost cells.
+    4-D arrays (n_poles, nx, ny, nz) are split per-pole along x.
+    """
+    # ca, cb are (nx, ny, nz)
+    ca = split_array_x(coeffs.ca, n_devices, ghost, pad_value=0.0)
+    cb = split_array_x(coeffs.cb, n_devices, ghost, pad_value=0.0)
+
+    # cc, alpha, beta are (n_poles, nx, ny, nz) — split each pole along x
+    n_poles = coeffs.alpha.shape[0]
+    cc_slabs = jnp.stack([
+        split_array_x(coeffs.cc[p], n_devices, ghost, pad_value=0.0)
+        for p in range(n_poles)
+    ], axis=1)  # (n_devices, n_poles, nx_local, ny, nz)
+    alpha_slabs = jnp.stack([
+        split_array_x(coeffs.alpha[p], n_devices, ghost, pad_value=0.0)
+        for p in range(n_poles)
+    ], axis=1)
+    beta_slabs = jnp.stack([
+        split_array_x(coeffs.beta[p], n_devices, ghost, pad_value=0.0)
+        for p in range(n_poles)
+    ], axis=1)
+
+    return DebyeCoeffs(ca=ca, cb=cb, cc=cc_slabs, alpha=alpha_slabs, beta=beta_slabs)
+
+
+def _split_debye_state(state: DebyeState, n_devices, ghost=1):
+    """Split DebyeState arrays along x into per-device slabs.
+
+    Each field is (n_poles, nx, ny, nz) — split each pole along x.
+    """
+    n_poles = state.px.shape[0]
+
+    def _split_poles(arr):
+        return jnp.stack([
+            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
+            for p in range(n_poles)
+        ], axis=1)  # (n_devices, n_poles, nx_local, ny, nz)
+
+    return DebyeState(
+        px=_split_poles(state.px),
+        py=_split_poles(state.py),
+        pz=_split_poles(state.pz),
+    )
+
+
+def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1):
+    """Split LorentzCoeffs arrays along x into per-device slabs."""
+    ca = split_array_x(coeffs.ca, n_devices, ghost, pad_value=0.0)
+    cb = split_array_x(coeffs.cb, n_devices, ghost, pad_value=0.0)
+    cc = split_array_x(coeffs.cc, n_devices, ghost, pad_value=0.0)
+
+    n_poles = coeffs.a.shape[0]
+
+    def _split_poles(arr):
+        return jnp.stack([
+            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
+            for p in range(n_poles)
+        ], axis=1)
+
+    return LorentzCoeffs(
+        ca=ca, cb=cb,
+        a=_split_poles(coeffs.a),
+        b=_split_poles(coeffs.b),
+        c=_split_poles(coeffs.c),
+        cc=cc,
+    )
+
+
+def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
+    """Split LorentzState arrays along x into per-device slabs."""
+    n_poles = state.px.shape[0]
+
+    def _split_poles(arr):
+        return jnp.stack([
+            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
+            for p in range(n_poles)
+        ], axis=1)
+
+    return LorentzState(
+        px=_split_poles(state.px),
+        py=_split_poles(state.py),
+        pz=_split_poles(state.pz),
+        px_prev=_split_poles(state.px_prev),
+        py_prev=_split_poles(state.py_prev),
+        pz_prev=_split_poles(state.pz_prev),
     )
 
 
@@ -416,13 +516,16 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
 
 def _apply_cpml_e_distributed(
     state, cpml_params, cpml_state, n_cpml, dt, dx,
-    n_devices, axis_name="devices",
+    n_devices, ghost=1, axis_name="devices",
 ):
     """Apply CPML E-field correction on a distributed slab.
 
     Y/Z faces: applied on all devices (each owns full y/z extent).
     X faces: x-lo on device 0 only, x-hi on device N-1 only.
     Non-active faces are masked to zero via jnp.where.
+
+    X-axis indexing accounts for ghost cells: x-lo uses
+    ``[ghost:ghost+n]``, x-hi uses ``[-(ghost+n):-ghost]``.
 
     Parameters
     ----------
@@ -437,9 +540,12 @@ def _apply_cpml_e_distributed(
     dt, dx : float
         Timestep and cell size.
     n_devices : int
+    ghost : int
+        Number of ghost cells on each side of x (default 1).
     axis_name : str
     """
     n = n_cpml
+    g = ghost
     coeff_e = dt / (8.854187817e-12 * 1.0)  # dt / eps_0
 
     b = cpml_params.b
@@ -457,6 +563,10 @@ def _apply_cpml_e_distributed(
     is_first = (device_idx == 0)
     is_last = (device_idx == n_devices - 1)
 
+    # X-axis slice helpers (account for ghost offset)
+    xlo = slice(g, g + n)          # first n real cells
+    xhi = slice(-(g + n), -g)      # last n real cells
+
     # =======================================================================
     # X-axis CPML (device-conditional)
     # =======================================================================
@@ -468,31 +578,31 @@ def _apply_cpml_e_distributed(
     k_xr = kappa_r[:, None, None]
 
     # --- X-lo: Ey correction from dHz/dx (device 0 only) ---
-    hz_xlo = state.hz[:n, :, :]
-    hz_shifted_xlo = _shift_bwd(state.hz, 0)[:n, :, :]
+    hz_xlo = state.hz[xlo, :, :]
+    hz_shifted_xlo = _shift_bwd(state.hz, 0)[xlo, :, :]
     curl_hz_dx_xlo = (hz_xlo - hz_shifted_xlo) / dx
 
     new_psi_ey_xlo = b_x * cpml_state.psi_ey_xlo + c_x * curl_hz_dx_xlo
     ey_corr_xlo = -coeff_e * new_psi_ey_xlo - coeff_e * (1.0 / k_x - 1.0) * curl_hz_dx_xlo
     # Mask: only device 0
     ey_corr_xlo = jnp.where(is_first, ey_corr_xlo, 0.0)
-    ey = ey.at[:n, :, :].add(ey_corr_xlo)
+    ey = ey.at[xlo, :, :].add(ey_corr_xlo)
     new_psi_ey_xlo = jnp.where(is_first, new_psi_ey_xlo, cpml_state.psi_ey_xlo)
 
     # --- X-hi: Ey correction from dHz/dx (device N-1 only) ---
-    hz_xhi = state.hz[-n:, :, :]
-    hz_shifted_xhi = _shift_bwd(state.hz, 0)[-n:, :, :]
+    hz_xhi = state.hz[xhi, :, :]
+    hz_shifted_xhi = _shift_bwd(state.hz, 0)[xhi, :, :]
     curl_hz_dx_xhi = (hz_xhi - hz_shifted_xhi) / dx
 
     new_psi_ey_xhi = b_xr * cpml_state.psi_ey_xhi + c_xr * curl_hz_dx_xhi
     ey_corr_xhi = -coeff_e * new_psi_ey_xhi - coeff_e * (1.0 / k_xr - 1.0) * curl_hz_dx_xhi
     ey_corr_xhi = jnp.where(is_last, ey_corr_xhi, 0.0)
-    ey = ey.at[-n:, :, :].add(ey_corr_xhi)
+    ey = ey.at[xhi, :, :].add(ey_corr_xhi)
     new_psi_ey_xhi = jnp.where(is_last, new_psi_ey_xhi, cpml_state.psi_ey_xhi)
 
     # --- X-lo: Ez correction from dHy/dx (device 0 only) ---
-    hy_xlo = state.hy[:n, :, :]
-    hy_shifted_xlo = _shift_bwd(state.hy, 0)[:n, :, :]
+    hy_xlo = state.hy[xlo, :, :]
+    hy_shifted_xlo = _shift_bwd(state.hy, 0)[xlo, :, :]
     curl_hy_dx_xlo = (hy_xlo - hy_shifted_xlo) / dx
     curl_hy_dx_xlo_t = jnp.transpose(curl_hy_dx_xlo, (0, 2, 1))
 
@@ -500,12 +610,12 @@ def _apply_cpml_e_distributed(
     correction_ez_xlo = jnp.transpose(new_psi_ez_xlo, (0, 2, 1))
     ez_corr_xlo = coeff_e * correction_ez_xlo + coeff_e * (1.0 / k_x - 1.0) * curl_hy_dx_xlo
     ez_corr_xlo = jnp.where(is_first, ez_corr_xlo, 0.0)
-    ez = ez.at[:n, :, :].add(ez_corr_xlo)
+    ez = ez.at[xlo, :, :].add(ez_corr_xlo)
     new_psi_ez_xlo = jnp.where(is_first, new_psi_ez_xlo, cpml_state.psi_ez_xlo)
 
     # --- X-hi: Ez correction from dHy/dx (device N-1 only) ---
-    hy_xhi = state.hy[-n:, :, :]
-    hy_shifted_xhi = _shift_bwd(state.hy, 0)[-n:, :, :]
+    hy_xhi = state.hy[xhi, :, :]
+    hy_shifted_xhi = _shift_bwd(state.hy, 0)[xhi, :, :]
     curl_hy_dx_xhi = (hy_xhi - hy_shifted_xhi) / dx
     curl_hy_dx_xhi_t = jnp.transpose(curl_hy_dx_xhi, (0, 2, 1))
 
@@ -513,7 +623,7 @@ def _apply_cpml_e_distributed(
     correction_ez_xhi = jnp.transpose(new_psi_ez_xhi, (0, 2, 1))
     ez_corr_xhi = coeff_e * correction_ez_xhi + coeff_e * (1.0 / k_xr - 1.0) * curl_hy_dx_xhi
     ez_corr_xhi = jnp.where(is_last, ez_corr_xhi, 0.0)
-    ez = ez.at[-n:, :, :].add(ez_corr_xhi)
+    ez = ez.at[xhi, :, :].add(ez_corr_xhi)
     new_psi_ez_xhi = jnp.where(is_last, new_psi_ez_xhi, cpml_state.psi_ez_xhi)
 
     # =======================================================================
@@ -650,12 +760,15 @@ def _apply_cpml_e_distributed(
 
 def _apply_cpml_h_distributed(
     state, cpml_params, cpml_state, n_cpml, dt, dx,
-    n_devices, axis_name="devices",
+    n_devices, ghost=1, axis_name="devices",
 ):
     """Apply CPML H-field correction on a distributed slab.
 
     Y/Z faces: applied on all devices.
     X faces: x-lo on device 0 only, x-hi on device N-1 only.
+
+    X-axis indexing accounts for ghost cells: x-lo uses
+    ``[ghost:ghost+n]``, x-hi uses ``[-(ghost+n):-ghost]``.
 
     Parameters
     ----------
@@ -669,9 +782,12 @@ def _apply_cpml_h_distributed(
         Number of CPML layers.
     dt, dx : float
     n_devices : int
+    ghost : int
+        Number of ghost cells on each side of x (default 1).
     axis_name : str
     """
     n = n_cpml
+    g = ghost
     coeff_h = dt / 1.2566370614e-6  # dt / mu_0
 
     b = cpml_params.b
@@ -689,6 +805,10 @@ def _apply_cpml_h_distributed(
     is_first = (device_idx == 0)
     is_last = (device_idx == n_devices - 1)
 
+    # X-axis slice helpers (account for ghost offset)
+    xlo = slice(g, g + n)          # first n real cells
+    xhi = slice(-(g + n), -g)      # last n real cells
+
     # =======================================================================
     # X-axis CPML (device-conditional)
     # =======================================================================
@@ -700,30 +820,30 @@ def _apply_cpml_h_distributed(
     k_xr = kappa_r[:, None, None]
 
     # --- X-lo: Hy correction from dEz/dx (device 0 only) ---
-    ez_xlo = state.ez[:n, :, :]
-    ez_shifted_xlo = _shift_fwd(state.ez, 0)[:n, :, :]
+    ez_xlo = state.ez[xlo, :, :]
+    ez_shifted_xlo = _shift_fwd(state.ez, 0)[xlo, :, :]
     curl_ez_dx_xlo = (ez_shifted_xlo - ez_xlo) / dx
 
     new_psi_hy_xlo = b_x * cpml_state.psi_hy_xlo + c_x * curl_ez_dx_xlo
     hy_corr_xlo = coeff_h * new_psi_hy_xlo + coeff_h * (1.0 / k_x - 1.0) * curl_ez_dx_xlo
     hy_corr_xlo = jnp.where(is_first, hy_corr_xlo, 0.0)
-    hy = hy.at[:n, :, :].add(hy_corr_xlo)
+    hy = hy.at[xlo, :, :].add(hy_corr_xlo)
     new_psi_hy_xlo = jnp.where(is_first, new_psi_hy_xlo, cpml_state.psi_hy_xlo)
 
     # --- X-hi: Hy correction from dEz/dx (device N-1 only) ---
-    ez_xhi = state.ez[-n:, :, :]
-    ez_shifted_xhi = _shift_fwd(state.ez, 0)[-n:, :, :]
+    ez_xhi = state.ez[xhi, :, :]
+    ez_shifted_xhi = _shift_fwd(state.ez, 0)[xhi, :, :]
     curl_ez_dx_xhi = (ez_shifted_xhi - ez_xhi) / dx
 
     new_psi_hy_xhi = b_xr * cpml_state.psi_hy_xhi + c_xr * curl_ez_dx_xhi
     hy_corr_xhi = coeff_h * new_psi_hy_xhi + coeff_h * (1.0 / k_xr - 1.0) * curl_ez_dx_xhi
     hy_corr_xhi = jnp.where(is_last, hy_corr_xhi, 0.0)
-    hy = hy.at[-n:, :, :].add(hy_corr_xhi)
+    hy = hy.at[xhi, :, :].add(hy_corr_xhi)
     new_psi_hy_xhi = jnp.where(is_last, new_psi_hy_xhi, cpml_state.psi_hy_xhi)
 
     # --- X-lo: Hz correction from dEy/dx (device 0 only) ---
-    ey_xlo = state.ey[:n, :, :]
-    ey_shifted_xlo = _shift_fwd(state.ey, 0)[:n, :, :]
+    ey_xlo = state.ey[xlo, :, :]
+    ey_shifted_xlo = _shift_fwd(state.ey, 0)[xlo, :, :]
     curl_ey_dx_xlo = (ey_shifted_xlo - ey_xlo) / dx
     curl_ey_dx_xlo_t = jnp.transpose(curl_ey_dx_xlo, (0, 2, 1))
 
@@ -731,12 +851,12 @@ def _apply_cpml_h_distributed(
     correction_hz_xlo = jnp.transpose(new_psi_hz_xlo, (0, 2, 1))
     hz_corr_xlo = -coeff_h * correction_hz_xlo - coeff_h * (1.0 / k_x - 1.0) * curl_ey_dx_xlo
     hz_corr_xlo = jnp.where(is_first, hz_corr_xlo, 0.0)
-    hz = hz.at[:n, :, :].add(hz_corr_xlo)
+    hz = hz.at[xlo, :, :].add(hz_corr_xlo)
     new_psi_hz_xlo = jnp.where(is_first, new_psi_hz_xlo, cpml_state.psi_hz_xlo)
 
     # --- X-hi: Hz correction from dEy/dx (device N-1 only) ---
-    ey_xhi = state.ey[-n:, :, :]
-    ey_shifted_xhi = _shift_fwd(state.ey, 0)[-n:, :, :]
+    ey_xhi = state.ey[xhi, :, :]
+    ey_shifted_xhi = _shift_fwd(state.ey, 0)[xhi, :, :]
     curl_ey_dx_xhi = (ey_shifted_xhi - ey_xhi) / dx
     curl_ey_dx_xhi_t = jnp.transpose(curl_ey_dx_xhi, (0, 2, 1))
 
@@ -744,7 +864,7 @@ def _apply_cpml_h_distributed(
     correction_hz_xhi = jnp.transpose(new_psi_hz_xhi, (0, 2, 1))
     hz_corr_xhi = -coeff_h * correction_hz_xhi - coeff_h * (1.0 / k_xr - 1.0) * curl_ey_dx_xhi
     hz_corr_xhi = jnp.where(is_last, hz_corr_xhi, 0.0)
-    hz = hz.at[-n:, :, :].add(hz_corr_xhi)
+    hz = hz.at[xhi, :, :].add(hz_corr_xhi)
     new_psi_hz_xhi = jnp.where(is_last, new_psi_hz_xhi, cpml_state.psi_hz_xhi)
 
     # =======================================================================
@@ -931,10 +1051,20 @@ def run_distributed(sim, *, n_steps, devices=None, **kwargs):
     n_cpml = grid.cpml_layers if use_cpml else 0
 
     # Build sources and probes on the full grid
+    # First pass: fold lumped port impedances into materials (must happen
+    # before splitting so the owning device's slab gets correct sigma).
     sources = []
     probes = []
     for pe in sim._ports:
-        if pe.impedance == 0.0:
+        if pe.impedance > 0.0 and pe.extent is None:
+            # Single-cell lumped port: fold impedance into materials
+            lp = LumpedPort(
+                position=pe.position, component=pe.component,
+                impedance=pe.impedance, excitation=pe.waveform,
+            )
+            materials = setup_lumped_port(grid, lp, materials)
+            sources.append(make_port_source(grid, lp, materials, n_steps))
+        elif pe.impedance == 0.0:
             if sim._boundary == "cpml":
                 sources.append(make_j_source(grid, pe.position, pe.component,
                                              pe.waveform, n_steps, materials))
@@ -1032,7 +1162,7 @@ def run_distributed(sim, *, n_steps, devices=None, **kwargs):
                 # 3. CPML H correction
                 st, cpml_st = _apply_cpml_h_distributed(
                     st, cpml_params, cpml_st, n_cpml, dt, dx,
-                    n_devices, "devices")
+                    n_devices, ghost=ghost, axis_name="devices")
 
                 # 4. E update (local)
                 st = _update_e_local(st, materials_slab, dt, dx)
@@ -1043,7 +1173,7 @@ def run_distributed(sim, *, n_steps, devices=None, **kwargs):
                 # 6. CPML E correction
                 st, cpml_st = _apply_cpml_e_distributed(
                     st, cpml_params, cpml_st, n_cpml, dt, dx,
-                    n_devices, "devices")
+                    n_devices, ghost=ghost, axis_name="devices")
 
                 # 7. Source injection (only on owning device)
                 for idx_s in range(n_src):
