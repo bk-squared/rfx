@@ -30,6 +30,7 @@ from rfx.rcs import compute_rcs, RCSResult
 from rfx.gpu import device_info, benchmark
 from rfx.optimize import DesignRegion, OptimizeResult, optimize
 from rfx.io import read_touchstone, write_touchstone
+from rfx.deembed import deembed_port_extension, deembed_thru
 from rfx.visualize import (
     plot_field_slice, plot_s_params, plot_radiation_pattern, plot_time_series,
     plot_rcs,
@@ -73,3 +74,4 @@ from rfx.probes.probes import (
     extract_s_matrix_wire,
 )
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
+from rfx.pcb import PCBLayer, Stackup
