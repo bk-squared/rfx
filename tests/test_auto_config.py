@@ -1,6 +1,6 @@
-"""Tests for auto_configure source auto-selection."""
+"""Tests for auto_configure: source auto-selection, memory estimation."""
 
-from rfx.auto_config import auto_configure
+from rfx.auto_config import auto_configure, SimConfig
 
 
 def test_auto_configure_source_recommendation_cpml():
@@ -47,3 +47,62 @@ def test_auto_configure_summary_includes_source():
     summary = config.summary()
     assert "source" in summary.lower()
     assert "j_source" in summary
+
+
+# ---------------------------------------------------------------------------
+# Memory estimation and budget
+# ---------------------------------------------------------------------------
+
+def test_auto_configure_memory_estimate():
+    """SimConfig.estimated_memory_mb should return a positive value and
+    the grid_shape property should reflect CPML padding."""
+    config = auto_configure([], freq_range=(1e9, 3e9))
+
+    # grid_shape should be a 3-tuple of positive ints
+    shape = config.grid_shape
+    assert len(shape) == 3
+    assert all(s > 0 for s in shape), f"Invalid grid_shape: {shape}"
+
+    # estimated_memory_mb should be positive
+    mem = config.estimated_memory_mb
+    assert mem > 0, f"Expected positive memory estimate, got {mem}"
+    print(f"\n  Grid shape: {shape}, estimated memory: {mem:.1f} MB")
+
+
+def test_auto_configure_memory_budget_coarsens_dx():
+    """When max_memory_mb is tight, dx should increase to fit budget."""
+    config_unbounded = auto_configure([], freq_range=(1e9, 3e9))
+    # Use a budget slightly below the unbounded estimate to trigger
+    # meaningful coarsening (unbounded is ~10 MB, cap at 8 MB).
+    budget_mb = config_unbounded.estimated_memory_mb * 0.8
+    config_bounded = auto_configure(
+        [], freq_range=(1e9, 3e9), max_memory_mb=budget_mb,
+    )
+
+    # Bounded config should have coarser (larger) dx
+    assert config_bounded.dx > config_unbounded.dx, (
+        f"Bounded dx ({config_bounded.dx}) should be > unbounded ({config_unbounded.dx})"
+    )
+
+    # Bounded config should fit within budget
+    assert config_bounded.estimated_memory_mb <= budget_mb, (
+        f"Bounded memory ({config_bounded.estimated_memory_mb:.1f} MB) exceeds "
+        f"budget ({budget_mb:.1f} MB)"
+    )
+    print(
+        f"\n  Unbounded: dx={config_unbounded.dx*1e3:.3f} mm, "
+        f"mem={config_unbounded.estimated_memory_mb:.1f} MB\n"
+        f"  Bounded({budget_mb:.0f}MB): dx={config_bounded.dx*1e3:.3f} mm, "
+        f"mem={config_bounded.estimated_memory_mb:.1f} MB"
+    )
+
+
+def test_auto_configure_memory_budget_ignored_with_dx_override():
+    """max_memory_mb should be ignored when dx_override is provided."""
+    config = auto_configure(
+        [], freq_range=(1e9, 3e9),
+        dx_override=0.005,
+        max_memory_mb=0.001,  # impossibly small
+    )
+    # dx should remain at the override value
+    assert config.dx == 0.005

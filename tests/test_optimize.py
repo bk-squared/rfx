@@ -93,3 +93,42 @@ def test_optimize_runs_single_iteration():
     assert isinstance(result, OptimizeResult)
     assert len(result.loss_history) == 1
     assert result.eps_design.shape == result.latent.shape
+
+
+# ---------------------------------------------------------------------------
+# gradient_check: AD vs finite-difference
+# ---------------------------------------------------------------------------
+
+def test_gradient_check_matches():
+    """AD gradient should agree with finite-difference gradient.
+
+    Uses a tiny PEC simulation with a single scalar design parameter
+    (uniform eps perturbation) so that the finite-difference loop is
+    fast (only 2*N forward evaluations for N parameters).
+    """
+    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim.add_port((0.005, 0.0075, 0.0075), "ez")
+    sim.add_probe((0.01, 0.0075, 0.0075), "ez")
+
+    grid = sim._build_grid()
+
+    # Single scalar parameter: uniform eps perturbation
+    design_params = jnp.zeros(grid.shape, dtype=jnp.float32)
+
+    def obj(result):
+        return jnp.sum(result.time_series ** 2)
+
+    result = gradient_check(
+        sim, design_params, obj,
+        eps=1e-2,
+        n_steps=20,
+    )
+
+    assert isinstance(result, GradientCheckResult)
+    assert result.ad_grad.shape == design_params.shape
+    assert result.fd_grad.shape == design_params.shape
+    # Relative error should be reasonable (< 0.5 for such a coarse check)
+    assert result.relative_error < 0.5, (
+        f"AD/FD relative error too large: {result.relative_error:.4f}"
+    )
+    print(f"\n  gradient_check: rel_error = {result.relative_error:.6f}")
