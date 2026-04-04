@@ -224,6 +224,8 @@ def run_uniform(
             polarization=sim._tfsf.polarization,
             direction=sim._tfsf.direction,
             angle_deg=sim._tfsf.angle_deg,
+            ny=grid.ny,
+            nz=grid.nz,
         )
         sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
         periodic = (False, True, True)

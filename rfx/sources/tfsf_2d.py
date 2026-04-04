@@ -1,15 +1,20 @@
 """2D auxiliary grid for oblique-incidence TFSF plane waves.
 
-Uses a 2D TMz Yee grid with the same cell size ``dx`` as the 3D
-simulation so numerical dispersion matches exactly at any angle.
+Supports two modes:
 
-The 2D grid is **periodic in y** (matching the 3D grid) and uses
-CFS-CPML only on the x-lo and x-hi boundaries.  This avoids the
-grazing-angle CPML reflection problem that arises when all four
-edges use absorbing boundaries.
+**TMz** (xy-plane): Ez out-of-plane, Hx/Hy in-plane.
+  Used for ``ez`` polarization oblique incidence.
+  Periodic in y, CFS-CPML on x boundaries.
+
+**TEz** (xz-plane): Ey out-of-plane, Hx/Hz in-plane.
+  Used for ``ey`` polarization oblique incidence.
+  Periodic in z, CFS-CPML on x boundaries.
+
+Both modes use the same cell size ``dx`` as the 3D simulation so
+numerical dispersion matches exactly at any angle.
 
 The oblique plane wave source is a soft line source at a fixed x
-with per-y-cell time delay that encodes the oblique angle.
+with per-cell transverse delay that encodes the oblique angle.
 
 Reference: S. C. Tan and G. E. Potter, IEEE T-AP 58(9), 2010.
 """
@@ -29,15 +34,20 @@ from rfx.core.yee import EPS_0, MU_0
 # ---------------------------------------------------------------------------
 
 class TFSF2DState(NamedTuple):
-    """2D auxiliary grid state for oblique TFSF."""
-    ez_2d: jnp.ndarray   # (n2x, n2y)
-    hx_2d: jnp.ndarray   # (n2x, n2y)
-    hy_2d: jnp.ndarray   # (n2x, n2y)
+    """2D auxiliary grid state for oblique TFSF.
+
+    Field semantics depend on mode:
+      TMz: ez_2d=Ez, hx_2d=Hx, hy_2d=Hy  (xy-plane)
+      TEz: ez_2d=Ey, hx_2d=Hx, hy_2d=Hz  (xz-plane)
+    """
+    ez_2d: jnp.ndarray   # (n2x, n2t) — E out-of-plane
+    hx_2d: jnp.ndarray   # (n2x, n2t) — H transverse component 1
+    hy_2d: jnp.ndarray   # (n2x, n2t) — H longitudinal / component 2
     # CFS-CPML psi arrays (x-direction only, 4 total)
-    psi_ez_xlo: jnp.ndarray  # (n_cpml, n2y)
-    psi_ez_xhi: jnp.ndarray  # (n_cpml, n2y)
-    psi_hy_xlo: jnp.ndarray  # (n_cpml, n2y)
-    psi_hy_xhi: jnp.ndarray  # (n_cpml, n2y)
+    psi_ez_xlo: jnp.ndarray  # (n_cpml, n2t)
+    psi_ez_xhi: jnp.ndarray  # (n_cpml, n2t)
+    psi_hy_xlo: jnp.ndarray  # (n_cpml, n2t)
+    psi_hy_xhi: jnp.ndarray  # (n_cpml, n2t)
     step: jnp.ndarray
 
 
@@ -46,9 +56,9 @@ class TFSF2DConfig(NamedTuple):
     x_lo: int
     x_hi: int
     n2x: int
-    n2y: int          # == ny (3D), periodic in y
+    n2y: int          # periodic transverse dim (ny for TMz, nz for TEz)
     i0_x: int         # 2D x-index mapping to 3D x_lo
-    i0_y: int         # always 0 (periodic y, no padding)
+    i0_y: int         # always 0 (periodic transverse, no padding)
     src_x: int
     src_amp: float
     src_t0: float
@@ -69,6 +79,7 @@ class TFSF2DConfig(NamedTuple):
     grid_pad: int
     angle_deg: float
     dx_1d: float
+    mode: str         # "TMz" or "TEz"
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +92,7 @@ def init_tfsf_2d(
     dx: float,
     dt: float,
     *,
+    nz: int | None = None,
     cpml_layers: int = 0,
     tfsf_margin: int = 3,
     f0: float = 5e9,
@@ -92,23 +104,28 @@ def init_tfsf_2d(
 ) -> tuple[TFSF2DConfig, TFSF2DState]:
     """Initialize 2D auxiliary grid for oblique-incidence TFSF.
 
-    The 2D grid uses periodic BC in y (matching the 3D grid) and
-    CFS-CPML only on x boundaries.
+    TMz mode (ez polarization): 2D grid in xy-plane, periodic in y.
+    TEz mode (ey polarization): 2D grid in xz-plane, periodic in z.
+    CFS-CPML on x boundaries only.
+
+    Parameters
+    ----------
+    nz : int | None
+        Number of cells in z (3D grid).  Required for ey oblique
+        (TEz mode).  Ignored for ez polarization.
     """
     if polarization not in ("ez", "ey"):
         raise ValueError(f"polarization must be 'ez' or 'ey', got {polarization!r}")
-    if polarization == "ey" and abs(theta_deg) > 0.01:
-        raise NotImplementedError(
-            "Oblique TFSF with ey polarization is not yet supported.  "
-            "The 2D auxiliary grid operates in the xy-plane (TMz mode) which "
-            "correctly encodes oblique angles for ez polarization.  For ey "
-            "polarization the oblique tilt lies in the xz-plane, requiring "
-            "a separate TEz auxiliary grid (not yet implemented)."
-        )
     if direction not in ("+x", "-x"):
         raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
     if abs(theta_deg) >= 90.0:
         raise ValueError(f"|angle_deg| must be < 90, got {theta_deg}")
+
+    # Determine mode
+    if polarization == "ez":
+        mode = "TMz"
+    else:
+        mode = "TEz"
 
     theta = np.radians(theta_deg)
     cos_theta = float(np.cos(theta))
@@ -126,8 +143,15 @@ def init_tfsf_2d(
         )
 
     # ---- 2D grid sizing ----
-    # y-direction: periodic, same size as 3D grid
-    n2y = ny
+    # Periodic transverse dimension: y for TMz, z for TEz
+    if mode == "TMz":
+        n2y = ny
+    else:
+        if nz is None:
+            raise ValueError(
+                "nz is required for ey oblique TFSF (TEz mode)"
+            )
+        n2y = nz  # periodic axis is z for TEz
 
     # x-direction: TFSF span + margins + CPML on both ends
     n_cpml_2d = 30
@@ -138,7 +162,7 @@ def init_tfsf_2d(
 
     # i0_x: 2D x-index that maps to 3D x_lo
     i0_x = n_cpml_2d + n_margin_x
-    i0_y = 0  # periodic y, no padding
+    i0_y = 0  # periodic transverse, no padding
 
     # Source position
     if direction == "+x":
@@ -200,6 +224,7 @@ def init_tfsf_2d(
         grid_pad=cpml_layers,
         angle_deg=float(theta_deg),
         dx_1d=float(dx),
+        mode=mode,
     )
 
     state = TFSF2DState(
@@ -217,31 +242,13 @@ def init_tfsf_2d(
 
 
 # ---------------------------------------------------------------------------
-# 2D Yee update: TMz mode (Ez, Hx, Hy) — periodic y, CPML x
+# CPML helper (shared by both modes)
 # ---------------------------------------------------------------------------
 
-def update_tfsf_2d_h(cfg: TFSF2DConfig, st: TFSF2DState,
-                      dx: float, dt: float) -> TFSF2DState:
-    """Advance 2D auxiliary H: H^{n-1/2} -> H^{n+1/2}.
-
-    TMz: Hx -= (dt/mu0)*dEz/dy,  Hy += (dt/mu0)*dEz/dx
-    y-direction uses periodic (roll), x-direction uses zero-pad + CFS-CPML.
-    """
+def _apply_cpml_h(cfg, st, dez_dx, hy, coeff_h):
+    """Apply CFS-CPML corrections to the x-derivative H component."""
     n = cfg.n_cpml
-    ez = st.ez_2d
-    hx, hy = st.hx_2d, st.hy_2d
-    coeff_h = dt / MU_0
 
-    # dEz/dy — periodic (roll -1 along y)
-    dez_dy = (jnp.roll(ez, -1, axis=1) - ez) / dx
-
-    # dEz/dx — zero-pad forward difference along x
-    dez_dx = (jnp.concatenate([ez[1:, :], jnp.zeros((1, ez.shape[1]))], axis=0) - ez) / dx
-
-    hx = hx - coeff_h * dez_dy
-    hy = hy + coeff_h * dez_dx
-
-    # CFS-CPML for Hy (x-direction only)
     b_lo = cfg.b_cpml[:, None]
     c_lo = cfg.c_cpml[:, None]
     k_lo = cfg.kappa_cpml[:, None]
@@ -258,34 +265,13 @@ def update_tfsf_2d_h(cfg: TFSF2DConfig, st: TFSF2DState,
     hy = hy.at[-n:, :].add(coeff_h * psi_hy_xhi)
     hy = hy.at[-n:, :].add(coeff_h * (1.0 / k_hi - 1.0) * dez_dx[-n:, :])
 
-    # No y-CPML: y is periodic
-    return st._replace(
-        hx_2d=hx, hy_2d=hy,
-        psi_hy_xlo=psi_hy_xlo, psi_hy_xhi=psi_hy_xhi,
-    )
+    return hy, psi_hy_xlo, psi_hy_xhi
 
 
-def update_tfsf_2d_e(cfg: TFSF2DConfig, st: TFSF2DState,
-                      dx: float, dt: float, t: float) -> TFSF2DState:
-    """Advance 2D auxiliary Ez: Ez^n -> Ez^{n+1} + source injection.
-
-    TMz: Ez += (dt/eps0) * (dHy/dx - dHx/dy)
-    y-direction uses periodic (roll), x-direction uses zero-pad + CFS-CPML.
-    """
+def _apply_cpml_e(cfg, st, dhy_dx, ez, coeff_e):
+    """Apply CFS-CPML corrections to the x-derivative E component."""
     n = cfg.n_cpml
-    ez = st.ez_2d
-    hx, hy = st.hx_2d, st.hy_2d
-    coeff_e = dt / EPS_0
 
-    # dHy/dx — zero-pad backward difference along x
-    dhy_dx = (hy - jnp.concatenate([jnp.zeros((1, hy.shape[1])), hy[:-1, :]], axis=0)) / dx
-
-    # dHx/dy — periodic (roll +1 along y for backward difference)
-    dhx_dy = (hx - jnp.roll(hx, 1, axis=1)) / dx
-
-    ez = ez + coeff_e * (dhy_dx - dhx_dy)
-
-    # CFS-CPML for Ez (x-direction, from dHy/dx)
     b_lo = cfg.b_cpml[:, None]
     c_lo = cfg.c_cpml[:, None]
     k_lo = cfg.kappa_cpml[:, None]
@@ -302,12 +288,58 @@ def update_tfsf_2d_e(cfg: TFSF2DConfig, st: TFSF2DState,
     ez = ez.at[-n:, :].add(coeff_e * psi_ez_xhi)
     ez = ez.at[-n:, :].add(coeff_e * (1.0 / k_hi - 1.0) * dhy_dx[-n:, :])
 
-    # No y-CPML: y is periodic
+    return ez, psi_ez_xlo, psi_ez_xhi
+
+
+# ---------------------------------------------------------------------------
+# 2D Yee update — TMz mode (Ez, Hx, Hy) — periodic y, CPML x
+# ---------------------------------------------------------------------------
+
+def _update_h_tmz(cfg, st, dx, dt):
+    """TMz H update: Hx -= (dt/mu0)*dEz/dy,  Hy += (dt/mu0)*dEz/dx."""
+    ez = st.ez_2d
+    hx, hy = st.hx_2d, st.hy_2d
+    coeff_h = dt / MU_0
+
+    # dEz/dy -- periodic (roll -1 along y=axis1)
+    dez_dy = (jnp.roll(ez, -1, axis=1) - ez) / dx
+
+    # dEz/dx -- zero-pad forward difference along x=axis0
+    dez_dx = (jnp.concatenate([ez[1:, :], jnp.zeros((1, ez.shape[1]))], axis=0) - ez) / dx
+
+    hx = hx - coeff_h * dez_dy
+    hy = hy + coeff_h * dez_dx
+
+    # CFS-CPML for Hy (x-direction only)
+    hy, psi_hy_xlo, psi_hy_xhi = _apply_cpml_h(cfg, st, dez_dx, hy, coeff_h)
+
+    return st._replace(
+        hx_2d=hx, hy_2d=hy,
+        psi_hy_xlo=psi_hy_xlo, psi_hy_xhi=psi_hy_xhi,
+    )
+
+
+def _update_e_tmz(cfg, st, dx, dt, t):
+    """TMz E update: Ez += (dt/eps0)*(dHy/dx - dHx/dy) + source."""
+    ez = st.ez_2d
+    hx, hy = st.hx_2d, st.hy_2d
+    coeff_e = dt / EPS_0
+
+    # dHy/dx -- zero-pad backward difference along x
+    dhy_dx = (hy - jnp.concatenate([jnp.zeros((1, hy.shape[1])), hy[:-1, :]], axis=0)) / dx
+
+    # dHx/dy -- periodic (roll +1 along y for backward difference)
+    dhx_dy = (hx - jnp.roll(hx, 1, axis=1)) / dx
+
+    ez = ez + coeff_e * (dhy_dx - dhx_dy)
+
+    # CFS-CPML for Ez (x-direction, from dHy/dx)
+    ez, psi_ez_xlo, psi_ez_xhi = _apply_cpml_e(cfg, st, dhy_dx, ez, coeff_e)
 
     # ---- Inject oblique plane-wave source along a line ----
     c0 = 1.0 / jnp.sqrt(jnp.float32(EPS_0 * MU_0))
     j_indices = jnp.arange(ez.shape[1], dtype=jnp.float32)
-    y_offset = j_indices * dx  # i0_y=0, so y_offset = j * dx
+    y_offset = j_indices * dx
     t_delay = cfg.direction_sign * cfg.sin_theta * y_offset / c0
     arg = (t - t_delay - cfg.src_t0) / cfg.src_tau
     src_line = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
@@ -318,6 +350,106 @@ def update_tfsf_2d_e(cfg: TFSF2DConfig, st: TFSF2DState,
         psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
         step=st.step + 1,
     )
+
+
+# ---------------------------------------------------------------------------
+# 2D Yee update — TEz mode (Ey, Hx, Hz) — periodic z, CPML x
+#
+# State field mapping: ez_2d -> Ey, hx_2d -> Hx, hy_2d -> Hz
+#
+# Maxwell for TEz (xz-plane, Ey out-of-plane):
+#   dHx/dt =  (1/mu0) * dEy/dz
+#   dHz/dt = -(1/mu0) * dEy/dx
+#   dEy/dt =  (1/eps0) * (dHx/dz - dHz/dx)
+# ---------------------------------------------------------------------------
+
+def _update_h_tez(cfg, st, dx, dt):
+    """TEz H update: Hx += (dt/mu0)*dEy/dz,  Hz -= (dt/mu0)*dEy/dx."""
+    ey = st.ez_2d   # Ey stored in ez_2d slot
+    hx = st.hx_2d   # Hx
+    hz = st.hy_2d   # Hz stored in hy_2d slot
+    coeff_h = dt / MU_0
+
+    # dEy/dz -- periodic (roll -1 along z=axis1)
+    dey_dz = (jnp.roll(ey, -1, axis=1) - ey) / dx
+
+    # dEy/dx -- zero-pad forward difference along x=axis0
+    dey_dx = (jnp.concatenate([ey[1:, :], jnp.zeros((1, ey.shape[1]))], axis=0) - ey) / dx
+
+    # TEz Faraday: Hx += coeff * dEy/dz,  Hz -= coeff * dEy/dx
+    hx = hx + coeff_h * dey_dz
+    hz = hz - coeff_h * dey_dx
+
+    # CFS-CPML for Hz (x-direction only) — note the sign: Hz -= coeff*dEy/dx
+    # so CPML correction sign is -coeff_h
+    hz, psi_hy_xlo, psi_hy_xhi = _apply_cpml_h(cfg, st, dey_dx, hz, -coeff_h)
+
+    return st._replace(
+        hx_2d=hx, hy_2d=hz,
+        psi_hy_xlo=psi_hy_xlo, psi_hy_xhi=psi_hy_xhi,
+    )
+
+
+def _update_e_tez(cfg, st, dx, dt, t):
+    """TEz E update: Ey += (dt/eps0)*(dHx/dz - dHz/dx) + source."""
+    ey = st.ez_2d   # Ey stored in ez_2d slot
+    hx = st.hx_2d   # Hx
+    hz = st.hy_2d   # Hz stored in hy_2d slot
+    coeff_e = dt / EPS_0
+
+    # dHx/dz -- periodic (roll +1 along z for backward difference)
+    dhx_dz = (hx - jnp.roll(hx, 1, axis=1)) / dx
+
+    # dHz/dx -- zero-pad backward difference along x
+    dhz_dx = (hz - jnp.concatenate([jnp.zeros((1, hz.shape[1])), hz[:-1, :]], axis=0)) / dx
+
+    # TEz Ampere: Ey += coeff * (dHx/dz - dHz/dx)
+    ey = ey + coeff_e * (dhx_dz - dhz_dx)
+
+    # CFS-CPML for Ey (x-direction, from -dHz/dx term)
+    # The x-derivative contribution is -coeff_e * dHz/dx, so CPML sign is -coeff_e
+    ey, psi_ez_xlo, psi_ez_xhi = _apply_cpml_e(cfg, st, dhz_dx, ey, -coeff_e)
+
+    # ---- Inject oblique plane-wave source along a line ----
+    c0 = 1.0 / jnp.sqrt(jnp.float32(EPS_0 * MU_0))
+    j_indices = jnp.arange(ey.shape[1], dtype=jnp.float32)
+    z_offset = j_indices * dx
+    t_delay = cfg.direction_sign * cfg.sin_theta * z_offset / c0
+    arg = (t - t_delay - cfg.src_t0) / cfg.src_tau
+    src_line = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
+    ey = ey.at[cfg.src_x, :].add(src_line)
+
+    return st._replace(
+        ez_2d=ey,
+        psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
+        step=st.step + 1,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Mode-dispatching update entry points
+# ---------------------------------------------------------------------------
+
+def update_tfsf_2d_h(cfg: TFSF2DConfig, st: TFSF2DState,
+                      dx: float, dt: float) -> TFSF2DState:
+    """Advance 2D auxiliary H: H^{n-1/2} -> H^{n+1/2}.
+
+    Dispatches to TMz or TEz based on ``cfg.mode``.
+    """
+    if cfg.mode == "TEz":
+        return _update_h_tez(cfg, st, dx, dt)
+    return _update_h_tmz(cfg, st, dx, dt)
+
+
+def update_tfsf_2d_e(cfg: TFSF2DConfig, st: TFSF2DState,
+                      dx: float, dt: float, t: float) -> TFSF2DState:
+    """Advance 2D auxiliary E: E^n -> E^{n+1} + source injection.
+
+    Dispatches to TMz or TEz based on ``cfg.mode``.
+    """
+    if cfg.mode == "TEz":
+        return _update_e_tez(cfg, st, dx, dt, t)
+    return _update_e_tmz(cfg, st, dx, dt, t)
 
 
 def update_tfsf_2d(cfg: TFSF2DConfig, st: TFSF2DState,
@@ -332,16 +464,24 @@ def update_tfsf_2d(cfg: TFSF2DConfig, st: TFSF2DState,
 # Sample incident fields from 2D grid
 # ---------------------------------------------------------------------------
 
-def _sample_ez_at_x(cfg: TFSF2DConfig, st: TFSF2DState,
-                     ix_2d: int, ny_3d: int) -> jnp.ndarray:
-    """Sample Ez from 2D grid at x-index for all 3D y cells. Returns (ny_3d,)."""
-    return st.ez_2d[ix_2d, :ny_3d]
+def _sample_e_at_x(cfg: TFSF2DConfig, st: TFSF2DState,
+                    ix_2d: int, n_trans: int) -> jnp.ndarray:
+    """Sample E (out-of-plane) from 2D grid at x-index. Returns (n_trans,)."""
+    return st.ez_2d[ix_2d, :n_trans]
 
 
-def _sample_hy_at_x(cfg: TFSF2DConfig, st: TFSF2DState,
-                     ix_2d: int, ny_3d: int) -> jnp.ndarray:
-    """Sample Hy from 2D grid at x-index for all 3D y cells. Returns (ny_3d,)."""
-    return st.hy_2d[ix_2d, :ny_3d]
+def _sample_h2_at_x(cfg: TFSF2DConfig, st: TFSF2DState,
+                     ix_2d: int, n_trans: int) -> jnp.ndarray:
+    """Sample H2 (x-derivative component: Hy for TMz, Hz for TEz).
+
+    Returns (n_trans,).
+    """
+    return st.hy_2d[ix_2d, :n_trans]
+
+
+# Keep old names as aliases for backward compatibility
+_sample_ez_at_x = _sample_e_at_x
+_sample_hy_at_x = _sample_h2_at_x
 
 
 # ---------------------------------------------------------------------------
@@ -352,15 +492,15 @@ def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
                      dx: float, dt: float):
     """Apply E-field TFSF correction using 2D aux grid (call AFTER update_e).
 
-    The 2D auxiliary grid always runs TMz, so ``hy_2d`` is the TMz Hy
-    regardless of 3D polarization.  For Ez polarization the sampled Hy
-    maps directly to the incident Hy needed by the 3D correction.  For
-    Ey polarization the incident Hz equals ``-hy_2d`` (TEz↔TMz sign
-    relation), which exactly cancels the curl-sign flip, leaving the
-    same fixed signs ``(-coeff, +coeff)`` for both polarizations.
+    TMz mode: incident fields vary in y, broadcast along z.
+      E_inc[x_lo, j, :] -= coeff * H_aux[x_lo-0.5, j]
+      E_inc[x_hi+1, j, :] += coeff * H_aux[x_hi+0.5, j]
 
-    E_inc[x_lo, j, :] -= (dt/(eps0*dx)) * H_aux[x_lo-0.5, j]
-    E_inc[x_hi+1, j, :] += (dt/(eps0*dx)) * H_aux[x_hi+0.5, j]
+    TEz mode: incident fields vary in z, broadcast along y.
+      E_inc[x_lo, :, k] -= coeff * H_aux[x_lo-0.5, k]
+      E_inc[x_hi+1, :, k] += coeff * H_aux[x_hi+0.5, k]
+
+    Signs are fixed (-coeff at x_lo, +coeff at x_hi+1) for both modes.
     """
     coeff = dt / (EPS_0 * dx)
     i0 = cfg.i0_x
@@ -368,18 +508,28 @@ def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     ny_3d = e_ref.shape[1]
     nz_3d = e_ref.shape[2]
 
-    h_inc_lo = _sample_hy_at_x(cfg, tfsf_st, i0 - 1, ny_3d)
-    h_inc_hi = _sample_hy_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), ny_3d)
+    if cfg.mode == "TEz":
+        # TEz: 2D grid transverse axis is z, broadcast along y
+        h_inc_lo = _sample_h2_at_x(cfg, tfsf_st, i0 - 1, nz_3d)
+        h_inc_hi = _sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), nz_3d)
 
-    h_lo_3d = jnp.broadcast_to(h_inc_lo[:, None], (ny_3d, nz_3d))
-    h_hi_3d = jnp.broadcast_to(h_inc_hi[:, None], (ny_3d, nz_3d))
+        h_lo_3d = jnp.broadcast_to(h_inc_lo[None, :], (ny_3d, nz_3d))
+        h_hi_3d = jnp.broadcast_to(h_inc_hi[None, :], (ny_3d, nz_3d))
+    else:
+        # TMz: 2D grid transverse axis is y, broadcast along z
+        h_inc_lo = _sample_h2_at_x(cfg, tfsf_st, i0 - 1, ny_3d)
+        h_inc_hi = _sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), ny_3d)
 
-    # Signs are fixed (-coeff at x_lo, +coeff at x_hi+1) for both
-    # polarizations because the TMz-to-TEz field mapping sign cancels
-    # the Ampere curl-sign difference.  See docstring above.
+        h_lo_3d = jnp.broadcast_to(h_inc_lo[:, None], (ny_3d, nz_3d))
+        h_hi_3d = jnp.broadcast_to(h_inc_hi[:, None], (ny_3d, nz_3d))
+
+    # For TMz (Ez/Hy, curl_sign=+1): Ampere has +dHy/dx, so correction
+    # sign is (-coeff, +coeff).  For TEz (Ey/Hz, curl_sign=-1): Ampere
+    # has -dHz/dx, so correction sign is (+coeff, -coeff).  Using
+    # curl_sign unifies both: (-curl_sign*coeff, +curl_sign*coeff).
     e_field = e_ref
-    e_field = e_field.at[cfg.x_lo, :, :].add(-coeff * h_lo_3d)
-    e_field = e_field.at[cfg.x_hi + 1, :, :].add(coeff * h_hi_3d)
+    e_field = e_field.at[cfg.x_lo, :, :].add(-cfg.curl_sign * coeff * h_lo_3d)
+    e_field = e_field.at[cfg.x_hi + 1, :, :].add(cfg.curl_sign * coeff * h_hi_3d)
 
     return state._replace(**{cfg.electric_component: e_field})
 
@@ -388,13 +538,11 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
                      dx: float, dt: float):
     """Apply H-field TFSF correction using 2D aux grid (call AFTER update_h).
 
-    The 2D auxiliary grid's ``ez_2d`` serves as the incident electric
-    field for both polarizations (no sign conversion needed).  The
-    ``curl_sign`` correctly accounts for the Faraday curl difference
-    between Hy (Ez pol) and Hz (Ey pol).
+    TMz mode: incident fields vary in y, broadcast along z.
+    TEz mode: incident fields vary in z, broadcast along y.
 
-    H_mag[x_lo-1, j, :] -= curl_sign * (dt/(mu0*dx)) * E_aux[x_lo, j]
-    H_mag[x_hi, j, :]   += curl_sign * (dt/(mu0*dx)) * E_aux[x_hi+1, j]
+    H_mag[x_lo-1, ...] -= curl_sign * coeff * E_aux[x_lo, ...]
+    H_mag[x_hi, ...]   += curl_sign * coeff * E_aux[x_hi+1, ...]
     """
     coeff = dt / (MU_0 * dx)
     i0 = cfg.i0_x
@@ -402,11 +550,20 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     ny_3d = h_ref.shape[1]
     nz_3d = h_ref.shape[2]
 
-    e_inc_lo = _sample_ez_at_x(cfg, tfsf_st, i0, ny_3d)
-    e_inc_hi = _sample_ez_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), ny_3d)
+    if cfg.mode == "TEz":
+        # TEz: 2D grid transverse axis is z, broadcast along y
+        e_inc_lo = _sample_e_at_x(cfg, tfsf_st, i0, nz_3d)
+        e_inc_hi = _sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), nz_3d)
 
-    e_lo_3d = jnp.broadcast_to(e_inc_lo[:, None], (ny_3d, nz_3d))
-    e_hi_3d = jnp.broadcast_to(e_inc_hi[:, None], (ny_3d, nz_3d))
+        e_lo_3d = jnp.broadcast_to(e_inc_lo[None, :], (ny_3d, nz_3d))
+        e_hi_3d = jnp.broadcast_to(e_inc_hi[None, :], (ny_3d, nz_3d))
+    else:
+        # TMz: 2D grid transverse axis is y, broadcast along z
+        e_inc_lo = _sample_e_at_x(cfg, tfsf_st, i0, ny_3d)
+        e_inc_hi = _sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), ny_3d)
+
+        e_lo_3d = jnp.broadcast_to(e_inc_lo[:, None], (ny_3d, nz_3d))
+        e_hi_3d = jnp.broadcast_to(e_inc_hi[:, None], (ny_3d, nz_3d))
 
     h_field = h_ref
     h_field = h_field.at[cfg.x_lo - 1, :, :].add(-cfg.curl_sign * coeff * e_lo_3d)

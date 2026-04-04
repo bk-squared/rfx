@@ -92,6 +92,7 @@ def init_tfsf(
     direction: str = "+x",
     angle_deg: float = 0.0,
     ny: int | None = None,
+    nz: int | None = None,
 ) -> tuple:
     """Initialize TFSF source.
 
@@ -116,7 +117,12 @@ def init_tfsf(
         angles tilt toward the positive transverse axis.
     ny : int | None
         Number of cells in y (3D grid).  Required for oblique incidence
-        (2D auxiliary grid).  Ignored for normal incidence.
+        with ez polarization (2D TMz auxiliary grid).  Ignored for
+        normal incidence.
+    nz : int | None
+        Number of cells in z (3D grid).  Required for oblique incidence
+        with ey polarization (2D TEz auxiliary grid).  Ignored for
+        normal incidence and ez polarization.
 
     Returns
     -------
@@ -131,6 +137,7 @@ def init_tfsf(
             ny = nx  # default: square grid
         return init_tfsf_2d(
             nx, ny, dx, dt,
+            nz=nz,
             cpml_layers=cpml_layers,
             tfsf_margin=tfsf_margin,
             f0=f0,

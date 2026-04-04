@@ -2,9 +2,10 @@
 
 Tests:
 1. ey normal incidence leakage < 0.1% (1D aux grid, curl_sign=-1 path)
-2. ey oblique incidence correctly raises NotImplementedError
-   (2D aux grid is TMz/xy-plane only; ey oblique needs TEz/xz-plane)
-3. E-field correction sign independence: verify the fixed (-coeff, +coeff)
+2. ey oblique 45-deg leakage < 1% (TEz 2D aux grid)
+3. ey oblique 30-deg leakage < 1% (TEz 2D aux grid)
+4. ey oblique -30-deg leakage < 1% (TEz 2D aux grid)
+5. E-field correction sign independence: verify the fixed (-coeff, +coeff)
    signs in apply_tfsf_2d_e give identical results to the curl_sign-based
    formula for ez polarization (regression guard for the sign fix).
 """
@@ -25,7 +26,7 @@ from rfx.core.yee import init_state, init_materials, update_h, update_e
 def _run_tfsf_leakage(nx, ny, nz, dx, dt, angle_deg, polarization, direction, n_steps):
     """Run TFSF and measure scattered-to-total field energy ratio."""
     cfg, st = init_tfsf(
-        nx, dx, dt, ny=ny, cpml_layers=10,
+        nx, dx, dt, ny=ny, nz=nz, cpml_layers=10,
         f0=5e9, bandwidth=0.5, amplitude=1.0,
         polarization=polarization, direction=direction,
         angle_deg=angle_deg,
@@ -71,6 +72,14 @@ class TestObliqueTFSFCoverage:
         dx = 1e-3
         return 80, 80, 3, dx, 0.5 * dx / 3e8
 
+    @pytest.fixture
+    def grid_params_ey_oblique(self):
+        """Grid params for ey oblique tests — needs enough z cells for oblique delay."""
+        dx = 1e-3
+        # For ey oblique, tilt is in xz-plane, so nz must be large enough.
+        # ny can be small since ey is uniform in y.
+        return 80, 3, 80, dx, 0.5 * dx / 3e8
+
     def test_ey_polarization_normal(self, grid_params):
         """ey polarization at normal incidence: leakage < 0.1%.
 
@@ -96,18 +105,38 @@ class TestObliqueTFSFCoverage:
         print(f"\ney normal -x TFSF: leakage={leakage:.6f}")
         assert leakage < 0.001, f"ey normal -x leakage {leakage:.5f} > 0.1%"
 
-    def test_ey_oblique_raises_not_implemented(self):
-        """ey + oblique angle correctly raises NotImplementedError.
+    def test_ey_oblique_45_leakage(self, grid_params_ey_oblique):
+        """ey + oblique 45-deg: TEz 2D aux grid leakage < 1%."""
+        nx, ny, nz, dx, dt = grid_params_ey_oblique
+        leakage = _run_tfsf_leakage(
+            nx, ny, nz, dx, dt,
+            angle_deg=45.0, polarization="ey",
+            direction="+x", n_steps=500,
+        )
+        print(f"\ney oblique 45-deg TFSF: leakage={leakage:.6f}")
+        assert leakage < 0.01, f"ey oblique 45 deg leakage {leakage:.5f} > 1%"
 
-        The 2D auxiliary grid operates in TMz mode (xy-plane).  For ey
-        polarization the oblique tilt lies in the xz-plane, which requires
-        a TEz auxiliary grid not yet implemented.
-        """
-        dx = 1e-3
-        dt = 0.5 * dx / 3e8
-        with pytest.raises(NotImplementedError, match="ey polarization"):
-            init_tfsf(80, dx, dt, ny=80, cpml_layers=10,
-                      polarization="ey", angle_deg=45.0)
+    def test_ey_oblique_30_leakage(self, grid_params_ey_oblique):
+        """ey + oblique 30-deg: TEz 2D aux grid leakage < 1%."""
+        nx, ny, nz, dx, dt = grid_params_ey_oblique
+        leakage = _run_tfsf_leakage(
+            nx, ny, nz, dx, dt,
+            angle_deg=30.0, polarization="ey",
+            direction="+x", n_steps=500,
+        )
+        print(f"\ney oblique 30-deg TFSF: leakage={leakage:.6f}")
+        assert leakage < 0.01, f"ey oblique 30 deg leakage {leakage:.5f} > 1%"
+
+    def test_ey_oblique_neg30_leakage(self, grid_params_ey_oblique):
+        """ey + oblique -30-deg: TEz 2D aux grid leakage < 1%."""
+        nx, ny, nz, dx, dt = grid_params_ey_oblique
+        leakage = _run_tfsf_leakage(
+            nx, ny, nz, dx, dt,
+            angle_deg=-30.0, polarization="ey",
+            direction="+x", n_steps=500,
+        )
+        print(f"\ney oblique -30-deg TFSF: leakage={leakage:.6f}")
+        assert leakage < 0.01, f"ey oblique -30 deg leakage {leakage:.5f} > 1%"
 
     def test_ez_oblique_e_correction_sign_regression(self, grid_params):
         """ez oblique must still have near-zero leakage (sign fix regression guard).
@@ -158,3 +187,16 @@ class TestObliqueTFSFCoverage:
         assert cfg.electric_component == "ey"
         assert cfg.magnetic_component == "hz"
         assert cfg.curl_sign == -1.0
+
+    def test_init_tfsf_2d_ey_oblique_creates_tez(self):
+        """ey + oblique dispatches to 2D TEz auxiliary grid."""
+        dx = 1e-3
+        dt = 0.5 * dx / 3e8
+        from rfx.sources.tfsf_2d import TFSF2DConfig
+        cfg, _ = init_tfsf(80, dx, dt, ny=3, nz=80, cpml_layers=10,
+                           polarization="ey", angle_deg=45.0)
+        assert isinstance(cfg, TFSF2DConfig), "ey oblique should use 2D aux grid"
+        assert cfg.mode == "TEz"
+        assert cfg.electric_component == "ey"
+        assert cfg.magnetic_component == "hz"
+        assert cfg.n2y == 80  # periodic axis is z for TEz
