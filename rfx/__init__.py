@@ -1,6 +1,6 @@
 """rfx — JAX-based RF FDTD electromagnetic simulator."""
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult
