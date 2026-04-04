@@ -434,3 +434,98 @@ class TestDistributedLumpedPort:
         ts2 = np.array(r2.time_series)
         err = np.max(np.abs(ts1 - ts2)) / (np.max(np.abs(ts1)) + 1e-30)
         assert err < 0.01, f"Lumped port 2-device error {err:.2e}"
+
+
+class TestDistributedDebye:
+    """Tests for Debye dispersive material support in the distributed runner (Phase 3b)."""
+
+    def test_distributed_debye_matches_single(self):
+        """Debye dispersion in distributed PEC should match single-device."""
+        from rfx import Box, DebyePole
+
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.08, 0.024, 0.024),
+            boundary="pec",
+        )
+        sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
+        sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
+        sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
+        sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
+
+        r1 = sim.run(n_steps=100)
+        r4 = sim.run(n_steps=100, devices=jax.devices()[:4])
+
+        ts1 = np.array(r1.time_series)
+        ts4 = np.array(r4.time_series)
+        err = np.max(np.abs(ts1 - ts4)) / (np.max(np.abs(ts1)) + 1e-30)
+        assert err < 0.01, f"Debye distributed vs single error {err:.2e}"
+
+    def test_distributed_debye_nonzero_signal(self):
+        """Debye in distributed mode should produce non-zero probe signal."""
+        from rfx import Box, DebyePole
+
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.08, 0.024, 0.024),
+            boundary="pec",
+        )
+        sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
+        sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
+        sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
+        sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
+
+        devices = jax.devices()[:4]
+        result = sim.run(n_steps=50, devices=devices)
+        ts = np.array(result.time_series).ravel()
+        assert np.max(np.abs(ts)) > 0, "Debye distributed signal is zero"
+
+    def test_distributed_debye_2_devices(self):
+        """Debye dispersion should also work with 2 devices."""
+        from rfx import Box, DebyePole
+
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.08, 0.024, 0.024),
+            boundary="pec",
+        )
+        sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
+        sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
+        sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
+        sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
+
+        r1 = sim.run(n_steps=100)
+        r2 = sim.run(n_steps=100, devices=jax.devices()[:2])
+
+        ts1 = np.array(r1.time_series)
+        ts2 = np.array(r2.time_series)
+        err = np.max(np.abs(ts1 - ts2)) / (np.max(np.abs(ts1)) + 1e-30)
+        assert err < 0.01, f"Debye 2-device error {err:.2e}"
+
+
+class TestDistributedLorentz:
+    """Tests for Lorentz dispersive material support in the distributed runner (Phase 3b)."""
+
+    def test_distributed_lorentz_matches_single(self):
+        """Lorentz dispersion in distributed PEC should match single-device."""
+        from rfx import Box
+        from rfx.materials.lorentz import lorentz_pole
+
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.08, 0.024, 0.024),
+            boundary="pec",
+        )
+        pole = lorentz_pole(delta_eps=1.0, omega_0=2.0 * np.pi * 3e9, delta=1e9)
+        sim.add_material("resonant", eps_r=2.0, lorentz_poles=[pole])
+        sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="resonant")
+        sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
+        sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
+
+        r1 = sim.run(n_steps=100)
+        r4 = sim.run(n_steps=100, devices=jax.devices()[:4])
+
+        ts1 = np.array(r1.time_series)
+        ts4 = np.array(r4.time_series)
+        err = np.max(np.abs(ts1 - ts4)) / (np.max(np.abs(ts1)) + 1e-30)
+        assert err < 0.01, f"Lorentz distributed vs single error {err:.2e}"
