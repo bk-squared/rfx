@@ -276,3 +276,92 @@ def test_conformal_stability_10k_steps():
     # After source stops, energy should decay or stay bounded
     assert final_energy < max_energy * 10, \
         f"Energy diverged: final={final_energy:.6e}, max_post_source={max_energy:.6e}"
+
+
+# ---------------------------------------------------------------------------
+# Coupled advanced workflow tests (conformal + CPML / dispersive / gradients)
+# ---------------------------------------------------------------------------
+
+def test_conformal_with_cpml():
+    """Conformal PEC should work with CPML boundary (no NaN, non-zero fields)."""
+    from rfx.api import Simulation
+
+    sim = Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.04), boundary="cpml")
+    sim.add(Cylinder((0.02, 0.02, 0.02), 0.008, 0.03, axis="z"), material="pec")
+    sim.add_source((0.005, 0.005, 0.02), component="ez")
+    sim.add_probe((0.035, 0.035, 0.02), component="ez")
+
+    result = sim.run(n_steps=300, conformal_pec=True)
+    assert result is not None
+    ts = np.array(result.time_series)
+    # Non-zero fields: source is well outside PEC cylinder, probe should see signal
+    assert np.max(np.abs(ts)) > 1e-10, \
+        f"Fields are essentially zero: max|ts|={np.max(np.abs(ts)):.2e}"
+    # No NaN
+    assert not np.any(np.isnan(ts)), "NaN detected in time series"
+
+
+def test_conformal_with_dispersive():
+    """Conformal PEC + Debye dielectric should not conflict."""
+    from rfx.api import Simulation
+    from rfx.materials.debye import DebyePole
+
+    sim = Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.04), boundary="pec")
+    # Fill domain with dispersive Debye medium
+    sim.add_material("disp", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
+    sim.add(Box((0, 0, 0), (0.04, 0.04, 0.04)), material="disp")
+    # Embed PEC cylinder (conformal)
+    sim.add(Cylinder((0.02, 0.02, 0.02), 0.005, 0.03, axis="z"), material="pec")
+    sim.add_source((0.005, 0.005, 0.02), component="ez")
+    sim.add_probe((0.035, 0.035, 0.02), component="ez")
+
+    result = sim.run(n_steps=200, conformal_pec=True)
+    assert result is not None
+    ts = np.array(result.time_series)
+    assert not np.any(np.isnan(ts)), "NaN detected in conformal+dispersive run"
+    assert not np.any(np.isinf(ts)), "Inf detected in conformal+dispersive run"
+
+
+def test_conformal_gradient_flows():
+    """jax.grad should flow through a conformal PEC simulation."""
+    import jax
+    from rfx.grid import Grid
+    from rfx.core.yee import MaterialArrays
+    from rfx.simulation import run, make_source, make_probe
+
+    grid = Grid(freq_max=5e9, domain=(0.02, 0.02, 0.02), dx=0.002, cpml_layers=0)
+    cyl = Cylinder((0.01, 0.01, 0.01), 0.004, 0.015, axis="z")
+
+    pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
+    n_steps = 50
+    src = make_source(grid, (0.002, 0.002, 0.01), "ez", pulse, n_steps)
+    prb = make_probe(grid, (0.018, 0.018, 0.01), "ez")
+
+    # Pre-compute conformal weights (outside the AD-traced objective)
+    from rfx.geometry.conformal import (
+        compute_conformal_weights_sdf,
+        clamp_conformal_weights,
+        conformal_eps_correction,
+    )
+    w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, [cyl])
+    w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, 0.1)
+
+    def objective(eps_r):
+        eps_ex, eps_ey, eps_ez = conformal_eps_correction(eps_r, w_ex, w_ey, w_ez)
+        sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
+        mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
+        mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+        result = run(
+            grid, mats, n_steps,
+            sources=[src], probes=[prb],
+            checkpoint=True,
+            aniso_eps=(eps_ex, eps_ey, eps_ez),
+            conformal_weights=(w_ex, w_ey, w_ez),
+        )
+        return jnp.sum(result.time_series ** 2)
+
+    eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
+    grad = jax.grad(objective)(eps_r)
+    grad_max = float(jnp.max(jnp.abs(grad)))
+    assert grad_max > 1e-15, f"Gradient is zero: |grad|_max={grad_max:.2e}"
+    assert not np.any(np.isnan(np.array(grad))), "NaN in gradient"
