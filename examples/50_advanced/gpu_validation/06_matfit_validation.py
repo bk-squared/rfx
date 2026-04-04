@@ -169,7 +169,7 @@ def main():
     print(f"{'delta_eps':<15s}  {true_poles[0].delta_eps:12.3f}  {delta_eps_fit:12.3f}  {delta_eps_err:7.2f}%  {DELTA_EPS_THRESH:7.1f}%")
     print(f"{'tau (ps)':<15s}  {true_poles[0].tau*1e12:12.3f}  {tau_fit*1e12:12.3f}  {tau_err:7.2f}%  {TAU_THRESH:7.1f}%")
     if s11_rms_err is not None:
-        print(f"{'S11 RMS (dB)':<15s}  {'':>12s}  {s11_rms_err:12.3f}  {'':>8s}  {'< 1.0':>8s}")
+        print(f"{'S11 RMS (dB)':<15s}  {'':>12s}  {s11_rms_err:12.6f}  {'':>8s}  {'< 1.0':>8s}")
     print(f"{'Fit error':<15s}  {'':>12s}  {fit_1.fit_error*100:11.3f}%")
 
     criterion_eps_inf = eps_inf_err < EPS_INF_THRESH
@@ -181,7 +181,7 @@ def main():
     print(f"  eps_inf error < {EPS_INF_THRESH}%    : {'PASS' if criterion_eps_inf else 'FAIL'} ({eps_inf_err:.2f}%)")
     print(f"  delta_eps error < {DELTA_EPS_THRESH}% : {'PASS' if criterion_delta_eps else 'FAIL'} ({delta_eps_err:.2f}%)")
     print(f"  tau error < {TAU_THRESH}%       : {'PASS' if criterion_tau else 'FAIL'} ({tau_err:.2f}%)")
-    print(f"  S11 RMS < 1 dB         : {'PASS' if criterion_s11 else 'FAIL'} ({s11_rms_err:.3f} dB)" if s11_rms_err is not None else "  S11 RMS < 1 dB         : N/A")
+    print(f"  S11 RMS < 1 dB         : {'PASS' if criterion_s11 else 'FAIL'} ({s11_rms_err:.6f} dB)" if s11_rms_err is not None else "  S11 RMS < 1 dB         : N/A")
     print(f"Elapsed time             : {elapsed:.1f}s")
 
     # --- Figures ---

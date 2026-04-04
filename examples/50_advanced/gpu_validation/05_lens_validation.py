@@ -133,15 +133,21 @@ def main():
 
     # Energy at output is -loss
     opt_output_energy = -final_loss
-    ref_output_energy_from_opt = -init_loss
-    energy_gain_dB = 10 * np.log10(max(abs(opt_output_energy), 1e-30)) - \
-                     10 * np.log10(max(abs(ref_output_energy_from_opt), 1e-30))
+    opt_init_energy = -init_loss  # optimizer starts from eps_r midpoint, NOT air
 
-    # Also compute from direct reference
+    # Gain MUST be measured against the true no-lens reference run, not the
+    # optimizer's initial state (which starts at eps_r = midpoint of range,
+    # already a dielectric slab).
     if ref_output_energy > 0 and abs(opt_output_energy) > 0:
-        direct_gain_dB = 10 * np.log10(abs(opt_output_energy) / ref_output_energy)
+        gain_vs_nolens_dB = 10 * np.log10(abs(opt_output_energy) / ref_output_energy)
     else:
-        direct_gain_dB = energy_gain_dB
+        gain_vs_nolens_dB = 0.0
+
+    # Also report optimizer convergence (final vs init) for diagnostics
+    if abs(opt_init_energy) > 0 and abs(opt_output_energy) > 0:
+        gain_vs_init_dB = 10 * np.log10(abs(opt_output_energy) / abs(opt_init_energy))
+    else:
+        gain_vs_init_dB = 0.0
 
     # --- Validation ---
     elapsed = time.time() - t_start
@@ -149,16 +155,17 @@ def main():
     print(f"\n{'='*60}")
     print("VALIDATION RESULTS")
     print(f"{'='*60}")
-    print(f"Reference energy    : {ref_output_energy:.4e}")
-    print(f"Optimized energy    : {abs(opt_output_energy):.4e}")
-    print(f"Energy gain         : {energy_gain_dB:.2f} dB")
-    print(f"Direct gain         : {direct_gain_dB:.2f} dB")
-    print(f"Theoretical D_max   : {D_theory_dB:.1f} dBi")
-    print(f"Design eps_r range  : {eps_min_val:.2f} - {eps_max_val:.2f} (mean {eps_mean:.2f})")
-    print(f"Criterion           : energy gain > {MIN_GAIN_DB} dB")
-    print(f"Elapsed time        : {elapsed:.1f}s")
+    print(f"Reference energy (no lens) : {ref_output_energy:.4e}")
+    print(f"Optimizer init energy      : {abs(opt_init_energy):.4e}")
+    print(f"Optimized energy           : {abs(opt_output_energy):.4e}")
+    print(f"Gain vs no-lens baseline   : {gain_vs_nolens_dB:.2f} dB")
+    print(f"Gain vs optimizer init     : {gain_vs_init_dB:.2f} dB (diagnostic)")
+    print(f"Theoretical D_max          : {D_theory_dB:.1f} dBi")
+    print(f"Design eps_r range         : {eps_min_val:.2f} - {eps_max_val:.2f} (mean {eps_mean:.2f})")
+    print(f"Criterion                  : gain vs no-lens > {MIN_GAIN_DB} dB")
+    print(f"Elapsed time               : {elapsed:.1f}s")
 
-    gain_achieved = max(energy_gain_dB, direct_gain_dB)
+    gain_achieved = gain_vs_nolens_dB  # only the true baseline matters
     criterion_gain = gain_achieved > MIN_GAIN_DB
     criterion_eps = eps_min_val >= 0.9 and eps_max_val <= 10.5
 

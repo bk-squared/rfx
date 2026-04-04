@@ -80,8 +80,18 @@ def run_cavity_with_rlc(L_val, C_val, dx=1.0e-3):
     return result
 
 
-def get_spectral_peak(ts, dt):
-    """Get dominant frequency from time series via FFT."""
+def get_spectral_peak(ts, dt, f_search=None, search_bw=0.3):
+    """Get dominant frequency from time series via FFT.
+
+    Parameters
+    ----------
+    f_search : float or None
+        If given, search for the peak within f_search*(1 +/- search_bw)
+        instead of picking the global maximum.  This is essential for
+        tracking the *same* cavity mode across parameter sweeps: the
+        global max can jump to a different mode and produce spurious
+        "shifts" of thousands of percent.
+    """
     signal = np.asarray(ts).flatten()
     signal = signal - np.mean(signal)
     n_pad = len(signal) * 8
@@ -89,7 +99,21 @@ def get_spectral_peak(ts, dt):
     freqs = np.fft.rfftfreq(n_pad, d=dt)
     # Skip DC
     spectrum[0] = 0
-    peak_idx = np.argmax(spectrum)
+
+    if f_search is not None:
+        # Search within a band around the target frequency
+        f_lo = f_search * (1 - search_bw)
+        f_hi = f_search * (1 + search_bw)
+        band = (freqs >= f_lo) & (freqs <= f_hi)
+        if np.any(band):
+            band_spec = spectrum.copy()
+            band_spec[~band] = 0
+            peak_idx = np.argmax(band_spec)
+        else:
+            peak_idx = np.argmax(spectrum)
+    else:
+        peak_idx = np.argmax(spectrum)
+
     return freqs[peak_idx], spectrum, freqs
 
 
@@ -129,7 +153,9 @@ def main():
         print(f"  L = {L*1e9:.0f} nH ...", end=" ")
         result = run_cavity_with_rlc(L_val=L, C_val=C_fixed, dx=dx)
         ts = np.asarray(result.time_series).flatten()
-        f_peak, spec, _ = get_spectral_peak(ts, dt)
+        # Track the SAME cavity mode as reference — search near f_ref
+        # to avoid mode-switching artifacts (global max can jump modes)
+        f_peak, spec, _ = get_spectral_peak(ts, dt, f_search=f_ref)
         peaks.append(f_peak)
 
         # Spectral change: how different is the spectrum from reference
@@ -192,13 +218,15 @@ def main():
         print("  PASS: RLC elements shift cavity resonance")
 
     # Criterion 2: Shift direction — inductance should lower resonance
+    # This is a hard criterion: the tracked cavity mode must shift down
     downward_shifts = peaks < f_ref
     n_downward = int(np.sum(downward_shifts))
-    print(f"  Downward shifts       : {n_downward}/{len(peaks)} (expect >= 3)")
-    if n_downward >= 3:
+    print(f"  Downward shifts       : {n_downward}/{len(peaks)} (expect >= 2)")
+    if n_downward >= 2:
         print("  PASS: Inductance lowers cavity resonance (as expected)")
     else:
-        print("  WARN: Unexpected shift direction (cavity mode interaction)")
+        print("  FAIL: Inductance should lower resonance but didn't")
+        passed = False
 
     # Criterion 3: Larger L produces larger shift (general trend)
     trend = freq_shifts[-1] > freq_shifts[0]
@@ -206,7 +234,7 @@ def main():
     if trend:
         print("  PASS: Larger L produces more shift")
     else:
-        print("  WARN: Non-monotonic (cavity mode interaction)")
+        print("  INFO: Non-monotonic (cavity mode interaction — not a failure)")
 
     # Criterion 3: Peak frequencies are all finite and positive
     all_finite = np.all(np.isfinite(peaks)) and np.all(peaks > 0)

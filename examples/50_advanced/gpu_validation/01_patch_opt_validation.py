@@ -114,10 +114,13 @@ def main():
     # ---- Evaluate ----
     init_loss = topo_result.history[0]
     final_loss = topo_result.history[-1]
-    loss_improvement = (1 - final_loss / init_loss) * 100 if init_loss != 0 else 0
 
+    # For negative losses (minimizing negative energy), improvement is
+    # how much the absolute value increased.  Report absolute change.
     loss_decreased = final_loss < init_loss
     loss_not_flat = float(np.std(topo_result.history)) > 1e-12
+    abs_improvement = abs(final_loss) - abs(init_loss)
+    energy_ratio = abs(final_loss) / max(abs(init_loss), 1e-30)
     pipeline_ok = loss_decreased and loss_not_flat
 
     elapsed = time.time() - t_start
@@ -127,7 +130,7 @@ def main():
     print(f"{'='*60}")
     print(f"Initial loss  : {init_loss:.6e}")
     print(f"Final loss    : {final_loss:.6e}")
-    print(f"Improvement   : {loss_improvement:.1f}%")
+    print(f"Energy ratio  : {energy_ratio:.2f}x (final/init absolute)")
     print(f"Loss decreased: {'Yes' if loss_decreased else 'No'}")
     print(f"Loss not flat : {'Yes' if loss_not_flat else 'No'}")
     print(f"Elapsed time  : {elapsed:.1f}s")
@@ -142,7 +145,7 @@ def main():
     ax.plot(topo_result.history, "b.-", lw=1.5, markersize=8)
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Objective (negative energy)")
-    ax.set_title(f"Convergence ({loss_improvement:.1f}% improvement)")
+    ax.set_title(f"Convergence ({energy_ratio:.1f}x energy increase)")
     ax.grid(True, alpha=0.3)
 
     # Panel 2: Beta schedule
@@ -183,7 +186,7 @@ def main():
         "",
         f"Initial loss  : {init_loss:.6e}",
         f"Final loss    : {final_loss:.6e}",
-        f"Improvement   : {loss_improvement:.1f}%",
+        f"Energy ratio  : {energy_ratio:.2f}x",
         f"Loss decreased: {'Yes' if loss_decreased else 'No'}",
         f"Loss not flat : {'Yes' if loss_not_flat else 'No'}",
         "",
@@ -204,14 +207,13 @@ def main():
     # ---- Pass/Fail ----
     if pipeline_ok:
         print(f"\nPASS: Optimizer pipeline working "
-              f"(loss decreased {loss_improvement:.1f}%, "
+              f"(energy {energy_ratio:.1f}x, "
               f"init={init_loss:.4e} -> final={final_loss:.4e})")
         sys.exit(0)
     else:
         print(f"\nFAIL: Optimizer pipeline issue "
               f"(loss_decreased={loss_decreased}, "
-              f"loss_not_flat={loss_not_flat}, "
-              f"improvement={loss_improvement:.1f}%)")
+              f"loss_not_flat={loss_not_flat})")
         sys.exit(1)
 
 
