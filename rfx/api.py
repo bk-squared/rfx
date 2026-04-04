@@ -1772,6 +1772,89 @@ class Simulation:
             s_param_freqs=s_param_freqs,
         )
 
+    # ---- forward (differentiable) ----
+
+    def forward(
+        self,
+        *,
+        eps_override: jnp.ndarray | None = None,
+        n_steps: int | None = None,
+        num_periods: float = 20.0,
+        checkpoint: bool = True,
+    ):
+        """Run forward simulation, returning the low-level SimResult.
+
+        This method is designed for use with ``jax.grad`` and
+        ``jax.value_and_grad``.  Unlike :meth:`run`, it returns the raw
+        ``SimResult`` (which is a JAX-compatible NamedTuple) and supports
+        an ``eps_override`` array to replace the permittivity field,
+        making it suitable for inverse-design loops and gradient
+        checking.
+
+        Parameters
+        ----------
+        eps_override : jnp.ndarray or None
+            If provided, replaces the ``eps_r`` material array entirely.
+            Must have shape ``grid.shape`` (including CPML padding).
+        n_steps : int or None
+            Number of timesteps.  If None, auto-computed from
+            *num_periods*.
+        num_periods : float
+            Number of periods at freq_max for auto step count.
+        checkpoint : bool
+            Enable gradient checkpointing (default True).
+
+        Returns
+        -------
+        SimResult
+            Raw simulation output (state, time_series, ...).
+        """
+        from rfx.simulation import run as _run, make_probe, make_port_source
+        from rfx.sources.sources import LumpedPort, setup_lumped_port
+
+        grid = self._build_grid()
+        materials, debye_spec, lorentz_spec, _, _, _ = self._assemble_materials(grid)
+
+        if eps_override is not None:
+            from rfx.core.yee import MaterialArrays
+            materials = MaterialArrays(
+                eps_r=eps_override,
+                sigma=materials.sigma,
+                mu_r=materials.mu_r,
+            )
+
+        if n_steps is None:
+            n_steps = grid.num_timesteps(num_periods=num_periods)
+
+        sources = []
+        probes = []
+
+        for pe in self._ports:
+            lp = LumpedPort(
+                position=pe.position, component=pe.component,
+                impedance=pe.impedance, excitation=pe.waveform,
+            )
+            materials = setup_lumped_port(grid, lp, materials)
+            sources.append(make_port_source(grid, lp, materials, n_steps))
+
+        for pe in self._probes:
+            probes.append(make_probe(grid, pe.position, pe.component))
+
+        _, debye, lorentz = self._init_dispersion(
+            materials, grid.dt, debye_spec, lorentz_spec,
+        )
+
+        result = _run(
+            grid, materials, n_steps,
+            boundary=self._boundary,
+            debye=debye,
+            lorentz=lorentz,
+            sources=sources,
+            probes=probes,
+            checkpoint=checkpoint,
+        )
+        return result
+
     # ---- run ----
 
     def run(

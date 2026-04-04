@@ -100,8 +100,8 @@ def richardson_extrapolation(
             return float(f[-1]), expected_order
 
         ratio = diff32 / diff21
-        r21 = h2 / h1
-        r32 = h3 / h2
+        h2 / h1
+        h3 / h2
 
         # Newton iteration to solve for p:
         # g(p) = (h3^p - h2^p) / (h2^p - h1^p) - ratio = 0

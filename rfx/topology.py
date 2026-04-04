@@ -374,9 +374,27 @@ def topology_optimize(
 
     # Build grid and compute design region indices
     grid = sim._build_grid()
-    lo_idx = grid.position_to_index(design_region.corner_lo)
-    hi_idx = grid.position_to_index(design_region.corner_hi)
+    lo_idx = list(grid.position_to_index(design_region.corner_lo))
+    hi_idx = list(grid.position_to_index(design_region.corner_hi))
+
+    # Clamp indices to the interior region (exclude CPML padding).
+    # Without this, a design region at the domain edge can overlap
+    # with CPML cells, causing shape mismatches and incorrect gradients.
+    pads = (grid.pad_x, grid.pad_y, grid.pad_z)
+    dims = (grid.nx, grid.ny, grid.nz)
+    for d in range(3):
+        lo_idx[d] = max(lo_idx[d], pads[d])
+        hi_idx[d] = min(hi_idx[d], dims[d] - 1 - pads[d])
+    lo_idx = tuple(lo_idx)
+    hi_idx = tuple(hi_idx)
+
     design_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
+    if any(s <= 0 for s in design_shape):
+        raise ValueError(
+            f"Design region is empty after clamping to interior "
+            f"(lo_idx={lo_idx}, hi_idx={hi_idx}). Ensure the design "
+            f"region does not lie entirely within the CPML boundary."
+        )
 
     # Compute filter radius in cells
     filt_r = design_region.effective_filter_radius

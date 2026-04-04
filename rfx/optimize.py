@@ -103,10 +103,24 @@ def optimize(
     """
     grid = sim._build_grid()
 
-    # Compute design-region grid indices
-    lo_idx = grid.position_to_index(region.corner_lo)
-    hi_idx = grid.position_to_index(region.corner_hi)
+    # Compute design-region grid indices, clamped to interior (exclude CPML).
+    lo_idx = list(grid.position_to_index(region.corner_lo))
+    hi_idx = list(grid.position_to_index(region.corner_hi))
+    pads = (grid.pad_x, grid.pad_y, grid.pad_z)
+    dims = (grid.nx, grid.ny, grid.nz)
+    for d in range(3):
+        lo_idx[d] = max(lo_idx[d], pads[d])
+        hi_idx[d] = min(hi_idx[d], dims[d] - 1 - pads[d])
+    lo_idx = tuple(lo_idx)
+    hi_idx = tuple(hi_idx)
+
     design_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
+    if any(s <= 0 for s in design_shape):
+        raise ValueError(
+            f"Design region is empty after clamping to interior "
+            f"(lo_idx={lo_idx}, hi_idx={hi_idx}). Ensure the design "
+            f"region does not lie entirely within the CPML boundary."
+        )
 
     if init_latent is None:
         init_latent = jnp.zeros(design_shape, dtype=jnp.float32)
@@ -192,4 +206,111 @@ def optimize(
         eps_design=eps_design,
         loss_history=loss_history,
         latent=latent,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Gradient checking (AD vs finite-difference)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GradientCheckResult:
+    """Result of AD-vs-FD gradient comparison.
+
+    Attributes
+    ----------
+    ad_grad : jnp.ndarray
+        Gradient from reverse-mode autodiff.
+    fd_grad : jnp.ndarray
+        Gradient from central finite differences.
+    relative_error : float
+        max |ad - fd| / (max |ad| + max |fd| + 1e-30).
+    """
+    ad_grad: jnp.ndarray
+    fd_grad: jnp.ndarray
+    relative_error: float
+
+
+def gradient_check(
+    sim,
+    design_params: jnp.ndarray,
+    objective_fn: Callable,
+    *,
+    eps: float = 1e-3,
+    n_steps: int | None = None,
+    num_periods: float = 20.0,
+) -> GradientCheckResult:
+    """Compare AD gradient with finite-difference gradient.
+
+    Runs the simulation via ``sim.forward()`` with permittivity
+    overrides derived from *design_params*, computes the gradient
+    of *objective_fn* with respect to *design_params* using both
+    reverse-mode AD and central finite differences, and returns
+    the comparison.
+
+    Parameters
+    ----------
+    sim : Simulation
+        Configured simulation (ports, probes already added).
+    design_params : jnp.ndarray
+        Flat array of design parameters.  These are added element-wise
+        to the baseline ``eps_r`` from ``sim._assemble_materials()``.
+        Shape must broadcast with ``grid.shape``.
+    objective_fn : callable(SimResult) -> scalar
+        Differentiable objective function.
+    eps : float
+        Finite-difference perturbation (default 1e-3).
+    n_steps : int or None
+        Number of timesteps.  Passed to ``sim.forward()``.
+    num_periods : float
+        Periods at freq_max if *n_steps* is None.
+
+    Returns
+    -------
+    GradientCheckResult
+        Contains ad_grad, fd_grad, and relative_error.
+    """
+    grid = sim._build_grid()
+    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    base_eps = base_materials.eps_r
+
+    fwd_kw = {}
+    if n_steps is not None:
+        fwd_kw["n_steps"] = n_steps
+    else:
+        fwd_kw["num_periods"] = num_periods
+
+    def loss_fn(params):
+        eps_r = base_eps + params
+        result = sim.forward(eps_override=eps_r, checkpoint=True, **fwd_kw)
+        return objective_fn(result)
+
+    # AD gradient
+    ad_grad = jax.grad(loss_fn)(design_params)
+
+    # Finite-difference gradient (central)
+    flat = design_params.ravel()
+    fd_grad_flat = jnp.zeros_like(flat)
+    n_params = flat.shape[0]
+
+    for i in range(n_params):
+        e_vec = jnp.zeros_like(flat).at[i].set(eps)
+        p_plus = (flat + e_vec).reshape(design_params.shape)
+        p_minus = (flat - e_vec).reshape(design_params.shape)
+        f_plus = loss_fn(p_plus)
+        f_minus = loss_fn(p_minus)
+        fd_grad_flat = fd_grad_flat.at[i].set((f_plus - f_minus) / (2 * eps))
+
+    fd_grad = fd_grad_flat.reshape(design_params.shape)
+
+    # Relative error
+    ad_abs = float(jnp.max(jnp.abs(ad_grad)))
+    fd_abs = float(jnp.max(jnp.abs(fd_grad)))
+    diff = float(jnp.max(jnp.abs(ad_grad - fd_grad)))
+    rel_err = diff / (ad_abs + fd_abs + 1e-30)
+
+    return GradientCheckResult(
+        ad_grad=ad_grad,
+        fd_grad=fd_grad,
+        relative_error=rel_err,
     )

@@ -132,6 +132,36 @@ class SimConfig:
     dz_profile: np.ndarray | None = None
 
     @property
+    def grid_shape(self) -> tuple[int, int, int]:
+        """Estimated grid shape (nx, ny, nz) including CPML padding."""
+        nx = int(math.ceil(self.domain[0] / self.dx)) + 1 + 2 * self.cpml_layers
+        ny = int(math.ceil(self.domain[1] / self.dx)) + 1 + 2 * self.cpml_layers
+        nz = int(math.ceil(self.domain[2] / self.dx)) + 1 + 2 * self.cpml_layers
+        return (nx, ny, nz)
+
+    @property
+    def estimated_memory_mb(self) -> float:
+        """Estimate GPU memory (MB) for forward + reverse-mode AD gradient.
+
+        Accounts for 6 field arrays (Ex, Ey, Ez, Hx, Hy, Hz), material
+        coefficient arrays, and roughly 3x overhead for reverse-mode AD
+        checkpointing.  This is a conservative estimate; actual usage
+        depends on JAX compilation and checkpoint granularity.
+
+        Returns
+        -------
+        float
+            Estimated memory in megabytes.
+        """
+        nx, ny, nz = self.grid_shape
+        cells = nx * ny * nz
+        # 6 field arrays (float32, 4 bytes each) + ~6 material arrays
+        forward_bytes = cells * 12 * 4
+        # Reverse-mode AD: ~3x forward for checkpointing
+        total_bytes = forward_bytes * 3
+        return total_bytes / 1e6
+
+    @property
     def cells_per_wavelength(self) -> float:
         f_max = self.freq_range[1]
         lambda_min = C0 / f_max
@@ -189,6 +219,7 @@ def auto_configure(
     dx_override: float | None = None,
     margin_override: float | None = None,
     n_steps_override: int | None = None,
+    max_memory_mb: float | None = None,
 ) -> SimConfig:
     """Derive all simulation parameters from geometry + frequency range.
 
@@ -208,6 +239,18 @@ def auto_configure(
     dx_override : force specific cell size
     margin_override : force specific margin
     n_steps_override : force specific step count
+    max_memory_mb : float or None
+        GPU memory budget in megabytes.  When set, ``dx`` is
+        automatically coarsened (increased) until
+        ``estimated_memory_mb <= max_memory_mb``.  Useful for
+        keeping reverse-mode AD within a 24 GB GPU.  Ignored when
+        *dx_override* is provided.
+
+        Practical limits (approximate, with gradient checkpointing):
+
+        - 8 GB GPU:  ``max_memory_mb=6000``
+        - 24 GB GPU: ``max_memory_mb=18000``
+        - 48 GB GPU: ``max_memory_mb=36000``
 
     Returns
     -------
@@ -316,6 +359,34 @@ def auto_configure(
     min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
     cpml_cells = {"draft": 8, "standard": 12, "high": 16}[accuracy]
     cpml_layers = max(min_cpml_cells, cpml_cells)
+
+    # 3b. Memory budget — coarsen dx until estimated memory fits
+    if max_memory_mb is not None and dx_override is None:
+        for _ in range(20):  # safety limit on iterations
+            _nx = int(math.ceil(domain[0] / dx)) + 1 + 2 * cpml_layers
+            _ny = int(math.ceil(domain[1] / dx)) + 1 + 2 * cpml_layers
+            _nz = int(math.ceil(domain[2] / dx)) + 1 + 2 * cpml_layers
+            _cells = _nx * _ny * _nz
+            # 12 arrays * 4 bytes * 3x for AD checkpointing
+            _est_mb = _cells * 12 * 4 * 3 / 1e6
+            if _est_mb <= max_memory_mb:
+                break
+            dx *= 1.25
+            dx = _round_dx(dx)
+            # Recompute domain and CPML with new dx
+            domain = tuple(
+                (bbox_hi[i] - bbox_lo[i]) + 2 * margin
+                for i in range(3)
+            )
+            domain = tuple(max(d, 8 * dx) for d in domain)
+            min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
+            cpml_layers = max(min_cpml_cells, cpml_cells)
+        else:
+            warnings.append(
+                f"Could not fit within {max_memory_mb:.0f} MB budget "
+                f"(estimated {_est_mb:.0f} MB at dx={dx*1e3:.3f} mm). "
+                f"Consider reducing domain size or using mixed precision."
+            )
 
     # 4. Non-uniform z profile
     dz_profile = None

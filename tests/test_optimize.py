@@ -4,12 +4,17 @@ Validates:
 1. DesignRegion construction
 2. Latent-to-eps mapping (sigmoid bounds)
 3. OptimizeResult structure
+4. Gradient check (AD vs finite-difference)
 """
 
+import jax
 import jax.numpy as jnp
 
 from rfx.api import Simulation
-from rfx.optimize import DesignRegion, OptimizeResult, _latent_to_eps, optimize
+from rfx.optimize import (
+    DesignRegion, OptimizeResult, GradientCheckResult,
+    _latent_to_eps, optimize, gradient_check,
+)
 
 
 def test_design_region():
@@ -45,7 +50,6 @@ def test_latent_to_eps_bounds():
 
 def test_latent_to_eps_differentiable():
     """Sigmoid mapping should be differentiable."""
-    import jax
     grad_fn = jax.grad(lambda x: _latent_to_eps(x, 1.0, 12.0))
     g = grad_fn(jnp.array(0.0))
     # Gradient at midpoint should be positive (sigmoid slope * range)

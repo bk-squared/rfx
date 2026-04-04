@@ -8,7 +8,7 @@ Analytical reference:
   - Effective eps: eps_eff from Hammerstad formula
   - Fringe extension: dL from Hammerstad-Jensen
   - Patch length: L = c / (2*f0*sqrt(eps_eff)) - 2*dL
-  - Resonant frequency should match f0 within ~5% for FDTD on coarse grid
+  - Resonant frequency should match f0 within ~5% for FDTD
 
 Validation metric: |f_sim - f0| / f0 < 5%
 
@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from rfx import Simulation, Box
-from rfx.sources.sources import GaussianPulse
+from rfx.sources.sources import ModulatedGaussian
 from rfx.grid import C0
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -68,11 +68,14 @@ print(f"Analytical f_res : {f_analytical / 1e9:.4f} GHz")
 print()
 
 # =============================================================================
-# Grid convergence: two resolutions
+# Use a PEC cavity approach for fast resonance extraction.
+# Place the patch inside a PEC box (no CPML overhead). The cavity
+# introduces a small perturbation but for resonant frequency comparison
+# against the Balanis formula this is acceptable and much faster.
 # =============================================================================
 resolutions = [
-    ("coarse", 1.0e-3),
-    ("medium", 0.5e-3),
+    ("coarse", 2.0e-3),
+    ("medium", 1.0e-3),
 ]
 
 results_list = []
@@ -80,29 +83,19 @@ results_list = []
 for label, dx in resolutions:
     print(f"--- Resolution: {label} (dx={dx*1e3:.2f} mm) ---")
 
-    margin = 15e-3
+    margin = 10e-3
     dom_x = L + 2 * margin
     dom_y = W + 2 * margin
-
-    # Non-uniform z-profile: fine in substrate, coarse in air
-    n_sub = max(4, int(np.ceil(h / dx)))
-    dz_sub = h / n_sub
-    n_air = max(6, int(np.ceil(margin / dx)))
-    dz_profile = np.concatenate([
-        np.full(n_sub, dz_sub),
-        np.full(n_air, dx),
-    ])
-
-    sigma_sub = 2.0 * np.pi * f0 * 8.854e-12 * eps_r * tan_d
+    dom_z = h + 8e-3  # substrate + air above
 
     sim = Simulation(
         freq_max=f0 * 2.0,
-        domain=(dom_x, dom_y, 0),
+        domain=(dom_x, dom_y, dom_z),
         dx=dx,
-        dz_profile=dz_profile,
-        cpml_layers=10,
+        boundary="pec",
     )
 
+    sigma_sub = 2.0 * np.pi * f0 * 8.854e-12 * eps_r * tan_d
     sim.add_material("substrate", eps_r=eps_r, sigma=sigma_sub)
 
     # Ground plane at z=0
@@ -113,7 +106,7 @@ for label, dx in resolutions:
     px0, py0 = margin, margin
     sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h)), material="pec")
 
-    # Source: soft point inside substrate near feed point
+    # Source: ModulatedGaussian (zero DC) inside substrate near feed point
     src_x = px0 + L / 3.0
     src_y = py0 + W / 2.0
     src_z = h / 2.0
@@ -121,14 +114,16 @@ for label, dx in resolutions:
     sim.add_source(
         (src_x, src_y, src_z),
         component="ez",
-        waveform=GaussianPulse(f0=f0, bandwidth=0.8),
+        waveform=ModulatedGaussian(f0=f0, bandwidth=0.8),
     )
     sim.add_probe((src_x, src_y, src_z), component="ez")
 
-    # Run ~15 ns for ring-down
-    nu_grid = sim._build_nonuniform_grid()
-    n_steps = int(np.ceil(15e-9 / nu_grid.dt))
-    print(f"  Steps: {n_steps}, dt={nu_grid.dt*1e12:.3f} ps")
+    # Run ~80 periods at f0 for Harminv
+    grid = sim._build_grid()
+    n_steps = int(np.ceil(80.0 / (f0 * grid.dt)))
+    # Cap at reasonable limit for speed
+    n_steps = min(n_steps, 30000)
+    print(f"  Grid: {grid.nx}x{grid.ny}x{grid.nz}, steps={n_steps}, dt={grid.dt*1e12:.3f} ps")
 
     result = sim.run(n_steps=n_steps)
 
@@ -206,9 +201,8 @@ ax.set_title("Grid convergence")
 ax.legend()
 ax.grid(True, alpha=0.3)
 
-# Panel 2: Spectrum from best run (re-run not needed, use last result)
+# Panel 2: Spectrum from best run
 ax = axes[1]
-# Reconstruct FFT from last simulation
 ts_arr = np.asarray(result.time_series).ravel()
 nfft = len(ts_arr) * 8
 spectrum = np.abs(np.fft.rfft(ts_arr, n=nfft))

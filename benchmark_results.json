@@ -1,0 +1,139 @@
+{
+  "backend": "gpu",
+  "devices": [
+    {
+      "id": 0,
+      "kind": "NVIDIA RTX A6000",
+      "platform": "gpu"
+    },
+    {
+      "id": 1,
+      "kind": "NVIDIA RTX A6000",
+      "platform": "gpu"
+    },
+    {
+      "id": 2,
+      "kind": "NVIDIA RTX A6000",
+      "platform": "gpu"
+    }
+  ],
+  "host": "run-execution-7264aoy929ec-0",
+  "single_gpu": [
+    {
+      "grid": "30x30x30",
+      "cells": 27000,
+      "n_steps": 500,
+      "mcells_per_s": 45.1,
+      "elapsed_s": 0.2993,
+      "ms_per_step": 0.599,
+      "peak_mem_mb": 2.9
+    },
+    {
+      "grid": "50x50x50",
+      "cells": 125000,
+      "n_steps": 500,
+      "mcells_per_s": 483.8,
+      "elapsed_s": 0.1292,
+      "ms_per_step": 0.258,
+      "peak_mem_mb": 13.6
+    },
+    {
+      "grid": "80x80x80",
+      "cells": 512000,
+      "n_steps": 500,
+      "mcells_per_s": 1538.9,
+      "elapsed_s": 0.1664,
+      "ms_per_step": 0.333,
+      "peak_mem_mb": 56.1
+    },
+    {
+      "grid": "100x100x100",
+      "cells": 1000000,
+      "n_steps": 500,
+      "mcells_per_s": 2410.2,
+      "elapsed_s": 0.2075,
+      "ms_per_step": 0.415,
+      "peak_mem_mb": 113.1
+    },
+    {
+      "grid": "120x120x120",
+      "cells": 1728000,
+      "n_steps": 500,
+      "mcells_per_s": 3279.8,
+      "elapsed_s": 0.2634,
+      "ms_per_step": 0.527,
+      "peak_mem_mb": 206.9
+    },
+    {
+      "grid": "150x150x150",
+      "cells": 3375000,
+      "n_steps": 500,
+      "mcells_per_s": 4299.3,
+      "elapsed_s": 0.3925,
+      "ms_per_step": 0.785,
+      "peak_mem_mb": 392.4
+    },
+    {
+      "grid": "200x200x200",
+      "cells": 8000000,
+      "n_steps": 500,
+      "mcells_per_s": 5249.3,
+      "elapsed_s": 0.762,
+      "ms_per_step": 1.524,
+      "peak_mem_mb": 923.0
+    }
+  ],
+  "gradient": [
+    {
+      "grid": "30x30x30",
+      "cells": 27000,
+      "fwd_s": 0.3002,
+      "grad_s": 0.3675,
+      "overhead_x": 1.22
+    },
+    {
+      "grid": "50x50x50",
+      "cells": 125000,
+      "fwd_s": 0.1259,
+      "grad_s": 0.3589,
+      "overhead_x": 2.85
+    },
+    {
+      "grid": "80x80x80",
+      "cells": 512000,
+      "fwd_s": 0.143,
+      "grad_s": 0.4273,
+      "overhead_x": 2.99
+    },
+    {
+      "grid": "100x100x100",
+      "cells": 1000000,
+      "fwd_s": 0.1576,
+      "grad_s": 0.5719,
+      "overhead_x": 3.63
+    }
+  ],
+  "multi_gpu": [
+    {
+      "n_devices": 1,
+      "mcells_per_s": 406.4,
+      "elapsed_s": 0.3348,
+      "speedup": 1.0,
+      "efficiency_pct": 100.0
+    },
+    {
+      "n_devices": 2,
+      "mcells_per_s": 274.4,
+      "elapsed_s": 0.4959,
+      "speedup": 0.68,
+      "efficiency_pct": 33.8
+    },
+    {
+      "n_devices": 3,
+      "mcells_per_s": 239.0,
+      "elapsed_s": 0.5694,
+      "speedup": 0.59,
+      "efficiency_pct": 19.6
+    }
+  ]
+}
