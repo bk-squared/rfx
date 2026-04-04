@@ -160,12 +160,17 @@ def optimize(
         probes = []
 
         for pe in sim._ports:
-            lp = LumpedPort(
-                position=pe.position, component=pe.component,
-                impedance=pe.impedance, excitation=pe.waveform,
-            )
-            materials = setup_lumped_port(grid, lp, materials)
-            sources.append(make_port_source(grid, lp, materials, n_steps))
+            if pe.impedance == 0.0:
+                # Soft source (add_source) — no port impedance
+                from rfx.simulation import make_source
+                sources.append(make_source(grid, pe.position, pe.component, pe.waveform, n_steps))
+            else:
+                lp = LumpedPort(
+                    position=pe.position, component=pe.component,
+                    impedance=pe.impedance, excitation=pe.waveform,
+                )
+                materials = setup_lumped_port(grid, lp, materials)
+                sources.append(make_port_source(grid, lp, materials, n_steps))
 
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
