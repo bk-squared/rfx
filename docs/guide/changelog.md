@@ -8,6 +8,8 @@ All notable changes to rfx are documented here.
 
 ### New Features
 
+- **PyPI publication** as `rfx-fdtd` -- package is now installable from PyPI
+  while keeping the Python import name `rfx`.
 - **SBP-SAT subgridding** with JIT performance via `jax.lax.scan` -- provably
   stable local mesh refinement with impedance coupling at coarse/fine
   interfaces.

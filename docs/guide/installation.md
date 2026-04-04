@@ -3,10 +3,16 @@
 ## Basic Install
 
 ```bash
-pip install rfx
+pip install rfx-fdtd
 ```
 
 Requires Python 3.10+ and installs JAX, NumPy, SciPy, matplotlib, and h5py.
+
+The package name on PyPI is `rfx-fdtd`, while the Python import remains:
+
+```python
+import rfx
+```
 
 ## GPU Support
 

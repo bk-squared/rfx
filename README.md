@@ -47,6 +47,13 @@
 pip install rfx-fdtd
 ```
 
+PyPI package name: `rfx-fdtd`
+Python import:
+
+```python
+import rfx
+```
+
 For development:
 
 ```bash
