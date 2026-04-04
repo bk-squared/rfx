@@ -38,6 +38,18 @@ If you are new to `rfx`, the shortest path is usually:
 5. [Non-Uniform Mesh](nonuniform_mesh.md)
 6. [Validation](validation.md)
 
+## Tutorials
+
+Step-by-step design workflows that walk through complete problems from
+specification to verified result. Each tutorial is self-contained and
+aimed at graduate students in RF/microwave engineering.
+
+| Tutorial | Description |
+|---|---|
+| [2.4 GHz Patch Antenna](tutorial-patch-antenna.md) | Analytical design, non-uniform mesh, resonance extraction, convergence check, optional topology optimisation |
+| [Coupled-Line Bandpass Filter](tutorial-microstrip-filter.md) | Even/odd mode theory, coupled microstrip geometry, S-parameter analysis, parametric gap sweep |
+| [Mesh Convergence & Verification](tutorial-convergence.md) | Why convergence matters, `convergence_study()`, Richardson extrapolation, log-log error plots, common pitfalls |
+
 ## Project / Maintainer Guides
 
 | Guide | Description |
