@@ -218,6 +218,7 @@ class MaterialSpec:
     mu_r: float = 1.0
     debye_poles: list[DebyePole] | None = None
     lorentz_poles: list[LorentzPole] | None = None
+    chi3: float = 0.0  # Third-order Kerr susceptibility (m^2/V^2)
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +355,12 @@ class Simulation:
     mode : str
         ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
         ``"2d_tez"`` (Hz, Ex, Ey).
+    precision : str
+        ``"float32"`` (default) or ``"mixed"``.  When ``"mixed"``,
+        field arrays (E, H) use float16 for ~2x memory reduction while
+        material coefficients and DFT accumulators stay float32.
+        Arithmetic is performed in float32 and cast back to float16
+        for storage.
     """
 
     def __init__(
@@ -366,11 +373,14 @@ class Simulation:
         dx: float | None = None,
         mode: str = "3d",
         dz_profile: np.ndarray | None = None,
+        precision: str = "float32",
     ):
         if boundary not in ("pec", "cpml"):
             raise ValueError(f"boundary must be 'pec' or 'cpml', got {boundary!r}")
         if freq_max <= 0:
             raise ValueError(f"freq_max must be positive, got {freq_max}")
+        if precision not in ("float32", "mixed"):
+            raise ValueError(f"precision must be 'float32' or 'mixed', got {precision!r}")
         # When dz_profile is provided, z-domain comes from the profile (z=0 OK)
         if dz_profile is not None:
             if any(d <= 0 for d in domain[:2]):
@@ -387,6 +397,7 @@ class Simulation:
         self._dx = dx
         self._mode = mode
         self._dz_profile = dz_profile
+        self._precision = precision
 
         # Registered items
         self._materials: dict[str, MaterialSpec] = {}
@@ -452,11 +463,21 @@ class Simulation:
         mu_r: float = 1.0,
         debye_poles: list[DebyePole] | None = None,
         lorentz_poles: list[LorentzPole] | None = None,
+        chi3: float = 0.0,
     ) -> "Simulation":
-        """Register a named material."""
+        """Register a named material.
+
+        Parameters
+        ----------
+        chi3 : float
+            Third-order (Kerr) susceptibility in m^2/V^2.  When
+            non-zero, an ADE correction is applied after each E-field
+            update inside the scan body.
+        """
         self._materials[name] = MaterialSpec(
             eps_r=eps_r, sigma=sigma, mu_r=mu_r,
             debye_poles=debye_poles, lorentz_poles=lorentz_poles,
+            chi3=chi3,
         )
         return self
 
@@ -1269,21 +1290,24 @@ class Simulation:
     def _assemble_materials(
         self,
         grid: Grid,
-    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list]:
+    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, jnp.ndarray | None]:
         """Build material arrays plus per-pole dispersion masks.
 
         Returns
         -------
-        materials, debye_spec, lorentz_spec, pec_mask, pec_shapes
+        materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, kerr_chi3
             pec_mask is a boolean array (True at PEC cells) or None.
             pec_shapes is a list of Shape objects that are PEC.
+            kerr_chi3 is a float32 array of chi3 values or None.
         """
         # Start with vacuum
         eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
         sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
         mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
+        chi3_arr = jnp.zeros(grid.shape, dtype=jnp.float32)
         pec_mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
         pec_shapes = []
+        has_kerr = False
 
         # Collect per-pole masks so distinct materials do not inherit
         # each other's dispersion poles.
@@ -1302,6 +1326,10 @@ class Simulation:
                 eps_r = jnp.where(mask, mat.eps_r, eps_r)
                 sigma = jnp.where(mask, mat.sigma, sigma)
                 mu_r = jnp.where(mask, mat.mu_r, mu_r)
+
+            if mat.chi3 != 0.0:
+                chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
+                has_kerr = True
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:
@@ -1336,7 +1364,8 @@ class Simulation:
             lorentz_spec = (lorentz_poles, lorentz_masks)
 
         has_pec = bool(jnp.any(pec_mask))
-        return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes
+        kerr_chi3 = chi3_arr if has_kerr else None
+        return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes, kerr_chi3
 
     @staticmethod
     def _init_dispersion(
@@ -1360,7 +1389,7 @@ class Simulation:
 
     def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Build material arrays and optional Debye/Lorentz coefficients."""
-        materials, debye_spec, lorentz_spec, _, _ = self._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, _, _, _ = self._assemble_materials(grid)
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec)
         return materials, debye, lorentz
@@ -1513,7 +1542,7 @@ class Simulation:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask_wg, _ = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, pec_mask_wg, _, _ = self._assemble_materials(grid)
         # Waveguide S-matrix runner doesn't support pec_mask yet.
         # Fold PEC mask back into high sigma for compatibility.
         if pec_mask_wg is not None:
@@ -1843,7 +1872,7 @@ class Simulation:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, kerr_chi3 = self._assemble_materials(grid)
 
         # ---- Subgridded path ----
         if self._refinement is not None:
@@ -1857,6 +1886,7 @@ class Simulation:
             n_steps = grid.num_timesteps(num_periods=num_periods)
 
         from rfx.runners.uniform import run_uniform
+        _field_dtype = jnp.float16 if self._precision == "mixed" else None
         return run_uniform(
             self,
             n_steps=n_steps,
@@ -1880,6 +1910,8 @@ class Simulation:
             debye_spec=debye_spec,
             lorentz_spec=lorentz_spec,
             pec_mask=pec_mask,
+            kerr_chi3=kerr_chi3,
+            field_dtype=_field_dtype,
         )
 
     def __repr__(self) -> str:
@@ -1899,6 +1931,7 @@ class Simulation:
             f"  floquet_ports={len(self._floquet_ports)},\n"
             f"  periodic_axes={self._periodic_axes!r},\n"
             f"  tfsf={self._tfsf is not None},\n"
+            f"  precision={self._precision!r},\n"
             f")"
         )
 

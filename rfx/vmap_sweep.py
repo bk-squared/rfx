@@ -558,7 +558,7 @@ def vmap_material_sweep(
 
     # Build grid and base materials once
     grid = sim._build_grid()
-    base_materials, debye_spec, lorentz_spec, pec_mask, _ = sim._assemble_materials(grid)
+    base_materials, debye_spec, lorentz_spec, pec_mask, _, _ = sim._assemble_materials(grid)
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)

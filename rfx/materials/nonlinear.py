@@ -3,7 +3,14 @@
 The Kerr effect: eps_r depends on E-field intensity:
   eps_r(E) = eps_r_linear + chi3 * |E|^2
 
-Implemented as an auxiliary update applied after each E-field update.
+Two implementations:
+
+1. ``apply_kerr_update`` — modifies eps_r per timestep (legacy).
+2. ``apply_kerr_ade`` — ADE polarisation-current correction applied
+   directly to the E-field after the standard linear update.  This is
+   the recommended approach for integration into the ``jax.lax.scan``
+   time loop because it avoids mutating material arrays.
+
 All operations use JAX for differentiability.
 """
 
@@ -12,6 +19,8 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import jax.numpy as jnp
+
+from rfx.core.yee import EPS_0
 
 
 class KerrMaterial(NamedTuple):
@@ -27,6 +36,59 @@ class KerrMaterial(NamedTuple):
     eps_r_linear: float
     chi3: float
 
+
+# ---------------------------------------------------------------------------
+# ADE (Auxiliary Differential Equation) Kerr correction
+# ---------------------------------------------------------------------------
+
+def apply_kerr_ade(state, chi3_arr, dt):
+    """Apply Kerr nonlinear correction to E-field (ADE formulation).
+
+    After the standard linear E-update the nonlinear polarisation
+    current introduces an additional term:
+
+        P_NL = eps0 * chi3 * |E|^2 * E
+
+    In discrete form the correction is:
+
+        E^{n+1} -= (dt / eps0) * chi3 * |E^n|^2 * E^{n+1}
+
+    where ``|E^n|^2 = Ex^2 + Ey^2 + Ez^2`` evaluated component-wise
+    (co-located approximation suitable for weakly nonlinear media).
+
+    Parameters
+    ----------
+    state : FDTDState
+        State **after** the standard E-update (contains E^{n+1}).
+        The previous-step |E^n|^2 is approximated by the updated
+        field for an explicit scheme.
+    chi3_arr : jnp.ndarray, shape (Nx, Ny, Nz)
+        Third-order susceptibility at each cell (m^2/V^2).
+        Zero where the medium is linear.
+    dt : float
+        Timestep in seconds.
+
+    Returns
+    -------
+    FDTDState with corrected E-field components.
+    """
+    # |E|^2 from the just-updated field (explicit forward-Euler)
+    e_sq = state.ex ** 2 + state.ey ** 2 + state.ez ** 2
+
+    # Correction factor: dt * chi3 / eps0 * |E|^2
+    # Negative sign because P_NL opposes field growth.
+    factor = (dt / EPS_0) * chi3_arr * e_sq
+
+    ex = state.ex - factor * state.ex
+    ey = state.ey - factor * state.ey
+    ez = state.ez - factor * state.ez
+
+    return state._replace(ex=ex, ey=ey, ez=ez)
+
+
+# ---------------------------------------------------------------------------
+# Legacy eps_r-based Kerr update
+# ---------------------------------------------------------------------------
 
 def apply_kerr_update(materials, state, kerr_regions):
     """Update eps_r based on instantaneous E-field intensity.

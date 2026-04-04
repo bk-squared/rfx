@@ -414,7 +414,7 @@ def topology_optimize(
         )
 
         # Build materials with design-region override
-        materials, debye_spec, lorentz_spec, _, _ = sim._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, _, _, _ = sim._assemble_materials(grid)
         eps_r = materials.eps_r
 
         # Inject design region permittivity
