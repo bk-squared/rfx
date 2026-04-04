@@ -27,6 +27,12 @@ from rfx.farfield import (
     axial_ratio, axial_ratio_dB, polarization_tilt, polarization_sense,
 )
 from rfx.rcs import compute_rcs, RCSResult
+from rfx.antenna import (
+    antenna_gain, antenna_gain_dB, antenna_efficiency,
+    half_power_beamwidth, front_to_back_ratio,
+    antenna_bandwidth, BandwidthResult,
+    plot_antenna_summary,
+)
 from rfx.gpu import device_info, benchmark
 from rfx.optimize import DesignRegion, OptimizeResult, optimize
 from rfx.topology import (
@@ -79,6 +85,17 @@ from rfx.probes.probes import (
 )
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 from rfx.pcb import PCBLayer, Stackup
+from rfx.floquet import (
+    FloquetPort,
+    floquet_phase_shift,
+    floquet_wave_vector,
+    FloquetDFTAccumulator,
+    init_floquet_dft,
+    update_floquet_dft,
+    inject_floquet_source,
+    extract_floquet_modes,
+    compute_floquet_s_params,
+)
 from rfx.material_fit import (
     load_material_csv, fit_debye, fit_lorentz,
     eval_debye, eval_lorentz, plot_material_fit,
