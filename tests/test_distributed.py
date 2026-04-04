@@ -224,3 +224,120 @@ class TestDistributedRunner:
         devices = jax.devices()[:4]
         with pytest.raises(ValueError, match="not evenly divisible"):
             sim.run(n_steps=10, devices=devices)
+
+
+class TestDistributedCPML:
+    """Tests for CPML boundary support in the distributed runner."""
+
+    def test_distributed_cpml_matches_single(self):
+        """Distributed CPML should match single-device CPML."""
+        # Lx=0.13 -> nx=48 with cpml_layers=10, divisible by 4
+        sim = Simulation(
+            freq_max=3e9,
+            domain=(0.13, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_source(
+            position=(0.065, 0.02, 0.02),
+            component="ez",
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+        )
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+
+        n_steps = 200
+
+        result_single = sim.run(n_steps=n_steps)
+
+        devices = jax.devices()[:4]
+        assert len(devices) == 4, f"Expected 4 devices, got {len(devices)}"
+        result_multi = sim.run(n_steps=n_steps, devices=devices)
+
+        ts_s = np.array(result_single.time_series)
+        ts_m = np.array(result_multi.time_series)
+
+        assert ts_s.shape == ts_m.shape, (
+            f"Shape mismatch: single={ts_s.shape}, multi={ts_m.shape}"
+        )
+
+        peak = np.max(np.abs(ts_s)) + 1e-30
+        rel_err = np.max(np.abs(ts_s - ts_m)) / peak
+        assert rel_err < 1e-3, f"CPML distributed error {rel_err:.2e}"
+
+    def test_distributed_cpml_absorbs(self):
+        """CPML in distributed mode should absorb outgoing waves."""
+        sim = Simulation(
+            freq_max=3e9,
+            domain=(0.13, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_source(
+            position=(0.065, 0.02, 0.02),
+            component="ez",
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+        )
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+
+        devices = jax.devices()[:4]
+        result = sim.run(n_steps=500, devices=devices)
+        ts = np.array(result.time_series).ravel()
+
+        # Late-time fields should be small (absorbed by CPML)
+        peak = np.max(np.abs(ts[:len(ts) // 2]))
+        tail = np.max(np.abs(ts[int(0.8 * len(ts)):]))
+        assert tail < 0.1 * peak, f"CPML not absorbing: tail/peak = {tail / peak:.3f}"
+
+    def test_distributed_cpml_2_devices(self):
+        """CPML should also work with 2 devices."""
+        # nx=48 is also divisible by 2
+        sim = Simulation(
+            freq_max=3e9,
+            domain=(0.13, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_source(
+            position=(0.065, 0.02, 0.02),
+            component="ez",
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+        )
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+
+        n_steps = 100
+
+        result_single = sim.run(n_steps=n_steps)
+        devices = jax.devices()[:2]
+        result_multi = sim.run(n_steps=n_steps, devices=devices)
+
+        ts_s = np.array(result_single.time_series)
+        ts_m = np.array(result_multi.time_series)
+
+        peak = np.max(np.abs(ts_s)) + 1e-30
+        rel_err = np.max(np.abs(ts_s - ts_m)) / peak
+        assert rel_err < 1e-3, f"2-device CPML error {rel_err:.2e}"
+
+    def test_distributed_cpml_off_center_probe(self):
+        """Probe at a different position should still produce valid signal."""
+        sim = Simulation(
+            freq_max=3e9,
+            domain=(0.13, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_source(
+            position=(0.065, 0.02, 0.02),
+            component="ez",
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+        )
+        # Probe away from source
+        sim.add_probe(position=(0.09, 0.02, 0.02), component="ez")
+
+        n_steps = 150
+
+        result_single = sim.run(n_steps=n_steps)
+        devices = jax.devices()[:4]
+        result_multi = sim.run(n_steps=n_steps, devices=devices)
+
+        ts_s = np.array(result_single.time_series)
+        ts_m = np.array(result_multi.time_series)
+
+        peak = np.max(np.abs(ts_s)) + 1e-30
+        rel_err = np.max(np.abs(ts_s - ts_m)) / peak
+        assert rel_err < 1e-3, f"Off-center probe CPML error {rel_err:.2e}"
