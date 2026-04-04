@@ -235,6 +235,10 @@ def compute_far_field(
 ) -> FarFieldResult:
     """Compute far-field radiation pattern from NTFF DFT data.
 
+    Automatically dispatches to the JAX-differentiable implementation
+    when called inside ``jax.grad`` or other JAX tracing contexts.
+    Use this function for both post-processing and optimization objectives.
+
     Parameters
     ----------
     ntff_data : NTFFData
@@ -248,6 +252,14 @@ def compute_far_field(
     -------
     FarFieldResult
     """
+    # Auto-detect JAX tracing context and dispatch to differentiable version
+    import jax
+    try:
+        if any(isinstance(getattr(ntff_data, f, None), jax.core.Tracer)
+               for f in ('x_lo', 'x_hi', 'y_lo')):
+            return compute_far_field_jax(ntff_data, box, grid, theta, phi)
+    except Exception:
+        pass
     theta = np.asarray(theta, dtype=np.float64)
     phi = np.asarray(phi, dtype=np.float64)
     freqs = np.asarray(box.freqs, dtype=np.float64)

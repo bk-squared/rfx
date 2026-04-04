@@ -204,13 +204,17 @@ def density_to_eps(
     eps_fg: float,
     filter_radius_cells: float | None = None,
     beta: float = 1.0,
-) -> jnp.ndarray:
-    """Convert density field to permittivity via filter + projection + interpolation.
+    sigma_bg: float = 0.0,
+    sigma_fg: float = 0.0,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Convert density field to permittivity and conductivity via filter + projection + interpolation.
 
     The full pipeline is:
         1. Density filter (cone, radius=filter_radius_cells)
         2. Threshold projection (smooth Heaviside, sharpness=beta)
-        3. Linear interpolation: eps = eps_bg + rho_proj * (eps_fg - eps_bg)
+        3. Linear interpolation:
+               eps   = eps_bg   + rho_proj * (eps_fg   - eps_bg)
+               sigma = sigma_bg + rho_proj * (sigma_fg - sigma_bg)
 
     All operations are differentiable w.r.t. rho.
 
@@ -224,17 +228,23 @@ def density_to_eps(
         Cone filter radius in grid cells.  None = no filtering.
     beta : float
         Projection sharpness.
+    sigma_bg, sigma_fg : float
+        Background and foreground conductivity (S/m).
 
     Returns
     -------
     eps : same shape as rho
         Permittivity field, values in [eps_bg, eps_fg].
+    sigma : same shape as rho
+        Conductivity field, values in [sigma_bg, sigma_fg].
     """
     rho_f = rho
     if filter_radius_cells is not None and filter_radius_cells >= 0.5:
         rho_f = apply_density_filter(rho, filter_radius_cells)
     rho_p = apply_projection(rho_f, beta)
-    return eps_bg + rho_p * (eps_fg - eps_bg)
+    eps = eps_bg + rho_p * (eps_fg - eps_bg)
+    sigma = sigma_bg + rho_p * (sigma_fg - sigma_bg)
+    return eps, sigma
 
 
 # ---------------------------------------------------------------------------
@@ -360,22 +370,21 @@ def topology_optimize(
     if beta_schedule is None:
         beta_schedule = _DEFAULT_BETA_SCHEDULE
 
-    # Resolve material permittivities
-    from rfx.api import MATERIAL_LIBRARY
-    mat_bg = MATERIAL_LIBRARY.get(design_region.material_bg)
-    mat_fg = MATERIAL_LIBRARY.get(design_region.material_fg)
-    if mat_bg is None:
-        raise ValueError(
-            f"Unknown background material: {design_region.material_bg!r}. "
-            f"Available: {list(MATERIAL_LIBRARY.keys())}"
-        )
-    if mat_fg is None:
-        raise ValueError(
-            f"Unknown foreground material: {design_region.material_fg!r}. "
-            f"Available: {list(MATERIAL_LIBRARY.keys())}"
-        )
-    eps_bg = mat_bg["eps_r"]
-    eps_fg = mat_fg["eps_r"]
+    # Resolve material permittivities and conductivities.
+    # _resolve_material checks user-registered materials (sim._materials)
+    # first, then falls back to MATERIAL_LIBRARY.
+    try:
+        mat_bg = sim._resolve_material(design_region.material_bg)
+    except KeyError as exc:
+        raise ValueError(str(exc)) from exc
+    try:
+        mat_fg = sim._resolve_material(design_region.material_fg)
+    except KeyError as exc:
+        raise ValueError(str(exc)) from exc
+    eps_bg = mat_bg.eps_r
+    eps_fg = mat_fg.eps_r
+    sigma_bg = mat_bg.sigma
+    sigma_fg = mat_fg.sigma
 
     # Build grid and compute design region indices
     grid = sim._build_grid()
@@ -429,25 +438,29 @@ def topology_optimize(
         # Sigmoid to get density in [0, 1]
         rho = jax.nn.sigmoid(logit_param)
 
-        # Density to permittivity (filter + projection + interpolation)
-        eps_design = density_to_eps(
+        # Density to permittivity and conductivity (filter + projection + interpolation)
+        eps_design, sigma_design = density_to_eps(
             rho, eps_bg, eps_fg,
             filter_radius_cells=filter_radius_cells,
             beta=beta,
+            sigma_bg=sigma_bg,
+            sigma_fg=sigma_fg,
         )
 
         # Build materials with design-region override
         materials, debye_spec, lorentz_spec, _, _, _ = sim._assemble_materials(grid)
         eps_r = materials.eps_r
+        sigma = materials.sigma
 
-        # Inject design region permittivity
+        # Inject design region permittivity and conductivity
         si, sj, sk = lo_idx
         ei, ej, ek = hi_idx
         eps_r = eps_r.at[si:ei+1, sj:ej+1, sk:ek+1].set(eps_design)
+        sigma = sigma.at[si:ei+1, sj:ej+1, sk:ek+1].set(sigma_design)
 
         from rfx.core.yee import MaterialArrays
         materials = MaterialArrays(
-            eps_r=eps_r, sigma=materials.sigma, mu_r=materials.mu_r,
+            eps_r=eps_r, sigma=sigma, mu_r=materials.mu_r,
         )
 
         # Run simulation
@@ -502,8 +515,10 @@ def topology_optimize(
         logit = optax.apply_updates(logit, updates)
 
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
-            rho_cur = jax.nn.sigmoid(logit)
-            binarization = float(jnp.mean(4.0 * rho_cur * (1.0 - rho_cur)))
+            rho_raw = jax.nn.sigmoid(logit)
+            rho_proj = apply_projection(rho_raw, beta)
+            # Binarization: 0 = fully binary, 1 = maximally intermediate
+            binarization = float(jnp.mean(4.0 * rho_proj * (1.0 - rho_proj)))
             print(
                 f"  iter {it:4d}  loss = {loss_val:.6e}  "
                 f"beta = {beta:.1f}  binarization = {binarization:.3f}"
@@ -511,10 +526,12 @@ def topology_optimize(
 
     # Final density and eps
     final_rho = jax.nn.sigmoid(logit)
-    final_eps = density_to_eps(
+    final_eps, _ = density_to_eps(
         final_rho, eps_bg, eps_fg,
         filter_radius_cells=filter_radius_cells,
         beta=_get_beta(n_iterations - 1, beta_schedule),
+        sigma_bg=sigma_bg,
+        sigma_fg=sigma_fg,
     )
 
     # Compute projected density for reporting
