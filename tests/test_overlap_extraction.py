@@ -15,23 +15,19 @@ Test 3: test_overlap_passivity
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
 from rfx.grid import C0
-from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0, MU_0
+from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.waveguide_port import (
     WaveguidePort,
-    WaveguidePortConfig,
     init_waveguide_port,
     inject_waveguide_port,
     update_waveguide_port_probe,
     extract_waveguide_sparams,
     cutoff_frequency,
     mode_self_overlap,
-    overlap_modal_amplitude,
-    OverlapDFTAccumulators,
     init_overlap_dft,
     update_overlap_dft,
     extract_waveguide_sparams_overlap,
@@ -162,7 +158,7 @@ def test_overlap_vs_vi_straight_waveguide():
     s21_vi_above = s21_vi_mag[above_cutoff]
     s21_ov_above = s21_ov_mag[above_cutoff]
 
-    print(f"\nOverlap vs V/I straight waveguide:")
+    print("\nOverlap vs V/I straight waveguide:")
     print(f"  f_cutoff = {f_c / 1e9:.2f} GHz")
     print(f"  V/I  |S21| above cutoff: mean={np.mean(s21_vi_above):.4f}, "
           f"min={np.min(s21_vi_above):.4f}, max={np.max(s21_vi_above):.4f}")
@@ -299,7 +295,7 @@ def test_overlap_passivity():
     s21_rel_err = np.max(np.abs(s21_ov_arr - s21_vi_arr)) / np.max(np.abs(s21_vi_arr))
     s11_rel_err = np.max(np.abs(s11_ov_arr - s11_vi_arr)) / max(np.max(np.abs(s11_vi_arr)), 1e-10)
 
-    print(f"\nOverlap passivity test:")
+    print("\nOverlap passivity test:")
     print(f"  f_cutoff = {f_c / 1e9:.2f} GHz")
     print(f"  S21 max relative error (overlap vs V/I): {s21_rel_err:.2e}")
     print(f"  S11 max relative error (overlap vs V/I): {s11_rel_err:.2e}")

@@ -9,11 +9,10 @@ Validates:
 """
 
 import numpy as np
-import jax.numpy as jnp
 import pytest
 
 from rfx import Simulation, GaussianPulse
-from rfx.lumped import LumpedRLCSpec, RLCState, init_rlc_state
+from rfx.lumped import init_rlc_state
 
 
 class TestLumpedRLCValidation:
@@ -261,7 +260,6 @@ class TestParallelRLC:
         result = sim.run(n_steps=4000, compute_s_params=False)
 
         ts = np.array(result.time_series).ravel()
-        dt = result.dt
 
         # Just verify signal is non-trivial (spectrum analysis is topology-dependent)
         peak = np.max(np.abs(ts))

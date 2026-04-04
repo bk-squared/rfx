@@ -1,7 +1,6 @@
 """SBP-SAT penalty coefficient should be configurable."""
 import numpy as np
-import pytest
-from rfx import Simulation, Box, GaussianPulse
+from rfx import Simulation
 
 
 class TestSBPSATAlpha:
@@ -9,7 +8,6 @@ class TestSBPSATAlpha:
 
     def _make_sim(self, tau=None):
         """Build a minimal subgridded simulation."""
-        f0 = 3e9
         dx_c = 2e-3
         ratio = 4
         dom = (0.04, 0.04, 0.04)
@@ -50,13 +48,11 @@ class TestSBPSATAlpha:
 
     def test_tau_propagates_to_config(self):
         """Tau should propagate from add_refinement through to SubgridConfig3D."""
-        from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
         sim = self._make_sim(tau=0.75)
         # Build the grid and config to verify tau reaches SubgridConfig3D
         grid = sim._build_grid()
         base_materials, _, _, pec_mask = sim._assemble_materials(grid)
 
-        from rfx.runners.subgridded import run_subgridded_path
         # Patch run to capture config instead of running full sim
         ref = sim._refinement
         assert ref["tau"] == 0.75
@@ -87,7 +83,7 @@ class TestSBPSATAlpha:
         tau values produce identical results.
         """
         from rfx.subgridding.sbp_sat_3d import (
-            init_subgrid_3d, step_subgrid_3d, compute_energy_3d,
+            init_subgrid_3d, step_subgrid_3d,
         )
         import jax.numpy as jnp
 
@@ -146,7 +142,7 @@ class TestSBPSATAlpha:
                 tau=tau,
             )
             state = state._replace(ez_c=state.ez_c.at[3, 7, 7].set(0.5))
-            initial_energy = compute_energy_3d(state, config)
+            compute_energy_3d(state, config)
 
             for _ in range(500):
                 state = step_subgrid_3d(state, config)

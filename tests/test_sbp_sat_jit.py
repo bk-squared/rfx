@@ -11,7 +11,6 @@ the Python-loop runner for 50-100x speedup. Validates:
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
 
 def _make_pec_sim(with_probe=True, with_source=True):

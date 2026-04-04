@@ -12,7 +12,6 @@ Plus: dielectric-filled cavity resonance (validates eps_r handling).
 """
 
 import numpy as np
-import pytest
 import jax.numpy as jnp
 
 from rfx.grid import Grid, C0
@@ -322,7 +321,7 @@ def test_two_port_reciprocity():
     s22, s12 = run_driven(port2, port1)
 
     s11_np = np.array(s11)
-    s22_np = np.array(s22)
+    np.array(s22)
     s21_np = np.array(s21)
     s12_np = np.array(s12)
 
@@ -341,7 +340,7 @@ def test_two_port_reciprocity():
     passivity = np.abs(s11_np[mid_band])**2 + np.abs(s21_np[mid_band])**2
     max_passivity = np.max(passivity)
 
-    print(f"\nTwo-port reciprocity:")
+    print("\nTwo-port reciprocity:")
     print(f"  Mean |S21|: {np.mean(s21_mag):.4f}")
     print(f"  Mean |S12|: {np.mean(s12_mag):.4f}")
     print(f"  Reciprocity error: {mean_recip_err*100:.1f}%")
@@ -412,7 +411,7 @@ def test_cpml_grazing_incidence():
 
     reflection_db = 10 * np.log10(max(energy_final / peak_energy, 1e-30))
 
-    print(f"\nCPML grazing incidence:")
+    print("\nCPML grazing incidence:")
     print(f"  Peak energy:  {peak_energy:.4e}")
     print(f"  Final energy: {energy_final:.4e}")
     print(f"  Reflection: {reflection_db:.1f} dB")
@@ -542,7 +541,7 @@ def test_late_time_stability():
     energy_final = em_energy(state)
     drift = abs(energy_final - energy_ref) / energy_ref
 
-    print(f"\nLate-time stability (5000 steps, dt=0.99*CFL):")
+    print("\nLate-time stability (5000 steps, dt=0.99*CFL):")
     print(f"  Energy reference: {energy_ref:.4e}")
     print(f"  Energy final:     {energy_final:.4e}")
     print(f"  Drift: {drift * 100:.4f}%")

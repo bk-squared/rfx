@@ -1,6 +1,5 @@
 """Tests for Holland thin-wire subcell model."""
 
-import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
@@ -19,7 +18,7 @@ def test_thin_wire_creates_correction():
     assert float(jnp.max(sigma_corr)) > 0, "Should have non-zero sigma correction"
 
     n_modified = int(jnp.sum(eps_corr > 0))
-    print(f"\nThin wire (x-aligned, r=0.1mm):")
+    print("\nThin wire (x-aligned, r=0.1mm):")
     print(f"  Modified cells: {n_modified}")
     print(f"  Max eps_corr: {float(jnp.max(eps_corr)):.4f}")
     print(f"  Max sigma_corr: {float(jnp.max(sigma_corr)):.2e}")

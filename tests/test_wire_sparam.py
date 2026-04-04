@@ -5,18 +5,15 @@ import jax.numpy as jnp
 
 from rfx.geometry.csg import Box
 from rfx.grid import Grid
-from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0
+from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import (
-    GaussianPulse, WirePort, LumpedPort,
-    setup_wire_port, apply_wire_port,
-    setup_lumped_port, apply_lumped_port,
+    GaussianPulse, WirePort, setup_wire_port, apply_wire_port,
 )
 from rfx.probes.probes import (
     wire_port_voltage, wire_port_current,
     init_wire_sparam_probe, update_wire_sparam_probe,
     extract_s11, extract_s_matrix_wire,
-    init_sparam_probe, update_sparam_probe, extract_s_matrix,
 )
 
 
@@ -132,7 +129,7 @@ def test_wire_s11_pec_cavity():
     s11 = extract_s11(probe, z0=50.0)
     s11_mag = np.abs(np.array(s11))
 
-    print(f"\nWire port S11 in PEC cavity:")
+    print("\nWire port S11 in PEC cavity:")
     print(f"  |S11| range: {s11_mag.min():.3f} - {s11_mag.max():.3f}")
     print(f"  |S11| mean:  {s11_mag.mean():.3f}")
 
@@ -161,7 +158,7 @@ def test_wire_s_matrix_extraction():
 
     assert S.shape == (1, 1, 10), f"Expected (1,1,10), got {S.shape}"
     s11_mag = np.abs(S[0, 0, :])
-    print(f"\nextract_s_matrix_wire S11:")
+    print("\nextract_s_matrix_wire S11:")
     print(f"  |S11| range: {s11_mag.min():.3f} - {s11_mag.max():.3f}")
 
     assert not np.any(np.isnan(S)), "No NaN in S-matrix"
@@ -189,7 +186,7 @@ def test_wire_sparam_api_integration():
     assert result.s_params.shape[1] == 1, "Should have 1 port"
 
     s11_mag = np.abs(result.s_params[0, 0, :])
-    print(f"\nAPI wire port S-params:")
+    print("\nAPI wire port S-params:")
     print(f"  Shape: {result.s_params.shape}")
     print(f"  |S11| range: {s11_mag.min():.3f} - {s11_mag.max():.3f}")
 
@@ -204,7 +201,6 @@ def test_wire_port_jit_scan_s11_passivity():
     injection, so the sampled V/I is not contaminated by the drive signal.
     """
     from rfx.api import Simulation
-    from rfx.sources.sources import GaussianPulse
 
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
     sim.add(
@@ -223,6 +219,6 @@ def test_wire_port_jit_scan_s11_passivity():
     assert result.s_params is not None, "S-params should be computed"
     s11 = np.abs(np.array(result.s_params[0, 0, :]))
     max_s11 = np.max(s11)
-    print(f"\nJIT scan wire port S11 passivity:")
+    print("\nJIT scan wire port S11 passivity:")
     print(f"  |S11| range: {s11.min():.4f} - {max_s11:.4f}")
     assert max_s11 <= 1.05, f"S11 passivity violation: max|S11|={max_s11:.3f}"

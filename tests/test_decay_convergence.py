@@ -5,15 +5,13 @@ Test 2: Decay produces better DFT than fixed short run
 Test 3: min_steps and max_steps are honored
 """
 
-import jax.numpy as jnp
 import numpy as np
-import pytest
 
-from rfx.grid import Grid, C0
+from rfx.grid import Grid
 from rfx.core.yee import init_materials
 from rfx.sources.sources import GaussianPulse
 from rfx.simulation import (
-    run_until_decay, run, make_source, make_probe, SourceSpec, ProbeSpec,
+    run_until_decay, run, make_source, make_probe,
 )
 
 

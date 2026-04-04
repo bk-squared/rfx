@@ -49,7 +49,7 @@ def test_gradient_through_lossy():
     val, grad = _run_and_grad(grid, eps_r, sigma=sigma)
     grad_max = float(jnp.max(jnp.abs(grad)))
 
-    print(f"\nGradient through lossy material:")
+    print("\nGradient through lossy material:")
     print(f"  Objective: {val:.6e}, |grad|_max: {grad_max:.6e}")
 
     assert val > 0, "Objective should be positive"
@@ -67,7 +67,7 @@ def test_gradient_through_mu_r():
     val, grad = _run_and_grad(grid, eps_r, mu_r=mu_r)
     grad_max = float(jnp.max(jnp.abs(grad)))
 
-    print(f"\nGradient through magnetic material:")
+    print("\nGradient through magnetic material:")
     print(f"  Objective: {val:.6e}, |grad|_max: {grad_max:.6e}")
 
     assert val > 0, "Objective should be positive"
@@ -87,7 +87,7 @@ def test_gradient_cw_source():
                                n_steps=80)
     grad_max = float(jnp.max(jnp.abs(grad)))
 
-    print(f"\nGradient with CW source:")
+    print("\nGradient with CW source:")
     print(f"  Objective: {val:.6e}, |grad|_max: {grad_max:.6e}")
 
     assert val > 0, "Objective should be positive"
@@ -107,7 +107,7 @@ def test_gradient_design_region_only():
     design_grad = float(jnp.mean(jnp.abs(grad[8:12, :, :])))
     bg_grad = float(jnp.mean(jnp.abs(grad[:6, :, :])))
 
-    print(f"\nGradient spatial distribution:")
+    print("\nGradient spatial distribution:")
     print(f"  Design region |grad| mean: {design_grad:.6e}")
     print(f"  Background |grad| mean:    {bg_grad:.6e}")
 

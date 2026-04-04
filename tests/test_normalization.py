@@ -6,7 +6,6 @@ dispersion and achieves |S21| > 0.95 for an empty straight waveguide.
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
 from rfx.grid import C0
 from rfx.api import Simulation
@@ -92,7 +91,7 @@ def test_normalized_s21_straight_waveguide():
     mean_norm = np.mean(s21_norm)
     norm_err = np.mean(np.abs(s21_norm - 1.0))
 
-    print(f"\n=== Straight waveguide S21 ===")
+    print("\n=== Straight waveguide S21 ===")
     print(f"  f_cutoff = {f_c/1e9:.2f} GHz")
     print(f"  Raw (no norm): mean |S21| = {mean_raw:.4f}, mean |error from 1| = {raw_err:.4f}")
     print(f"  Normalized:    mean |S21| = {mean_norm:.4f}, mean |error from 1| = {norm_err:.4f}")
@@ -171,7 +170,7 @@ def test_normalized_s_matrix_with_obstacle():
     mean_s21 = np.mean(s21)
     mean_s12 = np.mean(s12)
 
-    print(f"\n=== Obstacle waveguide S-matrix ===")
+    print("\n=== Obstacle waveguide S-matrix ===")
     print(f"  mean |S21| = {mean_s21:.4f}")
     print(f"  mean |S12| = {mean_s12:.4f}")
 
@@ -221,7 +220,7 @@ def test_normalization_preserves_reciprocity():
     mean_s21 = np.mean(s21)
     mean_s12 = np.mean(s12)
 
-    print(f"\n=== Reciprocity check ===")
+    print("\n=== Reciprocity check ===")
     print(f"  Normalized mean |S21| = {mean_s21:.4f}")
     print(f"  Normalized mean |S12| = {mean_s12:.4f}")
 

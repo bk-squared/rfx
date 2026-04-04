@@ -395,7 +395,7 @@ def axial_ratio(ff: FarFieldResult) -> np.ndarray:
     S3 = 2 * np.imag(c)
 
     # Axial ratio from Stokes
-    L = np.sqrt(S1**2 + S3**2)
+    np.sqrt(S1**2 + S3**2)
     safe_S0 = np.where(S0 > 0, S0, 1.0)
 
     # sin(2χ) = S3/S0 where χ is ellipticity angle

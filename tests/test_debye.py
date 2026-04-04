@@ -10,12 +10,11 @@ Validates the Debye ADE implementation against analytical predictions:
 import numpy as np
 import jax.numpy as jnp
 
-from rfx.grid import Grid, C0
+from rfx.grid import C0
 from rfx.core.yee import (
-    FDTDState, init_state, init_materials, update_h, EPS_0, MU_0,
+    init_state, init_materials, update_h, EPS_0, MU_0,
 )
 from rfx.boundaries.pec import apply_pec
-from rfx.materials import set_material
 from rfx.materials.debye import (
     DebyePole, init_debye, update_e_debye,
 )
@@ -55,13 +54,13 @@ def test_debye_coefficients():
     assert abs(float(coeffs.alpha[0, 2, 2, 2]) - alpha_expected) < 1e-6, \
         f"alpha: {float(coeffs.alpha[0,2,2,2]):.8f} vs {alpha_expected:.8f}"
     assert abs(float(coeffs.beta[0, 2, 2, 2]) - beta_expected) / beta_expected < 1e-4, \
-        f"beta mismatch"
+        "beta mismatch"
     assert abs(float(coeffs.ca[2, 2, 2]) - ca_expected) / abs(ca_expected) < 1e-4, \
         f"ca: {float(coeffs.ca[2,2,2]):.8f} vs {ca_expected:.8f}"
     assert abs(float(coeffs.cb[2, 2, 2]) - cb_expected) / cb_expected < 1e-4, \
-        f"cb mismatch"
+        "cb mismatch"
     assert abs(float(coeffs.cc[0, 2, 2, 2]) - cc_expected) / cc_expected < 1e-4, \
-        f"cc mismatch"
+        "cc mismatch"
 
     # Polarization state should be zeros
     assert float(jnp.max(jnp.abs(dstate.px))) == 0.0
@@ -201,7 +200,7 @@ def test_debye_energy_bounded():
 
     final_energy = _total_energy(state, dx)
 
-    print(f"\nDebye energy stability:")
+    print("\nDebye energy stability:")
     print(f"  Initial: {initial_energy:.4e}, Max: {max_energy:.4e}, Final: {final_energy:.4e}")
 
     # Energy should never exceed initial by more than a small margin
@@ -235,7 +234,7 @@ def test_debye_mask_selective():
     # In Debye region (x >= 10): ca should be modified
     ca_deb = float(coeffs.ca[15, 5, 5])
 
-    print(f"\nDebye mask test:")
+    print("\nDebye mask test:")
     print(f"  Ca(vacuum) = {ca_vac:.6f}")
     print(f"  Ca(Debye)  = {ca_deb:.6f}")
 

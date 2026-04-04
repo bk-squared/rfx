@@ -198,7 +198,7 @@ class TestDielectricCavity2D:
 
     def _run_rfx_2d(self, a, b, eps_r):
         from rfx.grid import Grid
-        from rfx.core.yee import init_state, init_materials, update_e, update_h, MaterialArrays
+        from rfx.core.yee import init_state, update_e, update_h, MaterialArrays
         from rfx.boundaries.pec import apply_pec
         from rfx.sources.sources import GaussianPulse
         import jax.numpy as jnp
@@ -277,7 +277,7 @@ class TestWaveguideCutoff:
 
     def test_rfx_waveguide_cutoff(self):
         """rfx should find TE10 cutoff within 0.5% via cavity mode."""
-        from rfx import Simulation, Box, GaussianPulse
+        from rfx import Simulation, GaussianPulse
         from rfx.harminv import harminv
 
         L_wg = 40e-3  # waveguide length
@@ -504,4 +504,4 @@ class TestLossyDecay:
                 rel_diff = abs(ratio_rfx - ratio_meep) / max(ratio_meep, 1e-10)
                 assert rel_diff < 1.0, f"Decay mismatch: rfx={ratio_rfx:.4f} vs meep={ratio_meep:.4f}"
         else:
-            print(f"\nLossy decay: signals too weak for comparison")
+            print("\nLossy decay: signals too weak for comparison")

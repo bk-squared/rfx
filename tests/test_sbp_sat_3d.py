@@ -21,7 +21,7 @@ def test_3d_stability():
         state = step_subgrid_3d(state, config)
 
     final_energy = compute_energy_3d(state, config)
-    print(f"\n3D stability (1000 steps):")
+    print("\n3D stability (1000 steps):")
     print(f"  Initial: {initial_energy:.6e}")
     print(f"  Final:   {final_energy:.6e}")
 
@@ -53,7 +53,7 @@ def test_3d_fine_grid_receives_signal():
     max_c = float(jnp.max(jnp.abs(state.ez_c)))
     max_f = float(jnp.max(jnp.abs(state.ez_f)))
 
-    print(f"\n3D signal propagation:")
+    print("\n3D signal propagation:")
     print(f"  Coarse max |Ez|: {max_c:.6e}")
     print(f"  Fine max |Ez|:   {max_f:.6e}")
 

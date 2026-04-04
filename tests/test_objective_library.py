@@ -9,15 +9,12 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
-import numpy as np
-import pytest
 
 from rfx.optimize_objectives import (
     minimize_s11,
     maximize_s21,
     target_impedance,
     maximize_bandwidth,
-    maximize_directivity,
 )
 
 

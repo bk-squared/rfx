@@ -18,15 +18,14 @@ import jax.numpy as jnp
 import pytest
 
 import rfx
-from rfx.api import Simulation, Result, MATERIAL_LIBRARY, MaterialSpec
-from rfx.geometry.csg import Box, Sphere
+from rfx.api import Simulation, Result, MATERIAL_LIBRARY
+from rfx.geometry.csg import Box
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port
 from rfx.sources.waveguide_port import (
     extract_waveguide_s21,
     extract_waveguide_sparams,
     waveguide_plane_positions,
 )
-from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import lorentz_pole
 from rfx.simulation import make_port_source, make_probe, run as low_level_run
 

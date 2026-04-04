@@ -28,9 +28,8 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import jax.numpy as jnp
-import numpy as np
 
-from rfx.core.yee import EPS_0, MU_0, FDTDState, MaterialArrays, _shift_fwd, _shift_bwd
+from rfx.core.yee import EPS_0, FDTDState, MaterialArrays, _shift_bwd
 
 
 class DebyePole(NamedTuple):

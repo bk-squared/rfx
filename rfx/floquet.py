@@ -155,7 +155,6 @@ def apply_bloch_periodic_x(
     # In the standard periodic case (phase=1), jnp.roll handles this
     # automatically. For Bloch-periodic, we need explicit wrapping.
     phase_re = jnp.real(phase_x)
-    jnp.imag(phase_x)
 
     # Apply to each field component at x boundaries
     # x=0 boundary: field = field[nx-1] * conj(phase_x)
@@ -333,26 +332,18 @@ def extract_floquet_modes(
         'modes' : list of (m, n) mode index tuples
         'freqs' : frequency array
     """
-    len(freqs)
-
     # Spatial averaging for the (0,0) mode = mean over the plane
     # This is the 2D spatial DFT at (kx=0, ky=0) normalized by area
     e1_avg = jnp.mean(acc.e_tang1_dft, axis=(1, 2))  # (n_freqs,)
-    jnp.mean(acc.e_tang2_dft, axis=(1, 2))
-    jnp.mean(acc.h_tang1_dft, axis=(1, 2))
     h2_avg = jnp.mean(acc.h_tang2_dft, axis=(1, 2))
 
     # Wave impedance for the specular mode
     theta = math.radians(theta_deg)
-    k0 = 2.0 * jnp.pi * freqs / C0
-    k0 * math.cos(theta)
     eta0 = jnp.sqrt(MU_0 / EPS_0)  # ~377 ohms
 
     # TE mode impedance: eta_TE = eta0 / cos(theta)
-    # TM mode impedance: eta_TM = eta0 * cos(theta)
     cos_theta = max(math.cos(theta), 1e-10)
     eta_te = eta0 / cos_theta
-    eta0 * cos_theta
 
     # For the specular mode, decompose into forward/backward waves
     # using the E/H ratio. For a +z traveling wave: Hy = Ex / eta

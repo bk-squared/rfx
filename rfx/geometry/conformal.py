@@ -92,9 +92,9 @@ def compute_conformal_weights(
     def _point_inside_pec(px, py, pz):
         """Check if physical point (px, py, pz) is inside any PEC shape."""
         # Convert to grid index (fractional) and test each shape
-        gi = px / dx
-        gj = py / dx
-        gk = pz / dx
+        px / dx
+        py / dx
+        pz / dx
         for shape in pec_shapes:
             # Use shape's mask at fractional position via SDF or bounds check
             if hasattr(shape, 'center') and hasattr(shape, 'radius'):

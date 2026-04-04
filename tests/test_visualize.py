@@ -61,7 +61,7 @@ def test_plot_time_series():
     """plot_time_series should return a Figure."""
     from rfx.visualize import plot_time_series
 
-    n_steps, n_probes = 100, 3
+    n_steps, _n_probes = 100, 3
     ts = np.sin(np.linspace(0, 10 * np.pi, n_steps))[:, None] * np.array([1.0, 0.5, 0.3])
     dt = 1e-12
 

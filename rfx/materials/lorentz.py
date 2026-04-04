@@ -24,7 +24,6 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import jax.numpy as jnp
-import numpy as np
 
 from rfx.core.yee import EPS_0, FDTDState, _shift_bwd
 

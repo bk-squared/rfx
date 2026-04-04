@@ -117,7 +117,7 @@ def test_eigenmode_port_matches_analytical():
     above = np.array(freqs) > f_c * 1.2
 
     diff = np.mean(np.abs(s21_analytical[above] - s21_eigen[above]))
-    print(f"\nEigenmode vs analytical S21:")
+    print("\nEigenmode vs analytical S21:")
     print(f"  Analytical mean |S21|: {np.mean(s21_analytical[above]):.4f}")
     print(f"  Eigenmode mean |S21|:  {np.mean(s21_eigen[above]):.4f}")
     print(f"  Mean difference:       {diff:.4f}")
@@ -146,7 +146,7 @@ def test_eigenmode_partially_filled_cutoff():
     # Full eps_r=4: cutoff = c/(2a*sqrt(4)) ≈ 1.875 GHz
     f_c_full = cutoff_frequency(a, b, 1, 0) / np.sqrt(4.0)
 
-    print(f"\nPartially-filled waveguide cutoff:")
+    print("\nPartially-filled waveguide cutoff:")
     print(f"  Uniform (eps=1):   {f_c_uniform / 1e9:.3f} GHz")
     print(f"  Half-filled (eps=4): {f_c_filled / 1e9:.3f} GHz")
     print(f"  Full (eps=4):      {f_c_full / 1e9:.3f} GHz")

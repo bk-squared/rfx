@@ -12,9 +12,7 @@ This gives second-order convergence instead of the first-order stairstepping.
 
 from __future__ import annotations
 
-import jax
 import jax.numpy as jnp
-import numpy as np
 
 from rfx.grid import Grid
 from rfx.geometry.csg import Shape

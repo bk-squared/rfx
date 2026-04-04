@@ -7,7 +7,6 @@ Tests:
 """
 
 import numpy as np
-import pytest
 import jax.numpy as jnp
 
 from rfx.grid import Grid, C0
@@ -185,9 +184,7 @@ def test_cfs_cpml_no_regression_above_cutoff():
     pulse = GaussianPulse(f0=2e9, bandwidth=0.5)
 
     cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
-    inject = (cx, cy, cz)
     dt, dx = grid.dt, grid.dx
-    n_steps = 700
 
     def _measure_energy(state):
         return float(
@@ -232,8 +229,8 @@ def test_cfs_cpml_no_regression_above_cutoff():
         state_cfs, cpml_state_cfs = apply_cpml_e(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
     energy_cfs = _measure_energy(state_cfs)
 
-    ratio_std = 10 * np.log10(energy_std / max(energy_std, 1e-30))  # baseline
-    ratio_cfs = 10 * np.log10(energy_cfs / max(energy_std, 1e-30))
+    10 * np.log10(energy_std / max(energy_std, 1e-30))  # baseline
+    10 * np.log10(energy_cfs / max(energy_std, 1e-30))
 
     print(f"Standard CPML final energy: {energy_std:.4e}")
     print(f"CFS-CPML final energy:      {energy_cfs:.4e}")

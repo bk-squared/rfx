@@ -12,7 +12,7 @@ import pytest
 import matplotlib
 matplotlib.use("Agg")
 
-from rfx import Simulation, GaussianPulse, SnapshotSpec
+from rfx import Simulation, SnapshotSpec
 
 
 # ---------------------------------------------------------------------------

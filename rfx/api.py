@@ -18,40 +18,44 @@ Usage
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import math
 from numbers import Integral
 from typing import NamedTuple
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.grid import Grid, C0
-from rfx.core.yee import MaterialArrays, init_materials, EPS_0
-from rfx.geometry.csg import Shape, Box, Sphere, Cylinder, rasterize
-from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source
-from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port, WirePort, setup_wire_port
+from rfx.grid import Grid
+from rfx.core.yee import MaterialArrays, EPS_0
+from rfx.geometry.csg import Shape
+from rfx.nonuniform import NonUniformGrid
+from rfx.sources.sources import GaussianPulse
 from rfx.materials.debye import DebyePole, init_debye
-from rfx.materials.lorentz import LorentzPole, init_lorentz, drude_pole, lorentz_pole
+from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.lumped import LumpedRLCSpec
 from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
-from rfx.probes.probes import extract_s_matrix, extract_s_matrix_wire, init_dft_plane_probe
 from rfx.sources.waveguide_port import (
     WaveguidePort,
     extract_waveguide_s_matrix,
     extract_waveguide_s_params_normalized,
-    extract_waveguide_sparams,
     init_waveguide_port,
+    init_multimode_waveguide_port,
+    extract_multimode_s_matrix,
     waveguide_plane_positions,
 )
-from rfx.simulation import (
-    make_source, make_j_source, make_probe, make_port_source, make_wire_port_sources,
-    run as _run, run_until_decay as _run_until_decay,
-    SimResult, SourceSpec, ProbeSpec, SnapshotSpec,
+from rfx.floquet import (
+    FloquetPort,
+    floquet_phase_shift,
+    floquet_wave_vector,
+    init_floquet_dft,
+    update_floquet_dft,
+    inject_floquet_source,
+    extract_floquet_modes,
+    compute_floquet_s_params,
 )
-from rfx.farfield import (
-    NTFFBox, make_ntff_box, compute_far_field, FarFieldResult,
+from rfx.simulation import (
+    SnapshotSpec,
 )
 
 
@@ -282,6 +286,24 @@ class _WaveguidePortEntry:
     calibration_preset: str | None
     reference_plane: float | None
     probe_plane: float | None
+    n_modes: int = 1
+
+
+@dataclass(frozen=True)
+class _FloquetPortEntry:
+    """Internal bookkeeping for a Floquet port."""
+    name: str
+    position: float
+    axis: str
+    scan_theta: float
+    scan_phi: float
+    polarization: str
+    n_modes: int
+    freqs: jnp.ndarray | None
+    n_freqs: int
+    f0: float | None
+    bandwidth: float
+    amplitude: float
 
 
 class WaveguideSParamResult(NamedTuple):
@@ -379,6 +401,7 @@ class Simulation:
         self._periodic_axes: str = ""
         self._refinement: dict | None = None
         self._lumped_rlc: list[LumpedRLCSpec] = []
+        self._floquet_ports: list[_FloquetPortEntry] = []
 
     # ---- refinement (subgridding) ----
 
@@ -780,6 +803,7 @@ class Simulation:
         reference_plane: float | None = None,
         probe_plane: float | None = None,
         name: str | None = None,
+        n_modes: int = 1,
     ) -> "Simulation":
         """Add a rectangular waveguide port.
 
@@ -890,6 +914,8 @@ class Simulation:
             raise ValueError("probe_offset and ref_offset must be positive integers")
         if probe_offset <= 0 or ref_offset <= 0:
             raise ValueError("probe_offset and ref_offset must be positive integers")
+        if not isinstance(n_modes, Integral) or n_modes < 1:
+            raise ValueError(f"n_modes must be a positive integer, got {n_modes!r}")
         if calibration_preset not in (None, "measured", "source_to_probe"):
             raise ValueError(
                 "calibration_preset must be one of None, 'measured', or 'source_to_probe'"
@@ -975,6 +1001,7 @@ class Simulation:
             calibration_preset=calibration_preset,
             reference_plane=reference_plane,
             probe_plane=probe_plane,
+            n_modes=n_modes,
         ))
         return self
 
@@ -996,6 +1023,102 @@ class Simulation:
         if self._waveguide_ports:
             raise ValueError("Manual periodic-axis overrides are not supported together with waveguide ports")
         self._periodic_axes = normalized
+        return self
+
+    # ---- Floquet ports ----
+
+    def add_floquet_port(
+        self,
+        position: float,
+        *,
+        axis: str = "z",
+        scan_theta: float = 0.0,
+        scan_phi: float = 0.0,
+        polarization: str = "te",
+        n_modes: int = 1,
+        freqs: jnp.ndarray | None = None,
+        n_freqs: int = 50,
+        f0: float | None = None,
+        bandwidth: float = 0.5,
+        amplitude: float = 1.0,
+        name: str | None = None,
+    ) -> "Simulation":
+        """Add a Floquet port for periodic structure / phased array analysis.
+
+        The Floquet port injects a plane wave at the given scan angle
+        and extracts Floquet mode amplitudes (S-parameters) from the
+        unit cell response.  Requires periodic BC on the two axes
+        perpendicular to the port normal.
+
+        Parameters
+        ----------
+        position : float
+            Physical coordinate along the port normal axis (metres).
+        axis : str
+            Port normal axis: ``"x"``, ``"y"``, or ``"z"``.
+        scan_theta : float
+            Scan angle theta from broadside (degrees). Default 0.
+        scan_phi : float
+            Scan angle phi in the transverse plane (degrees). Default 0.
+        polarization : str
+            ``"te"`` or ``"tm"``. Default ``"te"``.
+        n_modes : int
+            Number of Floquet modes to extract (default 1 = specular).
+        freqs : array or None
+            Analysis frequencies. Auto-generated if None.
+        n_freqs : int
+            Number of frequency points when ``freqs`` is None.
+        f0 : float or None
+            Source center frequency. Default: ``freq_max / 2``.
+        bandwidth : float
+            Source fractional bandwidth. Default 0.5.
+        amplitude : float
+            Source amplitude. Default 1.0.
+        name : str or None
+            Optional name for the port. Auto-generated if None.
+        """
+        if axis not in ("x", "y", "z"):
+            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+        if polarization not in ("te", "tm"):
+            raise ValueError(f"polarization must be 'te' or 'tm', got {polarization!r}")
+        if scan_theta < 0 or scan_theta >= 90:
+            raise ValueError(f"scan_theta must be in [0, 90), got {scan_theta}")
+        if n_modes < 1:
+            raise ValueError(f"n_modes must be >= 1, got {n_modes}")
+        if self._tfsf is not None:
+            raise ValueError(
+                "Floquet ports are not supported together with TFSF sources"
+            )
+
+        # Auto-set periodic axes for the two transverse directions
+        transverse = "".join(a for a in "xyz" if a != axis)
+        if not self._periodic_axes:
+            self._periodic_axes = transverse
+        else:
+            for a in transverse:
+                if a not in self._periodic_axes:
+                    raise ValueError(
+                        f"Floquet port on axis={axis!r} requires periodic BC on {transverse!r}, "
+                        f"but periodic_axes={self._periodic_axes!r}"
+                    )
+
+        if name is None:
+            name = f"floquet_{len(self._floquet_ports)}"
+
+        self._floquet_ports.append(_FloquetPortEntry(
+            name=name,
+            position=position,
+            axis=axis,
+            scan_theta=scan_theta,
+            scan_phi=scan_phi,
+            polarization=polarization,
+            n_modes=n_modes,
+            freqs=freqs,
+            n_freqs=n_freqs,
+            f0=f0,
+            bandwidth=bandwidth,
+            amplitude=amplitude,
+        ))
         return self
 
     # ---- probes ----
@@ -1319,6 +1442,20 @@ class Simulation:
             u_slice=u_slice,
             v_slice=v_slice,
         )
+        if entry.n_modes > 1:
+            cfgs = init_multimode_waveguide_port(
+                port,
+                grid.dx,
+                freqs,
+                n_modes=entry.n_modes,
+                f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
+                bandwidth=entry.bandwidth,
+                amplitude=entry.amplitude,
+                probe_offset=entry.probe_offset,
+                ref_offset=entry.ref_offset,
+                dft_total_steps=n_steps,
+            )
+            return cfgs
         cfg = init_waveguide_port(
             port,
             grid.dx,
@@ -1395,7 +1532,65 @@ class Simulation:
             if entry_freqs.shape != freqs.shape or not np.allclose(np.asarray(entry_freqs), np.asarray(freqs)):
                 raise ValueError("waveguide S-matrix requires matching frequency grids on all ports")
 
-        cfgs = [self._build_waveguide_port_config(entry, grid, freqs, n_steps) for entry in entries]
+        # Build configs — may be a single config or a list of configs per port
+        has_multimode = any(entry.n_modes > 1 for entry in entries)
+        raw_cfgs = [self._build_waveguide_port_config(entry, grid, freqs, n_steps) for entry in entries]
+
+        if has_multimode:
+            # Multi-mode path: each raw_cfg is a list of WaveguidePortConfig
+            port_mode_cfgs: list[list] = []
+            for entry, raw in zip(entries, raw_cfgs):
+                if isinstance(raw, list):
+                    port_mode_cfgs.append(raw)
+                else:
+                    port_mode_cfgs.append([raw])
+
+            ref_shifts_mm = []
+            for entry, mode_cfgs in zip(entries, port_mode_cfgs):
+                first_cfg = mode_cfgs[0]
+                desired_ref = (
+                    entry.reference_plane
+                    if entry.reference_plane is not None
+                    else waveguide_plane_positions(first_cfg)["reference"]
+                )
+                ref_shifts_mm.append(desired_ref - waveguide_plane_positions(first_cfg)["reference"])
+
+            if normalize:
+                raise ValueError(
+                    "compute_waveguide_s_matrix(normalize=True) is not yet "
+                    "supported with n_modes > 1"
+                )
+
+            s_params, mode_map = extract_multimode_s_matrix(
+                grid,
+                materials,
+                port_mode_cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
+                debye=debye,
+                lorentz=lorentz,
+                ref_shifts=ref_shifts_mm,
+            )
+            reference_planes = np.array(ref_shifts_mm, dtype=float)
+            # Build port names including mode indices
+            port_names_mm = []
+            port_directions_mm = []
+            for port_idx, mode_idx, mtype, m_n in mode_map:
+                entry = entries[port_idx]
+                port_names_mm.append(f"{entry.name}_mode{mode_idx}_{mtype}{m_n[0]}{m_n[1]}")
+                port_directions_mm.append(entry.direction)
+            return WaveguideSMatrixResult(
+                s_params=np.array(s_params),
+                freqs=np.array(freqs),
+                port_names=tuple(port_names_mm),
+                port_directions=tuple(port_directions_mm),
+                reference_planes=reference_planes,
+            )
+
+        # Single-mode path (original behavior)
+        cfgs = raw_cfgs
 
         def _slices_overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
             return max(a[0], b[0]) < min(a[1], b[1])
@@ -1664,6 +1859,7 @@ class Simulation:
             f"  probes={len(self._probes)},\n"
             f"  dft_planes={len(self._dft_planes)},\n"
             f"  waveguide_ports={len(self._waveguide_ports)},\n"
+            f"  floquet_ports={len(self._floquet_ports)},\n"
             f"  periodic_axes={self._periodic_axes!r},\n"
             f"  tfsf={self._tfsf is not None},\n"
             f")"

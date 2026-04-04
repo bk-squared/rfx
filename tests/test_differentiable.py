@@ -7,7 +7,6 @@ Validates that:
 4. A gradient ascent step improves a probe-energy objective
 """
 
-import numpy as np
 import jax
 import jax.numpy as jnp
 
@@ -142,7 +141,7 @@ def test_gradient_descent_step():
     eps_r_new = jnp.clip(eps_r + lr * grad, 1.0, 10.0)
     val_after = float(objective(eps_r_new))
 
-    print(f"\nGradient ascent step:")
+    print("\nGradient ascent step:")
     print(f"  Before: {val_before:.6e}")
     print(f"  After:  {val_after:.6e}")
     print(f"  |grad|_max: {float(jnp.max(jnp.abs(grad))):.6e}")

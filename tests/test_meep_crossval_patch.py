@@ -45,7 +45,7 @@ CASE_GPS = {
 def run_rfx_2d_cavity(a, b, eps_r, sigma, m, n, dx=None):
     """Run rfx 2D TMz cavity and return resonant frequency."""
     from rfx.grid import Grid
-    from rfx.core.yee import init_state, init_materials, update_e, update_h, MaterialArrays
+    from rfx.core.yee import init_state, update_e, update_h, MaterialArrays
     from rfx.boundaries.pec import apply_pec
     from rfx.sources.sources import GaussianPulse
     import jax.numpy as jnp

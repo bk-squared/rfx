@@ -63,7 +63,7 @@ def deembed_port_extension(
     eps_eff = np.asarray(eps_eff, dtype=np.float64)
 
     n_ports = s_matrix.shape[0]
-    n_freqs = s_matrix.shape[2]
+    s_matrix.shape[2]
 
     if port_lengths.shape[0] != n_ports:
         raise ValueError(

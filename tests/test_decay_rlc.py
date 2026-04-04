@@ -1,6 +1,5 @@
 """run_until_decay must support lumped RLC elements."""
 import numpy as np
-import pytest
 from rfx import Simulation, GaussianPulse
 
 

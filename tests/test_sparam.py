@@ -7,10 +7,9 @@ Tests:
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
-from rfx.grid import Grid, C0
-from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0
+from rfx.grid import Grid
+from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port, apply_lumped_port
 from rfx.probes.probes import (
@@ -65,7 +64,7 @@ def test_lumped_port_pec_cavity_s11():
     mid_band = (np.array(freqs) > 1.5e9) & (np.array(freqs) < 4.5e9)
     s11_mid = s11_db[mid_band]
 
-    print(f"\nS11 in PEC cavity (mid-band):")
+    print("\nS11 in PEC cavity (mid-band):")
     print(f"  Mean: {np.mean(s11_mid):.1f} dB")
     print(f"  Min:  {np.min(s11_mid):.1f} dB")
     print(f"  Max:  {np.max(s11_mid):.1f} dB")
@@ -107,7 +106,7 @@ def test_lumped_port_injects_energy():
     total_e = float((state.ex**2 + state.ey**2 + state.ez**2).sum())
     total_h = float((state.hx**2 + state.hy**2 + state.hz**2).sum())
 
-    print(f"\nAfter 100 steps with lumped port:")
+    print("\nAfter 100 steps with lumped port:")
     print(f"  Total E²: {total_e:.4e}")
     print(f"  Total H²: {total_h:.4e}")
 

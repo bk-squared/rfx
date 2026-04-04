@@ -954,6 +954,312 @@ def init_overlap_dft(freqs: jnp.ndarray) -> OverlapDFTAccumulators:
     )
 
 
+# ---------------------------------------------------------------------------
+# Multi-mode waveguide port support
+# ---------------------------------------------------------------------------
+
+def solve_rectangular_modes(
+    a: float,
+    b: float,
+    freq_max: float,
+    n_modes: int = 3,
+) -> list[dict]:
+    """Compute TE and TM modes for a rectangular waveguide.
+
+    Enumerates analytical modes sorted by cutoff frequency and returns the
+    lowest ``n_modes`` that have cutoff below ``freq_max``.
+
+    Parameters
+    ----------
+    a, b : float
+        Waveguide cross-section dimensions (metres). By convention ``a >= b``.
+    freq_max : float
+        Maximum frequency in Hz.  Only modes with cutoff below this value
+        are included.
+    n_modes : int
+        Maximum number of modes to return.
+
+    Returns
+    -------
+    list of dict
+        Each dict has keys: ``mode_type`` (``"TE"`` or ``"TM"``), ``m``, ``n``,
+        ``f_cutoff``.
+    """
+    candidates: list[dict] = []
+
+    # Search range: at least 2*n_modes for each index to be safe
+    max_idx = max(2 * n_modes, 6)
+    for m in range(0, max_idx + 1):
+        for n in range(0, max_idx + 1):
+            if m == 0 and n == 0:
+                continue
+            fc = cutoff_frequency(a, b, m, n)
+            if fc <= freq_max:
+                candidates.append({
+                    "mode_type": "TE", "m": m, "n": n, "f_cutoff": fc,
+                })
+
+    for m in range(1, max_idx + 1):
+        for n in range(1, max_idx + 1):
+            fc = cutoff_frequency(a, b, m, n)
+            if fc <= freq_max:
+                candidates.append({
+                    "mode_type": "TM", "m": m, "n": n, "f_cutoff": fc,
+                })
+
+    candidates.sort(key=lambda x: x["f_cutoff"])
+    return candidates[:n_modes]
+
+
+def init_multimode_waveguide_port(
+    port: WaveguidePort,
+    dx: float,
+    freqs: jnp.ndarray,
+    n_modes: int = 1,
+    *,
+    f0: float = 5e9,
+    bandwidth: float = 0.5,
+    amplitude: float = 1.0,
+    probe_offset: int = 10,
+    ref_offset: int = 3,
+    dft_total_steps: int = 0,
+    dft_window: str = "tukey",
+    dft_window_alpha: float = 0.25,
+) -> list[WaveguidePortConfig]:
+    """Initialize a multi-mode waveguide port.
+
+    Expands a single physical port into ``n_modes`` independent
+    ``WaveguidePortConfig`` objects, one per analytical eigenmode.
+    Each config has the profile of a different waveguide mode, but shares
+    the same physical location and aperture.
+
+    Only the first mode (lowest cutoff, typically TE10) is driven with a
+    source; higher-order modes are passive listeners that extract modal
+    amplitudes via overlap integrals.
+
+    Parameters
+    ----------
+    port : WaveguidePort
+        Physical port definition (location, aperture, direction).
+        The ``mode`` and ``mode_type`` fields are ignored when
+        ``n_modes > 1``; modes are auto-enumerated by cutoff.
+    dx : float
+        Cell size (metres).
+    freqs : jnp.ndarray
+        Frequency array for DFT extraction.
+    n_modes : int
+        Number of lowest-cutoff modes to include.
+    f0, bandwidth, amplitude, probe_offset, ref_offset : ...
+        Passed to ``init_waveguide_port`` for each mode config.
+    dft_total_steps : int
+        Total simulation steps (for DFT windowing).
+    dft_window : str
+        DFT window type.
+    dft_window_alpha : float
+        DFT window parameter.
+
+    Returns
+    -------
+    list[WaveguidePortConfig]
+        One config per mode, sorted by cutoff frequency.
+        Only the first config has a nonzero source amplitude.
+    """
+    if n_modes == 1:
+        cfg = init_waveguide_port(
+            port, dx, freqs, f0=f0, bandwidth=bandwidth,
+            amplitude=amplitude, probe_offset=probe_offset,
+            ref_offset=ref_offset, dft_total_steps=dft_total_steps,
+            dft_window=dft_window, dft_window_alpha=dft_window_alpha,
+        )
+        return [cfg]
+
+    # Enumerate modes analytically
+    freq_max = float(jnp.max(freqs)) * 2.0  # generous upper bound
+    mode_list = solve_rectangular_modes(port.a, port.b, freq_max, n_modes)
+    if len(mode_list) == 0:
+        raise ValueError(
+            f"No waveguide modes found below freq_max={freq_max:.3e} Hz "
+            f"for aperture a={port.a}, b={port.b}"
+        )
+
+    cfgs = []
+    for mode_idx, mode_info in enumerate(mode_list):
+        m, n = mode_info["m"], mode_info["n"]
+        mode_type = mode_info["mode_type"]
+
+        # Create a port variant for this mode
+        mode_port = port._replace(
+            mode=(m, n),
+            mode_type=mode_type,
+        )
+
+        # Only the first (dominant) mode is actively driven
+        mode_amplitude = amplitude if mode_idx == 0 else 0.0
+
+        cfg = init_waveguide_port(
+            mode_port, dx, freqs, f0=f0, bandwidth=bandwidth,
+            amplitude=mode_amplitude, probe_offset=probe_offset,
+            ref_offset=ref_offset, dft_total_steps=dft_total_steps,
+            dft_window=dft_window, dft_window_alpha=dft_window_alpha,
+        )
+        cfgs.append(cfg)
+
+    return cfgs
+
+
+def extract_multimode_s_matrix(
+    grid,
+    materials,
+    port_mode_cfgs: list[list[WaveguidePortConfig]],
+    n_steps: int,
+    *,
+    boundary: str = "cpml",
+    cpml_axes: str = "x",
+    pec_axes: str = "yz",
+    periodic: tuple[bool, bool, bool] | None = None,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    ref_shifts: list[float] | None = None,
+) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
+    """Assemble a multi-mode waveguide S-matrix.
+
+    Each physical port may have multiple modes.  The S-matrix indices
+    enumerate (port_index, mode_index) pairs.
+
+    Parameters
+    ----------
+    grid : Grid
+        Simulation grid.
+    materials : MaterialArrays
+        Material arrays.
+    port_mode_cfgs : list of list of WaveguidePortConfig
+        ``port_mode_cfgs[p]`` is a list of configs for physical port ``p``,
+        one per mode.
+    n_steps : int
+        Number of timesteps per run.
+    ref_shifts : list[float] or None
+        Reference-plane shifts per physical port.  Applied to all modes
+        of each port.
+
+    Returns
+    -------
+    s_matrix : jnp.ndarray, shape (N, N, n_freqs)
+        S-matrix where N = sum of modes across all ports.
+    mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
+        Ordering of rows/columns in the S-matrix.
+    """
+    from rfx.simulation import run as run_simulation
+
+    # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
+    flat_cfgs: list[WaveguidePortConfig] = []
+    mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
+    port_of_flat: list[int] = []
+
+    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
+        for mode_within, cfg in enumerate(mode_cfgs):
+            flat_cfgs.append(cfg)
+            # Extract mode info from the config
+            m_idx = _mode_indices_from_config(cfg)
+            mode_map.append((port_idx, mode_within, cfg.mode_type, m_idx))
+            port_of_flat.append(port_idx)
+
+    n_total = len(flat_cfgs)
+    n_freqs = len(flat_cfgs[0].freqs)
+    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=np.complex64)
+
+    n_ports = len(port_mode_cfgs)
+    if ref_shifts is None:
+        ref_shifts = [0.0] * n_ports
+    if len(ref_shifts) != n_ports:
+        raise ValueError("ref_shifts must have one entry per physical port")
+
+    # Expand ref_shifts to flat indexing
+    flat_ref_shifts = []
+    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
+        for _ in mode_cfgs:
+            flat_ref_shifts.append(ref_shifts[port_idx])
+
+    def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
+        zeros = jnp.zeros_like(cfg.v_probe_dft)
+        return cfg._replace(
+            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            v_probe_dft=zeros,
+            v_ref_dft=zeros,
+            i_probe_dft=zeros,
+            i_ref_dft=zeros,
+            v_inc_dft=zeros,
+        )
+
+    # Drive each mode one at a time
+    for drive_flat_idx in range(n_total):
+        driven_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+            for idx, cfg in enumerate(flat_cfgs)
+        ]
+        # Set the driven mode amplitude to the original first-mode amplitude
+        orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+        driven_cfgs[drive_flat_idx] = driven_cfgs[drive_flat_idx]._replace(
+            src_amp=orig_amp,
+        )
+
+        result = run_simulation(
+            grid, materials, n_steps,
+            boundary=boundary,
+            cpml_axes=cpml_axes,
+            pec_axes=pec_axes,
+            periodic=periodic,
+            debye=debye,
+            lorentz=lorentz,
+            waveguide_ports=driven_cfgs,
+        )
+        final_cfgs = result.waveguide_ports or ()
+        if len(final_cfgs) != n_total:
+            raise RuntimeError(
+                f"Expected {n_total} final waveguide configs, got {len(final_cfgs)}"
+            )
+
+        a_drive, _ = extract_waveguide_port_waves(
+            final_cfgs[drive_flat_idx],
+            ref_shift=flat_ref_shifts[drive_flat_idx],
+        )
+        safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
+
+        for recv_idx, cfg in enumerate(final_cfgs):
+            _, b_recv = extract_waveguide_port_waves(
+                cfg,
+                ref_shift=flat_ref_shifts[recv_idx],
+            )
+            s_matrix[recv_idx, drive_flat_idx, :] = np.array(b_recv / safe_a)
+
+    return jnp.asarray(s_matrix), mode_map
+
+
+def _mode_indices_from_config(cfg: WaveguidePortConfig) -> tuple[int, int]:
+    """Best-effort extraction of (m, n) mode indices from a config.
+
+    Uses the cutoff frequency and aperture dimensions to identify the mode.
+    """
+    a, b = cfg.a, cfg.b
+    fc = cfg.f_cutoff
+    kc = 2 * np.pi * fc / C0_LOCAL
+    kc_sq = kc ** 2
+
+    best_err = float('inf')
+    best_mn = (0, 0)
+    for m in range(0, 8):
+        for n in range(0, 8):
+            if m == 0 and n == 0:
+                continue
+            kc_sq_an = (m * np.pi / a) ** 2 + (n * np.pi / b) ** 2
+            err = abs(kc_sq - kc_sq_an) / max(kc_sq_an, 1e-30)
+            if err < best_err:
+                best_err = err
+                best_mn = (m, n)
+    if best_err < 0.1:
+        return best_mn
+    return (0, 0)
+
+
 def _overlap_cross_products(
     state, cfg: WaveguidePortConfig, x_idx: int, dx: float,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:

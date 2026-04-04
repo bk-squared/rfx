@@ -11,7 +11,6 @@ Validates:
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 from rfx.topology import (
     TopologyDesignRegion,
@@ -219,7 +218,7 @@ class TestDensityToEps:
             assert max_eps <= eps_fg + 1e-5, (
                 f"eps above fg: {max_eps:.6f} > {eps_fg} at beta={beta}"
             )
-        print(f"\n  eps range verified for beta in [1, 8, 64]")
+        print("\n  eps range verified for beta in [1, 8, 64]")
 
     def test_density_to_eps_with_filter(self):
         """Pipeline with filtering should also keep eps in range."""
@@ -306,7 +305,7 @@ class TestGradientFlow:
         rho = 0.5 * jnp.ones((8, 8), dtype=jnp.float32)
         grad = jax.grad(loss_fn)(rho)
 
-        assert jnp.all(jnp.isfinite(grad)), f"Gradient at beta=64 has NaN/Inf"
+        assert jnp.all(jnp.isfinite(grad)), "Gradient at beta=64 has NaN/Inf"
 
 
 # ---------------------------------------------------------------------------

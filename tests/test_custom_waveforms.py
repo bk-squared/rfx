@@ -10,7 +10,6 @@ Validates that:
 import numpy as np
 import jax
 import jax.numpy as jnp
-import pytest
 
 from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays, init_materials

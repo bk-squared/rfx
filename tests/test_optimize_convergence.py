@@ -11,9 +11,8 @@ Each test must complete in <120 seconds on CPU.
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
-from rfx.api import Simulation, Box
+from rfx.api import Simulation
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port
 from rfx.core.yee import MaterialArrays
 from rfx.simulation import run as _run, make_port_source, make_probe as _make_probe

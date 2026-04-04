@@ -569,7 +569,7 @@ def save_field_animation(
 
     # data is now (n_frames, n1, n2)
     vmax = float(np.max(np.abs(data))) or 1.0
-    dx = grid.dx * scale
+    grid.dx * scale
 
     fig, ax = plt.subplots(figsize=(7, 5))
     im = ax.imshow(data[0].T, origin="lower", cmap=cmap,

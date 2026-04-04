@@ -124,7 +124,7 @@ def _shared_node_update_2d(ez_c, ez_f, hx_c, hy_c, hx_f, hy_f, config):
     - H inside the fine region → fine H (downsampled to coarse spacing)
     """
     dt = config.dt
-    dx_c, dx_f = config.dx_c, config.dx_f
+    _dx_c, _dx_f = config.dx_c, config.dx_f
     ratio = config.ratio
     p_shared = config.p_shared
     fi, fj = config.fi_lo, config.fj_lo

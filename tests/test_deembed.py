@@ -199,7 +199,7 @@ class TestDeembedThru:
     def test_thru_deembed_identity(self):
         """If the DUT is a thru and the fixture is a thru, result should be thru."""
         n_freqs = 20
-        freqs = np.linspace(1e9, 10e9, n_freqs)
+        np.linspace(1e9, 10e9, n_freqs)
 
         # Ideal thru: S11=S22=0, S12=S21=1
         s_thru = np.zeros((2, 2, n_freqs), dtype=np.complex128)

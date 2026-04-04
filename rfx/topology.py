@@ -36,12 +36,11 @@ Key concepts
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable, Sequence
+from dataclasses import dataclass
+from typing import Callable
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +428,7 @@ def topology_optimize(
         )
 
         # Run simulation
-        from rfx.simulation import run as _run, make_source, make_probe, make_port_source
+        from rfx.simulation import run as _run, make_probe, make_port_source
         from rfx.sources.sources import LumpedPort, setup_lumped_port
 
         n_steps = grid.num_timesteps(num_periods=20.0)

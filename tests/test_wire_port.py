@@ -1,15 +1,12 @@
 """Tests for multi-cell (wire) lumped port."""
 
 import numpy as np
-import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0
-from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
+from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.sources.sources import (
     GaussianPulse, WirePort, setup_wire_port, apply_wire_port,
 )
-from rfx.probes.probes import init_sparam_probe, update_sparam_probe
 
 
 def test_wire_port_distributed_impedance():
@@ -30,7 +27,7 @@ def test_wire_port_distributed_impedance():
 
     # Find modified cells
     modified = np.argwhere(sigma > 0)
-    print(f"\nWire port distributed impedance:")
+    print("\nWire port distributed impedance:")
     print(f"  Modified cells: {len(modified)}")
     print(f"  Max sigma: {sigma.max():.2e}")
 
@@ -68,7 +65,7 @@ def test_wire_port_excites_vertical_field():
     ez_along_z = np.array(state.ez[ix, iy, :])
     n_excited = int(np.sum(np.abs(ez_along_z) > 1e-10))
 
-    print(f"\nVertical excitation:")
+    print("\nVertical excitation:")
     print(f"  Ez non-zero z-cells: {n_excited}")
     print(f"  Max |Ez|: {np.max(np.abs(ez_along_z)):.4e}")
 
@@ -112,7 +109,7 @@ def test_wire_port_cavity_resonance():
     band = (freqs > 2e9) & (freqs < 8e9)
     peak_f = freqs[band][np.argmax(spec[band])]
 
-    print(f"\nWire port cavity resonance:")
+    print("\nWire port cavity resonance:")
     print(f"  Peak freq: {peak_f/1e9:.2f} GHz")
     print(f"  Max |Ez|:  {np.max(np.abs(ez_trace)):.4e}")
 
@@ -141,5 +138,5 @@ def test_wire_port_api_extent():
     ts = np.array(result.time_series[:, 0])
     assert np.max(np.abs(ts)) > 1e-10, "Wire port via API should excite fields"
     assert not np.any(np.isnan(ts)), "No NaN in time series"
-    print(f"\nAPI wire port test:")
+    print("\nAPI wire port test:")
     print(f"  Max |Ez| at probe: {np.max(np.abs(ts)):.4e}")

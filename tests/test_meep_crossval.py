@@ -142,7 +142,7 @@ def test_rfx_vs_meep_cavity():
     err_cross = abs(f_rfx - f_meep) / f_meep
 
     print(f"\n{'='*50}")
-    print(f"PEC Cavity TM110 Cross-Validation")
+    print("PEC Cavity TM110 Cross-Validation")
     print(f"{'='*50}")
     print(f"Analytical:  {F_ANALYTICAL / 1e9:.6f} GHz")
     print(f"rfx:         {f_rfx / 1e9:.6f} GHz  (err: {err_rfx*100:.3f}%)")
@@ -163,7 +163,6 @@ def test_rfx_vs_meep_dielectric_loaded():
     Both simulators should find the same shifted resonance.
     """
     import meep as mp
-    import jax.numpy as jnp
 
     eps_slab = 4.0
 
@@ -251,7 +250,7 @@ def test_rfx_vs_meep_dielectric_loaded():
     err_cross = abs(f_rfx - f_meep) / f_meep
 
     print(f"\n{'='*50}")
-    print(f"Dielectric-Loaded Cavity Cross-Validation")
+    print("Dielectric-Loaded Cavity Cross-Validation")
     print(f"{'='*50}")
     print(f"rfx:         {f_rfx / 1e9:.6f} GHz")
     print(f"Meep:        {f_meep / 1e9:.6f} GHz")

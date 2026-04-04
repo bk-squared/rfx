@@ -384,7 +384,6 @@ def run_nonuniform(
     # CPML operates on the outer shell (cpml_layers cells on each face).
     # Using dx as the reference cell size is conservative and correct for
     # the x/y faces. Z-faces use the boundary dz (first/last cells).
-    from rfx.grid import Grid as UniformGrid
     from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
 
     # CPML proxy: lightweight object mimicking Grid with exact shape

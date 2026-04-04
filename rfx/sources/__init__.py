@@ -13,4 +13,7 @@ from rfx.sources.waveguide_port import (
     extract_waveguide_s11,
     extract_waveguide_s21,
     waveguide_plane_positions,
+    solve_rectangular_modes,
+    init_multimode_waveguide_port,
+    extract_multimode_s_matrix,
 )

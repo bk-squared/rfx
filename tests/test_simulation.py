@@ -13,19 +13,18 @@ import pytest
 
 from rfx.grid import Grid, C0
 from rfx.core.yee import (
-    FDTDState, init_state, init_materials, update_e, update_h, EPS_0, MU_0,
+    init_state, init_materials, update_e, update_h, EPS_0, MU_0,
 )
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.geometry.csg import Box
-from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port
+from rfx.sources.sources import GaussianPulse, LumpedPort
 from rfx.sources.tfsf import (
     init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e, apply_tfsf_h, apply_tfsf_e,
     is_tfsf_2d,
 )
 from rfx.simulation import (
-    SourceSpec, ProbeSpec, SimResult,
-    make_source, make_probe, make_port_source, run,
+    ProbeSpec, make_source, make_probe, run,
 )
 from rfx.probes.probes import (
     extract_s_matrix, init_dft_plane_probe, update_dft_plane_probe,
@@ -46,7 +45,7 @@ def test_compiled_runner_energy_conservation():
     """Compiled runner in PEC cavity conserves energy (no sources)."""
     shape = (20, 20, 20)
     dx = 0.003
-    dt = 0.99 * dx / (C0 * np.sqrt(3))
+    0.99 * dx / (C0 * np.sqrt(3))
     # Build a minimal Grid-like object or use raw parameters
     grid = Grid(freq_max=5e9, domain=(shape[0]*dx, shape[1]*dx, shape[2]*dx),
                 cpml_layers=0)
@@ -57,7 +56,7 @@ def test_compiled_runner_energy_conservation():
     Ly = (grid.ny - 1) * grid.dx
     x = np.arange(grid.nx) * grid.dx
     y = np.arange(grid.ny) * grid.dx
-    ez_init = (np.sin(np.pi * x[:, None, None] / Lx) *
+    (np.sin(np.pi * x[:, None, None] / Lx) *
                np.sin(np.pi * y[None, :, None] / Ly) *
                np.ones((1, 1, grid.nz)))
 

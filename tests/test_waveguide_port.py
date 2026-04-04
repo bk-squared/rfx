@@ -4,7 +4,7 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from rfx.grid import Grid, C0
+from rfx.grid import C0
 from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0, MU_0
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
@@ -12,7 +12,7 @@ from rfx.sources.waveguide_port import (
     WaveguidePort, init_waveguide_port, inject_waveguide_port,
     update_waveguide_port_probe, extract_waveguide_sparams,
     extract_waveguide_s11, extract_waveguide_s21, waveguide_plane_positions,
-    cutoff_frequency, modal_voltage,
+    cutoff_frequency,
 )
 
 
@@ -343,7 +343,7 @@ def test_waveguide_port_propagation():
     s21_db = 20 * np.log10(np.maximum(s21_above, 1e-10))
     mean_s21_db = np.mean(s21_db)
 
-    print(f"\nWaveguide port TE10 propagation:")
+    print("\nWaveguide port TE10 propagation:")
     print(f"  f_cutoff = {f_c/1e9:.2f} GHz, f0 = {f0/1e9:.1f} GHz")
     print(f"  Grid: {grid.shape}, a_actual = {(grid.ny-1)*dx*1e3:.1f} mm")
     print(f"  Steps: {n_steps}")
@@ -392,7 +392,7 @@ def test_te10_below_cutoff_evanescent():
     s21_below = s21_mag[below_cutoff]
     s21_below_db = 20 * np.log10(np.maximum(np.mean(s21_below), 1e-10))
 
-    print(f"\nWaveguide port TE10 below cutoff:")
+    print("\nWaveguide port TE10 below cutoff:")
     print(f"  f_cutoff = {f_c/1e9:.2f} GHz, f0 = {f0/1e9:.1f} GHz")
     print(f"  |S21| below cutoff (mean): {np.mean(s21_below):.4f} ({s21_below_db:.1f} dB)")
 

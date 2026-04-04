@@ -10,10 +10,9 @@ Reference: Codex Spec 6D — docs/codex_specs/6D_magnetic_material_validation.md
 """
 
 import numpy as np
-import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0, MU_0
+from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.tfsf import (
     init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e,

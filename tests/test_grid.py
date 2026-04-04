@@ -1,7 +1,6 @@
 """Tests for Grid class."""
 
 import numpy as np
-import pytest
 
 from rfx.grid import Grid, C0
 

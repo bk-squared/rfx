@@ -165,7 +165,7 @@ def test_dft_plane_probe_spatial_pattern():
     )
     interior_max = np.max(field_pattern[2:-2, 2:-2])
 
-    print(f"\nDFT plane probe spatial pattern:")
+    print("\nDFT plane probe spatial pattern:")
     print(f"  Interior max = {interior_max:.4e}, y-edge max = {y_edge_max:.4e}")
 
     assert interior_max > 1e-15, "Field pattern should be nonzero in interior"

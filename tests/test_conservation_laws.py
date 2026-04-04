@@ -7,7 +7,6 @@ They depend only on Maxwell's equations and energy-conservation principles.
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
 from rfx.api import Simulation
 from rfx.geometry.csg import Box

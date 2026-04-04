@@ -6,7 +6,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import C0
-from rfx.core.yee import MaterialArrays, EPS_0
+from rfx.core.yee import MaterialArrays
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source

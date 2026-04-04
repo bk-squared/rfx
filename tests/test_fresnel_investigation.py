@@ -20,12 +20,11 @@ Two diagnostic tests:
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
 from rfx.grid import Grid, C0
 from rfx.core.yee import (
-    FDTDState, MaterialArrays, init_state, init_materials,
-    update_e, update_h, EPS_0, MU_0,
+    init_state, init_materials,
+    update_e, update_h,
 )
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.tfsf import (
@@ -297,24 +296,24 @@ def test_normal_vs_oblique_incident_magnitude():
     ratio_yavg = peak_45_yavg / max(peak_0_yavg, 1e-30)
     ratio_peak = peak_45_2d / max(peak_0_2d, 1e-30)
 
-    print(f"\n  Normal (0 deg):")
+    print("\n  Normal (0 deg):")
     print(f"    peak single-point Ez: {peak_0_single:.6e}")
     print(f"    peak y-averaged Ez:   {peak_0_yavg:.6e}")
     print(f"    peak max-over-y Ez:   {peak_0_2d:.6e}")
 
-    print(f"\n  Oblique (45 deg):")
+    print("\n  Oblique (45 deg):")
     print(f"    peak single-point Ez: {peak_45_single:.6e}")
     print(f"    peak y-averaged Ez:   {peak_45_yavg:.6e}")
     print(f"    peak max-over-y Ez:   {peak_45_2d:.6e}")
 
-    print(f"\n  Ratios (oblique / normal):")
+    print("\n  Ratios (oblique / normal):")
     print(f"    single-point:  {ratio_single:.4f}  (expect ~1.0 or cos(45)=0.707)")
     print(f"    y-averaged:    {ratio_yavg:.4f}  (expect < 1.0, phase averaging)")
     print(f"    max-over-y:    {ratio_peak:.4f}  (expect ~1.0 if amplitude preserved)")
 
     # The max-over-y ratio tells us about the 2D grid amplitude fidelity.
     # If it is close to 1.0, the 2D aux grid preserves amplitude correctly.
-    print(f"\n  INTERPRETATION:")
+    print("\n  INTERPRETATION:")
     if abs(ratio_peak - 1.0) < 0.15:
         print(f"    2D aux grid amplitude is correct (max-over-y ratio = {ratio_peak:.4f})")
         print(f"    Single-point variation ({ratio_single:.4f}) is a phase-sampling artifact.")
@@ -482,9 +481,9 @@ def test_per_cell_spectral_vs_single_point_fresnel():
     err_percell_median = abs(R_percell_median - R_analytic) / R_analytic * 100
 
     print(f"\n  Analytic |R_TE| (30 deg, eps_r=4): {R_analytic:.4f}")
-    print(f"\n  Single-point probe (y=center):")
+    print("\n  Single-point probe (y=center):")
     print(f"    |R| = {R_single:.4f}, error = {err_single:.1f}%")
-    print(f"\n  Per-y-cell spectral average:")
+    print("\n  Per-y-cell spectral average:")
     print(f"    mean  |R| = {R_percell_mean:.4f}, error = {err_percell_mean:.1f}%")
     print(f"    median|R| = {R_percell_median:.4f}, error = {err_percell_median:.1f}%")
     print(f"    std   |R| = {R_percell_std:.4f}")
@@ -494,18 +493,18 @@ def test_per_cell_spectral_vs_single_point_fresnel():
     improvement = err_single - err_percell_mean
     print(f"\n  Improvement (mean): {improvement:.1f} percentage points")
 
-    print(f"\n  INTERPRETATION:")
+    print("\n  INTERPRETATION:")
     if err_percell_mean < err_single * 0.7:
-        print(f"    Per-cell averaging SIGNIFICANTLY improves accuracy.")
-        print(f"    --> Primary error: single-point probe phase-sampling artifact.")
+        print("    Per-cell averaging SIGNIFICANTLY improves accuracy.")
+        print("    --> Primary error: single-point probe phase-sampling artifact.")
         if err_percell_mean < 15.0:
-            print(f"    --> Tolerance can be tightened to ~15% with per-cell averaging.")
+            print("    --> Tolerance can be tightened to ~15% with per-cell averaging.")
     elif err_percell_mean < err_single:
-        print(f"    Per-cell averaging moderately improves accuracy.")
-        print(f"    --> Probe normalization contributes, but 2D grid error also present.")
+        print("    Per-cell averaging moderately improves accuracy.")
+        print("    --> Probe normalization contributes, but 2D grid error also present.")
     else:
-        print(f"    Per-cell averaging does NOT help.")
-        print(f"    --> Error is intrinsic to the 2D grid or scattered-field measurement.")
+        print("    Per-cell averaging does NOT help.")
+        print("    --> Error is intrinsic to the 2D grid or scattered-field measurement.")
 
     # --- Phase-corrected per-cell: shift incident by the x-offset phase ---
     # The oblique wave at x has phase exp(j*kx*x*cos(theta) + j*ky*y*sin(theta)).
@@ -552,7 +551,7 @@ def test_per_cell_spectral_vs_single_point_fresnel():
     R_best_norm_median = np.median(R_best_norm)
     err_best_norm_median = abs(R_best_norm_median - R_analytic) / R_analytic * 100
 
-    print(f"\n  Phase-corrected analysis:")
+    print("\n  Phase-corrected analysis:")
     print(f"    Best incident y-cell: j={j_best} (of {ny})")
     print(f"    Best scattered y-cell: j={j_scat_best}")
     print(f"    R (best-scat / best-inc): {R_best_to_best:.4f}, error = {err_best_to_best:.1f}%")
@@ -560,15 +559,15 @@ def test_per_cell_spectral_vs_single_point_fresnel():
     print(f"    R min per-cell (from first analysis): {np.min(R_per_cell):.4f}, "
           f"error = {abs(np.min(R_per_cell) - R_analytic) / R_analytic * 100:.1f}%")
 
-    print(f"\n  FINAL VERDICT:")
+    print("\n  FINAL VERDICT:")
     print(f"    The min per-cell |R| = {np.min(R_per_cell):.4f} matches analytic "
           f"{R_analytic:.4f} to {abs(np.min(R_per_cell) - R_analytic) / R_analytic * 100:.1f}%.")
-    print(f"    The 2D aux grid physics is accurate.")
-    print(f"    The ~28% single-point error comes from oblique phase-sampling mismatch")
-    print(f"    between scattered (x_lo-3) and incident (x_lo+5) probe positions.")
-    print(f"    This is a measurement artifact, not a physics error.")
-    print(f"    RECOMMENDATION: keep 30% tolerance for single-point probe test,")
-    print(f"    document the probe normalization limitation clearly.")
+    print("    The 2D aux grid physics is accurate.")
+    print("    The ~28% single-point error comes from oblique phase-sampling mismatch")
+    print("    between scattered (x_lo-3) and incident (x_lo+5) probe positions.")
+    print("    This is a measurement artifact, not a physics error.")
+    print("    RECOMMENDATION: keep 30% tolerance for single-point probe test,")
+    print("    document the probe normalization limitation clearly.")
 
     # Sanity assertions
     assert R_single > 0.01, "Single-point probe detected no reflection"

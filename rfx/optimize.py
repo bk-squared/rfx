@@ -24,7 +24,6 @@ from typing import Callable
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 
 @dataclass(frozen=True)
@@ -139,7 +138,7 @@ def optimize(
         materials = MaterialArrays(eps_r=eps_r, sigma=materials.sigma, mu_r=materials.mu_r)
 
         # Run simulation
-        from rfx.simulation import run as _run, make_source, make_probe, make_port_source
+        from rfx.simulation import run as _run, make_probe, make_port_source
         from rfx.sources.sources import LumpedPort, setup_lumped_port
 
         n_steps = grid.num_timesteps(num_periods=20.0)

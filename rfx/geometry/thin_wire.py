@@ -15,7 +15,6 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import EPS_0
 
 
 class ThinWire(NamedTuple):

@@ -3,7 +3,7 @@
 import numpy as np
 import jax.numpy as jnp
 
-from rfx.grid import Grid, C0
+from rfx.grid import Grid
 from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.geometry.csg import Box, Sphere
 from rfx.geometry.conformal import compute_conformal_weights, apply_conformal_pec
@@ -29,7 +29,7 @@ def test_conformal_weights_pec_box():
     assert float(w_ex[0, 0, 0]) == 1.0, "Far exterior Ex weight should be 1"
     assert float(w_ey[0, 0, 0]) == 1.0, "Far exterior Ey weight should be 1"
 
-    print(f"\nConformal weights for PEC box:")
+    print("\nConformal weights for PEC box:")
     print(f"  Interior zeros: {int(np.sum(np.array(w_ex) == 0))}")
     print(f"  Exterior ones:  {int(np.sum(np.array(w_ex) == 1))}")
     print(f"  Fractional:     {int(np.sum((np.array(w_ex) > 0) & (np.array(w_ex) < 1)))}")
@@ -47,7 +47,7 @@ def test_conformal_sphere_has_fractional_weights():
     n_one = int(np.sum(w_ex_np == 1.0))
     n_frac = int(np.sum((w_ex_np > 0) & (w_ex_np < 1.0)))
 
-    print(f"\nConformal weights for PEC sphere:")
+    print("\nConformal weights for PEC sphere:")
     print(f"  Interior (w=0): {n_zero}")
     print(f"  Exterior (w=1): {n_one}")
     print(f"  Fractional:     {n_frac}")

@@ -28,7 +28,7 @@ def test_2d_stability():
             max_energy = max(max_energy, e)
 
     final_energy = compute_energy_2d(state, config)
-    print(f"\n2D stability (10K steps):")
+    print("\n2D stability (10K steps):")
     print(f"  Initial: {initial_energy:.6e}")
     print(f"  Max:     {max_energy:.6e}")
     print(f"  Final:   {final_energy:.6e}")
@@ -51,7 +51,7 @@ def test_2d_pulse_propagation():
     fine_signal = float(jnp.max(jnp.abs(state.ez_f)))
     coarse_signal = float(jnp.max(jnp.abs(state.ez_c)))
 
-    print(f"\n2D pulse propagation:")
+    print("\n2D pulse propagation:")
     print(f"  Coarse max |Ez|: {coarse_signal:.6e}")
     print(f"  Fine max |Ez|:   {fine_signal:.6e}")
 

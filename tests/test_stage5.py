@@ -19,7 +19,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import init_state, init_materials, update_h, update_e
+from rfx.core.yee import init_state, init_materials
 from rfx.simulation import (
     run, make_source, SnapshotSpec, SimResult,
 )
@@ -221,7 +221,7 @@ def test_hdf5_snapshots_roundtrip():
     np.testing.assert_allclose(loaded["hx"], snapshots["hx"])
     assert meta["dt"] == 1e-12
     assert meta["n_steps"] == 10
-    print(f"\nHDF5 snapshots roundtrip OK")
+    print("\nHDF5 snapshots roundtrip OK")
 
 
 def test_hdf5_materials_roundtrip():
@@ -248,7 +248,7 @@ def test_hdf5_materials_roundtrip():
 
     np.testing.assert_allclose(loaded.eps_r, materials.eps_r)
     np.testing.assert_allclose(loaded.sigma, materials.sigma)
-    print(f"\nHDF5 materials roundtrip OK")
+    print("\nHDF5 materials roundtrip OK")
 
 
 # --- High-level API 2D mode ---

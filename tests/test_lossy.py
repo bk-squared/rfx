@@ -112,7 +112,7 @@ def test_higher_sigma_faster_decay():
         ratio = final_energy / initial_energy if initial_energy > 0 else 0
         decay_ratios.append(ratio)
 
-    print(f"\nLossy comparison (final/initial energy ratio):")
+    print("\nLossy comparison (final/initial energy ratio):")
     for s, r in zip([0.0, 0.1, 0.5], decay_ratios):
         print(f"  σ={s:.2f} S/m: ratio = {r:.6f}")
 

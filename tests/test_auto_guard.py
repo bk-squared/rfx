@@ -2,7 +2,6 @@
 
 import warnings
 
-import pytest
 
 from rfx import Simulation
 from rfx.auto_config import auto_configure
@@ -15,7 +14,7 @@ class TestAutoGuard:
         """Simulation.auto() with no geometry must emit a warning."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            sim = Simulation.auto(freq_range=(1e9, 4e9))
+            Simulation.auto(freq_range=(1e9, 4e9))
             geo_warnings = [
                 x for x in w
                 if "geometry" in str(x.message).lower()
@@ -36,7 +35,7 @@ class TestAutoGuard:
         """auto_configure with [] geometry must emit a warning."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            config = auto_configure([], freq_range=(1e9, 4e9))
+            auto_configure([], freq_range=(1e9, 4e9))
             geo_warnings = [
                 x for x in w
                 if "empty geometry" in str(x.message).lower()

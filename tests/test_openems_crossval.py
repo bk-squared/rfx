@@ -156,7 +156,7 @@ def test_rfx_vs_openems_cavity():
     err_cross = abs(f_rfx - f_oems) / f_oems
 
     print(f"\n{'='*55}")
-    print(f"PEC Cavity TM110 Cross-Validation (rfx vs openEMS)")
+    print("PEC Cavity TM110 Cross-Validation (rfx vs openEMS)")
     print(f"{'='*55}")
     print(f"Analytical:    {F_ANALYTICAL / 1e9:.6f} GHz")
     print(f"rfx:           {f_rfx / 1e9:.6f} GHz  (err: {err_rfx*100:.3f}%)")

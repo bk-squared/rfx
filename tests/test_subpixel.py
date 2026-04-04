@@ -13,11 +13,11 @@ import pytest
 
 from rfx.grid import Grid, C0
 from rfx.core.yee import (
-    FDTDState, MaterialArrays, init_state, init_materials,
-    update_e, update_e_aniso, update_h, EPS_0,
+    MaterialArrays, init_state, init_materials,
+    update_e, update_e_aniso, update_h,
 )
 from rfx.boundaries.pec import apply_pec
-from rfx.geometry.csg import Sphere, Box
+from rfx.geometry.csg import Sphere
 from rfx.geometry.smoothing import compute_smoothed_eps
 from rfx.sources.sources import GaussianPulse
 

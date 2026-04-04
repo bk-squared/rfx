@@ -1,7 +1,6 @@
 """Tests for 3D visualization module."""
 
 import os
-import numpy as np
 import pytest
 
 import matplotlib

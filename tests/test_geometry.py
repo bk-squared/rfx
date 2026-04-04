@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx.grid import Grid
-from rfx.geometry.csg import Box, Sphere, Cylinder, union, difference, rasterize
+from rfx.geometry.csg import Box, Sphere, union, difference, rasterize
 
 
 @pytest.fixture

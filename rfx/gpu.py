@@ -11,12 +11,9 @@ import time
 from typing import NamedTuple
 
 import jax
-import jax.numpy as jnp
-import numpy as np
 
 from rfx.grid import Grid
-from rfx.core.yee import MaterialArrays, init_materials, init_state, update_e, update_h
-from rfx.boundaries.pec import apply_pec
+from rfx.core.yee import init_materials
 from rfx.sources.sources import GaussianPulse
 from rfx.simulation import make_source, make_probe, run
 

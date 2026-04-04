@@ -14,13 +14,12 @@ import jax.numpy as jnp
 from rfx.api import Simulation
 from rfx.grid import Grid, C0
 from rfx.core.yee import (
-    FDTDState, init_state, init_materials, update_h, EPS_0, MU_0,
+    init_state, init_materials, update_h, EPS_0, MU_0,
 )
 from rfx.boundaries.pec import apply_pec
 from rfx.geometry.csg import Box
 from rfx.materials.lorentz import (
-    LorentzPole, LorentzCoeffs, LorentzState,
-    drude_pole, lorentz_pole,
+    LorentzPole, drude_pole, lorentz_pole,
     init_lorentz, update_e_lorentz,
 )
 from rfx.materials.debye import DebyePole, init_debye
@@ -130,7 +129,7 @@ def test_lorentz_energy_bounded():
 
     final_energy = _total_energy(state, dx)
 
-    print(f"\nLorentz energy stability:")
+    print("\nLorentz energy stability:")
     print(f"  Initial: {initial_energy:.4e}, Max: {max_energy:.4e}, Final: {final_energy:.4e}")
 
     # Energy should not blow up

@@ -84,6 +84,7 @@ from rfx.probes.probes import (
     extract_s_matrix_wire,
 )
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
+from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
 from rfx.pcb import PCBLayer, Stackup
 from rfx.floquet import (
     FloquetPort,

@@ -2,13 +2,12 @@
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
 from rfx.api import Simulation
-from rfx.auto_config import auto_configure, analyze_features
+from rfx.auto_config import auto_configure
 from rfx.geometry.csg import Box
-from rfx.nonuniform import make_nonuniform_grid, make_current_source, NonUniformGrid
-from rfx.core.yee import MaterialArrays, EPS_0
+from rfx.nonuniform import make_nonuniform_grid, make_current_source
+from rfx.core.yee import MaterialArrays
 from rfx.sources.sources import GaussianPulse
 
 
@@ -144,7 +143,7 @@ class TestAutoConfigNonUniform:
         materials = {
             "dielectric": {"eps_r": 2.2, "sigma": 0.0},
         }
-        config = auto_configure(
+        auto_configure(
             geometry, (1e9, 4e9), materials=materials, accuracy="standard",
         )
         # 10mm substrate with dx~3.5mm → ~3 cells, but feature detection

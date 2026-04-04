@@ -81,7 +81,7 @@ def write_touchstone(
 
     with open(filepath, "w") as f:
         # Comments
-        f.write(f"! rfx Touchstone export\n")
+        f.write("! rfx Touchstone export\n")
         f.write(f"! {n_ports}-port, {n_freqs} frequencies\n")
         if comments:
             for c in comments:

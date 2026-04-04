@@ -19,14 +19,13 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.grid import Grid, C0
-from rfx.core.yee import MaterialArrays, init_materials, EPS_0, MU_0
+from rfx.grid import Grid
+from rfx.core.yee import MaterialArrays
 from rfx.farfield import (
-    NTFFBox, NTFFData, FarFieldResult,
-    init_ntff_data, compute_far_field,
+    NTFFBox, compute_far_field,
 )
 from rfx.sources.tfsf import init_tfsf
-from rfx.simulation import run, SimResult
+from rfx.simulation import run
 
 
 class RCSResult(NamedTuple):
@@ -157,7 +156,7 @@ def compute_rcs(
     else:
         freqs_arr = np.asarray(freqs, dtype=np.float64)
 
-    nf = len(freqs_arr)
+    len(freqs_arr)
     dx = grid.dx
     dt = grid.dt
 

@@ -132,7 +132,7 @@ def plot_smith(
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 6))
     else:
-        fig = ax.figure
+        pass
 
     # Draw the grid
     _draw_smith_grid(ax)

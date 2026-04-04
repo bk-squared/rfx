@@ -103,7 +103,7 @@ def test_touchstone_freq_units():
         np.testing.assert_allclose(f_read, freqs, rtol=1e-5,
                                    err_msg=f"Freq unit {unit} failed")
 
-    print(f"\nAll frequency units round-trip OK")
+    print("\nAll frequency units round-trip OK")
 
 
 def test_touchstone_custom_z0():

@@ -9,7 +9,6 @@ Validates that:
 """
 
 import numpy as np
-import pytest
 from rfx import Simulation, GaussianPulse
 from rfx.lumped import init_rlc_state
 

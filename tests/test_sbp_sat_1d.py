@@ -19,7 +19,6 @@ from rfx.subgridding.sbp_sat_1d import (
     init_subgrid_1d,
     step_subgrid_1d,
     compute_energy,
-    SubgridState1D,
     _update_h_1d,
     _update_e_1d,
     C0,

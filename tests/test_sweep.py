@@ -3,10 +3,8 @@
 import numpy as np
 import pytest
 
-import rfx
 from rfx.api import Simulation, Result
 from rfx.geometry.csg import Box
-from rfx.sources.sources import GaussianPulse
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 
 

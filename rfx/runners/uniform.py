@@ -8,13 +8,11 @@ import jax.numpy as jnp
 from rfx.simulation import (
     make_source, make_j_source, make_probe, make_port_source, make_wire_port_sources,
     run as _run, run_until_decay as _run_until_decay,
-    SnapshotSpec,
 )
 from rfx.sources.sources import LumpedPort, setup_lumped_port, WirePort, setup_wire_port
 from rfx.probes.probes import extract_s_matrix, extract_s_matrix_wire, init_dft_plane_probe
 from rfx.sources.waveguide_port import (
     extract_waveguide_sparams,
-    init_waveguide_port,
     waveguide_plane_positions,
 )
 from rfx.farfield import make_ntff_box
@@ -230,6 +228,61 @@ def run_uniform(
         sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
         periodic = (False, True, True)
         cpml_axes = "x"
+
+    # Floquet port sources — inject plane wave via standard source mechanism
+    floquet_port_configs = []
+    axis_map_str = {"x": 0, "y": 1, "z": 2}
+    for fpe in sim._floquet_ports:
+        axis_idx = axis_map_str[fpe.axis]
+        pos_vec = [0.0, 0.0, 0.0]
+        pos_vec[axis_idx] = fpe.position
+        port_grid_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
+
+        fp_f0 = fpe.f0 if fpe.f0 is not None else sim._freq_max / 2
+        fp_freqs = (
+            fpe.freqs
+            if fpe.freqs is not None
+            else jnp.linspace(sim._freq_max / 10, sim._freq_max, fpe.n_freqs)
+        )
+
+        floquet_port_configs.append({
+            "name": fpe.name,
+            "axis": axis_idx,
+            "port_index": port_grid_index,
+            "scan_theta": fpe.scan_theta,
+            "scan_phi": fpe.scan_phi,
+            "polarization": fpe.polarization,
+            "n_modes": fpe.n_modes,
+            "freqs": fp_freqs,
+            "f0": fp_f0,
+            "bandwidth": fpe.bandwidth,
+            "amplitude": fpe.amplitude,
+        })
+
+        # Add a soft source at the port plane (uniform across the plane)
+        from rfx.sources.sources import GaussianPulse as GP
+        wf = GP(f0=fp_f0, bandwidth=fpe.bandwidth, amplitude=fpe.amplitude)
+        # Place source at center of transverse plane
+        center = [sim._domain[i] / 2.0 for i in range(3)]
+        center[axis_idx] = fpe.position
+        if fpe.polarization == "te":
+            # TE: inject first tangential E component
+            if fpe.axis == "z":
+                comp = "ex"
+            elif fpe.axis == "x":
+                comp = "ey"
+            else:
+                comp = "ex"
+        else:
+            # TM: inject second tangential E component
+            if fpe.axis == "z":
+                comp = "ey"
+            elif fpe.axis == "x":
+                comp = "ez"
+            else:
+                comp = "ez"
+        from rfx.simulation import make_source as _make_src
+        sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
 
     _, debye, lorentz = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec)

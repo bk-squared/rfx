@@ -9,9 +9,8 @@ Validates the improved CFS-CPML defaults (kappa_max=5.0, 12 layers)
 that the high-level Simulation API applies automatically.
 """
 import numpy as np
-import pytest
 
-from rfx.grid import Grid, C0
+from rfx.grid import Grid
 from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.boundaries.pec import apply_pec

@@ -10,9 +10,8 @@ Tests:
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
-from rfx.core.yee import EPS_0, MU_0, init_state, init_materials, update_h, update_e
+from rfx.core.yee import init_state, init_materials, update_h, update_e
 
 
 # ---------------------------------------------------------------------------

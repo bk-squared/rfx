@@ -10,7 +10,6 @@ Tests:
    formula for ez polarization (regression guard for the sign fix).
 """
 
-import numpy as np
 import jax.numpy as jnp
 import pytest
 from rfx.sources.tfsf import (
@@ -18,7 +17,7 @@ from rfx.sources.tfsf import (
     update_tfsf_1d_h, update_tfsf_1d_e,
 )
 from rfx.sources.tfsf_2d import (
-    update_tfsf_2d_h, update_tfsf_2d_e, init_tfsf_2d,
+    update_tfsf_2d_h, update_tfsf_2d_e,
 )
 from rfx.core.yee import init_state, init_materials, update_h, update_e
 

@@ -19,7 +19,6 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import eigsh
 
-from rfx.core.yee import EPS_0, MU_0
 from rfx.sources.waveguide_port import (
     _te_mode_profiles,
     _tm_mode_profiles,

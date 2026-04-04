@@ -41,7 +41,7 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
     tau = ref.get("tau", 0.5)
     dx_c = grid_coarse.dx
     dx_f = dx_c / ratio
-    xy_margin = ref["xy_margin"] if ref["xy_margin"] is not None else 2 * dx_c
+    ref["xy_margin"] if ref["xy_margin"] is not None else 2 * dx_c
 
     # Map z_range to coarse grid indices
     cpml = grid_coarse.cpml_layers
@@ -104,7 +104,6 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
         mat = sim._resolve_material(entry.material_name)
         shape = entry.shape
         if hasattr(shape, 'corner_lo') and hasattr(shape, 'corner_hi'):
-            from rfx.geometry.csg import Box
             # Offset shape to fine grid local coordinates
             c1 = shape.corner_lo
             c2 = shape.corner_hi

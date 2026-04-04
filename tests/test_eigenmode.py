@@ -1,10 +1,9 @@
 """Tests for the numerical eigenmode solver."""
 
 import numpy as np
-import pytest
 
-from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
-from rfx.sources.waveguide_port import cutoff_frequency, C0_LOCAL
+from rfx.eigenmode import solve_waveguide_modes
+from rfx.sources.waveguide_port import cutoff_frequency
 
 
 # Common test parameters

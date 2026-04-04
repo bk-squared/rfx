@@ -15,11 +15,10 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
-    update_h, update_e, EPS_0,
+    update_h, update_e,
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
 from rfx.grid import Grid

@@ -8,10 +8,8 @@ Validates:
 
 import numpy as np
 import jax.numpy as jnp
-import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import init_materials
 from rfx.geometry.csg import Box, Sphere, rasterize
 from rfx.rcs import compute_rcs, RCSResult
 
@@ -114,7 +112,7 @@ class TestRCSPECPlateNormalIncidence:
 
         mono_rcs = result.monostatic_rcs[0]  # dBsm at f0
 
-        print(f"\nPEC plate RCS test:")
+        print("\nPEC plate RCS test:")
         print(f"  Plate area: {A*1e4:.1f} cm^2")
         print(f"  Lambda: {lam*100:.1f} cm")
         print(f"  Plate size / lambda: {plate_size/lam:.2f}")
@@ -194,7 +192,7 @@ class TestRCSPECSphere:
 
         mono_rcs = result.monostatic_rcs[0]
 
-        print(f"\nPEC sphere RCS test:")
+        print("\nPEC sphere RCS test:")
         print(f"  Radius: {radius*100:.1f} cm, ka = {ka:.2f}")
         print(f"  GO limit RCS: {rcs_go_dbsm:.1f} dBsm ({rcs_go:.6f} m^2)")
         print(f"  Computed monostatic RCS: {mono_rcs:.1f} dBsm")
@@ -304,7 +302,7 @@ class TestRCSResultStructure:
         # Check frequency values match input
         np.testing.assert_allclose(result.freqs, test_freqs, rtol=1e-10)
 
-        print(f"\nRCSResult structure test passed:")
+        print("\nRCSResult structure test passed:")
         print(f"  freqs: {result.freqs.shape}")
         print(f"  rcs_dbsm: {result.rcs_dbsm.shape}")
         print(f"  rcs_linear range: [{result.rcs_linear.min():.2e}, "

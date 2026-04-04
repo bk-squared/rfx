@@ -17,7 +17,7 @@ and may be added as a future fast-path.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Any
 
 import numpy as np

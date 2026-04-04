@@ -11,15 +11,13 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.core.yee import (
-    FDTDState, MaterialArrays, init_materials, init_state,
-    update_h, update_e, EPS_0,
+    FDTDState, MaterialArrays, update_h, update_e,
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
 from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
 from rfx.grid import Grid
 from rfx.subgridding.sbp_sat_3d import (
-    SubgridConfig3D, SubgridState3D,
-    init_subgrid_3d, _shared_node_coupling_3d,
+    SubgridConfig3D, _shared_node_coupling_3d,
 )
 
 

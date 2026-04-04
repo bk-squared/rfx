@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Callable, Any, NamedTuple
+from typing import Callable, Any
 
 import numpy as np
 

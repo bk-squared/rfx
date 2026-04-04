@@ -9,17 +9,15 @@ Validates that:
 import numpy as np
 import jax
 import jax.numpy as jnp
-import pytest
 
 from rfx.grid import Grid, C0
 from rfx.core.yee import (
-    FDTDState, MaterialArrays, init_state, init_materials,
-    update_e, update_h, EPS_0, MU_0,
+    MaterialArrays, init_state, init_materials,
+    update_e, update_h,
 )
-from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.simulation import (
-    make_source, make_probe, run, SourceSpec, ProbeSpec, SnapshotSpec,
+    make_source, run, ProbeSpec,
 )
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.tfsf import (
@@ -88,11 +86,11 @@ def test_gradient_through_tfsf():
     grad = jax.grad(objective)(eps_r)
     grad_max = float(jnp.max(jnp.abs(grad)))
 
-    print(f"\nGradient through TFSF:")
+    print("\nGradient through TFSF:")
     print(f"  Objective: {val:.6e}")
     print(f"  |grad|_max: {grad_max:.6e}")
 
-    assert grad_max > 1e-15, f"Gradient is zero through TFSF path"
+    assert grad_max > 1e-15, "Gradient is zero through TFSF path"
 
     # Verify gradient at a vacuum cell via finite difference
     # Use a cell in vacuum (not inside dielectric block) to avoid
@@ -164,7 +162,7 @@ def test_gradient_through_dft_plane():
     grad = jax.grad(objective)(eps_r)
     grad_max = float(jnp.max(jnp.abs(grad)))
 
-    print(f"\nGradient through DFT plane:")
+    print("\nGradient through DFT plane:")
     print(f"  Objective: {val:.6e}")
     print(f"  |grad|_max: {grad_max:.6e}")
 
@@ -516,12 +514,12 @@ def test_oblique_tfsf_fresnel_plane_dft():
     err_aligned = abs(R_aligned - R_analytic) / R_analytic * 100
     err_bright = abs(R_bright - R_analytic) / R_analytic * 100
 
-    print(f"\nOblique TFSF Fresnel — Multi-freq DFT Plane Probe:")
+    print("\nOblique TFSF Fresnel — Multi-freq DFT Plane Probe:")
     print(f"  theta = {theta_deg} deg, eps_r = {eps_r_val}")
     print(f"  Analytic |R_TE|:       {R_analytic:.4f}")
     print(f"  Best-aligned |R|:      {R_aligned:.4f}  (error {err_aligned:.1f}%)")
     print(f"  Bright-min |R|:        {R_bright:.4f}  (error {err_bright:.1f}%)")
-    print(f"  (Single-point reference: ~28% error)")
+    print("  (Single-point reference: ~28% error)")
 
     assert R_aligned > 0.01, "DFT plane probe detected no reflection"
     assert not np.isnan(R_aligned), "NaN in plane DFT Fresnel computation"
