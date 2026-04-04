@@ -1693,11 +1693,18 @@ class Simulation:
         >>> result = sim.run(until_decay=1e-5)
         >>> modes = result.find_resonances()
         """
+        import warnings
+        warnings.warn(
+            "Simulation.auto() called without geometry — the auto-derived "
+            "domain and grid may not match your intended structure. "
+            "Add geometry after construction or pass domain/dx overrides.",
+            stacklevel=2,
+        )
+
         from rfx.auto_config import auto_configure
         config = auto_configure([], freq_range, accuracy=accuracy)
 
         if config.warnings:
-            import warnings
             for w in config.warnings:
                 warnings.warn(f"auto_config: {w}")
 

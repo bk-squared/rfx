@@ -238,12 +238,33 @@ def auto_configure(
     features = analyze_features(geometry, materials)
     warnings = []
 
+    # Detect empty geometry — use wavelength-only sizing to avoid oversized grids
+    _empty_geometry = len(geometry) == 0
+
+    if _empty_geometry:
+        import warnings as _w
+        _w.warn(
+            "auto_configure called with empty geometry — domain and dx are "
+            "derived from frequency range only. Add geometry before running.",
+            stacklevel=2,
+        )
+        warnings.append(
+            "Empty geometry: domain uses lambda_min/10 cell size and minimal "
+            "margins. Add geometry for accurate auto-configuration."
+        )
+
     # 1. Cell size
     # λ_min in highest-eps medium
     lambda_min_medium = lambda_min / math.sqrt(features.max_eps_r)
     dx_wavelength = lambda_min_medium / preset["cpw"]
-    dx_feature = features.min_thickness / preset["cpf"] if features.min_thickness > 0 else dx_wavelength
-    dx = min(dx_wavelength, dx_feature)
+
+    if _empty_geometry:
+        # No features to resolve — use coarser wavelength-only sizing
+        # (lambda_min/10 regardless of accuracy) to keep the grid small.
+        dx = _round_dx(lambda_min / 10)
+    else:
+        dx_feature = features.min_thickness / preset["cpf"] if features.min_thickness > 0 else dx_wavelength
+        dx = min(dx_wavelength, dx_feature)
 
     if dx_override is not None:
         dx = dx_override
@@ -266,14 +287,18 @@ def auto_configure(
                     dx = dx_wave_rounded
                 break
 
-    if features.min_thickness > 0 and features.min_thickness / dx < 2 and not needs_nonuniform_z:
+    if not _empty_geometry and features.min_thickness > 0 and features.min_thickness / dx < 2 and not needs_nonuniform_z:
         warnings.append(
             f"Thinnest feature ({features.min_thickness*1e3:.2f} mm) has only "
             f"{features.min_thickness/dx:.1f} cells — consider finer dx or subgridding"
         )
 
     # 2. Domain margins
-    margin = lambda_max * preset["margin_frac"]
+    if _empty_geometry:
+        # Minimal margin — just enough for a small placeholder domain.
+        margin = lambda_min * 0.1
+    else:
+        margin = lambda_max * preset["margin_frac"]
     if margin_override is not None:
         margin = margin_override
 
