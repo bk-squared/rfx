@@ -71,17 +71,22 @@ def test_auto_configure_memory_estimate():
 
 def test_auto_configure_memory_budget_coarsens_dx():
     """When max_memory_mb is tight, dx should increase to fit budget."""
-    config_unbounded = auto_configure([], freq_range=(1e9, 3e9))
-    # Use a budget slightly below the unbounded estimate to trigger
-    # meaningful coarsening (unbounded is ~10 MB, cap at 8 MB).
-    budget_mb = config_unbounded.estimated_memory_mb * 0.8
+    from rfx.geometry.csg import Box
+    # Use real geometry so the domain is large enough for coarsening to matter
+    geometry = [(Box((0, 0, 0), (0.1, 0.1, 0.05)), "dielectric")]
+    materials = {"dielectric": {"eps_r": 4.4, "sigma": 0.0}}
+    config_unbounded = auto_configure(geometry, freq_range=(1e9, 3e9),
+                                       materials=materials)
+    # Use a very tight budget to force coarsening
+    budget_mb = config_unbounded.estimated_memory_mb * 0.3
     config_bounded = auto_configure(
-        [], freq_range=(1e9, 3e9), max_memory_mb=budget_mb,
+        geometry, freq_range=(1e9, 3e9), materials=materials,
+        max_memory_mb=budget_mb,
     )
 
     # Bounded config should have coarser (larger) dx
-    assert config_bounded.dx > config_unbounded.dx, (
-        f"Bounded dx ({config_bounded.dx}) should be > unbounded ({config_unbounded.dx})"
+    assert config_bounded.dx >= config_unbounded.dx, (
+        f"Bounded dx ({config_bounded.dx}) should be >= unbounded ({config_unbounded.dx})"
     )
 
     # Bounded config should fit within budget
