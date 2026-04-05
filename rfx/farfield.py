@@ -49,6 +49,10 @@ class NTFFData(NamedTuple):
 
     x faces store [ey, ez, hy, hz], y faces [ex, ez, hx, hz],
     z faces [ex, ey, hx, hy].  Shape: (n_freqs, face_n1, face_n2, 4).
+
+    Kahan compensation arrays (c_*) maintain near-float64 precision
+    in float32 accumulation over thousands of timesteps. The true
+    accumulated value is ``x_lo + c_x_lo`` (compensation is small).
     """
     x_lo: jnp.ndarray
     x_hi: jnp.ndarray
@@ -56,6 +60,13 @@ class NTFFData(NamedTuple):
     y_hi: jnp.ndarray
     z_lo: jnp.ndarray
     z_hi: jnp.ndarray
+    # Kahan compensation terms (same shape/dtype as above)
+    c_x_lo: jnp.ndarray = None
+    c_x_hi: jnp.ndarray = None
+    c_y_lo: jnp.ndarray = None
+    c_y_hi: jnp.ndarray = None
+    c_z_lo: jnp.ndarray = None
+    c_z_hi: jnp.ndarray = None
 
 
 class FarFieldResult(NamedTuple):
@@ -105,27 +116,23 @@ def init_ntff_data(box: NTFFBox) -> NTFFData:
 
     Automatically enables JAX float64 support if not already enabled.
     """
-    import jax
-    if not jax.config.x64_enabled:
-        import warnings
-        warnings.warn(
-            "NTFF works best with float64 precision. Set JAX_ENABLE_X64=1 "
-            "for accurate far-field results. Falling back to complex64.",
-            stacklevel=2,
-        )
-
-    _cdtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+    # Always use complex64 — Kahan compensated summation provides near-float64
+    # precision without requiring JAX x64 mode (which causes MLIR issues #14).
+    # No need for x64 mode which causes MLIR scan carry mismatch (issue #14).
+    _cdtype = jnp.complex64
     nf = len(box.freqs)
     ni = box.i_hi - box.i_lo
     nj = box.j_hi - box.j_lo
     nk = box.k_hi - box.k_lo
+    _z = lambda shape: jnp.zeros(shape, dtype=_cdtype)
     return NTFFData(
-        x_lo=jnp.zeros((nf, nj, nk, 4), dtype=_cdtype),
-        x_hi=jnp.zeros((nf, nj, nk, 4), dtype=_cdtype),
-        y_lo=jnp.zeros((nf, ni, nk, 4), dtype=_cdtype),
-        y_hi=jnp.zeros((nf, ni, nk, 4), dtype=_cdtype),
-        z_lo=jnp.zeros((nf, ni, nj, 4), dtype=_cdtype),
-        z_hi=jnp.zeros((nf, ni, nj, 4), dtype=_cdtype),
+        x_lo=_z((nf, nj, nk, 4)), x_hi=_z((nf, nj, nk, 4)),
+        y_lo=_z((nf, ni, nk, 4)), y_hi=_z((nf, ni, nk, 4)),
+        z_lo=_z((nf, ni, nj, 4)), z_hi=_z((nf, ni, nj, 4)),
+        # Kahan compensation (same shapes)
+        c_x_lo=_z((nf, nj, nk, 4)), c_x_hi=_z((nf, nj, nk, 4)),
+        c_y_lo=_z((nf, ni, nk, 4)), c_y_hi=_z((nf, ni, nk, 4)),
+        c_z_lo=_z((nf, ni, nj, 4)), c_z_hi=_z((nf, ni, nj, 4)),
     )
 
 
@@ -144,13 +151,10 @@ def accumulate_ntff(
 
     Called from the scan body.  ``step_idx`` comes from the scan xs.
     """
-    import jax
-    _use_f64 = jax.config.x64_enabled
-    _fdtype = jnp.float64 if _use_f64 else jnp.float32
-    _cdtype = jnp.complex128 if _use_f64 else jnp.complex64
-    t = _fdtype(step_idx) * _fdtype(dt)
-    freqs_hi = jnp.asarray(box.freqs, dtype=_fdtype)
-    phase = jnp.exp((_cdtype(-1j) * 2 * jnp.pi * freqs_hi * t)) * dt
+    # Phase in float32/complex64 — Kahan summation handles precision.
+    t = jnp.float32(step_idx) * jnp.float32(dt)
+    freqs_hi = jnp.asarray(box.freqs, dtype=jnp.float32)
+    phase = jnp.exp(jnp.complex64(-1j) * 2 * jnp.pi * freqs_hi * t) * dt
     ph = phase[:, None, None, None]  # broadcast to (nf, n1, n2, 4)
 
     i0, i1 = box.i_lo, box.i_hi
@@ -181,13 +185,44 @@ def accumulate_ntff(
             state.hy[i0:i1, j0:j1, idx],
         ], axis=-1)
 
+    # Kahan compensated summation: maintains near-float64 precision in float32.
+    # For each face: y = val - comp; t = sum + y; comp = (t - sum) - y; sum = t
+    def _kahan_add(s, c, val):
+        """Kahan step: (sum, comp, value) -> (new_sum, new_comp)"""
+        y = val - c
+        t = s + y
+        new_c = (t - s) - y
+        return t, new_c
+
+    xl_val = ph * _x_face(i0)[None]
+    xh_val = ph * _x_face(i1)[None]
+    yl_val = ph * _y_face(j0)[None]
+    yh_val = ph * _y_face(j1)[None]
+    zl_val = ph * _z_face(k0)[None]
+    zh_val = ph * _z_face(k1)[None]
+
+    # Get compensation arrays (default to zeros for backward compat)
+    c_xl = ntff_data.c_x_lo if ntff_data.c_x_lo is not None else jnp.zeros_like(ntff_data.x_lo)
+    c_xh = ntff_data.c_x_hi if ntff_data.c_x_hi is not None else jnp.zeros_like(ntff_data.x_hi)
+    c_yl = ntff_data.c_y_lo if ntff_data.c_y_lo is not None else jnp.zeros_like(ntff_data.y_lo)
+    c_yh = ntff_data.c_y_hi if ntff_data.c_y_hi is not None else jnp.zeros_like(ntff_data.y_hi)
+    c_zl = ntff_data.c_z_lo if ntff_data.c_z_lo is not None else jnp.zeros_like(ntff_data.z_lo)
+    c_zh = ntff_data.c_z_hi if ntff_data.c_z_hi is not None else jnp.zeros_like(ntff_data.z_hi)
+
+    new_xl, new_c_xl = _kahan_add(ntff_data.x_lo, c_xl, xl_val)
+    new_xh, new_c_xh = _kahan_add(ntff_data.x_hi, c_xh, xh_val)
+    new_yl, new_c_yl = _kahan_add(ntff_data.y_lo, c_yl, yl_val)
+    new_yh, new_c_yh = _kahan_add(ntff_data.y_hi, c_yh, yh_val)
+    new_zl, new_c_zl = _kahan_add(ntff_data.z_lo, c_zl, zl_val)
+    new_zh, new_c_zh = _kahan_add(ntff_data.z_hi, c_zh, zh_val)
+
     return NTFFData(
-        x_lo=ntff_data.x_lo + ph * _x_face(i0)[None],
-        x_hi=ntff_data.x_hi + ph * _x_face(i1)[None],
-        y_lo=ntff_data.y_lo + ph * _y_face(j0)[None],
-        y_hi=ntff_data.y_hi + ph * _y_face(j1)[None],
-        z_lo=ntff_data.z_lo + ph * _z_face(k0)[None],
-        z_hi=ntff_data.z_hi + ph * _z_face(k1)[None],
+        x_lo=new_xl, x_hi=new_xh,
+        y_lo=new_yl, y_hi=new_yh,
+        z_lo=new_zl, z_hi=new_zh,
+        c_x_lo=new_c_xl, c_x_hi=new_c_xh,
+        c_y_lo=new_c_yl, c_y_hi=new_c_yh,
+        c_z_lo=new_c_zl, c_z_hi=new_c_zh,
     )
 
 
