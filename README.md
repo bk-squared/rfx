@@ -11,7 +11,7 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.3.0** — 500+ tests, GPU-benchmarked (7,309 Mcells/s on RTX 4090), 5-case accuracy validation.
+**v1.3.1** — 500+ tests, GPU-benchmarked (7,309 Mcells/s on RTX 4090), 11-case accuracy validation.
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://github.com/BK3536/rfx/actions/workflows/test.yml/badge.svg)](https://github.com/BK3536/rfx/actions)
@@ -167,7 +167,7 @@ Full documentation: **[remilab.ai/rfx](https://remilab.ai/rfx/)**
   title        = {rfx: JAX-based differentiable 3D FDTD simulator for RF engineering},
   institution  = {REMI Lab, Chungnam National University},
   year         = {2026},
-  version      = {1.3.0},
+  version      = {1.3.1},
   url          = {https://github.com/BK3536/rfx}
 }
 ```
