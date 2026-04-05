@@ -58,27 +58,35 @@ def assemble_materials_nu(
     debye_masks_by_pole: dict[DebyePole, jnp.ndarray] = {}
     lorentz_masks_by_pole: dict[LorentzPole, jnp.ndarray] = {}
 
+    # Build physical coordinate arrays for mask_on_coords().
+    # x, y are uniform; z is non-uniform (from cumulative dz).
+    z_offset = z_cumsum[cpml]  # physical z=0 at start of CPML
+    x_phys = jnp.asarray((np.arange(grid.nx) - cpml) * dx, dtype=jnp.float32)
+    y_phys = jnp.asarray((np.arange(grid.ny) - cpml) * dx, dtype=jnp.float32)
+    # z cell centers from cumulative sum (float64 to avoid drift, then cast)
+    z_centers_64 = (z_cumsum[:-1] + z_cumsum[1:]) / 2.0 - z_offset
+    z_phys = jnp.asarray(z_centers_64, dtype=jnp.float32)
+
+    from rfx.geometry.csg import Box as _Box
+
     for entry in sim._geometry:
         mat = sim._resolve_material(entry.material_name)
         shape_obj = entry.shape
-        if hasattr(shape_obj, 'corner_lo') and hasattr(shape_obj, 'corner_hi'):
+
+        # Fast path for Box: use slice indexing (O(1) vs O(N) for full mask)
+        if isinstance(shape_obj, _Box):
             c1, c2 = shape_obj.corner_lo, shape_obj.corner_hi
-            # x,y: uniform grid mapping (physical coords include CPML offset)
             ix0 = max(0, int(round(c1[0] / dx)) + cpml)
             ix1 = min(grid.nx, int(round(c2[0] / dx)) + cpml)
             iy0 = max(0, int(round(c1[1] / dx)) + cpml)
             iy1 = min(grid.ny, int(round(c2[1] / dx)) + cpml)
-            # z: map physical z to non-uniform grid index
-            z_lo_phys = c1[2]
-            z_hi_phys = c2[2]
-            # z_cumsum[cpml] = start of physical domain
-            z_offset = z_cumsum[cpml]
+            z_lo_phys, z_hi_phys = c1[2], c2[2]
             iz0 = cpml + int(np.argmin(np.abs(
                 z_cumsum[cpml:] - z_offset - z_lo_phys)))
             iz1 = cpml + int(np.argmin(np.abs(
                 z_cumsum[cpml:] - z_offset - z_hi_phys)))
             if iz1 <= iz0:
-                iz1 = iz0 + 1  # at least 1 cell
+                iz1 = iz0 + 1
 
             if ix0 < ix1 and iy0 < iy1 and iz0 < iz1:
                 if mat.sigma >= PEC_SIGMA_THRESHOLD:
@@ -88,24 +96,35 @@ def assemble_materials_nu(
                     sigma = sigma.at[ix0:ix1, iy0:iy1, iz0:iz1].set(mat.sigma)
                     mu_r = mu_r.at[ix0:ix1, iy0:iy1, iz0:iz1].set(mat.mu_r)
 
-                # Build spatial mask for this box (for dispersion pole lookup)
-                if mat.debye_poles or mat.lorentz_poles:
-                    box_mask = jnp.zeros(shape, dtype=jnp.bool_)
-                    box_mask = box_mask.at[ix0:ix1, iy0:iy1, iz0:iz1].set(True)
+                shape_mask = jnp.zeros(shape, dtype=jnp.bool_)
+                shape_mask = shape_mask.at[ix0:ix1, iy0:iy1, iz0:iz1].set(True)
+            else:
+                shape_mask = None
+        else:
+            # General path: use mask_on_coords() for any shape
+            shape_mask = shape_obj.mask_on_coords(x_phys, y_phys, z_phys)
+            if mat.sigma >= PEC_SIGMA_THRESHOLD:
+                pec_mask = pec_mask | shape_mask
+            else:
+                eps_r = jnp.where(shape_mask, mat.eps_r, eps_r)
+                sigma = jnp.where(shape_mask, mat.sigma, sigma)
+                mu_r = jnp.where(shape_mask, mat.mu_r, mu_r)
 
-                    if mat.debye_poles:
-                        for pole in mat.debye_poles:
-                            if pole in debye_masks_by_pole:
-                                debye_masks_by_pole[pole] = debye_masks_by_pole[pole] | box_mask
-                            else:
-                                debye_masks_by_pole[pole] = box_mask
+        # Dispersion pole spatial masks
+        if shape_mask is not None and (mat.debye_poles or mat.lorentz_poles):
+            if mat.debye_poles:
+                for pole in mat.debye_poles:
+                    if pole in debye_masks_by_pole:
+                        debye_masks_by_pole[pole] = debye_masks_by_pole[pole] | shape_mask
+                    else:
+                        debye_masks_by_pole[pole] = shape_mask
 
-                    if mat.lorentz_poles:
-                        for pole in mat.lorentz_poles:
-                            if pole in lorentz_masks_by_pole:
-                                lorentz_masks_by_pole[pole] = lorentz_masks_by_pole[pole] | box_mask
-                            else:
-                                lorentz_masks_by_pole[pole] = box_mask
+            if mat.lorentz_poles:
+                for pole in mat.lorentz_poles:
+                    if pole in lorentz_masks_by_pole:
+                        lorentz_masks_by_pole[pole] = lorentz_masks_by_pole[pole] | shape_mask
+                    else:
+                        lorentz_masks_by_pole[pole] = shape_mask
 
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 

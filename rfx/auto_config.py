@@ -71,21 +71,30 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
             if sigma > 0 and eps_r > 1:
                 max_loss_tangent = max(max_loss_tangent, sigma / eps_r)
 
-        if hasattr(shape, "corner_lo") and hasattr(shape, "corner_hi"):
+        # Use bounding_box() if available (all shapes), fall back to corner_lo/hi
+        if hasattr(shape, "bounding_box"):
+            try:
+                c1, c2 = shape.bounding_box()
+            except NotImplementedError:
+                continue
+        elif hasattr(shape, "corner_lo") and hasattr(shape, "corner_hi"):
             c1, c2 = shape.corner_lo, shape.corner_hi
-            dims = [abs(c2[i] - c1[i]) for i in range(3)]
-            nonzero_dims = [d for d in dims if d > 1e-12]
-            if nonzero_dims:
-                thicknesses.append(min(nonzero_dims))
-                extents.append(max(dims))
-            all_corners_lo.append(c1)
-            all_corners_hi.append(c2)
+        else:
+            continue
 
-            # Track z-extent for non-uniform mesh detection
-            z_lo, z_hi = min(c1[2], c2[2]), max(c1[2], c2[2])
-            z_thickness = z_hi - z_lo
-            if z_thickness > 1e-12 and sigma < pec_threshold:
-                z_features.append((z_lo, z_hi, eps_r))
+        dims = [abs(c2[i] - c1[i]) for i in range(3)]
+        nonzero_dims = [d for d in dims if d > 1e-12]
+        if nonzero_dims:
+            thicknesses.append(min(nonzero_dims))
+            extents.append(max(dims))
+        all_corners_lo.append(c1)
+        all_corners_hi.append(c2)
+
+        # Track z-extent for non-uniform mesh detection
+        z_lo, z_hi = min(c1[2], c2[2]), max(c1[2], c2[2])
+        z_thickness = z_hi - z_lo
+        if z_thickness > 1e-12 and sigma < pec_threshold:
+            z_features.append((z_lo, z_hi, eps_r))
 
     # Bounding box of all geometry
     if all_corners_lo:
