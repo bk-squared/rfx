@@ -19,9 +19,16 @@ probe positions use this absolute coordinate frame.
 
 ### 1.2 Available Primitives
 
-rfx provides three CSG primitives in `rfx.geometry.csg`: **Box**, **Sphere**,
-and **Cylinder**. Each implements a `mask(grid)` method that returns a boolean
-array marking which Yee cells fall inside the shape.
+rfx provides three core CSG primitives in `rfx.geometry.csg`: **Box**,
+**Sphere**, and **Cylinder**. It also provides higher-level geometry helpers
+`Via` and `CurvedPatch` in `rfx.geometry`. All five shapes now work on all
+runner paths: uniform, nonuniform, subgridded, and distributed.
+
+All shapes implement a unified rasterization protocol based on
+`Shape.mask_on_coords(x, y, z)` and `Shape.bounding_box()`. The grid-facing
+`mask(grid)` entry point remains available and delegates to
+`mask_on_coords()`, while geometry utilities such as `auto_configure()` use
+`bounding_box()` for extent detection.
 
 #### Box
 
@@ -63,6 +70,22 @@ cyl = Cylinder(center=(0.02, 0.02, 0.02), radius=0.003, height=0.01, axis="z")
 # An x-oriented cylinder for a via or pin
 via = Cylinder(center=(0.01, 0.01, 0.005), radius=0.0005, height=0.001, axis="x")
 ```
+
+#### Via
+
+`Via` is a plated-through-hole helper that participates in the same shape
+protocol as the core CSG primitives. Its rasterization delegates to an
+internal Box decomposition, so it works on every runner path.
+
+#### CurvedPatch
+
+`CurvedPatch` is a higher-level curved conductor helper. Under the unified
+shape protocol it also works on every runner path, using a staircase
+decomposition for rasterization.
+
+> **Implementation note:** `Box` retains an optimized slice-based path on
+> nonuniform and subgridded runners. Other shapes rasterize through
+> `mask_on_coords()` on the runner-provided coordinate arrays.
 
 ### 1.3 Boolean CSG Operations
 
@@ -145,11 +168,12 @@ hole: add the block first, then add the hole with `material="vacuum"`.
 
 ### 1.5 Grid Snapping (Stairstepping)
 
-All geometry is rasterized onto the uniform Yee grid. A cell is either fully
-inside or fully outside a shape — there is no partial cell assignment in the
-default mode. This produces **staircase approximations** of curved and angled
-surfaces. The staircasing error scales as O(dx) and is the dominant source of
-error for smooth geometries on coarse grids.
+All geometry is rasterized onto the active Yee grid used by the selected
+runner. A cell is either fully inside or fully outside a shape — there is no
+partial cell assignment in the default mode. This produces **staircase
+approximations** of curved and angled surfaces. The staircasing error scales
+as O(dx) and is the dominant source of error for smooth geometries on coarse
+grids.
 
 ### 1.6 Subpixel Smoothing
 
@@ -267,12 +291,12 @@ sim.add(Box((0, 0, -0.0001), (0.04, 0.02, 0.0)), material="pec")   # ground
 
 ### 3.1 Curved Surfaces (Stairstepping)
 
-rfx uses a uniform Cartesian Yee grid. Curved PEC surfaces suffer from
-staircase approximation with O(dx) error, and there is no conformal mesh.
-Subpixel smoothing mitigates this for **dielectric** interfaces (second-order
-convergence), but **PEC curves** remain staircased. For accurate PEC
-cylinder/sphere scattering, you need a very fine grid or a solver with
-conformal meshing.
+rfx uses Cartesian Yee grids, including uniform, nonuniform, and subgridded
+runner paths. Curved PEC surfaces still suffer from staircase approximation
+with O(dx) error, and there is no conformal mesh. Subpixel smoothing
+mitigates this for **dielectric** interfaces (second-order convergence), but
+**PEC curves** remain staircased. For accurate PEC cylinder/sphere
+scattering, you need a very fine grid or a solver with conformal meshing.
 
 ### 3.2 Oblique Incidence Scattering
 
@@ -457,7 +481,7 @@ GPU acceleration, or CFS-CPML for challenging absorbing-boundary problems.
 | Modal decomposition | Waveguide port TE/TM decomposition | Waveguide port support |
 | Mesh import | No (CSG primitives only) | Yes (STEP, STL via CSXCAD) |
 | GUI | No | AppCSXCAD visual editor |
-| Nonuniform grid | No (uniform Yee only) | Yes (graded mesh) |
+| Nonuniform / subgridded grid | Yes | Yes (graded mesh) |
 | Language | Python / JAX | MATLAB / Python / C++ |
 
 **When to choose OpenEMS:** You have complex CAD geometry, need a nonuniform
@@ -506,9 +530,9 @@ cannot afford commercial licences.
 rfx excels at **small- to medium-scale, differentiable electromagnetic
 simulations** on a single GPU. Its JAX foundation makes it uniquely suited for
 inverse design and gradient-based optimisation of RF/microwave structures. The
-geometry system is intentionally simple — three CSG primitives plus boolean
-operations — which keeps the API clean and the rasterisation fully
-differentiable.
+geometry system is intentionally simple — core CSG primitives, higher-level
+`Via` / `CurvedPatch` helpers, and boolean operations — which keeps the API
+clean and the rasterisation fully differentiable.
 
 The key trade-off is generality: rfx does not have conformal meshing, MPI
 parallelism, eigenmode solvers, or CAD import. For problems that need those

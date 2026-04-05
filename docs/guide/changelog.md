@@ -4,6 +4,26 @@ All notable changes to rfx are documented here.
 
 ---
 
+## v1.3.1 (2026-04-05)
+
+### Improvements
+
+- **Geometry rasterization unification** -- the shape protocol now exposes
+  `mask_on_coords()` and `bounding_box()` on all geometry types (Box,
+  Sphere, Cylinder, Via, CurvedPatch).
+- **Via and CurvedPatch protocol support** -- `Via` participates via Box
+  decomposition; `CurvedPatch` rasterizes through staircase decomposition.
+- **Runner-path consistency** -- nonuniform and subgridded runners now use
+  `mask_on_coords()` for non-Box shapes, while `Box` keeps its fast slice
+  path.
+- **Geometry extent detection** -- `auto_configure()` now uses
+  `bounding_box()` instead of checking for `corner_lo`/`corner_hi`
+  attributes directly.
+- **Shape coverage parity** -- all shapes now work on all runner paths
+  (uniform, nonuniform, subgridded, distributed).
+
+---
+
 ## v1.2.0 (2026-04-03)
 
 ### New Features
