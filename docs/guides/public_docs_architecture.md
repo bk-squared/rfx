@@ -12,7 +12,7 @@ This document defines how `research/rfx` should own and maintain the public
 | `docs/public/index.mdx` | public `/rfx/` landing page | yes |
 | `docs/public/guide/` | public guide pages deployed to `/rfx/guide/*` | yes |
 | `docs/agent/` | public AI-agent pages deployed to `/rfx/agent/*` | yes |
-| `docs/guide/` | repo-native technical guides under migration / legacy overlap | not the deploy source |
+| `docs/guide/` | retired redirect entrypoint kept for backwards navigation | no |
 | `docs/api/` | generated API docs | generated only |
 | `docs/research_notes/` | planning, handoffs, chronology | internal only |
 
@@ -82,8 +82,6 @@ in the deploy repo.
 
 ## Immediate migration posture
 
-- `docs/public/guide/` is the **current canonical public guide source**.
-- `docs/guide/` can continue to exist during migration, but it should not be
-  treated as the deploy source for `remilab.ai/rfx`.
-- Future cleanup can consolidate `docs/guide/` into the public tree once route
-  and content ownership are fully stable.
+- `docs/public/guide/` is the **canonical public guide source**.
+- `docs/guide/` is intentionally reduced to a single redirect-style entrypoint
+  and should not receive new content.
