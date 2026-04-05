@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import jax
 from numbers import Integral
 from typing import NamedTuple
 
@@ -58,6 +59,7 @@ from rfx.floquet import (
 from rfx.simulation import (
     SnapshotSpec,
 )
+from rfx.adi import ADIState2D, run_adi_2d
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +369,12 @@ class Simulation:
         material coefficients and DFT accumulators stay float32.
         Arithmetic is performed in float32 and cast back to float16
         for storage.
+    solver : str
+        ``"yee"`` (default) for the standard explicit scheme or
+        ``"adi"`` for the current 2D TMz ADI-FDTD path.
+    adi_cfl_factor : float
+        Timestep multiplier relative to the standard 2D CFL limit when
+        ``solver="adi"``.
     """
 
     def __init__(
@@ -380,6 +388,8 @@ class Simulation:
         mode: str = "3d",
         dz_profile: np.ndarray | None = None,
         precision: str = "float32",
+        solver: str = "yee",
+        adi_cfl_factor: float = 5.0,
     ):
         if boundary not in ("pec", "cpml"):
             raise ValueError(f"boundary must be 'pec' or 'cpml', got {boundary!r}")
@@ -387,6 +397,10 @@ class Simulation:
             raise ValueError(f"freq_max must be positive, got {freq_max}")
         if precision not in ("float32", "mixed"):
             raise ValueError(f"precision must be 'float32' or 'mixed', got {precision!r}")
+        if solver not in ("yee", "adi"):
+            raise ValueError(f"solver must be 'yee' or 'adi', got {solver!r}")
+        if adi_cfl_factor <= 0:
+            raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
         # When dz_profile is provided, z-domain comes from the profile (z=0 OK)
         if dz_profile is not None:
             if any(d <= 0 for d in domain[:2]):
@@ -404,6 +418,16 @@ class Simulation:
         self._mode = mode
         self._dz_profile = dz_profile
         self._precision = precision
+        self._solver = solver
+        self._adi_cfl_factor = adi_cfl_factor
+
+        if self._solver == "adi":
+            if self._mode != "2d_tmz":
+                raise ValueError("solver='adi' currently supports only mode='2d_tmz'")
+            if self._boundary != "pec":
+                raise ValueError("solver='adi' currently supports only boundary='pec'")
+            if self._dz_profile is not None:
+                raise ValueError("solver='adi' does not support nonuniform dz_profile")
 
         # Registered items
         self._materials: dict[str, MaterialSpec] = {}
@@ -1837,6 +1861,127 @@ class Simulation:
             s_param_freqs=s_param_freqs,
         )
 
+    def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
+        """Validate that the current simulation is compatible with the ADI path."""
+        if self._mode != "2d_tmz":
+            raise ValueError("solver='adi' currently supports only mode='2d_tmz'")
+        if self._boundary != "pec":
+            raise ValueError("solver='adi' currently supports only boundary='pec'")
+        if self._refinement is not None:
+            raise ValueError("solver='adi' does not support subgridding yet")
+        if self._tfsf is not None:
+            raise ValueError("solver='adi' does not support TFSF sources yet")
+        if self._waveguide_ports or self._floquet_ports:
+            raise ValueError("solver='adi' does not support waveguide or Floquet ports yet")
+        if self._periodic_axes:
+            raise ValueError("solver='adi' does not support manual periodic axes yet")
+        if self._dft_planes:
+            raise ValueError("solver='adi' does not support DFT plane probes yet")
+        if self._ntff is not None:
+            raise ValueError("solver='adi' does not support NTFF accumulation yet")
+        if self._coaxial_ports:
+            raise ValueError("solver='adi' does not support coaxial ports yet")
+        if self._lumped_rlc:
+            raise ValueError("solver='adi' does not support lumped RLC elements yet")
+        if self._thin_conductors:
+            raise ValueError("solver='adi' does not support thin-conductor corrections yet")
+        if debye_spec is not None or lorentz_spec is not None:
+            raise ValueError("solver='adi' does not support dispersive materials yet")
+        if float(jnp.max(jnp.abs(materials.sigma))) > 0.0:
+            raise ValueError(
+                "solver='adi' currently supports only lossless materials; non-zero conductivity is not yet implemented"
+            )
+        for pe in self._ports:
+            if pe.impedance != 0.0 or pe.extent is not None:
+                raise ValueError("solver='adi' currently supports only add_source()-style soft Ez sources")
+            if pe.component != "ez":
+                raise ValueError("solver='adi' currently supports only Ez soft sources in TMz mode")
+        for probe in self._probes:
+            if probe.component not in ("ez", "hx", "hy"):
+                raise ValueError("solver='adi' currently supports probes on ez/hx/hy only")
+
+    def _run_adi_from_materials(
+        self,
+        grid: Grid,
+        materials: MaterialArrays,
+        debye_spec,
+        lorentz_spec,
+        *,
+        n_steps: int,
+        pec_mask: jnp.ndarray | None = None,
+        return_state: bool = True,
+    ):
+        """Run the integrated 2D TMz ADI solver path."""
+        import copy
+
+        self._validate_adi_configuration(materials, debye_spec, lorentz_spec)
+
+        dt = float(grid.dt * self._adi_cfl_factor)
+        times = jnp.arange(n_steps, dtype=jnp.float32) * dt
+
+        sources = []
+        for pe in self._ports:
+            i, j, _ = grid.position_to_index(pe.position)
+            waveform = jax.vmap(pe.waveform)(times)
+            sources.append((i, j, waveform))
+
+        probes = []
+        for pe in self._probes:
+            i, j, _ = grid.position_to_index(pe.position)
+            probes.append((i, j, pe.component))
+
+        eps_r_2d = materials.eps_r[:, :, 0]
+        sigma_2d = materials.sigma[:, :, 0]
+        pec_mask_2d = None
+        if pec_mask is not None:
+            pec_mask_2d = pec_mask[:, :, 0]
+        ez0 = jnp.zeros_like(eps_r_2d)
+        hx0 = jnp.zeros_like(eps_r_2d)
+        hy0 = jnp.zeros_like(eps_r_2d)
+        ez_f, hx_f, hy_f, probe_data = run_adi_2d(
+            ez0,
+            hx0,
+            hy0,
+            eps_r_2d,
+            sigma_2d,
+            dt,
+            grid.dx,
+            grid.dx,
+            n_steps,
+            sources=sources,
+            probes=probes,
+            pec_mask=pec_mask_2d,
+        )
+        if probe_data is None:
+            probe_data = jnp.zeros((n_steps, 0), dtype=ez_f.dtype)
+
+        grid_out = copy.copy(grid)
+        grid_out.dt = dt
+
+        if return_state:
+            state = ADIState2D(
+                ez=ez_f,
+                hx=hx_f,
+                hy=hy_f,
+                step=jnp.asarray(n_steps, dtype=jnp.int32),
+            )
+            return Result(
+                state=state,
+                time_series=probe_data,
+                s_params=None,
+                freqs=None,
+                grid=grid_out,
+                dt=dt,
+                freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
+            )
+
+        return ForwardResult(
+            time_series=probe_data,
+            ntff_data=None,
+            ntff_box=None,
+            grid=grid_out,
+        )
+
     def _forward_from_materials(
         self,
         grid: Grid,
@@ -1850,6 +1995,17 @@ class Simulation:
         pec_occupancy: jnp.ndarray | None = None,
     ) -> ForwardResult:
         """Run a minimal differentiable forward path from explicit materials."""
+        if self._solver == "adi":
+            return self._run_adi_from_materials(
+                grid,
+                materials,
+                debye_spec,
+                lorentz_spec,
+                n_steps=n_steps,
+                pec_mask=pec_mask,
+                return_state=False,
+            )
+
         from rfx.simulation import (
             run as _run,
             make_source,
@@ -2096,6 +2252,9 @@ class Simulation:
         -------
         Result
         """
+        if self._solver == "adi" and devices is not None and len(devices) > 1:
+            raise ValueError("solver='adi' does not support distributed execution")
+
         # ---- Distributed multi-device path ----
         if devices is not None and len(devices) > 1:
             if n_steps is None:
@@ -2121,6 +2280,23 @@ class Simulation:
 
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, kerr_chi3 = self._assemble_materials(grid)
+
+        if self._solver == "adi":
+            if until_decay is not None:
+                raise ValueError("solver='adi' does not support until_decay yet")
+            if snapshot is not None:
+                raise ValueError("solver='adi' does not support snapshots yet")
+            if n_steps is None:
+                n_steps = grid.num_timesteps(num_periods=num_periods)
+            return self._run_adi_from_materials(
+                grid,
+                base_materials,
+                debye_spec,
+                lorentz_spec,
+                n_steps=n_steps,
+                pec_mask=pec_mask,
+                return_state=True,
+            )
 
         # ---- Subgridded path ----
         if self._refinement is not None:
@@ -2180,6 +2356,7 @@ class Simulation:
             f"  periodic_axes={self._periodic_axes!r},\n"
             f"  tfsf={self._tfsf is not None},\n"
             f"  precision={self._precision!r},\n"
+            f"  solver={self._solver!r},\n"
             f")"
         )
 
