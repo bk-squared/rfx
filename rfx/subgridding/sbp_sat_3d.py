@@ -192,20 +192,21 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
 
     # SBP-SAT penalty from Cheng et al. 2025 energy analysis.
     # The additive correction is: E += alpha * (E_other - E_self).
-    # alpha is a dimensionless blending fraction in (0, 1].
     #
-    # Scaling: alpha = tau * min(dx_other / dx_self, 1.0)
-    #   - Coarse side: alpha_c = tau * (dx_f / dx_c) = tau / ratio
-    #     (smaller correction — coarse grid has larger cells)
-    #   - Fine side:   alpha_f = tau * min(dx_c / dx_f, 1.0) = tau
-    #     (capped at tau to prevent over-correction)
+    # Energy conservation requires:
+    #   alpha_c + alpha_f = 1        (total penalty = full correction)
+    #   alpha_c * dx_c = alpha_f * dx_f  (SBP norm symmetry)
     #
-    # tau = 0.5 (default) gives moderate coupling; tau = 1.0 gives
-    # maximum coupling (full replacement on the fine side).
+    # Solving: alpha_f = ratio / (ratio + 1)
+    #          alpha_c = 1 / (ratio + 1)
+    #
+    # For ratio=3: alpha_f=0.75, alpha_c=0.25 (sums to 1.0)
+    # config.tau scales both (tau=1.0 = energy-conservative,
+    # tau<1.0 = dissipative but stable, tau>1.0 = unstable)
     tau = config.tau  # default 0.5
 
-    alpha_c = tau * min(config.dx_f / config.dx_c, 1.0)
-    alpha_f = tau * min(config.dx_c / config.dx_f, 1.0)
+    alpha_f = tau * ratio / (ratio + 1.0)
+    alpha_c = tau * 1.0 / (ratio + 1.0)
 
     def _sat_couple(ec_arr, ef_arr, c_slice, f_slice,
                     nj_ds, nk_ds, ny_up, nz_up):
