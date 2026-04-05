@@ -7,6 +7,7 @@ into thin rectangular slices along the curvature axis.
 from __future__ import annotations
 
 import numpy as np
+import jax.numpy as jnp
 
 from rfx.geometry.csg import Box
 
@@ -38,6 +39,31 @@ class CurvedPatch:
         self.width = width
         self.radius = radius
         self.axis = axis
+
+    def bounding_box(self):
+        cx, cy, cz = self.center
+        hl = self.length / 2
+        hw = self.width / 2
+        # Max arc height: R - sqrt(R^2 - (L/2)^2)
+        s = min(hl, self.radius * 0.99)
+        z_arc = self.radius - np.sqrt(self.radius**2 - s**2)
+        if self.axis == "x":
+            return ((cx - hl, cy - hw, cz), (cx + hl, cy + hw, cz + z_arc))
+        else:
+            return ((cx - hw, cy - hl, cz), (cx + hw, cy + hl, cz + z_arc))
+
+    def mask_on_coords(self, x, y, z):
+        """Evaluate curved patch occupancy via staircase decomposition."""
+        dx_est = float(x[1] - x[0]) if len(x) > 1 else 1e-3
+        result = jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)
+        for box in self.to_staircase(dx_est):
+            result = result | box.mask_on_coords(x, y, z)
+        return result
+
+    def mask(self, grid):
+        from rfx.geometry.csg import _grid_coords
+        x, y, z = _grid_coords(grid)
+        return self.mask_on_coords(x, y, z)
 
     def to_staircase(self, dx: float) -> list[Box]:
         """Decompose curved patch into staircase boxes.
