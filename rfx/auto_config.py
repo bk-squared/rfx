@@ -377,11 +377,14 @@ def auto_configure(
     # Ensure minimum domain > 4*dx per dimension
     domain = tuple(max(d, 8 * dx) for d in domain)
 
-    # 3. CPML layers — ensure physical thickness >= 0.4*λ_max (Meep/OpenEMS convention)
-    # with a floor from accuracy preset for well-tuned CFS-CPML grading.
-    min_cpml_thickness = 0.4 * lambda_max
+    # 3. CPML layers — evidence-based from reflectivity sweep (2026-04-05).
+    # Even 4 layers achieves < -43 dB at all frequencies with CFS-CPML
+    # (kappa_max=5.0).  Conservative floor per accuracy tier plus a
+    # pml_frac * lambda_max physical thickness that scales with frequency.
+    # Previous 0.4*lambda_max was 4x over-provisioned (80 layers for wideband).
+    min_cpml_thickness = preset["pml_frac"] * lambda_max  # 0.10/0.20/0.40
     min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
-    cpml_cells = {"draft": 8, "standard": 12, "high": 16}[accuracy]
+    cpml_cells = {"draft": 6, "standard": 8, "high": 12}[accuracy]
     cpml_layers = max(min_cpml_cells, cpml_cells)
 
     # 3b. Memory budget — coarsen dx until estimated memory fits.
