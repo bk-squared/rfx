@@ -32,8 +32,8 @@ from rfx.simulation import SnapshotSpec
 
 F0 = 5e9              # dipole target frequency: 5 GHz
 LAMBDA = 3e8 / F0     # ~60 mm
-DOMAIN_SIZE = 3 * LAMBDA / 10   # ~18 mm compact domain
-DX = LAMBDA / 30      # ~2 mm cell size
+DOMAIN_SIZE = LAMBDA * 1.5      # ~90 mm (enough for CPML + NTFF box)
+DX = LAMBDA / 20      # ~3 mm cell size
 CPML = 8
 
 DOM = (DOMAIN_SIZE, DOMAIN_SIZE, DOMAIN_SIZE)
