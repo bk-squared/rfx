@@ -31,6 +31,7 @@ from rfx.core.yee import MaterialArrays, EPS_0
 from rfx.geometry.csg import Shape
 from rfx.nonuniform import NonUniformGrid
 from rfx.sources.sources import GaussianPulse
+from rfx.sources.coaxial_port import CoaxialPort, setup_coaxial_port, make_coaxial_port_source
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.lumped import LumpedRLCSpec
@@ -405,6 +406,7 @@ class Simulation:
         self._ports: list[_PortEntry] = []
         self._probes: list[_ProbeEntry] = []
         self._thin_conductors: list[ThinConductor] = []
+        self._coaxial_ports: list[CoaxialPort] = []
         self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
         self._tfsf: _TFSFEntry | None = None
         self._dft_planes: list[_DFTPlaneEntry] = []
@@ -628,6 +630,44 @@ class Simulation:
                     return amp_y * carrier * envelope
                 self.add_source(position, "ey", waveform=CustomWaveform(func=_ey_func))
 
+        return self
+
+    # ---- coaxial ports ----
+
+    def add_coaxial_port(
+        self,
+        position: tuple[float, float, float],
+        face: str = "top",
+        *,
+        pin_length: float = 5e-3,
+        pin_radius: float = 0.635e-3,
+        outer_radius: float = 2.055e-3,
+        impedance: float = 50.0,
+        waveform=None,
+    ) -> "Simulation":
+        """Add an SMA-style coaxial probe port.
+
+        Parameters
+        ----------
+        position : (x, y, z) — center of port on cavity wall (metres)
+        face : "top", "bottom", "front", "back", "left", "right"
+        pin_length : float — pin protrusion into cavity (default 5mm)
+        pin_radius : float — center pin radius (default 0.635mm, SMA)
+        outer_radius : float — outer conductor radius (default 2.055mm)
+        impedance : float — port impedance (default 50 ohm)
+        waveform : excitation pulse (default GaussianPulse at freq_max/2)
+        """
+        if waveform is None:
+            waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
+        self._coaxial_ports.append(CoaxialPort(
+            position=position,
+            face=face,
+            pin_length=pin_length,
+            pin_radius=pin_radius,
+            outer_radius=outer_radius,
+            impedance=impedance,
+            excitation=waveform,
+        ))
         return self
 
     # ---- thin conductors ----

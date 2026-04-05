@@ -9,6 +9,7 @@ from rfx.geometry.csg import Box, Sphere, Cylinder
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.via import Via
 from rfx.sources.sources import GaussianPulse, ModulatedGaussian, CWSource, CustomWaveform
+from rfx.sources.coaxial_port import CoaxialPort
 from rfx.sources.waveguide_port import (
     WaveguidePort, WaveguidePortConfig,
     init_waveguide_port, inject_waveguide_port, update_waveguide_port_probe,
