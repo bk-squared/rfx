@@ -7,9 +7,10 @@ sidebar:
 
 **Differentiable FDTD for RF/Microwave — powered by JAX**
 
-rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built entirely in JAX. It is designed for RF and microwave engineers who need accurate broadband field solutions, modern RF workflow tooling, and native gradient support for inverse design — without leaving Python.
+rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built in JAX. It targets RF and microwave engineers who need accurate broadband field solutions, practical RF workflow tooling, and native gradient support for inverse design — without leaving Python.
 
-Stable package metadata currently targets **v1.3.0**, while the docs below also call out a few important post-release improvements already merged on `main`.
+The docs below cover the stable **v1.3.1** package surface and call out
+selected post-release improvements already merged on `main`.
 
 ---
 
@@ -19,9 +20,9 @@ Stable package metadata currently targets **v1.3.0**, while the docs below also 
 |---|---|
 | **GPU acceleration** | 7,309 Mcells/s on RTX 4090, 5,847 on RTX 3090, 5,249 on RTX A6000 |
 | **Multi-GPU distributed FDTD** | `jax.pmap` slab decomposition for larger 3-D jobs on a single multi-GPU host |
-| **Autodiff** | `jax.grad` through the full time-stepping loop for topology/shape optimisation |
-| **Topology optimisation** | Density-based filtering, projection, and beta continuation for inverse design |
-| **Time-domain optimisation objectives** | Use proxy losses such as `minimize_reflected_energy()` and `maximize_transmitted_energy()` inside differentiable loops |
+| **Autodiff** | `jax.grad` through the full time-stepping loop for topology and shape optimization |
+| **Topology optimization** | Density-based filtering, projection, and beta continuation for inverse design |
+| **Time-domain optimization objectives** | Use proxy losses such as `minimize_reflected_energy()` and `maximize_transmitted_energy()` inside differentiable loops |
 | **Conformal PEC** | Dey-Mittra method for 2nd-order accuracy on curved conductors |
 | **Material fitting** | Debye/Lorentz fitting plus differentiable FDTD-based refinement from S-parameters |
 | **Non-uniform mesh + auto-config** | Graded z-profiles and `auto_configure()` for thin substrates and broadband setups |
@@ -53,11 +54,15 @@ pip install "jax[cuda12]" rfx-fdtd
 
 ---
 
-## Latest highlights
+## Recent highlights
 
-- **v1.3.0** added published-result validation, convergence-study helpers, mixed precision, RIS workflows, and major GPU speedups.
+- **v1.3.x** added published-result validation, convergence-study helpers, mixed precision, RIS workflows, and major GPU speedups.
 - **v1.2.0** added **multi-GPU distributed FDTD** with CPML, dispersive materials, and lumped-port support in the distributed runner.
 - Current `main` adds **JAX-differentiable far-field computation**, NTFF-aware `optimize()` objectives, improved inverse-design UX, and a **research-grade advanced example bundle** under `examples/50_advanced/`.
+
+Pages that describe evolving or research-grade workflows should say so
+explicitly. Use the user guide for the supported surface, and treat advanced or
+experimental notes as capability previews rather than blanket guarantees.
 
 ---
 
@@ -123,10 +128,10 @@ Simulation ──► add_material / add / add_port / add_probe / add_ntff_box
 - [Visualization & Analysis](guide/visualization-and-analysis/) — plotting, exports, post-processing
 - [Solver Comparison](guide/comparison/) — feature and performance comparison vs. Meep and OpenEMS
 
-### Design & Optimisation
+### Design & Optimization
 
-- [Inverse Design](guide/inverse-design/) — autodiff-driven topology, shape, and far-field optimisation
-- [Topology Optimisation](guide/topology-optimisation/) — density-based inverse design with filtering and projection
+- [Inverse Design](guide/inverse-design/) — autodiff-driven topology, shape, and far-field optimization
+- [Topology Optimization](guide/topology-optimisation/) — density-based inverse design with filtering and projection
 - [Parametric Sweeps](guide/parametric-sweeps/) — sequential sweep and `jax.vmap` batch evaluation
 - [Material Fitting](guide/material-fitting/) — CSV import, Debye/Lorentz fitting, differentiable FDTD-based fitting
 - [Patch Antenna Design](guide/tutorial-patch-antenna/) — full design workflow for a rectangular microstrip patch
@@ -147,15 +152,15 @@ Simulation ──► add_material / add / add_port / add_probe / add_ntff_box
 - [Prompt Templates for RF Design](agent/prompt-templates/) — reusable agent prompts
 - [Automated Design Workflows](agent/design-workflows/) — end-to-end design patterns
 
-### Project & Maintainer
+### Project & maintainer
 
 - [Migration Guide](guide/migration/) — Meep/OpenEMS workflow mapping
-- [Contributing](guide/contributing/) — developer / maintainer workflow and test expectations
-- [Changelog](guide/changelog/) — release-level capability summary plus current-main doc notes
+- [Contributing](guide/contributing/) — maintainer workflow and test expectations
+- [Changelog](guide/changelog/) — release-level capability summary plus current-main notes
 
 ## Repo examples
 
-The public site focuses on guides. For runnable research-style workflows, see the repo's `examples/50_advanced/` bundle for patch optimisation, waveguide inverse design, broadband matching, array coupling, dielectric-lens shaping, material characterisation, and GPU validation scripts.
+The public site focuses on guides. For runnable research-style workflows, see `examples/50_advanced/` for patch optimization, waveguide inverse design, broadband matching, array coupling, dielectric-lens shaping, material characterization, and GPU validation scripts.
 
 ## Guide Index
 

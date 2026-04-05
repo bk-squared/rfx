@@ -4,36 +4,39 @@ sidebar:
   order: 91
 ---
 
-Thank you for your interest in contributing to rfx. This guide covers
-development setup, coding conventions, and the workflow for submitting
-changes.
+Thank you for contributing to rfx. This guide is for maintainers and contributors working on the codebase, tests, and public docs.
 
 > This is a **developer / maintainer guide**. If you are learning how to use
-> `rfx`, start with the user-facing guides such as Quick Start, Simulation API,
-> Sources & Ports, and Non-Uniform Mesh first.
+> `rfx`, start with Quick Start, Sources & Ports, Non-Uniform Mesh, and the
+> other public user guides first.
 
 ---
 
 ## Development Setup
 
 ```bash
-git clone https://github.com/BK3536/rfx.git
+git clone https://github.com/bk-squared/rfx.git
 cd rfx
-pip install -e ".[dev]"
+pip install -e '.[dev]'
 ```
 
-The `dev` extra installs pytest, pytest-xdist, and ruff. For GPU testing, ensure
-JAX is installed with CUDA support:
+The `dev` extra installs the tools used in local development, including
+`pytest`, `pytest-xdist`, and `ruff`.
+
+If you need GPU validation, install the JAX build that matches your CUDA stack
+before running GPU-specific examples or tests, then confirm the runtime sees
+your devices:
 
 ```bash
-pip install --upgrade "jax[cuda12]"
 python -c "import jax; print(jax.devices())"
 ```
 
 ## Running Tests
 
+Run the relevant tests before opening a pull request:
+
 ```bash
-# Run the full suite (500+ tests)
+# Run the full suite
 pytest tests/ -x -q
 
 # Run a specific test file
@@ -42,58 +45,51 @@ pytest tests/test_lumped_rlc.py -x -q
 # Run tests in parallel (requires pytest-xdist)
 pytest tests/ -x -q -n auto
 
-# Skip slow tests when iterating locally
+# Skip slow tests while iterating locally
 pytest tests/ -x -q -m "not slow"
 ```
 
-All tests must pass before submitting a change. The CI pipeline runs lint plus the
-full test suite on every push.
+Use the narrowest command that still covers your change, then finish with the
+broader suite once the change is stable.
 
 ## Code Style
 
-rfx uses `ruff` in CI and expects changes to follow the conventions visible in the
-existing codebase:
+rfx uses `ruff` in CI and follows the conventions already present in the
+codebase:
 
-- **Type hints** on public function signatures.
-- **Docstrings** on all public classes and functions (Google style).
-- **`dataclass(frozen=True)`** for immutable value objects (shapes, configs).
-- **JAX idioms**: prefer `jnp` over `np` in hot paths, avoid in-place
-  mutation, use `jax.lax.scan` for loops that need JIT compilation.
-- **Imports**: group into stdlib, third-party (`jax`, `numpy`), then `rfx`
-  internal. One blank line between groups.
-- **Naming**: `snake_case` for functions and variables, `PascalCase` for
-  classes, `UPPER_CASE` for module-level constants.
+- Type hints on public function signatures.
+- Docstrings on public classes and functions.
+- `dataclass(frozen=True)` for immutable value objects such as shapes and
+  configs.
+- JAX-friendly code in hot paths: prefer `jnp` over `np`, avoid in-place
+  mutation, and use `jax.lax.scan` when a loop must remain JIT-compatible.
+- Imports grouped as stdlib, third-party (`jax`, `numpy`), then `rfx` modules,
+  with one blank line between groups.
+- `snake_case` for functions and variables, `PascalCase` for classes, and
+  `UPPER_CASE` for module-level constants.
 
 ## How to Add a New Feature
 
-1. **Write the test first.** Create a file `tests/test_<feature>.py` with
-   at least one test that exercises the core behavior. The test should fail
-   before you implement anything.
-
+1. **Write a test first.** Add a file named `tests/test_<feature>.py` with at
+   least one failing test that captures the core behavior.
 2. **Implement the feature.** Place code in the appropriate module under
-   `rfx/`. If it does not fit an existing module, create a new one and
-   wire it into `rfx/__init__.py`.
-
-3. **Verify.** Run lint and the relevant tests to ensure nothing is broken:
+   `rfx/`. If a new module is needed, wire it into `rfx/__init__.py`.
+3. **Verify the change.** Run lint and the relevant tests:
    ```bash
    ruff check .
    pytest tests/ -x -q
    ```
-
-4. **Add documentation.** If the feature is user-facing, update or create
-   the relevant page under `docs/public/guide/` or `docs/agent/`. Add a
-   docstring to any new public API.
-
-5. **Add an example** (optional but encouraged). Place a self-contained
-   script under `examples/` that demonstrates the feature with
-   visualization.
+4. **Update the docs.** If the change affects users, update the relevant page
+   under `docs/public/guide/` or `docs/agent/`.
+5. **Add or update docstrings.** Any new public API should carry a clear,
+   accurate docstring.
 
 ## How to Add a New Geometry Primitive
 
 Geometry primitives live in `rfx/geometry/`. Follow this pattern:
 
-1. **Create** `rfx/geometry/<name>.py` with a frozen dataclass that
-   implements the `Shape` protocol:
+1. **Create** `rfx/geometry/<name>.py` with a frozen dataclass that implements
+   the `Shape` protocol:
 
    ```python
    from dataclasses import dataclass
@@ -106,7 +102,7 @@ Geometry primitives live in `rfx/geometry/`. Follow this pattern:
        # Parameters...
 
        def mask(self, grid: Grid) -> jnp.ndarray:
-           """Return boolean mask (True inside shape) on the given grid."""
+           """Return a boolean mask (True inside shape) on the given grid."""
            # Implementation...
    ```
 
@@ -118,15 +114,17 @@ Geometry primitives live in `rfx/geometry/`. Follow this pattern:
    from rfx.geometry.<name> import MyShape
    ```
 
-3. **Export** from the top-level `rfx/__init__.py` so users can write
+3. **Export** it from the top-level `rfx/__init__.py` so users can write
    `from rfx import MyShape`.
 
 4. **Add tests** in `tests/test_<name>.py` covering:
-   - Basic mask correctness (expected cells are filled).
-   - Edge cases (zero-thickness, single-cell, boundary overlap).
+   - Basic mask correctness.
+   - Edge cases such as zero thickness, single-cell shapes, and boundary
+     overlap.
    - Integration with `Simulation.add()`.
 
-5. **Document** the shape in the public guide set (see [Geometry & Limitations](/rfx/guide/geometry-and-limitations/)).
+5. **Document** the shape in the public guide set (see
+   [Geometry & Limitations](/rfx/guide/geometry-and-limitations/)).
 
 ## How to Submit Changes
 
@@ -136,16 +134,14 @@ rfx uses a standard GitHub pull request workflow:
    ```bash
    git checkout -b feat/my-feature
    ```
-
 2. **Make your changes** following the conventions above.
-
-3. **Run lint + tests** and confirm everything passes:
+3. **Run lint and tests** before you open the PR:
    ```bash
    ruff check .
    pytest tests/ -x -q
    ```
-
-4. **Commit** with a descriptive message. Use conventional commit prefixes:
+4. **Commit** with a descriptive message. Conventional commit prefixes are a
+   useful convention:
    - `feat:` for new features
    - `fix:` for bug fixes
    - `docs:` for documentation changes
@@ -155,12 +151,10 @@ rfx uses a standard GitHub pull request workflow:
    ```bash
    git commit -m "feat: add hexagonal prism geometry primitive"
    ```
-
-5. **Push** and open a pull request against `main`. Describe what the change
-   does and why.
-
-6. **CI must pass.** The GitHub Actions pipeline runs the full test suite.
-   Fix any failures before requesting review.
+5. **Push** and open a pull request against `main`. Describe what changed and
+   why it matters.
+6. **Fix CI failures promptly.** If the checks fail, update the branch and push
+   again before requesting review.
 
 ## Project Layout
 
@@ -187,7 +181,7 @@ rfx/
   optimize.py          # Inverse design optimizer
   animation.py         # MP4/GIF field animation export
   visualize.py         # 2D plotting utilities
-tests/                 # 500+ pytest tests
+tests/                 # pytest test suite
 examples/              # Self-contained example scripts
 docs/public/guide/     # Canonical public guide source
 docs/agent/            # Canonical public AI-agent docs
@@ -195,5 +189,5 @@ docs/agent/            # Canonical public AI-agent docs
 
 ## Questions?
 
-Open an issue on [GitHub](https://github.com/BK3536/rfx/issues) or check
-the existing [documentation](/rfx/guide/).
+Open an issue on [GitHub](https://github.com/bk-squared/rfx/issues) or check the
+existing [documentation](/rfx/guide/).

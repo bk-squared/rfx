@@ -5,85 +5,80 @@ sidebar:
   order: 7
 ---
 
-rfx validation is best read as **three complementary evidence layers**:
+rfx validation is easiest to read as a layered evidence story:
 
-1. **Published-result RF benchmarks** (current headline numbers for v1.3.0)
-2. **Cross-solver agreement** vs. Meep and OpenEMS on cavity / waveguide anchors
-3. **Workflow validation** for advanced examples and optimisation pipelines
+1. **Published benchmark scripts** for the core RF cases
+2. **Cross-solver checks** against Meep and OpenEMS
+3. **Workflow validation** for advanced examples and GPU regression scripts
+
+Use those layers in that order when making public claims: benchmark first,
+cross-solver second, workflow validation third.
 
 ---
 
-## 1. Published-result RF benchmarks (v1.3.0 headline table)
+## 1. Published benchmark scripts
 
-These are the public-facing validation numbers to quote first.
+These are the current public-facing numbers to quote first. Each row maps to a
+script under `examples/40_accuracy_validation/`.
 
-| Structure | Reference | Error |
-|---|---|---|
-| Patch antenna resonance | Balanis Ch. 14 | **1.97%** |
-| WR-90 TE10 cutoff | Analytical | **0.60%** |
-| Dielectric cavity TM110 | Analytical | **0.016%** |
-| Microstrip characteristic impedance | Hammerstad-Jensen | **0.47%** |
-| Coupled-line filter | Pozar Ch. 8 | **22.5%** (closed-form limitation) |
+| Structure | Script | Reference | Error |
+|---|---|---|---|
+| Patch antenna resonance | `examples/40_accuracy_validation/01_patch_balanis.py` | Balanis Ch. 14 | **1.97%** |
+| WR-90 TE10 cutoff | `examples/40_accuracy_validation/02_waveguide_te10.py` | Analytical | **0.60%** |
+| Dielectric cavity TM110 | `examples/40_accuracy_validation/03_cavity_tm110.py` | Analytical | **0.016%** |
+| Microstrip characteristic impedance | `examples/40_accuracy_validation/04_microstrip_z0.py` | Hammerstad-Jensen | **0.47%** |
+| Coupled-line filter | `examples/40_accuracy_validation/05_coupled_filter.py` | Pozar Ch. 8 | **22.5%** (closed-form limitation) |
 
 ### Interpretation
 
-- The cavity / waveguide / microstrip numbers are strong quantitative anchors.
-- The coupled-line filter discrepancy is documented as a **formula limitation**, not a sign that the full-wave solver is unstable.
-- Patch resonance is good headline material, but calibrated feed / port validation should still be described more carefully than cavity-style benchmarks.
+- The cavity, waveguide, and microstrip numbers are the strongest numerical
+  anchors.
+- The coupled-line filter discrepancy comes from the closed-form reference, so
+  treat it as a limitation in the formula rather than evidence of solver
+  instability.
+- Patch resonance is good public evidence, but feed and port calibration still
+  deserve more context than a cavity-style benchmark.
 
 ---
 
-## 2. Cross-solver agreement vs. Meep and OpenEMS
+## 2. Cross-solver checks against Meep and OpenEMS
 
-Earlier validation work established very tight agreement on the most mature
-benchmark families:
+The strongest independent checks live in the test suite:
 
-| Benchmark family | Typical outcome |
-|---|---|
-| PEC cavity resonance | ~0.000% error vs analytical reference |
-| Dielectric cavity resonances | **0.004–0.007%** vs Meep/OpenEMS |
-| WR-90 cutoff | essentially exact at the documented resolution |
-| Simple lumped-port sanity checks | close agreement in both magnitude and phase |
+- `tests/test_meep_crossval.py` — PEC cavity TM110 vs analytical and Meep.
+- `tests/test_meep_crossval_patch.py` — dielectric-loaded cavity vs Meep.
+- `tests/test_crossval_comprehensive.py` — multi-case comparisons against Meep
+  and OpenEMS.
 
-Use these comparisons when you want to justify the solver core itself, rather
-than a single RF design workflow.
+Use these comparisons when you want to justify the solver core rather than a
+single RF design workflow.
 
----
+| Benchmark family | Evidence | What it proves |
+|---|---|---|
+| PEC cavity resonance | `tests/test_meep_crossval.py`, `tests/test_crossval_comprehensive.py` | The solver matches the analytical cavity resonance and stays tightly aligned with Meep. |
+| Dielectric-loaded cavity resonances | `tests/test_meep_crossval_patch.py`, `tests/test_crossval_comprehensive.py` | The dielectric-loaded cases stay within the documented cross-solver tolerance. |
+| WR-90 cutoff | `tests/test_crossval_comprehensive.py` | The cutoff case is essentially exact at the documented resolution. |
+| Lumped-port sanity checks | `tests/test_crossval_comprehensive.py` | The port model preserves the expected magnitude and phase behavior. |
 
-## 3. Advanced workflow validation
-
-Recent work extended validation beyond core cavity / waveguide anchors.
-
-### Advanced example bundle
-
-`examples/50_advanced/` now ships research-style workflows for:
-
-- patch bandwidth optimisation
-- waveguide filter inverse design
-- broadband matching
-- array mutual coupling
-- dielectric-lens beam shaping
-- S-parameter material characterisation
-
-### GPU validation scripts
-
-`examples/50_advanced/gpu_validation/` provides targeted validation / regression
-checks for those advanced workflows. These are especially useful when you want
-to sanity-check optimisation behaviour or demonstrate that a notebook-scale
-workflow still behaves correctly on accelerated hardware.
+The public summary in `README.md` currently quotes 0.000–0.007% agreement on
+cavities and waveguides. Keep that number paired with the exact benchmark family
+it describes.
 
 ---
 
-## Recommended wording discipline
+## 3. Workflow validation
 
-When documenting or presenting results, distinguish clearly between:
+The advanced examples are useful, but they are not the same as the core
+benchmark set.
 
-- **analytical agreement**
-- **cross-solver agreement** (Meep / OpenEMS)
-- **workflow validation** (advanced examples, optimisation pipelines)
-- **evolving public examples** that are useful but not yet the strongest quantitative anchor
+- `examples/50_advanced/` contains research-style workflows such as bandwidth
+  optimization, inverse design, matching, coupling, lensing, and material
+  characterization.
+- `examples/50_advanced/gpu_validation/` contains regression checks for those
+  workflows on accelerated runs.
 
-That separation keeps public claims both accurate and persuasive.
+Use these examples to show that an end-to-end workflow remains stable. Do not
+use them as the primary numerical anchor for solver accuracy.
 
 ---
 
@@ -91,14 +86,13 @@ That separation keeps public claims both accurate and persuasive.
 
 | Script / area | Purpose |
 |---|---|
-| `examples/12_validation_suite.py` | Core cavity + waveguide validation |
-| `examples/23_cross_validation.py` | Meep / OpenEMS side-by-side comparisons |
-| `examples/28_generalized_validation.py` | Broader substrate / frequency sweeps |
-| `examples/50_advanced/gpu_validation/*` | Advanced-example workflow checks on accelerated runs |
-| `docs/public/guide/changelog.mdx` / `README.md` | Public summary of current headline results |
+| `examples/40_accuracy_validation/run_all.py` | Runs the core published benchmark set |
+| `examples/50_advanced/gpu_validation/run_gpu_validation.py` | Runs the advanced workflow regression checks |
+| `tests/test_crossval_comprehensive.py` | Compact reference for the strongest cross-solver assertions |
+| `docs/public/guide/changelog.mdx` | Public summary of current headline results |
 
 ## Practical takeaway
 
-For the strongest public messaging, lead with the **v1.3.0 published-result
-table**, then use Meep/OpenEMS agreement and advanced-example validation as
-supporting evidence layers.
+For the strongest public messaging, lead with the **published benchmark table**,
+then cite Meep/OpenEMS agreement as independent confirmation, and finally use
+the advanced examples as workflow evidence.

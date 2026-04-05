@@ -2,17 +2,17 @@
 
 ## Purpose
 
-This document defines how `research/rfx` should own and maintain the public
-`remilab.ai/rfx/` documentation surface.
+This document defines the source-of-truth and deployment boundaries for the
+public `remilab.ai/rfx/` documentation surface.
 
 ## Canonical ownership
 
-| Area | Purpose | Canonical? |
+| Area | Purpose | Canonical source? |
 |---|---|---|
 | `docs/public/index.mdx` | public `/rfx/` landing page | yes |
 | `docs/public/guide/` | public guide pages deployed to `/rfx/guide/*` | yes |
 | `docs/agent/` | public AI-agent pages deployed to `/rfx/agent/*` | yes |
-| `docs/guide/` | retired redirect entrypoint kept for backwards navigation | no |
+| `docs/guide/` | legacy redirect entrypoint kept for backwards navigation | no |
 | `docs/api/` | generated API docs | generated only |
 | `docs/research_notes/` | planning, handoffs, chronology | internal only |
 
@@ -21,7 +21,7 @@ It should be regenerated from this repo, not used as a parallel authoring home.
 
 ## Current public hierarchy
 
-The public docs should remain grouped by user task:
+Keep the public docs grouped by user task:
 
 1. **Getting Started**
 2. **Modeling & Setup**
@@ -32,20 +32,22 @@ The public docs should remain grouped by user task:
 7. **Project & Maintainer**
 
 The sidebar grouping can be maintained in gitops, but the page content and route
-inventory should originate from `research/rfx`.
+inventory should originate from `docs/public/` and `docs/agent/` in this repo.
 
 ## Naming rules
 
 - Public route slugs use **kebab-case**.
 - The deployed public surface may mix `.md` and `.mdx`, but the **route name**
   should stay stable.
+- Use one spelling per concept in user-facing copy. Prefer `optimization` in
+  new prose, and keep existing route slugs unchanged.
 - Do not maintain both underscore and kebab-case variants of the same public
   concept going forward.
 
 ## Maintenance workflow
 
-1. Author / edit public pages in `research/rfx`.
-2. Run the drift check:
+1. Author or edit the public pages in `docs/public/` and `docs/agent/`.
+2. Run the source drift check:
 
    ```bash
    python scripts/check_public_docs_sync.py --format text
@@ -58,7 +60,7 @@ inventory should originate from `research/rfx`.
    ```
 
 4. In gitops, build and validate the Starlight site.
-5. Commit/push source repo changes and gitops snapshot changes separately.
+5. Commit and push source repo changes and gitops snapshot changes separately.
 6. On r02, verify checkout cleanliness, pull, recreate `starlight-public`, and
    smoke-test the live routes.
 
@@ -82,6 +84,7 @@ in the deploy repo.
 
 ## Immediate migration posture
 
-- `docs/public/guide/` is the **canonical public guide source**.
+- `docs/public/index.mdx` and `docs/public/guide/` are the **canonical public
+  sources**.
 - `docs/guide/` is intentionally reduced to a single redirect-style entrypoint
   and should not receive new content.
