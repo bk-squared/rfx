@@ -41,9 +41,16 @@ surface, then deploy the updated hierarchy safely.
 - restart `starlight-public`
 - verify `https://remilab.ai/rfx/`
 
+### Phase 4 — legacy cleanup and CI guardrails
+- clean repo-local links so maintainers land on `docs/public/` and `docs/agent/`
+- keep `docs/guide/` explicitly marked as legacy / migration-era content
+- add source-side CI for public-doc manifest / script integrity
+- add gitops CI for export drift, sidebar route resolution, and public build smoke test
+
 ## Success criteria
 
 - `research/rfx` contains the full public RFX doc source
 - gitops snapshot is generated from source, not hand-maintained independently
 - live sidebar is topic-based
 - live routes resolve without missing pages
+- maintainers can change public docs without guessing which tree is canonical

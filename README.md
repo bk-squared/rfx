@@ -149,15 +149,21 @@ Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavities and waveguides.
 
 Full documentation: **[remilab.ai/rfx](https://remilab.ai/rfx/)**
 
+Canonical public-doc source in this repo:
+
+- `docs/public/guide/` — public guide pages
+- `docs/agent/` — public AI-agent pages
+- `docs/guides/public_docs_architecture.md` — ownership and sync rules
+
 ### Tutorials
-- [Patch Antenna Design](docs/guide/tutorial-patch-antenna.md) — Complete 2.4 GHz design flow
-- [Microstrip Filter](docs/guide/tutorial-microstrip-filter.md) — Coupled-line BPF from Pozar
-- [Convergence Study](docs/guide/tutorial-convergence.md) — Mesh independence methodology
+- [Patch Antenna Design](docs/public/guide/tutorial-patch-antenna.mdx) — Complete 2.4 GHz design flow
+- [Microstrip Filter](docs/public/guide/tutorial-microstrip-filter.mdx) — Coupled-line BPF from Pozar
+- [Convergence Study](docs/public/guide/tutorial-convergence.mdx) — Mesh independence methodology
 
 ### Guides
-- [Migration from Meep/OpenEMS](docs/guide/comparison.md)
-- [Changelog](docs/guide/changelog.md)
-- [Contributing](docs/guide/contributing.md)
+- [Migration from Meep/OpenEMS](docs/public/guide/comparison.mdx)
+- [Changelog](docs/public/guide/changelog.mdx)
+- [Contributing](docs/public/guide/contributing.md)
 
 ## Citation
 

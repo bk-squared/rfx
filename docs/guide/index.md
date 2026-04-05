@@ -3,6 +3,10 @@
 `rfx` is a JAX-based differentiable FDTD simulator for RF and microwave
 engineering. The guide set below focuses on the current v1.0 surface:
 
+> Legacy repo-native guide mirror: for **current public docs authoring**, edit
+> `docs/public/guide/` and `docs/agent/` first. See
+> `docs/guides/public_docs_architecture.md`.
+
 - **non-uniform z meshing** for thin substrates,
 - **lumped/wire/waveguide ports**,
 - **lumped RLC elements**,

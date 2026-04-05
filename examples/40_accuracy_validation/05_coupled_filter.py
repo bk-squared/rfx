@@ -33,7 +33,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 THRESHOLD_PCT = 20.0  # Coupled-line theory assumes ideal TEM propagation;
 # real microstrip has dispersive even/odd modes (velocity mismatch ~1-3%) plus
 # FDTD grid dispersion (~2-5%). 20% allows for these known limitations.
-# This is the weakest validation case — see docs/guide/validation.md for context.
+# This is the weakest validation case — see docs/public/guide/validation.mdx for context.
 
 # =============================================================================
 # Analytical design

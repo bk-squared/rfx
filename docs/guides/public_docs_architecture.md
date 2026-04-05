@@ -62,6 +62,24 @@ inventory should originate from `research/rfx`.
 6. On r02, verify checkout cleanliness, pull, recreate `starlight-public`, and
    smoke-test the live routes.
 
+## CI guardrails
+
+Two CI layers should stay in place:
+
+1. **Source repo CI (`research/rfx`)**
+   - syntax-check the public-doc tooling scripts
+   - verify that every slug in `docs/public/site_map.json` resolves to an
+     actual page in `docs/public/guide/` or `docs/agent/`
+
+2. **Gitops repo CI (`remilab-sites-gitops`)**
+   - re-export from `research/rfx` and fail if the snapshot changes
+   - verify explicit RFX sidebar routes resolve
+   - run a public Starlight build smoke test
+
+This split avoids blocking source-repo authoring on cross-repo drift before the
+matching gitops snapshot commit exists, while still making snapshot drift fail
+in the deploy repo.
+
 ## Immediate migration posture
 
 - `docs/public/guide/` is the **current canonical public guide source**.

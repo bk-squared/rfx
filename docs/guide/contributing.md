@@ -76,8 +76,8 @@ existing codebase:
    ```
 
 4. **Add documentation.** If the feature is user-facing, update or create
-   the relevant guide page under `docs/guide/`. Add a docstring to any
-   new public API.
+   the relevant page under `docs/public/guide/` or `docs/agent/`. Add a
+   docstring to any new public API.
 
 5. **Add an example** (optional but encouraged). Place a self-contained
    script under `examples/` that demonstrates the feature with
@@ -121,7 +121,8 @@ Geometry primitives live in `rfx/geometry/`. Follow this pattern:
    - Edge cases (zero-thickness, single-cell, boundary overlap).
    - Integration with `Simulation.add()`.
 
-5. **Document** the shape in `docs/guide/geometry_and_limitations.md`.
+5. **Document** the shape in the canonical public guide set
+   (`docs/public/guide/geometry-and-limitations.md`).
 
 ## How to Submit Changes
 
@@ -183,7 +184,8 @@ rfx/
   visualize.py         # 2D plotting utilities
 tests/                 # 260+ pytest tests
 examples/              # Self-contained example scripts
-docs/guide/            # User-facing documentation
+docs/public/guide/     # Canonical public guide source
+docs/agent/            # Canonical public AI-agent docs
 ```
 
 ## Questions?
