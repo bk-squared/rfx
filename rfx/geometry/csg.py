@@ -9,17 +9,57 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
 
 
 class Shape(Protocol):
-    """Protocol for CSG shapes — must implement a signed distance or mask."""
+    """Protocol for CSG shapes — must implement mask and mask_on_coords."""
 
     def mask(self, grid: Grid) -> jnp.ndarray:
         """Return boolean mask (True inside shape) on the given grid."""
         ...
+
+    def mask_on_coords(
+        self,
+        x: jnp.ndarray,
+        y: jnp.ndarray,
+        z: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """Evaluate shape occupancy on explicit 1D coordinate arrays.
+
+        Parameters
+        ----------
+        x, y, z : 1D arrays of physical coordinates (metres)
+
+        Returns
+        -------
+        (Nx, Ny, Nz) boolean array — True inside the shape.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement mask_on_coords(). "
+            f"This shape cannot be used on nonuniform or subgridded meshes."
+        )
+
+    def bounding_box(self) -> tuple[tuple[float, float, float],
+                                     tuple[float, float, float]]:
+        """Return (corner_lo, corner_hi) axis-aligned bounding box."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement bounding_box()."
+        )
+
+
+def _grid_coords(grid: Grid):
+    """Extract 1D physical coordinate arrays from a uniform Grid."""
+    nx, ny, nz = grid.shape
+    dx = grid.dx
+    pad_x, pad_y, pad_z = grid.axis_pads
+    x = (jnp.arange(nx) - pad_x) * dx
+    y = (jnp.arange(ny) - pad_y) * dx
+    z = (jnp.arange(nz) - pad_z) * dx
+    return x, y, z
 
 
 @dataclass(frozen=True)
@@ -29,36 +69,27 @@ class Box:
     corner_lo: tuple[float, float, float]
     corner_hi: tuple[float, float, float]
 
-    def mask(self, grid: Grid) -> jnp.ndarray:
-        nx, ny, nz = grid.shape
-        dx = grid.dx
-        pad_x, pad_y, pad_z = grid.axis_pads
+    def bounding_box(self):
+        return (self.corner_lo, self.corner_hi)
 
-        ix = jnp.arange(nx) - pad_x
-        iy = jnp.arange(ny) - pad_y
-        iz = jnp.arange(nz) - pad_z
+    def mask_on_coords(self, x, y, z):
+        dx_est = float(x[1] - x[0]) if len(x) > 1 else 1e-3
 
-        x = ix * dx
-        y = iy * dx
-        z = iz * dx
-
-        # For each axis: if extent <= dx (thin feature), snap to single
-        # cell nearest to corner_lo. Otherwise, inclusive containment.
         def _axis_mask(coords, lo, hi):
             extent = hi - lo
-            if extent <= dx * 1.01:
-                # Thin feature (≤ 1 cell): snap to cell nearest lo
-                return jnp.abs(coords - lo) < dx * 0.51
+            if extent <= dx_est * 1.01:
+                return jnp.abs(coords - lo) < dx_est * 0.51
             else:
-                # Thick feature: standard inclusive [lo, hi].
-                # Cell center must be inside the box boundaries.
                 return (coords >= lo) & (coords <= hi)
 
         mx = _axis_mask(x, self.corner_lo[0], self.corner_hi[0])
         my = _axis_mask(y, self.corner_lo[1], self.corner_hi[1])
         mz = _axis_mask(z, self.corner_lo[2], self.corner_hi[2])
-
         return mx[:, None, None] & my[None, :, None] & mz[None, None, :]
+
+    def mask(self, grid: Grid) -> jnp.ndarray:
+        x, y, z = _grid_coords(grid)
+        return self.mask_on_coords(x, y, z)
 
 
 @dataclass(frozen=True)
@@ -70,18 +101,25 @@ class Cylinder:
     height: float
     axis: str = "z"  # "x", "y", or "z"
 
-    def mask(self, grid: Grid) -> jnp.ndarray:
-        nx, ny, nz = grid.shape
-        dx = grid.dx
-        pad_x, pad_y, pad_z = grid.axis_pads
+    def bounding_box(self):
+        r = self.radius
+        h = self.height / 2
+        cx, cy, cz = self.center
+        if self.axis == "z":
+            return ((cx - r, cy - r, cz - h), (cx + r, cy + r, cz + h))
+        elif self.axis == "y":
+            return ((cx - r, cy - h, cz - r), (cx + r, cy + h, cz + r))
+        else:
+            return ((cx - h, cy - r, cz - r), (cx + h, cy + r, cz + r))
 
-        x = (jnp.arange(nx) - pad_x) * dx - self.center[0]
-        y = (jnp.arange(ny) - pad_y) * dx - self.center[1]
-        z = (jnp.arange(nz) - pad_z) * dx - self.center[2]
+    def mask_on_coords(self, x, y, z):
+        xc = x - self.center[0]
+        yc = y - self.center[1]
+        zc = z - self.center[2]
 
-        x3 = x[:, None, None]
-        y3 = y[None, :, None]
-        z3 = z[None, None, :]
+        x3 = xc[:, None, None]
+        y3 = yc[None, :, None]
+        z3 = zc[None, None, :]
 
         if self.axis == "z":
             r2 = x3**2 + y3**2
@@ -95,6 +133,10 @@ class Cylinder:
 
         return (r2 <= self.radius**2) & (jnp.abs(h) <= self.height / 2)
 
+    def mask(self, grid: Grid) -> jnp.ndarray:
+        x, y, z = _grid_coords(grid)
+        return self.mask_on_coords(x, y, z)
+
 
 @dataclass(frozen=True)
 class Sphere:
@@ -103,17 +145,21 @@ class Sphere:
     center: tuple[float, float, float]
     radius: float
 
-    def mask(self, grid: Grid) -> jnp.ndarray:
-        nx, ny, nz = grid.shape
-        dx = grid.dx
-        pad_x, pad_y, pad_z = grid.axis_pads
+    def bounding_box(self):
+        r = self.radius
+        cx, cy, cz = self.center
+        return ((cx - r, cy - r, cz - r), (cx + r, cy + r, cz + r))
 
-        x = (jnp.arange(nx) - pad_x) * dx - self.center[0]
-        y = (jnp.arange(ny) - pad_y) * dx - self.center[1]
-        z = (jnp.arange(nz) - pad_z) * dx - self.center[2]
-
-        r2 = x[:, None, None]**2 + y[None, :, None]**2 + z[None, None, :]**2
+    def mask_on_coords(self, x, y, z):
+        xc = x - self.center[0]
+        yc = y - self.center[1]
+        zc = z - self.center[2]
+        r2 = xc[:, None, None]**2 + yc[None, :, None]**2 + zc[None, None, :]**2
         return r2 <= self.radius**2
+
+    def mask(self, grid: Grid) -> jnp.ndarray:
+        x, y, z = _grid_coords(grid)
+        return self.mask_on_coords(x, y, z)
 
 
 def union(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:
