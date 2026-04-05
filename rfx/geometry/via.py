@@ -11,6 +11,8 @@ so this helper uses axis-aligned Box shapes throughout.
 
 from __future__ import annotations
 
+import jax.numpy as jnp
+
 from rfx.geometry.csg import Box
 
 
@@ -57,6 +59,25 @@ class Via:
         self.pad_radius = pad_radius
         self.layers = layers
         self.material = material
+
+    def bounding_box(self):
+        x, y = self.center
+        r = self.pad_radius
+        z_min = min(z for z, _ in self.layers)
+        z_max = max(z for _, z in self.layers)
+        return ((x - r, y - r, z_min), (x + r, y + r, z_max))
+
+    def mask_on_coords(self, x, y, z):
+        """Evaluate via occupancy — union of decomposed Box shapes."""
+        result = jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)
+        for box, _ in self.to_shapes():
+            result = result | box.mask_on_coords(x, y, z)
+        return result
+
+    def mask(self, grid):
+        from rfx.geometry.csg import _grid_coords
+        x, y, z = _grid_coords(grid)
+        return self.mask_on_coords(x, y, z)
 
     def to_shapes(self) -> list[tuple[Box, str]]:
         """Return a list of ``(Box, material_name)`` tuples.

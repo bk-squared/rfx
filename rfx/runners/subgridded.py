@@ -100,14 +100,21 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
 
     PEC_SIGMA_THRESHOLD = sim._PEC_SIGMA_THRESHOLD
 
+    # Build fine-grid physical coordinate arrays for mask_on_coords()
+    x_fine = jnp.asarray(x_off + jnp.arange(nx_f) * dx_f, dtype=jnp.float32)
+    y_fine = jnp.asarray(y_off + jnp.arange(ny_f) * dx_f, dtype=jnp.float32)
+    z_fine = jnp.asarray(z_off + jnp.arange(nz_f) * dx_f, dtype=jnp.float32)
+
+    from rfx.geometry.csg import Box as _Box
+
     for entry in sim._geometry:
         mat = sim._resolve_material(entry.material_name)
         shape = entry.shape
-        if hasattr(shape, 'corner_lo') and hasattr(shape, 'corner_hi'):
-            # Offset shape to fine grid local coordinates
+
+        # Fast path for Box: use slice indexing
+        if isinstance(shape, _Box):
             c1 = shape.corner_lo
             c2 = shape.corner_hi
-            # Map physical coords to fine grid indices
             i0 = max(0, int(round((c1[0] - x_off) / dx_f)))
             i1 = min(nx_f, int(round((c2[0] - x_off) / dx_f)))
             j0 = max(0, int(round((c1[1] - y_off) / dx_f)))
@@ -123,6 +130,15 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
                     eps_r_f = jnp.where(mask, mat.eps_r, eps_r_f)
                     sigma_f = jnp.where(mask, mat.sigma, sigma_f)
                     mu_r_f = jnp.where(mask, mat.mu_r, mu_r_f)
+        else:
+            # General path: use mask_on_coords() for any shape
+            mask = shape.mask_on_coords(x_fine, y_fine, z_fine)
+            if mat.sigma >= PEC_SIGMA_THRESHOLD:
+                pec_mask_f = pec_mask_f | mask
+            else:
+                eps_r_f = jnp.where(mask, mat.eps_r, eps_r_f)
+                sigma_f = jnp.where(mask, mat.sigma, sigma_f)
+                mu_r_f = jnp.where(mask, mat.mu_r, mu_r_f)
 
     mats_f = MaterialArrays(eps_r=eps_r_f, sigma=sigma_f, mu_r=mu_r_f)
     has_pec_f = bool(jnp.any(pec_mask_f))
