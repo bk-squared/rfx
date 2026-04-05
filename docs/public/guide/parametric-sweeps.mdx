@@ -1,0 +1,23 @@
+---
+title: "Parametric Sweeps"
+description: "Sequential sweep and jax.vmap batch evaluation for design-space exploration in rfx."
+sidebar:
+  order: 26
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Under construction">
+  This page is a placeholder. Content will be added in a future update.
+</Aside>
+
+## Overview
+
+This guide will cover how to run parametric sweeps in rfx:
+
+- **Sequential sweep** — loop over parameter values with standard Python iteration
+- **`jax.vmap` batch evaluation** — vectorised parallel simulation for independent parameter points
+- **Result aggregation** — collecting S-parameters, resonances, and metrics across sweep dimensions
+- **Use cases** — substrate thickness sweeps, feed-point optimisation, frequency scaling studies
+
+See [Simulation API](../api-reference/) for the `Simulation` builder interface.

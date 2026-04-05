@@ -1,0 +1,554 @@
+---
+title: "Automated Design Workflows"
+description: "This page documents four end-to-end workflows an AI agent can execute autonomously using rfx. Each workflow includes ste"
+sidebar:
+  order: 4
+---
+
+
+This page documents four end-to-end workflows an AI agent can execute autonomously using rfx. Each workflow includes step-by-step code, decision points, and exit criteria.
+
+---
+
+## Workflow 1: Antenna Design Pipeline
+
+**Goal**: Given a target resonant frequency and substrate, produce a validated antenna design.
+
+**Steps**: Spec → Analytical estimate → auto_configure → Simulate → Harminv → Validate → Refine
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Input: f_target, substrate, h, accuracy_level          │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+                        ▼
+            ┌─────────────────────┐
+            │  Analytical estimate│  (closed-form Hammerstad)
+            │  → initial L, W     │
+            └──────────┬──────────┘
+                       │
+                       ▼
+            ┌─────────────────────┐
+            │  auto_configure()   │  accuracy="draft"
+            │  → SimConfig        │
+            └──────────┬──────────┘
+                       │
+                       ▼
+            ┌─────────────────────┐
+            │  sim.run()          │
+            │  → result           │
+            └──────────┬──────────┘
+                       │
+                       ▼
+            ┌───────────────────────────┐
+            │  find_resonances()        │
+            │  modes found?             │
+            └──────────┬────────────────┘
+              NO       │         YES
+               │       │          │
+               ▼       │          ▼
+          widen range  │  |error| < threshold?
+          or increase  │    YES  │   NO
+          n_steps      │         ▼    ▼
+                       │  DONE   adjust L
+                       │         re-simulate
+                       └──────────────────────
+```
+
+```python
+import math
+import numpy as np
+from rfx import Simulation, Box, auto_configure
+
+def antenna_design_pipeline(
+    f_target: float,        # Hz
+    substrate: str = "fr4",
+    eps_r: float = 4.4,
+    h: float = 0.0016,      # substrate thickness (m)
+    tolerance: float = 0.02,  # 2% frequency error threshold
+    max_iterations: int = 5,
+) -> dict:
+    """
+    Automated antenna design pipeline.
+    Returns dict with final dimensions, simulated frequency, and convergence history.
+    """
+    C0 = 3e8
+    history = []
+
+    # ── Step 1: Analytical initial estimate ──────────────────────────────────
+    W = C0 / (2 * f_target) * math.sqrt(2 / (eps_r + 1))
+    eps_eff = (eps_r + 1)/2 + (eps_r - 1)/2 * (1 + 12*h/W)**-0.5
+    delta_L = 0.412 * h * (eps_eff + 0.3) * (W/h + 0.264) / \
+              ((eps_eff - 0.258) * (W/h + 0.8))
+    L = C0 / (2 * f_target * math.sqrt(eps_eff)) - 2 * delta_L
+
+    print(f"Initial estimate: L={L*1e3:.2f} mm, W={W*1e3:.2f} mm")
+
+    # ── Step 2–5: Simulate and refine ────────────────────────────────────────
+    pad = max(0.010, h * 5)
+    best_result = None
+
+    for iteration in range(max_iterations):
+        # Use draft for early iterations, standard for final
+        acc = "draft" if iteration < max_iterations - 2 else "standard"
+
+        substrate_box = Box((0, 0, 0), (L + 2*pad, W + 2*pad, h))
+        patch_box     = Box((pad, pad, h), (pad + L, pad + W, h))
+        geometry      = [(substrate_box, substrate), (patch_box, "pec")]
+
+        config = auto_configure(geometry, freq_range=(f_target*0.6, f_target*1.6),
+                                accuracy=acc)
+        for w in config.warnings:
+            print(f"  [iter {iteration}] WARNING: {w}")
+
+        sim = Simulation(**config.to_sim_kwargs())
+        for shape, mat in geometry:
+            sim.add(shape, material=mat)
+        sim.add_source((pad + L/2, pad + W/2, h), "ez")
+        sim.add_probe( (pad + L/2, pad + W/2, h), "ez")
+        result = sim.run(n_steps=config.n_steps)
+
+        modes = result.find_resonances(freq_range=(f_target*0.6, f_target*1.6))
+
+        if not modes:
+            # Widen range and extend run time
+            config2 = auto_configure(geometry,
+                                     freq_range=(f_target*0.4, f_target*2.0),
+                                     accuracy=acc)
+            sim2 = Simulation(**config2.to_sim_kwargs())
+            for shape, mat in geometry:
+                sim2.add(shape, material=mat)
+            sim2.add_source((pad + L/2, pad + W/2, h), "ez")
+            sim2.add_probe( (pad + L/2, pad + W/2, h), "ez")
+            result = sim2.run(until_decay=1e-3, decay_max_steps=40000)
+            modes = result.find_resonances(
+                freq_range=(f_target*0.4, f_target*2.0))
+
+        if not modes:
+            print(f"  [iter {iteration}] No resonance found — stopping")
+            break
+
+        best = max(modes, key=lambda m: abs(m.amplitude))
+        error = (best.freq - f_target) / f_target
+        history.append({"iter": iteration, "L_mm": L*1e3,
+                         "f_ghz": best.freq/1e9, "error": error})
+        print(f"  [iter {iteration}] f={best.freq/1e9:.3f} GHz, "
+              f"error={error*100:+.1f}%, Q={best.Q:.1f}")
+        best_result = best
+
+        # ── Decision point: converged? ────────────────────────────────────────
+        if abs(error) < tolerance:
+            print(f"  Converged in {iteration+1} iterations")
+            break
+
+        # ── Correction: scale L inversely with frequency error ────────────────
+        # f ∝ 1/L  →  L_new = L_old * (f_sim / f_target)
+        L = L * (best.freq / f_target)
+        print(f"  Adjusted L to {L*1e3:.2f} mm")
+
+    # ── Final validation at standard accuracy ─────────────────────────────────
+    if best_result is not None and abs(history[-1]["error"]) < 0.10:
+        print("\nRunning final validation at accuracy='high'...")
+        substrate_box = Box((0, 0, 0), (L + 2*pad, W + 2*pad, h))
+        patch_box     = Box((pad, pad, h), (pad + L, pad + W, h))
+        geometry      = [(substrate_box, substrate), (patch_box, "pec")]
+        config_high   = auto_configure(geometry,
+                                       freq_range=(f_target*0.6, f_target*1.6),
+                                       accuracy="high")
+        sim_high = Simulation(**config_high.to_sim_kwargs())
+        for shape, mat in geometry:
+            sim_high.add(shape, material=mat)
+        sim_high.add_source((pad + L/2, pad + W/2, h), "ez")
+        sim_high.add_probe( (pad + L/2, pad + W/2, h), "ez")
+        result_high = sim_high.run(n_steps=config_high.n_steps)
+        modes_high  = result_high.find_resonances(
+            freq_range=(f_target*0.6, f_target*1.6))
+        if modes_high:
+            best_high = max(modes_high, key=lambda m: abs(m.amplitude))
+            print(f"  Final: f={best_high.freq/1e9:.3f} GHz, Q={best_high.Q:.1f}")
+
+    return {
+        "L_mm"   : L * 1e3,
+        "W_mm"   : W * 1e3,
+        "history": history,
+        "final_f": history[-1]["f_ghz"] if history else None,
+    }
+
+
+# ── Example call ──────────────────────────────────────────────────────────────
+design = antenna_design_pipeline(f_target=2.4e9, substrate="fr4", eps_r=4.4, h=0.0016)
+print(f"\nFinal design: L={design['L_mm']:.2f} mm, W={design['W_mm']:.2f} mm")
+```
+
+---
+
+## Workflow 2: Inverse Design Loop
+
+**Goal**: Use JAX gradients to optimize a design region toward a target S-parameter response.
+
+**Steps**: Target spec → DesignRegion → optimize() → Evaluate → Report
+
+```python
+import jax
+import jax.numpy as jnp
+import numpy as np
+from rfx import Simulation, Box, auto_configure, DesignRegion, optimize
+from rfx.optimize_objectives import minimize_s11, maximize_bandwidth
+
+# ── Step 1: Define target and geometry ───────────────────────────────────────
+f_target   = 2.4e9
+freq_range = (1e9, 4e9)
+h = 0.0016
+
+substrate = Box((0, 0, 0), (0.060, 0.060, h))
+# Design region covers the patch area — optimizer controls eps_r distribution
+design_region = DesignRegion(
+    corner_lo=(0.010, 0.010, h),
+    corner_hi=(0.050, 0.050, h),
+)
+
+geometry = [(substrate, "fr4")]
+config   = auto_configure(geometry, freq_range, accuracy="standard")
+
+# ── Step 2: Define the differentiable simulation function ─────────────────────
+def sim_fn(design_params: jnp.ndarray) -> jnp.ndarray:
+    """Forward pass: returns S11 magnitude (dB) at target frequency."""
+    sim = Simulation(**config.to_sim_kwargs())
+    sim.add(substrate, material="fr4")
+    sim.add(design_region.to_shape(design_params), material="pec")
+    sim.add_port((0.03, 0.03, h), "ez", impedance=50)
+    result = sim.run(n_steps=config.n_steps, checkpoint=True)
+
+    # Interpolate S11 at target frequency
+    s11_mag = jnp.abs(result.s_params[0, 0, :])
+    f_idx   = jnp.argmin(jnp.abs(result.freqs - f_target))
+    return s11_mag[f_idx]
+
+# ── Step 3: Optimize ──────────────────────────────────────────────────────────
+# Initial design: uniform (50% fill)
+x0 = jnp.ones(design_region.n_params) * 0.5
+
+opt_result = optimize(
+    sim_fn,
+    x0=x0,
+    objective=minimize_s11(f_target),
+    n_iter=30,
+    step_size=0.05,
+    projection="threshold",   # binarize toward 0/1
+)
+
+print(f"Initial S11: {opt_result.history[0]:.1f} dB")
+print(f"Final   S11: {opt_result.history[-1]:.1f} dB")
+print(f"Converged: {opt_result.converged}")
+
+# ── Step 4: Evaluate final design at higher accuracy ─────────────────────────
+config_high = auto_configure(geometry, freq_range, accuracy="high")
+sim_final   = Simulation(**config_high.to_sim_kwargs())
+sim_final.add(substrate, material="fr4")
+sim_final.add(design_region.to_shape(opt_result.x), material="pec")
+sim_final.add_port((0.03, 0.03, h), "ez", impedance=50)
+result_final = sim_final.run(n_steps=config_high.n_steps)
+
+s11_db = 20 * np.log10(np.abs(result_final.s_params[0, 0, :]) + 1e-20)
+f_min_idx = np.argmin(s11_db)
+print(f"\nFinal validation:")
+print(f"  S11 minimum : {s11_db[f_min_idx]:.1f} dB "
+      f"at {result_final.freqs[f_min_idx]/1e9:.3f} GHz")
+
+# ── Decision point: accept or continue ───────────────────────────────────────
+if s11_db[f_min_idx] < -10:
+    print("  PASS: S11 < -10 dB at target frequency")
+else:
+    print("  FAIL: S11 > -10 dB — try more iterations or different parameterization")
+```
+
+!!! tip "Gradient checkpointing"
+    Always pass `checkpoint=True` to `sim.run()` when using JAX reverse-mode AD. This trades memory for compute during the backward pass.
+
+---
+
+## Workflow 3: Convergence Verification
+
+**Goal**: Verify simulation accuracy by comparing results across three resolution levels. Report whether the result is converged.
+
+**Steps**: dx sweep → Compare resonances → Confirm convergence → Report
+
+```python
+import numpy as np
+from rfx import Simulation, Box, auto_configure
+
+def convergence_study(
+    geometry: list,
+    freq_range: tuple,
+    quantity: str = "resonance",  # "resonance" or "s_params"
+    convergence_threshold: float = 0.01,  # 1% relative change
+) -> dict:
+    """
+    Run draft/standard/high simulations and report convergence.
+
+    Returns
+    -------
+    dict with keys: converged, draft_val, standard_val, high_val,
+                    std_vs_high_error, recommendation
+    """
+    results = {}
+    configs = {}
+
+    for acc in ("draft", "standard", "high"):
+        print(f"\n[{acc}] Configuring...")
+        config = auto_configure(geometry, freq_range, accuracy=acc)
+        configs[acc] = config
+        print(config.summary())
+
+        sim = Simulation(**config.to_sim_kwargs())
+        for shape, mat in geometry:
+            sim.add(shape, material=mat)
+
+        if quantity == "resonance":
+            # Use source + probe for resonance — no port damping
+            cx = (config.domain[0]) / 2
+            cy = (config.domain[1]) / 2
+            # Estimate source z from geometry bbox
+            z_src = max(shape.corner_hi[2]
+                        for shape, _ in geometry
+                        if hasattr(shape, "corner_hi"))
+            sim.add_source((cx, cy, z_src), "ez")
+            sim.add_probe( (cx, cy, z_src), "ez")
+            result = sim.run(n_steps=config.n_steps)
+            modes  = result.find_resonances(freq_range=freq_range)
+            if modes:
+                best = max(modes, key=lambda m: abs(m.amplitude))
+                results[acc] = best.freq
+            else:
+                results[acc] = None
+
+        elif quantity == "s_params":
+            # Use port for S-parameter extraction
+            cx = config.domain[0] / 2
+            cy = config.domain[1] / 2
+            z_src = max(shape.corner_hi[2]
+                        for shape, _ in geometry
+                        if hasattr(shape, "corner_hi"))
+            sim.add_port((cx, cy, z_src), "ez", impedance=50)
+            result = sim.run(n_steps=config.n_steps)
+            if result.s_params is not None:
+                s11_db = 20 * np.log10(np.abs(result.s_params[0, 0, :]) + 1e-20)
+                results[acc] = float(np.min(s11_db))
+            else:
+                results[acc] = None
+
+    # ── Compare standard vs high ──────────────────────────────────────────────
+    val_std  = results["standard"]
+    val_high = results["high"]
+
+    if val_std is None or val_high is None:
+        return {
+            "converged": False,
+            "error": "No result at one or more accuracy levels",
+            **results,
+        }
+
+    rel_error = abs(val_std - val_high) / (abs(val_high) + 1e-30)
+
+    print(f"\nConvergence summary:")
+    print(f"  draft    : {results['draft']}")
+    print(f"  standard : {val_std}")
+    print(f"  high     : {val_high}")
+    print(f"  |std - high| / |high| = {rel_error*100:.2f}%")
+
+    converged = rel_error < convergence_threshold
+
+    recommendation = "standard"
+    if converged:
+        print(f"  CONVERGED (< {convergence_threshold*100:.0f}%): "
+              f"'standard' accuracy is sufficient")
+    else:
+        print(f"  NOT CONVERGED (>= {convergence_threshold*100:.0f}%): "
+              f"use 'high' accuracy")
+        recommendation = "high"
+
+    # ── Decision point: if not converged, warn about geometry ─────────────────
+    draft_val  = results["draft"]
+    if draft_val is not None:
+        draft_rel = abs(draft_val - val_high) / (abs(val_high) + 1e-30)
+        if draft_rel > 0.10:
+            print(f"  Draft error = {draft_rel*100:.1f}% (> 10%): "
+                  "draft is unsuitable for this structure")
+
+    return {
+        "converged"       : converged,
+        "draft_val"       : results["draft"],
+        "standard_val"    : val_std,
+        "high_val"        : val_high,
+        "std_vs_high_error": rel_error,
+        "recommendation"  : recommendation,
+    }
+
+
+# ── Example: verify 2.4 GHz patch convergence ────────────────────────────────
+h = 0.0016
+geometry = [
+    (Box((0, 0, 0), (0.060, 0.060, h)), "fr4"),
+    (Box((0.015, 0.015, h), (0.045, 0.045, h)), "pec"),
+]
+
+report = convergence_study(geometry, freq_range=(1e9, 4e9), quantity="resonance")
+
+if not report["converged"]:
+    print("\nAction: Re-run final simulation at accuracy='high'")
+else:
+    print(f"\nResult is converged. Use accuracy='{report['recommendation']}'")
+```
+
+---
+
+## Workflow 4: Cross-Validation Against Meep
+
+**Goal**: Verify rfx results against an independent Meep simulation for publication-quality confidence.
+
+**Steps**: rfx result → Export Touchstone → Meep comparison → Report agreement
+
+```python
+import numpy as np
+from rfx import (
+    Simulation, Box, auto_configure,
+    write_touchstone, read_touchstone,
+    plot_s_params,
+)
+
+# ── Step 1: Run rfx simulation ────────────────────────────────────────────────
+h = 0.0016
+geometry = [
+    (Box((0, 0, 0), (0.060, 0.060, h)), "fr4"),
+    (Box((0.015, 0.015, h), (0.045, 0.045, h)), "pec"),
+]
+
+config = auto_configure(geometry, freq_range=(1e9, 4e9), accuracy="high")
+sim    = Simulation(**config.to_sim_kwargs())
+for shape, mat in geometry:
+    sim.add(shape, material=mat)
+sim.add_port((0.03, 0.03, h), "ez", impedance=50)
+result = sim.run(n_steps=config.n_steps)
+
+# ── Step 2: Export rfx result ─────────────────────────────────────────────────
+write_touchstone(
+    "rfx_result.s1p",
+    freqs=result.freqs,
+    s_params=result.s_params[:1, :1, :],
+)
+print("Exported: rfx_result.s1p")
+
+# ── Step 3: Load Meep result (run separately) ─────────────────────────────────
+# Meep result must be in Touchstone format (.s1p)
+# Load with rfx's reader for consistent handling
+try:
+    meep_freqs, meep_s = read_touchstone("meep_result.s1p")
+    has_meep = True
+except FileNotFoundError:
+    print("meep_result.s1p not found — skipping cross-validation")
+    has_meep = False
+
+# ── Step 4: Compare S11 ───────────────────────────────────────────────────────
+if has_meep:
+    # Interpolate to common frequency axis
+    rfx_s11_db  = 20 * np.log10(np.abs(result.s_params[0, 0, :]) + 1e-20)
+    meep_s11_db = 20 * np.log10(np.abs(meep_s[0, 0, :]) + 1e-20)
+
+    # Interpolate Meep to rfx frequency grid
+    meep_interp = np.interp(result.freqs, meep_freqs, meep_s11_db)
+
+    # ── Key metrics ──────────────────────────────────────────────────────────
+    # 1. Resonant frequency agreement
+    rfx_f_min  = result.freqs[np.argmin(rfx_s11_db)]
+    meep_f_min = meep_freqs[np.argmin(meep_s11_db)]
+    f_error    = abs(rfx_f_min - meep_f_min) / meep_f_min * 100
+
+    # 2. RMS S11 difference across band
+    rms_diff = np.sqrt(np.mean((rfx_s11_db - meep_interp)**2))
+
+    # 3. Maximum pointwise deviation
+    max_diff = np.max(np.abs(rfx_s11_db - meep_interp))
+
+    print(f"\nCross-validation report:")
+    print(f"  rfx  resonance : {rfx_f_min/1e9:.3f} GHz")
+    print(f"  Meep resonance : {meep_f_min/1e9:.3f} GHz")
+    print(f"  Frequency error: {f_error:.2f}%")
+    print(f"  RMS |S11| diff : {rms_diff:.2f} dB")
+    print(f"  Max |S11| diff : {max_diff:.2f} dB")
+
+    # ── Decision points ───────────────────────────────────────────────────────
+    if f_error < 1.0 and rms_diff < 0.5:
+        print("\n  PASS: rfx and Meep agree within 1% / 0.5 dB")
+    elif f_error < 3.0 and rms_diff < 1.5:
+        print("\n  ACCEPTABLE: agreement within 3% / 1.5 dB")
+        print("  Note: small differences expected from different CPML implementations")
+    else:
+        print("\n  DISCREPANCY DETECTED")
+        print("  Possible causes:")
+        print("  1. Different CPML/PML configurations")
+        print("  2. Different source/probe positions")
+        print("  3. Different boundary handling for thin conductors")
+        print("  4. Meep uses subpixel smoothing — try sim.run(subpixel_smoothing=True)")
+
+    # ── Export comparison plot ────────────────────────────────────────────────
+    plot_s_params(
+        result.freqs,
+        result.s_params,
+        reference_data={"Meep": (meep_freqs, meep_s)},
+        save="cross_validation.png",
+    )
+    print("Saved: cross_validation.png")
+```
+
+---
+
+## Workflow Decision Guide
+
+When an agent receives an RF design task, use this table to select the right workflow:
+
+| Task description | Workflow | Key API |
+|-----------------|----------|---------|
+| "Design a ... antenna at X GHz" | Workflow 1 | `find_resonances()` |
+| "Optimize ... to maximize/minimize ..." | Workflow 2 | `DesignRegion`, `optimize()` |
+| "How accurate is this simulation?" | Workflow 3 | `auto_configure(accuracy=...)` × 3 |
+| "Verify against Meep / published data" | Workflow 4 | `write_touchstone()`, `read_touchstone()` |
+| "Sweep parameter X and compare" | Template 4 | Parallel `simulate_variant()` calls |
+| "Extract S-parameters" | Template 3 | `add_port()`, `result.s_params` |
+
+---
+
+## Combining Workflows
+
+A complete automated design session typically chains workflows in order:
+
+```python
+# 1. Draft design (Workflow 1)
+design = antenna_design_pipeline(f_target=2.4e9, accuracy_threshold=0.05)
+
+# 2. Convergence check (Workflow 3)
+conv   = convergence_study(design["geometry"], (1e9, 4e9))
+acc    = conv["recommendation"]
+
+# 3. Final simulation at recommended accuracy
+config = auto_configure(design["geometry"], (1e9, 4e9), accuracy=acc)
+sim    = Simulation(**config.to_sim_kwargs())
+# ... add geometry, source, probe
+result = sim.run(n_steps=config.n_steps)
+
+# 4. Export for cross-validation (Workflow 4)
+write_touchstone("final.s1p", freqs=result.freqs,
+                 s_params=result.s_params[:1, :1, :])
+
+# 5. Report
+modes = result.find_resonances(freq_range=(1e9, 4e9))
+if modes:
+    best = max(modes, key=lambda m: abs(m.amplitude))
+    print(f"Final: f={best.freq/1e9:.3f} GHz, Q={best.Q:.1f}, "
+          f"accuracy='{acc}', converged={conv['converged']}")
+```
+
+!!! note "Compute budget guidance"
+    - `accuracy="draft"` + convergence check first: saves 8–64× compute during search
+    - Only escalate to `accuracy="high"` when `standard` is not converged
+    - Use `until_decay=1e-4` for unknown-Q structures to avoid over- or under-running
+    - `n_steps_override` is available in `auto_configure()` when you need exact control

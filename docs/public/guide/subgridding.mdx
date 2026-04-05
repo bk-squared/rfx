@@ -1,0 +1,23 @@
+---
+title: "SBP-SAT Subgridding"
+description: "JIT-compiled local mesh refinement with provably stable coupling in rfx."
+sidebar:
+  order: 23
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Under construction">
+  This page is a placeholder. Content will be added in a future update.
+</Aside>
+
+## Overview
+
+This guide will cover rfx's subgridding support:
+
+- **SBP-SAT coupling** — summation-by-parts operators with simultaneous approximation terms for provable stability
+- **Local refinement** — higher resolution in regions of interest without refining the entire domain
+- **JIT compilation** — subgridding operators are compiled via JAX for GPU performance
+- **Use cases** — fine features (vias, slots, feed gaps) embedded in electrically large structures
+
+See [Non-Uniform Mesh](../nonuniform-mesh/) for the simpler graded-profile alternative.

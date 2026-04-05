@@ -1,0 +1,202 @@
+---
+title: "Simulation API"
+description: "Current high-level `Simulation` / `Result` interface for the public rfx docs surface."
+sidebar:
+  order: 8
+---
+
+The `Simulation` builder is the main high-level interface in `rfx`. The current public docs track the stable v1.3 surface plus a few documented main-branch improvements.
+
+## Constructor
+
+```python
+from rfx import Simulation
+
+sim = Simulation(
+    freq_max=10e9,
+    domain=(0.12, 0.04, 0.02),
+    boundary="cpml",
+    cpml_layers=12,
+    dx=0.002,
+    mode="3d",
+    dz_profile=None,
+)
+```
+
+If `dz_profile` is provided, the z-domain can be inferred from the profile.
+
+## Materials
+
+### Built-in names
+
+```python
+sim.add(Box(...), material="vacuum")
+sim.add(Box(...), material="air")
+sim.add(Box(...), material="fr4")
+sim.add(Box(...), material="rogers4003c")
+sim.add(Box(...), material="alumina")
+sim.add(Box(...), material="silicon")
+sim.add(Box(...), material="ptfe")
+sim.add(Box(...), material="copper")
+sim.add(Box(...), material="aluminum")
+sim.add(Box(...), material="pec")
+sim.add(Box(...), material="water_20c")
+```
+
+### Custom materials
+
+```python
+sim.add_material("my_dielectric", eps_r=6.0, sigma=0.01)
+sim.add_material("ferrite", eps_r=12.0, mu_r=100.0)
+```
+
+### Dispersive materials
+
+```python
+from rfx import DebyePole, LorentzPole
+
+sim.add_material(
+    "water",
+    eps_r=5.0,
+    debye_poles=[DebyePole(eps_s=80.0, tau=9.4e-12)],
+)
+
+sim.add_material(
+    "resonant",
+    lorentz_poles=[LorentzPole(eps_s=2.0, omega_0=2e10, delta=1e8, omega_p=3e10)],
+)
+```
+
+## Geometry
+
+```python
+from rfx import Box, Sphere, Cylinder, Via, CurvedPatch
+
+sim.add(Box((0.01, 0.01, 0.01), (0.05, 0.03, 0.02)), material="fr4")
+sim.add(Sphere((0.06, 0.02, 0.01), radius=0.005), material="alumina")
+sim.add(Cylinder((0.08, 0.02, 0.01), radius=0.003, height=0.01, axis="z"), material="copper")
+```
+
+Current helper primitives beyond the base CSG set include:
+
+- `Via`
+- `CurvedPatch`
+
+## Sources and ports
+
+### Soft source
+
+```python
+from rfx import GaussianPulse
+
+sim.add_source(
+    position=(0.02, 0.02, 0.01),
+    component="ez",
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+)
+```
+
+### Polarized source
+
+```python
+sim.add_polarized_source((0.02, 0.02, 0.01), polarization="rhcp")
+```
+
+### Lumped or wire port
+
+```python
+sim.add_port(
+    position=(0.01, 0.02, 0.01),
+    component="ez",
+    impedance=50.0,
+    waveform=GaussianPulse(f0=5e9),
+)
+
+sim.add_port(
+    position=(0.01, 0.02, 0.0),
+    component="ez",
+    impedance=50.0,
+    extent=0.0016,
+    waveform=GaussianPulse(f0=2.4e9),
+)
+```
+
+### Lumped RLC element
+
+```python
+sim.add_lumped_rlc(
+    position=(0.02, 0.02, 0.01),
+    component="ez",
+    R=50.0,
+    L=1e-9,
+    C=1e-12,
+    topology="series",
+)
+```
+
+### Waveguide port
+
+```python
+sim.add_waveguide_port(
+    x_position=0.01,
+    y_range=(0.0, 0.023),
+    z_range=(0.0, 0.010),
+    mode=(1, 0),
+    mode_type="TE",
+    direction="+x",
+    f0=10e9,
+    bandwidth=0.5,
+    name="port1",
+)
+```
+
+## Probes
+
+```python
+sim.add_probe((0.04, 0.02, 0.01), "ez")
+sim.add_vector_probe((0.04, 0.02, 0.01))
+sim.add_dft_plane_probe(axis="x", coordinate=0.03, component="ez")
+```
+
+## Running
+
+```python
+result = sim.run(n_steps=500)
+result = sim.run(until_decay=1e-3)
+result = sim.run(n_steps=500, compute_s_params=True)
+result = sim.run(n_steps=500, subpixel_smoothing=True)
+```
+
+## Result object
+
+Important fields/methods:
+
+```python
+result.state
+result.time_series
+result.s_params
+result.freqs
+result.dt
+result.find_resonances(freq_range=(1e9, 4e9))
+```
+
+## Auto builders
+
+### `auto_configure`
+
+```python
+from rfx import auto_configure
+
+cfg = auto_configure(geometry, (1e9, 4e9), materials=materials, accuracy="standard")
+sim = Simulation(**cfg.to_sim_kwargs())
+```
+
+### `Simulation.auto`
+
+```python
+sim = Simulation.auto(freq_range=(1.5e9, 3.5e9), accuracy="standard")
+```
+
+`Simulation.auto()` is convenient for coarse setup.
+`auto_configure()` is better when you want to inspect the derived configuration
+first.

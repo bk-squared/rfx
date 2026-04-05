@@ -1,0 +1,206 @@
+---
+title: "Non-Uniform Mesh"
+description: "Without a non-uniform z-profile, resolving a 1.6 mm substrate with a 0.5 mm cell gives only 3 cells — too coarse. Shri"
+sidebar:
+  order: 6
+---
+
+
+rfx supports a **graded z-profile** (non-uniform Yee grid) with uniform dx and dy. This is the standard approach used by CST Microwave Studio and OpenEMS for printed-circuit structures where the substrate is thin compared to the free-space wavelength.
+
+---
+
+## When to use a non-uniform mesh
+
+| Situation | Recommendation |
+|---|---|
+| Substrate much thinner than wavelength (e.g., 1.6 mm FR4 at 2.4 GHz, lambda = 125 mm) | Non-uniform z mandatory |
+| Layer stack with multiple thin dielectric sheets | Non-uniform z for each layer |
+| Bulk 3-D structure with no thin z-features | Uniform grid |
+| RCS / far-field only | Uniform grid is usually sufficient |
+
+Without a non-uniform z-profile, resolving a 1.6 mm substrate with a 0.5 mm cell gives only 3 cells — too coarse. Shrinking the uniform cell to 0.2 mm resolves the substrate but inflates cell count by 15x in all three dimensions.
+
+A non-uniform profile uses **fine cells inside the substrate** (e.g., 0.27 mm) and **coarse cells in the air region** (e.g., 1.5 mm), saving roughly 5–10x in total cell count.
+
+---
+
+## Constructing `dz_profile`
+
+`dz_profile` is a 1-D NumPy array of physical z-cell sizes in metres, from z = 0 upward through the physical domain (excluding CPML padding, which rfx adds automatically).
+
+### Manual construction
+
+```python
+import numpy as np
+
+h        = 1.6e-3   # substrate thickness
+n_sub    = 6        # cells through substrate
+dz_sub   = h / n_sub          # 0.267 mm per substrate cell
+
+margin   = 30e-3    # air region above substrate
+dz_air   = 1.5e-3   # coarse air cells
+n_air    = int(round(margin / dz_air))
+
+dz_profile = np.concatenate([
+    np.full(n_sub, dz_sub),   # fine: substrate
+    np.full(n_air, dz_air),   # coarse: air
+])
+```
+
+!!! tip
+    Choose `n_sub` so that `dz_sub ≤ dx / 2`. At least 4 substrate cells are
+    recommended for accurate dispersion. 6–8 cells typically give under 0.5 % resonance error.
+
+### Graded transition (optional)
+
+For structures where abrupt fine-to-coarse transitions cause numerical reflections, use `make_z_profile()` to insert a smooth grading:
+
+```python
+from rfx.nonuniform import make_z_profile
+
+dz_profile = make_z_profile(
+    features=[0.0, h],         # z-positions that must align to cell boundaries
+    domain_z=h + margin,
+    dx_fine=dz_sub,
+    dx_coarse=dz_air,
+    grading=1.4,               # max ratio between adjacent cells
+)
+```
+
+Adjacent cells differing by more than ~1.5x introduce grid dispersion at the transition; keep `grading ≤ 1.4`.
+
+---
+
+## Passing `dz_profile` to `Simulation`
+
+```python
+from rfx import Simulation, Box, GaussianPulse
+import numpy as np
+
+h      = 1.6e-3
+margin = 30e-3
+n_sub  = 6
+dz_sub = h / n_sub
+n_air  = 20
+dz_air = margin / n_air
+
+dz_profile = np.concatenate([np.full(n_sub, dz_sub), np.full(n_air, dz_air)])
+
+sim = Simulation(
+    freq_max=4e9,
+    domain=(0.10, 0.08, 0.0),   # Lz=0 is OK — replaced by sum(dz_profile)
+    boundary="cpml",
+    cpml_layers=12,
+    dx=5e-4,
+    dz_profile=dz_profile,
+)
+```
+
+When `dz_profile` is provided, `domain[2]` is replaced by `sum(dz_profile)` automatically. Passing `domain[2]=0` is a convenient way to signal this.
+
+---
+
+## `auto_configure` detection
+
+`auto_configure()` inspects the geometry for thin z-features and automatically builds a `dz_profile` when warranted:
+
+```python
+from rfx import auto_configure, Simulation, Box
+
+geometry = [
+    (Box((0, 0, 0),  (0.10, 0.08, 1.6e-3)), "fr4"),
+    (Box((0, 0, 0),  (0.10, 0.08, 0)),       "pec"),  # ground plane
+]
+
+cfg = auto_configure(
+    geometry=geometry,
+    freq_range=(1e9, 4e9),
+    materials={"fr4": {"eps_r": 4.4, "sigma": 0.025}},
+    accuracy="standard",
+)
+
+print(cfg.summary())
+# SimConfig (accuracy='standard'):
+#   dx = 0.500 mm (20 cells/lambda_min)
+#   dz = 0.267 – 1.500 mm (26 cells, non-uniform)
+
+if cfg.uses_nonuniform:
+    print("Non-uniform z activated")
+
+sim = Simulation(**cfg.to_sim_kwargs())
+```
+
+`SimConfig.uses_nonuniform` is `True` when `dz_profile is not None`.
+
+---
+
+## CFL timestep from minimum cell
+
+The timestep is set by the **minimum cell size** in the entire grid (including CPML padding cells), following the 3-D Courant-Friedrichs-Lewy condition:
+
+```
+dt = 0.99 / (c * sqrt(1/dx^2 + 1/dy^2 + 1/dz_min^2))
+```
+
+A fine substrate cell `dz_sub = 0.267 mm` with `dx = dy = 0.5 mm` gives:
+
+```
+dt ~= 0.99 / (c * sqrt(4 + 4 + 14)) ~= 0.64 ps
+```
+
+compared to `dt ~= 0.96 ps` for a uniform 0.5 mm grid. The non-uniform grid pays ~1.5x more timesteps, but saves ~10x in cells — a net win of ~7x for typical patch antenna problems.
+
+---
+
+## `make_current_source` normalisation
+
+When building sources for the non-uniform grid at the low level, use `make_current_source` to correctly normalise the current injection to the local cell volume:
+
+```python
+from rfx.nonuniform import make_current_source, make_nonuniform_grid
+import numpy as np
+
+grid = make_nonuniform_grid(
+    domain_xy=(0.10, 0.08),
+    dz_profile=dz_profile,
+    dx=5e-4,
+    cpml_layers=12,
+)
+
+# Convert physical position to grid index
+from rfx.nonuniform import z_position_to_index
+iz = z_position_to_index(grid, z_phys=h / 2)
+
+src = make_current_source(
+    grid,
+    ix=grid.nx // 2,
+    iy=grid.ny // 2,
+    iz=iz,
+    component="ez",
+)
+```
+
+!!! note
+    The high-level `Simulation.add_source()` handles this normalisation automatically.
+    `make_current_source` is only needed when using the low-level `run_nonuniform()` API
+    directly.
+
+---
+
+## `NonUniformGrid` internals
+
+`make_nonuniform_grid()` returns a `NonUniformGrid` NamedTuple:
+
+| Field | Shape | Description |
+|---|---|---|
+| `nx, ny, nz` | int | Grid dimensions including CPML |
+| `dx, dy` | float | Uniform x/y cell size (m) |
+| `dz` | (nz,) | Per-cell z sizes including CPML padding |
+| `dt` | float | Timestep from min-cell CFL (s) |
+| `cpml_layers` | int | CPML cells per face |
+| `inv_dx` | (nx,) | 1/dx, pre-computed for E-curl update |
+| `inv_dz` | (nz,) | 1/dz[k], pre-computed |
+| `inv_dz_h` | (nz,) | 2/(dz[k]+dz[k+1]), for H-curl update |
+
+All inverse-spacing arrays are stored as `jnp.float32` for GPU efficiency.

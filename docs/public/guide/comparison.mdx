@@ -1,0 +1,25 @@
+---
+title: "Solver Comparison"
+description: "Feature and performance comparison between rfx and other open-source EM solvers."
+sidebar:
+  order: 33
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Under construction">
+  This page is a placeholder. Content will be added in a future update.
+</Aside>
+
+## Overview
+
+This page will provide a structured comparison of rfx against other open-source electromagnetic solvers:
+
+| Feature | rfx | Meep | OpenEMS |
+|---|---|---|---|
+| Autodiff | Native JAX | — | — |
+| GPU acceleration | JAX JIT | — | OpenCL (limited) |
+| Non-uniform mesh | Graded z | Subpixel | Graded multi-axis |
+| Topology optimisation | Built-in | External | — |
+
+See [Cross-Validation](../validation/) for quantitative accuracy benchmarks and [Migration Guide](../migration/) for workflow translation.

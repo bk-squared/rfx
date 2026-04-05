@@ -1,0 +1,243 @@
+---
+title: "Your First Patch Antenna"
+description: "This tutorial designs a 2.4 GHz rectangular microstrip patch on FR4 and walks through the current-source resonance workflow."
+sidebar:
+  order: 2
+---
+
+
+This tutorial designs a 2.4 GHz rectangular microstrip patch on FR4, runs the
+FDTD simulation, and extracts the resonant frequency with Harminv. Estimated
+time: 20 minutes.
+
+---
+
+## 1. Analytical patch design
+
+The standard rectangular patch formulas (Bahl & Trivedi 1977) give the physical dimensions:
+
+```
+W     = c / (2·f₀) · √(2 / (εᵣ+1))
+εₑff  = (εᵣ+1)/2 + (εᵣ−1)/2 · (1 + 12h/W)^−½
+ΔL    = 0.412·h · [(εₑff+0.3)(W/h+0.264)] / [(εₑff−0.258)(W/h+0.8)]
+L     = c / (2·f₀·√εₑff) − 2·ΔL
+```
+
+In Python:
+
+```python
+import numpy as np
+C0 = 299_792_458.0  # m/s
+
+f0    = 2.4e9        # target resonance
+eps_r = 4.4          # FR4
+h     = 1.6e-3       # substrate thickness (1.6 mm)
+tan_d = 0.02         # loss tangent at 2.4 GHz
+
+W       = C0 / (2*f0) * np.sqrt(2 / (eps_r + 1))
+eps_eff = (eps_r+1)/2 + (eps_r-1)/2 * (1 + 12*h/W)**(-0.5)
+dL      = 0.412*h * ((eps_eff+0.3)*(W/h+0.264) / ((eps_eff-0.258)*(W/h+0.8)))
+L       = C0 / (2*f0*np.sqrt(eps_eff)) - 2*dL
+
+# FR4 conductivity from loss tangent
+sigma_fr4 = 2*np.pi*f0 * 8.854e-12 * eps_r * tan_d
+
+print(f"L = {L*1e3:.2f} mm,  W = {W*1e3:.2f} mm")
+print(f"eps_eff = {eps_eff:.3f},  dL = {dL*1e3:.3f} mm")
+# Typical output: L = 29.38 mm,  W = 38.01 mm
+```
+
+---
+
+## 2. Set up the Simulation
+
+Use a quarter-wavelength margin around the patch and a non-uniform z-profile to resolve the thin substrate without inflating the cell count.
+
+```python
+from rfx import Simulation, Box, GaussianPulse
+import numpy as np
+
+# Domain: patch + λ/4 margin on all sides
+lam0   = C0 / f0            # free-space wavelength ~125 mm
+margin = lam0 / 4           # 31 mm absorber margin
+
+dom_x = L + 2*margin
+dom_y = W + 2*margin
+dom_z = h + margin          # substrate + air above
+
+# Non-uniform z profile: fine cells inside substrate, coarse in air
+dz_sub = h / 6              # 6 cells through 1.6 mm substrate
+dz_air = 1.5e-3             # 1.5 mm cells in air
+n_air  = max(1, int(round(margin / dz_air)))
+
+dz_profile = np.concatenate([
+    np.full(6, dz_sub),
+    np.full(n_air, dz_air),
+])
+
+sim = Simulation(
+    freq_max=4e9,
+    domain=(dom_x, dom_y, dom_z),
+    boundary="cpml",
+    cpml_layers=12,
+    dx=5e-4,              # 0.5 mm lateral cell
+    dz_profile=dz_profile,
+)
+```
+
+!!! tip
+    `auto_configure()` can derive `dz_profile` automatically. Use it when you prefer
+    a one-shot configuration:
+
+    ```python
+    from rfx import auto_configure
+    geom = [(Box((0,0,0),(dom_x,dom_y,h)), "fr4")]
+    cfg  = auto_configure(geom, freq_range=(1e9, 4e9), accuracy="standard")
+    sim  = Simulation(**cfg.to_sim_kwargs())
+    ```
+
+---
+
+## 3. Define materials and geometry
+
+```python
+# Register FR4 with frequency-accurate loss tangent at 2.4 GHz
+sim.add_material("fr4_24ghz", eps_r=4.4, sigma=sigma_fr4)
+
+# Ground plane (z = 0, one cell thick)
+sim.add(Box((0, 0, 0), (dom_x, dom_y, dz_sub)), material="pec")
+
+# Substrate slab
+sim.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="fr4_24ghz")
+
+# Patch (sitting on top of substrate; one cell thick in z)
+px0, py0 = margin, margin
+sim.add(Box((px0, py0, h), (px0+L, py0+W, h+dz_sub)), material="pec")
+```
+
+!!! note
+    rfx rasterises geometry onto the Yee grid. A patch of physical thickness `dz_sub`
+    is only one cell thick in z, which is standard practice for printed conductors.
+
+---
+
+## 4. Add source and probe
+
+The probe-feed is placed at one-third of the patch length from the radiating edge:
+
+```python
+feed_x = px0 + L/3
+feed_y = py0 + W/2
+feed_z = h / 2           # midpoint of substrate
+
+sim.add_source(
+    (feed_x, feed_y, feed_z),
+    component="ez",
+    waveform=GaussianPulse(f0=f0, bandwidth=0.8),
+)
+sim.add_probe((feed_x, feed_y, feed_z), "ez")
+```
+
+`add_source` injects a soft (no impedance loading) current source — ideal for resonance characterisation. Use `add_port` if you want S-parameter extraction against a 50 Ω reference.
+
+---
+
+## 5. Run the simulation
+
+```python
+# Build grid to get dt, then set n_steps for ~10 ns simulation time
+grid    = sim._build_grid()
+n_steps = int(np.ceil(10e-9 / grid.dt))
+print(f"Grid: {grid.shape}, dt={grid.dt*1e12:.2f} ps, n_steps={n_steps}")
+
+result = sim.run(n_steps=n_steps)
+```
+
+---
+
+## 6. Extract resonance with Harminv
+
+```python
+modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
+
+if modes:
+    best = min(modes, key=lambda m: abs(m.freq - f0))
+    err  = abs(best.freq - f0) / f0 * 100
+    print(f"FDTD resonance : {best.freq/1e9:.4f} GHz")
+    print(f"Analytical     : {f0/1e9:.4f} GHz")
+    print(f"Error          : {err:.2f} %")
+    print(f"Q              : {best.Q:.0f}")
+```
+
+!!! note
+    The ~3 % difference between FDTD and the analytical formula is expected and is a
+    known limitation of the Hammerstad-Jensen fringe-correction formula, not an rfx
+    accuracy problem. See [Cross-Validation](./validation/).
+
+---
+
+## 7. Optional: exploratory lumped-port run
+
+If you want a quick diagnostic S-parameter run, you can re-run with a lumped
+port instead of a soft source:
+
+```python
+sim2 = Simulation(
+    freq_max=4e9,
+    domain=(dom_x, dom_y, dom_z),
+    boundary="cpml",
+    cpml_layers=12,
+    dx=5e-4,
+    dz_profile=dz_profile,
+)
+sim2.add_material("fr4_24ghz", eps_r=4.4, sigma=sigma_fr4)
+sim2.add(Box((0, 0, 0), (dom_x, dom_y, dz_sub)), material="pec")
+sim2.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="fr4_24ghz")
+sim2.add(Box((px0, py0, h), (px0+L, py0+W, h+dz_sub)), material="pec")
+sim2.add_port(
+    (feed_x, feed_y, feed_z), "ez",
+    impedance=50,
+    waveform=GaussianPulse(f0=f0, bandwidth=0.8),
+)
+
+result2 = sim2.run(n_steps=n_steps, compute_s_params=True)
+
+import matplotlib.pyplot as plt
+freqs  = result2.freqs
+s11_db = 20 * np.log10(np.abs(result2.s_params[0, 0, :]) + 1e-12)
+
+plt.figure()
+plt.plot(freqs / 1e9, s11_db)
+plt.xlabel("Frequency (GHz)")
+plt.ylabel("|S11| (dB)")
+plt.title("Patch antenna S11 — FR4 2.4 GHz")
+plt.ylim(-30, 2)
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("patch_s11.png", dpi=150)
+plt.show()
+```
+
+!!! warning
+    For patch and microstrip feeds, treat this lumped-port S11 result as a
+    **diagnostic workflow**, not yet as the canonical public validation path.
+    The currently best-validated path for this tutorial is the
+    current-source + Harminv resonance workflow above.
+
+---
+
+## Expected results
+
+| Quantity | Value |
+|---|---|
+| FDTD resonance | ~2.33–2.38 GHz |
+| Analytical prediction | 2.40 GHz |
+| Discrepancy | ~1–3 % (formula limitation) |
+| Q factor | 20–60 (lossy FR4) |
+| Diagnostic lumped-port S11 | depends strongly on feed position / port model |
+
+---
+
+## Full script
+
+The complete ready-to-run version of this tutorial is `examples/04_patch_antenna.py`.

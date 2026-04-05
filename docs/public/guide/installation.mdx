@@ -1,0 +1,51 @@
+---
+title: "Installation"
+description: "Python/JAX install, GPU notes, and development setup for rfx."
+sidebar:
+  order: 0
+---
+
+## Basic install
+
+```bash
+pip install rfx-fdtd
+```
+
+`rfx` requires Python 3.10+ and installs JAX, NumPy, SciPy, matplotlib, and
+h5py.
+
+The package name on PyPI is `rfx-fdtd`, while the Python import remains:
+
+```python
+import rfx
+```
+
+## GPU support
+
+```bash
+pip install --upgrade "jax[cuda12]"
+python -c "import jax; print(jax.devices())"
+```
+
+See the official JAX installation guide for CUDA/cuDNN details.
+
+## Development install
+
+```bash
+git clone https://github.com/BK3536/rfx.git
+cd rfx
+pip install -e ".[dev]"
+```
+
+The `dev` extra includes:
+
+- `pytest`
+- `pytest-xdist`
+- `ruff`
+
+## System requirements
+
+- Python: 3.10 / 3.11 / 3.12
+- CPU: modern x86_64
+- GPU: NVIDIA + CUDA 12+ for acceleration
+- RAM: 4 GB minimum, 16 GB+ recommended for larger 3D runs

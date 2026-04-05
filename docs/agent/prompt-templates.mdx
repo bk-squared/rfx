@@ -1,0 +1,498 @@
+---
+title: "Prompt Templates for RF Design"
+description: "This page provides ready-to-use prompt templates for building AI-assisted RF design workflows with rfx. Each template in"
+sidebar:
+  order: 3
+---
+
+
+This page provides ready-to-use prompt templates for building AI-assisted RF design workflows with rfx. Each template includes the system prompt structure, example user intent, parameter extraction logic, rfx code the agent should generate, and result interpretation guidance.
+
+---
+
+## System Prompt Template
+
+Use this as the base system prompt when deploying an rfx-backed RF design agent:
+
+```
+You are an RF design assistant backed by rfx, a JAX-based 3D FDTD simulator.
+
+Your capabilities:
+- Design and simulate planar antennas (patch, slot, PIFA, etc.)
+- Extract S-parameters for filters, couplers, and transmission lines
+- Run convergence studies to validate simulation accuracy
+- Optimize structures toward performance targets (bandwidth, gain, return loss)
+- Compare designs across parameter sweeps
+
+When given a design task:
+1. Extract physical parameters from the description (dimensions, materials, frequency)
+2. Use auto_configure() to derive all simulation settings -- never set dx or n_steps manually
+3. Generate complete, runnable Python using the rfx API
+4. Use add_source() + result.find_resonances() for resonance characterization
+5. Use add_port() + result.s_params for S-parameter tasks
+6. Always check config.warnings before running
+7. Report results with physical units (GHz, dB, mm) and interpret them
+
+Available materials: vacuum, air, fr4, rogers4003c, alumina, silicon, ptfe, copper, pec, water_20c
+Available geometry: Box(corner_lo, corner_hi), Sphere(center, radius), Cylinder(center, radius, height, axis)
+
+Never set dx manually unless the user explicitly requests a specific cell size.
+Use accuracy="draft" for exploration, "standard" for design, "high" for validation.
+```
+
+---
+
+## Template 1: Design and Simulate a Patch Antenna
+
+### User Intent
+
+> "Design a 5.8 GHz patch antenna on Rogers 4003C substrate (h = 0.8 mm). Give me the resonant frequency and Q factor."
+
+### Parameter Extraction
+
+The agent should extract:
+
+| Parameter | Value | Source |
+|-----------|-------|--------|
+| Target frequency | 5.8 GHz | Explicit |
+| Substrate | Rogers 4003C | Explicit |
+| Substrate thickness | 0.8 mm | Explicit |
+| Patch shape | Rectangular | Default |
+| Port type | None (resonance task) | Inferred |
+
+### rfx Code the Agent Should Generate
+
+```python
+import math
+import rfx
+from rfx import Simulation, Box, auto_configure
+
+# -- 1. Analytical patch dimensions ------------------------------------------
+eps_r = 3.55    # Rogers 4003C
+h     = 0.0008  # 0.8 mm substrate
+f0    = 5.8e9
+C0    = 3e8
+
+# Effective permittivity and radiation correction (Hammerstad formula)
+W = C0 / (2 * f0) * math.sqrt(2 / (eps_r + 1))
+eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 * (1 + 12 * h / W) ** -0.5
+delta_L = 0.412 * h * (eps_eff + 0.3) * (W / h + 0.264) / \
+          ((eps_eff - 0.258) * (W / h + 0.8))
+L = C0 / (2 * f0 * math.sqrt(eps_eff)) - 2 * delta_L
+
+print(f"Estimated patch: L={L*1e3:.2f} mm, W={W*1e3:.2f} mm")
+
+# -- 2. Build geometry --------------------------------------------------------
+pad = 0.008  # 8 mm clearance
+
+substrate = Box((0, 0, 0), (L + 2*pad, W + 2*pad, h))
+patch     = Box((pad, pad, h), (pad + L, pad + W, h))
+
+geometry = [
+    (substrate, "rogers4003c"),
+    (patch,     "pec"),
+]
+
+# -- 3. Auto-configure --------------------------------------------------------
+config = auto_configure(
+    geometry,
+    freq_range=(3e9, 9e9),
+    accuracy="standard",
+)
+print(config.summary())
+for w in config.warnings:
+    print(f"WARNING: {w}")
+
+# -- 4. Build simulation ------------------------------------------------------
+sim = Simulation(**config.to_sim_kwargs())
+for shape, mat in geometry:
+    sim.add(shape, material=mat)
+
+# Use add_source (not add_port) -- port impedance damps high-Q resonance
+src_pos = (pad + L/2, pad + W/2, h)
+sim.add_source(src_pos, "ez")
+sim.add_probe(src_pos, "ez")
+
+# -- 5. Run -------------------------------------------------------------------
+result = sim.run(n_steps=config.n_steps)
+
+# -- 6. Extract resonance -----------------------------------------------------
+modes = result.find_resonances(freq_range=(3e9, 9e9))
+
+if not modes:
+    print("No resonance found. Check: geometry is non-zero, freq_range covers target.")
+else:
+    best = max(modes, key=lambda m: abs(m.amplitude))
+    err  = (best.freq - f0) / f0 * 100
+    print(f"\nResult:")
+    print(f"  Resonant frequency : {best.freq/1e9:.3f} GHz")
+    print(f"  Error vs target    : {err:+.1f}%")
+    print(f"  Q factor           : {best.Q:.1f}")
+    print(f"  Decay rate         : {best.decay_rate:.2e} s^-1")
+    if abs(err) > 5:
+        print("  -> Error > 5%: consider accuracy='high' or refine patch dimensions")
+```
+
+### Result Interpretation
+
+- **Error under 3%**: Simulation agrees with formula; structure is correctly modeled
+- **Error 3-10%**: Expected for `accuracy="standard"` with thin substrates; acceptable for design
+- **Error > 10%**: Check that geometry is correctly positioned (patch at z=h, not z=0), substrate covers ground, freq_range is wide enough
+- **No modes found**: `freq_range` may not bracket the resonance, or `n_steps` is too small for ring-down; try `until_decay=1e-4`
+
+---
+
+## Template 2: Optimize Filter Bandwidth
+
+### User Intent
+
+> "I have a microstrip bandpass filter centered at 2.4 GHz on FR4. Optimize the coupling gap to maximize the 3 dB bandwidth."
+
+### Parameter Extraction
+
+| Parameter | Value |
+|-----------|-------|
+| Center frequency | 2.4 GHz |
+| Substrate | FR4 |
+| Optimization target | Maximize 3 dB bandwidth |
+| Design variable | Coupling gap width |
+
+### rfx Code the Agent Should Generate
+
+```python
+import numpy as np
+from rfx import Simulation, Box, auto_configure
+
+# -- Geometry parameters ------------------------------------------------------
+h = 0.0016     # FR4 thickness
+f0 = 2.4e9
+
+def build_sim(gap_m: float):
+    """Build simulation for a given coupling gap."""
+    res_L, res_W = 0.0295, 0.003   # resonator length, width
+
+    # Two resonators separated by gap
+    res1 = Box((0.005, 0.005, h), (0.005 + res_L, 0.005 + res_W, h))
+    res2 = Box((0.005, 0.005 + res_W + gap_m, h),
+               (0.005 + res_L, 0.005 + 2*res_W + gap_m, h))
+    substrate = Box((0, 0, 0), (0.040, 0.020 + gap_m, h))
+
+    geometry = [(substrate, "fr4"), (res1, "pec"), (res2, "pec")]
+    config = auto_configure(geometry, freq_range=(1e9, 4e9), accuracy="standard")
+
+    sim = Simulation(**config.to_sim_kwargs())
+    for shape, mat in geometry:
+        sim.add(shape, material=mat)
+
+    sim.add_port((0.005, 0.0065, h), "ex", impedance=50)
+    sim.add_port((0.005, 0.0065 + res_W + gap_m, h), "ex", impedance=50)
+
+    return sim, config
+
+
+def evaluate_bw(gap_mm: float) -> float:
+    """Return 3 dB bandwidth (GHz) for a given gap in mm."""
+    sim, config = build_sim(gap_mm * 1e-3)
+    result = sim.run(n_steps=config.n_steps)
+
+    if result.s_params is None:
+        return 0.0
+
+    freqs = result.freqs
+    s21_db = 20 * np.log10(np.abs(result.s_params[1, 0, :]) + 1e-20)
+    s21_peak = s21_db.max()
+    mask_3db = s21_db >= (s21_peak - 3)
+
+    if not np.any(mask_3db):
+        return 0.0
+
+    bw_hz = freqs[mask_3db][-1] - freqs[mask_3db][0]
+    return float(bw_hz / 1e9)
+
+
+# -- Coarse sweep to find best gap range --------------------------------------
+gaps_mm = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.5]
+print("Gap sweep:")
+results = []
+for g in gaps_mm:
+    bw = evaluate_bw(g)
+    results.append((g, bw))
+    print(f"  gap={g:.1f} mm  ->  BW={bw:.3f} GHz")
+
+best_gap, best_bw = max(results, key=lambda x: x[1])
+print(f"\nBest gap: {best_gap} mm  ->  BW = {best_bw:.3f} GHz")
+
+# -- Fine validation at best gap ----------------------------------------------
+# Re-run at accuracy='high' for final confirmation
+h = 0.0016
+geometry_final = [
+    (Box((0, 0, 0), (0.040, 0.020 + best_gap*1e-3, h)), "fr4"),
+]
+config_high = auto_configure(geometry_final, freq_range=(1e9, 4e9), accuracy="high")
+print(f"\nFinal validation dx={config_high.dx*1e3:.3f} mm")
+```
+
+### Result Interpretation
+
+- Increasing gap narrows bandwidth (weaker coupling)
+- Decreasing gap widens bandwidth but may cause over-coupling (split peaks)
+- If S21 peak < -3 dB at center: filter is over-coupled or resonators are mistuned
+- If no 3 dB region found: increase freq_range or n_steps
+
+---
+
+## Template 3: Characterize Unknown Structure
+
+### User Intent
+
+> "I have an unknown planar structure on alumina. Run a convergence study and extract its S11 from 1 to 20 GHz."
+
+### Parameter Extraction
+
+| Parameter | Value |
+|-----------|-------|
+| Substrate | Alumina (eps_r=9.8) |
+| Task | Convergence study + S11 extraction |
+| Frequency range | 1-20 GHz |
+
+### rfx Code the Agent Should Generate
+
+```python
+import numpy as np
+from rfx import Simulation, Box, auto_configure, write_touchstone
+
+h = 0.000635  # 0.635 mm alumina (common thickness)
+
+geometry = [
+    (Box((0, 0, 0), (0.010, 0.010, h)), "alumina"),
+    (Box((0.002, 0.002, h), (0.008, 0.008, h)), "pec"),  # example structure
+]
+
+freq_range = (1e9, 20e9)
+
+
+def run_at_accuracy(acc: str):
+    config = auto_configure(geometry, freq_range, accuracy=acc)
+    print(f"\n[{acc}] {config.summary()}")
+
+    sim = Simulation(**config.to_sim_kwargs())
+    for shape, mat in geometry:
+        sim.add(shape, material=mat)
+    sim.add_port((0.005, 0.005, h), "ez", impedance=50)
+
+    result = sim.run(n_steps=config.n_steps)
+    return config, result
+
+
+configs = {}
+results = {}
+for acc in ("draft", "standard", "high"):
+    configs[acc], results[acc] = run_at_accuracy(acc)
+
+# -- Compare S11 minimum across accuracy levels -------------------------------
+print("\nConvergence check:")
+print(f"{'Accuracy':<12} {'dx (mm)':<10} {'S11 min (GHz)':<16} {'S11 min (dB)':<14}")
+for acc in ("draft", "standard", "high"):
+    res = results[acc]
+    if res.s_params is not None and res.freqs is not None:
+        s11_db = 20 * np.log10(np.abs(res.s_params[0, 0, :]) + 1e-20)
+        min_idx = np.argmin(s11_db)
+        f_min = res.freqs[min_idx] / 1e9
+        s11_min = s11_db[min_idx]
+        dx_mm = configs[acc].dx * 1e3
+        print(f"{acc:<12} {dx_mm:<10.3f} {f_min:<16.3f} {s11_min:<14.1f}")
+
+# -- Convergence criterion ----------------------------------------------------
+s11_std  = 20 * np.log10(np.abs(results["standard"].s_params[0, 0, :]) + 1e-20)
+s11_high = 20 * np.log10(np.abs(results["high"].s_params[0, 0, :]) + 1e-20)
+s11_high_interp = np.interp(results["standard"].freqs,
+                             results["high"].freqs, s11_high)
+max_diff = np.max(np.abs(s11_std - s11_high_interp))
+
+print(f"\nMax |S11_std - S11_high| = {max_diff:.2f} dB")
+if max_diff < 0.5:
+    print("CONVERGED: standard accuracy is sufficient")
+else:
+    print("NOT CONVERGED: use accuracy='high' for this structure")
+
+# -- Export final S11 to Touchstone -------------------------------------------
+res_final = results["high"]
+write_touchstone(
+    "unknown_structure.s1p",
+    freqs=res_final.freqs,
+    s_params=res_final.s_params[:1, :1, :],
+)
+print("Saved: unknown_structure.s1p")
+```
+
+### Error Handling
+
+!!! note "When Harminv finds no modes"
+    ```python
+    modes = result.find_resonances(freq_range=(1e9, 20e9))
+    if not modes:
+        # Try 1: widen the frequency range
+        modes = result.find_resonances(freq_range=(0.5e9, 25e9))
+
+        # Try 2: run longer (ring-down not captured)
+        result2 = sim.run(until_decay=1e-4, decay_max_steps=80000)
+        modes = result2.find_resonances(freq_range=(1e9, 20e9))
+
+        # Try 3: check probe position -- must be inside structure,
+        # not at a field null of the target mode
+    ```
+
+!!! note "When S11 is too shallow (|S11| > -3 dB everywhere)"
+    - Port impedance may not match the structure -- try `impedance=75` or `impedance=100`
+    - Structure may be electrically small at the target frequency -- lower `f_min` in freq_range
+    - Probe/port position may be at a field null -- move to the geometric center
+
+---
+
+## Template 4: Compare Design Variants
+
+### User Intent
+
+> "Compare three patch antenna lengths (28 mm, 30 mm, 32 mm) on FR4 at 2.4 GHz. Show how resonant frequency varies."
+
+### rfx Code the Agent Should Generate
+
+```python
+import numpy as np
+from rfx import Simulation, Box, auto_configure
+
+
+def simulate_patch(L_mm: float) -> dict:
+    """Simulate a patch antenna of length L_mm. Returns result dict."""
+    L = L_mm * 1e-3
+    W = 0.038          # fixed width
+    h = 0.0016         # FR4 thickness
+    pad = 0.010
+
+    substrate = Box((0, 0, 0), (L + 2*pad, W + 2*pad, h))
+    patch     = Box((pad, pad, h), (pad + L, pad + W, h))
+    geometry  = [(substrate, "fr4"), (patch, "pec")]
+
+    config = auto_configure(geometry, freq_range=(1e9, 4e9), accuracy="standard")
+    for w in config.warnings:
+        print(f"  [{L_mm:.0f}mm] WARNING: {w}")
+
+    sim = Simulation(**config.to_sim_kwargs())
+    for shape, mat in geometry:
+        sim.add(shape, material=mat)
+    sim.add_source((pad + L/2, pad + W/2, h), "ez")
+    sim.add_probe( (pad + L/2, pad + W/2, h), "ez")
+
+    result = sim.run(n_steps=config.n_steps)
+    modes  = result.find_resonances(freq_range=(1e9, 4e9))
+
+    if modes:
+        best = max(modes, key=lambda m: abs(m.amplitude))
+        return {
+            "L_mm"  : L_mm,
+            "f_ghz" : best.freq / 1e9,
+            "Q"     : best.Q,
+            "found" : True,
+        }
+    return {"L_mm": L_mm, "f_ghz": None, "Q": None, "found": False}
+
+
+# -- Run sweep ----------------------------------------------------------------
+lengths_mm = [28.0, 30.0, 32.0]
+sweep_results = []
+for L in lengths_mm:
+    print(f"Simulating L={L:.0f} mm ...")
+    r = simulate_patch(L)
+    sweep_results.append(r)
+
+# -- Report -------------------------------------------------------------------
+target_ghz = 2.4
+print(f"\n{'L (mm)':<10} {'f_res (GHz)':<14} {'Error (%)':<12} {'Q':<8}")
+print("-" * 44)
+for r in sweep_results:
+    if r["found"]:
+        err = (r["f_ghz"] - target_ghz) / target_ghz * 100
+        print(f"{r['L_mm']:<10.0f} {r['f_ghz']:<14.3f} {err:<+12.1f} {r['Q']:<8.1f}")
+    else:
+        print(f"{r['L_mm']:<10.0f} {'no resonance':<14}")
+
+# -- Find and interpolate optimal length --------------------------------------
+valid = [r for r in sweep_results if r["found"]]
+if valid:
+    closest = min(valid, key=lambda r: abs(r["f_ghz"] - target_ghz))
+    print(f"\nClosest to {target_ghz} GHz: L={closest['L_mm']:.0f} mm "
+          f"-> {closest['f_ghz']:.3f} GHz")
+
+    if len(valid) >= 2:
+        Ls   = np.array([r["L_mm"]  for r in valid])
+        fs   = np.array([r["f_ghz"] for r in valid])
+        # f decreases with L, so reverse for np.interp
+        L_opt = float(np.interp(target_ghz, fs[::-1], Ls[::-1]))
+        print(f"Interpolated optimal length: {L_opt:.1f} mm")
+```
+
+### Result Interpretation
+
+Resonant frequency scales inversely with patch length:
+
+```
+f_res is proportional to 1 / L   (approximately)
+```
+
+If the sweep shows:
+
+- Monotonic decrease in `f_res` with increasing L: expected behavior; interpolate to target
+- Non-monotonic behavior: verify geometry definitions (check z-positions match substrate top)
+- All frequencies shifted up by >10%: substrate eps_r may be wrong or substrate is absent
+
+---
+
+## Error Handling Reference
+
+Common failure modes and remedies an agent should handle:
+
+### `ValueError: Unknown material 'xyz'`
+
+```python
+# Use MATERIAL_LIBRARY names: vacuum, air, fr4, rogers4003c,
+# alumina, silicon, ptfe, copper, pec, water_20c
+# Or register custom material:
+sim.add_material("my_sub", eps_r=6.15, sigma=0.002)
+sim.add(shape, material="my_sub")
+```
+
+### `ValueError: freq_range must be (f_min, f_max) with 0 < f_min < f_max`
+
+```python
+# Wrong:   auto_configure(geo, (4e9, 1e9))  # reversed
+# Correct: auto_configure(geo, (1e9, 4e9))
+```
+
+### Simulation runs but `result.s_params is None`
+
+```python
+# S-params only computed when ports are present
+sim.add_port(pos, "ez", impedance=50)   # must add at least one port
+result = sim.run(compute_s_params=True) # explicit; default True when ports exist
+```
+
+### Harminv returns modes with Q under 2
+
+```python
+# Very low Q: signal dominated by non-resonant response.
+# Try decay-based stopping to capture full ring-down:
+result = sim.run(until_decay=1e-3, decay_max_steps=50000)
+# Also: move probe away from the source position
+# Also: check boundary -- PEC boundaries give cleaner cavity modes than CPML
+```
+
+### `config.n_steps` is very large (> 30 000)
+
+```python
+# High-Q structure -- use decay-based stopping instead of fixed steps
+result = sim.run(
+    until_decay=1e-4,        # stop when field decays to 0.01% of peak
+    decay_max_steps=80000,   # hard limit
+    decay_check_interval=100,
+)
+```

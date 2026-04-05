@@ -1,0 +1,395 @@
+---
+title: "Automatic Simulation Configuration"
+description: "The cell size is chosen as the minimum of two constraints:"
+sidebar:
+  order: 2
+---
+
+
+`auto_configure()` is the entry point for agent-driven simulations. It derives every simulation parameter from geometry and frequency range, eliminating the need for manual grid math.
+
+---
+
+## API Reference
+
+```python
+from rfx import auto_configure, SimConfig
+
+config = auto_configure(
+    geometry,            # list of (Shape, material_name) tuples
+    freq_range,          # (f_min, f_max) in Hz
+    materials=None,      # optional dict of custom material definitions
+    accuracy="standard",
+    *,
+    dx_override=None,    # force specific cell size (metres)
+    margin_override=None,
+    n_steps_override=None,
+) -> SimConfig
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `geometry` | `list` | List of `(Shape, material_name)` tuples |
+| `freq_range` | `(float, float)` | `(f_min, f_max)` in Hz. Must have `0 < f_min < f_max` |
+| `materials` | `dict` or `None` | Custom material definitions `{name: {eps_r, sigma, ...}}`. Library materials (`"fr4"`, `"pec"`, etc.) are always available without this |
+| `accuracy` | `str` | `"draft"`, `"standard"`, or `"high"` |
+| `dx_override` | `float` or `None` | Force a specific cell size in metres. Bypasses wavelength-based selection |
+| `margin_override` | `float` or `None` | Force a specific domain margin in metres |
+| `n_steps_override` | `int` or `None` | Force a specific timestep count |
+
+### Returns: `SimConfig`
+
+```python
+config.dx               # float -- cell size (m)
+config.domain           # (Lx, Ly, Lz) -- domain dimensions (m)
+config.cpml_layers      # int -- CPML layers per face
+config.n_steps          # int -- recommended timestep count
+config.freq_range       # (f_min, f_max) Hz
+config.margin           # float -- domain margin (m)
+config.dt               # float -- timestep (s)
+config.accuracy         # str -- preset name
+config.warnings         # list[str] -- important configuration warnings
+config.dz_profile       # np.ndarray or None -- non-uniform z profile
+
+# Computed properties
+config.cells_per_wavelength   # float -- cells per lambda_min in medium
+config.sim_time_ns            # float -- total simulation time (ns)
+config.uses_nonuniform        # bool -- True when dz_profile is set
+
+# Convert to Simulation constructor arguments
+kwargs = config.to_sim_kwargs()
+# Returns: {freq_max, domain, boundary, cpml_layers, dx[, dz_profile]}
+
+# Human-readable summary
+print(config.summary())
+```
+
+### `analyze_features()` — Internal Geometry Analysis
+
+```python
+from rfx import analyze_features
+
+info = analyze_features(geometry, materials)
+info.min_thickness   # float -- thinnest dimension across all shapes (m)
+info.max_extent      # float -- largest dimension (m)
+info.bbox            # ((x_lo,y_lo,z_lo), (x_hi,y_hi,z_hi)) -- geometry bounding box
+info.max_eps_r       # float -- highest eps_r (drives dx)
+info.has_pec         # bool -- any PEC geometry present
+info.estimated_Q     # float -- estimated Q from material loss tangent
+info.z_features      # list of (z_lo, z_hi, eps_r) -- for non-uniform z detection
+```
+
+---
+
+## How It Works
+
+`auto_configure()` runs a five-step derivation pipeline:
+
+### Step 1: Cell Size (dx)
+
+The cell size is chosen as the minimum of two constraints:
+
+```
+lambda_min_medium = C0 / f_max / sqrt(max_eps_r)   # shortest wavelength in medium
+dx_wavelength     = lambda_min_medium / cells_per_wavelength
+dx_feature        = min_feature_thickness / cells_per_feature
+dx                = min(dx_wavelength, dx_feature)
+```
+
+Accuracy preset values:
+
+| Preset | Cells/lambda | Cells/feature | Expected Error |
+|--------|-------------|---------------|----------------|
+| `"draft"` | 10 | 2 | ~10% |
+| `"standard"` | 20 | 4 | ~3% |
+| `"high"` | 40 | 8 | ~1% |
+
+The result is rounded to a "nice" value (e.g., 0.5 mm, 0.25 mm) to avoid floating-point accumulation.
+
+### Step 2: Domain Margins
+
+The domain extends beyond geometry by a margin derived from the longest wavelength:
+
+```
+margin = lambda_max * margin_fraction
+```
+
+| Preset | Margin fraction | Physical meaning |
+|--------|-----------------|------------------|
+| `"draft"` | 0.15 lambda_max | Minimal; domain resonances possible below ~2x f_min |
+| `"standard"` | 0.25 lambda_max | Safe for most structures |
+| `"high"` | 0.50 lambda_max | Required for accurate radiation patterns |
+
+!!! warning "Margin matters"
+    At `margin = 0.12 lambda_max`, domain resonances can mask the target resonance entirely. Always use at least `"standard"` for open-boundary structures.
+
+### Step 3: CPML Layers
+
+CPML layers are set by cell count rather than physical thickness:
+
+| Preset | CPML cells | Physical thickness |
+|--------|-----------|-------------------|
+| `"draft"` | 8 | 8 x dx |
+| `"standard"` | 12 | 12 x dx |
+| `"high"` | 16 | 16 x dx |
+
+### Step 4: Non-Uniform Z Detection
+
+When a geometry layer is thinner than 4 cells at the wavelength-based dx, `auto_configure()` automatically switches to a non-uniform z mesh. This is the standard approach for PCB-type structures (thin substrate in a large air domain):
+
+```
+Condition: z_thickness / dx_wavelength < 4
+-> Enable non-uniform z mesh
+-> Use coarser dx_wavelength for x/y (saves computation)
+-> Generate dz_profile that snaps exactly to each substrate boundary
+```
+
+The `dz_profile` is an array of per-cell z sizes. Fine cells resolve the thin substrate; coarse cells fill the air region above.
+
+### Step 5: Timestep and Step Count
+
+```
+# CFL-stable timestep
+dt = 0.99 / (C0 * sqrt(1/dx^2 + 1/dx^2 + 1/dz_min^2))  # non-uniform
+dt = 0.99 * dx / (C0 * sqrt(3))                           # uniform
+
+# Source decay time
+tau = 1 / (f_center * bandwidth * pi)
+T_source = 6 * tau
+
+# Ring-down time from estimated Q
+Q = 1 / tan_delta   (capped at 1000)
+T_ringdown = Q / (pi * f_min)
+
+n_steps = ceil((T_source + T_ringdown) / dt)
+```
+
+---
+
+## Accuracy Presets in Practice
+
+=== "Draft (10 cells/lambda)"
+
+    ```python
+    config = auto_configure(geometry, (1e9, 4e9), accuracy="draft")
+    # dx ~ 1.0 mm for FR4 at 4 GHz
+    # Use for: rapid parameter sweeps, initial design space exploration
+    # Avoid for: final validation, S-parameter extraction, high-Q structures
+    ```
+
+=== "Standard (20 cells/lambda)"
+
+    ```python
+    config = auto_configure(geometry, (1e9, 4e9), accuracy="standard")
+    # dx ~ 0.5 mm for FR4 at 4 GHz
+    # Use for: most design iterations, S-parameter extraction
+    # Expected error: ~3% on resonant frequency
+    ```
+
+=== "High (40 cells/lambda)"
+
+    ```python
+    config = auto_configure(geometry, (1e9, 4e9), accuracy="high")
+    # dx ~ 0.25 mm for FR4 at 4 GHz
+    # Use for: final validation, convergence verification, publication results
+    # Expected error: ~1% (limited by geometry discretization)
+    ```
+
+---
+
+## SimConfig.to_sim_kwargs()
+
+`to_sim_kwargs()` returns a dict ready to unpack into `Simulation()`:
+
+```python
+config = auto_configure(geometry, (1e9, 4e9))
+kwargs = config.to_sim_kwargs()
+# {
+#   "freq_max": 4e9,
+#   "domain": (0.072, 0.072, 0.035),
+#   "boundary": "cpml",
+#   "cpml_layers": 12,
+#   "dx": 0.0005,
+#   "dz_profile": array([...])  # only when non-uniform z is active
+# }
+
+sim = Simulation(**kwargs)
+```
+
+---
+
+## Non-Uniform Z: When and How
+
+The non-uniform z mesh activates automatically when `auto_configure()` detects that a z-feature (substrate layer) would be resolved by fewer than 4 cells at the wavelength-based dx.
+
+**Example: 1.6 mm FR4 substrate at 4 GHz**
+
+At `accuracy="standard"`:
+
+```
+lambda_min_FR4 = C0 / 4e9 / sqrt(4.4) = 35.7 mm
+dx_wavelength  = 35.7 mm / 20 = 1.79 mm  ->  rounded to 1.0 mm
+h / dx         = 1.6 mm / 1.0 mm = 1.6 cells  ->  < 4  ->  trigger non-uniform z
+```
+
+With non-uniform z active:
+
+- x/y cells: `dx = 1.0 mm` (coarse, wavelength-based)
+- z cells through substrate: 4 cells of `0.4 mm` each
+- z cells in air: `1.0 mm` (coarse)
+
+This saves ~8x memory vs. refining the entire grid to `0.4 mm`.
+
+```python
+config = auto_configure(geometry, (1e9, 4e9))
+if config.uses_nonuniform:
+    print(f"Non-uniform z: {len(config.dz_profile)} cells")
+    print(f"dz range: {config.dz_profile.min()*1e3:.3f} - "
+          f"{config.dz_profile.max()*1e3:.1f} mm")
+
+# Pass through to_sim_kwargs() -- dz_profile is included automatically
+sim = Simulation(**config.to_sim_kwargs())
+```
+
+---
+
+## End-to-End Example: 2.4 GHz Patch on FR4
+
+An agent receives the task: *"Design and simulate a 2.4 GHz patch antenna on FR4 substrate."*
+
+**Step 1: Analytical estimate of patch dimensions**
+
+For a rectangular patch on FR4 (eps_r=4.4, h=1.6 mm):
+
+```python
+import math
+
+eps_r = 4.4
+h = 0.0016       # substrate thickness (m)
+f0 = 2.4e9       # target frequency (Hz)
+C0 = 3e8
+
+# Patch length estimate (half-wavelength in effective medium)
+eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 * (1 + 12 * h / 0.038) ** -0.5
+L = C0 / (2 * f0 * math.sqrt(eps_eff)) - 2 * 0.412 * h * (eps_eff + 0.3) / (eps_eff - 0.258)
+W = C0 / (2 * f0) * math.sqrt(2 / (eps_r + 1))
+print(f"Estimated patch: L={L*1e3:.1f} mm, W={W*1e3:.1f} mm")
+# -> L ~ 29.5 mm, W ~ 38.1 mm
+```
+
+**Step 2: Build geometry and auto-configure**
+
+```python
+from rfx import Simulation, Box, auto_configure
+
+L, W, h = 0.0295, 0.0381, 0.0016
+margin = 0.010   # extra space around patch
+
+substrate = Box(
+    (0, 0, 0),
+    (L + 2*margin, W + 2*margin, h)
+)
+patch = Box(
+    (margin, margin, h),
+    (margin + L, margin + W, h)
+)
+
+geometry = [
+    (substrate, "fr4"),
+    (patch, "pec"),
+]
+
+config = auto_configure(geometry, freq_range=(1e9, 4e9), accuracy="standard")
+print(config.summary())
+# SimConfig (accuracy='standard'):
+#   dx = 1.000 mm (20 cells/lambda_min)
+#   domain = 69.5 x 78.1 x 33.4 mm
+#   cpml = 12 layers (12.0 mm)
+#   n_steps = 8241 (8.2 ns)
+#   Non-uniform z mesh enabled: 14 cells, dz=0.400-1.000 mm
+```
+
+**Step 3: Simulate and extract resonance**
+
+```python
+sim = Simulation(**config.to_sim_kwargs())
+for shape, mat in geometry:
+    sim.add(shape, material=mat)
+sim.add_source((margin + L/2, margin + W/2, h), "ez")
+sim.add_probe((margin + L/2, margin + W/2, h), "ez")
+
+result = sim.run(n_steps=config.n_steps)
+
+modes = result.find_resonances(freq_range=(1e9, 4e9))
+if modes:
+    best = max(modes, key=lambda m: abs(m.amplitude))
+    print(f"Resonance: {best.freq/1e9:.3f} GHz  Q={best.Q:.1f}")
+    error_pct = abs(best.freq - f0) / f0 * 100
+    print(f"Error vs target: {error_pct:.1f}%")
+else:
+    print("No resonance found -- check geometry or widen freq_range")
+```
+
+---
+
+## Decision Tree: What auto_configure Chooses
+
+```
+Input: geometry, freq_range, accuracy
+          |
+          v
+    analyze_features()
+    +-- max_eps_r  ──────────────────────────────>  dx_wavelength
+    +-- min_thickness  ──────────────────────────>  dx_feature
+    +-- z_features  ─────+
+                         |
+          +--------------v--------------+
+          |  z_thickness / dx_wave < 4? |
+          +--------------+--------------+
+                 YES      |     NO
+                  |       |      |
+                  v       |      v
+         non-uniform z    |  dx = min(dx_wave, dx_feat)
+         dx = dx_wave     |
+                  |       |
+                  +-------+
+                          |
+                          v
+                  domain = bbox + 2*margin
+                  cpml_layers = preset cells
+                          |
+                          v
+                  dt from CFL condition
+                  n_steps from T_source + T_ringdown
+                          |
+                          v
+                  return SimConfig
+```
+
+---
+
+## Handling Warnings
+
+Always check `config.warnings` before running:
+
+```python
+config = auto_configure(geometry, freq_range, accuracy="standard")
+
+for w in config.warnings:
+    print(f"WARNING: {w}")
+
+# Common warnings and remedies:
+
+# "Thinnest feature (0.35 mm) has only 1.4 cells"
+#   -> Use accuracy="high" or dx_override=0.1e-3
+#   -> Or use add_thin_conductor() for metal sheets < 1 cell thick
+
+# "Estimated 72341 steps (high Q=230)"
+#   -> Structure has very low loss; use until_decay=1e-4 instead of fixed n_steps
+#   -> Or add lossy material to reduce Q
+
+# "Non-uniform z mesh enabled: 18 cells, dz=0.267-1.000 mm"
+#   -> Informational only; non-uniform mesh is active and efficient
+```

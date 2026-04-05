@@ -1,0 +1,230 @@
+---
+title: "Sources and Ports"
+description: "All sources accept a waveform object that defines the time-domain excitation envelope."
+sidebar:
+  order: 4
+---
+
+
+rfx distinguishes between **sources** (field injection without impedance loading) and **ports** (sources with a matched load for S-parameter extraction).
+
+---
+
+## Waveforms
+
+All sources accept a waveform object that defines the time-domain excitation envelope.
+
+### GaussianPulse
+
+A Gaussian-modulated sinusoid (default excitation for ports):
+
+```python
+from rfx import GaussianPulse
+
+pulse = GaussianPulse(
+    f0=2.4e9,       # centre frequency (Hz)
+    bandwidth=0.8,  # fractional bandwidth (default 0.8 -> wideband)
+    amplitude=1.0,  # peak amplitude
+)
+```
+
+The pulse energy is concentrated in `[f0*(1-bw/2), f0*(1+bw/2)]`. Set `bandwidth` below `0.5` for narrowband excitation near `f0`.
+
+### ModulatedGaussian
+
+Like `GaussianPulse` but with zero DC content. This is often the better choice
+for resonance-focused `add_source()` runs because it prevents static charge
+accumulation on PEC surfaces:
+
+```python
+from rfx import ModulatedGaussian
+
+waveform = ModulatedGaussian(f0=3e9, bandwidth=0.6)
+```
+
+If `waveform` is omitted, the current high-level API uses `GaussianPulse`.
+Pass `ModulatedGaussian(...)` explicitly when you want zero-DC excitation.
+
+### CWSource
+
+Continuous-wave sinusoid, useful for steady-state field visualisation:
+
+```python
+from rfx import CWSource
+
+cw = CWSource(
+    f0=5.8e9,       # frequency (Hz)
+    ramp_steps=200, # linear ramp-up steps to avoid impulse at t=0
+)
+```
+
+### CustomWaveform
+
+Arbitrary time-domain waveform via a JAX-compatible callable:
+
+```python
+from rfx import CustomWaveform
+import jax.numpy as jnp
+
+def chirp(t):
+    f_start, f_end = 1e9, 4e9
+    rate = (f_end - f_start) / 10e-9
+    return jnp.sin(2 * jnp.pi * (f_start * t + 0.5 * rate * t**2))
+
+sim.add_source((0.02, 0.02, 0.01), "ez", waveform=CustomWaveform(func=chirp))
+```
+
+---
+
+## Point source (`add_source`)
+
+A soft current source injected at a single Yee cell. No resistive load — cavity Q is not affected.
+
+```python
+sim.add_source(
+    position=(0.025, 0.025, 0.010),  # (x, y, z) in metres
+    component="ez",                   # "ex", "ey", or "ez"
+    waveform=GaussianPulse(f0=3e9),
+)
+```
+
+Use `add_source` for resonance characterisation (Harminv) where port loading would suppress the ring-down signal.
+
+---
+
+## Polarised source (`add_polarized_source`)
+
+Injects a source with a specified Jones-vector polarisation:
+
+```python
+# Linear
+sim.add_polarized_source((0.025, 0.025, 0.01), polarization="ez")
+
+# 45-degree slant linear
+sim.add_polarized_source((0.025, 0.025, 0.01), polarization="slant45")
+
+# Right-hand circular
+sim.add_polarized_source(
+    (0.025, 0.025, 0.01),
+    polarization="rhcp",
+    waveform=GaussianPulse(f0=3e9),
+)
+
+# Arbitrary Jones vector (complex)
+sim.add_polarized_source(
+    (0.025, 0.025, 0.01),
+    polarization=(1.0, 1j),   # (Ex, Ey) — normalised internally
+    waveform=GaussianPulse(f0=3e9),
+)
+```
+
+Supported string shortcuts: `"ex"`, `"ey"`, `"ez"`, `"circular"` / `"rhcp"`, `"lhcp"`, `"slant45"`.
+
+---
+
+## Lumped port (`add_port`)
+
+A single-cell port with a resistive load equal to `impedance`. Enables S-parameter extraction referenced to that impedance.
+
+```python
+sim.add_port(
+    position=(0.01, 0.025, 0.010),
+    component="ez",
+    impedance=50.0,                      # ohms
+    waveform=GaussianPulse(f0=5e9),
+)
+```
+
+Run with `compute_s_params=True` to extract the S-matrix:
+
+```python
+result = sim.run(n_steps=2000, compute_s_params=True)
+s11 = result.s_params[0, 0, :]   # (n_freqs,) complex
+```
+
+!!! tip
+    Multiple `add_port()` calls create a multi-port structure. rfx drives one port at a
+    time and assembles the full N×N S-matrix automatically.
+
+---
+
+## Wire port (`add_port` with `extent`)
+
+A wire port spans multiple Yee cells along the port axis, connecting conductor to conductor across a gap. This is the standard model for coaxial probe feeds and SMA connectors:
+
+```python
+# Port spans 1.5 mm in z, from substrate bottom to patch surface
+sim.add_port(
+    position=(0.029, 0.030, 0.0),    # start of wire
+    component="ez",
+    impedance=50.0,
+    extent=0.0016,                    # wire length in metres
+    waveform=GaussianPulse(f0=2.4e9),
+)
+```
+
+The `extent` parameter turns the lumped port into a `WirePort`. S-parameters are extracted using JIT-DFT voltage/current integrals over the wire span. Wire ports are more accurate for feed structures that are several cells long.
+
+!!! warning
+    `extent` must be aligned with the `component` direction. For `component="ez"`, `extent`
+    spans in the z-direction from `position[2]` to `position[2] + extent`.
+
+---
+
+## Waveguide port (`add_waveguide_port`)
+
+Modal waveguide excitation for rectangular waveguide S-matrix extraction. Injects a specific TE/TM mode and decomposes the reflected/transmitted fields into the same modal basis.
+
+```python
+sim.add_waveguide_port(
+    x_position=0.01,              # physical x-coordinate of port face
+    y_range=(0.0, 0.023),         # aperture y-extent
+    z_range=(0.0, 0.010),         # aperture z-extent
+    mode=(1, 0),                   # TE10 mode
+    mode_type="TE",
+    direction="+x",                # propagation direction
+    f0=10e9,
+    bandwidth=0.5,
+    name="port1",
+)
+```
+
+After running, access calibrated S-parameters:
+
+```python
+result = sim.run(n_steps=3000)
+sp = result.waveguide_sparams["port1"]
+# sp.freqs, sp.s11, sp.s21
+```
+
+---
+
+## TFSF plane-wave source (`add_tfsf_source`)
+
+Total-field/scattered-field plane wave for scattering and RCS simulations:
+
+```python
+sim.add_tfsf_source(
+    f0=5e9,
+    bandwidth=0.4,
+    polarization="ez",
+    direction="+x",    # propagation direction
+    angle_deg=0.0,     # oblique incidence angle (degrees from normal)
+)
+```
+
+!!! warning
+    `add_tfsf_source` cannot be combined with lumped ports or waveguide ports.
+
+---
+
+## Summary table
+
+| Method | Use case | S-params |
+|---|---|---|
+| `add_source()` | Resonance, visualisation | No |
+| `add_polarized_source()` | Antenna radiation, polarimetry | No |
+| `add_port(extent=None)` | Lumped-port S-params | Yes |
+| `add_port(extent=...)` | Wire / probe-feed S-params | Yes |
+| `add_waveguide_port()` | Modal waveguide S-matrix | Yes |
+| `add_tfsf_source()` | RCS, scattering, plane-wave | No |

@@ -1,0 +1,96 @@
+---
+title: "Quick Start"
+description: "First simulation with the current stable rfx high-level API."
+sidebar:
+  order: 1
+---
+
+This guide uses the **current stable public API** and avoids older pre-release examples that
+used outdated keyword names for source/port waveforms.
+
+## 1. Minimal high-level run
+
+```python
+from rfx import Simulation, Box, GaussianPulse
+
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.10, 0.04, 0.02),
+    boundary="cpml",
+)
+
+sim.add_material("slab", eps_r=2.2)
+sim.add(Box((0.03, 0.0, 0.0), (0.05, 0.04, 0.02)), material="slab")
+
+sim.add_source(
+    (0.01, 0.02, 0.01),
+    "ez",
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+)
+sim.add_probe((0.08, 0.02, 0.01), "ez")
+
+result = sim.run(until_decay=1e-3)
+modes = result.find_resonances(freq_range=(1e9, 4e9))
+```
+
+Use `add_source()` for **unloaded resonance studies**.  
+Use `add_port()` when you actually want S-parameters against a reference
+impedance.
+
+## 2. Minimal port / S-parameter run
+
+```python
+import numpy as np
+from rfx import Simulation, Box, GaussianPulse
+
+sim = Simulation(freq_max=5e9, domain=(0.10, 0.04, 0.02), boundary="cpml")
+sim.add_material("dielectric", eps_r=4.0)
+sim.add(Box((0.03, 0.0, 0.0), (0.05, 0.04, 0.02)), material="dielectric")
+
+sim.add_port(
+    position=(0.01, 0.02, 0.01),
+    component="ez",
+    impedance=50.0,
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+)
+
+result = sim.run(n_steps=800, compute_s_params=True)
+s11 = result.s_params[0, 0, :]
+s11_db = 20 * np.log10(np.abs(s11) + 1e-12)
+```
+
+## 3. Auto-configured thin-substrate setup
+
+```python
+from rfx import Simulation, Box, auto_configure
+
+geometry = [
+    (Box((0, 0, 0), (0.06, 0.06, 0.0016)), "fr4"),
+    (Box((0, 0, 0), (0.06, 0.06, 0.0)), "pec"),
+]
+materials = {
+    "fr4": {"eps_r": 4.4, "sigma": 0.025},
+    "pec": {"eps_r": 1.0, "sigma": 1e10},
+}
+
+cfg = auto_configure(
+    geometry,
+    freq_range=(1e9, 4e9),
+    materials=materials,
+    accuracy="standard",
+)
+
+print(cfg.summary())
+
+sim = Simulation(**cfg.to_sim_kwargs())
+```
+
+When `auto_configure()` detects a thin z-feature, it can switch to a
+**non-uniform z mesh** via `dz_profile` while keeping `dx`/`dy` coarser.
+
+## 4. Common next steps
+
+- [Simulation API](../api-reference/) — current method signatures and result fields
+- [Sources & Ports](../sources-ports/) — when to use `add_source()` vs `add_port()`
+- [Non-Uniform Mesh](../nonuniform-mesh/) — `dz_profile` and thin-substrate workflow
+- [Validation](../validation/) — what is strongly benchmarked today

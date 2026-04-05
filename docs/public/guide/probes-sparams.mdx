@@ -1,0 +1,220 @@
+---
+title: "Probes and S-Parameters"
+description: "Records a single field component at one Yee cell over time. The time series is stored in `result.time_series`."
+sidebar:
+  order: 5
+---
+
+
+rfx provides three probe types for extracting field data, plus several S-parameter extraction methods for different port models.
+
+---
+
+## Point probe
+
+Records a single field component at one Yee cell over time. The time series is stored in `result.time_series`.
+
+```python
+sim.add_probe(
+    position=(0.025, 0.025, 0.010),  # (x, y, z) in metres
+    component="ez",                   # ex / ey / ez / hx / hy / hz
+)
+```
+
+After running:
+
+```python
+result = sim.run(n_steps=4000)
+ts = result.time_series          # shape (n_steps, n_probes)
+ez_vs_time = ts[:, 0]            # first probe, all timesteps
+```
+
+Multiple probes are indexed in the order they were registered.
+
+---
+
+## Vector probe
+
+Records all six field components (Ex, Ey, Ez, Hx, Hy, Hz) at the same position.
+
+```python
+sim.add_vector_probe((0.025, 0.025, 0.010))
+```
+
+Result columns 0–5 correspond to Ex, Ey, Ez, Hx, Hy, Hz in that order.
+
+---
+
+## DFT plane probe
+
+Accumulates the frequency-domain field on a 2-D cross-section during the time loop. More memory-efficient than saving full snapshots and avoids FFT leakage of short time windows.
+
+```python
+import jax.numpy as jnp
+
+sim.add_dft_plane_probe(
+    axis="z",
+    coordinate=0.010,           # z-plane at 10 mm
+    component="ez",
+    freqs=jnp.linspace(1e9, 4e9, 50),
+    name="ez_cross_section",
+)
+```
+
+Access the result:
+
+```python
+result = sim.run(n_steps=4000)
+plane = result.dft_planes["ez_cross_section"]
+# plane.data : shape (n_freqs, nx, ny) complex
+```
+
+!!! tip
+    Omit `freqs` and set `n_freqs` to let rfx choose a frequency array automatically
+    from `freq_max / 10` to `freq_max`.
+
+---
+
+## S-parameter extraction
+
+### Lumped port S-matrix
+
+When one or more lumped ports are added with `add_port()`, pass `compute_s_params=True`:
+
+```python
+sim.add_port((0.01, 0.02, 0.01), "ez", impedance=50)
+sim.add_port((0.04, 0.02, 0.01), "ez", impedance=50)
+
+result = sim.run(n_steps=3000, compute_s_params=True)
+s_matrix = result.s_params           # (2, 2, n_freqs) complex
+freqs     = result.freqs             # (n_freqs,) Hz
+
+import numpy as np
+s11_db = 20 * np.log10(np.abs(s_matrix[0, 0, :]))
+s21_db = 20 * np.log10(np.abs(s_matrix[1, 0, :]))
+```
+
+The S-matrix is normalised to each port's `impedance`.
+
+### Wire port S-matrix (JIT-DFT)
+
+Wire ports use voltage/current DFT integrals accumulated during the time loop. The extraction is performed inside a JIT-compiled scan, making it faster than post-processing FFTs for long simulations.
+
+```python
+sim.add_port(
+    (0.01, 0.02, 0.0),
+    "ez",
+    impedance=50,
+    extent=0.0016,               # wire length
+)
+
+result = sim.run(n_steps=5000, compute_s_params=True)
+s11 = result.s_params[0, 0, :]  # complex, shape (n_freqs,)
+```
+
+### Waveguide S-parameters
+
+See [Sources & Ports](./sources-ports/) for the waveguide-port setup workflow. After running:
+
+```python
+sp = result.waveguide_sparams["port1"]
+
+print(sp.freqs.shape)              # (n_freqs,)
+print(sp.s11.shape)                # (n_freqs,) complex
+print(sp.calibration_preset)
+print(f"Reference plane: {sp.reference_plane*1e3:.1f} mm")
+print(f"Probe plane:     {sp.probe_plane*1e3:.1f} mm")
+```
+
+`WaveguideSParamResult` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `freqs` | ndarray | Frequency array (Hz) |
+| `s11` | complex ndarray | Reflection coefficient at port |
+| `s21` | complex ndarray | Transmission to measurement plane |
+| `calibration_preset` | str | `"measured"` or `"source_to_probe"` |
+| `source_plane` | float | Actual source injection plane (m) |
+| `reference_plane` | float | Reported S11 reference plane (m) |
+| `probe_plane` | float | Reported S21 measurement plane (m) |
+
+---
+
+## Resonance extraction — Harminv
+
+`result.find_resonances()` applies the Harminv MUSIC-like algorithm to extract complex resonant frequencies from the probe ring-down signal. It returns a list of `HarminvMode` objects sorted by amplitude.
+
+```python
+modes = result.find_resonances(
+    freq_range=(1e9, 5e9),   # search band (Hz)
+    probe_idx=0,             # which probe to analyse (default 0)
+)
+
+for m in modes:
+    print(f"f={m.freq/1e9:.4f} GHz  Q={m.Q:.0f}  amp={m.amplitude:.3e}")
+```
+
+`HarminvMode` fields:
+
+| Field | Description |
+|---|---|
+| `freq` | Resonant frequency (Hz) |
+| `decay` | Exponential decay rate (1/s) |
+| `Q` | Quality factor = pi*f/decay |
+| `amplitude` | Complex mode amplitude |
+| `phase` | Phase (radians) |
+
+### Parameters
+
+```python
+modes = result.find_resonances(
+    freq_range=(1e9, 4e9),
+    probe_idx=0,
+    source_decay_time=None,  # auto-computed: 2*(3*tau), where tau=1/(f_c*bw*pi)
+    bandpass=None,           # auto: True for CPML (removes DC artifacts), False for PEC
+)
+```
+
+!!! note
+    Harminv requires the signal to have decayed to ring-down before the analysis window
+    starts. `source_decay_time` is subtracted from the beginning of the time series.
+    The default auto-computation is appropriate for `GaussianPulse` excitation.
+
+### Standalone Harminv
+
+You can call Harminv directly on any time series:
+
+```python
+from rfx import harminv
+import numpy as np
+
+dt = 1e-12  # timestep in seconds
+signal = np.loadtxt("probe_data.txt")
+modes = harminv(signal, dt, f_min=1e9, f_max=5e9)
+```
+
+---
+
+## Plotting helpers
+
+```python
+from rfx import plot_s_params, plot_time_series, plot_field_slice
+
+plot_s_params(result)           # S11/S21 magnitude and phase
+plot_time_series(result)        # all probe time series on one axes
+plot_field_slice(result, "ez", axis="z", index=30)  # 2-D Ez cross-section
+```
+
+---
+
+## Touchstone I/O
+
+```python
+from rfx import write_touchstone, read_touchstone
+
+# Write 2-port S-params to a .s2p file
+write_touchstone("patch_antenna.s2p", result.freqs, result.s_params)
+
+# Read back
+freqs, s_matrix = read_touchstone("patch_antenna.s2p")
+```

@@ -1,0 +1,24 @@
+---
+title: "Topology Optimisation"
+description: "Density-based inverse design with filtering, projection, and beta continuation in rfx."
+sidebar:
+  order: 21
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Under construction">
+  This page is a placeholder. Content will be added in a future update.
+</Aside>
+
+## Overview
+
+This guide will cover rfx's topology optimisation pipeline:
+
+- **Density parameterisation** — continuous relaxation of material presence
+- **Cone filter** — minimum feature-size enforcement via spatial filtering
+- **Smooth Heaviside projection** — binarisation with differentiable thresholding
+- **Beta continuation schedule** — progressive sharpening toward 0/1 designs
+- **Gradient computation** — `jax.grad` through the full FDTD loop
+
+See [Gradient Behavior](../gradient-behavior/) for where gradients are reliable and [Inverse Design](../inverse-design/) for the broader design framework.

@@ -1,0 +1,224 @@
+---
+title: "rfx for AI Agents"
+description: "Every operation uses named arguments and string identifiers — no grid indices, no NamedTuples, no JAX internals requir"
+sidebar:
+  order: 1
+---
+
+
+rfx is a JAX-based differentiable 3D FDTD electromagnetic simulator designed with agent-friendliness as a first-class concern. This guide explains how LLM agents (Claude, GPT, Gemini, etc.) can use rfx to autonomously design and simulate RF structures.
+
+---
+
+## Why rfx Is Agent-Friendly
+
+### Declarative, Named API
+
+Every operation uses named arguments and string identifiers — no grid indices, no NamedTuples, no JAX internals required:
+
+```python
+sim = Simulation(freq_max=6e9, domain=(0.06, 0.06, 0.025))
+sim.add_material("substrate", eps_r=4.4, sigma=0.025)
+sim.add(Box((0.005, 0.005, 0), (0.055, 0.055, 0.0016)), material="substrate")
+sim.add_port((0.03, 0.03, 0.0016), "ez", impedance=50)
+result = sim.run()
+```
+
+An agent can generate this code directly from a natural-language description of the structure.
+
+### Built-in Material Library
+
+rfx ships a `MATERIAL_LIBRARY` with pre-validated RF materials. An agent only needs to pass the name string — no manual lookup of dielectric constants:
+
+| Name | `eps_r` | `sigma` (S/m) | Use case |
+|------|---------|---------------|----------|
+| `"fr4"` | 4.4 | 0.025 | PCB substrates |
+| `"rogers4003c"` | 3.55 | 0.0027 | High-freq laminates |
+| `"alumina"` | 9.8 | 0.0 | Ceramic substrates |
+| `"silicon"` | 11.9 | 0.01 | MMIC substrates |
+| `"ptfe"` | 2.1 | 0.0 | Low-loss laminates |
+| `"copper"` | 1.0 | 5.8e7 | Conductors |
+| `"pec"` | 1.0 | 1e10 | Ideal conductors |
+| `"vacuum"` | 1.0 | 0.0 | Free space |
+
+### Zero Grid Math Required
+
+The `auto_configure()` function derives all simulation parameters — cell size, domain margins, CPML layers, timestep count — from geometry and frequency range alone. An agent never needs to compute:
+
+- `dx = lambda_min / 20 / sqrt(eps_r)`
+- `n_steps = ceil((T_source + T_ringdown) / dt)`
+- CPML layer counts
+- Domain padding distances
+
+### Method-Chaining Builder
+
+All `add_*` methods return `self`, enabling compact pipelines:
+
+```python
+result = (
+    Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.02))
+    .add_material("sub", eps_r=3.55, sigma=1e-4)
+    .add(Box((0, 0, 0), (0.04, 0.04, 0.002)), material="sub")
+    .add(Box((0.01, 0.01, 0.002), (0.03, 0.03, 0.002)), material="pec")
+    .add_port((0.02, 0.02, 0.002), "ez", impedance=50)
+    .run(n_steps=4000)
+)
+```
+
+---
+
+## Capability Matrix
+
+| Task | rfx Support | Key API |
+|------|-------------|---------|
+| Patch antenna resonance | Full | `add_source()`, `result.find_resonances()` |
+| S-parameter extraction | Full | `add_port()`, `result.s_params` |
+| Filter bandwidth optimization | Full | `DesignRegion`, `optimize()` |
+| Far-field radiation pattern | Full | `add_ntff_box()`, `compute_far_field()` |
+| RCS calculation | Full | `compute_rcs()` |
+| Waveguide S-matrix | Full | `add_waveguide_port()` |
+| Convergence study (dx sweep) | Full | `auto_configure(accuracy=...)` |
+| Cross-validation vs Meep | Full | `read_touchstone()`, `write_touchstone()` |
+| Dispersive materials (Debye) | Full | `DebyePole`, `add_material(debye_poles=...)` |
+| Thin conductors (subcell) | Full | `add_thin_conductor()` |
+| Inverse design (gradient) | Full | `DesignRegion`, JAX grad |
+| Oblique incidence scattering | Partial | `add_tfsf_source(angle_deg=...)` |
+| Eigenmode expansion | Optional | `solve_waveguide_modes()` (requires scipy) |
+
+---
+
+## Minimal Example: 5-Line Simulation
+
+This is the canonical pattern an agent should generate for a first simulation of any planar structure:
+
+```python
+import rfx
+from rfx import Simulation, Box, auto_configure
+
+# 1. Describe geometry
+geometry = [
+    (Box((0, 0, 0), (0.06, 0.06, 0.0016)), "fr4"),
+    (Box((0.01, 0.01, 0.0016), (0.05, 0.05, 0.0016)), "pec"),
+]
+
+# 2. Auto-configure all simulation parameters
+config = auto_configure(geometry, freq_range=(1e9, 4e9), accuracy="standard")
+print(config.summary())  # shows dx, domain, n_steps, warnings
+
+# 3. Build simulation
+sim = Simulation(**config.to_sim_kwargs())
+for shape, mat in geometry:
+    sim.add(shape, material=mat)
+sim.add_source((0.03, 0.03, 0.0016), "ez")
+sim.add_probe((0.03, 0.03, 0.0016), "ez")
+
+# 4. Run and extract resonances
+result = sim.run(n_steps=config.n_steps)
+modes = result.find_resonances(freq_range=(1e9, 4e9))
+for m in modes:
+    print(f"  f = {m.freq/1e9:.3f} GHz, Q = {m.Q:.1f}")
+```
+
+---
+
+## Integration Patterns
+
+### Pattern 1: Function Calling (Structured Output)
+
+Use rfx as a tool backend. The agent receives structured parameters and generates validated Python:
+
+```json
+{
+  "tool": "rfx_simulate",
+  "parameters": {
+    "substrate": "fr4",
+    "patch_length_mm": 38.0,
+    "patch_width_mm": 29.0,
+    "substrate_thickness_mm": 1.6,
+    "freq_range_ghz": [1.0, 4.0],
+    "accuracy": "standard"
+  }
+}
+```
+
+The tool wrapper translates this directly to `auto_configure()` + `Simulation`.
+
+### Pattern 2: Code Generation
+
+The agent generates complete Python scripts. rfx's API is designed to be readable from code output alone — no hidden state, no implicit configuration. A typical generated script:
+
+1. Import `rfx` and geometry primitives
+2. Define geometry as a list of `(Box(...), "material_name")` tuples
+3. Call `auto_configure()` to get `SimConfig`
+4. Build `Simulation(**config.to_sim_kwargs())`
+5. Register geometry, sources, probes
+6. Call `result = sim.run(n_steps=config.n_steps)`
+7. Extract and report results
+
+### Pattern 3: Iterative Refinement Loop
+
+```
+Agent: generate initial design
+  -> simulate (accuracy="draft")
+  -> if resonance found: refine design
+  -> simulate (accuracy="standard")
+  -> if error > threshold: escalate accuracy="high"
+  -> report final result
+```
+
+Use `accuracy="draft"` (10 cells/lambda) for rapid exploration and `accuracy="high"` (40 cells/lambda) only for final verification. This reduces compute by 8-64x during search.
+
+### Pattern 4: Parallel Variant Sweep
+
+rfx simulations are pure functions. An agent can dispatch multiple simulations in parallel by varying one parameter at a time:
+
+```python
+import concurrent.futures
+
+def simulate_patch(length_mm):
+    geometry = [(Box(...), "fr4"), ...]  # vary length_mm
+    config = auto_configure(geometry, freq_range=(1e9, 4e9))
+    sim = Simulation(**config.to_sim_kwargs())
+    # ... add geometry, source, probe
+    result = sim.run(n_steps=config.n_steps)
+    modes = result.find_resonances(freq_range=(1e9, 4e9))
+    return length_mm, modes
+
+lengths = [30, 32, 34, 36, 38, 40]  # mm
+with concurrent.futures.ProcessPoolExecutor() as pool:
+    results = list(pool.map(simulate_patch, lengths))
+```
+
+---
+
+## What Agents Should NOT Do
+
+!!! warning "Common Agent Mistakes"
+    - **Do not set `dx` manually** unless you understand the geometry. Use `auto_configure()` and let it select dx from wavelength and feature analysis.
+    - **Do not use `add_port()` for resonance characterization.** The 50 ohm load damps high-Q cavities. Use `add_source()` + `result.find_resonances()` instead.
+    - **Do not set `n_steps` arbitrarily.** Use `config.n_steps` from `auto_configure()` or `until_decay=1e-4` for unknown Q structures.
+    - **Do not use `"copper"` material for thick conductor volumes.** Use `"pec"` for ideal conductors or `add_thin_conductor()` for thin metal sheets with subcell correction.
+    - **Do not skip `config.warnings`.** Warnings about thin features or high step counts indicate the geometry needs attention before running.
+
+---
+
+## Quick Reference: Result Fields
+
+```python
+result = sim.run(...)
+
+result.time_series        # (n_steps, n_probes) -- raw field recordings
+result.s_params           # (n_ports, n_ports, n_freqs) complex -- S-matrix
+result.freqs              # (n_freqs,) Hz -- S-param frequency axis
+result.state              # final FDTD field state (for visualization)
+result.ntff_data          # raw NTFF DFT data (use compute_far_field())
+result.snapshots          # dict of field snapshots by component name
+result.waveguide_sparams  # dict[port_name, WaveguideSParamResult]
+
+# Resonance extraction (Harminv)
+modes = result.find_resonances(freq_range=(f_min, f_max))
+modes[0].freq          # resonant frequency (Hz)
+modes[0].Q             # quality factor
+modes[0].decay_rate    # field decay rate (s^-1)
+modes[0].amplitude     # complex amplitude
+```

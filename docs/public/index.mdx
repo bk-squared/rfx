@@ -1,0 +1,162 @@
+---
+title: "rfx"
+description: "**Differentiable FDTD for RF/Microwave — powered by JAX**"
+sidebar:
+  order: 1
+---
+
+**Differentiable FDTD for RF/Microwave — powered by JAX**
+
+rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built entirely in JAX. It is designed for RF and microwave engineers who need accurate broadband field solutions, modern RF workflow tooling, and native gradient support for inverse design — without leaving Python.
+
+Stable package metadata currently targets **v1.3.0**, while the docs below also call out a few important post-release improvements already merged on `main`.
+
+---
+
+## Why rfx
+
+| Feature | Detail |
+|---|---|
+| **GPU acceleration** | 7,309 Mcells/s on RTX 4090, 5,847 on RTX 3090, 5,249 on RTX A6000 |
+| **Multi-GPU distributed FDTD** | `jax.pmap` slab decomposition for larger 3-D jobs on a single multi-GPU host |
+| **Autodiff** | `jax.grad` through the full time-stepping loop for topology/shape optimisation |
+| **Topology optimisation** | Density-based filtering, projection, and beta continuation for inverse design |
+| **Time-domain optimisation objectives** | Use proxy losses such as `minimize_reflected_energy()` and `maximize_transmitted_energy()` inside differentiable loops |
+| **Conformal PEC** | Dey-Mittra method for 2nd-order accuracy on curved conductors |
+| **Material fitting** | Debye/Lorentz fitting plus differentiable FDTD-based refinement from S-parameters |
+| **Non-uniform mesh + auto-config** | Graded z-profiles and `auto_configure()` for thin substrates and broadband setups |
+| **Harminv resonance** | High-Q mode extraction with sub-bin frequency precision |
+| **Multi-mode + Floquet ports** | Rectangular TE/TM eigenmodes and phased-array unit-cell workflows with Bloch periodic BC |
+| **Cross-validated** | Published 5-case RF validation plus earlier cavity/waveguide cross-validation vs. Meep and OpenEMS |
+| **500+ tests** | Pytest suite with lint + CPU/GPU coverage and advanced-example validation scripts |
+
+---
+
+## Quick install
+
+```bash
+pip install rfx-fdtd
+```
+
+PyPI package name: `rfx-fdtd`
+Python import:
+
+```python
+import rfx
+```
+
+GPU support (JAX + CUDA):
+
+```bash
+pip install "jax[cuda12]" rfx-fdtd
+```
+
+---
+
+## Latest highlights
+
+- **v1.3.0** added published-result validation, convergence-study helpers, mixed precision, RIS workflows, and major GPU speedups.
+- **v1.2.0** added **multi-GPU distributed FDTD** with CPML, dispersive materials, and lumped-port support in the distributed runner.
+- Current `main` adds **JAX-differentiable far-field computation**, NTFF-aware `optimize()` objectives, improved inverse-design UX, and a **research-grade advanced example bundle** under `examples/50_advanced/`.
+
+---
+
+## Ten-line example
+
+```python
+from rfx import Simulation, Box, GaussianPulse
+
+# 2.4 GHz patch antenna on FR4
+sim = Simulation(freq_max=4e9, domain=(0.08, 0.06, 0.025), boundary="cpml")
+sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0016)), material="fr4")
+sim.add(Box((0.02, 0.01, 0.0016), (0.049, 0.049, 0.0016)), material="pec")  # patch
+sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0)), material="pec")            # ground
+sim.add_source((0.029, 0.03, 0.0008), "ez",
+               waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8))
+sim.add_probe((0.029, 0.03, 0.0008), "ez")
+
+result = sim.run(n_steps=8000)
+modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
+print(f"Resonance: {modes[0].freq/1e9:.4f} GHz  Q={modes[0].Q:.0f}")
+```
+
+---
+
+## Key concepts
+
+```text
+Simulation ──► add_material / add / add_port / add_probe / add_ntff_box
+     │
+     └──► run() ──► Result
+                       ├── time_series   (n_steps × n_probes)
+                       ├── s_params      (n_ports × n_ports × n_freqs)
+                       ├── ntff_data     (raw far-field accumulation)
+                       └── find_resonances() → [HarminvMode]
+```
+
+---
+
+## Documentation by topic
+
+### Getting Started
+
+- [Installation](guide/installation/) — Python/JAX install, GPU notes, dev setup
+- [Quick Start](guide/quickstart/) — first simulation with the current stable high-level API
+- [Your First Patch Antenna](guide/first-patch/) — current-source resonance workflow for a 2.4 GHz FR4 patch
+
+### Modeling & Setup
+
+- [Simulation API](guide/api-reference/) — `Simulation`, `Result`, `auto_configure`, ports, NTFF, and design helpers
+- [Materials & Geometry](guide/materials-geometry/) — library materials, Debye/Lorentz, CSG shapes, PCB stackup
+- [Sources & Ports](guide/sources-ports/) — point sources, lumped/wire ports, multi-mode waveguide ports, Floquet ports
+- [Probes & S-Parameters](guide/probes-sparams/) — DFT probes, S-matrix, Harminv, de-embedding, Smith chart
+- [Non-Uniform Mesh](guide/nonuniform-mesh/) — graded z-profiles for thin-substrate structures
+- [Waveguide Ports](guide/waveguide-ports/) — multi-mode waveguide S-matrix with TE/TM eigenmodes
+- [Floquet Ports](guide/floquet-ports/) — phased-array unit-cell analysis with Bloch BC
+
+### Analysis & Validation
+
+- [Cross-Validation & Accuracy](guide/validation/) — published RF benchmarks plus cross-solver checks
+- [Convergence Study](guide/tutorial-convergence/) — mesh refinement analysis and accuracy verification
+- [Far-Field & RCS](guide/farfield-rcs/) — NTFF radiation patterns and scattering workflows
+- [Antenna Metrics](guide/antenna-metrics/) — gain, efficiency, beamwidth, bandwidth, F/B ratio
+- [Visualization & Analysis](guide/visualization-and-analysis/) — plotting, exports, post-processing
+- [Solver Comparison](guide/comparison/) — feature and performance comparison vs. Meep and OpenEMS
+
+### Design & Optimisation
+
+- [Inverse Design](guide/inverse-design/) — autodiff-driven topology, shape, and far-field optimisation
+- [Topology Optimisation](guide/topology-optimisation/) — density-based inverse design with filtering and projection
+- [Parametric Sweeps](guide/parametric-sweeps/) — sequential sweep and `jax.vmap` batch evaluation
+- [Material Fitting](guide/material-fitting/) — CSV import, Debye/Lorentz fitting, differentiable FDTD-based fitting
+- [Patch Antenna Design](guide/tutorial-patch-antenna/) — full design workflow for a rectangular microstrip patch
+- [Microstrip Filter Design](guide/tutorial-microstrip-filter/) — coupled-line bandpass filter with two-port S-parameters
+
+### Advanced & Research Methods
+
+- [Advanced Features](guide/advanced/) — multi-GPU, mixed precision, proxy objectives, advanced example workflows
+- [Conformal PEC](guide/conformal-pec/) — Dey-Mittra method for curved conductors
+- [SBP-SAT Subgridding](guide/subgridding/) — local mesh refinement with JIT performance
+- [Gradient Behavior](guide/gradient-behavior/) — where gradients are strong vs noisy
+- [Geometry & Limitations](guide/geometry-and-limitations/) — primitives, supported workflows, and remaining trade-offs
+
+### AI Agent Guide
+
+- [rfx for AI Agents](agent/overview/) — why the API is agent-friendly
+- [Automatic Simulation Configuration](agent/auto-config/) — geometry-to-sim parameter workflow
+- [Prompt Templates for RF Design](agent/prompt-templates/) — reusable agent prompts
+- [Automated Design Workflows](agent/design-workflows/) — end-to-end design patterns
+
+### Project & Maintainer
+
+- [Migration Guide](guide/migration/) — Meep/OpenEMS workflow mapping
+- [Contributing](guide/contributing/) — developer / maintainer workflow and test expectations
+- [Changelog](guide/changelog/) — release-level capability summary plus current-main doc notes
+
+## Repo examples
+
+The public site focuses on guides. For runnable research-style workflows, see the repo's `examples/50_advanced/` bundle for patch optimisation, waveguide inverse design, broadband matching, array coupling, dielectric-lens shaping, material characterisation, and GPU validation scripts.
+
+## Guide Index
+
+- [Open the full guide index](/rfx/guide/)

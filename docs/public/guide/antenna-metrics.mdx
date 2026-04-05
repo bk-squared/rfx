@@ -1,0 +1,24 @@
+---
+title: "Antenna Metrics"
+description: "Gain, efficiency, beamwidth, bandwidth, and front-to-back ratio extraction in rfx."
+sidebar:
+  order: 20
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Under construction">
+  This page is a placeholder. Content will be added in a future update.
+</Aside>
+
+## Overview
+
+This guide will cover how to extract standard antenna performance metrics from rfx simulation results:
+
+- **Gain** — directive gain from NTFF integration
+- **Radiation efficiency** — ratio of radiated power to accepted power
+- **Beamwidth** — half-power beamwidth from radiation pattern cuts
+- **Bandwidth** — impedance bandwidth from S₁₁ ≤ −10 dB criterion
+- **Front-to-back ratio** — main lobe to back lobe power ratio
+
+See [Far-Field & RCS](../farfield-rcs/) for the underlying NTFF computation.

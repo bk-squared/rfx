@@ -1,0 +1,221 @@
+---
+title: "Materials and Geometry"
+description: "Library materials are available directly by name; no `add_material()` call is needed:"
+sidebar:
+  order: 3
+---
+
+
+rfx uses a two-step workflow: register a material by name, then attach it to a geometric shape.
+
+---
+
+## Material library
+
+`MATERIAL_LIBRARY` is a dict of pre-defined RF/microwave materials that ships with rfx.
+
+```python
+from rfx import MATERIAL_LIBRARY
+print(list(MATERIAL_LIBRARY.keys()))
+# ['vacuum', 'air', 'fr4', 'rogers4003c', 'alumina', 'silicon',
+#  'ptfe', 'copper', 'aluminum', 'pec', 'water_20c']
+```
+
+| Name | εᵣ | σ (S/m) | Notes |
+|---|---|---|---|
+| `vacuum` | 1.0 | 0 | Lossless free space |
+| `air` | 1.0006 | 0 | Standard atmosphere |
+| `fr4` | 4.4 | 0.025 | PCB laminate, tan_δ ≈ 0.02 at 1 GHz |
+| `rogers4003c` | 3.55 | ~0.0027·ω·ε₀·εᵣ | Low-loss microwave substrate |
+| `alumina` | 9.8 | 0 | Ceramic substrate |
+| `silicon` | 11.9 | 0.01 | Lightly doped semiconductor |
+| `ptfe` | 2.1 | 0 | PTFE / Teflon |
+| `copper` | 1.0 | 5.8×10⁷ | Good conductor |
+| `aluminum` | 1.0 | 3.5×10⁷ | Good conductor |
+| `pec` | 1.0 | 1×10¹⁰ | Perfect electric conductor (mask-enforced) |
+| `water_20c` | 4.9 + Debye | 0 | Water at 20 °C with one Debye pole |
+
+Library materials are available directly by name; no `add_material()` call is needed:
+
+```python
+from rfx import Simulation, Box
+
+sim = Simulation(freq_max=10e9, domain=(0.05, 0.05, 0.02), boundary="cpml")
+sim.add(Box((0, 0, 0), (0.05, 0.05, 0.0016)), material="fr4")
+sim.add(Box((0, 0, 0), (0.05, 0.05, 0.0)), material="pec")
+```
+
+---
+
+## Custom material registration
+
+Register a named material with `add_material()` before using it in `add()`.
+
+```python
+sim.add_material(
+    "my_ceramic",
+    eps_r=9.0,
+    sigma=0.001,
+    mu_r=1.0,               # optional, default 1.0
+)
+sim.add(Box((0.01, 0.01, 0.0), (0.04, 0.04, 0.002)), material="my_ceramic")
+```
+
+`add_material()` returns `self`, so calls can be chained:
+
+```python
+(sim
+ .add_material("sub", eps_r=3.55, sigma=0.0)
+ .add_material("metal", eps_r=1.0, sigma=5.8e7)
+ .add(Box((0, 0, 0), (0.05, 0.03, 0.001)), material="sub")
+ .add(Box((0.005, 0.005, 0.001), (0.045, 0.025, 0.001)), material="metal"))
+```
+
+---
+
+## Dispersive materials
+
+### Debye poles
+
+Debye dispersion models frequency-dependent permittivity caused by dipolar relaxation (e.g., water, biological tissue):
+
+```
+ε(ω) = ε_∞ + Δε / (1 + jωτ)
+```
+
+```python
+from rfx import DebyePole
+
+sim.add_material(
+    "water_body",
+    eps_r=4.9,            # ε_∞ (high-frequency limit)
+    debye_poles=[
+        DebyePole(delta_eps=74.1, tau=8.3e-12),  # primary relaxation
+    ],
+)
+```
+
+`DebyePole` fields:
+
+| Field | Description |
+|---|---|
+| `delta_eps` | Relaxation strength Δε = εₛ − ε_∞ |
+| `tau` | Relaxation time (seconds) |
+
+### Lorentz poles
+
+Lorentz poles model phonon resonances and plasma-like media:
+
+```python
+from rfx import LorentzPole, drude_pole, lorentz_pole
+
+# Manual Lorentz pole
+sim.add_material(
+    "resonant_material",
+    eps_r=1.0,
+    lorentz_poles=[
+        LorentzPole(delta_eps=2.0, omega_0=2*3.14159*10e9, delta=1e8),
+    ],
+)
+
+# Helper: Drude (free-electron) model for metals
+drude = drude_pole(omega_p=1.37e16, gamma=4.05e13)   # gold
+sim.add_material("gold", eps_r=1.0, lorentz_poles=[drude])
+```
+
+`LorentzPole` fields:
+
+| Field | Description |
+|---|---|
+| `delta_eps` | Oscillator strength |
+| `omega_0` | Resonance angular frequency (rad/s) |
+| `delta` | Damping rate (rad/s) |
+
+---
+
+## Geometry: CSG shapes
+
+rfx uses constructive solid geometry (CSG). Shapes are rasterised onto the Yee grid at simulation time.
+
+### Box
+
+```python
+from rfx import Box
+
+# Box(corner_lo, corner_hi)  — axis-aligned rectangular prism
+slab  = Box((0.0,  0.0,  0.0),  (0.05, 0.05, 0.002))
+patch = Box((0.01, 0.01, 0.002),(0.04, 0.04, 0.002))
+```
+
+Coordinates are in metres. `corner_lo` and `corner_hi` are `(x, y, z)` tuples.
+
+### Sphere
+
+```python
+from rfx import Sphere
+
+# Sphere(centre, radius)
+ball = Sphere((0.025, 0.025, 0.010), radius=0.005)
+sim.add(ball, material="alumina")
+```
+
+### Cylinder
+
+```python
+from rfx import Cylinder
+
+# Cylinder(centre, radius, height, axis)
+# axis: "x", "y", or "z"
+via  = Cylinder((0.025, 0.015, 0.000), radius=0.0005, height=0.002, axis="z")
+rod  = Cylinder((0.010, 0.025, 0.000), radius=0.001,  height=0.050, axis="x")
+sim.add(via, material="copper")
+```
+
+### Boolean operations
+
+Combine shapes with set operations:
+
+```python
+from rfx.geometry.csg import union, difference, intersection
+
+# Hollow cylinder (tube)
+outer = Cylinder((0.025, 0.025, 0.0), radius=0.010, height=0.020, axis="z")
+inner = Cylinder((0.025, 0.025, 0.0), radius=0.007, height=0.020, axis="z")
+tube  = difference(outer, inner)
+sim.add(tube, material="copper")
+
+# Lens-shaped dielectric
+sphere1 = Sphere((0.025, 0.025, 0.005), radius=0.008)
+sphere2 = Sphere((0.025, 0.025, 0.015), radius=0.008)
+lens    = intersection(sphere1, sphere2)
+sim.add(lens, material="alumina")
+```
+
+---
+
+## PEC mask enforcement
+
+Materials with σ ≥ 10⁶ S/m (including library `pec`) are automatically enforced via a Boolean PEC mask rather than through the conductivity update. This is exact (E-field set to zero on every PEC cell at each time step) and avoids the numerical instability that arises from very large σ in the standard update equations.
+
+!!! warning
+    Do not set σ > 10⁸ S/m for non-PEC conductors such as copper. Use the library value
+    `sigma=5.8e7` for copper or define `"pec"` explicitly when a perfect conductor is intended.
+
+---
+
+## Thin conductor correction
+
+For printed traces and patches thinner than one cell, use the subcell thin-conductor model:
+
+```python
+from rfx import Box
+
+trace = Box((0.010, 0.014, 0.0016), (0.040, 0.016, 0.0016))
+sim.add_thin_conductor(
+    trace,
+    sigma_bulk=5.8e7,     # copper
+    thickness=35e-6,       # 1 oz copper = 35 µm
+)
+```
+
+This applies an effective surface conductivity correction to the Yee cells intersected by the thin sheet, rather than fully filling them.

@@ -1,0 +1,23 @@
+---
+title: "Conformal PEC"
+description: "Dey-Mittra method for second-order accuracy on curved PEC conductors in rfx."
+sidebar:
+  order: 22
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Under construction">
+  This page is a placeholder. Content will be added in a future update.
+</Aside>
+
+## Overview
+
+This guide will cover rfx's conformal PEC implementation:
+
+- **Dey-Mittra method** — SDF-based area-fraction weights on cut cells
+- **Stability clamping** — `conformal_min_weight` parameter for CFL safety
+- **Activation** — single-flag `sim.run(conformal_pec=True)`
+- **Compatibility** — works with subpixel smoothing and gradient-based optimisation
+
+See the [Changelog](../changelog/) for the v1.1.0 release notes where this feature was introduced.

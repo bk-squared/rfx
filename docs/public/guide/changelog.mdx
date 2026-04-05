@@ -1,0 +1,115 @@
+---
+title: "Changelog"
+description: "Release history for rfx"
+sidebar:
+  order: 99
+---
+
+## Main-branch updates after v1.3.0
+
+These items are already merged on `main`, but they are not reflected as a new
+package version in `pyproject.toml` yet.
+
+### Current-main highlights
+
+- **JAX-differentiable far-field evaluation** via `compute_far_field_jax()` for beam-shaping and radiation-aware optimisation objectives.
+- **NTFF-aware `optimize()` forward pass** — if an objective accepts `ntff_box=...`, the optimiser now builds and passes the NTFF box for far-field losses.
+- **Time-domain proxy objectives** for differentiable optimisation:
+  - `minimize_reflected_energy()`
+  - `maximize_transmitted_energy()`
+- **Inverse-design UX fixes** for soft-source / zero-impedance workflows and custom-material handling in topology optimisation.
+- **Advanced example bundle** under `examples/50_advanced/` covering patch bandwidth optimisation, waveguide inverse design, broadband matching, array coupling, dielectric-lens shaping, material characterisation, and a visualization showcase.
+- **GPU validation scripts** for the advanced example bundle, plus follow-up fixes to FFT extraction, physics setup, and RLC validation robustness.
+
+---
+
+## v1.3.0
+
+### New features
+
+- **5-case RF validation** against published references (patch antenna, WR-90 cutoff, dielectric cavity, microstrip impedance, coupled-line filter).
+- **Convergence-study helpers**: `convergence_study()`, `quick_convergence()`, and Richardson extrapolation utilities.
+- **`gradient_check()`** for automatic AD vs finite-difference verification.
+- **Memory estimation** in `auto_configure()` (`estimated_memory_mb`, `max_memory_mb`).
+- **Kerr nonlinear material** support via ADE.
+- **RIS unit-cell workflow** for reconfigurable-surface design studies.
+- **Pre-AMR error indicators** and training-data export for surrogate workflows.
+- **Mixed precision** (`float16` field storage) for memory reduction.
+
+### Performance and docs
+
+- **GPU speedups** from pre-baked coefficients and other kernel improvements.
+- **Configurable multi-GPU ghost exchange interval** for better distributed throughput.
+- **Three new tutorials**: patch antenna, microstrip filter, and convergence methodology.
+- **Respectful solver-comparison docs** for public-facing positioning.
+
+### Quality
+
+- **500+ tests**, 0 xfails.
+- CI runs lint + pytest with a 60-minute timeout budget.
+
+---
+
+## v1.2.0
+
+### New features
+
+- **Multi-GPU distributed FDTD** via `jax.pmap` with 1-D slab decomposition.
+  - Phase 1: PEC boundaries, soft sources, point probes.
+  - Phase 2: Full CPML support.
+  - Phase 3: Lumped ports and dispersive Debye/Lorentz/Drude materials.
+- **Core Yee-kernel optimisation** with pre-baked update coefficients and fused curl/update paths.
+- **Configurable ghost exchange interval** for reduced synchronization overhead.
+
+### Robustness verification
+
+- Floquet normalization at oblique incidence.
+- Near-cutoff multi-mode waveguide regression tests.
+- Material-fitting robustness under noise, outliers, and excess poles.
+- Conformal-PEC coupling checks with CPML, dispersive media, and `jax.grad`.
+- Graceful fallback when unsupported distributed configurations are requested.
+
+### Infrastructure
+
+- Distributed benchmark script: `examples/33_distributed_benchmark.py`.
+- 30 distributed tests plus targeted waveguide, Floquet, and material-fit regression tests.
+
+---
+
+## v1.1.0
+
+### New features
+
+- **Conformal PEC (Dey-Mittra)** for curved conductors.
+- **Density-based topology optimisation** with filtering, projection, and beta continuation.
+- **Differentiable material fitting** from measured S-parameters.
+- **Multi-mode waveguide ports** with TE/TM eigenmodes.
+- **Floquet ports and Bloch-periodic boundary conditions** for unit-cell analysis.
+- **Antenna metrics** (gain, efficiency, HPBW, bandwidth, F/B ratio).
+- **Parametric sweeps** and `jax.vmap` batch evaluation.
+- **RF workflow tooling**: Smith chart plotting, de-embedding, multi-port Touchstone I/O, PCB stackup builder.
+- **Streamlit dashboard** for browser-based exploration.
+
+### Quality
+
+- **475+ tests** (up from 260+), 0 xfails.
+- CI added ruff + pytest coverage for the broader public API surface.
+
+---
+
+## v1.0.0
+
+### New features
+
+- **PyPI publication** as `rfx-fdtd` (Python import remains `rfx`).
+- **SBP-SAT subgridding** with JIT-accelerated local mesh refinement.
+- **Lumped RLC elements** via ADE updates.
+- **Via / CurvedPatch** helper geometry for PCB and conformal antenna workflows.
+- **Field animation export** (MP4/GIF).
+- **Oblique TFSF** in the supported 2-D auxiliary-grid workflow.
+- **Improved CFS-CPML defaults** and richer `auto_configure()` metadata.
+
+### Quality
+
+- **260+ tests**.
+- Initial public guide set, examples, and CI pipeline.

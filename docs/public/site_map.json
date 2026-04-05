@@ -1,0 +1,74 @@
+{
+  "groups": [
+    {
+      "label": "Getting Started",
+      "items": [
+        "rfx/guide",
+        "rfx/guide/installation",
+        "rfx/guide/quickstart",
+        "rfx/guide/first-patch"
+      ]
+    },
+    {
+      "label": "Modeling & Setup",
+      "items": [
+        "rfx/guide/api-reference",
+        "rfx/guide/materials-geometry",
+        "rfx/guide/sources-ports",
+        "rfx/guide/probes-sparams",
+        "rfx/guide/nonuniform-mesh",
+        "rfx/guide/waveguide-ports",
+        "rfx/guide/floquet-ports"
+      ]
+    },
+    {
+      "label": "Analysis & Validation",
+      "items": [
+        "rfx/guide/validation",
+        "rfx/guide/tutorial-convergence",
+        "rfx/guide/farfield-rcs",
+        "rfx/guide/antenna-metrics",
+        "rfx/guide/visualization-and-analysis",
+        "rfx/guide/comparison"
+      ]
+    },
+    {
+      "label": "Design & Optimization",
+      "items": [
+        "rfx/guide/inverse-design",
+        "rfx/guide/topology-optimisation",
+        "rfx/guide/parametric-sweeps",
+        "rfx/guide/material-fitting",
+        "rfx/guide/tutorial-patch-antenna",
+        "rfx/guide/tutorial-microstrip-filter"
+      ]
+    },
+    {
+      "label": "Advanced & Research Methods",
+      "items": [
+        "rfx/guide/advanced",
+        "rfx/guide/conformal-pec",
+        "rfx/guide/subgridding",
+        "rfx/guide/gradient-behavior",
+        "rfx/guide/geometry-and-limitations"
+      ]
+    },
+    {
+      "label": "AI Agent Guide",
+      "items": [
+        "rfx/agent/overview",
+        "rfx/agent/auto-config",
+        "rfx/agent/prompt-templates",
+        "rfx/agent/design-workflows"
+      ]
+    },
+    {
+      "label": "Project & Maintainer",
+      "items": [
+        "rfx/guide/migration",
+        "rfx/guide/changelog",
+        "rfx/guide/contributing"
+      ]
+    }
+  ]
+}
