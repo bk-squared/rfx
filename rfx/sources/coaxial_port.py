@@ -173,12 +173,6 @@ def setup_coaxial_port(grid: Grid, port: CoaxialPort, materials):
     sigma  = jnp.where(outer_mask, PEC_SIGMA,   materials.sigma)
 
     # ---- 2. PTFE fill (overwrite inside outer conductor) ----
-    ptfe_cyl = Cylinder(
-        center=pin_center,
-        radius=port.outer_radius,   # same outer boundary — sigma will be 0 here
-        height=port.pin_length,
-        axis=axis,
-    )
     # PTFE region = outer cylinder body minus the pin radius
     pin_cyl_mask = Cylinder(
         center=pin_center,
