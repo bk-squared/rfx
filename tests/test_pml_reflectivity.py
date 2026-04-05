@@ -17,7 +17,11 @@ from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse
 
 
+import pytest
+
+
 class TestPMLReflectivity:
+    @pytest.mark.slow
     def test_broadband_reflectivity_below_minus_40db(self):
         """CPML reflection < -40 dB using large-PEC reference comparison.
 
