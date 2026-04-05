@@ -102,7 +102,19 @@ def init_ntff_data(box: NTFFBox) -> NTFFData:
     during long DFT accumulations over thousands of timesteps.  At coarse
     dx (e.g., 2 mm at 5 GHz), the phase rotation in each step is small
     (dt ~ 4 ps), and float32 accumulation can lose the signal entirely.
+
+    Automatically enables JAX float64 support if not already enabled.
     """
+    import jax
+    if not jax.config.x64_enabled:
+        jax.config.update("jax_enable_x64", True)
+        import warnings
+        warnings.warn(
+            "NTFF requires float64 precision. Enabled JAX x64 mode "
+            "automatically. Set JAX_ENABLE_X64=1 to suppress this warning.",
+            stacklevel=2,
+        )
+
     nf = len(box.freqs)
     ni = box.i_hi - box.i_lo
     nj = box.j_hi - box.j_lo

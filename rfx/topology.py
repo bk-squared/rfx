@@ -238,12 +238,21 @@ def density_to_eps(
     sigma : same shape as rho
         Conductivity field, values in [sigma_bg, sigma_fg].
     """
+    # Clamp sigma_fg to a gradient-safe maximum. PEC (sigma=1e10) causes
+    # the E-update coefficient Ca = (1 - σΔt/2ε)/(1 + σΔt/2ε) to saturate
+    # at -1 with zero gradient. At σ=1e4 S/m the skin depth at 5 GHz is
+    # ~0.07mm — effectively PEC at FDTD resolution while maintaining
+    # non-zero ∂Ca/∂σ for gradient flow.
+    _SIGMA_MAX_GRAD_SAFE = 1e4
+    sigma_fg_clamped = min(sigma_fg, _SIGMA_MAX_GRAD_SAFE)
+    sigma_bg_clamped = min(sigma_bg, _SIGMA_MAX_GRAD_SAFE)
+
     rho_f = rho
     if filter_radius_cells is not None and filter_radius_cells >= 0.5:
         rho_f = apply_density_filter(rho, filter_radius_cells)
     rho_p = apply_projection(rho_f, beta)
     eps = eps_bg + rho_p * (eps_fg - eps_bg)
-    sigma = sigma_bg + rho_p * (sigma_fg - sigma_bg)
+    sigma = sigma_bg_clamped + rho_p * (sigma_fg_clamped - sigma_bg_clamped)
     return eps, sigma
 
 

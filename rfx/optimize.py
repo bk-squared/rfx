@@ -74,6 +74,8 @@ def optimize(
     n_iters: int = 50,
     lr: float = 0.01,
     init_latent: jnp.ndarray | None = None,
+    n_steps: int | None = None,
+    num_periods: float = 20.0,
     verbose: bool = True,
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
@@ -94,6 +96,13 @@ def optimize(
     init_latent : array or None
         Initial latent parameters.  If None, initialized to zeros
         (maps to midpoint of eps_range).
+    n_steps : int or None
+        Number of simulation timesteps per iteration. Controls memory
+        usage — fewer steps = less memory for ``jax.grad``. If None,
+        auto-computed from *num_periods*.
+    num_periods : float
+        Periods at freq_max for auto n_steps (default 20). Reduce to
+        10 for lower memory usage with minimal accuracy loss.
     verbose : bool
         Print progress every 10 iterations.
 
@@ -155,7 +164,7 @@ def optimize(
         from rfx.simulation import run as _run, make_probe, make_port_source
         from rfx.sources.sources import LumpedPort, setup_lumped_port
 
-        n_steps = grid.num_timesteps(num_periods=20.0)
+        _n_steps = n_steps if n_steps is not None else grid.num_timesteps(num_periods=num_periods)
         sources = []
         probes = []
 
@@ -163,14 +172,14 @@ def optimize(
             if pe.impedance == 0.0:
                 # Soft source (add_source) — no port impedance
                 from rfx.simulation import make_source
-                sources.append(make_source(grid, pe.position, pe.component, pe.waveform, n_steps))
+                sources.append(make_source(grid, pe.position, pe.component, pe.waveform, _n_steps))
             else:
                 lp = LumpedPort(
                     position=pe.position, component=pe.component,
                     impedance=pe.impedance, excitation=pe.waveform,
                 )
                 materials = setup_lumped_port(grid, lp, materials)
-                sources.append(make_port_source(grid, lp, materials, n_steps))
+                sources.append(make_port_source(grid, lp, materials, _n_steps))
 
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -191,7 +200,7 @@ def optimize(
             ntff_box_local = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
         result = _run(
-            grid, materials, n_steps,
+            grid, materials, _n_steps,
             boundary=sim._boundary,
             debye=debye,
             lorentz=lorentz,
