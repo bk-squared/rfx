@@ -37,12 +37,14 @@ sim = Simulation(
 )
 
 center = (dom / 2, dom / 2, dom / 2)
-sim.add_source(center, "ez", waveform=GaussianPulse(f0=f0, bandwidth=0.3))
+# Narrowband source — DFT at f0 needs concentrated spectral content
+sim.add_source(center, "ez",
+               waveform=GaussianPulse(f0=f0, bandwidth=0.05, amplitude=1e6))
 sim.add_probe(center, "ez")
 
-# NTFF box
+# NTFF box — must be inside CPML inner boundary
 cpml_thick = 10 * dx
-ntff_margin = cpml_thick + 3 * dx
+ntff_margin = cpml_thick + 5 * dx
 sim.add_ntff_box(
     (ntff_margin,) * 3,
     (dom - ntff_margin,) * 3,
@@ -50,7 +52,8 @@ sim.add_ntff_box(
 )
 
 grid = sim._build_grid()
-n_steps = int(np.ceil(8e-9 / grid.dt))
+# Longer run for narrowband DFT accumulation
+n_steps = int(np.ceil(15e-9 / grid.dt))
 print(f"Grid: {grid.nx}x{grid.ny}x{grid.nz}, steps={n_steps}")
 
 result = sim.run(n_steps=n_steps)
@@ -85,10 +88,12 @@ print(f"\nE-plane correlation with sin²(theta): {corr_E:.4f}")
 print(f"H-plane correlation with sin²(theta): {corr_H:.4f}")
 print(f"Max far-field power: {power_max:.4e}")
 
-if corr_E > 0.95 and power_max > 1e-20:
+if corr_E > 0.95 and power_max > 1e-10:
     print("PASS: dipole pattern matches analytical")
+elif corr_E > 0.95:
+    print(f"FAIL: pattern shape correct (corr={corr_E:.3f}) but power={power_max:.2e} at noise floor")
 else:
-    print(f"FAIL: correlation E={corr_E:.3f}")
+    print(f"FAIL: correlation E={corr_E:.3f}, power={power_max:.2e}")
 
 # Plot
 fig, axes = plt.subplots(1, 2, figsize=(12, 5), subplot_kw=dict(projection="polar"))
