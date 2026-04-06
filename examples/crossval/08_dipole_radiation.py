@@ -55,22 +55,20 @@ print(f"Grid: {grid.nx}x{grid.ny}x{grid.nz}, steps={n_steps}")
 
 result = sim.run(n_steps=n_steps)
 
-# Far-field: compute E-plane and H-plane separately to avoid shape issues
+# Far-field: E-plane (phi=0) and H-plane (phi=pi/2)
 theta = np.linspace(0.05, np.pi - 0.05, 37)
+phi = np.array([0.0, np.pi / 2])
 
-# E-plane (phi=0)
-phi_E = np.zeros(len(theta))
-ff_E = compute_far_field(result.ntff_data, result.ntff_box, grid, theta, phi_E)
-P_E = np.abs(ff_E.E_theta) ** 2 + np.abs(ff_E.E_phi) ** 2
-P_E = P_E.ravel()
+ff = compute_far_field(result.ntff_data, result.ntff_box, grid, theta, phi)
+# Result shape: (n_freqs, n_theta, n_phi) = (1, 37, 2)
+power = np.abs(ff.E_theta) ** 2 + np.abs(ff.E_phi) ** 2
 
-# H-plane (phi=pi/2)
-phi_H = np.full(len(theta), np.pi / 2)
-ff_H = compute_far_field(result.ntff_data, result.ntff_box, grid, theta, phi_H)
-P_H = np.abs(ff_H.E_theta) ** 2 + np.abs(ff_H.E_phi) ** 2
-P_H = P_H.ravel()
+# E-plane: all theta at phi=0 (phi index 0)
+P_E = power[0, :, 0]  # (37,)
+# H-plane: all theta at phi=pi/2 (phi index 1)
+P_H = power[0, :, 1]  # (37,)
 
-power_max = max(float(np.max(P_E)), float(np.max(P_H)))
+power_max = float(np.max(power))
 
 # Normalize
 P_E_norm = P_E / (np.max(P_E) + 1e-30)
