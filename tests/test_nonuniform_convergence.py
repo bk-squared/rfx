@@ -80,9 +80,15 @@ def test_nonuniform_cfl_uses_min_dz():
     )
 
     grid = sim._build_nonuniform_grid()
-    dt_expected_max = 0.2e-3 / (C0 * np.sqrt(3))  # CFL from min cell
+    # Non-uniform CFL: dt = CFL / (C0 * sqrt(1/dx² + 1/dy² + 1/min(dz)²))
+    min_dz = min(dz_profile)
+    dt_expected_max = 0.99 / (C0 * np.sqrt(1/dx**2 + 1/dx**2 + 1/min_dz**2))
 
     print(f"dt = {grid.dt*1e12:.2f} ps, CFL limit = {dt_expected_max*1e12:.2f} ps")
+    print(f"dx={dx*1e3:.1f}mm, min_dz={min_dz*1e3:.1f}mm")
     assert grid.dt <= dt_expected_max * 1.01, (
-        f"dt={grid.dt:.2e} exceeds CFL from min dz ({dt_expected_max:.2e})"
+        f"dt={grid.dt:.2e} exceeds CFL ({dt_expected_max:.2e})"
     )
+    # Also verify dt < dt_uniform (min_dz makes it stricter than dx alone)
+    dt_uniform = dx / (C0 * np.sqrt(3))
+    assert grid.dt < dt_uniform, "Non-uniform dt should be < uniform dt when min_dz < dx"
