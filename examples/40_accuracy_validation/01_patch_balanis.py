@@ -111,7 +111,8 @@ for label, dx in resolutions:
     sim.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="substrate")
     # Patch on top of substrate
     px0, py0 = margin, margin
-    sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h)), material="pec")
+    # Patch: one cell thick PEC at top of substrate
+    sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h + dz_sub)), material="pec")
 
     # Source: ModulatedGaussian (zero DC) inside substrate near feed point
     src_x = px0 + L / 3.0
