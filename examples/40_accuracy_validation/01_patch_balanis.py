@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from rfx import Simulation, Box
-from rfx.sources.sources import ModulatedGaussian
+from rfx.sources.sources import GaussianPulse
 from rfx.grid import C0
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -95,7 +95,7 @@ for label, dx in resolutions:
         domain=(dom_x, dom_y, dom_z),
         dx=dx,
         boundary="cpml",
-        cpml_layers=8,
+        cpml_layers=12,
     )
 
     sigma_sub = 2.0 * np.pi * f0 * 8.854e-12 * eps_r * tan_d
@@ -117,14 +117,14 @@ for label, dx in resolutions:
     sim.add_source(
         (src_x, src_y, src_z),
         component="ez",
-        waveform=ModulatedGaussian(f0=f0, bandwidth=0.8),
+        waveform=GaussianPulse(f0=f0, bandwidth=0.8),
     )
     sim.add_probe((src_x, src_y, src_z), component="ez")
 
-    # Run ~50 periods at f0 for Harminv
+    # Run ~15 ns for Harminv ring-down (matching rfx-ref ex04 proven setup)
     grid = sim._build_grid()
-    n_steps = int(np.ceil(50.0 / (f0 * grid.dt)))
-    n_steps = min(n_steps, 30000)
+    n_steps = int(np.ceil(15e-9 / grid.dt))
+    n_steps = min(n_steps, 50000)
     print(f"  Grid: {grid.nx}x{grid.ny}x{grid.nz}, dx={dx*1e3:.2f}mm, "
           f"steps={n_steps}, dt={grid.dt*1e12:.3f} ps")
 
