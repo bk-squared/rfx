@@ -56,18 +56,22 @@ print(f"Substrate: h={h*1e3:.3f}mm, {sub_W*1e3:.0f}x{sub_L*1e3:.0f}mm")
 print(f"Analytical f_r: {f_analytical/1e9:.3f} GHz")
 print()
 
-# Non-uniform z mesh: fine in substrate (P1/P3), coarse in air
+# Non-uniform z mesh: fine in substrate, manually graded to air
 dx = 1.0e-3  # 1mm xy cells (same as session 1 fine resolution)
-# dz_profile: 6 cells in substrate (0.254mm each) for better z-resolution
 n_sub = 6
-dz_sub = h / n_sub
-dz_air = dx  # coarse cells in air
-n_air = int(np.ceil((box_z - h) / dz_air))
-raw_profile = [dz_sub] * n_sub + [dz_air] * n_air
+dz_sub = h / n_sub  # 0.254mm per substrate cell
 
-# Apply smooth grading (P2) to avoid abrupt jump at substrate-air interface
-from rfx.auto_config import smooth_grading
-dz_profile = smooth_grading(raw_profile, max_ratio=1.3)
+# Manual grading: substrate cells → geometric transition → air cells
+# Keep substrate at exact dz_sub, then grade smoothly to dx
+transition = []
+dz_cur = dz_sub
+while dz_cur < dx * 0.95:
+    dz_cur = min(dz_cur * 1.3, dx)
+    transition.append(dz_cur)
+
+n_air = int(np.ceil((box_z - h - sum(transition)) / dx))
+n_air = max(n_air, 10)
+dz_profile = np.array([dz_sub] * n_sub + transition + [dx] * n_air)
 
 print(f"dx = {dx*1e3:.2f} mm, dz_sub = {dz_sub*1e3:.3f} mm")
 print(f"z-cells: {n_sub} substrate + {n_air} air = {len(dz_profile)} total")
