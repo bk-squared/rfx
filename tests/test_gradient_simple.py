@@ -45,7 +45,7 @@ def test_gradient_eps_shifts_energy():
 
     max_grad = float(jnp.max(jnp.abs(g)))
     mean_grad = float(jnp.mean(jnp.abs(g)))
-    print(f"\nGradient d(energy)/d(eps_r):")
+    print("\nGradient d(energy)/d(eps_r):")
     print(f"  Max:  {max_grad:.6e}")
     print(f"  Mean: {mean_grad:.6e}")
 

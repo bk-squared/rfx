@@ -555,7 +555,53 @@ def _make_dz_profile(
         n_air = max(1, int(round(air_height / dx)))
         cells.extend([air_height / n_air] * n_air)
 
-    return np.array(cells)
+    # P2: Enforce smooth grading between regions
+    return smooth_grading(cells, max_ratio=1.3)
+
+
+def smooth_grading(
+    cells: list[float] | np.ndarray,
+    max_ratio: float = 1.3,
+) -> np.ndarray:
+    """Insert geometric transition cells where adjacent ratio exceeds max_ratio.
+
+    Prevents numerical reflections at abrupt cell-size transitions in
+    non-uniform meshes.  Inspired by OpenEMS SmoothMeshLines.
+
+    Parameters
+    ----------
+    cells : array-like
+        Cell sizes along the graded axis.
+    max_ratio : float
+        Maximum allowed ratio between adjacent cells (default 1.3).
+        Values 1.2-1.4 are typical for FDTD.
+
+    Returns
+    -------
+    np.ndarray
+        Smoothed cell array with transition cells inserted.
+    """
+    cells = list(np.asarray(cells, dtype=float))
+    if len(cells) <= 1:
+        return np.array(cells)
+
+    smoothed = [cells[0]]
+    for i in range(1, len(cells)):
+        prev = smoothed[-1]
+        target = cells[i]
+        # Insert transition cells if ratio is too large
+        if prev > 0 and target > 0:
+            # Growing direction: prev → target where target > prev
+            while target / prev > max_ratio + 1e-12:
+                prev = prev * max_ratio
+                smoothed.append(prev)
+            # Shrinking direction: prev → target where target < prev
+            while prev / target > max_ratio + 1e-12:
+                prev = prev / max_ratio
+                smoothed.append(prev)
+        smoothed.append(target)
+
+    return np.array(smoothed)
 
 
 def _round_dx(dx: float) -> float:

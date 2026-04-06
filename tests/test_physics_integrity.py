@@ -32,16 +32,13 @@ def test_maxwell_residual_vacuum():
     materials = init_materials(grid.shape)
 
     # Inject a non-trivial field pattern
-    key = jnp.array([42, 0], dtype=jnp.uint32)
     ez_init = jnp.sin(jnp.linspace(0, 3.14, grid.nx))[:, None, None] * \
               jnp.sin(jnp.linspace(0, 3.14, grid.ny))[None, :, None] * \
               jnp.ones((1, 1, grid.nz)) * 1.0
     state = state._replace(ez=ez_init.astype(jnp.float32))
 
     # Store H before update
-    hx_before = state.hx.copy()
-    hy_before = state.hy.copy()
-    hz_before = state.hz.copy()
+    hx_before = state.hx.copy()  # noqa: F841
 
     # One H update
     state_after = update_h(state, materials, grid.dt, grid.dx)
@@ -63,7 +60,7 @@ def test_maxwell_residual_vacuum():
     max_residual = float(jnp.max(jnp.abs(interior)))
     mean_residual = float(jnp.mean(jnp.abs(interior)))
 
-    print(f"\nFaraday residual (Hx component):")
+    print("\nFaraday residual (Hx component):")
     print(f"  Max:  {max_residual:.2e}")
     print(f"  Mean: {mean_residual:.2e}")
 
@@ -90,7 +87,7 @@ def test_energy_conservation_pec_cavity():
     # Initialize with the analytical TM110 eigenmode for clean energy test.
     # Pure eigenmode avoids exciting spurious modes that cause apparent drift.
     # Ez = E0 * sin(pi*x/a) * sin(pi*y/b), uniform in z
-    a, b, d = 0.05, 0.04, 0.03
+    a, b = 0.05, 0.04
     E0 = 1e6  # large amplitude for energy well above float32 noise
     x = jnp.arange(grid.nx) * grid.dx
     y = jnp.arange(grid.ny) * grid.dx
@@ -119,7 +116,7 @@ def test_energy_conservation_pec_cavity():
     E_final = energies[-1]
     drift = abs(E_final - E_initial) / E_initial
 
-    print(f"\nEnergy conservation (500 steps):")
+    print("\nEnergy conservation (500 steps):")
     print(f"  Initial: {E_initial:.6e}")
     print(f"  Final:   {E_final:.6e}")
     print(f"  Drift:   {drift:.2e}")
@@ -177,7 +174,7 @@ def test_energy_decay_lossy():
         increasing = np.sum(diffs > 1e-6 * np.max(energies))  # significant increases only
         total_points = len(diffs)
         frac_increasing = increasing / max(total_points, 1)
-        print(f"\nLossy energy decay:")
+        print("\nLossy energy decay:")
         print(f"  Initial: {energies[0]:.6e}")
         print(f"  Final:   {energies[-1]:.6e}")
         print(f"  Ratio:   {energies[-1] / (energies[0] + 1e-30):.4f}")
@@ -230,7 +227,7 @@ def test_field_pattern_tm110():
     corr_neg = np.corrcoef(ez_norm.ravel(), -ana_norm.ravel())[0, 1]
     correlation = max(corr_pos, corr_neg)
 
-    print(f"\nTM110 field pattern correlation:")
+    print("\nTM110 field pattern correlation:")
     print(f"  Correlation: {correlation:.4f}")
     assert correlation > 0.95, f"Field pattern mismatch: correlation={correlation:.4f}"
 
@@ -273,7 +270,7 @@ def test_reciprocity_two_port():
     mean_diff = np.mean(np.abs(s12 - s21))
     mean_mag = np.mean((s12 + s21) / 2)
 
-    print(f"\nReciprocity (S12 vs S21):")
+    print("\nReciprocity (S12 vs S21):")
     print(f"  Mean |S12|: {np.mean(s12):.4f}")
     print(f"  Mean |S21|: {np.mean(s21):.4f}")
     print(f"  Max diff:   {max_diff:.6f}")
@@ -350,7 +347,7 @@ def test_convergence_order():
     else:
         rate_2 = 0
 
-    print(f"\nConvergence order:")
+    print("\nConvergence order:")
     print(f"  Rate (coarse→medium): {rate_1:.2f}")
     print(f"  Rate (medium→fine):   {rate_2:.2f}")
 

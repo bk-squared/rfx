@@ -1128,7 +1128,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     else:
         time_series = jnp.zeros((n_steps, 0), dtype=jnp.float32)
 
-    from rfx.api import Result
     return Result(
         state=final_state,
         time_series=time_series,

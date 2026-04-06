@@ -27,7 +27,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.grid import Grid
+from rfx.grid import Grid, C0
 from rfx.core.yee import MaterialArrays, EPS_0
 from rfx.geometry.csg import Shape
 from rfx.nonuniform import NonUniformGrid
@@ -410,6 +410,19 @@ class Simulation:
                 domain = (domain[0], domain[1], dz_total)
         elif any(d <= 0 for d in domain):
             raise ValueError(f"domain dimensions must be positive, got {domain}")
+
+        # P2: Warn on abrupt grading in user-supplied dz_profile
+        if dz_profile is not None and len(dz_profile) > 1:
+            import warnings as _w
+            ratios = np.array(dz_profile[1:]) / np.array(dz_profile[:-1])
+            max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
+            if max_ratio > 1.3 + 1e-6:
+                _w.warn(
+                    f"dz_profile has max adjacent cell ratio {max_ratio:.2f} "
+                    f"(> 1.3). This may cause numerical reflections. "
+                    f"Use rfx.smooth_grading(dz_profile) to fix.",
+                    stacklevel=2,
+                )
 
         self._freq_max = freq_max
         self._domain = domain
@@ -1862,6 +1875,57 @@ class Simulation:
             s_param_freqs=s_param_freqs,
         )
 
+    def _auto_configure_mesh(self) -> None:
+        """P1: Auto-detect features and set dx/dz_profile when dx=None.
+
+        Uses the existing auto_configure() infrastructure to derive cell size
+        from geometry dimensions and material properties.  Runs only once per
+        simulation — subsequent calls are no-ops.
+        """
+        import warnings as _w
+        from rfx.auto_config import auto_configure
+
+        geometry_pairs = [
+            (entry.shape, entry.material_name)
+            for entry in self._geometry
+        ]
+        materials_dict = {}
+        for name, spec in self._materials.items():
+            materials_dict[name] = {
+                "eps_r": spec.eps_r,
+                "sigma": spec.sigma,
+            }
+        # Include library materials used by geometry but not explicitly registered
+        for entry in self._geometry:
+            mname = entry.material_name
+            if mname not in materials_dict and mname in MATERIAL_LIBRARY:
+                materials_dict[mname] = MATERIAL_LIBRARY[mname]
+
+        config = auto_configure(
+            geometry=geometry_pairs,
+            freq_range=(self._freq_max / 10, self._freq_max),
+            materials=materials_dict,
+            boundary=self._boundary,
+        )
+
+        self._dx = config.dx
+        if config.dz_profile is not None and self._dz_profile is None:
+            self._dz_profile = config.dz_profile
+            # Update domain z from dz_profile
+            dz_total = float(np.sum(config.dz_profile))
+            self._domain = (self._domain[0], self._domain[1], dz_total)
+
+        _w.warn(
+            f"Auto mesh: dx={config.dx*1e3:.3f}mm "
+            f"({config.cells_per_wavelength:.0f} cells/λ)"
+            + (f", non-uniform z ({len(config.dz_profile)} cells)"
+               if config.dz_profile is not None else "")
+            + ". Set dx= explicitly to suppress.",
+            stacklevel=3,
+        )
+        for w in config.warnings:
+            _w.warn(w, stacklevel=3)
+
     def _validate_mesh_quality(self) -> None:
         """Pre-simulation mesh quality check (P0).
 
@@ -2342,6 +2406,10 @@ class Simulation:
         -------
         Result
         """
+        # ---- P1: Auto mesh when dx not specified and geometry exists ----
+        if self._dx is None and self._geometry:
+            self._auto_configure_mesh()
+
         # ---- P0: Pre-simulation mesh quality validation ----
         self._validate_mesh_quality()
 
