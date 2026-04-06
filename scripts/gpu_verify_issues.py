@@ -94,8 +94,11 @@ def test_ntff_power():
 
     sim = Simulation(freq_max=8e9, domain=(dom, dom, dom),
                      boundary="cpml", cpml_layers=cpml_n, dx=dx_val)
+    # CW source: continuous sinusoidal at exactly 5 GHz.
+    # DFT at 5 GHz will accumulate linearly with time → large values.
+    from rfx.sources.sources import CWSource
     sim.add_source((dom * 0.4, dom * 0.5, dom * 0.5), "ez",
-                   waveform=ModulatedGaussian(f0=5e9, bandwidth=0.1, amplitude=1e3))
+                   waveform=CWSource(f0=5e9, amplitude=1.0))
     sim.add_probe((dom * 0.4, dom * 0.5, dom * 0.5), "ez")
 
     # NTFF box: 5mm inside the CPML inner boundary
