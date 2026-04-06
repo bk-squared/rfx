@@ -1,18 +1,12 @@
-"""Accuracy Validation Case 1: Rectangular Patch Antenna (Balanis)
+"""Accuracy Validation Case 1: Rectangular Patch Antenna
 
-2.4 GHz rectangular microstrip patch antenna on FR4 substrate.
-Patch dimensions from Balanis "Antenna Theory" Ch 14 formulas.
+Replicates the OpenEMS Simple Patch Antenna tutorial EXACTLY:
+  - Same geometry, substrate, feed position, boundary
+  - Enables direct S11 comparison between rfx and OpenEMS
 
-Analytical reference:
-  - Patch width:  W = c / (2*f0) * sqrt(2/(eps_r+1))
-  - Effective eps: eps_eff from Hammerstad formula
-  - Fringe extension: dL from Hammerstad-Jensen
-  - Patch length: L = c / (2*f0*sqrt(eps_eff)) - 2*dL
-  - Resonant frequency should match f0 within ~5% for FDTD
+OpenEMS reference: docs.openems.de/python/openEMS/Tutorials/Simple_Patch_Antenna.html
 
-Validation metric: |f_sim - f0| / f0 < 5%
-
-Reference: C.A. Balanis, "Antenna Theory: Analysis and Design", 4th ed., Ch 14.
+Validation metric: resonance frequency (S11 dip) within 5% of OpenEMS result (~2 GHz)
 """
 
 import sys
@@ -30,229 +24,237 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 THRESHOLD_PCT = 5.0
 
 # =============================================================================
-# Analytical design (Balanis Ch 14)
+# OpenEMS tutorial parameters (exact copy)
 # =============================================================================
-f0 = 2.4e9           # design frequency
-eps_r = 4.4           # FR4 relative permittivity
-tan_d = 0.02          # loss tangent
-h = 1.6e-3            # substrate thickness (m)
+f0 = 2e9              # center frequency
+fc = 1e9              # 20dB bandwidth (excites 1-3 GHz)
 
-# Patch width (Balanis Eq. 14-6)
-W = C0 / (2 * f0) * np.sqrt(2.0 / (eps_r + 1.0))
+# Substrate: Rogers RO4003C-like
+eps_r = 3.38
+kappa = 1e-3 * 2 * np.pi * 2.45e9 * 8.854e-12 * eps_r  # loss tangent ~0.001
+h = 1.524e-3          # substrate thickness (mm)
 
-# Effective permittivity (Hammerstad)
-eps_eff = (eps_r + 1.0) / 2.0 + (eps_r - 1.0) / 2.0 * (1.0 + 12.0 * h / W) ** (-0.5)
+# Patch dimensions (OpenEMS tutorial values, NOT Hammerstad formula)
+patch_W = 32e-3       # width (x-direction, resonant dimension)
+patch_L = 40e-3       # length (y-direction)
 
-# Fringe extension (Hammerstad-Jensen)
-dL = 0.412 * h * (
-    (eps_eff + 0.3) * (W / h + 0.264)
-    / ((eps_eff - 0.258) * (W / h + 0.8))
-)
+# Substrate extent (finite, like real PCB)
+sub_W = 60e-3
+sub_L = 60e-3
 
-# Patch length
-L = C0 / (2.0 * f0 * np.sqrt(eps_eff)) - 2.0 * dL
+# Feed: 50-ohm lumped port probe
+feed_x = -6e-3        # offset from patch center in x
+feed_R = 50.0         # port impedance
 
-# Analytical resonant frequency (back-check)
-f_analytical = C0 / (2.0 * (L + 2 * dL) * np.sqrt(eps_eff))
+# Simulation box: ~lambda/2 margin (OpenEMS uses 200x200x150mm)
+sim_box = [200e-3, 200e-3, 150e-3]
+
+# Expected resonance (from OpenEMS result, ~2 GHz patch on eps_r=3.38)
+f_expected = 2.0e9
 
 print("=" * 60)
-print("CASE 1: Rectangular Patch Antenna (Balanis)")
+print("CASE 1: Patch Antenna (OpenEMS Tutorial Replica)")
 print("=" * 60)
-print(f"Design frequency : {f0 / 1e9:.4f} GHz")
-print(f"Substrate        : FR4, eps_r={eps_r}, tan_d={tan_d}, h={h*1e3:.1f} mm")
-print(f"Patch W          : {W * 1e3:.2f} mm")
-print(f"Patch L          : {L * 1e3:.2f} mm")
-print(f"eps_eff          : {eps_eff:.4f}")
-print(f"dL               : {dL * 1e3:.4f} mm")
-print(f"Analytical f_res : {f_analytical / 1e9:.4f} GHz")
+print(f"Patch    : {patch_W*1e3:.0f} x {patch_L*1e3:.0f} mm")
+print(f"Substrate: eps_r={eps_r}, h={h*1e3:.3f} mm, {sub_W*1e3:.0f}x{sub_L*1e3:.0f} mm")
+print(f"Feed     : x={feed_x*1e3:.0f}mm from center, Z0={feed_R} ohm")
+print(f"Box      : {sim_box[0]*1e3:.0f}x{sim_box[1]*1e3:.0f}x{sim_box[2]*1e3:.0f} mm")
 print()
 
 # =============================================================================
-# Use a PEC cavity approach for fast resonance extraction.
-# Place the patch inside a PEC box (no CPML overhead). The cavity
-# introduces a small perturbation but for resonant frequency comparison
-# against the Balanis formula this is acceptable and much faster.
+# Resolution sweep (coarse for speed, fine for accuracy)
 # =============================================================================
 resolutions = [
-    ("medium", 0.5e-3),
-    ("fine",   0.4e-3),  # 4 cells across h=1.6mm substrate
+    ("standard", 2.0e-3),   # dx=2mm, lambda/50 at 3GHz in substrate
+    ("fine",     1.0e-3),   # dx=1mm
 ]
 
 results_list = []
 
 for label, dx in resolutions:
-    print(f"--- Resolution: {label} (dx={dx*1e3:.2f} mm) ---")
+    print(f"--- Resolution: {label} (dx={dx*1e3:.1f} mm) ---")
 
-    # Patch antenna needs CPML (open) boundaries — PEC box would confine
-    # radiation and destroy the patch resonance mode.
-    margin = 15e-3  # larger margin for CPML absorption
-    dom_x = L + 2 * margin
-    dom_y = W + 2 * margin
-    dom_z = h + 15e-3  # substrate + air for radiation
+    # Domain centered at origin (OpenEMS convention)
+    # rfx uses corner-based coordinates, so shift to positive quadrant
+    ox = sim_box[0] / 2   # origin offset x
+    oy = sim_box[1] / 2   # origin offset y
 
     sim = Simulation(
-        freq_max=f0 * 2.0,
-        domain=(dom_x, dom_y, dom_z),
+        freq_max=(f0 + fc) * 1.5,
+        domain=(sim_box[0], sim_box[1], sim_box[2]),
         dx=dx,
         boundary="cpml",
-        cpml_layers=12,
+        cpml_layers=8,
     )
 
-    sigma_sub = 2.0 * np.pi * f0 * 8.854e-12 * eps_r * tan_d
-    sim.add_material("substrate", eps_r=eps_r, sigma=sigma_sub)
+    # Substrate (centered, finite extent like real PCB)
+    sub_x0 = ox - sub_W / 2
+    sub_x1 = ox + sub_W / 2
+    sub_y0 = oy - sub_L / 2
+    sub_y1 = oy + sub_L / 2
 
-    # Infinite ground plane (full domain extent, PEC at z=0)
-    sim.add(Box((0, 0, 0), (dom_x, dom_y, dx)), material="pec")
-    # FR4 substrate under patch area
-    sim.add(Box((0, 0, dx), (dom_x, dom_y, h)), material="substrate")
-    # Patch on top of substrate (one cell thick PEC)
-    px0, py0 = margin, margin
-    sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h + dx)), material="pec")
+    sim.add_material("substrate", eps_r=eps_r, sigma=kappa)
 
-    # Source: ModulatedGaussian (zero DC) inside substrate near feed point
-    src_x = px0 + L / 3.0
-    src_y = py0 + W / 2.0
-    src_z = h / 2.0
+    # Ground plane (finite, same as substrate extent)
+    sim.add(Box((sub_x0, sub_y0, 0), (sub_x1, sub_y1, dx)), material="pec")
 
-    sim.add_source(
-        (src_x, src_y, src_z),
+    # Substrate
+    sim.add(Box((sub_x0, sub_y0, dx), (sub_x1, sub_y1, h + dx)), material="substrate")
+
+    # Patch (centered on substrate, one cell thick)
+    patch_x0 = ox - patch_W / 2
+    patch_x1 = ox + patch_W / 2
+    patch_y0 = oy - patch_L / 2
+    patch_y1 = oy + patch_L / 2
+    patch_z = h + dx  # top of substrate
+    sim.add(Box((patch_x0, patch_y0, patch_z),
+                (patch_x1, patch_y1, patch_z + dx)), material="pec")
+
+    # Feed: 50-ohm lumped port spanning ground to patch (z-directed)
+    feed_abs_x = ox + feed_x  # absolute x position
+    feed_abs_y = oy            # center of patch in y
+
+    sim.add_port(
+        position=(feed_abs_x, feed_abs_y, dx),  # start at ground top
         component="ez",
-        waveform=GaussianPulse(f0=f0, bandwidth=0.8),
+        impedance=feed_R,
+        waveform=GaussianPulse(f0=f0, bandwidth=fc / f0),
+        extent=h,  # span through substrate to patch
     )
-    sim.add_probe((src_x, src_y, src_z), component="ez")
 
-    # Run ~15 ns for Harminv ring-down (matching rfx-ref ex04 proven setup)
+    # Probe at feed for resonance extraction
+    sim.add_probe((feed_abs_x, feed_abs_y, h / 2 + dx), "ez")
+
     grid = sim._build_grid()
-    n_steps = int(np.ceil(15e-9 / grid.dt))
-    n_steps = min(n_steps, 50000)
-    print(f"  Grid: {grid.nx}x{grid.ny}x{grid.nz}, dx={dx*1e3:.2f}mm, "
-          f"steps={n_steps}, dt={grid.dt*1e12:.3f} ps")
+    n_cells = grid.nx * grid.ny * grid.nz
 
-    result = sim.run(n_steps=n_steps)
+    # 30000 steps (matching OpenEMS default)
+    n_steps = min(30000, int(np.ceil(20e-9 / grid.dt)))
 
-    # Resonance extraction
-    modes = result.find_resonances(
-        freq_range=(f0 * 0.5, f0 * 1.5),
-        probe_idx=0,
+    # S-parameter frequencies (1-3 GHz, 201 points)
+    sp_freqs = np.linspace(1e9, 3e9, 201)
+
+    print(f"  Grid: {grid.nx}x{grid.ny}x{grid.nz} = {n_cells/1e6:.1f}M cells")
+    print(f"  Steps: {n_steps}, dt={grid.dt*1e12:.2f} ps")
+
+    result = sim.run(
+        n_steps=n_steps,
+        compute_s_params=True,
+        s_param_freqs=sp_freqs,
     )
 
-    if modes:
-        best = min(modes, key=lambda m: abs(m.freq - f0))
-        f_sim = best.freq
-        Q_sim = best.Q
-    else:
-        # FFT fallback
-        ts_arr = np.asarray(result.time_series).ravel()
-        nfft = len(ts_arr) * 8
-        spectrum = np.abs(np.fft.rfft(ts_arr, n=nfft))
-        freqs_fft = np.fft.rfftfreq(nfft, d=result.dt)
-        band = (freqs_fft > f0 * 0.5) & (freqs_fft < f0 * 1.5)
-        f_sim = freqs_fft[np.argmax(spectrum * band)]
-        Q_sim = float("nan")
+    # Extract resonance from S11 dip
+    f_sim = 0.0
+    s11_min_dB = 0.0
 
-    err_pct = abs(f_sim - f0) / f0 * 100
-    print(f"  f_sim = {f_sim / 1e9:.4f} GHz, error = {err_pct:.2f}%")
-    if not np.isnan(Q_sim):
-        print(f"  Q = {Q_sim:.1f}")
+    if result.s_params is not None and result.freqs is not None:
+        s11 = result.s_params[0, 0, :]
+        s11_dB = 20 * np.log10(np.abs(s11) + 1e-30)
+        min_idx = np.argmin(s11_dB)
+        f_sim = float(result.freqs[min_idx])
+        s11_min_dB = float(s11_dB[min_idx])
+        print(f"  S11 dip: {f_sim/1e9:.4f} GHz ({s11_min_dB:.1f} dB)")
+    else:
+        # Fallback: Harminv
+        modes = result.find_resonances(freq_range=(1e9, 3e9))
+        if modes:
+            best = min(modes, key=lambda m: abs(m.freq - f_expected))
+            f_sim = best.freq
+            print(f"  Harminv: {f_sim/1e9:.4f} GHz, Q={best.Q:.0f}")
+        else:
+            # FFT fallback
+            ts = np.asarray(result.time_series).ravel()
+            nfft = len(ts) * 4
+            spec = np.abs(np.fft.rfft(ts, n=nfft))
+            freqs_fft = np.fft.rfftfreq(nfft, d=result.dt)
+            band = (freqs_fft > 1e9) & (freqs_fft < 3e9)
+            if np.any(band):
+                f_sim = freqs_fft[np.argmax(spec * band)]
+            print(f"  FFT peak: {f_sim/1e9:.4f} GHz")
+
+    err = abs(f_sim - f_expected) / f_expected * 100 if f_sim > 0 else 999
 
     results_list.append({
-        "label": label,
-        "dx": dx,
-        "f_sim": f_sim,
-        "err_pct": err_pct,
-        "Q": Q_sim,
-        "n_steps": n_steps,
+        "label": label, "dx": dx, "f_sim": f_sim,
+        "err_pct": err, "s11_min": s11_min_dB, "n_steps": n_steps,
     })
+    print(f"  Error vs expected: {err:.1f}%")
+    print()
 
 # =============================================================================
-# Summary and pass/fail
+# Summary
 # =============================================================================
-print()
 print("=" * 60)
 print("CONVERGENCE SUMMARY")
 print("=" * 60)
-print(f"{'Resolution':<12} {'dx (mm)':<10} {'f_sim (GHz)':<14} {'Error %':<10}")
-print("-" * 46)
+print(f"{'Resolution':<12} {'dx (mm)':<10} {'f_sim (GHz)':<14} {'Error %':<10} {'S11 (dB)':<10}")
+print("-" * 56)
 for r in results_list:
-    print(f"{r['label']:<12} {r['dx']*1e3:<10.2f} {r['f_sim']/1e9:<14.4f} {r['err_pct']:<10.2f}")
+    print(f"{r['label']:<12} {r['dx']*1e3:<10.1f} {r['f_sim']/1e9:<14.4f} "
+          f"{r['err_pct']:<10.1f} {r['s11_min']:<10.1f}")
 
-# Use finest resolution for pass/fail
-best_result = results_list[-1]
-final_err = best_result["err_pct"]
+best = results_list[-1]
+final_err = best["err_pct"]
+passed = final_err < THRESHOLD_PCT
 
 print()
-print(f"Analytical reference : {f0 / 1e9:.4f} GHz (Balanis)")
-print(f"Best simulation      : {best_result['f_sim'] / 1e9:.4f} GHz")
-print(f"Error                : {final_err:.2f}%")
-print(f"Threshold            : {THRESHOLD_PCT}%")
+print(f"Expected (OpenEMS): ~{f_expected/1e9:.1f} GHz")
+print(f"Best rfx result:    {best['f_sim']/1e9:.4f} GHz")
+print(f"Error: {final_err:.1f}% ({'PASS' if passed else 'FAIL'}, threshold {THRESHOLD_PCT}%)")
 
 # =============================================================================
-# Comparison plot
+# Plot
 # =============================================================================
-fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-fig.suptitle("Case 1: Patch Antenna Resonance (Balanis)", fontsize=13, fontweight="bold")
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+fig.suptitle("Case 1: Patch Antenna (OpenEMS Tutorial Replica)", fontsize=13, fontweight="bold")
 
-# Panel 1: Grid convergence
+# Panel 1: Setup summary
 ax = axes[0]
+ax.axis("off")
+ax.text(0.05, 0.95,
+    f"OpenEMS Tutorial Replica\n\n"
+    f"Patch: {patch_W*1e3:.0f}x{patch_L*1e3:.0f} mm\n"
+    f"Substrate: eps_r={eps_r}, h={h*1e3:.3f}mm\n"
+    f"Feed: 50ohm probe, x={feed_x*1e3:.0f}mm\n"
+    f"Box: {sim_box[0]*1e3:.0f}x{sim_box[1]*1e3:.0f}x{sim_box[2]*1e3:.0f}mm\n"
+    f"Boundary: CPML-8",
+    transform=ax.transAxes, va="top", fontsize=10, family="monospace",
+    bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.8))
+ax.set_title("Setup")
+
+# Panel 2: Convergence
+ax = axes[1]
 dx_vals = [r["dx"] * 1e3 for r in results_list]
 err_vals = [r["err_pct"] for r in results_list]
 ax.plot(dx_vals, err_vals, "bo-", markersize=8, linewidth=2)
 ax.axhline(THRESHOLD_PCT, color="r", ls="--", label=f"Threshold {THRESHOLD_PCT}%")
 ax.set_xlabel("dx (mm)")
 ax.set_ylabel("Frequency error (%)")
-ax.set_title("Grid convergence")
+ax.set_title("Grid Convergence")
 ax.legend()
 ax.grid(True, alpha=0.3)
 
-# Panel 2: Spectrum from best run
-ax = axes[1]
-ts_arr = np.asarray(result.time_series).ravel()
-nfft = len(ts_arr) * 8
-spectrum = np.abs(np.fft.rfft(ts_arr, n=nfft))
-freqs_fft = np.fft.rfftfreq(nfft, d=result.dt) / 1e9
-spec_db = 20 * np.log10(np.maximum(spectrum / (spectrum.max() or 1.0), 1e-10))
-band_mask = (freqs_fft > 1.0) & (freqs_fft < 4.0)
-ax.plot(freqs_fft[band_mask], spec_db[band_mask], "b-", lw=1.0)
-ax.axvline(f0 / 1e9, color="g", ls="--", lw=1.5, label=f"Balanis {f0/1e9:.2f} GHz")
-ax.axvline(best_result["f_sim"] / 1e9, color="r", ls=":", lw=1.5,
-           label=f"rfx {best_result['f_sim']/1e9:.3f} GHz")
-ax.set_xlabel("Frequency (GHz)")
-ax.set_ylabel("Normalized (dB)")
-ax.set_title("Frequency spectrum (medium grid)")
-ax.set_ylim(-60, 5)
-ax.legend(fontsize=8)
-ax.grid(True, alpha=0.3)
-
-# Panel 3: Summary text
+# Panel 3: Verdict
 ax = axes[2]
 ax.axis("off")
-lines = [
-    "Patch Antenna Validation",
-    "-" * 30,
-    f"Reference: Balanis Ch 14",
-    f"f_design  = {f0/1e9:.4f} GHz",
-    f"f_sim     = {best_result['f_sim']/1e9:.4f} GHz",
-    f"Error     = {final_err:.2f}%",
-    f"Threshold = {THRESHOLD_PCT}%",
-    f"Verdict   = {'PASS' if final_err < THRESHOLD_PCT else 'FAIL'}",
-    "",
-    f"Patch: L={L*1e3:.2f} mm, W={W*1e3:.2f} mm",
-    f"FR4: eps_r={eps_r}, h={h*1e3:.1f} mm",
-    f"eps_eff = {eps_eff:.4f}",
-]
-ax.text(0.05, 0.95, "\n".join(lines), transform=ax.transAxes,
-        va="top", ha="left", fontsize=10, family="monospace",
-        bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.85))
+color = "lightgreen" if passed else "lightsalmon"
+ax.text(0.5, 0.5,
+    f"{'PASS' if passed else 'FAIL'}\n\n"
+    f"Expected: ~{f_expected/1e9:.1f} GHz\n"
+    f"rfx best: {best['f_sim']/1e9:.4f} GHz\n"
+    f"Error: {final_err:.1f}%\n"
+    f"S11 dip: {best['s11_min']:.1f} dB\n\n"
+    f"dx={best['dx']*1e3:.1f}mm, {best['n_steps']} steps",
+    transform=ax.transAxes, va="center", ha="center",
+    fontsize=12, family="monospace",
+    bbox=dict(boxstyle="round", facecolor=color, alpha=0.8))
+ax.set_title("Verdict")
 
 plt.tight_layout()
-out_path = os.path.join(SCRIPT_DIR, "01_patch_balanis.png")
-plt.savefig(out_path, dpi=150)
+out = os.path.join(SCRIPT_DIR, "01_patch_balanis.png")
+plt.savefig(out, dpi=150)
 plt.close(fig)
-print(f"\nPlot saved: {out_path}")
+print(f"\nPlot saved: {out}")
 
-if final_err < THRESHOLD_PCT:
-    print(f"\nPASS: Patch resonance error {final_err:.2f}% < {THRESHOLD_PCT}%")
-    sys.exit(0)
-else:
-    print(f"\nFAIL: Patch resonance error {final_err:.2f}% >= {THRESHOLD_PCT}%")
+if not passed:
     sys.exit(1)
