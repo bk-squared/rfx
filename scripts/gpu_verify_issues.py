@@ -96,9 +96,11 @@ def test_ntff_power():
                      boundary="cpml", cpml_layers=cpml_n, dx=dx_val)
     # CW source: continuous sinusoidal at exactly 5 GHz.
     # DFT at 5 GHz will accumulate linearly with time → large values.
+    # Large amplitude CW source. Far-field power scales as amplitude².
+    # At amplitude=1e6, dx=2mm, domain=120mm: expect power ~1e-10 to 1e-5.
     from rfx.sources.sources import CWSource
     sim.add_source((dom * 0.4, dom * 0.5, dom * 0.5), "ez",
-                   waveform=CWSource(f0=5e9, amplitude=1.0))
+                   waveform=CWSource(f0=5e9, amplitude=1e6))
     sim.add_probe((dom * 0.4, dom * 0.5, dom * 0.5), "ez")
 
     # NTFF box: 5mm inside the CPML inner boundary
