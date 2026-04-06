@@ -43,11 +43,13 @@ sim = Simulation(
 )
 
 # Lorentz slab in the middle
+omega_0 = 2 * np.pi * f0_lorentz
+kappa = De * omega_0 ** 2  # kappa = delta_eps * omega_0^2
 sim.add_material("lorentz_medium", eps_r=eps_inf,
                  lorentz_poles=[LorentzPole(
-                     delta_eps=De,
-                     omega_0=2 * np.pi * f0_lorentz,
+                     omega_0=omega_0,
                      delta=delta,
+                     kappa=kappa,
                  )])
 slab_lo = domain_x * 0.35
 slab_hi = domain_x * 0.65

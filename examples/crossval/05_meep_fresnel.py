@@ -27,7 +27,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Parameters
 n_diel = 3.5
 eps_r = n_diel ** 2  # 12.25
-R_analytic = ((n_diel - 1) / (n_diel + 1)) ** 2  # 0.3086
+r_analytic = abs((1.0 - n_diel) / (1.0 + n_diel))  # amplitude |r| = 0.5556
+R_analytic = r_analytic ** 2  # power R = 0.3086
 
 print("=" * 60)
 print("Cross-Validation: Fresnel Reflectance (TFSF)")
@@ -102,11 +103,11 @@ spec_scat = np.abs(np.fft.rfft(ts_scat))
 
 band = (freqs > 3e9) & (freqs < 7e9)
 R_num = spec_scat[band] / np.maximum(spec_inc[band], 1e-30)
-R_mean = float(np.mean(R_num))
-err_pct = abs(R_mean - R_analytic) / R_analytic * 100
+r_mean = float(np.mean(R_num))  # amplitude reflection coefficient
+err_pct = abs(r_mean - r_analytic) / r_analytic * 100
 
-print(f"\nNumerical |R| (mean 3-7 GHz): {R_mean:.4f}")
-print(f"Analytical |R|: {np.sqrt(R_analytic):.4f}")
+print(f"\nNumerical |r| (mean 3-7 GHz): {r_mean:.4f}")
+print(f"Analytical |r|: {r_analytic:.4f}")
 print(f"Error: {err_pct:.1f}%")
 if err_pct < 5:
     print("PASS: within 5% of Fresnel")
@@ -129,9 +130,9 @@ ax.set_title("Time Domain")
 
 ax = axes[1]
 f_ghz = freqs[band] / 1e9
-ax.plot(f_ghz, R_num, "b-", lw=1.5, label=f"rfx |R| (mean={R_mean:.3f})")
-ax.axhline(np.sqrt(R_analytic), color="r", ls="--",
-           label=f"Analytical |R|={np.sqrt(R_analytic):.3f}")
+ax.plot(f_ghz, R_num, "b-", lw=1.5, label=f"rfx |r| (mean={r_mean:.3f})")
+ax.axhline(r_analytic, color="r", ls="--",
+           label=f"Analytical |r|={r_analytic:.3f}")
 ax.set_xlabel("Frequency (GHz)")
 ax.set_ylabel("|R|")
 ax.legend()
