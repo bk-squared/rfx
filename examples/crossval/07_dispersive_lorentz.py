@@ -32,15 +32,17 @@ print()
 
 dx = 0.5e-3  # 0.5 mm (finer for 10 GHz resonance: lambda/60)
 domain_x = 0.10  # 100 mm
-domain_yz = 3 * dx
 
+# 2D TMz mode avoids y/z CPML absorption in thin slabs
 sim = Simulation(
     freq_max=20e9,
-    domain=(domain_x, domain_yz, domain_yz),
+    domain=(domain_x, domain_x, dx),
     boundary="cpml",
     cpml_layers=10,
     dx=dx,
+    mode="2d_tmz",
 )
+domain_yz = dx
 
 # Lorentz slab — thin (5mm) to see clear transmission dip
 omega_0 = 2 * np.pi * f0_lorentz
@@ -55,17 +57,18 @@ sim.add_material("lorentz_medium", eps_r=eps_inf,
 slab_thick = 5e-3  # 5 mm slab
 slab_lo = domain_x / 2 - slab_thick / 2
 slab_hi = domain_x / 2 + slab_thick / 2
-sim.add(Box((slab_lo, 0, 0), (slab_hi, domain_yz, domain_yz)),
+cy = domain_x / 2
+sim.add(Box((slab_lo, 0, 0), (slab_hi, domain_x, dx)),
         material="lorentz_medium")
 
 # Broadband source before slab
-sim.add_source((domain_x * 0.15, domain_yz / 2, domain_yz / 2), "ez",
+sim.add_source((domain_x * 0.15, cy, 0), "ez",
                waveform=GaussianPulse(f0=10e9, bandwidth=0.8))
 
 # Probe after slab (transmitted)
-sim.add_probe((domain_x * 0.85, domain_yz / 2, domain_yz / 2), "ez")
+sim.add_probe((domain_x * 0.85, cy, 0), "ez")
 # Reference probe before slab
-sim.add_probe((domain_x * 0.25, domain_yz / 2, domain_yz / 2), "ez")
+sim.add_probe((domain_x * 0.25, cy, 0), "ez")
 
 grid = sim._build_grid()
 n_steps = int(np.ceil(15e-9 / grid.dt))  # longer for narrow resonance
