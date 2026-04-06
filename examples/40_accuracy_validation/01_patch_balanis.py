@@ -74,8 +74,8 @@ print()
 # against the Balanis formula this is acceptable and much faster.
 # =============================================================================
 resolutions = [
-    ("medium", 1.0e-3),
-    ("fine",   0.5e-3),
+    ("medium", 0.5e-3),
+    ("fine",   0.4e-3),  # 4 cells across h=1.6mm substrate
 ]
 
 results_list = []
@@ -83,36 +83,29 @@ results_list = []
 for label, dx in resolutions:
     print(f"--- Resolution: {label} (dx={dx*1e3:.2f} mm) ---")
 
-    margin = 10e-3
+    margin = 5e-3
     dom_x = L + 2 * margin
     dom_y = W + 2 * margin
-    h_air = 8e-3  # air above substrate
-
-    # Non-uniform z mesh: fine in substrate (4 cells), coarse in air
-    dz_sub = h / 4  # 4 cells across 1.6mm substrate = 0.4mm each
-    n_sub = 4
-    dz_air = dx
-    n_air = max(2, int(np.ceil(h_air / dz_air)))
-    dz_profile = [dz_sub] * n_sub + [dz_air] * n_air
+    dom_z = h + 4e-3  # substrate + air
 
     sim = Simulation(
         freq_max=f0 * 2.0,
-        domain=(dom_x, dom_y),
+        domain=(dom_x, dom_y, dom_z),
         dx=dx,
         boundary="pec",
-        dz_profile=dz_profile,
     )
+    dz_sub = dx  # uniform grid — dx resolves substrate when dx <= h/3
 
     sigma_sub = 2.0 * np.pi * f0 * 8.854e-12 * eps_r * tan_d
     sim.add_material("substrate", eps_r=eps_r, sigma=sigma_sub)
 
-    # Ground plane: PEC boundary at z=0 (boundary="pec" handles this)
-    # FR4 substrate fills from z=0 to z=h
-    sim.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="substrate")
-    # Patch on top of substrate
+    # Ground plane (one cell PEC at z=0)
+    sim.add(Box((0, 0, 0), (dom_x, dom_y, dx)), material="pec")
+    # FR4 substrate
+    sim.add(Box((0, 0, dx), (dom_x, dom_y, h)), material="substrate")
+    # Patch on top of substrate (one cell thick PEC)
     px0, py0 = margin, margin
-    # Patch: one cell thick PEC at top of substrate
-    sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h + dz_sub)), material="pec")
+    sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h + dx)), material="pec")
 
     # Source: ModulatedGaussian (zero DC) inside substrate near feed point
     src_x = px0 + L / 3.0
@@ -126,11 +119,11 @@ for label, dx in resolutions:
     )
     sim.add_probe((src_x, src_y, src_z), component="ez")
 
-    # Run ~50 periods at f0 for Harminv (non-uniform dt is smaller → more steps)
-    grid = sim._build_nonuniform_grid()
+    # Run ~50 periods at f0 for Harminv
+    grid = sim._build_grid()
     n_steps = int(np.ceil(50.0 / (f0 * grid.dt)))
-    n_steps = min(n_steps, 40000)
-    print(f"  Grid: {grid.nx}x{grid.ny}x{grid.nz}, dz_sub={dz_sub*1e3:.2f}mm, "
+    n_steps = min(n_steps, 30000)
+    print(f"  Grid: {grid.nx}x{grid.ny}x{grid.nz}, dx={dx*1e3:.2f}mm, "
           f"steps={n_steps}, dt={grid.dt*1e12:.3f} ps")
 
     result = sim.run(n_steps=n_steps)
