@@ -83,25 +83,27 @@ results_list = []
 for label, dx in resolutions:
     print(f"--- Resolution: {label} (dx={dx*1e3:.2f} mm) ---")
 
-    margin = 5e-3
+    # Patch antenna needs CPML (open) boundaries — PEC box would confine
+    # radiation and destroy the patch resonance mode.
+    margin = 15e-3  # larger margin for CPML absorption
     dom_x = L + 2 * margin
     dom_y = W + 2 * margin
-    dom_z = h + 4e-3  # substrate + air
+    dom_z = h + 15e-3  # substrate + air for radiation
 
     sim = Simulation(
         freq_max=f0 * 2.0,
         domain=(dom_x, dom_y, dom_z),
         dx=dx,
-        boundary="pec",
+        boundary="cpml",
+        cpml_layers=8,
     )
-    dz_sub = dx  # uniform grid — dx resolves substrate when dx <= h/3
 
     sigma_sub = 2.0 * np.pi * f0 * 8.854e-12 * eps_r * tan_d
     sim.add_material("substrate", eps_r=eps_r, sigma=sigma_sub)
 
-    # Ground plane (one cell PEC at z=0)
+    # Infinite ground plane (full domain extent, PEC at z=0)
     sim.add(Box((0, 0, 0), (dom_x, dom_y, dx)), material="pec")
-    # FR4 substrate
+    # FR4 substrate under patch area
     sim.add(Box((0, 0, dx), (dom_x, dom_y, h)), material="substrate")
     # Patch on top of substrate (one cell thick PEC)
     px0, py0 = margin, margin
