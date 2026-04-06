@@ -79,10 +79,10 @@ sim.add_source(
     waveform=GaussianPulse(f0=f_center, bandwidth=f_width / f_center),
 )
 
-# Probe at output (top of vertical arm)
+# Input reference probe (before bend, in horizontal arm)
+sim.add_probe((pml_thick + 5 * dx, cy, cell_z_3d / 2), "ez")
+# Output probe (top of vertical arm, after bend)
 sim.add_probe((cx, cell_y - pml_thick - dx, cell_z_3d / 2), "ez")
-# Reference probe (straight through, no bend)
-sim.add_probe((cell_x - pml_thick - dx, cy, cell_z_3d / 2), "ez")
 
 grid = sim._build_grid()
 n_steps = int(np.ceil(10e-9 / grid.dt))
@@ -92,11 +92,11 @@ result = sim.run(n_steps=n_steps)
 
 ts = np.array(result.time_series)
 if ts.ndim == 2 and ts.shape[1] >= 2:
-    ts_out = ts[:, 0]  # bend output
-    ts_ref = ts[:, 1]  # straight reference
+    ts_ref = ts[:, 0]  # input reference (before bend)
+    ts_out = ts[:, 1]  # bend output (after bend)
 else:
-    ts_out = ts.ravel()
-    ts_ref = ts_out
+    ts_ref = ts.ravel()
+    ts_out = ts_ref
 
 # FFT for transmittance
 nfft = len(ts_out) * 4

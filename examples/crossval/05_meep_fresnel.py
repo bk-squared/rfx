@@ -81,14 +81,38 @@ spec_refl = np.abs(np.fft.rfft(ts_refl, n=nfft)) ** 2
 spec_trans = np.abs(np.fft.rfft(ts_trans, n=nfft)) ** 2
 freqs_hz = np.fft.rfftfreq(nfft, d=result.dt)
 
-# Reflectance estimate from probe ratio
-# (simplified — proper method needs reference run without dielectric)
+# Run 2: reference run without dielectric (incident-only)
+sim_ref = Simulation(
+    freq_max=(f_center + f_width) * 1.2,
+    domain=(domain_x, domain_yz, domain_yz),
+    boundary="cpml",
+    cpml_layers=8,
+    dx=dx,
+)
+sim_ref.add_source((src_x, domain_yz / 2, domain_yz / 2), "ez",
+                    waveform=GaussianPulse(f0=f_center, bandwidth=f_width / f_center))
+sim_ref.add_probe((probe_refl_x, domain_yz / 2, domain_yz / 2), "ez")
+sim_ref.add_probe((probe_trans_x, domain_yz / 2, domain_yz / 2), "ez")
+
+result_ref = sim_ref.run(n_steps=n_steps)
+ts_ref = np.array(result_ref.time_series)
+ts_inc = ts_ref[:, 0] if ts_ref.ndim == 2 else ts_ref.ravel()
+
+# Reflected = total - incident at reflection probe
+ts_refl_only = ts_refl - ts_inc
+spec_refl_only = np.abs(np.fft.rfft(ts_refl_only, n=nfft)) ** 2
+spec_inc = np.abs(np.fft.rfft(ts_inc, n=nfft)) ** 2
+
 band = (freqs_hz > f_center * 0.5) & (freqs_hz < f_center * 1.5)
-R_sim = np.mean(spec_refl[band]) / (np.mean(spec_refl[band]) + np.mean(spec_trans[band]) + 1e-30)
+R_sim = np.mean(spec_refl_only[band]) / (np.mean(spec_inc[band]) + 1e-30)
 
 print(f"\nEstimated R: {R_sim:.4f}")
 print(f"Analytical R: {R_fresnel:.4f}")
 print(f"Difference: {abs(R_sim - R_fresnel):.4f}")
+if abs(R_sim - R_fresnel) < 0.05:
+    print("PASS: within 5% of Fresnel")
+else:
+    print(f"FAIL: {abs(R_sim - R_fresnel)/R_fresnel*100:.1f}% error")
 
 # Plot
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))

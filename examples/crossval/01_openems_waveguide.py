@@ -67,7 +67,7 @@ sim.add_waveguide_port(
 )
 
 print("Running waveguide S-matrix...")
-result = sim.compute_waveguide_s_matrix(num_periods=30)
+result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
 
 S = np.array(result.s_params)
 f = np.array(result.freqs) / 1e9
@@ -82,7 +82,7 @@ print(f"S11 mean: {np.mean(np.abs(S[0,0,:])):.4f} ({np.mean(s11_dB):.1f} dB)")
 s21_pass = np.mean(np.abs(S[1, 0, :])) > 0.9
 s11_pass = np.mean(np.abs(S[0, 0, :])) < 0.1
 
-print(f"\nValidation:")
+print("\nValidation:")
 print(f"  |S21| > 0.9: {'PASS' if s21_pass else 'FAIL'}")
 print(f"  |S11| < 0.1: {'PASS' if s11_pass else 'FAIL'}")
 

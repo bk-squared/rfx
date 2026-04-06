@@ -67,7 +67,10 @@ n_steps = int(np.ceil(5e-9 / grid.dt))
 print(f"Grid: {grid.nx}x{grid.ny}x{grid.nz}, steps={n_steps}")
 
 result = sim.run(n_steps=n_steps)
-print(f"Simulation complete")
+ts = np.array(result.time_series).ravel()
+peak = float(np.max(np.abs(ts)))
+print(f"Simulation complete — peak |Ez| = {peak:.4e}")
+print("PASS: TFSF+sphere simulation ran successfully" if peak > 1e-10 else "FAIL: no field detected")
 
 # Plot time series
 ts = np.array(result.time_series).ravel()
