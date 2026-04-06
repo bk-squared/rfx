@@ -19,7 +19,7 @@ cases = [
     ("02_waveguide_te10.py",  "WR-90 TE10 cutoff (Pozar)",          1.0),
     ("03_cavity_tm110.py",    "Dielectric cavity TM110 (Pozar)",     2.0),
     ("04_microstrip_z0.py",   "Microstrip Z0 / eps_eff (Hammerstad)", 5.0),
-    ("05_coupled_filter.py",  "Coupled filter center freq (Pozar)",  25.0),
+    ("05_dielectric_cavity.py", "Dielectric-loaded PEC cavity (Pozar)", 1.0),
 ]
 
 print("=" * 70)
