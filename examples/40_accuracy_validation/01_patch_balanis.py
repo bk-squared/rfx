@@ -106,10 +106,9 @@ for label, dx in resolutions:
     sigma_sub = 2.0 * np.pi * f0 * 8.854e-12 * eps_r * tan_d
     sim.add_material("substrate", eps_r=eps_r, sigma=sigma_sub)
 
-    # Ground plane at z=0 (one cell thick)
-    sim.add(Box((0, 0, 0), (dom_x, dom_y, dz_sub)), material="pec")
-    # FR4 substrate (from ground plane top to h)
-    sim.add(Box((0, 0, dz_sub), (dom_x, dom_y, h)), material="substrate")
+    # Ground plane: PEC boundary at z=0 (boundary="pec" handles this)
+    # FR4 substrate fills from z=0 to z=h
+    sim.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="substrate")
     # Patch on top of substrate
     px0, py0 = margin, margin
     sim.add(Box((px0, py0, h), (px0 + L, py0 + W, h)), material="pec")
