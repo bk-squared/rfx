@@ -1957,7 +1957,7 @@ class Simulation:
 
         # Determine minimum z cell size
         if self._dz_profile is not None:
-            min_dz = float(jnp.min(self._dz_profile))
+            min_dz = float(min(self._dz_profile))
         else:
             min_dz = dx
 

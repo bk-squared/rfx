@@ -123,7 +123,7 @@ def _geometry_material_map(sim) -> dict[str, object]:
 
 def _critical_dielectric_layer_issues(sim, grid) -> list[PreflightIssue]:
     issues: list[PreflightIssue] = []
-    dz_min = float(jnp.min(sim._dz_profile)) if getattr(sim, "_dz_profile", None) is not None else float(grid.dx)
+    dz_min = float(min(sim._dz_profile)) if getattr(sim, "_dz_profile", None) is not None else float(grid.dx)
     pec_threshold = sim._PEC_SIGMA_THRESHOLD
 
     for entry in getattr(sim, "_geometry", ()):
@@ -199,7 +199,7 @@ def _generic_feature_resolution_issues(sim, grid) -> list[PreflightIssue]:
 
     min_res = float(grid.dx)
     if getattr(sim, "_dz_profile", None) is not None:
-        min_res = min(min_res, float(jnp.min(sim._dz_profile)))
+        min_res = min(min_res, float(min(sim._dz_profile)))
 
     if features.min_thickness > 0:
         cells = features.min_thickness / max(min_res, 1e-30)
