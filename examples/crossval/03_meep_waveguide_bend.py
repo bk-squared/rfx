@@ -48,15 +48,17 @@ print()
 # rfx simulation — waveguide bend
 # =============================================================================
 dx = 0.1 * SCALE  # resolution = 10 → dx = 0.1 mm
-cell_z_3d = 3 * dx  # thin slab for quasi-2D
 
+# Meep's 2D simulation: use 2D TMz mode (Ez, Hx, Hy) — no z-meshing needed
 sim = Simulation(
     freq_max=f_center + f_width,
-    domain=(cell_x, cell_y, cell_z_3d),
+    domain=(cell_x, cell_y, dx),
     boundary="cpml",
     cpml_layers=8,
     dx=dx,
+    mode="2d_tmz",
 )
+cell_z_3d = dx  # single cell in z for 2D mode
 
 sim.add_material("waveguide", eps_r=eps_wg)
 

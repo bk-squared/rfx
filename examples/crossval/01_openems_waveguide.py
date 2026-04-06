@@ -46,23 +46,24 @@ Z_te10 = Z_wg * (b / a) * 2  # TE10 wave impedance
 # =============================================================================
 # rfx simulation
 # =============================================================================
-dx = 0.5e-3  # 0.5 mm cells
+dx = 0.25e-3  # 0.25 mm cells (17 cells across narrow wall)
 
 sim = Simulation(
     freq_max=f_stop * 1.2,
     domain=(wg_len, a, b),
     boundary="cpml",
-    cpml_layers=10,
+    cpml_layers=12,
     dx=dx,
 )
 
-# Waveguide ports at both ends
+# Waveguide ports well inside domain (away from CPML)
+port_offset = 0.008  # 8mm from each end
 sim.add_waveguide_port(
-    0.005, direction="+x", mode=(1, 0), mode_type="TE",
+    port_offset, direction="+x", mode=(1, 0), mode_type="TE",
     freqs=freqs, f0=(f_start + f_stop) / 2, name="port1"
 )
 sim.add_waveguide_port(
-    wg_len - 0.005, direction="-x", mode=(1, 0), mode_type="TE",
+    wg_len - port_offset, direction="-x", mode=(1, 0), mode_type="TE",
     freqs=freqs, f0=(f_start + f_stop) / 2, name="port2"
 )
 

@@ -36,30 +36,33 @@ print()
 
 dx = 0.2 * SCALE  # 2mm cells
 domain_x = 10 * SCALE  # 100mm propagation
-domain_yz = 3 * dx  # thin slab for quasi-1D
+domain_yz = dx  # single cell in y/z for quasi-1D
 
+# Use 2D TMz mode for clean 1D propagation (no y/z CPML absorption)
 sim = Simulation(
     freq_max=(f_center + f_width) * 1.2,
-    domain=(domain_x, domain_yz, domain_yz),
+    domain=(domain_x, domain_x, domain_yz),
     boundary="cpml",
     cpml_layers=8,
     dx=dx,
+    mode="2d_tmz",
 )
 
-# Dielectric fills right half
+# Dielectric fills right half (full y extent)
 sim.add_material("dielectric", eps_r=eps_r)
-sim.add(Box((domain_x / 2, 0, 0), (domain_x, domain_yz, domain_yz)),
+sim.add(Box((domain_x / 2, 0, 0), (domain_x, domain_x, domain_yz)),
         material="dielectric")
 
 # Source at left, probe at left (reflected) and right (transmitted)
-src_x = domain_x * 0.2
+src_x = domain_x * 0.25
 probe_refl_x = domain_x * 0.15
 probe_trans_x = domain_x * 0.8
+cy = domain_x / 2
 
-sim.add_source((src_x, domain_yz / 2, domain_yz / 2), "ez",
+sim.add_source((src_x, cy, 0), "ez",
                waveform=GaussianPulse(f0=f_center, bandwidth=f_width / f_center))
-sim.add_probe((probe_refl_x, domain_yz / 2, domain_yz / 2), "ez")
-sim.add_probe((probe_trans_x, domain_yz / 2, domain_yz / 2), "ez")
+sim.add_probe((probe_refl_x, cy, 0), "ez")
+sim.add_probe((probe_trans_x, cy, 0), "ez")
 
 grid = sim._build_grid()
 n_steps = int(np.ceil(5e-9 / grid.dt))
@@ -84,15 +87,16 @@ freqs_hz = np.fft.rfftfreq(nfft, d=result.dt)
 # Run 2: reference run without dielectric (incident-only)
 sim_ref = Simulation(
     freq_max=(f_center + f_width) * 1.2,
-    domain=(domain_x, domain_yz, domain_yz),
+    domain=(domain_x, domain_x, domain_yz),
     boundary="cpml",
     cpml_layers=8,
     dx=dx,
+    mode="2d_tmz",
 )
-sim_ref.add_source((src_x, domain_yz / 2, domain_yz / 2), "ez",
+sim_ref.add_source((src_x, cy, 0), "ez",
                     waveform=GaussianPulse(f0=f_center, bandwidth=f_width / f_center))
-sim_ref.add_probe((probe_refl_x, domain_yz / 2, domain_yz / 2), "ez")
-sim_ref.add_probe((probe_trans_x, domain_yz / 2, domain_yz / 2), "ez")
+sim_ref.add_probe((probe_refl_x, cy, 0), "ez")
+sim_ref.add_probe((probe_trans_x, cy, 0), "ez")
 
 result_ref = sim_ref.run(n_steps=n_steps)
 ts_ref = np.array(result_ref.time_series)
