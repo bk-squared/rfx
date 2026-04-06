@@ -107,17 +107,18 @@ sim.add(Box((patch_x0, patch_y0, h), (patch_x0 + patch_W, patch_y0 + patch_L, h 
         material="pec")
 
 # Lumped port at feed point — z between ground and patch
-# Ground is at z=0..dz_sub (cell 0), substrate at z=0..h (cells 0-3)
-# Port must be in a non-PEC cell: use center of cell 1 (above ground)
+# Port must be in a non-PEC cell: use center of second substrate cell
 port_x = ox + feed_x_offset
 port_y = oy
-port_z = dz_sub + dz_sub / 2  # center of second substrate cell (above ground)
+port_z = dz_sub + dz_sub / 2  # center of second substrate cell
 sim.add_port(
     (port_x, port_y, port_z), "ez",
     impedance=feed_R,
     waveform=GaussianPulse(f0=f0, bandwidth=fc / f0),
 )
 sim.add_probe((port_x, port_y, port_z), "ez")
+# Second probe at patch center for mode verification
+sim.add_probe((ox, oy, port_z), "ez")
 
 # NTFF box for radiation pattern
 cpml_thick = 8 * dx
@@ -153,38 +154,48 @@ with warnings.catch_warnings():
 ts = np.array(result.time_series).ravel()
 print(f"Probe signal: max={np.max(np.abs(ts)):.4e}, rms={np.sqrt(np.mean(ts**2)):.4e}")
 
-# 1. Resonance detection — late-time windowed FFT
-# Skip source region (first 2ns), use ring-down only with Hanning window
-# This removes the DC/low-freq component from raw source injection
-ts_full = np.array(result.time_series).ravel()
+# 1. Resonance detection from center probe (cavity mode, no source contamination)
+ts_all = np.array(result.time_series)
 dt = result.dt
+
+# Use center probe (index 1) for resonance — it sees cavity mode only
+ts_center = ts_all[:, 1] if ts_all.ndim == 2 and ts_all.shape[1] >= 2 else ts_all.ravel()
+
+# Try Harminv first (most accurate)
+modes = result.find_resonances(freq_range=(1e9, 3.5e9), probe_idx=1)
+if modes:
+    best = min(modes, key=lambda m: abs(m.freq - f_analytical))
+    f_sim = best.freq
+    print(f"Harminv: {f_sim/1e9:.4f} GHz, Q={best.Q:.0f}")
+else:
+    # Fallback: late-time windowed FFT on center probe
+    skip = int(2e-9 / dt)
+    ts_late = ts_center[skip:]
+    ts_windowed = ts_late * np.hanning(len(ts_late))
+    nfft = len(ts_windowed) * 4
+    spec = np.abs(np.fft.rfft(ts_windowed, n=nfft))
+    freqs_fft = np.fft.rfftfreq(nfft, d=dt)
+    freqs_ghz_fft = freqs_fft / 1e9
+    band = (freqs_ghz_fft > 1.0) & (freqs_ghz_fft < 3.5)
+    peak_idx = np.argmax(spec[band])
+    f_sim = float(freqs_fft[band][peak_idx])
+    print(f"FFT peak (center probe): {f_sim/1e9:.4f} GHz")
+
+# Also compute windowed spectrum for plotting
 skip = int(2e-9 / dt)
-ts_late = ts_full[skip:]
-ts_windowed = ts_late * np.hanning(len(ts_late))
-
-nfft = len(ts_windowed) * 4
-spec = np.abs(np.fft.rfft(ts_windowed, n=nfft))
-freqs = np.fft.rfftfreq(nfft, d=dt)
-freqs_ghz = freqs / 1e9
-
-# Find peak in 1-3 GHz band
+ts_feed = ts_all[:, 0] if ts_all.ndim == 2 else ts_all.ravel()
+ts_late_feed = ts_feed[skip:]
+ts_windowed_feed = ts_late_feed * np.hanning(len(ts_late_feed))
+nfft = len(ts_windowed_feed) * 4
+spec_plot = np.abs(np.fft.rfft(ts_windowed_feed, n=nfft))
+freqs_ghz = np.fft.rfftfreq(nfft, d=dt) / 1e9
 band = (freqs_ghz > 1.0) & (freqs_ghz < 3.5)
-spec_band = spec[band]
-freqs_band = freqs[band]
-peak_idx = np.argmax(spec_band)
-f_sim = float(freqs_band[peak_idx])
-peak_db = 20 * np.log10(spec_band[peak_idx] / np.max(spec[band]) + 1e-30)
+spec_band = spec_plot[band]
 
 err_pct = abs(f_sim - f_analytical) / f_analytical * 100
-print(f"FFT peak: {f_sim/1e9:.4f} GHz (at {peak_db:.1f} dB)")
+print(f"Resonance: {f_sim/1e9:.4f} GHz")
 print(f"Analytical: {f_analytical/1e9:.4f} GHz")
 print(f"Error: {err_pct:.2f}%")
-
-# Also try find_resonances for comparison
-modes = result.find_resonances(freq_range=(f_expected * 0.5, f_expected * 1.5))
-if modes:
-    f_mode = min(modes, key=lambda m: abs(m.freq - f_expected)).freq
-    print(f"find_resonances: {f_mode/1e9:.4f} GHz")
 
 if err_pct < 5:
     print("PASS: resonance within 5%")
