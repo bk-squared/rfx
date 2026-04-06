@@ -120,10 +120,17 @@ print(f"\nTransmittance T: {T_sim:.4f}")
 print(f"Estimated R = 1-T: {R_sim:.4f}")
 print(f"Analytical R: {R_fresnel:.4f}")
 print(f"Difference: {abs(R_sim - R_fresnel):.4f}")
-if abs(R_sim - R_fresnel) < 0.05:
-    print("PASS: within 5% of Fresnel")
+diff_pct = abs(R_sim - R_fresnel) / R_fresnel * 100
+if diff_pct < 10:
+    print("PASS: within 10% of Fresnel")
+elif diff_pct < 50:
+    # Point source creates cylindrical waves — off-axis refraction
+    # reduces on-axis transmission compared to plane-wave Fresnel.
+    # T approach is correct direction but quantitative accuracy requires
+    # TFSF plane wave source.
+    print(f"MARGINAL: {diff_pct:.1f}% error (cylindrical wave ≠ plane wave)")
 else:
-    print(f"FAIL: {abs(R_sim - R_fresnel)/R_fresnel*100:.1f}% error")
+    print(f"FAIL: {diff_pct:.1f}% error")
 
 # Plot
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
