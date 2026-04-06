@@ -101,11 +101,12 @@ patch_y0 = oy - patch_L / 2
 sim.add(Box((patch_x0, patch_y0, h), (patch_x0 + patch_W, patch_y0 + patch_L, h + dz_sub)),
         material="pec")
 
-# Lumped port at feed point — z at center of first substrate cell
-# (h/2 can land on a cell boundary on non-uniform mesh)
+# Lumped port at feed point — z between ground and patch
+# Ground is at z=0..dz_sub (cell 0), substrate at z=0..h (cells 0-3)
+# Port must be in a non-PEC cell: use center of cell 1 (above ground)
 port_x = ox + feed_x_offset
 port_y = oy
-port_z = dz_sub / 2  # center of first substrate cell
+port_z = dz_sub + dz_sub / 2  # center of second substrate cell (above ground)
 sim.add_port(
     (port_x, port_y, port_z), "ez",
     impedance=feed_R,
