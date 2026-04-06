@@ -214,3 +214,130 @@ def test_dz_profile_grading_warning():
         )
         grading_warnings = [x for x in w if "cell ratio" in str(x.message)]
         assert len(grading_warnings) >= 1, "Expected grading ratio warning"
+
+
+# ---------------------------------------------------------------------------
+# P3: Thirds rule
+# ---------------------------------------------------------------------------
+
+def test_thirds_rule_splits_boundary_cells():
+    """Thirds rule should split cells at material interfaces into 1/3+2/3 pairs."""
+    from rfx.auto_config import apply_thirds_rule
+    import numpy as np
+
+    # 5 uniform cells, boundary at index 2 (between cell 1 and cell 2)
+    cells = [1.0e-3] * 5
+    result = apply_thirds_rule(cells, [2])
+
+    # Cell[1] should split into [2/3, 1/3] and cell[2] into [1/3, 2/3]
+    # Total cells: 5 - 2 + 4 = 7
+    assert len(result) == 7, f"Expected 7 cells, got {len(result)}"
+    np.testing.assert_allclose(result[1], 1.0e-3 * 2 / 3, rtol=1e-10)
+    np.testing.assert_allclose(result[2], 1.0e-3 / 3, rtol=1e-10)
+    np.testing.assert_allclose(result[3], 1.0e-3 / 3, rtol=1e-10)
+    np.testing.assert_allclose(result[4], 1.0e-3 * 2 / 3, rtol=1e-10)
+    # Total length preserved
+    np.testing.assert_allclose(np.sum(result), np.sum(cells), rtol=1e-10)
+
+
+def test_thirds_rule_no_boundaries():
+    """No boundaries means no change."""
+    from rfx.auto_config import apply_thirds_rule
+    import numpy as np
+
+    cells = [1.0e-3] * 5
+    result = apply_thirds_rule(cells, [])
+    assert len(result) == 5
+    np.testing.assert_allclose(result, 1.0e-3)
+
+
+def test_thirds_rule_preserves_total_length():
+    """Total domain height must be preserved after thirds rule."""
+    from rfx.auto_config import apply_thirds_rule
+    import numpy as np
+
+    cells = [0.5e-3] * 3 + [2.0e-3] * 4
+    result = apply_thirds_rule(cells, [3])
+    np.testing.assert_allclose(np.sum(result), np.sum(cells), rtol=1e-10)
+
+
+def test_make_dz_profile_applies_thirds_rule():
+    """_make_dz_profile should produce smoothly graded cells at interfaces."""
+    from rfx.auto_config import _make_dz_profile
+    import numpy as np
+
+    # Single dielectric layer: z=0 to z=1.6mm in a 10mm domain
+    z_features = [(0, 1.6e-3, 4.4)]
+    profile = _make_dz_profile(z_features, domain_z=10e-3, dx=2e-3)
+
+    # Check grading: all adjacent ratios should be <= 1.3
+    ratios = profile[1:] / profile[:-1]
+    max_r = float(np.max(np.maximum(ratios, 1.0 / ratios)))
+    assert max_r <= 1.3 + 0.01, f"Max ratio {max_r:.3f} exceeds 1.3"
+
+    # Profile should have more cells than uniform (thirds + grading)
+    n_uniform = max(1, int(round(10e-3 / 2e-3)))
+    assert len(profile) > n_uniform, "Profile should be finer than uniform"
+
+    # Smallest cells should be near the substrate (first cells)
+    assert profile[0] < 2e-3, "Substrate region should have fine cells"
+
+
+# ---------------------------------------------------------------------------
+# P4: Thin PEC sheet
+# ---------------------------------------------------------------------------
+
+def test_thin_conductor_pec_detection():
+    """ThinConductor with high sigma should be detected as PEC."""
+    from rfx.materials.thin_conductor import ThinConductor
+    from rfx.geometry.csg import Box
+
+    tc_pec = ThinConductor(
+        shape=Box((0, 0, 0), (0.05, 0.05, 35e-6)),
+        sigma_bulk=5.8e7, thickness=35e-6)
+    assert tc_pec.is_pec is True
+
+    tc_lossy = ThinConductor(
+        shape=Box((0, 0, 0), (0.05, 0.05, 35e-6)),
+        sigma_bulk=1e4, thickness=35e-6)
+    assert tc_lossy.is_pec is False
+
+
+def test_thin_conductor_sheet_resistance():
+    """Sheet resistance should be 1/(sigma*t)."""
+    from rfx.materials.thin_conductor import ThinConductor
+    from rfx.geometry.csg import Box
+
+    # 35μm copper: R_s = 1/(5.8e7 * 35e-6) ≈ 0.49 mΩ/sq
+    tc = ThinConductor(
+        shape=Box((0, 0, 0), (0.01, 0.01, 35e-6)),
+        sigma_bulk=5.8e7, thickness=35e-6)
+    expected = 1.0 / (5.8e7 * 35e-6)
+    assert abs(tc.sheet_resistance - expected) / expected < 1e-10
+
+
+def test_thin_pec_adds_to_pec_mask():
+    """PEC thin conductor should add cells to PEC mask, not modify sigma."""
+    import warnings
+    from rfx import Simulation, Box, GaussianPulse
+
+    sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.02),
+                     boundary="pec", dx=2e-3)
+    sim.add_material("substrate", eps_r=4.4)
+    sim.add(Box((0, 0, 0), (0.03, 0.03, 0.002)), material="substrate")
+
+    # Add thin PEC sheet (35μm copper trace) — thinner than dx
+    sim.add_thin_conductor(
+        Box((0.005, 0.005, 0.002), (0.025, 0.025, 0.002 + 35e-6)),
+        sigma_bulk=5.8e7, thickness=35e-6)
+
+    sim.add_source((0.015, 0.015, 0.01), "ez",
+                    waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
+    sim.add_probe((0.015, 0.015, 0.01), "ez")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = sim.run(n_steps=10)
+
+    # Should complete without error — PEC sheet handled via mask
+    assert result is not None

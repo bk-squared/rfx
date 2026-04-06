@@ -534,6 +534,7 @@ def _make_dz_profile(
     air_height = max(0, domain_z - z_max)
 
     cells = []
+    boundary_indices = []  # cell indices at material interfaces
     z_cursor = 0.0
 
     for z_lo, z_hi, eps_r in features:
@@ -543,11 +544,17 @@ def _make_dz_profile(
             n_gap = max(1, int(round(gap / dx)))
             cells.extend([gap / n_gap] * n_gap)
 
+        # Mark the air-to-dielectric boundary
+        boundary_indices.append(len(cells))
+
         # Feature cells: snap exactly
         thickness = z_hi - z_lo
         n_feat = max(min_cells_per_feature, int(np.ceil(thickness / dx)))
         dz_feat = thickness / n_feat
         cells.extend([dz_feat] * n_feat)
+
+        # Mark the dielectric-to-air boundary
+        boundary_indices.append(len(cells))
         z_cursor = z_hi
 
     # Air above features
@@ -555,8 +562,70 @@ def _make_dz_profile(
         n_air = max(1, int(round(air_height / dx)))
         cells.extend([air_height / n_air] * n_air)
 
+    # P3: Apply thirds rule at material interfaces
+    cells = apply_thirds_rule(cells, boundary_indices)
+
     # P2: Enforce smooth grading between regions
     return smooth_grading(cells, max_ratio=1.3)
+
+
+def apply_thirds_rule(
+    cells: list[float] | np.ndarray,
+    boundary_indices: list[int],
+) -> np.ndarray:
+    """Apply the thirds rule at conductor-dielectric boundaries.
+
+    At each boundary index, splits the cell so that the E-field sampling
+    point falls at 1/3 inside the conductor and 2/3 outside.  This avoids
+    placing an E-field node exactly on the material interface, which gives
+    worst-case interpolation error.
+
+    Inspired by OpenEMS thirds rule and Tidy3D corner_refinement.
+
+    Parameters
+    ----------
+    cells : array-like
+        Cell sizes along the graded axis.
+    boundary_indices : list of int
+        Indices in the cumulative cell array where material boundaries occur.
+        A boundary at index *k* means the interface lies at the edge between
+        cell k-1 and cell k.  The cell on the lower side (k-1) is treated
+        as conductor, the cell on the upper side (k) as dielectric.
+
+    Returns
+    -------
+    np.ndarray
+        Cell array with boundary cells split into 1/3 + 2/3 pairs.
+    """
+    cells = list(np.asarray(cells, dtype=float))
+    if not boundary_indices:
+        return np.array(cells)
+
+    # Sort boundaries in reverse order so index shifts don't affect later splits
+    for idx in sorted(set(boundary_indices), reverse=True):
+        if idx <= 0 or idx >= len(cells):
+            continue
+        # Cell below boundary (conductor side): split into [2/3, 1/3]
+        dz_below = cells[idx - 1]
+        # Cell above boundary (dielectric side): split into [1/3, 2/3]
+        dz_above = cells[idx]
+
+        # Only split if cells are large enough (> 2× minimum reasonable size)
+        min_cell = min(dz_below, dz_above) / 3
+        if min_cell < 1e-7:  # sub-micron is too fine
+            continue
+
+        # Replace cell[idx-1] with [2/3 * dz_below, 1/3 * dz_below]
+        # Replace cell[idx]   with [1/3 * dz_above, 2/3 * dz_above]
+        new_cells = (
+            cells[:idx - 1]
+            + [dz_below * 2 / 3, dz_below / 3]
+            + [dz_above / 3, dz_above * 2 / 3]
+            + cells[idx + 1:]
+        )
+        cells = new_cells
+
+    return np.array(cells)
 
 
 def smooth_grading(
