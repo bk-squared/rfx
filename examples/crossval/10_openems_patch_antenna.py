@@ -145,22 +145,36 @@ with warnings.catch_warnings():
 ts = np.array(result.time_series).ravel()
 print(f"Probe signal: max={np.max(np.abs(ts)):.4e}, rms={np.sqrt(np.mean(ts**2)):.4e}")
 
-# 1. Resonance detection
+# 1. Resonance detection — manual FFT peak finding
+ts = np.array(result.time_series).ravel()
+nfft = len(ts) * 4
+spec = np.abs(np.fft.rfft(ts, n=nfft))
+freqs = np.fft.rfftfreq(nfft, d=result.dt)
+freqs_ghz = freqs / 1e9
+
+# Find peak in 1-3 GHz band
+band = (freqs_ghz > 1.0) & (freqs_ghz < 3.5)
+spec_band = spec[band]
+freqs_band = freqs[band]
+peak_idx = np.argmax(spec_band)
+f_sim = float(freqs_band[peak_idx])
+peak_db = 20 * np.log10(spec_band[peak_idx] / np.max(spec) + 1e-30)
+
+err_pct = abs(f_sim - f_analytical) / f_analytical * 100
+print(f"FFT peak: {f_sim/1e9:.4f} GHz (at {peak_db:.1f} dB)")
+print(f"Analytical: {f_analytical/1e9:.4f} GHz")
+print(f"Error: {err_pct:.2f}%")
+
+# Also try find_resonances for comparison
 modes = result.find_resonances(freq_range=(f_expected * 0.5, f_expected * 1.5))
 if modes:
-    f_sim = min(modes, key=lambda m: abs(m.freq - f_expected)).freq
-    err_pct = abs(f_sim - f_analytical) / f_analytical * 100
-    print(f"Resonance: {f_sim/1e9:.4f} GHz")
-    print(f"Analytical: {f_analytical/1e9:.4f} GHz")
-    print(f"Error: {err_pct:.2f}%")
-    if err_pct < 5:
-        print("PASS: resonance within 5%")
-    else:
-        print(f"FAIL: {err_pct:.2f}% error")
+    f_mode = min(modes, key=lambda m: abs(m.freq - f_expected)).freq
+    print(f"find_resonances: {f_mode/1e9:.4f} GHz")
+
+if err_pct < 5:
+    print("PASS: resonance within 5%")
 else:
-    print("FAIL: no resonance found")
-    f_sim = 0
-    err_pct = 100
+    print(f"FAIL: {err_pct:.2f}% error")
 
 # 2. NTFF radiation pattern
 print()
