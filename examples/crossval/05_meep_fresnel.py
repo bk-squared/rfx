@@ -34,30 +34,35 @@ print(f"Interface: air / n={n_dielectric} (eps_r={eps_r})")
 print(f"Analytical R = {R_fresnel:.4f} ({10*np.log10(R_fresnel):.1f} dB)")
 print()
 
-dx = 0.2 * SCALE  # 2mm cells
-domain_x = 10 * SCALE  # 100mm propagation
-domain_yz = dx  # single cell in y/z for quasi-1D
+dx = 0.1 * SCALE  # 1mm cells (finer for accuracy)
+domain_x = 20 * SCALE  # 200mm propagation (long for clean separation)
+# y needs CPML padding: 10*dx each side + some interior
+domain_y = domain_x  # square domain to avoid y boundary issues
 
-# Use 2D TMz mode for clean 1D propagation (no y/z CPML absorption)
+# 2D TMz with CPML — x-ends absorbing, y-edges absorbing
 sim = Simulation(
     freq_max=(f_center + f_width) * 1.2,
-    domain=(domain_x, domain_x, domain_yz),
+    domain=(domain_x, domain_y, dx),
     boundary="cpml",
-    cpml_layers=8,
+    cpml_layers=10,
     dx=dx,
     mode="2d_tmz",
 )
 
 # Dielectric fills right half (full y extent)
 sim.add_material("dielectric", eps_r=eps_r)
-sim.add(Box((domain_x / 2, 0, 0), (domain_x, domain_x, domain_yz)),
+sim.add(Box((domain_x / 2, 0, 0), (domain_x, domain_y, dx)),
         material="dielectric")
 
-# Source at left, probe at left (reflected) and right (transmitted)
-src_x = domain_x * 0.25
-probe_refl_x = domain_x * 0.15
+# Longer time for wave to propagate through dielectric and be absorbed
+n_periods_fresnel = 40
+
+# Source, reflection probe, transmission probe
+# In PEC boundary, source is a raw Ez injection
+src_x = domain_x * 0.15
+probe_refl_x = domain_x * 0.1
 probe_trans_x = domain_x * 0.8
-cy = domain_x / 2
+cy = domain_y / 2
 
 sim.add_source((src_x, cy, 0), "ez",
                waveform=GaussianPulse(f0=f_center, bandwidth=f_width / f_center))
@@ -65,7 +70,7 @@ sim.add_probe((probe_refl_x, cy, 0), "ez")
 sim.add_probe((probe_trans_x, cy, 0), "ez")
 
 grid = sim._build_grid()
-n_steps = int(np.ceil(5e-9 / grid.dt))
+n_steps = int(np.ceil(8e-9 / grid.dt))
 print(f"Grid: {grid.nx}x{grid.ny}x{grid.nz}, steps={n_steps}")
 
 # Run 1: with dielectric (reflection + transmission)
@@ -87,9 +92,9 @@ freqs_hz = np.fft.rfftfreq(nfft, d=result.dt)
 # Run 2: reference run without dielectric (incident-only)
 sim_ref = Simulation(
     freq_max=(f_center + f_width) * 1.2,
-    domain=(domain_x, domain_x, domain_yz),
+    domain=(domain_x, domain_y, dx),
     boundary="cpml",
-    cpml_layers=8,
+    cpml_layers=10,
     dx=dx,
     mode="2d_tmz",
 )
