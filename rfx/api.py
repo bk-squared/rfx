@@ -1450,9 +1450,12 @@ class Simulation:
 
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
-        # Apply thin conductors
+        # Apply thin conductors (P4: PEC thin sheets go to pec_mask)
         for tc in self._thin_conductors:
-            materials = apply_thin_conductor(grid, tc, materials)
+            materials, pec_mask = apply_thin_conductor(
+                grid, tc, materials, pec_mask=pec_mask)
+            if tc.is_pec:
+                pec_shapes.append(tc.shape)
 
         debye_spec = None
         if debye_masks_by_pole:
@@ -1974,12 +1977,19 @@ class Simulation:
                     )
                 elif dim < cell:
                     axis_name = "xyz"[axis]
-                    cells = dim / cell
+                    cells_count = dim / cell
+                    # Check if this is a PEC material that could use thin sheet
+                    mat = self._resolve_material(mat_name)
+                    is_pec = mat.sigma >= self._PEC_SIGMA_THRESHOLD
+                    hint = (
+                        " Use add_thin_conductor() for sub-cell PEC sheet."
+                        if is_pec else
+                        " Use non-uniform mesh or reduce dx."
+                    )
                     _w.warn(
                         f"'{mat_name}' {axis_name}-extent {dim*1e3:.2f}mm = "
-                        f"{cells:.1f} cells — below 1 cell resolution. "
-                        f"Results unreliable. Use non-uniform mesh or "
-                        f"reduce dx.",
+                        f"{cells_count:.1f} cells — below 1 cell resolution."
+                        + hint,
                         stacklevel=3,
                     )
                 elif dim < 3 * cell:
