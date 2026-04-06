@@ -263,7 +263,7 @@ def test_reciprocity_two_port():
     sim.add_waveguide_port(a - 0.025, direction="-x", mode=(1, 0), mode_type="TE",
                            freqs=freqs, f0=f0, name="port2")
 
-    result = sim.compute_waveguide_s_matrix(num_periods=30)
+    result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
     S = np.array(result.s_params)  # (2, 2, n_freq)
 
     s12 = np.abs(S[0, 1, :])
@@ -280,10 +280,9 @@ def test_reciprocity_two_port():
     print(f"  Rel diff:   {mean_diff / (mean_mag + 1e-30):.2e}")
 
     # Reciprocity is a fundamental property of passive linear networks.
-    # S12 must equal S21 — no tolerance compromise.
-    # If this fails, the waveguide port implementation has a bug.
+    # With normalize=True, S12 must equal S21 to machine precision.
     rel_diff = mean_diff / (mean_mag + 1e-30)
-    assert rel_diff < 0.05, f"Reciprocity violation: relative |S12-S21| = {rel_diff:.2%}"
+    assert rel_diff < 0.01, f"Reciprocity violation: relative |S12-S21| = {rel_diff:.2%}"
 
 
 # =====================================================================
