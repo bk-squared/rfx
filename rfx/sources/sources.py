@@ -15,6 +15,43 @@ from rfx.grid import Grid
 from rfx.core.yee import EPS_0
 
 
+def _axis_cell_sizes(grid, k_index: int = 0) -> tuple[float, float, float]:
+    """Return (dx, dy, dz) cell sizes, handling both Grid and NonUniformGrid.
+
+    For uniform Grid: dx = dy = dz = grid.dx.
+    For NonUniformGrid: dx, dy are uniform; dz comes from grid.dz[k_index].
+    """
+    dx = float(grid.dx)
+    dy = float(getattr(grid, 'dy', dx))
+    dz_arr = getattr(grid, 'dz', None)
+    dz = float(dz_arr[k_index]) if dz_arr is not None else dx
+    return dx, dy, dz
+
+
+def port_sigma(grid, position_ijk: tuple[int, int, int],
+               component: str, impedance: float) -> float:
+    """Compute lumped port equivalent conductivity for anisotropic cells.
+
+    σ = d_parallel / (Z0 · d_perp1 · d_perp2)
+
+    This ensures P_dissipated = V²/Z0 regardless of cell aspect ratio.
+    For cubic cells (dx=dy=dz=d), reduces to 1/(Z0·d).
+    """
+    dx, dy, dz = _axis_cell_sizes(grid, k_index=position_ijk[2])
+    sizes = [dx, dy, dz]
+    axis = {"ex": 0, "ey": 1, "ez": 2}[component]
+    d_par = sizes[axis]
+    d_perp = [sizes[i] for i in range(3) if i != axis]
+    return d_par / (impedance * d_perp[0] * d_perp[1])
+
+
+def port_d_parallel(grid, position_ijk: tuple[int, int, int],
+                    component: str) -> float:
+    """Return the cell size along the port's E-field direction."""
+    dx, dy, dz = _axis_cell_sizes(grid, k_index=position_ijk[2])
+    return [dx, dy, dz][{"ex": 0, "ey": 1, "ez": 2}[component]]
+
+
 @dataclass(frozen=True)
 class GaussianPulse:
     """Differentiated Gaussian pulse with center frequency f0.
@@ -169,37 +206,27 @@ class LumpedPort:
 def setup_lumped_port(grid: Grid, port: LumpedPort, materials) -> object:
     """Fold port impedance into material conductivity at the port cell.
 
-    Call once before the time-stepping loop. The equivalent conductivity
-    sigma_port = 1/(Z0*dx) is added to the existing sigma at the port
-    cell so that update_e() naturally includes the port's resistive
-    damping.
-
-    Returns updated MaterialArrays.
+    Uses the 3D formula σ = d_parallel / (Z0 · d_perp1 · d_perp2)
+    which reduces to 1/(Z0·dx) for cubic cells.
     """
     idx = grid.position_to_index(port.position)
-    sigma_port = 1.0 / (port.impedance * grid.dx)
-    sigma = materials.sigma.at[idx[0], idx[1], idx[2]].add(sigma_port)
+    sp = port_sigma(grid, idx, port.component, port.impedance)
+    sigma = materials.sigma.at[idx[0], idx[1], idx[2]].add(sp)
     return materials._replace(sigma=sigma)
 
 
 def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) -> object:
     """Inject source voltage at the port cell. Call AFTER update_e().
 
-    Since the port impedance is already folded into materials.sigma
-    via setup_lumped_port(), this function only adds the source term:
-
-        E[port] += Cb * V_src / dx
-
-    where Cb matches the update_e() coefficient at the port cell
-    (including the port impedance conductivity).
+    E[port] += Cb * V_src / d_parallel
     """
     idx = grid.position_to_index(port.position)
     i, j, k = idx
-    dx = grid.dx
+    d_par = port_d_parallel(grid, idx, port.component)
     dt = grid.dt
 
     eps = float(materials.eps_r[i, j, k]) * EPS_0
-    sigma = float(materials.sigma[i, j, k])  # includes sigma_port
+    sigma = float(materials.sigma[i, j, k])
 
     loss = sigma * dt / (2.0 * eps)
     cb = (dt / eps) / (1.0 + loss)
@@ -207,7 +234,7 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     v_src = port.excitation(t)
 
     field = getattr(state, port.component)
-    field = field.at[i, j, k].add(cb * v_src / dx)
+    field = field.at[i, j, k].add(cb * v_src / d_par)
     return state._replace(**{port.component: field})
 
 
@@ -263,16 +290,16 @@ def setup_wire_port(grid, port, materials):
     """Distribute port impedance across all wire cells.
 
     For N cells in series with total impedance Z0:
-      R_cell = Z0 / N
-      sigma_cell = 1/(R_cell * dx) = N / (Z0 * dx)
+      σ_cell = n_cells · d_parallel / (Z0 · d_perp1 · d_perp2)
+    On uniform grids this reduces to N / (Z0 · dx).
     """
     cells = _wire_port_cells(grid, port)
     n_cells = max(len(cells), 1)
-    sigma_per_cell = n_cells / (port.impedance * grid.dx)
 
     sigma = materials.sigma
     for cell in cells:
-        sigma = sigma.at[cell[0], cell[1], cell[2]].add(sigma_per_cell)
+        sp = port_sigma(grid, cell, port.component, port.impedance) * n_cells
+        sigma = sigma.at[cell[0], cell[1], cell[2]].add(sp)
     return materials._replace(sigma=sigma)
 
 
@@ -284,17 +311,17 @@ def apply_wire_port(state, grid, port, t, materials):
     cells = _wire_port_cells(grid, port)
     n_cells = max(len(cells), 1)
     v_src = port.excitation(t) / n_cells
-    dx = grid.dx
     dt = grid.dt
 
     field = getattr(state, port.component)
     for cell in cells:
         i, j, k = cell
+        d_par = port_d_parallel(grid, (i, j, k), port.component)
         eps = float(materials.eps_r[i, j, k]) * EPS_0
         sigma = float(materials.sigma[i, j, k])
         loss = sigma * dt / (2.0 * eps)
         cb = (dt / eps) / (1.0 + loss)
-        field = field.at[i, j, k].add(cb * v_src / dx)
+        field = field.at[i, j, k].add(cb * v_src / d_par)
 
     return state._replace(**{port.component: field})
 

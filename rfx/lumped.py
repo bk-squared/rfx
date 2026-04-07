@@ -188,11 +188,15 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
         return materials
 
     # Parallel topology, or series with a single component: fold into material
+    # Use axis-aware formula: σ_R = d_parallel / (R · d_perp1 · d_perp2)
+    from rfx.sources.sources import port_sigma as _port_sigma, port_d_parallel as _d_par
     if spec.R > 0:
-        sigma = sigma.at[i, j, k].add(1.0 / (spec.R * dx))
+        sigma = sigma.at[i, j, k].add(
+            _port_sigma(grid, (i, j, k), spec.component, spec.R))
 
     if spec.C > 0:
-        eps_r = eps_r.at[i, j, k].add(spec.C / (dx * EPS_0))
+        d_par = _d_par(grid, (i, j, k), spec.component)
+        eps_r = eps_r.at[i, j, k].add(spec.C / (d_par * EPS_0))
 
     return materials._replace(sigma=sigma, eps_r=eps_r)
 
@@ -203,9 +207,10 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
     Must be called AFTER ``setup_rlc_materials()`` so that eps_r and
     sigma at the cell reflect the R and C contributions.
     """
+    from rfx.sources.sources import port_d_parallel as _d_par
     idx = grid.position_to_index(spec.position)
     i, j, k = idx
-    dx = grid.dx
+    d_par = _d_par(grid, idx, spec.component)
     dt = grid.dt
 
     eps = float(materials.eps_r[i, j, k]) * EPS_0
@@ -215,19 +220,17 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
 
     has_inductor = spec.L > 0
     has_capacitor = spec.C > 0
-    # Use the series ADE path only when there are multiple components
-    # that need to share a single series current.
     is_series = spec.topology == "series" and _series_needs_ade(spec)
 
     if has_inductor:
-        gamma = dt / (spec.L * dx)
-        dt_dx_over_L = dt * dx / spec.L
+        gamma = dt / (spec.L * d_par)
+        dt_dx_over_L = dt * d_par / spec.L
     else:
         gamma = 0.0
         dt_dx_over_L = 0.0
 
     if has_capacitor:
-        dt_over_C_dx = dt / (spec.C * dx)
+        dt_over_C_dx = dt / (spec.C * d_par)
     else:
         dt_over_C_dx = 0.0
 
@@ -238,7 +241,7 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
         has_capacitor=has_capacitor,
         gamma=gamma,
         D0=D0,
-        dx=dx,
+        dx=d_par,
         dt_dx_over_L=dt_dx_over_L,
         dt_over_C_dx=dt_over_C_dx,
         R=spec.R,

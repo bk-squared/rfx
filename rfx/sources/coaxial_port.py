@@ -191,9 +191,10 @@ def setup_coaxial_port(grid: Grid, port: CoaxialPort, materials):
     materials = materials._replace(eps_r=eps_r, sigma=sigma)
 
     # ---- 4. Fold port impedance into gap cell conductivity ----
-    sigma_port = 1.0 / (port.impedance * grid.dx)
+    from rfx.sources.sources import port_sigma as _port_sigma
     i, j, k = gap_idx
-    new_sigma = materials.sigma.at[i, j, k].add(sigma_port)
+    sp = _port_sigma(grid, gap_idx, component, port.impedance)
+    new_sigma = materials.sigma.at[i, j, k].add(sp)
     materials = materials._replace(sigma=new_sigma)
 
     return materials
@@ -230,12 +231,12 @@ def make_coaxial_port_source(grid: Grid, port: CoaxialPort, materials, n_steps: 
     i, j, k = gap_idx
     axis, _, component, _, _, _ = _coaxial_port_geometry(grid, port)
 
-    dx = grid.dx
+    from rfx.sources.sources import port_d_parallel as _port_d_parallel
+    d_par = _port_d_parallel(grid, gap_idx, component)
     dt = grid.dt
 
-    # Precompute Cb at the gap cell (constant — materials don't change at runtime)
     eps   = float(materials.eps_r[i, j, k]) * EPS_0
-    sigma_val = float(materials.sigma[i, j, k])  # includes sigma_port
+    sigma_val = float(materials.sigma[i, j, k])
     loss  = sigma_val * dt / (2.0 * eps)
     cb    = (dt / eps) / (1.0 + loss)
 
@@ -243,7 +244,7 @@ def make_coaxial_port_source(grid: Grid, port: CoaxialPort, materials, n_steps: 
         """Inject coaxial port source at time t. Call AFTER update_e()."""
         v_src = port.excitation(t)
         field = getattr(state, component)
-        field = field.at[i, j, k].add(cb * v_src / dx)
+        field = field.at[i, j, k].add(cb * v_src / d_par)
         return state._replace(**{component: field})
 
     return apply_fn

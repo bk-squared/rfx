@@ -160,6 +160,7 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     The port impedance must already be folded into *materials* via
     ``setup_lumped_port()``.
     """
+    from rfx.sources.sources import port_d_parallel
     idx = grid.position_to_index(port.position)
     i, j, k = idx
 
@@ -168,8 +169,9 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     loss = sigma * grid.dt / (2.0 * eps)
     cb = (grid.dt / eps) / (1.0 + loss)
 
+    d_par = port_d_parallel(grid, idx, port.component)
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    waveform = (cb / grid.dx) * jax.vmap(port.excitation)(times)
+    waveform = (cb / d_par) * jax.vmap(port.excitation)(times)
     return SourceSpec(i=i, j=j, k=k,
                       component=port.component, waveform=waveform)
 
@@ -191,14 +193,17 @@ def make_wire_port_sources(grid, port, materials, n_steps):
     n_cells = max(len(cells), 1)
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
 
+    from rfx.sources.sources import port_d_parallel
+
     specs = []
     for cell in cells:
         i, j, k = cell
+        d_par = port_d_parallel(grid, (i, j, k), port.component)
         eps = materials.eps_r[i, j, k] * EPS_0
         sigma = materials.sigma[i, j, k]
         loss = sigma * grid.dt / (2.0 * eps)
         cb = (grid.dt / eps) / (1.0 + loss)
-        waveform = (cb / grid.dx) * jax.vmap(port.excitation)(times) / n_cells
+        waveform = (cb / d_par) * jax.vmap(port.excitation)(times) / n_cells
         specs.append(SourceSpec(i=i, j=j, k=k,
                                 component=port.component, waveform=waveform))
     return specs
