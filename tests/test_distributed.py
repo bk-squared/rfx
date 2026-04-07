@@ -209,21 +209,25 @@ class TestDistributedRunner:
         result = sim.run(n_steps=20, devices=devices)
         assert result.time_series.shape[0] == 20
 
-    def test_nx_not_divisible_raises(self):
-        """Should raise ValueError when nx is not divisible by n_devices."""
-        # Lx=0.04 -> nx=10, not divisible by 4
+    def test_nx_not_divisible_pads(self):
+        """Non-divisible nx should be padded automatically, not raise."""
+        # Lx=0.04 -> nx=10, not divisible by 4 -> padded to 12
         sim = Simulation(
             freq_max=3e9,
             domain=(0.04, 0.02, 0.02),
             boundary="pec",
         )
         sim.add_source(position=(0.02, 0.01, 0.01), component="ez")
+        sim.add_probe(position=(0.02, 0.01, 0.01), component="ez")
 
         grid = sim._build_grid()
-        assert grid.shape[0] % 4 != 0, "Expected nx not divisible by 4"
+        nx = grid.shape[0]
+        assert nx % 4 != 0, "Expected nx not divisible by 4"
         devices = jax.devices()[:4]
-        with pytest.raises(ValueError, match="not evenly divisible"):
-            sim.run(n_steps=10, devices=devices)
+        result = sim.run(n_steps=10, devices=devices)
+        # State should be trimmed back to original nx
+        assert result.state.ex.shape[0] == nx
+        assert result.time_series.shape == (10, 1)
 
 
 class TestDistributedCPML:
@@ -437,7 +441,7 @@ class TestDistributedLumpedPort:
         assert err < 0.01, f"Lumped port 2-device error {err:.2e}"
 
 
-@pytest.mark.skip(reason="Pre-existing: auto mesh nx not divisible by n_devices + waveform handling diffs")
+@pytest.mark.skip(reason="Pre-existing: Debye polarization shape mismatch in shard_map scan body")
 class TestDistributedDebye:
     """Tests for Debye dispersive material support in the distributed runner (Phase 3b)."""
 
@@ -505,7 +509,7 @@ class TestDistributedDebye:
         assert err < 0.01, f"Debye 2-device error {err:.2e}"
 
 
-@pytest.mark.skip(reason="Pre-existing: auto mesh nx not divisible by n_devices")
+@pytest.mark.skip(reason="Pre-existing: Lorentz polarization shape mismatch in shard_map scan body")
 class TestDistributedLorentz:
     """Tests for Lorentz dispersive material support in the distributed runner (Phase 3b)."""
 

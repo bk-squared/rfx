@@ -547,17 +547,31 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     materials = base_materials
 
     nx, ny, nz = grid.shape
+    # Pad nx to nearest multiple of n_devices (PEC-filled padding cells)
+    pad_x = 0
     if nx % n_devices != 0:
-        warnings.warn(
-            f"Grid nx={nx} is not evenly divisible by {n_devices} devices. "
-            f"Falling back to pmap-based distributed runner.",
-            stacklevel=2,
-        )
-        from rfx.runners.distributed import run_distributed as _pmap_run
-        return _pmap_run(sim, n_steps=n_steps, devices=devices,
-                         exchange_interval=exchange_interval, **kwargs)
+        pad_x = n_devices - (nx % n_devices)
+    nx_padded = nx + pad_x
 
-    nx_per = nx // n_devices
+    if pad_x > 0:
+        _pad_x = ((0, pad_x), (0, 0), (0, 0))
+        materials = MaterialArrays(
+            eps_r=jnp.pad(materials.eps_r, _pad_x, constant_values=1.0),
+            sigma=jnp.pad(materials.sigma, _pad_x, constant_values=0.0),
+            mu_r=jnp.pad(materials.mu_r, _pad_x, constant_values=1.0),
+        )
+        if pec_mask is not None:
+            pec_mask = jnp.pad(pec_mask, _pad_x, constant_values=True)
+        if debye_spec is not None:
+            d_poles, d_masks = debye_spec
+            d_masks = [jnp.pad(m, _pad_x, constant_values=False) for m in d_masks]
+            debye_spec = (d_poles, d_masks)
+        if lorentz_spec is not None:
+            l_poles, l_masks = lorentz_spec
+            l_masks = [jnp.pad(m, _pad_x, constant_values=False) for m in l_masks]
+            lorentz_spec = (l_poles, l_masks)
+
+    nx_per = nx_padded // n_devices
     ghost = 1
     nx_local = nx_per + 2 * ghost
 
@@ -623,7 +637,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # then shard along x.
     # ------------------------------------------------------------------
     from rfx.core.yee import init_state
-    full_state = init_state(grid.shape)
+    full_state = init_state((nx_padded, ny, nz))
     state_slabs = _split_state(full_state, n_devices, ghost)
     materials_slabs = _split_materials(materials, n_devices, ghost)
 
@@ -1111,7 +1125,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         total_x = arr.shape[0]
         assert total_x == n_devices * nx_local
         stacked = arr.reshape(n_devices, nx_local, *arr.shape[1:])
-        return jnp.array(gather_array_x(jnp.array(stacked), ghost))
+        gathered = jnp.array(gather_array_x(jnp.array(stacked), ghost))
+        # Trim padding cells if nx was padded
+        if pad_x > 0:
+            gathered = gathered[:nx]
+        return gathered
 
     final_state = FDTDState(
         ex=_unstack_and_gather(final_state_sharded.ex),
