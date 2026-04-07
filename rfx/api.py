@@ -2271,28 +2271,30 @@ class Simulation:
                 waveguide_ports.append(
                     self._build_waveguide_port_config(pe, grid, wg_freqs, n_steps))
 
-        # Floquet ports (periodic BC + DFT)
-        floquet_port_configs = []
-        periodic = tuple("xyz".index(c) for c in self._periodic_axes)
-        if self._floquet_ports:
-            from rfx.floquet import (
-                floquet_wave_vector, init_floquet_dft,
-            )
-            for fpe in self._floquet_ports:
-                k_par = floquet_wave_vector(
-                    fpe.scan_theta, fpe.scan_phi,
-                    jnp.linspace(self._freq_max * 0.5, self._freq_max, fpe.n_freqs))
-                floquet_port_configs.append({
-                    "z_position": fpe.z_position,
-                    "k_parallel": k_par,
-                    "polarization": fpe.polarization,
-                    "n_freqs": fpe.n_freqs,
-                })
-            # Floquet requires x-y periodic BC
-            periodic = (0, 1)
+        # Floquet ports — inject soft source, same as run_uniform.py:274-327
+        periodic = None
+        if self._periodic_axes:
+            periodic = tuple(axis in self._periodic_axes for axis in "xyz")
 
-        # Convert periodic axis indices to 3-tuple of bools
-        periodic_bool = tuple(i in periodic for i in range(3))
+        if self._floquet_ports:
+            axis_map_str = {"x": 0, "y": 1, "z": 2}
+            for fpe in self._floquet_ports:
+                axis_idx = axis_map_str[fpe.axis]
+                fp_f0 = fpe.f0 if fpe.f0 is not None else self._freq_max / 2
+                from rfx.sources.sources import GaussianPulse as _GP
+                wf = _GP(f0=fp_f0, bandwidth=fpe.bandwidth, amplitude=fpe.amplitude)
+                center = [self._domain[i] / 2.0 for i in range(3)]
+                center[axis_idx] = fpe.position
+                if fpe.polarization == "te":
+                    comp = {"z": "ex", "x": "ey", "y": "ex"}[fpe.axis]
+                else:
+                    comp = {"z": "ey", "x": "ez", "y": "ez"}[fpe.axis]
+                from rfx.simulation import make_source as _make_src
+                sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
+            if periodic is None:
+                periodic = (True, True, False)  # default x-y periodic for Floquet
+
+        periodic_bool = periodic if periodic is not None else (False, False, False)
 
         result = _run(
             grid,
