@@ -548,10 +548,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     nx, ny, nz = grid.shape
     if nx % n_devices != 0:
-        raise ValueError(
+        warnings.warn(
             f"Grid nx={nx} is not evenly divisible by {n_devices} devices. "
-            f"Adjust domain size or dx so that nx is a multiple of n_devices."
+            f"Falling back to pmap-based distributed runner.",
+            stacklevel=2,
         )
+        from rfx.runners.distributed import run_distributed as _pmap_run
+        return _pmap_run(sim, n_steps=n_steps, devices=devices,
+                         exchange_interval=exchange_interval, **kwargs)
 
     nx_per = nx // n_devices
     ghost = 1

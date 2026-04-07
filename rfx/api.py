@@ -2429,7 +2429,7 @@ class Simulation:
             if n_steps is None:
                 grid = self._build_grid()
                 n_steps = grid.num_timesteps(num_periods=num_periods)
-            from rfx.runners.distributed import run_distributed
+            from rfx.runners.distributed_v2 import run_distributed
             return run_distributed(
                 self, n_steps=n_steps, devices=devices,
                 exchange_interval=exchange_interval,
