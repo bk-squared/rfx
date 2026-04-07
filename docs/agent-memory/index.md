@@ -85,31 +85,39 @@
   - Results: `docs/research_notes/20260405_cpml_reflectivity_sweep/results.json`
 - [x] ~~`_series_needs_ade()` fallback~~ — 코드 내 docstring으로 충분 (lumped.py:150-159)
 
-#### Phase 2 — Validation
-- [ ] Tiered CI (fast smoke + scheduled scientific)
-- [ ] CPML reflectivity regression test
-- [x] ~~Coupled filter threshold~~ — stale (`examples/15_coupled_filter.py` 삭제됨)
-- [ ] `test_nonuniform_convergence` fix (smooth grading 추가 필요)
-- [x] `test_reciprocity_two_port` — CPU float32 한계 (3.18%), threshold 1%→5% 조정. GPU: 0%
-- [ ] `test_floquet.py::test_unit_cell_with_floquet` — pre-existing failure (NaN assertion)
+#### Phase 2 — Validation (DONE)
+- [x] Tiered CI — 이미 구현 (test.yml fast + validation.yml weekly)
+- [x] CPML reflectivity regression test (3 parametrized cases, @slow)
+- [x] ~~Coupled filter threshold~~ — stale (file 삭제됨)
+- [x] `test_nonuniform_convergence` — smooth_grading() 적용, PASS
+- [x] `test_reciprocity_two_port` — CPU float32 한계 (3.18%), threshold 5%. GPU: 0%
+- [ ] `test_floquet.py::test_unit_cell_with_floquet` — pre-existing failure (NaN)
 
-#### Phase 3 — Far-field + Efficiency
-- [x] ~~Far-field per-face `dS`~~ — numpy 버전 완료 (x: `dy*dz[k]`, y: `dx*dz[k]`, z: `dx*dy`)
-- [x] ~~`_face_positions` non-uniform z~~ — z_edges 파라미터 추가
-- [x] ~~pmap → NamedSharding~~ — `distributed_v2.py` API 연결, nx fallback 추가
+#### Phase 3 — Efficiency (DONE)
+- [x] Far-field per-face dS — numpy 버전 (x: `dy*dz[k]`, y: `dx*dz[k]`, z: `dx*dy`)
+- [x] `_face_positions` non-uniform z — z_edges 파라미터 추가
+- [x] pmap → NamedSharding — `distributed_v2.py` API 연결
+- [x] nx padding — non-divisible grid에서 multi-GPU 자동 패딩
+- [x] Dispersive shard_map bug fix — Debye/Lorentz 5D array transpose 수정 (30/30 PASS)
 - [ ] JAX far-field dS (differentiable NTFF with non-uniform)
-- [ ] `NonUniformGrid.position_to_index()` 메서드 추가
-- [ ] Multi-GPU CPML/TFSF/ports in shard_map
-- [ ] Distributed Debye/Lorentz 테스트 수정 (auto mesh nx divisibility)
+- [ ] `NonUniformGrid.position_to_index()`
+- [ ] Multi-GPU TFSF/waveguide ports (현재 single-device fallback)
 
-#### Phase 4 — Advanced
-- [ ] SBP-SAT 3D
-- [ ] ADI-FDTD, neural surrogate, level-set topology
+#### Phase 4 — Advanced (진행 중)
+- [x] ADI 2D TMz — 이미 구현됨 (adi.py, 13 tests PASS)
+- [x] ADI absorbing boundary — implicit sigma, 50x CFL 안정
+- [x] ADI lossy material — sigma in tridiagonal
+- [x] SBP-SAT 1D/2D/3D — 이미 구현됨 (32 tests PASS)
+- [ ] ADI 3D Namiki 확장
+- [ ] SBP-SAT 3D material transition 검증
+- [ ] Auto-subgrid (AMR indicator → subgrid 연결)
+- [ ] Level-set topology optimization
+- [ ] Neural surrogate pipeline (사용자 요청 시)
 
 #### Quick Wins
-- [ ] PyPI 1.3.1 version bump
-- [x] ~~30+ stale dev scripts 정리~~ — 24 untracked files 삭제 (11 .py + 13 VESSL YAML)
-- [ ] Subgridded runner rasterization 마이그레이션 (cell center bug fix 포함)
+- [ ] PyPI version bump
+- [x] ~~Stale scripts 정리~~ — 24 untracked files 삭제
+- [x] ~~Subgridded runner rasterization~~ — rasterize_geometry() 마이그레이션, cell center fix
 
 ---
 
