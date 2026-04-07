@@ -95,35 +95,35 @@ for label, dx in resolutions:
 
     sim.add_material("substrate", eps_r=eps_r, sigma=kappa)
 
-    # Ground plane (finite, same as substrate extent)
-    sim.add(Box((sub_x0, sub_y0, 0), (sub_x1, sub_y1, dx)), material="pec")
+    # Ground plane — use fixed thin sheet, not dx-dependent thickness
+    gnd_thick = min(dx, h / 4)  # thin but at least one cell
+    sim.add(Box((sub_x0, sub_y0, 0), (sub_x1, sub_y1, gnd_thick)), material="pec")
 
-    # Substrate
-    sim.add(Box((sub_x0, sub_y0, dx), (sub_x1, sub_y1, h + dx)), material="substrate")
+    # Substrate from z=0 to z=h (resolution-independent)
+    sim.add(Box((sub_x0, sub_y0, 0), (sub_x1, sub_y1, h)), material="substrate")
 
-    # Patch (centered on substrate, one cell thick)
+    # Patch at z=h (resolution-independent)
     patch_x0 = ox - patch_W / 2
     patch_x1 = ox + patch_W / 2
     patch_y0 = oy - patch_L / 2
     patch_y1 = oy + patch_L / 2
-    patch_z = h + dx  # top of substrate
-    sim.add(Box((patch_x0, patch_y0, patch_z),
-                (patch_x1, patch_y1, patch_z + dx)), material="pec")
+    sim.add(Box((patch_x0, patch_y0, h),
+                (patch_x1, patch_y1, h + gnd_thick)), material="pec")
 
     # Feed: 50-ohm lumped port spanning ground to patch (z-directed)
-    feed_abs_x = ox + feed_x  # absolute x position
-    feed_abs_y = oy            # center of patch in y
+    feed_abs_x = ox + feed_x
+    feed_abs_y = oy
 
     sim.add_port(
-        position=(feed_abs_x, feed_abs_y, dx),  # start at ground top
+        position=(feed_abs_x, feed_abs_y, 0),
         component="ez",
         impedance=feed_R,
         waveform=GaussianPulse(f0=f0, bandwidth=fc / f0),
         extent=h,  # span through substrate to patch
     )
 
-    # Probe at feed for resonance extraction
-    sim.add_probe((feed_abs_x, feed_abs_y, h / 2 + dx), "ez")
+    # Probe at substrate midpoint (physical absolute coordinate)
+    sim.add_probe((feed_abs_x, feed_abs_y, h / 2), "ez")
 
     grid = sim._build_grid()
     n_cells = grid.nx * grid.ny * grid.nz
