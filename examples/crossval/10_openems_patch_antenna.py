@@ -119,6 +119,9 @@ sim.add_port(
 sim.add_probe((port_x, port_y, port_z), "ez")
 # Second probe at patch center for mode verification
 sim.add_probe((ox, oy, port_z), "ez")
+# Third probe at radiating edge — Ez peaks here for TM01 mode
+# (center probe is at an Ez null, can't detect the fundamental)
+sim.add_probe((ox, oy - patch_L / 2 + dx, port_z), "ez")
 
 # NTFF box for radiation pattern
 cpml_thick = 8 * dx
@@ -154,23 +157,25 @@ with warnings.catch_warnings():
 ts = np.array(result.time_series).ravel()
 print(f"Probe signal: max={np.max(np.abs(ts)):.4e}, rms={np.sqrt(np.mean(ts**2)):.4e}")
 
-# 1. Resonance detection from center probe (cavity mode, no source contamination)
+# 1. Resonance detection from edge probe (probe 2) — Ez peaks at radiating edge
+#    The center probe (index 1) is at an Ez null of the TM01 mode and
+#    cannot reliably detect the fundamental resonance.
 ts_all = np.array(result.time_series)
 dt = result.dt
 
-# Use center probe (index 1) for resonance — it sees cavity mode only
-ts_center = ts_all[:, 1] if ts_all.ndim == 2 and ts_all.shape[1] >= 2 else ts_all.ravel()
+EDGE_PROBE = 2  # radiating edge probe
 
 # Try Harminv first (most accurate)
-modes = result.find_resonances(freq_range=(1e9, 3.5e9), probe_idx=1)
+modes = result.find_resonances(freq_range=(1e9, 3.5e9), probe_idx=EDGE_PROBE)
 if modes:
     best = min(modes, key=lambda m: abs(m.freq - f_analytical))
     f_sim = best.freq
-    print(f"Harminv: {f_sim/1e9:.4f} GHz, Q={best.Q:.0f}")
+    print(f"Harminv (edge probe): {f_sim/1e9:.4f} GHz, Q={best.Q:.0f}")
 else:
-    # Fallback: late-time windowed FFT on center probe
+    # Fallback: late-time windowed FFT on edge probe
+    ts_edge = ts_all[:, EDGE_PROBE] if ts_all.ndim == 2 and ts_all.shape[1] > EDGE_PROBE else ts_all.ravel()
     skip = int(2e-9 / dt)
-    ts_late = ts_center[skip:]
+    ts_late = ts_edge[skip:]
     ts_windowed = ts_late * np.hanning(len(ts_late))
     nfft = len(ts_windowed) * 4
     spec = np.abs(np.fft.rfft(ts_windowed, n=nfft))
@@ -179,15 +184,15 @@ else:
     band = (freqs_ghz_fft > 1.0) & (freqs_ghz_fft < 3.5)
     peak_idx = np.argmax(spec[band])
     f_sim = float(freqs_fft[band][peak_idx])
-    print(f"FFT peak (center probe): {f_sim/1e9:.4f} GHz")
+    print(f"FFT peak (edge probe): {f_sim/1e9:.4f} GHz")
 
-# Also compute windowed spectrum for plotting
+# Also compute windowed spectrum for plotting (use edge probe)
 skip = int(2e-9 / dt)
-ts_feed = ts_all[:, 0] if ts_all.ndim == 2 else ts_all.ravel()
-ts_late_feed = ts_feed[skip:]
-ts_windowed_feed = ts_late_feed * np.hanning(len(ts_late_feed))
-nfft = len(ts_windowed_feed) * 4
-spec_plot = np.abs(np.fft.rfft(ts_windowed_feed, n=nfft))
+ts_edge_plot = ts_all[:, EDGE_PROBE] if ts_all.ndim == 2 and ts_all.shape[1] > EDGE_PROBE else ts_all.ravel()
+ts_late_edge = ts_edge_plot[skip:]
+ts_windowed_edge = ts_late_edge * np.hanning(len(ts_late_edge))
+nfft = len(ts_windowed_edge) * 4
+spec_plot = np.abs(np.fft.rfft(ts_windowed_edge, n=nfft))
 freqs_ghz = np.fft.rfftfreq(nfft, d=dt) / 1e9
 band = (freqs_ghz > 1.0) & (freqs_ghz < 3.5)
 spec_band = spec_plot[band]
