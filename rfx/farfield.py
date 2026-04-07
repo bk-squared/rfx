@@ -476,27 +476,42 @@ def _surface_currents_jax(fields, axis, sign):
     return J, M
 
 
-def _face_positions_jax(axis, idx, other_ranges, dx, cpml):
-    """JAX version of _face_positions."""
-    x_fixed = (idx - cpml) * dx
+def _face_positions_jax(axis, idx, other_ranges, dx, cpml, dy=None, z_edges=None):
+    """JAX version of _face_positions with non-uniform z support."""
+    if dy is None:
+        dy = dx
+
+    def _z_pos(k):
+        if z_edges is not None:
+            return z_edges[k]
+        return (k - cpml) * dx
+
     if axis == 0:
         j_range, k_range = other_ranges
-        y = (jnp.arange(j_range[0], j_range[1]) - cpml) * dx
-        z = (jnp.arange(k_range[0], k_range[1]) - cpml) * dx
+        x_fixed = (idx - cpml) * dx
+        y = (jnp.arange(j_range[0], j_range[1]) - cpml) * dy
+        if z_edges is not None:
+            z = z_edges[k_range[0]:k_range[1]]
+        else:
+            z = (jnp.arange(k_range[0], k_range[1]) - cpml) * dx
         Y, Z = jnp.meshgrid(y, z, indexing="ij")
         X = jnp.full_like(Y, x_fixed)
     elif axis == 1:
         i_range, k_range = other_ranges
+        x_fixed = (idx - cpml) * dy
         x = (jnp.arange(i_range[0], i_range[1]) - cpml) * dx
-        z = (jnp.arange(k_range[0], k_range[1]) - cpml) * dx
+        if z_edges is not None:
+            z = z_edges[k_range[0]:k_range[1]]
+        else:
+            z = (jnp.arange(k_range[0], k_range[1]) - cpml) * dx
         X, Z = jnp.meshgrid(x, z, indexing="ij")
         Y = jnp.full_like(X, x_fixed)
     else:
         i_range, j_range = other_ranges
         x = (jnp.arange(i_range[0], i_range[1]) - cpml) * dx
-        y = (jnp.arange(j_range[0], j_range[1]) - cpml) * dx
+        y = (jnp.arange(j_range[0], j_range[1]) - cpml) * dy
         X, Y = jnp.meshgrid(x, y, indexing="ij")
-        Z = jnp.full_like(X, x_fixed)
+        Z = jnp.full_like(X, _z_pos(idx))
     return jnp.stack([X, Y, Z], axis=-1)
 
 
@@ -532,11 +547,28 @@ def compute_far_field_jax(
     k_arr = 2 * jnp.pi * freqs / C0
 
     dx = grid.dx
-    dS = dx * dx
+    dy = getattr(grid, 'dy', dx)
+    dz_arr = getattr(grid, 'dz', None)
     cpml = grid.cpml_layers
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
+
+    # Build z edge positions for non-uniform grids
+    if dz_arr is not None:
+        dz_jnp = jnp.asarray(dz_arr, dtype=jnp.float32)
+        z_edges = jnp.concatenate([jnp.zeros(1), jnp.cumsum(dz_jnp)])
+        z_edges = z_edges - z_edges[cpml]
+    else:
+        z_edges = None
+
+    # Per-face dS helper
+    def _face_dS_jax(axis, k_lo, k_hi):
+        if dz_arr is not None and axis in (0, 1):
+            dz_face = dz_jnp[k_lo:k_hi]
+            d_perp = dy if axis == 0 else dx
+            return d_perp * dz_face  # (nk,)
+        return dx * dy  # scalar
 
     TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
     sth, cth = jnp.sin(TH), jnp.cos(TH)
@@ -563,24 +595,40 @@ def compute_far_field_jax(
     ]
 
     for face_dft, axis, sign, face_idx, other_ranges in face_specs:
-        # Keep DFT precision from accumulation (complex128 if available)
         face = jnp.asarray(face_dft)
         n1, n2 = face.shape[1], face.shape[2]
         if n1 == 0 or n2 == 0:
             continue
 
-        pos = _face_positions_jax(axis, face_idx, other_ranges, dx, cpml)
+        pos = _face_positions_jax(axis, face_idx, other_ranges, dx, cpml,
+                                  dy=dy, z_edges=z_edges)
         pos_flat = pos.reshape(-1, 3)
         fields_flat = face.reshape(nf, -1, 4)
 
         J, M = _surface_currents_jax(fields_flat, axis, sign)
 
+        # Per-cell dS for non-uniform z on x/y faces
+        k_range = other_ranges[1] if axis in (0, 1) else None
+        if k_range is not None:
+            dS_k = _face_dS_jax(axis, k_range[0], k_range[1])
+            if dS_k.ndim > 0:
+                dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
+            else:
+                dS_flat = dS_k
+        else:
+            dS_flat = _face_dS_jax(axis, 0, 0)
+
         dot = r_flat @ pos_flat.T  # (n_dir, nc)
 
-        # Vectorized over frequency (no Python loop)
-        phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])  # (nf, n_dir, nc)
-        N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J) * dS
-        L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M) * dS
+        phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
+        if jnp.ndim(dS_flat) > 0:
+            J_w = J * dS_flat[None, :, None]
+            M_w = M * dS_flat[None, :, None]
+            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J_w)
+            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M_w)
+        else:
+            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J) * dS_flat
+            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M) * dS_flat
 
     th_flat = th_hat.reshape(-1, 3)
     ph_flat = ph_hat.reshape(-1, 3)

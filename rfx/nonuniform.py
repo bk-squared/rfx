@@ -105,6 +105,19 @@ def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
     return idx + cpml
 
 
+def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> tuple[int, int, int]:
+    """Convert physical (x, y, z) to grid indices for NonUniformGrid.
+
+    x/y use uniform division (same as Grid.position_to_index).
+    z uses cumulative dz nearest-cell lookup.
+    """
+    cpml = grid.cpml_layers
+    i = int(round(pos[0] / grid.dx)) + cpml
+    j = int(round(pos[1] / grid.dy)) + cpml
+    k = z_position_to_index(grid, pos[2])
+    return (i, j, k)
+
+
 def make_z_profile(
     features: list[float],
     domain_z: float,

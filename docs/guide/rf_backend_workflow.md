@@ -130,3 +130,21 @@ For issue-13-style runtime validation beyond unit tests:
 - `scripts/issue13_runtime_validation.py` — preflight + one-step runtime check
 - `examples/vessl_issue13_runtime_validation.yaml` — GPU/VESSL execution entry
 - `scripts/vessl_cli_compat.py` — local compatibility wrapper for the installed VESSL CLI on modern NumPy
+
+## Multi-GPU distributed execution
+
+`sim.run(devices=jax.devices())` uses the NamedSharding-based distributed
+runner (`distributed_v2.py`) with 1D slab decomposition along x.
+
+**Supported**: PEC, CPML, soft sources, point probes, lumped ports, Debye,
+Lorentz, Drude dispersive materials.
+
+**Known limitations** (transparent single-device fallback with warning):
+
+| Feature | Reason | Workaround |
+|---------|--------|------------|
+| TFSF plane-wave sources | Full-domain field injection incompatible with slab decomposition | Run on single device |
+| Waveguide / Floquet ports | Modal decomposition needs full cross-section | Run on single device |
+
+**Non-divisible grid**: If `nx % n_devices != 0`, the grid is automatically
+padded with PEC cells and trimmed after gathering — no user action needed.

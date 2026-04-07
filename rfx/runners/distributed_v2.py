@@ -13,6 +13,14 @@ sources, point probes, lumped ports, and dispersive materials
 Single-device fallback: when only 1 device is available, sharding is skipped
 and a plain jit path is used.
 
+Known limitations (transparent single-device fallback):
+- TFSF plane-wave sources: require full-domain field injection, not
+  compatible with slab decomposition.  Detected and warned at runtime.
+- Waveguide / Floquet ports: modal decomposition needs the full
+  cross-section on one device.  Detected and warned at runtime.
+- Non-divisible nx: automatically padded to nearest multiple of n_devices
+  with PEC-filled cells, then trimmed after gathering.
+
 The public entry point ``run_distributed`` has an identical signature to the
 pmap version in ``distributed.py`` so callers need no changes.
 """
