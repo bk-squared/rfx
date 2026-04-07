@@ -385,20 +385,14 @@ def run_nonuniform(
 
     cpml_params = None
     cpml_state_init = None
-    cpml_proxy = None
+    cpml_grid = None
 
     if use_cpml:
         from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
 
-        class _CpmlProxy:
-            def __init__(self, g):
-                self.nx = g.nx; self.ny = g.ny; self.nz = g.nz
-                self.dx = g.dx; self.dt = dt
-                self.cpml_layers = g.cpml_layers
-                self.shape = (g.nx, g.ny, g.nz)
-                self.is_2d = False
-        cpml_proxy = _CpmlProxy(grid)
-        cpml_params, cpml_state_init = init_cpml(cpml_proxy)
+        # Pass NonUniformGrid directly — init_cpml duck-types dx/dy/dz
+        cpml_params, cpml_state_init = init_cpml(grid)
+        cpml_grid = grid
 
     use_pec_mask = pec_mask is not None
 
@@ -454,7 +448,7 @@ def run_nonuniform(
         st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h)
         if use_cpml:
             st, cpml_new = apply_cpml_h(st, cpml_params, carry["cpml"],
-                                         cpml_proxy, "xyz")
+                                         cpml_grid, "xyz")
         else:
             cpml_new = None
 
@@ -472,7 +466,7 @@ def run_nonuniform(
 
         if use_cpml:
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
-                                         cpml_proxy, "xyz")
+                                         cpml_grid, "xyz")
 
         # PEC
         st = apply_pec(st)
