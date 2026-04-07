@@ -370,3 +370,216 @@ def export_radiation_pattern(path, ff_result, freq_idx=0):
 
     header = "theta_deg,phi_deg,E_theta_mag,E_theta_phase_deg,E_phi_mag,E_phi_phase_deg,gain_dBi"
     np.savetxt(path, rows, delimiter=",", header=header, comments="", fmt="%.6e")
+
+
+# =========================================================================
+# Geometry export (JSON)
+# =========================================================================
+
+def export_geometry_json(path, sim):
+    """Export simulation geometry as JSON for cross-validation or dataset indexing.
+
+    Captures materials, geometry entries, sources, probes, and grid config
+    in a tool-agnostic format.
+
+    Parameters
+    ----------
+    path : str or Path
+    sim : Simulation
+    """
+    import json
+
+    geo = {
+        "freq_max": sim._freq_max,
+        "domain": list(sim._domain),
+        "boundary": sim._boundary,
+        "dx": sim._dx,
+        "mode": sim._mode,
+        "cpml_layers": sim._cpml_layers,
+        "materials": {
+            name: {"eps_r": float(m.eps_r), "sigma": float(m.sigma), "mu_r": float(m.mu_r)}
+            for name, m in sim._materials.items()
+        },
+        "geometry": [
+            {
+                "material": e.material_name,
+                "type": type(e.shape).__name__,
+                "bbox": [list(e.shape.bounding_box()[0]),
+                         list(e.shape.bounding_box()[1])]
+                if hasattr(e.shape, "bounding_box") else None,
+            }
+            for e in sim._geometry
+        ],
+        "sources": [
+            {"position": list(p.position), "component": p.component}
+            for p in sim._ports if p.impedance == 0
+        ],
+        "probes": [
+            {"position": list(p.position), "component": p.component}
+            for p in sim._probes
+        ],
+    }
+
+    path = Path(path)
+    with open(path, "w") as f:
+        json.dump(geo, f, indent=2, default=str)
+
+
+# =========================================================================
+# Experiment report
+# =========================================================================
+
+def save_experiment_report(path, sim, result, extra=None):
+    """Save standardized experiment metadata as JSON.
+
+    Auto-collects: sim config, grid shape, timing, loss history.
+
+    Parameters
+    ----------
+    path : str or Path
+    sim : Simulation
+    result : Result, OptimizeResult, or TopologyResult
+    extra : dict or None
+        Additional metadata (GPU info, notes, etc.)
+    """
+    import json
+    import time
+
+    grid = None
+    if hasattr(result, "grid") and result.grid is not None:
+        grid = result.grid
+
+    report = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "simulation": {
+            "freq_max": sim._freq_max,
+            "domain": list(sim._domain),
+            "boundary": sim._boundary,
+            "dx": sim._dx,
+            "mode": sim._mode,
+            "solver": getattr(sim, "_solver", "yee"),
+        },
+        "grid": {
+            "shape": list(grid.shape) if grid else None,
+            "dx": float(grid.dx) if grid else None,
+            "dt": float(grid.dt) if grid else None,
+        } if grid else None,
+        "result_type": type(result).__name__,
+    }
+
+    # Loss history from optimization results
+    if hasattr(result, "loss_history"):
+        report["loss_history"] = [float(x) for x in result.loss_history]
+    elif hasattr(result, "history"):
+        report["loss_history"] = [float(x) for x in result.history]
+
+    # Time series stats
+    if hasattr(result, "time_series") and result.time_series is not None:
+        ts = np.asarray(result.time_series)
+        report["time_series"] = {
+            "shape": list(ts.shape),
+            "peak": float(np.max(np.abs(ts))),
+        }
+
+    if extra:
+        report["extra"] = extra
+
+    path = Path(path)
+    with open(path, "w") as f:
+        json.dump(report, f, indent=2, default=str)
+
+
+# =========================================================================
+# Surrogate/ML training data export
+# =========================================================================
+
+def save_simulation_dataset(path, sim, result, *, include_fields=False):
+    """Save simulation input-output pair for surrogate model training.
+
+    Creates an HDF5 file with:
+    - Input: material distribution (eps_r, sigma), geometry config
+    - Output: time series, S-parameters, resonances
+    - Optionally: final field snapshot (E, H)
+
+    Parameters
+    ----------
+    path : str or Path
+    sim : Simulation
+    result : Result
+    include_fields : bool
+        If True, save full 3D E/H field arrays (large).
+    """
+    import h5py
+
+    path = Path(path)
+    with h5py.File(path, "w") as f:
+        # Input group: material distribution
+        inp = f.create_group("input")
+        inp.attrs["freq_max"] = sim._freq_max
+        inp.attrs["domain"] = sim._domain
+        inp.attrs["boundary"] = sim._boundary
+        if sim._dx is not None:
+            inp.attrs["dx"] = sim._dx
+
+        # Rasterized materials from grid
+        if hasattr(result, "grid") and result.grid is not None:
+            grid = result.grid
+            inp.attrs["grid_shape"] = grid.shape
+            inp.attrs["dt"] = float(grid.dt)
+
+        # Output group
+        out = f.create_group("output")
+
+        # Time series
+        if hasattr(result, "time_series") and result.time_series is not None:
+            ts = np.asarray(result.time_series)
+            out.create_dataset("time_series", data=ts, compression="gzip")
+
+        # S-parameters
+        if hasattr(result, "s_params") and result.s_params is not None:
+            out.create_dataset("s_params", data=np.asarray(result.s_params))
+        if hasattr(result, "freqs") and result.freqs is not None:
+            out.create_dataset("freqs", data=np.asarray(result.freqs))
+
+        # Field snapshots (optional, large)
+        if include_fields and hasattr(result, "state") and result.state is not None:
+            fields = f.create_group("fields")
+            for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
+                arr = getattr(result.state, comp, None)
+                if arr is not None:
+                    fields.create_dataset(comp, data=np.asarray(arr),
+                                          compression="gzip")
+
+
+def save_optimization_trajectory(path, history_callback_data):
+    """Save full optimization trajectory for meta-learning / warm-start.
+
+    Parameters
+    ----------
+    path : str or Path
+    history_callback_data : list of dict
+        Each entry: {"iter": int, "loss": float, "eps_design": ndarray,
+                     "s_params": ndarray (optional)}
+    """
+    import h5py
+
+    path = Path(path)
+    n = len(history_callback_data)
+    if n == 0:
+        return
+
+    with h5py.File(path, "w") as f:
+        f.attrs["n_iterations"] = n
+        losses = [d["loss"] for d in history_callback_data]
+        f.create_dataset("losses", data=np.array(losses))
+
+        # Save designs at each iteration (compressed)
+        for i, d in enumerate(history_callback_data):
+            g = f.create_group(f"iter_{i:04d}")
+            g.attrs["loss"] = d["loss"]
+            g.create_dataset("eps_design", data=np.asarray(d["eps_design"]),
+                             compression="gzip")
+            if "s_params" in d and d["s_params"] is not None:
+                g.create_dataset("s_params", data=np.asarray(d["s_params"]))
+            if "density" in d and d["density"] is not None:
+                g.create_dataset("density", data=np.asarray(d["density"]))

@@ -46,6 +46,8 @@ from rfx.io import (
     read_touchstone, write_touchstone,
     save_optimization_result, load_optimization_result,
     save_far_field, export_radiation_pattern,
+    export_geometry_json, save_experiment_report,
+    save_simulation_dataset, save_optimization_trajectory,
 )
 from rfx.deembed import deembed_port_extension, deembed_thru
 from rfx.visualize import (
