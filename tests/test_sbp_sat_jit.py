@@ -281,3 +281,65 @@ class TestJITRunnerDirect:
 
         # No sources => all fields should be zero
         assert float(jnp.max(jnp.abs(result.state_f.ez))) == 0.0
+
+
+class TestSubgridMaterialTransition:
+    """Validate subgridding with dielectric material crossing the coarse-fine boundary."""
+
+    def test_dielectric_crossing_boundary_stable(self):
+        """Dielectric box straddling refinement boundary should not cause NaN or divergence."""
+        from rfx import Simulation, Box, GaussianPulse
+
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03),
+                         boundary="pec", dx=0.003)
+        sim.add_material("dielectric", eps_r=4.0)
+        # Box crosses the refinement z-boundary (0.009-0.021 vs refine 0.009-0.021)
+        sim.add(Box((0.005, 0.005, 0.005), (0.020, 0.020, 0.020)),
+                material="dielectric")
+        sim.add_source(position=(0.015, 0.015, 0.015), component="ez",
+                       waveform=GaussianPulse(f0=2e9, bandwidth=0.5))
+        sim.add_probe(position=(0.015, 0.015, 0.015), component="ez")
+        sim.add_refinement(z_range=(0.009, 0.021), ratio=2)
+
+        result = sim.run(n_steps=200)
+        ts = np.array(result.time_series[:, 0])
+
+        assert not np.any(np.isnan(ts)), "NaN in material-transition subgrid"
+        assert np.max(np.abs(ts)) > 0, "Zero signal with dielectric"
+
+    def test_dielectric_changes_field_amplitude(self):
+        """Dielectric material should produce different field amplitudes vs vacuum.
+
+        With eps_r=4, the wave impedance and field amplitudes change.
+        A co-located probe should see a measurably different signal.
+        """
+        from rfx import Simulation, Box, GaussianPulse
+
+        domain = (0.03, 0.03, 0.03)
+        dx = 0.003
+
+        def _run_with_eps(eps_r):
+            sim = Simulation(freq_max=5e9, domain=domain, boundary="pec", dx=dx)
+            if eps_r > 1.0:
+                sim.add_material("diel", eps_r=eps_r)
+                sim.add(Box((0, 0, 0), domain), material="diel")
+            sim.add_source((0.015, 0.015, 0.015), "ez",
+                           waveform=GaussianPulse(f0=2e9, bandwidth=0.5))
+            sim.add_probe((0.015, 0.015, 0.015), "ez")
+            sim.add_refinement(z_range=(0.009, 0.021), ratio=2)
+            return sim.run(n_steps=100)
+
+        res_vac = _run_with_eps(1.0)
+        res_die = _run_with_eps(4.0)
+
+        ts_vac = np.array(res_vac.time_series[:, 0])
+        ts_die = np.array(res_die.time_series[:, 0])
+
+        # Signals should differ (different wave impedance in dielectric)
+        diff = np.max(np.abs(ts_vac - ts_die))
+        ref = np.max(np.abs(ts_vac)) + 1e-30
+        rel_diff = diff / ref
+
+        assert rel_diff > 0.01, (
+            f"Dielectric should change signal: rel_diff={rel_diff:.4f}"
+        )

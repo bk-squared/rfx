@@ -766,10 +766,10 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
 
     # ===================================================================
     # Sub-step 1: n → n+1/2
-    # Implicit: Ey(z), Ez(x), Ex(y)
+    # Implicit pairs: Hx↔Ey(z), Hy↔Ez(x), Hz↔Ex(y)
     # ===================================================================
 
-    # curl H^n (backward diffs, Ampere convention)
+    # RHS uses full curl(H^n)
     curl_hx = (hz - _bwd(hz, 1)) / dy - (hy - _bwd(hy, 2)) / dz
     curl_hy = (hx - _bwd(hx, 2)) / dz - (hz - _bwd(hz, 0)) / dx
     curl_hz = (hy - _bwd(hy, 0)) / dx - (hx - _bwd(hx, 1)) / dy
@@ -784,22 +784,17 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
 
     ex_h, ey_h, ez_h = _apply_pec_3d(ex_h, ey_h, ez_h, pec_mask)
 
-    # H^{n+1/2}: each component uses one NEW and one OLD E derivative
-    # Hx = f(dEz/dy, dEy/dz): Ey NEW(z), Ez OLD(y) → use ey_h for z-deriv, ez for y-deriv
+    # H^{n+1/2}: each uses NEW E from implicit pair, OLD E otherwise
     hx_h = hx - (half_dt / MU_0) * (
         (_fwd(ez, 1) - ez) / dy - (_fwd(ey_h, 2) - ey_h) / dz)
-
-    # Hy = f(dEx/dz, dEz/dx): Ez NEW(x), Ex OLD(z) → use ez_h for x-deriv, ex for z-deriv
     hy_h = hy - (half_dt / MU_0) * (
         (_fwd(ex, 2) - ex) / dz - (_fwd(ez_h, 0) - ez_h) / dx)
-
-    # Hz = f(dEy/dx, dEx/dy): Ex NEW(y), Ey OLD(x) → use ex_h for y-deriv, ey for x-deriv
     hz_h = hz - (half_dt / MU_0) * (
         (_fwd(ey, 0) - ey) / dx - (_fwd(ex_h, 1) - ex_h) / dy)
 
     # ===================================================================
     # Sub-step 2: n+1/2 → n+1
-    # Implicit: Ex(z), Ey(x), Ez(y)  [complementary]
+    # Implicit pairs: Hx↔Ez(y), Hy↔Ex(z), Hz↔Ey(x)
     # ===================================================================
 
     curl_hx2 = (hz_h - _bwd(hz_h, 1)) / dy - (hy_h - _bwd(hy_h, 2)) / dz
@@ -810,25 +805,17 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     rhs_ey2 = damping * ey_h + coeff_e * curl_hy2
     rhs_ez2 = damping * ez_h + coeff_e * curl_hz2
 
-    ex_n = _solve_tridiag_along(ex_h, Cz, rhs_ex2, axis=2)  # Ex implicit in z
-    ey_n = _solve_tridiag_along(ey_h, Cx, rhs_ey2, axis=0)   # Ey implicit in x
-    ez_n = _solve_tridiag_along(ez_h, Cy, rhs_ez2, axis=1)   # Ez implicit in y
+    ex_n = _solve_tridiag_along(ex_h, Cz, rhs_ex2, axis=2)
+    ey_n = _solve_tridiag_along(ey_h, Cx, rhs_ey2, axis=0)
+    ez_n = _solve_tridiag_along(ez_h, Cy, rhs_ez2, axis=1)
 
     ex_n, ey_n, ez_n = _apply_pec_3d(ex_n, ey_n, ez_n, pec_mask)
 
-    # H^{n+1}: complementary to sub-step 1
-    # Hx: Ex NEW(z)→z-deriv not applicable; Ez NEW(y), Ey^{n+1/2} → use ez_n for y, ey_h for z
-    # Wait — sub-step 2 implicit: Ex(z), Ey(x), Ez(y)
-    # Hx = f(dEz/dy, dEy/dz): Ez NEW(y)→y-deriv, Ey NEW(x)→x-deriv... but dEy/dz is z-deriv
-    # Ey implicit in x, not z → dEy/dz uses ey_h (old), dEz/dy uses ez_n (new, implicit in y)
+    # H^{n+1}: NEW E from implicit pair, OLD E^* otherwise
     hx_n = hx_h - (half_dt / MU_0) * (
         (_fwd(ez_n, 1) - ez_n) / dy - (_fwd(ey_h, 2) - ey_h) / dz)
-
-    # Hy = f(dEx/dz, dEz/dx): Ex NEW(z)→z-deriv, Ez implicit in y not x → dEz/dx uses ez_h
     hy_n = hy_h - (half_dt / MU_0) * (
         (_fwd(ex_n, 2) - ex_n) / dz - (_fwd(ez_h, 0) - ez_h) / dx)
-
-    # Hz = f(dEy/dx, dEx/dy): Ey NEW(x)→x-deriv, Ex implicit in z not y → dEx/dy uses ex_h
     hz_n = hz_h - (half_dt / MU_0) * (
         (_fwd(ey_n, 0) - ey_n) / dx - (_fwd(ex_h, 1) - ex_h) / dy)
 
