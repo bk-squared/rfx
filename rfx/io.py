@@ -249,7 +249,10 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
 # Result export (HDF5)
 # =========================================================================
 
-def save_optimization_result(path, result, metadata=None):
+def save_optimization_result(path, result, metadata=None, *,
+                             include_latent=True,
+                             include_density=True,
+                             include_history=True):
     """Save OptimizeResult or TopologyResult to HDF5.
 
     Parameters
@@ -258,6 +261,12 @@ def save_optimization_result(path, result, metadata=None):
     result : OptimizeResult or TopologyResult
     metadata : dict or None
         Extra metadata (grid shape, freq_max, etc.) stored as HDF5 attrs.
+    include_latent : bool
+        Save latent/density arrays (default True).
+    include_density : bool
+        Save projected density and PEC occupancy (default True).
+    include_history : bool
+        Save loss/beta history (default True).
     """
     import h5py
 
@@ -265,21 +274,24 @@ def save_optimization_result(path, result, metadata=None):
     with h5py.File(path, "w") as f:
         f.create_dataset("eps_design", data=np.asarray(result.eps_design))
 
-        if hasattr(result, "loss_history"):
-            f.create_dataset("loss_history", data=np.array(result.loss_history))
-        if hasattr(result, "history"):
-            f.create_dataset("loss_history", data=np.array(result.history))
+        if include_history:
+            if hasattr(result, "loss_history"):
+                f.create_dataset("loss_history", data=np.array(result.loss_history))
+            elif hasattr(result, "history"):
+                f.create_dataset("loss_history", data=np.array(result.history))
+            if hasattr(result, "beta_history"):
+                f.create_dataset("beta_history", data=np.array(result.beta_history))
 
-        if hasattr(result, "latent") and result.latent is not None:
+        if include_latent and hasattr(result, "latent") and result.latent is not None:
             f.create_dataset("latent", data=np.asarray(result.latent))
-        if hasattr(result, "density") and result.density is not None:
-            f.create_dataset("density", data=np.asarray(result.density))
-        if hasattr(result, "density_projected") and result.density_projected is not None:
-            f.create_dataset("density_projected", data=np.asarray(result.density_projected))
-        if hasattr(result, "beta_history"):
-            f.create_dataset("beta_history", data=np.array(result.beta_history))
-        if hasattr(result, "pec_occupancy_design") and result.pec_occupancy_design is not None:
-            f.create_dataset("pec_occupancy", data=np.asarray(result.pec_occupancy_design))
+
+        if include_density:
+            if hasattr(result, "density") and result.density is not None:
+                f.create_dataset("density", data=np.asarray(result.density))
+            if hasattr(result, "density_projected") and result.density_projected is not None:
+                f.create_dataset("density_projected", data=np.asarray(result.density_projected))
+            if hasattr(result, "pec_occupancy_design") and result.pec_occupancy_design is not None:
+                f.create_dataset("pec_occupancy", data=np.asarray(result.pec_occupancy_design))
 
         if metadata:
             for k, v in metadata.items():
@@ -493,13 +505,17 @@ def save_experiment_report(path, sim, result, extra=None):
 # Surrogate/ML training data export
 # =========================================================================
 
-def save_simulation_dataset(path, sim, result, *, include_fields=False):
+def save_simulation_dataset(path, sim, result, *,
+                            include_fields=False,
+                            include_time_series=True,
+                            include_s_params=True,
+                            include_config=True):
     """Save simulation input-output pair for surrogate model training.
 
-    Creates an HDF5 file with:
-    - Input: material distribution (eps_r, sigma), geometry config
-    - Output: time series, S-parameters, resonances
-    - Optionally: final field snapshot (E, H)
+    Creates an HDF5 file with selectable sections:
+    - Input: simulation config and grid metadata
+    - Output: time series, S-parameters
+    - Fields: final 3D E/H snapshot (large, opt-in)
 
     Parameters
     ----------
@@ -507,41 +523,45 @@ def save_simulation_dataset(path, sim, result, *, include_fields=False):
     sim : Simulation
     result : Result
     include_fields : bool
-        If True, save full 3D E/H field arrays (large).
+        Save full 3D E/H field arrays (default False — large).
+    include_time_series : bool
+        Save probe time series (default True).
+    include_s_params : bool
+        Save S-parameters and frequencies (default True).
+    include_config : bool
+        Save simulation config as input metadata (default True).
     """
     import h5py
 
     path = Path(path)
     with h5py.File(path, "w") as f:
-        # Input group: material distribution
-        inp = f.create_group("input")
-        inp.attrs["freq_max"] = sim._freq_max
-        inp.attrs["domain"] = sim._domain
-        inp.attrs["boundary"] = sim._boundary
-        if sim._dx is not None:
-            inp.attrs["dx"] = sim._dx
-
-        # Rasterized materials from grid
-        if hasattr(result, "grid") and result.grid is not None:
-            grid = result.grid
-            inp.attrs["grid_shape"] = grid.shape
-            inp.attrs["dt"] = float(grid.dt)
+        # Input group: simulation config
+        if include_config:
+            inp = f.create_group("input")
+            inp.attrs["freq_max"] = sim._freq_max
+            inp.attrs["domain"] = sim._domain
+            inp.attrs["boundary"] = sim._boundary
+            if sim._dx is not None:
+                inp.attrs["dx"] = sim._dx
+            if hasattr(result, "grid") and result.grid is not None:
+                grid = result.grid
+                inp.attrs["grid_shape"] = grid.shape
+                inp.attrs["dt"] = float(grid.dt)
 
         # Output group
         out = f.create_group("output")
 
-        # Time series
-        if hasattr(result, "time_series") and result.time_series is not None:
-            ts = np.asarray(result.time_series)
-            out.create_dataset("time_series", data=ts, compression="gzip")
+        if include_time_series:
+            if hasattr(result, "time_series") and result.time_series is not None:
+                ts = np.asarray(result.time_series)
+                out.create_dataset("time_series", data=ts, compression="gzip")
 
-        # S-parameters
-        if hasattr(result, "s_params") and result.s_params is not None:
-            out.create_dataset("s_params", data=np.asarray(result.s_params))
-        if hasattr(result, "freqs") and result.freqs is not None:
-            out.create_dataset("freqs", data=np.asarray(result.freqs))
+        if include_s_params:
+            if hasattr(result, "s_params") and result.s_params is not None:
+                out.create_dataset("s_params", data=np.asarray(result.s_params))
+            if hasattr(result, "freqs") and result.freqs is not None:
+                out.create_dataset("freqs", data=np.asarray(result.freqs))
 
-        # Field snapshots (optional, large)
         if include_fields and hasattr(result, "state") and result.state is not None:
             fields = f.create_group("fields")
             for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
