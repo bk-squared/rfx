@@ -1,0 +1,137 @@
+# rfx Agent Memory — Durable Knowledge Index
+
+## Session Handover (2026-04-07)
+
+### Completed This Session
+
+#### 1. Non-uniform runner 15% error 해결
+- **Root cause**: crossval 10의 center probe가 TM01 mode의 Ez null point에 위치
+- **Fix**: edge probe (radiating edge, Ez antinode)로 변경 → uniform/non-uniform 모두 1.944 GHz (4.4% error)
+- **엔진 자체는 정상** — diagnostic #11에서 edge probe 기준 0.02% 이내 일치 확인
+
+#### 2. Port sigma fix (anisotropic cell)
+- **Bug**: `σ = 1/(Z0·dz)` — cubic cell 가정. dz=0.254mm, dx=1mm일 때 15.5x overload
+- **Fix**: `σ = d_parallel/(Z0·d_perp1·d_perp2)` in `rfx/runners/nonuniform.py`
+- Commit: `fbe8b53`
+
+#### 3. CPML axis-aware refactor (Phase 1 핵심)
+- **Bug**: CPML z-face curl이 `/dx` 사용, sigma_max도 dx 기반 → non-uniform grid에서 z-boundary 흡수 실패
+- **Fix**: `CPMLAxisParams(x, y, z_lo, z_hi)` 4-profile 구조
+  - 26개 curl division 전부 per-axis 치환: x→`/dx_x`, y→`/dx_y`, z-lo→`/dz_lo`, z-hi→`/dz_hi`
+  - Cell sizes를 Python float로 NamedTuple에 저장 (JIT tracing 안전)
+  - `_CpmlProxy` 제거 → NonUniformGrid 직접 전달 (duck typing)
+- Files: `rfx/boundaries/cpml.py`, `rfx/nonuniform.py`
+- Commit: `bc5646d`
+
+#### 4. Port/Source sigma 통합 (Phase 2)
+- **공유 helper** in `rfx/sources/sources.py`:
+  - `port_sigma(grid, idx, component, Z0)` → `d_par/(Z0·d_perp1·d_perp2)`
+  - `port_d_parallel(grid, idx, component)` → cell size along E-field axis
+  - `_axis_cell_sizes(grid, k)` → `(dx, dy, dz)` via duck typing
+- **6개 파일 통일**: `sources.py`, `coaxial_port.py`, `simulation.py`, `lumped.py`
+- Uniform grid에서 기존 공식과 동일 (backward compatible)
+- Commit: `6a7c684`
+
+#### 5. Geometry rasterization 통합 (Phase 1-1)
+- **New**: `rfx/geometry/rasterize.py` — 공유 `rasterize_geometry()` 함수
+  - `GridCoords` abstraction: `coords_from_uniform_grid()`, `coords_from_nonuniform_grid()`, `coords_from_fine_grid()`
+  - Non-uniform runner가 shared function 사용 → chi3/Kerr 지원 추가
+- NU runner의 100+ line 중복 코드 제거
+- Subgridded runner + uniform api.py 마이그레이션은 follow-up
+- Commit: `85a7f08`
+
+#### 6. Physical absolute coordinates
+- crossval 10, 11, 01_patch_balanis의 probe/port z좌표를 `h/2` (물리 절대 좌표)로 통일
+- Cell-relative (`dz_sub*1.5`, `dx*1.5`)는 grid resolution마다 다른 물리 위치를 가리켜서 convergence test 무효화
+- Commits: `a359dcf`, `3008e47`
+
+#### 7. PR #24 (Physics-Aware Preflight) Close
+- 엔진 correctness 미완 상태에서 911줄 preflight framework는 시기상조
+- Domain validation helpers는 추후 작은 PR로 분리 가능
+
+---
+
+### VESSL Runs 대기 중
+
+| Run ID | 내용 | 상태 |
+|--------|------|------|
+| 369367232429 | **CPML reflectivity sweep** (56 runs: 7 layers × 4 freqs × 2 kappa) | 실행 중 |
+| 369367232419 | Physics validation (crossval 10+11, CPML+port fix) | 완료 — edge probe 일치 확인 |
+
+---
+
+### Axis-Dependent Issue 감사 결과 (12건)
+
+| # | 파일 | 상태 |
+|---|------|------|
+| 1 | CPML z-face curl `/dx` → `/dz` | **Fixed** (4-profile) |
+| 2 | CPML sigma profile uses dx for z | **Fixed** (per-axis profile) |
+| 3-8 | Port/source/RLC sigma `1/(Z0*dx)` | **Fixed** (shared helper) |
+| 9 | Far-field `dS=dx*dx` for all faces | **Pending** (Phase 3) |
+| 10-11 | simulation.py V/I DFT + waveform | **Fixed** (Phase 2) |
+| 12 | lumped.py R/L/C | **Fixed** (Phase 2) |
+
+---
+
+### 남은 작업 (우선순위 순)
+
+#### Phase 1 — Correctness
+- [x] ~~Geometry rasterization 통합~~ → `rfx/geometry/rasterize.py` (NU done, subgrid/uniform follow-up)
+- [ ] **CPML default retuning** — sweep 결과 대기 (run 369367232429)
+  - 현재 3-way 불일치: Grid=10, Simulation=12, auto_config=수식
+  - `kappa_max`: Grid=1.0, Simulation=5.0 (숨겨진 차이)
+  - `high` preset이 0.4λ 유지 → wideband에서 80+ layers
+  - Sweep script: `scripts/cpml_reflectivity_sweep.py`
+  - Plan: `docs/research_notes/20260405_cpml_reflectivity_sweep/note.md`
+- [ ] `_series_needs_ade()` fallback 문서화
+
+#### Phase 2 — Validation
+- [ ] Tiered CI (fast smoke + scheduled scientific)
+- [ ] CPML reflectivity regression test
+- [ ] Coupled filter threshold review (25% too loose)
+- [ ] `test_nonuniform_convergence` fix (smooth grading 추가 필요)
+- [ ] `test_reciprocity_two_port` pre-existing failure 조사
+
+#### Phase 3 — Far-field + Efficiency
+- [ ] Far-field per-face `dS` (x-face: `dy*dz[k]`, y-face: `dx*dz[k]`, z-face: `dx*dy`)
+- [ ] `_face_positions` non-uniform z 지원
+- [ ] `NonUniformGrid.position_to_index()` 메서드 추가
+- [ ] pmap → NamedSharding migration
+- [ ] Multi-GPU
+
+#### Phase 4 — Advanced
+- [ ] SBP-SAT 3D
+- [ ] ADI-FDTD, neural surrogate, level-set topology
+
+#### Quick Wins
+- [ ] PyPI 1.3.1 version bump
+- [ ] 30+ stale dev example/script 정리
+- [ ] Subgridded runner rasterization 마이그레이션 (cell center bug fix 포함)
+
+---
+
+### 핵심 설계 원칙 (이번 세션에서 확립)
+
+1. **Physical absolute coordinates**: Probe/port/source 위치는 항상 물리 절대 좌표 (`h/2`, not `dx*1.5`)
+2. **Axis-aware formulas**: `d_parallel/(Z0·d_perp1·d_perp2)` — cubic cell 가정 금지
+3. **Duck typing for grid types**: `getattr(grid, 'dy', dx)` 패턴으로 Grid/NonUniformGrid 통합
+4. **JIT safety**: Cell sizes는 Python float로 추출하여 NamedTuple에 저장 (scan 내에서 grid.dz 접근 금지)
+5. **Evidence before defaults**: CPML parameter는 reflectivity sweep 실측 후 결정
+
+---
+
+### Key Files Modified This Session
+
+```
+rfx/boundaries/cpml.py          — CPMLAxisParams, 4-profile, per-axis curl
+rfx/nonuniform.py               — _CpmlProxy 제거, duck typing
+rfx/runners/nonuniform.py       — port sigma fix, rasterize_geometry 사용
+rfx/sources/sources.py          — port_sigma/port_d_parallel helpers
+rfx/sources/coaxial_port.py     — axis-aware sigma
+rfx/simulation.py               — port_d_parallel waveform scaling
+rfx/lumped.py                   — axis-aware R/L/C
+rfx/geometry/rasterize.py       — NEW: 공유 rasterization
+examples/crossval/10_*.py       — edge probe, h/2 절대 좌표
+examples/crossval/11_*.py       — h/2 절대 좌표
+examples/40_accuracy_validation/01_*.py — resolution-independent geometry
+```
