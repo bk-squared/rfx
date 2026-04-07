@@ -295,7 +295,7 @@ def auto_configure(
     presets = {
         "draft":    {"cpw": 10, "cpf": 2, "margin_frac": 0.15, "pml_frac": 0.10},
         "standard": {"cpw": 20, "cpf": 4, "margin_frac": 0.25, "pml_frac": 0.20},
-        "high":     {"cpw": 40, "cpf": 8, "margin_frac": 0.50, "pml_frac": 0.40},
+        "high":     {"cpw": 40, "cpf": 8, "margin_frac": 0.50, "pml_frac": 0.15},
     }
     if accuracy not in presets:
         raise ValueError(f"accuracy must be 'draft', 'standard', or 'high', got {accuracy!r}")
@@ -377,11 +377,11 @@ def auto_configure(
     # Ensure minimum domain > 4*dx per dimension
     domain = tuple(max(d, 8 * dx) for d in domain)
 
-    # 3. CPML layers — evidence-based from reflectivity sweep (2026-04-05).
-    # Even 4 layers achieves < -43 dB at all frequencies with CFS-CPML
-    # (kappa_max=5.0).  Conservative floor per accuracy tier plus a
-    # pml_frac * lambda_max physical thickness that scales with frequency.
-    # Previous 0.4*lambda_max was 4x over-provisioned (80 layers for wideband).
+    # 3. CPML layers — evidence-based from reflectivity sweep (2026-04-07).
+    # 56-run sweep (7 layers × 4 freqs × 2 kappa): ALL achieve < -40 dB.
+    # Standard CPML (kappa_max=1.0) >= CFS-CPML (kappa_max=5.0).
+    # Sweet spot at 8 layers for 1 GHz (-49.7 dB); 4 layers sufficient everywhere.
+    # Conservative floor per accuracy tier plus pml_frac * lambda_max scaling.
     min_cpml_thickness = preset["pml_frac"] * lambda_max  # 0.10/0.20/0.40
     min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
     cpml_cells = {"draft": 6, "standard": 8, "high": 12}[accuracy]

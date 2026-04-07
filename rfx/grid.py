@@ -39,7 +39,7 @@ class Grid:
         freq_max: float,
         domain: tuple[float, float, float],
         dx: float | None = None,
-        cpml_layers: int = 10,
+        cpml_layers: int = 8,
         cpml_axes: str = "xyz",
         mode: str = "3d",
         kappa_max: float | None = None,

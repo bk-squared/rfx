@@ -5,8 +5,9 @@ PEC domain (where boundary reflections cannot reach the probe during the
 measurement window) and in a smaller CPML domain. The difference is the
 PML reflection artifact.
 
-Validates the improved CFS-CPML defaults (kappa_max=5.0, 12 layers)
-that the high-level Simulation API applies automatically.
+Validates the standard CPML defaults (kappa_max=1.0, 8 layers).
+Evidence: 56-run sweep (2026-04-07) showed standard CPML >= CFS-CPML,
+and 8 layers achieves -49.7 dB at 1 GHz (worst case).
 """
 import numpy as np
 
@@ -25,8 +26,7 @@ class TestPMLReflectivity:
     def test_broadband_reflectivity_below_minus_40db(self):
         """CPML reflection < -40 dB using large-PEC reference comparison.
 
-        Uses kappa_max=5.0 and 12 layers — the defaults applied by the
-        high-level Simulation API via Grid.kappa_max.
+        Uses kappa_max=1.0 and 8 layers — the unified defaults.
         """
         freq_max = 5e9
         f0 = 2e9
@@ -56,9 +56,9 @@ class TestPMLReflectivity:
             state_ref = state_ref._replace(ez=ez)
             ts_ref[n] = float(state_ref.ez[probe_ref])
 
-        # --- CPML domain: kappa_max=5.0 via Grid attribute (Simulation API default) ---
+        # --- CPML domain: standard CPML (kappa_max=1.0, 8 layers) ---
         grid_cpml = Grid(freq_max=freq_max, domain=(0.06, 0.06, 0.06),
-                         cpml_layers=12, kappa_max=5.0)
+                         cpml_layers=8)
         state_cpml = init_state(grid_cpml.shape)
         materials_cpml = init_materials(grid_cpml.shape)
         cpml_params, cpml_state = init_cpml(grid_cpml)

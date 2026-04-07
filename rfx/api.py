@@ -383,7 +383,7 @@ class Simulation:
         domain: tuple[float, float, float],
         *,
         boundary: str = "cpml",
-        cpml_layers: int = 12,
+        cpml_layers: int = 8,
         dx: float | None = None,
         mode: str = "3d",
         dz_profile: np.ndarray | None = None,
@@ -1376,7 +1376,6 @@ class Simulation:
                 cpml_layers=self._cpml_layers,
                 cpml_axes=cpml_axes,
                 mode=self._mode,
-                kappa_max=5.0,
             )
         return Grid(
             freq_max=self._freq_max,
@@ -1384,7 +1383,6 @@ class Simulation:
             dx=self._dx,
             cpml_layers=self._cpml_layers,
             mode=self._mode,
-            kappa_max=5.0,
         )
 
     # Threshold above which sigma is treated as PEC (use mask instead).

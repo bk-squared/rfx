@@ -49,7 +49,7 @@ def make_nonuniform_grid(
     domain_xy: tuple[float, float],
     dz_profile: np.ndarray,
     dx: float,
-    cpml_layers: int = 12,
+    cpml_layers: int = 8,
 ) -> NonUniformGrid:
     """Create a non-uniform grid with graded z-spacing.
 
