@@ -258,28 +258,44 @@ def _surface_currents(fields, axis, sign):
     return J, M
 
 
-def _face_positions(axis, idx, other_ranges, dx, cpml):
-    """Build (n1, n2, 3) position array for a face."""
-    x_fixed = (idx - cpml) * dx
+def _face_positions(axis, idx, other_ranges, dx, cpml, dy=None, z_edges=None):
+    """Build (n1, n2, 3) position array for a face.
+
+    Parameters
+    ----------
+    dy : float or None
+        Y cell size. If None, uses dx (cubic cells).
+    z_edges : (nz+1,) array or None
+        Cumulative z positions at cell boundaries. If None, uses uniform dx.
+    """
+    if dy is None:
+        dy = dx
+
+    def _z_pos(k):
+        if z_edges is not None:
+            return z_edges[k]
+        return (k - cpml) * dx
 
     if axis == 0:
         j_range, k_range = other_ranges
-        y = (np.arange(j_range[0], j_range[1]) - cpml) * dx
-        z = (np.arange(k_range[0], k_range[1]) - cpml) * dx
+        x_fixed = (idx - cpml) * dx
+        y = (np.arange(j_range[0], j_range[1]) - cpml) * dy
+        z = np.array([_z_pos(k) for k in range(k_range[0], k_range[1])])
         Y, Z = np.meshgrid(y, z, indexing="ij")
         X = np.full_like(Y, x_fixed)
     elif axis == 1:
         i_range, k_range = other_ranges
+        x_fixed = (idx - cpml) * dy
         x = (np.arange(i_range[0], i_range[1]) - cpml) * dx
-        z = (np.arange(k_range[0], k_range[1]) - cpml) * dx
+        z = np.array([_z_pos(k) for k in range(k_range[0], k_range[1])])
         X, Z = np.meshgrid(x, z, indexing="ij")
         Y = np.full_like(X, x_fixed)
     else:
         i_range, j_range = other_ranges
         x = (np.arange(i_range[0], i_range[1]) - cpml) * dx
-        y = (np.arange(j_range[0], j_range[1]) - cpml) * dx
+        y = (np.arange(j_range[0], j_range[1]) - cpml) * dy
         X, Y = np.meshgrid(x, y, indexing="ij")
-        Z = np.full_like(X, x_fixed)
+        Z = np.full_like(X, _z_pos(idx))
 
     return np.stack([X, Y, Z], axis=-1)  # (n1, n2, 3)
 
@@ -325,11 +341,28 @@ def compute_far_field(
     k_arr = 2 * np.pi * freqs / C0  # (nf,)
 
     dx = grid.dx
-    dS = dx * dx
+    dy = getattr(grid, 'dy', dx)
+    dz_arr = getattr(grid, 'dz', None)  # (nz,) for NonUniformGrid, None for Grid
     cpml = grid.cpml_layers
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
+
+    # Build z edge positions for non-uniform grids
+    if dz_arr is not None:
+        dz_np = np.asarray(dz_arr, dtype=np.float64)
+        z_edges = np.concatenate([[0.0], np.cumsum(dz_np)])
+        z_edges = z_edges - z_edges[cpml]  # physical domain starts at 0
+    else:
+        z_edges = None
+
+    # Per-face dS: x/y faces have k-dependent area for non-uniform z
+    def _face_dS(axis, k_lo, k_hi):
+        if dz_arr is not None and axis in (0, 1):
+            dz_face = np.asarray(dz_arr[k_lo:k_hi], dtype=np.float64)
+            d_perp = dy if axis == 0 else dx
+            return d_perp * dz_face  # (nk,)
+        return dx * dy  # scalar for z-faces or uniform grid
 
     # Observation direction unit vectors
     TH, PH = np.meshgrid(theta, phi, indexing="ij")
@@ -364,18 +397,37 @@ def compute_far_field(
         if n1 == 0 or n2 == 0:
             continue
 
-        pos = _face_positions(axis, face_idx, other_ranges, dx, cpml)
+        pos = _face_positions(axis, face_idx, other_ranges, dx, cpml,
+                              dy=dy, z_edges=z_edges)
         pos_flat = pos.reshape(-1, 3)     # (nc, 3)
         fields_flat = face_np.reshape(nf, -1, 4)  # (nf, nc, 4)
 
         J, M = _surface_currents(fields_flat, axis, sign)  # (nf, nc, 3)
 
+        # Per-cell dS for non-uniform z on x/y faces
+        k_range = other_ranges[1] if axis in (0, 1) else None
+        if k_range is not None:
+            dS_k = _face_dS(axis, k_range[0], k_range[1])
+            if np.ndim(dS_k) > 0:
+                # Tile along the non-k dimension to match flattened cell count
+                dS_flat = np.tile(dS_k, n1)  # (n1*nk,) = (nc,)
+            else:
+                dS_flat = dS_k
+        else:
+            dS_flat = _face_dS(axis, 0, 0)
+
         dot = r_flat @ pos_flat.T  # (n_dir, nc)
 
         for fi in range(nf):
             phase = np.exp(1j * k_arr[fi] * dot)  # (n_dir, nc)
-            N_total[fi] += np.einsum("dc,cj->dj", phase, J[fi]) * dS
-            L_total[fi] += np.einsum("dc,cj->dj", phase, M[fi]) * dS
+            if np.ndim(dS_flat) > 0:
+                J_weighted = J[fi] * dS_flat[:, None]  # (nc, 3)
+                M_weighted = M[fi] * dS_flat[:, None]
+                N_total[fi] += np.einsum("dc,cj->dj", phase, J_weighted)
+                L_total[fi] += np.einsum("dc,cj->dj", phase, M_weighted)
+            else:
+                N_total[fi] += np.einsum("dc,cj->dj", phase, J[fi]) * dS_flat
+                L_total[fi] += np.einsum("dc,cj->dj", phase, M[fi]) * dS_flat
 
     # Project onto theta and phi unit vectors
     th_flat = th_hat.reshape(-1, 3)
