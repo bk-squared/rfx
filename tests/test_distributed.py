@@ -441,7 +441,6 @@ class TestDistributedLumpedPort:
         assert err < 0.01, f"Lumped port 2-device error {err:.2e}"
 
 
-@pytest.mark.skip(reason="Pre-existing: Debye polarization shape mismatch in shard_map scan body")
 class TestDistributedDebye:
     """Tests for Debye dispersive material support in the distributed runner (Phase 3b)."""
 
@@ -509,7 +508,6 @@ class TestDistributedDebye:
         assert err < 0.01, f"Debye 2-device error {err:.2e}"
 
 
-@pytest.mark.skip(reason="Pre-existing: Lorentz polarization shape mismatch in shard_map scan body")
 class TestDistributedLorentz:
     """Tests for Lorentz dispersive material support in the distributed runner (Phase 3b)."""
 

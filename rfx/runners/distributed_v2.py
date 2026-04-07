@@ -653,17 +653,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
 
     def _shard_stacked_5d(arr):
-        """(n_devices, n_poles, nx_local, ny, nz) -> shard leading two dims."""
-        # Merge device dim into pole dim? No — shard x only.
-        # Keep as (n_poles, n_devices*nx_local, ny, nz) for simplicity,
-        # but the CPML/dispersive functions expect (n_poles, nx_local, ...) per shard.
-        # We reshape to (n_devices*nx_local, n_poles, ny, nz) then transpose after sharding.
-        # Actually the cleanest approach: treat pole dim as batch.
-        # Rearrange to (n_devices * nx_local, n_poles, ny, nz), shard x.
-        n_dev, n_poles, nx_loc, ny, nz = arr.shape
-        # Transpose: (n_dev, nx_loc, n_poles, ny, nz) then merge dev*nx
-        arr_t = arr.transpose(0, 2, 1, 3, 4)  # (n_dev, nx_loc, n_poles, ny, nz)
-        merged = arr_t.reshape(n_dev * nx_loc, n_poles, ny, nz)
+        """(n_devices, n_poles, nx_local, ny, nz) -> shard along device dim.
+
+        Merges (n_dev, n_poles) into first axis so P("x") gives each
+        device (n_poles, nx_local, ny, nz) — matching the layout expected
+        by _update_e_debye_local / _update_e_lorentz_local.
+        """
+        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
+        merged = arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a)
         return jax.device_put(merged, shd)
 
     state_ex = _shard_stacked(state_slabs.ex)
@@ -716,18 +713,20 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     else:
         _total_x = n_devices * nx_local
         _dz = jnp.zeros((_total_x, ny, nz), dtype=jnp.float32)
-        _dz3 = jnp.zeros((_total_x, 1, ny, nz), dtype=jnp.float32)
+        # 5D dummy: (n_dev * 1_pole, nx_local, ny, nz) so P("x") gives
+        # each device (1, nx_local, ny, nz) matching (n_poles, nx_local, ny, nz) layout
+        _dz5 = jnp.zeros((n_devices, nx_local, ny, nz), dtype=jnp.float32)
         debye_coeffs_sharded = DebyeCoeffs(
             ca=jax.device_put(_dz, shd),
             cb=jax.device_put(_dz, shd),
-            cc=jax.device_put(_dz3, shd),
-            alpha=jax.device_put(_dz3, shd),
-            beta=jax.device_put(_dz3, shd),
+            cc=jax.device_put(_dz5, shd),
+            alpha=jax.device_put(_dz5, shd),
+            beta=jax.device_put(_dz5, shd),
         )
         debye_state_sharded = DebyeState(
-            px=jax.device_put(_dz3, shd),
-            py=jax.device_put(_dz3, shd),
-            pz=jax.device_put(_dz3, shd),
+            px=jax.device_put(_dz5, shd),
+            py=jax.device_put(_dz5, shd),
+            pz=jax.device_put(_dz5, shd),
         )
 
     if has_lorentz:
@@ -754,22 +753,23 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     else:
         _total_x = n_devices * nx_local
         _lz = jnp.zeros((_total_x, ny, nz), dtype=jnp.float32)
-        _lz3 = jnp.zeros((_total_x, 1, ny, nz), dtype=jnp.float32)
+        # 5D dummy: (n_dev * 1_pole, nx_local, ny, nz)
+        _lz5 = jnp.zeros((n_devices, nx_local, ny, nz), dtype=jnp.float32)
         lorentz_coeffs_sharded = LorentzCoeffs(
             ca=jax.device_put(_lz, shd),
             cb=jax.device_put(_lz, shd),
             cc=jax.device_put(_lz, shd),
-            a=jax.device_put(_lz3, shd),
-            b=jax.device_put(_lz3, shd),
-            c=jax.device_put(_lz3, shd),
+            a=jax.device_put(_lz5, shd),
+            b=jax.device_put(_lz5, shd),
+            c=jax.device_put(_lz5, shd),
         )
         lorentz_state_sharded = LorentzState(
-            px=jax.device_put(_lz3, shd),
-            py=jax.device_put(_lz3, shd),
-            pz=jax.device_put(_lz3, shd),
-            px_prev=jax.device_put(_lz3, shd),
-            py_prev=jax.device_put(_lz3, shd),
-            pz_prev=jax.device_put(_lz3, shd),
+            px=jax.device_put(_lz5, shd),
+            py=jax.device_put(_lz5, shd),
+            pz=jax.device_put(_lz5, shd),
+            px_prev=jax.device_put(_lz5, shd),
+            py_prev=jax.device_put(_lz5, shd),
+            pz_prev=jax.device_put(_lz5, shd),
         )
 
     # ------------------------------------------------------------------
