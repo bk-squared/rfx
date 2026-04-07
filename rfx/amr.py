@@ -163,7 +163,8 @@ def suggest_refinement_regions(
 # Auto-refine helper
 # ---------------------------------------------------------------------------
 
-def auto_refine(sim, result, *, threshold: float = 0.5, component: str = "ez"):
+def auto_refine(sim, result, *, threshold: float = 0.5, component: str = "ez",
+                min_region_size: int = 2, ratio: int = 2):
     """Automatically add a refinement region based on the error indicator.
 
     Computes the error indicator from *result*, finds the dominant high-
@@ -180,6 +181,10 @@ def auto_refine(sim, result, *, threshold: float = 0.5, component: str = "ez"):
         Error threshold for region suggestion (default 0.5).
     component : str
         Field component for the error indicator (default ``"ez"``).
+    min_region_size : int
+        Minimum cells per axis for a suggested region (default 2).
+    ratio : int
+        Subgrid refinement ratio passed to ``add_refinement()`` (default 2).
 
     Returns
     -------
@@ -187,9 +192,9 @@ def auto_refine(sim, result, *, threshold: float = 0.5, component: str = "ez"):
         The same simulation object (for chaining).
     """
     error_map = compute_error_indicator(result, component=component)
-    grid = sim._build_grid()
+    grid = result.grid if hasattr(result, "grid") and result.grid is not None else sim._build_grid()
     boxes = suggest_refinement_regions(
-        error_map, grid=grid, threshold=threshold, min_region_size=4,
+        error_map, grid=grid, threshold=threshold, min_region_size=min_region_size,
     )
 
     if not boxes:
@@ -211,5 +216,5 @@ def auto_refine(sim, result, *, threshold: float = 0.5, component: str = "ez"):
     if z_hi <= z_lo:
         z_hi = z_lo + grid.dx
 
-    sim.add_refinement((z_lo, z_hi))
+    sim.add_refinement((z_lo, z_hi), ratio=ratio)
     return sim
