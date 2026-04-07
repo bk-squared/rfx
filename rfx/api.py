@@ -212,6 +212,8 @@ class ForwardResult(NamedTuple):
     ntff_data: object = None
     ntff_box: object = None
     grid: object = None
+    s_params: object = None
+    freqs: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -2254,15 +2256,55 @@ class Simulation:
             corner_lo, corner_hi, freqs = self._ntff
             ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
+        # Waveguide ports (differentiable DFT accumulation inside scan)
+        waveguide_ports = []
+        if self._waveguide_ports:
+            wg_freqs = None
+            for pe in self._waveguide_ports:
+                if pe.freqs is not None:
+                    wg_freqs = jnp.asarray(pe.freqs, dtype=jnp.float32)
+                    break
+            if wg_freqs is None:
+                wg_freqs = jnp.linspace(
+                    self._freq_max * 0.5, self._freq_max, 20, dtype=jnp.float32)
+            for pe in self._waveguide_ports:
+                waveguide_ports.append(
+                    self._build_waveguide_port_config(pe, grid, wg_freqs, n_steps))
+
+        # Floquet ports (periodic BC + DFT)
+        floquet_port_configs = []
+        periodic = tuple("xyz".index(c) for c in self._periodic_axes)
+        if self._floquet_ports:
+            from rfx.floquet import (
+                floquet_wave_vector, init_floquet_dft,
+            )
+            for fpe in self._floquet_ports:
+                k_par = floquet_wave_vector(
+                    fpe.scan_theta, fpe.scan_phi,
+                    jnp.linspace(self._freq_max * 0.5, self._freq_max, fpe.n_freqs))
+                floquet_port_configs.append({
+                    "z_position": fpe.z_position,
+                    "k_parallel": k_par,
+                    "polarization": fpe.polarization,
+                    "n_freqs": fpe.n_freqs,
+                })
+            # Floquet requires x-y periodic BC
+            periodic = (0, 1)
+
+        # Convert periodic axis indices to 3-tuple of bools
+        periodic_bool = tuple(i in periodic for i in range(3))
+
         result = _run(
             grid,
             materials,
             n_steps,
             boundary=self._boundary,
+            periodic=periodic_bool,
             debye=debye,
             lorentz=lorentz,
             sources=sources,
             probes=probes,
+            waveguide_ports=waveguide_ports if waveguide_ports else None,
             ntff=ntff_box,
             checkpoint=checkpoint,
             pec_mask=pec_mask_local,
@@ -2274,6 +2316,8 @@ class Simulation:
             ntff_data=result.ntff_data,
             ntff_box=result.ntff_box,
             grid=result.grid,
+            s_params=getattr(result, "s_params", None),
+            freqs=getattr(result, "freqs", None),
         )
 
     # ---- forward (differentiable) ----
