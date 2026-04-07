@@ -4,7 +4,7 @@ Unconditionally stable — dt is not limited by CFL condition.
 For thin substrates where standard Yee requires tiny dt, ADI allows
 10-100x larger timesteps.
 
-Phase 1: 2D TMz (Ez, Hx, Hy) with PEC boundaries.
+Supports 2D TMz (Ez, Hx, Hy) and 3D (all 6 components).
 
 References:
     T. Namiki, IEEE MTT 1999
@@ -641,3 +641,223 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
         probe_data = None
 
     return ez_f, hx_f, hy_f, probe_data
+
+
+# ===========================================================================
+# 3D ADI-FDTD (Namiki/Zheng scheme)
+# ===========================================================================
+
+class ADIState3D(NamedTuple):
+    """3D ADI-FDTD state: all 6 field components on (Nx, Ny, Nz) grid."""
+    ex: jnp.ndarray
+    ey: jnp.ndarray
+    ez: jnp.ndarray
+    hx: jnp.ndarray
+    hy: jnp.ndarray
+    hz: jnp.ndarray
+    step: jnp.ndarray
+
+
+def _apply_pec_3d(ex, ey, ez, pec_mask=None):
+    """Zero tangential E on all 6 domain faces + internal PEC cells."""
+    # x-faces: Ey, Ez = 0
+    ey = ey.at[0, :, :].set(0.0)
+    ey = ey.at[-1, :, :].set(0.0)
+    ez = ez.at[0, :, :].set(0.0)
+    ez = ez.at[-1, :, :].set(0.0)
+    # y-faces: Ex, Ez = 0
+    ex = ex.at[:, 0, :].set(0.0)
+    ex = ex.at[:, -1, :].set(0.0)
+    ez = ez.at[:, 0, :].set(0.0)
+    ez = ez.at[:, -1, :].set(0.0)
+    # z-faces: Ex, Ey = 0
+    ex = ex.at[:, :, 0].set(0.0)
+    ex = ex.at[:, :, -1].set(0.0)
+    ey = ey.at[:, :, 0].set(0.0)
+    ey = ey.at[:, :, -1].set(0.0)
+    if pec_mask is not None:
+        ex = jnp.where(pec_mask, 0.0, ex)
+        ey = jnp.where(pec_mask, 0.0, ey)
+        ez = jnp.where(pec_mask, 0.0, ez)
+    return ex, ey, ez
+
+
+def _solve_tridiag_along(field_3d, C_3d, rhs_3d, axis):
+    """Solve tridiagonal -C*f[k-1] + (1+2C)*f[k] - C*f[k+1] = rhs along *axis*.
+
+    Interior points only (boundary = 0 from PEC).
+    Uses thomas_solve vectorized via double vmap over the other two axes.
+    """
+    # Move solve axis to last position for uniform indexing
+    # axis 0: already (Nx, Ny, Nz) → solve along first → transpose to (..., Nx)
+    perm = list(range(3))
+    perm.remove(axis)
+    perm.append(axis)
+    inv_perm = [0] * 3
+    for i, p in enumerate(perm):
+        inv_perm[p] = i
+
+    C_t = jnp.transpose(C_3d, perm)       # (..., N_solve)
+    rhs_t = jnp.transpose(rhs_3d, perm)   # (..., N_solve)
+
+    n1, n2, ns = C_t.shape
+
+    def _solve_line(c_line, rhs_line):
+        c = c_line[1:-1]
+        rh = rhs_line[1:-1]
+        interior = thomas_solve(-c, 1.0 + 2.0 * c, -c, rh)
+        return jnp.concatenate([jnp.zeros(1), interior, jnp.zeros(1)])
+
+    # Double vmap over the two non-solve axes
+    result_t = jax.vmap(jax.vmap(_solve_line))(C_t, rhs_t)  # (n1, n2, ns)
+    return jnp.transpose(result_t, inv_perm)
+
+
+def adi_step_3d(ex, ey, ez, hx, hy, hz,
+                eps_r, sigma, dt, dx, dy, dz,
+                pec_mask=None):
+    r"""Advance all 6 field components by one full 3D ADI timestep.
+
+    **EXPERIMENTAL**: Implements the Zheng et al. (2000) / Namiki (1999)
+    scheme with two sub-steps per timestep, each with 3 independent
+    tridiagonal solves. Stable for dt < ~0.5× CFL; unconditional stability
+    requires further validation of the H-update formulation.
+
+    Sub-step 1: Ey implicit in z, Ez implicit in x, Ex implicit in y
+    Sub-step 2: Ex implicit in z, Ey implicit in x, Ez implicit in y
+
+    Parameters
+    ----------
+    ex, ey, ez, hx, hy, hz : (Nx, Ny, Nz) field arrays
+    eps_r, sigma : (Nx, Ny, Nz) material arrays
+    dt, dx, dy, dz : scalars
+
+    Returns
+    -------
+    ex, ey, ez, hx, hy, hz : updated fields
+    """
+    eps = eps_r * EPS_0
+    half_dt = dt / 2.0
+
+    # Implicit sigma integration (unconditionally stable)
+    sigma_term = sigma * dt / 4.0
+    eps_plus = eps + sigma_term
+    damping = (eps - sigma_term) / eps_plus
+
+    Cx = half_dt ** 2 / (MU_0 * eps_plus * dx * dx)
+    Cy = half_dt ** 2 / (MU_0 * eps_plus * dy * dy)
+    Cz = half_dt ** 2 / (MU_0 * eps_plus * dz * dz)
+
+    coeff_e = half_dt / eps_plus  # for curl_H → E update
+
+    def _fwd(arr, ax):
+        pw = [(0, 0)] * 3
+        pw[ax] = (0, 1)
+        s = [slice(None)] * 3
+        s[ax] = slice(1, None)
+        return jnp.pad(arr, pw)[tuple(s)]
+
+    def _bwd(arr, ax):
+        pw = [(0, 0)] * 3
+        pw[ax] = (1, 0)
+        s = [slice(None)] * 3
+        s[ax] = slice(None, -1)
+        return jnp.pad(arr, pw)[tuple(s)]
+
+    # ===================================================================
+    # Sub-step 1: n → n+1/2
+    # Implicit: Ey(z), Ez(x), Ex(y)
+    # ===================================================================
+
+    # curl H^n (backward diffs, Ampere convention)
+    curl_hx = (hz - _bwd(hz, 1)) / dy - (hy - _bwd(hy, 2)) / dz
+    curl_hy = (hx - _bwd(hx, 2)) / dz - (hz - _bwd(hz, 0)) / dx
+    curl_hz = (hy - _bwd(hy, 0)) / dx - (hx - _bwd(hx, 1)) / dy
+
+    rhs_ex = damping * ex + coeff_e * curl_hx
+    rhs_ey = damping * ey + coeff_e * curl_hy
+    rhs_ez = damping * ez + coeff_e * curl_hz
+
+    ey_h = _solve_tridiag_along(ey, Cz, rhs_ey, axis=2)  # Ey implicit in z
+    ez_h = _solve_tridiag_along(ez, Cx, rhs_ez, axis=0)   # Ez implicit in x
+    ex_h = _solve_tridiag_along(ex, Cy, rhs_ex, axis=1)   # Ex implicit in y
+
+    ex_h, ey_h, ez_h = _apply_pec_3d(ex_h, ey_h, ez_h, pec_mask)
+
+    # H^{n+1/2}: each component uses one NEW and one OLD E derivative
+    # Hx = f(dEz/dy, dEy/dz): Ey NEW(z), Ez OLD(y) → use ey_h for z-deriv, ez for y-deriv
+    hx_h = hx - (half_dt / MU_0) * (
+        (_fwd(ez, 1) - ez) / dy - (_fwd(ey_h, 2) - ey_h) / dz)
+
+    # Hy = f(dEx/dz, dEz/dx): Ez NEW(x), Ex OLD(z) → use ez_h for x-deriv, ex for z-deriv
+    hy_h = hy - (half_dt / MU_0) * (
+        (_fwd(ex, 2) - ex) / dz - (_fwd(ez_h, 0) - ez_h) / dx)
+
+    # Hz = f(dEy/dx, dEx/dy): Ex NEW(y), Ey OLD(x) → use ex_h for y-deriv, ey for x-deriv
+    hz_h = hz - (half_dt / MU_0) * (
+        (_fwd(ey, 0) - ey) / dx - (_fwd(ex_h, 1) - ex_h) / dy)
+
+    # ===================================================================
+    # Sub-step 2: n+1/2 → n+1
+    # Implicit: Ex(z), Ey(x), Ez(y)  [complementary]
+    # ===================================================================
+
+    curl_hx2 = (hz_h - _bwd(hz_h, 1)) / dy - (hy_h - _bwd(hy_h, 2)) / dz
+    curl_hy2 = (hx_h - _bwd(hx_h, 2)) / dz - (hz_h - _bwd(hz_h, 0)) / dx
+    curl_hz2 = (hy_h - _bwd(hy_h, 0)) / dx - (hx_h - _bwd(hx_h, 1)) / dy
+
+    rhs_ex2 = damping * ex_h + coeff_e * curl_hx2
+    rhs_ey2 = damping * ey_h + coeff_e * curl_hy2
+    rhs_ez2 = damping * ez_h + coeff_e * curl_hz2
+
+    ex_n = _solve_tridiag_along(ex_h, Cz, rhs_ex2, axis=2)  # Ex implicit in z
+    ey_n = _solve_tridiag_along(ey_h, Cx, rhs_ey2, axis=0)   # Ey implicit in x
+    ez_n = _solve_tridiag_along(ez_h, Cy, rhs_ez2, axis=1)   # Ez implicit in y
+
+    ex_n, ey_n, ez_n = _apply_pec_3d(ex_n, ey_n, ez_n, pec_mask)
+
+    # H^{n+1}: complementary to sub-step 1
+    # Hx: Ex NEW(z)→z-deriv not applicable; Ez NEW(y), Ey^{n+1/2} → use ez_n for y, ey_h for z
+    # Wait — sub-step 2 implicit: Ex(z), Ey(x), Ez(y)
+    # Hx = f(dEz/dy, dEy/dz): Ez NEW(y)→y-deriv, Ey NEW(x)→x-deriv... but dEy/dz is z-deriv
+    # Ey implicit in x, not z → dEy/dz uses ey_h (old), dEz/dy uses ez_n (new, implicit in y)
+    hx_n = hx_h - (half_dt / MU_0) * (
+        (_fwd(ez_n, 1) - ez_n) / dy - (_fwd(ey_h, 2) - ey_h) / dz)
+
+    # Hy = f(dEx/dz, dEz/dx): Ex NEW(z)→z-deriv, Ez implicit in y not x → dEz/dx uses ez_h
+    hy_n = hy_h - (half_dt / MU_0) * (
+        (_fwd(ex_n, 2) - ex_n) / dz - (_fwd(ez_h, 0) - ez_h) / dx)
+
+    # Hz = f(dEy/dx, dEx/dy): Ey NEW(x)→x-deriv, Ex implicit in z not y → dEx/dy uses ex_h
+    hz_n = hz_h - (half_dt / MU_0) * (
+        (_fwd(ey_n, 0) - ey_n) / dx - (_fwd(ex_h, 1) - ex_h) / dy)
+
+    return ex_n, ey_n, ez_n, hx_n, hy_n, hz_n
+
+
+def make_adi_absorbing_sigma_3d(nx, ny, nz, n_layers, dx, dy, dz, order=3):
+    """Graded conductivity for implicit ADI absorbing boundary in 3D."""
+    import numpy as np
+    eta = float(np.sqrt(MU_0 / EPS_0))
+
+    sigma = np.zeros((nx, ny, nz), dtype=np.float64)
+
+    for face_n in range(n_layers):
+        rho = 1.0 - face_n / max(n_layers - 1, 1)
+
+        # x-faces
+        sx = 0.8 * (order + 1) / (eta * dx) * rho ** order
+        sigma[face_n, :, :] = np.maximum(sigma[face_n, :, :], sx)
+        sigma[nx - 1 - face_n, :, :] = np.maximum(sigma[nx - 1 - face_n, :, :], sx)
+
+        # y-faces
+        sy = 0.8 * (order + 1) / (eta * dy) * rho ** order
+        sigma[:, face_n, :] = np.maximum(sigma[:, face_n, :], sy)
+        sigma[:, ny - 1 - face_n, :] = np.maximum(sigma[:, ny - 1 - face_n, :], sy)
+
+        # z-faces
+        sz = 0.8 * (order + 1) / (eta * dz) * rho ** order
+        sigma[:, :, face_n] = np.maximum(sigma[:, :, face_n], sz)
+        sigma[:, :, nz - 1 - face_n] = np.maximum(sigma[:, :, nz - 1 - face_n], sz)
+
+    return jnp.array(sigma, dtype=jnp.float32)
