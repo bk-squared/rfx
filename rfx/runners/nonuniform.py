@@ -221,15 +221,18 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 cell = list(idx)
                 cell[axis] = k
                 ci, cj, ck = cell
-                # Port impedance loading: sigma = n_cells / (Z0 * d_parallel)
-                # For z-directed port, d_parallel = dz[k]; for x/y, use dx/dy
+                # 3D wire port: σ = n_cells * d_parallel / (Z0 * d_perp1 * d_perp2)
+                # Each cell in the wire carries 1/n_cells of total impedance Z0.
                 if axis == 2:
                     d_cell = float(grid.dz[ck])
+                    dp1, dp2 = grid.dx, grid.dy
                 elif axis == 1:
                     d_cell = grid.dy
+                    dp1, dp2 = grid.dx, float(grid.dz[ck])
                 else:
                     d_cell = grid.dx
-                sigma_port = n_cells / (pe.impedance * d_cell)
+                    dp1, dp2 = grid.dy, float(grid.dz[ck])
+                sigma_port = n_cells * d_cell / (pe.impedance * dp1 * dp2)
                 materials = materials._replace(
                     sigma=materials.sigma.at[ci, cj, ck].add(
                         sigma_port))
@@ -262,16 +265,22 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         else:
             # Single-cell lumped port
             i, j, k = idx
-            # Use d_parallel for the port component direction
+            # 3D lumped port: σ = d_parallel / (Z0 * d_perp1 * d_perp2)
+            # This ensures correct power dissipation P = V²/Z0 in
+            # anisotropic cells where dz ≠ dx.  The old formula
+            # σ = 1/(Z0*d_parallel) is only valid for cubic cells.
             axis_map = {"ex": 0, "ey": 1, "ez": 2}
             port_axis = axis_map[pe.component]
             if port_axis == 2:
-                d_port = float(grid.dz[k])
+                d_parallel = float(grid.dz[k])
+                d_perp1, d_perp2 = grid.dx, grid.dy
             elif port_axis == 1:
-                d_port = grid.dy
+                d_parallel = grid.dy
+                d_perp1, d_perp2 = grid.dx, float(grid.dz[k])
             else:
-                d_port = grid.dx
-            sigma_port = 1.0 / (pe.impedance * d_port)
+                d_parallel = grid.dx
+                d_perp1, d_perp2 = grid.dy, float(grid.dz[k])
+            sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
             materials = materials._replace(
                 sigma=materials.sigma.at[i, j, k].add(sigma_port))
             if pec_mask is not None:

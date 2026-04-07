@@ -1,0 +1,25 @@
+name: rfx-nu-diagnostic
+description: "Non-uniform vs uniform runner comparison for patch antenna"
+tags: [rfx, debug, nonuniform, patch]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git pull --ff-only origin main || true
+  pip install -q -e ".[dev]"
+
+  echo "=== Non-uniform vs Uniform Runner Diagnostic ==="
+  python examples/crossval/11_nu_vs_uniform_diagnostic.py
+
+  echo "=== Re-run Crossval #10 (with port sigma fix) ==="
+  python examples/crossval/10_openems_patch_antenna.py
+
+  echo "=== DONE ==="
