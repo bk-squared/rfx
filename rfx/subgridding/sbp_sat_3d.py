@@ -76,7 +76,7 @@ def init_subgrid_3d(
     fine_region: tuple[int, int, int, int, int, int] = (15, 25, 15, 25, 15, 25),
     ratio: int = 3,
     courant: float = 0.45,
-    tau: float = 0.5,
+    tau: float = 1.0,
 ) -> tuple[SubgridConfig3D, SubgridState3D]:
     """Initialize 3D subgridded domain.
 
@@ -169,6 +169,18 @@ def _update_3d(ex, ey, ez, hx, hy, hz, dt, dx,
     return ex, ey, ez, hx, hy, hz
 
 
+def _downsample_3d(fine_vol, nc_i, nc_j, nc_k, ratio):
+    """Restriction: fine 3D volume → coarse via block averaging."""
+    ni_f = nc_i * ratio
+    nj_f = nc_j * ratio
+    nk_f = nc_k * ratio
+    trimmed = fine_vol[:ni_f, :nj_f, :nk_f]
+    return jnp.mean(
+        trimmed.reshape(nc_i, ratio, nc_j, ratio, nc_k, ratio),
+        axis=(1, 3, 5),
+    )
+
+
 def _downsample_2d(fine_face, n_coarse_j, n_coarse_k, ratio):
     """Restriction operator R: fine → coarse.
 
@@ -228,7 +240,7 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
     # For ratio=3: alpha_f=0.75, alpha_c=0.25 (sums to 1.0)
     # config.tau scales both (tau=1.0 = energy-conservative,
     # tau<1.0 = dissipative but stable, tau>1.0 = unstable)
-    tau = config.tau  # default 0.5
+    tau = config.tau  # default 1.0 (energy-conservative)
 
     alpha_f = tau * ratio / (ratio + 1.0)
     alpha_c = tau * 1.0 / (ratio + 1.0)
@@ -391,6 +403,12 @@ def step_subgrid_3d(
         Boolean PEC masks for coarse/fine grids.
     """
     dt = config.dt
+    fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
+    ni = config.fi_hi - fi
+    nj = config.fj_hi - fj
+    nk = config.fk_hi - fk
+    _fr = (slice(fi, fi+ni), slice(fj, fj+nj), slice(fk, fk+nk))
+    ratio = config.ratio
 
     # === Step 1: H update (Faraday) on both grids ===
     hx_c, hy_c, hz_c = _update_h_only(
@@ -406,6 +424,11 @@ def step_subgrid_3d(
     # === Step 2: SAT_H coupling (tangential H on all 6 faces) ===
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = _shared_node_coupling_h_3d(
         (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f), config)
+
+    # Inject fine H back into coarse (overlay: fine owns this region)
+    hx_c = hx_c.at[_fr].set(_downsample_3d(hx_f, ni, nj, nk, ratio))
+    hy_c = hy_c.at[_fr].set(_downsample_3d(hy_f, ni, nj, nk, ratio))
+    hz_c = hz_c.at[_fr].set(_downsample_3d(hz_f, ni, nj, nk, ratio))
 
     # === Step 3: E update (Ampere) on both grids using coupled H ===
     ex_c, ey_c, ez_c = _update_e_only(
@@ -424,6 +447,11 @@ def step_subgrid_3d(
     (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = _shared_node_coupling_3d(
         (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f), config)
 
+    # Inject fine E back into coarse (overlay)
+    ex_c = ex_c.at[_fr].set(_downsample_3d(ex_f, ni, nj, nk, ratio))
+    ey_c = ey_c.at[_fr].set(_downsample_3d(ey_f, ni, nj, nk, ratio))
+    ez_c = ez_c.at[_fr].set(_downsample_3d(ez_f, ni, nj, nk, ratio))
+
     return SubgridState3D(
         ex_c=ex_c, ey_c=ey_c, ez_c=ez_c,
         hx_c=hx_c, hy_c=hy_c, hz_c=hz_c,
@@ -434,11 +462,25 @@ def step_subgrid_3d(
 
 
 def compute_energy_3d(state: SubgridState3D, config: SubgridConfig3D) -> float:
-    """Total 3D discrete energy."""
+    """Total 3D discrete energy (no double-counting in overlap region).
+
+    The fine region is excluded from the coarse grid energy to avoid
+    counting the same physical volume twice. Fine grid energy covers
+    the refinement region; coarse grid energy covers the exterior.
+    """
     dv_c = config.dx_c ** 3
     dv_f = config.dx_f ** 3
-    e_c = (float(jnp.sum(state.ex_c**2 + state.ey_c**2 + state.ez_c**2)) * EPS_0 * dv_c +
-           float(jnp.sum(state.hx_c**2 + state.hy_c**2 + state.hz_c**2)) * MU_0 * dv_c)
+    fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
+    ni = config.fi_hi - fi
+    nj = config.fj_hi - fj
+    nk = config.fk_hi - fk
+
+    # Mask: exclude fine region from coarse energy
+    mask = jnp.ones(state.ex_c.shape, dtype=jnp.bool_)
+    mask = mask.at[fi:fi+ni, fj:fj+nj, fk:fk+nk].set(False)
+
+    e_c = (float(jnp.sum(jnp.where(mask, state.ex_c**2 + state.ey_c**2 + state.ez_c**2, 0.0))) * EPS_0 * dv_c +
+           float(jnp.sum(jnp.where(mask, state.hx_c**2 + state.hy_c**2 + state.hz_c**2, 0.0))) * MU_0 * dv_c)
     e_f = (float(jnp.sum(state.ex_f**2 + state.ey_f**2 + state.ez_f**2)) * EPS_0 * dv_f +
            float(jnp.sum(state.hx_f**2 + state.hy_f**2 + state.hz_f**2)) * MU_0 * dv_f)
     return e_c + e_f
