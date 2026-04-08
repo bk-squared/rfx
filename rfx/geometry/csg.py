@@ -164,6 +164,75 @@ class Sphere:
         return self.mask_on_coords(x, y, z)
 
 
+@dataclass(frozen=True)
+class PolylineWire:
+    """Wire defined by a polyline path with constant circular cross-section.
+
+    Voxelizes by computing the distance from each grid point to the nearest
+    line segment of the polyline.  Grid points within ``radius`` of any
+    segment are marked as inside.
+
+    Parameters
+    ----------
+    points : tuple of tuple[float, float, float]
+        Ordered vertices in metres, e.g. ((x0,y0,z0), (x1,y1,z1), ...).
+    radius : float
+        Wire radius in metres.
+    """
+
+    points: tuple[tuple[float, float, float], ...]
+    radius: float
+
+    def bounding_box(self):
+        pts = np.array(self.points)
+        lo = tuple(float(v) for v in pts.min(axis=0) - self.radius)
+        hi = tuple(float(v) for v in pts.max(axis=0) + self.radius)
+        return (lo, hi)
+
+    def mask_on_coords(self, x, y, z):
+        r2_thresh = self.radius ** 2
+        pts = np.array(self.points, dtype=np.float64)
+        n_seg = len(pts) - 1
+
+        # 3D coordinate grids (Nx, Ny, Nz)
+        X = x[:, None, None]
+        Y = y[None, :, None]
+        Z = z[None, None, :]
+
+        mask = jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)
+
+        for i in range(n_seg):
+            # Segment from A to B
+            ax, ay, az = float(pts[i, 0]), float(pts[i, 1]), float(pts[i, 2])
+            bx, by, bz = float(pts[i + 1, 0]), float(pts[i + 1, 1]), float(pts[i + 1, 2])
+
+            dx_s = bx - ax
+            dy_s = by - ay
+            dz_s = bz - az
+            seg_len2 = dx_s ** 2 + dy_s ** 2 + dz_s ** 2
+
+            if seg_len2 < 1e-30:
+                continue
+
+            # Parameter t: projection of (P-A) onto (B-A), clamped to [0,1]
+            t = ((X - ax) * dx_s + (Y - ay) * dy_s + (Z - az) * dz_s) / seg_len2
+            t = jnp.clip(t, 0.0, 1.0)
+
+            # Closest point on segment
+            cx = ax + t * dx_s
+            cy = ay + t * dy_s
+            cz = az + t * dz_s
+
+            dist2 = (X - cx) ** 2 + (Y - cy) ** 2 + (Z - cz) ** 2
+            mask = mask | (dist2 <= r2_thresh)
+
+        return mask
+
+    def mask(self, grid: Grid) -> jnp.ndarray:
+        x, y, z = _grid_coords(grid)
+        return self.mask_on_coords(x, y, z)
+
+
 def union(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:
     return a.mask(grid) | b.mask(grid)
 
