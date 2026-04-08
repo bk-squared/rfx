@@ -738,10 +738,22 @@ class Simulation:
         eps_r : float
             Relative permittivity (default 1.0).
         """
-        self._thin_conductors.append(ThinConductor(
+        tc = ThinConductor(
             shape=shape, sigma_bulk=sigma_bulk,
             thickness=thickness, eps_r=eps_r,
-        ))
+        )
+        # P0.1: Warn if thin conductor will be routed to PEC mask
+        if tc.is_pec:
+            import warnings
+            dx_est = self._dx or C0 / self._freq_max / 20.0
+            sigma_eff = sigma_bulk * thickness / dx_est
+            warnings.warn(
+                f"Thin conductor sigma_eff={sigma_eff:.2e} S/m exceeds PEC "
+                f"threshold (1e6). Will be routed to PEC mask, not "
+                f"conductivity. Use lower sigma_bulk for lossy behavior.",
+                stacklevel=2,
+            )
+        self._thin_conductors.append(tc)
         return self
 
     # ---- ports ----
@@ -1227,6 +1239,13 @@ class Simulation:
                         f"Floquet port on axis={axis!r} requires periodic BC on {transverse!r}, "
                         f"but periodic_axes={self._periodic_axes!r}"
                     )
+
+        # P0.3: Floquet port requires uniform mesh
+        if self._dz_profile is not None:
+            raise ValueError(
+                "Floquet ports do not support non-uniform z mesh (dz_profile). "
+                "Set dx explicitly to prevent auto-mesh from creating NU grid."
+            )
 
         if name is None:
             name = f"floquet_{len(self._floquet_ports)}"
@@ -2025,6 +2044,141 @@ class Simulation:
                     except (NotImplementedError, TypeError, AttributeError):
                         continue
 
+    def preflight(self, *, strict: bool = False) -> list[str]:
+        """Run all pre-simulation checks and return warnings.
+
+        Parameters
+        ----------
+        strict : bool
+            If True, raise ValueError on the first issue instead of
+            collecting warnings.
+
+        Returns
+        -------
+        list of str
+            Warning messages. Empty if no issues found.
+        """
+        import warnings
+        issues = []
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            try:
+                self._validate_mesh_quality()
+                self._validate_simulation_config()
+            except ValueError as e:
+                if strict:
+                    raise
+                issues.append(f"ERROR: {e}")
+
+        for w in caught:
+            msg = str(w.message)
+            if strict:
+                raise ValueError(msg)
+            issues.append(msg)
+
+        if issues:
+            for iss in issues:
+                print(f"  [PREFLIGHT] {iss}")
+        else:
+            print("  [PREFLIGHT] All checks passed.")
+
+        return issues
+
+    def _validate_simulation_config(self) -> None:
+        """Comprehensive pre-simulation configuration validation.
+
+        Checks for common setup mistakes that produce silent wrong results:
+        probe/source in CPML, boundary type mismatch, feature compatibility,
+        NTFF precision, normalize defaults.
+
+        Called from run() after _validate_mesh_quality().
+        """
+        import warnings as _w
+
+        dx = self._dx or C0 / self._freq_max / 20.0
+        cpml_thickness = self._cpml_layers * dx if self._boundary == "cpml" else 0
+
+        # P1.1: Floquet + non-uniform mesh — suppress NU, warn user
+        if self._floquet_ports and self._dz_profile is not None:
+            _w.warn(
+                "Floquet ports are incompatible with non-uniform z mesh. "
+                "Falling back to uniform grid. Set dx explicitly to suppress.",
+                stacklevel=3,
+            )
+            self._dz_profile = None
+
+        # P1.2/P1.3: Probe or source inside CPML region
+        if cpml_thickness > 0:
+            for pe in self._probes:
+                pos = pe.position
+                for ax, coord in enumerate(pos):
+                    domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
+                    if coord < cpml_thickness * 0.5 or coord > domain_extent - cpml_thickness * 0.5:
+                        _w.warn(
+                            f"Probe at {pos} is near/inside CPML region "
+                            f"(CPML thickness={cpml_thickness*1e3:.1f}mm). "
+                            f"Signal will be attenuated. Move probe to interior.",
+                            stacklevel=3,
+                        )
+                        break
+
+            for pe in self._ports:
+                pos = pe.position
+                for ax, coord in enumerate(pos):
+                    domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
+                    if coord < cpml_thickness * 0.5 or coord > domain_extent - cpml_thickness * 0.5:
+                        _w.warn(
+                            f"Source/port at {pos} is near/inside CPML region "
+                            f"(CPML thickness={cpml_thickness*1e3:.1f}mm). "
+                            f"Energy will be absorbed. Move source to interior.",
+                            stacklevel=3,
+                        )
+                        break
+
+        # P1.4: NTFF box overlap with CPML
+        if self._ntff is not None and cpml_thickness > 0:
+            corner_lo, corner_hi, _ = self._ntff
+            for ax in range(3):
+                domain_ext = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
+                if corner_lo[ax] < cpml_thickness or corner_hi[ax] > domain_ext - cpml_thickness:
+                    _w.warn(
+                        f"NTFF box extends into CPML region along "
+                        f"{'xyz'[ax]}-axis. Far-field results will be "
+                        f"corrupted. Shrink NTFF box to interior.",
+                        stacklevel=3,
+                    )
+                    break
+
+        # P1.5: Non-uniform mesh + NTFF
+        if self._ntff is not None and self._dz_profile is not None:
+            _w.warn(
+                "NTFF with non-uniform z mesh: far-field computation uses "
+                "per-face dS correction but DFT accumulation assumes uniform "
+                "dt. Results may have reduced accuracy.",
+                stacklevel=3,
+            )
+
+        # P1.7: NTFF with too few steps
+        if self._ntff is not None:
+            _, _, ntff_freqs = self._ntff
+            if ntff_freqs is not None:
+                min_freq = float(min(ntff_freqs))
+                period = 1.0 / max(min_freq, 1.0)
+                dt_est = dx / (C0 * 1.732) * 0.99  # CFL estimate
+                min_steps_for_ntff = int(10 * period / dt_est)
+                # Can't check n_steps here (not known yet), but store hint
+                self._ntff_min_steps_hint = min_steps_for_ntff
+
+        # P0.4: PEC boundary on likely open structure
+        if self._boundary == "pec" and self._ntff is not None:
+            _w.warn(
+                "PEC boundary with NTFF far-field: PEC reflects all energy "
+                "back into domain. Use boundary='cpml' for open structures "
+                "(antennas, scatterers).",
+                stacklevel=3,
+            )
+
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""
         if self._mode != "2d_tmz":
@@ -2471,8 +2625,9 @@ class Simulation:
         if self._dx is None and self._geometry:
             self._auto_configure_mesh()
 
-        # ---- P0: Pre-simulation mesh quality validation ----
+        # ---- P0: Pre-simulation validation ----
         self._validate_mesh_quality()
+        self._validate_simulation_config()
 
         if self._solver == "adi" and devices is not None and len(devices) > 1:
             raise ValueError("solver='adi' does not support distributed execution")
