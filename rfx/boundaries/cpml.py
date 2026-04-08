@@ -162,7 +162,24 @@ def _get_axis_cell_sizes(grid) -> tuple[float, float, float, float]:
     return dx, dy, dz_lo, dz_hi
 
 
-def init_cpml(grid, *, kappa_max: float | None = None) -> tuple[CPMLAxisParams, CPMLState]:
+def _cpml_noop_profile(n_layers: int) -> CPMLParams:
+    """Return a no-op CPML profile (identity: no absorption).
+
+    Used for faces where PEC boundary is desired instead of CPML.
+    With b=1, c=0, kappa=1, the CPML update becomes a no-op and
+    the natural PEC boundary condition takes effect.
+    """
+    return CPMLParams(
+        sigma=jnp.zeros(n_layers, dtype=jnp.float32),
+        kappa=jnp.ones(n_layers, dtype=jnp.float32),
+        alpha=jnp.zeros(n_layers, dtype=jnp.float32),
+        b=jnp.ones(n_layers, dtype=jnp.float32),
+        c=jnp.zeros(n_layers, dtype=jnp.float32),
+    )
+
+
+def init_cpml(grid, *, kappa_max: float | None = None,
+              pec_faces: set[str] | None = None) -> tuple[CPMLAxisParams, CPMLState]:
     """Initialize CPML parameters and zero-valued auxiliary fields.
 
     Creates per-axis CPML profiles so that each face uses the correct
@@ -175,17 +192,29 @@ def init_cpml(grid, *, kappa_max: float | None = None) -> tuple[CPMLAxisParams, 
         Simulation grid.  Reads ``dx``, optionally ``dy`` and ``dz``.
     kappa_max : float or None
         Maximum κ stretching parameter for CFS-CPML.
+    pec_faces : set of str or None
+        Faces to force PEC (no absorption).  Valid names:
+        ``"x_lo"``, ``"x_hi"``, ``"y_lo"``, ``"y_hi"``,
+        ``"z_lo"``, ``"z_hi"``.  Default: None (CPML on all faces).
     """
     if kappa_max is None:
         kappa_max = getattr(grid, "kappa_max", None) or 1.0
+    if pec_faces is None:
+        pec_faces = getattr(grid, "pec_faces", None) or set()
     n = grid.cpml_layers
     dx, dy, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
 
+    noop = _cpml_noop_profile(n)
+    prof_x = noop if ("x_lo" in pec_faces and "x_hi" in pec_faces) else _cpml_profile(n, grid.dt, dx, kappa_max=kappa_max)
+    prof_y = noop if ("y_lo" in pec_faces and "y_hi" in pec_faces) else _cpml_profile(n, grid.dt, dy, kappa_max=kappa_max)
+    prof_zlo = noop if "z_lo" in pec_faces else _cpml_profile(n, grid.dt, dz_lo, kappa_max=kappa_max)
+    prof_zhi = noop if "z_hi" in pec_faces else _cpml_profile(n, grid.dt, dz_hi, kappa_max=kappa_max)
+
     params = CPMLAxisParams(
-        x=_cpml_profile(n, grid.dt, dx, kappa_max=kappa_max),
-        y=_cpml_profile(n, grid.dt, dy, kappa_max=kappa_max),
-        z_lo=_cpml_profile(n, grid.dt, dz_lo, kappa_max=kappa_max),
-        z_hi=_cpml_profile(n, grid.dt, dz_hi, kappa_max=kappa_max),
+        x=prof_x,
+        y=prof_y,
+        z_lo=prof_zlo,
+        z_hi=prof_zhi,
         dx_x=dx, dx_y=dy, dz_lo=dz_lo, dz_hi=dz_hi,
     )
 

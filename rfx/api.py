@@ -386,6 +386,7 @@ class Simulation:
         *,
         boundary: str = "cpml",
         cpml_layers: int = 8,
+        pec_faces: set[str] | list[str] | None = None,
         dx: float | None = None,
         mode: str = "3d",
         dz_profile: np.ndarray | None = None,
@@ -425,6 +426,15 @@ class Simulation:
                     f"Use rfx.smooth_grading(dz_profile) to fix.",
                     stacklevel=2,
                 )
+
+        _valid_faces = {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}
+        self._pec_faces = set(pec_faces) if pec_faces else set()
+        if self._pec_faces - _valid_faces:
+            raise ValueError(
+                f"pec_faces must be subset of {_valid_faces}, "
+                f"got invalid: {self._pec_faces - _valid_faces}")
+        if boundary == "pec" and self._pec_faces:
+            raise ValueError("pec_faces is only meaningful with boundary='cpml'")
 
         self._freq_max = freq_max
         self._domain = domain
@@ -1397,6 +1407,7 @@ class Simulation:
                 cpml_layers=self._cpml_layers,
                 cpml_axes=cpml_axes,
                 mode=self._mode,
+                pec_faces=self._pec_faces,
             )
         return Grid(
             freq_max=self._freq_max,
@@ -1404,6 +1415,7 @@ class Simulation:
             dx=self._dx,
             cpml_layers=self._cpml_layers,
             mode=self._mode,
+            pec_faces=self._pec_faces,
         )
 
     # Threshold above which sigma is treated as PEC (use mask instead).
@@ -2114,10 +2126,14 @@ class Simulation:
         cpml_thickness = self._cpml_layers * dx if self._boundary == "cpml" else 0
 
         # Per-axis CPML thickness (z may differ on non-uniform mesh)
+        # Faces with pec_faces override have zero effective CPML thickness
         cpml_thick_xyz = [cpml_thickness, cpml_thickness, cpml_thickness]
         if self._dz_profile is not None and self._boundary == "cpml" and self._cpml_layers > 0:
             n = min(self._cpml_layers, len(self._dz_profile))
             cpml_thick_xyz[2] = float(sum(self._dz_profile[:n]))
+        # Zero out thickness for PEC-overridden faces
+        if "z_lo" in self._pec_faces:
+            cpml_thick_xyz[2] = 0  # z_lo is PEC, no CPML absorption there
 
         # P1.1: Floquet + non-uniform mesh — suppress NU, warn user
         if self._floquet_ports and self._dz_profile is not None:
