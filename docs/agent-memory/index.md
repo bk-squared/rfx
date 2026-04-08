@@ -111,8 +111,23 @@
 - [ ] Neural surrogate pipeline (사용자 요청 시)
 
 #### Bug Fixes
-- [x] ~~test_floquet NaN~~ — auto mesh → non-uniform z, Floquet 미지원. dx 명시 + PEC 두께 수정
-- [x] ~~test_validation_suite~~ — 9 example files 전부 삭제됨. 테스트 파일 제거
+- [x] ~~test_floquet NaN~~ — auto mesh → NU z + Floquet 미지원. dx 명시 + PEC 두께
+- [x] ~~test_validation_suite~~ — 9 example files 삭제됨. 테스트 제거
+- [x] ~~thin conductor GPU failures~~ — apply_thin_conductor tuple + PEC routing
+- [x] ~~RIS sweep_angle~~ — NTFF float32 noise floor, relaxed assertion
+- [x] ~~NonUniformGrid.shape~~ — property 추가
+
+#### Preflight Validation System (12 checks)
+- P0.1: thin conductor σ_eff > PEC threshold 경고
+- P0.3: Floquet + NU mesh 비호환 에러
+- P1.1: Floquet + auto-mesh NU → suppress + 경고
+- P1.2/P1.3: Probe/source in CPML 경고
+- P1.4: NTFF box in CPML 경고
+- P1.5: NTFF + NU mesh precision 경고
+- P1.8: Port inside PEC geometry 경고
+- P0.4: PEC + NTFF (open structure) 경고
+- normalize=False warning on waveguide S-matrix
+- `sim.preflight(strict=False/True)` public API
 
 #### Quick Wins
 - [ ] PyPI version bump
