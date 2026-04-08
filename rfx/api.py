@@ -1642,7 +1642,21 @@ class Simulation:
             numerical dispersion.  A reference simulation with vacuum (no
             user geometry) is run automatically, and the device S-params
             are divided by the reference incident waves.
+
+            **Recommendation:** Always use ``normalize=True`` for accurate
+            S-parameters, reciprocity (S12==S21), and comparison with
+            measurements.  Use ``normalize=False`` only for fast relative
+            comparisons (e.g., optimizer inner loop).
         """
+        if not normalize:
+            import warnings
+            warnings.warn(
+                "compute_waveguide_s_matrix(normalize=False): S-parameters "
+                "include Yee numerical dispersion artifacts. For accurate "
+                "results, reciprocity, or measurement comparison, use "
+                "normalize=True.",
+                stacklevel=2,
+            )
         if self._ports or self._tfsf:
             raise ValueError(
                 "compute_waveguide_s_matrix() is not supported together with lumped ports or TFSF"
@@ -2169,6 +2183,26 @@ class Simulation:
                 min_steps_for_ntff = int(10 * period / dt_est)
                 # Can't check n_steps here (not known yet), but store hint
                 self._ntff_min_steps_hint = min_steps_for_ntff
+
+        # P1.8: Port/source inside PEC geometry
+        for pe in self._ports:
+            pos = pe.position
+            for entry in self._geometry:
+                if entry.material_name != "pec":
+                    continue
+                if hasattr(entry.shape, "bounding_box"):
+                    try:
+                        c1, c2 = entry.shape.bounding_box()
+                        inside = all(c1[ax] <= pos[ax] <= c2[ax] for ax in range(3))
+                        if inside:
+                            _w.warn(
+                                f"Port/source at {pos} is inside PEC geometry "
+                                f"'{entry.material_name}'. Field will be zero. "
+                                f"Move source outside PEC.",
+                                stacklevel=3,
+                            )
+                    except (NotImplementedError, TypeError):
+                        pass
 
         # P0.4: PEC boundary on likely open structure
         if self._boundary == "pec" and self._ntff is not None:
