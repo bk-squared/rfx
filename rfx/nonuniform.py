@@ -377,6 +377,7 @@ def run_nonuniform(
     s_param_freqs=None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
+    pec_faces: set[str] | None = None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -409,7 +410,7 @@ def run_nonuniform(
         from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
 
         # Pass NonUniformGrid directly — init_cpml duck-types dx/dy/dz
-        cpml_params, cpml_state_init = init_cpml(grid)
+        cpml_params, cpml_state_init = init_cpml(grid, pec_faces=pec_faces)
         cpml_grid = grid
 
     use_pec_mask = pec_mask is not None

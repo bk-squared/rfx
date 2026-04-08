@@ -220,6 +220,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         s_param_freqs=sp_freqs,
         debye=debye,
         lorentz=lorentz,
+        pec_faces=getattr(sim, '_pec_faces', None),
     )
 
     s_params = r.get("s_params")

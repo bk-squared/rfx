@@ -73,12 +73,14 @@ class Box:
         return (self.corner_lo, self.corner_hi)
 
     def mask_on_coords(self, x, y, z):
-        dx_est = float(x[1] - x[0]) if len(x) > 1 else 1e-3
-
         def _axis_mask(coords, lo, hi):
+            # Use per-axis cell size (critical for non-uniform z mesh)
+            dc = float(coords[1] - coords[0]) if len(coords) > 1 else 1e-3
             extent = hi - lo
-            if extent <= dx_est * 1.01:
-                return jnp.abs(coords - lo) < dx_est * 0.51
+            if extent <= dc * 1.01:
+                # Thin geometry: snap to nearest cell center
+                mid = (lo + hi) * 0.5
+                return jnp.abs(coords - mid) < dc * 0.51
             else:
                 return (coords >= lo) & (coords <= hi)
 

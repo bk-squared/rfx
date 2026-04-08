@@ -43,6 +43,7 @@ class Grid:
         cpml_axes: str = "xyz",
         mode: str = "3d",
         kappa_max: float | None = None,
+        pec_faces: set[str] | None = None,
     ):
         if mode not in ("3d", "2d_tmz", "2d_tez"):
             raise ValueError(f"mode must be '3d', '2d_tmz', or '2d_tez', got {mode!r}")
@@ -54,6 +55,7 @@ class Grid:
         self.domain = domain
         self.cpml_layers = cpml_layers
         self.kappa_max = kappa_max
+        self.pec_faces = pec_faces or set()
         self.cpml_axes = "".join(axis for axis in "xyz" if axis in cpml_axes)
         self.mode = mode
         self.is_2d = mode.startswith("2d")
