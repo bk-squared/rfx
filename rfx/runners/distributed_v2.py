@@ -862,11 +862,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         @partial(
             shard_map,
             mesh=mesh,
-            in_specs=(P("x"), P("x"), P("x")),
-            out_specs=P(),  # each shard outputs a replicated n_prb vector
+            in_specs=(P("x"), P("x"), P("x"),
+                      P("x"), P("x"), P("x")),
+            out_specs=P(),
             check_rep=False,
         )
-        def _sample(ex, ey, ez):
+        def _sample(ex, ey, ez, hx, hy, hz):
             device_idx = lax.axis_index("x")
             samples = []
             for idx_p in range(n_prb):
@@ -876,13 +877,19 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                     raw = ex[li, lj, lk]
                 elif lc == "ey":
                     raw = ey[li, lj, lk]
-                else:
+                elif lc == "ez":
                     raw = ez[li, lj, lk]
+                elif lc == "hx":
+                    raw = hx[li, lj, lk]
+                elif lc == "hy":
+                    raw = hy[li, lj, lk]
+                else:
+                    raw = hz[li, lj, lk]
                 val = jnp.where(device_idx == dev_id, raw, 0.0)
                 samples.append(val)
             return lax.psum(jnp.stack(samples), "x")
 
-        return _sample(st.ex, st.ey, st.ez)
+        return _sample(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
 
     # ------------------------------------------------------------------
     # H and E local updates via shard_map
