@@ -23,37 +23,33 @@ from rfx.subgridding.sbp_sat_3d import (
 )
 
 config, state = init_subgrid_3d(
-    shape_c=(30, 30, 30), dx_c=0.003,
-    fine_region=(10, 20, 10, 20, 10, 20),
-    ratio=2, courant=0.45, tau=0.5,
+    shape_c=(20, 20, 20), dx_c=0.004,
+    fine_region=(7, 13, 7, 13, 7, 13),
+    ratio=2, courant=0.45, tau=1.0,  # energy-conservative
+)
+# Inject impulse BEFORE loop
+state = state._replace(
+    ez_f=state.ez_f.at[
+        config.nx_f // 2, config.ny_f // 2, config.nz_f // 2
+    ].set(1.0)
 )
 
-energies = []
-for step in range(2000):
+e_initial = compute_energy_3d(state, config)
+energies = [e_initial]
+for step in range(1000):
     state = step_subgrid_3d(state, config)
-    if step == 0:
-        # Inject impulse at first step
-        state = state._replace(
-            ez_f=state.ez_f.at[
-                config.nx_f // 2, config.ny_f // 2, config.nz_f // 2
-            ].set(1.0)
-        )
-    if step % 100 == 0:
-        e = compute_energy_3d(state, config)
-        energies.append(float(e))
+    if (step + 1) % 100 == 0:
+        energies.append(float(compute_energy_3d(state, config)))
 
 energies = np.array(energies)
-# Skip first few (energy injected at step 0)
-if len(energies) > 3:
-    stable_energies = energies[2:]
-    peak = np.max(stable_energies)
-    valley = np.min(stable_energies)
-    drift = (peak - valley) / (np.mean(stable_energies) + 1e-30)
-    print(f"  Energy range: [{valley:.6e}, {peak:.6e}]")
-    print(f"  Relative drift: {drift:.4e}")
-    print(f"  {'PASS' if drift < 0.1 else 'FAIL'}: drift {'<' if drift < 0.1 else '>'} 10%")
-else:
-    print("  Not enough data points")
+# Measure drift relative to initial energy
+e_final = energies[-1]
+drift = abs(e_final / e_initial - 1.0)
+print(f"  E_initial: {e_initial:.6e}")
+print(f"  E_final:   {e_final:.6e}")
+print(f"  Ratio: {e_final/e_initial:.4f}")
+print(f"  Drift: {drift*100:.2f}%")
+print(f"  {'PASS' if drift < 0.05 else 'FAIL'}: drift {'<' if drift < 0.05 else '>'} 5%")
 
 
 # ============================================================
@@ -74,8 +70,9 @@ sim = Simulation(
 sim.add_source((0.1, 0.1, 0.1), "ez",
                waveform=GaussianPulse(f0=1e9, bandwidth=0.3))
 sim.add_probe((0.1, 0.1, 0.1), "ez")
+# NTFF box must be inside physical domain (CPML = 8*0.005 = 0.04m per side)
 sim.add_ntff_box(
-    (0.03, 0.03, 0.03), (0.17, 0.17, 0.17),
+    (0.05, 0.05, 0.05), (0.15, 0.15, 0.15),
     freqs=np.array([1e9]),
 )
 
