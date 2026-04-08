@@ -2113,6 +2113,12 @@ class Simulation:
         dx = self._dx or C0 / self._freq_max / 20.0
         cpml_thickness = self._cpml_layers * dx if self._boundary == "cpml" else 0
 
+        # Per-axis CPML thickness (z may differ on non-uniform mesh)
+        cpml_thick_xyz = [cpml_thickness, cpml_thickness, cpml_thickness]
+        if self._dz_profile is not None and self._boundary == "cpml" and self._cpml_layers > 0:
+            n = min(self._cpml_layers, len(self._dz_profile))
+            cpml_thick_xyz[2] = float(sum(self._dz_profile[:n]))
+
         # P1.1: Floquet + non-uniform mesh — suppress NU, warn user
         if self._floquet_ports and self._dz_profile is not None:
             _w.warn(
@@ -2128,10 +2134,11 @@ class Simulation:
                 pos = pe.position
                 for ax, coord in enumerate(pos):
                     domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                    if coord < cpml_thickness * 0.5 or coord > domain_extent - cpml_thickness * 0.5:
+                    ct = cpml_thick_xyz[min(ax, 2)]
+                    if coord < ct * 0.5 or coord > domain_extent - ct * 0.5:
                         _w.warn(
                             f"Probe at {pos} is near/inside CPML region "
-                            f"(CPML thickness={cpml_thickness*1e3:.1f}mm). "
+                            f"(CPML {'xyz'[ax]}-thickness={ct*1e3:.1f}mm). "
                             f"Signal will be attenuated. Move probe to interior.",
                             stacklevel=3,
                         )
@@ -2141,10 +2148,11 @@ class Simulation:
                 pos = pe.position
                 for ax, coord in enumerate(pos):
                     domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                    if coord < cpml_thickness * 0.5 or coord > domain_extent - cpml_thickness * 0.5:
+                    ct = cpml_thick_xyz[min(ax, 2)]
+                    if coord < ct * 0.5 or coord > domain_extent - ct * 0.5:
                         _w.warn(
                             f"Source/port at {pos} is near/inside CPML region "
-                            f"(CPML thickness={cpml_thickness*1e3:.1f}mm). "
+                            f"(CPML {'xyz'[ax]}-thickness={ct*1e3:.1f}mm). "
                             f"Energy will be absorbed. Move source to interior.",
                             stacklevel=3,
                         )
@@ -2155,7 +2163,8 @@ class Simulation:
             corner_lo, corner_hi, _ = self._ntff
             for ax in range(3):
                 domain_ext = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                if corner_lo[ax] < cpml_thickness or corner_hi[ax] > domain_ext - cpml_thickness:
+                ct = cpml_thick_xyz[min(ax, 2)]
+                if corner_lo[ax] < ct or corner_hi[ax] > domain_ext - ct:
                     _w.warn(
                         f"NTFF box extends into CPML region along "
                         f"{'xyz'[ax]}-axis. Far-field results will be "
@@ -2164,14 +2173,7 @@ class Simulation:
                     )
                     break
 
-        # P1.5: Non-uniform mesh + NTFF
-        if self._ntff is not None and self._dz_profile is not None:
-            _w.warn(
-                "NTFF with non-uniform z mesh: far-field computation uses "
-                "per-face dS correction but DFT accumulation assumes uniform "
-                "dt. Results may have reduced accuracy.",
-                stacklevel=3,
-            )
+        # P1.5: (merged into P2.1 — non-uniform + NTFF is unsupported)
 
         # P1.7: NTFF with too few steps
         if self._ntff is not None:
@@ -2234,6 +2236,120 @@ class Simulation:
                 "(antennas, scatterers).",
                 stacklevel=3,
             )
+
+        # P0.5: No sources configured
+        if not self._ports and self._tfsf is None and not self._waveguide_ports and not self._floquet_ports:
+            _w.warn(
+                "No sources, ports, TFSF, or waveguide/Floquet ports configured. "
+                "Simulation will produce zero fields.",
+                stacklevel=3,
+            )
+
+        # ================================================================
+        # P2: Non-uniform mesh path limitations
+        # ================================================================
+        if self._dz_profile is not None:
+            # P2.1: NTFF silently dropped on non-uniform path
+            if self._ntff is not None:
+                _w.warn(
+                    "NTFF far-field is not supported on non-uniform z mesh. "
+                    "The NTFF box will be silently ignored and "
+                    "result.ntff_data/ntff_box will be None. "
+                    "Use a uniform mesh for far-field computation.",
+                    stacklevel=3,
+                )
+
+            # P2.2: DFT plane probes silently dropped
+            if self._dft_planes:
+                _w.warn(
+                    "DFT plane probes are not supported on non-uniform z mesh. "
+                    "Configured DFT planes will be silently ignored and "
+                    "result.dft_planes will be None.",
+                    stacklevel=3,
+                )
+
+            # P2.3: TFSF silently dropped
+            if self._tfsf is not None:
+                _w.warn(
+                    "TFSF plane-wave source is not supported on non-uniform z "
+                    "mesh. The source will be silently ignored.",
+                    stacklevel=3,
+                )
+
+            # P2.4: Waveguide ports silently dropped
+            if self._waveguide_ports:
+                _w.warn(
+                    "Waveguide ports are not supported on non-uniform z mesh. "
+                    "Configured waveguide ports will be silently ignored.",
+                    stacklevel=3,
+                )
+
+            # P2.5: Lumped RLC silently dropped
+            if self._lumped_rlc:
+                _w.warn(
+                    "Lumped RLC elements are not supported on non-uniform z "
+                    "mesh. Configured elements will be silently ignored.",
+                    stacklevel=3,
+                )
+
+            # P2.6: CPML z-thickness on non-uniform mesh
+            if self._boundary == "cpml" and self._cpml_layers > 0:
+                dz_min = float(min(self._dz_profile[:self._cpml_layers]))
+                cpml_z_thick = sum(float(d) for d in self._dz_profile[:self._cpml_layers])
+                if cpml_z_thick < cpml_thickness * 0.3:
+                    _w.warn(
+                        f"CPML z-thickness is {cpml_z_thick*1e3:.1f}mm "
+                        f"({self._cpml_layers} cells), much thinner than "
+                        f"xy-thickness {cpml_thickness*1e3:.1f}mm. "
+                        f"Absorbing performance may be asymmetric. "
+                        f"Consider more z cells or fewer CPML layers.",
+                        stacklevel=3,
+                    )
+
+        # ================================================================
+        # P3: Distributed path limitations
+        # ================================================================
+        # (Distributed warnings are emitted at run() dispatch time in
+        #  distributed_v2.py, but we add preflight hints here too.)
+
+        # ================================================================
+        # P4: Subgridded path limitations
+        # ================================================================
+        if self._refinement is not None:
+            if self._ntff is not None:
+                _w.warn(
+                    "NTFF far-field is not supported with SBP-SAT subgridding. "
+                    "The NTFF box will be ignored.",
+                    stacklevel=3,
+                )
+            if self._dft_planes:
+                _w.warn(
+                    "DFT plane probes are not supported with SBP-SAT "
+                    "subgridding.",
+                    stacklevel=3,
+                )
+            if self._waveguide_ports:
+                _w.warn(
+                    "Waveguide ports are not supported with SBP-SAT "
+                    "subgridding.",
+                    stacklevel=3,
+                )
+            if self._floquet_ports:
+                _w.warn(
+                    "Floquet ports are not supported with SBP-SAT subgridding.",
+                    stacklevel=3,
+                )
+            if self._tfsf is not None:
+                _w.warn(
+                    "TFSF source is not supported with SBP-SAT subgridding.",
+                    stacklevel=3,
+                )
+            if self._lumped_rlc:
+                _w.warn(
+                    "Lumped RLC elements are not supported with SBP-SAT "
+                    "subgridding.",
+                    stacklevel=3,
+                )
 
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""
