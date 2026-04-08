@@ -628,6 +628,7 @@ def compute_far_field_jax(
         dot = r_flat @ pos_flat.T  # (n_dir, nc)
 
         phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
+        dS_flat = jnp.asarray(dS_flat)  # ensure JAX array (may be Python float)
         if jnp.ndim(dS_flat) > 0:
             J_w = J * dS_flat[None, :, None]
             M_w = M * dS_flat[None, :, None]
