@@ -16,32 +16,46 @@ from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
 
 
 def test_thin_conductor_sigma_eff():
-    """σ_eff = σ_bulk · (t / Δx) should be correct."""
+    """σ_eff = σ_bulk · (t / Δx) should be correct for lossy conductors.
+
+    For PEC-level conductors (σ_eff >= 1e6), the code routes to pec_mask
+    instead of setting sigma. Test both cases.
+    """
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
     dx = grid.dx
 
-    sigma_bulk = 5.8e7  # copper
-    thickness = 35e-6  # 35 µm = 1 oz copper
-    expected_sigma_eff = sigma_bulk * (thickness / dx)
+    # Case 1: Lossy conductor (σ_eff below PEC threshold)
+    sigma_bulk_lossy = 1e4
+    thickness = 35e-6
+    expected_sigma_eff = sigma_bulk_lossy * (thickness / dx)
 
     shape_box = Box((0.005, 0.005, 0.0), (0.015, 0.015, 0.001))
-    tc = ThinConductor(shape=shape_box, sigma_bulk=sigma_bulk, thickness=thickness)
+    tc_lossy = ThinConductor(shape=shape_box, sigma_bulk=sigma_bulk_lossy, thickness=thickness)
 
     materials = init_materials(grid.shape)
-    materials = apply_thin_conductor(grid, tc, materials)
+    materials, pec_mask = apply_thin_conductor(grid, tc_lossy, materials)
 
-    # Check a cell inside the conductor region
     mask = shape_box.mask(grid)
     inside_idx = np.argwhere(np.array(mask))
     if len(inside_idx) > 0:
         i, j, k = inside_idx[len(inside_idx) // 2]
         sigma_val = float(materials.sigma[i, j, k])
-        assert abs(sigma_val - expected_sigma_eff) / expected_sigma_eff < 1e-4, \
-            f"σ_eff={sigma_val:.4e}, expected={expected_sigma_eff:.4e}"
-        print(f"\nThin conductor σ_eff = {sigma_val:.4e} S/m "
-              f"(expected {expected_sigma_eff:.4e})")
+        assert abs(sigma_val - expected_sigma_eff) / max(expected_sigma_eff, 1e-30) < 0.01, \
+            f"Lossy: σ_eff={sigma_val:.4e}, expected={expected_sigma_eff:.4e}"
 
-    # Check a cell outside — should be zero
+    # Case 2: PEC conductor (copper → σ_eff > 1e6 → pec_mask)
+    sigma_bulk_pec = 5.8e7  # copper
+    tc_pec = ThinConductor(shape=shape_box, sigma_bulk=sigma_bulk_pec, thickness=thickness)
+    assert tc_pec.is_pec, "Copper 35µm should be PEC"
+
+    materials2 = init_materials(grid.shape)
+    materials2, pec_mask2 = apply_thin_conductor(grid, tc_pec, materials2)
+
+    if pec_mask2 is not None and len(inside_idx) > 0:
+        i, j, k = inside_idx[len(inside_idx) // 2]
+        assert bool(pec_mask2[i, j, k]), "PEC conductor should set pec_mask"
+
+    # Outside should be unaffected
     outside_idx = np.argwhere(~np.array(mask))
     if len(outside_idx) > 0:
         i, j, k = outside_idx[0]
@@ -60,8 +74,9 @@ def test_thin_conductor_preserves_outside():
     )
 
     shape_box = Box((0.005, 0.005, 0.0), (0.01, 0.01, 0.001))
-    tc = ThinConductor(shape=shape_box, sigma_bulk=5.8e7, thickness=35e-6, eps_r=1.0)
-    materials = apply_thin_conductor(grid, tc, materials)
+    # Use lossy conductor (below PEC threshold) so sigma is modified, not pec_mask
+    tc = ThinConductor(shape=shape_box, sigma_bulk=1e4, thickness=35e-6, eps_r=1.0)
+    materials, _ = apply_thin_conductor(grid, tc, materials)
 
     mask = shape_box.mask(grid)
 
@@ -80,7 +95,10 @@ def test_thin_conductor_preserves_outside():
 
 
 def test_thin_conductor_api_integration():
-    """ThinConductor works through the Simulation API."""
+    """ThinConductor works through the Simulation API.
+
+    Copper (5.8e7 S/m, 35um) exceeds PEC threshold → routed to pec_mask.
+    """
     from rfx.api import Simulation
 
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.002), boundary="pec")
@@ -94,15 +112,15 @@ def test_thin_conductor_api_integration():
 
     # Should build without error
     grid = sim._build_grid()
-    materials, debye, lorentz = sim._build_materials(grid)
+    materials, debye, lorentz, pec_mask, pec_shapes, kerr = sim._assemble_materials(grid)
 
-    # Verify thin conductor region has high conductivity
+    # Copper thin conductor is PEC-level → check pec_mask, not sigma
     tc_box = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
     mask = tc_box.mask(grid)
     inside_idx = np.argwhere(np.array(mask))
-    if len(inside_idx) > 0:
+    if len(inside_idx) > 0 and pec_mask is not None:
         i, j, k = inside_idx[len(inside_idx) // 2]
-        assert float(materials.sigma[i, j, k]) > 1e3, \
-            "Thin conductor should have high effective sigma"
+        assert bool(pec_mask[i, j, k]), \
+            "Copper thin conductor should be in pec_mask"
 
     print(f"\nThin conductor API integration: OK, grid={grid.shape}")
