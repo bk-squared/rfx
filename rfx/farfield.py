@@ -617,7 +617,7 @@ def compute_far_field_jax(
         # Per-cell dS for non-uniform z on x/y faces
         k_range = other_ranges[1] if axis in (0, 1) else None
         if k_range is not None:
-            dS_k = _face_dS_jax(axis, k_range[0], k_range[1])
+            dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]))
             if dS_k.ndim > 0:
                 dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
             else:
