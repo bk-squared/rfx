@@ -170,16 +170,28 @@ def _update_3d(ex, ey, ez, hx, hy, hz, dt, dx,
 
 
 def _downsample_2d(fine_face, n_coarse_j, n_coarse_k, ratio):
-    """Downsample a 2D fine-grid face to coarse resolution via block averaging."""
+    """Restriction operator R: fine → coarse.
+
+    Block averaging (mean over ratio×ratio block). For the SAT penalty,
+    this produces a value at the same scale as the coarse field, so
+    the mismatch (R(E_f) - E_c) is physically meaningful.
+
+    Note: mean + repeat are NOT exact SBP adjoints (adjoint pair would
+    be sum + repeat/ratio). The alpha coefficients in the SAT penalty
+    absorb the norm scaling to maintain energy stability.
+    """
     nj_f = n_coarse_j * ratio
     nk_f = n_coarse_k * ratio
     trimmed = fine_face[:nj_f, :nk_f]
-    # Reshape into (n_coarse_j, ratio, n_coarse_k, ratio) then average
     return jnp.mean(trimmed.reshape(n_coarse_j, ratio, n_coarse_k, ratio), axis=(1, 3))
 
 
 def _upsample_2d(coarse_face, ny_f, nz_f, ratio):
-    """Upsample coarse face to fine resolution by repeating."""
+    """Interpolation operator P: coarse → fine.
+
+    Constant (nearest-neighbor) interpolation via repeat. Produces
+    a value at the same scale as the fine field.
+    """
     return jnp.repeat(jnp.repeat(coarse_face, ratio, axis=0), ratio, axis=1)[:ny_f, :nz_f]
 
 
