@@ -777,6 +777,14 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     # ===================================================================
     # LOD: 3 sequential sub-steps, each implicit along one axis.
     # Each sub-step: E tridiag along axis → H explicit update.
+    #
+    # NOTE: This simplified LOD applies the tridiagonal solve to ALL E
+    # components along each axis, which adds artificial diffusion for
+    # components whose curl has no derivative along that axis.  This
+    # trades accuracy for simplicity and unconditional stability.  The
+    # LOD splitting error grows with CFL factor; best accuracy at 2-5x
+    # CFL.  For higher CFL (>10x), expect over-dissipation and shifted
+    # resonance frequencies.
     # ===================================================================
 
     for axis in range(3):
@@ -839,3 +847,115 @@ def make_adi_absorbing_sigma_3d(nx, ny, nz, n_layers, dx, dy, dz, order=3):
         sigma[:, :, nz - 1 - face_n] = np.maximum(sigma[:, :, nz - 1 - face_n], sz)
 
     return jnp.array(sigma, dtype=jnp.float32)
+
+
+def run_adi_3d(
+    ex: jnp.ndarray, ey: jnp.ndarray, ez: jnp.ndarray,
+    hx: jnp.ndarray, hy: jnp.ndarray, hz: jnp.ndarray,
+    eps_r: jnp.ndarray, sigma: jnp.ndarray,
+    dt: float, dx: float, dy: float, dz: float,
+    n_steps: int,
+    sources: list | None = None,
+    probes: list | None = None,
+    pec_mask: jnp.ndarray | None = None,
+):
+    """Run a 3D ADI-FDTD simulation for *n_steps* timesteps.
+
+    Parameters
+    ----------
+    ex, ey, ez, hx, hy, hz : (Nx, Ny, Nz) initial field arrays
+    eps_r : (Nx, Ny, Nz) relative permittivity
+    sigma : (Nx, Ny, Nz) conductivity
+    dt, dx, dy, dz : timestep and cell sizes
+    n_steps : number of full timesteps
+    sources : list of (i, j, k, component, waveform_array) tuples
+    probes : list of (i, j, k, component) tuples
+    pec_mask : (Nx, Ny, Nz) bool array or None
+
+    Returns
+    -------
+    ex, ey, ez, hx, hy, hz : final field arrays
+    probe_data : (n_steps, n_probes) array or None
+    """
+    if sources is None:
+        sources = []
+    if probes is None:
+        probes = []
+
+    n_src = len(sources)
+    n_prb = len(probes)
+
+    # Precompute source metadata
+    if n_src > 0:
+        src_ijk = jnp.array(
+            [[s[0], s[1], s[2]] for s in sources], dtype=jnp.int32)
+        src_components = [s[3] for s in sources]
+        src_waveforms = jnp.stack([s[4] for s in sources], axis=0)
+    else:
+        src_ijk = jnp.zeros((0, 3), dtype=jnp.int32)
+        src_components = []
+        src_waveforms = jnp.zeros((0, n_steps))
+
+    # Precompute probe metadata
+    if n_prb > 0:
+        prb_ijk = jnp.array(
+            [[p[0], p[1], p[2]] for p in probes], dtype=jnp.int32)
+        prb_components = [p[3] for p in probes]
+    else:
+        prb_ijk = jnp.zeros((0, 3), dtype=jnp.int32)
+        prb_components = []
+
+    # Map component names to indices in the field tuple
+    _comp_idx = {"ex": 0, "ey": 1, "ez": 2, "hx": 3, "hy": 4, "hz": 5}
+
+    # Pre-build source injection info: for each field component, accumulate
+    # which sources inject into it.  This avoids string comparison in the
+    # JIT-traced body.
+    _src_by_comp: dict[int, list[int]] = {c: [] for c in range(6)}
+    for s_idx, comp in enumerate(src_components):
+        _src_by_comp[_comp_idx[comp]].append(s_idx)
+
+    # Pre-build probe sampling indices per field component
+    _prb_comp_indices = [_comp_idx[c] for c in prb_components]
+
+    def step_fn(carry, step_idx):
+        fields = list(carry)
+
+        # Source injection (soft source, before ADI step)
+        for c_idx in range(6):
+            for s_idx in _src_by_comp[c_idx]:
+                si, sj, sk = src_ijk[s_idx]
+                val = src_waveforms[s_idx, step_idx]
+                fields[c_idx] = fields[c_idx].at[si, sj, sk].add(val)
+
+        ex_, ey_, ez_, hx_, hy_, hz_ = fields
+
+        # ADI step
+        ex_, ey_, ez_, hx_, hy_, hz_ = adi_step_3d(
+            ex_, ey_, ez_, hx_, hy_, hz_,
+            eps_r, sigma, dt, dx, dy, dz,
+            pec_mask=pec_mask,
+        )
+
+        # Probe sampling
+        all_fields = (ex_, ey_, ez_, hx_, hy_, hz_)
+        if n_prb > 0:
+            samples = []
+            for p_idx in range(n_prb):
+                pi, pj, pk = prb_ijk[p_idx]
+                samples.append(all_fields[_prb_comp_indices[p_idx]][pi, pj, pk])
+            sample_vec = jnp.stack(samples)
+        else:
+            sample_vec = jnp.zeros(1)
+
+        return (ex_, ey_, ez_, hx_, hy_, hz_), sample_vec
+
+    carry_init = (ex, ey, ez, hx, hy, hz)
+    final_carry, probe_data = jax.lax.scan(
+        step_fn, carry_init, jnp.arange(n_steps))
+    ex_f, ey_f, ez_f, hx_f, hy_f, hz_f = final_carry
+
+    if n_prb == 0:
+        probe_data = None
+
+    return ex_f, ey_f, ez_f, hx_f, hy_f, hz_f, probe_data

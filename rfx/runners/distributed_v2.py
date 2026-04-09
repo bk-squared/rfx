@@ -28,7 +28,6 @@ pmap version in ``distributed.py`` so callers need no changes.
 from __future__ import annotations
 
 from functools import partial
-from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -40,41 +39,28 @@ from jax.experimental.shard_map import shard_map
 from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
-    EPS_0,
-    MU_0,
-    _shift_fwd,
-    _shift_bwd,
 )
-from rfx.boundaries.pec import apply_pec
 from rfx.simulation import (
-    SourceSpec,
-    ProbeSpec,
     make_source,
     make_j_source,
     make_probe,
     make_port_source,
-    _update_e_with_optional_dispersion,
 )
 from rfx.sources.sources import LumpedPort, setup_lumped_port
-from rfx.materials.debye import DebyeCoeffs, DebyeState, init_debye
-from rfx.materials.lorentz import LorentzCoeffs, LorentzState, init_lorentz
+from rfx.materials.debye import DebyeCoeffs, DebyeState
+from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 
 # Re-export domain splitting helpers from the original module so existing
 # callers that import them directly continue to work.
 from rfx.runners.distributed import (
-    split_array_x,
     gather_array_x,
     _split_state,
-    _gather_state,
     _split_materials,
     _split_debye_coeffs,
     _split_debye_state,
     _split_lorentz_coeffs,
     _split_lorentz_state,
     _update_h_local,
-    _update_e_local,
-    _update_e_debye_local,
-    _update_e_lorentz_local,
     _update_e_local_with_dispersion,
     _init_cpml_distributed,
     _apply_cpml_e_distributed,
@@ -288,7 +274,6 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                 psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi):
         # Reconstruct minimal state and cpml_state objects
         from rfx.core.yee import FDTDState as _FS
-        from rfx.boundaries.cpml import CPMLState as _CS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
         _cs = cpml_state._replace(
             psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
@@ -367,7 +352,6 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                 psi_hx_ylo, psi_hx_yhi, psi_hz_ylo, psi_hz_yhi,
                 psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi):
         from rfx.core.yee import FDTDState as _FS
-        from rfx.boundaries.cpml import CPMLState as _CS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
         _cs = cpml_state._replace(
             psi_hy_xlo=psi_hy_xlo, psi_hy_xhi=psi_hy_xhi,
@@ -519,6 +503,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             f"for physically accurate results.",
             stacklevel=2,
         )
+
+    if sim._boundary == "upml":
+        raise ValueError("boundary='upml' does not support distributed execution")
 
     # ------------------------------------------------------------------
     # Graceful fallback for features that require the full domain on a

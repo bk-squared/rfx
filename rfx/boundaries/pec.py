@@ -43,6 +43,43 @@ def apply_pec(state, axes: str = "xyz") -> object:
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
+def apply_pec_faces(state, faces: set[str]) -> object:
+    """Apply PEC (E_tan = 0) on specific boundary faces.
+
+    Parameters
+    ----------
+    state : FDTDState
+    faces : set of str
+        Which faces to enforce PEC on.  Valid names:
+        ``"x_lo"``, ``"x_hi"``, ``"y_lo"``, ``"y_hi"``,
+        ``"z_lo"``, ``"z_hi"``.
+    """
+    if not faces:
+        return state
+    ex, ey, ez = state.ex, state.ey, state.ez
+
+    if "x_lo" in faces:
+        ey = ey.at[0, :, :].set(0.0)
+        ez = ez.at[0, :, :].set(0.0)
+    if "x_hi" in faces:
+        ey = ey.at[-1, :, :].set(0.0)
+        ez = ez.at[-1, :, :].set(0.0)
+    if "y_lo" in faces:
+        ex = ex.at[:, 0, :].set(0.0)
+        ez = ez.at[:, 0, :].set(0.0)
+    if "y_hi" in faces:
+        ex = ex.at[:, -1, :].set(0.0)
+        ez = ez.at[:, -1, :].set(0.0)
+    if "z_lo" in faces:
+        ex = ex.at[:, :, 0].set(0.0)
+        ey = ey.at[:, :, 0].set(0.0)
+    if "z_hi" in faces:
+        ex = ex.at[:, :, -1].set(0.0)
+        ey = ey.at[:, :, -1].set(0.0)
+
+    return state._replace(ex=ex, ey=ey, ez=ez)
+
+
 def apply_pec_mask(state, pec_mask) -> object:
     """Zero tangential E-field components at PEC geometry cells.
 

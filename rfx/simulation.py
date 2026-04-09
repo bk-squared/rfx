@@ -415,7 +415,7 @@ def run(
     grid : Grid
     materials : MaterialArrays
     n_steps : int
-    boundary : "pec" or "cpml"
+    boundary : "pec", "cpml", or "upml"
     cpml_axes : axes string for CPML (default "xyz")
     pec_axes : axes string or None
         Axes on which to enforce PEC after each update. If None, uses
@@ -494,6 +494,7 @@ def run(
 
     # ---- subsystem flags (resolved at trace time) ----
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
+    use_upml = boundary == "upml" and grid.cpml_layers > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None
     use_tfsf = tfsf is not None
@@ -527,6 +528,7 @@ def run(
     _on_gpu = jax.default_backend() != "cpu"
     _fast_eligible = (
         not use_cpml
+        and not use_upml
         and not use_tfsf
         and not use_debye
         and not use_lorentz
@@ -556,6 +558,9 @@ def run(
         from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
         cpml_params, cpml_state = init_cpml(grid)
         carry_init["cpml"] = cpml_state
+    elif use_upml:
+        from rfx.boundaries.upml import init_upml, apply_upml_e, apply_upml_h
+        upml_coeffs = init_upml(grid, materials, axes=cpml_axes)
 
     if use_debye:
         debye_coeffs, debye_state = debye
@@ -677,7 +682,10 @@ def run(
             st = update_he_fast(st, _fast_coeffs)
         else:
             # H update
-            st = update_h(st, materials, dt, dx, periodic=periodic)
+            if use_upml:
+                st = apply_upml_h(st, upml_coeffs, periodic=periodic)
+            else:
+                st = update_h(st, materials, dt, dx, periodic=periodic)
             if use_tfsf:
                 st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], dx, dt)
             if use_cpml:
@@ -690,16 +698,23 @@ def run(
                 else:
                     tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], dx, dt)
 
-            st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
-                st,
-                materials,
-                dt,
-                dx,
-                debye=(debye_coeffs, carry["debye"]) if use_debye else None,
-                lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
-                periodic=periodic,
-                aniso_eps=aniso_eps,
-            )
+            if use_upml:
+                if use_debye or use_lorentz or aniso_eps is not None:
+                    raise ValueError("boundary='upml' does not yet support dispersion or anisotropic eps")
+                st = apply_upml_e(st, upml_coeffs, periodic=periodic)
+                debye_new = None
+                lorentz_new = None
+            else:
+                st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
+                    st,
+                    materials,
+                    dt,
+                    dx,
+                    debye=(debye_coeffs, carry["debye"]) if use_debye else None,
+                    lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
+                    periodic=periodic,
+                    aniso_eps=aniso_eps,
+                )
 
             # Kerr nonlinear ADE correction (after linear E-update)
             if use_kerr:
@@ -923,7 +938,6 @@ def run(
 
     final_flux_monitors = None
     if use_flux_monitors:
-        from rfx.probes.probes import FluxMonitor as _FM
         final_flux_monitors = tuple(
             fm._replace(e1_dft=accs[0], e2_dft=accs[1], h1_dft=accs[2], h2_dft=accs[3])
             for fm, accs in zip(flux_monitors, final_carry["flux_monitors"])
@@ -1064,6 +1078,7 @@ def run_until_decay(
 
     # ---- subsystem flags ----
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
+    use_upml = boundary == "upml" and grid.cpml_layers > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None
     use_tfsf = tfsf is not None
@@ -1097,6 +1112,9 @@ def run_until_decay(
         from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
         cpml_params, cpml_state = init_cpml(grid)
         carry["cpml"] = cpml_state
+    elif use_upml:
+        from rfx.boundaries.upml import init_upml, apply_upml_e, apply_upml_h
+        upml_coeffs = init_upml(grid, materials, axes=cpml_axes)
 
     if use_debye:
         debye_coeffs, debye_state = debye
@@ -1191,7 +1209,10 @@ def run_until_decay(
         tfsf_h_state = None
 
         # H update
-        st = update_h(st, materials, dt, dx, periodic=periodic)
+        if use_upml:
+            st = apply_upml_h(st, upml_coeffs, periodic=periodic)
+        else:
+            st = update_h(st, materials, dt, dx, periodic=periodic)
         if use_tfsf:
             st = apply_tfsf_h(st, tfsf_cfg, carry_in["tfsf"], dx, dt)
         if use_cpml:
@@ -1204,13 +1225,20 @@ def run_until_decay(
             else:
                 tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry_in["tfsf"], dx, dt)
 
-        st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
-            st, materials, dt, dx,
-            debye=(debye_coeffs, carry_in["debye"]) if use_debye else None,
-            lorentz=(lorentz_coeffs, carry_in["lorentz"]) if use_lorentz else None,
-            periodic=periodic,
-            aniso_eps=aniso_eps,
-        )
+        if use_upml:
+            if use_debye or use_lorentz or aniso_eps is not None:
+                raise ValueError("boundary='upml' does not yet support dispersion or anisotropic eps")
+            st = apply_upml_e(st, upml_coeffs, periodic=periodic)
+            debye_new = None
+            lorentz_new = None
+        else:
+            st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
+                st, materials, dt, dx,
+                debye=(debye_coeffs, carry_in["debye"]) if use_debye else None,
+                lorentz=(lorentz_coeffs, carry_in["lorentz"]) if use_lorentz else None,
+                periodic=periodic,
+                aniso_eps=aniso_eps,
+            )
 
         # Kerr nonlinear ADE correction (after linear E-update)
         if use_kerr_decay:

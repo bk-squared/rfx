@@ -21,12 +21,10 @@ Phase 3: Lumped ports + Debye/Lorentz dispersive materials.
 from __future__ import annotations
 
 from functools import partial
-from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
 from jax import lax
-import numpy as np
 
 from rfx.core.yee import (
     FDTDState,
@@ -36,19 +34,15 @@ from rfx.core.yee import (
     _shift_fwd,
     _shift_bwd,
 )
-from rfx.boundaries.pec import apply_pec
 from rfx.simulation import (
-    SourceSpec,
-    ProbeSpec,
     make_source,
     make_j_source,
     make_probe,
     make_port_source,
-    _update_e_with_optional_dispersion,
 )
 from rfx.sources.sources import LumpedPort, setup_lumped_port
-from rfx.materials.debye import DebyeCoeffs, DebyeState, init_debye
-from rfx.materials.lorentz import LorentzCoeffs, LorentzState, init_lorentz
+from rfx.materials.debye import DebyeCoeffs, DebyeState
+from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 
 
 # ---------------------------------------------------------------------------
@@ -598,7 +592,7 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
         Per-device CPML state arrays stacked along axis 0,
         shape ``(n_devices, ...)``.
     """
-    from rfx.boundaries.cpml import _cpml_profile, CPMLParams, CPMLState
+    from rfx.boundaries.cpml import _cpml_profile, CPMLState
 
     kappa_max = getattr(grid, "kappa_max", None) or 1.0
     n = grid.cpml_layers
@@ -1166,6 +1160,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     Result
     """
     import warnings
+
+    if sim._boundary == "upml":
+        raise ValueError("boundary='upml' does not support distributed execution")
 
     # ------------------------------------------------------------------
     # Graceful fallback for features that require the full domain on a

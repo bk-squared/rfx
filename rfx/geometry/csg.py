@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
+import jax
 import jax.numpy as jnp
 
 from rfx.grid import Grid
@@ -194,37 +195,49 @@ class PolylineWire:
         pts = np.array(self.points, dtype=np.float64)
         n_seg = len(pts) - 1
 
+        # Filter out degenerate (zero-length) segments
+        A = pts[:-1]  # (n_seg, 3)
+        B = pts[1:]   # (n_seg, 3)
+        D = B - A     # direction vectors
+        seg_len2 = np.sum(D ** 2, axis=1)  # (n_seg,)
+        valid = seg_len2 > 1e-30
+        A = A[valid]
+        D = D[valid]
+        seg_len2 = seg_len2[valid]
+
+        if len(A) == 0:
+            return jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)
+
+        # Pre-compute segment data as JAX arrays: (n_valid, 3) and (n_valid,)
+        A_j = jnp.array(A, dtype=jnp.float32)
+        D_j = jnp.array(D, dtype=jnp.float32)
+        seg_len2_j = jnp.array(seg_len2, dtype=jnp.float32)
+
         # 3D coordinate grids (Nx, Ny, Nz)
         X = x[:, None, None]
         Y = y[None, :, None]
         Z = z[None, None, :]
 
-        mask = jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)
+        # Use lax.scan to accumulate boolean mask without materializing
+        # all n_seg intermediate distance arrays simultaneously.
+        def _scan_step(mask_acc, seg_idx):
+            ax, ay, az = A_j[seg_idx, 0], A_j[seg_idx, 1], A_j[seg_idx, 2]
+            dx_s, dy_s, dz_s = D_j[seg_idx, 0], D_j[seg_idx, 1], D_j[seg_idx, 2]
+            sl2 = seg_len2_j[seg_idx]
 
-        for i in range(n_seg):
-            # Segment from A to B
-            ax, ay, az = float(pts[i, 0]), float(pts[i, 1]), float(pts[i, 2])
-            bx, by, bz = float(pts[i + 1, 0]), float(pts[i + 1, 1]), float(pts[i + 1, 2])
-
-            dx_s = bx - ax
-            dy_s = by - ay
-            dz_s = bz - az
-            seg_len2 = dx_s ** 2 + dy_s ** 2 + dz_s ** 2
-
-            if seg_len2 < 1e-30:
-                continue
-
-            # Parameter t: projection of (P-A) onto (B-A), clamped to [0,1]
-            t = ((X - ax) * dx_s + (Y - ay) * dy_s + (Z - az) * dz_s) / seg_len2
+            t = ((X - ax) * dx_s + (Y - ay) * dy_s + (Z - az) * dz_s) / sl2
             t = jnp.clip(t, 0.0, 1.0)
 
-            # Closest point on segment
             cx = ax + t * dx_s
             cy = ay + t * dy_s
             cz = az + t * dz_s
 
             dist2 = (X - cx) ** 2 + (Y - cy) ** 2 + (Z - cz) ** 2
-            mask = mask | (dist2 <= r2_thresh)
+            return mask_acc | (dist2 <= r2_thresh), None
+
+        init_mask = jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)
+        mask, _ = jax.lax.scan(
+            _scan_step, init_mask, jnp.arange(len(A_j)))
 
         return mask
 

@@ -44,6 +44,63 @@ def test_basic_simulation():
     assert peak > 0, "Probe should detect non-zero field"
 
 
+def test_upml_boundary_runs_through_api():
+    """UPML boundary should be accepted for the uniform-grid Yee path."""
+    sim = Simulation(
+        freq_max=6e9,
+        domain=(0.04, 0.04, 0.004),
+        boundary="upml",
+        cpml_layers=6,
+        dx=0.002,
+        mode="2d_tmz",
+    )
+    sim.add_source((0.01, 0.02, 0.0), "ez", waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
+    sim.add_probe((0.026, 0.02, 0.0), "ez")
+
+    result = sim.run(n_steps=80, compute_s_params=False)
+
+    assert result.time_series.shape == (80, 1)
+    assert float(jnp.max(jnp.abs(result.time_series[:, 0]))) > 0.0
+
+
+def test_upml_rejects_subgridding_refinement():
+    """UPML v1 should fail loudly on subgridding/refinement."""
+    sim = Simulation(
+        freq_max=6e9,
+        domain=(0.04, 0.04, 0.02),
+        boundary="upml",
+        cpml_layers=6,
+        dx=0.002,
+    )
+    sim.add_refinement((0.004, 0.008), ratio=2)
+    sim.add_source((0.01, 0.02, 0.01), "ez", waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
+    sim.add_probe((0.026, 0.02, 0.01), "ez")
+
+    with pytest.raises(ValueError, match="subgridding/refinement"):
+        sim.run(n_steps=40, compute_s_params=False)
+
+
+def test_upml_rejects_distributed_execution():
+    """UPML v1 should fail loudly instead of leaking into distributed mode."""
+    devices = jax.devices()
+    if len(devices) < 2:
+        pytest.skip("requires >=2 JAX devices")
+
+    sim = Simulation(
+        freq_max=6e9,
+        domain=(0.04, 0.04, 0.004),
+        boundary="upml",
+        cpml_layers=6,
+        dx=0.002,
+        mode="2d_tmz",
+    )
+    sim.add_source((0.01, 0.02, 0.0), "ez", waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
+    sim.add_probe((0.026, 0.02, 0.0), "ez")
+
+    with pytest.raises(ValueError, match="distributed execution"):
+        sim.run(n_steps=40, compute_s_params=False, devices=devices[:2])
+
+
 def test_named_material():
     """Custom named material is applied to geometry."""
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
@@ -912,6 +969,17 @@ def test_validation_errors():
 
     with pytest.raises(ValueError, match="boundary"):
         Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="abc")
+
+    with pytest.raises(ValueError, match="boundary='upml'"):
+        Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="upml", solver="adi")
+
+    with pytest.raises(ValueError, match="dz_profile"):
+        Simulation(
+            freq_max=5e9,
+            domain=(0.03, 0.03, 0.003),
+            boundary="upml",
+            dz_profile=np.array([1e-3, 1e-3, 1e-3]),
+        )
 
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03))
     with pytest.raises(ValueError, match="component"):

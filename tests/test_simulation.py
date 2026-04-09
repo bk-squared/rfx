@@ -24,7 +24,7 @@ from rfx.sources.tfsf import (
     is_tfsf_2d,
 )
 from rfx.simulation import (
-    ProbeSpec, make_source, make_probe, run,
+    ProbeSpec, make_source, make_probe, run, run_until_decay,
 )
 from rfx.probes.probes import (
     extract_s_matrix, init_dft_plane_probe, update_dft_plane_probe,
@@ -76,6 +76,67 @@ def test_compiled_runner_energy_conservation():
     # With no sources, all fields should stay zero
     assert float(jnp.max(jnp.abs(result.time_series))) == 0.0
     assert _total_energy(result.state, grid.dx) == 0.0
+
+
+def test_low_level_run_supports_upml_boundary():
+    """Low-level run() should execute the UPML path on a simple 2D TMz setup."""
+    grid = Grid(
+        freq_max=6e9,
+        domain=(0.04, 0.04, 0.004),
+        dx=0.002,
+        cpml_layers=6,
+        mode="2d_tmz",
+    )
+    materials = init_materials(grid.shape)
+    src = make_source(
+        grid,
+        (0.01, 0.02, 0.0),
+        "ez",
+        GaussianPulse(f0=3e9, bandwidth=0.5),
+        80,
+    )
+    prb = make_probe(grid, (0.026, 0.02, 0.0), "ez")
+
+    result = run(grid, materials, 80, sources=[src], probes=[prb], boundary="upml")
+
+    assert result.time_series.shape == (80, 1)
+    assert float(jnp.max(jnp.abs(result.time_series[:, 0]))) > 0.0
+
+
+def test_run_until_decay_supports_upml_boundary():
+    """Decay runner should also execute the UPML path without NaNs."""
+    grid = Grid(
+        freq_max=6e9,
+        domain=(0.04, 0.04, 0.004),
+        dx=0.002,
+        cpml_layers=6,
+        mode="2d_tmz",
+    )
+    materials = init_materials(grid.shape)
+    src = make_source(
+        grid,
+        (0.01, 0.02, 0.0),
+        "ez",
+        GaussianPulse(f0=3e9, bandwidth=0.5),
+        120,
+    )
+    prb = make_probe(grid, (0.026, 0.02, 0.0), "ez")
+
+    result = run_until_decay(
+        grid,
+        materials,
+        decay_by=1e-4,
+        sources=[src],
+        probes=[prb],
+        monitor_position=(0.026, 0.02, 0.0),
+        boundary="upml",
+        max_steps=120,
+        min_steps=40,
+    )
+
+    assert result.time_series.shape[1] == 1
+    assert result.time_series.shape[0] >= 40
+    assert not jnp.any(jnp.isnan(result.state.ez))
 
 
 def test_compiled_runner_source_and_probe():

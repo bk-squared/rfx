@@ -4,7 +4,7 @@ __version__ = "1.4.0"
 
 from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult
-from rfx.adi import ADIState2D, thomas_solve, adi_step_2d, run_adi_2d
+from rfx.adi import ADIState2D, ADIState3D, thomas_solve, adi_step_2d, run_adi_2d, adi_step_3d, run_adi_3d
 from rfx.api import Simulation, Result, WaveguideSParamResult, WaveguideSMatrixResult, MATERIAL_LIBRARY
 from rfx.geometry.csg import Box, Sphere, Cylinder, PolylineWire
 from rfx.geometry.curved import CurvedPatch
@@ -94,6 +94,7 @@ from rfx.probes.probes import (
     wire_port_voltage, wire_port_current,
     init_wire_sparam_probe, update_wire_sparam_probe,
     extract_s_matrix_wire,
+    FluxMonitor, init_flux_monitor, update_flux_monitor, flux_spectrum,
 )
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult

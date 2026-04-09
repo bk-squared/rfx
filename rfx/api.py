@@ -32,7 +32,7 @@ from rfx.core.yee import MaterialArrays, EPS_0
 from rfx.geometry.csg import Shape
 from rfx.nonuniform import NonUniformGrid
 from rfx.sources.sources import GaussianPulse
-from rfx.sources.coaxial_port import CoaxialPort, setup_coaxial_port, make_coaxial_port_source
+from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.lumped import LumpedRLCSpec
@@ -46,20 +46,10 @@ from rfx.sources.waveguide_port import (
     extract_multimode_s_matrix,
     waveguide_plane_positions,
 )
-from rfx.floquet import (
-    FloquetPort,
-    floquet_phase_shift,
-    floquet_wave_vector,
-    init_floquet_dft,
-    update_floquet_dft,
-    inject_floquet_source,
-    extract_floquet_modes,
-    compute_floquet_s_params,
-)
 from rfx.simulation import (
     SnapshotSpec,
 )
-from rfx.adi import ADIState2D, ADIState3D, run_adi_2d
+from rfx.adi import ADIState2D, run_adi_2d
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +358,7 @@ class Simulation:
         Maximum simulation frequency (Hz).
     domain : (Lx, Ly, Lz) in metres
         Physical domain size.  For 2D modes Lz is ignored.
-    boundary : "pec" or "cpml"
+    boundary : "pec", "cpml", or "upml"
         Boundary condition. Default "cpml".
     cpml_layers : int
         Number of CPML layers per face. Default 12 (ignored for "pec").
@@ -407,8 +397,8 @@ class Simulation:
         solver: str = "yee",
         adi_cfl_factor: float = 5.0,
     ):
-        if boundary not in ("pec", "cpml"):
-            raise ValueError(f"boundary must be 'pec' or 'cpml', got {boundary!r}")
+        if boundary not in ("pec", "cpml", "upml"):
+            raise ValueError(f"boundary must be 'pec', 'cpml', or 'upml', got {boundary!r}")
         if freq_max <= 0:
             raise ValueError(f"freq_max must be positive, got {freq_max}")
         if precision not in ("float32", "mixed"):
@@ -426,6 +416,9 @@ class Simulation:
                 domain = (domain[0], domain[1], dz_total)
         elif any(d <= 0 for d in domain):
             raise ValueError(f"domain dimensions must be positive, got {domain}")
+
+        if boundary == "upml" and dz_profile is not None:
+            raise ValueError("boundary='upml' does not support nonuniform dz_profile")
 
         # P2: Warn on abrupt grading in user-supplied dz_profile
         if dz_profile is not None and len(dz_profile) > 1:
@@ -447,12 +440,12 @@ class Simulation:
                 f"pec_faces must be subset of {_valid_faces}, "
                 f"got invalid: {self._pec_faces - _valid_faces}")
         if boundary == "pec" and self._pec_faces:
-            raise ValueError("pec_faces is only meaningful with boundary='cpml'")
+            raise ValueError("pec_faces is only meaningful with boundary='cpml' or boundary='upml'")
 
         self._freq_max = freq_max
         self._domain = domain
         self._boundary = boundary
-        self._cpml_layers = cpml_layers if boundary == "cpml" else 0
+        self._cpml_layers = cpml_layers if boundary in ("cpml", "upml") else 0
         self._cpml_kappa_max = cpml_kappa_max
         self._dx = dx
         self._mode = mode
@@ -464,6 +457,8 @@ class Simulation:
         if self._solver == "adi":
             if self._mode not in ("2d_tmz", "3d"):
                 raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
+            if self._boundary == "upml":
+                raise ValueError("solver='adi' does not support boundary='upml'")
             if self._boundary not in ("pec", "cpml"):
                 raise ValueError("solver='adi' supports boundary='pec' or 'cpml'")
             if self._dz_profile is not None:
@@ -1564,7 +1559,7 @@ class Simulation:
         # modes in dielectric waveguides see an impedance-matched absorber
         # (equivalent to UPML).  Each CPML face copies the interior-edge
         # slice outward, as if the geometry continued beyond the domain.
-        if self._boundary == "cpml" and self._cpml_layers > 0:
+        if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
             n = self._cpml_layers
             for arr_name in ("eps_r", "sigma", "mu_r"):
                 arr = locals()[arr_name]
@@ -2277,12 +2272,15 @@ class Simulation:
         import warnings as _w
 
         dx = self._dx or C0 / self._freq_max / 20.0
-        cpml_thickness = self._cpml_layers * dx if self._boundary == "cpml" else 0
+        cpml_thickness = self._cpml_layers * dx if self._boundary in ("cpml", "upml") else 0
+
+        if self._boundary == "upml" and self._refinement is not None:
+            raise ValueError("boundary='upml' does not support subgridding/refinement")
 
         # Per-axis CPML thickness (z may differ on non-uniform mesh)
         # Faces with pec_faces override have zero effective CPML thickness
         cpml_thick_xyz = [cpml_thickness, cpml_thickness, cpml_thickness]
-        if self._dz_profile is not None and self._boundary == "cpml" and self._cpml_layers > 0:
+        if self._dz_profile is not None and self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
             n = min(self._cpml_layers, len(self._dz_profile))
             cpml_thick_xyz[2] = float(sum(self._dz_profile[:n]))
         # Zero out thickness for PEC-overridden faces
@@ -2298,7 +2296,8 @@ class Simulation:
             )
             self._dz_profile = None
 
-        # P1.2/P1.3: Probe or source inside CPML region
+        # P1.2/P1.3: Probe or source inside absorber region
+        absorber_label = "UPML" if self._boundary == "upml" else "CPML"
         if cpml_thickness > 0:
             for pe in self._probes:
                 pos = pe.position
@@ -2307,8 +2306,8 @@ class Simulation:
                     ct = cpml_thick_xyz[min(ax, 2)]
                     if coord < ct * 0.5 or coord > domain_extent - ct * 0.5:
                         _w.warn(
-                            f"Probe at {pos} is near/inside CPML region "
-                            f"(CPML {'xyz'[ax]}-thickness={ct*1e3:.1f}mm). "
+                            f"Probe at {pos} is near/inside {absorber_label} region "
+                            f"({absorber_label} {'xyz'[ax]}-thickness={ct*1e3:.1f}mm). "
                             f"Signal will be attenuated. Move probe to interior.",
                             stacklevel=3,
                         )
@@ -2321,14 +2320,14 @@ class Simulation:
                     ct = cpml_thick_xyz[min(ax, 2)]
                     if coord < ct * 0.5 or coord > domain_extent - ct * 0.5:
                         _w.warn(
-                            f"Source/port at {pos} is near/inside CPML region "
-                            f"(CPML {'xyz'[ax]}-thickness={ct*1e3:.1f}mm). "
+                            f"Source/port at {pos} is near/inside {absorber_label} region "
+                            f"({absorber_label} {'xyz'[ax]}-thickness={ct*1e3:.1f}mm). "
                             f"Energy will be absorbed. Move source to interior.",
                             stacklevel=3,
                         )
                         break
 
-        # P1.4: NTFF box overlap with CPML
+        # P1.4: NTFF box overlap with absorber
         if self._ntff is not None and cpml_thickness > 0:
             corner_lo, corner_hi, _ = self._ntff
             for ax in range(3):
@@ -2336,7 +2335,7 @@ class Simulation:
                 ct = cpml_thick_xyz[min(ax, 2)]
                 if corner_lo[ax] < ct or corner_hi[ax] > domain_ext - ct:
                     _w.warn(
-                        f"NTFF box extends into CPML region along "
+                        f"NTFF box extends into {absorber_label} region along "
                         f"{'xyz'[ax]}-axis. Far-field results will be "
                         f"corrupted. Shrink NTFF box to interior.",
                         stacklevel=3,
@@ -2357,7 +2356,7 @@ class Simulation:
                 self._ntff_min_steps_hint = min_steps_for_ntff
 
         # P1.9: Dielectric material extending into CPML region
-        if cpml_thickness > 0:
+        if cpml_thickness > 0 and self._boundary == "cpml":
             for entry in self._geometry:
                 if entry.material_name == "pec":
                     continue
@@ -2370,7 +2369,7 @@ class Simulation:
                                 _w.warn(
                                     f"Material '{entry.material_name}' extends "
                                     f"into CPML region along {'xyz'[ax]}-axis. "
-                                    f"CPML assumes vacuum — dielectric in PML "
+                                    f"{absorber_label} assumes vacuum — dielectric in absorber "
                                     f"causes increased reflections.",
                                     stacklevel=3,
                                 )
@@ -2402,7 +2401,7 @@ class Simulation:
         if self._boundary == "pec" and self._ntff is not None:
             _w.warn(
                 "PEC boundary with NTFF far-field: PEC reflects all energy "
-                "back into domain. Use boundary='cpml' for open structures "
+                "back into domain. Use boundary='cpml' or boundary='upml' for open structures "
                 "(antennas, scatterers).",
                 stacklevel=3,
             )
@@ -2464,7 +2463,6 @@ class Simulation:
 
             # P2.6: CPML z-thickness on non-uniform mesh
             if self._boundary == "cpml" and self._cpml_layers > 0:
-                dz_min = float(min(self._dz_profile[:self._cpml_layers]))
                 cpml_z_thick = sum(float(d) for d in self._dz_profile[:self._cpml_layers])
                 if cpml_z_thick < cpml_thickness * 0.3:
                     _w.warn(
@@ -2525,6 +2523,8 @@ class Simulation:
         """Validate that the current simulation is compatible with the ADI path."""
         if self._mode not in ("2d_tmz", "3d"):
             raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
+        if self._boundary == "upml":
+            raise ValueError("solver='adi' does not support boundary='upml'")
         if self._boundary not in ("pec", "cpml"):
             raise ValueError("solver='adi' supports boundary='pec' or 'cpml'")
         if self._refinement is not None:
@@ -3032,6 +3032,8 @@ class Simulation:
 
         if self._solver == "adi" and devices is not None and len(devices) > 1:
             raise ValueError("solver='adi' does not support distributed execution")
+        if self._boundary == "upml" and devices is not None and len(devices) > 1:
+            raise ValueError("boundary='upml' does not support distributed execution")
 
         # ---- Distributed multi-device path ----
         if devices is not None and len(devices) > 1:

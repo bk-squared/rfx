@@ -156,7 +156,7 @@ def run_uniform(
             # Auto-select source type based on boundary conditions:
             # - CPML (open): Cb/dx normalized (prevents DC on PEC surface)
             # - PEC (closed): raw field add (broadband, exact cavity modes)
-            if sim._boundary == "cpml":
+            if sim._boundary in ("cpml", "upml"):
                 sources.append(make_j_source(grid, pe.position, pe.component,
                                              pe.waveform, n_steps, materials))
             else:
