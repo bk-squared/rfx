@@ -2287,14 +2287,12 @@ class Simulation:
         if "z_lo" in self._pec_faces:
             cpml_thick_xyz[2] = 0  # z_lo is PEC, no CPML absorption there
 
-        # P1.1: Floquet + non-uniform mesh — suppress NU, warn user
+        # P1.1: Floquet + non-uniform mesh — no silent fallback allowed
         if self._floquet_ports and self._dz_profile is not None:
-            _w.warn(
-                "Floquet ports are incompatible with non-uniform z mesh. "
-                "Falling back to uniform grid. Set dx explicitly to suppress.",
-                stacklevel=3,
+            raise ValueError(
+                "Floquet ports do not support non-uniform z mesh (dz_profile). "
+                "Use the uniform reference lane and set dx explicitly."
             )
-            self._dz_profile = None
 
         # P1.2/P1.3: Probe or source inside absorber region
         absorber_label = "UPML" if self._boundary == "upml" else "CPML"
@@ -2415,50 +2413,42 @@ class Simulation:
             )
 
         # ================================================================
-        # P2: Non-uniform mesh path limitations
+        # P2: Non-uniform mesh shadow-lane limitations
         # ================================================================
         if self._dz_profile is not None:
-            # P2.1: NTFF silently dropped on non-uniform path
+            # P2.1: NTFF unsupported on non-uniform path
             if self._ntff is not None:
-                _w.warn(
+                raise ValueError(
                     "NTFF far-field is not supported on non-uniform z mesh. "
-                    "The NTFF box will be silently ignored and "
-                    "result.ntff_data/ntff_box will be None. "
-                    "Use a uniform mesh for far-field computation.",
-                    stacklevel=3,
+                    "Use the uniform reference lane for far-field computation."
                 )
 
-            # P2.2: DFT plane probes silently dropped
+            # P2.2: DFT plane probes unsupported on non-uniform path
             if self._dft_planes:
-                _w.warn(
+                raise ValueError(
                     "DFT plane probes are not supported on non-uniform z mesh. "
-                    "Configured DFT planes will be silently ignored and "
-                    "result.dft_planes will be None.",
-                    stacklevel=3,
+                    "Use the uniform reference lane for DFT-plane workflows."
                 )
 
-            # P2.3: TFSF silently dropped
+            # P2.3: TFSF unsupported on non-uniform path
             if self._tfsf is not None:
-                _w.warn(
+                raise ValueError(
                     "TFSF plane-wave source is not supported on non-uniform z "
-                    "mesh. The source will be silently ignored.",
-                    stacklevel=3,
+                    "mesh. Use the uniform reference lane."
                 )
 
-            # P2.4: Waveguide ports silently dropped
+            # P2.4: Waveguide ports unsupported on non-uniform path
             if self._waveguide_ports:
-                _w.warn(
+                raise ValueError(
                     "Waveguide ports are not supported on non-uniform z mesh. "
-                    "Configured waveguide ports will be silently ignored.",
-                    stacklevel=3,
+                    "Use the uniform reference lane for waveguide workflows."
                 )
 
-            # P2.5: Lumped RLC silently dropped
+            # P2.5: Lumped RLC unsupported on non-uniform path
             if self._lumped_rlc:
-                _w.warn(
+                raise ValueError(
                     "Lumped RLC elements are not supported on non-uniform z "
-                    "mesh. Configured elements will be silently ignored.",
-                    stacklevel=3,
+                    "mesh. Use the uniform reference lane for RLC workflows."
                 )
 
             # P2.6: CPML z-thickness on non-uniform mesh
@@ -2754,8 +2744,10 @@ class Simulation:
 
         for pe in self._ports:
             if pe.impedance == 0.0:
+                from rfx.simulation import make_j_source
                 sources.append(
-                    make_source(grid, pe.position, pe.component, pe.waveform, n_steps)
+                    make_j_source(grid, pe.position, pe.component,
+                                  pe.waveform, n_steps, base_materials)
                 )
                 continue
 

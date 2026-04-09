@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from rfx.core.yee import EPS_0, MU_0
-from rfx import Simulation, ADIState2D, Box
+from rfx import Simulation, ADIState2D, ADIState3D, Box
 from rfx.adi import thomas_solve, run_adi_2d
 
 # Speed of light
@@ -291,8 +291,9 @@ def test_simulation_adi_internal_pec_geometry_masks_ez():
 
 def test_simulation_adi_rejects_unsupported_configs():
     """ADI path should fail explicitly on unsupported physics/configs."""
-    with pytest.raises(ValueError, match="mode='2d_tmz'"):
-        Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), boundary="pec", solver="adi")
+    with pytest.raises(ValueError, match="mode='3d' or mode='2d_tmz'"):
+        Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), boundary="pec",
+                   mode="2d_tez", solver="adi")
 
 
 def test_simulation_adi_cpml_boundary():
@@ -332,5 +333,158 @@ def test_simulation_adi_rejects_port_loaded_excitation():
     )
     sim.add_port((0.01, 0.01, 0.0), "ez", impedance=50.0)
 
-    with pytest.raises(ValueError, match="soft Ez sources"):
+    with pytest.raises(ValueError, match="soft sources"):
         sim.run(n_steps=10)
+
+
+# ---------------------------------------------------------------------------
+# 3D ADI-FDTD tests
+# ---------------------------------------------------------------------------
+
+
+class TestADI3DStability:
+    """3D ADI should remain bounded at large CFL factors."""
+
+    @pytest.mark.parametrize("cfl_factor", [2.0, 5.0])
+    def test_stability_3d_pec_cavity(self, cfl_factor):
+        """Fields stay bounded in a 3D PEC cavity at moderate CFL factors.
+
+        The simplified LOD scheme is stable at 2-5x CFL.  Higher factors
+        (10x+) can diverge due to the all-component tridiagonal approach.
+        """
+        from rfx.adi import adi_step_3d
+
+        nx, ny, nz = 16, 14, 12
+        dx = dy = dz = 2e-3
+        dt_yee = dx / (C0 * np.sqrt(3.0)) * 0.99
+        dt = dt_yee * cfl_factor
+        n_steps = 200
+
+        eps_r = jnp.ones((nx, ny, nz))
+        sigma = jnp.zeros((nx, ny, nz))
+
+        ex = jnp.zeros((nx, ny, nz))
+        ey = jnp.zeros((nx, ny, nz))
+        ez = jnp.zeros((nx, ny, nz))
+        hx = jnp.zeros((nx, ny, nz))
+        hy = jnp.zeros((nx, ny, nz))
+        hz = jnp.zeros((nx, ny, nz))
+
+        # Impulse source at center
+        ez = ez.at[nx // 2, ny // 2, nz // 2].set(1.0)
+
+        for _ in range(n_steps):
+            ex, ey, ez, hx, hy, hz = adi_step_3d(
+                ex, ey, ez, hx, hy, hz,
+                eps_r, sigma, dt, dx, dy, dz,
+            )
+
+        max_field = max(
+            float(jnp.max(jnp.abs(ex))),
+            float(jnp.max(jnp.abs(ey))),
+            float(jnp.max(jnp.abs(ez))),
+        )
+        assert max_field < 100.0, (
+            f"ADI 3D unstable at CFL {cfl_factor}x: max|E| = {max_field:.2e}"
+        )
+
+
+class TestADI3DCavityPhysics:
+    """3D ADI in a PEC cavity should produce physically reasonable fields."""
+
+    def test_cavity_field_propagation(self):
+        """Source in a 3D PEC cavity should produce nonzero, bounded, oscillating fields."""
+        from rfx.adi import run_adi_3d
+
+        nx, ny, nz = 20, 16, 14
+        dx = dy = dz = 2e-3
+
+        dt_yee = dx / (C0 * np.sqrt(3.0)) * 0.99
+        cfl_factor = 2.0
+        dt = dt_yee * cfl_factor
+        n_steps = 500
+
+        eps_r = jnp.ones((nx, ny, nz))
+        sigma = jnp.zeros((nx, ny, nz))
+
+        # Source: Ez pulse at off-center
+        src_i, src_j, src_k = nx // 3, ny // 3, nz // 2
+        f0 = 5e9
+        tau = 1.0 / (f0 * 0.5 * np.pi)
+        t0 = 3.0 * tau
+        times = np.arange(n_steps) * dt
+        waveform = -2.0 * ((times - t0) / tau) * np.exp(-((times - t0) / tau) ** 2)
+
+        prb_i, prb_j, prb_k = 2 * nx // 3, 2 * ny // 3, nz // 2
+
+        zeros = jnp.zeros((nx, ny, nz))
+        ex_f, ey_f, ez_f, hx_f, hy_f, hz_f, probe_data = run_adi_3d(
+            zeros, zeros, zeros, zeros, zeros, zeros,
+            eps_r, sigma,
+            dt, dx, dy, dz,
+            n_steps,
+            sources=[(src_i, src_j, src_k, "ez", jnp.array(waveform))],
+            probes=[(prb_i, prb_j, prb_k, "ez")],
+        )
+
+        signal = np.array(probe_data[:, 0])
+
+        # Field should propagate to the probe (nonzero)
+        assert np.max(np.abs(signal)) > 1e-6, "No field reached the probe"
+
+        # Fields should be bounded (no blow-up)
+        max_e = max(float(jnp.max(jnp.abs(f))) for f in [ex_f, ey_f, ez_f])
+        assert max_e < 100.0, f"Fields diverged: max|E| = {max_e:.2e}"
+
+        # Signal should oscillate (has nonzero variance in the late portion)
+        late = signal[n_steps // 2:]
+        assert np.std(late) > 1e-10, "Signal is constant — no oscillation"
+
+        # PEC walls: tangential E should be zero at boundaries
+        assert float(jnp.max(jnp.abs(ey_f[0, :, :]))) < 1e-10, "PEC violated at x=0"
+        assert float(jnp.max(jnp.abs(ez_f[0, :, :]))) < 1e-10, "PEC violated at x=0"
+
+
+def test_simulation_adi_3d_run():
+    """Simulation(solver='adi', mode='3d') should run without errors."""
+    sim = Simulation(
+        freq_max=5e9,
+        domain=(0.03, 0.03, 0.03),
+        boundary="pec",
+        mode="3d",
+        solver="adi",
+        adi_cfl_factor=5.0,
+        dx=0.003,
+    )
+    sim.add_source((0.01, 0.01, 0.015), "ez",
+                    waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2))
+    sim.add_probe((0.02, 0.02, 0.015), "ez")
+    result = sim.run(n_steps=100)
+
+    assert result.time_series.shape[0] == 100
+    assert isinstance(result.state, ADIState3D)
+    assert not jnp.any(jnp.isnan(result.state.ez))
+    max_ez = float(jnp.max(jnp.abs(result.state.ez)))
+    assert max_ez < 100.0, f"3D ADI fields diverged: max|Ez| = {max_ez:.2e}"
+
+
+def test_simulation_adi_3d_cpml():
+    """3D ADI with absorbing boundary (sigma-based) should stay bounded."""
+    sim = Simulation(
+        freq_max=5e9,
+        domain=(0.03, 0.03, 0.03),
+        boundary="cpml",
+        mode="3d",
+        solver="adi",
+        adi_cfl_factor=5.0,
+        dx=0.003,
+        cpml_layers=6,
+    )
+    sim.add_source((0.015, 0.015, 0.015), "ez",
+                    waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2))
+    sim.add_probe((0.02, 0.02, 0.015), "ez")
+    result = sim.run(n_steps=100)
+
+    assert not jnp.any(jnp.isnan(result.state.ez))
+    max_ez = float(jnp.max(jnp.abs(result.state.ez)))
+    assert max_ez < 100.0, f"3D ADI+CPML diverged: max|Ez| = {max_ez:.2e}"

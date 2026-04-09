@@ -106,11 +106,17 @@ class ModulatedGaussian:
         Fractional bandwidth (0–1). Default 0.5.
     amplitude : float
         Peak amplitude. Default 1.0.
+    cutoff : float
+        Number of tau before the envelope peak. Controls how gradually
+        the source turns on. Default 5.0 (Meep convention: source starts
+        at t=0 and peaks at t = cutoff * tau).  Use 3.0 for a faster
+        onset with a slightly non-zero initial amplitude.
     """
 
     f0: float
     bandwidth: float = 0.5
     amplitude: float = 1.0
+    cutoff: float = 5.0
 
     @property
     def tau(self) -> float:
@@ -118,7 +124,7 @@ class ModulatedGaussian:
 
     @property
     def t0(self) -> float:
-        return 3.0 * self.tau
+        return self.cutoff * self.tau
 
     def __call__(self, t: float) -> float:
         envelope = jnp.exp(-((t - self.t0) / self.tau) ** 2)

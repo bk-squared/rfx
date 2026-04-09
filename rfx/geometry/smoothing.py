@@ -228,32 +228,61 @@ def compute_smoothed_eps(
     # Also track the scalar (staircased) eps for interior assignment
     eps_scalar = jnp.full(grid.shape, background_eps, dtype=jnp.float32)
 
+    # Group shapes by eps_r so overlapping same-material shapes use
+    # union SDF (min of individual SDFs) instead of double-smoothing.
+    from collections import OrderedDict
+    groups: OrderedDict[float, list] = OrderedDict()
     for shape, eps_r in shapes:
-        sdf_fn = _get_sdf_fn(shape)
+        groups.setdefault(eps_r, []).append(shape)
 
-        if sdf_fn is None:
-            # Fallback: no SDF available, use staircased mask
+    for eps_r, group_shapes in groups.items():
+        # Separate SDF-capable shapes from fallback shapes
+        sdf_shapes = []
+        fallback_shapes = []
+        for shape in group_shapes:
+            sdf_fn = _get_sdf_fn(shape)
+            if sdf_fn is not None:
+                sdf_shapes.append((shape, sdf_fn))
+            else:
+                fallback_shapes.append(shape)
+
+        # Handle fallback shapes (no SDF) with staircased mask
+        for shape in fallback_shapes:
             mask = shape.mask(grid)
             eps_ex = jnp.where(mask, eps_r, eps_ex)
             eps_ey = jnp.where(mask, eps_r, eps_ey)
             eps_ez = jnp.where(mask, eps_r, eps_ez)
             eps_scalar = jnp.where(mask, eps_r, eps_scalar)
+
+        if not sdf_shapes:
             continue
 
-        # For each E-component, evaluate SDF at the Yee-offset position
-        # Ex at (i+0.5, j, k)
-        sdf_ex = sdf_fn(X + half, Y, Z, shape)
-        f_ex, bnd_ex, nx_ex, ny_ex, nz_ex = _compute_fill_fraction_and_normal(sdf_ex, dx)
+        # Compute union SDF for same-material shapes: min(sdf1, sdf2, ...)
+        # For each E-component position, take the minimum SDF across all shapes.
+        sdf_ex_union = None
+        sdf_ey_union = None
+        sdf_ez_union = None
 
-        # Ey at (i, j+0.5, k)
-        sdf_ey = sdf_fn(X, Y + half, Z, shape)
-        f_ey, bnd_ey, nx_ey, ny_ey, nz_ey = _compute_fill_fraction_and_normal(sdf_ey, dx)
+        for shape, sdf_fn in sdf_shapes:
+            s_ex = sdf_fn(X + half, Y, Z, shape)
+            s_ey = sdf_fn(X, Y + half, Z, shape)
+            s_ez = sdf_fn(X, Y, Z + half, shape)
 
-        # Ez at (i, j, k+0.5)
-        sdf_ez = sdf_fn(X, Y, Z + half, shape)
-        f_ez, bnd_ez, nx_ez, ny_ez, nz_ez = _compute_fill_fraction_and_normal(sdf_ez, dx)
+            if sdf_ex_union is None:
+                sdf_ex_union = s_ex
+                sdf_ey_union = s_ey
+                sdf_ez_union = s_ez
+            else:
+                sdf_ex_union = jnp.minimum(sdf_ex_union, s_ex)
+                sdf_ey_union = jnp.minimum(sdf_ey_union, s_ey)
+                sdf_ez_union = jnp.minimum(sdf_ez_union, s_ez)
 
-        # The "outside" eps is whatever was there before (could be another shape)
+        # Compute fill fraction and normal from the union SDF
+        f_ex, bnd_ex, nx_ex, ny_ex, nz_ex = _compute_fill_fraction_and_normal(sdf_ex_union, dx)
+        f_ey, bnd_ey, nx_ey, ny_ey, nz_ey = _compute_fill_fraction_and_normal(sdf_ey_union, dx)
+        f_ez, bnd_ez, nx_ez, ny_ez, nz_ez = _compute_fill_fraction_and_normal(sdf_ez_union, dx)
+
+        # The "outside" eps is whatever was there before (could be another material)
         eps_outside_ex = eps_ex
         eps_outside_ey = eps_ey
         eps_outside_ez = eps_ez

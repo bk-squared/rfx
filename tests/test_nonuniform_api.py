@@ -2,6 +2,7 @@
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx.api import Simulation
 from rfx.auto_config import auto_configure
@@ -108,6 +109,80 @@ class TestSimulationNonUniform:
         assert result.dt > 0
         ts = np.asarray(result.time_series)
         assert ts.shape[0] == 20
+
+    def test_nonuniform_rejects_ntff(self):
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.02, 0.02, 0.01),
+            dx=0.5e-3,
+            dz_profile=dz,
+            boundary="cpml",
+        )
+        sim.add_source((0.01, 0.01, 0.001), "ez")
+        sim.add_ntff_box(
+            corner_lo=(0.002, 0.002, 0.001),
+            corner_hi=(0.018, 0.018, 0.004),
+            freqs=[2.4e9],
+        )
+        with pytest.raises(ValueError, match="NTFF far-field is not supported"):
+            sim.run(n_steps=20)
+
+    def test_nonuniform_rejects_dft_plane_probe(self):
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.02, 0.02, 0.01),
+            dx=0.5e-3,
+            dz_profile=dz,
+            boundary="cpml",
+        )
+        sim.add_source((0.01, 0.01, 0.001), "ez")
+        sim.add_dft_plane_probe(axis="x", coordinate=0.01)
+        with pytest.raises(ValueError, match="DFT plane probes are not supported"):
+            sim.run(n_steps=20)
+
+    def test_nonuniform_rejects_tfsf(self):
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        sim = Simulation(
+            freq_max=8e9,
+            domain=(0.08, 0.006, 0.006),
+            boundary="cpml",
+            cpml_layers=8,
+            dx=0.001,
+            dz_profile=dz,
+        )
+        sim.add_tfsf_source(f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3)
+        with pytest.raises(ValueError, match="TFSF plane-wave source is not supported"):
+            sim.run(n_steps=20, compute_s_params=False)
+
+    def test_nonuniform_rejects_waveguide_ports(self):
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 12)
+        sim = Simulation(
+            freq_max=10e9,
+            domain=(0.12, 0.04, 0.02),
+            boundary="cpml",
+            cpml_layers=10,
+            dx=0.002,
+            dz_profile=dz,
+        )
+        sim.add_waveguide_port(0.01)
+        with pytest.raises(ValueError, match="Waveguide ports are not supported"):
+            sim.run(n_steps=20, compute_s_params=False)
+
+    def test_nonuniform_rejects_lumped_rlc(self):
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.02, 0.02, 0.01),
+            dx=0.5e-3,
+            dz_profile=dz,
+            boundary="cpml",
+        )
+        sim.add_source((0.01, 0.01, 0.001), "ez")
+        sim.add_lumped_rlc(position=(0.01, 0.01, 0.001), component="ez", R=50.0)
+        with pytest.raises(ValueError, match="Lumped RLC elements are not supported"):
+            sim.run(n_steps=20)
 
 
 class TestAutoConfigNonUniform:
