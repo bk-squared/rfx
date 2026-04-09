@@ -1,17 +1,21 @@
 """Uniaxial PML (UPML) helpers for uniform-grid Yee updates.
 
-Component-aware anisotropic PML using direct E/H conductivity with
-material-scaled loss: σ_pml / (ε_r · ε₀).  This naturally gives stronger
-damping in vacuum (correct) and gentler damping in dielectric (prevents
-oscillation), matching the guided-mode impedance.
+D/B-equivalent formulation: PML conductivity is applied as σ/ε₀ (material-
+independent), matching Meep's approach where PML acts on D/B fields with
+the constitutive relation D→E handling the material.
 
-For vacuum cells where loss > 1 (Ca < 0), the loss is capped at 0.95
-to keep Ca > 0.  This limits outermost-cell absorption but maintains
-stability without D/B auxiliary fields.
+Mathematically equivalent to:
+  D^{n+1} = Ca_D · D^n + Cb_D · curl(H)    (PML on D, material-independent)
+  E^{n+1} = D^{n+1} / (ε_r · ε₀)           (constitutive relation)
 
-Achieves SWR ~1.09 for eps=12 dielectric waveguide (vs CPML ~1.13,
-Meep UPML ~1.01).  The remaining gap to Meep requires true D/B-field
-UPML where Ca < 0 is stable.
+Expressed as a direct E update:
+  E^{n+1} = Ca_D · E^n + Cb_D/(ε_r·ε₀) · curl(H)
+
+Ca_D = (1 − σ·dt/(2ε₀)) / (1 + σ·dt/(2ε₀))  — can be negative, which is
+stable under Crank-Nicolson (|Ca_D| < 1 always).
+
+This gives material-independent PML absorption: dielectric and vacuum cells
+get the SAME PML damping, matching Meep's UPML behavior.
 """
 
 from __future__ import annotations
@@ -88,16 +92,26 @@ def init_upml(
     materials: MaterialArrays,
     *,
     axes: str = "xyz",
+    aniso_eps=None,
 ) -> UPMLCoeffs:
     """Build static UPML coefficients for uniform-grid Yee updates.
 
-    Per-component anisotropic damping:
-    - E_x / H_x use σ from y + z PML
-    - E_y / H_y use σ from x + z PML
-    - E_z / H_z use σ from x + y PML
+    D/B-equivalent formulation where PML loss is material-independent:
+    - PML loss = σ_pml · dt / (2·ε₀)  — same for vacuum and dielectric
+    - Material conductivity loss = σ_mat · dt / (2·ε_r·ε₀)
+    - Ca = (1 − loss) / (1 + loss) — NO cap, can be negative (stable)
 
-    Loss = σ_pml / (ε_r · ε₀) — material-scaled so dielectric cells get
-    smooth decay (Ca > 0) while vacuum cells may hit the cap.
+    Per-component anisotropic damping:
+    - E_x / H_x use σ_pml from y + z PML
+    - E_y / H_y use σ_pml from x + z PML
+    - E_z / H_z use σ_pml from x + y PML
+
+    Parameters
+    ----------
+    aniso_eps : tuple of 3 arrays, optional
+        (eps_ex, eps_ey, eps_ez) per-component relative permittivity from
+        subpixel smoothing.  When provided, E-field coefficients use
+        per-component eps instead of the scalar materials.eps_r.
     """
 
     sigma_x = (
@@ -116,46 +130,73 @@ def init_upml(
         else jnp.zeros(grid.shape, dtype=jnp.float32)
     )
 
-    eps_abs = materials.eps_r * jnp.float32(EPS_0)
+    # Scale sigma to match Meep's convention.
+    # Textbook: σ_max = -ln(R)·(m+1)/(2·η·d)     [continuous theory: R_cont = R_target]
+    # Meep:     σ_max = -ln(R)·(m+1)/(4·η·dx)     [over-designed:    R_cont = R_target^(n/2)]
+    # Ratio: n_layers/2.  This compensates for discretization error so that
+    # the DISCRETE reflection ≈ R_target rather than R_target^(2/n).
+    n_pml = grid.cpml_layers
+    sigma_scale = jnp.float32(max(n_pml, 1) / 2.0)
+    sigma_x = sigma_x * sigma_scale
+    sigma_y = sigma_y * sigma_scale
+    sigma_z = sigma_z * sigma_scale
+
     mu_abs = materials.mu_r * jnp.float32(MU_0)
     sigma_mat = materials.sigma.astype(jnp.float32)
     dt = jnp.float32(grid.dt)
     dx = jnp.float32(grid.dx)
+    eps_0 = jnp.float32(EPS_0)
 
-    # Combined material + PML σ, divided by local ε_r·ε₀.
-    # Capped at 0.95 to prevent Ca < 0 in vacuum outermost cells.
-    sigma_ex = sigma_mat + sigma_y + sigma_z
-    sigma_ey = sigma_mat + sigma_x + sigma_z
-    sigma_ez = sigma_mat + sigma_x + sigma_y
+    # Per-component absolute permittivity (subpixel smoothing or scalar)
+    if aniso_eps is not None:
+        eps_ex, eps_ey, eps_ez = aniso_eps
+        eps_abs_ex = eps_ex.astype(jnp.float32) * jnp.float32(EPS_0)
+        eps_abs_ey = eps_ey.astype(jnp.float32) * jnp.float32(EPS_0)
+        eps_abs_ez = eps_ez.astype(jnp.float32) * jnp.float32(EPS_0)
+    else:
+        eps_abs_scalar = materials.eps_r * jnp.float32(EPS_0)
+        eps_abs_ex = eps_abs_scalar
+        eps_abs_ey = eps_abs_scalar
+        eps_abs_ez = eps_abs_scalar
 
-    def _e_coeffs(sigma_comp):
-        loss = sigma_comp * dt / (jnp.float32(2.0) * eps_abs)
-        loss = jnp.minimum(loss, jnp.float32(0.95))
+    # PML σ per component (perpendicular directions only)
+    sigma_pml_ex = sigma_y + sigma_z
+    sigma_pml_ey = sigma_x + sigma_z
+    sigma_pml_ez = sigma_x + sigma_y
+
+    def _e_coeffs(sigma_pml_comp, eps_abs_comp):
+        # D/B-equivalent: PML loss is material-independent (σ/ε₀)
+        # Material conductivity loss uses local ε_r·ε₀
+        loss_pml = sigma_pml_comp * dt / (jnp.float32(2.0) * eps_0)
+        loss_mat = sigma_mat * dt / (jnp.float32(2.0) * eps_abs_comp)
+        loss = loss_pml + loss_mat
+        # NO cap — Ca < 0 is stable (|Ca| < 1 always, Crank-Nicolson)
         denom = jnp.float32(1.0) + loss
         ca = (jnp.float32(1.0) - loss) / denom
-        cb = (dt / eps_abs) / denom
+        cb = (dt / eps_abs_comp) / denom
         return ca.astype(jnp.float32), cb.astype(jnp.float32)
 
-    ca_ex, cb_ex = _e_coeffs(sigma_ex)
-    ca_ey, cb_ey = _e_coeffs(sigma_ey)
-    ca_ez, cb_ez = _e_coeffs(sigma_ez)
+    ca_ex, cb_ex = _e_coeffs(sigma_pml_ex, eps_abs_ex)
+    ca_ey, cb_ey = _e_coeffs(sigma_pml_ey, eps_abs_ey)
+    ca_ez, cb_ez = _e_coeffs(sigma_pml_ez, eps_abs_ez)
 
-    # Matched magnetic conductivity (impedance matched)
-    sigma_hx = (sigma_y + sigma_z) * (mu_abs / eps_abs)
-    sigma_hy = (sigma_x + sigma_z) * (mu_abs / eps_abs)
-    sigma_hz = (sigma_x + sigma_y) * (mu_abs / eps_abs)
+    # H-field: impedance-matched PML (same loss as E: σ_pml·dt/(2ε₀))
+    sigma_pml_hx = sigma_y + sigma_z
+    sigma_pml_hy = sigma_x + sigma_z
+    sigma_pml_hz = sigma_x + sigma_y
 
-    def _h_coeffs(sigma_comp):
-        loss = sigma_comp * dt / (jnp.float32(2.0) * mu_abs)
-        loss = jnp.minimum(loss, jnp.float32(0.95))
+    def _h_coeffs(sigma_pml_comp):
+        # Impedance matched: loss_B = σ_pml·dt/(2ε₀) = loss_D
+        loss = sigma_pml_comp * dt / (jnp.float32(2.0) * eps_0)
+        # NO cap
         denom = jnp.float32(1.0) + loss
         da = (jnp.float32(1.0) - loss) / denom
         db = (dt / mu_abs) / denom
         return da.astype(jnp.float32), db.astype(jnp.float32)
 
-    da_hx, db_hx = _h_coeffs(sigma_hx)
-    da_hy, db_hy = _h_coeffs(sigma_hy)
-    da_hz, db_hz = _h_coeffs(sigma_hz)
+    da_hx, db_hx = _h_coeffs(sigma_pml_hx)
+    da_hy, db_hy = _h_coeffs(sigma_pml_hy)
+    da_hz, db_hz = _h_coeffs(sigma_pml_hz)
 
     return UPMLCoeffs(
         ca_ex=ca_ex, ca_ey=ca_ey, ca_ez=ca_ez,

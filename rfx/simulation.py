@@ -560,7 +560,8 @@ def run(
         carry_init["cpml"] = cpml_state
     elif use_upml:
         from rfx.boundaries.upml import init_upml, apply_upml_e, apply_upml_h
-        upml_coeffs = init_upml(grid, materials, axes=cpml_axes)
+        upml_coeffs = init_upml(grid, materials, axes=cpml_axes,
+                                aniso_eps=aniso_eps)
 
     if use_debye:
         debye_coeffs, debye_state = debye
@@ -699,8 +700,8 @@ def run(
                     tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], dx, dt)
 
             if use_upml:
-                if use_debye or use_lorentz or aniso_eps is not None:
-                    raise ValueError("boundary='upml' does not yet support dispersion or anisotropic eps")
+                if use_debye or use_lorentz:
+                    raise ValueError("boundary='upml' does not yet support dispersion")
                 st = apply_upml_e(st, upml_coeffs, periodic=periodic)
                 debye_new = None
                 lorentz_new = None
@@ -1114,7 +1115,8 @@ def run_until_decay(
         carry["cpml"] = cpml_state
     elif use_upml:
         from rfx.boundaries.upml import init_upml, apply_upml_e, apply_upml_h
-        upml_coeffs = init_upml(grid, materials, axes=cpml_axes)
+        upml_coeffs = init_upml(grid, materials, axes=cpml_axes,
+                                aniso_eps=aniso_eps)
 
     if use_debye:
         debye_coeffs, debye_state = debye
@@ -1226,8 +1228,8 @@ def run_until_decay(
                 tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry_in["tfsf"], dx, dt)
 
         if use_upml:
-            if use_debye or use_lorentz or aniso_eps is not None:
-                raise ValueError("boundary='upml' does not yet support dispersion or anisotropic eps")
+            if use_debye or use_lorentz:
+                raise ValueError("boundary='upml' does not yet support dispersion")
             st = apply_upml_e(st, upml_coeffs, periodic=periodic)
             debye_new = None
             lorentz_new = None
