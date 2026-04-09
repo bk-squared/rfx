@@ -132,10 +132,10 @@ def _compute_fill_fraction_and_normal(
     f = jnp.clip(0.5 - sdf_vals / dx, 0.0, 1.0)
 
     # Gradient of SDF gives the outward normal
-    # Use central differences
-    grad_x = jnp.gradient(sdf_vals, dx, axis=0)
-    grad_y = jnp.gradient(sdf_vals, dx, axis=1)
-    grad_z = jnp.gradient(sdf_vals, dx, axis=2)
+    # Use central differences; skip axes with size 1 (2D modes)
+    grad_x = jnp.gradient(sdf_vals, dx, axis=0) if sdf_vals.shape[0] > 1 else jnp.zeros_like(sdf_vals)
+    grad_y = jnp.gradient(sdf_vals, dx, axis=1) if sdf_vals.shape[1] > 1 else jnp.zeros_like(sdf_vals)
+    grad_z = jnp.gradient(sdf_vals, dx, axis=2) if sdf_vals.shape[2] > 1 else jnp.zeros_like(sdf_vals)
 
     grad_mag = jnp.sqrt(grad_x**2 + grad_y**2 + grad_z**2 + 1e-30)
     nx = grad_x / grad_mag

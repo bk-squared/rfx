@@ -10,29 +10,43 @@ Method: single-run input/output flux normalization.
   This eliminates cross-run radiation contamination that afflicts the
   naive two-run approach.
 
+Boundary selection:
+  - Default: `upml`
+  - Override with `RFX_BOUNDARY=cpml` for the material-aware CPML baseline
+
+Run this script with JAX x64 enabled. The flux monitor accumulators need
+double precision for stable SI-unit spectra:
+
+  JAX_ENABLE_X64=1 python examples/crossval/01_meep_waveguide_bend.py
+
 Parameters (normalized, a = 1 um):
   eps=12, w=1, fcen=0.15, fwidth=0.1, resolution=10
 
-Material-aware CPML extends dielectric into the PML region and uses
-local eps_r in the CPML correction (UPML-equivalent), with Meep's
-sigma formula (R_asymptotic=1e-15, quadratic grading).
+UPML uses D/B-equivalent material-independent PML loss (σ/ε₀ instead of
+σ/(ε_r·ε₀)) with Meep-matched sigma scaling (n_layers/2 factor).
+Subpixel smoothing enabled: per-component anisotropic epsilon at
+dielectric boundaries (arithmetic parallel / harmonic perpendicular).
+Sigma profile: R_asymptotic=1e-15, quadratic grading.
 
 PASS criteria:
   1. Smoothed mean T in [0.3, 1.0]
-  2. Straight self-T in [0.9, 1.05] (flux conservation check)
-  3. |rfx − Meep| < 0.20 (single-run method comparison)
+  2. Straight self-T in [0.95, 1.05] (flux conservation check)
+  3. |rfx − Meep| < 0.10 (single-run method comparison)
 
 Reference: https://meep.readthedocs.io/en/latest/Python_Tutorials/Basics/
 
 Save: examples/crossval/01_meep_waveguide_bend.png
 """
 
+import os
+import time
+
+os.environ.setdefault("JAX_ENABLE_X64", "1")
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import os
-import time
 
 from scipy.ndimage import uniform_filter1d
 from rfx import Simulation, Box, GaussianPulse, flux_spectrum
@@ -54,6 +68,11 @@ fcen = 0.15 * C0 / a
 fwidth = 0.1 * C0 / a
 n_freqs = 200
 freqs = np.linspace(0.10 * C0 / a, 0.20 * C0 / a, n_freqs)
+boundary = os.environ.get("RFX_BOUNDARY", "upml").strip().lower()
+if boundary not in {"cpml", "upml"}:
+    raise ValueError(
+        f"RFX_BOUNDARY must be 'cpml' or 'upml', got {boundary!r}"
+    )
 
 sx = 16.0 * a
 sy = 16.0 * a
@@ -68,8 +87,8 @@ print("=" * 60)
 print("Cross-Validation 01: Waveguide Bend (Meep Basics equivalent)")
 print("=" * 60)
 print(f"eps={eps_wg}, w={w_wg/a:.0f}a, res=10, {n_steps} steps")
-print(f"Domain: {sx/a:.0f}a x {sy/a:.0f}a, material-aware CPML ({cpml_n} cells)")
-print(f"Method: single-run input/output flux normalization")
+print(f"Domain: {sx/a:.0f}a x {sy/a:.0f}a, boundary={boundary} ({cpml_n} layers)")
+print("Method: single-run input/output flux normalization")
 print()
 
 
@@ -87,7 +106,7 @@ def add_line_source(sim, x, y_center, width):
 print("Run 1: Straight waveguide (self-calibration)...", flush=True)
 t0 = time.time()
 sim_s = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
-                   boundary="cpml", cpml_layers=cpml_n, mode="2d_tmz")
+                   boundary=boundary, cpml_layers=cpml_n, mode="2d_tmz")
 sim_s.add_material("wg", eps_r=eps_wg)
 sim_s.add(Box((0, wg_y - w_wg / 2, 0), (sx, wg_y + w_wg / 2, dx)),
           material="wg")
@@ -95,7 +114,7 @@ add_line_source(sim_s, src_x, wg_y, w_wg)
 sim_s.add_flux_monitor(axis="x", coordinate=4 * a, freqs=freqs, name="input")
 sim_s.add_flux_monitor(axis="x", coordinate=sx - pml - 5 * dx,
                        freqs=freqs, name="output")
-res_s = sim_s.run(n_steps=n_steps)
+res_s = sim_s.run(n_steps=n_steps, subpixel_smoothing=True)
 flux_in_s = np.array(flux_spectrum(res_s.flux_monitors["input"]))
 flux_out_s = np.array(flux_spectrum(res_s.flux_monitors["output"]))
 print(f"  {time.time()-t0:.1f}s")
@@ -106,7 +125,7 @@ print(f"  {time.time()-t0:.1f}s")
 print("Run 2: 90-degree bend...", flush=True)
 t0 = time.time()
 sim_b = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
-                   boundary="cpml", cpml_layers=cpml_n, mode="2d_tmz")
+                   boundary=boundary, cpml_layers=cpml_n, mode="2d_tmz")
 sim_b.add_material("wg", eps_r=eps_wg)
 sim_b.add(Box((0, wg_y - w_wg / 2, 0),
               (wg_x + w_wg / 2, wg_y + w_wg / 2, dx)), material="wg")
@@ -116,7 +135,7 @@ add_line_source(sim_b, src_x, wg_y, w_wg)
 sim_b.add_flux_monitor(axis="x", coordinate=4 * a, freqs=freqs, name="input")
 sim_b.add_flux_monitor(axis="y", coordinate=sy - pml - 5 * dx,
                        freqs=freqs, name="output")
-res_b = sim_b.run(n_steps=n_steps)
+res_b = sim_b.run(n_steps=n_steps, subpixel_smoothing=True)
 flux_in_b = np.array(flux_spectrum(res_b.flux_monitors["input"]))
 flux_out_b = np.array(flux_spectrum(res_b.flux_monitors["output"]))
 print(f"  {time.time()-t0:.1f}s")
@@ -197,18 +216,18 @@ else:
     print(f"\nFAIL: smoothed T = {mean_T:.4f} outside [0.3, 1.0]")
     PASS = False
 
-if 0.9 <= mean_self <= 1.05:
-    print(f"PASS: straight self-T = {mean_self:.4f} in [0.9, 1.05]")
+if 0.95 <= mean_self <= 1.05:
+    print(f"PASS: straight self-T = {mean_self:.4f} in [0.95, 1.05]")
 else:
-    print(f"FAIL: straight self-T = {mean_self:.4f} outside [0.9, 1.05]")
+    print(f"FAIL: straight self-T = {mean_self:.4f} outside [0.95, 1.05]")
     PASS = False
 
 if meep_mean is not None:
     gap = abs(mean_T - meep_mean)
-    if gap < 0.20:
-        print(f"PASS: |rfx - Meep| = {gap:.4f} < 0.20")
+    if gap < 0.10:
+        print(f"PASS: |rfx - Meep| = {gap:.4f} < 0.10")
     else:
-        print(f"FAIL: |rfx - Meep| = {gap:.4f} >= 0.20")
+        print(f"FAIL: |rfx - Meep| = {gap:.4f} >= 0.10")
         PASS = False
 
 # =============================================================================
@@ -216,7 +235,7 @@ if meep_mean is not None:
 # =============================================================================
 fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 fig.suptitle("Waveguide Bend Transmittance (Meep Basics equivalent)\n"
-             f"eps={eps_wg}, w=1a, res=10, material-aware CPML",
+             f"eps={eps_wg}, w=1a, res=10, boundary={boundary}",
              fontsize=13)
 
 # Panel 1: Straight self-T
