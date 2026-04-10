@@ -37,6 +37,9 @@ dashboard = ["streamlit>=1.30"]
 dev = ["pytest>=7.0", "pytest-xdist", "ruff"]
 all = ["rfx[optimization,visualization,dashboard,dev]"]
 
+[tool.setuptools.packages.find]
+include = ["rfx*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
