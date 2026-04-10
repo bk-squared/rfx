@@ -222,14 +222,16 @@ def init_tfsf(
 
     direction_sign = 1.0 if direction == "+x" else -1.0
 
+    fdtype = jnp.result_type(float)  # float32 normally, float64 with x64
+
     config = TFSFConfig(
         x_lo=x_lo,
         x_hi=x_hi,
         i0=i0,
         src_idx=src_idx,
         n_cpml=n_cpml_1d,
-        b_cpml=jnp.array(b_prof, dtype=jnp.float32),
-        c_cpml=jnp.array(c_prof, dtype=jnp.float32),
+        b_cpml=jnp.array(b_prof, dtype=fdtype),
+        c_cpml=jnp.array(c_prof, dtype=fdtype),
         src_amp=float(amplitude),
         src_t0=float(t0),
         src_tau=float(tau),
@@ -247,12 +249,12 @@ def init_tfsf(
     )
 
     state = TFSFState(
-        e1d=jnp.zeros(n_1d, dtype=jnp.float32),
-        h1d=jnp.zeros(n_1d, dtype=jnp.float32),
-        psi_e_lo=jnp.zeros(n_cpml_1d, dtype=jnp.float32),
-        psi_e_hi=jnp.zeros(n_cpml_1d, dtype=jnp.float32),
-        psi_h_lo=jnp.zeros(n_cpml_1d, dtype=jnp.float32),
-        psi_h_hi=jnp.zeros(n_cpml_1d, dtype=jnp.float32),
+        e1d=jnp.zeros(n_1d, dtype=fdtype),
+        h1d=jnp.zeros(n_1d, dtype=fdtype),
+        psi_e_lo=jnp.zeros(n_cpml_1d, dtype=fdtype),
+        psi_e_hi=jnp.zeros(n_cpml_1d, dtype=fdtype),
+        psi_h_lo=jnp.zeros(n_cpml_1d, dtype=fdtype),
+        psi_h_hi=jnp.zeros(n_cpml_1d, dtype=fdtype),
         step=jnp.array(0, dtype=jnp.int32),
     )
 

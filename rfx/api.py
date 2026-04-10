@@ -908,8 +908,10 @@ class Simulation:
             raise ValueError("TFSF plane-wave source requires boundary='cpml'")
         if self._cpml_layers <= 0:
             raise ValueError("TFSF plane-wave source requires cpml_layers > 0")
-        if self._mode != "3d":
-            raise ValueError("TFSF plane-wave source currently supports only mode='3d'")
+        if self._mode not in ("3d", "2d_tmz", "2d_tez"):
+            raise ValueError(
+                f"TFSF plane-wave source requires mode='3d', '2d_tmz', or '2d_tez', got {self._mode!r}"
+            )
         if self._periodic_axes:
             raise ValueError("TFSF plane-wave source is not supported with manual periodic-axis overrides")
         if self._ports:
