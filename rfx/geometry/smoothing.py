@@ -1,13 +1,27 @@
-"""Anisotropic subpixel smoothing at dielectric interfaces.
+"""Kottke tensor-averaged subpixel smoothing at dielectric interfaces.
 
-Implements the Meep-style averaging scheme: at Yee voxels that straddle a
-dielectric boundary, the effective permittivity depends on the interface
-orientation relative to each E-field component.
+Implements the Kottke–Farjadpour–Johnson scheme (PRE 77, 036612, 2008):
+at every Yee voxel that straddles a dielectric boundary the effective
+inverse-permittivity *tensor* is
 
-- **Parallel** to the interface: arithmetic mean  eps_par = f*eps1 + (1-f)*eps2
-- **Perpendicular** to the interface: harmonic mean  eps_perp = [f/eps1 + (1-f)/eps2]^{-1}
+    (ε_eff)⁻¹ = Pₙ [f/ε₁ + (1−f)/ε₂]  +  Pₜ / [f·ε₁ + (1−f)·ε₂]
 
-This gives second-order convergence instead of the first-order stairstepping.
+where  Pₙ = n̂·n̂ᵀ  is the projection onto the interface normal and
+Pₜ = I − Pₙ  is the tangential projection.  The diagonal elements of
+ε_eff are then extracted for each E-field component on the Yee grid.
+
+Three design improvements over the original rfx linear-SDF scheme:
+
+1. **Same-material union corner fix** — voxels fully inside the union
+   of same-material shapes get bulk ε directly; no gradient needed.
+
+2. **Analytic normals per shape** — Box (nearest face), Sphere
+   (radial), Cylinder (radial + axial); eliminates the central-
+   difference artefact at SDF union seams.
+
+3. **Full Kottke tensor** — replaces the scalar cos²/sin² mixing
+   formula with the proper 3×3 projection, giving second-order
+   convergence for arbitrarily oriented interfaces.
 """
 
 from __future__ import annotations
@@ -40,15 +54,11 @@ def _sdf_box(x, y, z, shape) -> jnp.ndarray:
     dy = jnp.abs(y - center[1]) - half[1]
     dz = jnp.abs(z - center[2]) - half[2]
 
-    # Outside distance
     ox = jnp.maximum(dx, 0.0)
     oy = jnp.maximum(dy, 0.0)
     oz = jnp.maximum(dz, 0.0)
     outside = jnp.sqrt(ox**2 + oy**2 + oz**2)
-
-    # Inside distance (negative)
     inside = jnp.minimum(jnp.maximum(jnp.maximum(dx, dy), dz), 0.0)
-
     return outside + inside
 
 
@@ -84,11 +94,127 @@ def _get_sdf_fn(shape: Shape):
 
 
 # ---------------------------------------------------------------------------
+# Analytic normals per shape (outward-pointing)
+# ---------------------------------------------------------------------------
+
+def _normal_sphere(x, y, z, shape):
+    """Analytic outward normal for a sphere: radial direction."""
+    cx, cy, cz = shape.center
+    dx = x - cx
+    dy = y - cy
+    dz = z - cz
+    r = jnp.sqrt(dx**2 + dy**2 + dz**2 + 1e-30)
+    return dx / r, dy / r, dz / r
+
+
+def _normal_box(x, y, z, shape):
+    """Analytic outward normal for an axis-aligned box.
+
+    At each point the normal is determined by which face is nearest
+    (the axis with the smallest penetration distance).
+    """
+    lo = jnp.array(shape.corner_lo)
+    hi = jnp.array(shape.corner_hi)
+    center = (lo + hi) / 2.0
+    half = (hi - lo) / 2.0
+
+    # Signed distance to each face pair (positive = outside that pair)
+    rx = jnp.abs(x - center[0]) - half[0]
+    ry = jnp.abs(y - center[1]) - half[1]
+    rz = jnp.abs(z - center[2]) - half[2]
+
+    # The nearest face corresponds to the axis with the largest
+    # (least-negative inside, or least-positive outside) component.
+    ax = jnp.abs(rx)
+    ay = jnp.abs(ry)
+    az = jnp.abs(rz)
+
+    # For interior points: nearest face = axis with *max* signed dist
+    # For exterior points: same logic (largest component dominates SDF)
+    max_r = jnp.maximum(jnp.maximum(rx, ry), rz)
+
+    # Use soft selection: pick the axis closest to the surface.
+    # For box interior, max_r < 0 and we want the axis where r is
+    # closest to zero (largest / least negative).
+    is_x = (rx >= ry) & (rx >= rz)
+    is_y = (ry > rx) & (ry >= rz)
+    # is_z = everything else
+
+    sign_x = jnp.sign(x - center[0])
+    sign_y = jnp.sign(y - center[1])
+    sign_z = jnp.sign(z - center[2])
+
+    # Default to z-face normal
+    nx = jnp.where(is_x, sign_x, 0.0)
+    ny = jnp.where(is_y, sign_y, jnp.where(is_x, 0.0, 0.0))
+    nz = jnp.where(is_x | is_y, 0.0, sign_z)
+
+    # Ensure unit length (should already be 1 for pure axis normals,
+    # but guard against degenerate zero-sign cases)
+    mag = jnp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
+    return nx / mag, ny / mag, nz / mag
+
+
+def _normal_cylinder(x, y, z, shape):
+    """Analytic outward normal for a cylinder.
+
+    The radial component dominates on the curved surface; the axial
+    component dominates on the caps.
+    """
+    cx, cy, cz = shape.center
+    R = shape.radius
+    H2 = shape.height / 2.0
+
+    if shape.axis == "z":
+        dx, dy = x - cx, y - cy
+        r = jnp.sqrt(dx**2 + dy**2 + 1e-30)
+        dh = jnp.abs(z - cz) - H2
+        dr = r - R
+        on_cap = dh > dr
+        nx = jnp.where(on_cap, 0.0, dx / r)
+        ny = jnp.where(on_cap, 0.0, dy / r)
+        nz = jnp.where(on_cap, jnp.sign(z - cz), 0.0)
+    elif shape.axis == "y":
+        dx, dz = x - cx, z - cz
+        r = jnp.sqrt(dx**2 + dz**2 + 1e-30)
+        dh = jnp.abs(y - cy) - H2
+        dr = r - R
+        on_cap = dh > dr
+        nx = jnp.where(on_cap, 0.0, dx / r)
+        ny = jnp.where(on_cap, jnp.sign(y - cy), 0.0)
+        nz = jnp.where(on_cap, 0.0, dz / r)
+    else:  # axis == "x"
+        dy, dz = y - cy, z - cz
+        r = jnp.sqrt(dy**2 + dz**2 + 1e-30)
+        dh = jnp.abs(x - cx) - H2
+        dr = r - R
+        on_cap = dh > dr
+        nx = jnp.where(on_cap, jnp.sign(x - cx), 0.0)
+        ny = jnp.where(on_cap, 0.0, dy / r)
+        nz = jnp.where(on_cap, 0.0, dz / r)
+
+    mag = jnp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
+    return nx / mag, ny / mag, nz / mag
+
+
+def _get_normal_fn(shape: Shape):
+    """Return the analytic normal function for a known shape type."""
+    from rfx.geometry.csg import Box, Sphere, Cylinder
+    if isinstance(shape, Sphere):
+        return _normal_sphere
+    elif isinstance(shape, Box):
+        return _normal_box
+    elif isinstance(shape, Cylinder):
+        return _normal_cylinder
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Coordinate helpers for Yee-offset positions
 # ---------------------------------------------------------------------------
 
 def _yee_coords(grid: Grid):
-    """Return cell-center coordinates (x, y, z) as 3D arrays.
+    """Return cell-center coordinates (x, y, z) as 1-D arrays.
 
     On the Yee grid:
     - Ex lives at (i+0.5, j, k)
@@ -109,94 +235,74 @@ def _yee_coords(grid: Grid):
 
 
 # ---------------------------------------------------------------------------
-# Core smoothing
+# Kottke tensor averaging
 # ---------------------------------------------------------------------------
 
-def _compute_fill_fraction_and_normal(
-    sdf_vals: jnp.ndarray,
-    dx: float,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """From SDF values, compute fill fraction and interface normal.
-
-    The fill fraction is estimated from the signed distance: for a voxel
-    of size dx, if the SDF value at the center is d, the fraction inside
-    is approximately clamp(0.5 - d/dx, 0, 1).
-
-    Returns
-    -------
-    f : filling fraction (fraction inside the shape)
-    is_boundary : boolean mask of boundary voxels
-    nx, ny, nz : interface normal components (pointing outward)
-    """
-    # Fill fraction: linear approximation from SDF
-    f = jnp.clip(0.5 - sdf_vals / dx, 0.0, 1.0)
-
-    # Gradient of SDF gives the outward normal
-    # Use central differences; skip axes with size 1 (2D modes)
-    grad_x = jnp.gradient(sdf_vals, dx, axis=0) if sdf_vals.shape[0] > 1 else jnp.zeros_like(sdf_vals)
-    grad_y = jnp.gradient(sdf_vals, dx, axis=1) if sdf_vals.shape[1] > 1 else jnp.zeros_like(sdf_vals)
-    grad_z = jnp.gradient(sdf_vals, dx, axis=2) if sdf_vals.shape[2] > 1 else jnp.zeros_like(sdf_vals)
-
-    grad_mag = jnp.sqrt(grad_x**2 + grad_y**2 + grad_z**2 + 1e-30)
-    nx = grad_x / grad_mag
-    ny = grad_y / grad_mag
-    nz = grad_z / grad_mag
-
-    # Boundary voxels: where 0 < f < 1
-    is_boundary = (f > 0.0) & (f < 1.0)
-
-    return f, is_boundary, nx, ny, nz
-
-
-def _anisotropic_eps(
+def _kottke_tensor_eps(
     f: jnp.ndarray,
     eps_inside: float,
-    eps_outside: float,
-    n_component: jnp.ndarray,
-) -> jnp.ndarray:
-    """Compute effective eps for one E-field component at boundary voxels.
+    eps_outside: jnp.ndarray,
+    nx: jnp.ndarray,
+    ny: jnp.ndarray,
+    nz: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Compute the Kottke tensor-averaged ε and return its diagonals.
 
-    For an E-field component with unit vector e_hat, and interface normal n_hat:
-    - The component of e_hat perpendicular to the interface: |e_hat . n_hat|
-    - The component parallel to the interface: sqrt(1 - (e_hat . n_hat)^2)
+    The effective inverse-permittivity tensor is:
 
-    For e_hat = x_hat, |e_hat . n_hat| = |nx|, so:
-    eps_eff = cos^2(theta) * eps_parallel + sin^2(theta) * eps_perp
+        (ε_eff)⁻¹ = Pₙ · [f/ε₁ + (1−f)/ε₂]  +  Pₜ · 1/[f·ε₁ + (1−f)·ε₂]
 
-    where theta is the angle between e_hat and the interface plane,
-    eps_parallel = f*eps1 + (1-f)*eps2  (arithmetic)
-    eps_perp = [f/eps1 + (1-f)/eps2]^{-1}  (harmonic)
-    and sin^2(theta) = n_component^2 (perpendicular fraction).
+    where  Pₙ = n̂ n̂ᵀ,  Pₜ = I − Pₙ.
 
-    Parameters
-    ----------
-    f : filling fraction (fraction inside)
-    eps_inside, eps_outside : permittivity values
-    n_component : |n_hat . e_hat| for this E-field component
+    We invert element-wise to get ε_eff and extract the diagonal for
+    each E-field component.  Off-diagonal terms are discarded (standard
+    practice for Yee FDTD; Meep does the same).
+
+    Returns (eps_xx, eps_yy, eps_zz).
     """
-    # Arithmetic (parallel) mean
+    # Harmonic (perpendicular) inverse-eps
+    inv_perp = f / eps_inside + (1.0 - f) / (eps_outside + 1e-30)
+
+    # Arithmetic (parallel) eps, then invert
     eps_par = f * eps_inside + (1.0 - f) * eps_outside
+    inv_par = 1.0 / (eps_par + 1e-30)
 
-    # Harmonic (perpendicular) mean
-    eps_perp = 1.0 / (f / eps_inside + (1.0 - f) / eps_outside + 1e-30)
+    # Projection tensor Pₙ = n̂ n̂ᵀ   (only need diagonal + cross terms)
+    nxnx = nx * nx
+    nyny = ny * ny
+    nznz = nz * nz
+    nxny = nx * ny
+    nxnz = nx * nz
+    nynz = ny * nz
 
-    # Weight by how much the E-field aligns with the normal
-    sin2 = n_component**2  # perpendicular fraction
-    cos2 = 1.0 - sin2      # parallel fraction
+    # (ε_eff)⁻¹ diagonal elements:
+    #   inv_xx = nxnx * inv_perp + (1 - nxnx) * inv_par
+    inv_xx = nxnx * inv_perp + (1.0 - nxnx) * inv_par
+    inv_yy = nyny * inv_perp + (1.0 - nyny) * inv_par
+    inv_zz = nznz * inv_perp + (1.0 - nznz) * inv_par
 
-    return cos2 * eps_par + sin2 * eps_perp
+    # Invert to get ε_eff diagonals
+    eps_xx = 1.0 / (inv_xx + 1e-30)
+    eps_yy = 1.0 / (inv_yy + 1e-30)
+    eps_zz = 1.0 / (inv_zz + 1e-30)
 
+    return eps_xx, eps_yy, eps_zz
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def compute_smoothed_eps(
     grid: Grid,
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Compute smoothed permittivity arrays for each E-field component.
+    """Compute Kottke tensor-averaged permittivity for each E-field component.
 
-    At interface voxels, uses anisotropic arithmetic/harmonic averaging
-    based on the local interface normal orientation. Interior voxels get
-    the bulk permittivity value.
+    At interface voxels, uses the full Kottke inverse-permittivity
+    tensor with analytic interface normals.  Interior voxels get the
+    bulk permittivity.
 
     Parameters
     ----------
@@ -225,9 +331,6 @@ def compute_smoothed_eps(
     eps_ey = jnp.full(grid.shape, background_eps, dtype=jnp.float32)
     eps_ez = jnp.full(grid.shape, background_eps, dtype=jnp.float32)
 
-    # Also track the scalar (staircased) eps for interior assignment
-    eps_scalar = jnp.full(grid.shape, background_eps, dtype=jnp.float32)
-
     # Group shapes by eps_r so overlapping same-material shapes use
     # union SDF (min of individual SDFs) instead of double-smoothing.
     from collections import OrderedDict
@@ -236,72 +339,101 @@ def compute_smoothed_eps(
         groups.setdefault(eps_r, []).append(shape)
 
     for eps_r, group_shapes in groups.items():
-        # Separate SDF-capable shapes from fallback shapes
         sdf_shapes = []
         fallback_shapes = []
         for shape in group_shapes:
             sdf_fn = _get_sdf_fn(shape)
-            if sdf_fn is not None:
-                sdf_shapes.append((shape, sdf_fn))
+            normal_fn = _get_normal_fn(shape)
+            if sdf_fn is not None and normal_fn is not None:
+                sdf_shapes.append((shape, sdf_fn, normal_fn))
             else:
                 fallback_shapes.append(shape)
 
-        # Handle fallback shapes (no SDF) with staircased mask
+        # Fallback shapes: staircased mask
         for shape in fallback_shapes:
             mask = shape.mask(grid)
             eps_ex = jnp.where(mask, eps_r, eps_ex)
             eps_ey = jnp.where(mask, eps_r, eps_ey)
             eps_ez = jnp.where(mask, eps_r, eps_ez)
-            eps_scalar = jnp.where(mask, eps_r, eps_scalar)
 
         if not sdf_shapes:
             continue
 
-        # Compute union SDF for same-material shapes: min(sdf1, sdf2, ...)
-        # For each E-component position, take the minimum SDF across all shapes.
-        sdf_ex_union = None
-        sdf_ey_union = None
-        sdf_ez_union = None
+        # --- For each E-component position, compute union SDF and
+        #     select the best analytic normal from the nearest shape ---
+        for comp, offset in [("ex", (half, 0., 0.)),
+                             ("ey", (0., half, 0.)),
+                             ("ez", (0., 0., half))]:
+            Xc = X + offset[0]
+            Yc = Y + offset[1]
+            Zc = Z + offset[2]
 
-        for shape, sdf_fn in sdf_shapes:
-            s_ex = sdf_fn(X + half, Y, Z, shape)
-            s_ey = sdf_fn(X, Y + half, Z, shape)
-            s_ez = sdf_fn(X, Y, Z + half, shape)
+            # Union SDF + per-voxel nearest-shape tracking
+            sdf_union = None
+            # For analytic normals we pick the shape whose SDF is
+            # closest to zero (the one whose boundary is nearest).
+            best_abs_sdf = None
+            best_nx = None
+            best_ny = None
+            best_nz = None
 
-            if sdf_ex_union is None:
-                sdf_ex_union = s_ex
-                sdf_ey_union = s_ey
-                sdf_ez_union = s_ez
+            for shape, sdf_fn, normal_fn in sdf_shapes:
+                s = sdf_fn(Xc, Yc, Zc, shape)
+                n_x, n_y, n_z = normal_fn(Xc, Yc, Zc, shape)
+
+                if sdf_union is None:
+                    sdf_union = s
+                    best_abs_sdf = jnp.abs(s)
+                    best_nx = n_x
+                    best_ny = n_y
+                    best_nz = n_z
+                else:
+                    sdf_union = jnp.minimum(sdf_union, s)
+                    # Update normal where this shape's surface is closer
+                    closer = jnp.abs(s) < best_abs_sdf
+                    best_abs_sdf = jnp.where(closer, jnp.abs(s), best_abs_sdf)
+                    best_nx = jnp.where(closer, n_x, best_nx)
+                    best_ny = jnp.where(closer, n_y, best_ny)
+                    best_nz = jnp.where(closer, n_z, best_nz)
+
+            # Fill fraction from union SDF
+            f = jnp.clip(0.5 - sdf_union / dx, 0.0, 1.0)
+
+            # Fix #1: fully-inside voxels get bulk eps, no smoothing
+            inside = f >= 1.0
+            # Boundary voxels
+            bnd = (f > 0.0) & (f < 1.0)
+
+            # The "outside" eps is whatever was there before
+            if comp == "ex":
+                eps_outside = eps_ex
+            elif comp == "ey":
+                eps_outside = eps_ey
             else:
-                sdf_ex_union = jnp.minimum(sdf_ex_union, s_ex)
-                sdf_ey_union = jnp.minimum(sdf_ey_union, s_ey)
-                sdf_ez_union = jnp.minimum(sdf_ez_union, s_ez)
+                eps_outside = eps_ez
 
-        # Compute fill fraction and normal from the union SDF
-        f_ex, bnd_ex, nx_ex, ny_ex, nz_ex = _compute_fill_fraction_and_normal(sdf_ex_union, dx)
-        f_ey, bnd_ey, nx_ey, ny_ey, nz_ey = _compute_fill_fraction_and_normal(sdf_ey_union, dx)
-        f_ez, bnd_ez, nx_ez, ny_ez, nz_ez = _compute_fill_fraction_and_normal(sdf_ez_union, dx)
+            # Fix #3: full Kottke tensor averaging
+            kt_xx, kt_yy, kt_zz = _kottke_tensor_eps(
+                f, eps_r, eps_outside,
+                best_nx, best_ny, best_nz,
+            )
 
-        # The "outside" eps is whatever was there before (could be another material)
-        eps_outside_ex = eps_ex
-        eps_outside_ey = eps_ey
-        eps_outside_ez = eps_ez
+            if comp == "ex":
+                smooth = kt_xx
+            elif comp == "ey":
+                smooth = kt_yy
+            else:
+                smooth = kt_zz
 
-        # For Ex: e_hat = x_hat, so n_component = |nx|
-        smooth_ex = _anisotropic_eps(f_ex, eps_r, eps_outside_ex, jnp.abs(nx_ex))
-        # For Ey: e_hat = y_hat, so n_component = |ny|
-        smooth_ey = _anisotropic_eps(f_ey, eps_r, eps_outside_ey, jnp.abs(ny_ey))
-        # For Ez: e_hat = z_hat, so n_component = |nz|
-        smooth_ez = _anisotropic_eps(f_ez, eps_r, eps_outside_ez, jnp.abs(nz_ez))
-
-        # Interior voxels (fully inside): just use eps_r
-        inside_ex = f_ex >= 1.0
-        inside_ey = f_ey >= 1.0
-        inside_ez = f_ez >= 1.0
-
-        # Apply: boundary voxels get smoothed, interior get bulk, exterior unchanged
-        eps_ex = jnp.where(inside_ex, eps_r, jnp.where(bnd_ex, smooth_ex, eps_ex))
-        eps_ey = jnp.where(inside_ey, eps_r, jnp.where(bnd_ey, smooth_ey, eps_ey))
-        eps_ez = jnp.where(inside_ez, eps_r, jnp.where(bnd_ez, smooth_ez, eps_ez))
+            # Apply: interior → bulk, boundary → Kottke, exterior → unchanged
+            if comp == "ex":
+                eps_ex = jnp.where(inside, eps_r,
+                         jnp.where(bnd, smooth, eps_ex))
+            elif comp == "ey":
+                eps_ey = jnp.where(inside, eps_r,
+                         jnp.where(bnd, smooth, eps_ey))
+            else:
+                eps_ez = jnp.where(inside, eps_r,
+                         jnp.where(bnd, smooth, eps_ez))
 
     return eps_ex, eps_ey, eps_ez

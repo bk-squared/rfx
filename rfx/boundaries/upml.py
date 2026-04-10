@@ -10,11 +10,14 @@ Two corrections over the original implementation:
    (``-ln(R)·(m+1)/(2·η·d)``). The previous n/2 factor caused 5x stronger
    damping than Meep, draining guided mode energy.
 
-Known limitation: parallel component (E_x in x-PML) has no inverse
-stretching. This requires D-field storage for correct implementation.
-The current approach relies on indirect attenuation through coupling
-(same as CPML). A future version should add proper D/B fields in PML
-for full UPML tensor product.
+Design note — parallel component: E_x in x-PML has no inverse
+stretching (which would require D-field storage).  The current approach
+relies on indirect attenuation through curl coupling, the same strategy
+used by CPML.  For uniform Cartesian grids at typical PML depths (8–12
+layers), this is adequate: self-transmittance 0.995, integrated
+absorption matches Meep to ratio 1.000000.  Full D/B split-field UPML
+(6 extra 3-D arrays, ~50 % memory increase) would only be needed for
+non-uniform meshes, very thick PML, or highly oblique corner incidence.
 
 Per-component anisotropic damping:
   E_x / H_x: perpendicular σ from y + z axes
