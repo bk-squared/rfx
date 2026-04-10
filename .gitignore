@@ -16,7 +16,7 @@ docs/superpowers/
 docs/agent-memory/
 docs/agent/
 docs/guide/
-docs/guides/
+# repo-stable guide artifacts are version-controlled
 
 # Internal scripts (debugging, infra sync, GPU validation)
 scripts/validate_codex_fixes.py

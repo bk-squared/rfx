@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "reference_lane": "uniform_yee_rf",
+  "lanes": {
+    "uniform_yee_rf": {
+      "status": "supported",
+      "boundaries": ["pec", "cpml", "upml"],
+      "sources": ["point_current", "lumped_port", "wire_port", "waveguide_port"],
+      "observables": ["probe", "flux_monitor", "s_parameters", "harminv_resonance", "benchmarked_ntff"],
+      "materials": ["isotropic_linear", "conductive", "validated_dispersive_subsets"]
+    },
+    "nonuniform_graded_z": {
+      "status": "shadow",
+      "role": "preserved_thin_substrate_lane",
+      "supported_subset": ["probe", "current_source", "selected_dispersive_smoke_coverage"],
+      "unsupported_combinations": {
+        "floquet": "hard_fail",
+        "ntff": "hard_fail",
+        "dft_plane": "hard_fail",
+        "tfsf": "hard_fail",
+        "waveguide_port": "hard_fail",
+        "lumped_rlc": "hard_fail"
+      }
+    },
+    "sbp_sat_subgridding": {"status": "experimental"},
+    "adi": {"status": "experimental"},
+    "distributed": {"status": "experimental"},
+    "floquet_bloch": {"status": "experimental"}
+  },
+  "promotion_rule": [
+    "support_matrix_entry",
+    "explicit_contract",
+    "unit_and_integration_evidence",
+    "benchmark_or_convergence_evidence",
+    "docs_examples_api_alignment"
+  ]
+}
