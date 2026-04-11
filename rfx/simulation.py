@@ -597,10 +597,12 @@ def run(
     if use_flux_monitors:
         from rfx.probes.probes import _FLUX_COMPONENTS as _FC
         # Pre-extract metadata for the scan body (avoids closure issues)
-        # Tuple: (axis, index, freqs, comp_names, lo1, hi1, lo2, hi2)
+        # Tuple: (axis, index, freqs, comp_names, lo1, hi1, lo2, hi2,
+        #         total_steps, window, window_alpha)
         flux_meta = tuple(
             (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2) for fm in flux_monitors
+             fm.lo1, fm.hi1, fm.lo2, fm.hi2,
+             fm.total_steps, fm.window, fm.window_alpha) for fm in flux_monitors
         )
         carry_init["flux_monitors"] = tuple(
             (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft) for fm in flux_monitors
@@ -844,11 +846,13 @@ def run(
                 )
 
         if use_flux_monitors:
+            from rfx.core.dft_utils import dft_window_weight as _dft_w
             t_flux = st.step * dt
             new_flux_accs = []
-            for (e1_acc, e2_acc, h1_acc, h2_acc), (ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2) in zip(
-                carry["flux_monitors"], flux_meta
-            ):
+            for (e1_acc, e2_acc, h1_acc, h2_acc), (
+                ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2,
+                _tot_steps, _win_name, _win_alpha,
+            ) in zip(carry["flux_monitors"], flux_meta):
                 e1n, e2n, h1n, h2n = comp_names
                 # H-fields are offset by +dx/2 along the normal axis on
                 # the Yee grid.  Average H at idx-1 and idx to co-locate
@@ -872,11 +876,14 @@ def run(
                     h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
                 t_f64 = t_flux.astype(jnp.float64) if hasattr(t_flux, 'astype') else jnp.float64(t_flux)
                 fqs64 = fqs.astype(jnp.float64)
+                # Streaming DFT window weight (rect=1.0 default; Tukey/Hann
+                # suppress late-time contributions from CPML reflections).
+                _w = _dft_w(st.step, _tot_steps, _win_name, _win_alpha).astype(jnp.float64)
                 # E is at time t_flux = step*dt; H is at t_flux - dt/2
                 phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
                 phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
-                kernel_e = (phase_e[:, None, None] * dt).astype(jnp.complex128)
-                kernel_h = (phase_h[:, None, None] * dt).astype(jnp.complex128)
+                kernel_e = (phase_e[:, None, None] * dt * _w).astype(jnp.complex128)
+                kernel_h = (phase_h[:, None, None] * dt * _w).astype(jnp.complex128)
                 new_flux_accs.append((
                     e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
                     e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,

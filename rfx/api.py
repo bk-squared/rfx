@@ -256,6 +256,7 @@ class _TFSFEntry:
     polarization: str
     direction: str
     angle_deg: float
+    waveform: str = "differentiated_gaussian"
 
 
 @dataclass(frozen=True)
@@ -277,6 +278,8 @@ class _FluxMonitorEntry:
     n_freqs: int
     size: tuple[float, float] | None = None    # tangential extent (dim1, dim2)
     center: tuple[float, float] | None = None  # tangential center (dim1, dim2)
+    dft_window: str = "rect"                    # streaming DFT window
+    dft_window_alpha: float = 0.25              # Tukey shape parameter
 
 
 @dataclass(frozen=True)
@@ -896,6 +899,7 @@ class Simulation:
         polarization: str = "ez",
         direction: str = "+x",
         angle_deg: float = 0.0,
+        waveform: str = "differentiated_gaussian",
     ) -> "Simulation":
         """Add a normal-incidence plane-wave TFSF source.
 
@@ -903,6 +907,22 @@ class Simulation:
         ``ez``/``ey`` polarization, 3D mode, and CPML boundaries. For
         oblique incidence, only the single transverse-axis plane implied
         by the chosen polarization is supported.
+
+        Parameters
+        ----------
+        waveform : {"differentiated_gaussian", "modulated_gaussian"}
+            Pulse shape injected into the 1D auxiliary grid.
+
+            ``differentiated_gaussian`` (default, legacy rfx): baseband
+            pulse with no carrier, DC-free, spectrum peaks near
+            ``f0·bandwidth``. Good for broadband measurements but
+            spectrum extends well below ``f0``.
+
+            ``modulated_gaussian``: carrier-modulated Gaussian matching
+            Meep's ``GaussianSource(frequency=f0, fwidth=f0·bandwidth)``.
+            Spectrum is a Gaussian centered at ``f0`` with 1/e
+            half-width ``f0·bandwidth``. Use this for matched rfx-vs-Meep
+            crossval comparisons.
         """
         if self._boundary != "cpml":
             raise ValueError("TFSF plane-wave source requires boundary='cpml'")
@@ -930,6 +950,11 @@ class Simulation:
             raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
         if abs(angle_deg) >= 90.0:
             raise ValueError(f"abs(angle_deg) must be < 90, got {angle_deg}")
+        if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
+            raise ValueError(
+                f"waveform must be 'differentiated_gaussian' or "
+                f"'modulated_gaussian', got {waveform!r}"
+            )
 
         self._tfsf = _TFSFEntry(
             f0=f0,
@@ -939,6 +964,7 @@ class Simulation:
             polarization=polarization,
             direction=direction,
             angle_deg=angle_deg,
+            waveform=waveform,
         )
         return self
 
@@ -1383,6 +1409,8 @@ class Simulation:
         size: tuple[float, float] | None = None,
         center: tuple[float, float] | None = None,
         name: str | None = None,
+        dft_window: str = "rect",
+        dft_window_alpha: float = 0.25,
     ) -> "Simulation":
         """Add a Poynting flux monitor on a plane (Meep flux-region equivalent).
 
@@ -1434,6 +1462,8 @@ class Simulation:
             n_freqs=n_freqs,
             size=size,
             center=center,
+            dft_window=dft_window,
+            dft_window_alpha=dft_window_alpha,
         ))
         return self
 

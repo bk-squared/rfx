@@ -65,6 +65,8 @@ class TFSFConfig(NamedTuple):
     src_amp: float
     src_t0: float
     src_tau: float
+    src_fcen: float          # carrier frequency for modulated Gaussian
+    src_waveform: str        # "differentiated_gaussian" or "modulated_gaussian"
     # Polarization selection
     electric_component: str  # "ez" or "ey"
     magnetic_component: str  # "hy" or "hz"
@@ -93,6 +95,7 @@ def init_tfsf(
     angle_deg: float = 0.0,
     ny: int | None = None,
     nz: int | None = None,
+    waveform: str = "differentiated_gaussian",
 ) -> tuple:
     """Initialize TFSF source.
 
@@ -107,7 +110,11 @@ def init_tfsf(
     tfsf_margin : int
         Extra cells between CPML edge and TFSF boundary.
     f0, bandwidth, amplitude : float
-        Gaussian pulse parameters.
+        Gaussian pulse parameters. For ``differentiated_gaussian`` the
+        time envelope has width ``tau = 1/(π·f0·bandwidth)``. For
+        ``modulated_gaussian`` (Meep-equivalent) ``bandwidth`` is the
+        fractional frequency width: ``fwidth = f0·bandwidth``, and
+        ``tau = 1/(π·fwidth)``.
     polarization : "ez" or "ey"
         Electric-field polarization for the incident plane wave.
     direction : "+x" or "-x"
@@ -123,12 +130,24 @@ def init_tfsf(
         Number of cells in z (3D grid).  Required for oblique incidence
         with ey polarization (2D TEz auxiliary grid).  Ignored for
         normal incidence and ez polarization.
+    waveform : {"differentiated_gaussian", "modulated_gaussian"}
+        Pulse shape. ``differentiated_gaussian`` (default) is a
+        baseband differentiated Gaussian with no carrier (legacy rfx
+        behaviour). ``modulated_gaussian`` matches Meep's
+        ``GaussianSource``:
+        ``cos(2π·f0·(t-t0)) · exp(-((t-t0)/τ)²)`` with τ = 1/(π·fwidth)
+        and t0 = 5·τ (Meep default).
 
     Returns
     -------
     (TFSFConfig, TFSFState) for normal incidence, or
     (TFSF2DConfig, TFSF2DState) for oblique incidence (|angle_deg| > 0.01).
     """
+    if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
+        raise ValueError(
+            f"waveform must be 'differentiated_gaussian' or "
+            f"'modulated_gaussian', got {waveform!r}"
+        )
     # Dispatch to 2D auxiliary grid for oblique angles.
     # The 2D grid naturally matches the 3D numerical dispersion at any angle.
     if abs(angle_deg) > 0.01:
@@ -205,9 +224,17 @@ def init_tfsf(
     b_prof = np.exp(-(sigma_prof + alpha_prof) * dt / EPS_0)
     c_prof = np.where(denom > 1e-30, sigma_prof * (b_prof - 1.0) / denom, 0.0)
 
-    # Source waveform parameters
-    tau = 1.0 / (f0 * bandwidth * np.pi)
-    t0 = 3.0 * tau
+    # Source waveform parameters.
+    # For differentiated Gaussian (legacy rfx): tau = 1/(π·f0·bandwidth),
+    # t0 = 3·tau. For modulated Gaussian (Meep): fwidth = f0·bandwidth,
+    # tau = 1/(π·fwidth), t0 = 5·tau (Meep default cutoff).
+    if waveform == "modulated_gaussian":
+        fwidth = f0 * bandwidth
+        tau = 1.0 / (np.pi * fwidth)
+        t0 = 5.0 * tau
+    else:
+        tau = 1.0 / (f0 * bandwidth * np.pi)
+        t0 = 3.0 * tau
 
     if polarization == "ez":
         electric_component = "ez"
@@ -235,6 +262,8 @@ def init_tfsf(
         src_amp=float(amplitude),
         src_t0=float(t0),
         src_tau=float(tau),
+        src_fcen=float(f0),
+        src_waveform=waveform,
         electric_component=electric_component,
         magnetic_component=magnetic_component,
         curl_sign=float(curl_sign),
@@ -345,9 +374,17 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     psi_e_hi = b_hi * st.psi_e_hi + c_hi * dh[-n:]
     e1d = e1d.at[-n:].add(cfg.curl_sign * (dt / EPS_0) * psi_e_hi)
 
-    # Inject source (differentiated Gaussian)
+    # Inject source pulse. waveform selection (baked into cfg at init):
+    #   differentiated_gaussian (legacy): s = -2·arg · exp(-arg²)
+    #   modulated_gaussian (Meep-equivalent):
+    #       s = cos(2π·fcen·(t-t0)) · exp(-arg²)
     arg = (t - cfg.src_t0) / cfg.src_tau
-    src_val = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
+    env = jnp.exp(-(arg ** 2))
+    if cfg.src_waveform == "modulated_gaussian":
+        carrier = jnp.cos(2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+        src_val = cfg.src_amp * env * carrier
+    else:
+        src_val = cfg.src_amp * (-2.0 * arg) * env
     e1d = e1d.at[cfg.src_idx].add(src_val)
 
     return st._replace(e1d=e1d, psi_e_lo=psi_e_lo, psi_e_hi=psi_e_hi, step=st.step + 1)

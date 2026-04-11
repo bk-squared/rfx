@@ -278,6 +278,8 @@ def run_uniform(
                 grid_shape=grid.shape,
                 dx=grid.dx,
                 dft_total_steps=n_steps,
+                dft_window=getattr(pe, 'dft_window', 'rect'),
+                dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
                 lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
             )
         )
@@ -310,6 +312,7 @@ def run_uniform(
             angle_deg=sim._tfsf.angle_deg,
             ny=grid.ny,
             nz=grid.nz,
+            waveform=getattr(sim._tfsf, 'waveform', 'differentiated_gaussian'),
         )
         sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
         periodic = (False, True, True)
