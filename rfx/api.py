@@ -396,6 +396,8 @@ class Simulation:
         dx: float | None = None,
         mode: str = "3d",
         dz_profile: np.ndarray | None = None,
+        dx_profile: np.ndarray | None = None,
+        dy_profile: np.ndarray | None = None,
         precision: str = "float32",
         solver: str = "yee",
         adi_cfl_factor: float = 5.0,
@@ -410,7 +412,16 @@ class Simulation:
             raise ValueError(f"solver must be 'yee' or 'adi', got {solver!r}")
         if adi_cfl_factor <= 0:
             raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
-        # When dz_profile is provided, z-domain comes from the profile
+        # Synthesize domain extents from axis profiles before validation.
+        # dx_profile / dy_profile set x / y; dz_profile sets z.
+        if dx_profile is not None:
+            domain = (float(np.sum(dx_profile)),
+                      domain[1] if len(domain) >= 2 else 0.0,
+                      domain[2] if len(domain) >= 3 else 0.0)
+        if dy_profile is not None:
+            domain = (domain[0],
+                      float(np.sum(dy_profile)),
+                      domain[2] if len(domain) >= 3 else 0.0)
         if dz_profile is not None:
             if any(d <= 0 for d in domain[:2]):
                 raise ValueError(f"domain x/y must be positive, got {domain}")
@@ -422,6 +433,8 @@ class Simulation:
 
         if boundary == "upml" and dz_profile is not None:
             raise ValueError("boundary='upml' does not support nonuniform dz_profile")
+        if boundary == "upml" and (dx_profile is not None or dy_profile is not None):
+            raise ValueError("boundary='upml' does not support nonuniform dx/dy profile")
 
         # P2: Warn on abrupt grading in user-supplied dz_profile
         if dz_profile is not None and len(dz_profile) > 1:
@@ -445,6 +458,11 @@ class Simulation:
         if boundary == "pec" and self._pec_faces:
             raise ValueError("pec_faces is only meaningful with boundary='cpml' or boundary='upml'")
 
+        # Non-uniform xy profiles require an explicit dx (boundary cell
+        # size) so the CPML profiles have a defined edge spacing.
+        if (dx_profile is not None or dy_profile is not None) and dx is None:
+            raise ValueError("dx_profile / dy_profile require an explicit dx (boundary cell size)")
+
         self._freq_max = freq_max
         self._domain = domain
         self._boundary = boundary
@@ -453,6 +471,8 @@ class Simulation:
         self._dx = dx
         self._mode = mode
         self._dz_profile = dz_profile
+        self._dx_profile = dx_profile
+        self._dy_profile = dy_profile
         self._precision = precision
         self._solver = solver
         self._adi_cfl_factor = adi_cfl_factor
@@ -466,6 +486,8 @@ class Simulation:
                 raise ValueError("solver='adi' supports boundary='pec' or 'cpml'")
             if self._dz_profile is not None:
                 raise ValueError("solver='adi' does not support nonuniform dz_profile")
+            if self._dx_profile is not None or self._dy_profile is not None:
+                raise ValueError("solver='adi' does not support nonuniform dx/dy profile")
 
         # Registered items
         self._materials: dict[str, MaterialSpec] = {}
@@ -2075,10 +2097,16 @@ class Simulation:
     # ---- non-uniform mesh run path ----
 
     def _build_nonuniform_grid(self) -> NonUniformGrid:
-        """Build a NonUniformGrid from stored dz_profile."""
+        """Build a NonUniformGrid from stored dz_profile (and optional
+        dx_profile / dy_profile). A uniform profile on any axis is
+        synthesised from the scalar ``dx`` when the profile is not set.
+        """
         from rfx.runners.nonuniform import build_nonuniform_grid
         return build_nonuniform_grid(
-            self._freq_max, self._domain, self._dx, self._cpml_layers, self._dz_profile
+            self._freq_max, self._domain, self._dx, self._cpml_layers,
+            self._dz_profile,
+            dx_profile=self._dx_profile,
+            dy_profile=self._dy_profile,
         )
 
     def _assemble_materials_nu(
@@ -3071,7 +3099,15 @@ class Simulation:
             )
 
         # ---- Non-uniform mesh path ----
-        if self._dz_profile is not None:
+        if (self._dz_profile is not None
+                or self._dx_profile is not None
+                or self._dy_profile is not None):
+            # Synthesize a uniform dz profile from the scalar domain_z
+            # when only dx/dy are non-uniform, so the shared non-uniform
+            # runner has all three axes available.
+            if self._dz_profile is None:
+                nz_phys = max(1, int(round(self._domain[2] / self._dx)))
+                self._dz_profile = np.full(nz_phys, float(self._dx))
             nu_grid = self._build_nonuniform_grid()
             if n_steps is None:
                 n_steps = int(np.ceil(

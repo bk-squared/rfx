@@ -18,12 +18,23 @@ def build_nonuniform_grid(
     dx: float | None,
     cpml_layers: int,
     dz_profile: np.ndarray,
+    *,
+    dx_profile: np.ndarray | None = None,
+    dy_profile: np.ndarray | None = None,
 ) -> NonUniformGrid:
-    """Build a NonUniformGrid from a dz_profile."""
+    """Build a NonUniformGrid from per-axis profiles.
+
+    ``dx_profile`` / ``dy_profile`` are optional; when omitted the
+    corresponding axis is uniform with spacing ``dx`` across
+    ``domain``.
+    """
     if dx is None:
         dx = C0 / freq_max / 20.0
     domain_xy = (domain[0], domain[1])
-    return make_nonuniform_grid(domain_xy, dz_profile, dx, cpml_layers)
+    return make_nonuniform_grid(
+        domain_xy, dz_profile, dx, cpml_layers,
+        dx_profile=dx_profile, dy_profile=dy_profile,
+    )
 
 
 def assemble_materials_nu(
@@ -56,18 +67,13 @@ def assemble_materials_nu(
 
 
 def pos_to_nu_index(grid: NonUniformGrid, pos) -> tuple[int, int, int]:
-    """Convert physical (x, y, z) to non-uniform grid indices."""
-    cpml = grid.cpml_layers
-    dx = grid.dx
-    dz_np = np.array(grid.dz)
-    z_cumsum = np.cumsum(dz_np)
-    z_cumsum = np.insert(z_cumsum, 0, 0.0)
-    z_offset = z_cumsum[cpml]
+    """Convert physical (x, y, z) to non-uniform grid indices.
 
-    ix = int(round(pos[0] / dx)) + cpml
-    iy = int(round(pos[1] / dx)) + cpml
-    iz = cpml + int(np.argmin(np.abs(z_cumsum[cpml:] - z_offset - pos[2])))
-    return (ix, iy, iz)
+    Delegates to ``rfx.nonuniform.position_to_index`` so the cumulative
+    lookup works on non-uniform xy as well.
+    """
+    from rfx.nonuniform import position_to_index
+    return position_to_index(grid, pos)
 
 
 def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None):
@@ -128,21 +134,25 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             wire_cells = list(range(lo_k, hi_k + 1))
             n_cells = max(len(wire_cells), 1)
 
+            _dx_np = np.asarray(grid.dx_arr)
+            _dy_np = np.asarray(grid.dy_arr)
             for k in wire_cells:
                 cell = list(idx)
                 cell[axis] = k
                 ci, cj, ck = cell
+                dxi = float(_dx_np[ci])
+                dyj = float(_dy_np[cj])
                 # 3D wire port: σ = n_cells * d_parallel / (Z0 * d_perp1 * d_perp2)
                 # Each cell in the wire carries 1/n_cells of total impedance Z0.
                 if axis == 2:
                     d_cell = float(grid.dz[ck])
-                    dp1, dp2 = grid.dx, grid.dy
+                    dp1, dp2 = dxi, dyj
                 elif axis == 1:
-                    d_cell = grid.dy
-                    dp1, dp2 = grid.dx, float(grid.dz[ck])
+                    d_cell = dyj
+                    dp1, dp2 = dxi, float(grid.dz[ck])
                 else:
-                    d_cell = grid.dx
-                    dp1, dp2 = grid.dy, float(grid.dz[ck])
+                    d_cell = dxi
+                    dp1, dp2 = dyj, float(grid.dz[ck])
                 sigma_port = n_cells * d_cell / (pe.impedance * dp1 * dp2)
                 materials = materials._replace(
                     sigma=materials.sigma.at[ci, cj, ck].add(
@@ -176,6 +186,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         else:
             # Single-cell lumped port
             i, j, k = idx
+            dxi = float(np.asarray(grid.dx_arr)[i])
+            dyj = float(np.asarray(grid.dy_arr)[j])
             # 3D lumped port: σ = d_parallel / (Z0 * d_perp1 * d_perp2)
             # This ensures correct power dissipation P = V²/Z0 in
             # anisotropic cells where dz ≠ dx.  The old formula
@@ -184,13 +196,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             port_axis = axis_map[pe.component]
             if port_axis == 2:
                 d_parallel = float(grid.dz[k])
-                d_perp1, d_perp2 = grid.dx, grid.dy
+                d_perp1, d_perp2 = dxi, dyj
             elif port_axis == 1:
-                d_parallel = grid.dy
-                d_perp1, d_perp2 = grid.dx, float(grid.dz[k])
+                d_parallel = dyj
+                d_perp1, d_perp2 = dxi, float(grid.dz[k])
             else:
-                d_parallel = grid.dx
-                d_perp1, d_perp2 = grid.dy, float(grid.dz[k])
+                d_parallel = dxi
+                d_perp1, d_perp2 = dyj, float(grid.dz[k])
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
             materials = materials._replace(
                 sigma=materials.sigma.at[i, j, k].add(sigma_port))

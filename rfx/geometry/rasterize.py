@@ -34,17 +34,39 @@ def coords_from_uniform_grid(grid) -> GridCoords:
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 
 
+def _axis_cell_centers(d_arr: np.ndarray, cpml: int) -> np.ndarray:
+    """Cell-center positions for a padded cell-size array.
+
+    Matches the existing ``coords_from_nonuniform_grid`` z convention:
+    the first interior cell's LEFT edge is at physical position 0, so
+    its CENTER is at ``d[cpml]/2``. This is off by half a cell from
+    the legacy uniform-Grid convention (cell[cpml] center at 0) — the
+    two conventions are not unified anywhere in rfx today.
+    """
+    d = np.asarray(d_arr, dtype=np.float64)
+    edges = np.insert(np.cumsum(d), 0, 0.0)           # len = n+1
+    offset = edges[cpml]                              # first-interior left edge
+    centers = (edges[:-1] + edges[1:]) / 2.0 - offset
+    return centers
+
+
 def coords_from_nonuniform_grid(grid) -> GridCoords:
     """Extract cell-center coordinates from a NonUniformGrid.
 
-    x, y are uniform; z comes from cumulative dz.
+    All three axes use the per-cell spacing arrays (``dx_arr``,
+    ``dy_arr``, ``dz``). The first interior cell on each axis is
+    placed at physical position 0, matching the convention that a
+    ``Box((0,0,0), (Lx,Ly,Lz))`` should tile the interior domain
+    exactly.
     """
     cpml = grid.cpml_layers
-    dx = grid.dx
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
-    x = jnp.asarray((np.arange(nx) - cpml) * dx, dtype=jnp.float32)
-    y = jnp.asarray((np.arange(ny) - cpml) * dx, dtype=jnp.float32)
+    dx_arr = np.asarray(grid.dx_arr)
+    dy_arr = np.asarray(grid.dy_arr)
+
+    x = jnp.asarray(_axis_cell_centers(dx_arr, cpml), dtype=jnp.float32)
+    y = jnp.asarray(_axis_cell_centers(dy_arr, cpml), dtype=jnp.float32)
 
     dz_np = np.array(grid.dz)
     z_cumsum = np.cumsum(dz_np)

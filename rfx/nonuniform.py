@@ -1,12 +1,19 @@
 """Non-uniform Yee grid FDTD runner.
 
-Supports spatially-varying dz (z-graded mesh) with uniform dx, dy.
-This is the standard approach used by CST/OpenEMS for thin-substrate
-structures where z-resolution must be fine near the substrate but
-coarse in the air region.
+Supports spatially-varying dx, dy, dz profiles. The most common use
+is dz-graded meshes for thin-substrate structures where z-resolution
+must be fine near the substrate but coarse in the air region; dx/dy
+graded meshes additionally allow fine cells near metal edges
+(fringing-field physics in patch antennas, microstrip filters, etc.)
+without paying the cost of a uniform fine mesh everywhere.
+
+Back-compat: `make_nonuniform_grid(domain_xy, dz_profile, dx, ...)`
+with a scalar `dx` still produces a uniform-xy grid; only `dz` is
+graded. Pass `dx_profile=` / `dy_profile=` to enable per-cell x/y
+spacing.
 
 Uses update_h_nu / update_e_nu from core/yee.py with pre-computed
-inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
+per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 """
 
 from __future__ import annotations
@@ -27,21 +34,29 @@ C0 = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
 
 
 class NonUniformGrid(NamedTuple):
-    """Non-uniform grid specification (uniform dx/dy, graded dz)."""
+    """Non-uniform grid with per-axis cell-size arrays.
+
+    ``dx`` / ``dy`` are the BOUNDARY cell sizes (used by CPML and any
+    legacy code that reads a scalar spacing); ``dx_arr`` / ``dy_arr`` /
+    ``dz`` hold the per-cell spacings. In the uniform-xy case,
+    ``dx_arr`` is ``jnp.full(nx, dx)`` and ``dy_arr`` is analogous.
+    """
     nx: int
     ny: int
     nz: int
-    dx: float              # uniform x cell size
-    dy: float              # uniform y cell size
-    dz: jnp.ndarray        # (nz,) z cell sizes
+    dx: float              # BOUNDARY x cell size (CPML + legacy scalars)
+    dy: float              # BOUNDARY y cell size
+    dx_arr: jnp.ndarray    # (nx,) — per-cell dx (includes CPML padding)
+    dy_arr: jnp.ndarray    # (ny,) — per-cell dy
+    dz: jnp.ndarray        # (nz,) z cell sizes (already per-cell)
     dt: float              # timestep (from min cell CFL)
     cpml_layers: int
     # Pre-computed inverse spacing arrays (length N, padded)
-    inv_dx: jnp.ndarray    # (nx,) — 1/dx (uniform, all same)
-    inv_dy: jnp.ndarray    # (ny,)
+    inv_dx: jnp.ndarray    # (nx,) — 1/dx_arr[i]
+    inv_dy: jnp.ndarray    # (ny,) — 1/dy_arr[j]
     inv_dz: jnp.ndarray    # (nz,) — 1/dz[k] per cell
-    inv_dx_h: jnp.ndarray  # (nx,) — 2/(dx+dx) = 1/dx (uniform)
-    inv_dy_h: jnp.ndarray  # (ny,)
+    inv_dx_h: jnp.ndarray  # (nx,) — 2/(dx_arr[i]+dx_arr[i+1]) padded
+    inv_dy_h: jnp.ndarray  # (ny,) — 2/(dy_arr[j]+dy_arr[j+1]) padded
     inv_dz_h: jnp.ndarray  # (nz,) — 2/(dz[k]+dz[k+1]), padded
 
     @property
@@ -50,75 +65,164 @@ class NonUniformGrid(NamedTuple):
         return (self.nx, self.ny, self.nz)
 
 
+def _pad_profile(profile: np.ndarray, cpml_layers: int) -> np.ndarray:
+    """Pad a 1-D cell-size profile with CPML cells on both ends.
+
+    CPML uses constant spacing matching the boundary cell size, so the
+    padding on each end is ``cpml_layers`` copies of ``profile[0]`` and
+    ``profile[-1]``, respectively.
+    """
+    lo_pad = np.full(cpml_layers, float(profile[0]))
+    hi_pad = np.full(cpml_layers, float(profile[-1]))
+    return np.concatenate([lo_pad, np.asarray(profile, dtype=np.float64), hi_pad])
+
+
+def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return (inv_d, inv_d_h) from a padded 1-D cell-size profile.
+
+    ``inv_d[i] = 1/profile[i]`` and
+    ``inv_d_h[i] = 2/(profile[i]+profile[i+1])`` (padded with 0 at end).
+    """
+    arr = jnp.asarray(profile_full, dtype=jnp.float32)
+    inv_d = 1.0 / arr
+    inv_d_mean = 2.0 / (arr[:-1] + arr[1:])
+    inv_d_h = jnp.concatenate([inv_d_mean, jnp.zeros(1, dtype=jnp.float32)])
+    return inv_d, inv_d_h
+
+
 def make_nonuniform_grid(
     domain_xy: tuple[float, float],
     dz_profile: np.ndarray,
     dx: float,
     cpml_layers: int = 8,
+    *,
+    dx_profile: np.ndarray | None = None,
+    dy_profile: np.ndarray | None = None,
 ) -> NonUniformGrid:
-    """Create a non-uniform grid with graded z-spacing.
+    """Create a non-uniform Yee grid.
 
     Parameters
     ----------
     domain_xy : (Lx, Ly) in metres
+        Only used when ``dx_profile`` / ``dy_profile`` are None — in
+        that case the xy mesh is uniform with spacing ``dx``.
     dz_profile : 1D array of z cell sizes in metres (physical domain only)
-    dx : uniform x/y cell size
-    cpml_layers : number of CPML cells (added to all 6 faces)
+    dx : float
+        Boundary cell size (also used for CPML padding and as the
+        uniform-xy spacing when no xy profile is provided).
+    cpml_layers : int
+        Number of CPML cells added to each face.
+    dx_profile, dy_profile : 1D arrays or None
+        Optional per-cell x / y spacings for the physical (non-CPML)
+        interior. When provided, the first and last values must match
+        ``dx`` (they set the boundary cell size used by the CPML).
     """
-    dy = dx
-    nx = int(round(domain_xy[0] / dx)) + 2 * cpml_layers
-    ny = int(round(domain_xy[1] / dy)) + 2 * cpml_layers
+    # --- x profile (uniform or provided) ---
+    if dx_profile is None:
+        nx_interior = int(round(domain_xy[0] / dx))
+        dx_prof_phys = np.full(nx_interior, float(dx))
+    else:
+        dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
+        # Guard: CPML cells must have the same size as the boundary interior
+        # cells, otherwise the CPML σ/κ profile is miscalibrated.
+        if abs(float(dx_prof_phys[0]) - float(dx)) > 1e-12:
+            raise ValueError(
+                f"dx_profile[0]={float(dx_prof_phys[0])} must equal boundary "
+                f"dx={float(dx)} (CPML cells use the boundary spacing)."
+            )
+        if abs(float(dx_prof_phys[-1]) - float(dx)) > 1e-12:
+            raise ValueError(
+                f"dx_profile[-1]={float(dx_prof_phys[-1])} must equal boundary "
+                f"dx={float(dx)}."
+            )
+    dx_full = _pad_profile(dx_prof_phys, cpml_layers)
+    nx = len(dx_full)
 
-    # Add CPML cells in z with the boundary cell size
-    dz_lo_pad = np.full(cpml_layers, float(dz_profile[0]))
-    dz_hi_pad = np.full(cpml_layers, float(dz_profile[-1]))
-    dz_full = np.concatenate([dz_lo_pad, dz_profile, dz_hi_pad])
+    # --- y profile ---
+    if dy_profile is None:
+        # Uniform y uses `dx` as the cell size (legacy behaviour)
+        ny_interior = int(round(domain_xy[1] / dx))
+        dy_prof_phys = np.full(ny_interior, float(dx))
+        dy_boundary = float(dx)
+    else:
+        dy_prof_phys = np.asarray(dy_profile, dtype=np.float64)
+        dy_boundary = float(dy_prof_phys[0])
+        if abs(float(dy_prof_phys[-1]) - dy_boundary) > 1e-12:
+            raise ValueError(
+                f"dy_profile boundary cells must match each other "
+                f"(got lo={dy_boundary}, hi={float(dy_prof_phys[-1])})."
+            )
+    dy_full = _pad_profile(dy_prof_phys, cpml_layers)
+    ny = len(dy_full)
+
+    # --- z profile ---
+    dz_full = _pad_profile(dz_profile, cpml_layers)
     nz = len(dz_full)
 
-    # CFL from minimum cell size
+    # --- CFL from minimum cell size on every axis ---
+    dx_min = float(np.min(dx_full))
+    dy_min = float(np.min(dy_full))
     dz_min = float(np.min(dz_full))
-    dt = 0.99 / (C0 * np.sqrt(1/dx**2 + 1/dy**2 + 1/dz_min**2))
+    dt = 0.99 / (C0 * np.sqrt(1 / dx_min ** 2 + 1 / dy_min ** 2 + 1 / dz_min ** 2))
 
-    dz_arr = jnp.array(dz_full, dtype=jnp.float32)
+    # --- Per-cell arrays + inverse spacings ---
+    dx_arr = jnp.asarray(dx_full, dtype=jnp.float32)
+    dy_arr = jnp.asarray(dy_full, dtype=jnp.float32)
+    dz_arr = jnp.asarray(dz_full, dtype=jnp.float32)
 
-    # Inverse spacing arrays
-    inv_dx = jnp.ones(nx, dtype=jnp.float32) / dx
-    inv_dy = jnp.ones(ny, dtype=jnp.float32) / dy
-    inv_dz = 1.0 / dz_arr
-
-    # H-curl mean spacing (padded with 0 at end)
-    inv_dx_h = jnp.ones(nx, dtype=jnp.float32) / dx  # uniform → same
-    inv_dy_h = jnp.ones(ny, dtype=jnp.float32) / dy
-    inv_dz_mean = 2.0 / (dz_arr[:-1] + dz_arr[1:])
-    inv_dz_h = jnp.concatenate([inv_dz_mean, jnp.zeros(1)])
+    inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full)
+    inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full)
+    inv_dz, inv_dz_h = _profile_to_inv_arrays(dz_full)
 
     return NonUniformGrid(
-        nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz_arr, dt=float(dt),
-        cpml_layers=cpml_layers,
+        nx=nx, ny=ny, nz=nz,
+        dx=float(dx), dy=dy_boundary,
+        dx_arr=dx_arr, dy_arr=dy_arr, dz=dz_arr,
+        dt=float(dt), cpml_layers=cpml_layers,
         inv_dx=inv_dx, inv_dy=inv_dy, inv_dz=inv_dz,
         inv_dx_h=inv_dx_h, inv_dy_h=inv_dy_h, inv_dz_h=inv_dz_h,
     )
 
 
+def _interior_line_positions(d_arr_np: np.ndarray, cpml: int) -> np.ndarray:
+    """Return cell-edge positions (0 at first interior face) for a padded
+    cell-size array. Length = n_interior + 1.
+    """
+    interior = d_arr_np[cpml : len(d_arr_np) - cpml]
+    edges = np.insert(np.cumsum(interior), 0, 0.0)
+    return edges
+
+
 def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
-    """Convert physical z-coordinate to grid index."""
+    """Convert physical z-coordinate to (cpml-offset) grid index."""
     cpml = grid.cpml_layers
-    dz_np = np.array(grid.dz)
-    z_cumsum = np.cumsum(dz_np[cpml:])  # physical z positions
-    z_cumsum = np.insert(z_cumsum, 0, 0)  # start at 0
-    idx = int(np.argmin(np.abs(z_cumsum - z_phys)))
+    edges = _interior_line_positions(np.asarray(grid.dz), cpml)
+    idx = int(np.argmin(np.abs(edges - float(z_phys))))
+    return idx + cpml
+
+
+def _axis_position_to_index(d_arr: jnp.ndarray, cpml: int, pos: float) -> int:
+    """Generic non-uniform axis lookup.
+
+    Uses cell-edge positions (same convention as z_position_to_index):
+    position 0 is the first interior face, position ``sum(interior)`` is
+    the last interior face.
+    """
+    edges = _interior_line_positions(np.asarray(d_arr), cpml)
+    idx = int(np.argmin(np.abs(edges - float(pos))))
     return idx + cpml
 
 
 def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> tuple[int, int, int]:
     """Convert physical (x, y, z) to grid indices for NonUniformGrid.
 
-    x/y use uniform division (same as Grid.position_to_index).
-    z uses cumulative dz nearest-cell lookup.
+    All three axes use cumulative cell-size lookup. In the uniform-xy
+    case (``dx_arr`` constant) this reduces to the legacy
+    ``round(pos[0]/dx) + cpml`` behaviour within one cell.
     """
     cpml = grid.cpml_layers
-    i = int(round(pos[0] / grid.dx)) + cpml
-    j = int(round(pos[1] / grid.dy)) + cpml
+    i = _axis_position_to_index(grid.dx_arr, cpml, pos[0])
+    j = _axis_position_to_index(grid.dy_arr, cpml, pos[1])
     k = z_position_to_index(grid, pos[2])
     return (i, j, k)
 
@@ -204,9 +308,11 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     # Cb = dt / (eps * (1 + loss))
     cb = (grid.dt / eps) / (1.0 + loss)
 
-    # Cell volume: dx * dy * dz_local
+    # Cell volume: dx_i * dy_j * dz_k (per-cell on each axis)
+    dx_local = float(np.asarray(grid.dx_arr)[i])
+    dy_local = float(np.asarray(grid.dy_arr)[j])
     dz_local = float(grid.dz[k])
-    dV = grid.dx * grid.dy * dz_local
+    dV = dx_local * dy_local * dz_local
 
     # Normalized waveform: Cb * I(t) / dV
     # This ensures power = ∫(J·E)dV is independent of cell size
@@ -454,8 +560,17 @@ def run_nonuniform(
              jnp.zeros(nf, dtype=jnp.complex64))   # v_inc_dft
             for _ in wire_ports
         )
-        wp_meta = [(wp['mid_i'], wp['mid_j'], wp['mid_k'],
-                     wp['component'], wp['impedance']) for wp in wire_ports]
+        # Pre-compute per-cell dx/dy at each wire-port cell so the
+        # JIT'd scan below uses the correct line-integral lengths even
+        # on non-uniform xy meshes.
+        _dx_arr_np = np.asarray(grid.dx_arr)
+        _dy_arr_np = np.asarray(grid.dy_arr)
+        wp_meta = [(
+            wp['mid_i'], wp['mid_j'], wp['mid_k'],
+            wp['component'], wp['impedance'],
+            float(_dx_arr_np[wp['mid_i']]),
+            float(_dy_arr_np[wp['mid_j']]),
+        ) for wp in wire_ports]
     else:
         use_wire_ports = False
 
@@ -503,21 +618,22 @@ def run_nonuniform(
         new_wire_sp = None
         if use_wire_ports:
             new_wire_sp = []
-            for (v_dft, i_dft, vinc_dft), (mi, mj, mk, comp, z0) in \
+            for (v_dft, i_dft, vinc_dft), (mi, mj, mk, comp, z0, dxi, dyj) in \
                     zip(carry.get("wire_sparams", ()), wp_meta):
                 # V = -E_comp * d_parallel, I = H-loop * d_transverse
-                # Non-uniform z: Ez uses dz[k], Ex/Ey use dx/dy (uniform)
+                # dxi / dyj are the per-cell xy spacings at this port's
+                # (mi, mj); dz_local is the per-cell z spacing.
                 dz_local = grid.dz[mk]
                 if comp == "ez":
                     v = -st.ez[mi, mj, mk] * dz_local
                     i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
-                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * grid.dx
+                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dxi
                 elif comp == "ex":
-                    v = -st.ex[mi, mj, mk] * grid.dx
+                    v = -st.ex[mi, mj, mk] * dxi
                     i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
                              - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dz_local
                 else:
-                    v = -st.ey[mi, mj, mk] * grid.dy
+                    v = -st.ey[mi, mj, mk] * dyj
                     i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
                              - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dz_local
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
@@ -558,7 +674,7 @@ def run_nonuniform(
         n_wp = len(wire_ports)
         nf = len(sp_freqs)
         S = _np.zeros((n_wp, n_wp, nf), dtype=_np.complex64)
-        for j, ((v_dft, i_dft, _), (_, _, _, _, z0)) in enumerate(
+        for j, ((v_dft, i_dft, _), (_, _, _, _, z0, _, _)) in enumerate(
                 zip(final["wire_sparams"], wp_meta)):
             # Wave decomposition: S11 = (V - Z0*I) / (V + Z0*I)
             a = (v_dft + z0 * i_dft) / (2.0 * _np.sqrt(z0))
