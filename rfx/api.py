@@ -2841,7 +2841,7 @@ class Simulation:
                 from rfx.simulation import make_j_source
                 sources.append(
                     make_j_source(grid, pe.position, pe.component,
-                                  pe.waveform, n_steps, base_materials)
+                                  pe.waveform, n_steps, materials)
                 )
                 continue
 
