@@ -29,6 +29,8 @@ from rfx.geometry.conformal import (
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
 from rfx.sources.sources import GaussianPulse
 
+pytestmark = pytest.mark.gpu
+
 
 # ---------------------------------------------------------------------------
 # Analytical: TM010 cylindrical cavity resonance

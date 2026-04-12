@@ -8,6 +8,8 @@ from rfx.subgridding.sbp_sat_2d import (
     init_subgrid_2d, step_subgrid_2d, compute_energy_2d,
 )
 
+pytestmark = pytest.mark.gpu
+
 
 @pytest.mark.slow
 def test_2d_stability():

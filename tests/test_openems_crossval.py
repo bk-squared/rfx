@@ -29,6 +29,8 @@ from rfx.sources.sources import GaussianPulse
 # Reuse FFT helper from meep crossval
 from tests.test_meep_crossval import fft_peak_freq
 
+pytestmark = pytest.mark.gpu
+
 # Physical cavity dimensions (meters)
 CAVITY_A = 0.1
 CAVITY_B = 0.1

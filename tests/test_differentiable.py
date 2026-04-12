@@ -7,6 +7,8 @@ Validates that:
 4. A gradient ascent step improves a probe-energy objective
 """
 
+import pytest
+
 import jax
 import jax.numpy as jnp
 
@@ -14,6 +16,8 @@ from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays, init_materials
 from rfx.sources.sources import GaussianPulse
 from rfx.simulation import make_source, make_probe, run
+
+pytestmark = pytest.mark.gpu
 
 
 def test_gradient_matches_finite_diff():

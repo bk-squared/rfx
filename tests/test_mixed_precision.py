@@ -8,6 +8,8 @@ from rfx.core.yee import init_state, FDTDState, MaterialArrays, init_materials
 from rfx.api import Simulation
 from rfx.sources.sources import GaussianPulse
 
+pytestmark = pytest.mark.gpu
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for core init_state

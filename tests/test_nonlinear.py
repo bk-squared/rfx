@@ -1,11 +1,15 @@
 """Tests for Kerr nonlinear material."""
 
+import pytest
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import init_state, init_materials, EPS_0
 from rfx.materials.nonlinear import KerrMaterial, apply_kerr_update, apply_kerr_ade
+
+pytestmark = pytest.mark.gpu
 
 
 def test_kerr_modifies_eps_r():

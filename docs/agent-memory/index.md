@@ -4,32 +4,37 @@
 
 - `public-site-sync-checklist.md`
 
-## Session Handover (2026-04-10)
+## Session Handover (2026-04-12)
 
-### GPU Validation Results (VESSL #369367232843, RTX 4090)
+### GPU Validation Results
+
+#### v1.5.0 (VESSL #369367233081, RTX 4090) — 2026-04-12
 
 | Phase | Result |
 |-------|--------|
-| Fast CI (non-slow) | **704 passed, 9 failed**, 1 skipped (76 min) |
-| Slow tests (CPML, ADI, SBP-SAT, PML) | **38 passed, 0 failed** (12 min) |
-| New Feature Validation | **5 PASS, 0 FAIL** |
+| Fast CI (non-slow) | **719 passed, 3 failed**, 1 skipped (78 min) |
+| Gradient + optimization | **43 passed** (2:51) |
+| Non-uniform mesh | **31 passed** (0:34) |
+| Crossval 12 (patch antenna) | **Harminv PASS** (1.59% error), OpenEMS skipped (no CSXCAD) |
+| Crossval 14 (inverse design) | **PASS** (loss 2.25x, εr 3.49→3.23) |
 
-#### 9 Fast CI Failures
+#### 3 Remaining Failures (all experimental lane, unchanged from v1.4.0)
 
-| Test | Error | Category |
-|------|-------|----------|
-| `test_gradient_simple::test_gradient_eps_shifts_energy` | NameError | **Bug — missing import** |
-| `test_gradient_simple::test_gradient_finite_difference_match` | NameError | **Bug — missing import** |
-| `test_optimize::test_forward_returns_minimal_result_contract` | Unknown | **Needs traceback** |
-| `test_physics::test_fresnel_normal_incidence` | AssertionError | **Regression — UPML/subpixel 관련 가능** |
-| `test_ris::test_ris_sweep_capacitance` | ValueError: Floquet unsupported | Expected (experimental lane) |
-| `test_ris::test_ris_sweep_angle` | ValueError: Floquet unsupported | Expected (experimental lane) |
-| `test_sbp_sat_alpha::test_init_subgrid_3d_default_tau` | Unknown | **Needs traceback** |
-| `test_topology::test_pec_foreground_gradient_is_finite_and_nonzero` | Unknown | **Needs traceback** |
-| `test_verification::test_oblique_tfsf_fresnel` | AssertionError | **Regression — UPML/subpixel 관련 가능** |
+| Test | Error | Lane |
+|------|-------|------|
+| `test_ris::test_ris_sweep_capacitance` | ValueError: Floquet unsupported | Experimental (Floquet) |
+| `test_ris::test_ris_sweep_angle` | ValueError: Floquet unsupported | Experimental (Floquet) |
+| `test_sbp_sat_alpha::test_init_subgrid_3d_default_tau` | 3D subgrid | Experimental (SBP-SAT) |
 
-**Verdict**: 2 expected Floquet failures + 7 real failures to investigate.
-Gradient NameError는 quick fix 가능성 높음. Fresnel/TFSF 물리 assertion은 최근 UPML/subpixel 변경과 관련 가능.
+**Verdict**: Reference lane is clean. All 3 failures are in experimental lanes.
+v1.4.0 → v1.5.0: **9 failures → 3 failures** (6 fixed: gradient NameError, optimize contract, Fresnel, TFSF oblique, topology gradient).
+
+### Test Infrastructure (2026-04-12)
+
+- Added `pytest.mark.gpu` marker to 28 test files (214 tests)
+- GPU validation YAML: `pytest -m gpu` + crossval only (~30 min vs 78 min)
+- GitHub CI: `pytest -m "not gpu"` (570 code tests, CPU-only)
+- VESSL: `scripts/vessl_v150_gpu_validation.yaml`
 
 ---
 
@@ -46,19 +51,21 @@ Gradient NameError는 quick fix 가능성 높음. Fresnel/TFSF 물리 assertion�
 
 ---
 
-### Crossval Examples 현황 (9 scripts)
+### Crossval Examples 현황
 
 | File | Description | Status |
 |------|-------------|--------|
 | `01_field_progression_review.py` | Field progression review: rfx vs Meep | Committed |
 | `01_meep_waveguide_bend.py` | Waveguide bend transmittance (Meep Basics) | Committed |
-| `02_deep_field_diagnostic.py` | Deep field diagnostic: rfx vs Meep bend | New, committed |
-| `03_grid_aligned_comparison.py` | Grid-aligned field comparison | New, committed |
-| `04_courant_test.py` | Courant number S=0.5 test | New, committed |
-| `05_meep_ring_resonator.py` | Ring resonator: rfx vs Meep | Committed |
-| `24_gpr_ascan.py` | Ground Penetrating Radar A-Scan | New, committed |
-| `25_horn_antenna.py` | Open-ended rectangular waveguide horn | New, committed |
-| `26_coupled_line_bpf.py` | Coupled microstrip line BPF | New, committed |
+| `02_deep_field_diagnostic.py` | Deep field diagnostic: rfx vs Meep bend | Committed |
+| `03_grid_aligned_comparison.py` | Grid-aligned field comparison | Committed |
+| `04_courant_test.py` | Courant number S=0.5 test | Committed |
+| `05_meep_ring_resonator.py` | Ring resonator: rfx vs Meep (Harminv) | Committed |
+| `06_straight_waveguide_flux.py` | Meep Tutorial #1 — Straight waveguide | Committed |
+| `07_multilayer_fresnel.py` | **Fresnel slab — TFSF + 1D ref + time-gate, all PASS** | Fixed 2026-04-10 |
+| `24_gpr_ascan.py` | Ground Penetrating Radar A-Scan | Committed |
+| `25_horn_antenna.py` | Open-ended rectangular waveguide horn | Committed |
+| `26_coupled_line_bpf.py` | Coupled microstrip line BPF | Committed |
 
 **Note**: 01-05는 Meep cross-validation 계열 (waveguide bend 진단 집중). 24-26은 독립 RF 시나리오.
 GPU 실행 결과 미확인 — 다음 세션에서 crossval GPU run 필요.
@@ -67,21 +74,17 @@ GPU 실행 결과 미확인 — 다음 세션에서 crossval GPU run 필요.
 
 ### 남은 작업 (우선순위 순)
 
-#### P0 — GPU Test Failures (7 real)
-- [ ] `test_gradient_simple` NameError × 2 — 원인 파악 + fix
-- [ ] `test_optimize::test_forward_returns_minimal_result_contract` — traceback 필요
-- [ ] `test_physics::test_fresnel_normal_incidence` — UPML/subpixel regression?
-- [ ] `test_verification::test_oblique_tfsf_fresnel` — UPML/subpixel regression?
-- [ ] `test_sbp_sat_alpha::test_init_subgrid_3d_default_tau` — traceback 필요
-- [ ] `test_topology::test_pec_foreground_gradient_is_finite_and_nonzero` — traceback 필요
+#### P0 — Remaining Test Failures (3, all experimental lane)
+- [ ] `test_ris` Floquet ×2 — Floquet port single-device 제약 (설계 제약, 문서화됨)
+- [ ] `test_sbp_sat_alpha` 3D — SBP-SAT 3D 미검증 (experimental)
 
 #### P1 — Known Issues
 - [ ] `test_floquet::test_unit_cell_with_floquet` — pre-existing NaN (Floquet+NU 비호환)
 - [ ] Far-field dS per-face for non-uniform z — audit item #9
 
 #### P2 — Quick Wins
-- [ ] PyPI version bump (v1.4.0 → v1.5.0?)
-- [ ] Crossval GPU validation run (9 scripts)
+- [ ] PyPI 배포 확인 (v1.5.0 버전 범프 완료, 배포 필요)
+- [ ] Crossval 24-26 GPU 검증 (GPR, horn, coupled-line BPF)
 
 #### P3 — Advanced (deferred)
 - [ ] Auto-subgrid (AMR indicator → subgrid)

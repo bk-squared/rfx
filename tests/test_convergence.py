@@ -12,6 +12,8 @@ from rfx.convergence import (
     quick_convergence,
 )
 
+pytestmark = pytest.mark.gpu
+
 
 # ---------------------------------------------------------------------------
 # Helper: lightweight sim factory

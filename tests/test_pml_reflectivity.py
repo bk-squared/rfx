@@ -20,6 +20,8 @@ from rfx.sources.sources import GaussianPulse
 
 import pytest
 
+pytestmark = pytest.mark.gpu
+
 
 class TestPMLReflectivity:
     @pytest.mark.slow

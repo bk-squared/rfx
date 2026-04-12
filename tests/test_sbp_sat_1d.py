@@ -26,6 +26,8 @@ from rfx.subgridding.sbp_sat_1d import (
     MU_0,
 )
 
+pytestmark = pytest.mark.gpu
+
 
 # ── 1. SBP property ──────────────────────────────────────────────
 

@@ -21,6 +21,8 @@ from rfx.geometry.csg import Sphere
 from rfx.geometry.smoothing import compute_smoothed_eps
 from rfx.sources.sources import GaussianPulse
 
+pytestmark = pytest.mark.gpu
+
 
 # ---------------------------------------------------------------------------
 # Helper: run a PEC cavity simulation with a dielectric sphere and measure

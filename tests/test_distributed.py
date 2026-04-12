@@ -22,6 +22,8 @@ from rfx.runners.distributed import (
 )
 from rfx.core.yee import init_state, init_materials
 
+pytestmark = pytest.mark.gpu
+
 
 class TestSplitGather:
     """Test domain splitting and gathering operations."""

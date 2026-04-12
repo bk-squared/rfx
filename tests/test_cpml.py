@@ -13,6 +13,8 @@ from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.sources import GaussianPulse
 
+pytestmark = pytest.mark.gpu
+
 
 def test_cpml_energy_decay():
     """EM energy in a CPML-terminated domain should decay after source stops."""

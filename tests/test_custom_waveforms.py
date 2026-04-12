@@ -7,6 +7,8 @@ Validates that:
 4. CWSource is differentiable through the FDTD simulation
 """
 
+import pytest
+
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -15,6 +17,8 @@ from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays, init_materials
 from rfx.sources.sources import GaussianPulse, CWSource, CustomWaveform
 from rfx.simulation import make_source, make_probe, run
+
+pytestmark = pytest.mark.gpu
 
 
 def test_cw_source_reaches_steady_state():

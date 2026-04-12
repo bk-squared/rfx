@@ -1,5 +1,7 @@
 """Additional gradient coverage tests for physics paths not yet validated."""
 
+import pytest
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -8,6 +10,8 @@ from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays
 from rfx.simulation import run, make_source, ProbeSpec
 from rfx.sources.sources import GaussianPulse, CWSource
+
+pytestmark = pytest.mark.gpu
 
 
 def _small_grid():
