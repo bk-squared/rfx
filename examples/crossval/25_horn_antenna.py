@@ -29,6 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import sys
 import time
 
 from rfx import Simulation, Box
@@ -138,16 +139,16 @@ sim.add(Box(
     corner_hi=(wg_x_hi + wall_t, wg_y_hi + wall_t, z_aperture),
 ), material="pec")
 
-# Left wall: x = wg_x_lo - wall_t to wg_x_lo
+# Left wall: x = wg_x_lo - wall_t to wg_x_lo (extended y for corner overlap)
 sim.add(Box(
-    corner_lo=(wg_x_lo - wall_t, wg_y_lo, 0.0),
-    corner_hi=(wg_x_lo,          wg_y_hi, z_aperture),
+    corner_lo=(wg_x_lo - wall_t, wg_y_lo - wall_t, 0.0),
+    corner_hi=(wg_x_lo,          wg_y_hi + wall_t, z_aperture),
 ), material="pec")
 
-# Right wall: x = wg_x_hi to wg_x_hi + wall_t
+# Right wall: x = wg_x_hi to wg_x_hi + wall_t (extended y for corner overlap)
 sim.add(Box(
-    corner_lo=(wg_x_hi,          wg_y_lo, 0.0),
-    corner_hi=(wg_x_hi + wall_t, wg_y_hi, z_aperture),
+    corner_lo=(wg_x_hi,          wg_y_lo - wall_t, 0.0),
+    corner_hi=(wg_x_hi + wall_t, wg_y_hi + wall_t, z_aperture),
 ), material="pec")
 
 # --- Waveguide port (TE10, +z direction) ---
@@ -192,21 +193,26 @@ print(f"Simulation time: {elapsed:.1f}s")
 # Far-field
 # =============================================================================
 # theta=0 is +z (above aperture), theta=pi is -z (behind waveguide)
+# Full sphere for directivity integral, then extract E/H-plane cuts
 theta = jnp.linspace(0.0, jnp.pi, 181)
-phi   = jnp.array([0.0, jnp.pi / 2])   # E-plane (phi=0) and H-plane (phi=90 deg)
+phi   = jnp.linspace(0.0, 2 * jnp.pi, 73, endpoint=False)  # full 2pi for correct integral
 
 ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid, theta, phi)
 D_arr = directivity(ff)
 D_dbi = float(D_arr[0])
 print(f"Directivity: {D_dbi:.1f} dBi (analytical: {D_analytical_dbi:.1f} dBi)")
 
-# Power pattern arrays (not yet normalized)
-E_th_e = np.abs(np.asarray(ff.E_theta[0, :, 0]))
-E_ph_e = np.abs(np.asarray(ff.E_phi[0, :, 0]))
+# E-plane (phi=0, index 0) and H-plane (phi=pi/2, index 18 = 90/5 * 1)
+phi_arr = np.asarray(phi)
+idx_e = int(np.argmin(np.abs(phi_arr - 0.0)))        # phi=0
+idx_h = int(np.argmin(np.abs(phi_arr - np.pi / 2)))   # phi=90 deg
+
+E_th_e = np.abs(np.asarray(ff.E_theta[0, :, idx_e]))
+E_ph_e = np.abs(np.asarray(ff.E_phi[0, :, idx_e]))
 power_e = E_th_e**2 + E_ph_e**2     # E-plane
 
-E_th_h = np.abs(np.asarray(ff.E_theta[0, :, 1]))
-E_ph_h = np.abs(np.asarray(ff.E_phi[0, :, 1]))
+E_th_h = np.abs(np.asarray(ff.E_theta[0, :, idx_h]))
+E_ph_h = np.abs(np.asarray(ff.E_phi[0, :, idx_h]))
 power_h = E_th_h**2 + E_ph_h**2     # H-plane
 
 theta_arr = np.asarray(theta)
@@ -237,8 +243,8 @@ print(f"E-plane 3 dB beamwidth: {bw_3dB:.0f} deg")
 # =============================================================================
 PASS = True
 
-# Check 1: Directivity in reasonable range (2 dBi to 11 dBi)
-D_lo, D_hi = 2.0, 11.0
+# Check 1: Directivity in reasonable range (3 dBi to 9 dBi)
+D_lo, D_hi = 3.0, 9.0
 if D_lo <= D_dbi <= D_hi:
     print(f"PASS: Directivity {D_dbi:.1f} dBi in [{D_lo:.0f}, {D_hi:.0f}] dBi range")
 else:
@@ -273,8 +279,8 @@ fig.suptitle(
 )
 
 # 1. Cartesian radiation pattern
-e_pat = np.asarray(pat_dB[0, :, 0])    # E-plane
-h_pat = np.asarray(pat_dB[0, :, 1])    # H-plane
+e_pat = np.asarray(pat_dB[0, :, idx_e])    # E-plane
+h_pat = np.asarray(pat_dB[0, :, idx_h])    # H-plane
 ax1.plot(theta_deg, e_pat, "b-", linewidth=2, label="E-plane (phi=0)")
 ax1.plot(theta_deg, h_pat, "r--", linewidth=2, label="H-plane (phi=90)")
 ax1.axvline(peak_theta_deg, color="k", ls=":", alpha=0.4,
@@ -308,3 +314,4 @@ if PASS:
     print("\nALL CHECKS PASSED")
 else:
     print("\nSOME CHECKS FAILED")
+sys.exit(0 if PASS else 1)

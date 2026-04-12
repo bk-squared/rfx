@@ -41,6 +41,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import sys
 import time
 
 from rfx import Simulation, Box
@@ -146,6 +147,7 @@ def run_sim(with_soil):
         waveform=GaussianPulse(f0=f0, bandwidth=bw),
     )
     sim.add_probe(position=(tx_x, tx_y, 0.0), component="ez")
+    sim.preflight(strict=False)
     result = sim.run(n_steps=n_steps)
     return np.array(result.time_series).ravel(), float(result.dt)
 
@@ -351,3 +353,4 @@ if PASS:
     print("\nALL CHECKS PASSED")
 else:
     print("\nSOME CHECKS FAILED")
+sys.exit(0 if PASS else 1)

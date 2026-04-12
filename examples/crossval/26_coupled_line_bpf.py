@@ -27,6 +27,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import sys
 import time
 
 from rfx import Simulation, Box
@@ -88,12 +89,12 @@ sim = Simulation(
     dz_profile=dz_profile,
     boundary="cpml",
     cpml_layers=8,
-    pec_faces={"z_lo"},   # ground plane at z=0
 )
 
 sim.add_material("fr4", eps_r=eps_r, sigma=0.0)
 
-# Ground plane (one cell thick)
+# Ground plane (explicit PEC box, one cell thick — NOT pec_faces which makes
+# the entire z_lo face PEC and disables CPML there)
 sim.add(Box((0, 0, 0), (dom_x, dom_y, dz_sub)), material="pec")
 
 # Substrate slab
@@ -192,10 +193,9 @@ f_peak     = freqs_plot[peak_idx]
 peak_db    = s21_plot[peak_idx]
 s21_norm   = s21_plot - peak_db   # peak at 0 dB
 
-# Passband: within ±20% of design frequency
+# Passband bounds for plotting
 f_lo = f0 * 0.80
 f_hi = f0 * 1.20
-pb_mask = (freqs_plot >= f_lo) & (freqs_plot <= f_hi)
 
 # Out-of-band reference points
 def s21_at_freq(f_target):
@@ -220,11 +220,11 @@ print(f"  S21 at 5.5 GHz (norm): {s21_oob_hi:.1f} dB")
 # =============================================================================
 PASS = True
 
-# Check 1: Peak frequency within passband (relaxed — coarse mesh shifts f0)
-if err <= 1.50:
-    print(f"  PASS: peak frequency detected (error {err*100:.1f}%)")
+# Check 1: Peak frequency within +-30% of design (coarse mesh shifts f0)
+if err <= 0.30:
+    print(f"  PASS: peak frequency error {err*100:.1f}% <= 30%")
 else:
-    print(f"  FAIL: peak frequency error {err*100:.1f}% > 150%")
+    print(f"  FAIL: peak frequency error {err*100:.1f}% > 30%")
     PASS = False
 
 # Check 2: Passband peak S21 > -6 dB (raw, not normalised)
@@ -234,17 +234,17 @@ else:
     print(f"  FAIL: peak S21 = {peak_db:.1f} dB (expected > -6 dB)")
     PASS = False
 
-# Check 3: Out-of-band below passband peak (filter has some selectivity)
-if s21_oob_lo < peak_db - 3.0:
-    print(f"  PASS: OOB at 1.0 GHz = {s21_oob_lo:.1f} dB < peak-3 dB")
+# Check 3: Out-of-band below passband peak (normalised: peak = 0 dB)
+if s21_oob_lo < -3.0:
+    print(f"  PASS: OOB at 1.0 GHz = {s21_oob_lo:.1f} dB (norm) < -3 dB")
 else:
-    print(f"  FAIL: OOB at 1.0 GHz = {s21_oob_lo:.1f} dB (expected < {peak_db-3:.1f} dB)")
+    print(f"  FAIL: OOB at 1.0 GHz = {s21_oob_lo:.1f} dB (norm, expected < -3 dB)")
     PASS = False
 
-if s21_oob_hi < peak_db - 3.0:
-    print(f"  PASS: OOB at 5.5 GHz = {s21_oob_hi:.1f} dB < peak-3 dB")
+if s21_oob_hi < -3.0:
+    print(f"  PASS: OOB at 5.5 GHz = {s21_oob_hi:.1f} dB (norm) < -3 dB")
 else:
-    print(f"  FAIL: OOB at 5.5 GHz = {s21_oob_hi:.1f} dB (expected < {peak_db-3:.1f} dB)")
+    print(f"  FAIL: OOB at 5.5 GHz = {s21_oob_hi:.1f} dB (norm, expected < -3 dB)")
     PASS = False
 
 # =============================================================================
@@ -303,3 +303,4 @@ if PASS:
     print("\nALL CHECKS PASSED")
 else:
     print("\nSOME CHECKS FAILED")
+sys.exit(0 if PASS else 1)
