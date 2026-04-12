@@ -5,6 +5,8 @@ Test 2: Decay produces better DFT than fixed short run
 Test 3: min_steps and max_steps are honored
 """
 
+import pytest
+
 import numpy as np
 
 from rfx.grid import Grid
@@ -13,6 +15,8 @@ from rfx.sources.sources import GaussianPulse
 from rfx.simulation import (
     run_until_decay, run, make_source, make_probe,
 )
+
+pytestmark = pytest.mark.gpu
 
 
 def _make_cavity(freq_max=5e9, domain=(0.05, 0.05, 0.025)):

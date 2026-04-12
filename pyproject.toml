@@ -44,4 +44,5 @@ include = ["rfx*"]
 testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: tests that need GPU — too slow on CPU or GPU-specific (select with '-m gpu')",
 ]

@@ -8,6 +8,8 @@ Validates:
 5. Parameter round-trip (log-space <-> physical poles)
 """
 
+import pytest
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -27,6 +29,8 @@ from rfx.differentiable_material_fit import (
     sparam_loss,
     _adam_step,
 )
+
+pytestmark = pytest.mark.gpu
 
 
 # ---------------------------------------------------------------------------

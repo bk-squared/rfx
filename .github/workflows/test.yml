@@ -37,12 +37,11 @@ jobs:
       - name: Install package with dev dependencies
         run: pip install -e ".[dev]"
 
-      - name: Run tests
+      - name: Run tests (code tests only, gpu tests run on VESSL)
         run: >
           pytest -x -q
+          -m "not gpu"
           --ignore=tests/test_meep_crossval.py
           --ignore=tests/test_meep_crossval_patch.py
           --ignore=tests/test_openems_crossval.py
           --ignore=tests/test_crossval_comprehensive.py
-          --ignore=tests/test_subpixel.py
-          -k "not slow"

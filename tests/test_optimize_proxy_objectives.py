@@ -25,6 +25,8 @@ from rfx.optimize_objectives import (
     maximize_transmitted_energy,
 )
 
+pytestmark = pytest.mark.gpu
+
 
 # ---------------------------------------------------------------------------
 # Lightweight mock Result

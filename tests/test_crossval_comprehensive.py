@@ -19,6 +19,8 @@ import shutil
 import tempfile
 import pytest
 
+pytestmark = pytest.mark.gpu
+
 C0 = 299792458.0
 EPS_0 = 8.854187817e-12
 MU_0 = 4 * np.pi * 1e-7

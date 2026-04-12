@@ -1,0 +1,44 @@
+name: rfx-v150-gpu-validation
+description: "v1.5.0 GPU: physics validation (gpu-marked tests + crossval)"
+tags: [rfx, validation, v1.5.0, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git pull --ff-only origin main || true
+  pip install -q -e ".[dev]"
+
+  echo "========================================"
+  echo "rfx v1.5.0 GPU Validation"
+  echo "========================================"
+
+  echo ""
+  echo "=== 1. GPU-marked tests (pytest -m gpu) ==="
+  pytest tests/ -m gpu --tb=short -q \
+    --ignore=tests/test_meep_crossval.py \
+    --ignore=tests/test_meep_crossval_patch.py \
+    --ignore=tests/test_openems_crossval.py \
+    --ignore=tests/test_crossval_comprehensive.py \
+    --ignore=tests/test_distributed.py \
+    -k "not slow" || true
+
+  echo ""
+  echo "=== 2. Crossval 12: Patch antenna ==="
+  timeout 1800 python examples/crossval/12_patch_antenna.py || true
+
+  echo ""
+  echo "=== 3. Crossval 14: Inverse design demo ==="
+  timeout 300 python examples/crossval/14_inverse_design_demo.py || true
+
+  echo ""
+  echo "=== DONE ==="

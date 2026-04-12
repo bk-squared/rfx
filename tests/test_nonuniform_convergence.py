@@ -7,6 +7,8 @@ as dz_substrate is refined. Uses a PEC cavity with thin FR4 slab.
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.gpu
+
 
 @pytest.mark.slow
 def test_nonuniform_z_convergence():

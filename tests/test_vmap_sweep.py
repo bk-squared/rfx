@@ -7,6 +7,8 @@ import pytest
 from rfx import Simulation, GaussianPulse, Box
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
 
+pytestmark = pytest.mark.gpu
+
 
 # ---------------------------------------------------------------------------
 # Helpers

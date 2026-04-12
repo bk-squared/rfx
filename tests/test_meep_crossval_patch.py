@@ -10,6 +10,8 @@ Uses 2D TMz mode for fast CPU execution (~seconds each).
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.gpu
+
 C0 = 299792458.0
 
 

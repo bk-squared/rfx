@@ -16,6 +16,8 @@ from rfx.core.yee import EPS_0, MU_0
 from rfx import Simulation, ADIState2D, ADIState3D, Box
 from rfx.adi import thomas_solve, run_adi_2d
 
+pytestmark = pytest.mark.gpu
+
 # Speed of light
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 

@@ -14,6 +14,8 @@ from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse
 
+pytestmark = pytest.mark.gpu
+
 
 def fft_peak_freq(time_series: np.ndarray, dt: float,
                   f_lo: float, f_hi: float) -> float:

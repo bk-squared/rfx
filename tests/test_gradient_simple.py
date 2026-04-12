@@ -10,6 +10,8 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+pytestmark = pytest.mark.gpu
+
 
 def test_gradient_eps_shifts_energy():
     """Gradient of probe energy w.r.t. eps_r should be non-zero and finite."""

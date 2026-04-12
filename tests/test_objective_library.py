@@ -5,6 +5,8 @@ Validates:
 2. Objectives are JAX-differentiable.
 """
 
+import pytest
+
 from typing import NamedTuple
 
 import jax
@@ -16,6 +18,8 @@ from rfx.optimize_objectives import (
     target_impedance,
     maximize_bandwidth,
 )
+
+pytestmark = pytest.mark.gpu
 
 
 # ---------------------------------------------------------------------------

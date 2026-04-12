@@ -7,6 +7,8 @@ Validates:
 4. Gradient check (AD vs finite-difference)
 """
 
+import pytest
+
 import jax
 import jax.numpy as jnp
 
@@ -15,6 +17,8 @@ from rfx.optimize import (
     DesignRegion, OptimizeResult, GradientCheckResult,
     _latent_to_eps, optimize, gradient_check,
 )
+
+pytestmark = pytest.mark.gpu
 
 
 def test_design_region():
