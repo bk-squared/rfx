@@ -239,6 +239,19 @@ class _PortEntry:
     impedance: float
     waveform: GaussianPulse
     extent: float | None = None
+    # Port excitation mode:
+    #   excite=True  → resistive termination + source (legacy behaviour)
+    #   excite=False → resistive termination only (matched passive load)
+    # Passive ports are essential for multi-port S-parameter extraction
+    # where only one port drives the DUT at a time.
+    excite: bool = True
+    # Port outward-normal direction (port face → external world). Used by
+    # the S-matrix extraction to orient the V/I wave decomposition: at a
+    # port looking in +x, the incoming (into-DUT) wave is the +x-moving
+    # wave, so `a = (V + Z·I)/2`. At a -x port, signs flip. Valid
+    # values: "+x", "-x", "+y", "-y". None → auto-detect from position
+    # at sim-build time.
+    direction: str | None = None
 
 
 @dataclass(frozen=True)
@@ -811,6 +824,8 @@ class Simulation:
         impedance: float = 50.0,
         waveform: GaussianPulse | None = None,
         extent: float | None = None,
+        excite: bool = True,
+        direction: str | None = None,
     ) -> "Simulation":
         """Add a lumped port (single-cell) or wire port (multi-cell).
 
@@ -819,12 +834,27 @@ class Simulation:
         position : (x, y, z) in metres
         component : "ex", "ey", or "ez"
         impedance : port impedance in ohms (default 50)
-        waveform : excitation pulse (default: GaussianPulse at freq_max/2)
+        waveform : excitation pulse (default: GaussianPulse at freq_max/2).
+            Ignored when ``excite=False``.
         extent : float or None
             When provided, the port spans from *position* along the port
             axis by this distance (metres), creating a multi-cell WirePort.
             For example ``component="ez", extent=0.0015`` spans the port
             from ``z`` to ``z + 0.0015``.
+        excite : bool (default True)
+            When True the port has BOTH a resistive termination AND a
+            time-domain source (legacy behaviour).
+            When False the port is a passive matched load only — no
+            source, just the σ=1/(Z0·A) resistive termination.
+            Passive ports are required for multi-port S-parameter
+            extraction: excite one port at a time and probe V/I at the
+            others to fill off-diagonal entries of the S matrix.
+        direction : {"+x", "-x", "+y", "-y"} or None
+            Outward-normal direction of the port (from the port cell
+            into the external world). Used by the S-matrix post-
+            processing to orient the V/I → (incoming, outgoing) wave
+            decomposition. When None, the runner auto-detects from the
+            port's position (closest boundary face).
         """
         if self._tfsf is not None:
             raise ValueError(
@@ -834,14 +864,18 @@ class Simulation:
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         if impedance <= 0:
             raise ValueError(f"impedance must be positive, got {impedance}")
+        if direction is not None and direction not in ("+x", "-x", "+y", "-y"):
+            raise ValueError(
+                f"direction must be one of '+x','-x','+y','-y' (or None), got {direction!r}"
+            )
 
-        if waveform is None:
+        if waveform is None and excite:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
 
         self._ports.append(_PortEntry(
             position=position, component=component,
             impedance=impedance, waveform=waveform,
-            extent=extent,
+            extent=extent, excite=excite, direction=direction,
         ))
         return self
 

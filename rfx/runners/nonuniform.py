@@ -114,6 +114,26 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     probes = []
     wire_port_specs = []
 
+    # Domain extents (for auto-detecting port direction).
+    dom_lx = float(sim._domain[0])
+    dom_ly = float(sim._domain[1])
+
+    def _auto_direction(position) -> str:
+        """Pick the outward-normal direction (+x/-x/+y/-y) of the port
+        by finding the smallest *relative* distance to a boundary
+        face. Relative (not absolute) distance avoids the trap where
+        a short domain extent makes a completely-centered port appear
+        "close" to its narrow-axis boundary.
+        """
+        x, y, _z = position
+        rel = {
+            "-x": float(x) / max(dom_lx, 1e-30),
+            "+x": float(dom_lx - x) / max(dom_lx, 1e-30),
+            "-y": float(y) / max(dom_ly, 1e-30),
+            "+y": float(dom_ly - y) / max(dom_ly, 1e-30),
+        }
+        return min(rel, key=rel.get)
+
     for pe in sim._ports:
         idx = pos_to_nu_index(grid, pe.position)
         if pe.impedance == 0.0:
@@ -160,28 +180,36 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 if pec_mask is not None:
                     pec_mask = pec_mask.at[ci, cj, ck].set(False)
 
-            # Create per-cell sources
+            # Create per-cell sources — only when the port is excited.
+            # Passive (excite=False) ports contribute just the σ
+            # resistive termination above, acting as a matched load.
             mid_k = wire_cells[len(wire_cells) // 2]
             mid_cell = list(idx)
             mid_cell[axis] = mid_k
 
-            for k in wire_cells:
-                cell = list(idx)
-                cell[axis] = k
-                src = make_current_source(
-                    grid, tuple(cell), pe.component,
-                    pe.waveform, n_steps, materials)
-                # Scale by 1/n_cells for distributed excitation
-                scaled_wf = np.array(src[4]) / n_cells
-                sources.append(
-                    (src[0], src[1], src[2], src[3], scaled_wf))
+            if pe.excite:
+                for k in wire_cells:
+                    cell = list(idx)
+                    cell[axis] = k
+                    src = make_current_source(
+                        grid, tuple(cell), pe.component,
+                        pe.waveform, n_steps, materials)
+                    # Scale by 1/n_cells for distributed excitation
+                    scaled_wf = np.array(src[4]) / n_cells
+                    sources.append(
+                        (src[0], src[1], src[2], src[3], scaled_wf))
 
-            # Wire port S-param spec
+            # Wire port S-param spec — include excite/direction so the
+            # runner scan body can record V/I and the post-processing
+            # can orient the wave decomposition correctly.
+            port_direction = pe.direction or _auto_direction(pe.position)
             wire_port_specs.append({
                 'mid_i': mid_cell[0], 'mid_j': mid_cell[1],
                 'mid_k': mid_cell[2],
                 'component': pe.component,
                 'impedance': pe.impedance,
+                'excite': bool(pe.excite),
+                'direction': port_direction,
             })
         else:
             # Single-cell lumped port
@@ -208,9 +236,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 sigma=materials.sigma.at[i, j, k].add(sigma_port))
             if pec_mask is not None:
                 pec_mask = pec_mask.at[i, j, k].set(False)
-            src = make_current_source(
-                grid, idx, pe.component, pe.waveform, n_steps, materials)
-            sources.append(src)
+            if pe.excite:
+                src = make_current_source(
+                    grid, idx, pe.component, pe.waveform, n_steps, materials)
+                sources.append(src)
 
     for pe in sim._probes:
         idx = pos_to_nu_index(grid, pe.position)

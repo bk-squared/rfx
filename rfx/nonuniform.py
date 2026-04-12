@@ -562,7 +562,8 @@ def run_nonuniform(
         )
         # Pre-compute per-cell dx/dy at each wire-port cell so the
         # JIT'd scan below uses the correct line-integral lengths even
-        # on non-uniform xy meshes.
+        # on non-uniform xy meshes. Carry `excite` and `direction` so
+        # the post-processing can orient the (a, b) wave decomposition.
         _dx_arr_np = np.asarray(grid.dx_arr)
         _dy_arr_np = np.asarray(grid.dy_arr)
         wp_meta = [(
@@ -570,6 +571,8 @@ def run_nonuniform(
             wp['component'], wp['impedance'],
             float(_dx_arr_np[wp['mid_i']]),
             float(_dy_arr_np[wp['mid_j']]),
+            bool(wp.get('excite', True)),
+            str(wp.get('direction', '-x')),
         ) for wp in wire_ports]
     else:
         use_wire_ports = False
@@ -618,7 +621,7 @@ def run_nonuniform(
         new_wire_sp = None
         if use_wire_ports:
             new_wire_sp = []
-            for (v_dft, i_dft, vinc_dft), (mi, mj, mk, comp, z0, dxi, dyj) in \
+            for (v_dft, i_dft, vinc_dft), (mi, mj, mk, comp, z0, dxi, dyj, _excite, _dir) in \
                     zip(carry.get("wire_sparams", ()), wp_meta):
                 # V = -E_comp * d_parallel, I = H-loop * d_transverse
                 # dxi / dyj are the per-cell xy spacings at this port's
@@ -668,19 +671,70 @@ def run_nonuniform(
         "dt": dt,
     }
 
-    # Extract S-params from wire port DFTs
+    # ---- Extract full S-matrix column from wire port DFTs ----
+    #
+    # Each port has a V/I DFT pair, plus a direction that tells us the
+    # outward-normal (+x/-x/+y/-y). The wave decomposition is:
+    #
+    #   direction "-x" (port at left end, outward = -x, inward = +x):
+    #       a = (V + Z·I) / 2   (incoming  = +x-moving wave)
+    #       b = (V - Z·I) / 2   (outgoing  = -x-moving wave)
+    #
+    #   direction "+x" (port at right end, outward = +x, inward = -x):
+    #       a = (V - Z·I) / 2   (incoming  = -x-moving wave)
+    #       b = (V + Z·I) / 2   (outgoing  = +x-moving wave)
+    #
+    #   direction "-y" / "+y": same idea rotated, with I in the
+    #   perpendicular loop direction (already encoded by the runner's
+    #   V/I formula via the curl-H integral around the cell).
+    #
+    # Given these, with ONE excited port `k` the full k-th column of
+    # the S-matrix is
+    #       S[j, k] = b_j / a_k          (j = every port)
+    # which reduces to the familiar S11 = b_k/a_k for j==k (reflection)
+    # and to S21 = b_2/a_1 for j != k (transmission). Other columns of
+    # the S matrix stay zero — callers need to run additional sims
+    # with different excited ports to fill them (reciprocity lets us
+    # infer S12 from S21 for passive networks).
     if use_wire_ports and "wire_sparams" in final:
         import numpy as _np
         n_wp = len(wire_ports)
         nf = len(sp_freqs)
         S = _np.zeros((n_wp, n_wp, nf), dtype=_np.complex64)
-        for j, ((v_dft, i_dft, _), (_, _, _, _, z0, _, _)) in enumerate(
-                zip(final["wire_sparams"], wp_meta)):
-            # Wave decomposition: S11 = (V - Z0*I) / (V + Z0*I)
-            a = (v_dft + z0 * i_dft) / (2.0 * _np.sqrt(z0))
-            safe_a = jnp.where(jnp.abs(a) > 0, a, jnp.ones_like(a))
-            b = (v_dft - z0 * i_dft) / (2.0 * _np.sqrt(z0))
-            S[j, j, :] = _np.array(b / safe_a)
+
+        # Pick the first excited port as the "k" column. If no port is
+        # excited (all passive), fall back to the legacy diagonal-only
+        # extraction (no meaningful S-matrix in that case).
+        excited_idx = [idx for idx, meta in enumerate(wp_meta) if meta[7]]
+        if not excited_idx:
+            excited_idx = list(range(n_wp))   # legacy: treat all as self-excited
+
+        def _ab(v_dft, i_dft, z0, direction):
+            """Return (a_incoming, b_outgoing) at one port."""
+            v = v_dft
+            zi = z0 * i_dft
+            if direction in ("-x", "-y"):
+                # inward is +x/+y, +x/+y wave is incoming → +sign on I
+                return (v + zi) / 2.0, (v - zi) / 2.0
+            elif direction in ("+x", "+y"):
+                return (v - zi) / 2.0, (v + zi) / 2.0
+            else:
+                raise ValueError(f"unknown port direction {direction!r}")
+
+        ab_per_port = []
+        for (v_dft, i_dft, _), meta in zip(final["wire_sparams"], wp_meta):
+            z0 = meta[4]
+            direction = meta[8]
+            a, b = _ab(v_dft, i_dft, z0, direction)
+            ab_per_port.append((a, b))
+
+        for k in excited_idx:
+            a_k = ab_per_port[k][0]
+            safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k, jnp.ones_like(a_k))
+            for j in range(n_wp):
+                b_j = ab_per_port[j][1]
+                S[j, k, :] = _np.array(b_j / safe_a_k)
+
         result["s_params"] = S
         result["s_param_freqs"] = _np.array(sp_freqs)
 
