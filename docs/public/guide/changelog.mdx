@@ -5,16 +5,34 @@ sidebar:
   order: 99
 ---
 
-## Main-branch updates after v1.4.0
+## Main-branch updates after v1.5.0
 
 These items are already merged on `main`, but they are not reflected as a new
 package version in `pyproject.toml` yet.
 
 ### Current-main highlights
 
-- **Current-main patch cross-check**: `examples/crossval/12_patch_antenna.py` now validates the finite-ground-plane 2.4 GHz FR4 patch workflow against OpenEMS with a **0.99%** resonance delta.
-- **Public support-language cleanup**: the public docs now call out the claims-bearing reference lane versus shadow / experimental lanes more explicitly, so deployment copy is less likely to over-claim support.
-- **Canonical public-doc ownership** is now documented directly in this repo, with export/sync scripts that keep `research/rfx` as the source-of-truth for `remilab.ai/rfx/`.
+- **Curated public docs hubs**: `/rfx/api/`, `/rfx/examples/`, and `/rfx/validation/` now exist as focused public surfaces layered under the guide-centric nav.
+- **Generated API deep routes**: the subordinate generated API layer under `/rfx/api/generated/` now exposes deep-reference HTML assets instead of only a landing page.
+- **Current-main patch cross-check**: `examples/crossval/12_patch_antenna.py` remains the promoted public crossval anchor, with **0.99%** rfx↔OpenEMS agreement on the finite-ground-plane patch resonance.
+
+---
+
+## v1.5.0
+
+### New features
+
+- **Per-cell nonuniform profiles** for `dx` / `dy` as well as graded `dz`, enabling more flexible nonuniform-mesh qualification workflows.
+- **Two-port wire-port S-matrix workflows** with passive loads and direction handling.
+- **Preflight validation hardening** across common setup mistakes, including stronger unsupported-combination checks and clearer guidance before expensive runs.
+- **Waveform / DFT workflow improvements** including `ModulatedGaussian` and DFT-window options in the modern source/analysis path.
+- **New crossvals** in the 1.5 line, including the patch antenna, MSL notch, and inverse-design additions.
+
+### Fixes and quality
+
+- **Forward-path fix** for the differentiable pipeline bug that could block gradient workflows.
+- **Regression test expansion** around nonuniform XY and two-port behavior.
+- **GPU validation YAML** added for the v1.5 validation lane.
 
 ---
 

@@ -11,7 +11,7 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.4.0** — 500+ tests, GPU-benchmarked (7,309 Mcells/s on RTX 4090), published RF benchmarks, and current-main cross-solver validation notes.
+**v1.5.0** — 500+ tests, GPU-benchmarked (7,309 Mcells/s on RTX 4090), published RF benchmarks, and expanded preflight/crossval tooling.
 
 > **Project status (April 2026):** `rfx` is still in active validation and early conceptualization. Treat the current `main` branch as an initial-stage release rather than a finalized, fully qualified simulator; the support surface, validation evidence, and higher-level workflows will continue to be tightened and expanded in upcoming iterations.
 
@@ -207,7 +207,7 @@ Gitops-side snapshot/build CI lives in the deploy repo:
   title        = {rfx: JAX-based differentiable 3D FDTD simulator for RF engineering},
   institution  = {REMI Lab, Chungnam National University},
   year         = {2026},
-  version      = {1.4.0},
+  version      = {1.5.0},
   url          = {https://github.com/bk-squared/rfx}
 }
 ```

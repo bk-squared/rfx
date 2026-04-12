@@ -9,7 +9,7 @@ sidebar:
 
 rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built in JAX. It targets RF and microwave engineers who need accurate broadband field solutions, practical RF workflow tooling, and native gradient support for inverse design — without leaving Python.
 
-These docs cover the stable **v1.4.0** surface and note selected
+These docs cover the stable **v1.5.0** surface and note selected
 post-release improvements already merged on `main`.
 
 The current **claims-bearing reference lane** is the uniform Cartesian Yee RF
@@ -61,9 +61,9 @@ pip install "jax[cuda12]" rfx-fdtd
 
 ## Recent highlights
 
-- **v1.3.x** added published-result validation, convergence-study helpers, mixed precision, RIS workflows, and major GPU speedups.
-- **v1.2.0** added **multi-GPU distributed FDTD** as an advanced lane for larger 3-D jobs; treat support details as guide-scoped rather than blanket guarantees.
+- **v1.5.0** adds per-cell `dx`/`dy` profile support, two-port wire-port S-matrix workflows, richer preflight validation, and the newer crossval tranche around the patch / notch / inverse-design paths.
 - **v1.4.0** added **JAX-differentiable far-field computation**, NTFF-aware `optimize()` objectives, improved inverse-design UX, and a **research-grade advanced example bundle** under `examples/50_advanced/`.
+- **v1.2.0** added **multi-GPU distributed FDTD** as an advanced lane for larger 3-D jobs; treat support details as guide-scoped rather than blanket guarantees.
 - Current `main` also adds a **2.4 GHz finite-ground-plane patch cross-check** under `examples/crossval/12_patch_antenna.py`, where the current rfx workflow and OpenEMS agree within **0.99%** on the resonance when both solvers use the physically correct setup.
 
 Pages that describe evolving or research-grade workflows should say so

@@ -5,7 +5,7 @@ sidebar:
 ---
 
 `rfx` is a JAX-based differentiable FDTD simulator for RF and microwave
-engineering. This index tracks the **v1.4.0** release surface and highlights
+engineering. This index tracks the **v1.5.0** release surface and highlights
 selected post-release updates already merged on `main`.
 
 ## Recent highlights
@@ -13,6 +13,7 @@ selected post-release updates already merged on `main`.
 - **Published RF validation**: 5-case error table against Balanis, Pozar, and analytical references.
 - **Distributed execution**: single-host **multi-GPU** FDTD for larger 3-D jobs.
 - **Modern optimization workflows**: time-domain proxy objectives and NTFF-aware far-field objectives.
+- **Preflight + port hardening**: richer setup validation plus two-port wire-port S-matrix workflows in the current stable package line.
 - **Research-grade examples**: `examples/50_advanced/` plus GPU validation scripts.
 - **Current-main patch cross-check**: `examples/crossval/12_patch_antenna.py` now documents the finite-ground-plane FR4 patch workflow against OpenEMS with a 0.99% resonance delta.
 
