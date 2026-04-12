@@ -151,6 +151,13 @@ sim.add(Box(
     corner_hi=(wg_x_hi + wall_t, wg_y_hi + wall_t, z_aperture),
 ), material="pec")
 
+# --- PEC back wall: terminate waveguide to reflect backward wave forward ---
+back_wall_z = cpml_thick + 2 * dx
+sim.add(Box(
+    corner_lo=(wg_x_lo - wall_t, wg_y_lo - wall_t, back_wall_z),
+    corner_hi=(wg_x_hi + wall_t, wg_y_hi + wall_t, back_wall_z + wall_t),
+), material="pec")
+
 # --- Waveguide port (TE10, +z direction) ---
 port_z = cpml_thick + 6 * dx    # place port well inside domain, past CPML
 sim.add_waveguide_port(

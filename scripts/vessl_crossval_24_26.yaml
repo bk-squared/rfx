@@ -1,0 +1,44 @@
+name: rfx-crossval-24-26-v2
+description: "GPU validation: crossval 24 (GPR), 25 (horn+backwall), 26 (coupled BPF)"
+tags: [rfx, crossval, validation]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git pull --ff-only origin main || true
+  pip install -q -e ".[dev]"
+
+  FAIL=0
+
+  echo "========================================"
+  echo "rfx Crossval 24-26 GPU Validation"
+  echo "========================================"
+
+  echo ""
+  echo "=== 1. Crossval 24: GPR A-Scan (2D TMz) ==="
+  timeout 300 python examples/crossval/24_gpr_ascan.py || FAIL=1
+  echo "EXIT CODE: $?"
+
+  echo ""
+  echo "=== 2. Crossval 25: Horn Antenna (3D NTFF) ==="
+  timeout 600 python examples/crossval/25_horn_antenna.py || FAIL=1
+  echo "EXIT CODE: $?"
+
+  echo ""
+  echo "=== 3. Crossval 26: Coupled Line BPF (non-uniform z) ==="
+  timeout 300 python examples/crossval/26_coupled_line_bpf.py || FAIL=1
+  echo "EXIT CODE: $?"
+
+  echo ""
+  echo "=== DONE (FAIL=$FAIL) ==="
+  exit $FAIL
