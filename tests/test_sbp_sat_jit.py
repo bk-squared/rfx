@@ -283,6 +283,137 @@ class TestJITRunnerDirect:
         assert float(jnp.max(jnp.abs(result.state_f.ez))) == 0.0
 
 
+class TestJITRunnerHCoupling:
+    """Verify that the JIT runner applies H-field SAT coupling."""
+
+    def test_jit_runner_h_coupling_energy(self):
+        """JIT runner energy should track standalone stepper (which has H-coupling).
+
+        If JIT is missing H-coupling, energy diverges from the standalone
+        reference by orders of magnitude.
+        """
+        from rfx.subgridding.sbp_sat_3d import (
+            SubgridConfig3D, init_subgrid_3d, step_subgrid_3d,
+            compute_energy_3d,
+        )
+        from rfx.subgridding.jit_runner import run_subgridded_jit
+        from rfx.grid import Grid
+        from rfx.core.yee import MaterialArrays, EPS_0, MU_0
+
+        # --- Config: 20^3 coarse, fine region 7-13, ratio=3 ---
+        shape_c = (20, 20, 20)
+        dx_c = 0.003
+        ratio = 3
+        fine_region = (7, 13, 7, 13, 7, 13)
+        fi_lo, fi_hi, fj_lo, fj_hi, fk_lo, fk_hi = fine_region
+        dx_f = dx_c / ratio
+        C0 = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
+        dt = 0.45 * dx_f / (C0 * np.sqrt(3))
+
+        nx_f = (fi_hi - fi_lo) * ratio
+        ny_f = (fj_hi - fj_lo) * ratio
+        nz_f = (fk_hi - fk_lo) * ratio
+
+        config = SubgridConfig3D(
+            nx_c=20, ny_c=20, nz_c=20, dx_c=dx_c,
+            fi_lo=fi_lo, fi_hi=fi_hi,
+            fj_lo=fj_lo, fj_hi=fj_hi,
+            fk_lo=fk_lo, fk_hi=fk_hi,
+            nx_f=nx_f, ny_f=ny_f, nz_f=nz_f,
+            dx_f=dx_f, dt=float(dt), ratio=ratio, tau=0.5,
+        )
+
+        n_steps = 200
+        times = np.arange(n_steps) * dt
+        f0 = 3e9
+        waveform = np.exp(-((times - 3 / f0) * f0) ** 2) * np.sin(
+            2 * np.pi * f0 * times
+        )
+
+        si, sj, sk = nx_f // 2, ny_f // 2, nz_f // 2
+
+        # --- JIT runner ---
+        shape_f = (nx_f, ny_f, nz_f)
+        mats_c = MaterialArrays(
+            eps_r=jnp.ones(shape_c, dtype=jnp.float32),
+            sigma=jnp.zeros(shape_c, dtype=jnp.float32),
+            mu_r=jnp.ones(shape_c, dtype=jnp.float32),
+        )
+        mats_f = MaterialArrays(
+            eps_r=jnp.ones(shape_f, dtype=jnp.float32),
+            sigma=jnp.zeros(shape_f, dtype=jnp.float32),
+            mu_r=jnp.ones(shape_f, dtype=jnp.float32),
+        )
+
+        # Build a Grid that matches the 20^3 config
+        grid_c_custom = Grid.__new__(Grid)
+        grid_c_custom.__dict__.update({
+            '_dx': dx_c, '_dy': dx_c, '_dz': dx_c,
+            '_nx': 20, '_ny': 20, '_nz': 20,
+            'cpml_layers': 0, 'dt': dt,
+        })
+        grid_c_custom.shape = shape_c
+
+        sources_f = [(si, sj, sk, "ez", waveform.astype(np.float32))]
+
+        result_jit = run_subgridded_jit(
+            grid_c_custom, mats_c, mats_f, config, n_steps,
+            sources_f=sources_f,
+        )
+
+        # Compute JIT final energy (sum of squared fields)
+        jit_e_sq = float(
+            jnp.sum(result_jit.state_f.ex ** 2 +
+                     result_jit.state_f.ey ** 2 +
+                     result_jit.state_f.ez ** 2 +
+                     result_jit.state_f.hx ** 2 +
+                     result_jit.state_f.hy ** 2 +
+                     result_jit.state_f.hz ** 2)
+        )
+
+        # --- Standalone stepper (has H-coupling) ---
+        config_sa, state_sa = init_subgrid_3d(
+            shape_c=shape_c, dx_c=dx_c,
+            fine_region=fine_region, ratio=ratio,
+            courant=0.45, tau=0.5,
+        )
+
+        for step in range(n_steps):
+            state_sa = step_subgrid_3d(state_sa, config_sa)
+            # Inject source AFTER stepping (matches JIT injection order:
+            # sources are added after E-coupling in the JIT scan body)
+            state_sa = state_sa._replace(
+                ez_f=state_sa.ez_f.at[si, sj, sk].add(
+                    float(waveform[step]))
+            )
+
+        sa_e_sq = float(
+            jnp.sum(state_sa.ex_f ** 2 + state_sa.ey_f ** 2 +
+                     state_sa.ez_f ** 2 + state_sa.hx_f ** 2 +
+                     state_sa.hy_f ** 2 + state_sa.hz_f ** 2)
+        )
+
+        # --- Assertions ---
+        # 1. JIT energy should be finite and positive
+        assert np.isfinite(jit_e_sq), f"JIT energy is not finite: {jit_e_sq}"
+        assert jit_e_sq > 0, f"JIT energy should be positive: {jit_e_sq}"
+
+        # 2. Standalone energy should also be positive
+        assert sa_e_sq > 0, (
+            f"Standalone energy should be positive: {sa_e_sq}"
+        )
+
+        # 3. With H-coupling in both, energies should be in the same
+        #    ballpark. Without H-coupling, JIT energy diverges by
+        #    orders of magnitude. Allow 100x tolerance.
+        ratio_energy = max(jit_e_sq, sa_e_sq) / (min(jit_e_sq, sa_e_sq) + 1e-30)
+        assert ratio_energy < 100, (
+            f"JIT energy diverges from standalone: JIT={jit_e_sq:.3e}, "
+            f"SA={sa_e_sq:.3e}, ratio={ratio_energy:.1f}x — "
+            f"H-coupling likely missing in JIT runner"
+        )
+
+
 class TestSubgridMaterialTransition:
     """Validate subgridding with dielectric material crossing the coarse-fine boundary."""
 

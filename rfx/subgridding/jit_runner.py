@@ -23,7 +23,7 @@ from rfx.core.yee import (
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
 from rfx.grid import Grid
 from rfx.subgridding.sbp_sat_3d import (
-    SubgridConfig3D, _shared_node_coupling_3d,
+    SubgridConfig3D, _shared_node_coupling_3d, _shared_node_coupling_h_3d,
 )
 
 
@@ -135,6 +135,16 @@ def run_subgridded_jit(
                          hx=hx_f, hy=hy_f, hz=hz_f,
                          step=step_idx)
         st_f = update_h(st_f, mats_f, dt, dx_f)
+
+        # === SAT H-coupling (tangential H on all 6 faces) ===
+        (hx_c_new, hy_c_new, hz_c_new), (hx_f_new, hy_f_new, hz_f_new) = \
+            _shared_node_coupling_h_3d(
+                (st_c.hx, st_c.hy, st_c.hz),
+                (st_f.hx, st_f.hy, st_f.hz),
+                config,
+            )
+        st_c = st_c._replace(hx=hx_c_new, hy=hy_c_new, hz=hz_c_new)
+        st_f = st_f._replace(hx=hx_f_new, hy=hy_f_new, hz=hz_f_new)
 
         # === Coarse E update + boundary ===
         st_c = update_e(st_c, mats_c, dt, dx_c)
