@@ -33,12 +33,12 @@ run: |-
     -k "not slow" || true
 
   echo ""
-  echo "=== 2. Crossval 12: Patch antenna ==="
-  timeout 1800 python examples/crossval/12_patch_antenna.py || true
+  echo "=== 2. Crossval 05: Patch antenna ==="
+  timeout 1800 python examples/crossval/05_patch_antenna.py || true
 
   echo ""
-  echo "=== 3. Crossval 14: Inverse design demo ==="
-  timeout 300 python examples/crossval/14_inverse_design_demo.py || true
+  echo "=== 3. Crossval 07: Inverse design demo ==="
+  timeout 300 python examples/crossval/07_inverse_design_demo.py || true
 
   echo ""
   echo "=== DONE ==="

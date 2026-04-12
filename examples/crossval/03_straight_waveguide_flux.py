@@ -293,4 +293,24 @@ print(f"\n{'=' * 70}")
 print("SUMMARY")
 print("=" * 70)
 print(f"  Meep flux peak at f={meep_peak_f:.5f}")
-print(f"  Output: 06_field_snapshots.png, 06_flux_comparison.png")
+
+# Validation: flux shape correlation between rfx and Meep
+PASS = True
+if np.any(mask_valid) and len(rfx_flux_norm) > 5:
+    corr = float(np.corrcoef(meep_flux[mask_valid], rfx_flux_norm)[0, 1])
+    print(f"  Flux shape correlation: {corr:.4f}")
+    if corr > 0.90:
+        print(f"  PASS: flux correlation {corr:.4f} > 0.90")
+    else:
+        print(f"  FAIL: flux correlation {corr:.4f} <= 0.90")
+        PASS = False
+else:
+    print("  FAIL: insufficient valid flux data for comparison")
+    PASS = False
+
+if PASS:
+    print("\nALL CHECKS PASSED")
+else:
+    print("\nSOME CHECKS FAILED")
+
+sys.exit(0 if PASS else 1)

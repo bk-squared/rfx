@@ -402,10 +402,31 @@ print("=" * 70)
 print(f"  Meep modes found: {len(meep_modes)}")
 print(f"  rfx  modes found: {len(rfx_modes)}")
 print(f"  Matched modes:    {len(matched)}")
+PASS = True
 if matched:
     errs = [abs(rf - mf) / mf * 100 for mf, _, rf, _ in matched]
-    print(f"  Max freq error:   {max(errs):.2f}%")
-    print(f"  Mean freq error:  {np.mean(errs):.2f}%")
-print(f"\n  Output files:")
-print(f"    05_mode_patterns.png")
-print(f"    05_broadband_fields.png")
+    max_err = max(errs)
+    mean_err = np.mean(errs)
+    print(f"  Max freq error:   {max_err:.2f}%")
+    print(f"  Mean freq error:  {mean_err:.2f}%")
+    if mean_err < 5.0:
+        print(f"  PASS: mean freq error {mean_err:.2f}% < 5%")
+    else:
+        print(f"  FAIL: mean freq error {mean_err:.2f}% >= 5%")
+        PASS = False
+    if len(matched) >= 2:
+        print(f"  PASS: matched {len(matched)} modes (>= 2)")
+    else:
+        print(f"  FAIL: only {len(matched)} mode matched (need >= 2)")
+        PASS = False
+else:
+    print("  FAIL: no modes matched between rfx and Meep")
+    PASS = False
+
+if PASS:
+    print("\nALL CHECKS PASSED")
+else:
+    print("\nSOME CHECKS FAILED")
+
+import sys
+sys.exit(0 if PASS else 1)

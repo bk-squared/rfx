@@ -22,7 +22,7 @@ reactive load between two wire ports. Verify:
      "-x", near x=dom_x gets "+x".
 
 These are BASIC regression tests, not full validation — proper
-validation lives in `examples/crossval/13_msl_notch_filter.py`.
+validation lives in `examples/crossval/06_msl_notch_filter.py`.
 """
 
 from __future__ import annotations
