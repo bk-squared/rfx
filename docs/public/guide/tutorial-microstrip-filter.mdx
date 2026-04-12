@@ -1,23 +1,67 @@
 ---
 title: "Tutorial: Microstrip Filter Design"
-description: "Step-by-step tutorial for designing a coupled-line microstrip bandpass filter in rfx."
+description: "Recommended design-and-validation workflow for the current coupled-line microstrip filter path in rfx."
 sidebar:
   order: 31
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Under construction">
-  This page is a placeholder. Content will be added in a future update.
+This page is the filter-side counterpart to the patch workflow:
+
+- use the guide pages for API and solver concepts
+- prefer the latest committed crossval when a public runnable reference exists
+- treat older convenience examples as legacy unless they are explicitly
+  re-qualified
+
+<Aside type="note" title="Public reference choice">
+  There is **not yet** a currently promoted crossval-backed public microstrip
+  filter reference in this docs pass. Older standalone examples should not be
+  treated as the primary public path by default.
 </Aside>
 
-## Overview
+## Recommended workflow
 
-This tutorial will walk through a microstrip bandpass filter design:
+| Stage | Goal | Primary page / script |
+|---|---|---|
+| 1. Geometry + ports | Build the coupled lines, substrate, and two-port setup correctly | [Sources & Ports](../sources-ports/), [Probes & S-Parameters](../probes-sparams/) |
+| 2. Practical public reference | Wait for a currently promoted crossval-backed filter reference | current page intentionally stays guide-only for now |
+| 3. Evidence framing | Position the result relative to the broader validation story | [Cross-Validation & Accuracy](../validation/) |
 
-1. **Specification** — center frequency, bandwidth, and filter order
-2. **Coupled-line geometry** — line widths, gaps, and lengths from synthesis
-3. **Simulation** — two-port S-parameter extraction
-4. **Analysis** — insertion loss, return loss, and passband ripple
+## Current public posture
 
-See [Sources & Ports](../sources-ports/) for port setup and [Probes & S-Parameters](../probes-sparams/) for S-matrix extraction.
+This workflow is still documented as a guide path rather than as a
+crossval-first public reference. That means:
+
+| Parameter | Value |
+|---|---|
+| Status | guide workflow only |
+| Public example priority | lower than the current promoted patch crossval |
+| What is still needed | a clearly promoted, currently trusted crossval-backed filter reference |
+
+## What this public path proves
+
+The current guide path is intended to answer a practical question:
+
+> Can the present `rfx` two-port microstrip workflow produce a sensible
+> coupled-line bandpass response at the intended design frequency?
+
+Before this becomes a promoted public example path again, it should be tied to a
+freshly selected crossval/benchmark reference and phrased through the current
+validation contract.
+
+## Interpretation rules
+
+- Do **not** treat older convenience examples as the primary public microstrip
+  filter reference automatically.
+- Keep the broader support/claim framing anchored to
+  [Cross-Validation & Accuracy](../validation/).
+- Only promote a runnable filter script once it is explicitly selected as the
+  current trusted crossval-backed reference.
+
+## Where to go next
+
+- [Sources & Ports](../sources-ports/) for two-port setup details
+- [Probes & S-Parameters](../probes-sparams/) for frequency-domain extraction
+- [Cross-Validation & Accuracy](../validation/) for how to phrase public
+  evidence claims

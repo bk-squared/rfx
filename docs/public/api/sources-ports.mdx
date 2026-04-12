@@ -1,0 +1,65 @@
+---
+title: "Sources and Ports"
+description: "Current curated source, waveform, and port entry points for rfx."
+sidebar:
+  order: 24
+---
+
+rfx separates **sources** from **ports**:
+
+- sources inject fields without impedance loading
+- ports inject fields with an impedance model for S-parameter extraction
+
+## Waveforms
+
+| Waveform | Signature | Use |
+|---|---|---|
+| `GaussianPulse` | `GaussianPulse(f0, bandwidth=0.5, amplitude=1.0)` | default wideband excitation |
+| `ModulatedGaussian` | `ModulatedGaussian(f0, bandwidth=0.5, amplitude=1.0, cutoff=5.0)` | resonance work with reduced DC content |
+| `CWSource` | `CWSource(f0, amplitude=1.0, ramp_steps=50)` | steady-state field visualisation |
+| `CustomWaveform` | `CustomWaveform(func)` | JAX-compatible custom excitation |
+
+## Sources
+
+```python
+sim.add_source((0.025, 0.025, 0.010), "ez", waveform=GaussianPulse(f0=3e9))
+sim.add_polarized_source((0.025, 0.025, 0.010), polarization="rhcp")
+```
+
+Use `add_source()` for ringdown and Harminv work when you do **not** want a
+load on the excited cell.
+
+## Ports
+
+| Method | Signature / note | Public role |
+|---|---|---|
+| `add_port` | `add_port(position, component="ez", impedance=50.0, waveform=None, extent=None, excite=True, direction=None)` | lumped or wire port for S-parameters |
+| `add_coaxial_port` | coaxial feed helper with pin / outer conductor geometry | practical feed modeling, but narrower than the main lumped-port path |
+| `add_waveguide_port` | rectangular waveguide port with modal calibration | waveguide-mode validation |
+| `add_floquet_port` | periodic / phased-array excitation helper | experimental lane; keep wording narrow |
+| `add_lumped_rlc` | `R`, `L`, `C`, `topology="series"` | lumped network element at a cell |
+
+```python
+sim.add_port((0.01, 0.02, 0.01), "ez", impedance=50.0)
+sim.add_port((0.01, 0.02, 0.0), "ez", impedance=50.0, extent=0.0016)
+sim.add_coaxial_port((0.02, 0.02, 0.0016), face="top", impedance=50.0)
+sim.add_waveguide_port(x_position=0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010))
+```
+
+Pass `compute_s_params=True` to `run()` to populate `result.s_params`.
+
+### Experimental periodic port surface
+
+`add_floquet_port(...)` exists in the API, but it belongs to the experimental
+Floquet/Bloch lane. It should be documented through the support-boundary lens,
+not as part of the narrow claims-bearing default path.
+
+## Public boundary rules
+
+- Use sources when you want clean transient or resonance extraction.
+- Use ports when you need impedance-normalized S-parameters.
+- Keep waveguide-port and lumped-RLC wording aligned with the support matrix;
+  do not promote them beyond the documented reference lane without new
+  validation.
+- Treat coaxial and Floquet entry points as narrower / more conditional than the
+  main lumped-port path until they are promoted more explicitly.

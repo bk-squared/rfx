@@ -1,0 +1,57 @@
+---
+title: "Geometry and Materials"
+description: "The curated public shapes and material registration surface for rfx."
+sidebar:
+  order: 23
+---
+
+Geometry should stay explicit in public examples.
+The current curated surface uses a small set of shapes and named materials that
+map cleanly to the supported reference lane.
+
+## Shapes
+
+| Shape | Signature | Typical use |
+|---|---|---|
+| `Box` | `Box(corner_lo, corner_hi)` | substrates, ground planes, patch metal, dielectric blocks |
+| `Sphere` | `Sphere(center, radius)` | resonators, scatterers, simple inclusions |
+| `Cylinder` | `Cylinder(center, radius, height, axis="z")` | vias, posts, cylindrical inclusions |
+| `PolylineWire` | polyline-defined wire geometry | wire-like studies and routed conductors |
+| `Via` | `Via(center=..., drill_radius=..., pad_radius=..., layers=..., material="pec")` | PCB-style interconnects |
+| `CurvedPatch` | `CurvedPatch(center, length, width, radius, axis="x")` | curved-conductor studies |
+
+## Material registration
+
+```python
+from rfx import DebyePole, LorentzPole
+
+sim.add_material("fr4", eps_r=4.3, sigma=0.02)
+sim.add_material("copper", sigma=5.8e7)
+sim.add_material(
+    "custom_dielectric",
+    eps_r=6.0,
+    debye_poles=[DebyePole(delta_eps=12.0, tau=9.4e-12)],
+)
+```
+
+### Material arguments
+
+| Argument | Meaning | Notes |
+|---|---|---|
+| `eps_r` | relative permittivity | default is 1.0 |
+| `sigma` | conductivity | useful for lossy dielectrics or metals |
+| `mu_r` | relative permeability | default is 1.0 |
+| `debye_poles` | dispersive Debye terms | current public guides should use the actual `DebyePole(delta_eps, tau)` signature |
+| `lorentz_poles` | dispersive Lorentz terms | current code exposes `LorentzPole(omega_0, delta, kappa)` |
+| `chi3` | third-order nonlinearity | advanced / research-oriented |
+
+> **Authoring gap to watch:** legacy guide text still shows an older
+> `LorentzPole` parameterization. The actual API signature is
+> `LorentzPole(omega_0, delta, kappa)`.
+
+## Public note
+
+Geometry and materials are part of the claims-bearing reference lane only when
+they are paired with a supported boundary / source / observable combination.
+If a structure depends on a shadow lane, the public docs should say so
+explicitly.

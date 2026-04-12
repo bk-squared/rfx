@@ -1,0 +1,77 @@
+---
+title: "Support Boundaries"
+description: "Public mirror of the current supported, shadow, experimental, and unsupported rfx surfaces."
+sidebar:
+  order: 26
+---
+
+This page is a **derived mirror**, not a parallel source of truth.
+The canonical contracts live in:
+
+- `docs/guides/support_matrix.md`
+- `docs/guides/reference_lane_contract.md`
+
+## Status legend
+
+| Status | Meaning |
+|---|---|
+| **supported** | part of the current claims-bearing surface |
+| **shadow** | retained and tested, but not claims-bearing yet |
+| **experimental** | research-grade / partial / promotion pending |
+| **unsupported** | should fail clearly rather than degrade silently |
+
+## Current claims-bearing reference lane
+
+| Dimension | Supported subset |
+|---|---|
+| grid / runner | uniform Cartesian Yee |
+| boundaries | PEC, CPML, bounded UPML |
+| sources | point/current, lumped port, wire port, waveguide port |
+| observables | probes, flux, calibrated S-parameters, Harminv resonance, benchmarked NTFF |
+| materials | isotropic linear, conductive, validated dispersive subsets |
+| workflows | cavity, waveguide, patch antenna, simple scattering, resonance, de-embedding, selected differentiable proxy objectives |
+
+## Shadow lane
+
+Current shadow surface:
+
+- nonuniform graded-z thin-substrate workflows
+- selected smoke and convergence coverage
+- current-main finite-ground-plane patch crossval evidence
+
+Shadow means the code is real and may be tested, but the lane is not yet the
+public claims-bearing baseline.
+
+## Experimental lanes
+
+| Lane | Notes |
+|---|---|
+| SBP-SAT / subgridding | research lane, not a claims-bearing baseline |
+| ADI | separate accuracy/stability envelope |
+| distributed | scaling lane |
+| Floquet/Bloch | promotion pending explicit benchmark ladder |
+
+## Unsupported combinations
+
+Unsupported combinations must hard-fail.
+
+| Combination | Expected behavior |
+|---|---|
+| Floquet + nonuniform | hard-fail |
+| NTFF + nonuniform | hard-fail |
+| DFT planes + nonuniform | hard-fail |
+| TFSF + nonuniform | hard-fail |
+| Waveguide ports + nonuniform | hard-fail |
+| Lumped RLC + nonuniform | hard-fail |
+
+## Promotion rule
+
+A lane or feature can be promoted to **supported** only when all of these are
+present:
+
+1. support-matrix entry
+2. explicit source / observable contract where relevant
+3. unit and integration tests
+4. benchmark or convergence evidence
+5. docs, examples, and API wording aligned to the promoted scope
+

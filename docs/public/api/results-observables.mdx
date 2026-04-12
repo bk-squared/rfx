@@ -1,0 +1,69 @@
+---
+title: "Results and Observables"
+description: "What the public rfx run result contains, and which observables are claims-bearing."
+sidebar:
+  order: 22
+---
+
+`Result` is the object returned by `Simulation.run()`.
+It is tuple-like, but the public docs should read it as the structured output of
+the solver rather than as an implementation detail.
+
+## Primary fields
+
+| Field | Meaning | Public use |
+|---|---|---|
+| `state` | solver state / checkpoint payload | restart and debugging |
+| `time_series` | recorded probe values over time | ringdown, transient response, Harminv |
+| `s_params` | lumped/wire port S-matrix | matching, filters, de-embedding |
+| `freqs` | frequency axis for frequency-domain outputs | pair with `s_params` and DFT outputs |
+| `ntff_data` | near-to-far-field accumulation | radiation patterns when benchmarked |
+| `ntff_box` | NTFF box geometry | far-field bookkeeping |
+| `dft_planes` | frequency-domain plane observables | slices and field maps |
+| `flux_monitors` | plane flux accumulations | transmission / reflection analysis |
+| `waveguide_ports` | waveguide-port bookkeeping | modal workflows |
+| `waveguide_sparams` | waveguide-port S-matrix | waveguide validation |
+| `snapshots` | saved field snapshots | visualization and post-processing |
+| `grid` | mesh metadata | reproducibility checks |
+| `dt` | timestep | time-axis conversion |
+| `freq_range` | active frequency window | reporting and validation |
+
+## Observable builders that feed `Result`
+
+| Builder | Result field | Typical use |
+|---|---|---|
+| `add_probe(...)` / `add_vector_probe(...)` | `time_series` | transient response, ringdown, local field traces |
+| `add_dft_plane_probe(...)` | `dft_planes` | frequency-domain field slices |
+| `add_flux_monitor(...)` | `flux_monitors` | reflection / transmission bookkeeping |
+| `add_ntff_box(...)` | `ntff_data`, `ntff_box` | far-field accumulation |
+
+## Resonance extraction
+
+`Result.find_resonances()` runs Harminv-style mode extraction on a probe time
+series.
+
+```python
+result = sim.run(n_steps=8000)
+modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
+```
+
+Signature:
+
+```python
+result.find_resonances(freq_range=None, probe_idx=0, source_decay_time=None, bandpass=None)
+```
+
+Use this on a clean probe signal when you want a resonance estimate that is less
+dependent on port calibration than S-parameters.
+
+## Claims-bearing observables
+
+The current public claim surface is narrow:
+
+- `time_series` for transient / resonance work
+- `s_params` for lumped or wire ports
+- `waveguide_sparams` for waveguide-port validation
+- `ntff_data` only when the radiation workflow has benchmark coverage
+
+Other fields are real and useful, but they should be treated as analysis
+surfaces until their support status is documented explicitly.

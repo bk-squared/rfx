@@ -1,0 +1,53 @@
+---
+title: "API Reference"
+description: "Curated public API pages for the claims-bearing rfx surface; generated symbol docs live under /rfx/api/generated/."
+sidebar:
+  order: 20
+---
+
+rfx uses a **curated API hub** for the supported, claims-bearing surface.
+Anything not covered here belongs either in the generated reference layer at
+`/rfx/api/generated/` or in the canonical guides and support documents.
+
+This hub is intentionally narrow:
+
+- it documents the object model used by the current reference lane
+- it keeps solver, geometry, and workflow boundaries explicit
+- it does **not** try to be a complete symbol inventory
+
+## What belongs here
+
+| Page | Focus | When to use it |
+|---|---|---|
+| [Simulation](./simulation/) | builder, run loop, auto-setup | you need to create and execute a job |
+| [Geometry & Materials](./geometry-materials/) | shapes, material registration, dispersive poles | you need to place or define media |
+| [Sources & Ports](./sources-ports/) | excitation, impedance loading, calibration | you need to drive a structure or measure S-parameters |
+| [Results & Observables](./results-observables/) | return object fields and resonance extraction | you need to read solver outputs |
+| [Automation](./automation/) | `auto_configure`, `Simulation.auto`, mesh helpers | you want a derived starting point |
+| [Support Boundaries](./support-boundaries/) | supported vs shadow vs experimental scope | you need to know whether a feature is claims-bearing |
+| [Generated API](./generated/) | subordinate symbol layer | you need a route for lower-level inventory that is not promoted yet |
+
+## Canonical rule
+
+Public API wording must stay aligned with the support matrix and reference-lane
+contract. If a capability is only described in generated docs, treat it as
+subordinate until it is promoted here.
+
+## Current reference lane
+
+The curated public API reflects the current claims-bearing lane:
+
+- uniform Cartesian Yee RF workflows
+- PEC / CPML / bounded UPML boundaries
+- point/current sources
+- lumped and wire ports
+- waveguide ports
+- probes, S-parameters, Harminv resonance, and benchmarked NTFF
+
+For the authoritative support scope, see
+[Support Boundaries](./support-boundaries/) and
+[Reference Lane](../validation/reference-lane/).
+
+For lower-level symbol inventory, use
+[`/rfx/api/generated/`](./generated/). It is intentionally subordinate until a
+symbol is promoted into the curated surface.

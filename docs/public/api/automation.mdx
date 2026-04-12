@@ -1,0 +1,40 @@
+---
+title: "Automation"
+description: "Derived setup helpers for mesh, domain, and frequency-range configuration."
+sidebar:
+  order: 25
+---
+
+Automation helpers are useful when you want a fast, reproducible starting point
+without hand-deriving every simulation parameter.
+
+## Core helpers
+
+| Helper | Signature | What it does |
+|---|---|---|
+| `auto_configure` | `auto_configure(geometry, freq_range, materials=None, accuracy="standard", boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None)` | derives mesh, margin, and run budget from geometry + frequency range |
+| `Simulation.auto` | `Simulation.auto(freq_range, accuracy="standard", **kwargs)` | convenience constructor for a full simulation |
+| `smooth_grading` | mesh-profile smoothing helper | used by current crossval workflows for graded z-profiles |
+| `apply_thirds_rule` | feature-aware mesh helper | used when derived meshes need conservative refinement |
+
+```python
+from rfx import Simulation, auto_configure
+
+cfg = auto_configure(geometry, freq_range=(1.5e9, 3.5e9), accuracy="standard")
+sim = Simulation(**cfg.to_sim_kwargs())
+```
+
+## When to use automation
+
+- Use it for first-pass setup, not as a replacement for design review.
+- Keep the derived mesh and domain visible in public examples.
+- Promote the result only after it matches the support matrix and validation
+  evidence for the intended lane.
+
+## Current workflow note
+
+The newest thin-substrate crossval scripts use `smooth_grading()` to build
+non-uniform z-profiles around the substrate. That is useful workflow evidence,
+but it does not by itself promote the graded-z lane to the claims-bearing
+reference surface.
+

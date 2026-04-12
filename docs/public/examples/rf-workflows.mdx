@@ -1,0 +1,61 @@
+---
+title: "RF Workflows"
+description: "Current validated RF workflow examples, centered on the latest crossval evidence."
+sidebar:
+  order: 31
+---
+
+This page is the practical example hub for the newest validated public RF
+workflow.
+
+## Current recommended workflow
+
+| Stage | Goal | Evidence |
+|---|---|---|
+| 1. Build the geometry | describe the structure explicitly | `examples/crossval/12_patch_antenna.py` |
+| 2. Extract resonance | use a clean probe / Harminv path | rfx Harminv ringdown in the same script |
+| 3. Cross-check externally | compare against an independent solver | OpenEMS reference in the same script |
+| 4. Interpret the result | separate design estimate from solver evidence | the patch workflow notes and validation pages |
+
+## Current promoted crossval reference
+
+The public example surface should prefer the newest committed, currently
+promoted crossval-backed path over older standalone examples. Right now that
+reference is `examples/crossval/12_patch_antenna.py`, the finite-ground-plane
+2.4 GHz FR4 patch workflow with an explicit OpenEMS cross-check.
+
+## Current validated patch reference
+
+Use `examples/crossval/12_patch_antenna.py` as the current public example for a
+finite-ground-plane 2.4 GHz FR4 patch.
+
+| Measurement | Resonance | Interpretation |
+|---|---:|---|
+| Balanis transmission-line estimate | 2.4235 GHz | design reference, not solver accuracy |
+| rfx Harminv | 2.4621 GHz | primary rfx resonance estimate |
+| OpenEMS reference | 2.4868 GHz | independent solver reference |
+| rfx vs OpenEMS | **0.99%** | current public cross-solver agreement |
+
+## Two setup rules that matter
+
+1. Model the ground plane as geometry.
+2. Use a physically appropriate absorber setup for the reference solver.
+
+Those are the two easiest ways to turn a patch-antenna comparison into a false
+comparison.
+
+## What not to promote
+
+- older narrative examples without crossval evidence
+- convenience snippets that skip the finite-ground-plane detail
+- shadow-lane results without a support-boundary note
+- superseded example scripts when a newer committed crossval exists for the same
+  workflow family
+- crossval scripts that are intentionally not part of the current promoted
+  public example set
+
+## Where to go next
+
+- [API Reference](../api/)
+- [Cross-Solver Validation](../validation/cross-solver/)
+- [Reference Lane](../validation/reference-lane/)

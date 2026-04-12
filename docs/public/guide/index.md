@@ -93,16 +93,12 @@ If you're new to `rfx`, start here:
 | [Changelog](/rfx/guide/changelog/) | Release notes and current-main capability updates |
 | [Contributing](/rfx/guide/contributing/) | Maintainer workflow, testing, linting, and coding conventions |
 
-## API Reference
+## Secondary hubs
 
-Generate API documentation locally:
-
-```bash
-pip install pdoc
-pdoc rfx -o docs/api
-```
-
-Then open `docs/api/index.html` in your browser.
+- [Examples](/rfx/examples/) — newest committed crossval-backed example references
+- [Validation](/rfx/validation/) — evidence hub and support-boundary surface
+- [API](/rfx/api/) — curated public API contract
+- [Generated API](/rfx/api/generated/) — subordinate landing page for the generated symbol layer, with deep-reference pages published under the same route family
 
 ## Quick Links
 

@@ -9,8 +9,8 @@ sidebar:
 
 rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built in JAX. It targets RF and microwave engineers who need accurate broadband field solutions, practical RF workflow tooling, and native gradient support for inverse design — without leaving Python.
 
-The docs below cover the stable **v1.4.0** package surface and call out
-selected post-release improvements already merged on `main`.
+These docs cover the stable **v1.4.0** surface and note selected
+post-release improvements already merged on `main`.
 
 The current **claims-bearing reference lane** is the uniform Cartesian Yee RF
 workflow. Non-uniform graded-z, distributed, subgridding, and Floquet/Bloch
@@ -164,13 +164,25 @@ Simulation ──► add_material / add / add_port / add_probe / add_ntff_box
 - [Contributing](guide/contributing/) — maintainer workflow and test expectations
 - [Changelog](guide/changelog/) — release-level capability summary plus current-main notes
 
+## Secondary hub surfaces
+
+The primary sidebar stays guide-centric, but the public docs also expose focused
+secondary hubs:
+
+- [Examples](/rfx/examples/) — newest committed crossval-backed public example paths
+- [Validation](/rfx/validation/) — evidence, support boundaries, and cross-solver framing
+- [API](/rfx/api/) — curated public API contract
+- [Generated API](/rfx/api/generated/) — subordinate landing page for the generated symbol layer, with deep-reference pages published under the same route family
+
 ## Repo examples
 
-The public site focuses on guides. For runnable research-style workflows, see `examples/50_advanced/` for patch optimization, waveguide inverse design, broadband matching, array coupling, dielectric-lens shaping, material characterization, and GPU validation scripts.
+For public runnable references, prefer the newest committed crossval-backed
+paths surfaced under [Examples](/rfx/examples/).
 
-For the current practical patch-validation reference, also see
-`examples/crossval/12_patch_antenna.py`, which exercises the finite-ground-plane
-FR4 patch workflow against OpenEMS.
+For research-grade and less claims-bearing workflows, `examples/50_advanced/`
+still contains patch optimization, waveguide inverse design, broadband
+matching, array coupling, dielectric-lens shaping, material characterization,
+and GPU validation scripts.
 
 ## Guide Index
 

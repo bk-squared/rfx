@@ -1,0 +1,82 @@
+---
+title: "Simulation"
+description: "Constructor, run loop, and orchestration entry points for the current curated rfx API."
+sidebar:
+  order: 21
+---
+
+`Simulation` is the primary high-level builder in rfx.
+It owns the domain, boundary conditions, geometry, sources, probes, ports, and
+the time-domain run.
+
+## Constructor
+
+```python
+from rfx import Simulation
+
+sim = Simulation(
+    freq_max=4e9,
+    domain=(0.08, 0.06, 0.025),
+    boundary="cpml",
+    cpml_layers=8,
+    dx=1e-3,
+    mode="3d",
+)
+```
+
+Key constructor arguments:
+
+| Argument | Meaning | Notes |
+|---|---|---|
+| `freq_max` | highest frequency of interest | drives mesh and timestep selection |
+| `domain` | `(x, y, z)` domain size in metres | required unless derived by automation |
+| `boundary` | boundary type | the public docs currently center on `cpml` |
+| `cpml_layers` | absorber thickness | default is 8 |
+| `pec_faces` | face-based PEC truncation | use for boundaries, not for a finite antenna ground plane |
+| `dx` | base lateral cell size | may be inferred by automation |
+| `dz_profile` / `dx_profile` / `dy_profile` | non-uniform cell profiles | workflow helper for thin-substrate or graded meshes |
+| `solver` | solver family | the public reference lane is currently Yee |
+
+> **Ground-plane rule:** if the structure needs a finite ground plane, model it
+> as geometry. Do not use `pec_faces={"z_lo"}` as a substitute for antenna
+> ground-plane metal.
+
+## Core methods
+
+| Method | Purpose | Public note |
+|---|---|---|
+| `add(shape, material=...)` | fill geometry with a named material | geometry should stay explicit in public examples |
+| `add_material(...)` | register a named material | use this for custom dielectric / conductive / dispersive media |
+| `add_source(...)` | inject a soft point source | preferred for ringdown and Harminv work |
+| `add_port(...)` | add a lumped or wire port | use for impedance-normalized S-parameters |
+| `add_probe(...)` | record a point observable | feeds `Result.find_resonances()` |
+| `add_ntff_box(...)` | accumulate far-field data | use only when the radiation workflow is benchmarked |
+| `preflight(strict=False)` | validate setup before a long run | use this when you want deterministic warnings/errors on unsupported combinations |
+| `run(...)` | advance the simulation | returns a `Result` object |
+
+## Run loop
+
+```python
+result = sim.run(n_steps=8000, compute_s_params=True)
+```
+
+`run()` returns a tuple-like `Result` object with fields such as
+`time_series`, `s_params`, `freqs`, `ntff_data`, and `grid`.
+
+## Automation entry points
+
+`Simulation` also exposes a convenience constructor:
+
+```python
+sim = Simulation.auto(freq_range=(1.5e9, 3.5e9), accuracy="standard")
+```
+
+Use `Simulation.auto()` when you want a quick starting point.
+Use the lower-level constructor when you need to inspect or override the
+derived setup.
+
+## Current public boundary
+
+This page covers the supported builder surface only.
+Lower-level solver internals, generated symbol inventories, and research-grade
+extensions belong in `/rfx/api/generated/` until they are promoted here.

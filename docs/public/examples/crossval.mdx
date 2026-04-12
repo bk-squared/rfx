@@ -1,0 +1,42 @@
+---
+title: "Crossval First"
+description: "Newest validated cross-solver evidence for the public rfx example surface."
+sidebar:
+  order: 32
+---
+
+This page is the fastest public path to the newest validated cross-solver example.
+
+## Current anchor
+
+The current public crossval-first anchor is:
+
+| Script | Workflow family | Public role |
+|---|---|---|
+| `examples/crossval/12_patch_antenna.py` | finite-ground-plane patch antenna | newest committed patch cross-solver reference |
+
+The patch script remains the public anchor because it is the newest committed
+cross-solver example with both a direct external-solver comparison and a clear
+validation story.
+
+### Patch details
+
+| Measurement | Resonance | Interpretation |
+|---|---:|---|
+| Balanis transmission-line estimate | 2.4235 GHz | design estimate |
+| rfx Harminv | 2.4621 GHz | primary solver resonance |
+| OpenEMS reference | 2.4868 GHz | independent comparison |
+| rfx vs OpenEMS | **0.99%** | current public agreement |
+
+## Why this page exists
+
+The public site needs one place where the newest validated example is easy to
+find without dragging older narrative examples into the claims path.
+
+## Reading rule
+
+- use this page for the latest validated cross-solver example
+- use [RF Workflows](./rf-workflows/) for the surrounding workflow context
+- use [Validation](../validation/) when you need to explain claim strength
+- if an older example conflicts with one of the scripts above, treat the older
+  example as legacy until it is re-qualified

@@ -1,0 +1,42 @@
+---
+title: "Validation"
+description: "Public validation hierarchy for rfx: benchmarks, cross-solver checks, workflow validation, and lane contracts."
+sidebar:
+  order: 40
+---
+
+Use this hub to decide **how strong a public claim should be**.
+
+## Evidence hierarchy
+
+| Layer | What it is | Best use |
+|---|---|---|
+| 1. Published benchmarks | core analytic / reference cases | strongest numerical claims |
+| 2. Cross-solver checks | comparisons against Meep, OpenEMS, or other independent references | solver sanity and workflow verification |
+| 3. Workflow validation | end-to-end examples and regression scripts | practical stability, not top-level accuracy claims |
+| 4. Reference-lane contract | support boundaries and failure rules | determine what is promoted vs shadow |
+
+## Current public rule
+
+Lead with benchmark evidence when you quote solver accuracy.
+Use cross-solver checks when you want to show the implementation still agrees
+with an independent solver.
+Use workflow validation when the point is that the example runs end-to-end.
+
+For the current practical patch example, start with
+[Cross-Solver Validation](./cross-solver/) and then point back to the
+[Reference Lane](./reference-lane/) for scope.
+
+## Current practical anchor
+
+The newest public patch cross-check is the best current example of workflow
+validation:
+
+- `examples/crossval/12_patch_antenna.py`
+- rfx Harminv: 2.4621 GHz
+- OpenEMS reference: 2.4868 GHz
+- rfx vs OpenEMS: 0.99%
+
+That result is strong public evidence for the finite-ground-plane patch workflow,
+but it is still **workflow validation**, not a replacement for the published
+benchmark ladder.

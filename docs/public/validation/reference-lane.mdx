@@ -1,0 +1,54 @@
+---
+title: "Reference Lane"
+description: "Public mirror of the current claims-bearing reference lane and its support boundaries."
+sidebar:
+  order: 41
+---
+
+This page mirrors the canonical reference-lane contract. If it disagrees
+with `docs/guides/reference_lane_contract.md` or
+`docs/guides/support_matrix.md`, those guides win.
+
+## Current reference lane
+
+- uniform Cartesian Yee
+- RF / microwave workflows
+- PEC, CPML, or bounded UPML boundaries
+- point/current sources
+- lumped and wire ports
+- waveguide ports
+- probes, flux monitors, S-parameters, Harminv resonance, benchmarked NTFF/far-field
+
+## Modeling rule
+
+The reference lane solves Maxwell curl updates on a staggered Cartesian Yee
+grid. Anything outside that lane must be treated as shadow or experimental
+until promoted explicitly.
+
+## Support surfaces
+
+| Surface | Current status |
+|---|---|
+| materials | isotropic linear, conductive, validated dispersive subsets |
+| boundaries | supported only within the matrix above |
+| sources | point/current, lumped, wire, waveguide |
+| observables | probes, flux, S-parameters, Harminv, benchmarked NTFF |
+| optimization-facing outputs | only when the proxy objective has explicit validation |
+
+## Immediate evidence floor
+
+The current reference lane remains tied to concrete reproducible evidence, and
+the public docs should keep pointing to that evidence rather than to old
+example narratives.
+
+Suggested anchors:
+
+- `examples/40_accuracy_validation/run_all.py`
+- `examples/crossval/12_patch_antenna.py`
+- `tests/test_crossval_comprehensive.py`
+
+## Shadow relationship
+
+The graded-z thin-substrate lane is preserved, but it is not claims-bearing
+until its own contract and benchmark ladder exist.
+

@@ -1,0 +1,58 @@
+---
+title: "Cross-Solver Validation"
+description: "Current cross-solver evidence, led by the newest finite-ground-plane patch crossval."
+sidebar:
+  order: 42
+---
+
+Cross-solver validation is where rfx checks itself against an independent
+reference solver or an analytic estimate. It is useful for public confidence,
+but it is not the same claim as the benchmark table.
+
+## Current public patch cross-check
+
+`examples/crossval/12_patch_antenna.py` is the current public anchor.
+
+| Measurement | Resonance | Delta |
+|---|---:|---:|
+| Balanis transmission-line estimate | 2.4235 GHz | — |
+| rfx Harminv | 2.4621 GHz | +1.59% vs Balanis |
+| OpenEMS reference | 2.4868 GHz | +2.61% vs Balanis |
+| rfx vs OpenEMS | — | **0.99%** |
+
+### Why this check is useful
+
+- it uses a finite ground plane modeled as geometry
+- it uses Harminv on a probe ringdown for the primary frequency estimate
+- it compares against an independent solver on the same physical structure
+
+### What it is **not**
+
+- not the main solver-accuracy benchmark table
+- not a blanket promotion of the graded-z lane
+- not a reason to replace the published benchmark ladder
+
+## Broader solver checks
+
+| Evidence | Role |
+|---|---|
+| `tests/test_meep_crossval.py` | cavity and analytic comparison against Meep |
+| `tests/test_meep_crossval_patch.py` | dielectric-loaded cavity comparison against Meep |
+| `tests/test_crossval_comprehensive.py` | compact multi-case cross-solver assertions |
+| `examples/40_accuracy_validation/run_all.py` | published benchmark suite |
+
+## Current promoted crossval-backed public reference
+
+The currently promoted public cross-solver reference is:
+
+- `examples/crossval/12_patch_antenna.py`
+
+Other crossval scripts may exist in the repo, but they should not be promoted
+into the public claims path unless they are explicitly selected and framed as
+the current trusted reference for that workflow family.
+
+## Reading rule
+
+If a cross-solver result comes from a shadow lane, say so.
+If it comes from the claims-bearing reference lane, keep the wording narrow and
+match the support matrix.

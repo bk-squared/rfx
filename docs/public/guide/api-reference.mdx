@@ -1,202 +1,70 @@
 ---
 title: "Simulation API"
-description: "Current high-level `Simulation` / `Result` interface for the public rfx docs surface."
+description: "Bridge page into the curated public API surface for rfx."
 sidebar:
   order: 8
 ---
 
-The `Simulation` builder is the main high-level interface in `rfx`. The current public docs track the stable v1.4.0 surface plus a few documented main-branch improvements.
+This page is the **guide-side API entrypoint**. Use it to decide which API
+surface you need, then jump into the dedicated `/rfx/api/` pages.
 
-## Constructor
+## How to use the API docs
 
-```python
-from rfx import Simulation
+`rfx` now separates API documentation into two layers:
 
-sim = Simulation(
-    freq_max=10e9,
-    domain=(0.12, 0.04, 0.02),
-    boundary="cpml",
-    cpml_layers=12,
-    dx=0.002,
-    mode="3d",
-    dz_profile=None,
-)
-```
+1. **Curated public API** — the supported, claims-bearing surface we expect
+   users and agents to build on.
+2. **Generated API** — symbol-complete reference generated from the codebase,
+   useful for deep lookup but not the primary public contract.
 
-If `dz_profile` is provided, the z-domain can be inferred from the profile.
+## Start with the curated API
 
-## Materials
+Use these pages first:
 
-### Built-in names
+| Need | Page |
+|---|---|
+| Overall API map | [/rfx/api/](/rfx/api/) |
+| `Simulation` construction and run semantics | [/rfx/api/simulation/](/rfx/api/simulation/) |
+| `Result`, observables, Harminv, S-parameters | [/rfx/api/results-observables/](/rfx/api/results-observables/) |
+| Shapes, materials, and dispersive models | [/rfx/api/geometry-materials/](/rfx/api/geometry-materials/) |
+| Sources, lumped ports, waveguide/Floquet notes | [/rfx/api/sources-ports/](/rfx/api/sources-ports/) |
+| `auto_configure()` and higher-level setup helpers | [/rfx/api/automation/](/rfx/api/automation/) |
+| Supported / shadow / experimental boundaries | [/rfx/api/support-boundaries/](/rfx/api/support-boundaries/) |
 
-```python
-sim.add(Box(...), material="vacuum")
-sim.add(Box(...), material="air")
-sim.add(Box(...), material="fr4")
-sim.add(Box(...), material="rogers4003c")
-sim.add(Box(...), material="alumina")
-sim.add(Box(...), material="silicon")
-sim.add(Box(...), material="ptfe")
-sim.add(Box(...), material="copper")
-sim.add(Box(...), material="aluminum")
-sim.add(Box(...), material="pec")
-sim.add(Box(...), material="water_20c")
-```
+## Use the generated API for symbol lookup
 
-### Custom materials
+If you already know the symbol or module name and need the raw generated
+reference, use:
 
-```python
-sim.add_material("my_dielectric", eps_r=6.0, sigma=0.01)
-sim.add_material("ferrite", eps_r=12.0, mu_r=100.0)
-```
+- [/rfx/api/generated/](/rfx/api/generated/)
 
-### Dispersive materials
+Treat that generated tree as **subordinate deep reference**. It is useful for
+lookup, but it should not be read as a blanket support promise for every symbol
+it exposes.
 
-```python
-from rfx import DebyePole, LorentzPole
+## Current API contract rules
 
-sim.add_material(
-    "water",
-    eps_r=5.0,
-    debye_poles=[DebyePole(eps_s=80.0, tau=9.4e-12)],
-)
+- The current claims-bearing reference lane is the **uniform Cartesian Yee RF
+  workflow**.
+- Non-uniform graded-z, distributed, Floquet/Bloch, ADI, and subgridding paths
+  need to be read through the support-boundary lens, not as blanket guarantees.
+- Prefer the newest validated crossval-backed workflow pages when choosing a
+  public example or reference path.
 
-sim.add_material(
-    "resonant",
-    lorentz_poles=[LorentzPole(eps_s=2.0, omega_0=2e10, delta=1e8, omega_p=3e10)],
-)
-```
+## What still needs functional/API work
 
-## Geometry
+While writing the API surface, a few missing or still-too-implicit areas stand
+out:
 
-```python
-from rfx import Box, Sphere, Cylinder, Via, CurvedPatch
+1. **Programmatic support introspection is missing.** There is no public
+   `rfx.supports(...)`-style API to query supported / shadow / experimental
+   combinations directly.
+2. **Validation artifacts are not discoverable through a stable code-level
+   registry.** Public validation evidence currently lives in scripts and docs,
+   not in a structured runtime manifest.
+3. **Some advanced lanes still hard-fail rather than providing a richer
+   compatibility-planning surface.** That is safer than silent fallback, but it
+   leaves room for better user-facing capability reporting.
 
-sim.add(Box((0.01, 0.01, 0.01), (0.05, 0.03, 0.02)), material="fr4")
-sim.add(Sphere((0.06, 0.02, 0.01), radius=0.005), material="alumina")
-sim.add(Cylinder((0.08, 0.02, 0.01), radius=0.003, height=0.01, axis="z"), material="copper")
-```
-
-Current helper primitives beyond the base CSG set include:
-
-- `Via`
-- `CurvedPatch`
-
-## Sources and ports
-
-### Soft source
-
-```python
-from rfx import GaussianPulse
-
-sim.add_source(
-    position=(0.02, 0.02, 0.01),
-    component="ez",
-    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
-)
-```
-
-### Polarized source
-
-```python
-sim.add_polarized_source((0.02, 0.02, 0.01), polarization="rhcp")
-```
-
-### Lumped or wire port
-
-```python
-sim.add_port(
-    position=(0.01, 0.02, 0.01),
-    component="ez",
-    impedance=50.0,
-    waveform=GaussianPulse(f0=5e9),
-)
-
-sim.add_port(
-    position=(0.01, 0.02, 0.0),
-    component="ez",
-    impedance=50.0,
-    extent=0.0016,
-    waveform=GaussianPulse(f0=2.4e9),
-)
-```
-
-### Lumped RLC element
-
-```python
-sim.add_lumped_rlc(
-    position=(0.02, 0.02, 0.01),
-    component="ez",
-    R=50.0,
-    L=1e-9,
-    C=1e-12,
-    topology="series",
-)
-```
-
-### Waveguide port
-
-```python
-sim.add_waveguide_port(
-    x_position=0.01,
-    y_range=(0.0, 0.023),
-    z_range=(0.0, 0.010),
-    mode=(1, 0),
-    mode_type="TE",
-    direction="+x",
-    f0=10e9,
-    bandwidth=0.5,
-    name="port1",
-)
-```
-
-## Probes
-
-```python
-sim.add_probe((0.04, 0.02, 0.01), "ez")
-sim.add_vector_probe((0.04, 0.02, 0.01))
-sim.add_dft_plane_probe(axis="x", coordinate=0.03, component="ez")
-```
-
-## Running
-
-```python
-result = sim.run(n_steps=500)
-result = sim.run(until_decay=1e-3)
-result = sim.run(n_steps=500, compute_s_params=True)
-result = sim.run(n_steps=500, subpixel_smoothing=True)
-```
-
-## Result object
-
-Important fields/methods:
-
-```python
-result.state
-result.time_series
-result.s_params
-result.freqs
-result.dt
-result.find_resonances(freq_range=(1e9, 4e9))
-```
-
-## Auto builders
-
-### `auto_configure`
-
-```python
-from rfx import auto_configure
-
-cfg = auto_configure(geometry, (1e9, 4e9), materials=materials, accuracy="standard")
-sim = Simulation(**cfg.to_sim_kwargs())
-```
-
-### `Simulation.auto`
-
-```python
-sim = Simulation.auto(freq_range=(1.5e9, 3.5e9), accuracy="standard")
-```
-
-`Simulation.auto()` is convenient for coarse setup.
-`auto_configure()` is better when you want to inspect the derived configuration
-first.
+Those are not blockers for the curated docs surface, but they are the main
+follow-on product/API improvements surfaced by this docs pass.
