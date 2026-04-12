@@ -41,7 +41,7 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
     tau = ref.get("tau", 0.5)
     dx_c = grid_coarse.dx
     dx_f = dx_c / ratio
-    ref["xy_margin"] if ref["xy_margin"] is not None else 2 * dx_c
+    xy_margin = ref["xy_margin"] if ref["xy_margin"] is not None else 2 * dx_c
 
     # Map z_range to coarse grid indices
     cpml = grid_coarse.cpml_layers
