@@ -1,0 +1,56 @@
+name: rfx-phase-c-subgrid-validation
+description: "Phase C: 3D SBP-SAT stability + accuracy (energy, Fresnel, 3D cavity)"
+tags: [rfx, subgrid, phase-c, validation]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch origin main
+  git reset --hard origin/main
+  pip install -q -e ".[dev]"
+
+  FAIL=0
+
+  echo "========================================"
+  echo "Phase C: 3D SBP-SAT Validation"
+  echo "========================================"
+
+  echo ""
+  echo "=== 1. Energy stability (standalone stepper) ==="
+  pytest tests/test_sbp_sat_3d.py -xvs --tb=short || FAIL=1
+
+  echo ""
+  echo "=== 2. JIT runner tests (H-coupling) ==="
+  pytest tests/test_sbp_sat_jit.py -xvs --tb=short || FAIL=1
+
+  echo ""
+  echo "=== 3. SBP-SAT alpha tests ==="
+  pytest tests/test_sbp_sat_alpha.py -xvs --tb=short || FAIL=1
+
+  echo ""
+  echo "=== 4. Subgrid accuracy crossval (Fresnel + 3D cavity) ==="
+  pytest tests/test_subgrid_crossval.py -xvs --tb=short || FAIL=1
+
+  echo ""
+  echo "=== 5. Full gpu test suite (regression check) ==="
+  pytest tests/ -m gpu --tb=short -q \
+    --ignore=tests/test_meep_crossval.py \
+    --ignore=tests/test_meep_crossval_patch.py \
+    --ignore=tests/test_openems_crossval.py \
+    --ignore=tests/test_crossval_comprehensive.py \
+    --ignore=tests/test_distributed.py \
+    -k "not slow" || FAIL=1
+
+  echo ""
+  echo "=== DONE (FAIL=$FAIL) ==="
+  exit $FAIL
