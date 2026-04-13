@@ -61,7 +61,9 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
 
     # Global timestep (limited by fine grid CFL)
     C0_val = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
-    dt = 0.45 * dx_f / (C0_val * np.sqrt(3))
+    # Use the same CFL factor as Grid.courant_dt (0.99/sqrt(3))
+    # to match uniform runner's timestep for equivalent dx
+    dt = 0.99 * dx_f / (C0_val * np.sqrt(3))
 
     config = SubgridConfig3D(
         nx_c=grid_coarse.nx, ny_c=grid_coarse.ny, nz_c=grid_coarse.nz,
