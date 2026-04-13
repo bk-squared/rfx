@@ -106,11 +106,21 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
 
     # Helper: convert physical position to fine-grid index
     def _pos_to_fine_idx(pos):
-        return (
+        idx = (
             int(round((pos[0] - x_off) / dx_f)),
             int(round((pos[1] - y_off) / dx_f)),
             int(round((pos[2] - z_off) / dx_f)),
         )
+        # Bounds check — source/probe outside fine grid causes garbage results
+        if not (0 <= idx[0] < nx_f and 0 <= idx[1] < ny_f and 0 <= idx[2] < nz_f):
+            import warnings
+            warnings.warn(
+                f"Position {pos} maps to fine-grid index {idx} which is outside "
+                f"the fine grid shape ({nx_f}, {ny_f}, {nz_f}). "
+                f"Widen z_range in add_refinement() to cover all sources and probes.",
+                stacklevel=3,
+            )
+        return idx
 
     # Build sources on fine grid
     sources_f = []

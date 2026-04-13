@@ -96,7 +96,9 @@ class TestFresnelSlabSubgrid:
             Box((0.0, 0.0, 0.03), (0.04, 0.04, 0.05)),
             material="dielectric",
         )
-        sim.add_refinement(z_range=(0.025, 0.055), ratio=3)
+        # z_range must cover source (z=0.015) and probes (z=0.025, z=0.065)
+        # since the runner only injects sources/reads probes on the fine grid
+        sim.add_refinement(z_range=(0.010, 0.070), ratio=3)
         # Transmitted probe
         sim.add_source(position=(0.02, 0.02, 0.015), component="ez")
         sim.add_probe(position=(0.02, 0.02, 0.065), component="ez")
@@ -192,7 +194,8 @@ class TestCavitySubgrid:
             boundary="pec",
             dx=dx_coarse,
         )
-        sim.add_refinement(z_range=(0.012, 0.028), ratio=3)
+        # z_range must cover source (z=0.018) and probe (z=0.022) with margin
+        sim.add_refinement(z_range=(0.008, 0.032), ratio=3)
         sim.add_source(position=(0.012, 0.015, 0.018), component="ez")
         sim.add_probe(position=(0.028, 0.025, 0.022), component="ez")
 
