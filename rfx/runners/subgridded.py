@@ -131,14 +131,20 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
         axis = axis_map[pe.component]
 
         if pe.impedance == 0.0:
-            # Soft source (J-source Cb normalized, no port impedance)
+            # Soft source — normalization depends on boundary type:
+            # PEC: raw field add (matches make_source in uniform runner)
+            # CPML/UPML: J-source Cb normalized (matches make_j_source)
             idx = _pos_to_fine_idx(pe.position)
             i, j, k = idx
-            eps = float(mats_f.eps_r[i, j, k]) * EPS_0
-            sigma_val = float(mats_f.sigma[i, j, k])
-            loss = sigma_val * dt / (2.0 * eps)
-            cb = (dt / eps) / (1.0 + loss)
-            waveform = cb * jax.vmap(pe.waveform)(times)
+            raw_waveform = jax.vmap(pe.waveform)(times)
+            if sim._boundary in ("cpml", "upml"):
+                eps = float(mats_f.eps_r[i, j, k]) * EPS_0
+                sigma_val = float(mats_f.sigma[i, j, k])
+                loss = sigma_val * dt / (2.0 * eps)
+                cb = (dt / eps) / (1.0 + loss)
+                waveform = cb * raw_waveform
+            else:
+                waveform = raw_waveform
             sources_f.append((i, j, k, pe.component, np.array(waveform)))
             continue
 
