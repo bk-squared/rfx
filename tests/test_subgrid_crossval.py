@@ -18,16 +18,25 @@ import pytest
 pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 
 
-def _rms_error(sig_ref, sig_test):
-    """Normalised RMS error between two 1-D arrays."""
-    n = min(len(sig_ref), len(sig_test))
-    ref = sig_ref[:n].astype(np.float64)
-    tst = sig_test[:n].astype(np.float64)
+def _rms_error_time_aligned(ts_ref, dt_ref, ts_test, dt_test):
+    """Normalised RMS error with physical-time interpolation.
+
+    The two signals may have different dt (timestep), so we
+    interpolate both onto a common time axis before comparing.
+    """
+    t_ref = np.arange(len(ts_ref)) * dt_ref
+    t_test = np.arange(len(ts_test)) * dt_test
+    t_max = min(t_ref[-1], t_test[-1])
+    n_common = 500
+    t_common = np.linspace(0, t_max, n_common)
+
+    ref = np.interp(t_common, t_ref, ts_ref.astype(np.float64))
+    tst = np.interp(t_common, t_test, ts_test.astype(np.float64))
+
     rms_ref = np.sqrt(np.mean(ref ** 2))
     if rms_ref < 1e-30:
         return 0.0
-    rms_err = np.sqrt(np.mean((ref - tst) ** 2))
-    return rms_err / rms_ref
+    return np.sqrt(np.mean((ref - tst) ** 2)) / rms_ref
 
 
 # ---------------------------------------------------------------------------
@@ -82,20 +91,26 @@ class TestSlabCavitySubgrid:
         return sim.run(n_steps=n_steps)
 
     def test_slab_transmitted_rms_error(self):
-        """Transmitted probe RMS error < 5%."""
-        n_steps = 1000
+        """Transmitted probe RMS error < 5% (time-aligned comparison)."""
+        n_steps_ref = 1000
+        # Subgridded uses smaller dt → need more steps to cover same time
+        result_ref = self._run_uniform_fine(n_steps_ref)
+        dt_ref = float(result_ref.dt)
 
-        result_ref = self._run_uniform_fine(n_steps)
-        result_sub = self._run_subgridded(n_steps)
+        # Run subgridded for same physical time
+        result_sub_short = self._run_subgridded(100)  # just to get dt
+        dt_sub = float(result_sub_short.dt)
+        n_steps_sub = int(n_steps_ref * dt_ref / dt_sub) + 100
+        result_sub = self._run_subgridded(n_steps_sub)
 
         ts_ref = np.array(result_ref.time_series[:, 0])
         ts_sub = np.array(result_sub.time_series[:, 0])
 
-        err = _rms_error(ts_ref, ts_sub)
+        err = _rms_error_time_aligned(ts_ref, dt_ref, ts_sub, dt_sub)
         print(f"\nSlab cavity crossval:")
-        print(f"  Ref max: {np.max(np.abs(ts_ref)):.6e}")
-        print(f"  Sub max: {np.max(np.abs(ts_sub)):.6e}")
-        print(f"  RMS error: {err:.3%}")
+        print(f"  Ref: dt={dt_ref:.3e}s, {len(ts_ref)} steps, max={np.max(np.abs(ts_ref)):.6e}")
+        print(f"  Sub: dt={dt_sub:.3e}s, {len(ts_sub)} steps, max={np.max(np.abs(ts_sub)):.6e}")
+        print(f"  RMS error (time-aligned): {err:.3%}")
         assert err < 0.05, f"Slab cavity: RMS error {err:.3%} >= 5%"
 
     def test_slab_signals_finite(self):
@@ -144,20 +159,26 @@ class TestCavitySubgrid:
         return sim.run(n_steps=n_steps)
 
     def test_cavity_probe_rms_error(self):
-        """Off-axis probe RMS error < 10%."""
-        n_steps = 1000
+        """Off-axis probe RMS error < 10% (time-aligned comparison)."""
+        n_steps_ref = 1000
 
-        result_ref = self._run_uniform_fine(n_steps)
-        result_sub = self._run_subgridded(n_steps)
+        result_ref = self._run_uniform_fine(n_steps_ref)
+        dt_ref = float(result_ref.dt)
+
+        # Match physical time
+        result_sub_short = self._run_subgridded(100)
+        dt_sub = float(result_sub_short.dt)
+        n_steps_sub = int(n_steps_ref * dt_ref / dt_sub) + 100
+        result_sub = self._run_subgridded(n_steps_sub)
 
         ts_ref = np.array(result_ref.time_series[:, 0])
         ts_sub = np.array(result_sub.time_series[:, 0])
 
-        err = _rms_error(ts_ref, ts_sub)
+        err = _rms_error_time_aligned(ts_ref, dt_ref, ts_sub, dt_sub)
         print(f"\n3D cavity crossval:")
-        print(f"  Ref max: {np.max(np.abs(ts_ref)):.6e}")
-        print(f"  Sub max: {np.max(np.abs(ts_sub)):.6e}")
-        print(f"  RMS error: {err:.3%}")
+        print(f"  Ref: dt={dt_ref:.3e}s, {len(ts_ref)} steps, max={np.max(np.abs(ts_ref)):.6e}")
+        print(f"  Sub: dt={dt_sub:.3e}s, {len(ts_sub)} steps, max={np.max(np.abs(ts_sub)):.6e}")
+        print(f"  RMS error (time-aligned): {err:.3%}")
         assert err < 0.10, f"3D cavity: RMS error {err:.3%} >= 10%"
 
     def test_cavity_signals_finite(self):
