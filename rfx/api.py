@@ -550,26 +550,23 @@ class Simulation:
         if self._refinement is not None:
             raise ValueError("Only one refinement region is supported")
 
-        # Enforce: subgrid must not overlap PML region.
+        # Warn if subgrid overlaps PML region.
         # PML operates on the coarse grid only; the fine grid has no PML.
         # Overlapping causes late-time energy growth (SAT coupling feeds
         # energy into the PML boundary faster than it can absorb).
-        if self._boundary == "cpml" and self._cpml_layers > 0:
+        if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
+            import warnings
             dx = self._dx or (2.998e8 / self._freq_max / 10)
             pml_thickness = self._cpml_layers * dx
             domain_z = self._domain[2] if len(self._domain) > 2 else 0
             z_lo, z_hi = z_range
-            if z_lo < pml_thickness:
-                raise ValueError(
-                    f"Subgrid z_lo={z_lo*1e3:.1f}mm overlaps PML region "
-                    f"(0 to {pml_thickness*1e3:.1f}mm). "
-                    f"Move z_range inside the PML boundary."
-                )
-            if domain_z > 0 and z_hi > domain_z - pml_thickness:
-                raise ValueError(
-                    f"Subgrid z_hi={z_hi*1e3:.1f}mm overlaps PML region "
-                    f"({(domain_z-pml_thickness)*1e3:.1f}mm to {domain_z*1e3:.1f}mm). "
-                    f"Move z_range inside the PML boundary."
+            if z_lo < pml_thickness or (domain_z > 0 and z_hi > domain_z - pml_thickness):
+                warnings.warn(
+                    f"Subgrid z_range=({z_lo*1e3:.1f}, {z_hi*1e3:.1f})mm overlaps "
+                    f"PML region (thickness={pml_thickness*1e3:.1f}mm). "
+                    f"This causes late-time energy growth. "
+                    f"Move z_range inside the PML boundary for stable results.",
+                    stacklevel=2,
                 )
 
         self._refinement = {
