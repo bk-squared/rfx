@@ -1,0 +1,23 @@
+name: rfx-issue40-nwarmup-physics
+description: "Issue #40 physics check: n_warmup forward bit-match"
+tags: [rfx, issue-40, physics, nu, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout feat-n-warmup
+  git pull --ff-only origin feat-n-warmup || true
+  pip install -q -e ".[dev]"
+  timeout 1200 python scripts/issue40_nwarmup_physics.py
+  echo "=== DONE ==="

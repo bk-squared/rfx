@@ -3399,6 +3399,7 @@ class Simulation:
         checkpoint: bool = True,
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
+        n_warmup: int = 0,
     ) -> ForwardResult:
         """Differentiable forward on the non-uniform mesh path.
 
@@ -3421,6 +3422,7 @@ class Simulation:
             checkpoint=checkpoint,
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
+            n_warmup=n_warmup,
         )
         return ForwardResult(
             time_series=result.time_series,
@@ -3445,6 +3447,7 @@ class Simulation:
         checkpoint: bool = True,
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
+        n_warmup: int = 0,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
 
@@ -3501,6 +3504,7 @@ class Simulation:
                 checkpoint=checkpoint,
                 emit_time_series=emit_time_series,
                 checkpoint_every=checkpoint_every,
+                n_warmup=n_warmup,
             )
         if not emit_time_series:
             raise NotImplementedError(

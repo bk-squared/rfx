@@ -494,6 +494,7 @@ def run_nonuniform(
     checkpoint: bool = False,
     emit_time_series: bool = True,
     checkpoint_every: int | None = None,
+    n_warmup: int = 0,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -838,9 +839,35 @@ def run_nonuniform(
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
 
+    # ---- n_warmup split --------------------------------------------------
+    # When n_warmup > 0, run the first n_warmup steps with the carry
+    # stop_gradient'd so AD builds no tape for that transient lead-in
+    # (issue #40). Only the trailing n_optimize = n_steps - n_warmup
+    # steps participate in reverse-mode autodiff.
+    if n_warmup > 0:
+        if n_warmup >= n_steps:
+            raise ValueError(
+                f"n_warmup ({n_warmup}) must be < n_steps ({n_steps})"
+            )
+        warmup_steps = jnp.arange(n_warmup, dtype=jnp.int32)
+        warmup_xs = (warmup_steps, src_waveforms[:n_warmup])
+        warmup_final, warmup_ys = jax.lax.scan(step_fn, carry_init, warmup_xs)
+        carry_init = jax.tree_util.tree_map(
+            jax.lax.stop_gradient, warmup_final
+        )
+        warmup_ys = jax.lax.stop_gradient(warmup_ys)
+        xs = (
+            jnp.arange(n_warmup, n_steps, dtype=jnp.int32),
+            src_waveforms[n_warmup:],
+        )
+        n_steps_opt = n_steps - n_warmup
+    else:
+        warmup_ys = None
+        n_steps_opt = n_steps
+
     use_segmented = (
         checkpoint_every is not None
-        and 0 < int(checkpoint_every) < n_steps
+        and 0 < int(checkpoint_every) < n_steps_opt
     )
     if use_segmented:
         # Scan-of-scan: outer scan over segments wrapped in jax.checkpoint
@@ -848,16 +875,22 @@ def run_nonuniform(
         # tape only stores carry at segment boundaries (≈ sqrt(n_steps)
         # × carry_size when checkpoint_every ≈ sqrt(n_steps)).
         chunk = int(checkpoint_every)
-        n_segments = (n_steps + chunk - 1) // chunk
-        pad = n_segments * chunk - n_steps
+        n_segments = (n_steps_opt + chunk - 1) // chunk
+        pad = n_segments * chunk - n_steps_opt
+        opt_steps = xs[0]
+        opt_src = xs[1]
         if pad > 0:
-            steps_padded = jnp.arange(n_segments * chunk, dtype=jnp.int32)
-            n_sources = src_waveforms.shape[1]
-            src_pad = jnp.zeros((pad, n_sources), dtype=src_waveforms.dtype)
-            src_padded = jnp.concatenate([src_waveforms, src_pad], axis=0)
+            steps_padded = jnp.arange(
+                int(opt_steps[0]),
+                int(opt_steps[0]) + n_segments * chunk,
+                dtype=jnp.int32,
+            )
+            n_sources = opt_src.shape[1]
+            src_pad = jnp.zeros((pad, n_sources), dtype=opt_src.dtype)
+            src_padded = jnp.concatenate([opt_src, src_pad], axis=0)
         else:
-            steps_padded = xs[0]
-            src_padded = src_waveforms
+            steps_padded = opt_steps
+            src_padded = opt_src
 
         seg_steps = steps_padded.reshape(n_segments, chunk)
         seg_src = src_padded.reshape(n_segments, chunk, src_padded.shape[1])
@@ -870,10 +903,16 @@ def run_nonuniform(
             seg_body, carry_init, (seg_steps, seg_src)
         )
         flat = segment_ys.reshape((n_segments * chunk,) + segment_ys.shape[2:])
-        time_series = flat[:n_steps]
+        opt_ys = flat[:n_steps_opt]
     else:
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
-        final, time_series = jax.lax.scan(body, carry_init, xs)
+        final, opt_ys = jax.lax.scan(body, carry_init, xs)
+    # Merge warmup + optimize outputs back into one time_series so the
+    # downstream result shape stays (n_steps, n_probes).
+    if warmup_ys is not None:
+        time_series = jnp.concatenate([warmup_ys, opt_ys], axis=0)
+    else:
+        time_series = opt_ys
 
     result = {
         "state": final["fdtd"],
