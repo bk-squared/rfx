@@ -89,7 +89,13 @@ def _build(G, *, with_port, with_ntff, ntff_freqs=None):
     sim = Simulation(freq_max=4e9, domain=(G["dom_x"], G["dom_y"], 0),
                      dx=G["dx_mm"] * 1e-3, dz_profile=G["dz_profile"],
                      boundary="cpml", cpml_layers=G["n_cpml"])
-    sim.add_material("fr4", eps_r=G["eps_r_fr4"])
+    # Lossy FR4 (tan δ = 0.02). Essential for physical radiation —
+    # lossless dielectric traps energy in the patch cavity (Q ~ 1000)
+    # and produces a near-grazing NTFF pattern (issue #48 deep dive).
+    eps0 = 8.8541878128e-12
+    tan_delta = 0.02
+    sigma_fr4 = 2 * np.pi * G["f_design"] * eps0 * G["eps_r_fr4"] * tan_delta
+    sim.add_material("fr4", eps_r=G["eps_r_fr4"], sigma=sigma_fr4)
     sim.add(Box((G["gx_lo"], G["gy_lo"], G["z_gnd_lo"]),
                 (G["gx_lo"] + G["gx"], G["gy_lo"] + G["gy"], G["z_sub_lo"])),
             material="pec")
