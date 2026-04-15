@@ -163,17 +163,14 @@ def run_farfield(*, dx_mm, f_res):
     from rfx.farfield import compute_far_field
     theta = np.linspace(0, np.pi / 2, 91)
     phi = np.linspace(0, 2 * np.pi, 181)
-    th_grid, ph_grid = np.meshgrid(theta, phi, indexing="ij")
-    # NTFF gives |E_far| at (theta, phi); use the closer of the two stored freqs.
     freqs_ntff = np.asarray(res.ntff_box.freqs)
     f_idx = int(np.argmin(np.abs(freqs_ntff - f_res)))
-    ef = compute_far_field(res.ntff_data, res.ntff_box,
-                           freq_idx=f_idx,
-                           theta=th_grid.ravel(),
-                           phi=ph_grid.ravel(),
-                           r=1.0)
-    mag = np.sqrt(np.abs(ef.E_theta) ** 2 + np.abs(ef.E_phi) ** 2)
-    mag = mag.reshape(th_grid.shape)
+    grid = sim._build_nonuniform_grid()
+    ef = compute_far_field(res.ntff_data, res.ntff_box, grid, theta, phi)
+    # E_theta / E_phi shape: (n_freqs, n_theta, n_phi)
+    E_t = np.asarray(ef.E_theta[f_idx])
+    E_p = np.asarray(ef.E_phi[f_idx])
+    mag = np.sqrt(np.abs(E_t) ** 2 + np.abs(E_p) ** 2)
     mag_db = 20 * np.log10(np.maximum(mag / np.max(mag), 1e-3))
 
     # Elevation cut (phi=0 = +x plane)
