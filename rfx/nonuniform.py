@@ -491,6 +491,9 @@ def run_nonuniform(
     ntff_data=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
+    checkpoint: bool = False,
+    emit_time_series: bool = True,
+    checkpoint_every: int | None = None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -806,8 +809,11 @@ def run_nonuniform(
             tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, grid.dx, dt, t_tfsf)
 
         # Probes
-        samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
-        probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
+        if emit_time_series and prb_meta:
+            samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
+            probe_out = jnp.stack(samples)
+        else:
+            probe_out = jnp.zeros(0)
 
         new_carry = {"fdtd": st}
         if use_cpml:
@@ -831,7 +837,43 @@ def run_nonuniform(
         return new_carry, probe_out
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
-    final, time_series = jax.lax.scan(step_fn, carry_init, xs)
+
+    use_segmented = (
+        checkpoint_every is not None
+        and 0 < int(checkpoint_every) < n_steps
+    )
+    if use_segmented:
+        # Scan-of-scan: outer scan over segments wrapped in jax.checkpoint
+        # forces XLA to remat the inner scan during backward, so the AD
+        # tape only stores carry at segment boundaries (≈ sqrt(n_steps)
+        # × carry_size when checkpoint_every ≈ sqrt(n_steps)).
+        chunk = int(checkpoint_every)
+        n_segments = (n_steps + chunk - 1) // chunk
+        pad = n_segments * chunk - n_steps
+        if pad > 0:
+            steps_padded = jnp.arange(n_segments * chunk, dtype=jnp.int32)
+            n_sources = src_waveforms.shape[1]
+            src_pad = jnp.zeros((pad, n_sources), dtype=src_waveforms.dtype)
+            src_padded = jnp.concatenate([src_waveforms, src_pad], axis=0)
+        else:
+            steps_padded = xs[0]
+            src_padded = src_waveforms
+
+        seg_steps = steps_padded.reshape(n_segments, chunk)
+        seg_src = src_padded.reshape(n_segments, chunk, src_padded.shape[1])
+
+        def segment_body(carry, segment_xs):
+            return jax.lax.scan(step_fn, carry, segment_xs)
+
+        seg_body = jax.checkpoint(segment_body)
+        final, segment_ys = jax.lax.scan(
+            seg_body, carry_init, (seg_steps, seg_src)
+        )
+        flat = segment_ys.reshape((n_segments * chunk,) + segment_ys.shape[2:])
+        time_series = flat[:n_steps]
+    else:
+        body = jax.checkpoint(step_fn) if checkpoint else step_fn
+        final, time_series = jax.lax.scan(body, carry_init, xs)
 
     result = {
         "state": final["fdtd"],

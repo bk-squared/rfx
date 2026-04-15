@@ -1,0 +1,50 @@
+name: rfx-issue31-physics
+description: "Issue #31: segmented path with stable FDTD (patch antenna geometry) — loss trajectory pin"
+tags: [rfx, issue-31, memory-efficient, physics, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout nu-memory-efficient
+  git pull --ff-only origin nu-memory-efficient || true
+  pip install -q -e ".[dev]"
+
+  echo "=========================================="
+  echo "Issue #31 — segmented + stable FDTD physics"
+  echo "Geometry: 2.4 GHz FR4 patch antenna (from nonuniform_patch_demo.py)"
+  echo "Design dof: substrate eps_r perturbation; loss = sum(probe_ts^2)"
+  echo "=========================================="
+
+  # Scale 1 — dx=1mm baseline (~140k cells), n_steps ladder
+  echo ""
+  echo "=== dx=1mm, n_steps=2000, chunk=64, 6 iters ==="
+  timeout 600 python scripts/issue31_big_smoke.py \
+    --dx-mm 1.0 --n-steps 2000 --n-iters 6 \
+    --checkpoint 1 --emit-ts 1 --checkpoint-every 64
+
+  echo ""
+  echo "=== dx=1mm, n_steps=10000, chunk=100, 4 iters ==="
+  timeout 1800 python scripts/issue31_big_smoke.py \
+    --dx-mm 1.0 --n-steps 10000 --n-iters 4 \
+    --checkpoint 1 --emit-ts 1 --checkpoint-every 100
+
+  # Scale 2 — dx=0.6mm (~700k cells), bigger geometry at same n_steps
+  echo ""
+  echo "=== dx=0.6mm, n_steps=5000, chunk=100, 4 iters ==="
+  timeout 1800 python scripts/issue31_big_smoke.py \
+    --dx-mm 0.6 --n-steps 5000 --n-iters 4 \
+    --checkpoint 1 --emit-ts 1 --checkpoint-every 100
+
+  echo ""
+  echo "=== DONE ==="

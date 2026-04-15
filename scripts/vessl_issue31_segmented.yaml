@@ -1,0 +1,63 @@
+name: rfx-issue31-segmented
+description: "Issue #31: checkpoint_every (segmented scan-of-scan) — the real memory win"
+tags: [rfx, issue-31, memory-efficient, segmented-scan, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout nu-memory-efficient
+  git pull --ff-only origin nu-memory-efficient || true
+  pip install -q -e ".[dev]"
+
+  echo "=========================================="
+  echo "Issue #31 — segmented scan memory validation"
+  echo "Expect: 608k cells × n_steps=10000 must now fit on RTX 4090"
+  echo "=========================================="
+
+  # 1) Reproduce the Phase A OOM as a baseline
+  echo ""
+  echo "=== BASELINE: 608k cells, n_steps=10000, checkpoint_every=0 (Phase A only) ==="
+  timeout 300 python scripts/issue31_big_smoke.py \
+    --ext-mm 40 --dx-mm 0.5 --n-steps 10000 --n-iters 1 \
+    --checkpoint 1 --emit-ts 0 --checkpoint-every 0 \
+    2>&1 | tail -20 || echo "[expected] OOM on Phase A alone"
+
+  # 2) sqrt-scale checkpointing
+  echo ""
+  echo "=== A+segmented: 608k cells, n_steps=10000, checkpoint_every=100 ==="
+  timeout 1200 python scripts/issue31_big_smoke.py \
+    --ext-mm 40 --dx-mm 0.5 --n-steps 10000 --n-iters 3 \
+    --checkpoint 1 --emit-ts 0 --checkpoint-every 100
+
+  # 3) Larger geometry — 2M cells
+  echo ""
+  echo "=== A+segmented: 2M cells, n_steps=10000, checkpoint_every=100 ==="
+  timeout 1800 python scripts/issue31_big_smoke.py \
+    --ext-mm 60 --dx-mm 0.5 --n-steps 10000 --n-iters 3 \
+    --checkpoint 1 --emit-ts 0 --checkpoint-every 100
+
+  # 4) Tune chunk size at fixed problem — find the sweet spot
+  echo ""
+  echo "=== 608k cells × 10000 steps, chunk sweep ==="
+  for chunk in 50 100 200 500 1000; do
+    echo ""
+    echo "--- chunk=$chunk ---"
+    timeout 600 python scripts/issue31_big_smoke.py \
+      --ext-mm 40 --dx-mm 0.5 --n-steps 10000 --n-iters 1 \
+      --checkpoint 1 --emit-ts 0 --checkpoint-every $chunk \
+      2>&1 | tail -6 || echo "[timeout/OOM at chunk=$chunk]"
+  done
+
+  echo ""
+  echo "=== DONE ==="

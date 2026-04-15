@@ -45,6 +45,16 @@ import numpy as np
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _require_time_series(result, objective_name: str) -> None:
+    ts = result.time_series
+    if ts.ndim < 2 or ts.shape[-1] == 0:
+        raise ValueError(
+            f"{objective_name} requires time-series probe data, but the "
+            "forward result has none. Re-run forward() with "
+            "emit_time_series=True (the default)."
+        )
+
+
 def _db_to_linear(db: float) -> float:
     """Convert dB power to linear scale: 10^(dB/10)."""
     return 10.0 ** (db / 10.0)
@@ -400,6 +410,7 @@ def minimize_reflected_energy(
     callable(Result) -> scalar (JAX-differentiable)
     """
     def objective(result) -> jnp.ndarray:
+        _require_time_series(result, "minimize_reflected_energy")
         ts = result.time_series[:, port_probe_idx]
         n = ts.shape[0]
         split = int(n * (1.0 - late_fraction))
@@ -432,6 +443,7 @@ def maximize_transmitted_energy(
     callable(Result) -> scalar (JAX-differentiable)
     """
     def objective(result) -> jnp.ndarray:
+        _require_time_series(result, "maximize_transmitted_energy")
         ts = result.time_series[:, output_probe_idx]
         return -jnp.sum(ts ** 2)
 
@@ -481,6 +493,7 @@ def steer_probe_array(
     callable(Result) -> scalar (JAX-differentiable)
     """
     def objective(result) -> jnp.ndarray:
+        _require_time_series(result, "steer_probe_array")
         ts = result.time_series
         n = ts.shape[0]
         start = int(n * (1.0 - late_fraction))
