@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -273,17 +274,21 @@ def maximize_bandwidth(
 def maximize_directivity(
     theta_target: float,
     phi_target: float,
+    *,
+    n_theta: int = 37,
+    n_phi: int = 73,
 ) -> Callable:
-    """Maximize far-field power in a target direction.
+    """Maximize directivity in a target direction (ratio-based, scale-invariant).
 
-    Computes the total radiated power density
-    ``|E_θ|² + |E_φ|²`` at the target (θ, φ) direction, averaged
-    over all frequencies in the far-field result, and returns
-    its negation (so minimizing drives power upward).
+    Computes the directivity ratio ``U(θ_target, φ_target) / P_rad`` where
+    ``U = |E_θ|² + |E_φ|²`` is the radiation intensity and ``P_rad`` is
+    the total radiated power integrated over the upper hemisphere. The
+    ratio is scale-invariant, so the absolute magnitude of the NTFF
+    spectral integral drops out — gradients reflect pattern shape only.
 
-    The ``result`` must carry ``ntff_data``, ``ntff_box``, and ``grid``
-    (i.e., the simulation must include an NTFF box and preserve the
-    post-processing context needed to evaluate it).
+    Prior versions used absolute ``|E|²`` at the target direction, which
+    is ~1e-27 in rfx's spectral NTFF convention and produces zero
+    gradients in ``topology_optimize`` (GitHub issue #32).
 
     Parameters
     ----------
@@ -291,6 +296,11 @@ def maximize_directivity(
         Polar angle in radians [0, π].
     phi_target : float
         Azimuthal angle in radians [0, 2π].
+    n_theta : int, optional
+        Number of polar samples in [0, π/2] for the hemisphere
+        integration (default 37 → 2.5° spacing).
+    n_phi : int, optional
+        Number of azimuthal samples in [0, 2π] (default 73 → 5° spacing).
 
     Returns
     -------
@@ -298,14 +308,16 @@ def maximize_directivity(
 
     Notes
     -----
-    This objective uses NumPy-based far-field computation internally.
-    It is differentiable through the NTFF DFT accumulation (which is
-    JAX-traced), but the angular projection itself is not
-    re-differentiated.  For gradient-based optimization, the NTFF
-    accumulation provides the necessary gradient path.
+    ``stop_gradient`` is applied to the P_rad denominator: since the
+    ratio is scale-invariant, any shape-preserving scaling leaves the
+    directivity unchanged; letting the denominator carry gradient would
+    only introduce noise and NaN risk when P_rad is near zero early in
+    optimization.
     """
     theta_arr = np.array([theta_target])
     phi_arr = np.array([phi_target])
+    theta_hemi = np.linspace(0.0, np.pi / 2.0, n_theta)
+    phi_hemi = np.linspace(0.0, 2.0 * np.pi, n_phi)
 
     def objective(result) -> jnp.ndarray:
         from rfx.farfield import compute_far_field
@@ -328,17 +340,31 @@ def maximize_directivity(
                 "can be evaluated from NTFF data."
             )
 
-        ff = compute_far_field(ntff_data, ntff_box, grid, theta_arr, phi_arr)
+        # U at target — (n_freqs, 1, 1)
+        ff_tgt = compute_far_field(ntff_data, ntff_box, grid, theta_arr, phi_arr)
+        u_target = (jnp.abs(ff_tgt.E_theta[:, 0, 0]) ** 2
+                    + jnp.abs(ff_tgt.E_phi[:, 0, 0]) ** 2)
 
-        # Power density at target direction, summed over frequencies
-        # E_theta, E_phi: (n_freqs, 1, 1)
-        power = jnp.abs(ff.E_theta[:, 0, 0]) ** 2 + jnp.abs(ff.E_phi[:, 0, 0]) ** 2
-        mean_power = jnp.mean(power)
+        # Hemisphere P_rad: ∬ U(θ,φ) sin(θ) dθ dφ — (n_freqs, n_theta, n_phi)
+        ff_hemi = compute_far_field(ntff_data, ntff_box, grid, theta_hemi, phi_hemi)
+        u_hemi = (jnp.abs(ff_hemi.E_theta) ** 2 + jnp.abs(ff_hemi.E_phi) ** 2)
+        sin_theta = jnp.asarray(np.sin(theta_hemi), dtype=u_hemi.dtype)
+        # trapz in θ then φ
+        integrand = u_hemi * sin_theta[None, :, None]
+        p_rad_phi = jnp.trapezoid(integrand, theta_hemi, axis=1)
+        p_rad = jnp.trapezoid(p_rad_phi, phi_hemi, axis=1)  # (n_freqs,)
 
-        # Negate: minimizing this = maximizing directivity
-        return -mean_power
+        directivity = u_target / (jax.lax.stop_gradient(p_rad) + 1e-30)
+        # Minimizing -D = maximizing directivity; average across freqs
+        return -jnp.mean(directivity)
 
     return objective
+
+
+# Alias for discoverability — the issue #32 fix aligned the default with
+# the ratio-based formulation, so `maximize_directivity_ratio` is simply
+# the new default under an explicit name.
+maximize_directivity_ratio = maximize_directivity
 
 
 # ---------------------------------------------------------------------------
