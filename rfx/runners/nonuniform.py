@@ -188,7 +188,8 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
 def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None,
                         eps_override=None, sigma_override=None,
                         pec_mask_override=None, checkpoint=False,
-                        emit_time_series=True, checkpoint_every=None):
+                        emit_time_series=True, checkpoint_every=None,
+                        n_warmup=0):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -537,6 +538,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         checkpoint=checkpoint,
         emit_time_series=emit_time_series,
         checkpoint_every=checkpoint_every,
+        n_warmup=n_warmup,
     )
 
     s_params = r.get("s_params")
