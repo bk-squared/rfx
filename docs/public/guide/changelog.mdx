@@ -5,6 +5,34 @@ sidebar:
   order: 99
 ---
 
+## v1.6.0
+
+Memory-efficient inverse design + NU physics correctness.
+
+### New features
+
+- **`checkpoint_every`** kwarg on the NU `forward()` (scan-of-scan remat). AD memory for reverse-mode scales as `O(sqrt(n_steps))` at the cost of extra forward recomputation (issue #31).
+- **`n_warmup`** kwarg: first *n_warmup* steps run under `stop_gradient` so the AD tape only covers the trailing optimization window (issue #40).
+- **`emit_time_series`** kwarg: skip per-step probe sampling when objectives are frequency-domain (NTFF, S-params) — removes the `(n_steps, n_probes)` tape entry (issue #31).
+- **`ntff_sweep(sim, freqs, batch_size)`**: batched multi-frequency NTFF accumulation — memory ∝ 1/N_batches at N_batches × wall-time (issue #43).
+- **`minimize_s11_at_freq`**: single-frequency S11 proxy for the differentiable `forward()` path (issue #50).
+- **3D visualization API** (`rfx.visualize.visualize_structure`, `visualize_farfield_3d`): plotly-based interactive HTML with legend-toggleable structure / CPML / NTFF overlays (issue #38).
+- **`smooth_grading(preserve_regions=...)`**: keep user-specified fine-cell blocks intact while smoothing adjacent transitions (issue #48, Meep/OpenEMS thin-PEC convention).
+
+### Fixes
+
+- **`Box._axis_mask` per-cell `dc`** on non-uniform axes: thin PEC sheets no longer rasterize onto two or three cells inside a graded-dz region (issue #48 — caused FFRP to peak grazing instead of broadside).
+- **`estimate_ad_memory`** adds `ad_segmented_gb` and `checkpoint_every` fields that reflect the real memory footprint of the segmented scan — the legacy `ad_checkpointed_gb ≈ 4 × forward_bytes` heuristic is documented as unreliable on the NU path (issue #39).
+- **Preflight thresholds** switched from cell-count heuristics to physics-based rules: PEC extent < 3 cells is a thin sheet (silent); dielectric warning is cells per λ_eff rather than cells per extent (issue #37). Also new warning for thin metal on NU with asymmetric neighbouring cells (issue #48).
+- **Lumped-port / harminv alignment** improved on the NU patch antenna after the rasterization fix — S11 dip and harminv f_res now agree within 1 % at Q ≈ 30 (issue #46).
+
+### Validation
+
+- NU patch antenna (2.4 GHz FR4, dx = 1 mm, dz_sub = 0.25 mm, lossy FR4) reaches **θ ≈ 1° broadside peak** with **Q ≈ 28**. Harminv f_res **2.65 GHz vs Balanis 2.42 GHz (+9.3 %)** — within the known coarse-mesh +8 % rfx bias documented in [`docs/research_notes/2026-04-11_crossval12_patch_antenna.md`](../../research_notes/2026-04-11_crossval12_patch_antenna.md) (rfx and OpenEMS straddle the Balanis value with ±~8 % opposite-sign discretization biases at dx = 1 mm; both converge to ~1 % at mesh_res ≤ 0.5 mm).
+- Full NU test suite (50+ tests: `tests/test_nonuniform_*`, plus new preflight / smooth / n_warmup / visualize / ntff_sweep / s11_at_freq pins) passes on both CPU and RTX 4090 GPU (VESSL).
+
+---
+
 ## Main-branch updates after v1.5.0
 
 These items are already merged on `main`, but they are not reflected as a new
@@ -12,9 +40,10 @@ package version in `pyproject.toml` yet.
 
 ### Current-main highlights
 
-- **Curated public docs hubs**: `/rfx/api/`, `/rfx/examples/`, and `/rfx/validation/` now exist as focused public surfaces layered under the guide-centric nav.
-- **Generated API deep routes**: the subordinate generated API layer under `/rfx/api/generated/` now exposes deep-reference HTML assets instead of only a landing page.
-- **Current-main patch cross-check**: `examples/crossval/12_patch_antenna.py` remains the promoted public crossval anchor, with **0.99%** rfx↔OpenEMS agreement on the finite-ground-plane patch resonance.
+- **Docs contract refresh**: README, guide pages, examples pages, and validation pages now separate **reference-lane claims** from **shadow-lane practical workflows** more explicitly.
+- **Current practical patch anchor**: `examples/crossval/05_patch_antenna.py` is the repo path to the finite-ground-plane FR4 patch cross-check against OpenEMS.
+- **Practical nonuniform entry point**: `examples/nonuniform_patch_demo.py` is now the clearest repo-local thin-substrate demo path.
+- **Generated API deep routes**: the subordinate generated API layer under `/rfx/api/generated/` exposes deep-reference HTML assets instead of only a landing page.
 
 ---
 
@@ -48,8 +77,8 @@ package version in `pyproject.toml` yet.
 - **Inverse-design UX fixes** for soft-source / zero-impedance workflows and custom-material handling in topology optimisation.
 - **Coaxial-port workflow support** via `CoaxialPort` and `Simulation.add_coaxial_port()` for practical probe-fed structures.
 - **Experimental solver / runner additions** including the ADI solver lane and the newer sharding-based multi-GPU execution path.
-- **Advanced example bundle** under `examples/50_advanced/` covering patch bandwidth optimisation, waveguide inverse design, broadband matching, array coupling, dielectric-lens shaping, material characterisation, and a visualization showcase.
-- **GPU validation scripts** for the advanced example bundle, plus follow-up fixes to FFT extraction, physics setup, and RLC validation robustness.
+- **Research-style visual/example work** around inverse design, matching, coupling, beam shaping, and material characterization was added in the 1.4 line, with the current branch later folding that surface into the repo taxonomy cleanup and public showcase.
+- **GPU validation follow-ups** in that line improved FFT extraction, physics setup, and RLC validation robustness.
 
 ---
 
@@ -141,7 +170,6 @@ package version in `pyproject.toml` yet.
 ### New features
 
 - **PyPI publication** as `rfx-fdtd` (Python import remains `rfx`).
-- **SBP-SAT subgridding** with JIT-accelerated local mesh refinement.
 - **Lumped RLC elements** via ADE updates.
 - **Via / CurvedPatch** helper geometry for PCB and conformal antenna workflows.
 - **Field animation export** (MP4/GIF).
