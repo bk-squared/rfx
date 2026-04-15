@@ -2559,12 +2559,23 @@ class Simulation:
         # P2: Non-uniform mesh shadow-lane limitations
         # ================================================================
         if self._dz_profile is not None:
-            # P2.3: TFSF unsupported on non-uniform path
+            # P2.3: TFSF on nonuniform mesh — narrowed scope.
+            # Axis-aligned ±x incidence with angle_deg=0 runs the 1D
+            # auxiliary along the uniform x axis and is supported. The
+            # z-directed and oblique cases would need a z-nonuniform 1D
+            # aux (resp. nonuniform 2D aux) and are deferred.
             if self._tfsf is not None:
-                raise ValueError(
-                    "TFSF plane-wave source is not supported on non-uniform z "
-                    "mesh. Use the uniform reference lane."
-                )
+                if self._tfsf.direction in ("+z", "-z"):
+                    raise ValueError(
+                        "TFSF z-directed incidence is not yet supported on "
+                        "nonuniform z mesh. Axis-aligned incidence along x "
+                        "(direction='+x' or '-x') is supported."
+                    )
+                if abs(self._tfsf.angle_deg) > 0.01:
+                    raise ValueError(
+                        "TFSF oblique incidence is not yet supported on "
+                        "nonuniform z mesh. Use angle_deg=0."
+                    )
 
             # P2.6: CPML z-thickness on non-uniform mesh
             if self._boundary == "cpml" and self._cpml_layers > 0:

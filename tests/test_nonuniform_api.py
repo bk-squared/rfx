@@ -236,7 +236,14 @@ class TestSimulationNonUniform:
         # (c) longer run → larger |accumulator|
         assert np.max(np.abs(acc200)) > np.max(np.abs(acc100))
 
-    def test_nonuniform_rejects_tfsf(self):
+    def test_nonuniform_tfsf_x_incidence_accumulates(self):
+        """TFSF +x plane-wave runs on an NU dz mesh and excites fields.
+
+        The 1D auxiliary grid runs along the uniform x axis (scalar
+        grid.dx), so no aux-grid refactor is required — the usual
+        init_tfsf / apply_tfsf_e / apply_tfsf_h / update_tfsf_1d_*
+        machinery works unchanged on NU.
+        """
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         sim = Simulation(
             freq_max=8e9,
@@ -246,8 +253,34 @@ class TestSimulationNonUniform:
             dx=0.001,
             dz_profile=dz,
         )
-        sim.add_tfsf_source(f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3)
-        with pytest.raises(ValueError, match="TFSF plane-wave source is not supported"):
+        sim.add_tfsf_source(
+            f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3,
+            polarization="ez", direction="+x",
+        )
+        # Probe inside the total-field region, in vacuum (no scatterer).
+        sim.add_probe((0.04, 0.003, 0.0025), "ez")
+        r = sim.run(n_steps=200, compute_s_params=False)
+        ts = np.asarray(r.time_series[:, 0])
+        assert np.all(np.isfinite(ts))
+        assert np.max(np.abs(ts)) > 0.0
+        # No late-time exponential blow-up.
+        assert np.max(np.abs(ts[-20:])) < 2.0 * np.max(np.abs(ts))
+
+    def test_nonuniform_tfsf_oblique_rejected(self):
+        """Oblique TFSF (angle_deg != 0) is rejected on NU with a clear message."""
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        sim = Simulation(
+            freq_max=8e9,
+            domain=(0.08, 0.006, 0.006),
+            boundary="cpml",
+            cpml_layers=8,
+            dx=0.001,
+            dz_profile=dz,
+        )
+        sim.add_tfsf_source(
+            f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3, angle_deg=30.0,
+        )
+        with pytest.raises(ValueError, match="oblique"):
             sim.run(n_steps=20, compute_s_params=False)
 
     def test_nonuniform_waveguide_port_extracts_s11(self):

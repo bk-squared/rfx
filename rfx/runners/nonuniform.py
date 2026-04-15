@@ -426,6 +426,50 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 )
             )
 
+    # TFSF plane-wave source. Scope: axis-aligned +x / -x incidence with
+    # angle_deg=0 so the 1D auxiliary grid runs along the uniform x axis
+    # with scalar cell size grid.dx. Oblique angles (2D auxiliary grid)
+    # and +z / -z incidence (which would require a z-nonuniform 1D aux)
+    # are rejected here with actionable messages.
+    tfsf_pair = None
+    if sim._tfsf is not None:
+        entry = sim._tfsf
+        if abs(entry.angle_deg) > 0.01:
+            raise ValueError(
+                "TFSF oblique incidence (angle_deg != 0) is not yet "
+                "supported on nonuniform z mesh — the 2D auxiliary grid "
+                "is uniform-only. Use angle_deg=0 or run on the uniform lane."
+            )
+        if entry.direction in ("+z", "-z"):
+            raise ValueError(
+                "TFSF z-directed incidence is not yet supported on "
+                "nonuniform z mesh (1D auxiliary grid would need to be "
+                "z-nonuniform). Use direction='+x' or '-x', or run on the "
+                "uniform lane."
+            )
+        if entry.direction not in ("+x", "-x"):
+            raise ValueError(
+                "TFSF on nonuniform mesh supports only direction='+x' or "
+                f"'-x'; got {entry.direction!r}."
+            )
+        from rfx.sources.tfsf import init_tfsf
+        tfsf_pair = init_tfsf(
+            grid.nx,
+            grid.dx,
+            grid.dt,
+            cpml_layers=grid.cpml_layers,
+            tfsf_margin=entry.margin,
+            f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
+            bandwidth=entry.bandwidth,
+            amplitude=entry.amplitude,
+            polarization=entry.polarization,
+            direction=entry.direction,
+            angle_deg=entry.angle_deg,
+            ny=grid.ny,
+            nz=grid.nz,
+            waveform=getattr(entry, 'waveform', 'differentiated_gaussian'),
+        )
+
     # NTFF box: build once (indices are Python-static) + zero-init
     # DFT accumulators that will be threaded through the scan carry.
     # NonUniformGrid is a NamedTuple without ``position_to_index``, so
@@ -462,6 +506,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_box=ntff_box,
         ntff_data=ntff_data_init,
         waveguide_ports=waveguide_port_cfgs if waveguide_port_cfgs else None,
+        tfsf=tfsf_pair,
     )
 
     s_params = r.get("s_params")

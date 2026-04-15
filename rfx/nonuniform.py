@@ -490,6 +490,7 @@ def run_nonuniform(
     ntff_box=None,
     ntff_data=None,
     waveguide_ports: list | None = None,
+    tfsf: tuple | None = None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -520,6 +521,7 @@ def run_nonuniform(
     use_lumped_rlc = len(rlc_metas) > 0
     use_ntff = ntff_box is not None and ntff_data is not None
     use_waveguide_ports = len(waveguide_ports) > 0
+    use_tfsf = tfsf is not None
 
     # CPML: only initialize when cpml_layers > 0 (skip for PEC boundary)
     use_cpml = grid.cpml_layers > 0
@@ -628,17 +630,44 @@ def run_nonuniform(
     else:
         waveguide_meta = ()
 
+    # TFSF 1D auxiliary state carry. Injection axis is x (uniform on
+    # NU paths we support — dz-only nonuniformity), so the 1D aux runs
+    # with grid.dx spacing and the E/H corrections use scalar
+    # coeff = dt / (EPS_0 * dx) etc. Oblique / +z,-z cases are
+    # rejected upstream (see rfx/runners/nonuniform.py and rfx/api.py).
+    if use_tfsf:
+        from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d
+        tfsf_cfg, tfsf_state = tfsf
+        if _is_tfsf_2d(tfsf_cfg):
+            raise ValueError(
+                "TFSF oblique incidence (2D auxiliary grid) is not yet "
+                "supported on nonuniform z mesh. Use angle_deg=0 along x."
+            )
+        if tfsf_cfg.direction not in ("+x", "-x"):
+            raise ValueError(
+                "TFSF on nonuniform mesh supports only direction='+x' or "
+                f"'-x' (injection along uniform x axis); got {tfsf_cfg.direction!r}."
+            )
+        carry_init["tfsf"] = tfsf_state
+
     def step_fn(carry, xs):
         step_idx, src_vals = xs
         st = carry["fdtd"]
 
         # H update (non-uniform)
         st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h)
+        tfsf_h_state = None
+        if use_tfsf:
+            from rfx.sources.tfsf import apply_tfsf_h
+            st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], grid.dx, dt)
         if use_cpml:
             st, cpml_new = apply_cpml_h(st, cpml_params, carry["cpml"],
                                          cpml_grid, "xyz")
         else:
             cpml_new = None
+        if use_tfsf:
+            from rfx.sources.tfsf import update_tfsf_1d_h
+            tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], grid.dx, dt)
 
         # E update: use ADE-aware path when dispersive materials are present
         debye_new = None
@@ -652,6 +681,9 @@ def run_nonuniform(
         else:
             st = update_e_nu(st, materials, dt, inv_dx, inv_dy, inv_dz)
 
+        if use_tfsf:
+            from rfx.sources.tfsf import apply_tfsf_e
+            st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, grid.dx, dt)
         if use_cpml:
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
                                          cpml_grid, "xyz")
@@ -765,6 +797,14 @@ def run_nonuniform(
             from rfx.farfield import accumulate_ntff
             new_ntff = accumulate_ntff(carry["ntff"], st, ntff_box, dt, step_idx)
 
+        # TFSF 1D auxiliary E-field update (mirrors uniform scan body:
+        # called AFTER sources, closes the leapfrog step).
+        tfsf_new = None
+        if use_tfsf:
+            from rfx.sources.tfsf import update_tfsf_1d_e
+            t_tfsf = step_idx.astype(jnp.float32) * dt
+            tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, grid.dx, dt, t_tfsf)
+
         # Probes
         samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
         probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
@@ -786,6 +826,8 @@ def run_nonuniform(
             new_carry["ntff"] = new_ntff
         if use_waveguide_ports and new_waveguide_port_accs is not None:
             new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
+        if use_tfsf and tfsf_new is not None:
+            new_carry["tfsf"] = tfsf_new
         return new_carry, probe_out
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
