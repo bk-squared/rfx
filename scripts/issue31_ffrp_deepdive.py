@@ -190,6 +190,31 @@ def case3_nu_patch():
                     num_periods=40)
 
 
+def case4_nu_dipole():
+    """NU mesh + bare ez dipole (no patch). If NU NTFF is healthy this
+    must peak at θ=90° just like Case 1. If it peaks elsewhere the bug
+    is at the dipole level, independent of patch geometry."""
+    dx = 1e-3
+    # Mirror Case 1 domain size but switch z to a graded profile.
+    dom_x, dom_y = 0.08, 0.075
+    n_below, n_above = 20, 20
+    dz_fine = 0.3e-3; dz_coarse = 1e-3
+    dz = np.asarray(smooth_grading(np.concatenate([
+        np.full(n_below, dz_coarse), np.full(10, dz_fine),
+        np.full(n_above, dz_coarse)
+    ])), dtype=np.float64)
+    dom_z = float(np.sum(dz))
+    sim = Simulation(freq_max=4e9, domain=(dom_x, dom_y, 0),
+                     dx=dx, dz_profile=dz, boundary="cpml", cpml_layers=8)
+    sim.add_source((dom_x / 2, dom_y / 2, dom_z / 2), "ez",
+                   waveform=GaussianPulse(f0=F_DESIGN, bandwidth=1.2))
+    sim.add_ntff_box(
+        corner_lo=(0.010, 0.010, 3 * dx),
+        corner_hi=(dom_x - 0.010, dom_y - 0.010, dom_z - 3 * dx),
+        freqs=[F_DESIGN])
+    return run_case(sim, "Case 4 — NU mesh, bare ez dipole (isolates NU NTFF)")
+
+
 def main():
     print("=" * 70)
     print("Patch NTFF root cause deep dive")
@@ -197,12 +222,13 @@ def main():
     case1_dipole()
     case2_uniform_patch()
     case3_nu_patch()
+    case4_nu_dipole()
     print("\n=== Verdict ===")
     print("  Case 1 should peak at θ≈90° (dipole equatorial).")
     print("  Cases 2 and 3 should peak at θ≈0° if patch mode is excited.")
-    print("  If 2 is broadside but 3 is grazing → NU NTFF bug.")
-    print("  If both 2 and 3 are grazing → patch mode not reaching NTFF.")
-    print("  Record the numbers in issue #48.")
+    print("  Case 4 checks whether the NU NTFF itself is healthy (dipole).")
+    print("  If Case 4 peaks ≠ 90° → NU NTFF bug at the dipole level.")
+    print("  If Case 4 peaks ≈ 90° but Case 3 does not → NU + PEC interaction bug.")
 
 
 if __name__ == "__main__":
