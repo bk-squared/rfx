@@ -75,15 +75,28 @@ class Box:
 
     def mask_on_coords(self, x, y, z):
         def _axis_mask(coords, lo, hi):
-            # Use per-axis cell size (critical for non-uniform z mesh)
-            dc = float(coords[1] - coords[0]) if len(coords) > 1 else 1e-3
-            extent = hi - lo
-            if extent <= dc * 1.01:
-                # Thin geometry: snap to nearest cell center
-                mid = (lo + hi) * 0.5
-                return jnp.abs(coords - mid) < dc * 0.51
+            # Use LOCAL cell size at the geometry's midpoint — critical for
+            # thin objects on a non-uniform axis. Using the first-cell dc
+            # (as the legacy implementation did) causes a 0.25 mm PEC
+            # sheet inside a 1 mm-dz region to be snapped onto two or
+            # three cells (issue #48 / deep dive), because the ±0.51·dc
+            # snap window from the coarse edge of the domain reaches
+            # through both the metal cell and its graded neighbours.
+            coords_np = np.asarray(coords)
+            mid = (lo + hi) * 0.5
+            extent = float(hi - lo)
+            if coords_np.size <= 1:
+                dc_local = 1e-3
             else:
-                return (coords >= lo) & (coords <= hi)
+                # Approximate local dc from the midpoint's neighbouring
+                # cell-centre spacing.
+                k_mid = int(np.clip(np.searchsorted(coords_np, mid) - 1,
+                                    0, coords_np.size - 2))
+                dc_local = float(coords_np[k_mid + 1] - coords_np[k_mid])
+            if extent <= dc_local * 1.01:
+                # Thin sheet: snap to the single nearest cell centre.
+                return jnp.abs(coords - mid) < dc_local * 0.51
+            return (coords >= lo) & (coords <= hi)
 
         mx = _axis_mask(x, self.corner_lo[0], self.corner_hi[0])
         my = _axis_mask(y, self.corner_lo[1], self.corner_hi[1])

@@ -631,6 +631,8 @@ def apply_thirds_rule(
 def smooth_grading(
     cells: list[float] | np.ndarray,
     max_ratio: float = 1.3,
+    *,
+    preserve_regions: list[tuple[int, int]] | None = None,
 ) -> np.ndarray:
     """Insert geometric transition cells where adjacent ratio exceeds max_ratio.
 
@@ -644,6 +646,13 @@ def smooth_grading(
     max_ratio : float
         Maximum allowed ratio between adjacent cells (default 1.3).
         Values 1.2-1.4 are typical for FDTD.
+    preserve_regions : list of (start, end) index pairs, optional
+        Input-index ranges (half-open) whose cell sizes must remain
+        unchanged. Transition cells are inserted **outside** each
+        preserved block. This is the canonical Meep/OpenEMS convention
+        for thin PEC on a NU mesh — metal planes must land on cell
+        boundaries with symmetric neighbouring cells, which is only
+        guaranteed if the fine substrate block is preserved intact.
 
     Returns
     -------
@@ -651,20 +660,36 @@ def smooth_grading(
         Smoothed cell array with transition cells inserted.
     """
     cells = list(np.asarray(cells, dtype=float))
-    if len(cells) <= 1:
+    n = len(cells)
+    if n <= 1:
         return np.array(cells)
 
+    # Normalise preserve_regions into a set of protected input indices.
+    protected: set[int] = set()
+    regions = sorted(preserve_regions or [])
+    for lo, hi in regions:
+        if lo < 0 or hi > n or lo >= hi:
+            raise ValueError(
+                f"preserve_regions entry ({lo}, {hi}) is outside [0, {n}] "
+                f"or has lo>=hi"
+            )
+        for k in range(lo, hi):
+            protected.add(k)
+
     smoothed = [cells[0]]
-    for i in range(1, len(cells)):
+    for i in range(1, n):
         prev = smoothed[-1]
         target = cells[i]
-        # Insert transition cells if ratio is too large
-        if prev > 0 and target > 0:
-            # Growing direction: prev → target where target > prev
+        # Skip smoothing only when BOTH adjacent cells are inside a
+        # preserved block (inside the block, cells must stay exact).
+        # At the boundary of a block (one side protected, the other
+        # free) we DO insert transitions so the neighbouring coarse
+        # region steps down to the fine block.
+        both_inside = (i - 1) in protected and i in protected
+        if (not both_inside) and prev > 0 and target > 0:
             while target / prev > max_ratio + 1e-12:
                 prev = prev * max_ratio
                 smoothed.append(prev)
-            # Shrinking direction: prev → target where target < prev
             while prev / target > max_ratio + 1e-12:
                 prev = prev / max_ratio
                 smoothed.append(prev)

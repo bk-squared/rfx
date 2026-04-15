@@ -2370,6 +2370,72 @@ class Simulation:
                     except (NotImplementedError, TypeError, AttributeError):
                         continue
 
+        # Thin-metal-on-NU-mesh symmetry (Meep/OpenEMS convention — issue #48).
+        self._validate_thin_metal_on_nu_mesh()
+
+    def _validate_thin_metal_on_nu_mesh(self) -> None:
+        """Warn when a thin PEC sheet sits on a NU axis without symmetric
+        neighbouring cells (Meep/OpenEMS require equal dz on both sides of
+        a metal plane, else surface currents pick up O(1) error and the
+        far-field pattern is corrupted — issue #48).
+        """
+        import warnings as _w
+        profiles = (
+            ("x", self._dx_profile),
+            ("y", self._dy_profile),
+            ("z", self._dz_profile),
+        )
+        for axis_name, prof in profiles:
+            if prof is None:
+                continue
+            prof_arr = np.asarray(prof, dtype=np.float64)
+            if len(prof_arr) < 3:
+                continue
+            axis_idx = "xyz".index(axis_name)
+            for entry in self._geometry:
+                mat = self._resolve_material(entry.material_name)
+                if mat.sigma < self._PEC_SIGMA_THRESHOLD:
+                    continue
+                try:
+                    c1, c2 = entry.shape.bounding_box()
+                except Exception:
+                    continue
+                lo, hi = float(c1[axis_idx]), float(c2[axis_idx])
+                extent = hi - lo
+                min_d = float(prof_arr.min())
+                if extent > min_d * 1.5:
+                    continue
+                # _dz_profile is the user's interior profile (no CPML
+                # padding). Geometry coordinates are in interior space
+                # starting at 0, so cumsum gives the cell edges directly.
+                edges = np.concatenate([[0.0], np.cumsum(prof_arr)])
+                mid = 0.5 * (lo + hi)
+                k = int(np.searchsorted(edges, mid) - 1)
+                if k < 0 or k + 1 >= len(prof_arr) or k - 1 < 0:
+                    continue
+                dz_here = prof_arr[k]
+                dz_above = prof_arr[k + 1]
+                dz_below = prof_arr[k - 1]
+                # Check ratio both directions — metal-in-coarse-cell
+                # next to a fine region is just as bad as the reverse.
+                def _ratio(a, b):
+                    return max(a, b) / min(a, b)
+                ratio_above = _ratio(dz_above, dz_here)
+                ratio_below = _ratio(dz_below, dz_here)
+                if max(ratio_above, ratio_below) > 1.5:
+                    _w.warn(
+                        f"Thin PEC '{entry.material_name}' on axis "
+                        f"{axis_name} sits in a cell of dz={dz_here*1e3:.3f}"
+                        f"mm with asymmetric neighbours "
+                        f"(below {dz_below*1e3:.3f}, above "
+                        f"{dz_above*1e3:.3f} mm). Meep/OpenEMS require "
+                        f"equal cell sizes across a metal plane; "
+                        f"radiation pattern may be corrupted (issue #48). "
+                        f"Put the metal on a preserved-region boundary "
+                        f"or refine the neighbouring cell.",
+                        stacklevel=4,
+                    )
+
     def preflight(
         self,
         *,

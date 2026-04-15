@@ -1,6 +1,6 @@
-name: rfx-issue31-patch-viz
-description: "Issue #31: patch antenna S11 + far-field + field animation on NU path"
-tags: [rfx, issue-31, patch, viz, gpu]
+name: rfx-issue48-deepdive
+description: "Deep dive: why patch NTFF peaks at 87°. Uniform vs NU vs bare dipole."
+tags: [rfx, issue-48, ffrp, debug, gpu]
 resources:
   cluster: remilab-c0
   preset: gpu-rtx4090
@@ -19,20 +19,11 @@ run: |-
   git checkout fix-farfield-viz
   git pull --ff-only origin fix-farfield-viz || true
   pip install -q -e ".[dev]"
-  pip install -q plotly kaleido
 
   echo "=========================================="
-  echo "Issue #31 — patch antenna S11 / FFRP / field animation"
+  echo "Patch NTFF root cause deep dive"
   echo "=========================================="
-
-  # dx=1mm matches 05_patch_antenna reference resolution.
-  # num_periods=60 in S11 run, n_steps=3000 in animation path.
-  timeout 1800 python scripts/issue31_patch_validation.py \
-    --dx-mm 1.0 --frames 16 --n-steps-anim 3000
-
-  echo ""
-  echo "=== artifacts ==="
-  ls -la docs/research_notes/issue31_figs/
+  timeout 1200 python scripts/issue31_ffrp_deepdive.py
 
   echo ""
   echo "=== DONE ==="
