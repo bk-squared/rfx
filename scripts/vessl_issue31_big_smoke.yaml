@@ -1,0 +1,50 @@
+name: rfx-issue31-big-smoke
+description: "Issue #31 A+C: single-GPU 24GB NU inverse-design smoke (OOM-free end-to-end)"
+tags: [rfx, issue-31, memory-efficient, inverse-design, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout nu-memory-efficient
+  git pull --ff-only origin nu-memory-efficient || true
+  pip install -q -e ".[dev]"
+
+  echo "=========================================="
+  echo "Issue #31: A+C big-geometry smoke"
+  echo "=========================================="
+
+  # Scale 1 — horn-ish: ~600k cells, n_steps=10k, emit_time_series=False
+  echo ""
+  echo "=== Scale 1: 600k cells, n_steps=10000, Phase A+C ==="
+  python scripts/issue31_big_smoke.py \
+    --ext-mm 40 --dx-mm 0.5 --n-steps 10000 --n-iters 3 \
+    --checkpoint 1 --emit-ts 0
+
+  # Scale 2 — metasurface-ish: ~2M cells, n_steps=10k
+  echo ""
+  echo "=== Scale 2: 2M cells, n_steps=10000, Phase A+C ==="
+  python scripts/issue31_big_smoke.py \
+    --ext-mm 60 --dx-mm 0.5 --n-steps 10000 --n-iters 3 \
+    --checkpoint 1 --emit-ts 0
+
+  # Negative control — no checkpoint at modest scale: should OOM.
+  # Bounded n_steps so the failure happens quickly.
+  echo ""
+  echo "=== NEGATIVE CONTROL: Scale 1, checkpoint=0 (expected OOM) ==="
+  python scripts/issue31_big_smoke.py \
+    --ext-mm 40 --dx-mm 0.5 --n-steps 10000 --n-iters 1 \
+    --checkpoint 0 --emit-ts 0 || echo "[expected] OOM on no-checkpoint path"
+
+  echo ""
+  echo "=== DONE ==="

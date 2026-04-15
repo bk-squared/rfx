@@ -1,0 +1,59 @@
+name: rfx-issue31-crossval-regression
+description: "Issue #31 regression: NU physics pins (patch antenna, NU tests) on nu-memory-efficient branch"
+tags: [rfx, issue-31, crossval, regression, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout nu-memory-efficient
+  git pull --ff-only origin nu-memory-efficient || true
+  pip install -q -e ".[dev]"
+
+  echo "=========================================="
+  echo "Issue #31 regression — A+C must preserve physics"
+  echo "=========================================="
+
+  # 1) Full NU test suite including the new Phase A/C pins.
+  echo ""
+  echo "=== 1. NU test suite ==="
+  pytest tests/test_nonuniform_api.py \
+         tests/test_nonuniform_forward_grad.py \
+         tests/test_nonuniform_gradient.py \
+         tests/test_nonuniform_checkpoint.py \
+         tests/test_nonuniform_emit_ts.py \
+         --tb=short -q
+
+  # 2) Patch antenna resonance crossval — TM010 pin (prev: 2.4 GHz ±1%).
+  echo ""
+  echo "=== 2. Crossval 05 — patch antenna (TM010 resonance) ==="
+  timeout 1800 python examples/crossval/05_patch_antenna.py
+
+  # 3) Inverse design smoke — verifies the A path end-to-end on uniform.
+  echo ""
+  echo "=== 3. Crossval 07 — inverse design demo ==="
+  timeout 300 python examples/crossval/07_inverse_design_demo.py
+
+  # 4) All GPU-marked tests excluding OpenEMS/meep crossval (not in image).
+  echo ""
+  echo "=== 4. GPU-marked regression (non-crossval) ==="
+  pytest tests/ -m gpu --tb=short -q \
+    --ignore=tests/test_meep_crossval.py \
+    --ignore=tests/test_meep_crossval_patch.py \
+    --ignore=tests/test_openems_crossval.py \
+    --ignore=tests/test_crossval_comprehensive.py \
+    --ignore=tests/test_distributed.py \
+    -k "not slow"
+
+  echo ""
+  echo "=== DONE ==="
