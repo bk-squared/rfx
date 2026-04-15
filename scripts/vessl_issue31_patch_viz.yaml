@@ -16,8 +16,8 @@ run: |-
   cd /root/workspace/byungkwan-workspace/research/rfx
   git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
   git fetch --all
-  git checkout nu-memory-efficient
-  git pull --ff-only origin nu-memory-efficient || true
+  git checkout viz-farfield-fix
+  git pull --ff-only origin viz-farfield-fix || true
   pip install -q -e ".[dev]"
 
   echo "=========================================="
