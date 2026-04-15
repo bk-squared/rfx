@@ -185,7 +185,9 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     )
 
 
-def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None):
+def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None,
+                        eps_override=None, sigma_override=None,
+                        pec_mask_override=None):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -196,6 +198,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         Number of timesteps.
     compute_s_params : bool or None
     s_param_freqs : array or None
+    eps_override, sigma_override : jnp.ndarray or None
+        When provided, replace the assembled material arrays before
+        source/port setup. Used by the differentiable ``forward()``
+        path to inject optimisation variables.
+    pec_mask_override : jnp.ndarray or None
+        Extra hard-PEC mask ORed into the geometry-derived pec_mask.
 
     Returns
     -------
@@ -204,9 +212,27 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     from rfx.api import Result
 
     grid = build_nonuniform_grid(
-        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile
+        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
+        dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
     )
     materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(sim, grid)
+
+    # ``eps_override`` / ``sigma_override`` replace the assembled material
+    # arrays for the scan. We keep the original concrete ``materials`` for
+    # ``make_current_source`` (which calls ``float(materials.eps_r[i,j,k])``)
+    # so that source normalisation stays concrete under ``jax.grad``; the
+    # override is folded into a separate ``materials_scan`` used for
+    # port-sigma updates and the scan launch.
+    materials_concrete = materials
+    if eps_override is not None or sigma_override is not None:
+        materials = MaterialArrays(
+            eps_r=eps_override if eps_override is not None else materials.eps_r,
+            sigma=sigma_override if sigma_override is not None else materials.sigma,
+            mu_r=materials.mu_r,
+        )
+
+    if pec_mask_override is not None:
+        pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
     # Fold RLC R/C into materials before other port/source setup
     # (mirrors the uniform path).
@@ -255,7 +281,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         if pe.impedance == 0.0:
             # Current source with dV normalization
             src = make_current_source(
-                grid, idx, pe.component, pe.waveform, n_steps, materials)
+                grid, idx, pe.component, pe.waveform, n_steps, materials_concrete)
             sources.append(src)
         elif pe.extent is not None:
             # Wire port on non-uniform grid
@@ -309,7 +335,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     cell[axis] = k
                     src = make_current_source(
                         grid, tuple(cell), pe.component,
-                        pe.waveform, n_steps, materials)
+                        pe.waveform, n_steps, materials_concrete)
                     # Scale by 1/n_cells for distributed excitation
                     scaled_wf = np.array(src[4]) / n_cells
                     sources.append(
@@ -354,7 +380,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 pec_mask = pec_mask.at[i, j, k].set(False)
             if pe.excite:
                 src = make_current_source(
-                    grid, idx, pe.component, pe.waveform, n_steps, materials)
+                    grid, idx, pe.component, pe.waveform, n_steps, materials_concrete)
                 sources.append(src)
 
     for pe in sim._probes:

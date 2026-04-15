@@ -2997,6 +2997,45 @@ class Simulation:
             freqs=getattr(result, "freqs", None),
         )
 
+    def _forward_nonuniform_from_materials(
+        self,
+        *,
+        eps_override: jnp.ndarray | None = None,
+        sigma_override: jnp.ndarray | None = None,
+        pec_mask_override: jnp.ndarray | None = None,
+        n_steps: int,
+        checkpoint: bool = True,
+    ) -> ForwardResult:
+        """Differentiable forward on the non-uniform mesh path.
+
+        Routes through ``run_nonuniform_path`` with optimisation overrides
+        applied after material assembly, then repackages the returned
+        ``Result`` into the minimal ``ForwardResult`` schema.
+
+        ``checkpoint`` is accepted for API symmetry with the uniform
+        forward but is not currently plumbed into ``run_nonuniform`` —
+        the NU scan body does not yet expose a checkpoint toggle.
+        Memory cost scales with n_steps for reverse-mode AD on this path.
+        """
+        del checkpoint  # Reserved for future NU-scan checkpoint support.
+        from rfx.runners.nonuniform import run_nonuniform_path
+
+        result = run_nonuniform_path(
+            self,
+            n_steps=n_steps,
+            eps_override=eps_override,
+            sigma_override=sigma_override,
+            pec_mask_override=pec_mask_override,
+        )
+        return ForwardResult(
+            time_series=result.time_series,
+            ntff_data=result.ntff_data,
+            ntff_box=result.ntff_box,
+            grid=result.grid,
+            s_params=getattr(result, "s_params", None),
+            freqs=getattr(result, "freqs", None),
+        )
+
     # ---- forward (differentiable) ----
 
     def forward(
@@ -3039,13 +3078,30 @@ class Simulation:
         ForwardResult
             Minimal differentiable observables (time series and optional NTFF).
         """
-        if (self._dz_profile is not None
-                or self._dx_profile is not None
-                or self._dy_profile is not None):
-            raise ValueError(
-                "forward() does not support non-uniform mesh profiles "
-                "(dx_profile / dy_profile / dz_profile). Use run() instead, "
-                "or remove the profiles for a uniform-mesh differentiable sim."
+        is_nonuniform = (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        )
+        if is_nonuniform:
+            if pec_occupancy_override is not None:
+                raise ValueError(
+                    "pec_occupancy_override is not yet supported on the "
+                    "non-uniform forward path (run_nonuniform has no soft-PEC "
+                    "occupancy field). Use pec_mask_override for hard PEC."
+                )
+            # Let the NU runner build grid/materials so it can apply the
+            # NU-aware pec_mask and port/source setup against per-axis widths.
+            if n_steps is None:
+                grid_probe = self._build_nonuniform_grid()
+                period = 1.0 / float(self._freq_max)
+                n_steps = int(np.ceil(num_periods * period / float(grid_probe.dt)))
+            return self._forward_nonuniform_from_materials(
+                eps_override=eps_override,
+                sigma_override=sigma_override,
+                pec_mask_override=pec_mask_override,
+                n_steps=n_steps,
+                checkpoint=checkpoint,
             )
         grid = self._build_grid()
         materials, debye_spec, lorentz_spec, pec_mask, _, _ = self._assemble_materials(grid)
