@@ -1,0 +1,59 @@
+name: rfx-issue31-smoke-sweep
+description: "Issue #31: scale sweep — find where Phase A jax.checkpoint(step_fn) actually OOMs"
+tags: [rfx, issue-31, memory-efficient, sweep, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout nu-memory-efficient
+  git pull --ff-only origin nu-memory-efficient || true
+  pip install -q -e ".[dev]"
+
+  echo "=========================================="
+  echo "Issue #31 — Phase A scaling sweep on RTX 4090"
+  echo "Each row: ext / dx / cells / n_steps  →  peak GB / status"
+  echo "=========================================="
+
+  run_one() {
+    local ext="$1" dx="$2" steps="$3"
+    echo ""
+    echo "--- ext=${ext}mm dx=${dx}mm n_steps=${steps} ckpt=1 emit=0 ---"
+    timeout 600 python scripts/issue31_big_smoke.py \
+      --ext-mm "$ext" --dx-mm "$dx" --n-steps "$steps" \
+      --n-iters 1 --checkpoint 1 --emit-ts 0 \
+      2>&1 | tail -8 || echo "[timeout/OOM]"
+  }
+
+  # Hold cells ~constant, sweep n_steps to isolate carry-tape blowup
+  echo ""; echo "=== Sweep A: cells ≈ 200k (ext=20mm), n_steps ladder ==="
+  for s in 500 1000 2000 5000 10000 20000; do
+    run_one 20 0.5 $s
+  done
+
+  # Hold n_steps=2000, sweep cells to isolate per-step working set
+  echo ""; echo "=== Sweep B: n_steps=2000, cells ladder ==="
+  for d in 1.0 0.7 0.5 0.4; do
+    run_one 40 $d 2000
+  done
+
+  # Combined frontier: where does A fall over?
+  echo ""; echo "=== Sweep C: cells × steps frontier ==="
+  for ext in 20 30 40; do
+    for s in 2000 5000 10000; do
+      run_one $ext 0.5 $s
+    done
+  done
+
+  echo ""
+  echo "=== DONE ==="
