@@ -79,10 +79,17 @@ MATERIAL_LIBRARY: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 class AD_MemoryEstimate(NamedTuple):
-    """Reverse-mode AD memory estimate (issue #30 CHECK 4).
+    """Reverse-mode AD memory estimate (issue #30 CHECK 4 / #39).
 
     All sizes are in gigabytes. ``warning`` is populated when the
-    checkpointed estimate exceeds 85% of ``available_gb``.
+    selected estimate exceeds 85% of ``available_gb``.
+
+    ``ad_checkpointed_gb`` is the legacy ``jax.checkpoint(step_fn)``
+    estimate; for FDTD on the non-uniform path this is *not* a
+    realistic memory number because the scan carry itself is not
+    rematerialised (see issue #31 VESSL 369367233490). Use
+    ``ad_segmented_gb`` when ``checkpoint_every`` is set — that matches
+    the observed memory on RTX 4090 within ~15%.
     """
     forward_gb: float
     ad_checkpointed_gb: float
@@ -90,6 +97,8 @@ class AD_MemoryEstimate(NamedTuple):
     ntff_dft_gb: float
     available_gb: float | None
     warning: str | None
+    ad_segmented_gb: float | None = None
+    checkpoint_every: int | None = None
 
 
 class Result(NamedTuple):
@@ -2567,12 +2576,20 @@ class Simulation:
         n_steps: int,
         *,
         available_memory_gb: float | None = None,
+        checkpoint_every: int | None = None,
     ) -> "AD_MemoryEstimate":
         """Estimate reverse-mode AD memory for this simulation.
 
         Returns an AD_MemoryEstimate with forward, checkpointed-AD, and
         non-checkpointed-AD sizes in GB, plus a best-effort warning if
         estimated AD memory exceeds 85% of available VRAM.
+
+        When ``checkpoint_every`` is provided, the returned
+        ``ad_segmented_gb`` reflects the segmented scan-of-scan path
+        from issue #31. The legacy ``ad_checkpointed_gb`` field keeps
+        its old (optimistic) heuristic for backwards compatibility; it
+        is NOT accurate for FDTD on the non-uniform path — see the
+        class docstring.
         """
         dx = self._dx or (C0 / self._freq_max / 20.0)
 
@@ -2602,10 +2619,23 @@ class Simulation:
             face_est = 2 * ((nx * ny) + (ny * nz) + (nx * nz))
             ntff_bytes = face_est * n_freqs * 6 * 8
 
-        # Checkpointed AD: remat recomputes most of scan — ~4x forward is realistic
-        # Non-checkpointed AD: O(n_steps) tape — 6 field arrays per step
+        # Legacy "checkpointed" estimate: remat-recomputes internals of
+        # step_fn. NOT valid for the NU path after issue #31 because the
+        # scan carry itself is not rematerialised.
         ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes
+        # Non-checkpointed AD: O(n_steps) tape — 6 field arrays per step
         ad_full_bytes = n_steps * field_bytes + ntff_bytes + forward_bytes
+
+        # Segmented scan-of-scan (issue #31). Outer scan wraps
+        # jax.checkpoint around an inner scan of length K; the tape
+        # stores carry + cotangent at (n_steps/K) segment boundaries.
+        # Formula fit to VESSL 369367233490 data on 608k cells within
+        # ~15% (see issue #39).
+        ad_seg_bytes: int | None = None
+        if checkpoint_every is not None and checkpoint_every > 0:
+            n_segments = math.ceil(n_steps / checkpoint_every)
+            # 2x per segment: primal carry + cotangent stored for backward
+            ad_seg_bytes = 2 * n_segments * field_bytes + forward_bytes + ntff_bytes
 
         # VRAM detection (best effort)
         avail_gb = available_memory_gb
@@ -2622,12 +2652,17 @@ class Simulation:
                 avail_gb = None
 
         to_gb = 1.0 / 1e9
+        # Pick the most realistic estimate for the warning: segmented if
+        # requested, otherwise full-AD (since the legacy "checkpointed"
+        # number is unreliable — see class docstring).
+        primary_bytes = ad_seg_bytes if ad_seg_bytes is not None else ad_full_bytes
         warning = None
-        if avail_gb is not None and ad_ckpt_bytes * to_gb > avail_gb * 0.85:
+        if avail_gb is not None and primary_bytes * to_gb > avail_gb * 0.85:
+            label = "segmented" if ad_seg_bytes is not None else "non-checkpointed"
             warning = (
-                f"AD memory estimate {ad_ckpt_bytes*to_gb:.2f}GB (checkpointed) "
+                f"AD memory estimate {primary_bytes*to_gb:.2f}GB ({label}) "
                 f"exceeds 85% of {avail_gb:.2f}GB available VRAM. "
-                f"Reduce grid size or n_steps, or increase domain decomposition."
+                f"Reduce grid size, reduce n_steps, or lower checkpoint_every."
             )
         return AD_MemoryEstimate(
             forward_gb=forward_bytes * to_gb,
@@ -2636,6 +2671,8 @@ class Simulation:
             ntff_dft_gb=ntff_bytes * to_gb,
             available_gb=avail_gb,
             warning=warning,
+            ad_segmented_gb=(ad_seg_bytes * to_gb) if ad_seg_bytes is not None else None,
+            checkpoint_every=checkpoint_every,
         )
 
     def _validate_simulation_config(self) -> None:
