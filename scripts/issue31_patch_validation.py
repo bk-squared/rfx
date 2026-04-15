@@ -113,13 +113,26 @@ def _build(G, *, with_port, with_ntff, ntff_freqs=None):
                                 G["dom_y"] / 2 + 5e-3, G["src_z"]),
                       component="ez")
     if with_ntff:
-        margin = max(2 * G["dx_mm"] * 1e-3, 2 * G["dz_sub"])
+        # NTFF box MUST be strictly inside the CPML region (issue #48).
+        # Interior x range is [0, dom_x] and CPML is padded outside; the
+        # safety buffer keeps us well off the boundary.
+        dx_m = G["dx_mm"] * 1e-3
+        safety_xy = 3 * dx_m   # 3-cell buffer inside interior
+        safety_z = 2 * dx_m
+        px_lo, py_lo = G["px_lo"], G["py_lo"]
+        px_hi = px_lo + G["L"]; py_hi = py_lo + G["W"]
+        # Tight box around the patch + margin for the near field.
+        ntff_lo_x = max(px_lo - 8e-3, safety_xy)
+        ntff_hi_x = min(px_hi + 8e-3, G["dom_x"] - safety_xy)
+        ntff_lo_y = max(py_lo - 8e-3, safety_xy)
+        ntff_hi_y = min(py_hi + 8e-3, G["dom_y"] - safety_xy)
+        # Enclose from just below ground to ~15 mm above the patch.
+        ntff_lo_z = max(G["z_gnd_lo"] - 2 * G["dz_sub"], safety_z)
+        dom_z = float(np.sum(G["dz_profile"]))
+        ntff_hi_z = min(G["z_patch_hi"] + 15e-3, dom_z - safety_z)
         sim.add_ntff_box(
-            corner_lo=(G["gx_lo"] - margin, G["gy_lo"] - margin,
-                       G["z_gnd_lo"] - margin),
-            corner_hi=(G["gx_lo"] + G["gx"] + margin,
-                       G["gy_lo"] + G["gy"] + margin,
-                       G["z_patch_hi"] + 10e-3),
+            corner_lo=(ntff_lo_x, ntff_lo_y, ntff_lo_z),
+            corner_hi=(ntff_hi_x, ntff_hi_y, ntff_hi_z),
             freqs=np.asarray(ntff_freqs or [G["f_design"]]),
         )
     return sim
@@ -271,10 +284,168 @@ def run_farfield(G, *, f_res):
 
 
 # -----------------------------------------------------------------------------
-# Step 4 — Field evolution GIF with per-frame vmax + geometry outlines
+# Step 4 — 3D far-field lobe + structure (issue #49)
+# -----------------------------------------------------------------------------
+def run_farfield_3d(G, *, f_res):
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        print("[3D-FFRP] plotly missing, skipping.")
+        return
+    print(f"\n=== [4/5] 3D far-field + structure at {f_res/1e9:.3f} GHz ===")
+    sim = _build(G, with_port=True, with_ntff=True, ntff_freqs=[f_res])
+    t0 = time.time()
+    res = sim.run(num_periods=40, compute_s_params=False)
+    print(f"[run] done in {time.time() - t0:.1f}s")
+
+    from rfx.farfield import compute_far_field
+    theta = np.linspace(0.01, np.pi / 2, 60)  # avoid theta=0 singularity
+    phi = np.linspace(0, 2 * np.pi, 121)
+    grid = sim._build_nonuniform_grid()
+    ef = compute_far_field(res.ntff_data, res.ntff_box, grid, theta, phi)
+    E_t = np.asarray(ef.E_theta[0]); E_p = np.asarray(ef.E_phi[0])
+    mag = np.sqrt(np.abs(E_t) ** 2 + np.abs(E_p) ** 2)
+    mag_norm = mag / np.max(mag)
+
+    # Sphere coords deformed by magnitude → farfield surface.
+    TH, PH = np.meshgrid(theta, phi, indexing="ij")
+    r = mag_norm
+    # Centre the lobe above the patch (origin at the patch centre, mm).
+    cx = (G["px_lo"] + G["L"] / 2) * 1e3
+    cy = (G["py_lo"] + G["W"] / 2) * 1e3
+    cz = G["z_patch_hi"] * 1e3
+    scale = 40.0  # mm — visual size of the lobe at r=1
+    X = cx + scale * r * np.sin(TH) * np.cos(PH)
+    Y = cy + scale * r * np.sin(TH) * np.sin(PH)
+    Z = cz + scale * r * np.cos(TH)
+
+    fig = go.Figure()
+
+    # Structure boxes (PEC ground, FR4 substrate, PEC patch) as semi-
+    # transparent cuboids. Plotly Mesh3d expects vertex + face triples.
+    def _cuboid(x0, y0, z0, w, d, h, color, opacity, name):
+        # 8 vertices of a box
+        xs = [x0, x0 + w, x0 + w, x0, x0, x0 + w, x0 + w, x0]
+        ys = [y0, y0, y0 + d, y0 + d, y0, y0, y0 + d, y0 + d]
+        zs = [z0, z0, z0, z0, z0 + h, z0 + h, z0 + h, z0 + h]
+        # 12 triangles
+        i = [0, 0, 1, 1, 2, 2, 4, 4, 0, 0, 1, 2]
+        j = [1, 2, 2, 5, 3, 6, 5, 6, 4, 5, 5, 3]
+        k = [2, 3, 5, 6, 6, 7, 6, 7, 5, 1, 6, 7]
+        return go.Mesh3d(x=xs, y=ys, z=zs, i=i, j=j, k=k,
+                         color=color, opacity=opacity, name=name, showlegend=True,
+                         flatshading=True)
+
+    gx_lo, gy_lo = G["gx_lo"] * 1e3, G["gy_lo"] * 1e3
+    fig.add_trace(_cuboid(gx_lo, gy_lo, G["z_gnd_lo"] * 1e3,
+                          G["gx"] * 1e3, G["gy"] * 1e3, G["dz_sub"] * 1e3,
+                          "black", 0.5, "ground PEC"))
+    fig.add_trace(_cuboid(gx_lo, gy_lo, G["z_sub_lo"] * 1e3,
+                          G["gx"] * 1e3, G["gy"] * 1e3,
+                          (G["z_sub_hi"] - G["z_sub_lo"]) * 1e3,
+                          "tan", 0.18, "FR4 substrate"))
+    fig.add_trace(_cuboid(G["px_lo"] * 1e3, G["py_lo"] * 1e3,
+                          G["z_patch_lo"] * 1e3, G["L"] * 1e3, G["W"] * 1e3,
+                          G["dz_sub"] * 1e3, "goldenrod", 0.85, "patch PEC"))
+
+    # Far-field lobe
+    fig.add_trace(go.Surface(
+        x=X, y=Y, z=Z, surfacecolor=20 * np.log10(np.maximum(mag_norm, 1e-2)),
+        colorscale="Viridis", cmin=-40, cmax=0,
+        colorbar=dict(title="|E_far| (dB, norm)"),
+        opacity=0.7, name=f"|E_far| @ {f_res/1e9:.3f} GHz",
+    ))
+
+    # Source / probe markers
+    fig.add_trace(go.Scatter3d(
+        x=[G["feed_x"] * 1e3], y=[G["feed_y"] * 1e3], z=[G["src_z"] * 1e3],
+        mode="markers", marker=dict(size=5, color="green", symbol="diamond"),
+        name="feed port"))
+
+    # NTFF integration box (wireframe) — visible=legendonly by default so
+    # it doesn't clutter the scene; click the legend to toggle.
+    ntff_lo = res.ntff_box
+    grid = sim._build_nonuniform_grid()
+    dx_m = float(grid.dx); dy_m = float(getattr(grid, "dy", grid.dx))
+    dz_arr = np.asarray(grid.dz)
+    z_edges = np.concatenate([[0], np.cumsum(dz_arr)]) - np.cumsum(dz_arr)[G["n_cpml"] - 1]
+    nx0 = (ntff_lo.i_lo - G["n_cpml"]) * dx_m * 1e3
+    nx1 = (ntff_lo.i_hi - G["n_cpml"]) * dx_m * 1e3
+    ny0 = (ntff_lo.j_lo - G["n_cpml"]) * dy_m * 1e3
+    ny1 = (ntff_lo.j_hi - G["n_cpml"]) * dy_m * 1e3
+    nz0 = z_edges[ntff_lo.k_lo] * 1e3
+    nz1 = z_edges[ntff_lo.k_hi] * 1e3
+    # 12 edges of a box
+    box_lines_x, box_lines_y, box_lines_z = [], [], []
+    corners = [(nx0, ny0, nz0), (nx1, ny0, nz0), (nx1, ny1, nz0), (nx0, ny1, nz0),
+               (nx0, ny0, nz1), (nx1, ny0, nz1), (nx1, ny1, nz1), (nx0, ny1, nz1)]
+    edges = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),
+             (0,4),(1,5),(2,6),(3,7)]
+    for a, b in edges:
+        box_lines_x += [corners[a][0], corners[b][0], None]
+        box_lines_y += [corners[a][1], corners[b][1], None]
+        box_lines_z += [corners[a][2], corners[b][2], None]
+    fig.add_trace(go.Scatter3d(
+        x=box_lines_x, y=box_lines_y, z=box_lines_z, mode="lines",
+        line=dict(color="orange", width=3),
+        name="NTFF box", visible="legendonly"))
+
+    # CPML boundary (outer domain wireframe). Physical interior starts
+    # at (0, 0, 0) and extends to (dom_x, dom_y, dom_z).
+    dom_z = float(np.sum(G["dz_profile"]))
+    cx0, cy0, cz0 = 0.0, 0.0, 0.0
+    cx1, cy1, cz1 = G["dom_x"] * 1e3, G["dom_y"] * 1e3, dom_z * 1e3
+    pml_corners = [(cx0, cy0, cz0), (cx1, cy0, cz0), (cx1, cy1, cz0), (cx0, cy1, cz0),
+                   (cx0, cy0, cz1), (cx1, cy0, cz1), (cx1, cy1, cz1), (cx0, cy1, cz1)]
+    pml_x, pml_y, pml_z = [], [], []
+    for a, b in edges:
+        pml_x += [pml_corners[a][0], pml_corners[b][0], None]
+        pml_y += [pml_corners[a][1], pml_corners[b][1], None]
+        pml_z += [pml_corners[a][2], pml_corners[b][2], None]
+    fig.add_trace(go.Scatter3d(
+        x=pml_x, y=pml_y, z=pml_z, mode="lines",
+        line=dict(color="purple", width=2, dash="dash"),
+        name="CPML outer domain", visible="legendonly"))
+
+    # Peak direction annotation
+    i_peak, j_peak = np.unravel_index(np.argmax(mag), mag.shape)
+    th_peak, ph_peak = theta[i_peak], phi[j_peak]
+    xp = cx + scale * 1.1 * np.sin(th_peak) * np.cos(ph_peak)
+    yp = cy + scale * 1.1 * np.sin(th_peak) * np.sin(ph_peak)
+    zp = cz + scale * 1.1 * np.cos(th_peak)
+    fig.add_trace(go.Scatter3d(
+        x=[cx, xp], y=[cy, yp], z=[cz, zp],
+        mode="lines+markers",
+        line=dict(color="red", width=5),
+        marker=dict(size=[3, 6], color="red"),
+        name=f"peak θ={np.degrees(th_peak):.0f}°, φ={np.degrees(ph_peak):.0f}°"))
+
+    fig.update_layout(
+        title=f"3D far-field + structure @ {f_res/1e9:.3f} GHz "
+              f"(peak θ={np.degrees(th_peak):.0f}°, φ={np.degrees(ph_peak):.0f}°)",
+        scene=dict(
+            xaxis=dict(title="x (mm)"), yaxis=dict(title="y (mm)"),
+            zaxis=dict(title="z (mm)"), aspectmode="data",
+        ),
+        margin=dict(l=0, r=0, t=40, b=0),
+    )
+    html_out = os.path.join(OUT_DIR, "issue31_patch_farfield_3d.html")
+    fig.write_html(html_out, include_plotlyjs="cdn")
+    print(f"[out] {html_out}")
+    # Optional static snapshot if kaleido is installed
+    try:
+        png_out = os.path.join(OUT_DIR, "issue31_patch_farfield_3d.png")
+        fig.write_image(png_out, width=1100, height=800)
+        print(f"[out] {png_out}")
+    except Exception as e:
+        print(f"[3D-FFRP] PNG snapshot skipped ({e}); HTML is interactive.")
+
+
+# -----------------------------------------------------------------------------
+# Step 5 — Field evolution GIF with per-frame vmax + geometry outlines
 # -----------------------------------------------------------------------------
 def run_field_evolution(G, *, n_frames, n_steps_total):
-    print("\n=== [4/4] Field evolution GIF ===")
+    print("\n=== [5/5] Field evolution GIF ===")
     sim = _build(G, with_port=False, with_ntff=False)
     g = sim._build_nonuniform_grid()
     print(f"[cfg] cells={g.nx * g.ny * g.nz:,}  frames={n_frames}")
@@ -363,6 +534,7 @@ def main():
     ap.add_argument("--frames", type=int, default=16)
     ap.add_argument("--n-steps-anim", type=int, default=3000)
     ap.add_argument("--skip-farfield", action="store_true")
+    ap.add_argument("--skip-3d", action="store_true")
     ap.add_argument("--skip-anim", action="store_true")
     ap.add_argument("--skip-s11", action="store_true")
     args = ap.parse_args()
@@ -374,6 +546,8 @@ def main():
         run_s11(G, f_res_harminv=f_res)
     if not args.skip_farfield:
         run_farfield(G, f_res=f_res)
+    if not args.skip_3d:
+        run_farfield_3d(G, f_res=f_res)
     if not args.skip_anim:
         run_field_evolution(G, n_frames=args.frames,
                             n_steps_total=args.n_steps_anim)

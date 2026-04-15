@@ -16,9 +16,10 @@ run: |-
   cd /root/workspace/byungkwan-workspace/research/rfx
   git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
   git fetch --all
-  git checkout viz-farfield-fix
-  git pull --ff-only origin viz-farfield-fix || true
+  git checkout fix-farfield-viz
+  git pull --ff-only origin fix-farfield-viz || true
   pip install -q -e ".[dev]"
+  pip install -q plotly kaleido
 
   echo "=========================================="
   echo "Issue #31 — patch antenna S11 / FFRP / field animation"
