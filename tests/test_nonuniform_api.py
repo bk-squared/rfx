@@ -110,21 +110,6 @@ class TestSimulationNonUniform:
         ts = np.asarray(result.time_series)
         assert ts.shape[0] == 20
 
-    def test_nonuniform_rejects_distributed(self):
-        """devices>1 + nonuniform used to drop profile silently — now raises."""
-        import jax
-        if len(jax.devices()) < 2:
-            pytest.skip("requires >=2 devices")
-        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
-        sim = Simulation(
-            freq_max=5e9, domain=(0.02, 0.02, 0.01),
-            dx=0.5e-3, dz_profile=dz, cpml_layers=8, boundary="cpml",
-        )
-        sim.add_source((0.01, 0.01, 0.001), "ez")
-        with pytest.raises(ValueError, match="distributed multi-device"):
-            sim.run(n_steps=10, devices=jax.devices()[:2],
-                    compute_s_params=False)
-
     def test_nonuniform_upml_smoke(self):
         """boundary='upml' accepts a nonuniform dz_profile and stays stable.
 

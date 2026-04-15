@@ -3180,26 +3180,70 @@ class Simulation:
         if self._boundary == "upml" and devices is not None and len(devices) > 1:
             raise ValueError("boundary='upml' does not support distributed execution")
 
-        # ---- Distributed + nonuniform is a known gap (Phase B, see
-        # docs/research_notes/2026-04-15_nonuniform_completion_handoff.md).
-        # Without this guard the distributed path silently builds a uniform
-        # grid via _build_grid() and drops the user's profile on the floor.
-        if (devices is not None and len(devices) > 1
-                and (self._dz_profile is not None
-                     or self._dx_profile is not None
-                     or self._dy_profile is not None)):
-            raise ValueError(
-                "Non-uniform grids (dz_profile / dx_profile / dy_profile) "
-                "are not yet supported on the distributed multi-device "
-                "path. Run without `devices=` for the single-device "
-                "non-uniform lane, or request Phase B implementation."
-            )
+        # ---- Distributed + nonuniform (Phase B guardrail).
+        # Phase B permits the combination for PEC boundary with grading
+        # ratio <= 5 and no TFSF. The distributed_v2 runner dispatches to
+        # the NU kernels in distributed_nu.py; dispersion and CPML on the
+        # distributed NU path are Phase C items and still raise below.
+        _nu_profile = (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        )
+        if (devices is not None and len(devices) > 1 and _nu_profile):
+            import warnings as _wmod
+            # Grading ratio check (shared single dt) across provided profiles.
+            _max_ratio = 1.0
+            for _prof in (
+                self._dx_profile, self._dy_profile, self._dz_profile
+            ):
+                if _prof is not None and len(_prof) > 0:
+                    _pa = np.asarray(_prof, dtype=np.float64)
+                    if float(_pa.min()) > 0.0:
+                        _max_ratio = max(
+                            _max_ratio,
+                            float(_pa.max()) / float(_pa.min()),
+                        )
+            if _max_ratio > 5.0:
+                raise ValueError(
+                    "Distributed + non-uniform requires grading ratio "
+                    "<= 5:1 for shared-dt stability; got "
+                    f"{_max_ratio:.2f}:1."
+                )
+            if self._tfsf is not None:
+                raise ValueError(
+                    "Distributed + non-uniform does not support TFSF "
+                    "plane-wave sources (Phase B scope)."
+                )
+            if self._solver == "adi":
+                raise ValueError(
+                    "Distributed + non-uniform does not support solver='adi'."
+                )
+            if _max_ratio > 3.0:
+                _wmod.warn(
+                    f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
+                    ":1 exceeds the 3:1 stability caution threshold. "
+                    "Monitor for numerical dispersion / late-time drift.",
+                    stacklevel=2,
+                )
 
         # ---- Distributed multi-device path ----
         if devices is not None and len(devices) > 1:
             if n_steps is None:
-                grid = self._build_grid()
-                n_steps = grid.num_timesteps(num_periods=num_periods)
+                if _nu_profile:
+                    # Synthesise missing dz profile so _build_nonuniform_grid
+                    # has all three axes available.
+                    if self._dz_profile is None:
+                        nz_phys = max(
+                            1, int(round(self._domain[2] / self._dx)))
+                        self._dz_profile = np.full(
+                            nz_phys, float(self._dx))
+                    _ngrid = self._build_nonuniform_grid()
+                    n_steps = int(np.ceil(
+                        num_periods / (self._freq_max * _ngrid.dt)))
+                else:
+                    grid = self._build_grid()
+                    n_steps = grid.num_timesteps(num_periods=num_periods)
             from rfx.runners.distributed_v2 import run_distributed
             return run_distributed(
                 self, n_steps=n_steps, devices=devices,
