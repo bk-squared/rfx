@@ -99,6 +99,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     )
     materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(sim, grid)
 
+    # Fold RLC R/C into materials before other port/source setup
+    # (mirrors the uniform path).
+    if sim._lumped_rlc:
+        from rfx.lumped import setup_rlc_materials
+        for spec in sim._lumped_rlc:
+            materials = setup_rlc_materials(grid, spec, materials)
+
     # Initialize Debye/Lorentz dispersion coefficients
     debye = None
     if debye_spec is not None:
@@ -280,6 +287,16 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sp_freqs = np.linspace(
                 sim._freq_max / 10, sim._freq_max, 50)
 
+    # Lumped RLC: build per-element metadata + zero-init ADE states
+    rlc_metas: tuple = ()
+    rlc_states_init: tuple = ()
+    if sim._lumped_rlc:
+        from rfx.lumped import build_rlc_meta, init_rlc_state
+        rlc_metas = tuple(
+            build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc
+        )
+        rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
+
     r = run_nonuniform(
         grid, materials, n_steps,
         pec_mask=pec_mask,
@@ -291,6 +308,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         lorentz=lorentz,
         pec_faces=getattr(sim, '_pec_faces', None),
         dft_planes=dft_plane_probes if dft_plane_probes else None,
+        rlc_metas=rlc_metas,
+        rlc_states=rlc_states_init,
     )
 
     s_params = r.get("s_params")

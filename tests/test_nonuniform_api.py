@@ -226,19 +226,59 @@ class TestSimulationNonUniform:
         with pytest.raises(ValueError, match="Waveguide ports are not supported"):
             sim.run(n_steps=20, compute_s_params=False)
 
-    def test_nonuniform_rejects_lumped_rlc(self):
+    def test_nonuniform_lumped_rlc_resistor_damps_source(self):
+        """A resistor in the fine-dz region must dissipate energy.
+
+        Runs the same NU configuration twice — once with a parallel
+        50 Ω resistor co-located with the source, once without — and
+        confirms the peak probe amplitude is strictly lower with the
+        resistor present.
+        """
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
-        sim = Simulation(
-            freq_max=5e9,
-            domain=(0.02, 0.02, 0.01),
-            dx=0.5e-3,
-            dz_profile=dz,
-            boundary="cpml",
+        domain = (0.02, 0.02, 0.01)
+        src_pos = (0.01, 0.01, 0.001)  # inside the fine-dz region
+
+        def _build(with_r: bool):
+            sim = Simulation(
+                freq_max=5e9,
+                domain=domain,
+                dx=0.5e-3,
+                dz_profile=dz,
+                boundary="upml",
+            )
+            sim.add_source(
+                src_pos, "ez",
+                waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8),
+            )
+            sim.add_probe(src_pos, "ez")
+            if with_r:
+                sim.add_lumped_rlc(
+                    position=src_pos, component="ez",
+                    R=50.0, L=0.0, C=0.0, topology="parallel",
+                )
+            return sim
+
+        sim_free = _build(with_r=False)
+        sim_rlc = _build(with_r=True)
+
+        res_free = sim_free.run(n_steps=300)
+        res_rlc = sim_rlc.run(n_steps=300)
+
+        ts_free = np.asarray(res_free.time_series).reshape(-1)
+        ts_rlc = np.asarray(res_rlc.time_series).reshape(-1)
+
+        peak_free = float(np.max(np.abs(ts_free)))
+        peak_rlc = float(np.max(np.abs(ts_rlc)))
+
+        assert np.all(np.isfinite(ts_free))
+        assert np.all(np.isfinite(ts_rlc))
+        assert peak_free > 0
+        assert peak_rlc > 0
+        # The resistor must damp the on-cell field response.
+        assert peak_rlc < peak_free, (
+            f"expected R=50Ω to damp the probe peak; "
+            f"got peak_rlc={peak_rlc:.3e} vs peak_free={peak_free:.3e}"
         )
-        sim.add_source((0.01, 0.01, 0.001), "ez")
-        sim.add_lumped_rlc(position=(0.01, 0.01, 0.001), component="ez", R=50.0)
-        with pytest.raises(ValueError, match="Lumped RLC elements are not supported"):
-            sim.run(n_steps=20)
 
 
 class TestAutoConfigNonUniform:

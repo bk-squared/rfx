@@ -2580,13 +2580,6 @@ class Simulation:
                     "Use the uniform reference lane for waveguide workflows."
                 )
 
-            # P2.5: Lumped RLC unsupported on non-uniform path
-            if self._lumped_rlc:
-                raise ValueError(
-                    "Lumped RLC elements are not supported on non-uniform z "
-                    "mesh. Use the uniform reference lane for RLC workflows."
-                )
-
             # P2.6: CPML z-thickness on non-uniform mesh
             if self._boundary == "cpml" and self._cpml_layers > 0:
                 cpml_z_thick = sum(float(d) for d in self._dz_profile[:self._cpml_layers])

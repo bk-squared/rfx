@@ -485,6 +485,8 @@ def run_nonuniform(
     lorentz: tuple | None = None,
     pec_faces: set[str] | None = None,
     dft_planes: list | None = None,
+    rlc_metas: tuple = (),
+    rlc_states: tuple = (),
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -511,6 +513,7 @@ def run_nonuniform(
     use_debye = debye is not None
     use_lorentz = lorentz is not None
     use_dft_planes = len(dft_planes) > 0
+    use_lumped_rlc = len(rlc_metas) > 0
 
     # CPML: only initialize when cpml_layers > 0 (skip for PEC boundary)
     use_cpml = grid.cpml_layers > 0
@@ -594,6 +597,10 @@ def run_nonuniform(
     else:
         dft_meta = ()
 
+    # Lumped RLC ADE state (one per element) — metas are Python-static
+    if use_lumped_rlc:
+        carry_init["rlc_states"] = tuple(rlc_states)
+
     def step_fn(carry, xs):
         step_idx, src_vals = xs
         st = carry["fdtd"]
@@ -626,6 +633,15 @@ def run_nonuniform(
         st = apply_pec(st)
         if use_pec_mask:
             st = apply_pec_mask(st, pec_mask)
+
+        # Lumped RLC ADE update (after E update + boundaries, before sources)
+        new_rlc_states = None
+        if use_lumped_rlc:
+            from rfx.lumped import update_rlc_element
+            new_rlc_states = []
+            for rlc_st, meta in zip(carry["rlc_states"], rlc_metas):
+                st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
+                new_rlc_states.append(rlc_st_new)
 
         # Sources (point sources + wire port excitation)
         for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
@@ -699,6 +715,8 @@ def run_nonuniform(
             new_carry["wire_sparams"] = tuple(new_wire_sp)
         if use_dft_planes and new_dft_planes is not None:
             new_carry["dft_planes"] = tuple(new_dft_planes)
+        if use_lumped_rlc and new_rlc_states is not None:
+            new_carry["rlc_states"] = tuple(new_rlc_states)
         return new_carry, probe_out
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
@@ -709,6 +727,10 @@ def run_nonuniform(
         "time_series": time_series,
         "dt": dt,
     }
+
+    # Surface final RLC ADE states (per element).
+    if use_lumped_rlc:
+        result["rlc_states"] = tuple(final["rlc_states"])
 
     # Repack DFT plane probes with their final accumulators.
     if use_dft_planes:

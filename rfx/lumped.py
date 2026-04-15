@@ -159,6 +159,18 @@ def _series_needs_ade(spec: LumpedRLCSpec) -> bool:
     return n_components >= 2
 
 
+def _resolve_position_to_index(grid, position):
+    """Resolve a physical (x, y, z) to grid indices.
+
+    Duck-types over uniform ``Grid`` (method) and ``NonUniformGrid``
+    (module-level helper in ``rfx.nonuniform``).
+    """
+    if hasattr(grid, "position_to_index"):
+        return grid.position_to_index(position)
+    from rfx.nonuniform import position_to_index as _nu_p2i
+    return _nu_p2i(grid, position)
+
+
 def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
     """Fold R and C into material arrays at the element cell.
 
@@ -176,9 +188,8 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
 
     Returns updated MaterialArrays.
     """
-    idx = grid.position_to_index(spec.position)
+    idx = _resolve_position_to_index(grid, spec.position)
     i, j, k = idx
-    dx = grid.dx
 
     sigma = materials.sigma
     eps_r = materials.eps_r
@@ -208,7 +219,7 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
     sigma at the cell reflect the R and C contributions.
     """
     from rfx.sources.sources import port_d_parallel as _d_par
-    idx = grid.position_to_index(spec.position)
+    idx = _resolve_position_to_index(grid, spec.position)
     i, j, k = idx
     d_par = _d_par(grid, idx, spec.component)
     dt = grid.dt
