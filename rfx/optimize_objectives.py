@@ -421,6 +421,64 @@ def minimize_reflected_energy(
     return objective
 
 
+def minimize_s11_at_freq(
+    target_freq: float,
+    port_probe_idx: int = 0,
+    *,
+    incident_fraction: float = 0.25,
+    dt: float | None = None,
+) -> Callable:
+    """Single-frequency |S11|² proxy for the differentiable ``forward()`` path.
+
+    Unlike :func:`minimize_s11` (which requires S-parameters from ``run()``)
+    this objective works on the time-series output of ``forward()``, so it
+    composes with ``optimize()`` / ``topology_optimize()``. Issue #50.
+
+    Method: single-frequency DFT (Goertzel-style, real trig so the JAX
+    gradient is clean). The incident power is estimated from the first
+    ``incident_fraction`` of the series — that window should contain only
+    the source pulse, before any reflection returns from the DUT.
+
+    Parameters
+    ----------
+    target_freq : float
+        Frequency of interest (Hz).
+    port_probe_idx : int
+        Index into ``result.time_series`` for the port-co-located probe.
+    incident_fraction : float
+        Fraction of the leading time series treated as incident-only
+        (default 0.25). Shorten for large DUTs with quick round-trip,
+        lengthen for slow resonators.
+    dt : float, optional
+        Time step. If None, read from ``result.dt`` at call time.
+
+    Returns
+    -------
+    callable(Result) -> scalar (JAX-differentiable)
+    """
+    def objective(result) -> jnp.ndarray:
+        _require_time_series(result, "minimize_s11_at_freq")
+        ts = result.time_series[:, port_probe_idx]
+        n = ts.shape[0]
+        _dt = float(result.dt) if dt is None else float(dt)
+        t = jnp.arange(n) * _dt
+        omega = 2.0 * jnp.pi * float(target_freq)
+        cos_t = jnp.cos(omega * t)
+        sin_t = jnp.sin(omega * t)
+        # Total field at the port
+        X_re = jnp.sum(ts * cos_t)
+        X_im = jnp.sum(ts * sin_t)
+        power_total = X_re ** 2 + X_im ** 2
+        # Incident estimate from the early window
+        q = max(1, int(n * float(incident_fraction)))
+        Xi_re = jnp.sum(ts[:q] * cos_t[:q])
+        Xi_im = jnp.sum(ts[:q] * sin_t[:q])
+        power_inc = Xi_re ** 2 + Xi_im ** 2
+        return power_total / (power_inc + 1e-30)
+
+    return objective
+
+
 def maximize_transmitted_energy(
     output_probe_idx: int = -1,
 ) -> Callable:
