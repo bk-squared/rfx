@@ -16,8 +16,8 @@ run: |-
   cd /root/workspace/byungkwan-workspace/research/rfx
   git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
   git fetch --all
-  git checkout diag-large-ground
-  git pull --ff-only origin diag-large-ground || true
+  git checkout main
+  git pull --ff-only origin main || true
   pip install -q -e ".[dev]"
   pip install -q plotly
 
