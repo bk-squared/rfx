@@ -2330,22 +2330,41 @@ class Simulation:
                         stacklevel=3,
                     )
                 else:
-                    # Tightened thresholds (issue #30 CHECK 1):
-                    # - PEC features carrying current need ≥5 cells
-                    # - Dielectric features need ≥10 cells for accurate fields
+                    # Physics-based resolution thresholds (issue #37).
+                    # PEC with extent <3 cells is a thin sheet — 1-cell
+                    # rasterization is canonical. Only warn on partial
+                    # volume: 3-5 cells thick PEC slabs.
+                    # Dielectric: cells per local λ_eff, not cells per
+                    # geometry extent.
                     mat = self._resolve_material(mat_name)
                     is_pec = mat.sigma >= self._PEC_SIGMA_THRESHOLD
-                    thresh = 5 if is_pec else 10
-                    if dim < thresh * cell:
-                        axis_name = "xyz"[axis]
-                        cells = dim / cell
-                        kind = "PEC" if is_pec else "dielectric"
-                        _w.warn(
-                            f"'{mat_name}' {axis_name}-extent {dim*1e3:.2f}mm = "
-                            f"{cells:.1f} cells — under-resolved ({kind} needs "
-                            f"≥{thresh} cells). Consider finer mesh.",
-                            stacklevel=3,
+                    axis_name = "xyz"[axis]
+                    cells = dim / cell
+                    if is_pec:
+                        if 3.0 <= cells < 5.0:
+                            _w.warn(
+                                f"PEC '{mat_name}' {axis_name}-extent "
+                                f"{dim*1e3:.2f}mm = {cells:.1f} cells — "
+                                "volume under-resolved (PEC volume needs "
+                                "≥5 cells; thin sheets <3 cells are fine).",
+                                stacklevel=3,
+                            )
+                    else:
+                        eps_r = float(mat.eps_r) if mat.eps_r else 1.0
+                        lam_eff = (
+                            C0 / self._freq_max / math.sqrt(max(eps_r, 1.0))
                         )
+                        cells_per_lam = lam_eff / cell
+                        if cells_per_lam < 10.0:
+                            _w.warn(
+                                f"dielectric '{mat_name}' on {axis_name}: "
+                                f"{cells_per_lam:.1f} cells per λ_eff "
+                                f"(eps_r={eps_r:.2f}, freq_max="
+                                f"{self._freq_max/1e9:.2f}GHz, "
+                                f"dx={cell*1e3:.3f}mm). Need ≥10 for "
+                                f"phase-accurate propagation.",
+                                stacklevel=3,
+                            )
 
         # Check gaps between PEC structures
         pec_entries = [e for e in self._geometry if e.material_name == "pec"]
