@@ -4,7 +4,7 @@
 
 - `public-site-sync-checklist.md`
 - `nu_known_limits.md` — non-uniform mesh path: soft-PEC and mesh-as-design-variable gradient sentinels
-- `nu_memory_efficient_stack.md` — A+C+segmented path decisions and the right `checkpoint_every` for FDTD inverse design
+- `../research_notes/2026-04-15_issue31_memory_efficient_inverse_design_results.md` — A+C+segmented decisions and the right `checkpoint_every` for FDTD inverse design
 
 ## Session Handover (2026-04-12)
 
