@@ -94,13 +94,19 @@ def main():
     assert rel < 1e-5, f"segmented forward disagrees with plain at rel={rel}"
 
     # 2) Gradient agreement through a scalar eps perturbation.
+    # Plain (checkpoint_every=None) at n_steps=2000 × 600k cells would
+    # take ~60 GB — OOM on 24 GB. Drop n_steps for the grad compare to
+    # a value where plain fits; segmented correctness doesn't depend
+    # on scale.
+    n_steps_grad = 300
+    print(f"[grad cfg ] using n_steps={n_steps_grad} (plain path must fit)")
     ix0, iy0, iz0 = int(g.nx * 0.3), int(g.ny * 0.3), int(g.nz * 0.25)
     ix1, iy1, iz1 = int(g.nx * 0.7), int(g.ny * 0.7), int(g.nz * 0.3)
 
     def loss(alpha, chunk):
         eps = jnp.ones(g.shape, dtype=jnp.float32)
         eps = eps.at[ix0:ix1, iy0:iy1, iz0:iz1].set(4.3 + alpha)
-        fr = sim.forward(eps_override=eps, n_steps=n_steps,
+        fr = sim.forward(eps_override=eps, n_steps=n_steps_grad,
                          checkpoint_every=chunk, emit_time_series=True)
         return jnp.sum(fr.time_series ** 2)
 
