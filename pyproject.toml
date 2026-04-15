@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rfx-fdtd"
-version = "1.5.0"
+version = "1.6.0"
 description = "JAX-native 3D FDTD electromagnetic simulator for RF engineering"
 readme = "README.md"
 license = {text = "MIT"}
