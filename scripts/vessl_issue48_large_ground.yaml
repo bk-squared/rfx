@@ -1,0 +1,33 @@
+name: rfx-issue48-large-ground
+description: "Patch antenna with enlarged ground plane — check +8% rfx bias reduction"
+tags: [rfx, issue-48, ground-plane, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout diag-large-ground
+  git pull --ff-only origin diag-large-ground || true
+  pip install -q -e ".[dev]"
+  pip install -q plotly
+
+  echo "=== Ground plane sweep: 60mm (baseline), 90mm, 120mm ==="
+  for gx in 60 90 120; do
+    echo ""
+    echo "--- gx=${gx}mm, gy=${gx}mm ---"
+    timeout 1800 python scripts/issue31_patch_validation.py \
+      --dx-mm 1.0 --gx-mm ${gx} --gy-mm ${gx} \
+      --skip-anim --skip-3d
+  done
+
+  echo "=== DONE ==="

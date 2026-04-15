@@ -44,12 +44,12 @@ C0 = 2.998e8
 # -----------------------------------------------------------------------------
 # Geometry (shared by all three runs; matches nonuniform_patch_demo.py)
 # -----------------------------------------------------------------------------
-def _geometry(dx_mm):
+def _geometry(dx_mm, gx_mm=60.0, gy_mm=55.0):
     f_design = 2.4e9
     eps_r_fr4 = 4.3
     h_sub = 1.5e-3
     W, L = 38.0e-3, 29.5e-3
-    gx, gy = 60.0e-3, 55.0e-3
+    gx, gy = gx_mm * 1e-3, gy_mm * 1e-3
     air_above, air_below = 25.0e-3, 12.0e-3
     probe_inset = 8.0e-3
 
@@ -569,6 +569,8 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--dx-mm", type=float, default=1.0)
+    ap.add_argument("--gx-mm", type=float, default=60.0)
+    ap.add_argument("--gy-mm", type=float, default=55.0)
     ap.add_argument("--frames", type=int, default=16)
     ap.add_argument("--n-steps-anim", type=int, default=3000)
     ap.add_argument("--skip-farfield", action="store_true")
@@ -577,7 +579,7 @@ def main():
     ap.add_argument("--skip-s11", action="store_true")
     args = ap.parse_args()
 
-    G = _geometry(args.dx_mm)
+    G = _geometry(args.dx_mm, gx_mm=args.gx_mm, gy_mm=args.gy_mm)
     print(f"[cfg] analytic f_res = {G['f_analytic']/1e9:.4f} GHz")
     f_res, _, _ = run_harminv(G)
     if not args.skip_s11:
