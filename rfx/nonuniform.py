@@ -492,6 +492,7 @@ def run_nonuniform(
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
     checkpoint: bool = False,
+    emit_time_series: bool = True,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -807,8 +808,11 @@ def run_nonuniform(
             tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, grid.dx, dt, t_tfsf)
 
         # Probes
-        samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
-        probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
+        if emit_time_series and prb_meta:
+            samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
+            probe_out = jnp.stack(samples)
+        else:
+            probe_out = jnp.zeros(0)
 
         new_carry = {"fdtd": st}
         if use_cpml:
