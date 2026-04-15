@@ -1,0 +1,39 @@
+name: rfx-issue31-nu-physics
+description: "Issue #31 NU physics pin — patch demo harminv + segmented allclose at n_steps=2000"
+tags: [rfx, issue-31, nonuniform, physics, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout nu-memory-efficient
+  git pull --ff-only origin nu-memory-efficient || true
+  pip install -q -e ".[dev]"
+
+  echo "=========================================="
+  echo "Issue #31 — NU physics quantitative validation"
+  echo "=========================================="
+
+  # 1) NU patch antenna demo — harminv f_res vs Balanis analytic.
+  # Expected: ~2.4x GHz, <2% error (pre-branch pin).
+  echo ""
+  echo "=== 1. nonuniform_patch_demo.py (NU harminv pin) ==="
+  timeout 1200 python examples/nonuniform_patch_demo.py
+
+  # 2) Segmented vs plain forward + grad at n_steps=2000.
+  echo ""
+  echo "=== 2. Segmented allclose pin at n_steps=2000 ==="
+  timeout 1200 python scripts/issue31_nu_physics_pin.py
+
+  echo ""
+  echo "=== DONE ==="
