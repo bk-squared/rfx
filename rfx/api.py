@@ -444,11 +444,6 @@ class Simulation:
         elif any(d <= 0 for d in domain):
             raise ValueError(f"domain dimensions must be positive, got {domain}")
 
-        if boundary == "upml" and dz_profile is not None:
-            raise ValueError("boundary='upml' does not support nonuniform dz_profile")
-        if boundary == "upml" and (dx_profile is not None or dy_profile is not None):
-            raise ValueError("boundary='upml' does not support nonuniform dx/dy profile")
-
         # P2: Warn on abrupt grading in user-supplied dz_profile
         if dz_profile is not None and len(dz_profile) > 1:
             import warnings as _w

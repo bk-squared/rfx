@@ -973,14 +973,6 @@ def test_validation_errors():
     with pytest.raises(ValueError, match="boundary='upml'"):
         Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="upml", solver="adi")
 
-    with pytest.raises(ValueError, match="dz_profile"):
-        Simulation(
-            freq_max=5e9,
-            domain=(0.03, 0.03, 0.003),
-            boundary="upml",
-            dz_profile=np.array([1e-3, 1e-3, 1e-3]),
-        )
-
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03))
     with pytest.raises(ValueError, match="component"):
         sim.add_port((0.01, 0.01, 0.01), "bz")

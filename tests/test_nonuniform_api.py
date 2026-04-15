@@ -110,6 +110,34 @@ class TestSimulationNonUniform:
         ts = np.asarray(result.time_series)
         assert ts.shape[0] == 20
 
+    def test_nonuniform_upml_smoke(self):
+        """boundary='upml' accepts a nonuniform dz_profile and stays stable.
+
+        Commit 85de45f disentangled the scalar-dx curl scaling in UPML.
+        This regression pins that nonuniform + UPML (a) constructs,
+        (b) runs, (c) produces a non-trivial signal, (d) does not blow up.
+        """
+        dz = np.array([0.4e-3] * 4 + [0.6e-3] * 6)
+        sim = Simulation(
+            freq_max=5e9, domain=(0.02, 0.02, 0.01),
+            dx=0.5e-3, dz_profile=dz, cpml_layers=8,
+            boundary="upml",
+        )
+        sim.add_source((0.01, 0.01, 0.0025), "ez")
+        sim.add_probe((0.01, 0.01, 0.0025), "ez")
+        result = sim.run(n_steps=100, compute_s_params=False)
+        ts = np.asarray(result.time_series)
+        assert ts.shape[0] == 100
+        assert np.all(np.isfinite(ts)), "UPML+nonuniform produced NaN/Inf"
+        peak = float(np.max(np.abs(ts)))
+        assert peak > 0.0, "signal stayed zero — source / probe mismatch"
+        # Late-time amplitude must not exceed the initial pulse — absorbing
+        # boundary should damp energy, never source it.
+        assert float(np.max(np.abs(ts[-20:]))) <= 1.05 * peak, (
+            f"late-time peak {np.max(np.abs(ts[-20:])):.3e} > 1.05x "
+            f"early peak {peak:.3e} — UPML sourcing energy"
+        )
+
     def test_nonuniform_rejects_ntff(self):
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         sim = Simulation(
