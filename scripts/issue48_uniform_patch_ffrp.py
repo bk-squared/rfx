@@ -63,7 +63,14 @@ def _build(G, *, dx, with_port, with_ntff=False, f_ntff=F_DESIGN):
     z_patch_lo = z_sub_hi
     z_patch_hi = z_sub_hi + dx
     src_z = z_sub_lo + dx * 0.5
-    sim.add_material("fr4", eps_r=G["eps_r"])
+    # Realistic FR4 with loss tangent 0.02 — crucial for a radiating
+    # patch (otherwise energy is trapped in the cavity, Q ~ 1000 instead
+    # of the expected ~30-60).
+    eps0 = 8.8541878128e-12
+    omega = 2 * np.pi * F_DESIGN
+    tan_delta = 0.02
+    sigma_fr4 = omega * eps0 * G["eps_r"] * tan_delta
+    sim.add_material("fr4", eps_r=G["eps_r"], sigma=sigma_fr4)
     sim.add(Box((G["gx_lo"], G["gy_lo"], z_gnd_lo),
                 (G["gx_lo"] + G["gx"], G["gy_lo"] + G["gy"], z_sub_lo)),
             material="pec")
@@ -109,9 +116,14 @@ def run_harminv_uniform(G, dx):
     print(f"[run] {time.time() - t0:.1f}s")
     ts = np.asarray(res.time_series).ravel()
     modes = harminv(ts[int(len(ts) * 0.3):], float(res.dt), 1.5e9, 3.5e9)
-    good = [m for m in modes if m.Q > 5 and m.amplitude > 1e-8]
-    best = max(good, key=lambda m: m.amplitude)
-    f_res, Q = float(best.freq), float(best.Q)
+    good = [m for m in modes if m.Q > 2 and m.amplitude > 1e-10]
+    if not good:
+        print(f"[warn] harminv found no modes; falling back to F_DESIGN. "
+              f"All modes: {[(m.freq/1e9, m.Q, m.amplitude) for m in modes]}")
+        f_res, Q = F_DESIGN, float("nan")
+    else:
+        best = max(good, key=lambda m: m.amplitude)
+        f_res, Q = float(best.freq), float(best.Q)
     # Analytic Balanis f_res
     eps_eff = (G["eps_r"] + 1) / 2 + (G["eps_r"] - 1) / 2 * (
         1 + 12 * G["h_sub"] / G["W"]) ** (-0.5)
