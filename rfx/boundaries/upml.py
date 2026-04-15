@@ -37,7 +37,14 @@ from rfx.core.yee import EPS_0, MU_0, FDTDState, MaterialArrays, _shift_bwd, _sh
 
 
 class UPMLCoeffs(NamedTuple):
-    """Precomputed component-aware UPML update coefficients."""
+    """Precomputed component-aware UPML update coefficients.
+
+    The ``cb_*`` / ``db_*`` coefficients intentionally exclude the stencil
+    cell-size factor; per-axis inverse spacings below are applied to each
+    curl component separately so the coefficients work on both uniform
+    and non-uniform grids.  On a uniform grid the ``inv_*`` fields are
+    scalars and the computation is bit-identical to the pre-split path.
+    """
     ca_ex: jnp.ndarray
     ca_ey: jnp.ndarray
     ca_ez: jnp.ndarray
@@ -50,6 +57,12 @@ class UPMLCoeffs(NamedTuple):
     db_hx: jnp.ndarray
     db_hy: jnp.ndarray
     db_hz: jnp.ndarray
+    inv_dx: jnp.ndarray    # E-position 1/dx (scalar or (nx,1,1))
+    inv_dy: jnp.ndarray    # E-position 1/dy (scalar or (1,ny,1))
+    inv_dz: jnp.ndarray    # E-position 1/dz (scalar or (1,1,nz))
+    inv_dx_h: jnp.ndarray  # H-position 2/(dx[i]+dx[i+1])
+    inv_dy_h: jnp.ndarray  # H-position
+    inv_dz_h: jnp.ndarray  # H-position
 
 
 def _sigma_profile_1d(
@@ -160,8 +173,30 @@ def init_upml(
     mu_abs = materials.mu_r * jnp.float32(MU_0)
     sigma_mat = materials.sigma.astype(jnp.float32)
     dt = jnp.float32(grid.dt)
-    dx = jnp.float32(grid.dx)
     eps_0 = jnp.float32(EPS_0)
+
+    # Per-axis inverse cell-size broadcasts.  On NonUniformGrid these are
+    # arrays we reshape into (nx,1,1) / (1,ny,1) / (1,1,nz); on the
+    # uniform Grid they collapse to a single scalar 1/dx that broadcasts
+    # identically — the uniform path stays bit-for-bit.
+    _fallback_inv = jnp.float32(1.0) / jnp.float32(grid.dx)
+
+    def _inv_broadcast(arr_attr: str, axis: int):
+        arr = getattr(grid, arr_attr, None)
+        if arr is None:
+            return _fallback_inv
+        shape = [1, 1, 1]
+        shape[axis] = -1
+        return jnp.asarray(arr, dtype=jnp.float32).reshape(tuple(shape))
+
+    # E-position (integer-index) inverse spacings — consumed by E update.
+    inv_dx = _inv_broadcast("inv_dx", 0)
+    inv_dy = _inv_broadcast("inv_dy", 1)
+    inv_dz = _inv_broadcast("inv_dz", 2)
+    # H-position (half-integer) inverse spacings — consumed by H update.
+    inv_dx_h = _inv_broadcast("inv_dx_h", 0)
+    inv_dy_h = _inv_broadcast("inv_dy_h", 1)
+    inv_dz_h = _inv_broadcast("inv_dz_h", 2)
 
     if aniso_eps is not None:
         eps_ex, eps_ey, eps_ez = aniso_eps
@@ -210,9 +245,11 @@ def init_upml(
 
     return UPMLCoeffs(
         ca_ex=ca_ex, ca_ey=ca_ey, ca_ez=ca_ez,
-        cb_ex=cb_ex / dx, cb_ey=cb_ey / dx, cb_ez=cb_ez / dx,
+        cb_ex=cb_ex, cb_ey=cb_ey, cb_ez=cb_ez,
         da_hx=da_hx, da_hy=da_hy, da_hz=da_hz,
-        db_hx=db_hx / dx, db_hy=db_hy / dx, db_hz=db_hz / dx,
+        db_hx=db_hx, db_hy=db_hy, db_hz=db_hz,
+        inv_dx=inv_dx, inv_dy=inv_dy, inv_dz=inv_dz,
+        inv_dx_h=inv_dx_h, inv_dy_h=inv_dy_h, inv_dz_h=inv_dz_h,
     )
 
 
@@ -232,9 +269,12 @@ def apply_upml_h(
     ey = state.ey.astype(jnp.float32)
     ez = state.ez.astype(jnp.float32)
 
-    curl_x = (fwd(ez, 1) - ez) - (fwd(ey, 2) - ey)
-    curl_y = (fwd(ex, 2) - ex) - (fwd(ez, 0) - ez)
-    curl_z = (fwd(ey, 0) - ey) - (fwd(ex, 1) - ex)
+    curl_x = ((fwd(ez, 1) - ez) * coeffs.inv_dy_h
+              - (fwd(ey, 2) - ey) * coeffs.inv_dz_h)
+    curl_y = ((fwd(ex, 2) - ex) * coeffs.inv_dz_h
+              - (fwd(ez, 0) - ez) * coeffs.inv_dx_h)
+    curl_z = ((fwd(ey, 0) - ey) * coeffs.inv_dx_h
+              - (fwd(ex, 1) - ex) * coeffs.inv_dy_h)
 
     hx = (coeffs.da_hx * state.hx.astype(jnp.float32) - coeffs.db_hx * curl_x).astype(_fdtype)
     hy = (coeffs.da_hy * state.hy.astype(jnp.float32) - coeffs.db_hy * curl_y).astype(_fdtype)
@@ -259,9 +299,12 @@ def apply_upml_e(
     hy = state.hy.astype(jnp.float32)
     hz = state.hz.astype(jnp.float32)
 
-    curl_x = (hz - bwd(hz, 1)) - (hy - bwd(hy, 2))
-    curl_y = (hx - bwd(hx, 2)) - (hz - bwd(hz, 0))
-    curl_z = (hy - bwd(hy, 0)) - (hx - bwd(hx, 1))
+    curl_x = ((hz - bwd(hz, 1)) * coeffs.inv_dy
+              - (hy - bwd(hy, 2)) * coeffs.inv_dz)
+    curl_y = ((hx - bwd(hx, 2)) * coeffs.inv_dz
+              - (hz - bwd(hz, 0)) * coeffs.inv_dx)
+    curl_z = ((hy - bwd(hy, 0)) * coeffs.inv_dx
+              - (hx - bwd(hx, 1)) * coeffs.inv_dy)
 
     ex = (coeffs.ca_ex * state.ex.astype(jnp.float32) + coeffs.cb_ex * curl_x).astype(_fdtype)
     ey = (coeffs.ca_ey * state.ey.astype(jnp.float32) + coeffs.cb_ey * curl_y).astype(_fdtype)
