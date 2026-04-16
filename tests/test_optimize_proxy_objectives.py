@@ -15,6 +15,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import warnings
 
 from rfx.optimize_objectives import (
     minimize_s11,
@@ -40,6 +41,8 @@ class _MockResult(NamedTuple):
     freqs: object
     ntff_data: object = None
     ntff_box: object = None
+    matched_port_count: int | None = None
+    soft_source_count: int | None = None
 
 
 def _make_mock_result_no_sparams(n_steps: int = 200, n_probes: int = 2):
@@ -208,6 +211,70 @@ class TestMinimizeReflectedEnergy:
         # Different split points should generally give different losses
         # (not strictly guaranteed but highly likely with our mock data)
         assert loss_50 != loss_30 or True  # Just check it doesn't crash
+
+    def test_warns_when_only_soft_source_context_is_present(self):
+        """Soft-source-only measurement contexts should warn once."""
+        result = _MockResult(
+            state=None,
+            time_series=_make_mock_result_no_sparams().time_series,
+            s_params=None,
+            freqs=None,
+            matched_port_count=0,
+            soft_source_count=1,
+        )
+        obj = minimize_reflected_energy(port_probe_idx=0)
+        with pytest.warns(UserWarning, match="impedance-matched port"):
+            loss = obj(result)
+        assert jnp.isfinite(loss)
+
+    def test_no_warning_when_matched_port_context_is_present(self):
+        """Matched-port contexts should not emit the soft-source warning."""
+        result = _MockResult(
+            state=None,
+            time_series=_make_mock_result_no_sparams().time_series,
+            s_params=None,
+            freqs=None,
+            matched_port_count=1,
+            soft_source_count=0,
+        )
+        obj = minimize_reflected_energy(port_probe_idx=0)
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            loss = obj(result)
+        assert jnp.isfinite(loss)
+        assert not record
+
+    def test_forward_attaches_measurement_context_counts(self):
+        """Simulation.forward should tag results with source/port context."""
+        from rfx import Simulation
+
+        sim_src = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim_src.add_source((0.015, 0.015, 0.015), "ez")
+        sim_src.add_probe((0.018, 0.018, 0.018), "ez")
+        result_src = sim_src.forward(n_steps=20)
+        assert result_src.soft_source_count == 1
+        assert result_src.matched_port_count == 0
+
+        sim_port = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim_port.add_port((0.015, 0.015, 0.015), "ez", impedance=50.0)
+        sim_port.add_probe((0.018, 0.018, 0.018), "ez")
+        result_port = sim_port.forward(n_steps=20)
+        assert result_port.soft_source_count == 0
+        assert result_port.matched_port_count == 1
+
+    def test_warns_for_actual_soft_source_forward_result(self):
+        """Actual ForwardResult from add_source() should trigger the warning."""
+        from rfx import Simulation
+
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim.add_source((0.015, 0.015, 0.015), "ez")
+        sim.add_probe((0.018, 0.018, 0.018), "ez")
+        result = sim.forward(n_steps=20)
+
+        obj = minimize_reflected_energy(port_probe_idx=0)
+        with pytest.warns(UserWarning, match="impedance-matched port"):
+            loss = obj(result)
+        assert jnp.isfinite(loss)
 
 
 class TestMaximizeTransmittedEnergy:
@@ -387,3 +454,29 @@ class TestOptimizeWithProxy:
         assert all(np.isfinite(l) for l in result.loss_history)
         print(f"\n  [Proxy S21] initial={result.loss_history[0]:.6e}, "
               f"final={result.loss_history[-1]:.6e}")
+
+    def test_optimize_warns_when_probe_is_inside_pec(self):
+        """Optimization preflight should warn about probes inside PEC."""
+        from rfx.api import Simulation
+        from rfx.geometry.csg import Box
+        from rfx.optimize import DesignRegion, optimize
+
+        sim = Simulation(
+            freq_max=5e9,
+            domain=(0.03, 0.03, 0.03),
+            boundary="pec",
+        )
+        sim.add(Box((0.012, 0.012, 0.012), (0.020, 0.020, 0.020)), material="pec")
+        sim.add_source((0.006, 0.006, 0.006), "ez")
+        sim.add_probe((0.015, 0.015, 0.015), "ez")
+
+        region = DesignRegion(
+            corner_lo=(0.022, 0.0, 0.0),
+            corner_hi=(0.026, 0.01, 0.01),
+            eps_range=(1.0, 2.0),
+        )
+        obj = minimize_reflected_energy(port_probe_idx=0)
+
+        with pytest.warns(UserWarning, match="Probe at .* inside PEC geometry"):
+            result = optimize(sim, region, obj, n_iters=1, lr=0.01, verbose=False)
+        assert len(result.loss_history) == 1

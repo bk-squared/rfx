@@ -384,6 +384,9 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
+    sim._validate_mesh_quality()
+    sim._validate_simulation_config()
+
     try:
         import optax
     except ImportError:

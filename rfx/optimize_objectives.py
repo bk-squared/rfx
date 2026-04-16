@@ -409,8 +409,30 @@ def minimize_reflected_energy(
     -------
     callable(Result) -> scalar (JAX-differentiable)
     """
+    warned_soft_source_only = False
+
     def objective(result) -> jnp.ndarray:
+        nonlocal warned_soft_source_only
         _require_time_series(result, "minimize_reflected_energy")
+        matched_ports = getattr(result, "matched_port_count", None)
+        soft_sources = getattr(result, "soft_source_count", None)
+        if (
+            not warned_soft_source_only
+            and soft_sources is not None
+            and soft_sources > 0
+            and matched_ports == 0
+        ):
+            import warnings as _w
+
+            _w.warn(
+                "minimize_reflected_energy() is most accurate with an "
+                "impedance-matched port (add_port). Using it with a soft "
+                "source (add_source) may give incorrect S11 estimates "
+                "because reflected waves are not absorbed.",
+                UserWarning,
+                stacklevel=2,
+            )
+            warned_soft_source_only = True
         ts = result.time_series[:, port_probe_idx]
         n = ts.shape[0]
         split = int(n * (1.0 - late_fraction))

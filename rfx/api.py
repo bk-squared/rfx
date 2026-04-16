@@ -144,6 +144,8 @@ class Result(NamedTuple):
     grid: object = None
     dt: float | None = None
     freq_range: tuple | None = None
+    matched_port_count: int | None = None
+    soft_source_count: int | None = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None):
@@ -228,6 +230,8 @@ class ForwardResult(NamedTuple):
     grid: object = None
     s_params: object = None
     freqs: object = None
+    matched_port_count: int | None = None
+    soft_source_count: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -2211,6 +2215,31 @@ class Simulation:
             s_param_freqs=s_param_freqs,
         )
 
+    def _measurement_context_counts(self) -> tuple[int, int]:
+        """Return counts of matched ports and soft sources.
+
+        `add_source()` is represented internally as a port entry with
+        `impedance=0.0`, while `add_port()` carries a positive impedance.
+        """
+        matched_ports = 0
+        soft_sources = 0
+        for pe in self._ports:
+            if getattr(pe, "impedance", 0.0) and pe.impedance > 0.0:
+                matched_ports += 1
+            else:
+                soft_sources += 1
+        return matched_ports, soft_sources
+
+    def _attach_result_context(self, result):
+        """Attach source/port context metadata to a Result-like object."""
+        if result is None or not hasattr(result, "_replace"):
+            return result
+        matched_ports, soft_sources = self._measurement_context_counts()
+        return result._replace(
+            matched_port_count=matched_ports,
+            soft_source_count=soft_sources,
+        )
+
     def _auto_configure_mesh(self) -> None:
         """P1: Auto-detect features and set dx/dz_profile when dx=None.
 
@@ -2954,6 +2983,26 @@ class Simulation:
                     except (NotImplementedError, TypeError):
                         pass
 
+        # P1.8b: Probe inside PEC geometry
+        for pe in self._probes:
+            pos = pe.position
+            for entry in self._geometry:
+                if entry.material_name != "pec":
+                    continue
+                if hasattr(entry.shape, "bounding_box"):
+                    try:
+                        c1, c2 = entry.shape.bounding_box()
+                        inside = all(c1[ax] <= pos[ax] <= c2[ax] for ax in range(3))
+                        if inside:
+                            _w.warn(
+                                f"Probe at {pos} is inside PEC geometry "
+                                f"'{entry.material_name}'. E-field is zero inside PEC — "
+                                f"probe will record no signal.",
+                                stacklevel=3,
+                            )
+                    except (NotImplementedError, TypeError):
+                        pass
+
         # P0.4: PEC boundary on likely open structure
         if self._boundary == "pec" and self._ntff is not None:
             _w.warn(
@@ -3157,18 +3206,18 @@ class Simulation:
                     hx=hx_f, hy=hy_f, hz=hz_f,
                     step=jnp.asarray(n_steps, dtype=jnp.int32),
                 )
-                return Result(
+                return self._attach_result_context(Result(
                     state=state,
                     time_series=probe_data,
                     s_params=None, freqs=None,
                     grid=grid_out, dt=dt,
                     freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
-                )
-            return ForwardResult(
+                ))
+            return self._attach_result_context(ForwardResult(
                 time_series=probe_data,
                 ntff_data=None, ntff_box=None,
                 grid=grid_out,
-            )
+            ))
 
         # ---- 2D TMz path ----
         sources = []
@@ -3223,7 +3272,7 @@ class Simulation:
                 hy=hy_f,
                 step=jnp.asarray(n_steps, dtype=jnp.int32),
             )
-            return Result(
+            return self._attach_result_context(Result(
                 state=state,
                 time_series=probe_data,
                 s_params=None,
@@ -3231,14 +3280,14 @@ class Simulation:
                 grid=grid_out,
                 dt=dt,
                 freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
-            )
+            ))
 
-        return ForwardResult(
+        return self._attach_result_context(ForwardResult(
             time_series=probe_data,
             ntff_data=None,
             ntff_box=None,
             grid=grid_out,
-        )
+        ))
 
     def _forward_from_materials(
         self,
@@ -3416,14 +3465,14 @@ class Simulation:
             pec_occupancy=pec_occupancy_local,
             return_state=False,
         )
-        return ForwardResult(
+        return self._attach_result_context(ForwardResult(
             time_series=result.time_series,
             ntff_data=result.ntff_data,
             ntff_box=result.ntff_box,
             grid=result.grid,
             s_params=getattr(result, "s_params", None),
             freqs=getattr(result, "freqs", None),
-        )
+        ))
 
     def _forward_nonuniform_from_materials(
         self,
@@ -3460,14 +3509,14 @@ class Simulation:
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
         )
-        return ForwardResult(
+        return self._attach_result_context(ForwardResult(
             time_series=result.time_series,
             ntff_data=result.ntff_data,
             ntff_box=result.ntff_box,
             grid=result.grid,
             s_params=getattr(result, "s_params", None),
             freqs=getattr(result, "freqs", None),
-        )
+        ))
 
     # ---- forward (differentiable) ----
 
@@ -3734,10 +3783,10 @@ class Simulation:
                     grid = self._build_grid()
                     n_steps = grid.num_timesteps(num_periods=num_periods)
             from rfx.runners.distributed_v2 import run_distributed
-            return run_distributed(
+            return self._attach_result_context(run_distributed(
                 self, n_steps=n_steps, devices=devices,
                 exchange_interval=exchange_interval,
-            )
+            ))
 
         # ---- Non-uniform mesh path ----
         if (self._dz_profile is not None
@@ -3753,11 +3802,11 @@ class Simulation:
             if n_steps is None:
                 n_steps = int(np.ceil(
                     num_periods / (self._freq_max * nu_grid.dt)))
-            return self._run_nonuniform(
+            return self._attach_result_context(self._run_nonuniform(
                 n_steps=n_steps,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
-            )
+            ))
 
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, kerr_chi3 = self._assemble_materials(grid)
@@ -3769,7 +3818,7 @@ class Simulation:
                 raise ValueError("solver='adi' does not support snapshots yet")
             if n_steps is None:
                 n_steps = grid.num_timesteps(num_periods=num_periods)
-            return self._run_adi_from_materials(
+            return self._attach_result_context(self._run_adi_from_materials(
                 grid,
                 base_materials,
                 debye_spec,
@@ -3777,14 +3826,14 @@ class Simulation:
                 n_steps=n_steps,
                 pec_mask=pec_mask,
                 return_state=True,
-            )
+            ))
 
         # ---- Subgridded path ----
         if self._refinement is not None:
-            return self._run_subgridded(
+            return self._attach_result_context(self._run_subgridded(
                 grid, base_materials, pec_mask,
                 n_steps=n_steps or grid.num_timesteps(num_periods=num_periods),
-            )
+            ))
 
         # ---- Uniform path ----
         if n_steps is None:
@@ -3792,7 +3841,7 @@ class Simulation:
 
         from rfx.runners.uniform import run_uniform
         _field_dtype = jnp.float16 if self._precision == "mixed" else None
-        return run_uniform(
+        return self._attach_result_context(run_uniform(
             self,
             n_steps=n_steps,
             until_decay=until_decay,
@@ -3817,7 +3866,7 @@ class Simulation:
             pec_mask=pec_mask,
             kerr_chi3=kerr_chi3,
             field_dtype=_field_dtype,
-        )
+        ))
 
     def __repr__(self) -> str:
         grid = self._build_grid()

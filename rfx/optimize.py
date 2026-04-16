@@ -110,6 +110,9 @@ def optimize(
     -------
     OptimizeResult
     """
+    sim._validate_mesh_quality()
+    sim._validate_simulation_config()
+
     grid = sim._build_grid()
 
     # Compute design-region grid indices, clamped to interior (exclude CPML).

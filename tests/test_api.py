@@ -44,6 +44,17 @@ def test_basic_simulation():
     assert peak > 0, "Probe should detect non-zero field"
 
 
+def test_warns_when_probe_inside_pec_geometry():
+    """Probe inside PEC should warn before run() proceeds."""
+    sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+    sim.add(Box((0.01, 0.01, 0.01), (0.02, 0.02, 0.02)), material="pec")
+    sim.add_source((0.005, 0.005, 0.005), "ez")
+    sim.add_probe((0.015, 0.015, 0.015), "ez")
+
+    with pytest.warns(UserWarning, match="Probe at .* inside PEC geometry"):
+        sim.run(n_steps=20, compute_s_params=False)
+
+
 def test_upml_boundary_runs_through_api():
     """UPML boundary should be accepted for the uniform-grid Yee path."""
     sim = Simulation(
