@@ -55,8 +55,12 @@ def _geometry(dx_mm, gx_mm=60.0, gy_mm=55.0):
 
     dx = dx_mm * 1e-3
     n_cpml = 8
-    n_sub = 6
-    dz_sub = h_sub / n_sub
+    # Substrate z-resolution must scale with dx to keep cell aspect
+    # ratio ≤ 2:1. Fixed n_sub=6 at dx=1mm → dz_sub=0.25mm; at
+    # dx=0.5mm this becomes dz_sub=0.125mm (n_sub=12) so the grid
+    # stays roughly isotropic and FDTD dispersion converges properly.
+    dz_sub = min(h_sub / 6, dx / 2)
+    n_sub = max(6, int(round(h_sub / dz_sub)))
 
     # Meep/OpenEMS convention (issue #48): metal surfaces must sit on
     # cell edges with symmetric neighbouring cells. Build dz EXPLICITLY
