@@ -917,17 +917,6 @@ def test_forward_distributed_grad_per_cell_matches_single_device_near_seam():
 # Test 19 (G2) — NaN propagation via ghost exchange (Class E structural)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "G2: NaN propagation via ghost exchange — Phase 3 implementation "
-        "shows source NaN does not reach the rank-1 probe within the test "
-        "horizon. Investigate whether this is a JAX shard_map NaN handling "
-        "limitation or a real ghost-exchange bug. See orchestrator notes for "
-        "issue #44 Phase 3.1 cleanup. strict=False so an upstream/internal "
-        "fix surfaces as a passing test rather than a CI break."
-    ),
-)
 def test_forward_distributed_nan_propagates_via_ghost_exchange():
     """NaN on rank 0 must reach rank 1's probe within 2*exchange_interval steps.
 
@@ -975,7 +964,12 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
         exchange_interval=exchange_interval,
     )
 
-    ts = np.asarray(res.time_series[0])  # probe on rank 1
+    # res.time_series is shape (n_steps, n_probes); slice all time steps
+    # for the single probe (index 0).  The original Phase 1 test used
+    # `res.time_series[0]` which returned only the first time step
+    # across probes — masked by the xfail marker until Phase 3.1 cleanup
+    # exposed the NaN already propagates correctly within ~4 steps.
+    ts = np.asarray(res.time_series[:, 0])  # probe on rank 1, all steps
 
     # NaN must appear within 2*exchange_interval steps of rank-1 probe
     nan_steps = np.where(np.isnan(ts))[0]
