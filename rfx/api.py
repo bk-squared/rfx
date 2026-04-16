@@ -2389,26 +2389,39 @@ class Simulation:
                     except (NotImplementedError, TypeError, AttributeError):
                         continue
 
-        # Cell aspect ratio on NU meshes — dispersion error grows with
-        # anisotropy. dx=0.5mm + dz_sub=0.25mm (2:1) worsened the patch
-        # antenna f_res from +9% to +13% instead of converging (session
-        # 2026-04-16 convergence grid evidence).
+        # Cell aspect ratio + Courant asymmetry on NU meshes (Taflove
+        # Ch. 4). CFL dt is set by the smallest cell. When min(dz) << dx,
+        # the per-axis Courant numbers diverge:
+        #   nu_z ≈ c·dt/dz ≈ 1/√3 (optimal)
+        #   nu_x = c·dt/dx = (dz/dx)/√3  (suboptimal, shrinks with ratio)
+        # Reducing dx while holding dz fixed INCREASES nu_x, worsening
+        # x-direction dispersion → anti-convergence for patch f_res.
+        # Fix: co-refine dz with dx to maintain constant Courant numbers.
         for axis_name, prof in (("x", self._dx_profile),
                                 ("y", self._dy_profile),
                                 ("z", self._dz_profile)):
             if prof is not None:
                 min_d = float(np.min(prof))
-                max_d = float(np.max(prof))
                 dx_nominal = self._dx or (C0 / self._freq_max / 20.0)
                 ratio = max(dx_nominal / min_d, min_d / dx_nominal)
                 if ratio > 2.5:
+                    # Compute Courant asymmetry for the warning
+                    dt_cfl = 1.0 / (C0 * math.sqrt(
+                        1.0 / dx_nominal ** 2 +
+                        1.0 / dx_nominal ** 2 +
+                        1.0 / min_d ** 2))
+                    nu_coarse = C0 * dt_cfl / dx_nominal
+                    nu_fine = C0 * dt_cfl / min_d
                     _w.warn(
                         f"Cell aspect ratio {ratio:.1f}:1 between dx="
                         f"{dx_nominal*1e3:.3f}mm and min({axis_name}_profile)="
-                        f"{min_d*1e3:.3f}mm. FDTD numerical dispersion "
-                        f"degrades at anisotropic cells; keep ratio "
-                        f"<= 2 for convergent results. Scale "
-                        f"{axis_name}_profile with dx or use isotropic cells.",
+                        f"{min_d*1e3:.3f}mm. Per-axis Courant numbers "
+                        f"diverge: nu_coarse={nu_coarse:.3f}, "
+                        f"nu_fine={nu_fine:.3f}. FDTD dispersion degrades "
+                        f"when Courant numbers are asymmetric (Taflove "
+                        f"Ch. 4); refining dx alone while holding "
+                        f"{axis_name}_profile fixed will ANTI-converge. "
+                        f"Co-refine both to maintain constant aspect ratio.",
                         stacklevel=3,
                     )
 
