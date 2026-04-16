@@ -2404,7 +2404,7 @@ class Simulation:
                 min_d = float(np.min(prof))
                 dx_nominal = self._dx or (C0 / self._freq_max / 20.0)
                 ratio = max(dx_nominal / min_d, min_d / dx_nominal)
-                if ratio > 2.5:
+                if ratio > 2.0:
                     # Compute Courant asymmetry for the warning
                     dt_cfl = 1.0 / (C0 * math.sqrt(
                         1.0 / dx_nominal ** 2 +
@@ -2934,8 +2934,8 @@ class Simulation:
                     except (NotImplementedError, TypeError):
                         pass
 
-        # P1.8: Port/source inside PEC geometry
-        for pe in self._ports:
+        # P1.8: Port/source/probe inside PEC geometry
+        for pe in list(self._ports) + list(self._probes):
             pos = pe.position
             for entry in self._geometry:
                 if entry.material_name != "pec":
