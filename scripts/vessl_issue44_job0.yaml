@@ -1,0 +1,35 @@
+name: rfx-issue44-job0-single-gpu-calibration
+description: "#44 Phase 4 Job 0 — single-GPU calibration row (sets HBM/wall-time denominators)"
+tags: [rfx, issue44, distributed_nu, calibration, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git pull --ff-only origin main || true
+  pip install -q -e ".[dev]"
+
+  echo "========================================"
+  echo "rfx Issue #44 Phase 4 Job 0 (single-GPU calibration)"
+  echo "========================================"
+
+  mkdir -p logs/issue44
+  python scripts/benchmarks/issue44_distributed_nu.py \
+    --case calibration --devices 1 --device-type gpu \
+    --n-steps 200 --out logs/issue44/job0_single_gpu.json
+
+  echo ""
+  echo "=== JSON output ==="
+  cat logs/issue44/job0_single_gpu.json
+
+  echo ""
+  echo "=== DONE ==="
