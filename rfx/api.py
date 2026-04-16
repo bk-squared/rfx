@@ -385,6 +385,15 @@ _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 
 
 # ---------------------------------------------------------------------------
+# Phase 3 (issue #44 V3 §M6): module-level flag so the distributed=True
+# UserWarning fires exactly once per process.  Reset to False on import,
+# flipped to True the first time ``Simulation.forward(distributed=True, ...)``
+# is invoked.
+# ---------------------------------------------------------------------------
+_DISTRIBUTED_FIRST_CALL_WARNED: bool = False
+
+
+# ---------------------------------------------------------------------------
 # Simulation builder
 # ---------------------------------------------------------------------------
 
@@ -3531,6 +3540,376 @@ class Simulation:
             freqs=getattr(result, "freqs", None),
         )
 
+    def _forward_distributed_nonuniform_from_materials(
+        self,
+        *,
+        eps_override: jnp.ndarray | None = None,
+        sigma_override: jnp.ndarray | None = None,
+        pec_mask_override: jnp.ndarray | None = None,
+        pec_occupancy_override: jnp.ndarray | None = None,
+        n_steps: int,
+        checkpoint: bool = True,
+        emit_time_series: bool = True,
+        checkpoint_every: int | None = None,
+        n_warmup: int = 0,
+        design_mask: jnp.ndarray | None = None,
+        devices: list | None = None,
+        exchange_interval: int = 1,
+        skip_preflight: bool = False,
+    ) -> ForwardResult:
+        """Phase 3 (issue #44): differentiable forward on the **distributed**
+        non-uniform mesh path.
+
+        Mirrors :meth:`_forward_nonuniform_from_materials` but routes
+        through the sharded NU runner
+        (``rfx.runners.distributed_nu.run_nonuniform_distributed_pec``)
+        with x-axis 1-D slab decomposition across ``devices``.  Performs
+        the V3 §M4 distributed-specific preflight (5 checks) before any
+        trace build, then assembles materials, builds the
+        :class:`ShardedNUGrid`, shards every input array, and calls the
+        Phase 2F runner.
+
+        See :meth:`forward` for the public-facing kwarg semantics.
+        """
+        import warnings as _w
+        from rfx.runners.distributed_nu import (
+            build_sharded_nu_grid,
+            init_cpml_for_sharded_nu,
+            run_nonuniform_distributed_pec,
+            shard_cpml_state_x_slab,
+            shard_debye_coeffs_x_slab,
+            shard_debye_state_x_slab,
+            shard_design_mask_x_slab,
+            shard_lorentz_coeffs_x_slab,
+            shard_lorentz_state_x_slab,
+            shard_pec_mask_x_slab,
+            shard_pec_occupancy_x_slab,
+        )
+        from rfx.core.yee import MaterialArrays
+        from rfx.materials.debye import init_debye
+        from rfx.materials.lorentz import init_lorentz
+        from rfx.nonuniform import (
+            position_to_index as _nu_pos_to_idx,
+            make_current_source as _nu_make_current_source,
+        )
+        from rfx.simulation import ProbeSpec, SourceSpec
+
+        # ---- Resolve devices (V3 §5 semantics) ----
+        if devices is None:
+            devices = list(jax.devices())
+        else:
+            available = list(jax.devices())
+            # Reject lists longer than the available device count.  This
+            # catches both "more devices than exist" and the duplicate-
+            # entry case (a 4-element list built from 2 real devices)
+            # before JAX errors out deep inside ``device_put`` with an
+            # opaque ``safe_zip`` traceback.
+            if len(devices) > len(available):
+                raise ValueError(
+                    f"forward(distributed=True, devices=...): requested "
+                    f"{len(devices)} devices but only {len(available)} are "
+                    "available in jax.devices()."
+                )
+            # Reject duplicate entries — jax.sharding.Mesh requires each
+            # device to appear at most once.
+            if len(set(map(id, devices))) != len(devices):
+                raise ValueError(
+                    "forward(distributed=True, devices=...): duplicate "
+                    "device entries are not allowed; each device must "
+                    "appear at most once."
+                )
+            for d in devices:
+                if d not in available:
+                    raise ValueError(
+                        f"forward(distributed=True, devices=...): device "
+                        f"{d!r} is not in jax.devices() "
+                        f"(available={len(available)} devices)."
+                    )
+        n_devices = len(devices)
+
+        # ---- Build the NU grid up front for preflight metrics ----
+        grid = self._build_nonuniform_grid()
+
+        # ---- V3 §M4 distributed-specific preflight (5 checks).  Skipped
+        # entirely when the caller requested skip_preflight=True. ----
+        if not skip_preflight:
+            # Check 1 — device count.
+            if n_devices < 2:
+                raise ValueError(
+                    f"forward(distributed=True) requires at least 2 "
+                    f"devices; found {n_devices} (devices={devices!r}). "
+                    "Use distributed=False on a single device, or pass an "
+                    "explicit devices list with len>=2."
+                )
+
+            # Check 2 — grading ratio (hard error at >5).  Use the same
+            # max-over-all-axes definition as Simulation.run().
+            _max_ratio = 1.0
+            for _prof in (
+                self._dx_profile, self._dy_profile, self._dz_profile,
+            ):
+                if _prof is not None and len(_prof) > 0:
+                    _pa = np.asarray(_prof, dtype=np.float64)
+                    if float(_pa.min()) > 0.0:
+                        _max_ratio = max(
+                            _max_ratio,
+                            float(_pa.max()) / float(_pa.min()),
+                        )
+            if _max_ratio > 5.0:
+                raise ValueError(
+                    f"grading_ratio={_max_ratio:.2f} exceeds 5.0; "
+                    "distributed NU forward requires grading_ratio <= 5.0 "
+                    "for shared-dt stability and x-face CPML calibration. "
+                    "Reduce the cell-size variation or omit distributed=True."
+                )
+
+            # Check 3 — ghost width vs local slab.  Mirror
+            # ``ShardedNUGrid`` arithmetic for nx_per_rank.
+            nx = grid.nx
+            pad_x = 0
+            if nx % n_devices != 0:
+                pad_x = n_devices - (nx % n_devices)
+            nx_padded = nx + pad_x
+            nx_per_rank = nx_padded // n_devices
+            ghost_width = math.floor(exchange_interval / 2) + 1
+            for rank in range(n_devices):
+                if ghost_width > nx_per_rank:
+                    raise ValueError(
+                        f"ghost_width={ghost_width} exceeds "
+                        f"nx_per_rank={nx_per_rank} for rank {rank}; "
+                        "reduce exchange_interval or increase nx."
+                    )
+
+            # Check 4 — CPML vs local slab on outer boundary ranks.
+            cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
+            if self._boundary == "cpml" and cpml_layers > 0:
+                for rank in (0, n_devices - 1):
+                    nx_local_real = nx_per_rank
+                    if cpml_layers * 2 >= nx_local_real:
+                        raise ValueError(
+                            f"cpml_layers*2={cpml_layers * 2} >= "
+                            f"nx_local={nx_local_real} on boundary rank "
+                            f"{rank}; reduce cpml_layers or increase nx."
+                        )
+
+            # Check 5 — segmented remat overhead warning.
+            if (
+                n_warmup == 0
+                and checkpoint_every is not None
+                and n_steps < 1000
+            ):
+                _w.warn(
+                    f"checkpoint_every={checkpoint_every} with "
+                    f"n_warmup=0 and n_steps={n_steps} < 1000 may spend "
+                    "more time on recomputation overhead than it saves "
+                    "in memory; consider checkpoint_every=None for small "
+                    "runs.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+
+        # ---- Assemble full-domain materials ----
+        materials, debye_spec, lorentz_spec, pec_mask = (
+            self._assemble_materials_nu(grid)
+        )
+
+        # ``eps_override`` / ``sigma_override`` may be JAX tracers (the
+        # caller is differentiating w.r.t. eps/sigma).  Keep the original
+        # concrete materials for ``make_current_source`` so source
+        # normalisation stays Python-float (matches the single-device NU
+        # runner's ``materials_concrete`` pattern in run_nonuniform_path).
+        materials_concrete = materials
+        if eps_override is not None or sigma_override is not None:
+            materials = MaterialArrays(
+                eps_r=(
+                    eps_override if eps_override is not None
+                    else materials.eps_r
+                ),
+                sigma=(
+                    sigma_override if sigma_override is not None
+                    else materials.sigma
+                ),
+                mu_r=materials.mu_r,
+            )
+        if pec_mask_override is not None:
+            pec_mask = (
+                pec_mask_override if pec_mask is None
+                else (pec_mask | pec_mask_override)
+            )
+
+        # ---- Initialise Debye / Lorentz state on the full domain BEFORE
+        # sharding (distributed_nu shard helpers expect the full-domain
+        # arrays produced by init_debye / init_lorentz). ----
+        debye = None
+        if debye_spec is not None:
+            debye_poles, debye_masks = debye_spec
+            debye = init_debye(
+                debye_poles, materials, grid.dt, mask=debye_masks,
+            )
+        lorentz = None
+        if lorentz_spec is not None:
+            lorentz_poles, lorentz_masks = lorentz_spec
+            lorentz = init_lorentz(
+                lorentz_poles, materials, grid.dt, mask=lorentz_masks,
+            )
+
+        # ---- Build sharded grid + mesh ----
+        sharded_grid = build_sharded_nu_grid(
+            grid, n_devices, exchange_interval=exchange_interval,
+        )
+        from jax.sharding import Mesh
+        mesh = Mesh(np.array(devices), axis_names=("x",))
+
+        # ---- Shard materials.  ``_split_materials`` lives in
+        # rfx.runners.distributed and pads the high-x end before slabbing. ----
+        from rfx.runners.distributed import _split_materials
+        from jax.sharding import NamedSharding, PartitionSpec as _P
+        shd = NamedSharding(mesh, _P("x"))
+        nx = grid.nx
+        pad_x = sharded_grid.pad_x
+        if pad_x > 0:
+            _pad_widths = ((0, pad_x), (0, 0), (0, 0))
+            materials_padded = MaterialArrays(
+                eps_r=jnp.pad(materials.eps_r, _pad_widths,
+                              constant_values=1.0),
+                sigma=jnp.pad(materials.sigma, _pad_widths,
+                              constant_values=0.0),
+                mu_r=jnp.pad(materials.mu_r, _pad_widths,
+                             constant_values=1.0),
+            )
+        else:
+            materials_padded = materials
+
+        ghost = sharded_grid.ghost_width
+        materials_slabs = _split_materials(
+            materials_padded, n_devices, ghost,
+        )
+
+        def _shard_3d_stacked(arr):
+            n_dev = arr.shape[0]
+            rest = arr.shape[1:]
+            return jax.device_put(
+                arr.reshape(n_dev * rest[0], *rest[1:]), shd,
+            )
+
+        sharded_materials = MaterialArrays(
+            eps_r=_shard_3d_stacked(materials_slabs.eps_r),
+            sigma=_shard_3d_stacked(materials_slabs.sigma),
+            mu_r=_shard_3d_stacked(materials_slabs.mu_r),
+        )
+
+        # ---- Shard PEC mask / occupancy / design mask via Phase 2 helpers. ----
+        sharded_pec_mask = shard_pec_mask_x_slab(pec_mask, sharded_grid)
+        sharded_pec_occupancy = shard_pec_occupancy_x_slab(
+            pec_occupancy_override, sharded_grid,
+        )
+        sharded_design_mask = shard_design_mask_x_slab(
+            design_mask, sharded_grid,
+        )
+
+        # ---- CPML init + sharding (Phase 2C). ----
+        cpml_params = None
+        cpml_state_sharded = None
+        cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
+        if self._boundary == "cpml" and cpml_layers > 0:
+            cpml_params, cpml_state_stacked = init_cpml_for_sharded_nu(
+                sharded_grid, n_devices,
+                pec_faces=getattr(self, "_pec_faces", None),
+            )
+            cpml_state_sharded = shard_cpml_state_x_slab(
+                cpml_state_stacked, sharded_grid, mesh,
+            )
+
+        # ---- Shard Debye / Lorentz dispersion (Phase 2D). ----
+        sharded_debye = None
+        if debye is not None:
+            db_coeffs, db_state = debye
+            sharded_debye = (
+                shard_debye_coeffs_x_slab(db_coeffs, sharded_grid, mesh),
+                shard_debye_state_x_slab(db_state, sharded_grid, mesh),
+            )
+        sharded_lorentz = None
+        if lorentz is not None:
+            lr_coeffs, lr_state = lorentz
+            sharded_lorentz = (
+                shard_lorentz_coeffs_x_slab(lr_coeffs, sharded_grid, mesh),
+                shard_lorentz_state_x_slab(lr_state, sharded_grid, mesh),
+            )
+
+        # ---- Sources / probes (lumped/wire/coax ports unsupported here). ----
+        if self._lumped_rlc:
+            raise NotImplementedError(
+                "Lumped RLC ports are not yet supported on the "
+                "distributed=True forward path; remove the lumped_rlc "
+                "spec or omit distributed=True."
+            )
+        sources: list[SourceSpec] = []
+        for pe in self._ports:
+            if pe.impedance > 0.0:
+                raise NotImplementedError(
+                    "Lumped / wire ports (impedance > 0) are not yet "
+                    "supported on the distributed=True forward path; "
+                    "use distributed=False or replace with a current "
+                    "source (impedance=0)."
+                )
+            idx = _nu_pos_to_idx(grid, pe.position)
+            # Use concrete materials so make_current_source can resolve
+            # eps / sigma to Python floats (it calls ``float(...)`` on
+            # both for the source-cell normalisation).
+            si, sj, sk, sc, wf = _nu_make_current_source(
+                grid, idx, pe.component, pe.waveform, n_steps,
+                materials_concrete,
+            )
+            sources.append(SourceSpec(
+                i=int(si), j=int(sj), k=int(sk),
+                component=sc, waveform=jnp.asarray(wf),
+            ))
+
+        probes: list[ProbeSpec] = []
+        for pe in self._probes:
+            idx = _nu_pos_to_idx(grid, pe.position)
+            probes.append(ProbeSpec(
+                i=int(idx[0]), j=int(idx[1]), k=int(idx[2]),
+                component=pe.component,
+            ))
+
+        # ---- Launch the sharded NU runner. ----
+        result = run_nonuniform_distributed_pec(
+            sharded_grid,
+            sharded_materials,
+            sharded_pec_mask,
+            n_steps,
+            sources=sources,
+            probes=probes,
+            n_devices=n_devices,
+            exchange_interval=exchange_interval,
+            debye=sharded_debye,
+            lorentz=sharded_lorentz,
+            devices=devices,
+            cpml_params=cpml_params,
+            cpml_state=cpml_state_sharded,
+            sharded_pec_occupancy=sharded_pec_occupancy,
+            checkpoint_every=checkpoint_every,
+            n_warmup=n_warmup,
+            sharded_design_mask=sharded_design_mask,
+            emit_time_series=emit_time_series,
+        )
+
+        # ---- Repackage into ForwardResult.
+        # Both the distributed runner and the single-device NU runner
+        # return time_series with layout ``(n_steps, n_probes)``; we
+        # surface that schema unchanged so vmap_sweep / decay_convergence
+        # / lumped_rlc / etc. continue to work.
+        ts = result.get("time_series")
+        return ForwardResult(
+            time_series=ts,
+            ntff_data=None,
+            ntff_box=None,
+            grid=grid,
+            s_params=None,
+            freqs=None,
+        )
+
     # ---- forward (differentiable) ----
 
     def forward(
@@ -3548,6 +3927,9 @@ class Simulation:
         n_warmup: int = 0,
         skip_preflight: bool = False,
         design_mask: jnp.ndarray | None = None,
+        distributed: bool = False,
+        devices: list | None = None,
+        exchange_interval: int = 1,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
 
@@ -3572,12 +3954,64 @@ class Simulation:
             Number of periods at freq_max for auto step count.
         checkpoint : bool
             Enable gradient checkpointing (default True).
+        distributed : bool, optional
+            **Opt-in, unstable, pending GPU evidence (issue #44).**  When
+            ``True`` and a non-uniform mesh is configured, route the
+            differentiable forward through the sharded NU runner
+            (``rfx.runners.distributed_nu.run_nonuniform_distributed_pec``)
+            using a 1-D x-slab decomposition across ``devices``.  Defaults
+            to ``False`` (single-device path, no behaviour change).  In
+            v1.6.2 the distributed forward path is **NU-only** (DP3): a
+            uniform mesh raises ``NotImplementedError``.  TFSF sources
+            and waveguide ports are unsupported on this path and raise
+            ``NotImplementedError`` at preflight.
+        devices : list of jax.Device or None, optional
+            Devices for the distributed run.  When ``distributed=True``
+            and ``devices=None``, defaults to ``jax.devices()``.  When
+            an explicit list is supplied, every device must already exist
+            in ``jax.devices()`` (otherwise ``ValueError``).  Passing
+            ``devices=`` *without* ``distributed=True`` raises
+            ``ValueError`` — there is no silent activation of the
+            distributed lane.
+        exchange_interval : int, optional
+            Ghost-cell exchange interval for the distributed runner
+            (default ``1``).  Only ``1`` is currently supported by
+            ``run_nonuniform_distributed_pec``; other values are
+            forward-compatible reservations and will raise inside the
+            runner.
 
         Returns
         -------
         ForwardResult
             Minimal differentiable observables (time series and optional NTFF).
         """
+        # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
+        # distributed=True path so users know the path is opt-in / unstable
+        # / pending GPU evidence.  The flag lives at module scope so we
+        # warn exactly once per process, not per Simulation instance.
+        global _DISTRIBUTED_FIRST_CALL_WARNED
+        if distributed and not _DISTRIBUTED_FIRST_CALL_WARNED:
+            import warnings as _w
+            _w.warn(
+                "Simulation.forward(distributed=True) is opt-in and pending "
+                "GPU evidence (see issue #44). Set distributed=True only "
+                "after reading "
+                "docs/research_notes/2026-04-16_issue44_v3_plan.md.",
+                UserWarning,
+                stacklevel=2,
+            )
+            _DISTRIBUTED_FIRST_CALL_WARNED = True
+
+        # Phase 3 (V3 dispatch rule): devices= without distributed=True
+        # must be rejected with a clear ValueError.  No silent activation.
+        if devices is not None and not distributed:
+            raise ValueError(
+                "forward(devices=...) requires distributed=True; "
+                "passing devices without distributed=True is rejected to "
+                "avoid silent activation of the distributed lane. "
+                "Either set distributed=True or omit devices."
+            )
+
         self._auto_preflight(skip=skip_preflight, context="forward")
 
         is_nonuniform = (
@@ -3585,7 +4019,63 @@ class Simulation:
             or self._dx_profile is not None
             or self._dy_profile is not None
         )
+
+        # Phase 3: distributed dispatch (V3 lines 842-847).
+        if distributed:
+            # NU-only in v1.6.2 (DP3 locked decision).
+            if not is_nonuniform:
+                raise NotImplementedError(
+                    "distributed=True on forward() is currently implemented "
+                    "only for non-uniform meshes; use run(..., devices=...) "
+                    "for the uniform distributed path."
+                )
+            # Reject TFSF / waveguide ports up front (V3 §3 unsupported).
+            if self._tfsf is not None:
+                raise NotImplementedError(
+                    "TFSF sources are not supported on the distributed "
+                    "forward path; remove the TFSF source or omit "
+                    "distributed=True."
+                )
+            if self._waveguide_ports:
+                raise NotImplementedError(
+                    "Waveguide ports are not supported on the distributed "
+                    "forward path; remove waveguide ports or omit "
+                    "distributed=True."
+                )
+            # Synthesise missing dz profile so the NU grid build always
+            # sees all three axes (mirrors Simulation.run() and the
+            # single-device NU forward path).
+            if self._dz_profile is None:
+                nz_phys = max(1, int(round(self._domain[2] / self._dx)))
+                self._dz_profile = np.full(nz_phys, float(self._dx))
+            if n_steps is None:
+                grid_probe = self._build_nonuniform_grid()
+                period = 1.0 / float(self._freq_max)
+                n_steps = int(np.ceil(num_periods * period / float(grid_probe.dt)))
+            return self._forward_distributed_nonuniform_from_materials(
+                eps_override=eps_override,
+                sigma_override=sigma_override,
+                pec_mask_override=pec_mask_override,
+                pec_occupancy_override=pec_occupancy_override,
+                n_steps=n_steps,
+                checkpoint=checkpoint,
+                emit_time_series=emit_time_series,
+                checkpoint_every=checkpoint_every,
+                n_warmup=n_warmup,
+                design_mask=design_mask,
+                devices=devices,
+                exchange_interval=exchange_interval,
+                skip_preflight=skip_preflight,
+            )
+
         if is_nonuniform:
+            # Synthesise missing dz profile so the NU grid build always
+            # sees all three axes (mirrors Simulation.run()'s pre-build
+            # synthesis at api.py ~4268).  Required for sims that set
+            # only dx/dy_profile and leave dz uniform.
+            if self._dz_profile is None:
+                nz_phys = max(1, int(round(self._domain[2] / self._dx)))
+                self._dz_profile = np.full(nz_phys, float(self._dx))
             # Let the NU runner build grid/materials so it can apply the
             # NU-aware pec_mask and port/source setup against per-axis widths.
             if n_steps is None:
