@@ -117,6 +117,7 @@ def main():
     print("=" * 60)
     run_case("F1: NU dx=1.0mm dz=0.250mm (baseline)", 1.0e-3, True, True)
     run_case("F2: NU dx=0.5mm dz=0.125mm", 0.5e-3, True, True)
+    run_case("F3: NU dx=0.25mm dz=0.0625mm", 0.25e-3, True, True)
 
     # Also re-run the anti-convergence case for comparison
     print("\n" + "=" * 60)
