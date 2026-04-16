@@ -14,6 +14,8 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
+pytestmark = pytest.mark.gpu
+
 from rfx.nonuniform import make_nonuniform_grid
 from rfx.core.yee import FDTDState, MaterialArrays, MU_0, update_h_nu
 from rfx.runners.distributed_nu import (

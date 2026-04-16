@@ -19,6 +19,7 @@ import numpy as np
 
 from rfx.grid import Grid
 from rfx.core.yee import _shift_fwd, _shift_bwd
+from rfx.core.jax_utils import is_tracer
 
 
 class CPMLParams(NamedTuple):
@@ -86,10 +87,6 @@ class CPMLState(NamedTuple):
     psi_hz_yhi: jnp.ndarray
 
 
-def _is_tracer(x) -> bool:
-    """True when ``x`` is a JAX tracer (mesh-as-design-variable path)."""
-    import jax
-    return isinstance(x, jax.core.Tracer)
 
 
 def _cpml_profile(
@@ -131,7 +128,7 @@ def _cpml_profile(
     # float32 only at the CPMLParams boundary) so the returned profile
     # is bit-identical to the pre-#45 release.  The traced path stays
     # at float32 to match the default JAX dtype policy.
-    traced = _is_tracer(dt) or _is_tracer(dx)
+    traced = is_tracer(dt) or is_tracer(dx)
     xp = jnp if traced else np
     work_dtype = jnp.float32 if traced else np.float64
 
@@ -181,7 +178,7 @@ def _get_axis_cell_sizes(grid):
     dy = float(getattr(grid, 'dy', dx))
     dz_arr = getattr(grid, 'dz', None)
     if dz_arr is not None and len(dz_arr) > 0:
-        if _is_tracer(dz_arr):
+        if is_tracer(dz_arr):
             dz_lo = dz_arr[0]
             dz_hi = dz_arr[-1]
         else:

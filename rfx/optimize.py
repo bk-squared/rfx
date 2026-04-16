@@ -135,6 +135,8 @@ def optimize(
         pads = (grid.cpml_layers, grid.cpml_layers, grid.cpml_layers)
         base_materials, _, _, base_pec_mask = sim._assemble_materials_nu(grid)
         period = 1.0 / float(sim._freq_max)
+        # float(grid.dt): host-boundary context — called after _build_nonuniform_grid()
+        # outside any JIT trace, so grid.dt is always a Python float here.
         _n_steps_auto = int(np.ceil(num_periods * period / float(grid.dt)))
     else:
         grid = sim._build_grid()

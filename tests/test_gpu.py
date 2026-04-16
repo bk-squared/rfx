@@ -5,7 +5,11 @@ Validates that:
 2. benchmark() runs and returns timing data
 """
 
+import pytest
+
 from rfx.gpu import device_info, benchmark, BenchResult, DeviceInfo
+
+pytestmark = pytest.mark.gpu
 
 
 def test_device_info():

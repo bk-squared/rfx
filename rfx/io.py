@@ -474,6 +474,7 @@ def save_experiment_report(path, sim, result, extra=None):
         "grid": {
             "shape": list(grid.shape) if grid else None,
             "dx": float(grid.dx) if grid else None,
+            # float(grid.dt): host-boundary — metadata written at save time, never inside a trace.
             "dt": float(grid.dt) if grid else None,
         } if grid else None,
         "result_type": type(result).__name__,
@@ -546,6 +547,7 @@ def save_simulation_dataset(path, sim, result, *,
             if hasattr(result, "grid") and result.grid is not None:
                 grid = result.grid
                 inp.attrs["grid_shape"] = grid.shape
+                # float(grid.dt): host-boundary — HDF5 metadata, never inside a trace.
                 inp.attrs["dt"] = float(grid.dt)
 
         # Output group

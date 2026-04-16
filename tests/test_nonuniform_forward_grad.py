@@ -110,7 +110,9 @@ def test_forward_nonuniform_pec_occupancy_accepted():
     occ_zero = jnp.zeros(g.shape, dtype=jnp.float32)
     fr_zero = sim.forward(pec_occupancy_override=occ_zero, n_steps=50)
     ts_zero = np.asarray(fr_zero.time_series)
-    assert np.allclose(ts_base, ts_zero, atol=0.0, rtol=0.0), (
+    # Different XLA graphs for occ=0.0 vs no-occupancy baseline;
+    # bit-identity not guaranteed across separate JIT compilations.
+    assert np.allclose(ts_base, ts_zero, atol=1e-7, rtol=1e-7), (
         "zero pec_occupancy should be a no-op — got difference "
         f"max={np.max(np.abs(ts_base - ts_zero)):.3e}"
     )
@@ -184,3 +186,108 @@ def test_forward_nonuniform_pec_occupancy_interpolates_hard_pec():
         f"occ=1 must match hard-PEC on NU mesh — max diff "
         f"{float(np.max(np.abs(ts_h - ts_o))):.4e}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Sentinel tests — pin known limitations so XPASS trips CI when fixed
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Simulation.__init__ host-coerces dz_profile at api.py:464 and "
+        "api.py:471 before run_nonuniform is reached. ConcretizationTypeError "
+        "is expected. Remove this xfail when the constructor is refactored. "
+        "See docs/agent-memory/nu_known_limits.md sentinel #2."
+    ),
+)
+def test_sim_forward_grad_wrt_dz_profile_blocked():
+    """jax.grad through Simulation.__init__ w.r.t. dz_profile must fail.
+
+    The #45 fix unblocks run_nonuniform-direct only.  The Simulation-level
+    path still host-coerces dz_profile in __init__, raising
+    ConcretizationTypeError.  This xfail(strict=True) sentinel self-announces
+    (XPASS) when the constructor refactor lands.
+    """
+    dz = jnp.asarray(
+        [0.5e-3] * 5 + [0.4e-3] * 4, dtype=jnp.float32
+    )
+
+    def _loss(dz_profile):
+        sim = Simulation(
+            freq_max=10e9,
+            domain=(0.01, 0.01, float(jnp.sum(dz_profile))),
+            dx=0.5e-3,
+            dz_profile=dz_profile,
+            cpml_layers=4,
+        )
+        sim.add_source((0.005, 0.005, 0.001), "ez")
+        sim.add_probe((0.005, 0.005, 0.003), "ez")
+        fr = sim.forward(n_steps=20)
+        return jnp.sum(fr.time_series ** 2)
+
+    # This must raise ConcretizationTypeError (or similar) — xfail expected.
+    jax.grad(_loss)(dz)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=NotImplementedError,
+    reason=(
+        "Tracer-valued dx_profile raises NotImplementedError — known limit. "
+        "Remove this xfail when the dx_profile tracer path is implemented. "
+        "See docs/agent-memory/nu_known_limits.md."
+    ),
+)
+def test_grad_wrt_dx_profile_blocked():
+    """jax.grad w.r.t. dx_profile raises NotImplementedError (known limit).
+
+    The #45 fix covers dz_profile only.  dx_profile still host-coerces in
+    make_nonuniform_grid; the explicit NotImplementedError guard added in
+    the cleanup pass makes the failure message actionable.
+    """
+    from rfx.nonuniform import make_nonuniform_grid
+
+    dx0 = jnp.asarray([0.5e-3] * 6, dtype=jnp.float32)
+
+    def _loss(dx_profile):
+        grid = make_nonuniform_grid(
+            domain_xy=(0.003, 0.003),
+            dz_profile=jnp.asarray([0.5e-3] * 6, dtype=jnp.float32),
+            dx=float(dx0[0]),
+            dx_profile=dx_profile,
+            cpml_layers=2,
+        )
+        return jnp.sum(grid.dx_arr)
+
+    # Must raise NotImplementedError at make_nonuniform_grid — xfail expected.
+    jax.grad(_loss)(dx0)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=NotImplementedError,
+    reason=(
+        "Tracer-valued dy_profile raises NotImplementedError — known limit. "
+        "Remove this xfail when the dy_profile tracer path is implemented. "
+        "See docs/agent-memory/nu_known_limits.md."
+    ),
+)
+def test_grad_wrt_dy_profile_blocked():
+    """jax.grad w.r.t. dy_profile raises NotImplementedError (known limit)."""
+    from rfx.nonuniform import make_nonuniform_grid
+
+    dy0 = jnp.asarray([0.5e-3] * 6, dtype=jnp.float32)
+
+    def _loss(dy_profile):
+        grid = make_nonuniform_grid(
+            domain_xy=(0.003, 0.003),
+            dz_profile=jnp.asarray([0.5e-3] * 6, dtype=jnp.float32),
+            dx=float(dy0[0]),
+            dy_profile=dy_profile,
+            cpml_layers=2,
+        )
+        return jnp.sum(grid.dy_arr)
+
+    # Must raise NotImplementedError at make_nonuniform_grid — xfail expected.
+    jax.grad(_loss)(dy0)

@@ -29,6 +29,7 @@ from rfx.core.yee import (
     update_h_nu, update_e_nu, EPS_0, MU_0,
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_mask, apply_pec_occupancy
+from rfx.core.jax_utils import is_tracer
 
 C0 = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
 
@@ -49,7 +50,10 @@ class NonUniformGrid(NamedTuple):
     dx_arr: jnp.ndarray    # (nx,) — per-cell dx (includes CPML padding)
     dy_arr: jnp.ndarray    # (ny,) — per-cell dy
     dz: jnp.ndarray        # (nz,) z cell sizes (already per-cell)
-    dt: float              # timestep (from min cell CFL)
+    dt: float | jax.Array  # timestep; eager float in normal use, traced
+                           # jax.Array on the run_nonuniform traced path.
+                           # Readers must not apply float() / .item() without
+                           # an is_tracer(dt) guard or a host-boundary context.
     cpml_layers: int
     # Pre-computed inverse spacing arrays (length N, padded)
     inv_dx: jnp.ndarray    # (nx,) — 1/dx_arr[i]
@@ -65,10 +69,6 @@ class NonUniformGrid(NamedTuple):
         return (self.nx, self.ny, self.nz)
 
 
-def _is_tracer(x) -> bool:
-    """True when ``x`` is a JAX tracer (mesh-as-design-variable path)."""
-    import jax
-    return isinstance(x, jax.core.Tracer)
 
 
 def _pad_profile(profile, cpml_layers: int):
@@ -83,7 +83,7 @@ def _pad_profile(profile, cpml_layers: int):
     Otherwise the numpy path is used, preserving the Python-float ``dt``
     that Simulation-level callers depend on.
     """
-    if _is_tracer(profile):
+    if is_tracer(profile):
         prof = jnp.asarray(profile, dtype=jnp.float32)
         lo_pad = jnp.full(cpml_layers, prof[0])
         hi_pad = jnp.full(cpml_layers, prof[-1])
@@ -138,6 +138,11 @@ def make_nonuniform_grid(
         nx_interior = int(round(domain_xy[0] / dx))
         dx_prof_phys = np.full(nx_interior, float(dx))
     else:
+        if is_tracer(dx_profile):
+            raise NotImplementedError(
+                "Tracer-valued dx_profile is not supported on the non-uniform "
+                "grid path. See docs/agent-memory/nu_known_limits.md."
+            )
         dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
         # Guard: CPML cells must have the same size as the boundary interior
         # cells, otherwise the CPML σ/κ profile is miscalibrated.
@@ -161,6 +166,11 @@ def make_nonuniform_grid(
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     else:
+        if is_tracer(dy_profile):
+            raise NotImplementedError(
+                "Tracer-valued dy_profile is not supported on the non-uniform "
+                "grid path. See docs/agent-memory/nu_known_limits.md."
+            )
         dy_prof_phys = np.asarray(dy_profile, dtype=np.float64)
         dy_boundary = float(dy_prof_phys[0])
         if abs(float(dy_prof_phys[-1]) - dy_boundary) > 1e-12:
@@ -178,7 +188,7 @@ def make_nonuniform_grid(
     # --- CFL from minimum cell size on every axis ---
     dx_min = float(np.min(dx_full))
     dy_min = float(np.min(dy_full))
-    if _is_tracer(dz_full):
+    if is_tracer(dz_full):
         dz_min = jnp.min(dz_full)
         dt = 0.99 / (C0 * jnp.sqrt(1 / dx_min ** 2 + 1 / dy_min ** 2 + 1 / dz_min ** 2))
     else:

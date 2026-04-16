@@ -187,8 +187,11 @@ def test_grad_wrt_dz_profile_reduces_loss():
     # below the cell spacing).  Clamp to physical range.
     dz1 = jnp.clip(dz0 - 1e-12 * grad, 0.1e-3, 1.0e-3)
     loss1 = float(_loss_from_dz(dz1))
-    reduction = (loss0 - loss1) / max(loss0, 1e-30)
-    assert reduction > 0.0, (
-        f"gradient descent did not reduce loss: loss0={loss0:.4e}, "
-        f"loss1={loss1:.4e}"
+    reduction = loss0 - loss1
+    # Floor is 1e-6 * |loss0|: three orders of magnitude below the observed
+    # ~0.046% reduction signal, tight enough to catch noise-dominated passes.
+    floor = max(1e-6 * abs(loss0), 1e-12)
+    assert reduction > floor, (
+        f"gradient step must produce meaningful loss reduction: "
+        f"got {reduction:.3e}, floor={floor:.3e} (loss0={loss0:.3e})"
     )
