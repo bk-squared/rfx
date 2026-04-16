@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 import time
+from pathlib import Path
+
 import numpy as np
 
 from rfx import Simulation, Box
@@ -94,7 +96,36 @@ def run_case(label, dx, use_nu, lossy):
     ts = np.asarray(res.time_series).ravel()
     dt_sim = float(res.dt)
     skip = int(len(ts) * 0.3)
-    modes = harminv(ts[skip:], dt_sim, 1.5e9, 3.5e9)
+    ts_tail = ts[skip:]
+
+    # Decimate before harminv: Matrix Pencil is O(N^3). At dx=0.25mm
+    # (F3) N_tail ~ 90k -> Hankel ~ 57 GB. Decimation by factor D keeps
+    # f_res exact as long as post-decim sample rate exceeds 2*f_max.
+    # Empirical validation: /tmp/test_decimated_harminv.py — D up to
+    # the Nyquist cap matches the un-decimated result within 1e-4 %.
+    f_min, f_max = 1.5e9, 3.5e9
+    n_tail = len(ts_tail)
+    target_n = 15_000
+    d_size = max(1, n_tail // target_n) if n_tail > 30_000 else 1
+    d_nyq = max(1, int(1.0 / (4.0 * f_max * dt_sim)))  # Nyquist-safe cap
+    D = min(d_size, d_nyq)
+    if D > 1:
+        ts_for_harminv = ts_tail[::D]
+        dt_for_harminv = dt_sim * D
+        print(f"  harminv: N_tail={n_tail:,} -> decim D={D} -> "
+              f"N={len(ts_for_harminv):,} (Nyquist cap D<={d_nyq})")
+    else:
+        ts_for_harminv = ts_tail
+        dt_for_harminv = dt_sim
+
+    # Save ts + dt so post-proc experiments don't need GPU re-runs
+    out_dir = Path("logs/convergence_grid")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe = label.split(":")[0].strip().replace(" ", "_")
+    np.savez_compressed(out_dir / f"{safe}_ts.npz",
+                        ts=ts, dt=dt_sim, cells=cells, label=label)
+
+    modes = harminv(ts_for_harminv, dt_for_harminv, f_min, f_max)
     good = [m for m in modes if m.Q > 2 and m.amplitude > 1e-10]
     if good:
         best = max(good, key=lambda m: m.amplitude)
@@ -112,9 +143,20 @@ def main():
     # Proper convergence sweep: co-refine dx AND dz_sub at fixed 4:1
     # aspect ratio (Taflove Ch. 3.3 / Ch. 4.7 — fixing dz while
     # reducing dx inflates the xy Courant number and ANTI-converges).
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--f3-only", action="store_true",
+                    help="Run only F3 (dx=0.25mm) — post-proc verification")
+    args = ap.parse_args()
+
     print("=" * 60)
     print("Proper convergence: co-refine dx + dz at 4:1 aspect")
     print("=" * 60)
+    if args.f3_only:
+        run_case("F3: NU dx=0.25mm dz=0.0625mm", 0.25e-3, True, True)
+        print("\n=== DONE (F3-only) ===")
+        return
+
     run_case("F1: NU dx=1.0mm dz=0.250mm (baseline)", 1.0e-3, True, True)
     run_case("F2: NU dx=0.5mm dz=0.125mm", 0.5e-3, True, True)
     run_case("F3: NU dx=0.25mm dz=0.0625mm", 0.25e-3, True, True)

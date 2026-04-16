@@ -1,5 +1,5 @@
-name: rfx-convergence-proper
-description: "Proper convergence sweep: co-refine dx and dz at fixed 4:1 aspect ratio"
+name: rfx-convergence-full
+description: "Full convergence sweep (F1/F2/F3 + G1/G2) with decimated harminv post-proc"
 tags: [rfx, convergence, physics, gpu]
 resources:
   cluster: remilab-c0
@@ -19,4 +19,4 @@ run: |-
   git checkout main
   git pull --ff-only origin main || true
   pip install -q -e ".[dev]"
-  timeout 3600 python scripts/convergence_grid.py
+  timeout 7200 python scripts/convergence_grid.py
