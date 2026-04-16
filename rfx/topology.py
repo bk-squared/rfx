@@ -348,6 +348,7 @@ def topology_optimize(
     beta_schedule: list[tuple[int, float]] | None = None,
     init_density: jnp.ndarray | None = None,
     verbose: bool = True,
+    skip_preflight: bool = False,
 ) -> TopologyResult:
     """Run density-based topology optimization.
 
@@ -384,6 +385,7 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
+    sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     try:
         import optax
     except ImportError:

@@ -106,7 +106,7 @@ def test_forward_returns_minimal_result_contract():
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
     sim.add_ntff_box((0.003, 0.003, 0.003), (0.012, 0.012, 0.012), freqs=jnp.array([3e9]))
 
-    result = sim.forward(n_steps=10, checkpoint=True)
+    result = sim.forward(n_steps=10, checkpoint=True, skip_preflight=True)
 
     assert result.time_series.shape[0] == 10
     assert result.ntff_box is not None

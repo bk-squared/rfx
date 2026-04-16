@@ -2596,6 +2596,37 @@ class Simulation:
 
         return issues
 
+    def _auto_preflight(self, *, skip: bool = False, context: str = "forward") -> None:
+        """Emit a UserWarning if preflight finds issues (issue #66).
+
+        Called automatically at the start of ``forward()``, ``optimize()``,
+        and ``topology_optimize()`` so users discover physics violations
+        (under-resolved mesh, geometry in CPML, probe in PEC, ...) before
+        spending minutes of GPU compute. Pass ``skip_preflight=True`` at
+        the call site to opt out (tests, already-validated configs).
+        """
+        if skip:
+            return
+        try:
+            issues = self.preflight(strict=False)
+        except Exception as exc:
+            import warnings
+            warnings.warn(
+                f"[{context}] auto-preflight raised {type(exc).__name__}: "
+                f"{exc}. Call sim.preflight() manually to investigate.",
+                UserWarning, stacklevel=3,
+            )
+            return
+        if not issues:
+            return
+        import warnings
+        body = "\n  - ".join(issues)
+        warnings.warn(
+            f"[{context}] preflight found {len(issues)} issue(s) - "
+            f"pass skip_preflight=True to suppress:\n  - {body}",
+            UserWarning, stacklevel=3,
+        )
+
     # ---- Inverse-design preflight extensions (issue #30) ----
 
     def _validate_ntff_inverse_design(self) -> None:
@@ -3511,6 +3542,7 @@ class Simulation:
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
         n_warmup: int = 0,
+        skip_preflight: bool = False,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
 
@@ -3541,6 +3573,8 @@ class Simulation:
         ForwardResult
             Minimal differentiable observables (time series and optional NTFF).
         """
+        self._auto_preflight(skip=skip_preflight, context="forward")
+
         is_nonuniform = (
             self._dz_profile is not None
             or self._dx_profile is not None

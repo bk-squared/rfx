@@ -77,6 +77,7 @@ def optimize(
     n_steps: int | None = None,
     num_periods: float = 20.0,
     verbose: bool = True,
+    skip_preflight: bool = False,
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
@@ -110,6 +111,7 @@ def optimize(
     -------
     OptimizeResult
     """
+    sim._auto_preflight(skip=skip_preflight, context="optimize")
     grid = sim._build_grid()
 
     # Compute design-region grid indices, clamped to interior (exclude CPML).
