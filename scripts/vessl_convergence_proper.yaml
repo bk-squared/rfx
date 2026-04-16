@@ -1,0 +1,22 @@
+name: rfx-convergence-proper
+description: "Proper convergence sweep: co-refine dx and dz at fixed 4:1 aspect ratio"
+tags: [rfx, convergence, physics, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git fetch --all
+  git checkout main
+  git pull --ff-only origin main || true
+  pip install -q -e ".[dev]"
+  timeout 3600 python scripts/convergence_grid.py

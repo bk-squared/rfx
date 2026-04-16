@@ -37,7 +37,10 @@ def run_case(label, dx, use_nu, lossy):
     feed_y = dom_y / 2
 
     if use_nu:
-        dz_sub = min(H_SUB / 6, dx / 2)
+        # Co-refine: dz_sub = dx/4 maintains the 4:1 aspect ratio of the
+        # baseline (dx=1mm, dz=0.25mm). Taflove Ch. 4: fixing dz while
+        # refining dx inflates the xy Courant number and anti-converges.
+        dz_sub = dx / 4.0
         n_sub = max(6, int(round(H_SUB / dz_sub)))
         n_trans = 5
         trans = np.geomspace(dx, dz_sub, n_trans + 2)[1:-1]
@@ -106,11 +109,22 @@ def run_case(label, dx, use_nu, lossy):
 
 
 def main():
-    run_case("A: NU lossless dx=0.5mm", 0.5e-3, True, False)
-    run_case("B: NU lossy dx=0.5mm", 0.5e-3, True, True)
-    run_case("C: Uniform lossless dx=0.5mm", 0.5e-3, False, False)
-    run_case("D: Uniform lossy dx=0.5mm", 0.5e-3, False, True)
-    run_case("E: NU lossless dx=1mm (baseline)", 1e-3, True, False)
+    # Proper convergence sweep: co-refine dx AND dz_sub at fixed 4:1
+    # aspect ratio (Taflove Ch. 3.3 / Ch. 4.7 — fixing dz while
+    # reducing dx inflates the xy Courant number and ANTI-converges).
+    print("=" * 60)
+    print("Proper convergence: co-refine dx + dz at 4:1 aspect")
+    print("=" * 60)
+    run_case("F1: NU dx=1.0mm dz=0.250mm (baseline)", 1.0e-3, True, True)
+    run_case("F2: NU dx=0.5mm dz=0.125mm", 0.5e-3, True, True)
+
+    # Also re-run the anti-convergence case for comparison
+    print("\n" + "=" * 60)
+    print("Anti-convergence reference (dz fixed at 0.25mm)")
+    print("=" * 60)
+    run_case("G1: NU dx=1.0mm dz=0.250mm", 1.0e-3, True, True)
+    run_case("G2: NU dx=0.5mm dz=0.250mm (WRONG)", 0.5e-3, True, True)
+
     print("\n=== DONE ===")
 
 
