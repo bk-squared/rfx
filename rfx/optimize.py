@@ -82,6 +82,7 @@ def optimize(
     checkpoint_every: int | None = None,
     emit_time_series: bool = True,
     n_warmup: int = 0,
+    design_mask: jnp.ndarray | None = None,
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
@@ -196,6 +197,7 @@ def optimize(
             checkpoint_every=checkpoint_every,
             emit_time_series=emit_time_series,
             n_warmup=n_warmup,
+            design_mask=design_mask,
             skip_preflight=True,  # already done at optimize() entry
         )
         import inspect

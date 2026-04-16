@@ -3494,6 +3494,7 @@ class Simulation:
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
         n_warmup: int = 0,
+        design_mask: jnp.ndarray | None = None,
     ) -> ForwardResult:
         """Differentiable forward on the non-uniform mesh path.
 
@@ -3517,6 +3518,7 @@ class Simulation:
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
+            design_mask=design_mask,
         )
         return ForwardResult(
             time_series=result.time_series,
@@ -3543,6 +3545,7 @@ class Simulation:
         checkpoint_every: int | None = None,
         n_warmup: int = 0,
         skip_preflight: bool = False,
+        design_mask: jnp.ndarray | None = None,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
 
@@ -3602,6 +3605,7 @@ class Simulation:
                 emit_time_series=emit_time_series,
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
+                design_mask=design_mask,
             )
         if not emit_time_series:
             raise NotImplementedError(
@@ -3613,6 +3617,12 @@ class Simulation:
             raise NotImplementedError(
                 "checkpoint_every (segmented remat) is currently only "
                 "supported on the non-uniform forward path."
+            )
+        if design_mask is not None:
+            raise NotImplementedError(
+                "design_mask (issue #41) is currently only supported on the "
+                "non-uniform forward path. Ping #41 if you need it on the "
+                "uniform path — the same step_fn stop_gradient pattern applies."
             )
         grid = self._build_grid()
         materials, debye_spec, lorentz_spec, pec_mask, _, _ = self._assemble_materials(grid)
