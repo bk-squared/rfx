@@ -5,6 +5,24 @@ sidebar:
   order: 99
 ---
 
+## v1.6.3
+
+Per-axis boundary correctness + `distributed=True` thread-through for progressive inverse design.
+
+### Fixes
+
+- **Periodic axes no longer allocate CPML** (issue #68): `set_periodic_axes("xy")` combined with `boundary="cpml"` previously allocated CPML on all six faces, so the absorber fought the periodic wrap-around and corrupted the physics (rfx-TAP ex6 absorber: S11 = 0 dB flat across 2–18 GHz, optimisation gradients stuck). `_build_grid` now computes the effective CPML axis set as `"xyz"` minus `_periodic_axes`; preflight P1.9 no longer false-warns on periodic axes. Parametrised test coverage over all 7 axis subsets.
+
+### New features
+
+- **`optimize()` and `progressive_optimize()` accept `distributed=True`** (issue #69): threads through to each inner `sim.forward(distributed=...)` call. Reject rules (NU-only, no TFSF, no waveguide ports, ≥ 2 devices) are inherited from the `forward()` side. Default `distributed=False` preserves v1.6.2 behaviour.
+
+### Test status
+
+12 new tests (`tests/test_periodic_cpml.py`) + 2 new progressive-distributed tests, all green. No regressions on `tests/test_ris.py`, `tests/test_floquet.py`, `tests/test_api.py`, or the full distributed / NU composition suite.
+
+---
+
 ## v1.6.2
 
 `Simulation.forward(distributed=True)` opt-in for non-uniform meshes + correctness fix for the multi-device gradient path. No physics changes on the single-device path vs v1.6.1.
