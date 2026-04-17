@@ -1,0 +1,91 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 88 lines of #369367233708.
+[01:44:18.281509] workload awaiting to start
+[01:44:18.281610] Workload status changed to pending
+[01:44:23.852540] Event Reason: FailedScheduling, Event Note: 0/13 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/13 nodes are available: 13 Preemption is not helpful for scheduling.
+[01:44:23.852540] Workload is in queue for scheduling. Please wait...
+[01:44:33.942475] VESSL Workload assigned successfully. Starting soon.
+[01:44:34.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[01:44:34.000000] Created container vops-init
+[01:44:34.000000] Started container vops-init
+[01:44:35.000000] Creating VESSL Workload...
+[01:44:35.000000] Starting VESSL Workload...
+[01:44:35.000000] Created container run-exec
+[01:44:35.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[01:44:35.000000] Started container run-exec
+[01:44:35.000000] Started container fluentbit
+[01:44:35.000000] Created container fluentbit
+[01:44:35.000000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[01:44:35.000000] Container image "quay.io/vessl-ai/fluent-bit:2.1.6" already present on machine
+[01:44:35.000000] Container image "quay.io/vessl-ai/sidecar:v0.0.3" already present on machine
+[01:44:35.000000] Created container run-sidecar
+[01:44:35.001000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[01:44:36.000000] Created container vops-sidecar
+[01:44:36.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[01:44:36.133024] Installing VESSL CLI...
+[01:44:37.006472] workload reported alive as pod run-execution-mwzvuhro9szj-0
+[01:44:37.006572] Workload status changed to initializing
+[01:44:38.225571] + set +x
+[01:44:42.224720] vessl, version 0.1.199
+[01:44:43.369849] workload reported alive as pod run-execution-mwzvuhro9szj-0
+[01:44:43.369949] Workload status changed to running
+[01:44:43.782581] + mkdir -p /root
+[01:44:43.783984] + cd /root
+[01:44:43.784276] + cd /root/workspace/byungkwan-workspace/research/rfx
+[01:44:43.787819] + git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+[01:44:43.795443] + git pull --ff-only origin main
+[01:44:45.054242] From https://github.com/bk-squared/rfx
+[01:44:45.054268]  * branch            main       -> FETCH_HEAD
+[01:44:45.096947] Already up to date.
+[01:44:45.097919] + pip install -q -e '.[dev]'
+[01:44:59.196859] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[01:44:59.390372] ========================================
+[01:44:59.390394] rfx Issue #44 Phase 4 Job 0 (single-GPU calibration)
+[01:44:59.390399] ========================================
+[01:44:59.390402] + echo '========================================'
+[01:44:59.390418] + echo 'rfx Issue #44 Phase 4 Job 0 (single-GPU calibration)'
+[01:44:59.390424] + echo '========================================'
+[01:44:59.390429] + mkdir -p logs/issue44
+[01:44:59.393107] + python scripts/benchmarks/issue44_distributed_nu.py --case calibration --devices 1 --device-type gpu --n-steps 200 --out logs/issue44/job0_single_gpu.json
+[01:44:59.724315] ======================================================================
+[01:44:59.724336] issue44_distributed_nu  |  case=calibration  devices=1  device_type=gpu
+[01:44:59.826380] jax.devices()=[CudaDevice(id=0)]  default_backend=gpu
+[01:44:59.826403] ======================================================================
+[01:45:00.774993]   [PREFLIGHT] All checks passed.
+[01:45:04.677884]   [PREFLIGHT] All checks passed.
+[01:45:07.105379]   [PREFLIGHT] All checks passed.
+[01:45:09.823728] 2026-04-16 16:45:09.823641: W external/xla/xla/service/hlo_rematerialization.cc:3005] Can't reduce memory use below -59.04GiB (-63389814855 bytes) by rematerialization; only reduced to 82.42GiB (88503350773 bytes), down from 82.42GiB (88503350821 bytes) originally
+[01:45:24.410836] 2026-04-16 16:45:24.410717: W external/xla/xla/tsl/framework/bfc_allocator.cc:497] Allocator (GPU_0_bfc) ran out of memory trying to allocate 4.96GiB (rounded to 5324800000)requested by op 
+[01:45:24.411208] 2026-04-16 16:45:24.411112: W external/xla/xla/tsl/framework/bfc_allocator.cc:508] ****************************____*****************************________________*__________************
+[01:45:24.411368] E0416 16:45:24.411265     271 pjrt_stream_executor_client.cc:3067] Execution of replica 0 failed: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 5324800000 bytes.
+[01:45:24.449078] 
+[01:45:24.449094] --- Summary ---
+[01:45:24.449100] case            : calibration
+[01:45:24.449104] grid            : 80x80x1040 = 6,656,000 cells
+[01:45:24.449109] n_steps         : 200  dt=1.348e-12
+[01:45:24.449113] distributed     : False  devices=1
+[01:45:24.449117] calibration_row : True
+[01:45:24.449121] compile_time_s  : 1.486
+[01:45:24.449126] forward_wt_s    : 2.4141016202047467
+[01:45:24.449131] backward_wt_s   : 0.0
+[01:45:24.449149] peak_mem_per_dev: 1605865472
+[01:45:24.449153] value_rel_err   : 0.0
+[01:45:24.449157] probe_rel_err   : 0.0
+[01:45:24.449167] grad_rel_err    : 0.0
+[01:45:24.449172] ERRORS          : 1
+[01:45:24.449176]   - [backward] XlaRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 5324800000 bytes.
+[01:45:24.449181] 
+[01:45:24.449185] JSON written to: logs/issue44/job0_single_gpu.json
+[01:45:24.957457] workload reported done
+[01:45:24.957557] Workload status changed to stopping
+[01:45:31.829942] workload reported done
+[01:45:31.830042] Workload status changed to waitToBeKilled
+[01:45:33.000000] Stopping container vops-sidecar
+[01:45:33.000000] Stopping container run-sidecar
+[01:45:33.000000] Stopping container run-exec
+[01:45:33.000000] Terminating VESSL Workload...
+[01:45:33.000000] Stopping container ttyd-sidecar
+[01:45:33.000000] Stopping container fluentbit
+[01:45:33.125808] workload failed
+[01:45:33.125908] Workload status changed to failed
