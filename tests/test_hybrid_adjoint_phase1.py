@@ -13,8 +13,17 @@ from rfx.api import Simulation
 from rfx.hybrid_adjoint import phase1_forward_result
 
 
-def _make_phase1_sim(*, boundary: str = "pec") -> Simulation:
-    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary=boundary)
+def _make_phase1_sim(
+    *,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+) -> Simulation:
+    sim = Simulation(
+        freq_max=5e9,
+        domain=(0.015, 0.015, 0.015),
+        boundary=boundary,
+        pec_faces=pec_faces,
+    )
     sim.add_source(
         (0.005, 0.0075, 0.0075),
         "ez",
@@ -24,55 +33,125 @@ def _make_phase1_sim(*, boundary: str = "pec") -> Simulation:
     return sim
 
 
-def _inspect_supported_phase1_snapshot(*, n_steps: int = 18):
-    sim = _make_phase1_sim()
+def _inspect_supported_phase1_snapshot(
+    *,
+    n_steps: int = 18,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
     grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=n_steps)
     assert prepared_runner is not None
     return sim, grid, prepared_runner, report
 
 
-def _inspect_supported_phase1_snapshot_for_periods(*, num_periods: float = 8.0):
-    sim = _make_phase1_sim()
+def _inspect_supported_phase1_snapshot_for_periods(
+    *,
+    num_periods: float = 8.0,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
     grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(num_periods=num_periods)
     assert prepared_runner is not None
     return sim, grid, prepared_runner, report
 
 
-def _make_supported_phase1_snapshot_case(*, n_steps: int = 18):
-    sim, grid, prepared_runner, report = _inspect_supported_phase1_snapshot(n_steps=n_steps)
+def _make_supported_phase1_snapshot_case(
+    *,
+    n_steps: int = 18,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim, grid, prepared_runner, report = _inspect_supported_phase1_snapshot(
+        n_steps=n_steps,
+        boundary=boundary,
+        pec_faces=pec_faces,
+    )
     return sim, grid, prepared_runner, report, n_steps
 
 
-def _make_supported_phase1_inputs(*, n_steps: int = 18):
-    sim = _make_phase1_sim()
+def _make_supported_phase1_snapshot_inputs_case(
+    *,
+    n_steps: int = 18,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim, grid, prepared_runner, report, n_steps = _make_supported_phase1_snapshot_case(
+        n_steps=n_steps,
+        boundary=boundary,
+        pec_faces=pec_faces,
+    )
+    inputs = sim.build_hybrid_phase1_inputs(n_steps=n_steps)
+    return sim, grid, prepared_runner, report, n_steps, inputs
+
+
+def _make_supported_phase1_inputs(
+    *,
+    n_steps: int = 18,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
     return sim, sim.build_hybrid_phase1_inputs(n_steps=n_steps)
 
 
-def _make_supported_phase1_prepared_bundle(*, n_steps: int = 18):
-    sim = _make_phase1_sim()
+def _make_supported_phase1_prepared_bundle(
+    *,
+    n_steps: int = 18,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
     return sim, sim.prepare_hybrid_phase1(n_steps=n_steps)
 
 
 
-def _make_supported_phase1_context(*, n_steps: int = 18):
-    sim = _make_phase1_sim()
+def _make_supported_phase1_context(
+    *,
+    n_steps: int = 18,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
     return sim, sim.build_hybrid_phase1_context(n_steps=n_steps)
 
 
-def _make_supported_phase1_report_context(*, n_steps: int = 18):
-    sim = _make_phase1_sim()
+def _make_supported_phase1_report_context(
+    *,
+    n_steps: int = 18,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
     return sim, sim.inspect_hybrid_phase1(n_steps=n_steps), sim.build_hybrid_phase1_context(n_steps=n_steps)
 
 
-def _make_supported_phase1_grid_materials(*, n_steps: int = 18):
-    sim = _make_phase1_sim()
+def _make_supported_phase1_grid_materials(
+    *,
+    n_steps: int = 18,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+):
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
     grid = sim._build_grid()
     base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
     return sim, grid, base_materials, n_steps
 
 
-def _make_cpml_unsupported_phase1_sim() -> Simulation:
+def _make_cpml_supported_phase1_sim() -> Simulation:
     return _make_phase1_sim(boundary="cpml")
+
+
+def _make_cpml_supported_phase1_sim_with_pec_face() -> Simulation:
+    return _make_phase1_sim(boundary="cpml", pec_faces={"z_lo"})
+
+
+def _make_cpml_lossy_unsupported_phase1_sim() -> Simulation:
+    sim = _make_phase1_sim(boundary="cpml")
+    sim.add_material("lossy", eps_r=2.0, sigma=5.0)
+    sim.add(Box((0.006, 0.006, 0.006), (0.009, 0.009, 0.009)), material="lossy")
+    return sim
 
 
 def _make_debye_unsupported_phase1_sim() -> Simulation:
@@ -177,9 +256,9 @@ def _resolved_n_steps(sim: Simulation, *, num_periods: float = 8.0) -> int:
 
 def _unsupported_phase1_cases() -> list[tuple[Simulation, str]]:
     return [
-        (_make_cpml_unsupported_phase1_sim(), "boundary="),
         (_make_debye_unsupported_phase1_sim(), "Debye"),
         (_make_lumped_port_unsupported_phase1_sim(), "add_source"),
+        (_make_cpml_lossy_unsupported_phase1_sim(), "lossy materials"),
         (_make_nonuniform_unsupported_phase1_sim(), "non-uniform grids are unsupported"),
     ]
 
@@ -352,6 +431,48 @@ def _assert_top_level_unsupported_prepare_bundle_contract(
 def _single_cell_eps(grid, base_eps: jnp.ndarray, alpha: jnp.ndarray) -> jnp.ndarray:
     i, j, k = grid.position_to_index((0.0075, 0.0075, 0.0075))
     return base_eps.at[i, j, k].add(alpha)
+
+
+def _assert_hybrid_forward_matches_pure_forward(sim: Simulation, *, n_steps: int = 18):
+    baseline = sim.forward(n_steps=n_steps, checkpoint=True)
+    hybrid = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
+
+    np.testing.assert_allclose(
+        np.asarray(hybrid.time_series),
+        np.asarray(baseline.time_series),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+def _assert_single_cell_hybrid_gradient_matches_pure_ad(
+    sim: Simulation,
+    grid,
+    base_materials,
+    *,
+    n_steps: int,
+):
+    def pure_loss(alpha):
+        eps = _single_cell_eps(grid, base_materials.eps_r, alpha)
+        result = sim.forward(eps_override=eps, n_steps=n_steps, checkpoint=True)
+        return jnp.sum(result.time_series ** 2)
+
+    def hybrid_loss(alpha):
+        eps = _single_cell_eps(grid, base_materials.eps_r, alpha)
+        result = sim.forward_hybrid_phase1(eps_override=eps, n_steps=n_steps, fallback="raise")
+        return jnp.sum(result.time_series ** 2)
+
+    alpha0 = jnp.float32(0.1)
+    grad_pure = jax.grad(pure_loss)(alpha0)
+    grad_hybrid = jax.grad(hybrid_loss)(alpha0)
+    rel_err = float(jnp.abs(grad_hybrid - grad_pure) / jnp.maximum(jnp.abs(grad_pure), 1e-12))
+
+    assert np.isfinite(float(grad_pure))
+    assert np.isfinite(float(grad_hybrid))
+    assert rel_err <= 1e-4, (
+        f"hybrid gradient drifted from pure AD: pure={float(grad_pure):.6e}, "
+        f"hybrid={float(grad_hybrid):.6e}, rel_err={rel_err:.6e}"
+    )
 
 
 def _make_supported_phase1_eps_override(
@@ -860,6 +981,44 @@ def test_phase1_seam_runner_state_forward_helpers_keep_expected_n_steps_contract
     assert inspected_sig.parameters["n_steps"].default is inspect._empty
 
 
+def test_phase1_seam_runner_state_helper_family_keeps_expected_n_steps_signatures():
+    import inspect
+
+    from rfx.hybrid_adjoint import (
+        build_phase1_hybrid_inputs_from_prepared_runner_state,
+        build_phase1_hybrid_inputs_from_inspected_runner_state,
+        inspect_phase1_hybrid_from_prepared_runner_state,
+        inspect_phase1_hybrid_from_inspected_runner_state,
+        prepare_phase1_hybrid_from_prepared_runner_state,
+        prepare_phase1_hybrid_from_inspected_runner_state,
+        build_phase1_hybrid_context_from_prepared_runner_state,
+        build_phase1_hybrid_context_from_inspected_runner_state,
+    )
+
+    prepared_runner_helpers = (
+        build_phase1_hybrid_inputs_from_prepared_runner_state,
+        inspect_phase1_hybrid_from_prepared_runner_state,
+        prepare_phase1_hybrid_from_prepared_runner_state,
+        build_phase1_hybrid_context_from_prepared_runner_state,
+    )
+    inspected_runner_helpers = (
+        build_phase1_hybrid_inputs_from_inspected_runner_state,
+        inspect_phase1_hybrid_from_inspected_runner_state,
+        prepare_phase1_hybrid_from_inspected_runner_state,
+        build_phase1_hybrid_context_from_inspected_runner_state,
+    )
+
+    for fn in prepared_runner_helpers:
+        signature = inspect.signature(fn)
+        assert str(signature.parameters["n_steps"].annotation) == "int"
+        assert signature.parameters["n_steps"].default is inspect._empty
+
+    for fn in inspected_runner_helpers:
+        signature = inspect.signature(fn)
+        assert str(signature.parameters["n_steps"].annotation) == "int | None"
+        assert signature.parameters["n_steps"].default is inspect._empty
+
+
 def test_phase1_root_hybrid_export_block_has_no_duplicate_names():
     from pathlib import Path
 
@@ -985,7 +1144,7 @@ def test_phase1_hybrid_types_exported_from_package_root():
 
 def test_phase1_seam_wrapper_matches_canonical_forward_objective():
     n_steps = 18
-    sim, report, context = _make_supported_phase1_report_context(n_steps=n_steps)
+    sim, report, context = _make_supported_phase1_report_context()
 
     assert report.supported
     assert report.inventory is not None
@@ -1024,7 +1183,7 @@ def test_phase1_seam_wrapper_matches_canonical_forward_objective():
 
 def test_phase1_input_builder_matches_prepare_bundle_surface():
     n_steps = 18
-    sim, inputs = _make_supported_phase1_inputs(n_steps=n_steps)
+    sim, inputs = _make_supported_phase1_inputs()
     prepared = inputs.prepare()
     public_prepared = sim.prepare_hybrid_phase1(n_steps=n_steps)
 
@@ -1246,8 +1405,9 @@ def test_phase1_prepared_from_prepared_runner_state_matches_prepare_helper_surfa
 
 
 def test_phase1_input_from_inspected_runner_state_matches_builder_surface():
-    sim, grid, prepared_runner, report, n_steps = _make_supported_phase1_snapshot_case()
-    inputs = sim.build_hybrid_phase1_inputs(n_steps=n_steps)
+    sim, grid, prepared_runner, report, n_steps, inputs = (
+        _make_supported_phase1_snapshot_inputs_case()
+    )
 
     from rfx.hybrid_adjoint import Phase1HybridInputs
     rebuilt = Phase1HybridInputs.from_inspected_runner_state(
@@ -1326,8 +1486,9 @@ def test_phase1_input_helper_from_inspected_runner_state_matches_classmethod_sur
 
 
 def test_phase1_input_from_prepared_runner_state_matches_builder_surface():
-    sim, grid, prepared_runner, report, n_steps = _make_supported_phase1_snapshot_case()
-    inputs = sim.build_hybrid_phase1_inputs(n_steps=n_steps)
+    sim, grid, prepared_runner, report, n_steps, inputs = (
+        _make_supported_phase1_snapshot_inputs_case()
+    )
 
     from rfx.hybrid_adjoint import Phase1HybridInputs
     rebuilt = Phase1HybridInputs.from_prepared_runner_state(
@@ -1347,7 +1508,7 @@ def test_phase1_input_from_prepared_runner_state_matches_builder_surface():
 
 
 def test_phase1_input_builder_cached_report_and_bundle_surface():
-    sim, inputs = _make_supported_phase1_inputs(n_steps=18)
+    sim, inputs = _make_supported_phase1_inputs()
     assert inputs.inspect() is inputs.report
     assert inputs.prepare() is inputs.prepared_bundle
 
@@ -1355,7 +1516,7 @@ def test_phase1_input_builder_cached_report_and_bundle_surface():
 
 
 def test_phase1_inspect_from_inputs_matches_direct_inspect():
-    sim, inputs = _make_supported_phase1_inputs(n_steps=18)
+    sim, inputs = _make_supported_phase1_inputs()
 
     via_inputs = sim.inspect_hybrid_phase1_from_inputs(inputs)
     direct = sim.inspect_hybrid_phase1(n_steps=18)
@@ -1378,7 +1539,7 @@ def test_phase1_inspect_from_inputs_matches_direct_inspect_for_unsupported_nonun
 
 def test_phase1_prepare_from_inputs_matches_direct_prepare_surface():
     n_steps = 18
-    sim, inputs = _make_supported_phase1_inputs(n_steps=n_steps)
+    sim, inputs = _make_supported_phase1_inputs()
     via_inputs = sim.prepare_hybrid_phase1_from_inputs(inputs)
     direct = sim.prepare_hybrid_phase1(n_steps=n_steps)
 
@@ -1391,7 +1552,7 @@ def test_phase1_prepare_from_inputs_matches_direct_prepare_surface():
 
 def test_phase1_context_from_inputs_matches_direct_context_surface():
     n_steps = 18
-    sim, inputs = _make_supported_phase1_inputs(n_steps=n_steps)
+    sim, inputs = _make_supported_phase1_inputs()
     via_inputs = sim.build_hybrid_phase1_context_from_inputs(inputs)
     direct = sim.build_hybrid_phase1_context(n_steps=n_steps)
 
@@ -1424,7 +1585,7 @@ def test_phase1_context_from_inputs_rejects_unsupported_nonuniform_case():
 
 
 def test_phase1_input_surface_helper_aliases_match_methods():
-    sim, inputs = _make_supported_phase1_inputs(n_steps=18)
+    sim, inputs = _make_supported_phase1_inputs()
 
     from rfx.hybrid_adjoint import (
         inspect_phase1_hybrid_from_inputs,
@@ -1725,7 +1886,7 @@ def test_phase1_prepare_bundle_matches_input_builder_surface_for_unsupported_non
 
 def test_phase1_prepare_bundle_matches_public_surfaces():
     n_steps = 18
-    sim, report, context = _make_supported_phase1_report_context(n_steps=n_steps)
+    sim, report, context = _make_supported_phase1_report_context()
 
     prepared = sim.prepare_hybrid_phase1(n_steps=n_steps)
 
@@ -1737,20 +1898,20 @@ def test_phase1_prepare_bundle_matches_public_surfaces():
 
 
 
-def test_phase1_support_reasons_helper_matches_public_cpml_report():
-    sim = _make_cpml_unsupported_phase1_sim()
+def test_phase1_support_reasons_helper_accepts_supported_cpml_fixture():
+    sim = _make_cpml_supported_phase1_sim()
     n_steps = 18
     grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=n_steps)
 
     from rfx import phase1_hybrid_support_reasons
 
-    materials, *_ = sim._assemble_materials(grid)
+    assert prepared_runner is not None
     reasons = phase1_hybrid_support_reasons(
         boundary="cpml",
         periodic=(False, False, False),
-        materials=materials,
-        sources=sim._ports,
-        probes=sim._probes,
+        materials=prepared_runner.materials,
+        sources=prepared_runner.raw_phase1_sources,
+        probes=prepared_runner.probes,
         debye=None,
         lorentz=None,
         ntff_box=None,
@@ -1760,7 +1921,8 @@ def test_phase1_support_reasons_helper_matches_public_cpml_report():
     )
 
     assert reasons == report.reasons
-    assert any("Phase 1 requires PEC" in reason for reason in reasons)
+    assert report.supported
+    assert report.reason_text == ""
 
 
 
@@ -3679,7 +3841,7 @@ def test_phase1_context_classmethod_from_prepared_runner_state_matches_helper_su
 
 def test_phase1_context_builder_matches_inspection_inventory():
     n_steps = 18
-    sim, report, context = _make_supported_phase1_report_context(n_steps=n_steps)
+    sim, report, context = _make_supported_phase1_report_context()
 
     assert report.supported
     assert report.inventory is not None
@@ -3720,7 +3882,7 @@ def test_phase1_context_builder_preserves_lossless_dielectric_baseline():
 
 
 def test_phase1_context_run_time_series_matches_api_execution():
-    sim, context = _make_supported_phase1_context(n_steps=18)
+    sim, context = _make_supported_phase1_context()
 
     via_context = context.run_time_series()
     via_api = sim.forward_hybrid_phase1_from_context(context)
@@ -3736,7 +3898,7 @@ def test_phase1_context_run_time_series_matches_api_execution():
 
 
 def test_phase1_forward_from_context_rejects_shape_mismatch():
-    sim, context = _make_supported_phase1_context(n_steps=18)
+    sim, context = _make_supported_phase1_context()
 
     with pytest.raises(ValueError, match="shape"):
         sim.forward_hybrid_phase1_from_context(
@@ -3748,43 +3910,30 @@ def test_phase1_forward_from_context_rejects_shape_mismatch():
 
 
 def test_phase1_hybrid_forward_matches_pure_forward():
-    sim = _make_phase1_sim()
-    n_steps = 18
+    _assert_hybrid_forward_matches_pure_forward(_make_phase1_sim())
 
-    baseline = sim.forward(n_steps=n_steps, checkpoint=True)
-    hybrid = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
 
-    np.testing.assert_allclose(
-        np.asarray(hybrid.time_series),
-        np.asarray(baseline.time_series),
-        rtol=1e-6,
-        atol=1e-12,
-    )
+def test_phase1_hybrid_cpml_forward_matches_pure_forward():
+    _assert_hybrid_forward_matches_pure_forward(_make_cpml_supported_phase1_sim())
 
 
 def test_phase1_hybrid_gradient_matches_pure_ad_to_1e4():
     sim, grid, base_materials, n_steps = _make_supported_phase1_grid_materials()
+    _assert_single_cell_hybrid_gradient_matches_pure_ad(
+        sim,
+        grid,
+        base_materials,
+        n_steps=n_steps,
+    )
 
-    def pure_loss(alpha):
-        eps = _single_cell_eps(grid, base_materials.eps_r, alpha)
-        result = sim.forward(eps_override=eps, n_steps=n_steps, checkpoint=True)
-        return jnp.sum(result.time_series ** 2)
 
-    def hybrid_loss(alpha):
-        eps = _single_cell_eps(grid, base_materials.eps_r, alpha)
-        result = sim.forward_hybrid_phase1(eps_override=eps, n_steps=n_steps, fallback="raise")
-        return jnp.sum(result.time_series ** 2)
-
-    alpha0 = jnp.float32(0.1)
-    grad_pure = jax.grad(pure_loss)(alpha0)
-    grad_hybrid = jax.grad(hybrid_loss)(alpha0)
-    rel_err = float(jnp.abs(grad_hybrid - grad_pure) / jnp.maximum(jnp.abs(grad_pure), 1e-12))
-
-    assert np.isfinite(float(grad_pure))
-    assert np.isfinite(float(grad_hybrid))
-    assert rel_err <= 1e-4, (
-        f"hybrid gradient drifted from pure AD: pure={float(grad_pure):.6e}, "
-        f"hybrid={float(grad_hybrid):.6e}, rel_err={rel_err:.6e}"
+def test_phase1_hybrid_cpml_gradient_matches_pure_ad_to_1e4():
+    sim, grid, base_materials, n_steps = _make_supported_phase1_grid_materials(boundary="cpml")
+    _assert_single_cell_hybrid_gradient_matches_pure_ad(
+        sim,
+        grid,
+        base_materials,
+        n_steps=n_steps,
     )
 
 
@@ -3809,6 +3958,10 @@ def test_phase1_hybrid_replay_is_deterministic():
     g1 = jax.grad(hybrid_loss)(jnp.float32(0.05))
     g2 = jax.grad(hybrid_loss)(jnp.float32(0.05))
     np.testing.assert_allclose(float(g1), float(g2), rtol=1e-6, atol=1e-12)
+
+
+def test_phase1_hybrid_cpml_with_pec_face_matches_pure_forward():
+    _assert_hybrid_forward_matches_pure_forward(_make_cpml_supported_phase1_sim_with_pec_face())
 
 
 def test_phase1_hybrid_gradient_matches_pure_ad_at_source_cell():
@@ -3877,38 +4030,9 @@ def test_phase1_hybrid_raise_error_matches_public_report_reason_text_for_unsuppo
 
 
 
-def test_phase1_hybrid_cpml_raise_matches_explicit_n_steps_when_omitted():
-    _assert_top_level_unsupported_forward_matches_explicit_n_steps_when_omitted(
-        _make_cpml_unsupported_phase1_sim(),
-        expected_error="boundary=",
-        fallback="raise",
-    )
-
-
-
-def test_phase1_hybrid_cpml_fallback_matches_explicit_n_steps_when_omitted():
-    _assert_top_level_unsupported_forward_matches_explicit_n_steps_when_omitted(
-        _make_cpml_unsupported_phase1_sim(),
-        expected_error="boundary=",
-        fallback="pure_ad",
-    )
-
-
-
-def test_phase1_hybrid_rejects_or_falls_back_on_cpml():
-    sim = _make_cpml_unsupported_phase1_sim()
-    n_steps = 12
-
-    with pytest.raises(ValueError, match="boundary="):
-        sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
-
-    fallback = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="pure_ad")
-    baseline = sim.forward(n_steps=n_steps, checkpoint=True)
-    np.testing.assert_allclose(
-        np.asarray(fallback.time_series),
-        np.asarray(baseline.time_series),
-        rtol=1e-6,
-        atol=1e-12,
+def test_phase1_top_level_cpml_supported_family_matches_explicit_n_steps_when_omitted():
+    _assert_top_level_supported_family_matches_explicit_n_steps_when_omitted(
+        _make_cpml_supported_phase1_sim(),
     )
 
 
@@ -4070,10 +4194,10 @@ def test_phase1_top_level_debye_public_family_matches_explicit_n_steps_when_omit
 
 
 
-def test_phase1_top_level_cpml_public_family_matches_explicit_n_steps_when_omitted():
+def test_phase1_top_level_cpml_lossy_public_family_matches_explicit_n_steps_when_omitted():
     _assert_top_level_unsupported_public_family_matches_explicit_n_steps_when_omitted(
-        _make_cpml_unsupported_phase1_sim(),
-        expected_error="boundary=",
+        _make_cpml_lossy_unsupported_phase1_sim(),
+        expected_error="lossy materials",
     )
 
 
@@ -4167,8 +4291,7 @@ def test_phase1_hybrid_inspection_reports_lumped_port_unsupported():
 
 
 def test_phase1_context_resolved_eps_r_rejects_shape_mismatch():
-    sim = _make_phase1_sim()
-    context = sim.build_hybrid_phase1_context(n_steps=18)
+    _sim, context = _make_supported_phase1_context()
 
     with pytest.raises(ValueError, match="shape"):
         context.resolved_eps_r(jnp.ones((2, 2, 2), dtype=jnp.float32))

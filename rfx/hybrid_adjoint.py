@@ -1,12 +1,14 @@
-"""Phase-1 hybrid adjoint helpers for uniform/lossless/PEC time-series runs.
+"""Hybrid adjoint helpers for the staged uniform/lossless time-series seam.
 
-This module intentionally implements only the narrow Phase 1A/1B seam:
+This module currently supports the narrow staged seam used by the hybrid
+adjoint proof-of-concept and Phase 3A expansion work:
 
 - uniform grid
 - non-periodic
 - lossless materials
-- PEC-only boundaries baked into ``precompute_coeffs``
 - point-source / point-probe time-series objectives
+- PEC boundaries
+- CPML boundaries (including CPML + per-face PEC overrides)
 
 Unsupported physics is expected to route back to the existing pure-AD
 ``Simulation.forward()`` path.
@@ -29,8 +31,18 @@ from rfx.core.yee import (
     FDTDState,
     init_state,
     precompute_coeffs,
+    update_e,
+    update_h,
     update_he_fast,
 )
+from rfx.boundaries.cpml import (
+    CPMLAxisParams,
+    CPMLState,
+    apply_cpml_e,
+    apply_cpml_h,
+    init_cpml,
+)
+from rfx.boundaries.pec import apply_pec, apply_pec_faces
 from rfx.grid import Grid
 from rfx.simulation import ProbeSpec, SourceSpec
 
@@ -70,6 +82,7 @@ class Phase1HybridPreparedRunnerState:
     ntff_box: object | None
     waveguide_ports: list | tuple | None
     periodic_bool: tuple[bool, bool, bool]
+    cpml_axes_run: str
     pec_mask_local: jnp.ndarray | None
     pec_occupancy_local: jnp.ndarray | None
     pec_axes_run: str
@@ -86,6 +99,7 @@ class Phase1HybridPreparedRunnerState:
             ntff_box=prepared.ntff_box,
             waveguide_ports=prepared.waveguide_ports,
             periodic_bool=prepared.periodic_bool,
+            cpml_axes_run=prepared.cpml_axes_run,
             pec_mask_local=prepared.pec_mask_local,
             pec_occupancy_local=prepared.pec_occupancy_local,
             pec_axes_run=prepared.pec_axes_run,
@@ -112,13 +126,17 @@ class Phase1HybridContext:
     """Static replay context for the experimental Phase 1 hybrid lane."""
 
     grid: Grid
+    boundary: str
     n_steps: int
     dt: float
     dx: float
     eps_r: jnp.ndarray
     mu_r: jnp.ndarray
     zero_sigma: jnp.ndarray
+    cpml_axes: str
     pec_axes: str
+    pec_faces: tuple[str, ...]
+    cpml_params: CPMLAxisParams | None
     src_waveforms_raw: jnp.ndarray
     src_meta: tuple[tuple[int, int, int, str], ...]
     prb_meta: tuple[tuple[int, int, int, str], ...]
@@ -133,6 +151,12 @@ class Phase1HybridContext:
 
         initial_fdtd = init_state(inputs.grid.shape, field_dtype=jnp.float32)
         initial_state = _from_fdtd(initial_fdtd)
+        boundary = inputs.boundary
+        if boundary not in {"pec", "cpml"}:
+            raise ValueError(f"boundary={boundary!r} is unsupported")
+        cpml_axes = inputs.cpml_axes or getattr(inputs.grid, "cpml_axes", "")
+        pec_faces = inputs.pec_faces or tuple(sorted(getattr(inputs.grid, "pec_faces", set())))
+        cpml_params = None
         src_waveforms_raw = (
             jnp.stack([waveform for _, _, _, _, waveform in inputs.raw_sources], axis=-1)
             if inputs.raw_sources
@@ -142,26 +166,41 @@ class Phase1HybridContext:
         prb_meta = tuple((prb.i, prb.j, prb.k, prb.component) for prb in inputs.probes)
 
         carry_fields = ("fdtd.ex", "fdtd.ey", "fdtd.ez", "fdtd.hx", "fdtd.hy", "fdtd.hz")
+        carry_arrays: list[tuple[str, jnp.ndarray]] = list(zip(carry_fields, initial_state))
+        replay_inputs = ["eps_r", "mu_r", "source_waveforms_raw"]
+        replay_outputs = ["time_series", "final_fields"]
+        if boundary == "cpml":
+            cpml_params, initial_cpml_state = init_cpml(inputs.grid, pec_faces=set(pec_faces))
+            carry_arrays.extend(
+                (f"cpml.{name}", arr)
+                for name, arr in zip(initial_cpml_state._fields, initial_cpml_state)
+            )
+            replay_inputs.extend(("cpml_params", "pec_faces"))
+            replay_outputs.append("final_cpml_state")
         carry_bytes = tuple(
             (name, int(arr.size * arr.dtype.itemsize))
-            for name, arr in zip(carry_fields, initial_state)
+            for name, arr in carry_arrays
         )
         inventory = Phase1HybridInventory(
-            carry_fields=carry_fields,
+            carry_fields=tuple(name for name, _ in carry_arrays),
             carry_bytes=carry_bytes,
             total_carry_bytes=sum(size for _, size in carry_bytes),
-            replay_inputs=("eps_r", "mu_r", "source_waveforms_raw"),
-            replay_outputs=("time_series", "final_fields"),
+            replay_inputs=tuple(replay_inputs),
+            replay_outputs=tuple(replay_outputs),
         )
         return cls(
             grid=inputs.grid,
+            boundary=boundary,
             n_steps=inputs.n_steps,
             dt=inputs.grid.dt,
             dx=inputs.grid.dx,
             eps_r=inputs.materials.eps_r,
             mu_r=inputs.materials.mu_r,
             zero_sigma=jnp.zeros_like(inputs.materials.sigma),
+            cpml_axes=cpml_axes,
             pec_axes=inputs.pec_axes,
+            pec_faces=pec_faces,
+            cpml_params=cpml_params,
             src_waveforms_raw=src_waveforms_raw,
             src_meta=src_meta,
             prb_meta=prb_meta,
@@ -240,6 +279,8 @@ class Phase1HybridInputs:
     grid: Grid | None = None
     n_steps: int | None = None
     pec_axes: str = ""
+    cpml_axes: str = ""
+    pec_faces: tuple[str, ...] = ()
     n_warmup: int = 0
     checkpoint_every: int | None = None
     scan_source_count: int | None = None
@@ -303,6 +344,8 @@ class Phase1HybridInputs:
             grid=grid,
             n_steps=n_steps,
             pec_axes=prepared.pec_axes_run,
+            cpml_axes=prepared.cpml_axes_run,
+            pec_faces=tuple(sorted(getattr(grid, "pec_faces", set()))),
             scan_source_count=len(prepared.sources),
         )
 
@@ -437,6 +480,8 @@ class Phase1HybridInspection:
             grid=inputs.grid,
             n_steps=inputs.n_steps,
             pec_axes=inputs.pec_axes,
+            cpml_axes=inputs.cpml_axes,
+            pec_faces=inputs.pec_faces,
             n_warmup=inputs.n_warmup,
             checkpoint_every=inputs.checkpoint_every,
         )
@@ -687,8 +732,8 @@ def phase1_hybrid_support_reasons(
     """Return explicit reasons that the Phase 1 hybrid lane is unsupported."""
 
     reasons: list[str] = []
-    if boundary != "pec":
-        reasons.append(f"boundary={boundary!r} is unsupported (Phase 1 requires PEC)")
+    if boundary not in {"pec", "cpml"}:
+        reasons.append(f"boundary={boundary!r} is unsupported")
     if periodic != (False, False, False):
         reasons.append("periodic axes are unsupported")
     if debye is not None:
@@ -910,6 +955,8 @@ def inspect_phase1_hybrid(
     grid: Grid | None = None,
     n_steps: int | None = None,
     pec_axes: str = "",
+    cpml_axes: str = "",
+    pec_faces: tuple[str, ...] = (),
     n_warmup: int = 0,
     checkpoint_every: int | None = None,
 ) -> Phase1HybridInspection:
@@ -948,6 +995,8 @@ def inspect_phase1_hybrid(
                 grid=grid,
                 n_steps=n_steps,
                 pec_axes=pec_axes,
+                cpml_axes=cpml_axes,
+                pec_faces=pec_faces,
                 n_warmup=n_warmup,
                 checkpoint_every=checkpoint_every,
             )
@@ -1047,12 +1096,15 @@ def build_phase1_hybrid_context(
     raw_sources: list[tuple[int, int, int, str, jnp.ndarray]] | tuple[tuple[int, int, int, str, jnp.ndarray], ...],
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...],
     pec_axes: str,
+    boundary: str = "pec",
+    cpml_axes: str | None = None,
+    pec_faces: tuple[str, ...] | None = None,
 ) -> Phase1HybridContext:
     """Build the static replay context for the Phase 1 hybrid seam."""
 
     return Phase1HybridContext.from_inputs(
         Phase1HybridInputs(
-            boundary="pec",
+            boundary=boundary,
             periodic=(False, False, False),
             materials=materials,
             raw_sources=raw_sources,
@@ -1066,6 +1118,8 @@ def build_phase1_hybrid_context(
             grid=grid,
             n_steps=n_steps,
             pec_axes=pec_axes,
+            cpml_axes=grid.cpml_axes if cpml_axes is None else cpml_axes,
+            pec_faces=tuple(sorted(getattr(grid, "pec_faces", set()))) if pec_faces is None else pec_faces,
         )
     )
 
@@ -1074,10 +1128,16 @@ def run_phase1_forward_time_series(
     context: Phase1HybridContext,
     eps_r: jnp.ndarray,
 ) -> jnp.ndarray:
-    """Run the narrow uniform/lossless/PEC forward seam."""
+    """Run the narrow uniform/lossless forward seam."""
 
-    coeffs = _coeffs_from_eps(context, eps_r)
+    materials = _materials_from_eps(context, eps_r)
     src_waveforms = _source_waveforms_from_eps(context, eps_r)
+    if context.boundary == "cpml":
+        _, _, time_series = _run_uniform_lossless_cpml_time_series(context, materials, src_waveforms)
+        return time_series
+    if context.boundary != "pec":
+        raise ValueError(f"boundary={context.boundary!r} is unsupported")
+    coeffs = _coeffs_from_materials(context, materials)
     _, time_series = _run_uniform_lossless_pec_time_series(context, coeffs, src_waveforms)
     return time_series
 
@@ -1090,15 +1150,65 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
         return run_phase1_forward_time_series(context, eps_r)
 
     def _forward_fwd(eps_r: jnp.ndarray):
-        return run_phase1_forward_time_series(context, eps_r), (eps_r,)
+        materials = _materials_from_eps(context, eps_r)
+        src_waveforms = _source_waveforms_from_eps(context, eps_r)
+        if context.boundary == "cpml":
+            _, _, time_series, states_before, cpml_states_before = _run_uniform_lossless_cpml_time_series(
+                context,
+                materials,
+                src_waveforms,
+                return_trace=True,
+            )
+            return time_series, (eps_r, states_before, cpml_states_before, context.src_waveforms_raw)
+        _, time_series, states_before = _run_uniform_lossless_pec_time_series(
+            context,
+            _coeffs_from_materials(context, materials),
+            src_waveforms,
+            return_trace=True,
+        )
+        return time_series, (eps_r, states_before, context.src_waveforms_raw)
 
     def _forward_bwd(res, probe_bar: jnp.ndarray):
-        (eps_r,) = res
-        coeffs = _coeffs_from_eps(context, eps_r)
-        src_waveforms = _source_waveforms_from_eps(context, eps_r)
-        _, _, states_before = _run_uniform_lossless_pec_time_series(
-            context, coeffs, src_waveforms, return_trace=True
-        )
+        if context.boundary == "cpml":
+            eps_r, states_before, cpml_states_before, raw_src_waveforms = res
+            zero_state = _zeros_like_state(context.initial_state)
+            zero_cpml = _zero_cpml_state(context.grid)
+            zero_eps = jnp.zeros_like(eps_r)
+
+            def reverse_step(carry, xs):
+                lambda_next, lambda_cpml_next, grad_eps = carry
+                state_before, cpml_before, raw_src_vals, probe_cot = xs
+
+                def step_from_eps(state, cpml_state, eps_local):
+                    return _uniform_lossless_cpml_step(
+                        state,
+                        cpml_state,
+                        _source_values_from_eps(context, eps_local, raw_src_vals),
+                        _materials_from_eps(context, eps_local),
+                        context.grid,
+                        context.cpml_params,
+                        context.cpml_axes,
+                        context.pec_axes,
+                        context.pec_faces,
+                        context.src_meta,
+                        context.prb_meta,
+                    )
+
+                _, step_vjp = jax.vjp(step_from_eps, state_before, cpml_before, eps_r)
+                lambda_before, lambda_cpml_before, grad_eps_step = step_vjp(
+                    (lambda_next, lambda_cpml_next, probe_cot)
+                )
+                return (lambda_before, lambda_cpml_before, grad_eps + grad_eps_step), None
+
+            (_, _, grad_eps), _ = jax.lax.scan(
+                reverse_step,
+                (zero_state, zero_cpml, zero_eps),
+                (states_before, cpml_states_before, raw_src_waveforms, probe_bar),
+                reverse=True,
+            )
+            return (grad_eps,)
+
+        eps_r, states_before, raw_src_waveforms = res
         zero_state = _zeros_like_state(context.initial_state)
         zero_eps = jnp.zeros_like(eps_r)
 
@@ -1122,7 +1232,7 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
         (_, grad_eps), _ = jax.lax.scan(
             reverse_step,
             (zero_state, zero_eps),
-            (states_before, context.src_waveforms_raw, probe_bar),
+            (states_before, raw_src_waveforms, probe_bar),
             reverse=True,
         )
         return (grad_eps,)
@@ -1159,6 +1269,47 @@ def _run_uniform_lossless_pec_time_series(
     return final_state, outputs
 
 
+def _run_uniform_lossless_cpml_time_series(
+    context: Phase1HybridContext,
+    materials: MaterialArrays,
+    src_waveforms: jnp.ndarray,
+    *,
+    return_trace: bool = False,
+):
+    """Run the extracted time-series seam with CPML and PEC-face enforcement."""
+
+    assert context.cpml_params is not None
+
+    def body(carry, src_vals):
+        state, cpml_state = carry
+        next_state, next_cpml_state, probe_out = _uniform_lossless_cpml_step(
+            state,
+            cpml_state,
+            src_vals,
+            materials,
+            context.grid,
+            context.cpml_params,
+            context.cpml_axes,
+            context.pec_axes,
+            context.pec_faces,
+            context.src_meta,
+            context.prb_meta,
+        )
+        if return_trace:
+            return (next_state, next_cpml_state), (probe_out, state, cpml_state)
+        return (next_state, next_cpml_state), probe_out
+
+    (final_state, final_cpml_state), outputs = jax.lax.scan(
+        body,
+        (context.initial_state, _zero_cpml_state(context.grid)),
+        src_waveforms,
+    )
+    if return_trace:
+        time_series, states_before, cpml_states_before = outputs
+        return final_state, final_cpml_state, time_series, states_before, cpml_states_before
+    return final_state, final_cpml_state, outputs
+
+
 def _uniform_lossless_pec_step(
     state: Phase1FieldState,
     src_vals: jnp.ndarray,
@@ -1175,12 +1326,63 @@ def _uniform_lossless_pec_step(
     return next_state, probe_out
 
 
+def _uniform_lossless_cpml_step(
+    state: Phase1FieldState,
+    cpml_state: CPMLState,
+    src_vals: jnp.ndarray,
+    materials: MaterialArrays,
+    grid: Grid,
+    cpml_params: CPMLAxisParams,
+    cpml_axes: str,
+    pec_axes: str,
+    pec_faces: tuple[str, ...],
+    src_meta: tuple[tuple[int, int, int, str], ...],
+    prb_meta: tuple[tuple[int, int, int, str], ...],
+) -> tuple[Phase1FieldState, CPMLState, jnp.ndarray]:
+    """Extracted CPML scan step: Yee + CPML + PEC faces + sources + probes."""
+
+    fdtd = update_h(_to_fdtd(state), materials, grid.dt, grid.dx, periodic=(False, False, False))
+    fdtd, next_cpml_state = apply_cpml_h(
+        fdtd,
+        cpml_params,
+        cpml_state,
+        grid,
+        cpml_axes,
+        materials=materials,
+    )
+    fdtd = update_e(fdtd, materials, grid.dt, grid.dx, periodic=(False, False, False))
+    fdtd, next_cpml_state = apply_cpml_e(
+        fdtd,
+        cpml_params,
+        next_cpml_state,
+        grid,
+        cpml_axes,
+        materials=materials,
+    )
+    if pec_axes:
+        fdtd = apply_pec(fdtd, axes=pec_axes)
+    if pec_faces:
+        fdtd = apply_pec_faces(fdtd, pec_faces)
+    next_state = _from_fdtd(fdtd)
+    next_state = _inject_sources(next_state, src_vals, src_meta)
+    probe_out = _sample_probes(next_state, prb_meta)
+    return next_state, next_cpml_state, probe_out
+
+
 def _coeffs_from_eps(context: Phase1HybridContext, eps_r: jnp.ndarray) -> UpdateCoeffs:
-    materials = MaterialArrays(
+    materials = _materials_from_eps(context, eps_r)
+    return _coeffs_from_materials(context, materials)
+
+
+def _materials_from_eps(context: Phase1HybridContext, eps_r: jnp.ndarray) -> MaterialArrays:
+    return MaterialArrays(
         eps_r=eps_r,
         sigma=context.zero_sigma,
         mu_r=context.mu_r,
     )
+
+
+def _coeffs_from_materials(context: Phase1HybridContext, materials: MaterialArrays) -> UpdateCoeffs:
     return precompute_coeffs(materials, context.dt, context.dx, pec_axes=context.pec_axes)
 
 
@@ -1271,3 +1473,8 @@ def _from_fdtd(state: FDTDState) -> Phase1FieldState:
 
 def _zeros_like_state(state: Phase1FieldState) -> Phase1FieldState:
     return Phase1FieldState(*(jnp.zeros_like(field) for field in state))
+
+
+def _zero_cpml_state(grid: Grid) -> CPMLState:
+    _, cpml_state = init_cpml(grid, pec_faces=set(getattr(grid, "pec_faces", set())))
+    return cpml_state
