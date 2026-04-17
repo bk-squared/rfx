@@ -205,22 +205,20 @@ class BoundarySpec:
                 out.append(axis_name)
         return "".join(out)
 
+    def _faces_with_token(self, token: str) -> set[str]:
+        return {
+            f"{axis_name}_{side}"
+            for axis_name, side, tok in self.faces()
+            if tok == token
+        }
+
     def pec_faces(self) -> set[str]:
-        """Return the set of face labels (e.g. ``{"z_lo"}``) whose
-        boundary is ``pec``. Provides the legacy ``pec_faces`` view for
-        code that has not yet migrated."""
-        out = set()
-        for axis_name, side, tok in self.faces():
-            if tok == "pec":
-                out.add(f"{axis_name}_{side}")
-        return out
+        """Face labels (``"z_lo"`` …) set to ``pec``. Legacy view."""
+        return self._faces_with_token("pec")
 
     def pmc_faces(self) -> set[str]:
-        out = set()
-        for axis_name, side, tok in self.faces():
-            if tok == "pmc":
-                out.add(f"{axis_name}_{side}")
-        return out
+        """Face labels set to ``pmc``."""
+        return self._faces_with_token("pmc")
 
     def to_dict(self) -> dict:
         return {

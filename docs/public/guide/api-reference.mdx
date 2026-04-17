@@ -29,7 +29,7 @@ Use these pages first:
 | Shapes, materials, and dispersive models | [/rfx/api/geometry-materials/](/rfx/api/geometry-materials/) |
 | Sources, lumped ports, waveguide/Floquet notes | [/rfx/api/sources-ports/](/rfx/api/sources-ports/) |
 | `auto_configure()` and higher-level setup helpers | [/rfx/api/automation/](/rfx/api/automation/) |
-| Supported / shadow / experimental boundaries | [/rfx/api/support-boundaries/](/rfx/api/support-boundaries/) |
+| Supported / shadow / experimental boundaries + `BoundarySpec` per-axis API (v1.7.0) | [/rfx/api/support-boundaries/](/rfx/api/support-boundaries/) |
 
 ## Use the generated API for symbol lookup
 
@@ -46,7 +46,7 @@ it exposes.
 
 - The current claims-bearing reference lane is the **uniform Cartesian Yee RF
   workflow**.
-- Non-uniform graded-z, distributed, Floquet/Bloch, ADI, and subgridding paths
+- Non-uniform graded-z, distributed, Floquet/Bloch, and ADI paths
   need to be read through the support-boundary lens, not as blanket guarantees.
 - Prefer the newest validated crossval-backed workflow pages when choosing a
   public example or reference path.

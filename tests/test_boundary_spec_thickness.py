@@ -74,7 +74,8 @@ class TestSimulationThicknessPhase1Guard:
         assert sim._boundary_spec.absorber_type == "cpml"
 
     def test_symmetric_per_axis_thickness_matches_default_works(self):
-        """Per-face thickness equal to the default scalar: passes."""
+        """Per-face thickness equal to the default scalar: passes and
+        the resolved thickness everywhere is the scalar."""
         spec = BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml", lo_thickness=8, hi_thickness=8),
             y="cpml",
@@ -84,7 +85,11 @@ class TestSimulationThicknessPhase1Guard:
             freq_max=10e9, domain=(0.01, 0.01, 0.005), dx=0.5e-3,
             cpml_layers=8, boundary=spec,
         )
+        # spec carries the explicit thickness
         assert sim._boundary_spec.x.lo_thickness == 8
+        assert sim._boundary_spec.x.hi_thickness == 8
+        # and the runtime scalar (engine authority in Phase 1) is still 8
+        assert sim._cpml_layers == 8
 
     def test_asymmetric_per_face_thickness_raises(self):
         spec = BoundarySpec(
