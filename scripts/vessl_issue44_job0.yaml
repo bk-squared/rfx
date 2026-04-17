@@ -23,8 +23,14 @@ run: |-
   echo "========================================"
 
   mkdir -p logs/issue44
+  # Backward without segmented remat OOM'd on 24 GiB HBM (ran 369367233708:
+  # `Can't reduce memory use below -59.04GiB ... only reduced to 82.42GiB`).
+  # Production workloads use checkpoint_every anyway, so calibrate with a
+  # realistic segmented-remat setting instead of none.  V3 Job A sweep
+  # includes 50/100/500 as the target checkpoint_every range.
   python scripts/benchmarks/issue44_distributed_nu.py \
     --case calibration --devices 1 --device-type gpu \
+    --checkpoint-every 50 \
     --n-steps 200 --out logs/issue44/job0_single_gpu.json
 
   echo ""
