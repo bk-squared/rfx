@@ -32,6 +32,8 @@ examples/gpu_benchmark.py
 examples/gpu_benchmark_results.json
 
 # Generated artifacts (runtime output — never commit)
+dist/
+logs/
 **/*.png
 !docs/guide/images/*.png
 !docs/public/examples/assets/*.png
