@@ -1,0 +1,56 @@
+name: rfx-issue44-job-a-v2-2gpu-mof-off
+description: "#44 Phase 4 Job A v2 - 2-GPU A6000, XLA multi_output_fusion disabled (v1 hit XLA MOF assertion)"
+tags: [rfx, issue44, distributed_nu, baseline, gpu, a6000, xla-workaround]
+resources:
+  cluster: remilab-c0
+  preset: gpu-a6000-2
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # v1 ce=10 crashed in xla::gpu::MultiOutputFusion with
+  #   Check failed: common_utilization <= producer_output_utilization
+  #   (1.34729 vs. 1.34729)
+  # This is an upstream XLA fp-compare assertion (LHS == RHS but the
+  # <= check fails due to float-precision noise). Disable MOF to
+  # bypass the crash; cost is a minor compile-time perf regression
+  # (not relevant for the Job A gate: we care about wall-time and
+  # peak memory of the compiled scan, not fusion breadth).
+  XLA_FLAGS: "--xla_gpu_enable_multi_output_fusion=false"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git pull --ff-only origin main || true
+  pip install -q -e ".[dev]"
+
+  echo "========================================"
+  echo "rfx Issue #44 Phase 4 Job A v2 - 2-GPU A6000 (MOF off)"
+  echo "========================================"
+  nvidia-smi -L || true
+  echo "XLA_FLAGS=${XLA_FLAGS}"
+
+  mkdir -p logs/issue44
+
+  for CE in 10 25 50; do
+    echo ""
+    echo "--- checkpoint_every=${CE} ---"
+    python scripts/benchmarks/issue44_distributed_nu.py \
+      --case baseline --devices 2 --device-type gpu \
+      --checkpoint-every "${CE}" \
+      --n-steps 100 \
+      --out "logs/issue44/job_a_v2_2gpu_ce${CE}.json" || echo "[WARN] ce=${CE} failed"
+  done
+
+  echo ""
+  echo "=== JSON outputs ==="
+  for CE in 10 25 50; do
+    echo "--- ce=${CE} ---"
+    cat "logs/issue44/job_a_v2_2gpu_ce${CE}.json" 2>/dev/null || echo "missing"
+  done
+
+  echo ""
+  echo "=== DONE ==="
