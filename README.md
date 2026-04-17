@@ -11,7 +11,7 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.5.0** — 500+ tests, GPU-benchmarked (7,309 Mcells/s on RTX 4090), published RF benchmarks, and expanded preflight/crossval tooling.
+**v1.6.3** — 730+ tests, GPU-benchmarked (7,309 Mcells/s on RTX 4090), published RF benchmarks, opt-in multi-GPU inverse design, and clearer routing for practical nonuniform thin-substrate workflows.
 
 > **Project status (April 2026):** `rfx` is still in active validation and early conceptualization. Treat the current `main` branch as an initial-stage release rather than a finalized, fully qualified simulator; the support surface, validation evidence, and higher-level workflows will continue to be tightened and expanded in upcoming iterations.
 
@@ -23,8 +23,8 @@
 ## At a Glance
 
 Current correctness-bearing support is centered on the **uniform Cartesian Yee
-reference lane**. Non-uniform graded-z, distributed execution, SBP-SAT
-subgridding, and Floquet/Bloch workflows should be treated according to
+reference lane**. Non-uniform graded-z, distributed execution, and
+Floquet/Bloch workflows should be treated according to
 `docs/guides/support_matrix.md`, not as blanket guarantees.
 
 | | |
@@ -34,11 +34,20 @@ subgridding, and Floquet/Bloch workflows should be treated according to
 | **Topology optimization** | Density-based with filtering, projection, and beta continuation |
 | **Conformal PEC** | Dey-Mittra method for 2nd-order accuracy on curved conductors |
 | **Multi-GPU** | Single-host multi-GPU distributed FDTD with 1D slab decomposition (experimental lane) |
-| **SBP-SAT subgridding** | JIT-compiled local mesh refinement (experimental in 3D) |
 | **Multi-mode ports** | Analytical TE/TM eigenmodes for waveguide S-matrix |
 | **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC (experimental lane) |
+| **Non-uniform x/y/z profiles** | Practical thin-substrate shadow lane with graded `dz` and per-cell `dx/dy` profiles |
 | **Accuracy validated** | 5-case benchmark against Balanis/Pozar (patch 1.97%, cavity 0.016%) |
-| **500+ tests** | CI with ruff lint + pytest, 0 xfails |
+| **730+ tests** | CI with ruff lint + pytest, 0 xfails |
+
+## Current main highlights
+
+- **Opt-in multi-GPU inverse design (v1.6.2+)**: `Simulation.forward(distributed=True)` and `optimize(..., distributed=True)` / `progressive_optimize(..., distributed=True)` on non-uniform meshes. Bit-perfect forward parity vs single-device and NaN-free gradients (Class A/B kernel tests). NU-only in this line; uniform-mesh distributed path uses the legacy `run(..., devices=...)`.
+- **Mesh-as-design-variable gradient (v1.6.2+)**: `jax.grad` w.r.t. `dz_profile` flows end-to-end through `Simulation.__init__.forward`, enabling joint `(eps, dz)` inverse design.
+- **Periodic × CPML correctness (v1.6.3)**: `set_periodic_axes("xy")` + `boundary="cpml"` now only allocates CPML on non-periodic faces. Required for normal-incidence absorber / FSS / RIS setups.
+- **Nonuniform is now documented as a usable shadow lane**, not as a vague half-supported footnote.
+- **Current practical anchors**: `examples/crossval/05_patch_antenna.py` for the patch cross-check and `examples/nonuniform_patch_demo.py` for a quick repo-local thin-substrate demo.
+- **Validation owns claim strength**: use the public validation pages for quantitative evidence and lane labels, then use examples pages for runnable entry points.
 
 ## Installation
 
@@ -107,14 +116,13 @@ Benchmarked against Balanis "Antenna Theory" and Pozar "Microwave Engineering":
 | Microstrip Z0 | Hammerstad-Jensen | 0.47% |
 | Coupled-line filter | Pozar Ch 8 | 22.5% (formula limitation) |
 
-Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavities and waveguides.
+Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavities and waveguides. For the current practical patch workflow on the nonuniform shadow lane, use `examples/crossval/05_patch_antenna.py` together with the validation pages rather than treating the example itself as the top-level claim source.
 
 ## Key Features
 
 ### Core Simulator
 - 3D/2D Yee FDTD with CFS-CPML (kappa=5.0, < -40 dB reflectivity)
 - Conformal PEC via Dey-Mittra (2nd-order on curved surfaces)
-- SBP-SAT subgridding with JIT (experimental in 3D, stable in 1D/2D)
 - Non-uniform z-mesh for thin substrates (shadow qualification lane)
 - Multi-GPU via jax.pmap (experimental distributed lane)
 - Mixed precision (float16 fields, 2x memory reduction)
@@ -165,6 +173,8 @@ Canonical public-doc sources in this repo:
 
 - `docs/public/index.mdx` — public `/rfx/` landing page
 - `docs/public/guide/` — public guide pages
+- `docs/public/examples/` — runnable example hubs
+- `docs/public/validation/` — quantitative evidence and lane-label hubs
 - `docs/agent/` — public AI-agent pages
 - `docs/guides/public_docs_architecture.md` — ownership, sync, and deploy rules
 
@@ -189,8 +199,15 @@ Gitops-side snapshot/build CI lives in the deploy repo:
 
 - `remilab-sites-gitops/.github/workflows/rfx-public-docs-sync.yml`
 
+### Start here
+- [Public landing page](docs/public/index.mdx)
+- [Validation hub](docs/public/validation/index.mdx) — quantitative evidence and lane labels
+- [Examples hub](docs/public/examples/index.mdx) — current runnable entry points
+- [Examples showcase](docs/public/examples/showcase.mdx) — bounded visual tour of the example surface
+- [Non-Uniform Mesh guide](docs/public/guide/nonuniform-mesh.mdx) — practical thin-substrate shadow-lane workflows
+
 ### Tutorials
-- [Patch Antenna Design](docs/public/guide/tutorial-patch-antenna.mdx) — Complete 2.4 GHz design flow
+- [Patch Antenna Design](docs/public/guide/tutorial-patch-antenna.mdx) — practical patch workflow from local resonance run to external cross-check
 - [Microstrip Filter](docs/public/guide/tutorial-microstrip-filter.mdx) — Coupled-line BPF from Pozar
 - [Convergence Study](docs/public/guide/tutorial-convergence.mdx) — Mesh independence methodology
 
