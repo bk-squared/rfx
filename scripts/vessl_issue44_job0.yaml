@@ -23,16 +23,17 @@ run: |-
   echo "========================================"
 
   mkdir -p logs/issue44
-  # HBM tuning for 24 GiB RTX 4090:
-  #   Run 369367233708 (no checkpoint, n_steps=200): JAX wanted 82 GiB — FAIL.
-  #   Run 369367233729 (checkpoint_every=50, n_steps=200): reduced to 18 GiB — FAIL (allocator needs headroom).
-  # Fix: halve n_steps to match the CPU sub-step 3.5.0 probe (also n_steps=100)
-  # and keep checkpoint_every=50.  Expected backward: ~9 GiB, fits with
-  # ample headroom for allocator scratch.  Calibration parity numbers match
-  # the CPU calibration JSON (committed at 7f90858).
+  # HBM tuning for 24 GiB RTX 4090 — iterative:
+  #   369367233708 (none, n=200):         82 GiB         FAIL
+  #   369367233729 (ce=50,  n=200):       18 GiB         FAIL (alloc headroom)
+  #   369367233745 (ce=50,  n=100):       17.6 GiB       FAIL (tape per segment dominates)
+  # Tape per segment ≈ 50 steps × 6 fields × 6.66M cells × 4 B = 8 GiB.
+  # checkpoint_every=10 (10 segments × 10 steps) → tape per segment
+  # ≈ 1.6 GiB. Total backward should be < 10 GiB, ample headroom in 24 GiB.
+  # Recompute cost ~10x forward cost = ~2-3s extra on rtx4090.
   python scripts/benchmarks/issue44_distributed_nu.py \
     --case calibration --devices 1 --device-type gpu \
-    --checkpoint-every 50 \
+    --checkpoint-every 10 \
     --n-steps 100 --out logs/issue44/job0_single_gpu.json
 
   echo ""
