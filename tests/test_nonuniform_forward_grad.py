@@ -192,42 +192,40 @@ def test_forward_nonuniform_pec_occupancy_interpolates_hard_pec():
 # Sentinel tests — pin known limitations so XPASS trips CI when fixed
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Simulation.__init__ host-coerces dz_profile at api.py:464 and "
-        "api.py:471 before run_nonuniform is reached. ConcretizationTypeError "
-        "is expected. Remove this xfail when the constructor is refactored. "
-        "See docs/agent-memory/nu_known_limits.md sentinel #2."
-    ),
-)
-def test_sim_forward_grad_wrt_dz_profile_blocked():
-    """jax.grad through Simulation.__init__ w.r.t. dz_profile must fail.
+def test_sim_forward_grad_wrt_dz_profile_through_init():
+    """jax.grad through Simulation.__init__ w.r.t. dz_profile flows end-to-end.
 
-    The #45 fix unblocks run_nonuniform-direct only.  The Simulation-level
-    path still host-coerces dz_profile in __init__, raising
-    ConcretizationTypeError.  This xfail(strict=True) sentinel self-announces
-    (XPASS) when the constructor refactor lands.
+    Closure of nu_known_limits.md sentinel #2 (2026-04-17): Simulation.__init__
+    now gates the host-coercion sites (`float(np.sum(profile))`, grading
+    warning, `_validate_mesh_quality`, `_check_numerical_dispersion`,
+    `_validate_thin_metal_on_nu_mesh`, CPML-z advisory) with is_tracer(),
+    so a tracer-valued dz_profile flows through to run_nonuniform. The
+    caller must supply a concrete domain_z since the profile sum cannot
+    be host-coerced during tracing.
     """
     dz = jnp.asarray(
         [0.5e-3] * 5 + [0.4e-3] * 4, dtype=jnp.float32
     )
+    # Concrete domain_z — user's responsibility when dz_profile is traced.
+    domain_z = float(jnp.sum(dz))
 
     def _loss(dz_profile):
         sim = Simulation(
             freq_max=10e9,
-            domain=(0.01, 0.01, float(jnp.sum(dz_profile))),
+            domain=(0.01, 0.01, domain_z),
             dx=0.5e-3,
             dz_profile=dz_profile,
             cpml_layers=4,
         )
         sim.add_source((0.005, 0.005, 0.001), "ez")
         sim.add_probe((0.005, 0.005, 0.003), "ez")
-        fr = sim.forward(n_steps=20)
+        fr = sim.forward(n_steps=20, skip_preflight=True)
         return jnp.sum(fr.time_series ** 2)
 
-    # This must raise ConcretizationTypeError (or similar) — xfail expected.
-    jax.grad(_loss)(dz)
+    grad = jax.grad(_loss)(dz)
+    assert grad.shape == dz.shape, f"grad shape {grad.shape} != {dz.shape}"
+    assert bool(jnp.all(jnp.isfinite(grad))), "grad must be finite"
+    assert float(jnp.sum(jnp.abs(grad))) > 0.0, "grad must be non-zero"
 
 
 @pytest.mark.xfail(

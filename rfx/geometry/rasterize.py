@@ -12,6 +12,7 @@ from typing import NamedTuple
 import numpy as np
 import jax.numpy as jnp
 
+from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
 
 
@@ -68,12 +69,24 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
     x = jnp.asarray(_axis_cell_centers(dx_arr, cpml), dtype=jnp.float32)
     y = jnp.asarray(_axis_cell_centers(dy_arr, cpml), dtype=jnp.float32)
 
-    dz_np = np.array(grid.dz)
-    z_cumsum = np.cumsum(dz_np)
-    z_cumsum = np.insert(z_cumsum, 0, 0.0)
-    z_offset = z_cumsum[cpml]
-    z_centers = (z_cumsum[:-1] + z_cumsum[1:]) / 2.0 - z_offset
-    z = jnp.asarray(z_centers, dtype=jnp.float32)
+    if is_tracer(grid.dz):
+        # Mesh-as-design-variable path: dz is a JAX tracer. Route the
+        # z-coordinate computation through jnp so the cumsum / offset
+        # arithmetic stays within the trace. Downstream rasterize_geometry
+        # only dereferences these when geometry_entries is non-empty.
+        dz_j = jnp.asarray(grid.dz)
+        z_cumsum = jnp.concatenate([jnp.zeros((1,), dtype=dz_j.dtype),
+                                    jnp.cumsum(dz_j)])
+        z_offset = z_cumsum[cpml]
+        z_centers = (z_cumsum[:-1] + z_cumsum[1:]) / 2.0 - z_offset
+        z = z_centers.astype(jnp.float32)
+    else:
+        dz_np = np.array(grid.dz)
+        z_cumsum = np.cumsum(dz_np)
+        z_cumsum = np.insert(z_cumsum, 0, 0.0)
+        z_offset = z_cumsum[cpml]
+        z_centers = (z_cumsum[:-1] + z_cumsum[1:]) / 2.0 - z_offset
+        z = jnp.asarray(z_centers, dtype=jnp.float32)
 
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 

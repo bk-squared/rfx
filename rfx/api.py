@@ -29,6 +29,7 @@ import numpy as np
 
 from rfx.grid import Grid, C0
 from rfx.core.yee import MaterialArrays, EPS_0
+from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Shape
 from rfx.nonuniform import NonUniformGrid
 from rfx.sources.sources import GaussianPulse
@@ -459,25 +460,53 @@ class Simulation:
             raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
         # Synthesize domain extents from axis profiles before validation.
         # dx_profile / dy_profile set x / y; dz_profile sets z.
+        # Tracer-valued profiles require the caller to supply a concrete
+        # domain extent for that axis since the profile sum cannot be
+        # host-coerced during tracing.
         if dx_profile is not None:
-            domain = (float(np.sum(dx_profile)),
-                      domain[1] if len(domain) >= 2 else 0.0,
-                      domain[2] if len(domain) >= 3 else 0.0)
+            if is_tracer(dx_profile):
+                if len(domain) < 1 or domain[0] <= 0:
+                    raise ValueError(
+                        "dx_profile is a JAX tracer; provide a concrete "
+                        "domain[0] (profile sum cannot be host-coerced)."
+                    )
+            else:
+                domain = (float(np.sum(dx_profile)),
+                          domain[1] if len(domain) >= 2 else 0.0,
+                          domain[2] if len(domain) >= 3 else 0.0)
         if dy_profile is not None:
-            domain = (domain[0],
-                      float(np.sum(dy_profile)),
-                      domain[2] if len(domain) >= 3 else 0.0)
+            if is_tracer(dy_profile):
+                if len(domain) < 2 or domain[1] <= 0:
+                    raise ValueError(
+                        "dy_profile is a JAX tracer; provide a concrete "
+                        "domain[1] (profile sum cannot be host-coerced)."
+                    )
+            else:
+                domain = (domain[0],
+                          float(np.sum(dy_profile)),
+                          domain[2] if len(domain) >= 3 else 0.0)
         if dz_profile is not None:
             if any(d <= 0 for d in domain[:2]):
                 raise ValueError(f"domain x/y must be positive, got {domain}")
-            dz_total = float(np.sum(dz_profile))
-            if len(domain) < 3 or domain[2] <= 0:
-                domain = (domain[0], domain[1], dz_total)
+            if is_tracer(dz_profile):
+                if len(domain) < 3 or domain[2] <= 0:
+                    raise ValueError(
+                        "dz_profile is a JAX tracer; provide a concrete "
+                        "domain=(..., ..., dz_total) extent (the profile "
+                        "sum cannot be host-coerced during tracing)."
+                    )
+            else:
+                dz_total = float(np.sum(dz_profile))
+                if len(domain) < 3 or domain[2] <= 0:
+                    domain = (domain[0], domain[1], dz_total)
         elif any(d <= 0 for d in domain):
             raise ValueError(f"domain dimensions must be positive, got {domain}")
 
-        # P2: Warn on abrupt grading in user-supplied dz_profile
-        if dz_profile is not None and len(dz_profile) > 1:
+        # P2: Warn on abrupt grading in user-supplied dz_profile.
+        # Tracer profiles skip the warning — adjacent ratios can't be
+        # computed host-side during tracing.
+        if (dz_profile is not None and not is_tracer(dz_profile)
+                and len(dz_profile) > 1):
             import warnings as _w
             ratios = np.array(dz_profile[1:]) / np.array(dz_profile[:-1])
             max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
@@ -2280,6 +2309,15 @@ class Simulation:
         """
         import warnings as _w
 
+        # Tracer-valued profiles (mesh-as-design-variable gradient) cannot
+        # participate in host-side min/len/indexing. Advisory warnings
+        # are skipped in that case — correctness is preserved downstream.
+        if any(
+            p is not None and is_tracer(p)
+            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
+        ):
+            return
+
         dx = self._dx
         if dx is None:
             dx = C0 / self._freq_max / 20.0
@@ -2420,6 +2458,15 @@ class Simulation:
         """
         import warnings as _w
 
+        # Skip host-side min when any profile is a tracer. The dispersion
+        # warning is advisory only; mesh-as-design-variable optimisation
+        # runs under tracing and the warning cannot fire correctly there.
+        if any(
+            p is not None and is_tracer(p)
+            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
+        ):
+            return
+
         dx_nom = self._dx or (C0 / self._freq_max / 20.0)
         d = [dx_nom, dx_nom, dx_nom]
         if self._dx_profile is not None:
@@ -2476,6 +2523,11 @@ class Simulation:
         )
         for axis_name, prof in profiles:
             if prof is None:
+                continue
+            if is_tracer(prof):
+                # Tracer profiles can't be host-scanned for edge / ratio
+                # checks. The warning is advisory only; correctness is
+                # preserved downstream.
                 continue
             prof_arr = np.asarray(prof, dtype=np.float64)
             if len(prof_arr) < 3:
@@ -2904,7 +2956,10 @@ class Simulation:
         # Per-axis CPML thickness (z may differ on non-uniform mesh)
         # Faces with pec_faces override have zero effective CPML thickness
         cpml_thick_xyz = [cpml_thickness, cpml_thickness, cpml_thickness]
-        if self._dz_profile is not None and self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
+        if (self._dz_profile is not None
+                and not is_tracer(self._dz_profile)
+                and self._boundary in ("cpml", "upml")
+                and self._cpml_layers > 0):
             n = min(self._cpml_layers, len(self._dz_profile))
             cpml_thick_xyz[2] = float(sum(self._dz_profile[:n]))
         # Zero out thickness for PEC-overridden faces
@@ -3060,8 +3115,11 @@ class Simulation:
                         "nonuniform z mesh. Use angle_deg=0."
                     )
 
-            # P2.6: CPML z-thickness on non-uniform mesh
-            if self._boundary == "cpml" and self._cpml_layers > 0:
+            # P2.6: CPML z-thickness on non-uniform mesh.
+            # Skip on tracer profiles — advisory warning only.
+            if (self._boundary == "cpml"
+                    and self._cpml_layers > 0
+                    and not is_tracer(self._dz_profile)):
                 cpml_z_thick = sum(float(d) for d in self._dz_profile[:self._cpml_layers])
                 if cpml_z_thick < cpml_thickness * 0.3:
                     _w.warn(

@@ -225,22 +225,54 @@ def _interior_line_positions(d_arr_np: np.ndarray, cpml: int) -> np.ndarray:
     return edges
 
 
+def _nominal_edges_or_actual(
+    d_arr, cpml: int, fallback_dx: float | None = None,
+) -> np.ndarray:
+    """Return concrete cell-edge positions for index lookup.
+
+    When ``d_arr`` is a JAX tracer (mesh-as-design-variable path), we
+    fall back to a uniform ``fallback_dx`` reference mesh so that
+    physical-coordinate lookup of source / probe / port positions still
+    yields a concrete integer index. The traced cell sizes drive the
+    FDTD physics downstream; only the structural index is resolved
+    from the nominal mesh.
+    """
+    if is_tracer(d_arr):
+        if fallback_dx is None or fallback_dx <= 0:
+            raise ValueError(
+                "tracer-valued cell-size profile requires a concrete "
+                "fallback_dx for position->index resolution."
+            )
+        n_total = int(d_arr.shape[0])
+        n_interior = n_total - 2 * cpml
+        interior = np.full(n_interior, float(fallback_dx), dtype=np.float64)
+        return np.insert(np.cumsum(interior), 0, 0.0)
+    return _interior_line_positions(np.asarray(d_arr), cpml)
+
+
 def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
     """Convert physical z-coordinate to (cpml-offset) grid index."""
     cpml = grid.cpml_layers
-    edges = _interior_line_positions(np.asarray(grid.dz), cpml)
+    edges = _nominal_edges_or_actual(
+        grid.dz, cpml, fallback_dx=float(grid.dx)
+    )
     idx = int(np.argmin(np.abs(edges - float(z_phys))))
     return idx + cpml
 
 
-def _axis_position_to_index(d_arr: jnp.ndarray, cpml: int, pos: float) -> int:
+def _axis_position_to_index(
+    d_arr: jnp.ndarray,
+    cpml: int,
+    pos: float,
+    fallback_dx: float | None = None,
+) -> int:
     """Generic non-uniform axis lookup.
 
     Uses cell-edge positions (same convention as z_position_to_index):
     position 0 is the first interior face, position ``sum(interior)`` is
     the last interior face.
     """
-    edges = _interior_line_positions(np.asarray(d_arr), cpml)
+    edges = _nominal_edges_or_actual(d_arr, cpml, fallback_dx=fallback_dx)
     idx = int(np.argmin(np.abs(edges - float(pos))))
     return idx + cpml
 
@@ -253,8 +285,12 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
     ``round(pos[0]/dx) + cpml`` behaviour within one cell.
     """
     cpml = grid.cpml_layers
-    i = _axis_position_to_index(grid.dx_arr, cpml, pos[0])
-    j = _axis_position_to_index(grid.dy_arr, cpml, pos[1])
+    i = _axis_position_to_index(
+        grid.dx_arr, cpml, pos[0], fallback_dx=float(grid.dx),
+    )
+    j = _axis_position_to_index(
+        grid.dy_arr, cpml, pos[1], fallback_dx=float(grid.dy),
+    )
     k = z_position_to_index(grid, pos[2])
     return (i, j, k)
 
@@ -340,10 +376,20 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     # Cb = dt / (eps * (1 + loss))
     cb = (grid.dt / eps) / (1.0 + loss)
 
-    # Cell volume: dx_i * dy_j * dz_k (per-cell on each axis)
-    dx_local = float(np.asarray(grid.dx_arr)[i])
-    dy_local = float(np.asarray(grid.dy_arr)[j])
-    dz_local = float(grid.dz[k])
+    # Cell volume: dx_i * dy_j * dz_k (per-cell on each axis).
+    # Stay in jnp so a tracer-valued cell-size profile (mesh-as-design
+    # variable) propagates the gradient into the waveform normalisation.
+    any_traced = (
+        is_tracer(grid.dx_arr) or is_tracer(grid.dy_arr) or is_tracer(grid.dz)
+    )
+    if any_traced:
+        dx_local = jnp.asarray(grid.dx_arr)[i]
+        dy_local = jnp.asarray(grid.dy_arr)[j]
+        dz_local = jnp.asarray(grid.dz)[k]
+    else:
+        dx_local = float(np.asarray(grid.dx_arr)[i])
+        dy_local = float(np.asarray(grid.dy_arr)[j])
+        dz_local = float(np.asarray(grid.dz)[k])
     dV = dx_local * dy_local * dz_local
 
     # Normalized waveform: Cb * I(t) / dV
@@ -351,7 +397,8 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     waveform = (cb / dV) * jax.vmap(waveform_fn)(times)
 
-    return (i, j, k, component, np.array(waveform))
+    waveform_out = waveform if any_traced else np.array(waveform)
+    return (i, j, k, component, waveform_out)
 
 
 def _curl_h_nu(state, inv_dx, inv_dy, inv_dz):
