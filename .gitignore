@@ -8,15 +8,7 @@ docs-site/
 CLAUDE.md
 AGENTS.md
 
-# Internal development artifacts (not for public repo)
-docs/research_notes/
-docs/codex_specs/
-docs/reports/
-docs/superpowers/
-docs/agent-memory/
-docs/agent/
-docs/guide/
-# repo-stable guide artifacts are version-controlled
+# docs/ publication boundaries live in docs/.gitignore
 
 # Internal scripts (debugging, infra sync, GPU validation)
 scripts/validate_codex_fixes.py
@@ -42,9 +34,7 @@ examples/gpu_benchmark_results.json
 # Generated artifacts (runtime output — never commit)
 **/*.png
 !docs/guide/images/*.png
+!docs/public/examples/assets/*.png
 **/*.gif
 **/benchmark_results.json
 examples/*.json
-
-# Generated API docs (pdoc)
-docs/api/
