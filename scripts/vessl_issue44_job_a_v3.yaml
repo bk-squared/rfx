@@ -1,0 +1,71 @@
+name: rfx-issue44-job-a-v3-2gpu-narrow-sweep
+description: "#44 Phase 4 Job A v3 - 2-GPU A6000, narrow ce sweep (skip MOF crash at ce=10, reduce tape via n_warmup for ce>=50)"
+tags: [rfx, issue44, distributed_nu, baseline, gpu, a6000]
+resources:
+  cluster: remilab-c0
+  preset: gpu-a6000-2
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git pull --ff-only origin main || true
+  pip install -q -e ".[dev]"
+
+  echo "========================================"
+  echo "rfx Issue #44 Phase 4 Job A v3 - 2-GPU A6000 (narrow ce sweep)"
+  echo "========================================"
+  nvidia-smi -L || true
+
+  # v1 evidence (run 369367233831, 2-A6000, baseline 96x96x1024 ~10M cells):
+  #   ce=10: XLA MOF compile assertion (upstream JAX bug, skip)
+  #   ce=25: forward=16.15s, backward=19.69s, peak=27.2 GB/dev   [OK]
+  #   ce=50: tape OOM (36 GB backward alloc > 48 GB HBM headroom)
+  #
+  # v3 strategy: skip ce=10, keep ce=25 for reproducibility, shrink
+  # n_steps for larger ce so the backward tape fits. Tape-per-segment
+  # scales with ce; n_steps=50 on ce=50 makes a single 50-step segment
+  # with ~half the v1 ce=50 memory footprint.
+
+  mkdir -p logs/issue44
+
+  # Point A — ce=25 at n_steps=100 (reproducibility check of v1 success)
+  echo ""
+  echo "--- ce=25, n_steps=100 ---"
+  python scripts/benchmarks/issue44_distributed_nu.py \
+    --case baseline --devices 2 --device-type gpu \
+    --checkpoint-every 25 --n-steps 100 \
+    --out logs/issue44/job_a_v3_2gpu_ce25_n100.json || echo "[WARN] ce=25/n100 failed"
+
+  # Point B — ce=50 at n_steps=50 (single-segment, halved tape)
+  echo ""
+  echo "--- ce=50, n_steps=50 ---"
+  python scripts/benchmarks/issue44_distributed_nu.py \
+    --case baseline --devices 2 --device-type gpu \
+    --checkpoint-every 50 --n-steps 50 \
+    --out logs/issue44/job_a_v3_2gpu_ce50_n50.json || echo "[WARN] ce=50/n50 failed"
+
+  # Point C — ce=25 at n_steps=200 (stability sweep: 8 segments)
+  echo ""
+  echo "--- ce=25, n_steps=200 ---"
+  python scripts/benchmarks/issue44_distributed_nu.py \
+    --case baseline --devices 2 --device-type gpu \
+    --checkpoint-every 25 --n-steps 200 \
+    --out logs/issue44/job_a_v3_2gpu_ce25_n200.json || echo "[WARN] ce=25/n200 failed"
+
+  echo ""
+  echo "=== JSON outputs ==="
+  for f in logs/issue44/job_a_v3_2gpu_*.json; do
+    echo "--- ${f} ---"
+    cat "${f}" 2>/dev/null || echo "missing"
+    echo ""
+  done
+
+  echo ""
+  echo "=== DONE ==="
