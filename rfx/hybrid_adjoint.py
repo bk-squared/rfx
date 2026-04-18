@@ -1,11 +1,11 @@
-"""Hybrid adjoint helpers for the staged uniform time-series seam.
+"""Hybrid adjoint helpers for the staged uniform dispersive time-series seam.
 
 This module currently supports the narrow staged seam used by the hybrid
 adjoint proof-of-concept and Phase 3A expansion work:
 
 - uniform grid
 - non-periodic
-- lossless or Debye-dispersive materials with zero conductivity
+- lossless, Debye-dispersive, or Lorentz-dispersive materials with zero conductivity
 - point-source / point-probe time-series objectives
 - PEC boundaries
 - CPML boundaries (including CPML + per-face PEC overrides)
@@ -45,6 +45,7 @@ from rfx.boundaries.cpml import (
 from rfx.boundaries.pec import apply_pec, apply_pec_faces
 from rfx.grid import Grid
 from rfx.materials.debye import DebyeCoeffs, DebyeState, init_debye, update_e_debye
+from rfx.materials.lorentz import LorentzCoeffs, LorentzPole, LorentzState, init_lorentz, update_e_lorentz
 from rfx.simulation import ProbeSpec, SourceSpec
 
 
@@ -80,6 +81,7 @@ class Phase1HybridPreparedRunnerState:
     probes: list | tuple
     debye_spec: tuple | None
     debye: tuple | None
+    lorentz_spec: tuple | None
     lorentz: tuple | None
     ntff_box: object | None
     waveguide_ports: list | tuple | None
@@ -98,6 +100,7 @@ class Phase1HybridPreparedRunnerState:
             probes=prepared.probes,
             debye_spec=prepared.debye_spec,
             debye=prepared.debye,
+            lorentz_spec=prepared.lorentz_spec,
             lorentz=prepared.lorentz,
             ntff_box=prepared.ntff_box,
             waveguide_ports=prepared.waveguide_ports,
@@ -137,6 +140,7 @@ class Phase1HybridContext:
     mu_r: jnp.ndarray
     zero_sigma: jnp.ndarray
     debye_spec: tuple | None
+    lorentz_spec: tuple | None
     cpml_axes: str
     pec_axes: str
     pec_faces: tuple[str, ...]
@@ -174,6 +178,15 @@ class Phase1HybridContext:
         replay_inputs = ["eps_r", "mu_r", "source_waveforms_raw"]
         replay_outputs = ["time_series", "final_fields"]
         debye_spec = inputs.debye_spec
+        lorentz_spec = inputs.lorentz_spec
+        if debye_spec is not None and lorentz_spec is not None:
+            raise ValueError("mixed Debye+Lorentz dispersion is unsupported")
+        if inputs.lorentz is not None and lorentz_spec is None:
+            raise ValueError("Lorentz reconstruction metadata is unavailable")
+        if lorentz_spec is not None:
+            lorentz_poles, _ = lorentz_spec
+            if any(getattr(pole, "omega_0", None) == 0.0 for pole in lorentz_poles):
+                raise ValueError("Drude-shaped Lorentz poles are unsupported")
         if debye_spec is not None:
             _, initial_debye_state = _runtime_debye(inputs.grid.dt, inputs.materials, debye_spec)
             carry_arrays.extend(
@@ -182,6 +195,14 @@ class Phase1HybridContext:
             )
             replay_inputs.append("debye_spec")
             replay_outputs.append("final_debye_state")
+        if lorentz_spec is not None:
+            _, initial_lorentz_state = _runtime_lorentz(inputs.grid.dt, inputs.materials, lorentz_spec)
+            carry_arrays.extend(
+                (f"lorentz.{name}", arr)
+                for name, arr in zip(initial_lorentz_state._fields, initial_lorentz_state)
+            )
+            replay_inputs.append("lorentz_spec")
+            replay_outputs.append("final_lorentz_state")
         if boundary == "cpml":
             cpml_params, initial_cpml_state = init_cpml(inputs.grid, pec_faces=set(pec_faces))
             carry_arrays.extend(
@@ -211,6 +232,7 @@ class Phase1HybridContext:
             mu_r=inputs.materials.mu_r,
             zero_sigma=jnp.zeros_like(inputs.materials.sigma),
             debye_spec=debye_spec,
+            lorentz_spec=lorentz_spec,
             cpml_axes=cpml_axes,
             pec_axes=inputs.pec_axes,
             pec_faces=pec_faces,
@@ -286,6 +308,7 @@ class Phase1HybridInputs:
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...]
     debye_spec: tuple | None
     debye: tuple | None
+    lorentz_spec: tuple | None
     lorentz: tuple | None
     ntff_box: object | None
     waveguide_ports: list | tuple | None
@@ -314,6 +337,7 @@ class Phase1HybridInputs:
             probes=(),
             debye_spec=None,
             debye=None,
+            lorentz_spec=None,
             lorentz=None,
             ntff_box=None,
             waveguide_ports=None,
@@ -353,6 +377,7 @@ class Phase1HybridInputs:
             probes=prepared.probes,
             debye_spec=prepared.debye_spec,
             debye=prepared.debye,
+            lorentz_spec=prepared.lorentz_spec,
             lorentz=prepared.lorentz,
             ntff_box=prepared.ntff_box,
             waveguide_ports=prepared.waveguide_ports,
@@ -483,14 +508,15 @@ class Phase1HybridInspection:
         if inputs.report_override is not None:
             return inputs.report_override
         report = inspect_phase1_hybrid(
-                boundary=inputs.boundary,
-                periodic=inputs.periodic,
-                materials=inputs.materials,
-                raw_sources=inputs.raw_sources,
-                probes=inputs.probes,
-                debye_spec=inputs.debye_spec,
-                debye=inputs.debye,
-                lorentz=inputs.lorentz,
+            boundary=inputs.boundary,
+            periodic=inputs.periodic,
+            materials=inputs.materials,
+            raw_sources=inputs.raw_sources,
+            probes=inputs.probes,
+            debye_spec=inputs.debye_spec,
+            debye=inputs.debye,
+            lorentz_spec=inputs.lorentz_spec,
+            lorentz=inputs.lorentz,
             ntff_box=inputs.ntff_box,
             waveguide_ports=inputs.waveguide_ports,
             pec_mask=inputs.pec_mask,
@@ -740,6 +766,7 @@ def phase1_hybrid_support_reasons(
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...] | None,
     debye_spec: tuple | None,
     debye: tuple | None,
+    lorentz_spec: tuple | None,
     lorentz: tuple | None,
     ntff_box: object | None,
     waveguide_ports: list | tuple | None,
@@ -755,10 +782,16 @@ def phase1_hybrid_support_reasons(
         reasons.append(f"boundary={boundary!r} is unsupported")
     if periodic != (False, False, False):
         reasons.append("periodic axes are unsupported")
+    if debye_spec is not None and lorentz_spec is not None:
+        reasons.append("mixed Debye+Lorentz dispersion is unsupported")
     if debye is not None and debye_spec is None:
         reasons.append("Debye reconstruction metadata is unavailable")
-    if lorentz is not None:
-        reasons.append("Lorentz dispersion is unsupported")
+    if lorentz is not None and lorentz_spec is None:
+        reasons.append("Lorentz reconstruction metadata is unavailable")
+    if lorentz_spec is not None:
+        lorentz_poles, _ = lorentz_spec
+        if any(getattr(pole, "omega_0", None) == 0.0 for pole in lorentz_poles):
+            reasons.append("Drude-shaped Lorentz poles are unsupported")
     if ntff_box is not None:
         reasons.append("NTFF accumulation is unsupported")
     if waveguide_ports:
@@ -967,6 +1000,7 @@ def inspect_phase1_hybrid(
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...],
     debye_spec: tuple | None,
     debye: tuple | None,
+    lorentz_spec: tuple | None,
     lorentz: tuple | None,
     ntff_box: object | None,
     waveguide_ports: list | tuple | None,
@@ -990,6 +1024,7 @@ def inspect_phase1_hybrid(
         probes=probes,
         debye_spec=debye_spec,
         debye=debye,
+        lorentz_spec=lorentz_spec,
         lorentz=lorentz,
         ntff_box=ntff_box,
         waveguide_ports=waveguide_ports,
@@ -1009,6 +1044,7 @@ def inspect_phase1_hybrid(
                 probes=probes,
                 debye_spec=debye_spec,
                 debye=debye,
+                lorentz_spec=lorentz_spec,
                 lorentz=lorentz,
                 ntff_box=ntff_box,
                 waveguide_ports=waveguide_ports,
@@ -1119,6 +1155,7 @@ def build_phase1_hybrid_context(
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...],
     pec_axes: str,
     debye_spec: tuple | None = None,
+    lorentz_spec: tuple | None = None,
     boundary: str = "pec",
     cpml_axes: str | None = None,
     pec_faces: tuple[str, ...] | None = None,
@@ -1134,6 +1171,7 @@ def build_phase1_hybrid_context(
             probes=probes,
             debye_spec=debye_spec,
             debye=None,
+            lorentz_spec=lorentz_spec,
             lorentz=None,
             ntff_box=None,
             waveguide_ports=None,
@@ -1156,6 +1194,8 @@ def run_phase1_forward_time_series(
 
     materials = _materials_from_eps(context, eps_r)
     src_waveforms = _source_waveforms_from_eps(context, eps_r)
+    if context.debye_spec is not None and context.lorentz_spec is not None:
+        raise ValueError("mixed Debye+Lorentz dispersion is unsupported")
     if context.debye_spec is not None:
         debye_coeffs, debye_state = _runtime_debye(context.dt, materials, context.debye_spec)
         if context.boundary == "cpml":
@@ -1173,6 +1213,27 @@ def run_phase1_forward_time_series(
                 materials,
                 debye_coeffs,
                 debye_state,
+                src_waveforms,
+            )
+            return time_series
+        raise ValueError(f"boundary={context.boundary!r} is unsupported")
+    if context.lorentz_spec is not None:
+        lorentz_coeffs, lorentz_state = _runtime_lorentz(context.dt, materials, context.lorentz_spec)
+        if context.boundary == "cpml":
+            _, _, _, time_series = _run_uniform_lorentz_cpml_time_series(
+                context,
+                materials,
+                lorentz_coeffs,
+                lorentz_state,
+                src_waveforms,
+            )
+            return time_series
+        if context.boundary == "pec":
+            _, _, time_series = _run_uniform_lorentz_pec_time_series(
+                context,
+                materials,
+                lorentz_coeffs,
+                lorentz_state,
                 src_waveforms,
             )
             return time_series
@@ -1197,6 +1258,8 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
     def _forward_fwd(eps_r: jnp.ndarray):
         materials = _materials_from_eps(context, eps_r)
         src_waveforms = _source_waveforms_from_eps(context, eps_r)
+        if context.debye_spec is not None and context.lorentz_spec is not None:
+            raise ValueError("mixed Debye+Lorentz dispersion is unsupported")
         if context.debye_spec is not None:
             debye_coeffs, debye_state = _runtime_debye(context.dt, materials, context.debye_spec)
             if context.boundary == "cpml":
@@ -1228,6 +1291,37 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
                 )
                 return time_series, (eps_r, states_before, debye_states_before, context.src_waveforms_raw)
             raise ValueError(f"boundary={context.boundary!r} is unsupported")
+        if context.lorentz_spec is not None:
+            lorentz_coeffs, lorentz_state = _runtime_lorentz(context.dt, materials, context.lorentz_spec)
+            if context.boundary == "cpml":
+                _, _, _, time_series, states_before, cpml_states_before, lorentz_states_before = (
+                    _run_uniform_lorentz_cpml_time_series(
+                        context,
+                        materials,
+                        lorentz_coeffs,
+                        lorentz_state,
+                        src_waveforms,
+                        return_trace=True,
+                    )
+                )
+                return time_series, (
+                    eps_r,
+                    states_before,
+                    cpml_states_before,
+                    lorentz_states_before,
+                    context.src_waveforms_raw,
+                )
+            if context.boundary == "pec":
+                _, _, time_series, states_before, lorentz_states_before = _run_uniform_lorentz_pec_time_series(
+                    context,
+                    materials,
+                    lorentz_coeffs,
+                    lorentz_state,
+                    src_waveforms,
+                    return_trace=True,
+                )
+                return time_series, (eps_r, states_before, lorentz_states_before, context.src_waveforms_raw)
+            raise ValueError(f"boundary={context.boundary!r} is unsupported")
         if context.boundary == "cpml":
             _, _, time_series, states_before, cpml_states_before = _run_uniform_lossless_cpml_time_series(
                 context,
@@ -1245,6 +1339,107 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
         return time_series, (eps_r, states_before, context.src_waveforms_raw)
 
     def _forward_bwd(res, probe_bar: jnp.ndarray):
+        if context.lorentz_spec is not None and context.boundary == "cpml":
+            eps_r, states_before, cpml_states_before, lorentz_states_before, raw_src_waveforms = res
+            zero_state = _zeros_like_state(context.initial_state)
+            zero_cpml = _zero_cpml_state(context.grid)
+            zero_lorentz = _zero_lorentz_state(
+                _runtime_lorentz(context.dt, _materials_from_eps(context, eps_r), context.lorentz_spec)[1]
+            )
+            zero_eps = jnp.zeros_like(eps_r)
+
+            def reverse_step(carry, xs):
+                lambda_next, lambda_cpml_next, lambda_lorentz_next, grad_eps = carry
+                state_before, cpml_before, lorentz_before, raw_src_vals, probe_cot = xs
+
+                def step_from_eps(state, cpml_state, lorentz_state, eps_local):
+                    materials_local = _materials_from_eps(context, eps_local)
+                    lorentz_coeffs, _ = _runtime_lorentz(
+                        context.dt,
+                        materials_local,
+                        context.lorentz_spec,
+                    )
+                    return _uniform_lorentz_cpml_step(
+                        state,
+                        cpml_state,
+                        lorentz_state,
+                        _source_values_from_eps(context, eps_local, raw_src_vals),
+                        materials_local,
+                        lorentz_coeffs,
+                        context.grid,
+                        context.cpml_params,
+                        context.cpml_axes,
+                        context.pec_axes,
+                        context.pec_faces,
+                        context.src_meta,
+                        context.prb_meta,
+                    )
+
+                _, step_vjp = jax.vjp(step_from_eps, state_before, cpml_before, lorentz_before, eps_r)
+                lambda_before, lambda_cpml_before, lambda_lorentz_before, grad_eps_step = step_vjp(
+                    (lambda_next, lambda_cpml_next, lambda_lorentz_next, probe_cot)
+                )
+                return (
+                    lambda_before,
+                    lambda_cpml_before,
+                    lambda_lorentz_before,
+                    grad_eps + grad_eps_step,
+                ), None
+
+            (_, _, _, grad_eps), _ = jax.lax.scan(
+                reverse_step,
+                (zero_state, zero_cpml, zero_lorentz, zero_eps),
+                (states_before, cpml_states_before, lorentz_states_before, raw_src_waveforms, probe_bar),
+                reverse=True,
+            )
+            return (grad_eps,)
+
+        if context.lorentz_spec is not None and context.boundary == "pec":
+            eps_r, states_before, lorentz_states_before, raw_src_waveforms = res
+            zero_state = _zeros_like_state(context.initial_state)
+            zero_lorentz = _zero_lorentz_state(
+                _runtime_lorentz(context.dt, _materials_from_eps(context, eps_r), context.lorentz_spec)[1]
+            )
+            zero_eps = jnp.zeros_like(eps_r)
+
+            def reverse_step(carry, xs):
+                lambda_next, lambda_lorentz_next, grad_eps = carry
+                state_before, lorentz_before, raw_src_vals, probe_cot = xs
+
+                def step_from_eps(state, lorentz_state, eps_local):
+                    materials_local = _materials_from_eps(context, eps_local)
+                    lorentz_coeffs, _ = _runtime_lorentz(
+                        context.dt,
+                        materials_local,
+                        context.lorentz_spec,
+                    )
+                    return _uniform_lorentz_pec_step(
+                        state,
+                        lorentz_state,
+                        _source_values_from_eps(context, eps_local, raw_src_vals),
+                        materials_local,
+                        lorentz_coeffs,
+                        context.grid,
+                        context.pec_axes,
+                        context.pec_faces,
+                        context.src_meta,
+                        context.prb_meta,
+                    )
+
+                _, step_vjp = jax.vjp(step_from_eps, state_before, lorentz_before, eps_r)
+                lambda_before, lambda_lorentz_before, grad_eps_step = step_vjp(
+                    (lambda_next, lambda_lorentz_next, probe_cot)
+                )
+                return (lambda_before, lambda_lorentz_before, grad_eps + grad_eps_step), None
+
+            (_, _, grad_eps), _ = jax.lax.scan(
+                reverse_step,
+                (zero_state, zero_lorentz, zero_eps),
+                (states_before, lorentz_states_before, raw_src_waveforms, probe_bar),
+                reverse=True,
+            )
+            return (grad_eps,)
+
         if context.debye_spec is not None and context.boundary == "cpml":
             eps_r, states_before, cpml_states_before, debye_states_before, raw_src_waveforms = res
             zero_state = _zeros_like_state(context.initial_state)
@@ -1585,6 +1780,104 @@ def _run_uniform_debye_cpml_time_series(
     return final_state, final_cpml_state, final_debye_state, outputs
 
 
+def _run_uniform_lorentz_pec_time_series(
+    context: Phase1HybridContext,
+    materials: MaterialArrays,
+    lorentz_coeffs: LorentzCoeffs,
+    lorentz_state: LorentzState,
+    src_waveforms: jnp.ndarray,
+    *,
+    return_trace: bool = False,
+):
+    """Run the extracted time-series seam with Lorentz and PEC enforcement."""
+
+    def body(carry, src_vals):
+        state, lorentz_state_local = carry
+        next_state, next_lorentz_state, probe_out = _uniform_lorentz_pec_step(
+            state,
+            lorentz_state_local,
+            src_vals,
+            materials,
+            lorentz_coeffs,
+            context.grid,
+            context.pec_axes,
+            context.pec_faces,
+            context.src_meta,
+            context.prb_meta,
+        )
+        if return_trace:
+            return (next_state, next_lorentz_state), (probe_out, state, lorentz_state_local)
+        return (next_state, next_lorentz_state), probe_out
+
+    (final_state, final_lorentz_state), outputs = jax.lax.scan(
+        body,
+        (context.initial_state, lorentz_state),
+        src_waveforms,
+    )
+    if return_trace:
+        time_series, states_before, lorentz_states_before = outputs
+        return final_state, final_lorentz_state, time_series, states_before, lorentz_states_before
+    return final_state, final_lorentz_state, outputs
+
+
+def _run_uniform_lorentz_cpml_time_series(
+    context: Phase1HybridContext,
+    materials: MaterialArrays,
+    lorentz_coeffs: LorentzCoeffs,
+    lorentz_state: LorentzState,
+    src_waveforms: jnp.ndarray,
+    *,
+    return_trace: bool = False,
+):
+    """Run the extracted time-series seam with Lorentz, CPML, and PEC enforcement."""
+
+    assert context.cpml_params is not None
+
+    def body(carry, src_vals):
+        state, cpml_state, lorentz_state_local = carry
+        next_state, next_cpml_state, next_lorentz_state, probe_out = _uniform_lorentz_cpml_step(
+            state,
+            cpml_state,
+            lorentz_state_local,
+            src_vals,
+            materials,
+            lorentz_coeffs,
+            context.grid,
+            context.cpml_params,
+            context.cpml_axes,
+            context.pec_axes,
+            context.pec_faces,
+            context.src_meta,
+            context.prb_meta,
+        )
+        if return_trace:
+            return (next_state, next_cpml_state, next_lorentz_state), (
+                probe_out,
+                state,
+                cpml_state,
+                lorentz_state_local,
+            )
+        return (next_state, next_cpml_state, next_lorentz_state), probe_out
+
+    (final_state, final_cpml_state, final_lorentz_state), outputs = jax.lax.scan(
+        body,
+        (context.initial_state, _zero_cpml_state(context.grid), lorentz_state),
+        src_waveforms,
+    )
+    if return_trace:
+        time_series, states_before, cpml_states_before, lorentz_states_before = outputs
+        return (
+            final_state,
+            final_cpml_state,
+            final_lorentz_state,
+            time_series,
+            states_before,
+            cpml_states_before,
+            lorentz_states_before,
+        )
+    return final_state, final_cpml_state, final_lorentz_state, outputs
+
+
 def _uniform_lossless_pec_step(
     state: Phase1FieldState,
     src_vals: jnp.ndarray,
@@ -1729,6 +2022,91 @@ def _uniform_debye_cpml_step(
     return next_state, next_cpml_state, next_debye_state, probe_out
 
 
+def _uniform_lorentz_pec_step(
+    state: Phase1FieldState,
+    lorentz_state: LorentzState,
+    src_vals: jnp.ndarray,
+    materials: MaterialArrays,
+    lorentz_coeffs: LorentzCoeffs,
+    grid: Grid,
+    pec_axes: str,
+    pec_faces: tuple[str, ...],
+    src_meta: tuple[tuple[int, int, int, str], ...],
+    prb_meta: tuple[tuple[int, int, int, str], ...],
+) -> tuple[Phase1FieldState, LorentzState, jnp.ndarray]:
+    """Extracted Lorentz scan step: Yee H + Lorentz E + PEC + sources + probes."""
+
+    fdtd = update_h(_to_fdtd(state), materials, grid.dt, grid.dx, periodic=(False, False, False))
+    fdtd, next_lorentz_state = update_e_lorentz(
+        fdtd,
+        lorentz_coeffs,
+        lorentz_state,
+        grid.dt,
+        grid.dx,
+        periodic=(False, False, False),
+    )
+    if pec_axes:
+        fdtd = apply_pec(fdtd, axes=pec_axes)
+    if pec_faces:
+        fdtd = apply_pec_faces(fdtd, pec_faces)
+    next_state = _from_fdtd(fdtd)
+    next_state = _inject_sources(next_state, src_vals, src_meta)
+    probe_out = _sample_probes(next_state, prb_meta)
+    return next_state, next_lorentz_state, probe_out
+
+
+def _uniform_lorentz_cpml_step(
+    state: Phase1FieldState,
+    cpml_state: CPMLState,
+    lorentz_state: LorentzState,
+    src_vals: jnp.ndarray,
+    materials: MaterialArrays,
+    lorentz_coeffs: LorentzCoeffs,
+    grid: Grid,
+    cpml_params: CPMLAxisParams,
+    cpml_axes: str,
+    pec_axes: str,
+    pec_faces: tuple[str, ...],
+    src_meta: tuple[tuple[int, int, int, str], ...],
+    prb_meta: tuple[tuple[int, int, int, str], ...],
+) -> tuple[Phase1FieldState, CPMLState, LorentzState, jnp.ndarray]:
+    """Extracted Lorentz+CPML scan step: Yee H + CPML + Lorentz E + PEC + sources + probes."""
+
+    fdtd = update_h(_to_fdtd(state), materials, grid.dt, grid.dx, periodic=(False, False, False))
+    fdtd, next_cpml_state = apply_cpml_h(
+        fdtd,
+        cpml_params,
+        cpml_state,
+        grid,
+        cpml_axes,
+        materials=materials,
+    )
+    fdtd, next_lorentz_state = update_e_lorentz(
+        fdtd,
+        lorentz_coeffs,
+        lorentz_state,
+        grid.dt,
+        grid.dx,
+        periodic=(False, False, False),
+    )
+    fdtd, next_cpml_state = apply_cpml_e(
+        fdtd,
+        cpml_params,
+        next_cpml_state,
+        grid,
+        cpml_axes,
+        materials=materials,
+    )
+    if pec_axes:
+        fdtd = apply_pec(fdtd, axes=pec_axes)
+    if pec_faces:
+        fdtd = apply_pec_faces(fdtd, pec_faces)
+    next_state = _from_fdtd(fdtd)
+    next_state = _inject_sources(next_state, src_vals, src_meta)
+    probe_out = _sample_probes(next_state, prb_meta)
+    return next_state, next_cpml_state, next_lorentz_state, probe_out
+
+
 def _coeffs_from_eps(context: Phase1HybridContext, eps_r: jnp.ndarray) -> UpdateCoeffs:
     materials = _materials_from_eps(context, eps_r)
     return _coeffs_from_materials(context, materials)
@@ -1754,6 +2132,16 @@ def _runtime_debye(
     assert debye_spec is not None
     poles, masks = debye_spec
     return init_debye(poles, materials, dt, mask=masks)
+
+
+def _runtime_lorentz(
+    dt: float,
+    materials: MaterialArrays,
+    lorentz_spec: tuple | None,
+) -> tuple[LorentzCoeffs, LorentzState]:
+    assert lorentz_spec is not None
+    poles, masks = lorentz_spec
+    return init_lorentz(poles, materials, dt, mask=masks)
 
 
 def _source_waveforms_from_eps(
@@ -1855,4 +2243,15 @@ def _zero_debye_state(state: DebyeState) -> DebyeState:
         px=jnp.zeros_like(state.px),
         py=jnp.zeros_like(state.py),
         pz=jnp.zeros_like(state.pz),
+    )
+
+
+def _zero_lorentz_state(state: LorentzState) -> LorentzState:
+    return LorentzState(
+        px=jnp.zeros_like(state.px),
+        py=jnp.zeros_like(state.py),
+        pz=jnp.zeros_like(state.pz),
+        px_prev=jnp.zeros_like(state.px_prev),
+        py_prev=jnp.zeros_like(state.py_prev),
+        pz_prev=jnp.zeros_like(state.pz_prev),
     )

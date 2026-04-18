@@ -10,9 +10,12 @@ import pytest
 import jax
 import jax.numpy as jnp
 
-from rfx import Box, DebyePole, GaussianPulse, lorentz_pole
+from rfx import Box, DebyePole, GaussianPulse, drude_pole, lorentz_pole
 from rfx.api import Simulation
 from rfx.hybrid_adjoint import phase1_forward_result
+
+_DISP_BOX_LO = (0.006, 0.006, 0.006)
+_DISP_BOX_HI = (0.009, 0.009, 0.009)
 
 
 def _make_phase1_sim(
@@ -151,8 +154,12 @@ def _make_cpml_supported_phase1_sim_with_pec_face() -> Simulation:
 
 def _make_cpml_lossy_unsupported_phase1_sim() -> Simulation:
     sim = _make_phase1_sim(boundary="cpml")
-    sim.add_material("lossy", eps_r=2.0, sigma=5.0)
-    sim.add(Box((0.006, 0.006, 0.006), (0.009, 0.009, 0.009)), material="lossy")
+    return _add_boxed_material(sim, "lossy", eps_r=2.0, sigma=5.0)
+
+
+def _add_boxed_material(sim: Simulation, name: str, **material_kwargs) -> Simulation:
+    sim.add_material(name, **material_kwargs)
+    sim.add(Box(_DISP_BOX_LO, _DISP_BOX_HI), material=name)
     return sim
 
 
@@ -162,28 +169,66 @@ def _make_debye_supported_phase1_sim(
     pec_faces: set[str] | None = None,
 ) -> Simulation:
     sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
-    sim.add_material(
+    return _add_boxed_material(
+        sim,
         "disp",
         eps_r=2.0,
         debye_poles=[DebyePole(delta_eps=1.0, tau=8e-12)],
     )
-    sim.add(Box((0.006, 0.006, 0.006), (0.009, 0.009, 0.009)), material="disp")
-    return sim
 
 
 def _make_cpml_debye_supported_phase1_sim() -> Simulation:
     return _make_debye_supported_phase1_sim(boundary="cpml")
 
 
-def _make_lorentz_unsupported_phase1_sim() -> Simulation:
-    sim = _make_phase1_sim()
-    sim.add_material(
+def _make_lorentz_supported_phase1_sim(
+    *,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+) -> Simulation:
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
+    return _add_boxed_material(
+        sim,
         "disp_l",
         eps_r=2.0,
         lorentz_poles=[lorentz_pole(delta_eps=1.0, omega_0=2.0e10, delta=1.0e9)],
     )
-    sim.add(Box((0.006, 0.006, 0.006), (0.009, 0.009, 0.009)), material="disp_l")
-    return sim
+
+
+def _make_cpml_lorentz_supported_phase1_sim() -> Simulation:
+    return _make_lorentz_supported_phase1_sim(boundary="cpml")
+
+
+def _make_drude_unsupported_phase1_sim() -> Simulation:
+    sim = _make_phase1_sim()
+    return _add_boxed_material(
+        sim,
+        "disp_d",
+        eps_r=2.0,
+        lorentz_poles=[drude_pole(omega_p=2.0e10, gamma=1.0e9)],
+    )
+
+
+def _make_mixed_dispersion_unsupported_phase1_sim() -> Simulation:
+    sim = _make_phase1_sim()
+    return _add_boxed_material(
+        sim,
+        "disp_mix",
+        eps_r=2.0,
+        debye_poles=[DebyePole(delta_eps=1.0, tau=8e-12)],
+        lorentz_poles=[lorentz_pole(delta_eps=1.0, omega_0=2.0e10, delta=1.0e9)],
+    )
+
+
+def _make_lorentz_lossy_unsupported_phase1_sim() -> Simulation:
+    sim = _make_phase1_sim()
+    return _add_boxed_material(
+        sim,
+        "disp_l_lossy",
+        eps_r=2.0,
+        sigma=5.0,
+        lorentz_poles=[lorentz_pole(delta_eps=1.0, omega_0=2.0e10, delta=1.0e9)],
+    )
 
 
 
@@ -279,7 +324,9 @@ def _unsupported_phase1_cases() -> list[tuple[Simulation, str]]:
     return [
         (_make_lumped_port_unsupported_phase1_sim(), "add_source"),
         (_make_cpml_lossy_unsupported_phase1_sim(), "lossy materials"),
-        (_make_lorentz_unsupported_phase1_sim(), "Lorentz"),
+        (_make_lorentz_lossy_unsupported_phase1_sim(), "lossy materials"),
+        (_make_drude_unsupported_phase1_sim(), "Drude"),
+        (_make_mixed_dispersion_unsupported_phase1_sim(), "mixed Debye+Lorentz"),
         (_make_nonuniform_unsupported_phase1_sim(), "non-uniform grids are unsupported"),
     ]
 
@@ -1164,7 +1211,6 @@ def test_phase1_hybrid_types_exported_from_package_root():
 
 
 def test_phase1_seam_wrapper_matches_canonical_forward_objective():
-    n_steps = 18
     sim, report, context = _make_supported_phase1_report_context()
 
     assert report.supported
@@ -1189,8 +1235,8 @@ def test_phase1_seam_wrapper_matches_canonical_forward_objective():
     assert report.inventory.total_carry_bytes > 0
     assert report.inventory.replay_inputs == ("eps_r", "mu_r", "source_waveforms_raw")
 
-    baseline = sim.forward(n_steps=n_steps, checkpoint=True)
-    hybrid = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
+    baseline = sim.forward(n_steps=18, checkpoint=True)
+    hybrid = sim.forward_hybrid_phase1(n_steps=18, fallback="raise")
     baseline_obj = float(jnp.sum(baseline.time_series ** 2))
     hybrid_obj = float(jnp.sum(hybrid.time_series ** 2))
     np.testing.assert_allclose(hybrid_obj, baseline_obj, rtol=1e-6, atol=1e-12)
@@ -1203,10 +1249,9 @@ def test_phase1_seam_wrapper_matches_canonical_forward_objective():
 
 
 def test_phase1_input_builder_matches_prepare_bundle_surface():
-    n_steps = 18
     sim, inputs = _make_supported_phase1_inputs()
     prepared = inputs.prepare()
-    public_prepared = sim.prepare_hybrid_phase1(n_steps=n_steps)
+    public_prepared = sim.prepare_hybrid_phase1(n_steps=18)
 
     assert inputs.source_count == 1
     assert inputs.probe_count == 1
@@ -1303,7 +1348,6 @@ def test_phase1_report_from_prepared_runner_state_matches_public_report_surface(
 
 
 def test_phase1_prepared_from_inputs_matches_prepare_function_surface():
-    n_steps = 18
     sim, inputs = _make_supported_phase1_inputs()
 
     from rfx.hybrid_adjoint import Phase1HybridPrepared, prepare_phase1_hybrid
@@ -1559,10 +1603,9 @@ def test_phase1_inspect_from_inputs_matches_direct_inspect_for_unsupported_nonun
 
 
 def test_phase1_prepare_from_inputs_matches_direct_prepare_surface():
-    n_steps = 18
     sim, inputs = _make_supported_phase1_inputs()
     via_inputs = sim.prepare_hybrid_phase1_from_inputs(inputs)
-    direct = sim.prepare_hybrid_phase1(n_steps=n_steps)
+    direct = sim.prepare_hybrid_phase1(n_steps=18)
 
     assert via_inputs.report == direct.report
     assert via_inputs.context is not None
@@ -1572,10 +1615,9 @@ def test_phase1_prepare_from_inputs_matches_direct_prepare_surface():
 
 
 def test_phase1_context_from_inputs_matches_direct_context_surface():
-    n_steps = 18
     sim, inputs = _make_supported_phase1_inputs()
     via_inputs = sim.build_hybrid_phase1_context_from_inputs(inputs)
-    direct = sim.build_hybrid_phase1_context(n_steps=n_steps)
+    direct = sim.build_hybrid_phase1_context(n_steps=18)
 
     assert via_inputs.inventory == direct.inventory
     np.testing.assert_allclose(np.asarray(via_inputs.eps_r), np.asarray(direct.eps_r))
@@ -1686,10 +1728,8 @@ def test_phase1_input_surface_helper_aliases_match_methods_for_unsupported_nonun
 
 
 def test_phase1_forward_from_inputs_matches_direct_forward():
-    n_steps = 18
     sim, inputs = _make_supported_phase1_inputs()
-
-    direct = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
+    direct = sim.forward_hybrid_phase1(n_steps=18, fallback="raise")
     via_inputs = sim.forward_hybrid_phase1_from_inputs(inputs)
 
     np.testing.assert_allclose(
@@ -1814,10 +1854,8 @@ def test_phase1_input_forward_api_with_eps_override_matches_helper_when_n_steps_
 
 
 def test_phase1_forward_matches_input_builder_path():
-    n_steps = 18
     sim, inputs = _make_supported_phase1_inputs()
-
-    direct = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
+    direct = sim.forward_hybrid_phase1(n_steps=18, fallback="raise")
     via_inputs = inputs.forward_result()
 
     np.testing.assert_allclose(
@@ -1906,10 +1944,9 @@ def test_phase1_prepare_bundle_matches_input_builder_surface_for_unsupported_non
 
 
 def test_phase1_prepare_bundle_matches_public_surfaces():
-    n_steps = 18
     sim, report, context = _make_supported_phase1_report_context()
 
-    prepared = sim.prepare_hybrid_phase1(n_steps=n_steps)
+    prepared = sim.prepare_hybrid_phase1(n_steps=18)
 
     assert prepared.report == report
     assert prepared.supported
@@ -1935,6 +1972,7 @@ def test_phase1_support_reasons_helper_accepts_supported_cpml_fixture():
         probes=prepared_runner.probes,
         debye_spec=None,
         debye=None,
+        lorentz_spec=None,
         lorentz=None,
         ntff_box=None,
         waveguide_ports=None,
@@ -4151,9 +4189,396 @@ def test_phase1_debye_inputs_require_debye_spec_metadata():
         broken.require_context()
 
 
-def test_phase1_hybrid_lorentz_remains_unsupported():
-    sim = _make_lorentz_unsupported_phase1_sim()
-    with pytest.raises(ValueError, match="Lorentz"):
+def test_phase1_top_level_lorentz_supported_family_matches_explicit_n_steps_when_omitted():
+    _assert_top_level_supported_family_matches_explicit_n_steps_when_omitted(
+        _make_lorentz_supported_phase1_sim(),
+    )
+
+
+def test_phase1_top_level_cpml_lorentz_supported_family_matches_explicit_n_steps_when_omitted():
+    _assert_top_level_supported_family_matches_explicit_n_steps_when_omitted(
+        _make_cpml_lorentz_supported_phase1_sim(),
+    )
+
+
+def test_phase1_hybrid_lorentz_forward_matches_pure_forward():
+    _assert_hybrid_forward_matches_pure_forward(_make_lorentz_supported_phase1_sim())
+
+
+def test_phase1_hybrid_cpml_lorentz_forward_matches_pure_forward():
+    _assert_hybrid_forward_matches_pure_forward(_make_cpml_lorentz_supported_phase1_sim())
+
+
+def test_phase1_hybrid_lorentz_gradient_matches_pure_ad_inside_lorentz_mask():
+    sim = _make_lorentz_supported_phase1_sim()
+    grid = sim._build_grid()
+    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    _assert_single_cell_hybrid_gradient_matches_pure_ad(
+        sim,
+        grid,
+        base_materials,
+        n_steps=18,
+    )
+
+
+def test_phase1_hybrid_cpml_lorentz_gradient_matches_pure_ad_inside_lorentz_mask():
+    sim = _make_cpml_lorentz_supported_phase1_sim()
+    grid = sim._build_grid()
+    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    _assert_single_cell_hybrid_gradient_matches_pure_ad(
+        sim,
+        grid,
+        base_materials,
+        n_steps=18,
+    )
+
+
+def test_phase1_lorentz_inventory_includes_lorentz_carry_fields():
+    sim = _make_lorentz_supported_phase1_sim()
+    report = sim.inspect_hybrid_phase1(n_steps=18)
+
+    assert report.supported
+    assert report.inventory is not None
+    assert {
+        "lorentz.px",
+        "lorentz.py",
+        "lorentz.pz",
+        "lorentz.px_prev",
+        "lorentz.py_prev",
+        "lorentz.pz_prev",
+    } <= set(report.inventory.carry_fields)
+    assert "lorentz_spec" in report.inventory.replay_inputs
+    assert "final_lorentz_state" in report.inventory.replay_outputs
+
+
+def test_phase1_lorentz_context_with_eps_override_matches_top_level_forward():
+    sim = _make_lorentz_supported_phase1_sim()
+    grid = sim._build_grid()
+    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    eps_override = _single_cell_eps(grid, base_materials.eps_r, jnp.float32(0.05))
+    context = sim.build_hybrid_phase1_context(n_steps=18)
+
+    via_context = context.run_time_series(eps_override=eps_override)
+    via_top_level = sim.forward_hybrid_phase1(
+        n_steps=18,
+        eps_override=eps_override,
+        fallback="raise",
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(via_context),
+        np.asarray(via_top_level.time_series),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "sim_factory",
+    [
+        _make_lorentz_supported_phase1_sim,
+        _make_cpml_lorentz_supported_phase1_sim,
+    ],
+)
+def test_phase1_lorentz_prepared_runner_forward_surface_matches_context(sim_factory):
+    sim = sim_factory()
+    grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=18)
+
+    assert prepared_runner is not None
+    assert report.supported
+
+    via_api = sim.forward_hybrid_phase1_from_prepared_runner_state(
+        grid,
+        prepared_runner,
+        n_steps=18,
+    )
+    via_context = sim.forward_hybrid_phase1_from_context(
+        sim.build_hybrid_phase1_context(n_steps=18)
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(via_api.time_series),
+        np.asarray(via_context.time_series),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "sim_factory",
+    [
+        _make_lorentz_supported_phase1_sim,
+        _make_cpml_lorentz_supported_phase1_sim,
+    ],
+)
+def test_phase1_lorentz_prepared_runner_input_surface_preserves_lorentz_metadata(sim_factory):
+    sim = sim_factory()
+    grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=18)
+
+    assert prepared_runner is not None
+    assert report.supported
+    assert prepared_runner.lorentz_spec is not None
+
+    via_api = sim.build_hybrid_phase1_inputs_from_prepared_runner_state(
+        grid,
+        prepared_runner,
+        n_steps=18,
+    )
+    via_public = sim.build_hybrid_phase1_inputs(n_steps=18)
+
+    assert via_api.supported
+    assert via_api.lorentz_spec is not None
+    assert via_api.report == via_public.report
+    np.testing.assert_allclose(
+        np.asarray(via_api.require_context().eps_r),
+        np.asarray(via_public.require_context().eps_r),
+    )
+    np.testing.assert_allclose(
+        np.asarray(via_api.require_context().run_time_series()),
+        np.asarray(via_public.require_context().run_time_series()),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "sim_factory",
+    [
+        _make_lorentz_supported_phase1_sim,
+        _make_cpml_lorentz_supported_phase1_sim,
+    ],
+)
+def test_phase1_lorentz_prepared_runner_context_surface_preserves_lorentz_metadata(sim_factory):
+    sim = sim_factory()
+    grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=18)
+
+    assert prepared_runner is not None
+    assert report.supported
+    assert prepared_runner.lorentz_spec is not None
+
+    via_api = sim.build_hybrid_phase1_context_from_prepared_runner_state(
+        grid,
+        prepared_runner,
+        n_steps=18,
+    )
+    via_public = sim.build_hybrid_phase1_context(n_steps=18)
+
+    assert via_api.lorentz_spec is not None
+    np.testing.assert_allclose(
+        np.asarray(via_api.eps_r),
+        np.asarray(via_public.eps_r),
+    )
+    np.testing.assert_allclose(
+        np.asarray(via_api.run_time_series()),
+        np.asarray(via_public.run_time_series()),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "sim_factory",
+    [
+        _make_lorentz_supported_phase1_sim,
+        _make_cpml_lorentz_supported_phase1_sim,
+    ],
+)
+def test_phase1_lorentz_prepared_runner_prepare_surface_preserves_lorentz_metadata(sim_factory):
+    sim = sim_factory()
+    grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=18)
+
+    assert prepared_runner is not None
+    assert report.supported
+    assert prepared_runner.lorentz_spec is not None
+
+    via_api = sim.prepare_hybrid_phase1_from_prepared_runner_state(
+        grid,
+        prepared_runner,
+        n_steps=18,
+    )
+    via_public = sim.prepare_hybrid_phase1(n_steps=18)
+
+    assert via_api.supported
+    assert via_api.report == via_public.report
+    assert via_api.require_context().lorentz_spec is not None
+    np.testing.assert_allclose(
+        np.asarray(via_api.require_context().eps_r),
+        np.asarray(via_public.require_context().eps_r),
+    )
+    np.testing.assert_allclose(
+        np.asarray(via_api.require_context().run_time_series()),
+        np.asarray(via_public.require_context().run_time_series()),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "sim_factory",
+    [
+        _make_lorentz_supported_phase1_sim,
+        _make_cpml_lorentz_supported_phase1_sim,
+    ],
+)
+def test_phase1_lorentz_inspected_runner_forward_surface_matches_context(sim_factory):
+    sim = sim_factory()
+    grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=18)
+
+    assert prepared_runner is not None
+    assert report.supported
+
+    via_api = sim.forward_hybrid_phase1_from_inspected_runner_state(
+        grid,
+        prepared_runner,
+        report,
+        n_steps=18,
+    )
+    via_context = sim.forward_hybrid_phase1_from_context(
+        sim.build_hybrid_phase1_context(n_steps=18)
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(via_api.time_series),
+        np.asarray(via_context.time_series),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "sim_factory",
+    [
+        _make_lorentz_supported_phase1_sim,
+        _make_cpml_lorentz_supported_phase1_sim,
+    ],
+)
+def test_phase1_lorentz_inspected_runner_input_surface_preserves_lorentz_metadata(sim_factory):
+    sim = sim_factory()
+    grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=18)
+
+    assert prepared_runner is not None
+    assert report.supported
+    assert prepared_runner.lorentz_spec is not None
+
+    via_api = sim.build_hybrid_phase1_inputs_from_inspected_runner_state(
+        grid,
+        prepared_runner,
+        report,
+        n_steps=18,
+    )
+    via_public = sim.build_hybrid_phase1_inputs(n_steps=18)
+
+    assert via_api.supported
+    assert via_api.lorentz_spec is not None
+    assert via_api.report == via_public.report
+    np.testing.assert_allclose(
+        np.asarray(via_api.require_context().eps_r),
+        np.asarray(via_public.require_context().eps_r),
+    )
+    np.testing.assert_allclose(
+        np.asarray(via_api.require_context().run_time_series()),
+        np.asarray(via_public.require_context().run_time_series()),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "sim_factory",
+    [
+        _make_lorentz_supported_phase1_sim,
+        _make_cpml_lorentz_supported_phase1_sim,
+    ],
+)
+def test_phase1_lorentz_inspected_runner_prepare_surface_preserves_lorentz_metadata(sim_factory):
+    sim = sim_factory()
+    grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=18)
+
+    assert prepared_runner is not None
+    assert report.supported
+    assert prepared_runner.lorentz_spec is not None
+
+    via_api = sim.prepare_hybrid_phase1_from_inspected_runner_state(
+        grid,
+        prepared_runner,
+        report,
+        n_steps=18,
+    )
+    via_public = sim.prepare_hybrid_phase1(n_steps=18)
+
+    assert via_api.supported
+    assert via_api.report == via_public.report
+    assert via_api.require_context().lorentz_spec is not None
+    np.testing.assert_allclose(
+        np.asarray(via_api.require_context().eps_r),
+        np.asarray(via_public.require_context().eps_r),
+    )
+    np.testing.assert_allclose(
+        np.asarray(via_api.require_context().run_time_series()),
+        np.asarray(via_public.require_context().run_time_series()),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "sim_factory",
+    [
+        _make_lorentz_supported_phase1_sim,
+        _make_cpml_lorentz_supported_phase1_sim,
+    ],
+)
+def test_phase1_lorentz_inspected_runner_context_surface_preserves_lorentz_metadata(sim_factory):
+    sim = sim_factory()
+    grid, prepared_runner, report = sim._inspect_hybrid_phase1_prepared(n_steps=18)
+
+    assert prepared_runner is not None
+    assert report.supported
+    assert prepared_runner.lorentz_spec is not None
+
+    via_api = sim.build_hybrid_phase1_context_from_inspected_runner_state(
+        grid,
+        prepared_runner,
+        report,
+        n_steps=18,
+    )
+    via_public = sim.build_hybrid_phase1_context(n_steps=18)
+
+    assert via_api.lorentz_spec is not None
+    np.testing.assert_allclose(
+        np.asarray(via_api.eps_r),
+        np.asarray(via_public.eps_r),
+    )
+    np.testing.assert_allclose(
+        np.asarray(via_api.run_time_series()),
+        np.asarray(via_public.run_time_series()),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+def test_phase1_lorentz_inputs_require_lorentz_spec_metadata():
+    sim = _make_lorentz_supported_phase1_sim()
+    broken = replace(sim.build_hybrid_phase1_inputs(n_steps=18), lorentz_spec=None)
+
+    assert not broken.supported
+    assert "Lorentz reconstruction metadata" in broken.reason_text
+    with pytest.raises(ValueError, match="Lorentz reconstruction metadata"):
+        broken.require_context()
+    prepared = broken.prepare()
+    assert not prepared.supported
+    assert prepared.context is None
+
+
+def test_phase1_hybrid_drude_remains_unsupported():
+    sim = _make_drude_unsupported_phase1_sim()
+    with pytest.raises(ValueError, match="Drude"):
+        sim.forward_hybrid_phase1(n_steps=12, fallback="raise")
+
+
+def test_phase1_hybrid_mixed_dispersion_remains_unsupported():
+    sim = _make_mixed_dispersion_unsupported_phase1_sim()
+    with pytest.raises(ValueError, match="mixed Debye\\+Lorentz"):
         sim.forward_hybrid_phase1(n_steps=12, fallback="raise")
 
 
@@ -4272,10 +4697,17 @@ def test_phase1_top_level_lumped_port_public_family_matches_explicit_n_steps_whe
 
 
 
-def test_phase1_top_level_lorentz_public_family_matches_explicit_n_steps_when_omitted():
+def test_phase1_top_level_drude_public_family_matches_explicit_n_steps_when_omitted():
     _assert_top_level_unsupported_public_family_matches_explicit_n_steps_when_omitted(
-        _make_lorentz_unsupported_phase1_sim(),
-        expected_error="Lorentz",
+        _make_drude_unsupported_phase1_sim(),
+        expected_error="Drude",
+    )
+
+
+def test_phase1_top_level_mixed_dispersion_public_family_matches_explicit_n_steps_when_omitted():
+    _assert_top_level_unsupported_public_family_matches_explicit_n_steps_when_omitted(
+        _make_mixed_dispersion_unsupported_phase1_sim(),
+        expected_error="mixed Debye\\+Lorentz",
     )
 
 

@@ -87,7 +87,8 @@ This work should stay isolated from the busy main checkout.
 - keep API and seam-owned wrapper/prep signatures explicitly annotated so later subsystem expansion can reuse a clearer typed contract instead of rediscovering wrapper intent from implementation details
 
 ### Phase 3 — subsystem expansion
-- add CPML, Debye, Lorentz, then NTFF only if still needed
+- extend beyond the now-supported CPML / Debye / Lorentz time-series seam only where evidence still justifies it
+- prioritize remaining unsupported physics such as NTFF / waveguide-port accumulation and other non-time-series surfaces only if still needed
 
 ### Phase 4 — optimization integration
 - integrate the hybrid path selectively into `optimize.py` / `topology.py`
@@ -109,7 +110,7 @@ Phase 1 is:
 - unsupported physics paths are explicitly denied or routed back to pure AD
 - memory-evidence plan exists on the real carry
 
-### Phase 1 non-goals
+### Original Phase 1 POC non-goals
 
 - CPML adjoint
 - Debye/Lorentz adjoint
@@ -117,6 +118,25 @@ Phase 1 is:
 - Strategy B
 - full optimize/topology integration
 - production API stabilization
+
+These were the **initial POC limits**. The current Phase 2 seam-hardening work has already moved beyond that original narrow forward surface.
+
+## Current execution snapshot
+
+- the seam regression floor is currently `pytest -q tests/test_hybrid_adjoint_phase1.py` → `215 passed`
+- repeated supported-path setup in the regression file has been consolidated behind smaller reusable helpers
+- the current supported replay seam now covers:
+  - uniform grids
+  - PEC and CPML boundaries
+  - lossless, Debye-dispersive, and Lorentz-dispersive materials with zero conductivity
+  - point-source / point-probe `time_series` objectives
+- the current explicit unsupported / rejected surface still includes:
+  - non-uniform grids
+  - periodic / Floquet-style paths
+  - mixed Debye+Lorentz dispersion
+  - Drude-shaped Lorentz poles
+  - NTFF / waveguide-port accumulation
+  - lumped or wire-port source paths
 
 ## Core tradeoff
 

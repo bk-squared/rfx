@@ -239,6 +239,7 @@ class _PreparedUniformForwardInputs(NamedTuple):
     probes: list
     debye_spec: tuple | None
     debye: tuple | None
+    lorentz_spec: tuple | None
     lorentz: tuple | None
     ntff_box: object | None
     waveguide_ports: list
@@ -4133,6 +4134,7 @@ class Simulation:
             probes=probes,
             debye_spec=debye_spec,
             debye=debye,
+            lorentz_spec=lorentz_spec,
             lorentz=lorentz,
             ntff_box=ntff_box,
             waveguide_ports=waveguide_ports,
