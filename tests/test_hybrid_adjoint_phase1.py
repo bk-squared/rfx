@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
 import jax
 import jax.numpy as jnp
 
-from rfx import Box, DebyePole, GaussianPulse
+from rfx import Box, DebyePole, GaussianPulse, lorentz_pole
 from rfx.api import Simulation
 from rfx.hybrid_adjoint import phase1_forward_result
 
@@ -154,14 +156,33 @@ def _make_cpml_lossy_unsupported_phase1_sim() -> Simulation:
     return sim
 
 
-def _make_debye_unsupported_phase1_sim() -> Simulation:
-    sim = _make_phase1_sim()
+def _make_debye_supported_phase1_sim(
+    *,
+    boundary: str = "pec",
+    pec_faces: set[str] | None = None,
+) -> Simulation:
+    sim = _make_phase1_sim(boundary=boundary, pec_faces=pec_faces)
     sim.add_material(
         "disp",
         eps_r=2.0,
         debye_poles=[DebyePole(delta_eps=1.0, tau=8e-12)],
     )
     sim.add(Box((0.006, 0.006, 0.006), (0.009, 0.009, 0.009)), material="disp")
+    return sim
+
+
+def _make_cpml_debye_supported_phase1_sim() -> Simulation:
+    return _make_debye_supported_phase1_sim(boundary="cpml")
+
+
+def _make_lorentz_unsupported_phase1_sim() -> Simulation:
+    sim = _make_phase1_sim()
+    sim.add_material(
+        "disp_l",
+        eps_r=2.0,
+        lorentz_poles=[lorentz_pole(delta_eps=1.0, omega_0=2.0e10, delta=1.0e9)],
+    )
+    sim.add(Box((0.006, 0.006, 0.006), (0.009, 0.009, 0.009)), material="disp_l")
     return sim
 
 
@@ -256,9 +277,9 @@ def _resolved_n_steps(sim: Simulation, *, num_periods: float = 8.0) -> int:
 
 def _unsupported_phase1_cases() -> list[tuple[Simulation, str]]:
     return [
-        (_make_debye_unsupported_phase1_sim(), "Debye"),
         (_make_lumped_port_unsupported_phase1_sim(), "add_source"),
         (_make_cpml_lossy_unsupported_phase1_sim(), "lossy materials"),
+        (_make_lorentz_unsupported_phase1_sim(), "Lorentz"),
         (_make_nonuniform_unsupported_phase1_sim(), "non-uniform grids are unsupported"),
     ]
 
@@ -1283,7 +1304,7 @@ def test_phase1_report_from_prepared_runner_state_matches_public_report_surface(
 
 def test_phase1_prepared_from_inputs_matches_prepare_function_surface():
     n_steps = 18
-    sim, inputs = _make_supported_phase1_inputs(n_steps=n_steps)
+    sim, inputs = _make_supported_phase1_inputs()
 
     from rfx.hybrid_adjoint import Phase1HybridPrepared, prepare_phase1_hybrid
 
@@ -1666,7 +1687,7 @@ def test_phase1_input_surface_helper_aliases_match_methods_for_unsupported_nonun
 
 def test_phase1_forward_from_inputs_matches_direct_forward():
     n_steps = 18
-    sim, inputs = _make_supported_phase1_inputs(n_steps=n_steps)
+    sim, inputs = _make_supported_phase1_inputs()
 
     direct = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
     via_inputs = sim.forward_hybrid_phase1_from_inputs(inputs)
@@ -1794,7 +1815,7 @@ def test_phase1_input_forward_api_with_eps_override_matches_helper_when_n_steps_
 
 def test_phase1_forward_matches_input_builder_path():
     n_steps = 18
-    sim, inputs = _make_supported_phase1_inputs(n_steps=n_steps)
+    sim, inputs = _make_supported_phase1_inputs()
 
     direct = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
     via_inputs = inputs.forward_result()
@@ -1912,6 +1933,7 @@ def test_phase1_support_reasons_helper_accepts_supported_cpml_fixture():
         materials=prepared_runner.materials,
         sources=prepared_runner.raw_phase1_sources,
         probes=prepared_runner.probes,
+        debye_spec=None,
         debye=None,
         lorentz=None,
         ntff_box=None,
@@ -3733,7 +3755,7 @@ def test_phase1_prepare_bundle_grid_and_eps_accessors():
 
 def test_phase1_forward_matches_prepared_bundle_path():
     n_steps = 18
-    sim, prepared = _make_supported_phase1_prepared_bundle(n_steps=n_steps)
+    sim, prepared = _make_supported_phase1_prepared_bundle()
 
     direct = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
     via_prepared = sim.forward_hybrid_phase1_from_prepared(prepared)
@@ -4036,39 +4058,103 @@ def test_phase1_top_level_cpml_supported_family_matches_explicit_n_steps_when_om
     )
 
 
-def test_phase1_hybrid_debye_raise_matches_explicit_n_steps_when_omitted():
-    _assert_top_level_unsupported_forward_matches_explicit_n_steps_when_omitted(
-        _make_debye_unsupported_phase1_sim(),
-        expected_error="Debye",
+def test_phase1_top_level_debye_supported_family_matches_explicit_n_steps_when_omitted():
+    sim = _make_debye_supported_phase1_sim()
+    _assert_top_level_supported_family_matches_explicit_n_steps_when_omitted(sim)
+    implicit_inputs = sim.build_hybrid_phase1_inputs(num_periods=8.0)
+    explicit_inputs = sim.build_hybrid_phase1_inputs(n_steps=_resolved_n_steps(sim, num_periods=8.0))
+    assert implicit_inputs.debye is not None
+    assert explicit_inputs.debye is not None
+
+
+def test_phase1_top_level_cpml_debye_supported_family_matches_explicit_n_steps_when_omitted():
+    sim = _make_cpml_debye_supported_phase1_sim()
+    _assert_top_level_supported_family_matches_explicit_n_steps_when_omitted(sim)
+    implicit_prepared = sim.prepare_hybrid_phase1(num_periods=8.0)
+    explicit_prepared = sim.prepare_hybrid_phase1(n_steps=_resolved_n_steps(sim, num_periods=8.0))
+    assert implicit_prepared.context is not None
+    assert explicit_prepared.context is not None
+
+
+def test_phase1_hybrid_debye_forward_matches_pure_forward():
+    _assert_hybrid_forward_matches_pure_forward(_make_debye_supported_phase1_sim())
+
+
+def test_phase1_hybrid_cpml_debye_forward_matches_pure_forward():
+    _assert_hybrid_forward_matches_pure_forward(_make_cpml_debye_supported_phase1_sim())
+
+
+def test_phase1_hybrid_debye_gradient_matches_pure_ad_inside_debye_mask():
+    sim = _make_debye_supported_phase1_sim()
+    grid = sim._build_grid()
+    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    _assert_single_cell_hybrid_gradient_matches_pure_ad(
+        sim,
+        grid,
+        base_materials,
+        n_steps=18,
+    )
+
+
+def test_phase1_hybrid_cpml_debye_gradient_matches_pure_ad_inside_debye_mask():
+    sim = _make_cpml_debye_supported_phase1_sim()
+    grid = sim._build_grid()
+    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    _assert_single_cell_hybrid_gradient_matches_pure_ad(
+        sim,
+        grid,
+        base_materials,
+        n_steps=18,
+    )
+
+
+def test_phase1_debye_inventory_includes_debye_carry_fields():
+    sim = _make_debye_supported_phase1_sim()
+    report = sim.inspect_hybrid_phase1(n_steps=18)
+
+    assert report.supported
+    assert report.inventory is not None
+    assert {"debye.px", "debye.py", "debye.pz"} <= set(report.inventory.carry_fields)
+    assert "debye_spec" in report.inventory.replay_inputs
+    assert "final_debye_state" in report.inventory.replay_outputs
+
+
+def test_phase1_debye_context_with_eps_override_matches_top_level_forward():
+    sim = _make_debye_supported_phase1_sim()
+    grid = sim._build_grid()
+    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    eps_override = _single_cell_eps(grid, base_materials.eps_r, jnp.float32(0.05))
+    context = sim.build_hybrid_phase1_context(n_steps=18)
+
+    via_context = context.run_time_series(eps_override=eps_override)
+    via_top_level = sim.forward_hybrid_phase1(
+        n_steps=18,
+        eps_override=eps_override,
         fallback="raise",
     )
 
-
-
-def test_phase1_hybrid_debye_fallback_matches_explicit_n_steps_when_omitted():
-    _assert_top_level_unsupported_forward_matches_explicit_n_steps_when_omitted(
-        _make_debye_unsupported_phase1_sim(),
-        expected_error="Debye",
-        fallback="pure_ad",
-    )
-
-
-
-def test_phase1_hybrid_rejects_or_falls_back_on_debye():
-    sim = _make_debye_unsupported_phase1_sim()
-    n_steps = 12
-
-    with pytest.raises(ValueError, match="Debye"):
-        sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
-
-    fallback = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="pure_ad")
-    baseline = sim.forward(n_steps=n_steps, checkpoint=True)
     np.testing.assert_allclose(
-        np.asarray(fallback.time_series),
-        np.asarray(baseline.time_series),
+        np.asarray(via_context),
+        np.asarray(via_top_level.time_series),
         rtol=1e-6,
         atol=1e-12,
     )
+
+
+def test_phase1_debye_inputs_require_debye_spec_metadata():
+    sim = _make_debye_supported_phase1_sim()
+    broken = replace(sim.build_hybrid_phase1_inputs(n_steps=18), debye_spec=None)
+
+    assert not broken.supported
+    assert "Debye reconstruction metadata" in broken.reason_text
+    with pytest.raises(ValueError, match="Debye reconstruction metadata"):
+        broken.require_context()
+
+
+def test_phase1_hybrid_lorentz_remains_unsupported():
+    sim = _make_lorentz_unsupported_phase1_sim()
+    with pytest.raises(ValueError, match="Lorentz"):
+        sim.forward_hybrid_phase1(n_steps=12, fallback="raise")
 
 
 def test_phase1_nonuniform_unsupported_classmethods_match_helper_functions():
@@ -4186,10 +4272,10 @@ def test_phase1_top_level_lumped_port_public_family_matches_explicit_n_steps_whe
 
 
 
-def test_phase1_top_level_debye_public_family_matches_explicit_n_steps_when_omitted():
+def test_phase1_top_level_lorentz_public_family_matches_explicit_n_steps_when_omitted():
     _assert_top_level_unsupported_public_family_matches_explicit_n_steps_when_omitted(
-        _make_debye_unsupported_phase1_sim(),
-        expected_error="Debye",
+        _make_lorentz_unsupported_phase1_sim(),
+        expected_error="Lorentz",
     )
 
 
@@ -4367,22 +4453,20 @@ def test_phase1_prepare_bundle_require_context_rejects_unsupported_bundle():
 
 
 def test_phase1_api_forward_from_inspected_runner_state_rejects_unsupported_nonuniform_case():
-    n_steps = 18
-    sim, grid, prepared_runner, report = _inspect_nonuniform_inspected_runner_unsupported_phase1(n_steps=n_steps)
+    sim, grid, prepared_runner, report = _inspect_nonuniform_inspected_runner_unsupported_phase1()
 
     with pytest.raises(ValueError, match="non-uniform grids are unsupported"):
         sim.forward_hybrid_phase1_from_inspected_runner_state(
             grid,
             prepared_runner,
             report,
-            n_steps=n_steps,
+            n_steps=18,
         )
 
 
 
 def test_phase1_forward_from_inspected_runner_state_rejects_unsupported_nonuniform_case():
-    n_steps = 18
-    sim, grid, prepared_runner, report = _inspect_nonuniform_inspected_runner_unsupported_phase1(n_steps=n_steps)
+    sim, grid, prepared_runner, report = _inspect_nonuniform_inspected_runner_unsupported_phase1()
 
     from rfx.hybrid_adjoint import forward_phase1_hybrid_from_inspected_runner_state
 
@@ -4393,7 +4477,7 @@ def test_phase1_forward_from_inspected_runner_state_rejects_unsupported_nonunifo
             grid=grid,
             prepared=prepared_runner,
             report=report,
-            n_steps=n_steps,
+            n_steps=18,
         )
 
 
@@ -4457,8 +4541,7 @@ def test_phase1_input_builder_preserves_unsupported_uniform_case():
 
 
 def test_phase1_input_builder_run_surface_matches_prepare_bundle():
-    n_steps = 18
-    sim, inputs = _make_supported_phase1_inputs(n_steps=n_steps)
+    sim, inputs = _make_supported_phase1_inputs()
     prepared = inputs.prepare()
 
     np.testing.assert_allclose(

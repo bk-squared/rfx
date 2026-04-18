@@ -237,6 +237,7 @@ class _PreparedUniformForwardInputs(NamedTuple):
     sources: list
     raw_phase1_sources: tuple[tuple[int, int, int, str, jnp.ndarray], ...]
     probes: list
+    debye_spec: tuple | None
     debye: tuple | None
     lorentz: tuple | None
     ntff_box: object | None
@@ -4130,6 +4131,7 @@ class Simulation:
             sources=sources,
             raw_phase1_sources=tuple(raw_phase1_sources),
             probes=probes,
+            debye_spec=debye_spec,
             debye=debye,
             lorentz=lorentz,
             ntff_box=ntff_box,

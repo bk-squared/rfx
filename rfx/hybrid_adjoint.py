@@ -1,11 +1,11 @@
-"""Hybrid adjoint helpers for the staged uniform/lossless time-series seam.
+"""Hybrid adjoint helpers for the staged uniform time-series seam.
 
 This module currently supports the narrow staged seam used by the hybrid
 adjoint proof-of-concept and Phase 3A expansion work:
 
 - uniform grid
 - non-periodic
-- lossless materials
+- lossless or Debye-dispersive materials with zero conductivity
 - point-source / point-probe time-series objectives
 - PEC boundaries
 - CPML boundaries (including CPML + per-face PEC overrides)
@@ -44,6 +44,7 @@ from rfx.boundaries.cpml import (
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_faces
 from rfx.grid import Grid
+from rfx.materials.debye import DebyeCoeffs, DebyeState, init_debye, update_e_debye
 from rfx.simulation import ProbeSpec, SourceSpec
 
 
@@ -77,6 +78,7 @@ class Phase1HybridPreparedRunnerState:
     sources: list | tuple
     raw_phase1_sources: tuple[tuple[int, int, int, str, jnp.ndarray], ...]
     probes: list | tuple
+    debye_spec: tuple | None
     debye: tuple | None
     lorentz: tuple | None
     ntff_box: object | None
@@ -94,6 +96,7 @@ class Phase1HybridPreparedRunnerState:
             sources=prepared.sources,
             raw_phase1_sources=prepared.raw_phase1_sources,
             probes=prepared.probes,
+            debye_spec=prepared.debye_spec,
             debye=prepared.debye,
             lorentz=prepared.lorentz,
             ntff_box=prepared.ntff_box,
@@ -133,6 +136,7 @@ class Phase1HybridContext:
     eps_r: jnp.ndarray
     mu_r: jnp.ndarray
     zero_sigma: jnp.ndarray
+    debye_spec: tuple | None
     cpml_axes: str
     pec_axes: str
     pec_faces: tuple[str, ...]
@@ -169,6 +173,15 @@ class Phase1HybridContext:
         carry_arrays: list[tuple[str, jnp.ndarray]] = list(zip(carry_fields, initial_state))
         replay_inputs = ["eps_r", "mu_r", "source_waveforms_raw"]
         replay_outputs = ["time_series", "final_fields"]
+        debye_spec = inputs.debye_spec
+        if debye_spec is not None:
+            _, initial_debye_state = _runtime_debye(inputs.grid.dt, inputs.materials, debye_spec)
+            carry_arrays.extend(
+                (f"debye.{name}", arr)
+                for name, arr in zip(initial_debye_state._fields, initial_debye_state)
+            )
+            replay_inputs.append("debye_spec")
+            replay_outputs.append("final_debye_state")
         if boundary == "cpml":
             cpml_params, initial_cpml_state = init_cpml(inputs.grid, pec_faces=set(pec_faces))
             carry_arrays.extend(
@@ -197,6 +210,7 @@ class Phase1HybridContext:
             eps_r=inputs.materials.eps_r,
             mu_r=inputs.materials.mu_r,
             zero_sigma=jnp.zeros_like(inputs.materials.sigma),
+            debye_spec=debye_spec,
             cpml_axes=cpml_axes,
             pec_axes=inputs.pec_axes,
             pec_faces=pec_faces,
@@ -270,6 +284,7 @@ class Phase1HybridInputs:
     materials: MaterialArrays | None
     raw_sources: list[tuple[int, int, int, str, jnp.ndarray]] | tuple[tuple[int, int, int, str, jnp.ndarray], ...]
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...]
+    debye_spec: tuple | None
     debye: tuple | None
     lorentz: tuple | None
     ntff_box: object | None
@@ -297,6 +312,7 @@ class Phase1HybridInputs:
             materials=None,
             raw_sources=(),
             probes=(),
+            debye_spec=None,
             debye=None,
             lorentz=None,
             ntff_box=None,
@@ -335,6 +351,7 @@ class Phase1HybridInputs:
             materials=prepared.materials,
             raw_sources=prepared.raw_phase1_sources,
             probes=prepared.probes,
+            debye_spec=prepared.debye_spec,
             debye=prepared.debye,
             lorentz=prepared.lorentz,
             ntff_box=prepared.ntff_box,
@@ -466,13 +483,14 @@ class Phase1HybridInspection:
         if inputs.report_override is not None:
             return inputs.report_override
         report = inspect_phase1_hybrid(
-            boundary=inputs.boundary,
-            periodic=inputs.periodic,
-            materials=inputs.materials,
-            raw_sources=inputs.raw_sources,
-            probes=inputs.probes,
-            debye=inputs.debye,
-            lorentz=inputs.lorentz,
+                boundary=inputs.boundary,
+                periodic=inputs.periodic,
+                materials=inputs.materials,
+                raw_sources=inputs.raw_sources,
+                probes=inputs.probes,
+                debye_spec=inputs.debye_spec,
+                debye=inputs.debye,
+                lorentz=inputs.lorentz,
             ntff_box=inputs.ntff_box,
             waveguide_ports=inputs.waveguide_ports,
             pec_mask=inputs.pec_mask,
@@ -720,6 +738,7 @@ def phase1_hybrid_support_reasons(
     materials: MaterialArrays,
     sources: list[SourceSpec] | tuple[SourceSpec, ...] | None,
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...] | None,
+    debye_spec: tuple | None,
     debye: tuple | None,
     lorentz: tuple | None,
     ntff_box: object | None,
@@ -736,8 +755,8 @@ def phase1_hybrid_support_reasons(
         reasons.append(f"boundary={boundary!r} is unsupported")
     if periodic != (False, False, False):
         reasons.append("periodic axes are unsupported")
-    if debye is not None:
-        reasons.append("Debye dispersion is unsupported")
+    if debye is not None and debye_spec is None:
+        reasons.append("Debye reconstruction metadata is unavailable")
     if lorentz is not None:
         reasons.append("Lorentz dispersion is unsupported")
     if ntff_box is not None:
@@ -946,6 +965,7 @@ def inspect_phase1_hybrid(
     materials: MaterialArrays,
     raw_sources: list[tuple[int, int, int, str, jnp.ndarray]] | tuple[tuple[int, int, int, str, jnp.ndarray], ...],
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...],
+    debye_spec: tuple | None,
     debye: tuple | None,
     lorentz: tuple | None,
     ntff_box: object | None,
@@ -968,6 +988,7 @@ def inspect_phase1_hybrid(
         materials=materials,
         sources=raw_sources,
         probes=probes,
+        debye_spec=debye_spec,
         debye=debye,
         lorentz=lorentz,
         ntff_box=ntff_box,
@@ -986,6 +1007,7 @@ def inspect_phase1_hybrid(
                 materials=materials,
                 raw_sources=raw_sources,
                 probes=probes,
+                debye_spec=debye_spec,
                 debye=debye,
                 lorentz=lorentz,
                 ntff_box=ntff_box,
@@ -1096,6 +1118,7 @@ def build_phase1_hybrid_context(
     raw_sources: list[tuple[int, int, int, str, jnp.ndarray]] | tuple[tuple[int, int, int, str, jnp.ndarray], ...],
     probes: list[ProbeSpec] | tuple[ProbeSpec, ...],
     pec_axes: str,
+    debye_spec: tuple | None = None,
     boundary: str = "pec",
     cpml_axes: str | None = None,
     pec_faces: tuple[str, ...] | None = None,
@@ -1109,6 +1132,7 @@ def build_phase1_hybrid_context(
             materials=materials,
             raw_sources=raw_sources,
             probes=probes,
+            debye_spec=debye_spec,
             debye=None,
             lorentz=None,
             ntff_box=None,
@@ -1132,6 +1156,27 @@ def run_phase1_forward_time_series(
 
     materials = _materials_from_eps(context, eps_r)
     src_waveforms = _source_waveforms_from_eps(context, eps_r)
+    if context.debye_spec is not None:
+        debye_coeffs, debye_state = _runtime_debye(context.dt, materials, context.debye_spec)
+        if context.boundary == "cpml":
+            _, _, _, time_series = _run_uniform_debye_cpml_time_series(
+                context,
+                materials,
+                debye_coeffs,
+                debye_state,
+                src_waveforms,
+            )
+            return time_series
+        if context.boundary == "pec":
+            _, _, time_series = _run_uniform_debye_pec_time_series(
+                context,
+                materials,
+                debye_coeffs,
+                debye_state,
+                src_waveforms,
+            )
+            return time_series
+        raise ValueError(f"boundary={context.boundary!r} is unsupported")
     if context.boundary == "cpml":
         _, _, time_series = _run_uniform_lossless_cpml_time_series(context, materials, src_waveforms)
         return time_series
@@ -1152,6 +1197,37 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
     def _forward_fwd(eps_r: jnp.ndarray):
         materials = _materials_from_eps(context, eps_r)
         src_waveforms = _source_waveforms_from_eps(context, eps_r)
+        if context.debye_spec is not None:
+            debye_coeffs, debye_state = _runtime_debye(context.dt, materials, context.debye_spec)
+            if context.boundary == "cpml":
+                _, _, _, time_series, states_before, cpml_states_before, debye_states_before = (
+                    _run_uniform_debye_cpml_time_series(
+                        context,
+                        materials,
+                        debye_coeffs,
+                        debye_state,
+                        src_waveforms,
+                        return_trace=True,
+                    )
+                )
+                return time_series, (
+                    eps_r,
+                    states_before,
+                    cpml_states_before,
+                    debye_states_before,
+                    context.src_waveforms_raw,
+                )
+            if context.boundary == "pec":
+                _, _, time_series, states_before, debye_states_before = _run_uniform_debye_pec_time_series(
+                    context,
+                    materials,
+                    debye_coeffs,
+                    debye_state,
+                    src_waveforms,
+                    return_trace=True,
+                )
+                return time_series, (eps_r, states_before, debye_states_before, context.src_waveforms_raw)
+            raise ValueError(f"boundary={context.boundary!r} is unsupported")
         if context.boundary == "cpml":
             _, _, time_series, states_before, cpml_states_before = _run_uniform_lossless_cpml_time_series(
                 context,
@@ -1169,6 +1245,107 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
         return time_series, (eps_r, states_before, context.src_waveforms_raw)
 
     def _forward_bwd(res, probe_bar: jnp.ndarray):
+        if context.debye_spec is not None and context.boundary == "cpml":
+            eps_r, states_before, cpml_states_before, debye_states_before, raw_src_waveforms = res
+            zero_state = _zeros_like_state(context.initial_state)
+            zero_cpml = _zero_cpml_state(context.grid)
+            zero_debye = _zero_debye_state(
+                _runtime_debye(context.dt, _materials_from_eps(context, eps_r), context.debye_spec)[1]
+            )
+            zero_eps = jnp.zeros_like(eps_r)
+
+            def reverse_step(carry, xs):
+                lambda_next, lambda_cpml_next, lambda_debye_next, grad_eps = carry
+                state_before, cpml_before, debye_before, raw_src_vals, probe_cot = xs
+
+                def step_from_eps(state, cpml_state, debye_state, eps_local):
+                    materials_local = _materials_from_eps(context, eps_local)
+                    debye_coeffs, _ = _runtime_debye(
+                        context.dt,
+                        materials_local,
+                        context.debye_spec,
+                    )
+                    return _uniform_debye_cpml_step(
+                        state,
+                        cpml_state,
+                        debye_state,
+                        _source_values_from_eps(context, eps_local, raw_src_vals),
+                        materials_local,
+                        debye_coeffs,
+                        context.grid,
+                        context.cpml_params,
+                        context.cpml_axes,
+                        context.pec_axes,
+                        context.pec_faces,
+                        context.src_meta,
+                        context.prb_meta,
+                    )
+
+                _, step_vjp = jax.vjp(step_from_eps, state_before, cpml_before, debye_before, eps_r)
+                lambda_before, lambda_cpml_before, lambda_debye_before, grad_eps_step = step_vjp(
+                    (lambda_next, lambda_cpml_next, lambda_debye_next, probe_cot)
+                )
+                return (
+                    lambda_before,
+                    lambda_cpml_before,
+                    lambda_debye_before,
+                    grad_eps + grad_eps_step,
+                ), None
+
+            (_, _, _, grad_eps), _ = jax.lax.scan(
+                reverse_step,
+                (zero_state, zero_cpml, zero_debye, zero_eps),
+                (states_before, cpml_states_before, debye_states_before, raw_src_waveforms, probe_bar),
+                reverse=True,
+            )
+            return (grad_eps,)
+
+        if context.debye_spec is not None and context.boundary == "pec":
+            eps_r, states_before, debye_states_before, raw_src_waveforms = res
+            zero_state = _zeros_like_state(context.initial_state)
+            zero_debye = _zero_debye_state(
+                _runtime_debye(context.dt, _materials_from_eps(context, eps_r), context.debye_spec)[1]
+            )
+            zero_eps = jnp.zeros_like(eps_r)
+
+            def reverse_step(carry, xs):
+                lambda_next, lambda_debye_next, grad_eps = carry
+                state_before, debye_before, raw_src_vals, probe_cot = xs
+
+                def step_from_eps(state, debye_state, eps_local):
+                    materials_local = _materials_from_eps(context, eps_local)
+                    debye_coeffs, _ = _runtime_debye(
+                        context.dt,
+                        materials_local,
+                        context.debye_spec,
+                    )
+                    return _uniform_debye_pec_step(
+                        state,
+                        debye_state,
+                        _source_values_from_eps(context, eps_local, raw_src_vals),
+                        materials_local,
+                        debye_coeffs,
+                        context.grid,
+                        context.pec_axes,
+                        context.pec_faces,
+                        context.src_meta,
+                        context.prb_meta,
+                    )
+
+                _, step_vjp = jax.vjp(step_from_eps, state_before, debye_before, eps_r)
+                lambda_before, lambda_debye_before, grad_eps_step = step_vjp(
+                    (lambda_next, lambda_debye_next, probe_cot)
+                )
+                return (lambda_before, lambda_debye_before, grad_eps + grad_eps_step), None
+
+            (_, _, grad_eps), _ = jax.lax.scan(
+                reverse_step,
+                (zero_state, zero_debye, zero_eps),
+                (states_before, debye_states_before, raw_src_waveforms, probe_bar),
+                reverse=True,
+            )
+            return (grad_eps,)
+
         if context.boundary == "cpml":
             eps_r, states_before, cpml_states_before, raw_src_waveforms = res
             zero_state = _zeros_like_state(context.initial_state)
@@ -1310,6 +1487,104 @@ def _run_uniform_lossless_cpml_time_series(
     return final_state, final_cpml_state, outputs
 
 
+def _run_uniform_debye_pec_time_series(
+    context: Phase1HybridContext,
+    materials: MaterialArrays,
+    debye_coeffs: DebyeCoeffs,
+    debye_state: DebyeState,
+    src_waveforms: jnp.ndarray,
+    *,
+    return_trace: bool = False,
+):
+    """Run the extracted time-series seam with Debye and PEC enforcement."""
+
+    def body(carry, src_vals):
+        state, debye_state_local = carry
+        next_state, next_debye_state, probe_out = _uniform_debye_pec_step(
+            state,
+            debye_state_local,
+            src_vals,
+            materials,
+            debye_coeffs,
+            context.grid,
+            context.pec_axes,
+            context.pec_faces,
+            context.src_meta,
+            context.prb_meta,
+        )
+        if return_trace:
+            return (next_state, next_debye_state), (probe_out, state, debye_state_local)
+        return (next_state, next_debye_state), probe_out
+
+    (final_state, final_debye_state), outputs = jax.lax.scan(
+        body,
+        (context.initial_state, debye_state),
+        src_waveforms,
+    )
+    if return_trace:
+        time_series, states_before, debye_states_before = outputs
+        return final_state, final_debye_state, time_series, states_before, debye_states_before
+    return final_state, final_debye_state, outputs
+
+
+def _run_uniform_debye_cpml_time_series(
+    context: Phase1HybridContext,
+    materials: MaterialArrays,
+    debye_coeffs: DebyeCoeffs,
+    debye_state: DebyeState,
+    src_waveforms: jnp.ndarray,
+    *,
+    return_trace: bool = False,
+):
+    """Run the extracted time-series seam with Debye, CPML, and PEC enforcement."""
+
+    assert context.cpml_params is not None
+
+    def body(carry, src_vals):
+        state, cpml_state, debye_state_local = carry
+        next_state, next_cpml_state, next_debye_state, probe_out = _uniform_debye_cpml_step(
+            state,
+            cpml_state,
+            debye_state_local,
+            src_vals,
+            materials,
+            debye_coeffs,
+            context.grid,
+            context.cpml_params,
+            context.cpml_axes,
+            context.pec_axes,
+            context.pec_faces,
+            context.src_meta,
+            context.prb_meta,
+        )
+        if return_trace:
+            return (next_state, next_cpml_state, next_debye_state), (
+                probe_out,
+                state,
+                cpml_state,
+                debye_state_local,
+            )
+        return (next_state, next_cpml_state, next_debye_state), probe_out
+
+    (final_state, final_cpml_state, final_debye_state), outputs = jax.lax.scan(
+        body,
+        (context.initial_state, _zero_cpml_state(context.grid), debye_state),
+        src_waveforms,
+    )
+    if return_trace:
+        time_series, states_before, cpml_states_before, debye_states_before = outputs
+        return (
+            final_state,
+            final_cpml_state,
+            final_debye_state,
+            time_series,
+            states_before,
+            cpml_states_before,
+            debye_states_before,
+        )
+    return final_state, final_cpml_state, final_debye_state, outputs
+
+
 def _uniform_lossless_pec_step(
     state: Phase1FieldState,
     src_vals: jnp.ndarray,
@@ -1369,6 +1644,91 @@ def _uniform_lossless_cpml_step(
     return next_state, next_cpml_state, probe_out
 
 
+def _uniform_debye_pec_step(
+    state: Phase1FieldState,
+    debye_state: DebyeState,
+    src_vals: jnp.ndarray,
+    materials: MaterialArrays,
+    debye_coeffs: DebyeCoeffs,
+    grid: Grid,
+    pec_axes: str,
+    pec_faces: tuple[str, ...],
+    src_meta: tuple[tuple[int, int, int, str], ...],
+    prb_meta: tuple[tuple[int, int, int, str], ...],
+) -> tuple[Phase1FieldState, DebyeState, jnp.ndarray]:
+    """Extracted Debye scan step: Yee H + Debye E + PEC + sources + probes."""
+
+    fdtd = update_h(_to_fdtd(state), materials, grid.dt, grid.dx, periodic=(False, False, False))
+    fdtd, next_debye_state = update_e_debye(
+        fdtd,
+        debye_coeffs,
+        debye_state,
+        grid.dt,
+        grid.dx,
+        periodic=(False, False, False),
+    )
+    if pec_axes:
+        fdtd = apply_pec(fdtd, axes=pec_axes)
+    if pec_faces:
+        fdtd = apply_pec_faces(fdtd, pec_faces)
+    next_state = _from_fdtd(fdtd)
+    next_state = _inject_sources(next_state, src_vals, src_meta)
+    probe_out = _sample_probes(next_state, prb_meta)
+    return next_state, next_debye_state, probe_out
+
+
+def _uniform_debye_cpml_step(
+    state: Phase1FieldState,
+    cpml_state: CPMLState,
+    debye_state: DebyeState,
+    src_vals: jnp.ndarray,
+    materials: MaterialArrays,
+    debye_coeffs: DebyeCoeffs,
+    grid: Grid,
+    cpml_params: CPMLAxisParams,
+    cpml_axes: str,
+    pec_axes: str,
+    pec_faces: tuple[str, ...],
+    src_meta: tuple[tuple[int, int, int, str], ...],
+    prb_meta: tuple[tuple[int, int, int, str], ...],
+) -> tuple[Phase1FieldState, CPMLState, DebyeState, jnp.ndarray]:
+    """Extracted Debye+CPML scan step: Yee H + CPML + Debye E + PEC + sources + probes."""
+
+    fdtd = update_h(_to_fdtd(state), materials, grid.dt, grid.dx, periodic=(False, False, False))
+    fdtd, next_cpml_state = apply_cpml_h(
+        fdtd,
+        cpml_params,
+        cpml_state,
+        grid,
+        cpml_axes,
+        materials=materials,
+    )
+    fdtd, next_debye_state = update_e_debye(
+        fdtd,
+        debye_coeffs,
+        debye_state,
+        grid.dt,
+        grid.dx,
+        periodic=(False, False, False),
+    )
+    fdtd, next_cpml_state = apply_cpml_e(
+        fdtd,
+        cpml_params,
+        next_cpml_state,
+        grid,
+        cpml_axes,
+        materials=materials,
+    )
+    if pec_axes:
+        fdtd = apply_pec(fdtd, axes=pec_axes)
+    if pec_faces:
+        fdtd = apply_pec_faces(fdtd, pec_faces)
+    next_state = _from_fdtd(fdtd)
+    next_state = _inject_sources(next_state, src_vals, src_meta)
+    probe_out = _sample_probes(next_state, prb_meta)
+    return next_state, next_cpml_state, next_debye_state, probe_out
+
+
 def _coeffs_from_eps(context: Phase1HybridContext, eps_r: jnp.ndarray) -> UpdateCoeffs:
     materials = _materials_from_eps(context, eps_r)
     return _coeffs_from_materials(context, materials)
@@ -1384,6 +1744,16 @@ def _materials_from_eps(context: Phase1HybridContext, eps_r: jnp.ndarray) -> Mat
 
 def _coeffs_from_materials(context: Phase1HybridContext, materials: MaterialArrays) -> UpdateCoeffs:
     return precompute_coeffs(materials, context.dt, context.dx, pec_axes=context.pec_axes)
+
+
+def _runtime_debye(
+    dt: float,
+    materials: MaterialArrays,
+    debye_spec: tuple | None,
+) -> tuple[DebyeCoeffs, DebyeState]:
+    assert debye_spec is not None
+    poles, masks = debye_spec
+    return init_debye(poles, materials, dt, mask=masks)
 
 
 def _source_waveforms_from_eps(
@@ -1478,3 +1848,11 @@ def _zeros_like_state(state: Phase1FieldState) -> Phase1FieldState:
 def _zero_cpml_state(grid: Grid) -> CPMLState:
     _, cpml_state = init_cpml(grid, pec_faces=set(getattr(grid, "pec_faces", set())))
     return cpml_state
+
+
+def _zero_debye_state(state: DebyeState) -> DebyeState:
+    return DebyeState(
+        px=jnp.zeros_like(state.px),
+        py=jnp.zeros_like(state.py),
+        pz=jnp.zeros_like(state.pz),
+    )
