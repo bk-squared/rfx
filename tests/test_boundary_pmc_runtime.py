@@ -1,26 +1,31 @@
 """T7-E Phase 2 PR3 — PMC runtime physics validation.
 
-Pins the physics of ``rfx.boundaries.pmc.apply_pmc_faces``:
+Pins the mechanism of ``rfx.boundaries.pmc.apply_pmc_faces``:
 
-1. **Tangential-H-zero at the PMC face** — the scan body must leave
-   ``|H_tan|`` ≈ 0 on PMC-designated face cells at every saved step.
-2. **Energy conservation in a closed PMC box** — with all six faces PMC
-   and a localised pulse source, total field energy drifts < 5%
-   over a short run (numerical dispersion dominates the upper bound).
-3. **Mixed PMC/CPML seam stability** — a domain with PMC on z_lo and
-   CPML on z_hi runs without |E| spikes at the PMC/CPML boundary cells
-   beyond natural pulse propagation.
+1. **Tangential-H-zero at the PMC face** — direct state-field sample
+   asserts ``|H_tan|`` < 1e-20 on PMC-designated face cells after the
+   scan body runs.
+2. **Finite non-zero trace** — PMC + CPML mix produces a valid
+   probe time series.
+3. **Mixed PMC/CPML seam finite output** — no NaN/Inf when PMC and
+   CPML share an axis.
+4. **Dual-boundary Hx sample** — PMC zeros Hx at the face cell while
+   PEC leaves it free, confirming the two code paths are engaged.
+5. **Distributed-PMC rejection** — the sharded NU forward path does
+   not yet wire ``apply_pmc_faces``; ``forward(distributed=True)`` with
+   any PMC face raises ``NotImplementedError`` (mirrors TFSF /
+   waveguide-port rejection).
 
-The quarter-wave mode-ladder test (Harminv-based) is tracked as a
-follow-up validation note — the discrete PMC-PEC cavity needs
-careful source / probe setup to separate the resonant from the
-source-driven part, which is easier to do when packaged as a
-regression harness than as a unit test.
+The quantitative oracles (quarter-wave mode ladder, closed-box energy
+conservation, analytic impedance matching) are tracked as a v1.7.2
+follow-up harness — they need a source-calibrated long run that is
+unsuitable as a fast unit test.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -85,6 +90,32 @@ def test_mixed_pmc_cpml_seam_is_finite():
     sim.add_probe((0.005, 0.005, 0.006), "ez")
     ts = np.asarray(sim.run(n_steps=100).time_series)[:, 0]
     assert np.all(np.isfinite(ts))
+
+
+def test_pmc_plus_distributed_forward_raises():
+    """The distributed NU forward path does not yet wire apply_pmc_faces
+    into its sharded scan body. Until the PMC sharded hook ships
+    (v1.7.2 follow-up), requesting both PMC and distributed=True must
+    fail fast at forward(), mirroring the TFSF / waveguide rejection
+    pattern."""
+    import jax
+    dz = np.array([0.5e-3] * 10, dtype=np.float64)
+    sim = Simulation(
+        freq_max=10e9, domain=(0.01, 0.01, float(np.sum(dz))),
+        dx=0.5e-3, dz_profile=dz, cpml_layers=4,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pmc", hi="cpml")),
+    )
+    sim.add_source((0.005, 0.005, 0.002), "ez")
+    sim.add_probe((0.005, 0.005, 0.003), "ez")
+    # Construct a "multiple devices" list by reusing the single
+    # available device; the distributed dispatch path runs the reject
+    # before any sharding, so this is sufficient to exercise the guard.
+    devices = [jax.devices()[0], jax.devices()[0]]
+    with pytest.raises(NotImplementedError,
+                       match="PMC boundary faces are not supported.*distributed"):
+        sim.forward(n_steps=20, distributed=True, devices=devices,
+                    skip_preflight=True)
 
 
 def test_pmc_and_pec_produce_physically_different_h_at_face():

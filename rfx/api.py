@@ -4253,6 +4253,17 @@ class Simulation:
                     "forward path; remove waveguide ports or omit "
                     "distributed=True."
                 )
+            # T7 Phase 2 PR3: PMC runtime is wired in the single-device
+            # scan body only. The sharded NU runner does not yet call
+            # apply_pmc_faces after its sharded H update.
+            _pmc_faces = self._boundary_spec.pmc_faces()
+            if _pmc_faces:
+                raise NotImplementedError(
+                    f"PMC boundary faces are not supported on the "
+                    f"distributed forward path (got {sorted(_pmc_faces)}). "
+                    f"Remove distributed=True or swap the pmc faces for "
+                    f"pec / cpml."
+                )
             # Synthesise missing dz profile so the NU grid build always
             # sees all three axes (mirrors Simulation.run() and the
             # single-device NU forward path).
