@@ -178,12 +178,18 @@ def compute_rcs(
     # --- 2. Set up NTFF box just outside TFSF box ---
     # NTFF box must be in scattered-field region (outside TFSF box).
     # Place it `ntff_offset` cells outside the TFSF boundaries.
+    # Per-face CPML thicknesses from grid.face_layers so asymmetric
+    # cavity configurations (e.g., thin ground-plane z_lo) still keep
+    # the NTFF surface outside active-CPML cells.
+    fl = getattr(grid, "face_layers", None) or {
+        k: grid.cpml_layers for k in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+    }
     ntff_i_lo = tfsf_cfg.x_lo - ntff_offset
     ntff_i_hi = tfsf_cfg.x_hi + ntff_offset + 1
-    ntff_j_lo = cpml_layers + ntff_offset
-    ntff_j_hi = grid.ny - cpml_layers - ntff_offset
-    ntff_k_lo = cpml_layers + ntff_offset
-    ntff_k_hi = grid.nz - cpml_layers - ntff_offset
+    ntff_j_lo = fl["y_lo"] + ntff_offset
+    ntff_j_hi = grid.ny - fl["y_hi"] - ntff_offset
+    ntff_k_lo = fl["z_lo"] + ntff_offset
+    ntff_k_hi = grid.nz - fl["z_hi"] - ntff_offset
 
     # Clamp to valid range
     ntff_i_lo = max(ntff_i_lo, 1)
@@ -193,7 +199,8 @@ def compute_rcs(
     ntff_k_lo = max(ntff_k_lo, 1)
     ntff_k_hi = min(ntff_k_hi, grid.nz - 2)
 
-    ntff_box = NTFFBox(
+    ntff_box = NTFFBox.from_grid(
+        grid,
         i_lo=ntff_i_lo,
         i_hi=ntff_i_hi,
         j_lo=ntff_j_lo,

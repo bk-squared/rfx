@@ -42,6 +42,40 @@ class NTFFBox(NamedTuple):
     k_lo: int
     k_hi: int
     freqs: jnp.ndarray  # (n_freqs,) Hz
+    # Per-face CPML thickness (T7 Phase 2 — asymmetric-friendly NTFF offsets).
+    # Default to 0 so legacy callers constructing NTFFBox without from_grid()
+    # still get the pre-v1.7.4 scalar-cpml behaviour via the fallbacks below.
+    cpml_lo_x: int = 0
+    cpml_hi_x: int = 0
+    cpml_lo_y: int = 0
+    cpml_hi_y: int = 0
+    cpml_lo_z: int = 0
+    cpml_hi_z: int = 0
+
+    @classmethod
+    def from_grid(cls, grid, *, i_lo, i_hi, j_lo, j_hi, k_lo, k_hi, freqs):
+        """Build an NTFFBox with per-face CPML thicknesses pulled from
+        ``grid.face_layers``. Under symmetric face_layers (all six equal
+        grid.cpml_layers), the box is numerically identical to the legacy
+        scalar-cpml construction."""
+        fl = getattr(grid, "face_layers", None)
+        if fl is None:
+            # Grid types without face_layers (e.g. older NU grids) fall back
+            # to the scalar cpml_layers on every face.
+            scalar = int(getattr(grid, "cpml_layers", 0) or 0)
+            faces = {k: scalar for k in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")}
+        else:
+            faces = fl
+        return cls(
+            i_lo=i_lo, i_hi=i_hi, j_lo=j_lo, j_hi=j_hi, k_lo=k_lo, k_hi=k_hi,
+            freqs=freqs,
+            cpml_lo_x=int(faces["x_lo"]),
+            cpml_hi_x=int(faces["x_hi"]),
+            cpml_lo_y=int(faces["y_lo"]),
+            cpml_hi_y=int(faces["y_hi"]),
+            cpml_lo_z=int(faces["z_lo"]),
+            cpml_hi_z=int(faces["z_hi"]),
+        )
 
 
 class NTFFData(NamedTuple):
@@ -265,11 +299,17 @@ def _surface_currents(fields, axis, sign):
     return J, M
 
 
-def _face_positions(axis, idx, other_ranges, dx, cpml, dy=None, z_edges=None):
+def _face_positions(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z,
+                    dy=None, z_edges=None):
     """Build (n1, n2, 3) position array for a face.
 
     Parameters
     ----------
+    cpml_lo_x, cpml_lo_y, cpml_lo_z : int
+        Per-axis low-face CPML thicknesses; used as the physical-origin
+        offset on each axis so that physical coord 0 sits at the inner
+        edge of the lo-face CPML. Under symmetric face_layers these all
+        equal ``grid.cpml_layers`` (the pre-v1.7.4 scalar behavior).
     dy : float or None
         Y cell size. If None, uses dx (cubic cells).
     z_edges : (nz+1,) array or None
@@ -281,26 +321,27 @@ def _face_positions(axis, idx, other_ranges, dx, cpml, dy=None, z_edges=None):
     def _z_pos(k):
         if z_edges is not None:
             return z_edges[k]
-        return (k - cpml) * dx
+        return (k - cpml_lo_z) * dx
 
     if axis == 0:
         j_range, k_range = other_ranges
-        x_fixed = (idx - cpml) * dx
-        y = (np.arange(j_range[0], j_range[1]) - cpml) * dy
+        x_fixed = (idx - cpml_lo_x) * dx
+        y = (np.arange(j_range[0], j_range[1]) - cpml_lo_y) * dy
         z = np.array([_z_pos(k) for k in range(k_range[0], k_range[1])])
         Y, Z = np.meshgrid(y, z, indexing="ij")
         X = np.full_like(Y, x_fixed)
     elif axis == 1:
         i_range, k_range = other_ranges
-        x_fixed = (idx - cpml) * dy
-        x = (np.arange(i_range[0], i_range[1]) - cpml) * dx
+        # axis=1 uses dy (not dx) because idx is a y-index.
+        x_fixed = (idx - cpml_lo_y) * dy
+        x = (np.arange(i_range[0], i_range[1]) - cpml_lo_x) * dx
         z = np.array([_z_pos(k) for k in range(k_range[0], k_range[1])])
         X, Z = np.meshgrid(x, z, indexing="ij")
         Y = np.full_like(X, x_fixed)
     else:
         i_range, j_range = other_ranges
-        x = (np.arange(i_range[0], i_range[1]) - cpml) * dx
-        y = (np.arange(j_range[0], j_range[1]) - cpml) * dy
+        x = (np.arange(i_range[0], i_range[1]) - cpml_lo_x) * dx
+        y = (np.arange(j_range[0], j_range[1]) - cpml_lo_y) * dy
         X, Y = np.meshgrid(x, y, indexing="ij")
         Z = np.full_like(X, _z_pos(idx))
 
@@ -350,7 +391,13 @@ def compute_far_field(
     dx = grid.dx
     dy = getattr(grid, 'dy', dx)
     dz_arr = getattr(grid, 'dz', None)  # (nz,) for NonUniformGrid, None for Grid
-    cpml = grid.cpml_layers
+    # Per-face CPML origins come from the box when populated via
+    # NTFFBox.from_grid; direct-construction callers (fields=0) fall back
+    # to scalar grid.cpml_layers so the symmetric case stays bit-identical.
+    _legacy_cpml = int(getattr(grid, 'cpml_layers', 0) or 0)
+    cpml_lo_x = box.cpml_lo_x or _legacy_cpml
+    cpml_lo_y = box.cpml_lo_y or _legacy_cpml
+    cpml_lo_z = box.cpml_lo_z or _legacy_cpml
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
@@ -359,7 +406,7 @@ def compute_far_field(
     if dz_arr is not None:
         dz_np = np.asarray(dz_arr, dtype=np.float64)
         z_edges = np.concatenate([[0.0], np.cumsum(dz_np)])
-        z_edges = z_edges - z_edges[cpml]  # physical domain starts at 0
+        z_edges = z_edges - z_edges[cpml_lo_z]  # physical domain starts at 0
     else:
         z_edges = None
 
@@ -404,7 +451,8 @@ def compute_far_field(
         if n1 == 0 or n2 == 0:
             continue
 
-        pos = _face_positions(axis, face_idx, other_ranges, dx, cpml,
+        pos = _face_positions(axis, face_idx, other_ranges, dx,
+                              cpml_lo_x, cpml_lo_y, cpml_lo_z,
                               dy=dy, z_edges=z_edges)
         pos_flat = pos.reshape(-1, 3)     # (nc, 3)
         fields_flat = face_np.reshape(nf, -1, 4)  # (nf, nc, 4)
@@ -483,40 +531,47 @@ def _surface_currents_jax(fields, axis, sign):
     return J, M
 
 
-def _face_positions_jax(axis, idx, other_ranges, dx, cpml, dy=None, z_edges=None):
-    """JAX version of _face_positions with non-uniform z support."""
+def _face_positions_jax(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z,
+                        dy=None, z_edges=None):
+    """JAX version of _face_positions with non-uniform z support.
+
+    ``cpml_lo_*`` are per-axis low-face CPML thicknesses (see the numpy
+    twin ``_face_positions`` for semantics). Under symmetric face_layers
+    they all equal ``grid.cpml_layers``.
+    """
     if dy is None:
         dy = dx
 
     def _z_pos(k):
         if z_edges is not None:
             return z_edges[k]
-        return (k - cpml) * dx
+        return (k - cpml_lo_z) * dx
 
     if axis == 0:
         j_range, k_range = other_ranges
-        x_fixed = (idx - cpml) * dx
-        y = (jnp.arange(j_range[0], j_range[1]) - cpml) * dy
+        x_fixed = (idx - cpml_lo_x) * dx
+        y = (jnp.arange(j_range[0], j_range[1]) - cpml_lo_y) * dy
         if z_edges is not None:
             z = z_edges[k_range[0]:k_range[1]]
         else:
-            z = (jnp.arange(k_range[0], k_range[1]) - cpml) * dx
+            z = (jnp.arange(k_range[0], k_range[1]) - cpml_lo_z) * dx
         Y, Z = jnp.meshgrid(y, z, indexing="ij")
         X = jnp.full_like(Y, x_fixed)
     elif axis == 1:
         i_range, k_range = other_ranges
-        x_fixed = (idx - cpml) * dy
-        x = (jnp.arange(i_range[0], i_range[1]) - cpml) * dx
+        # axis=1 uses dy (not dx) because idx is a y-index.
+        x_fixed = (idx - cpml_lo_y) * dy
+        x = (jnp.arange(i_range[0], i_range[1]) - cpml_lo_x) * dx
         if z_edges is not None:
             z = z_edges[k_range[0]:k_range[1]]
         else:
-            z = (jnp.arange(k_range[0], k_range[1]) - cpml) * dx
+            z = (jnp.arange(k_range[0], k_range[1]) - cpml_lo_z) * dx
         X, Z = jnp.meshgrid(x, z, indexing="ij")
         Y = jnp.full_like(X, x_fixed)
     else:
         i_range, j_range = other_ranges
-        x = (jnp.arange(i_range[0], i_range[1]) - cpml) * dx
-        y = (jnp.arange(j_range[0], j_range[1]) - cpml) * dy
+        x = (jnp.arange(i_range[0], i_range[1]) - cpml_lo_x) * dx
+        y = (jnp.arange(j_range[0], j_range[1]) - cpml_lo_y) * dy
         X, Y = jnp.meshgrid(x, y, indexing="ij")
         Z = jnp.full_like(X, _z_pos(idx))
     return jnp.stack([X, Y, Z], axis=-1)
@@ -556,7 +611,12 @@ def compute_far_field_jax(
     dx = grid.dx
     dy = getattr(grid, 'dy', dx)
     dz_arr = getattr(grid, 'dz', None)
-    cpml = grid.cpml_layers
+    # Per-face CPML origins come from the box (populated by
+    # NTFFBox.from_grid). Legacy callers get grid.cpml_layers as fallback.
+    _legacy_cpml = int(getattr(grid, 'cpml_layers', 0) or 0)
+    cpml_lo_x = box.cpml_lo_x or _legacy_cpml
+    cpml_lo_y = box.cpml_lo_y or _legacy_cpml
+    cpml_lo_z = box.cpml_lo_z or _legacy_cpml
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
@@ -565,7 +625,7 @@ def compute_far_field_jax(
     if dz_arr is not None:
         dz_jnp = jnp.asarray(dz_arr, dtype=jnp.float32)
         z_edges = jnp.concatenate([jnp.zeros(1), jnp.cumsum(dz_jnp)])
-        z_edges = z_edges - z_edges[cpml]
+        z_edges = z_edges - z_edges[cpml_lo_z]
     else:
         z_edges = None
 
@@ -607,7 +667,8 @@ def compute_far_field_jax(
         if n1 == 0 or n2 == 0:
             continue
 
-        pos = _face_positions_jax(axis, face_idx, other_ranges, dx, cpml,
+        pos = _face_positions_jax(axis, face_idx, other_ranges, dx,
+                                  cpml_lo_x, cpml_lo_y, cpml_lo_z,
                                   dy=dy, z_edges=z_edges)
         pos_flat = pos.reshape(-1, 3)
         fields_flat = face.reshape(nf, -1, 4)
