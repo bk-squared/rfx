@@ -190,7 +190,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         pec_mask_override=None, pec_occupancy_override=None,
                         checkpoint=False,
                         emit_time_series=True, checkpoint_every=None,
-                        n_warmup=0, design_mask=None):
+                        n_warmup=0, design_mask=None,
+                        subpixel_smoothing: bool = False):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -250,6 +251,32 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
 
     if pec_mask_override is not None:
         pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
+
+    # ── Subpixel smoothing on non-uniform mesh ─────────────────────────
+    # Builds Kottke tensor-averaged ε per E-component using per-axis
+    # cell-size arrays. Only the non-dispersive scan branch consumes
+    # ``aniso_eps`` (matches the uniform-path semantics — see
+    # rfx/simulation.py::_update_e_with_optional_dispersion).
+    aniso_eps = None
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
+        if debye_spec is not None or lorentz_spec is not None:
+            import warnings as _w
+            _w.warn(
+                "subpixel_smoothing=True ignored on the non-uniform path "
+                "when dispersive materials (Debye/Lorentz) are present — "
+                "the dispersive scan branch does not consume aniso_eps.",
+                stacklevel=2,
+            )
+        else:
+            shape_eps_pairs = [
+                (entry.shape, sim._resolve_material(entry.material_name).eps_r)
+                for entry in sim._geometry
+            ]
+            if shape_eps_pairs:
+                aniso_eps = compute_smoothed_eps_nonuniform(
+                    grid, shape_eps_pairs, background_eps=1.0,
+                )
 
     # Fold RLC R/C into materials before other port/source setup
     # (mirrors the uniform path).
@@ -535,6 +562,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
 
     r = run_nonuniform(
         grid, materials, n_steps,
+        aniso_eps=aniso_eps,
         pec_mask=pec_mask,
         pec_occupancy=pec_occupancy_override,
         sources=sources,

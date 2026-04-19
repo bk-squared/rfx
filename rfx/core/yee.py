@@ -446,6 +446,63 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs) -> FDTDState:
                      step=state.step + 1)
 
 
+@jax.jit
+def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
+                      eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
+                      dt: float,
+                      inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
+                      ) -> FDTDState:
+    """Non-uniform E update with per-component anisotropic permittivity.
+
+    Same backward-difference structure as :func:`update_e_nu` (per-cell
+    spacing via ``inv_dx``/``inv_dy``/``inv_dz``) but uses three separate
+    permittivity arrays (Ex, Ey, Ez) so subpixel-smoothing can be applied
+    on a non-uniform mesh. ``materials.sigma`` is still applied
+    isotropically (matches the uniform-path :func:`update_e_aniso`).
+    """
+    _fdtype = state.ex.dtype
+    hx = state.hx.astype(jnp.float32)
+    hy = state.hy.astype(jnp.float32)
+    hz = state.hz.astype(jnp.float32)
+    sigma = materials.sigma
+
+    abs_eps_ex = eps_ex * EPS_0
+    abs_eps_ey = eps_ey * EPS_0
+    abs_eps_ez = eps_ez * EPS_0
+
+    loss_ex = sigma * dt / (2.0 * abs_eps_ex)
+    ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
+    cb_ex = (dt / abs_eps_ex) / (1.0 + loss_ex)
+
+    loss_ey = sigma * dt / (2.0 * abs_eps_ey)
+    ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
+    cb_ey = (dt / abs_eps_ey) / (1.0 + loss_ey)
+
+    loss_ez = sigma * dt / (2.0 * abs_eps_ez)
+    ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
+    cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
+
+    # Backward differences with per-cell inv-spacing (mirrors update_e_nu)
+    curl_x = (
+        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
+        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
+    )
+    curl_y = (
+        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
+        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
+    )
+    curl_z = (
+        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
+        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
+    )
+
+    ex = (ca_ex * state.ex.astype(jnp.float32) + cb_ex * curl_x).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(jnp.float32) + cb_ey * curl_y).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(jnp.float32) + cb_ez * curl_z).astype(_fdtype)
+
+    return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
+
+
 @partial(jax.jit, static_argnums=(7,))
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,

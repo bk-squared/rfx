@@ -2378,7 +2378,7 @@ class Simulation:
         return pos_to_nu_index(grid, pos)
 
     def _run_nonuniform(self, *, n_steps, compute_s_params=None,
-                        s_param_freqs=None):
+                        s_param_freqs=None, subpixel_smoothing: bool = False):
         """Run simulation on non-uniform grid with graded dz."""
         from rfx.runners.nonuniform import run_nonuniform_path
         return run_nonuniform_path(
@@ -2386,6 +2386,7 @@ class Simulation:
             n_steps=n_steps,
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,
+            subpixel_smoothing=subpixel_smoothing,
         )
 
     def _auto_configure_mesh(self) -> None:
@@ -4623,6 +4624,7 @@ class Simulation:
                 n_steps=n_steps,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
+                subpixel_smoothing=subpixel_smoothing,
             )
 
         grid = self._build_grid()

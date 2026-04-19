@@ -601,6 +601,7 @@ def run_nonuniform(
     checkpoint_every: int | None = None,
     n_warmup: int = 0,
     design_mask: jnp.ndarray | None = None,
+    aniso_eps: tuple | None = None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -788,6 +789,13 @@ def run_nonuniform(
                 st, materials, dt, inv_dx, inv_dy, inv_dz,
                 debye=(debye_coeffs, carry["debye"]) if use_debye else None,
                 lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
+            )
+        elif aniso_eps is not None:
+            from rfx.core.yee import update_e_nu_aniso
+            _eex, _eey, _eez = aniso_eps
+            st = update_e_nu_aniso(
+                st, materials, _eex, _eey, _eez, dt,
+                inv_dx, inv_dy, inv_dz,
             )
         else:
             st = update_e_nu(st, materials, dt, inv_dx, inv_dy, inv_dz)

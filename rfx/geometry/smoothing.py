@@ -293,6 +293,145 @@ def _kottke_tensor_eps(
 # Public API
 # ---------------------------------------------------------------------------
 
+def compute_smoothed_eps_nonuniform(
+    nu_grid,
+    shapes: list[tuple[Shape, float]],
+    background_eps: float = 1.0,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Kottke tensor-averaged ε on a NonUniformGrid (per-component).
+
+    Same semantics as :func:`compute_smoothed_eps` but uses per-axis
+    cell-size arrays (``dx_arr``, ``dy_arr``, ``dz``) from ``nu_grid``
+    for both coordinate placement (per-axis half-cell offsets) and SDF
+    fill-fraction normalisation.
+
+    Fill-fraction normalisation uses the geometric mean of the three
+    local cell sizes — first-order accurate for non-cubic Yee cells, in
+    line with the SDF-to-fill approximation in the uniform path.
+    """
+    from rfx.geometry.rasterize import coords_from_nonuniform_grid
+
+    coords = coords_from_nonuniform_grid(nu_grid)
+    centers_x = coords.x  # (nx,)
+    centers_y = coords.y  # (ny,)
+    centers_z = coords.z  # (nz,)
+    dx_arr = jnp.asarray(nu_grid.dx_arr, dtype=jnp.float32)
+    dy_arr = jnp.asarray(nu_grid.dy_arr, dtype=jnp.float32)
+    dz_arr = jnp.asarray(nu_grid.dz, dtype=jnp.float32)
+
+    # Cell corners (for x/y/z) — corner[i] = center[i] - d_arr[i]/2
+    corner_x = centers_x - dx_arr / 2.0
+    corner_y = centers_y - dy_arr / 2.0
+    corner_z = centers_z - dz_arr / 2.0
+
+    # Local-cell characteristic length (geometric mean of three cell
+    # widths) — used to normalise SDF → fill fraction. Anisotropic cell
+    # geometry: this is a first-order approximation, mirroring the
+    # uniform-path single-dx normalisation.
+    dx_loc = (dx_arr[:, None, None]
+              * dy_arr[None, :, None]
+              * dz_arr[None, None, :]) ** (1.0 / 3.0)
+
+    nx, ny, nz = nu_grid.shape
+
+    eps_ex = jnp.full((nx, ny, nz), background_eps, dtype=jnp.float32)
+    eps_ey = jnp.full((nx, ny, nz), background_eps, dtype=jnp.float32)
+    eps_ez = jnp.full((nx, ny, nz), background_eps, dtype=jnp.float32)
+
+    from collections import OrderedDict
+    groups: OrderedDict[float, list] = OrderedDict()
+    for shape, eps_r in shapes:
+        groups.setdefault(eps_r, []).append(shape)
+
+    for eps_r, group_shapes in groups.items():
+        sdf_shapes = []
+        fallback_shapes = []
+        for shape in group_shapes:
+            sdf_fn = _get_sdf_fn(shape)
+            normal_fn = _get_normal_fn(shape)
+            if sdf_fn is not None and normal_fn is not None:
+                sdf_shapes.append((shape, sdf_fn, normal_fn))
+            else:
+                fallback_shapes.append(shape)
+
+        # Fallback shapes — staircase via the shape's cell mask if
+        # available; otherwise skip (NU grid has no Grid-style mask
+        # adapter for arbitrary shapes today).
+        for shape in fallback_shapes:
+            if hasattr(shape, "mask"):
+                try:
+                    m = shape.mask(nu_grid)
+                    eps_ex = jnp.where(m, eps_r, eps_ex)
+                    eps_ey = jnp.where(m, eps_r, eps_ey)
+                    eps_ez = jnp.where(m, eps_r, eps_ez)
+                except Exception:
+                    pass
+
+        if not sdf_shapes:
+            continue
+
+        # Per-component half-cell offsets along the COMPONENT axis only:
+        # Ex sits at (center_x, corner_y, corner_z); Ey at (corner_x,
+        # center_y, corner_z); Ez at (corner_x, corner_y, center_z).
+        for comp, (axx, ayy, azz) in [
+            ("ex", (centers_x, corner_y, corner_z)),
+            ("ey", (corner_x, centers_y, corner_z)),
+            ("ez", (corner_x, corner_y, centers_z)),
+        ]:
+            Xc = axx[:, None, None] * jnp.ones((1, ny, nz))
+            Yc = jnp.ones((nx, 1, 1)) * ayy[None, :, None] * jnp.ones((1, 1, nz))
+            Zc = jnp.ones((nx, ny, 1)) * azz[None, None, :]
+
+            sdf_union = None
+            best_abs_sdf = None
+            best_nx = best_ny = best_nz = None
+
+            for shape, sdf_fn, normal_fn in sdf_shapes:
+                s = sdf_fn(Xc, Yc, Zc, shape)
+                n_x, n_y, n_z = normal_fn(Xc, Yc, Zc, shape)
+
+                if sdf_union is None:
+                    sdf_union = s
+                    best_abs_sdf = jnp.abs(s)
+                    best_nx, best_ny, best_nz = n_x, n_y, n_z
+                else:
+                    sdf_union = jnp.minimum(sdf_union, s)
+                    closer = jnp.abs(s) < best_abs_sdf
+                    best_abs_sdf = jnp.where(closer, jnp.abs(s), best_abs_sdf)
+                    best_nx = jnp.where(closer, n_x, best_nx)
+                    best_ny = jnp.where(closer, n_y, best_ny)
+                    best_nz = jnp.where(closer, n_z, best_nz)
+
+            f = jnp.clip(0.5 - sdf_union / dx_loc, 0.0, 1.0)
+            inside = f >= 1.0
+            bnd = (f > 0.0) & (f < 1.0)
+
+            if comp == "ex":
+                eps_outside = eps_ex
+            elif comp == "ey":
+                eps_outside = eps_ey
+            else:
+                eps_outside = eps_ez
+
+            kt_xx, kt_yy, kt_zz = _kottke_tensor_eps(
+                f, eps_r, eps_outside, best_nx, best_ny, best_nz,
+            )
+            if comp == "ex":
+                smooth = kt_xx
+                eps_ex = jnp.where(inside, eps_r,
+                          jnp.where(bnd, smooth, eps_ex))
+            elif comp == "ey":
+                smooth = kt_yy
+                eps_ey = jnp.where(inside, eps_r,
+                          jnp.where(bnd, smooth, eps_ey))
+            else:
+                smooth = kt_zz
+                eps_ez = jnp.where(inside, eps_r,
+                          jnp.where(bnd, smooth, eps_ez))
+
+    return eps_ex, eps_ey, eps_ez
+
+
 def compute_smoothed_eps(
     grid: Grid,
     shapes: list[tuple[Shape, float]],
