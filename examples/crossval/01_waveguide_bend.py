@@ -17,7 +17,7 @@ Boundary selection:
 Run this script with JAX x64 enabled. The flux monitor accumulators need
 double precision for stable SI-unit spectra:
 
-  JAX_ENABLE_X64=1 python examples/crossval/01_meep_waveguide_bend.py
+  JAX_ENABLE_X64=1 python examples/crossval/01_waveguide_bend.py
 
 Parameters (normalized, a = 1 um):
   eps=12, w=1, fcen=0.15, fwidth=0.1, resolution=10
@@ -35,7 +35,7 @@ PASS criteria:
 
 Reference: https://meep.readthedocs.io/en/latest/Python_Tutorials/Basics/
 
-Save: examples/crossval/01_meep_waveguide_bend.png
+Save: examples/crossval/01_waveguide_bend.png
 """
 
 import os
@@ -116,6 +116,7 @@ add_line_source(sim_s, src_x, wg_y, w_wg)
 sim_s.add_flux_monitor(axis="x", coordinate=4 * a, freqs=freqs, name="input")
 sim_s.add_flux_monitor(axis="x", coordinate=sx - pml - 5 * dx,
                        freqs=freqs, name="output")
+sim_s.preflight(strict=False)
 res_s = sim_s.run(n_steps=n_steps, subpixel_smoothing=True)
 flux_in_s = np.array(flux_spectrum(res_s.flux_monitors["input"]))
 flux_out_s = np.array(flux_spectrum(res_s.flux_monitors["output"]))
@@ -138,6 +139,7 @@ add_line_source(sim_b, src_x, wg_y, w_wg)
 sim_b.add_flux_monitor(axis="x", coordinate=4 * a, freqs=freqs, name="input")
 sim_b.add_flux_monitor(axis="y", coordinate=sy - pml - 5 * dx,
                        freqs=freqs, name="output")
+sim_b.preflight(strict=False)
 res_b = sim_b.run(n_steps=n_steps, subpixel_smoothing=True)
 flux_in_b = np.array(flux_spectrum(res_b.flux_monitors["input"]))
 flux_out_b = np.array(flux_spectrum(res_b.flux_monitors["output"]))
@@ -294,7 +296,7 @@ ax.set_title("Smoothed comparison")
 ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
-out_path = os.path.join(SCRIPT_DIR, "01_meep_waveguide_bend.png")
+out_path = os.path.join(SCRIPT_DIR, "01_waveguide_bend.png")
 plt.savefig(out_path, dpi=150)
 plt.close()
 print(f"\nPlot saved: {out_path}")

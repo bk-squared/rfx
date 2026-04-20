@@ -41,8 +41,8 @@ run: |-
 
   # 3) Inverse design smoke — verifies the A path end-to-end on uniform.
   echo ""
-  echo "=== 3. Crossval 07 — inverse design demo ==="
-  timeout 300 python examples/crossval/07_inverse_design_demo.py
+  echo "=== 3. Inverse design AD gradient demo ==="
+  timeout 300 python examples/inverse_design/ad_gradient_demo.py
 
   # 4) All GPU-marked tests excluding OpenEMS/meep crossval (not in image).
   echo ""

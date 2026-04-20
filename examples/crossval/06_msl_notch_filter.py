@@ -1,4 +1,4 @@
-"""Crossval 13: MSL Notch Filter — rfx vs openEMS tutorial.
+"""Crossval 06: MSL Notch Filter — rfx vs openEMS tutorial.
 
 METHODOLOGY
 -----------
@@ -20,12 +20,12 @@ At f_notch ≈ c / (4 · L_stub · sqrt(εr_eff)) ≈ 3.69 GHz, the
 stub presents a virtual short circuit at the junction, creating
 a transmission zero (deep S21 notch).
 
-The canonical openEMS run (see `13_openems_ref/run_upstream_tutorial.py`)
+The canonical openEMS run (see `06_openems_ref/run_upstream_tutorial.py`)
 places the notch at 3.671 GHz with |S21| ≤ −50 dB.
 
 REFERENCE DATA
 --------------
-`13_openems_ref/openems_msl_notch_ref.npz` contains (f, s11, s21)
+`06_openems_ref/openems_msl_notch_ref.npz` contains (f, s11, s21)
 from running the upstream tutorial verbatim. rfx aims to reproduce
 the notch frequency within 5 % and the overall S11/S21 shape.
 
@@ -38,7 +38,7 @@ for the per-cell `dx_profile`/`dy_profile` feature added alongside
 this crossval.
 
 Run:
-  python examples/crossval/13_msl_notch_filter.py
+  python examples/crossval/06_msl_notch_filter.py
 """
 
 import os, sys, time
@@ -83,7 +83,7 @@ eps_eff = (substrate_epr + 1) / 2 + (substrate_epr - 1) / 2 * (1 + 12 / u) ** -0
 f_notch_an = C0 / (4 * stub_length * np.sqrt(eps_eff))
 
 print("=" * 70)
-print("Crossval 13: MSL Notch Filter — rfx vs openEMS tutorial")
+print("Crossval 06: MSL Notch Filter — rfx vs openEMS tutorial")
 print("=" * 70)
 print(f"Substrate: εr={substrate_epr}, h={substrate_thickness*1e6:.0f} μm (RO4350B)")
 print(f"MSL: W={MSL_width*1e6:.0f} μm, length={MSL_length*2*1e3:.0f} mm")
@@ -273,7 +273,7 @@ freqs_s = jnp.linspace(1e6, f_max, 601)
 
 print(f"Running rfx S-parameter sweep (2 ports, {len(freqs_s)} freqs)...")
 t0 = time.time()
-CACHE_FILE = os.path.join(SCRIPT_DIR, "13_rfx_sparams.npz")
+CACHE_FILE = os.path.join(SCRIPT_DIR, "06_rfx_sparams.npz")
 if os.path.exists(CACHE_FILE):
     print(f"   [cached] loading from {CACHE_FILE}")
     print("            delete to force a fresh run")
@@ -317,7 +317,7 @@ print(f"\n{'=' * 70}")
 print("PART 2: openEMS upstream reference")
 print("=" * 70)
 
-ref_file = os.path.join(SCRIPT_DIR, "13_openems_ref", "openems_msl_notch_ref.npz")
+ref_file = os.path.join(SCRIPT_DIR, "06_openems_ref", "openems_msl_notch_ref.npz")
 if os.path.exists(ref_file):
     ref = np.load(ref_file)
     f_oe = np.asarray(ref["f"])
@@ -332,7 +332,7 @@ if os.path.exists(ref_file):
     have_ref = True
 else:
     print(f"[warn] openEMS reference not found: {ref_file}")
-    print("       Run `python 13_openems_ref/run_upstream_tutorial.py` first.")
+    print("       Run `python 06_openems_ref/run_upstream_tutorial.py` first.")
     have_ref = False
 
 # =============================================================================
@@ -374,7 +374,7 @@ fig.suptitle(
     fontsize=11, fontweight="bold"
 )
 plt.tight_layout()
-out = os.path.join(SCRIPT_DIR, "13_msl_notch_filter.png")
+out = os.path.join(SCRIPT_DIR, "06_msl_notch_filter.png")
 plt.savefig(out, dpi=150); plt.close()
 print(f"\nSaved: {out}")
 
@@ -453,13 +453,13 @@ print("    mode-matches the quasi-TEM profile (analogous to openEMS")
 print("    AddMSLPort). This is a separate, larger feature and is tracked")
 print("    as the next infrastructure task.")
 print()
-print(f"  Output: 13_msl_notch_filter.png")
+print(f"  Output: 06_msl_notch_filter.png")
 
 # Exit codes:
 #   0 = all PASS including openEMS cross-check
 #   1 = rfx self-check failed (broken physics or broken infra)
 #   2 = rfx self-check OK but reference missing — inconclusive crossval.
-#       Generate it first via ``python 13_openems_ref/run_upstream_tutorial.py``.
+#       Generate it first via ``python 06_openems_ref/run_upstream_tutorial.py``.
 _self_ok = pass_s21_nonzero and pass_s11_bounded and pass_analytic
 if all_ok:
     sys.exit(0)

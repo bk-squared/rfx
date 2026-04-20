@@ -1,6 +1,8 @@
-"""Crossval 14: End-to-end inverse design — dielectric slab optimization.
+"""Inverse design — end-to-end AD gradient pipeline demo.
 
-Matches the pattern of rfx's PASSING test_optimize_convergence.py:
+NOT a cross-validation against an external solver. This is a rfx
+self-test that exercises the inverse-design pipeline end-to-end on
+the PASSING pattern from ``tests/test_optimize_convergence.py``:
 optimize a dielectric slab's permittivity to maximize transmission
 through an air–slab–air sandwich in a PEC cavity.
 
@@ -11,7 +13,11 @@ Pipeline validated:
 The slab starts at eps_r ≈ 3.5 (mid-range) and should converge toward
 eps_r ≈ 1.0 (air = no impedance mismatch = maximum transmission).
 
-Run:  python examples/crossval/14_inverse_design_demo.py
+Moved from ``examples/crossval/`` in the 2026-04-20 audit — self-tests
+belong in ``examples/inverse_design/``, not next to external-solver
+cross-validations.
+
+Run:  python examples/inverse_design/ad_gradient_demo.py
 """
 import os, time
 import matplotlib; matplotlib.use("Agg")

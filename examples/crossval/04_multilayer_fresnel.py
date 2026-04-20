@@ -1,4 +1,4 @@
-"""Cross-validation 07: Multilayer Fresnel Reflection — rfx vs Analytic
+"""Cross-validation 04: Multilayer Fresnel Reflection — rfx vs Analytic
 
 Normal-incidence R(f), T(f) from a dielectric slab using TFSF plane wave.
 Exact analytical solution via transfer matrix.
@@ -10,7 +10,7 @@ Measurement approach (Taflove Ch. 5):
   - Single-run measurement (no reference subtraction needed)
 
 Run:
-  python examples/crossval/07_multilayer_fresnel.py
+  python examples/crossval/04_multilayer_fresnel.py
 """
 
 import os, sys, math, time
@@ -39,7 +39,7 @@ n_cpml = 20
 nx_interior = 600     # 600 mm interior — large to delay CPML round-trip
 
 print("=" * 70)
-print("Crossval 07: Fresnel Slab — TFSF plane wave — rfx vs Analytic")
+print("Crossval 04: Fresnel Slab — TFSF plane wave — rfx vs Analytic")
 print("=" * 70)
 print(f"Slab: eps={eps_slab}, n={n_slab:.1f}, d={d_slab*1e3:.0f} mm")
 print(f"Interior: {nx_interior} cells, dx={dx*1e3:.1f} mm, CPML={n_cpml} layers")
@@ -201,7 +201,7 @@ axes_td[1,1].set_xlabel("t (ns)"); axes_td[1,1].grid(True, alpha=0.3)
 
 fig_td.suptitle("Fresnel Slab — Time-Domain", fontsize=13, fontweight="bold")
 plt.tight_layout()
-out_td = os.path.join(SCRIPT_DIR, "07_time_domain.png")
+out_td = os.path.join(SCRIPT_DIR, "04_time_domain.png")
 plt.savefig(out_td, dpi=150); plt.close()
 print(f"  Time-domain: {out_td}")
 
@@ -421,7 +421,7 @@ fig.suptitle(f"Fresnel Slab: eps={eps_slab}, d={d_slab*1e3:.0f}mm — Plane wave
              f"rfx FDTD vs Meep FDTD vs Exact Transfer Matrix",
              fontsize=13, fontweight="bold")
 plt.tight_layout()
-out = os.path.join(SCRIPT_DIR, "07_fresnel_slab.png")
+out = os.path.join(SCRIPT_DIR, "04_fresnel_slab.png")
 plt.savefig(out, dpi=150); plt.close()
 print(f"\n  Saved: {out}")
 
@@ -448,4 +448,4 @@ R_rfx_meep_diff = np.abs(R_rfx[in_meep_band] - R_meep[in_meep_band])
 print(f"\n  rfx vs Meep direct comparison (in Meep band):")
 print(f"    |T_rfx - T_meep| mean: {T_rfx_meep_diff.mean():.4f}, max: {T_rfx_meep_diff.max():.4f}")
 print(f"    |R_rfx - R_meep| mean: {R_rfx_meep_diff.mean():.4f}, max: {R_rfx_meep_diff.max():.4f}")
-print(f"\n  Output: 07_fresnel_slab.png, 07_time_domain.png")
+print(f"\n  Output: 04_fresnel_slab.png, 04_time_domain.png")

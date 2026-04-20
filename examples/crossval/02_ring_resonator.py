@@ -1,4 +1,4 @@
-"""Cross-validation 05: Ring Resonator Modes — rfx vs Meep
+"""Cross-validation 02: Ring Resonator Modes — rfx vs Meep
 
 Meep Basics tutorial #3: modes of a ring resonator.
 
@@ -15,7 +15,7 @@ Meep tutorial parameters:
   Source: GaussianSource at (r+0.1, 0)
 
 Run:
-  JAX_ENABLE_X64=1 python examples/crossval/05_meep_ring_resonator.py
+  JAX_ENABLE_X64=1 python examples/crossval/02_ring_resonator.py
 """
 
 import os, sys, math, time
@@ -63,7 +63,7 @@ fmin_hz = (fcen - df / 2) * C0 / a
 fmax_hz = (fcen + df / 2) * C0 / a
 
 print("=" * 70)
-print("Crossval 05: Ring Resonator Modes — rfx vs Meep")
+print("Crossval 02: Ring Resonator Modes — rfx vs Meep")
 print("=" * 70)
 print(f"Ring: n={n_wg}, r={r}, w={w}, cell={sxy}")
 print(f"fcen={fcen}, df={df}")
@@ -148,6 +148,7 @@ n_steps_rfx = int(rfx_total_t / dt_rfx) + 500
 
 snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=0)
 print(f"  Running rfx: {n_steps_rfx} steps...")
+sim_rfx.preflight(strict=False)
 t0 = time.time()
 res_rfx = sim_rfx.run(n_steps=n_steps_rfx, snapshot=snap,
                        subpixel_smoothing=True)
@@ -314,7 +315,7 @@ else:
                  f"n={n_wg}, r={r}, w={w}, resolution={resolution}",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
-    out = os.path.join(SCRIPT_DIR, "05_mode_patterns.png")
+    out = os.path.join(SCRIPT_DIR, "02_mode_patterns.png")
     plt.savefig(out, dpi=150)
     plt.close()
     print(f"\n  Saved: {out}")
@@ -391,7 +392,7 @@ axes2[-1, 2].set_xlabel("x")
 fig2.suptitle("Ring Resonator: Broadband Field Snapshots — rfx vs Meep",
               fontsize=13, fontweight="bold")
 plt.tight_layout()
-out2 = os.path.join(SCRIPT_DIR, "05_broadband_fields.png")
+out2 = os.path.join(SCRIPT_DIR, "02_broadband_fields.png")
 plt.savefig(out2, dpi=150)
 plt.close()
 print(f"  Saved: {out2}")

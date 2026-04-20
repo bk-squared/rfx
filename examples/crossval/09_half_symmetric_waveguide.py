@@ -92,6 +92,7 @@ def _run_cavity(
     import warnings as _w
     with _w.catch_warnings():
         _w.simplefilter("ignore")
+        sim.preflight(strict=False)
         res = sim.run(n_steps=n_steps)
     ts = np.asarray(res.time_series)[:, 0]
     dt = float(res.dt)

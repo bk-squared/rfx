@@ -1,4 +1,4 @@
-"""Crossval 12: 2.4 GHz Rectangular Patch Antenna on FR4 — rfx vs OpenEMS.
+"""Crossval 05: 2.4 GHz Rectangular Patch Antenna on FR4 — rfx vs OpenEMS.
 
 METHODOLOGY
 -----------
@@ -59,7 +59,7 @@ planes and finite feed inset. Both rfx and OpenEMS will deviate from
 the TL number in the same direction — that is physics, not an rfx bug.
 
 Run:
-  python examples/crossval/12_patch_antenna.py
+  python examples/crossval/05_patch_antenna.py
 """
 
 import os, sys, math, time
@@ -146,7 +146,7 @@ L_eff = L + 2 * delta_L
 f_resonance_an = C0 / (2 * L_eff * math.sqrt(eps_eff))
 
 print("=" * 70)
-print("Crossval 12: 2.4 GHz Rectangular Patch Antenna on FR4")
+print("Crossval 05: 2.4 GHz Rectangular Patch Antenna on FR4")
 print("=" * 70)
 print(f"Substrate: εr={eps_r}, h={h_sub*1e3:.1f} mm (FR4)")
 print(f"Patch: W={W*1e3:.1f} x L={L*1e3:.1f} mm")
@@ -225,7 +225,7 @@ def build_patch(with_port: bool,
     bottom CPML). Using ``pec_faces={"z_lo"}`` instead makes the GP
     infinite at the domain boundary, turning the structure into a
     cavity and shifting the resonance 8 % high. See the research note
-    `2026-04-11_crossval12_patch_antenna_rootcause.md`.
+    `2026-04-11_crossval05_patch_antenna_rootcause.md`.
 
     When ``dx_profile`` / ``dy_profile`` are provided, the xy mesh is
     non-uniform with the specified profile (fine cells in the patch
@@ -363,9 +363,9 @@ from openEMS.openEMS import openEMS as OEMS
 import shutil
 
 UNIT = 1e-3  # mm
-sim_path_oe = os.path.join(SCRIPT_DIR, "12_openems_tmp")
+sim_path_oe = os.path.join(SCRIPT_DIR, "05_openems_tmp")
 # Skip re-running OpenEMS if the port files from a previous successful
-# run are still on disk. Delete `12_openems_tmp/` to force a fresh run.
+# run are still on disk. Delete `05_openems_tmp/` to force a fresh run.
 cached_oe = all(
     os.path.exists(os.path.join(sim_path_oe, f))
     for f in ("port_ut_1", "port_it_1", "et", "ht")
@@ -648,7 +648,7 @@ fig.suptitle(
     fontsize=11, fontweight="bold"
 )
 plt.tight_layout()
-out = os.path.join(SCRIPT_DIR, "12_patch_antenna.png")
+out = os.path.join(SCRIPT_DIR, "05_patch_antenna.png")
 plt.savefig(out, dpi=150); plt.close()
 print(f"\nSaved: {out}")
 
@@ -726,4 +726,4 @@ print("   • rfx single-cell lumped-port S11 dip is shallow (~2 dB) because")
 print("     the single-cell port has parasitic reactance — use Harminv for")
 print("     the clean resonance frequency, the S11 dip only as a")
 print("     passivity / local-dip confirmation.")
-print(f"\n  Output: 12_patch_antenna.png")
+print(f"\n  Output: 05_patch_antenna.png")

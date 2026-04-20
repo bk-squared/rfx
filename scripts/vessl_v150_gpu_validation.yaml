@@ -37,8 +37,8 @@ run: |-
   timeout 1800 python examples/crossval/05_patch_antenna.py || true
 
   echo ""
-  echo "=== 3. Crossval 07: Inverse design demo ==="
-  timeout 300 python examples/crossval/07_inverse_design_demo.py || true
+  echo "=== 3. Inverse design AD gradient demo ==="
+  timeout 300 python examples/inverse_design/ad_gradient_demo.py || true
 
   echo ""
   echo "=== DONE ==="
