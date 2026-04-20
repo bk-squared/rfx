@@ -1,17 +1,24 @@
-"""Cross-validation 06: Straight Waveguide Flux — rfx vs Meep
+"""Cross-validation 03: Straight Waveguide Transmission — rfx vs Meep
 
 Meep Basics tutorial #1 (part 1): straight dielectric waveguide.
-Measures transmitted flux through a plane downstream of a source.
+Measures transmission T(f) = flux_out(f) / flux_in(f) for a lossless
+guided mode; both rfx and Meep should give T ≈ 1 at the carrier
+frequency (energy conservation), and the two should agree within
+a few percent.
 
-This is the most fundamental FDTD validation:
-  - guided mode propagation in a dielectric slab
-  - flux measurement accuracy
-  - comparison with Meep reference
+**Physical validity:**
+  - Guided-mode propagation in a dielectric slab (eps_r = 12)
+  - Transmission measurement using rfx's ``add_flux_monitor`` on both
+    the input and output planes
+  - Two-run reference subtraction pattern (T = flux_out / flux_in)
 
-Workflow:
-  1. Epsilon comparison (rfx vs Meep)
-  2. Field snapshot comparison at multiple times
-  3. Transmitted flux T(f) comparison
+**Rule compliance** (.claude/rules/rfx-feature-discovery.md):
+This script uses ``add_flux_monitor`` and ``flux_spectrum`` — the
+canonical rfx primitives for R(f) / T(f) measurement. An earlier
+version of this script computed a single-point FFT of a time-series
+probe as a "flux proxy" and then scaled the result to match the
+Meep peak; that pattern is explicitly forbidden (shape correlation
+of scaled Gaussians always passes) and has been removed.
 
 Meep tutorial parameters:
   eps = 12, width = 1a, pad = 4, dpml = 2, resolution = 10
@@ -19,8 +26,13 @@ Meep tutorial parameters:
   fcen = 0.15, fwidth = 0.1
   Source: GaussianSource line source spanning waveguide
 
+Pass criteria (each must hold):
+  - rfx self-transmission T_rfx(f_peak) ∈ [0.95, 1.05]
+  - Meep self-transmission T_meep(f_peak) ∈ [0.95, 1.05]
+  - |T_rfx(f_peak) − T_meep(f_peak)| < 0.05
+
 Run:
-  JAX_ENABLE_X64=1 python examples/crossval/06_straight_waveguide_flux.py
+  JAX_ENABLE_X64=1 python examples/crossval/03_straight_waveguide_flux.py
 """
 
 import os, sys, math, time
@@ -37,57 +49,61 @@ C0 = 2.998e8
 # Meep tutorial parameters
 # =============================================================================
 eps_wg = 12.0
-wg_width = 1.0       # waveguide width in a
-pad = 4.0            # padding
+wg_width = 1.0        # waveguide width in a
+pad = 4.0
 dpml = 2.0
 resolution = 10
 
-sx = 16.0            # cell x length (propagation direction)
-sy = 2 * (pad + dpml + wg_width / 2)  # = 2*(4+2+0.5) = 13
+sx = 16.0
+sy = 2 * (pad + dpml + wg_width / 2)   # = 13
 
 a = 1.0e-6
 dx = a / resolution
 fcen = 0.15
 df = 0.1
+n_freqs = 50
 
-# rfx domain = Meep cell - 2*dpml (each axis)
+# rfx domain = Meep cell - 2*dpml (each axis); CPML handled separately
 interior_x = sx
-interior_y = sy - 2 * dpml  # 9
+interior_y = sy - 2 * dpml       # 9
 domain_x = interior_x * a
 domain_y = interior_y * a
 cpml_n = int(dpml * resolution)
 
-OFFSET_X = interior_x / 2.0  # 8.0
-OFFSET_Y = interior_y / 2.0  # 4.5
+OFFSET_X = interior_x / 2.0      # rfx maps x_meep → x_meep + OFFSET_X
+OFFSET_Y = interior_y / 2.0
 
 bw_rfx = df / (fcen * math.pi * math.sqrt(2))
 fcen_hz = fcen * C0 / a
 
-# Source at x = -7 (Meep), flux at x = +5 (Meep)
-src_x_meep = -7.0
-flux_x_meep = 5.0
+# Monitor positions in Meep coordinates (x=0 at cell center)
+src_x_meep   = -7.0
+flux_in_meep = -5.0         # downstream of source, well inside interior
+flux_out_meep = +5.0
 
-src_x_rfx = (src_x_meep + OFFSET_X) * a
-flux_x_rfx = (flux_x_meep + OFFSET_X) * a
+src_x_rfx     = (src_x_meep + OFFSET_X) * a
+flux_in_rfx   = (flux_in_meep + OFFSET_X) * a
+flux_out_rfx  = (flux_out_meep + OFFSET_X) * a
 
 print("=" * 70)
-print("Crossval 06: Straight Waveguide Flux — rfx vs Meep")
+print("Crossval 03: Straight Waveguide Transmission — rfx vs Meep")
 print("=" * 70)
 print(f"eps={eps_wg}, width={wg_width}a, cell={sx}x{sy}")
 print(f"fcen={fcen}, df={df}, resolution={resolution}")
+print(f"src @ x={src_x_meep}, flux_in @ x={flux_in_meep}, flux_out @ x={flux_out_meep}")
 print()
 
 # =============================================================================
-# PART 1: Meep — run straight waveguide
+# PART 1: Meep — transmission between two flux monitors
 # =============================================================================
 print("=" * 70)
-print("PART 1: Meep — straight waveguide with flux")
+print("PART 1: Meep — two flux monitors, T = flux_out / flux_in")
 print("=" * 70)
 
 import meep as mp
 
-cell_meep = mp.Vector3(sx + 2*dpml, sy)
-pml_meep = [mp.PML(dpml, direction=mp.X)]  # PML only in x
+cell_meep = mp.Vector3(sx + 2 * dpml, sy)
+pml_meep = [mp.PML(dpml, direction=mp.X)]
 geo_meep = [mp.Block(size=mp.Vector3(mp.inf, wg_width, mp.inf),
                      center=mp.Vector3(),
                      material=mp.Medium(epsilon=eps_wg))]
@@ -100,40 +116,43 @@ sim_meep = mp.Simulation(cell_size=cell_meep, boundary_layers=pml_meep,
                          geometry=geo_meep, sources=src_meep,
                          resolution=resolution)
 
-# Flux monitor
-flux_mon = sim_meep.add_flux(fcen, df, 50,
-    mp.FluxRegion(center=mp.Vector3(flux_x_meep, 0),
+flux_in_mon_m = sim_meep.add_flux(fcen, df, n_freqs,
+    mp.FluxRegion(center=mp.Vector3(flux_in_meep, 0),
+                  size=mp.Vector3(0, 2 * wg_width)))
+flux_out_mon_m = sim_meep.add_flux(fcen, df, n_freqs,
+    mp.FluxRegion(center=mp.Vector3(flux_out_meep, 0),
                   size=mp.Vector3(0, 2 * wg_width)))
 
-# Run until source decays
 sim_meep.run(until_after_sources=mp.stop_when_fields_decayed(
-    50, mp.Ez, mp.Vector3(flux_x_meep, 0), 1e-3))
+    50, mp.Ez, mp.Vector3(flux_out_meep, 0), 1e-3))
 
-meep_flux = np.array(mp.get_fluxes(flux_mon))
-meep_freqs = np.array(mp.get_flux_freqs(flux_mon))
+meep_flux_in  = np.array(mp.get_fluxes(flux_in_mon_m))
+meep_flux_out = np.array(mp.get_fluxes(flux_out_mon_m))
+meep_freqs = np.array(mp.get_flux_freqs(flux_in_mon_m))
 meep_total_t = sim_meep.meep_time()
 
-# Capture final field
-ez_meep = sim_meep.get_array(center=mp.Vector3(), size=cell_meep,
-                              component=mp.Ez)
-pml_cells = int(dpml * resolution)
-# PML only in x direction
-ez_meep_int = ez_meep[pml_cells:-pml_cells, :]
+# Guard against numerical flux-in ≈ 0 near band edges
+eps_flux = float(np.max(np.abs(meep_flux_in))) * 1e-6
+T_meep = meep_flux_out / np.where(np.abs(meep_flux_in) > eps_flux,
+                                   meep_flux_in, eps_flux)
 
+peak_idx = int(np.argmax(np.abs(meep_flux_in)))
+f_peak_meep = float(meep_freqs[peak_idx])
+T_meep_peak = float(T_meep[peak_idx])
 print(f"  Meep: ran {meep_total_t:.0f} time units")
-print(f"  Flux peak: {meep_flux.max():.6f} at f={meep_freqs[np.argmax(meep_flux)]:.4f}")
+print(f"  peak frequency (by flux_in magnitude): {f_peak_meep:.4f}")
+print(f"  T_meep(f_peak) = {T_meep_peak:.4f}")
 
 # =============================================================================
-# PART 2: rfx — straight waveguide with flux monitor
+# PART 2: rfx — same two-monitor measurement
 # =============================================================================
 print(f"\n{'=' * 70}")
-print("PART 2: rfx — straight waveguide with flux monitor")
+print("PART 2: rfx — two flux monitors (canonical add_flux_monitor)")
 print("=" * 70)
 
-from rfx import Simulation, Box
+from rfx import Simulation, Box, flux_spectrum
 from rfx.boundaries.spec import BoundarySpec
 from rfx.sources.sources import ModulatedGaussian
-from rfx.simulation import SnapshotSpec
 import jax.numpy as jnp
 
 sim_rfx = Simulation(freq_max=0.25 * C0 / a,
@@ -142,12 +161,10 @@ sim_rfx = Simulation(freq_max=0.25 * C0 / a,
                      cpml_layers=cpml_n, mode="2d_tmz")
 sim_rfx.add_material("wg", eps_r=eps_wg)
 
-# Waveguide: infinite in x (spans full domain), width=1a centered in y
 wg_y_lo = (OFFSET_Y - wg_width / 2) * a
 wg_y_hi = (OFFSET_Y + wg_width / 2) * a
 sim_rfx.add(Box((0, wg_y_lo, 0), (domain_x, wg_y_hi, dx)), material="wg")
 
-# Line source spanning waveguide
 for i in range(int(wg_width * resolution)):
     y = wg_y_lo + (i + 0.5) * dx
     sim_rfx.add_source(position=(src_x_rfx, y, 0), component="ez",
@@ -155,164 +172,93 @@ for i in range(int(wg_width * resolution)):
                                    amplitude=1.0 / (wg_width * resolution),
                                    cutoff=5.0 / math.sqrt(2)))
 
-# Probe at flux monitor location (for time series)
-sim_rfx.add_probe(position=(flux_x_rfx, OFFSET_Y * a, 0), component="ez")
+# Sample the rfx flux on the SAME Meep-normalised frequency grid so the
+# peak-frequency comparison is bin-aligned (no interpolation ambiguity).
+freqs_rfx = jnp.asarray(meep_freqs * C0 / a)
+sim_rfx.add_flux_monitor(axis="x", coordinate=flux_in_rfx,
+                          freqs=freqs_rfx, name="flux_in")
+sim_rfx.add_flux_monitor(axis="x", coordinate=flux_out_rfx,
+                          freqs=freqs_rfx, name="flux_out")
 
-# Run
+sim_rfx.preflight(strict=False)
+
 rfx_total_t = meep_total_t * a / C0
 dt_rfx = dx / (C0 * math.sqrt(2)) * 0.99
 n_steps = int(rfx_total_t / dt_rfx) + 200
 
-snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=0)
 print(f"  Running rfx: {n_steps} steps...")
 t0 = time.time()
-res_rfx = sim_rfx.run(n_steps=n_steps, snapshot=snap,
-                       subpixel_smoothing=True)
+res_rfx = sim_rfx.run(n_steps=n_steps, subpixel_smoothing=True)
 print(f"  Done in {time.time()-t0:.1f}s")
 
-# Compute flux from probe time series via FFT (same as Meep does internally)
-ts_rfx = np.array(res_rfx.time_series).ravel()
-dt_rfx_actual = float(res_rfx.dt)
-nfft = int(2**np.ceil(np.log2(len(ts_rfx))) * 4)
-S_rfx = np.fft.rfft(ts_rfx, n=nfft)
-rfx_freqs_hz = np.fft.rfftfreq(nfft, d=dt_rfx_actual)
-rfx_freqs_meep = rfx_freqs_hz * a / C0
-rfx_flux = np.abs(S_rfx)**2  # proxy for flux (power spectral density)
+flux_in_rfx_arr  = np.asarray(flux_spectrum(res_rfx.flux_monitors["flux_in"]))
+flux_out_rfx_arr = np.asarray(flux_spectrum(res_rfx.flux_monitors["flux_out"]))
 
-# Normalize to Meep flux scale
-mask_valid = (rfx_freqs_meep > fcen - df/2) & (rfx_freqs_meep < fcen + df/2)
-if np.any(mask_valid):
-    rfx_flux_norm = rfx_flux[mask_valid]
-    rfx_freqs_plot = rfx_freqs_meep[mask_valid]
-    # Scale rfx to match Meep peak for shape comparison
-    scale = meep_flux.max() / (rfx_flux_norm.max() + 1e-30)
-    rfx_flux_norm = rfx_flux_norm * scale
-    print(f"  rfx spectral peak at f={rfx_freqs_plot[np.argmax(rfx_flux_norm)]:.4f}")
+eps_flux_r = float(np.max(np.abs(flux_in_rfx_arr))) * 1e-6
+T_rfx = flux_out_rfx_arr / np.where(np.abs(flux_in_rfx_arr) > eps_flux_r,
+                                     flux_in_rfx_arr, eps_flux_r)
+T_rfx_peak = float(T_rfx[peak_idx])
+print(f"  T_rfx(f_peak) = {T_rfx_peak:.4f}")
 
 # =============================================================================
-# PART 3: Field snapshot comparison
+# PART 3: Flux comparison plots
 # =============================================================================
 print(f"\n{'=' * 70}")
-print("PART 3: Field snapshot comparison")
+print("PART 3: Flux and transmission plots")
 print("=" * 70)
 
-# rfx snapshots
-ez_rfx_all = np.asarray(res_rfx.snapshots["ez"])
-grid = sim_rfx._build_grid()
-pad_g = grid.pad_x
-n_dom_x = int(np.ceil(domain_x / dx)) + 1
-n_dom_y = int(np.ceil(domain_y / dx)) + 1
+fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
 
-dt = float(res_rfx.dt)
-capture_ps = [0.05, 0.15, 0.30, 0.50]
-rfx_steps = [min(ez_rfx_all.shape[0]-1, int(t*1e-12/dt)) for t in capture_ps]
+ax = axes[0]
+ax.plot(meep_freqs, meep_flux_in,  "b-",  lw=2, label="Meep flux_in")
+ax.plot(meep_freqs, meep_flux_out, "b--", lw=2, label="Meep flux_out")
+ax.plot(meep_freqs, flux_in_rfx_arr,  "r-",  lw=1.3, label="rfx flux_in")
+ax.plot(meep_freqs, flux_out_rfx_arr, "r--", lw=1.3, label="rfx flux_out")
+ax.axvline(f_peak_meep, color="k", ls=":", alpha=0.5, label=f"f_peak={f_peak_meep:.3f}")
+ax.set_xlabel("Frequency (c/a)")
+ax.set_ylabel("Flux")
+ax.set_title("Absolute flux spectra")
+ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
 
-# Meep snapshots (re-run to capture at specific times)
-sim_meep2 = mp.Simulation(cell_size=cell_meep, boundary_layers=pml_meep,
-                          geometry=geo_meep, sources=src_meep,
-                          resolution=resolution)
-sim_meep2.init_sim()
-meep_cap_times = [t * 1e-12 * C0 / a for t in capture_ps]
+ax = axes[1]
+ax.plot(meep_freqs, T_meep, "b-", lw=2, label=f"Meep  T(f_peak)={T_meep_peak:.3f}")
+ax.plot(meep_freqs, T_rfx,  "r--", lw=1.5, label=f"rfx   T(f_peak)={T_rfx_peak:.3f}")
+ax.axhline(1.0, color="k", ls=":", alpha=0.5)
+ax.axvline(f_peak_meep, color="k", ls=":", alpha=0.5)
+ax.set_xlabel("Frequency (c/a)")
+ax.set_ylabel("Transmission T(f) = flux_out / flux_in")
+ax.set_title("Transmission")
+ax.legend(fontsize=9); ax.grid(True, alpha=0.3)
+ax.set_ylim(0.0, 1.5)
 
-fig, axes = plt.subplots(len(capture_ps), 3, figsize=(20, 4*len(capture_ps)))
-
-for i, t_ps in enumerate(capture_ps):
-    # rfx frame
-    rf = ez_rfx_all[rfx_steps[i], pad_g:pad_g+n_dom_x, pad_g:pad_g+n_dom_y]
-
-    # Meep frame
-    remaining = meep_cap_times[i] - sim_meep2.meep_time()
-    if remaining > 0:
-        sim_meep2.run(until=remaining)
-    ez_m = sim_meep2.get_array(center=mp.Vector3(), size=cell_meep,
-                                component=mp.Ez)
-    mf = ez_m[pml_cells:-pml_cells, :]
-
-    # Match sizes
-    nc_x = min(rf.shape[0], mf.shape[0])
-    nc_y = min(rf.shape[1], mf.shape[1])
-    rf_c = rf[:nc_x, :nc_y]
-    mf_c = mf[:nc_x, :nc_y]
-
-    vm = max(np.max(np.abs(rf_c)), np.max(np.abs(mf_c)), 1e-30) * 0.9
-
-    axes[i, 0].imshow(rf_c.T, origin="lower", cmap="RdBu_r",
-                       vmin=-vm, vmax=vm, aspect="auto")
-    axes[i, 0].set_title(f"rfx Ez (t={t_ps:.2f}ps)", fontsize=11)
-    axes[i, 0].set_ylabel("y")
-
-    axes[i, 1].imshow(mf_c.T, origin="lower", cmap="RdBu_r",
-                       vmin=-vm, vmax=vm, aspect="auto")
-    axes[i, 1].set_title(f"Meep Ez (t={t_ps:.2f}ps)", fontsize=11)
-
-    diff = rf_c - mf_c
-    vd = max(np.max(np.abs(diff)), 1e-30)
-    axes[i, 2].imshow(diff.T, origin="lower", cmap="bwr",
-                       vmin=-vd, vmax=vd, aspect="auto")
-    axes[i, 2].set_title("rfx - Meep", fontsize=11)
-
-for ax in axes[-1, :]:
-    ax.set_xlabel("x")
-fig.suptitle("Straight Waveguide: Ez Field Snapshots — rfx vs Meep\n"
-             f"eps={eps_wg}, width={wg_width}a, resolution={resolution}",
-             fontsize=13, fontweight="bold")
+plt.suptitle("Crossval 03 — Straight Waveguide: rfx vs Meep", fontweight="bold")
 plt.tight_layout()
-out1 = os.path.join(SCRIPT_DIR, "06_field_snapshots.png")
-plt.savefig(out1, dpi=150)
+out = os.path.join(SCRIPT_DIR, "03_flux_comparison.png")
+plt.savefig(out, dpi=150)
 plt.close()
-print(f"  Saved: {out1}")
+print(f"  Saved: {out}")
 
 # =============================================================================
-# PART 4: Flux comparison
+# PASS / FAIL
 # =============================================================================
 print(f"\n{'=' * 70}")
-print("PART 4: Flux T(f) comparison")
+print("VERDICT")
 print("=" * 70)
 
-fig2, ax = plt.subplots(figsize=(10, 5))
-ax.plot(meep_freqs, meep_flux, "b-", lw=2, label="Meep flux")
-if np.any(mask_valid):
-    ax.plot(rfx_freqs_plot, rfx_flux_norm, "r--", lw=2, label="rfx spectral (scaled)")
-ax.set_xlabel("Frequency (Meep units: c/a)")
-ax.set_ylabel("Flux / Power spectral density")
-ax.set_title("Straight Waveguide: Transmitted Spectrum — rfx vs Meep")
-ax.legend()
-ax.grid(True, alpha=0.3)
+def _in_range(x, lo, hi): return lo <= x <= hi
 
-meep_peak_f = meep_freqs[np.argmax(meep_flux)]
-ax.axvline(meep_peak_f, color="blue", ls=":", alpha=0.5)
+tol_self  = 0.05        # each sim's own T(f_peak) must be within [0.95, 1.05]
+tol_cross = 0.05        # |T_rfx − T_meep| at peak must be < 0.05
 
-plt.tight_layout()
-out2 = os.path.join(SCRIPT_DIR, "06_flux_comparison.png")
-plt.savefig(out2, dpi=150)
-plt.close()
-print(f"  Saved: {out2}")
+pass_self_rfx  = _in_range(T_rfx_peak,  1.0 - tol_self, 1.0 + tol_self)
+pass_self_meep = _in_range(T_meep_peak, 1.0 - tol_self, 1.0 + tol_self)
+delta_cross    = abs(T_rfx_peak - T_meep_peak)
+pass_cross     = delta_cross < tol_cross
 
-# =============================================================================
-# SUMMARY
-# =============================================================================
-print(f"\n{'=' * 70}")
-print("SUMMARY")
-print("=" * 70)
-print(f"  Meep flux peak at f={meep_peak_f:.5f}")
+print(f"  rfx self-T  @ f_peak: {T_rfx_peak:.4f}   {'PASS' if pass_self_rfx  else 'FAIL'} (gate 1.0 ± {tol_self})")
+print(f"  meep self-T @ f_peak: {T_meep_peak:.4f}   {'PASS' if pass_self_meep else 'FAIL'} (gate 1.0 ± {tol_self})")
+print(f"  |T_rfx − T_meep| @ f_peak: {delta_cross:.4f}  {'PASS' if pass_cross     else 'FAIL'} (gate < {tol_cross})")
 
-# Validation: flux shape correlation between rfx and Meep
-PASS = True
-if np.any(mask_valid) and len(rfx_flux_norm) > 5:
-    corr = float(np.corrcoef(meep_flux[mask_valid], rfx_flux_norm)[0, 1])
-    print(f"  Flux shape correlation: {corr:.4f}")
-    if corr > 0.90:
-        print(f"  PASS: flux correlation {corr:.4f} > 0.90")
-    else:
-        print(f"  FAIL: flux correlation {corr:.4f} <= 0.90")
-        PASS = False
-else:
-    print("  FAIL: insufficient valid flux data for comparison")
-    PASS = False
-
-if PASS:
-    print("\nALL CHECKS PASSED")
-else:
-    print("\nSOME CHECKS FAILED")
-
+PASS = pass_self_rfx and pass_self_meep and pass_cross
+print("\n" + ("ALL CHECKS PASSED" if PASS else "SOME CHECKS FAILED"))
 sys.exit(0 if PASS else 1)
