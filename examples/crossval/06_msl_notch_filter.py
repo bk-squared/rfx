@@ -41,7 +41,7 @@ Run:
   python examples/crossval/13_msl_notch_filter.py
 """
 
-import os, time
+import os, sys, time
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -402,8 +402,17 @@ print()
 pass_s21_nonzero = np.max(np.abs(S21)) > 1e-3
 pass_s11_bounded = np.max(np.abs(S11)) < 1.5
 pass_analytic = rfx_vs_analytic < 15.0    # loose tolerance — see STATUS below
-pass_oe = (not have_ref) or rfx_vs_oe < 15.0
-all_ok = pass_s21_nonzero and pass_s11_bounded and pass_analytic and pass_oe
+# The openEMS cross-check is the primary point of this crossval. If the
+# reference .npz is missing the test is NOT a valid cross-validation —
+# exit with code 2 (SKIPPED, not PASS) so CI treats the run as
+# inconclusive rather than passing.
+pass_oe = have_ref and rfx_vs_oe < 15.0
+all_ok = (
+    pass_s21_nonzero
+    and pass_s11_bounded
+    and pass_analytic
+    and pass_oe
+)
 
 print(f"  2-port S-matrix has non-zero S21:   "
       f"{'PASS' if pass_s21_nonzero else 'FAIL'}  "
@@ -416,8 +425,10 @@ print(f"  Notch freq vs analytic (< 15 %):    "
 if have_ref:
     print(f"  Notch freq vs openEMS  (< 15 %):    "
           f"{'PASS' if pass_oe else 'FAIL'}  ({rfx_vs_oe:.2f} %)")
+else:
+    print(f"  Notch freq vs openEMS  (< 15 %):    SKIP  (reference missing)")
 print(f"  Overall:                            "
-      f"{'PASS' if all_ok else 'FAIL'}")
+      f"{'PASS' if all_ok else ('SKIP' if not have_ref else 'FAIL')}")
 print()
 print("  STATUS — rfx core infrastructure fix:")
 print("    ✓ Off-diagonal S-matrix entries (S21/S12) now fill correctly")
@@ -443,3 +454,18 @@ print("    AddMSLPort). This is a separate, larger feature and is tracked")
 print("    as the next infrastructure task.")
 print()
 print(f"  Output: 13_msl_notch_filter.png")
+
+# Exit codes:
+#   0 = all PASS including openEMS cross-check
+#   1 = rfx self-check failed (broken physics or broken infra)
+#   2 = rfx self-check OK but reference missing — inconclusive crossval.
+#       Generate it first via ``python 13_openems_ref/run_upstream_tutorial.py``.
+_self_ok = pass_s21_nonzero and pass_s11_bounded and pass_analytic
+if all_ok:
+    sys.exit(0)
+elif _self_ok and not have_ref:
+    print("\n  SKIPPED: rfx self-check OK but openEMS reference is missing.")
+    print("  This is NOT a crossval PASS — generate the reference and rerun.")
+    sys.exit(2)
+else:
+    sys.exit(1)

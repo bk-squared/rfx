@@ -327,6 +327,27 @@ else:
 # canonical open-source patch-antenna reference: its standard tutorial
 # is "Simple_Patch_Antenna.py" and the lumped-port workflow is the most
 # direct analogue of rfx's `add_port`.
+#
+# CSXCAD + openEMS Python bindings are NOT a rfx dependency. On systems
+# without them (e.g. the VESSL GPU JAX image, or a plain `pip install
+# rfx-fdtd`) the crossval short-circuits here with a LOUD banner and a
+# non-zero exit code so the run is clearly flagged as inconclusive —
+# the script does not silently continue to a rfx-only pass gate.
+try:
+    import CSXCAD.CSXCAD as _csx_probe            # noqa: F401
+    import openEMS.openEMS as _oems_probe         # noqa: F401
+except ImportError as _e:
+    import sys as _sys
+    print("\n" + "!" * 70)
+    print("!! CROSSVAL 05 SKIPPED — CSXCAD / openEMS not installed")
+    print(f"!!   reason: {_e}")
+    print("!!   install recipe: research/microwave-energy/ (see note in")
+    print("!!       docs/agent-memory/index.md)")
+    print("!!   this run is NOT a crossval against OpenEMS. Exiting with")
+    print("!!   status 2 (SKIPPED) so CI does not treat it as PASS.")
+    print("!" * 70)
+    _sys.exit(2)
+
 print(f"\n{'=' * 70}")
 print("PART 2: OpenEMS — same patch, lumped-port S11")
 print("=" * 70)
