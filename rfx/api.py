@@ -3162,24 +3162,42 @@ class Simulation:
         if self._boundary == "upml" and self._refinement is not None:
             raise ValueError("boundary='upml' does not support subgridding/refinement")
 
-        # Per-axis CPML thickness (z may differ on non-uniform mesh)
-        # Faces with pec_faces override have zero effective CPML thickness
-        cpml_thick_xyz = [cpml_thickness, cpml_thickness, cpml_thickness]
+        # Per-face CPML thickness (v1.7.5). Mirrors Grid._face_pad:
+        # pec_faces / pmc_faces / periodic-axis faces consume 0 cells;
+        # remaining faces get the axis CPML thickness (non-uniform z
+        # aggregates the leading dz_profile entries). Under asymmetric
+        # composition (half-symmetric PMC + CPML, one-sided reflector)
+        # the lo and hi sides of a single axis can differ — the legacy
+        # symmetric scalar forced both sides to the max and produced
+        # false positives on the reflector face.
+        _pmc_faces_set = set(self._boundary_spec.pmc_faces())
+        _axis_thickness = [cpml_thickness, cpml_thickness, cpml_thickness]
         if (self._dz_profile is not None
                 and not is_tracer(self._dz_profile)
                 and self._boundary in ("cpml", "upml")
                 and self._cpml_layers > 0):
             n = min(self._cpml_layers, len(self._dz_profile))
-            cpml_thick_xyz[2] = float(sum(self._dz_profile[:n]))
-        # Zero out thickness for PEC-overridden faces
-        if "z_lo" in self._pec_faces:
-            cpml_thick_xyz[2] = 0  # z_lo is PEC, no CPML absorption there
-        # Zero out thickness for periodic axes — CPML is not allocated
-        # there (see _build_grid) so the geometry/probe/source in-CPML
-        # warnings should treat those axes as CPML-free (issue #68).
-        for _ax_idx, _ax_name in enumerate("xyz"):
-            if _ax_name in self._periodic_axes:
-                cpml_thick_xyz[_ax_idx] = 0
+            _axis_thickness[2] = float(sum(self._dz_profile[:n]))
+
+        def _face_thickness(ax_idx: int, side: str) -> float:
+            ax_name = "xyz"[ax_idx]
+            face = f"{ax_name}_{side}"
+            if self._boundary not in ("cpml", "upml"):
+                return 0.0
+            if face in self._pec_faces or face in _pmc_faces_set:
+                return 0.0
+            if ax_name in self._periodic_axes:
+                return 0.0
+            return _axis_thickness[ax_idx]
+
+        cpml_thick_lo = [_face_thickness(ax, "lo") for ax in range(3)]
+        cpml_thick_hi = [_face_thickness(ax, "hi") for ax in range(3)]
+        # Legacy symmetric scalar kept for readers that treat it as
+        # "nominal CPML thickness on this axis"; per-side checks below
+        # use cpml_thick_lo / cpml_thick_hi.
+        cpml_thick_xyz = [
+            max(cpml_thick_lo[i], cpml_thick_hi[i]) for i in range(3)
+        ]
 
         # P1.1: Floquet + non-uniform mesh — no silent fallback allowed
         if self._floquet_ports and self._dz_profile is not None:
@@ -3195,11 +3213,14 @@ class Simulation:
                 pos = pe.position
                 for ax, coord in enumerate(pos):
                     domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                    ct = cpml_thick_xyz[min(ax, 2)]
-                    if coord < ct * 0.5 or coord > domain_extent - ct * 0.5:
+                    ax_i = min(ax, 2)
+                    ct_lo = cpml_thick_lo[ax_i]
+                    ct_hi = cpml_thick_hi[ax_i]
+                    if coord < ct_lo * 0.5 or coord > domain_extent - ct_hi * 0.5:
                         _w.warn(
                             f"Probe at {pos} is near/inside {absorber_label} region "
-                            f"({absorber_label} {'xyz'[ax]}-thickness={ct*1e3:.1f}mm). "
+                            f"({absorber_label} {'xyz'[ax]}-thickness: "
+                            f"lo={ct_lo*1e3:.1f}mm, hi={ct_hi*1e3:.1f}mm). "
                             f"Signal will be attenuated. Move probe to interior.",
                             stacklevel=3,
                         )
@@ -3209,11 +3230,14 @@ class Simulation:
                 pos = pe.position
                 for ax, coord in enumerate(pos):
                     domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                    ct = cpml_thick_xyz[min(ax, 2)]
-                    if coord < ct * 0.5 or coord > domain_extent - ct * 0.5:
+                    ax_i = min(ax, 2)
+                    ct_lo = cpml_thick_lo[ax_i]
+                    ct_hi = cpml_thick_hi[ax_i]
+                    if coord < ct_lo * 0.5 or coord > domain_extent - ct_hi * 0.5:
                         _w.warn(
                             f"Source/port at {pos} is near/inside {absorber_label} region "
-                            f"({absorber_label} {'xyz'[ax]}-thickness={ct*1e3:.1f}mm). "
+                            f"({absorber_label} {'xyz'[ax]}-thickness: "
+                            f"lo={ct_lo*1e3:.1f}mm, hi={ct_hi*1e3:.1f}mm). "
                             f"Energy will be absorbed. Move source to interior.",
                             stacklevel=3,
                         )
@@ -3224,8 +3248,10 @@ class Simulation:
             corner_lo, corner_hi, _ = self._ntff
             for ax in range(3):
                 domain_ext = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                ct = cpml_thick_xyz[min(ax, 2)]
-                if corner_lo[ax] < ct or corner_hi[ax] > domain_ext - ct:
+                ax_i = min(ax, 2)
+                ct_lo = cpml_thick_lo[ax_i]
+                ct_hi = cpml_thick_hi[ax_i]
+                if corner_lo[ax] < ct_lo or corner_hi[ax] > domain_ext - ct_hi:
                     _w.warn(
                         f"NTFF box extends into {absorber_label} region along "
                         f"{'xyz'[ax]}-axis. Far-field results will be "
@@ -3260,11 +3286,14 @@ class Simulation:
                     try:
                         c1, c2 = entry.shape.bounding_box()
                         for ax in range(min(3, len(self._domain))):
-                            ax_thickness = cpml_thick_xyz[ax]
-                            if ax_thickness <= 0:
+                            thick_lo = cpml_thick_lo[ax]
+                            thick_hi = cpml_thick_hi[ax]
+                            if thick_lo <= 0 and thick_hi <= 0:
                                 continue
                             d = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                            if c1[ax] < ax_thickness * 0.3 or c2[ax] > d - ax_thickness * 0.3:
+                            lo_hit = thick_lo > 0 and c1[ax] < thick_lo * 0.3
+                            hi_hit = thick_hi > 0 and c2[ax] > d - thick_hi * 0.3
+                            if lo_hit or hi_hit:
                                 _w.warn(
                                     f"Material '{entry.material_name}' extends "
                                     f"into CPML region along {'xyz'[ax]}-axis. "

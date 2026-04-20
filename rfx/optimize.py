@@ -133,7 +133,6 @@ def optimize(
         from rfx.nonuniform import position_to_index as _nu_pos_to_idx
         lo_idx = list(_nu_pos_to_idx(grid, region.corner_lo))
         hi_idx = list(_nu_pos_to_idx(grid, region.corner_hi))
-        pads = (grid.cpml_layers, grid.cpml_layers, grid.cpml_layers)
         base_materials, _, _, base_pec_mask = sim._assemble_materials_nu(grid)
         period = 1.0 / float(sim._freq_max)
         # float(grid.dt): host-boundary context — called after _build_nonuniform_grid()
@@ -143,14 +142,18 @@ def optimize(
         grid = sim._build_grid()
         lo_idx = list(grid.position_to_index(region.corner_lo))
         hi_idx = list(grid.position_to_index(region.corner_hi))
-        pads = (grid.pad_x, grid.pad_y, grid.pad_z)
         base_materials, _, _, base_pec_mask, _, _ = sim._assemble_materials(grid)
         _n_steps_auto = grid.num_timesteps(num_periods=num_periods)
 
+    # Per-face clamp (v1.7.5): using the symmetric ``pad_{axis}`` would
+    # over-clamp a design region against a PMC/PEC reflector face whose
+    # ``pad_lo`` or ``pad_hi`` is 0. Clamp each side to its own pad.
+    pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
+    pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)
     dims = (grid.nx, grid.ny, grid.nz)
     for d in range(3):
-        lo_idx[d] = max(lo_idx[d], pads[d])
-        hi_idx[d] = min(hi_idx[d], dims[d] - 1 - pads[d])
+        lo_idx[d] = max(lo_idx[d], pads_lo[d])
+        hi_idx[d] = min(hi_idx[d], dims[d] - 1 - pads_hi[d])
     lo_idx = tuple(lo_idx)
     hi_idx = tuple(hi_idx)
 
@@ -486,16 +489,16 @@ def progressive_optimize(
             from rfx.nonuniform import position_to_index as _nu_pos_to_idx
             lo_idx = list(_nu_pos_to_idx(grid, region.corner_lo))
             hi_idx = list(_nu_pos_to_idx(grid, region.corner_hi))
-            pads = (grid.cpml_layers,) * 3
         else:
             lo_idx = list(grid.position_to_index(region.corner_lo))
             hi_idx = list(grid.position_to_index(region.corner_hi))
-            pads = (grid.pad_x, grid.pad_y, grid.pad_z)
 
+        pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
+        pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)
         dims = (grid.nx, grid.ny, grid.nz)
         for d in range(3):
-            lo_idx[d] = max(lo_idx[d], pads[d])
-            hi_idx[d] = min(hi_idx[d], dims[d] - 1 - pads[d])
+            lo_idx[d] = max(lo_idx[d], pads_lo[d])
+            hi_idx[d] = min(hi_idx[d], dims[d] - 1 - pads_hi[d])
         stage_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
         if any(s <= 0 for s in stage_shape):
             raise ValueError(
