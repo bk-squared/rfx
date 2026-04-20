@@ -273,7 +273,8 @@ def _cpml_noop_profile(n_layers: int) -> CPMLParams:
 
 
 def init_cpml(grid, *, kappa_max: float | None = None,
-              pec_faces: set[str] | None = None) -> tuple[CPMLAxisParams, CPMLState]:
+              pec_faces: set[str] | None = None,
+              pmc_faces: set[str] | None = None) -> tuple[CPMLAxisParams, CPMLState]:
     """Initialize CPML parameters and zero-valued auxiliary fields.
 
     Creates per-axis CPML profiles so that each face uses the correct
@@ -290,11 +291,24 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         Faces to force PEC (no absorption).  Valid names:
         ``"x_lo"``, ``"x_hi"``, ``"y_lo"``, ``"y_hi"``,
         ``"z_lo"``, ``"z_hi"``.  Default: None (CPML on all faces).
+    pmc_faces : set of str or None
+        Faces carrying a PMC reflector (v1.7.5 per-face padding puts
+        ``pad=0`` cells on that side of the axis). Like ``pec_faces``
+        these faces receive a no-op CPML profile — otherwise the
+        ``apply_cpml_e/h`` slices ``[:, :n, :]`` etc. would apply
+        absorber coefficients to the first ``n`` *interior* cells on
+        the PMC side and dissipate energy that should reflect.
     """
     if kappa_max is None:
         kappa_max = getattr(grid, "kappa_max", None) or 1.0
     if pec_faces is None:
         pec_faces = getattr(grid, "pec_faces", None) or set()
+    if pmc_faces is None:
+        pmc_faces = getattr(grid, "pmc_faces", None) or set()
+    # PMC and PEC are electromagnetic duals — both are perfect
+    # conductors — and both need the CPML profile suppressed so the
+    # absorber does not eat the first n interior cells on that side.
+    noop_faces = set(pec_faces) | set(pmc_faces)
     n = grid.cpml_layers
     dx, dy, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
 
@@ -308,26 +322,26 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         f: n for f in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
     }
 
-    def _lo_face_profile(is_pec: bool, cell_size, face_name: str) -> CPMLParams:
-        if is_pec:
+    def _lo_face_profile(is_noop: bool, cell_size, face_name: str) -> CPMLParams:
+        if is_noop:
             return noop
         n_active = int(face_layers.get(face_name, n))
         p = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max)
         return _pad_profile_at_end(p, n_active, n)
 
-    def _hi_face_profile(is_pec: bool, cell_size, face_name: str) -> CPMLParams:
-        if is_pec:
+    def _hi_face_profile(is_noop: bool, cell_size, face_name: str) -> CPMLParams:
+        if is_noop:
             return noop
         n_active = int(face_layers.get(face_name, n))
         base = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max)
         return _pad_profile_at_start(_flip_profile(base), n_active, n)
 
-    prof_x_lo = _lo_face_profile("x_lo" in pec_faces, dx, "x_lo")
-    prof_x_hi = _hi_face_profile("x_hi" in pec_faces, dx, "x_hi")
-    prof_y_lo = _lo_face_profile("y_lo" in pec_faces, dy, "y_lo")
-    prof_y_hi = _hi_face_profile("y_hi" in pec_faces, dy, "y_hi")
-    prof_z_lo = _lo_face_profile("z_lo" in pec_faces, dz_lo, "z_lo")
-    prof_z_hi = _hi_face_profile("z_hi" in pec_faces, dz_hi, "z_hi")
+    prof_x_lo = _lo_face_profile("x_lo" in noop_faces, dx, "x_lo")
+    prof_x_hi = _hi_face_profile("x_hi" in noop_faces, dx, "x_hi")
+    prof_y_lo = _lo_face_profile("y_lo" in noop_faces, dy, "y_lo")
+    prof_y_hi = _hi_face_profile("y_hi" in noop_faces, dy, "y_hi")
+    prof_z_lo = _lo_face_profile("z_lo" in noop_faces, dz_lo, "z_lo")
+    prof_z_hi = _hi_face_profile("z_hi" in noop_faces, dz_hi, "z_hi")
 
     params = CPMLAxisParams(
         x_lo=prof_x_lo, x_hi=prof_x_hi,
