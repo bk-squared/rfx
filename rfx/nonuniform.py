@@ -734,6 +734,14 @@ def run_nonuniform(
         )
         cpml_grid = grid
 
+    # PMC enforcement (v1.7.5). The NU scan body previously never
+    # zeroed H_tan on PMC faces, so a half-symmetric configuration
+    # that relied on the mirror plane was running with an effectively
+    # free boundary. Frozen set gives JIT cache a stable hash; empty
+    # set short-circuits the apply to a no-op.
+    use_pmc_faces = bool(pmc_faces)
+    _pmc_faces_frozen = frozenset(pmc_faces) if pmc_faces else frozenset()
+
     use_pec_mask = pec_mask is not None
     use_pec_occupancy = pec_occupancy is not None
 
@@ -863,6 +871,9 @@ def run_nonuniform(
                                          cpml_grid, "xyz")
         else:
             cpml_new = None
+        if use_pmc_faces:
+            from rfx.boundaries.pmc import apply_pmc_faces
+            st = apply_pmc_faces(st, _pmc_faces_frozen)
         if use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_h
             tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], grid.dx, dt)
