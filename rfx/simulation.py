@@ -623,6 +623,14 @@ def run(
             )
             for cfg in waveguide_ports
         )
+        # P4: 1D Klein-Gordon auxiliary state per port. Tuple layout
+        # matches ``waveguide_meta``; entries for ports without aux are
+        # None (skipped inside the scan body).
+        from rfx.sources.waveguide_port_aux import zero_aux_state
+        carry_init["waveguide_aux_states"] = tuple(
+            zero_aux_state(cfg.aux_config) if cfg.aux_enabled else None
+            for cfg in waveguide_ports
+        )
     if use_wire_sparams:
         # Initialize V, I, V_inc DFT accumulators per wire port
         carry_init["wire_sparam_accs"] = tuple(
@@ -698,8 +706,19 @@ def run(
                 st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], dx, dt)
             if use_waveguide_ports:
                 from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h_early
-                for cfg_meta in waveguide_meta:
-                    st = _apply_wg_h_early(st, cfg_meta, _step_idx, dt, dx)
+                from rfx.sources.waveguide_port_aux import update_wg_aux_1d_h
+                _wg_aux_in = carry.get("waveguide_aux_states",
+                                       (None,) * len(waveguide_meta))
+                _wg_aux_h_new = []
+                for cfg_meta, aux_st in zip(waveguide_meta, _wg_aux_in):
+                    if cfg_meta.aux_enabled and aux_st is not None:
+                        aux_st = update_wg_aux_1d_h(cfg_meta.aux_config,
+                                                    aux_st, dt)
+                        st = _apply_wg_h_early(st, cfg_meta, _step_idx, dt, dx,
+                                                aux_state=aux_st)
+                    else:
+                        st = _apply_wg_h_early(st, cfg_meta, _step_idx, dt, dx)
+                    _wg_aux_h_new.append(aux_st)
             if use_cpml:
                 st, cpml_new = apply_cpml_h(
                     st, cpml_params, carry["cpml"], grid, cpml_axes,
@@ -739,8 +758,18 @@ def run(
                 st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, dx, dt)
             if use_waveguide_ports:
                 from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e_early
-                for cfg_meta in waveguide_meta:
-                    st = _apply_wg_e_early(st, cfg_meta, _step_idx, dt, dx)
+                from rfx.sources.waveguide_port_aux import update_wg_aux_1d_e
+                _t_src = (_step_idx.astype(jnp.float32) + 1.0) * dt
+                _wg_aux_e_new = []
+                for cfg_meta, aux_st in zip(waveguide_meta, _wg_aux_h_new):
+                    if cfg_meta.aux_enabled and aux_st is not None:
+                        aux_st = update_wg_aux_1d_e(cfg_meta.aux_config,
+                                                    aux_st, dt, _t_src)
+                        st = _apply_wg_e_early(st, cfg_meta, _step_idx, dt, dx,
+                                                aux_state=aux_st)
+                    else:
+                        st = _apply_wg_e_early(st, cfg_meta, _step_idx, dt, dx)
+                    _wg_aux_e_new.append(aux_st)
             if use_cpml:
                 st, cpml_new = apply_cpml_e(
                     st, cpml_params, cpml_new, grid, cpml_axes,
@@ -932,6 +961,7 @@ def run(
             new_carry["flux_monitors"] = tuple(new_flux_accs)
         if use_waveguide_ports:
             new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
+            new_carry["waveguide_aux_states"] = tuple(_wg_aux_e_new)
         if use_wire_sparams:
             new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
         if use_lumped_rlc:
@@ -1457,6 +1487,11 @@ def run_until_decay(
             new_carry["flux_monitors"] = tuple(new_flux_accs)
         if use_waveguide_ports:
             new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
+            # P4 aux states pass through unchanged (run_until_decay path
+            # does NOT yet step the 1D aux — opt-in use_aux_grid=True is
+            # currently a no-op here; use the scan run() path for aux).
+            new_carry["waveguide_aux_states"] = carry_in.get(
+                "waveguide_aux_states", (None,) * len(waveguide_meta))
         if use_wire_sparams:
             new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
         if use_lumped_rlc:

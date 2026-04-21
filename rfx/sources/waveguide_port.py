@@ -157,6 +157,14 @@ class WaveguidePortConfig(NamedTuple):
     e_inc_table: jnp.ndarray   # (n_steps,) float
     h_inc_table: jnp.ndarray   # (n_steps,) float
 
+    # Optional 1D Klein-Gordon auxiliary grid (P4). When ``aux_enabled`` is
+    # true, apply_waveguide_port_h/e read (e, h) directly from a 1D FDTD
+    # threaded through the scan body instead of from the FFT tables above —
+    # eliminating the precompute-vs-Yee inconsistency floor (~5.6% backward
+    # leakage in the table path).
+    aux_enabled: bool
+    aux_config: object         # WaveguidePortAuxConfig (opaque here to avoid cyclic import)
+
 
 def _te_mode_profiles(a: float, b: float, m: int, n: int,
                       y_coords: np.ndarray, z_coords: np.ndarray,
@@ -479,6 +487,7 @@ def init_waveguide_port(
     dt: float = 0.0,
     waveform: str = "differentiated_gaussian",
     mode_profile: str = "analytic",
+    use_aux_grid: bool = False,
 ) -> WaveguidePortConfig:
     """Initialize a waveguide port with precomputed mode profiles.
 
@@ -784,6 +793,25 @@ def init_waveguide_port(
         e_inc_table = jnp.zeros((1,), dtype=jnp.float32)
         h_inc_table = jnp.zeros((1,), dtype=jnp.float32)
 
+    # --- P4: 1D Klein-Gordon auxiliary grid (optional) ---
+    aux_enabled = bool(use_aux_grid) and dt > 0.0
+    if aux_enabled:
+        from rfx.sources.waveguide_port_aux import init_wg_aux
+        aux_cfg, aux_state0 = init_wg_aux(
+            f_cutoff=f_c,
+            dx=float(dx),
+            dt=float(dt),
+            direction=port.direction,
+            src_amp=float(amplitude),
+            src_t0=float(t0),
+            src_tau=float(tau),
+            src_fcen=float(f0),
+            src_waveform=str(waveform),
+        )
+    else:
+        aux_cfg = None
+        aux_state0 = None
+
     return WaveguidePortConfig(
         x_index=port.x_index,
         ref_x=ref_x,
@@ -829,6 +857,8 @@ def init_waveguide_port(
         freqs=freqs,
         e_inc_table=e_inc_table,
         h_inc_table=h_inc_table,
+        aux_enabled=aux_enabled,
+        aux_config=aux_cfg,
     )
 
 
@@ -894,31 +924,39 @@ def inject_waveguide_port(state, cfg: WaveguidePortConfig,
 
 
 def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
-                            step, dt: float, dx: float):
+                            step, dt: float, dx: float,
+                            aux_state=None):
     """TFSF-style H correction at the port's upstream half-cell.
 
-    Half of the one-sided TFSF boundary for a waveguide-mode source.
-    Reads the bandpass-filtered source amplitude from ``cfg.e_inc_table``
-    (not the raw differentiated Gaussian) so sub-cutoff DC content — which
-    cannot propagate in the guide anyway — never reaches the 3D grid.
+    Two source-value paths:
 
-    Same pattern as ``apply_tfsf_h`` in ``rfx/sources/tfsf.py``.
+    - **1D aux path** (``cfg.aux_enabled`` + ``aux_state`` supplied): read
+      the E amplitude at the source plane straight from the 1D Klein-
+      Gordon auxiliary FDTD. Values are Yee-discrete-exact by
+      construction, so backward cancellation with ``apply_waveguide_port_e``
+      reaches the same <0.1 % floor as ``tfsf.py``'s plane-wave pair.
 
-    When ``cfg.e_inc_table`` is empty (init was called without ``dt``),
-    the TFSF pair cannot be computed — this function is a no-op and
-    ``apply_waveguide_port_e`` handles source emission via the legacy
-    soft-E path instead. This keeps low-level callers that predate the
-    TFSF pair working without API changes.
+    - **FFT-table path** (``cfg.e_inc_table`` populated): legacy behaviour.
+      Uses the bandpass-filtered scalar pre-computed at init. Floors at
+      ~5.6 % backward leakage because continuous-wave samples can't match
+      Yee-grid running-wave values (see 2026-04-21 A-phase investigation).
+
+    When both tables are empty (low-level callers that never pass ``dt``),
+    this helper is a no-op and emission falls through to the legacy soft-E
+    source inside ``apply_waveguide_port_e``.
     """
-    table = cfg.e_inc_table
-    table_size = table.shape[0]
-    if table_size <= 1:
-        # Tables unavailable — delegate source emission to the legacy
-        # soft-E fallback inside apply_waveguide_port_e. No-op here.
-        return state
-    safe_step = jnp.clip(jnp.asarray(step, dtype=jnp.int32),
-                         0, table_size - 1)
-    src_val = cfg.src_amp * table[safe_step]
+    if cfg.aux_enabled and aux_state is not None:
+        # 1D aux: e1d[i0] is the E amplitude at the 1D index that maps to
+        # the 3D source plane x_src at the current (integer) time level.
+        src_val = aux_state.e1d[cfg.aux_config.i0]
+    else:
+        table = cfg.e_inc_table
+        table_size = table.shape[0]
+        if table_size <= 1:
+            return state
+        safe_step = jnp.clip(jnp.asarray(step, dtype=jnp.int32),
+                             0, table_size - 1)
+        src_val = cfg.src_amp * table[safe_step]
     coeff = dt / (MU_0 * dx)
 
     # For a "+axis" port the source's backward emission travels in "−axis";
@@ -948,7 +986,8 @@ def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
 
 
 def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
-                            step, dt: float, dx: float):
+                            step, dt: float, dx: float,
+                            aux_state=None):
     """TFSF-style E correction at the port source plane.
 
     Other half of the one-sided TFSF boundary. Adds the incident H-side
@@ -961,6 +1000,31 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
     ``update_e``, along with the paired ``apply_waveguide_port_h``.
     """
     coeff = dt / (EPS_0 * dx)
+
+    if cfg.aux_enabled and aux_state is not None:
+        # 1D aux: h1d[i0-1] is the H at the 1D half-cell upstream of the
+        # source plane mapping — exactly the Yee location the 3D E-update
+        # stencil at x_src expects from a forward-only wave. Using the
+        # 1D aux value avoids the continuous-wave sampling residue that
+        # floors the FFT table path at ~5.6 %.
+        h_inc_scalar = aux_state.h1d[cfg.aux_config.i0 - 1]
+        if cfg.direction.startswith("+"):
+            e_plane_index = cfg.x_index
+            sign = -1.0
+        else:
+            e_plane_index = cfg.x_index + 1
+            sign = +1.0
+        indexer_e = _plane_indexer(cfg, e_plane_index)
+        e_u_field = getattr(state, cfg.e_u_component)
+        e_v_field = getattr(state, cfg.e_v_component)
+        e_v_field = e_v_field.at[indexer_e].add(
+            sign * coeff * h_inc_scalar * cfg.hy_profile)
+        e_u_field = e_u_field.at[indexer_e].add(
+            -sign * coeff * h_inc_scalar * cfg.hz_profile)
+        return state._replace(**{
+            cfg.e_u_component: e_u_field,
+            cfg.e_v_component: e_v_field,
+        })
 
     # h_inc_table is empty (shape (1,)) when dt or dft_total_steps was not
     # supplied at init time. In that case the paired H correction is also
@@ -1664,6 +1728,7 @@ def init_multimode_waveguide_port(
     dt: float = 0.0,
     waveform: str = "differentiated_gaussian",
     mode_profile: str = "analytic",
+    use_aux_grid: bool = False,
 ) -> list[WaveguidePortConfig]:
     """Initialize a multi-mode waveguide port.
 
@@ -1710,6 +1775,7 @@ def init_multimode_waveguide_port(
             ref_offset=ref_offset, dft_total_steps=dft_total_steps,
             dft_window=dft_window, dft_window_alpha=dft_window_alpha,
             dt=dt, waveform=waveform, mode_profile=mode_profile,
+            use_aux_grid=use_aux_grid,
         )
         return [cfg]
 
@@ -1742,6 +1808,7 @@ def init_multimode_waveguide_port(
             ref_offset=ref_offset, dft_total_steps=dft_total_steps,
             dft_window=dft_window, dft_window_alpha=dft_window_alpha,
             dt=dt, waveform=waveform, mode_profile=mode_profile,
+            use_aux_grid=use_aux_grid,
         )
         cfgs.append(cfg)
 
