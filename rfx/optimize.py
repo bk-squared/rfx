@@ -19,6 +19,7 @@ Example
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from typing import Callable
 
@@ -66,6 +67,42 @@ def _latent_to_eps(latent: jnp.ndarray, eps_min: float, eps_max: float) -> jnp.n
     return eps_min + (eps_max - eps_min) * jax.nn.sigmoid(latent)
 
 
+def _call_optimize_objective(
+    objective: Callable,
+    result,
+    *,
+    accepts_ntff_box: bool,
+) -> jnp.ndarray:
+    """Evaluate an optimize objective against the minimal forward result contract."""
+    if accepts_ntff_box:
+        return objective(result, ntff_box=result.ntff_box)
+    return objective(result)
+
+
+def _resolve_optimize_hybrid_context(
+    sim,
+    *,
+    eps_r: jnp.ndarray,
+    n_steps: int,
+    adjoint_mode: str,
+):
+    """Build the supported hybrid replay context once when optimize opts in."""
+    if adjoint_mode not in {"pure_ad", "hybrid", "auto"}:
+        raise ValueError(
+            f"adjoint_mode must be 'pure_ad', 'hybrid', or 'auto', got {adjoint_mode!r}"
+        )
+    if adjoint_mode == "pure_ad":
+        return None
+
+    inputs = sim.build_hybrid_phase1_inputs(eps_override=eps_r, n_steps=n_steps)
+    report = sim.inspect_hybrid_phase1_from_inputs(inputs)
+    if report.supported:
+        return sim.build_hybrid_phase1_context_from_inputs(inputs)
+    if adjoint_mode == "hybrid":
+        raise ValueError(report.reason_text)
+    return None
+
+
 def optimize(
     sim,
     region: DesignRegion,
@@ -77,6 +114,7 @@ def optimize(
     n_steps: int | None = None,
     num_periods: float = 20.0,
     verbose: bool = True,
+    adjoint_mode: str = "pure_ad",
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
@@ -105,6 +143,13 @@ def optimize(
         10 for lower memory usage with minimal accuracy loss.
     verbose : bool
         Print progress every 10 iterations.
+    adjoint_mode : {"pure_ad", "hybrid", "auto"}
+        Forward/adjoint routing policy for each optimize iteration.
+        ``pure_ad`` preserves the current default behavior.
+        ``hybrid`` requires the current Phase 1 hybrid seam to support the
+        configured simulation and raises otherwise.
+        ``auto`` uses the hybrid seam only when support inspection passes and
+        otherwise falls back to the existing pure-AD path.
 
     Returns
     -------
@@ -140,6 +185,13 @@ def optimize(
     base_sigma = base_materials.sigma
     base_mu_r = base_materials.mu_r
     _n_steps = n_steps if n_steps is not None else grid.num_timesteps(num_periods=num_periods)
+    objective_accepts_ntff_box = "ntff_box" in inspect.signature(objective).parameters
+    hybrid_context = _resolve_optimize_hybrid_context(
+        sim,
+        eps_r=base_eps_r,
+        n_steps=_n_steps,
+        adjoint_mode=adjoint_mode,
+    )
 
     # Adam state
     m = jnp.zeros_like(init_latent)
@@ -158,28 +210,31 @@ def optimize(
         ei, ej, ek = hi_idx
         eps_r = base_eps_r.at[si:ei+1, sj:ej+1, sk:ek+1].set(eps_design)
 
-        from rfx.core.yee import MaterialArrays
-        materials = MaterialArrays(eps_r=eps_r, sigma=base_sigma, mu_r=base_mu_r)
-
         if verbose and it_count[0] == 0:
             cells = grid.nx * grid.ny * grid.nz
             print(f"  optimize: n_steps={_n_steps}, grid={grid.shape} "
                   f"({cells/1e6:.1f}M cells)")
 
-        result = sim._forward_from_materials(
-            grid,
-            materials,
-            debye_spec,
-            lorentz_spec,
-            n_steps=_n_steps,
-            checkpoint=True,
-            pec_mask=base_pec_mask,
+        if hybrid_context is not None:
+            result = sim.forward_hybrid_phase1_from_context(hybrid_context, eps_override=eps_r)
+        else:
+            from rfx.core.yee import MaterialArrays
+
+            materials = MaterialArrays(eps_r=eps_r, sigma=base_sigma, mu_r=base_mu_r)
+            result = sim._forward_from_materials(
+                grid,
+                materials,
+                debye_spec,
+                lorentz_spec,
+                n_steps=_n_steps,
+                checkpoint=True,
+                pec_mask=base_pec_mask,
+            )
+        return _call_optimize_objective(
+            objective,
+            result,
+            accepts_ntff_box=objective_accepts_ntff_box,
         )
-        import inspect
-        sig = inspect.signature(objective)
-        if 'ntff_box' in sig.parameters:
-            return objective(result, ntff_box=result.ntff_box)
-        return objective(result)
 
     grad_fn = jax.value_and_grad(forward)
 
