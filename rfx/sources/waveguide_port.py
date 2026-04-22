@@ -114,6 +114,7 @@ class WaveguidePortConfig(NamedTuple):
     a: float
     b: float
     dx: float
+    dt: float
     # Per-axis transverse cell widths covering the port aperture.
     # Shape (nu_port,) and (nv_port,) respectively. For uniform Yee grids
     # both arrays are constant ``dx``; on a NonUniformGrid these are the
@@ -126,6 +127,14 @@ class WaveguidePortConfig(NamedTuple):
     dft_total_steps: int
     dft_window: str
     dft_window_alpha: float
+    # Time-gated DFT end step (exclusive upper bound on accumulation).
+    # When ``state.step >= dft_end_step`` the accumulator stops adding
+    # new energy. Use this to exclude late-time multi-bounce from
+    # strong-reflector geometries (PEC short, high-Q resonator) where
+    # the device-run standing wave would otherwise overwhelm the
+    # forward-propagating reference signal. Default is ``dft_total_steps``
+    # (no gating; full-window behaviour identical to pre-2026-04-21).
+    dft_end_step: int
 
     # Source waveform parameters. ``waveform`` selects the pulse shape:
     # ``"differentiated_gaussian"`` (legacy, src = -2·arg·exp(-arg²)) or
@@ -476,9 +485,10 @@ def init_waveguide_port(
     dft_total_steps: int = 0,
     dft_window: str = "tukey",
     dft_window_alpha: float = 0.25,
+    dft_end_step: int | None = None,
     dt: float = 0.0,
-    waveform: str = "differentiated_gaussian",
-    mode_profile: str = "analytic",
+    waveform: str = "modulated_gaussian",
+    mode_profile: str = "discrete",
 ) -> WaveguidePortConfig:
     """Initialize a waveguide port with precomputed mode profiles.
 
@@ -808,6 +818,7 @@ def init_waveguide_port(
         f_cutoff=float(f_c),
         a=port.a, b=port.b,
         dx=float(dx),
+        dt=float(dt),
         u_widths=jnp.asarray(u_widths_np, dtype=jnp.float32),
         v_widths=jnp.asarray(v_widths_np, dtype=jnp.float32),
         source_x_m=float(source_x_m),
@@ -816,6 +827,9 @@ def init_waveguide_port(
         dft_total_steps=int(dft_total_steps),
         dft_window=dft_window,
         dft_window_alpha=float(dft_window_alpha),
+        dft_end_step=int(
+            dft_end_step if dft_end_step is not None else dft_total_steps
+        ),
         src_amp=float(amplitude),
         src_t0=float(t0),
         src_tau=float(tau),
@@ -1112,6 +1126,9 @@ def update_waveguide_port_probe(cfg: WaveguidePortConfig, state,
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * cfg.freqs * t)
     weight = _dft_window_weight(state.step, cfg.dft_total_steps, cfg.dft_window, cfg.dft_window_alpha)
+    # Time-gate: zero the weight once we pass the configured end step.
+    # Used to exclude late-time multi-bounce from strong-reflector S-params.
+    weight = jnp.where(state.step < cfg.dft_end_step, weight, 0.0)
 
     return cfg._replace(
         v_probe_dft=cfg.v_probe_dft + v_probe * phase * dt * weight,
@@ -1122,12 +1139,47 @@ def update_waveguide_port_probe(cfg: WaveguidePortConfig, state,
     )
 
 
-def _compute_beta(freqs: jnp.ndarray, f_cutoff: float) -> jnp.ndarray:
-    """Guided propagation constant β(f) for a vacuum-filled rectangular guide."""
+def _compute_beta(
+    freqs: jnp.ndarray,
+    f_cutoff: float,
+    *,
+    dt: float = 0.0,
+    dx: float = 0.0,
+) -> jnp.ndarray:
+    """Guided propagation constant β(f) for a vacuum-filled rectangular guide.
+
+    With ``dt > 0`` and ``dx > 0`` the **Yee-discrete** dispersion relation
+    is used::
+
+        (sin(ω·dt/2) / (c·dt/2))² = (sin(β·dx/2) / (dx/2))² + kc²
+
+    This matches the numerical phase velocity the FDTD simulation actually
+    propagates — critical when shifting modal waves across a plane by
+    ``exp(∓jβ·Δz)``. With ``dt == 0`` or ``dx == 0`` the legacy analytic
+    continuous-medium form ``β = sqrt(k² − kc²)`` is returned for
+    backwards compatibility. Evanescent (sub-cutoff) branch falls back to
+    analytic imaginary β in both modes — those waves are not propagated
+    by ``_shift_modal_waves`` and their accuracy does not affect S-params.
+    """
     omega = 2 * jnp.pi * freqs
-    k = omega / C0_LOCAL
     kc = 2 * jnp.pi * f_cutoff / C0_LOCAL
 
+    if dt > 0.0 and dx > 0.0:
+        # Yee 3D dispersion with transverse cutoff kc (2D-FD eigenvalue).
+        # Temporal term: sin(ωdt/2) / (c·dt/2).
+        s_t_over_c = jnp.sin(omega * 0.5 * dt) / (C0_LOCAL * 0.5 * dt)
+        s_x_sq = s_t_over_c ** 2 - kc ** 2
+        # Propagating branch: clip arcsin argument to (-1, 1) to protect
+        # against grid-dispersion-induced s_x·dx/2 > 1 numerical noise.
+        arg = jnp.clip(0.5 * dx * jnp.sqrt(jnp.maximum(s_x_sq, 0.0)),
+                       -1.0 + 1e-12, 1.0 - 1e-12)
+        beta_prop = (2.0 / dx) * jnp.arcsin(arg)
+        # Evanescent branch: keep analytic imaginary form — these are not
+        # propagated and their magnitude is not used for plane-shift.
+        beta_evan = 1j * jnp.sqrt(jnp.maximum(-s_x_sq, 0.0)) * C0_LOCAL
+        return jnp.where(s_x_sq >= 0, beta_prop, beta_evan)
+
+    k = omega / C0_LOCAL
     beta_sq = k**2 - kc**2
     return jnp.where(
         beta_sq >= 0,
@@ -1142,6 +1194,9 @@ def _compute_mode_impedance(
     freqs: jnp.ndarray,
     f_cutoff: float,
     mode_type: str,
+    *,
+    dt: float = 0.0,
+    dx: float = 0.0,
 ) -> jnp.ndarray:
     """Rectangular-waveguide modal impedance for TE/TM modes.
 
@@ -1149,16 +1204,51 @@ def _compute_mode_impedance(
     TM: Z = β / (ωε)
     """
     omega = 2 * jnp.pi * freqs
-    beta = _compute_beta(freqs, f_cutoff)
+    beta = _compute_beta(freqs, f_cutoff, dt=dt, dx=dx)
     safe_beta = jnp.where(jnp.abs(beta) > 1e-30, beta,
                           1e-30 * jnp.ones_like(beta))
     safe_omega = jnp.where(jnp.abs(omega) > 1e-30, omega,
                            1e-30 * jnp.ones_like(omega))
+    if dt > 0.0 and dx > 0.0:
+        propagating = freqs > f_cutoff
+        s_w = jnp.sin(omega * 0.5 * dt)
+        s_b = jnp.sin(beta * 0.5 * dx)
+        # Evanescent sentinel: use a LARGE FINITE scalar (not jnp.inf).
+        # inf × complex(i, 0) numerically yields nan in the imaginary component
+        # on most NumPy/JAX implementations — see test_multimode cutoff cases.
+        # A finite stand-in keeps downstream `(V ± Z·I)` arithmetic defined.
+        te_evanescent = jnp.asarray(1e30, dtype=jnp.float32)
+        tm_evanescent = jnp.asarray(0.0, dtype=jnp.float32)
+        if mode_type == "TE":
+            z_disc = MU_0 * dx * s_w / jnp.maximum(dt * s_b, 1e-30)
+            return jnp.where(propagating, z_disc, te_evanescent)
+        if mode_type == "TM":
+            z_disc = dt * s_b / jnp.maximum(EPS_0 * dx * s_w, 1e-30)
+            return jnp.where(propagating, z_disc, tm_evanescent)
     if mode_type == "TE":
         return omega * MU_0 / safe_beta
     if mode_type == "TM":
         return safe_beta / (safe_omega * EPS_0)
     raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
+
+
+def _co_located_current_spectrum(
+    cfg: WaveguidePortConfig,
+    current_dft: jnp.ndarray,
+) -> jnp.ndarray:
+    """Rotate H-derived spectra onto the E timestamp.
+
+    Yee H lives at half-timesteps relative to E. Our DFT accumulation uses
+    the same timestamp for V and I, so we compensate by rotating the current
+    spectrum by exp(-jωdt/2) before modal decomposition.
+    """
+    if cfg.dt <= 0.0:
+        return current_dft
+    omega = 2 * jnp.pi * cfg.freqs
+    # HYPOTHESIS TEST 2026-04-22: sign was `-jωdt/2`; derivation with
+    # state.step=n+1, E at (n+1)dt, H at (n+1/2)dt says raw I DFT carries
+    # factor exp(-jωdt/2) vs true DFT — correction should be +jωdt/2.
+    return current_dft * jnp.exp(+1j * omega * (0.5 * cfg.dt))
 
 
 def _extract_global_waves(
@@ -1167,7 +1257,14 @@ def _extract_global_waves(
     current_dft: jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Return global (+x/-x) modal waves from colocated modal V/I spectra."""
-    z_mode = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type)
+    z_mode = _compute_mode_impedance(
+        cfg.freqs,
+        cfg.f_cutoff,
+        cfg.mode_type,
+        dt=cfg.dt,
+        dx=cfg.dx,
+    )
+    current_dft = _co_located_current_spectrum(cfg, current_dft)
     forward = 0.5 * (voltage_dft + z_mode * current_dft)
     backward = 0.5 * (voltage_dft - z_mode * current_dft)
     return forward, backward
@@ -1210,15 +1307,27 @@ def _shift_modal_waves(
     backward: jnp.ndarray,
     beta: jnp.ndarray,
     shift_m: float,
+    step_sign: int = 1,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Shift modal waves to a new reference plane.
 
-    `shift_m > 0` means shifting the reporting plane downstream along the
-    positive normal axis of the port.
+    `shift_m` is in GLOBAL coordinates along the port normal axis. For a
+    "+x" port (``step_sign=+1``) `shift_m > 0` moves the reporting plane
+    downstream (local-forward). For a "-x" port (``step_sign=-1``) the
+    local-forward direction is -x in global coords, so the incident-wave
+    phase flips: we convert to local via ``local_shift = shift_m *
+    step_sign`` and apply the same formula.
+
+    Before 2026-04-22 the function ignored ``step_sign`` and applied
+    the "+x" formula unconditionally — this silently gave the wrong sign
+    on any negative-direction port, which is why user-specified
+    ``reference_plane`` shifts produced only half-corrected phases for
+    "-x"/"-y"/"-z" ports and the crossval/11 phase offset never closed.
     """
     if shift_m == 0.0:
         return forward, backward
-    shift = jnp.asarray(shift_m, dtype=beta.dtype)
+    local_shift = shift_m * step_sign
+    shift = jnp.asarray(local_shift, dtype=beta.dtype)
     forward_shifted = forward * jnp.exp(-1j * beta * shift)
     backward_shifted = backward * jnp.exp(+1j * beta * shift)
     return forward_shifted, backward_shifted
@@ -1241,11 +1350,12 @@ def extract_waveguide_sparams(
         Metres to shift the probe-plane reporting location relative to the
         stored probe plane. Positive is downstream (+x), negative upstream.
     """
-    beta = _compute_beta(cfg.freqs, cfg.f_cutoff)
+    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx)
+    step_sign = 1 if cfg.direction.startswith("+") else -1
     a_ref, b_ref = _extract_port_waves(cfg, cfg.v_ref_dft, cfg.i_ref_dft)
     a_probe, b_probe = _extract_port_waves(cfg, cfg.v_probe_dft, cfg.i_probe_dft)
-    a_ref, b_ref = _shift_modal_waves(a_ref, b_ref, beta, ref_shift)
-    a_probe, b_probe = _shift_modal_waves(a_probe, b_probe, beta, probe_shift)
+    a_ref, b_ref = _shift_modal_waves(a_ref, b_ref, beta, ref_shift, step_sign)
+    a_probe, b_probe = _shift_modal_waves(a_probe, b_probe, beta, probe_shift, step_sign)
     safe_ref = jnp.where(jnp.abs(a_ref) > 0, a_ref, jnp.ones_like(a_ref))
     s11 = b_ref / safe_ref
     s21 = a_probe / safe_ref
@@ -1280,9 +1390,10 @@ def extract_waveguide_port_waves(
     ref_shift: float = 0.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Return port-local (incident, outgoing) waves at a shifted reference plane."""
-    beta = _compute_beta(cfg.freqs, cfg.f_cutoff)
+    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx)
+    step_sign = 1 if cfg.direction.startswith("+") else -1
     a_ref, b_ref = _extract_port_waves(cfg, cfg.v_ref_dft, cfg.i_ref_dft)
-    return _shift_modal_waves(a_ref, b_ref, beta, ref_shift)
+    return _shift_modal_waves(a_ref, b_ref, beta, ref_shift, step_sign)
 
 
 def extract_waveguide_s_matrix(
@@ -1395,9 +1506,11 @@ def extract_waveguide_s_params_normalized(
          The reference b_out[i] captures the wave as it arrives at port i,
          including all numerical dispersion, so dividing cancels the bias.
       4. Diagonal (i == j):
-           S_jj = b_out_device[j] / a_inc_reference[j]
-         The reference reflection is near zero for an empty guide, so we
-         normalize the device reflection by the incident wave instead.
+           S_jj = (b_out_device[j] - b_out_reference[j]) / a_inc_reference[j]
+         The subtraction removes the empty-guide CPML/discretization
+         contribution at the driven port so S_jj measures only the
+         device-induced reflection. Strong-reflector cases may still
+         require time-gated DFT (`dft_end_step`) to limit late multi-bounce.
 
     This avoids the small/small blow-up of element-wise S_dev/S_ref for
     reflection terms while still cancelling dispersion for transmission.
@@ -1524,8 +1637,11 @@ def extract_waveguide_s_params_normalized(
             b_recv_dev_np = np.array(b_recv_dev)
 
             if recv_idx == drive_idx:
-                # Diagonal: normalize reflection by incident wave
-                s_matrix[recv_idx, drive_idx, :] = b_recv_dev_np / safe_a_inc
+                # Diagonal: subtract the reference-run reflection so the
+                # result captures only device-induced reflection.
+                s_matrix[recv_idx, drive_idx, :] = (
+                    b_recv_dev_np - b_out_ref[recv_idx]
+                ) / safe_a_inc
             else:
                 # Off-diagonal: normalize by reference outgoing at same port
                 safe_b_ref = np.where(
@@ -1662,8 +1778,8 @@ def init_multimode_waveguide_port(
     dft_window: str = "tukey",
     dft_window_alpha: float = 0.25,
     dt: float = 0.0,
-    waveform: str = "differentiated_gaussian",
-    mode_profile: str = "analytic",
+    waveform: str = "modulated_gaussian",
+    mode_profile: str = "discrete",
 ) -> list[WaveguidePortConfig]:
     """Initialize a multi-mode waveguide port.
 
@@ -1947,6 +2063,8 @@ def update_overlap_dft(
     weight = _dft_window_weight(
         state.step, cfg.dft_total_steps, cfg.dft_window, cfg.dft_window_alpha
     )
+    # Same time-gate as update_waveguide_port_probe (consistency).
+    weight = jnp.where(state.step < cfg.dft_end_step, weight, 0.0)
 
     return OverlapDFTAccumulators(
         p1_ref_dft=acc.p1_ref_dft + p1_ref * phase * dt * weight,
@@ -2004,16 +2122,24 @@ def extract_waveguide_sparams_overlap(
     (s11, s21) : tuple of jnp.ndarray
         S-parameters at the (optionally shifted) planes.
     """
-    beta = _compute_beta(cfg.freqs, cfg.f_cutoff)
-    z_mode = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type)
+    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx)
+    z_mode = _compute_mode_impedance(
+        cfg.freqs,
+        cfg.f_cutoff,
+        cfg.mode_type,
+        dt=cfg.dt,
+        dx=cfg.dx,
+    )
     c_stored = mode_self_overlap(cfg, cfg.dx)
+    p2_ref = _co_located_current_spectrum(cfg, acc.p2_ref_dft)
+    p2_probe = _co_located_current_spectrum(cfg, acc.p2_probe_dft)
 
     # Convert cross-product DFTs to global forward/backward waves
     fwd_ref, bwd_ref = _overlap_to_waves(
-        acc.p1_ref_dft, acc.p2_ref_dft, z_mode, c_stored
+        acc.p1_ref_dft, p2_ref, z_mode, c_stored
     )
     fwd_probe, bwd_probe = _overlap_to_waves(
-        acc.p1_probe_dft, acc.p2_probe_dft, z_mode, c_stored
+        acc.p1_probe_dft, p2_probe, z_mode, c_stored
     )
 
     # Port-local wave mapping
@@ -2024,13 +2150,15 @@ def extract_waveguide_sparams_overlap(
         a_inc_ref, a_out_ref = bwd_ref, fwd_ref
         a_inc_probe = bwd_probe
 
-    # Apply reference-plane shifts
-    a_inc_ref, a_out_ref = _shift_modal_waves(a_inc_ref, a_out_ref, beta, ref_shift)
+    # Apply reference-plane shifts (global-frame shift; sign handled in _shift_modal_waves)
+    step_sign = 1 if cfg.direction.startswith("+") else -1
+    a_inc_ref, a_out_ref = _shift_modal_waves(a_inc_ref, a_out_ref, beta, ref_shift, step_sign)
     a_inc_probe, _ = _shift_modal_waves(
         a_inc_probe,
         jnp.zeros_like(a_inc_probe),
         beta,
         probe_shift,
+        step_sign,
     )
 
     safe_ref = jnp.where(

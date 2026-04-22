@@ -70,7 +70,7 @@ def _build_params(spec: BoundarySpec):
     return params
 
 
-def _sigma_max_from_n(n: int, m: int = 2,
+def _sigma_max_from_n(n: int, m: int = 3,
                      R_asymp: float = 1e-15) -> float:
     """Analytic σ_max formula matching ``_cpml_profile``."""
     eta = float(np.sqrt(1.2566370614e-6 / 8.854187817e-12))
@@ -122,18 +122,18 @@ def test_polynomial_grading_shape_preserved():
         z=Boundary(lo="cpml", hi="cpml", lo_thickness=4, hi_thickness=16),
     )
     params = _build_params(spec)
-    # Thin lo-face: sigma[0]/sigma[1] ratio for m=2 polynomial
+    # Thin lo-face: sigma[0]/sigma[1] ratio for m=3 polynomial
     # rho_i = 1 - i/(n-1). For n=4: rho = [1, 2/3, 1/3, 0].
-    # sigma_i / sigma_{i+1} = (rho_i / rho_{i+1})^2.
-    # sigma[0]/sigma[1] = (1 / (2/3))^2 = 9/4 = 2.25
+    # sigma_i / sigma_{i+1} = (rho_i / rho_{i+1})^3.
+    # sigma[0]/sigma[1] = (1 / (2/3))^3 = 27/8 = 3.375
     sigma_thin = np.asarray(params.z_lo.sigma)[:4]
     assert sigma_thin[0] > sigma_thin[1] > sigma_thin[2] > 0, (
         f"thin-face σ must be strictly descending over n_active=4, "
         f"got {sigma_thin[:3]}"
     )
     ratio_thin = float(sigma_thin[0] / sigma_thin[1])
-    assert abs(ratio_thin - 2.25) / 2.25 < 1e-4, (
-        f"thin-face σ[0]/σ[1] must match (1 / (2/3))^2 = 2.25 for m=2 "
+    assert abs(ratio_thin - 3.375) / 3.375 < 1e-4, (
+        f"thin-face σ[0]/σ[1] must match (1 / (2/3))^3 = 3.375 for m=3 "
         f"polynomial; got {ratio_thin:.4f}"
     )
 

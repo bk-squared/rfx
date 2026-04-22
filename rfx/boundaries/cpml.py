@@ -103,7 +103,7 @@ def _cpml_profile(
     n_layers: int,
     dt,
     dx,
-    order: int = 2,
+    order: int = 3,
     kappa_max: float = 1.0,
     R_asymptotic: float = 1e-15,
 ) -> CPMLParams:

@@ -438,7 +438,7 @@ class Simulation:
         domain: tuple[float, float, float],
         *,
         boundary: "str | BoundarySpec | dict" = "cpml",
-        cpml_layers: int = 8,
+        cpml_layers: int = 16,
         cpml_kappa_max: float = 1.0,
         pec_faces: set[str] | list[str] | None = None,
         dx: float | None = None,
@@ -1200,8 +1200,8 @@ class Simulation:
         probe_plane: float | None = None,
         name: str | None = None,
         n_modes: int = 1,
-        waveform: str = "differentiated_gaussian",
-        mode_profile: str = "analytic",
+        waveform: str = "modulated_gaussian",
+        mode_profile: str = "discrete",
     ) -> "Simulation":
         """Add a rectangular waveguide port.
 
@@ -2101,12 +2101,27 @@ class Simulation:
         *,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        num_periods_dft: float | None = None,
         normalize: bool = False,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
         Parameters
         ----------
+        num_periods : float
+            Length of the FDTD run (in source-period multiples) used to
+            derive ``n_steps`` when ``n_steps`` is not given.
+        num_periods_dft : float or None
+            Optional early-time DFT gate length (also in period multiples).
+            When set, DFT accumulators stop integrating at
+            ``grid.num_timesteps(num_periods_dft)``; the simulation still
+            runs the full ``n_steps`` so CPML can drain the domain, but
+            the S-parameters are computed from the pre-multi-bounce window
+            only. Required for strong-reflector geometries (PEC short,
+            resonators) where late-time standing-wave build-up
+            contaminates the V/I decomposition. Must satisfy
+            ``num_periods_dft <= num_periods``; default ``None`` retains
+            the legacy full-window behaviour.
         normalize : bool
             When True, run a two-run normalization that cancels Yee-grid
             numerical dispersion.  A reference simulation with vacuum (no
@@ -2205,6 +2220,24 @@ class Simulation:
                 for cfg in raw_cfgs
             ]
 
+        # Apply early-time DFT gate to every port config when requested.
+        # This truncates DFT accumulation at n_dft_steps while the scan
+        # itself still runs the full n_steps so the CPML can drain the
+        # domain — critical for strong-reflector S-parameter extraction.
+        if num_periods_dft is not None:
+            if num_periods_dft <= 0 or num_periods_dft > num_periods:
+                raise ValueError(
+                    "num_periods_dft must satisfy 0 < num_periods_dft "
+                    f"<= num_periods (got {num_periods_dft}/{num_periods})"
+                )
+            n_dft_steps = int(grid.num_timesteps(num_periods=num_periods_dft))
+            raw_cfgs = [
+                cfg._replace(dft_end_step=n_dft_steps)
+                if not isinstance(cfg, list)
+                else [c._replace(dft_end_step=n_dft_steps) for c in cfg]
+                for cfg in raw_cfgs
+            ]
+
         if has_multimode:
             # Multi-mode path: each raw_cfg is a list of WaveguidePortConfig
             port_mode_cfgs: list[list] = []
@@ -2217,12 +2250,13 @@ class Simulation:
             ref_shifts_mm = []
             for entry, mode_cfgs in zip(entries, port_mode_cfgs):
                 first_cfg = mode_cfgs[0]
+                planes = waveguide_plane_positions(first_cfg)
                 desired_ref = (
                     entry.reference_plane
                     if entry.reference_plane is not None
-                    else waveguide_plane_positions(first_cfg)["reference"]
+                    else planes["source"]
                 )
-                ref_shifts_mm.append(desired_ref - waveguide_plane_positions(first_cfg)["reference"])
+                ref_shifts_mm.append(desired_ref - planes["reference"])
 
             if normalize:
                 raise ValueError(
@@ -2283,12 +2317,21 @@ class Simulation:
 
         ref_shifts = []
         for entry, cfg in zip(entries, cfgs):
+            # Default reference plane = the user-facing port plane
+            # (snapped x_position). Previously defaulted to the internal
+            # ``reference_x_m`` (= source + ref_offset·dx) which left the
+            # returned S-matrix phase-shifted by `exp(-jβ·ref_offset·dx)`
+            # relative to the physical port — a silent convention mismatch
+            # vs. Meep, OpenEMS, and any analytic formula the user would
+            # compare against. Keep the ``entry.reference_plane`` override
+            # for explicit user control.
+            planes = waveguide_plane_positions(cfg)
             desired_ref = (
                 entry.reference_plane
                 if entry.reference_plane is not None
-                else waveguide_plane_positions(cfg)["reference"]
+                else planes["source"]
             )
-            ref_shifts.append(desired_ref - waveguide_plane_positions(cfg)["reference"])
+            ref_shifts.append(desired_ref - planes["reference"])
 
         if normalize:
             # Build reference materials: vacuum everywhere (no user geometry).
@@ -3650,6 +3693,65 @@ class Simulation:
         # ("[P2.7]") don't break and as a reminder that the fix is
         # regression-locked via tests/test_silent_drop_warnings.py and
         # tests/test_boundary_pmc_hi_faces.py.
+
+        # P2.8: Waveguide-port reference plane sanity.
+        # The S-matrix returned by ``compute_waveguide_s_matrix`` is
+        # evaluated AT the reference plane (either ``entry.reference_plane``
+        # if user-specified, or the port's ``x_position`` by default after
+        # 2026-04-22). The phase of reported S-params is therefore tied to
+        # that plane. Physical correctness requires the plane lies inside
+        # the simulation domain, outside the CPML absorbing region, and
+        # preferably inside a uniform-cross-section segment of guide so the
+        # modal decomposition is defined.
+        if self._waveguide_ports:
+            axis_map = {"x": 0, "y": 1, "z": 2}
+            for entry in self._waveguide_ports:
+                direction = entry.direction  # e.g., "+x", "-x"
+                ax_i = axis_map[direction[-1]]
+                domain_ext = self._domain[ax_i]
+                ct_lo = cpml_thick_lo[ax_i]
+                ct_hi = cpml_thick_hi[ax_i]
+                effective = (entry.reference_plane if entry.reference_plane is not None
+                             else entry.x_position)
+                if effective < 0 or effective > domain_ext:
+                    raise ValueError(
+                        f"waveguide_port reference plane = {effective:.4g} m is "
+                        f"outside the {direction[-1]}-domain [0, {domain_ext:.4g}] m. "
+                        f"Check x_position / reference_plane."
+                    )
+                if effective < ct_lo or effective > domain_ext - ct_hi:
+                    _w.warn(
+                        f"waveguide_port reference plane = {effective*1e3:.3g} mm is "
+                        f"inside the CPML absorbing region along the "
+                        f"{direction[-1]}-axis (CPML extent: "
+                        f"[0, {ct_lo*1e3:.3g}] and "
+                        f"[{(domain_ext - ct_hi)*1e3:.3g}, {domain_ext*1e3:.3g}] mm). "
+                        f"S-matrix phase will be distorted by CPML stretching. "
+                        f"Move x_position / reference_plane to the interior or "
+                        f"reduce cpml_layers.",
+                        stacklevel=3,
+                    )
+                # Device overlap warning: check if any geometry box spans
+                # the port's x-plane.
+                if self._geometry:
+                    for g in self._geometry:
+                        try:
+                            lo, hi = g.bounds
+                        except Exception:
+                            continue
+                        if lo[ax_i] <= effective <= hi[ax_i]:
+                            _w.warn(
+                                f"waveguide_port reference plane at "
+                                f"{effective*1e3:.3g} mm intersects geometry "
+                                f"'{getattr(g, 'material', '?')}' "
+                                f"(bounds {lo[ax_i]*1e3:.3g}–{hi[ax_i]*1e3:.3g} mm "
+                                f"on {direction[-1]}). Modal decomposition "
+                                f"assumes a uniform cross-section at the port "
+                                f"plane; reported S-params will mix modes. Move "
+                                f"the reference plane into the empty-guide region.",
+                                stacklevel=3,
+                            )
+                            break
 
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""
