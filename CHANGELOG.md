@@ -107,21 +107,36 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   slope ≈ −5.9 mm and intercept ≈ −57°
   (`scripts/phase_offset_beta_sweep.py`).  Applying this correction
   back to the slab rfx S21 reduces the RMS phase diff from 113° to
-  2.3° — VERIFIED.  **However**, the same (slope, intercept) does
-  NOT transfer to the PEC-short case (`|S11|` RMS stays 104° → 103°;
-  see `scripts/verify_phase_alignment.py`).  The offset is therefore
-  **geometry-dependent**, not a universal convention shift: the
-  intercept ≈ −57° is close in magnitude to the slab's own
-  `exp(−j(β_slab − β_empty)·L_slab)` phase (ranges −56° to −69° over
-  the band) that appears in the two-run normalization when device and
-  reference runs have different propagation constants inside the
-  device region.  Root cause is either rfx or Meep (or both) handling
-  that slab-boundary phase subtly differently — still under
-  investigation.  Magnitude agreement (|S21|) remains within 3–5%.
-  Practical guidance for users: do not expect bit-level phase
-  agreement with an external Meep script that has its own monitor /
-  source pulse conventions; compare per-geometry against analytic
-  Airy (which rfx matches in |S21| within ≈ 5% on the slab).
+  2.3° — VERIFIED (`scripts/verify_phase_alignment.py`).
+
+  Decomposition against physics:
+  - `exp(−j(β_slab − β_empty)·L_slab)` (material-contrast phase that
+    appears in two-run normalization through a dielectric slab):
+    linear-in-β fit gives slope ≈ −1.95 mm, intercept ≈ −44°
+    (range −56° to −69° over the band).
+  - Measured: slope ≈ −5.87 mm, intercept ≈ −57°.
+  - Physics explains ~1/3 of the slope and most of the intercept;
+    a residual of **−3.9 mm slope + −13° intercept** remains
+    unexplained.
+
+  Experiment 1 (2026-04-22): rfx `dx` 1.0 mm → 0.5 mm, Meep unchanged.
+  Result: slope −5.87 mm → −6.0 mm, intercept −57.3° → −58.2°
+  (essentially identical). **Cell-snapping / Yee-discretization
+  hypothesis FALSIFIED** — the residual does not scale with rfx mesh
+  size.  Remaining candidates: (a) Meep's `get_eigenmode_coefficients`
+  α⁺ is referenced to a different plane than rfx assumes (cell
+  centre vs monitor plane); (b) implementation difference in how
+  either code handles the E/H overlap at a material-discontinuity
+  edge during the two-run device/reference pair.
+
+  The same (slope, intercept) also does NOT transfer to the
+  PEC-short case (`|S11|` RMS stays 104° → 103°), so the offset is
+  slab-geometry-specific rather than a universal convention shift.
+  Magnitude agreement (|S21|) remains within 3–5% across the band.
+  Practical guidance: compare rfx per-geometry against analytic
+  Airy (where rfx matches |S21| within ≈ 5% on the slab); do not
+  expect bit-level phase agreement with an external Meep script
+  that has its own monitor / source-pulse conventions.
 
 ### Do-not-repeat log (carry-over from diagnosis)
 
