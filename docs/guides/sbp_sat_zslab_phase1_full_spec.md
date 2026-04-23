@@ -309,6 +309,9 @@ must be proven before broader claims.
 - Explicit limits for nonuniform, dispersive, anisotropic, and nonlinear
   materials until each has its own validation.
 
+Milestone 5 now records that contract in
+`docs/guides/sbp_sat_all_pec_box_refinement_spec.md`.
+
 **Acceptance criteria:**
 
 - A future implementation change cannot alter SAT sign/scaling without a spec
@@ -629,7 +632,8 @@ reflection/transmission validation.
 
 **Deliverables:**
 
-- General face-operator contract for `x`, `y`, and `z` oriented interfaces.
+- General face-operator contract for `x`, `y`, and `z` oriented interfaces in
+  `docs/guides/sbp_sat_all_pec_box_refinement_spec.md`.
 - Face-normal and tangential-component table for all six faces.
 - Edge/corner interaction policy for boxes where refined interfaces meet.
 - All-PEC box-refinement implementation plan.
@@ -639,6 +643,7 @@ reflection/transmission validation.
 
 - No all-PEC box-refinement implementation begins until the six-face math,
   edge/corner policy, and benchmarks are specified.
+- `tests/test_sbp_sat_box_refinement_spec_contract.py` locks the spec artifact.
 
 #### Milestone 6 — Boundary coexistence
 
