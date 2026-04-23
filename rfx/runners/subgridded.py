@@ -6,13 +6,13 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from rfx.core.yee import EPS_0, MU_0
 from rfx.grid import Grid
+from rfx.subgridding.sbp_sat_3d import phase1_3d_dt
 
 
 def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse,
                         n_steps):
-    """Run simulation using SBP-SAT subgridding (JIT-compiled).
+    """Run the canonical Phase-1 z-slab SBP-SAT path (JIT-compiled).
 
     Parameters
     ----------
@@ -32,8 +32,25 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
     Result
     """
     from rfx.api import Result
+    from rfx.subgridding.face_ops import build_zface_ops
     from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
     from rfx.subgridding.jit_runner import run_subgridded_jit as _run_sg
+
+    if hasattr(sim, "_validate_phase1_subgrid_boundaries"):
+        sim._validate_phase1_subgrid_boundaries()
+    elif sim._boundary != "pec":
+        raise ValueError(
+            "Phase-1 SBP-SAT z-slab subgridding supports boundary='pec' only"
+        )
+    if getattr(sim, "_coaxial_ports", None):
+        raise ValueError(
+            "Phase-1 SBP-SAT z-slab subgridding does not support coaxial ports"
+        )
+    if any(pe.impedance != 0.0 or pe.extent is not None for pe in sim._ports):
+        raise ValueError(
+            "Phase-1 SBP-SAT z-slab subgridding supports soft point sources only; "
+            "impedance point ports and wire/extent ports are deferred"
+        )
 
     ref = sim._refinement
     ratio = ref["ratio"]
@@ -41,29 +58,27 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
     tau = ref.get("tau", 0.5)
     dx_c = grid_coarse.dx
     dx_f = dx_c / ratio
-    xy_margin = ref["xy_margin"] if ref["xy_margin"] is not None else 2 * dx_c
+    if ref.get("xy_margin") is not None:
+        raise ValueError(
+            "Phase-1 SBP-SAT z-slab subgridding does not support xy_margin"
+        )
 
-    # Map z_range to coarse grid indices
-    cpml = grid_coarse.cpml_layers
-    fk_lo = max(int(round(z_lo / dx_c)) + cpml, cpml)
-    fk_hi = min(int(round(z_hi / dx_c)) + cpml + 1, grid_coarse.nz - cpml)
+    fk_lo = max(int(round(z_lo / dx_c)), 0)
+    fk_hi = min(int(round(z_hi / dx_c)) + 1, grid_coarse.nz)
+    if fk_hi <= fk_lo:
+        raise ValueError(f"z_range={ref['z_range']} maps to an empty coarse z slab")
 
-    # Fine region covers full x,y for simplicity (with cpml margin)
-    fi_lo = cpml
-    fi_hi = grid_coarse.nx - cpml
-    fj_lo = cpml
-    fj_hi = grid_coarse.ny - cpml
+    # Phase 1: fine region spans the full supported x/y interior.
+    fi_lo = 0
+    fi_hi = grid_coarse.nx
+    fj_lo = 0
+    fj_hi = grid_coarse.ny
 
-    # Fine grid dimensions
     nx_f = (fi_hi - fi_lo) * ratio
     ny_f = (fj_hi - fj_lo) * ratio
     nz_f = (fk_hi - fk_lo) * ratio
 
-    # Global timestep (limited by fine grid CFL)
-    C0_val = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
-    # Use the same CFL factor as Grid.courant_dt (0.99/sqrt(3))
-    # to match uniform runner's timestep for equivalent dx
-    dt = 0.99 * dx_f / (C0_val * np.sqrt(3))
+    dt = phase1_3d_dt(dx_f)
 
     config = SubgridConfig3D(
         nx_c=grid_coarse.nx, ny_c=grid_coarse.ny, nz_c=grid_coarse.nz,
@@ -73,7 +88,18 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
         fk_lo=fk_lo, fk_hi=fk_hi,
         nx_f=nx_f, ny_f=ny_f, nz_f=nz_f,
         dx_f=dx_f, dt=float(dt), ratio=ratio, tau=tau,
+        face_ops=build_zface_ops((fi_hi - fi_lo, fj_hi - fj_lo), ratio, dx_c),
     )
+
+    overlap = (slice(fi_lo, fi_hi), slice(fj_lo, fj_hi), slice(fk_lo, fk_hi))
+    mats_c = base_materials_coarse._replace(
+        eps_r=base_materials_coarse.eps_r.at[overlap].set(1.0),
+        sigma=base_materials_coarse.sigma.at[overlap].set(0.0),
+        mu_r=base_materials_coarse.mu_r.at[overlap].set(1.0),
+    )
+    pec_mask_c = pec_mask_coarse
+    if pec_mask_c is not None:
+        pec_mask_c = pec_mask_c.at[overlap].set(False)
 
     # Build fine-grid materials by rasterizing geometry at fine resolution
     shape_f = (nx_f, ny_f, nz_f)
@@ -91,9 +117,9 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
 
     # Rasterize geometry into fine grid materials using shared function.
     # Uses cell-center coordinates (not cell edges) for correct placement.
-    x_off = (fi_lo - cpml) * dx_c
-    y_off = (fj_lo - cpml) * dx_c
-    z_off = (fk_lo - cpml) * dx_c
+    x_off = fi_lo * dx_c
+    y_off = fj_lo * dx_c
+    z_off = fk_lo * dx_c
 
     from rfx.geometry.rasterize import coords_from_fine_grid, rasterize_geometry
 
@@ -106,21 +132,17 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
     )
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False
 
-    # Helper: convert physical position to fine-grid index
     def _pos_to_fine_idx(pos):
         idx = (
             int(round((pos[0] - x_off) / dx_f)),
             int(round((pos[1] - y_off) / dx_f)),
             int(round((pos[2] - z_off) / dx_f)),
         )
-        # Bounds check — source/probe outside fine grid causes garbage results
         if not (0 <= idx[0] < nx_f and 0 <= idx[1] < ny_f and 0 <= idx[2] < nz_f):
-            import warnings
-            warnings.warn(
-                f"Position {pos} maps to fine-grid index {idx} which is outside "
-                f"the fine grid shape ({nx_f}, {ny_f}, {nz_f}). "
-                f"Widen z_range in add_refinement() to cover all sources and probes.",
-                stacklevel=3,
+            raise ValueError(
+                f"Position {pos} maps to fine-grid index {idx} outside "
+                f"the Phase-1 z-slab fine grid shape ({nx_f}, {ny_f}, {nz_f}). "
+                "Widen z_range to cover all sources and probes."
             )
         return idx
 
@@ -129,75 +151,12 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
     times = jnp.arange(n_steps, dtype=jnp.float32) * dt
 
     for pe in sim._ports:
-        axis_map = {"ex": 0, "ey": 1, "ez": 2}
-        axis = axis_map[pe.component]
-
-        if pe.impedance == 0.0:
-            # Soft source — normalization depends on boundary type:
-            # PEC: raw field add (matches make_source in uniform runner)
-            # CPML/UPML: J-source Cb normalized (matches make_j_source)
-            idx = _pos_to_fine_idx(pe.position)
-            i, j, k = idx
-            raw_waveform = jax.vmap(pe.waveform)(times)
-            if sim._boundary in ("cpml", "upml"):
-                eps = float(mats_f.eps_r[i, j, k]) * EPS_0
-                sigma_val = float(mats_f.sigma[i, j, k])
-                loss = sigma_val * dt / (2.0 * eps)
-                cb = (dt / eps) / (1.0 + loss)
-                waveform = cb * raw_waveform
-            else:
-                waveform = raw_waveform
-            sources_f.append((i, j, k, pe.component, np.array(waveform)))
-            continue
-
-        if pe.extent is not None:
-            # Wire port: compute cells manually
-            idx_start = _pos_to_fine_idx(pe.position)
-            end_pos = list(pe.position)
-            end_pos[axis] += pe.extent
-            idx_end = _pos_to_fine_idx(tuple(end_pos))
-
-            lo = min(idx_start[axis], idx_end[axis])
-            hi = max(idx_start[axis], idx_end[axis])
-            cells = []
-            for a in range(lo, hi + 1):
-                cell = list(idx_start)
-                cell[axis] = a
-                cells.append(tuple(cell))
-
-            n_cells = max(len(cells), 1)
-            # Distribute port impedance
-            sigma_port_per_cell = n_cells / (pe.impedance * dx_f)
-            for cell in cells:
-                i, j, k = cell
-                mats_f = mats_f._replace(
-                    sigma=mats_f.sigma.at[i, j, k].add(sigma_port_per_cell))
-                pec_mask_f = pec_mask_f.at[i, j, k].set(False)
-
-            # Precompute Cb-corrected waveforms
-            for cell in cells:
-                i, j, k = cell
-                eps = float(mats_f.eps_r[i, j, k]) * EPS_0
-                sigma_val = float(mats_f.sigma[i, j, k])
-                loss = sigma_val * dt / (2.0 * eps)
-                cb = (dt / eps) / (1.0 + loss)
-                waveform = (cb / dx_f) * jax.vmap(pe.waveform)(times) / n_cells
-                sources_f.append((i, j, k, pe.component, np.array(waveform)))
-        else:
-            # Lumped port
-            idx = _pos_to_fine_idx(pe.position)
-            i, j, k = idx
-            sigma_port = 1.0 / (pe.impedance * dx_f)
-            mats_f = mats_f._replace(
-                sigma=mats_f.sigma.at[i, j, k].add(sigma_port))
-            pec_mask_f = pec_mask_f.at[i, j, k].set(False)
-
-            eps = float(mats_f.eps_r[i, j, k]) * EPS_0
-            sigma_val = float(mats_f.sigma[i, j, k])
-            loss = sigma_val * dt / (2.0 * eps)
-            cb = (dt / eps) / (1.0 + loss)
-            waveform = (cb / dx_f) * jax.vmap(pe.waveform)(times)
-            sources_f.append((i, j, k, pe.component, np.array(waveform)))
+        # Phase 1 supports soft point sources only; impedance and wire
+        # ports are rejected before this runner is entered.
+        idx = _pos_to_fine_idx(pe.position)
+        i, j, k = idx
+        waveform = jax.vmap(pe.waveform)(times)
+        sources_f.append((i, j, k, pe.component, np.array(waveform)))
 
     # Build probes on fine grid
     probe_indices_f = []
@@ -209,11 +168,11 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
 
     result = _run_sg(
         grid_coarse,
-        base_materials_coarse,
+        mats_c,
         mats_f,
         config,
         n_steps,
-        pec_mask_c=pec_mask_coarse,
+        pec_mask_c=pec_mask_c,
         pec_mask_f=pec_mask_f if has_pec_f else None,
         sources_f=sources_f,
         probe_indices_f=probe_indices_f,
@@ -227,5 +186,5 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
         freqs=None,
         grid=fine_grid,
         dt=dt,
-        freq_range=(sim._freq_max / 10, sim._freq_max, 'cpml'),
+        freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
     )

@@ -1,87 +1,80 @@
-"""Tests for 3D SBP-SAT FDTD subgridding."""
+"""Phase-1 3D SBP-SAT z-slab tests."""
 
+import inspect
 import numpy as np
 import jax.numpy as jnp
 import pytest
 
+from rfx.subgridding import jit_runner
 from rfx.subgridding.sbp_sat_3d import (
-    init_subgrid_3d, step_subgrid_3d, compute_energy_3d,
+    compute_energy_3d,
+    init_subgrid_3d,
+    step_subgrid_3d,
 )
 
 
-def test_3d_stability():
-    """Energy must be non-increasing over 1000 steps in PEC cavity.
-
-    This is the fundamental SBP-SAT stability guarantee. If energy grows,
-    the coupling coefficients are wrong.
-    """
+def test_zslab_energy_pec_1000_steps():
     config, state = init_subgrid_3d(
-        shape_c=(20, 20, 20), dx_c=0.003,
-        fine_region=(7, 13, 7, 13, 7, 13), ratio=3,
+        shape_c=(8, 8, 10),
+        dx_c=0.004,
+        fine_region=(0, 8, 0, 8, 3, 7),
+        ratio=2,
+        tau=0.5,
     )
-    state = state._replace(ez_c=state.ez_c.at[4, 4, 4].set(1.0))
+    state = state._replace(ez_c=state.ez_c.at[3, 3, 2].set(1.0))
     initial_energy = compute_energy_3d(state, config)
 
     max_energy = initial_energy
     for i in range(1000):
         state = step_subgrid_3d(state, config)
         if (i + 1) % 100 == 0:
-            e = compute_energy_3d(state, config)
-            # Allow small transient growth at early steps (SAT coupling
-            # can temporarily increase energy before dissipation dominates).
-            # Validated: growth peaks at ~1.004x around step 100, then
-            # monotonically decreases. 1.005 tolerance accommodates transient.
-            assert e <= max_energy * 1.005, (
-                f"Energy grew at step {i+1}: {e:.6e} > {max_energy:.6e} "
-                f"(growth {e/max_energy:.6f}x)"
+            energy = compute_energy_3d(state, config)
+            assert energy <= initial_energy * 1.02, (
+                f"Energy exceeded transient bound at step {i+1}: "
+                f"{energy/initial_energy:.4f}"
             )
-            max_energy = max(max_energy, e)
+            max_energy = max(max_energy, energy)
 
     final_energy = compute_energy_3d(state, config)
-    print(f"\n3D energy conservation: initial={initial_energy:.6e}, "
-          f"final={final_energy:.6e}, ratio={final_energy/initial_energy:.6f}")
-    # After 1000 steps, energy must be <= initial (net dissipative)
-    assert final_energy <= initial_energy, (
-        f"Energy grew {final_energy/initial_energy:.4f}x over 1000 steps "
-        f"(must be <= 1.0 for stability)"
-    )
+    assert np.isfinite(final_energy)
+    assert final_energy <= initial_energy
+    assert max_energy <= initial_energy * 1.02
 
 
-def test_3d_fine_grid_receives_signal():
-    """Signal should appear on fine grid after propagation."""
+def test_init_subgrid_3d_rejects_partial_xy_fine_region():
+    with pytest.raises(ValueError, match="full-span x/y only"):
+        init_subgrid_3d(
+            shape_c=(8, 8, 10),
+            dx_c=0.004,
+            fine_region=(1, 7, 0, 8, 3, 7),
+            ratio=2,
+        )
+
+
+def test_init_subgrid_3d_default_region_is_full_span_xy():
+    config, _ = init_subgrid_3d(shape_c=(8, 8, 10), dx_c=0.004, ratio=2)
+    assert (config.fi_lo, config.fi_hi) == (0, 8)
+    assert (config.fj_lo, config.fj_hi) == (0, 8)
+
+
+def test_zslab_fine_grid_receives_signal():
     config, state = init_subgrid_3d(
-        shape_c=(20, 20, 20), dx_c=0.002,
-        fine_region=(8, 14, 8, 14, 8, 14), ratio=3,
+        shape_c=(8, 8, 10),
+        dx_c=0.004,
+        fine_region=(0, 8, 0, 8, 3, 7),
+        ratio=2,
     )
-    state = state._replace(ez_c=state.ez_c.at[4, 10, 10].set(1.0))
-
-    for _ in range(500):
-        state = step_subgrid_3d(state, config)
-
-    max_c = float(jnp.max(jnp.abs(state.ez_c)))
-    max_f = float(jnp.max(jnp.abs(state.ez_f)))
-
-    print("\n3D signal propagation:")
-    print(f"  Coarse max |Ez|: {max_c:.6e}")
-    print(f"  Fine max |Ez|:   {max_f:.6e}")
-
-    assert np.isfinite(max_c), "Coarse field should be finite"
-    assert np.isfinite(max_f), "Fine field should be finite"
-    assert max_c < 5.0, "Coarse field should not blow up"
-
-
-def test_3d_energy_finite():
-    """Basic sanity: energy stays finite after 200 steps."""
-    config, state = init_subgrid_3d(
-        shape_c=(15, 15, 15), dx_c=0.004,
-        fine_region=(5, 10, 5, 10, 5, 10), ratio=3,
-    )
-    state = state._replace(ez_c=state.ez_c.at[3, 7, 7].set(0.5))
-
+    state = state._replace(ez_c=state.ez_c.at[4, 4, 2].set(1.0))
     for _ in range(200):
         state = step_subgrid_3d(state, config)
 
-    energy = compute_energy_3d(state, config)
-    print(f"\n3D energy after 200 steps: {energy:.6e}")
-    assert np.isfinite(energy), "Energy should be finite"
-    assert energy >= 0, "Energy should be non-negative"
+    max_f = float(jnp.max(jnp.abs(state.ez_f)))
+    assert np.isfinite(max_f)
+    assert max_f > 1e-8
+
+
+def test_phase1_uses_single_canonical_stepper():
+    source = inspect.getsource(jit_runner.run_subgridded_jit)
+    assert "step_subgrid_3d" in source
+    assert "_shared_node_coupling_3d" not in source
+    assert "_shared_node_coupling_h_3d" not in source

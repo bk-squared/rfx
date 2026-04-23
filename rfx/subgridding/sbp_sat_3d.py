@@ -1,35 +1,14 @@
-"""3D SBP-SAT FDTD subgridding.
+"""Phase-1 3D SBP-SAT FDTD subgridding.
 
-Full 3D extension with 6 field components (Ex, Ey, Ez, Hx, Hy, Hz) and
-6-face rectangular refinement box with SAT interface coupling.
+This lane is intentionally narrow:
 
-Based on: Cheng et al., IEEE TAP 2025 (DOI: 10836194)
-"Toward the Development of a 3-D SBP-SAT FDTD Method: Subgridding Implementation"
+- z-slab only
+- one canonical stepper
+- norm-compatible z-face operators
 
-Timestep scheme
----------------
-Global dt: both coarse and fine grids use the same timestep, limited by
-the fine-grid CFL condition. No temporal sub-stepping.
-
-Validated (2026-04-12): energy is net dissipative over 1000 steps
-(ratio=0.87x at step 1000). Small transient growth (~1.004x) at step 100
-is SAT penalty equilibration, not instability.
-
-SAT penalty coefficients (Eq. from Cheng et al.)
--------------------------------------------------
-Energy conservation requires:
-    alpha_c + alpha_f = 1            (total penalty = full correction)
-    alpha_c * dx_c = alpha_f * dx_f  (SBP norm symmetry)
-
-Solving:
-    alpha_f = tau * ratio / (ratio + 1)
-    alpha_c = tau * 1 / (ratio + 1)
-
-tau=0.5 (default): dissipative but stable. tau=1.0: energy-conservative.
-tau>1.0: potentially unstable (energy injection at interface).
-
-Both E-field and H-field tangential components are coupled on all 6 faces.
-H-field coupling is REQUIRED — without it, energy grows unbounded.
+The coarse and fine grids use the same global timestep (limited by the
+fine-grid CFL condition).  Coupling is applied only on the `z_lo` and
+`z_hi` faces and only to tangential `(Ex, Ey)` and `(Hx, Hy)` traces.
 """
 
 from __future__ import annotations
@@ -40,45 +19,49 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import EPS_0, MU_0
+from rfx.subgridding.face_ops import (
+    ZFaceOps,
+    build_zface_ops,
+    prolong_zface,
+    restrict_zface,
+)
 
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
+PHASE1_3D_CFL = 0.99
 
 
 class SubgridConfig3D(NamedTuple):
-    """Configuration for 3D SBP-SAT subgridding."""
-    # Coarse grid (full domain)
+    """Configuration for the canonical Phase-1 z-slab lane."""
+
     nx_c: int
     ny_c: int
     nz_c: int
     dx_c: float
-    # Fine region (in coarse indices)
     fi_lo: int
     fi_hi: int
     fj_lo: int
     fj_hi: int
     fk_lo: int
     fk_hi: int
-    # Fine grid
     nx_f: int
     ny_f: int
     nz_f: int
     dx_f: float
-    # Shared
-    dt: float       # global timestep (limited by fine grid CFL)
+    dt: float
     ratio: int
-    tau: float      # SAT penalty
+    tau: float
+    face_ops: ZFaceOps | None = None
 
 
 class SubgridState3D(NamedTuple):
-    """State for 3D subgridded domain."""
-    # Coarse
+    """Field state for the canonical Phase-1 z-slab lane."""
+
     ex_c: jnp.ndarray
     ey_c: jnp.ndarray
     ez_c: jnp.ndarray
     hx_c: jnp.ndarray
     hy_c: jnp.ndarray
     hz_c: jnp.ndarray
-    # Fine
     ex_f: jnp.ndarray
     ey_f: jnp.ndarray
     ez_f: jnp.ndarray
@@ -88,59 +71,200 @@ class SubgridState3D(NamedTuple):
     step: int
 
 
+def _region_shape(config: SubgridConfig3D) -> tuple[int, int, int]:
+    return (
+        config.fi_hi - config.fi_lo,
+        config.fj_hi - config.fj_lo,
+        config.fk_hi - config.fk_lo,
+    )
+
+
+def _get_face_ops(config: SubgridConfig3D) -> ZFaceOps:
+    ni, nj, nk = _region_shape(config)
+    if nk <= 0:
+        raise ValueError(f"Invalid z slab thickness: fk_lo={config.fk_lo}, fk_hi={config.fk_hi}")
+    if config.face_ops is not None:
+        return config.face_ops
+    return build_zface_ops((ni, nj), config.ratio, config.dx_c)
+
+
+def validate_subgrid_config_3d(config: SubgridConfig3D) -> None:
+    """Validate the canonical Phase-1 z-slab config invariants.
+
+    This validator protects direct ``SubgridConfig3D`` / JIT entrypoints from
+    silently widening Phase 1 back into partial-x/y or arbitrary-box support.
+    """
+
+    if config.ratio <= 1:
+        raise ValueError(f"Phase-1 SBP-SAT ratio must be > 1, got {config.ratio}")
+    if config.dx_c <= 0 or config.dx_f <= 0:
+        raise ValueError("Phase-1 SBP-SAT spacings dx_c and dx_f must be positive")
+    expected_dx_f = config.dx_c / config.ratio
+    if not np.isclose(config.dx_f, expected_dx_f):
+        raise ValueError(
+            "Phase-1 SBP-SAT dx_f must equal dx_c / ratio; "
+            f"got dx_c={config.dx_c}, ratio={config.ratio}, dx_f={config.dx_f}"
+        )
+    expected_dt = phase1_3d_dt(config.dx_f)
+    if not np.isclose(config.dt, expected_dt):
+        raise ValueError(
+            "Phase-1 SBP-SAT dt must follow the canonical near-fine-CFL rule; "
+            f"got dt={config.dt}, expected {expected_dt}"
+        )
+    if (config.fi_lo, config.fi_hi) != (0, config.nx_c):
+        raise ValueError(
+            "Phase-1 SBP-SAT supports full-span x only; "
+            f"got fi_lo={config.fi_lo}, fi_hi={config.fi_hi}, nx_c={config.nx_c}"
+        )
+    if (config.fj_lo, config.fj_hi) != (0, config.ny_c):
+        raise ValueError(
+            "Phase-1 SBP-SAT supports full-span y only; "
+            f"got fj_lo={config.fj_lo}, fj_hi={config.fj_hi}, ny_c={config.ny_c}"
+        )
+    if not (0 <= config.fk_lo < config.fk_hi <= config.nz_c):
+        raise ValueError(
+            "Phase-1 SBP-SAT requires a non-empty z slab inside the coarse grid; "
+            f"got fk_lo={config.fk_lo}, fk_hi={config.fk_hi}, nz_c={config.nz_c}"
+        )
+
+    ni, nj, nk = _region_shape(config)
+    expected_fine = (ni * config.ratio, nj * config.ratio, nk * config.ratio)
+    actual_fine = (config.nx_f, config.ny_f, config.nz_f)
+    if actual_fine != expected_fine:
+        raise ValueError(
+            "Phase-1 SBP-SAT fine shape must match coarse slab shape times ratio; "
+            f"got {actual_fine}, expected {expected_fine}"
+        )
+    if config.face_ops is not None:
+        if config.face_ops.coarse_shape != (ni, nj):
+            raise ValueError(
+                "Phase-1 SBP-SAT face_ops coarse shape mismatch; "
+                f"got {config.face_ops.coarse_shape}, expected {(ni, nj)}"
+            )
+        if config.face_ops.fine_shape != (config.nx_f, config.ny_f):
+            raise ValueError(
+                "Phase-1 SBP-SAT face_ops fine shape mismatch; "
+                f"got {config.face_ops.fine_shape}, expected {(config.nx_f, config.ny_f)}"
+            )
+        if config.face_ops.ratio != config.ratio:
+            raise ValueError(
+                "Phase-1 SBP-SAT face_ops ratio mismatch; "
+                f"got {config.face_ops.ratio}, expected {config.ratio}"
+            )
+
+
+def phase1_3d_dt(dx_f: float) -> float:
+    """Return the canonical Phase-1 3D timestep for fine spacing ``dx_f``."""
+
+    return PHASE1_3D_CFL * dx_f / (C0 * np.sqrt(3.0))
+
+
+def _default_fine_region(shape_c: tuple[int, int, int]) -> tuple[int, int, int, int, int, int]:
+    nx_c, ny_c, nz_c = shape_c
+    fk_lo = max(1, nz_c // 3)
+    fk_hi = min(nz_c - 1, max(fk_lo + 1, 2 * nz_c // 3))
+    return (0, nx_c, 0, ny_c, fk_lo, fk_hi)
+
+
+def _validate_phase1_fine_region(
+    shape_c: tuple[int, int, int],
+    fine_region: tuple[int, int, int, int, int, int],
+) -> tuple[int, int, int, int, int, int]:
+    nx_c, ny_c, nz_c = shape_c
+    fi_lo, fi_hi, fj_lo, fj_hi, fk_lo, fk_hi = fine_region
+    if (fi_lo, fi_hi) != (0, nx_c) or (fj_lo, fj_hi) != (0, ny_c):
+        raise ValueError(
+            "Phase-1 init_subgrid_3d supports full-span x/y only; "
+            f"got fine_region={fine_region}"
+        )
+    if not (0 <= fk_lo < fk_hi <= nz_c):
+        raise ValueError(
+            f"fine_region={fine_region} must satisfy 0 <= fk_lo < fk_hi <= {nz_c}"
+        )
+    return fi_lo, fi_hi, fj_lo, fj_hi, fk_lo, fk_hi
+
+
 def init_subgrid_3d(
     shape_c: tuple[int, int, int] = (40, 40, 40),
     dx_c: float = 0.003,
-    fine_region: tuple[int, int, int, int, int, int] = (15, 25, 15, 25, 15, 25),
+    fine_region: tuple[int, int, int, int, int, int] | None = None,
     ratio: int = 3,
-    courant: float = 0.45,
+    courant: float | None = None,
     tau: float = 0.5,
 ) -> tuple[SubgridConfig3D, SubgridState3D]:
-    """Initialize 3D subgridded domain.
+    """Initialize the canonical Phase-1 z-slab subgrid state.
 
-    Uses a GLOBAL timestep for both grids (no temporal sub-stepping).
-
-    Parameters
-    ----------
-    tau : float
-        SAT penalty coefficient (default 0.5). Higher values give
-        stronger coupling but more dissipation.
+    ``fine_region`` remains a legacy internal tuple, but Phase-1 only
+    supports full-span ``x/y`` plus a refined ``z`` slab. ``courant`` is
+    accepted as a compatibility alias for the canonical near-fine-CFL
+    rule and rejects any non-canonical value.
     """
+
     nx_c, ny_c, nz_c = shape_c
-    fi_lo, fi_hi, fj_lo, fj_hi, fk_lo, fk_hi = fine_region
+    if ratio <= 1:
+        raise ValueError(f"ratio must be > 1, got {ratio}")
+    if fine_region is None:
+        fine_region = _default_fine_region(shape_c)
+    fi_lo, fi_hi, fj_lo, fj_hi, fk_lo, fk_hi = _validate_phase1_fine_region(
+        shape_c,
+        fine_region,
+    )
     dx_f = dx_c / ratio
-    dt = courant * dx_f / (C0 * np.sqrt(3))  # 3D CFL
+    if courant is not None and not np.isclose(courant, PHASE1_3D_CFL):
+        raise ValueError(
+            "Phase-1 init_subgrid_3d uses the canonical near-fine-CFL rule "
+            f"only ({PHASE1_3D_CFL}); got courant={courant}"
+        )
+    dt = phase1_3d_dt(dx_f)
 
     nx_f = (fi_hi - fi_lo) * ratio
     ny_f = (fj_hi - fj_lo) * ratio
     nz_f = (fk_hi - fk_lo) * ratio
 
     config = SubgridConfig3D(
-        nx_c=nx_c, ny_c=ny_c, nz_c=nz_c, dx_c=dx_c,
-        fi_lo=fi_lo, fi_hi=fi_hi,
-        fj_lo=fj_lo, fj_hi=fj_hi,
-        fk_lo=fk_lo, fk_hi=fk_hi,
-        nx_f=nx_f, ny_f=ny_f, nz_f=nz_f, dx_f=dx_f,
-        dt=float(dt), ratio=ratio, tau=tau,
+        nx_c=nx_c,
+        ny_c=ny_c,
+        nz_c=nz_c,
+        dx_c=dx_c,
+        fi_lo=fi_lo,
+        fi_hi=fi_hi,
+        fj_lo=fj_lo,
+        fj_hi=fj_hi,
+        fk_lo=fk_lo,
+        fk_hi=fk_hi,
+        nx_f=nx_f,
+        ny_f=ny_f,
+        nz_f=nz_f,
+        dx_f=dx_f,
+        dt=float(dt),
+        ratio=ratio,
+        tau=tau,
+        face_ops=build_zface_ops((fi_hi - fi_lo, fj_hi - fj_lo), ratio, dx_c),
     )
+    validate_subgrid_config_3d(config)
 
     z = lambda s: jnp.zeros(s, dtype=jnp.float32)
     state = SubgridState3D(
-        ex_c=z(shape_c), ey_c=z(shape_c), ez_c=z(shape_c),
-        hx_c=z(shape_c), hy_c=z(shape_c), hz_c=z(shape_c),
-        ex_f=z((nx_f, ny_f, nz_f)), ey_f=z((nx_f, ny_f, nz_f)),
+        ex_c=z(shape_c),
+        ey_c=z(shape_c),
+        ez_c=z(shape_c),
+        hx_c=z(shape_c),
+        hy_c=z(shape_c),
+        hz_c=z(shape_c),
+        ex_f=z((nx_f, ny_f, nz_f)),
+        ey_f=z((nx_f, ny_f, nz_f)),
         ez_f=z((nx_f, ny_f, nz_f)),
-        hx_f=z((nx_f, ny_f, nz_f)), hy_f=z((nx_f, ny_f, nz_f)),
+        hx_f=z((nx_f, ny_f, nz_f)),
+        hy_f=z((nx_f, ny_f, nz_f)),
         hz_f=z((nx_f, ny_f, nz_f)),
         step=0,
     )
-
     return config, state
 
 
 def _make_mats(shape):
-    """Create vacuum MaterialArrays."""
     from rfx.core.yee import MaterialArrays
+
     return MaterialArrays(
         eps_r=jnp.ones(shape, dtype=jnp.float32),
         sigma=jnp.zeros(shape, dtype=jnp.float32),
@@ -149,255 +273,237 @@ def _make_mats(shape):
 
 
 def _update_h_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None):
-    """H half-step only (Faraday)."""
     from rfx.core.yee import FDTDState, update_h
+
     shape = ex.shape
-    state = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
-                      step=jnp.array(0, dtype=jnp.int32))
+    state = FDTDState(
+        ex=ex,
+        ey=ey,
+        ez=ez,
+        hx=hx,
+        hy=hy,
+        hz=hz,
+        step=jnp.array(0, dtype=jnp.int32),
+    )
     if mats is None:
         mats = _make_mats(shape)
     state = update_h(state, mats, dt, dx)
     return state.hx, state.hy, state.hz
 
 
-def _update_e_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None,
-                   pec_mask=None, boundary_pec=True):
-    """E full-step only (Ampere) + PEC."""
-    from rfx.core.yee import FDTDState, update_e
+def _update_e_only(
+    ex,
+    ey,
+    ez,
+    hx,
+    hy,
+    hz,
+    dt,
+    dx,
+    mats=None,
+    pec_mask=None,
+    boundary_axes: str | None = "xyz",
+):
     from rfx.boundaries.pec import apply_pec, apply_pec_mask
+    from rfx.core.yee import FDTDState, update_e
+
     shape = ex.shape
-    state = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
-                      step=jnp.array(0, dtype=jnp.int32))
+    state = FDTDState(
+        ex=ex,
+        ey=ey,
+        ez=ez,
+        hx=hx,
+        hy=hy,
+        hz=hz,
+        step=jnp.array(0, dtype=jnp.int32),
+    )
     if mats is None:
         mats = _make_mats(shape)
     state = update_e(state, mats, dt, dx)
-    if boundary_pec:
-        state = apply_pec(state)
+    if boundary_axes:
+        state = apply_pec(state, axes=boundary_axes)
     if pec_mask is not None:
         state = apply_pec_mask(state, pec_mask)
     return state.ex, state.ey, state.ez
 
 
-def _update_3d(ex, ey, ez, hx, hy, hz, dt, dx,
-               mats=None, pec_mask=None, boundary_pec=True):
-    """Full 3D Yee update (H + E) using rfx core kernels."""
-    hx, hy, hz = _update_h_only(ex, ey, ez, hx, hy, hz, dt, dx, mats)
-    ex, ey, ez = _update_e_only(ex, ey, ez, hx, hy, hz, dt, dx, mats,
-                                pec_mask, boundary_pec)
-    return ex, ey, ez, hx, hy, hz
+def sat_penalty_coefficients(ratio: int, tau: float) -> tuple[float, float]:
+    """Return the canonical SAT penalty coefficients."""
+
+    alpha_f = tau * ratio / (ratio + 1.0)
+    alpha_c = tau * 1.0 / (ratio + 1.0)
+    return float(alpha_c), float(alpha_f)
 
 
-def _downsample_3d(fine_vol, nc_i, nc_j, nc_k, ratio):
-    """Restriction: fine 3D volume → coarse via block averaging."""
-    ni_f = nc_i * ratio
-    nj_f = nc_j * ratio
-    nk_f = nc_k * ratio
-    trimmed = fine_vol[:ni_f, :nj_f, :nk_f]
-    return jnp.mean(
-        trimmed.reshape(nc_i, ratio, nc_j, ratio, nc_k, ratio),
-        axis=(1, 3, 5),
+def _coarse_zface_slice(config: SubgridConfig3D, face: str) -> tuple[slice, slice, int]:
+    k = config.fk_lo if face == "z_lo" else config.fk_hi - 1
+    return (slice(config.fi_lo, config.fi_hi), slice(config.fj_lo, config.fj_hi), k)
+
+
+def _fine_zface_slice(config: SubgridConfig3D, face: str) -> tuple[slice, slice, int]:
+    k = 0 if face == "z_lo" else config.nz_f - 1
+    return (slice(0, config.nx_f), slice(0, config.ny_f), k)
+
+
+def extract_tangential_e_face(
+    fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+    face: str,
+    *,
+    grid: str,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Extract tangential E traces for one z face."""
+
+    ex, ey, ez = fields
+    del ez
+    sl = _coarse_zface_slice(config, face) if grid == "coarse" else _fine_zface_slice(config, face)
+    return ex[sl], ey[sl]
+
+
+def extract_tangential_h_face(
+    fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+    face: str,
+    *,
+    grid: str,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Extract tangential H traces for one z face."""
+
+    hx, hy, hz = fields
+    del hz
+    sl = _coarse_zface_slice(config, face) if grid == "coarse" else _fine_zface_slice(config, face)
+    return hx[sl], hy[sl]
+
+
+def scatter_tangential_e_face(
+    fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tangential: tuple[jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+    face: str,
+    *,
+    grid: str,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Scatter tangential E traces back to one z face."""
+
+    ex, ey, ez = fields
+    ex_face, ey_face = tangential
+    sl = _coarse_zface_slice(config, face) if grid == "coarse" else _fine_zface_slice(config, face)
+    ex = ex.at[sl].set(ex_face)
+    ey = ey.at[sl].set(ey_face)
+    return ex, ey, ez
+
+
+def scatter_tangential_h_face(
+    fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tangential: tuple[jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+    face: str,
+    *,
+    grid: str,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Scatter tangential H traces back to one z face."""
+
+    hx, hy, hz = fields
+    hx_face, hy_face = tangential
+    sl = _coarse_zface_slice(config, face) if grid == "coarse" else _fine_zface_slice(config, face)
+    hx = hx.at[sl].set(hx_face)
+    hy = hy.at[sl].set(hy_face)
+    return hx, hy, hz
+
+
+def _apply_sat_pair(
+    coarse_face: jnp.ndarray,
+    fine_face: jnp.ndarray,
+    ops: ZFaceOps,
+    alpha_c: float,
+    alpha_f: float,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    coarse_mismatch = restrict_zface(fine_face, ops) - coarse_face
+    fine_mismatch = prolong_zface(coarse_face, ops) - fine_face
+    return (
+        coarse_face + alpha_c * coarse_mismatch,
+        fine_face + alpha_f * fine_mismatch,
     )
 
 
-def _downsample_2d(fine_face, n_coarse_j, n_coarse_k, ratio):
-    """Restriction operator R: fine → coarse.
+def _zero_coarse_overlap_interior(
+    fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Suppress coarse-grid interior state inside the fine slab volume.
 
-    Block averaging (mean over ratio×ratio block). For the SAT penalty,
-    this produces a value at the same scale as the coarse field, so
-    the mismatch (R(E_f) - E_c) is physically meaningful.
-
-    Note: mean + repeat are NOT exact SBP adjoints (adjoint pair would
-    be sum + repeat/ratio). The alpha coefficients in the SAT penalty
-    absorb the norm scaling to maintain energy stability.
+    The coarse field is only authoritative outside the refined slab and on
+    the z-interface traces.  Interior coarse values inside the slab act as a
+    redundant hidden dynamics path, so we zero the strict interior
+    ``fk_lo+1:fk_hi-1`` region.
     """
-    nj_f = n_coarse_j * ratio
-    nk_f = n_coarse_k * ratio
-    trimmed = fine_face[:nj_f, :nk_f]
-    return jnp.mean(trimmed.reshape(n_coarse_j, ratio, n_coarse_k, ratio), axis=(1, 3))
 
-
-def _upsample_2d(coarse_face, ny_f, nz_f, ratio):
-    """Interpolation operator P: coarse → fine.
-
-    Constant (nearest-neighbor) interpolation via repeat. Produces
-    a value at the same scale as the fine field.
-    """
-    return jnp.repeat(jnp.repeat(coarse_face, ratio, axis=0), ratio, axis=1)[:ny_f, :nz_f]
-
-
-def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
-    """SAT penalty coupling for tangential E-components on 6 faces.
-
-    Uses SAT (Simultaneous Approximation Terms) instead of hard
-    synchronization. Adds correction proportional to the mismatch
-    between coarse and fine boundary values, preserving outgoing
-    wave information while coupling the two grids.
-
-    SAT penalty: E += alpha * (E_other - E_self)
-    where alpha = tau * min(dx_other/dx_self, 1.0) for stability.
-    """
-    ex_c, ey_c, ez_c = state_c_fields[:3]
-    ex_f, ey_f, ez_f = state_f_fields[:3]
-
-    ratio = config.ratio
     fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
-    ni = config.fi_hi - fi
-    nj = config.fj_hi - fj
-    nk = config.fk_hi - fk
+    ni, nj, nk = _region_shape(config)
+    if nk <= 2:
+        return fields
+    interior = (slice(fi, fi + ni), slice(fj, fj + nj), slice(fk + 1, fk + nk - 1))
+    return tuple(field.at[interior].set(0.0) for field in fields)
 
-    # SBP-SAT penalty from Cheng et al. 2025 energy analysis.
-    # The additive correction is: E += alpha * (E_other - E_self).
-    #
-    # Energy conservation requires:
-    #   alpha_c + alpha_f = 1        (total penalty = full correction)
-    #   alpha_c * dx_c = alpha_f * dx_f  (SBP norm symmetry)
-    #
-    # Solving: alpha_f = ratio / (ratio + 1)
-    #          alpha_c = 1 / (ratio + 1)
-    #
-    # For ratio=3: alpha_f=0.75, alpha_c=0.25 (sums to 1.0)
-    # config.tau scales both (tau=1.0 = energy-conservative,
-    # tau<1.0 = dissipative but stable, tau>1.0 = unstable)
-    tau = config.tau  # default 1.0 (energy-conservative)
 
-    alpha_f = tau * ratio / (ratio + 1.0)
-    alpha_c = tau * 1.0 / (ratio + 1.0)
+def apply_sat_h_zfaces(
+    coarse_fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    fine_fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+) -> tuple[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+    """Apply SAT coupling to tangential H traces on both z faces."""
 
-    def _sat_couple(ec_arr, ef_arr, c_slice, f_slice,
-                    nj_ds, nk_ds, ny_up, nz_up):
-        """SBP-SAT penalty coupling (additive correction)."""
-        ec_face = ec_arr[c_slice]
-        ef_face = ef_arr[f_slice]
-        ef_ds = _downsample_2d(ef_face, nj_ds, nk_ds, ratio)
-        ec_us = _upsample_2d(ec_face, ny_up, nz_up, ratio)
+    ops = _get_face_ops(config)
+    alpha_c, alpha_f = sat_penalty_coefficients(config.ratio, config.tau)
+    coarse = coarse_fields
+    fine = fine_fields
+    for face in ("z_lo", "z_hi"):
+        hx_c_face, hy_c_face = extract_tangential_h_face(coarse, config, face, grid="coarse")
+        hx_f_face, hy_f_face = extract_tangential_h_face(fine, config, face, grid="fine")
+        hx_c_face, hx_f_face = _apply_sat_pair(hx_c_face, hx_f_face, ops, alpha_c, alpha_f)
+        hy_c_face, hy_f_face = _apply_sat_pair(hy_c_face, hy_f_face, ops, alpha_c, alpha_f)
+        coarse = scatter_tangential_h_face(coarse, (hx_c_face, hy_c_face), config, face, grid="coarse")
+        fine = scatter_tangential_h_face(fine, (hx_f_face, hy_f_face), config, face, grid="fine")
+    return coarse, fine
 
-        # Additive penalty (not replacement)
-        ec_arr = ec_arr.at[c_slice].add(alpha_c * (ef_ds - ec_face))
-        ef_arr = ef_arr.at[f_slice].add(alpha_f * (ec_us - ef_face))
-        return ec_arr, ef_arr
 
-    # === x-lo face (i = fi_lo): tangential = Ey, Ez ===
-    if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
-        c_sl = (fi, slice(fj, fj+nj), slice(fk, fk+nk))
-        f_sl = (0, slice(None), slice(None))
-        ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
-        ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
+def apply_sat_e_zfaces(
+    coarse_fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    fine_fields: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+) -> tuple[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+    """Apply SAT coupling to tangential E traces on both z faces."""
 
-    # === x-hi face ===
-    if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
-        c_sl = (config.fi_hi - 1, slice(fj, fj+nj), slice(fk, fk+nk))
-        f_sl = (-1, slice(None), slice(None))
-        ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
-        ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
-
-    # === y-lo face (j = fj_lo): tangential = Ex, Ez ===
-    if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
-        c_sl = (slice(fi, fi+ni), fj, slice(fk, fk+nk))
-        f_sl = (slice(None), 0, slice(None))
-        ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
-        ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
-
-    # === y-hi face ===
-    if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
-        c_sl = (slice(fi, fi+ni), config.fj_hi - 1, slice(fk, fk+nk))
-        f_sl = (slice(None), -1, slice(None))
-        ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
-        ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
-
-    # === z-lo face (k = fk_lo): tangential = Ex, Ey ===
-    if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
-        c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), fk)
-        f_sl = (slice(None), slice(None), 0)
-        ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
-        ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
-
-    # === z-hi face ===
-    if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
-        c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), config.fk_hi - 1)
-        f_sl = (slice(None), slice(None), -1)
-        ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
-        ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
-
-    return (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f)
+    ops = _get_face_ops(config)
+    alpha_c, alpha_f = sat_penalty_coefficients(config.ratio, config.tau)
+    coarse = coarse_fields
+    fine = fine_fields
+    for face in ("z_lo", "z_hi"):
+        ex_c_face, ey_c_face = extract_tangential_e_face(coarse, config, face, grid="coarse")
+        ex_f_face, ey_f_face = extract_tangential_e_face(fine, config, face, grid="fine")
+        ex_c_face, ex_f_face = _apply_sat_pair(ex_c_face, ex_f_face, ops, alpha_c, alpha_f)
+        ey_c_face, ey_f_face = _apply_sat_pair(ey_c_face, ey_f_face, ops, alpha_c, alpha_f)
+        coarse = scatter_tangential_e_face(coarse, (ex_c_face, ey_c_face), config, face, grid="coarse")
+        fine = scatter_tangential_e_face(fine, (ex_f_face, ey_f_face), config, face, grid="fine")
+    return coarse, fine
 
 
 def _shared_node_coupling_h_3d(state_c_fields, state_f_fields, config):
-    """SAT penalty coupling for tangential H-components on 6 faces.
+    """Compatibility wrapper for legacy imports.
 
-    Mirrors _shared_node_coupling_3d but for H fields.
-    Required for energy conservation per Cheng et al. 2025.
-
-    For each face, tangential H components are:
-    - x-face: Hy, Hz
-    - y-face: Hx, Hz
-    - z-face: Hx, Hy
+    The canonical Phase-1 lane uses z-face-only H SAT coupling.
     """
-    hx_c, hy_c, hz_c = state_c_fields
-    hx_f, hy_f, hz_f = state_f_fields
 
-    ratio = config.ratio
-    fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
-    ni = config.fi_hi - fi
-    nj = config.fj_hi - fj
-    nk = config.fk_hi - fk
+    return apply_sat_h_zfaces(state_c_fields, state_f_fields, config)
 
-    tau = config.tau
-    alpha_f = tau * ratio / (ratio + 1.0)
-    alpha_c = tau * 1.0 / (ratio + 1.0)
 
-    def _sat_couple_h(hc_arr, hf_arr, c_slice, f_slice,
-                      nj_ds, nk_ds, ny_up, nz_up):
-        hc_face = hc_arr[c_slice]
-        hf_face = hf_arr[f_slice]
-        hf_ds = _downsample_2d(hf_face, nj_ds, nk_ds, ratio)
-        hc_us = _upsample_2d(hc_face, ny_up, nz_up, ratio)
-        hc_arr = hc_arr.at[c_slice].add(alpha_c * (hf_ds - hc_face))
-        hf_arr = hf_arr.at[f_slice].add(alpha_f * (hc_us - hf_face))
-        return hc_arr, hf_arr
+def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
+    """Compatibility wrapper for legacy imports.
 
-    # x-lo face: tangential H = Hy, Hz
-    if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
-        c_sl = (fi, slice(fj, fj+nj), slice(fk, fk+nk))
-        f_sl = (0, slice(None), slice(None))
-        hy_c, hy_f = _sat_couple_h(hy_c, hy_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
-        hz_c, hz_f = _sat_couple_h(hz_c, hz_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
+    The canonical Phase-1 lane uses z-face-only E SAT coupling.
+    """
 
-    # x-hi face
-    if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
-        c_sl = (config.fi_hi - 1, slice(fj, fj+nj), slice(fk, fk+nk))
-        f_sl = (-1, slice(None), slice(None))
-        hy_c, hy_f = _sat_couple_h(hy_c, hy_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
-        hz_c, hz_f = _sat_couple_h(hz_c, hz_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
-
-    # y-lo face: tangential H = Hx, Hz
-    if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
-        c_sl = (slice(fi, fi+ni), fj, slice(fk, fk+nk))
-        f_sl = (slice(None), 0, slice(None))
-        hx_c, hx_f = _sat_couple_h(hx_c, hx_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
-        hz_c, hz_f = _sat_couple_h(hz_c, hz_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
-
-    # y-hi face
-    if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
-        c_sl = (slice(fi, fi+ni), config.fj_hi - 1, slice(fk, fk+nk))
-        f_sl = (slice(None), -1, slice(None))
-        hx_c, hx_f = _sat_couple_h(hx_c, hx_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
-        hz_c, hz_f = _sat_couple_h(hz_c, hz_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
-
-    # z-lo face: tangential H = Hx, Hy
-    if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
-        c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), fk)
-        f_sl = (slice(None), slice(None), 0)
-        hx_c, hx_f = _sat_couple_h(hx_c, hx_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
-        hy_c, hy_f = _sat_couple_h(hy_c, hy_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
-
-    # z-hi face
-    if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
-        c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), config.fk_hi - 1)
-        f_sl = (slice(None), slice(None), -1)
-        hx_c, hx_f = _sat_couple_h(hx_c, hx_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
-        hy_c, hy_f = _sat_couple_h(hy_c, hy_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
-
-    return (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f)
+    return apply_sat_e_zfaces(state_c_fields, state_f_fields, config)
 
 
 def step_subgrid_3d(
@@ -409,93 +515,108 @@ def step_subgrid_3d(
     pec_mask_c=None,
     pec_mask_f=None,
 ) -> SubgridState3D:
-    """One timestep of coupled 3D coarse + fine grids.
+    """Advance the canonical Phase-1 z-slab lane by one timestep."""
 
-    Both grids use the SAME dt (global timestep) for energy conservation.
-
-    Parameters
-    ----------
-    mats_c, mats_f : MaterialArrays or None
-        Materials for coarse/fine grids. None = vacuum.
-    pec_mask_c, pec_mask_f : array or None
-        Boolean PEC masks for coarse/fine grids.
-    """
-    dt = config.dt
-    fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
-    ni = config.fi_hi - fi
-    nj = config.fj_hi - fj
-    nk = config.fk_hi - fk
-    _fr = (slice(fi, fi+ni), slice(fj, fj+nj), slice(fk, fk+nk))
-    ratio = config.ratio
-
-    # === Step 1: H update (Faraday) on both grids ===
     hx_c, hy_c, hz_c = _update_h_only(
-        state.ex_c, state.ey_c, state.ez_c,
-        state.hx_c, state.hy_c, state.hz_c,
-        dt, config.dx_c, mats=mats_c)
-
+        state.ex_c,
+        state.ey_c,
+        state.ez_c,
+        state.hx_c,
+        state.hy_c,
+        state.hz_c,
+        config.dt,
+        config.dx_c,
+        mats=mats_c,
+    )
     hx_f, hy_f, hz_f = _update_h_only(
-        state.ex_f, state.ey_f, state.ez_f,
-        state.hx_f, state.hy_f, state.hz_f,
-        dt, config.dx_f, mats=mats_f)
+        state.ex_f,
+        state.ey_f,
+        state.ez_f,
+        state.hx_f,
+        state.hy_f,
+        state.hz_f,
+        config.dt,
+        config.dx_f,
+        mats=mats_f,
+    )
+    (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = apply_sat_h_zfaces(
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        config,
+    )
+    hx_c, hy_c, hz_c = _zero_coarse_overlap_interior((hx_c, hy_c, hz_c), config)
 
-    # === Step 2: SAT_H coupling (tangential H on all 6 faces) ===
-    (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = _shared_node_coupling_h_3d(
-        (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f), config)
-
-    # Note: fine→coarse overlay injection was tested but causes instability
-    # (coarse curl inconsistency at injection boundary). SAT-only coupling
-    # with correct energy accounting (excluding fine region from coarse)
-    # provides stable energy-conservative behavior.
-
-    # === Step 3: E update (Ampere) on both grids using coupled H ===
     ex_c, ey_c, ez_c = _update_e_only(
-        state.ex_c, state.ey_c, state.ez_c,
-        hx_c, hy_c, hz_c,
-        dt, config.dx_c, mats=mats_c, pec_mask=pec_mask_c,
-        boundary_pec=True)
-
+        state.ex_c,
+        state.ey_c,
+        state.ez_c,
+        hx_c,
+        hy_c,
+        hz_c,
+        config.dt,
+        config.dx_c,
+        mats=mats_c,
+        pec_mask=pec_mask_c,
+        boundary_axes="xyz",
+    )
     ex_f, ey_f, ez_f = _update_e_only(
-        state.ex_f, state.ey_f, state.ez_f,
-        hx_f, hy_f, hz_f,
-        dt, config.dx_f, mats=mats_f, pec_mask=pec_mask_f,
-        boundary_pec=False)
-
-    # === Step 4: SAT_E coupling (tangential E on all 6 faces) ===
-    (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = _shared_node_coupling_3d(
-        (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f), config)
-
-    # No E overlay injection — same reason as H above.
+        state.ex_f,
+        state.ey_f,
+        state.ez_f,
+        hx_f,
+        hy_f,
+        hz_f,
+        config.dt,
+        config.dx_f,
+        mats=mats_f,
+        pec_mask=pec_mask_f,
+        boundary_axes="xy",
+    )
+    (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = apply_sat_e_zfaces(
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        config,
+    )
+    ex_c, ey_c, ez_c = _zero_coarse_overlap_interior((ex_c, ey_c, ez_c), config)
 
     return SubgridState3D(
-        ex_c=ex_c, ey_c=ey_c, ez_c=ez_c,
-        hx_c=hx_c, hy_c=hy_c, hz_c=hz_c,
-        ex_f=ex_f, ey_f=ey_f, ez_f=ez_f,
-        hx_f=hx_f, hy_f=hy_f, hz_f=hz_f,
+        ex_c=ex_c,
+        ey_c=ey_c,
+        ez_c=ez_c,
+        hx_c=hx_c,
+        hy_c=hy_c,
+        hz_c=hz_c,
+        ex_f=ex_f,
+        ey_f=ey_f,
+        ez_f=ez_f,
+        hx_f=hx_f,
+        hy_f=hy_f,
+        hz_f=hz_f,
         step=state.step + 1,
     )
 
 
 def compute_energy_3d(state: SubgridState3D, config: SubgridConfig3D) -> float:
-    """Total 3D discrete energy (no double-counting in overlap region).
+    """Total energy with coarse/fine overlap counted once."""
 
-    The fine region is excluded from the coarse grid energy to avoid
-    counting the same physical volume twice. Fine grid energy covers
-    the refinement region; coarse grid energy covers the exterior.
-    """
     dv_c = config.dx_c ** 3
     dv_f = config.dx_f ** 3
     fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
-    ni = config.fi_hi - fi
-    nj = config.fj_hi - fj
-    nk = config.fk_hi - fk
+    ni, nj, nk = _region_shape(config)
 
-    # Mask: exclude fine region from coarse energy
     mask = jnp.ones(state.ex_c.shape, dtype=jnp.bool_)
-    mask = mask.at[fi:fi+ni, fj:fj+nj, fk:fk+nk].set(False)
+    mask = mask.at[fi : fi + ni, fj : fj + nj, fk : fk + nk].set(False)
 
-    e_c = (float(jnp.sum(jnp.where(mask, state.ex_c**2 + state.ey_c**2 + state.ez_c**2, 0.0))) * EPS_0 * dv_c +
-           float(jnp.sum(jnp.where(mask, state.hx_c**2 + state.hy_c**2 + state.hz_c**2, 0.0))) * MU_0 * dv_c)
-    e_f = (float(jnp.sum(state.ex_f**2 + state.ey_f**2 + state.ez_f**2)) * EPS_0 * dv_f +
-           float(jnp.sum(state.hx_f**2 + state.hy_f**2 + state.hz_f**2)) * MU_0 * dv_f)
+    e_c = (
+        float(jnp.sum(jnp.where(mask, state.ex_c**2 + state.ey_c**2 + state.ez_c**2, 0.0)))
+        * EPS_0
+        * dv_c
+        + float(jnp.sum(jnp.where(mask, state.hx_c**2 + state.hy_c**2 + state.hz_c**2, 0.0)))
+        * MU_0
+        * dv_c
+    )
+    e_f = (
+        float(jnp.sum(state.ex_f**2 + state.ey_f**2 + state.ez_f**2)) * EPS_0 * dv_f
+        + float(jnp.sum(state.hx_f**2 + state.hy_f**2 + state.hz_f**2)) * MU_0 * dv_f
+    )
     return e_c + e_f

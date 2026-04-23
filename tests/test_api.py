@@ -64,7 +64,7 @@ def test_upml_boundary_runs_through_api():
 
 
 def test_upml_rejects_subgridding_refinement():
-    """UPML v1 should fail loudly on subgridding/refinement."""
+    """UPML v1 should fail loudly before registering a refinement."""
     sim = Simulation(
         freq_max=6e9,
         domain=(0.04, 0.04, 0.02),
@@ -72,12 +72,9 @@ def test_upml_rejects_subgridding_refinement():
         cpml_layers=6,
         dx=0.002,
     )
-    sim.add_refinement((0.004, 0.008), ratio=2)
-    sim.add_source((0.01, 0.02, 0.01), "ez", waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
-    sim.add_probe((0.026, 0.02, 0.01), "ez")
 
-    with pytest.raises(ValueError, match="subgridding/refinement"):
-        sim.run(n_steps=40, compute_s_params=False)
+    with pytest.raises(ValueError, match="boundary='pec' only|all-PEC BoundarySpec"):
+        sim.add_refinement((0.004, 0.008), ratio=2)
 
 
 def test_upml_rejects_distributed_execution():

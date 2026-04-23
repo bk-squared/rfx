@@ -658,8 +658,8 @@ class Simulation:
     ) -> "Simulation":
         """Add a z-axis refinement region for SBP-SAT subgridding.
 
-        The fine grid covers the specified z-range (plus xy_margin around
-        geometry) at dx_fine = dx_coarse / ratio.
+        Phase 1 covers the full supported x/y span and the specified
+        z-range at dx_fine = dx_coarse / ratio.
 
         Parameters
         ----------
@@ -668,8 +668,8 @@ class Simulation:
         ratio : int
             Refinement ratio (fine cells per coarse cell). Default 4.
         xy_margin : float or None
-            Extra xy margin around geometry for the fine region.
-            Default: 2 * dx_coarse.
+            Reserved for a later partial x/y refinement milestone. Phase 1
+            rejects non-None values.
         tau : float
             SAT penalty coefficient (default 0.5). Higher values give
             stronger coupling but more dissipation.
@@ -677,24 +677,11 @@ class Simulation:
         if self._refinement is not None:
             raise ValueError("Only one refinement region is supported")
 
-        # Warn if subgrid overlaps PML region.
-        # PML operates on the coarse grid only; the fine grid has no PML.
-        # Overlapping causes late-time energy growth (SAT coupling feeds
-        # energy into the PML boundary faster than it can absorb).
-        if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
-            import warnings
-            dx = self._dx or (2.998e8 / self._freq_max / 10)
-            pml_thickness = self._cpml_layers * dx
-            domain_z = self._domain[2] if len(self._domain) > 2 else 0
-            z_lo, z_hi = z_range
-            if z_lo < pml_thickness or (domain_z > 0 and z_hi > domain_z - pml_thickness):
-                warnings.warn(
-                    f"Subgrid z_range=({z_lo*1e3:.1f}, {z_hi*1e3:.1f})mm overlaps "
-                    f"PML region (thickness={pml_thickness*1e3:.1f}mm). "
-                    f"This causes late-time energy growth. "
-                    f"Move z_range inside the PML boundary for stable results.",
-                    stacklevel=2,
-                )
+        self._validate_phase1_subgrid_boundaries()
+        if xy_margin is not None:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support xy_margin"
+            )
 
         self._refinement = {
             "z_range": z_range,
@@ -703,6 +690,36 @@ class Simulation:
             "tau": tau,
         }
         return self
+
+    def _validate_phase1_subgrid_boundaries(self) -> None:
+        """Reject all non-PEC boundary forms for Phase-1 SBP-SAT.
+
+        ``BoundarySpec`` is authoritative on mainline.  A mixed spec with
+        PMC, periodic, or absorbing faces derives the legacy scalar
+        ``self._boundary == "pec"`` when no absorber is present, so Phase-1
+        must inspect the canonical six-face spec instead of relying on the
+        legacy scalar view.
+        """
+        spec = getattr(self, "_boundary_spec", None)
+        if spec is not None:
+            unsupported_faces = [
+                f"{axis}_{side}={token}"
+                for axis, side, token in spec.faces()
+                if token != "pec"
+            ]
+            if unsupported_faces:
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding supports "
+                    "boundary='pec' only / all-PEC BoundarySpec only; "
+                    "unsupported boundary faces: "
+                    + ", ".join(unsupported_faces)
+                )
+            return
+
+        if self._boundary != "pec" or self._cpml_layers > 0:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding supports boundary='pec' only"
+            )
 
     # ---- material registration ----
 
@@ -3907,7 +3924,7 @@ class Simulation:
             )
 
         # P0.4: PEC boundary on likely open structure
-        if self._boundary == "pec" and self._ntff is not None:
+        if self._boundary == "pec" and self._ntff is not None and self._refinement is None:
             _w.warn(
                 "PEC boundary with NTFF far-field: PEC reflects all energy "
                 "back into domain. Use boundary='cpml' or boundary='upml' for open structures "
@@ -3971,39 +3988,48 @@ class Simulation:
         # P4: Subgridded path limitations
         # ================================================================
         if self._refinement is not None:
+            self._validate_phase1_subgrid_boundaries()
             if self._ntff is not None:
-                _w.warn(
-                    "NTFF far-field is not supported with SBP-SAT subgridding. "
-                    "The NTFF box will be ignored.",
-                    stacklevel=3,
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding does not support NTFF"
                 )
             if self._dft_planes:
-                _w.warn(
-                    "DFT plane probes are not supported with SBP-SAT "
-                    "subgridding.",
-                    stacklevel=3,
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding does not support "
+                    "DFT plane probes"
                 )
             if self._waveguide_ports:
-                _w.warn(
-                    "Waveguide ports are not supported with SBP-SAT "
-                    "subgridding.",
-                    stacklevel=3,
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding does not support "
+                    "waveguide ports"
+                )
+            if self._coaxial_ports:
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding does not support coaxial ports"
                 )
             if self._floquet_ports:
-                _w.warn(
-                    "Floquet ports are not supported with SBP-SAT subgridding.",
-                    stacklevel=3,
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding does not support "
+                    "Floquet ports"
                 )
             if self._tfsf is not None:
-                _w.warn(
-                    "TFSF source is not supported with SBP-SAT subgridding.",
-                    stacklevel=3,
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding does not support "
+                    "TFSF sources"
                 )
             if self._lumped_rlc:
-                _w.warn(
-                    "Lumped RLC elements are not supported with SBP-SAT "
-                    "subgridding.",
-                    stacklevel=3,
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding does not support "
+                    "lumped RLC"
+                )
+            unsupported_ports = [
+                pe for pe in self._ports
+                if pe.impedance != 0.0 or pe.extent is not None
+            ]
+            if unsupported_ports:
+                raise ValueError(
+                    "Phase-1 SBP-SAT z-slab subgridding supports soft point sources "
+                    "only; impedance point ports and wire/extent ports are deferred"
                 )
 
         # P2.7 (obsolete): PMC / PEC + CPML on the same axis used to emit
