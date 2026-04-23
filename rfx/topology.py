@@ -26,9 +26,9 @@ Hybrid note
 -----------
 The current experimental hybrid subset is intentionally narrower than the
 general pure-AD topology surface: zero-sigma, source/probe-only dielectric
-topology on PEC boundary only. Port-based, PEC-foreground, sigma-bearing,
-CPML-positive, and dispersive-positive topology remain on the pure-AD lane
-unless explicitly expanded in a later phase.
+topology on PEC or CPML boundary. Port-based, PEC-foreground, sigma-bearing,
+and dispersive-positive topology remain on the pure-AD lane unless explicitly
+expanded in a later phase.
 
 Key concepts
 ------------
@@ -361,20 +361,20 @@ def _topology_hybrid_reason_texts(
     pec_occupancy,
     port_metadata,
 ) -> tuple[str, ...]:
-    """Phase-4C-specific guardrails layered on top of seam-owned inspection."""
+    """Topology-specific guardrails layered on top of seam-owned inspection."""
     reasons: list[str] = []
-    if sim._boundary != "pec":
-        reasons.append("Phase 4C topology hybrid supports PEC boundary only")
+    if sim._boundary not in {"pec", "cpml"}:
+        reasons.append("Phase II topology hybrid supports PEC or CPML boundary only")
     if debye_spec is not None or lorentz_spec is not None or bg_has_dispersion or fg_has_dispersion:
-        reasons.append("Phase 4C topology hybrid supports nondispersive materials only")
+        reasons.append("Phase II topology hybrid supports nondispersive materials only")
     if port_metadata is not None and getattr(port_metadata, "total_ports", 0) > 0:
-        reasons.append("Phase 4C topology hybrid requires zero ports")
+        reasons.append("Phase II topology hybrid requires zero ports")
     if pec_mask is not None:
-        reasons.append("Phase 4C topology hybrid requires pec_mask-free fixtures")
+        reasons.append("Phase II topology hybrid requires pec_mask-free fixtures")
     if pec_occupancy is not None:
-        reasons.append("Phase 4C topology hybrid supports dielectric-only topology (no pec_occupancy)")
+        reasons.append("Phase II topology hybrid supports dielectric-only topology (no pec_occupancy)")
     if bool(jnp.any(jnp.abs(materials.sigma) > 0.0)):
-        reasons.append("Phase 4C topology hybrid requires zero sigma everywhere")
+        reasons.append("Phase II topology hybrid requires zero sigma everywhere")
     return tuple(reasons)
 
 

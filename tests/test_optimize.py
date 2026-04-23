@@ -55,6 +55,14 @@ def _make_overlapping_one_port_optimize_design_region() -> DesignRegion:
     )
 
 
+def _make_overlapping_passive_port_optimize_design_region() -> DesignRegion:
+    return DesignRegion(
+        corner_lo=(0.009, 0.006, 0.006),
+        corner_hi=(0.011, 0.009, 0.009),
+        eps_range=(1.0, 4.4),
+    )
+
+
 def _make_source_optimize_sim(*, boundary: str = "pec", ntff: bool = False) -> Simulation:
     sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary=boundary)
     sim.add_source(
@@ -75,9 +83,15 @@ def _make_port_optimize_sim() -> Simulation:
     return sim
 
 
-def _make_multi_port_optimize_sim() -> Simulation:
+def _make_passive_port_optimize_sim() -> Simulation:
     sim = _make_port_optimize_sim()
     sim.add_port((0.01, 0.0075, 0.0075), "ez", excite=False)
+    return sim
+
+
+def _make_multi_port_optimize_sim() -> Simulation:
+    sim = _make_passive_port_optimize_sim()
+    sim.add_port((0.012, 0.0075, 0.0075), "ez", excite=False)
     return sim
 
 
@@ -101,6 +115,11 @@ def _probe_energy_objective(run_result) -> jnp.ndarray:
 def _port_cell(sim: Simulation) -> tuple[int, int, int]:
     grid = sim._build_grid()
     return tuple(int(v) for v in grid.position_to_index(sim._ports[0].position))
+
+
+def _passive_port_cell(sim: Simulation) -> tuple[int, int, int]:
+    grid = sim._build_grid()
+    return tuple(int(v) for v in grid.position_to_index(sim._ports[1].position))
 
 
 def test_design_region():
@@ -308,6 +327,77 @@ def test_optimize_hybrid_supported_one_excited_lumped_port_auto_mode_uses_hybrid
     assert calls["hybrid"] > 0
 
 
+def test_optimize_hybrid_supported_one_excited_plus_one_passive_lumped_port_route_bypasses_pure_ad(monkeypatch):
+    """Strict hybrid mode should support the approved one excited + one passive subset."""
+    sim = _make_passive_port_optimize_sim()
+    report = sim.inspect_hybrid_phase1(n_steps=12)
+    assert report.supported
+    assert report.port_metadata is not None
+    assert report.port_metadata.total_ports == 2
+    assert report.port_metadata.excited_ports == 1
+    assert report.port_metadata.passive_ports == 1
+    assert len(report.port_metadata.passive_lumped_port_cells) == 1
+
+    calls = {"hybrid": 0}
+    original_hybrid = sim.forward_hybrid_phase1_from_context
+
+    def _wrapped_hybrid(context, *, eps_override=None):
+        calls["hybrid"] += 1
+        return original_hybrid(context, eps_override=eps_override)
+
+    def _fail_pure_ad(*args, **kwargs):
+        raise AssertionError("strict hybrid two-port optimize unexpectedly used the pure-AD path")
+
+    monkeypatch.setattr(sim, "forward_hybrid_phase1_from_context", _wrapped_hybrid)
+    monkeypatch.setattr(sim, "_forward_from_materials", _fail_pure_ad)
+
+    result = optimize(
+        sim,
+        _make_one_port_optimize_design_region(),
+        _probe_energy_objective,
+        n_iters=1,
+        lr=0.01,
+        verbose=False,
+        adjoint_mode="hybrid",
+    )
+
+    assert len(result.loss_history) == 1
+    assert calls["hybrid"] > 0
+
+
+def test_optimize_hybrid_supported_one_excited_plus_one_passive_lumped_port_auto_mode_uses_hybrid(monkeypatch):
+    """Auto mode should choose hybrid for the approved one excited + one passive subset."""
+    sim = _make_passive_port_optimize_sim()
+    report = sim.inspect_hybrid_phase1(n_steps=12)
+    assert report.supported
+
+    calls = {"hybrid": 0}
+    original_hybrid = sim.forward_hybrid_phase1_from_context
+
+    def _wrapped_hybrid(context, *, eps_override=None):
+        calls["hybrid"] += 1
+        return original_hybrid(context, eps_override=eps_override)
+
+    def _fail_pure_ad(*args, **kwargs):
+        raise AssertionError("auto mode unexpectedly fell back on a supported two-port fixture")
+
+    monkeypatch.setattr(sim, "forward_hybrid_phase1_from_context", _wrapped_hybrid)
+    monkeypatch.setattr(sim, "_forward_from_materials", _fail_pure_ad)
+
+    result = optimize(
+        sim,
+        _make_one_port_optimize_design_region(),
+        _probe_energy_objective,
+        n_iters=1,
+        lr=0.01,
+        verbose=False,
+        adjoint_mode="auto",
+    )
+
+    assert len(result.loss_history) == 1
+    assert calls["hybrid"] > 0
+
+
 def test_optimize_supported_one_port_fixture_design_region_is_disjoint_from_port_cell():
     """The approved one-port optimize fixture must keep design-region cells away from the port cell."""
     sim = _make_port_optimize_sim()
@@ -322,6 +412,23 @@ def test_optimize_supported_one_port_fixture_design_region_is_disjoint_from_port
         and lo_idx[1] <= port_cell[1] <= hi_idx[1]
         and lo_idx[2] <= port_cell[2] <= hi_idx[2]
     )
+
+
+def test_optimize_supported_two_port_fixture_design_region_is_disjoint_from_port_cells():
+    """The approved two-port optimize fixture must keep design-region cells away from both port cells."""
+    sim = _make_passive_port_optimize_sim()
+    region = _make_one_port_optimize_design_region()
+    grid = sim._build_grid()
+    lo_idx = tuple(int(v) for v in grid.position_to_index(region.corner_lo))
+    hi_idx = tuple(int(v) for v in grid.position_to_index(region.corner_hi))
+    cells = (_port_cell(sim), _passive_port_cell(sim))
+
+    for cell in cells:
+        assert not (
+            lo_idx[0] <= cell[0] <= hi_idx[0]
+            and lo_idx[1] <= cell[1] <= hi_idx[1]
+            and lo_idx[2] <= cell[2] <= hi_idx[2]
+        )
 
 
 def test_optimize_hybrid_inspection_reports_design_region_overlap_for_one_port_fixture():
@@ -345,12 +452,50 @@ def test_optimize_hybrid_inspection_reports_design_region_overlap_for_one_port_f
     assert "design region overlaps the excited lumped-port cell" in report.reason_text
 
 
+def test_optimize_hybrid_inspection_reports_design_region_overlap_for_passive_port_fixture():
+    """Optimize-side hybrid inspection should surface design-region/passive-port overlap."""
+    sim = _make_passive_port_optimize_sim()
+    overlap_region = _make_overlapping_passive_port_optimize_design_region()
+    grid = sim._build_grid()
+    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    lo_idx = tuple(int(v) for v in grid.position_to_index(overlap_region.corner_lo))
+    hi_idx = tuple(int(v) for v in grid.position_to_index(overlap_region.corner_hi))
+    _, report = _inspect_optimize_hybrid_support(
+        sim,
+        eps_r=base_materials.eps_r,
+        n_steps=12,
+        design_bounds=(lo_idx, hi_idx),
+    )
+
+    assert not report.supported
+    assert report.port_metadata is not None
+    assert report.port_metadata.design_region_overlaps_passive_lumped_port_cell
+    assert "design region overlaps a passive lumped-port cell" in report.reason_text
+
+
 def test_optimize_hybrid_rejects_design_region_overlap_with_excited_port_cell():
     """Strict hybrid mode should fail closed when the design region touches the excited port cell."""
     sim = _make_port_optimize_sim()
     overlap_region = _make_overlapping_one_port_optimize_design_region()
 
     with pytest.raises(ValueError, match="design region overlaps the excited lumped-port cell"):
+        optimize(
+            sim,
+            overlap_region,
+            _probe_energy_objective,
+            n_iters=1,
+            lr=0.01,
+            verbose=False,
+            adjoint_mode="hybrid",
+        )
+
+
+def test_optimize_hybrid_rejects_design_region_overlap_with_passive_port_cell():
+    """Strict hybrid mode should fail closed when the design region touches the passive port cell."""
+    sim = _make_passive_port_optimize_sim()
+    overlap_region = _make_overlapping_passive_port_optimize_design_region()
+
+    with pytest.raises(ValueError, match="design region overlaps a passive lumped-port cell"):
         optimize(
             sim,
             overlap_region,
@@ -369,6 +514,29 @@ def test_optimize_auto_falls_back_for_design_region_overlap_with_excited_port_ce
 
     def _fail_hybrid(*args, **kwargs):
         raise AssertionError("auto mode unexpectedly used hybrid on a design-region/port overlap case")
+
+    monkeypatch.setattr(sim, "forward_hybrid_phase1_from_context", _fail_hybrid)
+
+    result = optimize(
+        sim,
+        overlap_region,
+        _probe_energy_objective,
+        n_iters=1,
+        lr=0.01,
+        verbose=False,
+        adjoint_mode="auto",
+    )
+
+    assert len(result.loss_history) == 1
+
+
+def test_optimize_auto_falls_back_for_design_region_overlap_with_passive_port_cell(monkeypatch):
+    """Auto mode should fall back to pure AD when the design region overlaps the passive port cell."""
+    sim = _make_passive_port_optimize_sim()
+    overlap_region = _make_overlapping_passive_port_optimize_design_region()
+
+    def _fail_hybrid(*args, **kwargs):
+        raise AssertionError("auto mode unexpectedly used hybrid on a design-region/passive-port overlap case")
 
     monkeypatch.setattr(sim, "forward_hybrid_phase1_from_context", _fail_hybrid)
 
@@ -428,6 +596,44 @@ def test_optimize_hybrid_single_step_matches_pure_ad():
         atol=1e-7,
     )
     assert not np.allclose(np.asarray(hybrid_result.latent), 0.0)
+
+
+def test_optimize_hybrid_two_port_single_step_matches_pure_ad():
+    """Strict hybrid routing should match pure AD on the supported two-lumped-port proxy subset."""
+    sim = _make_passive_port_optimize_sim()
+    region = _make_one_port_optimize_design_region()
+
+    pure_result = optimize(
+        sim,
+        region,
+        _probe_energy_objective,
+        n_iters=1,
+        lr=0.01,
+        verbose=False,
+        adjoint_mode="pure_ad",
+    )
+    hybrid_result = optimize(
+        sim,
+        region,
+        _probe_energy_objective,
+        n_iters=1,
+        lr=0.01,
+        verbose=False,
+        adjoint_mode="hybrid",
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(hybrid_result.latent),
+        np.asarray(pure_result.latent),
+        rtol=1e-4,
+        atol=1e-6,
+    )
+    np.testing.assert_allclose(
+        np.asarray(hybrid_result.loss_history),
+        np.asarray(pure_result.loss_history),
+        rtol=1e-5,
+        atol=1e-7,
+    )
 
 
 def test_optimize_hybrid_ntff_directivity_single_step_matches_pure_ad():

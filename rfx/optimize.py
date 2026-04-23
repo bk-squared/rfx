@@ -92,6 +92,15 @@ def _design_bounds_overlap_cell(
     )
 
 
+def _passive_lumped_port_cells(port_metadata: object | None) -> tuple[tuple[int, int, int], ...]:
+    if port_metadata is None:
+        return ()
+    return tuple(
+        tuple(int(v) for v in cell)
+        for cell in getattr(port_metadata, "passive_lumped_port_cells", ())
+    )
+
+
 def _resolve_optimize_hybrid_context(
     sim,
     *,
@@ -131,26 +140,35 @@ def _inspect_optimize_hybrid_support(
     """Inspect hybrid support for optimize(), including one-port overlap fencing."""
     inputs = sim.build_hybrid_phase1_inputs(eps_override=eps_r, n_steps=n_steps)
     report = sim.inspect_hybrid_phase1_from_inputs(inputs)
-    if (
-        design_bounds is None
-        or report.port_metadata is None
-        or report.port_metadata.excited_lumped_port_cell is None
-    ):
+    if design_bounds is None or report.port_metadata is None:
         return inputs, report
 
-    overlaps = _design_bounds_overlap_cell(
-        design_bounds,
-        tuple(report.port_metadata.excited_lumped_port_cell),
+    excited_cell = report.port_metadata.excited_lumped_port_cell
+    overlaps_excited = bool(
+        excited_cell is not None
+        and _design_bounds_overlap_cell(design_bounds, tuple(excited_cell))
+    )
+    overlaps_passive = any(
+        _design_bounds_overlap_cell(design_bounds, cell)
+        for cell in _passive_lumped_port_cells(report.port_metadata)
     )
     port_metadata = report.port_metadata._replace(
-        design_region_overlaps_excited_port_cell=overlaps,
+        design_region_overlaps_excited_port_cell=overlaps_excited,
+        design_region_overlaps_passive_lumped_port_cell=overlaps_passive,
     )
     report = replace(report, port_metadata=port_metadata)
-    if report.supported and overlaps:
+    if report.supported and overlaps_excited:
         report = replace(
             report,
             supported=False,
             reasons=report.reasons + ("design region overlaps the excited lumped-port cell",),
+            inventory=None,
+        )
+    if report.supported and overlaps_passive:
+        report = replace(
+            report,
+            supported=False,
+            reasons=report.reasons + ("design region overlaps a passive lumped-port cell",),
             inventory=None,
         )
     return inputs, report

@@ -16,8 +16,8 @@ removal workflow with a forward physics sanity check).
 |---|---|---|
 | `Simulation.run()` + ports + `result.s_params` | Supported | Use for forward RF analysis and validation |
 | `optimize()` with time-domain proxy objectives | Supported with guardrails | Add probes explicitly |
-| `optimize(..., adjoint_mode="hybrid")` on one excited lumped-port proxy flows | Experimental-supported | One excited lumped port only; no passive/multi/wire/waveguide/floquet ports; keep the design region away from the excited port cell |
-| `topology_optimize(..., adjoint_mode="hybrid")` on zero-sigma dielectric source/probe PEC cases | Experimental-supported | Source/probe only; no ports, no PEC foreground, no sigma-bearing materials, no CPML/dispersive positives |
+| `optimize(..., adjoint_mode="hybrid")` on bounded lumped-port proxy flows | Experimental-supported | One excited lumped port, optionally one passive lumped port; no extra passive/multi-excited/wire/waveguide/floquet ports; keep the design region away from all port cells |
+| `topology_optimize(..., adjoint_mode="hybrid")` on zero-sigma dielectric source/probe PEC or CPML cases | Experimental-supported | Source/probe only; no ports, no PEC foreground, no sigma-bearing materials, no dispersive positives |
 | `topology_optimize()` with dielectric foreground/background | Experimental-supported | Use proxy objectives; keep problems small first |
 | `topology_optimize(material_fg="pec")` | Experimental / caveat | Gradient behavior is still evolving |
 | NTFF post-processing on canonical radiators | Supported with setup rules | Margin + domain sizing matter |
@@ -125,12 +125,15 @@ result = optimize(sim, region, obj, n_iters=20, n_steps=500, adjoint_mode="hybri
 
 Current hybrid optimize boundary for port/proxy workflows is intentionally narrow:
 - exactly **one excited lumped port**
-- no passive ports
+- optionally **one passive lumped port**
+- no additional passive ports
 - no wire / waveguide / floquet ports
-- no multi-port arrangements
-- keep the design region disjoint from the excited port cell
+- no multi-excited-port arrangements
+- keep the design region disjoint from all lumped-port cells
 
-This did **not** add generic port replay, generic lossy-material support, or topology hybrid support.
+This did **not** add generic port replay, S-parameter accumulation, generic
+lossy-material support, or topology hybrid support beyond the explicitly
+listed topology subset.
 
 ## 3. Probe rules for optimization
 
@@ -166,11 +169,12 @@ deliberately narrow carve-out:
 - zero sigma everywhere in assembled materials
 - dielectric-only topology (`pec_occupancy_design is None`)
 - no pre-existing PEC / `pec_mask`
-- uniform, non-periodic, PEC-boundary-only, nondispersive positive fixtures
+- uniform, non-periodic, PEC- or CPML-boundary, nondispersive positive fixtures
 
 This does **not** add generic topology hybrid support, PEC-foreground
-topology, sigma-bearing dielectric topology, port-based topology, CPML-positive
-topology, or dispersive-positive topology.
+topology, sigma-bearing dielectric topology, port-based topology, broader CPML
+topology beyond the zero-sigma source/probe carve-out, or dispersive-positive
+topology.
 
 ## 4. NTFF setup rules
 

@@ -321,6 +321,12 @@ class TestOptimizeWithProxy:
         return sim
 
     @staticmethod
+    def _make_two_lumped_port_proxy_sim():
+        sim = TestOptimizeWithProxy._make_one_port_proxy_sim()
+        sim.add_port((0.05, 0.01, 0.01), "ez", impedance=50.0, excite=False)
+        return sim
+
+    @staticmethod
     def _make_proxy_design_region():
         from rfx.optimize import DesignRegion
 
@@ -390,6 +396,42 @@ class TestOptimizeWithProxy:
         np.testing.assert_allclose(np.asarray(hybrid.loss_history), np.asarray(pure.loss_history), rtol=1e-5, atol=1e-7)
         np.testing.assert_allclose(np.asarray(hybrid.latent), np.asarray(pure.latent), rtol=1e-4, atol=1e-6)
 
+    def test_optimize_with_reflected_energy_proxy_two_lumped_port_hybrid_matches_pure_ad_single_step(self):
+        """One-step proxy optimization should agree on the supported one-excited + one-passive subset."""
+        from rfx.optimize import optimize
+
+        sim = self._make_two_lumped_port_proxy_sim()
+        report = sim.inspect_hybrid_phase1(n_steps=12)
+        assert report.supported
+        assert report.port_metadata is not None
+        assert report.port_metadata.excited_ports == 1
+        assert report.port_metadata.passive_ports == 1
+
+        region = self._make_proxy_design_region()
+        obj = minimize_reflected_energy(port_probe_idx=0)
+
+        pure = optimize(
+            sim,
+            region,
+            obj,
+            n_iters=1,
+            lr=0.05,
+            verbose=False,
+            adjoint_mode="pure_ad",
+        )
+        hybrid = optimize(
+            sim,
+            region,
+            obj,
+            n_iters=1,
+            lr=0.05,
+            verbose=False,
+            adjoint_mode="hybrid",
+        )
+
+        np.testing.assert_allclose(np.asarray(hybrid.loss_history), np.asarray(pure.loss_history), rtol=1e-5, atol=1e-7)
+        np.testing.assert_allclose(np.asarray(hybrid.latent), np.asarray(pure.latent), rtol=1e-4, atol=1e-6)
+
     def test_optimize_with_reflected_energy_proxy_strict_hybrid_route_proof(self, monkeypatch):
         """Supported one-port proxy optimization should prove strict hybrid routing explicitly."""
         from rfx.optimize import DesignRegion, optimize
@@ -410,6 +452,46 @@ class TestOptimizeWithProxy:
 
         def _fail_pure_ad(*args, **kwargs):
             raise AssertionError("strict hybrid proxy optimize unexpectedly used the pure-AD path")
+
+        monkeypatch.setattr(sim, "forward_hybrid_phase1_from_context", _wrapped_hybrid)
+        monkeypatch.setattr(sim, "_forward_from_materials", _fail_pure_ad)
+
+        region = self._make_proxy_design_region()
+        obj = minimize_reflected_energy(port_probe_idx=0)
+
+        result = optimize(
+            sim,
+            region,
+            obj,
+            n_iters=1,
+            lr=0.05,
+            verbose=False,
+            adjoint_mode="hybrid",
+        )
+
+        assert len(result.loss_history) == 1
+        assert calls["hybrid"] > 0
+
+    def test_optimize_with_reflected_energy_proxy_two_lumped_port_strict_hybrid_route_proof(self, monkeypatch):
+        """Supported two-lumped-port proxy optimization should prove strict hybrid routing explicitly."""
+        from rfx.optimize import optimize
+
+        sim = self._make_two_lumped_port_proxy_sim()
+        report = sim.inspect_hybrid_phase1(n_steps=12)
+        assert report.supported
+        assert report.port_metadata is not None
+        assert report.port_metadata.total_ports == 2
+        assert report.port_metadata.passive_ports == 1
+
+        calls = {"hybrid": 0}
+        original_hybrid = sim.forward_hybrid_phase1_from_context
+
+        def _wrapped_hybrid(context, *, eps_override=None):
+            calls["hybrid"] += 1
+            return original_hybrid(context, eps_override=eps_override)
+
+        def _fail_pure_ad(*args, **kwargs):
+            raise AssertionError("strict hybrid two-port proxy optimize unexpectedly used the pure-AD path")
 
         monkeypatch.setattr(sim, "forward_hybrid_phase1_from_context", _wrapped_hybrid)
         monkeypatch.setattr(sim, "_forward_from_materials", _fail_pure_ad)

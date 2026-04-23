@@ -195,7 +195,7 @@ class Phase1HybridContext:
         replay_outputs = ["time_series", "final_fields"]
         if np.any(np.abs(np.asarray(inputs.materials.sigma)) > 0.0):
             replay_inputs.append("sigma")
-        if inputs.port_metadata is not None and _supports_one_excited_lumped_port(inputs.port_metadata):
+        if inputs.port_metadata is not None and _supports_phase2_lumped_port_proxy_subset(inputs.port_metadata):
             replay_inputs.append("port_metadata")
         debye_spec = inputs.debye_spec
         lorentz_spec = inputs.lorentz_spec
@@ -804,13 +804,51 @@ def unsupported_phase1_hybrid_nonuniform_inputs(*, probe_count: int, boundary: s
     )
 
 
-def _supports_one_excited_lumped_port(port_metadata: object | None) -> bool:
+def _passive_lumped_port_cells(port_metadata: object | None) -> tuple[tuple[int, int, int], ...]:
+    if port_metadata is None:
+        return ()
+    return tuple(
+        tuple(int(v) for v in cell)
+        for cell in getattr(port_metadata, "passive_lumped_port_cells", ())
+    )
+
+
+def _passive_lumped_port_sigmas(port_metadata: object | None) -> tuple[float, ...]:
+    if port_metadata is None:
+        return ()
+    return tuple(float(value) for value in getattr(port_metadata, "passive_lumped_port_sigmas", ()))
+
+
+def _passive_lumped_port_components(port_metadata: object | None) -> tuple[str, ...]:
+    if port_metadata is None:
+        return ()
+    return tuple(str(value) for value in getattr(port_metadata, "passive_lumped_port_components", ()))
+
+
+def _passive_lumped_port_had_pec(port_metadata: object | None) -> tuple[bool, ...]:
+    if port_metadata is None:
+        return ()
+    return tuple(bool(value) for value in getattr(port_metadata, "passive_lumped_port_had_pec", ()))
+
+
+def _supports_phase2_lumped_port_proxy_subset(port_metadata: object | None) -> bool:
+    """Return whether metadata matches the bounded Phase II lumped-port subset."""
+
     if port_metadata is None:
         return False
+
+    passive_cells = _passive_lumped_port_cells(port_metadata)
+    passive_components = _passive_lumped_port_components(port_metadata)
+    passive_sigmas = _passive_lumped_port_sigmas(port_metadata)
+    passive_had_pec = _passive_lumped_port_had_pec(port_metadata)
+    port_cells = (tuple(port_metadata.excited_lumped_port_cell),) if port_metadata.excited_lumped_port_cell else ()
+    port_cells = port_cells + passive_cells
+
     return bool(
-        port_metadata.total_ports == 1
+        port_metadata.total_ports == port_metadata.excited_ports + port_metadata.passive_ports
+        and port_metadata.total_ports in {1, 2}
         and port_metadata.excited_ports == 1
-        and port_metadata.passive_ports == 0
+        and port_metadata.passive_ports in {0, 1}
         and port_metadata.wire_ports == 0
         and port_metadata.waveguide_ports == 0
         and port_metadata.floquet_ports == 0
@@ -819,27 +857,68 @@ def _supports_one_excited_lumped_port(port_metadata: object | None) -> bool:
         and port_metadata.excited_lumped_port_component is not None
         and port_metadata.excited_lumped_port_sigma is not None
         and not port_metadata.excited_port_had_pec
+        and len(passive_cells) == port_metadata.passive_ports
+        and len(passive_components) == port_metadata.passive_ports
+        and len(passive_sigmas) == port_metadata.passive_ports
+        and len(passive_had_pec) == port_metadata.passive_ports
+        and not any(passive_had_pec)
+        and len(set(port_cells)) == len(port_cells)
     )
 
 
-def _sigma_matches_supported_one_port_subset(
+def _supported_lumped_port_sigmas_by_cell(
+    port_metadata: object | None,
+) -> dict[tuple[int, int, int], float]:
+    if not _supports_phase2_lumped_port_proxy_subset(port_metadata):
+        return {}
+
+    assert port_metadata is not None
+    expected = {
+        tuple(int(v) for v in port_metadata.excited_lumped_port_cell):
+            float(port_metadata.excited_lumped_port_sigma)
+    }
+    for cell, sigma in zip(
+        _passive_lumped_port_cells(port_metadata),
+        _passive_lumped_port_sigmas(port_metadata),
+    ):
+        expected[cell] = float(sigma)
+    return expected
+
+
+def _sigma_matches_supported_lumped_port_subset(
     sigma: np.ndarray,
     port_metadata: object | None,
 ) -> bool:
-    if not _supports_one_excited_lumped_port(port_metadata):
+    expected = _supported_lumped_port_sigmas_by_cell(port_metadata)
+    if not expected:
         return False
     nonzero = np.argwhere(np.abs(sigma) > 0.0)
-    if nonzero.shape[0] != 1:
+    if nonzero.shape[0] != len(expected):
         return False
-    cell = tuple(int(v) for v in nonzero[0])
-    if cell != tuple(port_metadata.excited_lumped_port_cell):
-        return False
-    return bool(
-        np.isclose(
+    for raw_cell in nonzero:
+        cell = tuple(int(v) for v in raw_cell)
+        if cell not in expected:
+            return False
+        if not np.isclose(
             float(sigma[cell]),
-            float(port_metadata.excited_lumped_port_sigma),
+            expected[cell],
             rtol=1e-6,
             atol=1e-8,
+        ):
+            return False
+    return True
+
+
+def _has_passive_lumped_port(port_metadata: object | None) -> bool:
+    return bool(port_metadata is not None and getattr(port_metadata, "passive_ports", 0) > 0)
+
+
+def _port_metadata_had_preexisting_pec(port_metadata: object | None) -> bool:
+    return bool(
+        port_metadata is not None
+        and (
+            getattr(port_metadata, "excited_port_had_pec", False)
+            or any(_passive_lumped_port_had_pec(port_metadata))
         )
     )
 
@@ -883,10 +962,14 @@ def phase1_hybrid_support_reasons(
     if port_metadata is not None and port_metadata.total_ports > 0:
         if port_metadata.soft_source_count > 0:
             reasons.append("mixed add_source()-style J-sources and port excitation are unsupported")
-        if not _supports_one_excited_lumped_port(port_metadata):
-            reasons.append("only one excited lumped port is supported in Phase 1 hybrid mode")
-        if port_metadata.excited_port_had_pec:
-            reasons.append("pre-existing PEC at the excited port cell is unsupported")
+        if not _supports_phase2_lumped_port_proxy_subset(port_metadata):
+            reasons.append(
+                "only one excited lumped port with at most one passive lumped port is supported in Phase 2 hybrid mode"
+            )
+        if _port_metadata_had_preexisting_pec(port_metadata):
+            reasons.append("pre-existing PEC at lumped-port cells is unsupported")
+        if ntff_box is not None and _has_passive_lumped_port(port_metadata):
+            reasons.append("NTFF with passive lumped-port proxy workflows is unsupported")
     if waveguide_ports:
         reasons.append("waveguide/wire/floquet port accumulation is unsupported")
     if pec_mask is not None:
@@ -902,7 +985,7 @@ def phase1_hybrid_support_reasons(
     if not probes:
         reasons.append("at least one probe is required")
     sigma = np.asarray(materials.sigma)
-    if np.any(np.abs(sigma) > 0.0) and not _sigma_matches_supported_one_port_subset(sigma, port_metadata):
+    if np.any(np.abs(sigma) > 0.0) and not _sigma_matches_supported_lumped_port_subset(sigma, port_metadata):
         reasons.append("lossy materials / port-loaded conductivity are unsupported")
     return tuple(dict.fromkeys(reasons))
 

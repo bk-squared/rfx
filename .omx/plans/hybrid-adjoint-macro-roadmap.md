@@ -25,10 +25,14 @@ Use this roadmap when:
 - Phase 3D: NTFF complete
 - Phase 4A: selective `optimize.py` hybrid routing complete
 - Phase 4B: one-port proxy optimize blocker-support complete
+- Phase 4C / Phase I closure: zero-sigma dielectric topology carve-out complete
 
 ### Current worktree state
-- Phase 4C implementation is in progress / worktree-local until committed
-- current uncommitted topology carve-out work is expected to land before Phase II roadmap work begins
+- Phase II Practical Workflow Coverage is complete locally and ready to commit:
+  - CPML zero-sigma dielectric source/probe topology hybrid support
+  - one-excited + optional one-passive lumped-port proxy optimize hybrid support
+  - cookbook/support-contract alignment
+- next major roadmap target is **Phase III — Strategy B / Scale-up**
 
 ## Operating principles
 
@@ -245,6 +249,7 @@ then it is a **milestone inside the current macro phase**, not a new phase.
 # Near-term recommendation
 
 If starting from the current repo state:
-1. finish and commit the current Phase I worktree closure
-2. treat the next major expansion as **Phase II — Practical Workflow Coverage**
-3. avoid reopening micro-phase numbering unless a genuinely new algorithm/policy boundary appears
+1. commit the completed Phase II Practical Workflow Coverage worktree closure
+2. begin **Phase III — Strategy B / Scale-up** with benchmark/evidence framing before implementation
+3. use `autoresearch` first if the scale target is unclear, then `$ralplan --deliberate` and `team` execution when the Strategy B plan is evidence-backed
+4. avoid reopening micro-phase numbering unless a genuinely new algorithm/policy boundary appears

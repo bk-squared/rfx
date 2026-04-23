@@ -276,11 +276,36 @@ def _make_lumped_port_supported_phase1_sim() -> Simulation:
     return sim
 
 
+def _make_lumped_port_with_passive_supported_phase1_sim() -> Simulation:
+    sim = _make_lumped_port_supported_phase1_sim()
+    sim.add_port(
+        (0.01, 0.0075, 0.0075),
+        "ez",
+        impedance=50.0,
+        excite=False,
+    )
+    return sim
+
+
+def _make_lumped_port_with_passive_ntff_unsupported_phase1_sim() -> Simulation:
+    return _add_ntff_box(_make_lumped_port_with_passive_supported_phase1_sim())
+
+
 
 def _make_lumped_port_unsupported_phase1_sim() -> Simulation:
     sim = _make_lumped_port_supported_phase1_sim()
     sim.add_port(
         (0.01, 0.0075, 0.0075),
+        "ez",
+        impedance=50.0,
+    )
+    return sim
+
+
+def _make_lumped_port_two_passive_unsupported_phase1_sim() -> Simulation:
+    sim = _make_lumped_port_with_passive_supported_phase1_sim()
+    sim.add_port(
+        (0.012, 0.0075, 0.0075),
         "ez",
         impedance=50.0,
         excite=False,
@@ -420,6 +445,7 @@ def _resolved_n_steps(sim: Simulation, *, num_periods: float = 8.0) -> int:
 def _unsupported_phase1_cases() -> list[tuple[Simulation, str]]:
     return [
         (_make_lumped_port_unsupported_phase1_sim(), "one excited lumped port"),
+        (_make_lumped_port_two_passive_unsupported_phase1_sim(), "one passive lumped port"),
         (_make_cpml_lossy_unsupported_phase1_sim(), "lossy materials"),
         (_make_lorentz_lossy_unsupported_phase1_sim(), "lossy materials"),
         (_make_drude_unsupported_phase1_sim(), "Drude"),
@@ -4772,6 +4798,24 @@ def test_phase1_ntff_lumped_port_fallback_matches_pure_forward():
     _assert_ntff_data_allclose(fallback.ntff_data, baseline.ntff_data)
 
 
+def test_phase1_ntff_passive_lumped_port_proxy_remains_unsupported():
+    sim = _make_lumped_port_with_passive_ntff_unsupported_phase1_sim()
+    n_steps = 12
+
+    report = sim.inspect_hybrid_phase1(n_steps=n_steps)
+    assert not report.supported
+    assert "NTFF with passive lumped-port proxy workflows" in report.reason_text
+
+    with pytest.raises(ValueError, match="NTFF with passive lumped-port proxy workflows"):
+        sim.forward_hybrid_phase1(n_steps=n_steps, fallback="raise")
+
+    fallback = sim.forward_hybrid_phase1(n_steps=n_steps, fallback="pure_ad")
+    baseline = sim.forward(n_steps=n_steps, checkpoint=True)
+    np.testing.assert_allclose(np.asarray(fallback.time_series), np.asarray(baseline.time_series), rtol=1e-6, atol=1e-12)
+    assert fallback.ntff_box == baseline.ntff_box
+    _assert_ntff_data_allclose(fallback.ntff_data, baseline.ntff_data)
+
+
 def test_phase1_ntff_nonuniform_fallback_matches_pure_forward():
     sim = _make_nonuniform_ntff_unsupported_phase1_sim()
     n_steps = 12
@@ -5249,10 +5293,54 @@ def test_phase1_forward_one_excited_lumped_port_matches_pure_ad():
     )
 
 
+def test_phase1_hybrid_inspection_reports_one_excited_plus_one_passive_lumped_port_supported():
+    sim = _make_lumped_port_with_passive_supported_phase1_sim()
+
+    report = sim.inspect_hybrid_phase1(n_steps=12)
+
+    assert report.supported
+    assert report.inventory is not None
+    assert report.port_metadata is not None
+    assert report.port_metadata.total_ports == 2
+    assert report.port_metadata.excited_ports == 1
+    assert report.port_metadata.passive_ports == 1
+    assert report.port_metadata.wire_ports == 0
+    assert report.port_metadata.soft_source_count == 0
+    assert report.port_metadata.excited_lumped_port_cell is not None
+    assert len(report.port_metadata.passive_lumped_port_cells) == 1
+    assert len(report.port_metadata.passive_lumped_port_sigmas) == 1
+    assert not any(report.port_metadata.passive_lumped_port_had_pec)
+
+
+def test_phase1_prepare_bundle_builds_context_for_one_excited_plus_one_passive_lumped_port_case():
+    sim = _make_lumped_port_with_passive_supported_phase1_sim()
+    prepared = sim.prepare_hybrid_phase1(n_steps=12)
+
+    assert prepared.supported
+    assert prepared.context is not None
+    assert prepared.report.port_metadata is not None
+    assert "sigma" in prepared.report.inventory.replay_inputs
+    assert "port_metadata" in prepared.report.inventory.replay_inputs
+
+
+def test_phase1_forward_one_excited_plus_one_passive_lumped_port_matches_pure_ad():
+    sim = _make_lumped_port_with_passive_supported_phase1_sim()
+    hybrid = sim.forward_hybrid_phase1(n_steps=12, fallback="raise")
+    baseline = sim.forward(n_steps=12, checkpoint=True)
+
+    np.testing.assert_allclose(
+        np.asarray(hybrid.time_series),
+        np.asarray(baseline.time_series),
+        rtol=2e-6,
+        atol=1e-12,
+    )
+
+
 @pytest.mark.parametrize(
     ("sim_factory", "expected_reason"),
     [
         (_make_passive_lumped_port_unsupported_phase1_sim, "one excited lumped port"),
+        (_make_lumped_port_two_passive_unsupported_phase1_sim, "one passive lumped port"),
         (_make_wire_port_unsupported_phase1_sim, "one excited lumped port"),
         (_make_preexisting_pec_lumped_port_unsupported_phase1_sim, "pre-existing PEC"),
         (_make_waveguide_port_unsupported_phase1_sim, "waveguide/wire/floquet"),
@@ -5275,8 +5363,8 @@ def test_phase1_hybrid_inspection_reports_lumped_port_metadata_for_unsupported_m
     assert not report.supported
     assert report.port_metadata is not None
     assert report.port_metadata.total_ports == 2
-    assert report.port_metadata.excited_ports == 1
-    assert report.port_metadata.passive_ports == 1
+    assert report.port_metadata.excited_ports == 2
+    assert report.port_metadata.passive_ports == 0
 
 def test_phase1_hybrid_inspection_reports_lumped_port_unsupported():
     sim = _make_lumped_port_unsupported_phase1_sim()
@@ -5338,7 +5426,7 @@ def test_phase1_prepare_bundle_run_time_series_rejects_unsupported_bundle():
 def test_phase1_prepare_bundle_metadata_passthroughs_on_unsupported_bundle():
     sim, prepared = _make_lumped_port_unsupported_prepared_bundle(n_steps=12)
     _assert_unsupported_prepare_bundle_basics(prepared, expected_reason="one excited lumped port")
-    assert prepared.source_count == 1
+    assert prepared.source_count == 2
     assert prepared.probe_count == 1
     assert prepared.boundary == "pec"
     assert prepared.periodic == (False, False, False)
@@ -5444,7 +5532,7 @@ def test_phase1_input_builder_preserves_unsupported_uniform_case():
 
     prepared = inputs.prepare()
     _assert_unsupported_inputs_basics(inputs, expected_reason="one excited lumped port")
-    assert inputs.source_count == 1
+    assert inputs.source_count == 2
     assert inputs.probe_count == 1
     assert not prepared.supported
     assert "one excited lumped port" in prepared.reason_text

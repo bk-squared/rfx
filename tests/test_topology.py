@@ -447,6 +447,23 @@ def test_phase4c_topology_hybrid_support_inspection_reports_supported_zero_sigma
     not importlib.util.find_spec("optax"),
     reason="optax not installed",
 )
+def test_phase2_topology_hybrid_support_inspection_reports_supported_cpml_zero_sigma_case():
+    sim, region = _make_phase4c_topology_case(boundary="cpml")
+
+    report = inspect_topology_hybrid_support(sim, region, n_steps=12)
+
+    assert report.supported
+    assert report.port_metadata is not None
+    assert report.port_metadata.total_ports == 0
+    assert report.port_metadata.soft_source_count == 1
+    assert report.inventory is not None
+    assert "cpml_params" in report.inventory.replay_inputs
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("optax"),
+    reason="optax not installed",
+)
 def test_phase4c_topology_optimize_default_route_stays_on_pure_ad(monkeypatch):
     sim, region = _make_phase4c_topology_case()
 
@@ -544,8 +561,112 @@ def test_phase4c_topology_optimize_auto_mode_uses_hybrid(monkeypatch):
     not importlib.util.find_spec("optax"),
     reason="optax not installed",
 )
+def test_phase2_topology_optimize_cpml_strict_hybrid_route_proof(monkeypatch):
+    sim, region = _make_phase4c_topology_case(boundary="cpml")
+    report = inspect_topology_hybrid_support(sim, region, n_steps=12)
+    assert report.supported
+
+    calls = {"hybrid": 0}
+    original_hybrid = sim.forward_hybrid_phase1_from_context
+
+    def _wrapped_hybrid(context, *, eps_override=None):
+        calls["hybrid"] += 1
+        return original_hybrid(context, eps_override=eps_override)
+
+    def _fail_pure_ad(*args, **kwargs):
+        raise AssertionError("strict CPML topology hybrid unexpectedly used the pure-AD forward path")
+
+    monkeypatch.setattr(sim, "forward_hybrid_phase1_from_context", _wrapped_hybrid)
+    monkeypatch.setattr(sim, "_forward_from_materials", _fail_pure_ad)
+
+    result = topology_optimize(
+        sim,
+        region,
+        _topology_probe_energy_objective,
+        n_iterations=1,
+        learning_rate=0.05,
+        beta_schedule=[(0, 1.0)],
+        verbose=False,
+        adjoint_mode="hybrid",
+    )
+
+    assert len(result.history) == 1
+    assert calls["hybrid"] > 0
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("optax"),
+    reason="optax not installed",
+)
+def test_phase2_topology_optimize_cpml_auto_mode_uses_hybrid(monkeypatch):
+    sim, region = _make_phase4c_topology_case(boundary="cpml")
+
+    calls = {"hybrid": 0}
+    original_hybrid = sim.forward_hybrid_phase1_from_context
+
+    def _wrapped_hybrid(context, *, eps_override=None):
+        calls["hybrid"] += 1
+        return original_hybrid(context, eps_override=eps_override)
+
+    def _fail_pure_ad(*args, **kwargs):
+        raise AssertionError("auto CPML topology hybrid unexpectedly fell back on supported case")
+
+    monkeypatch.setattr(sim, "forward_hybrid_phase1_from_context", _wrapped_hybrid)
+    monkeypatch.setattr(sim, "_forward_from_materials", _fail_pure_ad)
+
+    result = topology_optimize(
+        sim,
+        region,
+        _topology_probe_energy_objective,
+        n_iterations=1,
+        learning_rate=0.05,
+        beta_schedule=[(0, 1.0)],
+        verbose=False,
+        adjoint_mode="auto",
+    )
+
+    assert len(result.history) == 1
+    assert calls["hybrid"] > 0
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("optax"),
+    reason="optax not installed",
+)
 def test_phase4c_topology_optimize_hybrid_matches_pure_ad_one_step():
     sim, region = _make_phase4c_topology_case()
+
+    pure = topology_optimize(
+        sim,
+        region,
+        _topology_probe_energy_objective,
+        n_iterations=1,
+        learning_rate=0.05,
+        beta_schedule=[(0, 1.0)],
+        verbose=False,
+        adjoint_mode="pure_ad",
+    )
+    hybrid = topology_optimize(
+        sim,
+        region,
+        _topology_probe_energy_objective,
+        n_iterations=1,
+        learning_rate=0.05,
+        beta_schedule=[(0, 1.0)],
+        verbose=False,
+        adjoint_mode="hybrid",
+    )
+
+    np.testing.assert_allclose(np.asarray(hybrid.history), np.asarray(pure.history), rtol=1e-4, atol=1e-6)
+    np.testing.assert_allclose(np.asarray(hybrid.density), np.asarray(pure.density), rtol=1e-4, atol=1e-6)
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("optax"),
+    reason="optax not installed",
+)
+def test_phase2_topology_optimize_cpml_hybrid_matches_pure_ad_one_step():
+    sim, region = _make_phase4c_topology_case(boundary="cpml")
 
     pure = topology_optimize(
         sim,
@@ -583,7 +704,6 @@ def test_phase4c_topology_optimize_hybrid_matches_pure_ad_one_step():
         ({"pec_foreground": True}, "dielectric-only"),
         ({"add_port": True}, "requires zero ports"),
         ({"add_pec_box": True}, "pec_mask-free"),
-        ({"boundary": "cpml"}, "PEC boundary only"),
         ({"debye": True}, "nondispersive"),
     ],
 )

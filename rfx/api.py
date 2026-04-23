@@ -313,6 +313,11 @@ class _Phase1PortMetadata(NamedTuple):
     excited_lumped_port_sigma: float | None = None
     excited_port_had_pec: bool = False
     design_region_overlaps_excited_port_cell: bool = False
+    passive_lumped_port_cells: tuple[tuple[int, int, int], ...] = ()
+    passive_lumped_port_components: tuple[str, ...] = ()
+    passive_lumped_port_sigmas: tuple[float, ...] = ()
+    passive_lumped_port_had_pec: tuple[bool, ...] = ()
+    design_region_overlaps_passive_lumped_port_cell: bool = False
 
 
 @dataclass(frozen=True)
@@ -4081,6 +4086,10 @@ class Simulation:
         excited_lumped_port_component = None
         excited_lumped_port_sigma = None
         excited_port_had_pec = False
+        passive_lumped_port_cells = []
+        passive_lumped_port_components = []
+        passive_lumped_port_sigmas = []
+        passive_lumped_port_had_pec = []
         times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
 
         for pe in self._ports:
@@ -4137,6 +4146,7 @@ class Simulation:
                 excitation=pe.waveform,
             )
             idx = grid.position_to_index(pe.position)
+            port_sigma_value = port_sigma(grid, idx, pe.component, pe.impedance)
             port_had_pec = False
             if pec_mask_local is not None and bool(pec_mask_local[idx[0], idx[1], idx[2]]):
                 port_had_pec = True
@@ -4157,8 +4167,13 @@ class Simulation:
                 if excited_lumped_port_cell is None:
                     excited_lumped_port_cell = idx
                     excited_lumped_port_component = pe.component
-                    excited_lumped_port_sigma = port_sigma(grid, idx, pe.component, pe.impedance)
+                    excited_lumped_port_sigma = port_sigma_value
                     excited_port_had_pec = port_had_pec
+            else:
+                passive_lumped_port_cells.append(tuple(int(v) for v in idx))
+                passive_lumped_port_components.append(pe.component)
+                passive_lumped_port_sigmas.append(float(port_sigma_value))
+                passive_lumped_port_had_pec.append(port_had_pec)
             if pec_mask_local is not None:
                 pec_mask_local = pec_mask_local.at[idx[0], idx[1], idx[2]].set(False)
             if pec_occupancy_local is not None:
@@ -4239,6 +4254,10 @@ class Simulation:
                 excited_lumped_port_component=excited_lumped_port_component,
                 excited_lumped_port_sigma=excited_lumped_port_sigma,
                 excited_port_had_pec=excited_port_had_pec,
+                passive_lumped_port_cells=tuple(passive_lumped_port_cells),
+                passive_lumped_port_components=tuple(passive_lumped_port_components),
+                passive_lumped_port_sigmas=tuple(passive_lumped_port_sigmas),
+                passive_lumped_port_had_pec=tuple(passive_lumped_port_had_pec),
             )
         return _PreparedUniformForwardInputs(
             materials=materials,
