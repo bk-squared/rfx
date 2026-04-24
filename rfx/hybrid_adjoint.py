@@ -152,6 +152,7 @@ class Phase1HybridContext:
 
     grid: Grid | NonUniformGrid
     boundary: str
+    periodic: tuple[bool, bool, bool]
     n_steps: int
     dt: float
     dx: float
@@ -258,6 +259,7 @@ class Phase1HybridContext:
         return cls(
             grid=inputs.grid,
             boundary=boundary,
+            periodic=inputs.periodic,
             n_steps=inputs.n_steps,
             dt=inputs.grid.dt,
             dx=inputs.grid.dx,
@@ -951,8 +953,6 @@ def phase1_hybrid_support_reasons(
     reasons: list[str] = []
     if boundary not in {"pec", "cpml"}:
         reasons.append(f"boundary={boundary!r} is unsupported")
-    if periodic != (False, False, False):
-        reasons.append("periodic axes are unsupported")
     if debye_spec is not None and lorentz_spec is not None:
         reasons.append("mixed Debye+Lorentz dispersion is unsupported")
     if debye is not None and debye_spec is None:
@@ -974,6 +974,8 @@ def phase1_hybrid_support_reasons(
             reasons.append("pre-existing PEC at lumped-port cells is unsupported")
         if ntff_box is not None and _has_passive_lumped_port(port_metadata):
             reasons.append("NTFF with passive lumped-port proxy workflows is unsupported")
+    if port_metadata is not None and getattr(port_metadata, "floquet_ports", 0) > 0:
+        reasons.append("floquet periodic workflows are unsupported")
     if waveguide_ports:
         reasons.append("waveguide/wire/floquet port accumulation is unsupported")
     if pec_mask is not None:
@@ -1219,6 +1221,12 @@ def inspect_phase1_hybrid(
         cpml = grid.cpml_layers
         dx_phys = np.asarray(grid.dx_arr)[cpml : grid.nx - cpml]
         dy_phys = np.asarray(grid.dy_arr)[cpml : grid.ny - cpml]
+        if periodic != (False, False, False):
+            reasons = tuple(
+                dict.fromkeys(
+                    reasons + ("Phase V does not support combined non-uniform + periodic hybrid workflows",)
+                )
+            )
         if (
             not np.allclose(dx_phys, dx_phys[0])
             or not np.allclose(dy_phys, dy_phys[0])
@@ -1238,6 +1246,32 @@ def inspect_phase1_hybrid(
             reasons = tuple(
                 dict.fromkeys(
                     reasons + ("Phase V nonuniform hybrid supports only zero sigma materials",)
+                )
+            )
+    elif periodic != (False, False, False):
+        if ntff_box is not None:
+            reasons = tuple(
+                dict.fromkeys(reasons + ("Phase V bounded periodic hybrid does not support NTFF",))
+            )
+        if debye_spec is not None or lorentz_spec is not None:
+            reasons = tuple(
+                dict.fromkeys(
+                    reasons + ("Phase V bounded periodic hybrid supports only lossless nondispersive materials",)
+                )
+            )
+        if np.any(np.abs(np.asarray(materials.sigma)) > 0.0):
+            reasons = tuple(
+                dict.fromkeys(
+                    reasons + ("Phase V bounded periodic hybrid supports only zero sigma materials",)
+                )
+            )
+        if port_metadata is not None and (
+            getattr(port_metadata, "total_ports", 0) > 0
+            or getattr(port_metadata, "floquet_ports", 0) > 0
+        ):
+            reasons = tuple(
+                dict.fromkeys(
+                    reasons + ("Phase V bounded periodic hybrid supports only add_source()/probe workflows",)
                 )
             )
     inventory = None
@@ -1423,6 +1457,10 @@ def run_phase1_forward_time_series(
             emit_time_series=True,
         )
         return result["time_series"]
+    if context.periodic != (False, False, False) and (
+        context.debye_spec is not None or context.lorentz_spec is not None
+    ):
+        raise ValueError("bounded periodic hybrid supports only lossless nondispersive materials")
     if context.debye_spec is not None and context.lorentz_spec is not None:
         raise ValueError("mixed Debye+Lorentz dispersion is unsupported")
     if context.debye_spec is not None:
@@ -1473,7 +1511,12 @@ def run_phase1_forward_time_series(
     if context.boundary != "pec":
         raise ValueError(f"boundary={context.boundary!r} is unsupported")
     coeffs = _coeffs_from_materials(context, materials)
-    _, time_series = _run_uniform_lossless_pec_time_series(context, coeffs, src_waveforms)
+    _, time_series = _run_uniform_lossless_pec_time_series(
+        context,
+        coeffs,
+        src_waveforms,
+        materials=materials,
+    )
     return time_series
 
 
@@ -1799,6 +1842,7 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
                         context.pec_faces,
                         context.src_meta,
                         context.prb_meta,
+                        periodic=context.periodic,
                     )
 
                 _, step_vjp = jax.vjp(step_from_eps, state_before, cpml_before, eps_r)
@@ -1830,6 +1874,11 @@ def make_phase1_hybrid_forward(context: Phase1HybridContext) -> Callable[[jnp.nd
                     _coeffs_from_eps(context, eps_local),
                     context.src_meta,
                     context.prb_meta,
+                    materials=_materials_from_eps(context, eps_local),
+                    grid=context.grid if isinstance(context.grid, Grid) else None,
+                    periodic=context.periodic,
+                    pec_axes=context.pec_axes,
+                    pec_faces=context.pec_faces,
                 )
 
             _, step_vjp = jax.vjp(step_from_eps, state_before, eps_r)
@@ -2176,6 +2225,7 @@ def _reverse_phase1_trace_from_observables(
                     context.pec_faces,
                     context.src_meta,
                     context.prb_meta,
+                    periodic=context.periodic,
                 )
 
             _, step_vjp = jax.vjp(step_from_eps, state_before, cpml_before, eps_r)
@@ -2206,6 +2256,11 @@ def _reverse_phase1_trace_from_observables(
                 _coeffs_from_eps(context, eps_local),
                 context.src_meta,
                 context.prb_meta,
+                materials=_materials_from_eps(context, eps_local),
+                grid=context.grid if isinstance(context.grid, Grid) else None,
+                periodic=context.periodic,
+                pec_axes=context.pec_axes,
+                pec_faces=context.pec_faces,
             )
 
         _, step_vjp = jax.vjp(step_from_eps, state_before, eps_r)
@@ -2345,6 +2400,11 @@ def _reverse_phase3_strategy_b_lossless_pec(
                     _coeffs_from_eps(context, eps_local),
                     context.src_meta,
                     context.prb_meta,
+                    materials=_materials_from_eps(context, eps_local),
+                    grid=context.grid if isinstance(context.grid, Grid) else None,
+                    periodic=context.periodic,
+                    pec_axes=context.pec_axes,
+                    pec_faces=context.pec_faces,
                 )
 
             _, step_vjp = jax.vjp(step_from_eps, state_before, eps_r)
@@ -2407,6 +2467,7 @@ def _reverse_phase3_strategy_b_lossless_cpml(
                     context.pec_faces,
                     context.src_meta,
                     context.prb_meta,
+                    periodic=context.periodic,
                 )
 
             _, step_vjp = jax.vjp(step_from_eps, state_before, cpml_before, eps_r)
@@ -2605,6 +2666,7 @@ def _run_uniform_lossless_pec_time_series(
     coeffs: UpdateCoeffs,
     src_waveforms: jnp.ndarray,
     *,
+    materials: MaterialArrays | None = None,
     return_trace: bool = False,
     initial_state: Phase1FieldState | None = None,
 ):
@@ -2617,6 +2679,11 @@ def _run_uniform_lossless_pec_time_series(
             coeffs,
             context.src_meta,
             context.prb_meta,
+            materials=materials,
+            grid=context.grid if isinstance(context.grid, Grid) else None,
+            periodic=context.periodic,
+            pec_axes=context.pec_axes,
+            pec_faces=context.pec_faces,
         )
         if return_trace:
             return next_state, (probe_out, state)
@@ -2657,6 +2724,7 @@ def _run_uniform_lossless_cpml_time_series(
             context.pec_faces,
             context.src_meta,
             context.prb_meta,
+            periodic=context.periodic,
         )
         if return_trace:
             return (next_state, next_cpml_state), (probe_out, state, cpml_state)
@@ -2878,10 +2946,26 @@ def _uniform_lossless_pec_step(
     coeffs: UpdateCoeffs,
     src_meta: tuple[tuple[int, int, int, str], ...],
     prb_meta: tuple[tuple[int, int, int, str], ...],
+    *,
+    materials: MaterialArrays | None = None,
+    grid: Grid | None = None,
+    periodic: tuple[bool, bool, bool] = (False, False, False),
+    pec_axes: str = "",
+    pec_faces: tuple[str, ...] = (),
 ) -> tuple[Phase1FieldState, jnp.ndarray]:
     """Extracted Phase 1 scan step: fast Yee step + source injection + probes."""
 
-    fdtd = update_he_fast(_to_fdtd(state), coeffs)
+    if periodic != (False, False, False):
+        assert materials is not None
+        assert grid is not None
+        fdtd = update_h(_to_fdtd(state), materials, grid.dt, grid.dx, periodic=periodic)
+        fdtd = update_e(fdtd, materials, grid.dt, grid.dx, periodic=periodic)
+        if pec_axes:
+            fdtd = apply_pec(fdtd, axes=pec_axes)
+        if pec_faces:
+            fdtd = apply_pec_faces(fdtd, pec_faces)
+    else:
+        fdtd = update_he_fast(_to_fdtd(state), coeffs)
     next_state = _from_fdtd(fdtd)
     next_state = _inject_sources(next_state, src_vals, src_meta)
     probe_out = _sample_probes(next_state, prb_meta)
@@ -2900,10 +2984,12 @@ def _uniform_lossless_cpml_step(
     pec_faces: tuple[str, ...],
     src_meta: tuple[tuple[int, int, int, str], ...],
     prb_meta: tuple[tuple[int, int, int, str], ...],
+    *,
+    periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[Phase1FieldState, CPMLState, jnp.ndarray]:
     """Extracted CPML scan step: Yee + CPML + PEC faces + sources + probes."""
 
-    fdtd = update_h(_to_fdtd(state), materials, grid.dt, grid.dx, periodic=(False, False, False))
+    fdtd = update_h(_to_fdtd(state), materials, grid.dt, grid.dx, periodic=periodic)
     fdtd, next_cpml_state = apply_cpml_h(
         fdtd,
         cpml_params,
@@ -2912,7 +2998,7 @@ def _uniform_lossless_cpml_step(
         cpml_axes,
         materials=materials,
     )
-    fdtd = update_e(fdtd, materials, grid.dt, grid.dx, periodic=(False, False, False))
+    fdtd = update_e(fdtd, materials, grid.dt, grid.dx, periodic=periodic)
     fdtd, next_cpml_state = apply_cpml_e(
         fdtd,
         cpml_params,

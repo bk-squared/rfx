@@ -4472,7 +4472,10 @@ class Simulation:
 
         periodic_bool = periodic if periodic is not None else (False, False, False)
         cpml_axes_run = grid.cpml_axes
-        pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
+        for axis_name, is_periodic in zip("xyz", periodic_bool):
+            if is_periodic:
+                cpml_axes_run = cpml_axes_run.replace(axis_name, "")
+        pec_axes_run = "".join(a for a, is_periodic in zip("xyz", periodic_bool) if not is_periodic and a not in cpml_axes_run)
         port_metadata = None
         if (
             total_ports

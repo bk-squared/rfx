@@ -5346,7 +5346,7 @@ def test_phase1_forward_one_excited_plus_one_passive_lumped_port_matches_pure_ad
         (_make_wire_port_unsupported_phase1_sim, "one excited lumped port"),
         (_make_preexisting_pec_lumped_port_unsupported_phase1_sim, "pre-existing PEC"),
         (_make_waveguide_port_unsupported_phase1_sim, "waveguide/wire/floquet"),
-        (_make_floquet_port_unsupported_phase1_sim, "periodic axes"),
+        (_make_floquet_port_unsupported_phase1_sim, "floquet periodic workflows"),
     ],
 )
 def test_phase1_hybrid_inspection_rejects_explicit_port_boundary_variants(sim_factory, expected_reason):

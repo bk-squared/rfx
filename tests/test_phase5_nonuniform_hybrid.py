@@ -36,6 +36,18 @@ def _make_nonuniform_xy_unsupported_sim() -> Simulation:
     return sim
 
 
+def _make_periodic_supported_sim(*, boundary: str = "pec") -> Simulation:
+    sim = Simulation(
+        freq_max=5e9,
+        domain=(0.015, 0.015, 0.015),
+        boundary=boundary,
+    )
+    sim.add_source((0.005, 0.0075, 0.0075), "ez", waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
+    sim.add_probe((0.010, 0.0075, 0.0075), "ez")
+    sim.set_periodic_axes("x")
+    return sim
+
+
 def _single_cell_eps(sim: Simulation, base_eps: jnp.ndarray, alpha: jnp.ndarray) -> jnp.ndarray:
     grid = sim._build_nonuniform_grid()
     i, j, k = sim._pos_to_nu_index(grid, (0.0075, 0.0075, 0.0075))
@@ -151,7 +163,81 @@ def test_phase5_nonuniform_periodic_axes_remain_rejected():
     report = sim.inspect_hybrid_phase1(n_steps=8)
 
     assert not report.supported
-    assert "periodic axes are unsupported" in report.reason_text
+    assert "combined non-uniform + periodic" in report.reason_text
+
+
+def test_phase5_periodic_support_inspection_accepts_bounded_source_probe():
+    sim = _make_periodic_supported_sim()
+
+    report = sim.inspect_hybrid_phase1(n_steps=8)
+
+    assert report.supported
+    assert report.boundary == "pec"
+    assert report.periodic == (True, False, False)
+    assert report.inventory is not None
+
+
+def test_phase5_periodic_prepare_bundle_supports_bounded_source_probe():
+    sim = _make_periodic_supported_sim()
+
+    prepared = sim.prepare_hybrid_phase1(n_steps=8)
+
+    assert prepared.supported
+    assert prepared.context is not None
+    assert prepared.periodic == (True, False, False)
+
+
+def test_phase5_periodic_forward_matches_pure_ad():
+    sim = _make_periodic_supported_sim()
+
+    pure = sim.forward(n_steps=8, checkpoint=True)
+    hybrid = sim.forward_hybrid_phase1(n_steps=8, fallback="raise")
+
+    np.testing.assert_allclose(
+        np.asarray(hybrid.time_series),
+        np.asarray(pure.time_series),
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+def test_phase5_periodic_gradient_matches_pure_ad():
+    sim = _make_periodic_supported_sim()
+    grid = sim._build_grid()
+    materials, *_ = sim._assemble_materials(grid)
+
+    def pure_loss(alpha):
+        eps = materials.eps_r.at[grid.position_to_index((0.0075, 0.0075, 0.0075))].add(alpha)
+        result = sim.forward(eps_override=eps, n_steps=8, checkpoint=True)
+        return jnp.sum(result.time_series ** 2)
+
+    def hybrid_loss(alpha):
+        eps = materials.eps_r.at[grid.position_to_index((0.0075, 0.0075, 0.0075))].add(alpha)
+        result = sim.forward_hybrid_phase1(eps_override=eps, n_steps=8, fallback="raise")
+        return jnp.sum(result.time_series ** 2)
+
+    alpha0 = jnp.float32(0.1)
+    grad_pure = jax.grad(pure_loss)(alpha0)
+    grad_hybrid = jax.grad(hybrid_loss)(alpha0)
+    rel_err = float(
+        jnp.abs(grad_hybrid - grad_pure)
+        / jnp.maximum(jnp.abs(grad_pure), 1e-12)
+    )
+
+    assert np.isfinite(float(grad_pure))
+    assert np.isfinite(float(grad_hybrid))
+    assert rel_err <= 1e-4
+
+
+def test_phase5_periodic_floquet_workflows_remain_rejected():
+    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim.add_probe((0.010, 0.0075, 0.0075), "ez")
+    sim.add_floquet_port(0.005, axis="z", f0=3e9)
+
+    report = sim.inspect_hybrid_phase1(n_steps=8)
+
+    assert not report.supported
+    assert "floquet periodic workflows are unsupported" in report.reason_text
 
 
 def test_phase5_nonuniform_ntff_remains_rejected():
