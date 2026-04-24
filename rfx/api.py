@@ -2165,27 +2165,34 @@ class Simulation:
                 "compute_waveguide_s_matrix() currently supports only measured/default reference planes or explicit reference_plane overrides"
             )
 
-        # Guard against the silent-drop bug where a user-supplied
-        # dx_profile / dy_profile was dispatched to the uniform scan
-        # with the coarse boundary dx, ignoring the refinement entirely
-        # (exp 12 on crossval/11 measured identical |S21| error at
-        # dx_fine = 1.0, 0.25, and 0.1 mm — the refined cells existed
-        # in the grid but were integrated as if they were dx = 1 mm).
-        # A proper NU two-run extractor is tracked as future work; the
-        # scaffold (`_compute_waveguide_s_matrix_nu`) is retained below
-        # but is not yet wired to a WR-90-style (PEC y, PEC z) grid
-        # because the NU scan body's CPML init still allocates full-
-        # length coefficients on PEC axes.
+        # Non-uniform-mesh dispatch. Earlier the uniform scan ran with
+        # the coarse boundary dx and silently ignored ``dx_profile`` /
+        # ``dy_profile`` (handover v2 experiment 12). The dedicated NU
+        # two-run extractor below is enabled when its supported scope
+        # is met (``normalize=True``, single-mode ports, no
+        # ``num_periods_dft`` gate); otherwise raise so the user is not
+        # given silently-wrong numbers.
         if self._dx_profile is not None or self._dy_profile is not None:
-            raise NotImplementedError(
-                "compute_waveguide_s_matrix() on a non-uniform mesh "
-                "(dx_profile / dy_profile) is not yet wired to the NU "
-                "two-run normalisation; the uniform-lane dispatch was "
-                "silently ignoring the refinement (see handover v2 "
-                "experiment 12). Run without a dx/dy profile, halve "
-                "dx uniformly for Meep-class accuracy, or track the NU "
-                "S-matrix scaffold in `_compute_waveguide_s_matrix_nu` "
-                "(rfx/api.py) for future enablement."
+            unsupported = []
+            if not normalize:
+                unsupported.append("normalize=True is required")
+            if num_periods_dft is not None:
+                unsupported.append("num_periods_dft is not yet plumbed")
+            if any(entry.n_modes > 1 for entry in entries):
+                unsupported.append("multi-mode ports (n_modes>1) are not supported")
+            if unsupported:
+                raise NotImplementedError(
+                    "compute_waveguide_s_matrix() on a non-uniform mesh "
+                    "(dx_profile / dy_profile) supports normalize=True, "
+                    "single-mode ports, and no early-time DFT gate. "
+                    + "; ".join(unsupported)
+                    + ". Drop the dx/dy profile to use the uniform lane."
+                )
+            return self._compute_waveguide_s_matrix_nu(
+                n_steps=n_steps,
+                num_periods=num_periods,
+                num_periods_dft=num_periods_dft,
+                normalize=normalize,
             )
 
         grid = self._build_grid()

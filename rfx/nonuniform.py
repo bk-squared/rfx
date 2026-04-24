@@ -721,6 +721,14 @@ def run_nonuniform(
     cpml_params = None
     cpml_state_init = None
     cpml_grid = None
+    # Effective CPML axes after PEC/PMC closure. Axes whose lo+hi pad is
+    # zero are fully closed and the apply path's `state.e*[:, :, :n]`
+    # slices clip to the (small) axis length, breaking the broadcast
+    # against the (cpml_layers,) profile coefficients. Drop those axes
+    # from `apply_cpml_*` so the no-op branch passes psi through
+    # unchanged. Mirrors the uniform runner, which already threads
+    # `cpml_axes` from the grid (rfx/runners/uniform.py).
+    cpml_axes_eff = "xyz"
 
     if use_cpml:
         from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
@@ -733,6 +741,14 @@ def run_nonuniform(
             grid, pec_faces=pec_faces, pmc_faces=pmc_faces,
         )
         cpml_grid = grid
+        cpml_axes_eff = "".join(
+            ax for ax, lo, hi in (
+                ("x", grid.pad_x_lo, grid.pad_x_hi),
+                ("y", grid.pad_y_lo, grid.pad_y_hi),
+                ("z", grid.pad_z_lo, grid.pad_z_hi),
+            )
+            if (lo + hi) > 0
+        )
 
     # PMC enforcement (v1.7.5). The NU scan body previously never
     # zeroed H_tan on PMC faces, so a half-symmetric configuration
@@ -872,7 +888,7 @@ def run_nonuniform(
                 st = _apply_wg_h_nu(st, cfg_meta, step_idx, dt, grid.dx)
         if use_cpml:
             st, cpml_new = apply_cpml_h(st, cpml_params, carry["cpml"],
-                                         cpml_grid, "xyz")
+                                         cpml_grid, cpml_axes_eff)
         else:
             cpml_new = None
         if use_pmc_faces:
@@ -910,7 +926,7 @@ def run_nonuniform(
                 st = _apply_wg_e_nu(st, cfg_meta, step_idx, dt, grid.dx)
         if use_cpml:
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
-                                         cpml_grid, "xyz")
+                                         cpml_grid, cpml_axes_eff)
 
         # PEC
         st = apply_pec(st)

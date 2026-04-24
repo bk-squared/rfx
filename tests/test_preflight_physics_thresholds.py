@@ -97,19 +97,8 @@ def test_dielectric_near_old_threshold_now_warns():
     )
 
 
-def test_compute_waveguide_s_matrix_rejects_nonuniform_mesh():
-    """User-supplied dx_profile must raise NotImplementedError, not
-    silently fall through to the uniform scan.
-
-    Prior to 2026-04-24 ``compute_waveguide_s_matrix`` built a
-    ``NonUniformGrid`` correctly but then called the uniform
-    ``rfx.simulation.run`` which reads a scalar ``grid.dx``; the
-    refined interior cells were present in the grid but integrated
-    as if they were ``grid.dx`` (experiment 12: identical |S21|
-    error at dx_fine ∈ {1.0, 0.25, 0.1} mm).  Until the NU S-matrix
-    scaffold is wired end-to-end, the API must raise rather than
-    return silently-wrong numbers.
-    """
+def _build_wr90_slab_nu_sim(dx_fine):
+    """Shared WR-90 εr=2 slab with a refined interior band along x."""
     import numpy as _np
     import jax.numpy as _jnp
     from rfx.api import Simulation
@@ -117,12 +106,10 @@ def test_compute_waveguide_s_matrix_rejects_nonuniform_mesh():
     from rfx.geometry.csg import Box as _Box
     from rfx.auto_config import smooth_grading
 
-    # WR-90 εr=2 slab with a refined interior band (dx=1 mm coarse,
-    # 0.25 mm inside the 10 mm slab window).
     a_wg, b_wg = 0.02286, 0.01016
     dom_x = 0.200
     slab_lo, slab_hi = 0.095, 0.105
-    dx_coarse, dx_fine = 1e-3, 0.25e-3
+    dx_coarse = 1e-3
     n_pre = int(round(slab_lo / dx_coarse))
     n_slab = int(round((slab_hi - slab_lo) / dx_fine))
     n_post = int(round((dom_x - slab_hi) / dx_coarse))
@@ -156,18 +143,37 @@ def test_compute_waveguide_s_matrix_rejects_nonuniform_mesh():
         freqs=port_freqs, f0=10.3e9, bandwidth=0.5,
         reference_plane=0.150, name="right",
     )
+    return sim
+
+
+def test_compute_waveguide_s_matrix_rejects_unnormalized_nu():
+    """``normalize=False`` on a NU mesh must raise — the dispersion-
+    cancellation two-run is the only validated NU lane today.
+    """
+    sim = _build_wr90_slab_nu_sim(dx_fine=0.25e-3)
     try:
-        sim.compute_waveguide_s_matrix(num_periods=2, normalize=True)
+        sim.compute_waveguide_s_matrix(num_periods=2, normalize=False)
     except NotImplementedError as exc:
-        assert "non-uniform" in str(exc).lower(), (
-            f"error message should point at the NU mesh; got: {exc!r}"
-        )
+        assert "non-uniform" in str(exc).lower()
+        assert "normalize=true" in str(exc).lower()
     else:
         raise AssertionError(
-            "compute_waveguide_s_matrix on a dx_profile grid should "
-            "raise NotImplementedError (silent uniform-lane fallthrough "
-            "previously returned refinement-ignoring results)."
+            "compute_waveguide_s_matrix on a dx_profile grid with "
+            "normalize=False should raise NotImplementedError."
         )
+
+
+def test_compute_waveguide_s_matrix_dispatches_nu_when_normalized():
+    """With ``normalize=True`` and single-mode ports, the NU lane runs
+    end-to-end (CPML-on-PEC-axis fix lands).  This is the regression
+    that locks in the dispatch wiring; numeric accuracy is exercised
+    by ``scripts/nu_vs_uniform_slab_cost_accuracy.py``.
+    """
+    sim = _build_wr90_slab_nu_sim(dx_fine=0.5e-3)
+    res = sim.compute_waveguide_s_matrix(num_periods=2, normalize=True)
+    assert res.s_params.shape[0] == 2  # two ports
+    assert res.s_params.shape[1] == 2
+    assert res.s_params.shape[2] == 5  # five freqs
 
 
 def test_dielectric_sparam_active_raises_threshold_to_20():
