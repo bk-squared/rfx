@@ -2103,6 +2103,7 @@ class Simulation:
         num_periods: float = 20.0,
         num_periods_dft: float | None = None,
         normalize: bool = False,
+        subpixel_smoothing: bool = False,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
@@ -2363,6 +2364,23 @@ class Simulation:
             )
             ref_shifts.append(desired_ref - planes["reference"])
 
+        # Compute Kottke per-component smoothed permittivity if requested.
+        # Mirrors rfx/runners/uniform.py: shape_eps_pairs from sim geometry,
+        # then compute_smoothed_eps. The reference run is vacuum and has no
+        # ε interfaces, so it always passes aniso_eps=None inside the
+        # extractor.
+        aniso_eps = None
+        if subpixel_smoothing:
+            from rfx.geometry.smoothing import compute_smoothed_eps
+            shape_eps_pairs = [
+                (entry.shape, self._resolve_material(entry.material_name).eps_r)
+                for entry in self._geometry
+            ]
+            if shape_eps_pairs:
+                aniso_eps = compute_smoothed_eps(
+                    grid, shape_eps_pairs, background_eps=1.0,
+                )
+
         if normalize:
             # Build reference materials: vacuum everywhere (no user geometry).
             from rfx.core.yee import init_materials as _init_vacuum_materials
@@ -2381,6 +2399,7 @@ class Simulation:
                 ref_debye=None,
                 ref_lorentz=None,
                 ref_shifts=ref_shifts,
+                aniso_eps=aniso_eps,
             )
         else:
             s_params = extract_waveguide_s_matrix(
@@ -2394,6 +2413,7 @@ class Simulation:
                 debye=debye,
                 lorentz=lorentz,
                 ref_shifts=ref_shifts,
+                aniso_eps=aniso_eps,
             )
         reference_planes = np.array(
             [

@@ -1131,9 +1131,15 @@ def update_waveguide_port_probe(cfg: WaveguidePortConfig, state,
     v_inc = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * cfg.freqs * t)
-    weight = _dft_window_weight(state.step, cfg.dft_total_steps, cfg.dft_window, cfg.dft_window_alpha)
     # Time-gate: zero the weight once we pass the configured end step.
     # Used to exclude late-time multi-bounce from strong-reflector S-params.
+    # Window length must match the gated horizon — using cfg.dft_total_steps
+    # while gating at cfg.dft_end_step makes the Tukey/Hann taper normalise
+    # over the full scan, so the gated portion of the window stays in its
+    # flat region instead of tapering to zero. That defeated the gate's
+    # purpose (verified empirically on PEC-short: 100/gate=60 ≡ 100/no-gate).
+    effective_total = min(cfg.dft_end_step, cfg.dft_total_steps)
+    weight = _dft_window_weight(state.step, effective_total, cfg.dft_window, cfg.dft_window_alpha)
     weight = jnp.where(state.step < cfg.dft_end_step, weight, 0.0)
 
     return cfg._replace(
@@ -1423,6 +1429,7 @@ def extract_waveguide_s_matrix(
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     ref_shifts: list[float] | tuple[float, float] | None = None,
+    aniso_eps: tuple | None = None,
 ) -> jnp.ndarray:
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs."""
     if len(port_cfgs) < 2:
@@ -1468,6 +1475,7 @@ def extract_waveguide_s_matrix(
             debye=debye,
             lorentz=lorentz,
             waveguide_ports=driven_cfgs,
+            aniso_eps=aniso_eps,
         )
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_ports:
@@ -1505,6 +1513,7 @@ def extract_waveguide_s_params_normalized(
     ref_debye: tuple | None = None,
     ref_lorentz: tuple | None = None,
     ref_shifts: list[float] | tuple[float, ...] | None = None,
+    aniso_eps: tuple | None = None,
 ) -> jnp.ndarray:
     """Two-run normalized waveguide S-matrix.
 
@@ -1588,6 +1597,10 @@ def extract_waveguide_s_params_normalized(
         pec_axes=pec_axes,
         periodic=periodic,
     )
+    # ``aniso_eps`` is per-component smoothed permittivity for the device
+    # geometry. The reference run is vacuum and has no ε interfaces, so
+    # it always passes aniso_eps=None — the two-run cancellation only
+    # benefits if the smoothed ε is applied to the device run.
 
     for drive_idx in range(n_ports):
         # --- Reference run: extract waves at all ports ---
@@ -1635,7 +1648,8 @@ def extract_waveguide_s_params_normalized(
         dev_result = run_simulation(
             grid, materials, n_steps,
             debye=debye, lorentz=lorentz,
-            waveguide_ports=dev_cfgs, **common_run_kw,
+            waveguide_ports=dev_cfgs, aniso_eps=aniso_eps,
+            **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()
         if len(dev_final_cfgs) != n_ports:
@@ -2075,10 +2089,12 @@ def update_overlap_dft(
     p1_probe, p2_probe = _overlap_cross_products(state, cfg, cfg.probe_x, dx)
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * cfg.freqs * t)
+    # Same time-gate as update_waveguide_port_probe — see that function
+    # for the rationale on `effective_total`.
+    effective_total = min(cfg.dft_end_step, cfg.dft_total_steps)
     weight = _dft_window_weight(
-        state.step, cfg.dft_total_steps, cfg.dft_window, cfg.dft_window_alpha
+        state.step, effective_total, cfg.dft_window, cfg.dft_window_alpha
     )
-    # Same time-gate as update_waveguide_port_probe (consistency).
     weight = jnp.where(state.step < cfg.dft_end_step, weight, 0.0)
 
     return OverlapDFTAccumulators(
