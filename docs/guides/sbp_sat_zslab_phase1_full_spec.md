@@ -703,15 +703,21 @@ reflection/transmission validation.
 
 **Deliverables:**
 
-- Support matrix promotion proposal.
+- Support matrix promotion proposal in
+  `docs/guides/sbp_sat_support_promotion_proposal.md`.
 - Public docs with exact supported surfaces and examples.
-- Release notes and migration caveats.
-- Final verifier report tying docs claims to tests and benchmarks.
+- Release notes and migration caveats in
+  `docs/guides/sbp_sat_release_migration_caveats.md` plus scoped public
+  changelog/migration wording.
+- Final verifier report tying docs claims to tests and benchmarks in
+  `docs/guides/sbp_sat_final_verifier_report.md`.
 
 **Exit gate:**
 
 - Public claims are traceable to passing tests, benchmark evidence, and
   documented unsupported cases.
+- `tests/test_sbp_sat_promotion_artifacts_contract.py` locks the promotion
+  artifacts.
 
 ### 2.13 Ralplan execution handoff
 

@@ -26,7 +26,7 @@ concepts are familiar -- the API surface is different.
 | Dispersive media | `LorentzianSusceptibility` | `AddLorentzMaterial` | `DebyePole`, `LorentzPole`, `drude_pole()` |
 | Differentiable | Not available | Not available | `jax.grad(loss_fn)(params)` |
 | Inverse design | Not native (adjoint plugin) | Not native | `rfx.optimize(sim, design_region, objective)` |
-| Subgridding | Not available | Not available | experimental / specialized |
+| Subgridding | Not available | Not available | experimental all-PEC z-slab, proxy-only |
 | Non-uniform mesh | Not native | `SmoothMeshLines` | `dz_profile` or `auto_configure()` |
 
 ---
