@@ -66,6 +66,29 @@ class _BenchmarkFluxPlaneResult(NamedTuple):
     hi2: int
 
 
+class _PrivateAnalyticSheetSourceSpec(NamedTuple):
+    """Private benchmark-only analytic sheet source.
+
+    This is not public TFSF and is accepted only through
+    ``run_subgridded_benchmark_flux`` for internal SBP-SAT evidence.
+    """
+
+    name: str
+    axis: int
+    index: int
+    component: str
+    propagation_sign: int
+    amplitude: float
+    f0_hz: float
+    bandwidth: float
+    phase_rad: float
+    source_values: jnp.ndarray
+    lo1: int
+    hi1: int
+    lo2: int
+    hi2: int
+
+
 class SubgridResult(NamedTuple):
     """Result from the canonical JIT subgridded runner."""
 
@@ -212,6 +235,30 @@ def _accumulate_benchmark_flux_plane(
     )
 
 
+def _inject_private_analytic_sheet_source(
+    state: SubgridState3D,
+    sheet: _PrivateAnalyticSheetSourceSpec,
+    source_value,
+) -> SubgridState3D:
+    """Inject one private benchmark analytic sheet into a tangential E field."""
+
+    if sheet.axis != 2:
+        raise ValueError("private analytic sheet source currently supports z axis only")
+    if sheet.component == "ex":
+        source_value = jnp.asarray(source_value, dtype=state.ex_f.dtype)
+        ex_f = state.ex_f.at[sheet.lo1:sheet.hi1, sheet.lo2:sheet.hi2, sheet.index].add(
+            source_value
+        )
+        return state._replace(ex_f=ex_f)
+    if sheet.component == "ey":
+        source_value = jnp.asarray(source_value, dtype=state.ey_f.dtype)
+        ey_f = state.ey_f.at[sheet.lo1:sheet.hi1, sheet.lo2:sheet.hi2, sheet.index].add(
+            source_value
+        )
+        return state._replace(ey_f=ey_f)
+    raise ValueError("private analytic sheet source component must be ex or ey")
+
+
 def run_subgridded_jit(
     grid_c: Grid,
     mats_c: MaterialArrays,
@@ -230,6 +277,7 @@ def run_subgridded_jit(
     fine_periodic: tuple[bool, bool, bool] = (False, False, False),
     absorber_boundary: str = "pec",
     _benchmark_flux_planes: tuple[_BenchmarkFluxPlaneSpec, ...] | None = None,
+    _private_sheet_sources: tuple[_PrivateAnalyticSheetSourceSpec, ...] | None = None,
 ) -> SubgridResult:
     """Run the canonical Phase-1 subgridding lane via ``jax.lax.scan``."""
 
@@ -261,6 +309,7 @@ def run_subgridded_jit(
     probe_indices_f = probe_indices_f or []
     probe_components = probe_components or []
     benchmark_flux_planes = tuple(_benchmark_flux_planes or ())
+    private_sheet_sources = tuple(_private_sheet_sources or ())
     use_benchmark_flux = bool(benchmark_flux_planes)
 
     shape_c = (config.nx_c, config.ny_c, config.nz_c)
@@ -319,6 +368,18 @@ def run_subgridded_jit(
                 ey_f = ey_f.at[si, sj, sk].add(src_vals[idx_s])
         return state._replace(ex_f=ex_f, ey_f=ey_f, ez_f=ez_f)
 
+    def _inject_private_sheet_sources(
+        state: SubgridState3D,
+        step_idx: jnp.ndarray,
+    ) -> SubgridState3D:
+        for sheet in private_sheet_sources:
+            state = _inject_private_analytic_sheet_source(
+                state,
+                sheet,
+                sheet.source_values[step_idx],
+            )
+        return state
+
     def _sample_probes(state: SubgridState3D) -> jnp.ndarray:
         if not prb_meta:
             return jnp.zeros(0, dtype=jnp.float32)
@@ -374,10 +435,11 @@ def run_subgridded_jit(
         )
 
     def step_fn(carry, xs):
-        _, src_vals = xs
+        step_idx, src_vals = xs
         state, cpml_state = carry[0], carry[1]
         state, cpml_state = _advance(state, cpml_state)
         state = _inject_sources(state, src_vals)
+        state = _inject_private_sheet_sources(state, step_idx)
         next_carry = (state, cpml_state)
         if use_benchmark_flux:
             flux_accs = tuple(

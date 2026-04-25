@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 import json
+from typing import NamedTuple
+import warnings
 
 from jax import config as jax_config
 
@@ -21,34 +23,42 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, Simulation
+from rfx import Box, Simulation
 from rfx.core.dft_utils import dft_window_weight
 from rfx.probes.probes import flux_spectrum
 from rfx.runners.subgridded import (
     _BenchmarkFluxPlaneRequest,
+    _PrivateAnalyticSheetSourceRequest,
     _build_benchmark_flux_plane_specs,
+    _build_private_analytic_sheet_source_specs,
     run_subgridded_benchmark_flux,
 )
+from rfx.sources.sources import CustomWaveform
 from rfx.subgridding.jit_runner import (
     _BenchmarkFluxPlaneResult,
     _BenchmarkFluxPlaneSpec,
+    _PrivateAnalyticSheetSourceSpec,
     _accumulate_benchmark_flux_plane,
     _benchmark_flux_spectrum,
+    _inject_private_analytic_sheet_source,
 )
 from rfx.subgridding.sbp_sat_3d import SubgridState3D
 
 
 _STRICT_PLACEMENT = "fine-owned strict-interior"
 _NO_GO_REASON = (
-    "private point-source finite-aperture flux fixture is not claims-bearing "
-    "for a pass result under the current SBP-SAT public support boundary"
+    "private analytic-sheet bounded-CPML fixture did not satisfy the "
+    "incident-normalized fixture-quality gates required for public true R/T "
+    "promotion"
 )
 _NEXT_PREREQUISITE = (
-    "replace the current point-source finite-aperture diagnostic with a "
-    "claims-bearing incident-field normalization or plane-wave/port fixture "
-    "in a separate support-matrix plan"
+    "open a separate private TFSF or boundary-expanded plane-wave fixture plan "
+    "before reconsidering public true R/T, DFT, flux, port, or S-parameter "
+    "promotion"
 )
 _NORMALIZATION_FLOOR = 1e-30
+_NONFLOOR_FACTOR = 1e12
+_MIN_CLAIMS_BEARING_BINS = 2
 
 
 class _GuardFixture:
@@ -71,12 +81,18 @@ class _FluxFixture:
         "z_range": (0.016, 0.074),
         "ratio": ratio,
     }
-    source = (0.020, 0.020, 0.020)
-    source_component = "ey"
+    sheet_coordinate = 0.024
+    sheet_component = "ey"
+    sheet_amplitude = 1.0e8
+    sheet_phase_rad = 0.0
+    sheet_x_span = (0.013, 0.027)
+    sheet_y_span = (0.013, 0.027)
+    source = (0.020, 0.020, sheet_coordinate)
+    source_component = sheet_component
     front_plane = 0.028
     back_plane = 0.064
     aperture_center = (0.020, 0.020)
-    aperture_size = (0.010, 0.010)
+    aperture_size = (0.014, 0.014)
     slab_lo = (0.012, 0.012, 0.046)
     slab_hi = (0.028, 0.028, 0.054)
     slab_eps_r = 2.25
@@ -113,6 +129,22 @@ def _private_guard_plane() -> _BenchmarkFluxPlaneRequest:
     )
 
 
+def _private_guard_sheet() -> _PrivateAnalyticSheetSourceRequest:
+    return _PrivateAnalyticSheetSourceRequest(
+        name="private_guard_sheet",
+        axis="z",
+        coordinate=0.020,
+        component="ey",
+        propagation_sign=1,
+        amplitude=1.0,
+        f0_hz=2.0e9,
+        bandwidth=0.8,
+        phase_rad=0.0,
+        x_span=(0.017, 0.023),
+        y_span=(0.017, 0.023),
+    )
+
+
 def test_public_dft_plane_probe_still_hard_fails_with_subgrid():
     sim = _guard_sim()
     sim.add_dft_plane_probe(
@@ -145,6 +177,7 @@ def test_private_benchmark_run_does_not_populate_public_dft_or_flux_results():
         _guard_sim(),
         n_steps=4,
         planes=(_private_guard_plane(),),
+        sheet_sources=(_private_guard_sheet(),),
     )
 
     assert run.result.dft_planes is None
@@ -159,6 +192,43 @@ def _plane_specs(*planes: _BenchmarkFluxPlaneRequest) -> tuple[_BenchmarkFluxPla
         shape_f=_FluxFixture.shape_f,
         offsets=_FluxFixture.offsets,
         dx_f=_FluxFixture.dx_f,
+        n_steps=_FluxFixture.n_steps,
+    )
+
+
+def _benchmark_sheet_source(
+    *,
+    coordinate: float = _FluxFixture.sheet_coordinate,
+    axis: str = "z",
+    component: str = _FluxFixture.sheet_component,
+    propagation_sign: int = 1,
+    x_span: tuple[float, float] = _FluxFixture.sheet_x_span,
+    y_span: tuple[float, float] = _FluxFixture.sheet_y_span,
+) -> _PrivateAnalyticSheetSourceRequest:
+    return _PrivateAnalyticSheetSourceRequest(
+        name="private_sheet",
+        axis=axis,
+        coordinate=coordinate,
+        component=component,
+        propagation_sign=propagation_sign,
+        amplitude=_FluxFixture.sheet_amplitude,
+        f0_hz=_FluxFixture.source_freq,
+        bandwidth=_FluxFixture.source_bandwidth,
+        phase_rad=_FluxFixture.sheet_phase_rad,
+        x_span=x_span,
+        y_span=y_span,
+    )
+
+
+def _sheet_specs(
+    *sources: _PrivateAnalyticSheetSourceRequest,
+) -> tuple[_PrivateAnalyticSheetSourceSpec, ...]:
+    return _build_private_analytic_sheet_source_specs(
+        sources,
+        shape_f=_FluxFixture.shape_f,
+        offsets=_FluxFixture.offsets,
+        dx_f=_FluxFixture.dx_f,
+        dt=1.0e-12,
         n_steps=_FluxFixture.n_steps,
     )
 
@@ -188,8 +258,79 @@ def test_private_plane_accepts_strict_interior_fine_owned_planes():
 
     assert front.index == 12
     assert back.index == 48
-    assert front.lo1 == front.lo2 == 3
-    assert front.hi1 == front.hi2 == 13
+    assert front.lo1 == front.lo2 == 1
+    assert front.hi1 == front.hi2 == 15
+
+
+def test_private_sheet_source_accepts_strict_interior_full_span():
+    (sheet,) = _sheet_specs(_benchmark_sheet_source())
+
+    assert sheet.axis == 2
+    assert sheet.index == 8
+    assert sheet.component == _FluxFixture.sheet_component
+    assert sheet.propagation_sign == 1
+    assert sheet.lo1 == sheet.lo2 == 1
+    assert sheet.hi1 == sheet.hi2 == 15
+    assert sheet.source_values.shape == (_FluxFixture.n_steps,)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _benchmark_sheet_source(axis="x"),
+        _benchmark_sheet_source(component="ez"),
+        _benchmark_sheet_source(propagation_sign=-1),
+        _benchmark_sheet_source(x_span=(0.011, 0.027)),
+    ],
+)
+def test_private_sheet_source_rejects_public_or_edge_touching_shapes(
+    source: _PrivateAnalyticSheetSourceRequest,
+):
+    with pytest.raises(ValueError, match=_STRICT_PLACEMENT):
+        _sheet_specs(source)
+
+
+def test_private_sheet_source_injection_adds_selected_tangential_field_only():
+    shape = (5, 6, 7)
+    zeros = jnp.zeros(shape, dtype=jnp.float64)
+    state = SubgridState3D(
+        ex_c=zeros,
+        ey_c=zeros,
+        ez_c=zeros,
+        hx_c=zeros,
+        hy_c=zeros,
+        hz_c=zeros,
+        ex_f=zeros,
+        ey_f=zeros,
+        ez_f=zeros,
+        hx_f=zeros,
+        hy_f=zeros,
+        hz_f=zeros,
+        step=jnp.array(0, dtype=jnp.int32),
+    )
+    sheet = _PrivateAnalyticSheetSourceSpec(
+        name="synthetic_sheet",
+        axis=2,
+        index=3,
+        component="ey",
+        propagation_sign=1,
+        amplitude=1.0,
+        f0_hz=2.0e9,
+        bandwidth=0.8,
+        phase_rad=0.0,
+        source_values=jnp.ones((4,), dtype=jnp.float64),
+        lo1=1,
+        hi1=4,
+        lo2=2,
+        hi2=5,
+    )
+
+    out = _inject_private_analytic_sheet_source(state, sheet, jnp.array(2.5))
+
+    ey = np.asarray(out.ey_f)
+    assert np.allclose(ey[1:4, 2:5, 3], 2.5)
+    assert np.count_nonzero(ey) == 9
+    assert np.allclose(np.asarray(out.ex_f), 0.0)
 
 
 def test_private_plane_rejects_local_normal_index_zero():
@@ -484,6 +625,13 @@ def _relative_magnitude_error(test: np.ndarray, ref: np.ndarray) -> np.ndarray:
     )
 
 
+class _FixtureRun(NamedTuple):
+    dt: float
+    complex_flux: tuple[np.ndarray, np.ndarray]
+    signed_flux: tuple[np.ndarray, np.ndarray]
+    planes: tuple[object, object]
+
+
 def _finite_or_fail(label: str, values: np.ndarray) -> dict[str, object] | None:
     if not np.all(np.isfinite(values)):
         return {"classification": "fail", "reason": f"{label} contains NaN/Inf"}
@@ -511,6 +659,43 @@ def _plane_requests(
     )
 
 
+def _sheet_waveform() -> CustomWaveform:
+    def waveform(t):
+        tau = 1.0 / (
+            jnp.pi * _FluxFixture.source_freq * _FluxFixture.source_bandwidth
+        )
+        t0 = 5.0 * tau
+        envelope = jnp.exp(-((t - t0) / tau) ** 2)
+        carrier = jnp.sin(
+            2.0 * jnp.pi * _FluxFixture.source_freq * t
+            + _FluxFixture.sheet_phase_rad
+        )
+        return jnp.asarray(
+            _FluxFixture.sheet_amplitude * carrier * envelope,
+            dtype=jnp.float32,
+        )
+
+    return CustomWaveform(func=waveform)
+
+
+def _sheet_axis_positions(span: tuple[float, float], dx: float) -> np.ndarray:
+    n_cells = int(round((span[1] - span[0]) / dx))
+    return np.asarray(span[0] + np.arange(n_cells, dtype=np.float64) * dx)
+
+
+def _add_uniform_sheet_sources(sim: Simulation) -> None:
+    waveform = _sheet_waveform()
+    xs = _sheet_axis_positions(_FluxFixture.sheet_x_span, _FluxFixture.uniform_dx)
+    ys = _sheet_axis_positions(_FluxFixture.sheet_y_span, _FluxFixture.uniform_dx)
+    for x in xs:
+        for y in ys:
+            sim.add_source(
+                position=(float(x), float(y), _FluxFixture.sheet_coordinate),
+                component=_FluxFixture.sheet_component,
+                waveform=waveform,
+            )
+
+
 @lru_cache(maxsize=None)
 def _run_flux_fixture(
     *,
@@ -518,7 +703,7 @@ def _run_flux_fixture(
     slab: bool,
     plane_shift_cells: int = 0,
     aperture_size: float | None = None,
-) -> tuple[float, tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
+) -> _FixtureRun:
     dx = _FluxFixture.coarse_dx if subgrid else _FluxFixture.uniform_dx
     size = _FluxFixture.aperture_size[0] if aperture_size is None else aperture_size
     aperture = (size, size)
@@ -534,26 +719,27 @@ def _run_flux_fixture(
         sim.add(Box(_FluxFixture.slab_lo, _FluxFixture.slab_hi), material="rt_dielectric")
     if subgrid:
         sim.add_refinement(**_FluxFixture.refinement)
-    sim.add_source(
-        position=_FluxFixture.source,
-        component=_FluxFixture.source_component,
-        waveform=GaussianPulse(
-            f0=_FluxFixture.source_freq,
-            bandwidth=_FluxFixture.source_bandwidth,
-        ),
-    )
+    else:
+        _add_uniform_sheet_sources(sim)
     sim.add_probe(position=_FluxFixture.source, component=_FluxFixture.source_component)
 
     if subgrid:
-        run = run_subgridded_benchmark_flux(
-            sim,
-            n_steps=_FluxFixture.n_steps,
-            planes=_plane_requests(plane_shift_cells, aperture_size),
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="No sources, ports, TFSF, or waveguide/Floquet ports configured.*",
+                category=UserWarning,
+            )
+            run = run_subgridded_benchmark_flux(
+                sim,
+                n_steps=_FluxFixture.n_steps,
+                planes=_plane_requests(plane_shift_cells, aperture_size),
+                sheet_sources=(_benchmark_sheet_source(),),
+            )
         planes = run.benchmark_flux_planes
         signed_flux = tuple(np.asarray(_benchmark_flux_spectrum(p)) for p in planes)
         complex_flux = tuple(_complex_flux(p) for p in planes)
-        return float(run.result.dt), complex_flux, signed_flux
+        return _FixtureRun(float(run.result.dt), complex_flux, signed_flux, planes)
 
     dz = plane_shift_cells * _FluxFixture.dx_f
     sim.add_flux_monitor(
@@ -576,7 +762,7 @@ def _run_flux_fixture(
     monitors = (result.flux_monitors["front"], result.flux_monitors["back"])
     signed_flux = tuple(np.asarray(flux_spectrum(m)) for m in monitors)
     complex_flux = tuple(_complex_flux(m) for m in monitors)
-    return float(result.dt), complex_flux, signed_flux
+    return _FixtureRun(float(result.dt), complex_flux, signed_flux, monitors)
 
 
 def _usable_passband(front: np.ndarray, back: np.ndarray) -> np.ndarray:
@@ -590,6 +776,106 @@ def _usable_passband(front: np.ndarray, back: np.ndarray) -> np.ndarray:
         (front_mag >= 0.20 * front_peak)
         & (back_mag >= 0.20 * back_peak)
     )
+
+
+def _claims_bearing_passband(
+    complex_flux: tuple[np.ndarray, np.ndarray],
+    signed_flux: tuple[np.ndarray, np.ndarray],
+) -> np.ndarray:
+    mask = _usable_passband(complex_flux[0], complex_flux[1])
+    nonfloor = _NONFLOOR_FACTOR * _NORMALIZATION_FLOOR
+    for complex_values, signed_values in zip(complex_flux, signed_flux, strict=True):
+        mask = (
+            mask
+            & (np.abs(complex_values) >= nonfloor)
+            & (np.abs(signed_values) >= nonfloor)
+        )
+    return mask
+
+
+def _sheet_component_dft(plane) -> np.ndarray:
+    if _FluxFixture.sheet_component == "ex":
+        return np.asarray(plane.e1_dft)
+    return np.asarray(plane.e2_dft)
+
+
+def _transverse_uniformity_metadata(
+    planes: tuple[object, object],
+    mask: np.ndarray,
+) -> dict[str, object]:
+    per_plane = []
+    max_cv = 0.0
+    max_phase_spread = 0.0
+    if int(np.sum(mask)) == 0:
+        return {
+            "passed": False,
+            "max_magnitude_cv": float("inf"),
+            "max_phase_spread_deg": float("inf"),
+            "per_plane": per_plane,
+        }
+
+    for plane_name, plane in zip(("front", "back"), planes, strict=True):
+        field = _sheet_component_dft(plane)[mask]
+        for freq_hz, values in zip(
+            _FluxFixture.scored_freqs[mask],
+            field,
+            strict=True,
+        ):
+            mags = np.abs(values)
+            mean_mag = float(np.mean(mags))
+            cv = (
+                float(np.std(mags) / mean_mag)
+                if mean_mag > _NORMALIZATION_FLOOR
+                else float("inf")
+            )
+            mean_complex = complex(np.mean(values))
+            if abs(mean_complex) > _NORMALIZATION_FLOOR:
+                phase_delta = np.angle(values * np.conj(mean_complex), deg=True)
+                phase_spread = float(np.max(np.abs(phase_delta)))
+            else:
+                phase_spread = float("inf")
+            max_cv = max(max_cv, cv)
+            max_phase_spread = max(max_phase_spread, phase_spread)
+            per_plane.append(
+                {
+                    "plane": plane_name,
+                    "freq_hz": float(freq_hz),
+                    "magnitude_cv": cv,
+                    "phase_spread_deg": phase_spread,
+                }
+            )
+
+    return {
+        "passed": bool(max_cv <= 0.01 and max_phase_spread <= 1.0),
+        "max_magnitude_cv": max_cv,
+        "max_phase_spread_deg": max_phase_spread,
+        "per_plane": per_plane,
+    }
+
+
+def _vacuum_stability_metadata(
+    uniform_flux: tuple[np.ndarray, np.ndarray],
+    subgrid_flux: tuple[np.ndarray, np.ndarray],
+    mask: np.ndarray,
+) -> dict[str, object]:
+    if int(np.sum(mask)) == 0:
+        return {
+            "passed": False,
+            "max_magnitude_error": float("inf"),
+            "max_phase_error_deg": float("inf"),
+        }
+    ref = np.concatenate([uniform_flux[0][mask], uniform_flux[1][mask]])
+    sub = np.concatenate([subgrid_flux[0][mask], subgrid_flux[1][mask]])
+    mag_error = _floor_relative_error(sub, ref)
+    phase_error = _phase_error_deg(sub, ref)
+    return {
+        "passed": bool(
+            float(np.max(mag_error)) <= 0.02
+            and float(np.max(phase_error)) <= 2.0
+        ),
+        "max_magnitude_error": float(np.max(mag_error)),
+        "max_phase_error_deg": float(np.max(phase_error)),
+    }
 
 
 def _serial_complex(values: np.ndarray) -> list[list[float]]:
@@ -672,15 +958,24 @@ def _homogeneous_parity_for_aperture(aperture_size: float) -> dict[str, object]:
         if np.isclose(aperture_size, _FluxFixture.aperture_size[0])
         else aperture_size
     )
-    dt_ref, flux_ref, _signed_ref = _run_flux_fixture(
+    ref_run = _run_flux_fixture(
         subgrid=False,
         slab=False,
         aperture_size=aperture_arg,
     )
-    dt_sub, flux_sub, _signed_sub = _run_flux_fixture(
+    sub_run = _run_flux_fixture(
         subgrid=True,
         slab=False,
         aperture_size=aperture_arg,
+    )
+    dt_ref, flux_ref = (
+        ref_run.dt,
+        ref_run.complex_flux,
+    )
+    dt_sub, flux_sub, signed_sub = (
+        sub_run.dt,
+        sub_run.complex_flux,
+        sub_run.signed_flux,
     )
     metadata: dict[str, object] = {
         "aperture_size_m": float(aperture_size),
@@ -697,12 +992,14 @@ def _homogeneous_parity_for_aperture(aperture_size: float) -> dict[str, object]:
         metadata["uniform_back_peak_magnitude"] / _NORMALIZATION_FLOOR
     )
 
-    mask = _usable_passband(flux_ref[0], flux_ref[1])
+    mask = _claims_bearing_passband(flux_sub, signed_sub)
     metadata["usable_bins"] = int(np.sum(mask))
     metadata["scored_freqs_hz"] = _FluxFixture.scored_freqs[mask].tolist()
-    if int(np.sum(mask)) == 0:
+    if int(np.sum(mask)) < _MIN_CLAIMS_BEARING_BINS:
         metadata["classification"] = "inconclusive"
-        metadata["reason"] = "homogeneous runtime passband too weak to score"
+        metadata["reason"] = "homogeneous runtime passband is too weak to score"
+        metadata["source_contract"] = "private_analytic_sheet_source"
+        metadata["normalization"] = "vacuum_device_two_run_incident_normalized"
         return metadata
 
     ref = np.concatenate([flux_ref[0][mask], flux_ref[1][mask]])
@@ -724,8 +1021,18 @@ def _homogeneous_parity_for_aperture(aperture_size: float) -> dict[str, object]:
 
 @lru_cache(maxsize=None)
 def _homogeneous_parity_metadata() -> dict[str, object]:
-    dt_ref, flux_ref, signed_ref = _run_flux_fixture(subgrid=False, slab=False)
-    dt_sub, flux_sub, signed_sub = _run_flux_fixture(subgrid=True, slab=False)
+    ref_run = _run_flux_fixture(subgrid=False, slab=False)
+    sub_run = _run_flux_fixture(subgrid=True, slab=False)
+    dt_ref, flux_ref, signed_ref = (
+        ref_run.dt,
+        ref_run.complex_flux,
+        ref_run.signed_flux,
+    )
+    dt_sub, flux_sub, signed_sub = (
+        sub_run.dt,
+        sub_run.complex_flux,
+        sub_run.signed_flux,
+    )
     if not np.allclose(dt_ref, dt_sub):
         return {"classification": "fail", "reason": "uniform/subgrid dt mismatch"}
     for label, arrays in {"uniform": flux_ref, "subgrid": flux_sub}.items():
@@ -734,13 +1041,24 @@ def _homogeneous_parity_metadata() -> dict[str, object]:
             if fail is not None:
                 return fail
 
-    mask = _usable_passband(flux_ref[0], flux_ref[1])
-    if int(np.sum(mask)) == 0:
+    mask = _claims_bearing_passband(flux_sub, signed_sub)
+    if int(np.sum(mask)) < _MIN_CLAIMS_BEARING_BINS:
         return {
             "classification": "inconclusive",
-            "reason": "homogeneous runtime passband too weak to score",
+            "reason": "homogeneous runtime passband is too weak to score",
+            "fixture": "bounded_cpml_private_analytic_sheet_flux_plane_homogeneous",
+            "source_contract": "private_analytic_sheet_source",
+            "normalization": "vacuum_device_two_run_incident_normalized",
             "front_abs": np.abs(flux_ref[0]).tolist(),
             "back_abs": np.abs(flux_ref[1]).tolist(),
+            "usable_bins": int(np.sum(mask)),
+            "no_go_reason": _NO_GO_REASON,
+            "blocking_diagnostic": (
+                "the private analytic sheet did not produce at least two "
+                "non-floor homogeneous passband bins for uniform/subgrid "
+                "vacuum parity"
+            ),
+            "next_prerequisite": _NEXT_PREREQUISITE,
         }
 
     ref = np.concatenate([flux_ref[0][mask], flux_ref[1][mask]])
@@ -753,7 +1071,9 @@ def _homogeneous_parity_metadata() -> dict[str, object]:
     }
     return {
         "classification": "pass" if all(gates.values()) else "inconclusive",
-        "fixture": "bounded_cpml_private_fine_owned_flux_plane_homogeneous",
+        "fixture": "bounded_cpml_private_analytic_sheet_flux_plane_homogeneous",
+        "source_contract": "private_analytic_sheet_source",
+        "normalization": "vacuum_device_two_run_incident_normalized",
         "gates": gates,
         "scored_freqs_hz": _FluxFixture.scored_freqs[mask].tolist(),
         "max_magnitude_error": float(np.max(mag_error)),
@@ -764,40 +1084,60 @@ def _homogeneous_parity_metadata() -> dict[str, object]:
         "subgrid_flux_diagnostics": _flux_diagnostics(flux_sub, signed_sub),
         "aperture_sweep": [
             _homogeneous_parity_for_aperture(_FluxFixture.aperture_size[0]),
-            _homogeneous_parity_for_aperture(0.014),
+            _homogeneous_parity_for_aperture(0.010),
         ],
         "no_go_reason": _NO_GO_REASON,
         "blocking_diagnostic": (
-            "homogeneous absolute flux parity remains below pass threshold, "
-            "and scored spectra sit at or below the configured normalization "
-            "floor for the point-source finite-aperture fixture"
+            "homogeneous vacuum stability remains below pass threshold for "
+            "the private analytic-sheet incident field"
         ),
         "next_prerequisite": _NEXT_PREREQUISITE,
         "diagnostic_basis": (
-            "Synthetic multi-step/all-axis accumulator parity passes, but "
-            "runtime homogeneous parity is dominated by weak finite-aperture "
-            "point-source flux normalization rather than claims-bearing "
-            "incident/reflected/transmitted separation."
+            "Synthetic multi-step/all-axis accumulator parity passes, and "
+            "runtime scoring now uses the private analytic sheet plus "
+            "non-floor incident bins before any public claim can be considered."
         ),
     }
 
 
 @lru_cache(maxsize=None)
 def _plane_rt_metadata() -> dict[str, object]:
-    dt_ref, vac_ref, signed_vac_ref = _run_flux_fixture(subgrid=False, slab=False)
-    dt_ref_slab, slab_ref, signed_ref_slab = _run_flux_fixture(subgrid=False, slab=True)
-    dt_sub, vac_sub, signed_vac_sub = _run_flux_fixture(subgrid=True, slab=False)
-    dt_sub_slab, slab_sub, signed_sub_slab = _run_flux_fixture(subgrid=True, slab=True)
-    dt_shift_vac, vac_shift, _ = _run_flux_fixture(
+    ref_vac_run = _run_flux_fixture(subgrid=False, slab=False)
+    ref_slab_run = _run_flux_fixture(subgrid=False, slab=True)
+    sub_vac_run = _run_flux_fixture(subgrid=True, slab=False)
+    sub_slab_run = _run_flux_fixture(subgrid=True, slab=True)
+    shift_vac_run = _run_flux_fixture(
         subgrid=True,
         slab=False,
         plane_shift_cells=1,
     )
-    dt_shift_slab, slab_shift, _ = _run_flux_fixture(
+    shift_slab_run = _run_flux_fixture(
         subgrid=True,
         slab=True,
         plane_shift_cells=1,
     )
+    dt_ref, vac_ref, signed_vac_ref = (
+        ref_vac_run.dt,
+        ref_vac_run.complex_flux,
+        ref_vac_run.signed_flux,
+    )
+    dt_ref_slab, slab_ref, signed_ref_slab = (
+        ref_slab_run.dt,
+        ref_slab_run.complex_flux,
+        ref_slab_run.signed_flux,
+    )
+    dt_sub, vac_sub, signed_vac_sub = (
+        sub_vac_run.dt,
+        sub_vac_run.complex_flux,
+        sub_vac_run.signed_flux,
+    )
+    dt_sub_slab, slab_sub, signed_sub_slab = (
+        sub_slab_run.dt,
+        sub_slab_run.complex_flux,
+        sub_slab_run.signed_flux,
+    )
+    dt_shift_vac, vac_shift = shift_vac_run.dt, shift_vac_run.complex_flux
+    dt_shift_slab, slab_shift = shift_slab_run.dt, shift_slab_run.complex_flux
 
     if not np.allclose(
         [dt_ref_slab, dt_sub, dt_sub_slab, dt_shift_vac, dt_shift_slab],
@@ -818,13 +1158,44 @@ def _plane_rt_metadata() -> dict[str, object]:
             if fail is not None:
                 return fail
 
-    freq_mask = _usable_passband(vac_ref[0], vac_ref[1])
-    if int(np.sum(freq_mask)) == 0:
+    freq_mask = _claims_bearing_passband(vac_sub, signed_vac_sub)
+    uniformity = _transverse_uniformity_metadata(sub_vac_run.planes, freq_mask)
+    vacuum_stability = _vacuum_stability_metadata(vac_ref, vac_sub, freq_mask)
+    if int(np.sum(freq_mask)) < _MIN_CLAIMS_BEARING_BINS:
         return {
-            "classification": "fail",
-            "reason": "no usable passband bins",
-            "front_abs": np.abs(vac_ref[0]).tolist(),
-            "back_abs": np.abs(vac_ref[1]).tolist(),
+            "classification": "inconclusive",
+            "reason": "no claims-bearing non-floor passband bins",
+            "fixture": "bounded_cpml_private_analytic_sheet_flux_plane_vacuum_slab",
+            "source_contract": "private_analytic_sheet_source",
+            "normalization": "vacuum_device_two_run_incident_normalized",
+            "public_claim_allowed": False,
+            "usable_bins": int(np.sum(freq_mask)),
+            "front_abs": np.abs(vac_sub[0]).tolist(),
+            "back_abs": np.abs(vac_sub[1]).tolist(),
+            "fixture_quality_gates": {
+                "usable_passband": False,
+                "transverse_uniformity": bool(uniformity["passed"]),
+                "vacuum_stability": bool(vacuum_stability["passed"]),
+                "plane_location": False,
+            },
+            "gates": {
+                "r_magnitude": False,
+                "t_magnitude": False,
+                "phase": False,
+                "energy": False,
+                "plane_shift_r": False,
+                "plane_shift_t": False,
+                "plane_shift_phase": False,
+            },
+            "transverse_uniformity": uniformity,
+            "vacuum_stability": vacuum_stability,
+            "no_go_reason": _NO_GO_REASON,
+            "blocking_diagnostic": (
+                "the private analytic sheet did not produce at least two "
+                "vacuum front/back bins above both the 20% peak and "
+                "1e12×normalization-floor thresholds"
+            ),
+            "next_prerequisite": _NEXT_PREREQUISITE,
         }
 
     def rt(vac: tuple[np.ndarray, np.ndarray], slab: tuple[np.ndarray, np.ndarray]):
@@ -862,8 +1233,14 @@ def _plane_rt_metadata() -> dict[str, object]:
         if len(phase_refs)
         else np.array([0.0], dtype=np.float64)
     )
-    r_shift_delta = np.abs(np.abs(r_shift) - np.abs(r_sub))
-    t_shift_delta = np.abs(np.abs(t_shift) - np.abs(t_sub))
+    r_shift_delta = np.abs(np.abs(r_shift) - np.abs(r_sub)) / np.maximum(
+        np.abs(r_sub),
+        _NORMALIZATION_FLOOR,
+    )
+    t_shift_delta = np.abs(np.abs(t_shift) - np.abs(t_sub)) / np.maximum(
+        np.abs(t_sub),
+        _NORMALIZATION_FLOOR,
+    )
     shift_phase_refs = np.concatenate([
         r_sub[np.abs(r_sub) >= 0.05],
         t_sub[np.abs(t_sub) >= 0.05],
@@ -892,7 +1269,7 @@ def _plane_rt_metadata() -> dict[str, object]:
         freq_mask,
     )
 
-    gates = {
+    rt_gates = {
         "r_magnitude": float(np.max(r_mag_error)) <= 0.05,
         "t_magnitude": float(np.max(t_mag_error)) <= 0.05,
         "phase": float(np.max(phase_error)) <= 5.0,
@@ -901,12 +1278,30 @@ def _plane_rt_metadata() -> dict[str, object]:
         "plane_shift_t": float(np.max(t_shift_delta)) <= 0.05,
         "plane_shift_phase": float(np.max(shift_phase_error)) <= 5.0,
     }
-    classification = "pass" if all(gates.values()) else "inconclusive"
+    fixture_quality_gates = {
+        "usable_passband": int(np.sum(freq_mask)) >= _MIN_CLAIMS_BEARING_BINS,
+        "transverse_uniformity": bool(uniformity["passed"]),
+        "vacuum_stability": bool(vacuum_stability["passed"]),
+        "plane_location": bool(
+            rt_gates["plane_shift_r"]
+            and rt_gates["plane_shift_t"]
+            and rt_gates["plane_shift_phase"]
+        ),
+    }
+    classification = (
+        "pass"
+        if all(fixture_quality_gates.values()) and all(rt_gates.values())
+        else "inconclusive"
+    )
     return {
         "classification": classification,
-        "gates": gates,
-        "fixture": "bounded_cpml_private_fine_owned_flux_plane_vacuum_slab",
+        "gates": rt_gates,
+        "fixture_quality_gates": fixture_quality_gates,
+        "fixture": "bounded_cpml_private_analytic_sheet_flux_plane_vacuum_slab",
+        "source_contract": "private_analytic_sheet_source",
+        "normalization": "vacuum_device_two_run_incident_normalized",
         "scored_freqs_hz": _FluxFixture.scored_freqs[freq_mask].tolist(),
+        "usable_bins": int(np.sum(freq_mask)),
         "max_r_magnitude_error": float(np.max(r_mag_error)),
         "max_t_magnitude_error": float(np.max(t_mag_error)),
         "max_phase_error_deg": float(np.max(phase_error)),
@@ -916,6 +1311,25 @@ def _plane_rt_metadata() -> dict[str, object]:
         "unfloored_energy_balance_residual": float(np.nanmax(unfloored_energy_balance)),
         "normalization_floor": _NORMALIZATION_FLOOR,
         "public_claim_allowed": False,
+        "transverse_uniformity": uniformity,
+        "vacuum_stability": vacuum_stability,
+        "usable_passband_threshold": {
+            "min_bins": _MIN_CLAIMS_BEARING_BINS,
+            "front_back_peak_fraction": 0.20,
+            "nonfloor_factor_times_normalization_floor": _NONFLOOR_FACTOR,
+        },
+        "transverse_uniformity_threshold": {
+            "magnitude_cv_max": 0.01,
+            "phase_spread_deg_max": 1.0,
+        },
+        "vacuum_stability_threshold": {
+            "relative_magnitude_error_max": 0.02,
+            "phase_error_deg_max": 2.0,
+        },
+        "plane_location_threshold": {
+            "relative_magnitude_delta_max": 0.05,
+            "phase_delta_deg_max": 5.0,
+        },
         "max_plane_shift_r_delta": float(np.max(r_shift_delta)),
         "max_plane_shift_t_delta": float(np.max(t_shift_delta)),
         "max_plane_shift_phase_error_deg": float(np.max(shift_phase_error)),
@@ -923,15 +1337,16 @@ def _plane_rt_metadata() -> dict[str, object]:
         "subgrid_slab_flux_diagnostics": _flux_diagnostics(slab_sub, signed_sub_slab),
         "no_go_reason": _NO_GO_REASON,
         "blocking_diagnostic": (
-            "the private point-source finite-aperture fixture keeps the energy "
-            "residual above threshold on a normalization-floor-dominated "
-            "incident flux, so the gate cannot be promoted as true R/T evidence"
+            "one or more private analytic-sheet fixture-quality or "
+            "incident-normalized R/T gates remains below threshold, so the "
+            "gate cannot be promoted as public true R/T evidence"
         ),
         "next_prerequisite": _NEXT_PREREQUISITE,
         "diagnostic_basis": (
-            "R/T magnitude and plane-shift checks are useful internal "
-            "diagnostics, but the energy-balance observable lacks a "
-            "claims-bearing incident-field normalization."
+            "The benchmark now uses a private analytic sheet, front/back "
+            "private flux planes, and vacuum/device two-run normalization; "
+            "public support remains deferred unless every fixture-quality "
+            "and R/T gate passes."
         ),
         "replacement_metric_allowed": bool(float(np.max(energy_delta)) <= 0.02),
     }
@@ -956,9 +1371,9 @@ def test_private_plane_flux_matches_uniform_reference_in_homogeneous_cpml_fixtur
     _print_metadata("SBP-SAT private flux homogeneous parity metadata", metadata)
     _fail_or_xfail_inconclusive(
         metadata,
-        "Private flux runtime parity threshold is a principled no-go for "
-        "public promotion; support matrix must not promote public flux/DFT "
-        "or true R/T.",
+        "Private analytic-sheet runtime parity is inconclusive for public "
+        "promotion; support matrix must not promote public flux/DFT or true "
+        "R/T.",
     )
 
 
@@ -969,7 +1384,7 @@ def test_private_plane_true_rt_benchmark_vs_uniform_fine():
     _print_metadata("SBP-SAT private flux true-R/T metadata", metadata)
     _fail_or_xfail_inconclusive(
         metadata,
-        "Private plane-flux true R/T gate is a principled no-go for public "
+        "Private analytic-sheet true R/T gate is inconclusive for public "
         "promotion; support matrix remains deferred.",
     )
 
@@ -990,9 +1405,21 @@ def test_private_plane_true_rt_plane_shift_stability():
 def test_private_plane_true_rt_no_go_metadata_is_explicit():
     metadata = _plane_rt_metadata()
 
-    assert metadata["classification"] == "inconclusive"
-    assert metadata["no_go_reason"] == _NO_GO_REASON
-    assert metadata["next_prerequisite"] == _NEXT_PREREQUISITE
-    assert metadata["blocking_diagnostic"]
+    assert metadata["classification"] in {"pass", "inconclusive"}
     assert metadata["public_claim_allowed"] is False
-    assert metadata["energy_residual_delta_vs_uniform"] > 0.02
+    assert metadata["source_contract"] == "private_analytic_sheet_source"
+    assert metadata["normalization"] == "vacuum_device_two_run_incident_normalized"
+    assert metadata["fixture"] == (
+        "bounded_cpml_private_analytic_sheet_flux_plane_vacuum_slab"
+    )
+    if metadata["classification"] == "pass":
+        assert all(metadata["fixture_quality_gates"].values())
+        assert all(metadata["gates"].values())
+    else:
+        assert metadata["no_go_reason"] == _NO_GO_REASON
+        assert metadata["next_prerequisite"] == _NEXT_PREREQUISITE
+        assert metadata["blocking_diagnostic"]
+        assert not (
+            all(metadata["fixture_quality_gates"].values())
+            and all(metadata["gates"].values())
+        )

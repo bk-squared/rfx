@@ -86,12 +86,28 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert benchmark_gate["test_file"] == "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py"
     assert benchmark_gate["claim_level"] == "internal_benchmark_only_not_public_rt_or_sparameters"
     assert benchmark_gate["public_claim_allowed"] is False
-    assert benchmark_gate["no_go_reason"].startswith(
-        "private point-source finite-aperture flux fixture"
+    assert benchmark_gate["fixture"] == (
+        "bounded_cpml_private_analytic_sheet_flux_plane_vacuum_slab"
     )
-    assert "normalization" in benchmark_gate["blocking_diagnostic"]
-    assert "plane-wave/port fixture" in benchmark_gate["next_prerequisite"]
-    assert "no-go" in benchmark_gate["diagnostic_basis"]
+    assert benchmark_gate["source_contract"] == "private_analytic_sheet_source"
+    assert benchmark_gate["normalization"] == (
+        "vacuum_device_two_run_incident_normalized"
+    )
+    assert benchmark_gate["usable_passband_threshold"]["min_bins"] == 2
+    assert benchmark_gate["transverse_uniformity_threshold"] == {
+        "magnitude_cv_max": 0.01,
+        "phase_spread_deg_max": 1.0,
+    }
+    assert benchmark_gate["vacuum_stability_threshold"] == {
+        "relative_magnitude_error_max": 0.02,
+        "phase_error_deg_max": 2.0,
+    }
+    assert benchmark_gate["no_go_reason"].startswith(
+        "private analytic-sheet bounded-CPML fixture"
+    )
+    assert "non-public" in benchmark_gate["blocking_diagnostic"]
+    assert "private TFSF" in benchmark_gate["next_prerequisite"]
+    assert "analytic-sheet injection" in benchmark_gate["diagnostic_basis"]
     assert _sbp_lane()["supported_subset"]["observables"] == ["point_probe"]
     assert TRUE_RT_SPEC.exists()
 
@@ -101,7 +117,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert "true R/T benchmark: deferred" in spec_text
     assert "bounded-CPML feasibility result" in spec_text
     assert "inconclusive" in spec_text
-    assert "principled no-go" in spec_text
+    assert "private analytic sheet/source" in spec_text
+    assert "support matrix continues to mark true R/T as deferred" in spec_text
     assert "## Deferred issue record" in spec_text
 
 

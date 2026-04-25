@@ -18,6 +18,10 @@ _STRICT_INTERIOR_MESSAGE = (
     "private SBP-SAT benchmark flux planes must be fine-owned "
     "strict-interior placements"
 )
+_PRIVATE_SHEET_MESSAGE = (
+    "private SBP-SAT benchmark analytic sheet sources must be fine-owned "
+    "strict-interior placements"
+)
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,30 @@ class _BenchmarkFluxPlaneRequest:
     freqs: object
     size: tuple[float, float]
     center: tuple[float, float]
+    window: str = "rect"
+    window_alpha: float = 0.25
+
+
+@dataclass(frozen=True)
+class _PrivateAnalyticSheetSourceRequest:
+    """Private benchmark-only analytic sheet source for SBP-SAT evidence.
+
+    This is deliberately accepted only by ``run_subgridded_benchmark_flux``.
+    It is not a public source API, not public TFSF, and not surfaced through
+    ``Simulation.run()`` or ``Result``.
+    """
+
+    name: str
+    axis: str
+    coordinate: float
+    component: str
+    propagation_sign: int
+    amplitude: float
+    f0_hz: float
+    bandwidth: float
+    phase_rad: float
+    x_span: tuple[float, float]
+    y_span: tuple[float, float]
     window: str = "rect"
     window_alpha: float = 0.25
 
@@ -102,6 +130,90 @@ def _local_strict_tangential_bounds(
             f"{lo}:{hi} must stay inside 1..{n_cells - 1}"
         )
     return lo, hi
+
+
+def _local_strict_span_bounds(
+    *,
+    span: tuple[float, float],
+    offset: float,
+    dx: float,
+    n_cells: int,
+    label: str,
+    message: str,
+) -> tuple[int, int]:
+    if span is None or len(span) != 2:
+        raise ValueError(f"{message}; finite {label} span is required")
+    lo_coord, hi_coord = float(span[0]), float(span[1])
+    if not (
+        np.isfinite(lo_coord)
+        and np.isfinite(hi_coord)
+        and hi_coord > lo_coord
+    ):
+        raise ValueError(f"{message}; finite increasing {label} span is required")
+
+    lo = int(round((lo_coord - offset) / dx))
+    hi = int(round((hi_coord - offset) / dx))
+    if not (1 <= lo < hi <= n_cells - 1):
+        raise ValueError(
+            f"{message}; {label} span bounds {lo}:{hi} must stay inside "
+            f"1..{n_cells - 1}"
+        )
+    return lo, hi
+
+
+def _sheet_temporal_window(
+    n_steps: int,
+    window: str,
+    alpha: float,
+) -> np.ndarray:
+    window = str(window).lower()
+    if window == "rect":
+        return np.ones(n_steps, dtype=np.float64)
+    if window == "hann":
+        return np.hanning(n_steps).astype(np.float64)
+    if window == "tukey":
+        alpha = float(alpha)
+        if not (0.0 <= alpha <= 1.0):
+            raise ValueError("private analytic sheet source tukey alpha must be in [0, 1]")
+        if alpha <= 0.0:
+            return np.ones(n_steps, dtype=np.float64)
+        if alpha >= 1.0:
+            return np.hanning(n_steps).astype(np.float64)
+        x = np.linspace(0.0, 1.0, n_steps, dtype=np.float64)
+        weights = np.ones(n_steps, dtype=np.float64)
+        lo = x < alpha / 2.0
+        hi = x >= 1.0 - alpha / 2.0
+        weights[lo] = 0.5 * (1.0 + np.cos(2.0 * np.pi * (x[lo] / alpha - 0.5)))
+        weights[hi] = 0.5 * (
+            1.0 + np.cos(2.0 * np.pi * (x[hi] / alpha - 1.0 / alpha + 0.5))
+        )
+        return weights
+    raise ValueError(f"unsupported private analytic sheet source window {window!r}")
+
+
+def _analytic_sheet_waveform(
+    request: _PrivateAnalyticSheetSourceRequest,
+    *,
+    dt: float,
+    n_steps: int,
+) -> jnp.ndarray:
+    f0 = float(request.f0_hz)
+    bandwidth = float(request.bandwidth)
+    amplitude = float(request.amplitude)
+    if not (np.isfinite(f0) and f0 > 0.0):
+        raise ValueError(f"{_PRIVATE_SHEET_MESSAGE}; f0_hz must be positive")
+    if not (np.isfinite(bandwidth) and bandwidth > 0.0):
+        raise ValueError(f"{_PRIVATE_SHEET_MESSAGE}; bandwidth must be positive")
+    if not np.isfinite(amplitude):
+        raise ValueError(f"{_PRIVATE_SHEET_MESSAGE}; amplitude must be finite")
+
+    times = np.arange(n_steps, dtype=np.float64) * float(dt)
+    tau = 1.0 / (np.pi * f0 * bandwidth)
+    t0 = 5.0 * tau
+    envelope = np.exp(-((times - t0) / tau) ** 2)
+    carrier = np.sin(2.0 * np.pi * f0 * times + float(request.phase_rad))
+    taper = _sheet_temporal_window(n_steps, request.window, request.window_alpha)
+    return jnp.asarray(amplitude * carrier * envelope * taper, dtype=jnp.float32)
 
 
 def _build_benchmark_flux_plane_specs(
@@ -179,6 +291,88 @@ def _build_benchmark_flux_plane_specs(
     return tuple(specs)
 
 
+def _build_private_analytic_sheet_source_specs(
+    requests: (
+        tuple[_PrivateAnalyticSheetSourceRequest, ...]
+        | list[_PrivateAnalyticSheetSourceRequest]
+    ),
+    *,
+    shape_f: tuple[int, int, int],
+    offsets: tuple[float, float, float],
+    dx_f: float,
+    dt: float,
+    n_steps: int,
+):
+    """Validate and lower private benchmark analytic sheet sources."""
+
+    from rfx.subgridding.jit_runner import _PrivateAnalyticSheetSourceSpec
+
+    specs = []
+    for request in requests:
+        axis_i = _axis_index(request.axis)
+        if axis_i != 2:
+            raise ValueError(f"{_PRIVATE_SHEET_MESSAGE}; only z-axis sheets are supported")
+        if request.component not in ("ex", "ey"):
+            raise ValueError(
+                f"{_PRIVATE_SHEET_MESSAGE}; sheet component must be ex or ey"
+            )
+        if int(request.propagation_sign) != 1:
+            raise ValueError(
+                f"{_PRIVATE_SHEET_MESSAGE}; only +z propagation is supported"
+            )
+
+        try:
+            index = _local_strict_normal_index(
+                coordinate=request.coordinate,
+                offset=offsets[axis_i],
+                dx=dx_f,
+                n_cells=shape_f[axis_i],
+            )
+        except ValueError as exc:
+            raise ValueError(
+                str(exc).replace(_STRICT_INTERIOR_MESSAGE, _PRIVATE_SHEET_MESSAGE)
+            ) from exc
+        lo1, hi1 = _local_strict_span_bounds(
+            span=request.x_span,
+            offset=offsets[0],
+            dx=dx_f,
+            n_cells=shape_f[0],
+            label="x",
+            message=_PRIVATE_SHEET_MESSAGE,
+        )
+        lo2, hi2 = _local_strict_span_bounds(
+            span=request.y_span,
+            offset=offsets[1],
+            dx=dx_f,
+            n_cells=shape_f[1],
+            label="y",
+            message=_PRIVATE_SHEET_MESSAGE,
+        )
+        specs.append(
+            _PrivateAnalyticSheetSourceSpec(
+                name=str(request.name),
+                axis=axis_i,
+                index=int(index),
+                component=str(request.component),
+                propagation_sign=int(request.propagation_sign),
+                amplitude=float(request.amplitude),
+                f0_hz=float(request.f0_hz),
+                bandwidth=float(request.bandwidth),
+                phase_rad=float(request.phase_rad),
+                source_values=_analytic_sheet_waveform(
+                    request,
+                    dt=float(dt),
+                    n_steps=int(n_steps),
+                ),
+                lo1=int(lo1),
+                hi1=int(hi1),
+                lo2=int(lo2),
+                hi2=int(hi2),
+            )
+        )
+    return tuple(specs)
+
+
 def run_subgridded_path(
     sim,
     grid_coarse,
@@ -222,6 +416,7 @@ def _run_subgridded_path_impl(
     n_steps,
     *,
     _benchmark_flux_planes: tuple[_BenchmarkFluxPlaneRequest, ...] | None = None,
+    _private_sheet_sources: tuple[_PrivateAnalyticSheetSourceRequest, ...] | None = None,
 ) -> _BenchmarkFluxRun:
     """Internal implementation shared by public and benchmark-only paths."""
 
@@ -387,6 +582,16 @@ def _run_subgridded_path_impl(
             dx_f=dx_f,
             n_steps=n_steps,
         )
+    private_sheet_specs = ()
+    if _private_sheet_sources:
+        private_sheet_specs = _build_private_analytic_sheet_source_specs(
+            tuple(_private_sheet_sources),
+            shape_f=shape_f,
+            offsets=(x_off, y_off, z_off),
+            dx_f=dx_f,
+            dt=float(dt),
+            n_steps=n_steps,
+        )
 
     result = _run_sg(
         grid_coarse,
@@ -415,6 +620,7 @@ def _run_subgridded_path_impl(
         ),
         absorber_boundary=sim._boundary,
         _benchmark_flux_planes=benchmark_flux_specs,
+        _private_sheet_sources=private_sheet_specs,
     )
 
     public_result = Result(
@@ -437,14 +643,19 @@ def run_subgridded_benchmark_flux(
     *,
     n_steps: int,
     planes: tuple[_BenchmarkFluxPlaneRequest, ...] | list[_BenchmarkFluxPlaneRequest],
+    sheet_sources: (
+        tuple[_PrivateAnalyticSheetSourceRequest, ...]
+        | list[_PrivateAnalyticSheetSourceRequest]
+        | None
+    ) = None,
 ) -> _BenchmarkFluxRun:
     """Run the private SBP-SAT benchmark-only flux accumulator path.
 
     Public DFT/flux requests still fail in the regular API validator.  This
-    helper accepts only private fine-owned plane requests and returns private
-    raw accumulators alongside the ordinary public ``Result`` to prove the
-    benchmark does not leak into ``Result.dft_planes`` or
-    ``Result.flux_monitors``.
+    helper accepts only private fine-owned plane requests plus optional
+    private analytic sheet sources, and returns private raw accumulators
+    alongside the ordinary public ``Result`` to prove the benchmark does not
+    leak into ``Result.dft_planes`` or ``Result.flux_monitors``.
     """
 
     if sim._dx is None and sim._geometry:
@@ -463,4 +674,5 @@ def run_subgridded_benchmark_flux(
         pec_mask,
         int(n_steps),
         _benchmark_flux_planes=tuple(planes),
+        _private_sheet_sources=tuple(sheet_sources or ()),
     )

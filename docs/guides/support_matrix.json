@@ -125,14 +125,33 @@
           "benchmark_flux_dft_gate": {
             "status": "inconclusive",
             "test_file": "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py",
-            "fixture": "bounded_cpml_private_fine_owned_flux_plane_vacuum_slab",
+            "fixture": "bounded_cpml_private_analytic_sheet_flux_plane_vacuum_slab",
             "claim_level": "internal_benchmark_only_not_public_rt_or_sparameters",
             "public_claim_allowed": false,
-            "reason": "private fine-owned flux/DFT accumulators are implemented and public DFT/flux hard-fails remain locked; diagnostics classify the current point-source finite-aperture fixture as a no-go for public true R/T promotion because homogeneous parity and energy-balance signals are normalization-floor dominated",
-            "no_go_reason": "private point-source finite-aperture flux fixture is not claims-bearing for a pass result under the current SBP-SAT public support boundary",
-            "blocking_diagnostic": "homogeneous parity and energy diagnostics remain dominated by weak finite-aperture point-source flux normalization rather than a pass-bearing calibrated incident field",
-            "next_prerequisite": "replace the current point-source finite-aperture diagnostic with a claims-bearing incident-field normalization or plane-wave/port fixture in a separate support-matrix plan",
-            "diagnostic_basis": "multi-step/all-axis synthetic accumulator parity is required to pass; runtime fixture diagnostics keep the gate inconclusive/no-go without changing public support"
+            "source_contract": "private_analytic_sheet_source",
+            "normalization": "vacuum_device_two_run_incident_normalized",
+            "transverse_uniformity_threshold": {
+              "magnitude_cv_max": 0.01,
+              "phase_spread_deg_max": 1.0
+            },
+            "plane_location_threshold": {
+              "relative_magnitude_delta_max": 0.05,
+              "phase_delta_deg_max": 5.0
+            },
+            "vacuum_stability_threshold": {
+              "relative_magnitude_error_max": 0.02,
+              "phase_error_deg_max": 2.0
+            },
+            "usable_passband_threshold": {
+              "min_bins": 2,
+              "front_back_peak_fraction": 0.2,
+              "nonfloor_factor_times_normalization_floor": 1000000000000.0
+            },
+            "reason": "private analytic-sheet source and fine-owned flux/DFT accumulators are implemented, while public DFT/flux hard-fails remain locked; diagnostics classify the current bounded all-CPML sheet fixture as inconclusive because one or more fixture-quality or incident-normalized R/T gates remains below threshold",
+            "no_go_reason": "private analytic-sheet bounded-CPML fixture did not satisfy the incident-normalized fixture-quality gates required for public true R/T promotion",
+            "blocking_diagnostic": "the private analytic sheet now produces non-floor passband bins, but transverse uniformity, vacuum-stability, plane-location, and/or incident-normalized R/T gates still determine whether the internal gate may pass; the current recorded status remains inconclusive and non-public",
+            "next_prerequisite": "open a separate private TFSF or boundary-expanded plane-wave fixture plan before reconsidering public true R/T, DFT, flux, port, or S-parameter promotion",
+            "diagnostic_basis": "multi-step/all-axis synthetic accumulator parity and private analytic-sheet injection regressions are required to pass; runtime fixture-quality diagnostics keep the gate inconclusive without changing public support"
           }
         },
         "box_proxy_crossval": {

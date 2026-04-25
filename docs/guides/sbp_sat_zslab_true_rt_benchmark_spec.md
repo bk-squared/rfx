@@ -63,40 +63,50 @@ point-probe evidence as calibrated true R/T.
 
 ## Private flux/DFT benchmark gate
 
-A private fine-owned flux/DFT accumulator now exists for internal SBP-SAT
-benchmarking:
+A private fine-owned flux/DFT accumulator and private analytic sheet/source now
+exist for internal SBP-SAT benchmarking:
 
 - file: `tests/test_sbp_sat_true_rt_flux_dft_benchmark.py`
-- fixture: guarded all-CPML vacuum/dielectric-slab/vacuum setup using
-  z-normal flux planes fully inside the fine grid
+- fixture: translational x/y, guarded all-CPML
+  vacuum/dielectric-slab/vacuum setup using z-normal flux planes fully inside
+  the fine grid
+- source contract: private analytic sheet/source accepted only by
+  `run_subgridded_benchmark_flux(...)`; it is not public `Simulation.add_source`,
+  not public TFSF, and not exposed through `Simulation.run()` or `Result`
+- normalization: vacuum/device two-run incident-normalized comparison
 - observable contract: private raw DFT accumulators only; not public
   `add_dft_plane_probe`, not public `add_flux_monitor`, and not
   `Result.dft_planes` / `Result.flux_monitors`
 - placement contract: local normal index must satisfy `1 <= idx <= n-2`, and
-  the finite tangential aperture must remain strictly inside the fine region
+  sheet/plane tangential extents must remain strictly inside the fine region
 - classification: **inconclusive**
 - claim level: internal benchmark-only evidence; **not** public true R/T,
-  S-parameter, DFT-plane, flux-monitor, or port support
+  S-parameter, DFT-plane, flux-monitor, TFSF, or port support
 
 The current private gate is useful because it removes the most fragile
-point-probe extraction path.  Its first run keeps the public claim blocked:
+point-probe extraction path and replaces the earlier point-source
+finite-aperture diagnostic with an explicit sheet/source fixture.  It still
+keeps the public claim blocked:
 
 - public DFT-plane and flux-monitor APIs still hard-fail under SBP-SAT
   refinement;
+- public TFSF remains unsupported for SBP-SAT and is not used by this fixture;
+- mixed periodic+CPML is rejected for this plan, so the fixture remains a
+  bounded all-CPML domain rather than a transverse-periodic shortcut;
 - synthetic accumulator semantics match the uniform scan-kernel formula,
   including multi-step, all-axis, windowed DFT accumulation;
-- the private plane-based R/T magnitude and plane-shift gates are within the
-  provisional thresholds for the scored passband;
-- homogeneous no-slab flux parity and the energy-balance diagnostic are
-  dominated by weak point-source finite-aperture flux normalization near the
-  configured floor;
-- this is therefore a **principled no-go** for public promotion, not a reason
-  to reinterpret thresholds or claim true R/T support.
+- private sheet/source lowering and injection are tested as benchmark-only
+  implementation details;
+- runtime scoring now requires at least two non-floor passband bins, transverse
+  magnitude/phase uniformity, plane-location robustness, vacuum stability
+  against a uniform-fine reference, and incident-normalized R/T gates;
+- the current recorded status is therefore **inconclusive**, not a public
+  support promotion and not a reason to reinterpret thresholds.
 
-The next prerequisite is a claims-bearing incident-field normalization or a
-plane-wave/port fixture in a separate support-matrix plan.  Until that exists,
-the private flux/DFT gate remains internal diagnostic evidence only, and the
-support matrix continues to mark true R/T as deferred.
+If this analytic-sheet fixture remains below threshold, the next prerequisite
+is a separate private TFSF or boundary-expanded plane-wave fixture plan.  Until
+that exists and passes, the private flux/DFT gate remains internal diagnostic
+evidence only, and the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
 
@@ -178,8 +188,8 @@ Until then, the support matrix must say:
   point-probe feasibility evidence plus private flux/DFT benchmark evidence
 - true R/T benchmark: deferred
 - feasibility probe gate: inconclusive
-- private flux/DFT benchmark gate: inconclusive / no-go under the current
-  point-source finite-aperture fixture
+- private flux/DFT benchmark gate: inconclusive under the current private
+  analytic-sheet bounded-CPML fixture-quality gates
 - public support promotion: blocked
 
 ## Deferred issue record

@@ -94,11 +94,12 @@ def test_internal_flux_dft_gate_does_not_promote_public_observables():
     support_text = _text(SUPPORT_MATRIX)
     spec_text = _text(TRUE_RT_SPEC)
 
-    assert "private fine-owned flux/DFT benchmark gate" in support_text
-    assert "private fine-owned flux/DFT accumulator" in spec_text
+    assert "private analytic-sheet flux/DFT R/T benchmark gate" in support_text
+    assert "private analytic sheet/source" in spec_text
     for token in (
         "public true R/T",
         "public DFT-plane and flux-monitor APIs still hard-fail",
+        "mixed periodic+CPML is rejected",
         "support matrix continues to mark true R/T as deferred",
     ):
         assert token in spec_text
