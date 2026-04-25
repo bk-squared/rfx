@@ -28,7 +28,10 @@ def test_sbp_sat_support_matrix_records_experimental_proxy_evidence():
         "not_mixed_pmc_periodic",
         "not_mixed_reflector_or_periodic_with_cpml",
     ]
-    assert lane["supported_subset"]["geometry"] == "axis_aligned_arbitrary_box_with_cpml_guard_for_absorbing_faces"
+    assert (
+        lane["supported_subset"]["geometry"]
+        == "axis_aligned_arbitrary_box_with_cpml_guard_for_absorbing_faces"
+    )
     assert lane["supported_subset"]["sources"] == ["soft_point_source"]
     assert lane["supported_subset"]["observables"] == ["point_probe"]
 
@@ -79,16 +82,29 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     feasibility_gate = true_rt["feasibility_probe_gate"]
     assert feasibility_gate["status"] == "inconclusive"
     assert feasibility_gate["test_file"] == "tests/test_sbp_sat_true_rt_feasibility.py"
-    assert feasibility_gate["claim_level"] == "internal_feasibility_only_not_public_rt_or_sparameters"
-    assert feasibility_gate["fallback"] == "minimal_benchmark_only_flux_or_dft_observable_plan"
+    assert (
+        feasibility_gate["claim_level"]
+        == "internal_feasibility_only_not_public_rt_or_sparameters"
+    )
+    assert (
+        feasibility_gate["fallback"]
+        == "minimal_benchmark_only_flux_or_dft_observable_plan"
+    )
     benchmark_gate = true_rt["benchmark_flux_dft_gate"]
     assert benchmark_gate["status"] == "inconclusive"
-    assert benchmark_gate["test_file"] == "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py"
-    assert benchmark_gate["claim_level"] == "internal_benchmark_only_not_public_rt_or_sparameters"
+    assert (
+        benchmark_gate["test_file"]
+        == "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py"
+    )
+    assert (
+        benchmark_gate["claim_level"]
+        == "internal_benchmark_only_not_public_rt_or_sparameters"
+    )
     assert benchmark_gate["public_claim_allowed"] is False
     assert benchmark_gate["fixture"] == (
-        "bounded_cpml_private_analytic_sheet_flux_plane_vacuum_slab"
+        "boundary_expanded_private_analytic_sheet_flux_plane_vacuum_slab"
     )
+    assert benchmark_gate["fixture_name"] == "boundary_expanded"
     assert benchmark_gate["source_contract"] == "private_analytic_sheet_source"
     assert benchmark_gate["normalization"] == (
         "vacuum_device_two_run_incident_normalized"
@@ -105,9 +121,19 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert benchmark_gate["no_go_reason"].startswith(
         "private analytic-sheet bounded-CPML fixture"
     )
+    sweep = benchmark_gate["boundary_expansion_sweep"]
+    assert sweep["status"] == "inconclusive"
+    assert sweep["candidate_count"] == 2
+    assert sweep["selected_fixture"] == "boundary_expanded"
+    assert sweep["selected_usable_bins"] == 3
+    assert sweep["materially_improved_vs_baseline"] is True
     assert "non-public" in benchmark_gate["blocking_diagnostic"]
-    assert "private TFSF" in benchmark_gate["next_prerequisite"]
+    assert "private TFSF-style" in benchmark_gate["next_prerequisite"]
+    assert "normalization-repair" in benchmark_gate["next_prerequisite"]
     assert "analytic-sheet injection" in benchmark_gate["diagnostic_basis"]
+    assert (
+        "boundary-expanded fixture-quality sweep" in benchmark_gate["diagnostic_basis"]
+    )
     assert _sbp_lane()["supported_subset"]["observables"] == ["point_probe"]
     assert TRUE_RT_SPEC.exists()
 
@@ -118,6 +144,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert "bounded-CPML feasibility result" in spec_text
     assert "inconclusive" in spec_text
     assert "private analytic sheet/source" in spec_text
+    assert "boundary-expanded analytic-sheet sweep" in spec_text
     assert "support matrix continues to mark true R/T as deferred" in spec_text
     assert "## Deferred issue record" in spec_text
 

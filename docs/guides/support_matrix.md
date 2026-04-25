@@ -48,9 +48,10 @@ Current policy:
   inconclusive and remains internal evidence only
 - a private analytic-sheet + fine-owned flux/DFT benchmark gate now exists
   for internal true R/T diagnostics; it uses all-CPML bounded-domain
-  vacuum/device incident normalization, remains inconclusive/non-public until
-  every fixture-quality gate passes, and does not enable public DFT planes,
-  flux monitors, TFSF, S-parameters, or true R/T claims
+  vacuum/device incident normalization plus a bounded boundary-expanded
+  fixture-quality sweep, remains inconclusive/non-public until every
+  fixture-quality gate passes, and does not enable public DFT planes, flux
+  monitors, TFSF, S-parameters, or true R/T claims
 
 ### Benchmark evidence
 
@@ -74,13 +75,17 @@ separation, energy balance, or calibrated S-parameters.
 The private flux/DFT gate strengthens the internal accumulator regression by
 checking multi-step, all-axis, windowed DFT semantics and a benchmark-only
 analytic sheet/source.  The bounded-CPML runtime fixture now scores only
-non-floor passband bins from a vacuum/device two-run normalization.  Public
-promotion remains blocked unless transverse uniformity, plane-location
-robustness, vacuum stability, and R/T gates all pass.  Periodic+CPML and
-public TFSF remain rejected for this lane; if the sheet fixture cannot satisfy
-the gates, the next prerequisite is a separate private TFSF or
-boundary-expanded plane-wave fixture plan, not a reinterpretation of the
-thresholds.
+non-floor passband bins from a vacuum/device two-run normalization, and it runs
+a two-candidate boundary-expansion sweep before any full R/T rescore.  That
+sweep selected the boundary-expanded fixture and improved the quality score
+(`3464.05 -> 1890.63`) with three usable bins, but transverse uniformity and
+vacuum stability still fail; full incident-normalized R/T scoring is therefore
+skipped and the gate remains inconclusive.  Public promotion remains blocked
+unless transverse uniformity, plane-location robustness, vacuum stability, and
+R/T gates all pass.  Periodic+CPML and public TFSF remain rejected for this
+lane; the next prerequisite is a separate private TFSF-style incident-field
+fixture plan or private normalization-repair plan, not a reinterpretation of
+the thresholds.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

@@ -125,7 +125,7 @@
           "benchmark_flux_dft_gate": {
             "status": "inconclusive",
             "test_file": "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py",
-            "fixture": "bounded_cpml_private_analytic_sheet_flux_plane_vacuum_slab",
+            "fixture": "boundary_expanded_private_analytic_sheet_flux_plane_vacuum_slab",
             "claim_level": "internal_benchmark_only_not_public_rt_or_sparameters",
             "public_claim_allowed": false,
             "source_contract": "private_analytic_sheet_source",
@@ -147,11 +147,30 @@
               "front_back_peak_fraction": 0.2,
               "nonfloor_factor_times_normalization_floor": 1000000000000.0
             },
-            "reason": "private analytic-sheet source and fine-owned flux/DFT accumulators are implemented, while public DFT/flux hard-fails remain locked; diagnostics classify the current bounded all-CPML sheet fixture as inconclusive because one or more fixture-quality or incident-normalized R/T gates remains below threshold",
+            "reason": "private analytic-sheet source and fine-owned flux/DFT accumulators are implemented, while public DFT/flux hard-fails remain locked; a bounded boundary-expanded recovery sweep selected the expanded fixture but remains inconclusive because transverse-uniformity and vacuum-stability gates remain below threshold",
             "no_go_reason": "private analytic-sheet bounded-CPML fixture did not satisfy the incident-normalized fixture-quality gates required for public true R/T promotion",
-            "blocking_diagnostic": "the private analytic sheet now produces non-floor passband bins, but transverse uniformity, vacuum-stability, plane-location, and/or incident-normalized R/T gates still determine whether the internal gate may pass; the current recorded status remains inconclusive and non-public",
-            "next_prerequisite": "open a separate private TFSF or boundary-expanded plane-wave fixture plan before reconsidering public true R/T, DFT, flux, port, or S-parameter promotion",
-            "diagnostic_basis": "multi-step/all-axis synthetic accumulator parity and private analytic-sheet injection regressions are required to pass; runtime fixture-quality diagnostics keep the gate inconclusive without changing public support"
+            "blocking_diagnostic": "the bounded two-candidate recovery sweep improved the private sheet fixture but did not produce a canonical passing fixture; full incident-normalized R/T scoring is skipped, the recorded status remains inconclusive and non-public, and public observables remain hard-failing",
+            "next_prerequisite": "open a separate private TFSF-style incident-field fixture plan or private normalization-repair plan before reconsidering public true R/T, DFT, flux, port, or S-parameter promotion",
+            "diagnostic_basis": "multi-step/all-axis synthetic accumulator parity, private analytic-sheet injection regressions, and the bounded boundary-expanded fixture-quality sweep are required to pass; runtime diagnostics keep the gate inconclusive without changing public support",
+            "fixture_name": "boundary_expanded",
+            "boundary_expansion_sweep": {
+              "status": "inconclusive",
+              "candidate_count": 2,
+              "baseline_fixture": "current_bounded",
+              "selected_fixture": "boundary_expanded",
+              "selected_fixture_key": "boundary_expanded_private_analytic_sheet_flux_plane_vacuum_slab",
+              "materially_improved_vs_baseline": true,
+              "baseline_quality_error_score": 3464.0496803157675,
+              "selected_quality_error_score": 1890.6313462973517,
+              "selected_fixture_quality_gates": {
+                "usable_passband": true,
+                "transverse_uniformity": false,
+                "vacuum_stability": false,
+                "plane_location": false
+              },
+              "selected_usable_bins": 3,
+              "policy": "coarse fixture-quality sweep before full R/T scoring; skip full R/T when no candidate passes usable-passband, transverse-uniformity, and vacuum-stability gates"
+            }
           }
         },
         "box_proxy_crossval": {
