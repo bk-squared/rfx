@@ -47,8 +47,9 @@ Current policy:
 - a bounded-CPML point-probe feasibility probe now exists, but it is
   inconclusive and remains internal evidence only
 - a private fine-owned flux/DFT benchmark gate now exists for internal true
-  R/T evidence; it is also inconclusive and does not enable public DFT planes,
-  flux monitors, S-parameters, or true R/T claims
+  R/T diagnostics; it is a principled no-go for public promotion under the
+  current point-source finite-aperture fixture and does not enable public DFT
+  planes, flux monitors, S-parameters, or true R/T claims
 
 ### Benchmark evidence
 
@@ -60,7 +61,7 @@ Current policy:
 | boundary proxy crossval | implemented | `tests/test_sbp_sat_boundary_crossval.py` | internal PMC reflector plus periodic full-axis/interior proxy fixtures; mixed PMC+periodic remains blocked; **not** public R/T |
 | absorbing proxy crossval | implemented | `tests/test_sbp_sat_absorbing_crossval.py` | internal CPML interior-box decay and late-tail proxy fixtures; **not** public R/T or S-parameters |
 | bounded-CPML point-probe R/T feasibility | inconclusive | `tests/test_sbp_sat_true_rt_feasibility.py` | internal measurement-contract probe only; **not** public R/T, S-parameters, flux, or port evidence |
-| private fine-owned flux/DFT R/T benchmark gate | inconclusive | `tests/test_sbp_sat_true_rt_flux_dft_benchmark.py` | internal benchmark-only accumulator evidence; public DFT planes and flux monitors still hard-fail |
+| private fine-owned flux/DFT R/T benchmark gate | inconclusive / no-go | `tests/test_sbp_sat_true_rt_flux_dft_benchmark.py` | internal benchmark-only accumulator evidence; current point-source finite-aperture fixture is not claims-bearing; public DFT planes and flux monitors still hard-fail |
 | true reflection/transmission | deferred | `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md` | no public R/T, S-parameter, or calibrated open-boundary claim yet |
 
 Proxy tolerance is intentionally narrow and local: relative amplitude error
@@ -68,6 +69,14 @@ Proxy tolerance is intentionally narrow and local: relative amplitude error
 current PEC-cavity proxy fixture. That tolerance checks numerical closeness to
 the reference run; it does not validate incident/reflected/transmitted field
 separation, energy balance, or calibrated S-parameters.
+
+The private flux/DFT gate strengthens the internal accumulator regression by
+checking multi-step, all-axis, windowed DFT semantics.  Its bounded-CPML runtime
+fixture remains inconclusive/no-go because homogeneous parity and energy
+diagnostics are dominated by weak point-source finite-aperture flux
+normalization.  The next prerequisite is a claims-bearing incident-field
+normalization or plane-wave/port fixture, not a reinterpretation of the current
+thresholds.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

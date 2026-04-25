@@ -82,10 +82,16 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert feasibility_gate["claim_level"] == "internal_feasibility_only_not_public_rt_or_sparameters"
     assert feasibility_gate["fallback"] == "minimal_benchmark_only_flux_or_dft_observable_plan"
     benchmark_gate = true_rt["benchmark_flux_dft_gate"]
-    assert benchmark_gate["status"] in {"pass", "fail", "inconclusive"}
+    assert benchmark_gate["status"] == "inconclusive"
     assert benchmark_gate["test_file"] == "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py"
     assert benchmark_gate["claim_level"] == "internal_benchmark_only_not_public_rt_or_sparameters"
     assert benchmark_gate["public_claim_allowed"] is False
+    assert benchmark_gate["no_go_reason"].startswith(
+        "private point-source finite-aperture flux fixture"
+    )
+    assert "normalization" in benchmark_gate["blocking_diagnostic"]
+    assert "plane-wave/port fixture" in benchmark_gate["next_prerequisite"]
+    assert "no-go" in benchmark_gate["diagnostic_basis"]
     assert _sbp_lane()["supported_subset"]["observables"] == ["point_probe"]
     assert TRUE_RT_SPEC.exists()
 
@@ -95,6 +101,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert "true R/T benchmark: deferred" in spec_text
     assert "bounded-CPML feasibility result" in spec_text
     assert "inconclusive" in spec_text
+    assert "principled no-go" in spec_text
     assert "## Deferred issue record" in spec_text
 
 

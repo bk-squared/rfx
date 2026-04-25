@@ -128,7 +128,11 @@
             "fixture": "bounded_cpml_private_fine_owned_flux_plane_vacuum_slab",
             "claim_level": "internal_benchmark_only_not_public_rt_or_sparameters",
             "public_claim_allowed": false,
-            "reason": "private fine-owned flux/DFT accumulators are implemented and public DFT/flux hard-fails remain locked; the first benchmark run matches R/T magnitude gates but leaves homogeneous parity and energy-balance gates inconclusive"
+            "reason": "private fine-owned flux/DFT accumulators are implemented and public DFT/flux hard-fails remain locked; diagnostics classify the current point-source finite-aperture fixture as a no-go for public true R/T promotion because homogeneous parity and energy-balance signals are normalization-floor dominated",
+            "no_go_reason": "private point-source finite-aperture flux fixture is not claims-bearing for a pass result under the current SBP-SAT public support boundary",
+            "blocking_diagnostic": "homogeneous parity and energy diagnostics remain dominated by weak finite-aperture point-source flux normalization rather than a pass-bearing calibrated incident field",
+            "next_prerequisite": "replace the current point-source finite-aperture diagnostic with a claims-bearing incident-field normalization or plane-wave/port fixture in a separate support-matrix plan",
+            "diagnostic_basis": "multi-step/all-axis synthetic accumulator parity is required to pass; runtime fixture diagnostics keep the gate inconclusive/no-go without changing public support"
           }
         },
         "box_proxy_crossval": {

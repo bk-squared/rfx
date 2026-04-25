@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, GaussianPulse, Simulation
+from rfx.core.dft_utils import dft_window_weight
 from rfx.probes.probes import flux_spectrum
 from rfx.runners.subgridded import (
     _BenchmarkFluxPlaneRequest,
@@ -38,6 +39,16 @@ from rfx.subgridding.sbp_sat_3d import SubgridState3D
 
 
 _STRICT_PLACEMENT = "fine-owned strict-interior"
+_NO_GO_REASON = (
+    "private point-source finite-aperture flux fixture is not claims-bearing "
+    "for a pass result under the current SBP-SAT public support boundary"
+)
+_NEXT_PREREQUISITE = (
+    "replace the current point-source finite-aperture diagnostic with a "
+    "claims-bearing incident-field normalization or plane-wave/port fixture "
+    "in a separate support-matrix plan"
+)
+_NORMALIZATION_FLOOR = 1e-30
 
 
 class _GuardFixture:
@@ -236,6 +247,79 @@ def _synthetic_subgrid_state(shape: tuple[int, int, int]) -> SubgridState3D:
     )
 
 
+def _axis_plane_slices(axis: int, index: int, lo1: int, hi1: int, lo2: int, hi2: int):
+    if axis == 0:
+        return (
+            (index, slice(lo1, hi1), slice(lo2, hi2)),
+            (index - 1, slice(lo1, hi1), slice(lo2, hi2)),
+        )
+    if axis == 1:
+        return (
+            (slice(lo1, hi1), index, slice(lo2, hi2)),
+            (slice(lo1, hi1), index - 1, slice(lo2, hi2)),
+        )
+    return (
+        (slice(lo1, hi1), slice(lo2, hi2), index),
+        (slice(lo1, hi1), slice(lo2, hi2), index - 1),
+    )
+
+
+def _reference_accumulate(
+    acc: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    state: SubgridState3D,
+    plane: _BenchmarkFluxPlaneSpec,
+    dt: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    names = {
+        0: ("ey_f", "ez_f", "hy_f", "hz_f"),
+        1: ("ez_f", "ex_f", "hz_f", "hx_f"),
+        2: ("ex_f", "ey_f", "hx_f", "hy_f"),
+    }[plane.axis]
+    idx, idx_m1 = _axis_plane_slices(
+        plane.axis,
+        plane.index,
+        plane.lo1,
+        plane.hi1,
+        plane.lo2,
+        plane.hi2,
+    )
+    e1 = np.asarray(getattr(state, names[0]))[idx]
+    e2 = np.asarray(getattr(state, names[1]))[idx]
+    h1 = 0.5 * (
+        np.asarray(getattr(state, names[2]))[idx_m1]
+        + np.asarray(getattr(state, names[2]))[idx]
+    )
+    h2 = 0.5 * (
+        np.asarray(getattr(state, names[3]))[idx_m1]
+        + np.asarray(getattr(state, names[3]))[idx]
+    )
+    step = np.asarray(state.step, dtype=np.float64)
+    t = step * dt
+    freqs = np.asarray(plane.freqs, dtype=np.float64)
+    weight = float(
+        np.asarray(
+            dft_window_weight(
+                state.step,
+                plane.total_steps,
+                plane.window,
+                plane.window_alpha,
+            )
+        )
+    )
+    kernel_e = np.exp(-1j * 2.0 * np.pi * freqs * t)[:, None, None] * dt * weight
+    kernel_h = (
+        np.exp(-1j * 2.0 * np.pi * freqs * (t - dt * 0.5))[:, None, None]
+        * dt
+        * weight
+    )
+    return (
+        acc[0] + e1[None, :, :] * kernel_e,
+        acc[1] + e2[None, :, :] * kernel_e,
+        acc[2] + h1[None, :, :] * kernel_h,
+        acc[3] + h2[None, :, :] * kernel_h,
+    )
+
+
 def test_private_flux_accumulator_matches_uniform_scan_kernel_formula():
     shape = (6, 5, 4)
     dt = 1.25e-12
@@ -323,6 +407,58 @@ def test_private_flux_accumulator_matches_uniform_scan_kernel_formula():
     )
 
 
+@pytest.mark.parametrize(
+    ("axis", "index", "lo1", "hi1", "lo2", "hi2"),
+    [
+        (0, 3, 1, 4, 1, 3),
+        (1, 3, 1, 5, 1, 3),
+        (2, 2, 1, 5, 1, 4),
+    ],
+)
+def test_private_flux_accumulator_matches_multistep_all_axis_windowed_formula(
+    axis: int,
+    index: int,
+    lo1: int,
+    hi1: int,
+    lo2: int,
+    hi2: int,
+):
+    shape = (6, 5, 4)
+    dt = 1.25e-12
+    freqs = jnp.asarray([1.5e9, 2.0e9], dtype=jnp.float64)
+    plane = _BenchmarkFluxPlaneSpec(
+        name=f"synthetic_axis_{axis}",
+        axis=axis,
+        index=index,
+        freqs=freqs,
+        dx=1.0e-3,
+        total_steps=9,
+        window="hann",
+        lo1=lo1,
+        hi1=hi1,
+        lo2=lo2,
+        hi2=hi2,
+    )
+    acc_shape = (len(freqs), hi1 - lo1, hi2 - lo2)
+    actual = tuple(jnp.zeros(acc_shape, dtype=jnp.complex128) for _ in range(4))
+    expected = tuple(np.zeros(acc_shape, dtype=np.complex128) for _ in range(4))
+
+    for step in (3, 4):
+        state = _synthetic_subgrid_state(shape)._replace(
+            step=jnp.array(step, dtype=jnp.int32)
+        )
+        actual = _accumulate_benchmark_flux_plane(actual, state, plane, dt)
+        expected = _reference_accumulate(expected, state, plane, dt)
+
+    for actual_arr, expected_arr in zip(actual, expected):
+        assert np.allclose(
+            np.asarray(actual_arr),
+            expected_arr,
+            rtol=1e-6,
+            atol=1e-9,
+        )
+
+
 def _complex_flux(plane) -> np.ndarray:
     return np.asarray(
         jnp.sum(
@@ -343,7 +479,7 @@ def _relative_magnitude_error(test: np.ndarray, ref: np.ndarray) -> np.ndarray:
     mag_ref = np.abs(ref)
     return np.where(
         mag_ref >= 1e-3,
-        np.abs(mag_test - mag_ref) / np.maximum(mag_ref, 1e-30),
+        np.abs(mag_test - mag_ref) / np.maximum(mag_ref, _NORMALIZATION_FLOOR),
         np.abs(mag_test - mag_ref),
     )
 
@@ -354,11 +490,24 @@ def _finite_or_fail(label: str, values: np.ndarray) -> dict[str, object] | None:
     return None
 
 
-def _plane_requests(shift_cells: int = 0) -> tuple[_BenchmarkFluxPlaneRequest, ...]:
+def _plane_requests(
+    shift_cells: int = 0,
+    aperture_size: float | None = None,
+) -> tuple[_BenchmarkFluxPlaneRequest, ...]:
     dz = shift_cells * _FluxFixture.dx_f
+    size = _FluxFixture.aperture_size[0] if aperture_size is None else aperture_size
+    aperture = (size, size)
     return (
-        _benchmark_plane("front", coordinate=_FluxFixture.front_plane + dz),
-        _benchmark_plane("back", coordinate=_FluxFixture.back_plane + dz),
+        _benchmark_plane(
+            "front",
+            coordinate=_FluxFixture.front_plane + dz,
+            size=aperture,
+        ),
+        _benchmark_plane(
+            "back",
+            coordinate=_FluxFixture.back_plane + dz,
+            size=aperture,
+        ),
     )
 
 
@@ -368,8 +517,11 @@ def _run_flux_fixture(
     subgrid: bool,
     slab: bool,
     plane_shift_cells: int = 0,
+    aperture_size: float | None = None,
 ) -> tuple[float, tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
     dx = _FluxFixture.coarse_dx if subgrid else _FluxFixture.uniform_dx
+    size = _FluxFixture.aperture_size[0] if aperture_size is None else aperture_size
+    aperture = (size, size)
     sim = Simulation(
         freq_max=_FluxFixture.freq_max,
         domain=_FluxFixture.domain,
@@ -396,7 +548,7 @@ def _run_flux_fixture(
         run = run_subgridded_benchmark_flux(
             sim,
             n_steps=_FluxFixture.n_steps,
-            planes=_plane_requests(plane_shift_cells),
+            planes=_plane_requests(plane_shift_cells, aperture_size),
         )
         planes = run.benchmark_flux_planes
         signed_flux = tuple(np.asarray(_benchmark_flux_spectrum(p)) for p in planes)
@@ -408,7 +560,7 @@ def _run_flux_fixture(
         axis="z",
         coordinate=_FluxFixture.front_plane + dz,
         freqs=_FluxFixture.scored_freqs,
-        size=_FluxFixture.aperture_size,
+        size=aperture,
         center=_FluxFixture.aperture_center,
         name="front",
     )
@@ -416,7 +568,7 @@ def _run_flux_fixture(
         axis="z",
         coordinate=_FluxFixture.back_plane + dz,
         freqs=_FluxFixture.scored_freqs,
-        size=_FluxFixture.aperture_size,
+        size=aperture,
         center=_FluxFixture.aperture_center,
         name="back",
     )
@@ -440,10 +592,140 @@ def _usable_passband(front: np.ndarray, back: np.ndarray) -> np.ndarray:
     )
 
 
+def _serial_complex(values: np.ndarray) -> list[list[float]]:
+    return [[float(value.real), float(value.imag)] for value in np.ravel(values)]
+
+
+def _flux_diagnostics(
+    complex_flux: tuple[np.ndarray, np.ndarray],
+    signed_flux: tuple[np.ndarray, np.ndarray],
+) -> dict[str, list[dict[str, object]]]:
+    diagnostics: dict[str, list[dict[str, object]]] = {}
+    for name, complex_values, signed_values in zip(
+        ("front", "back"),
+        complex_flux,
+        signed_flux,
+        strict=True,
+    ):
+        magnitude = np.abs(complex_values)
+        diagnostics[name] = [
+            {
+                "freq_hz": float(freq),
+                "complex": complex_pair,
+                "magnitude": float(mag),
+                "magnitude_to_floor": float(mag / _NORMALIZATION_FLOOR),
+                "phase_deg": float(phase),
+                "signed_real_flux": float(signed),
+                "signed_real_flux_to_floor": float(
+                    abs(signed) / _NORMALIZATION_FLOOR
+                ),
+            }
+            for freq, complex_pair, mag, phase, signed in zip(
+                _FluxFixture.scored_freqs,
+                _serial_complex(complex_values),
+                magnitude,
+                np.angle(complex_values, deg=True),
+                signed_values,
+                strict=True,
+            )
+        ]
+    return diagnostics
+
+
+def _floor_relative_error(test: np.ndarray, ref: np.ndarray) -> np.ndarray:
+    return np.abs(np.abs(test) - np.abs(ref)) / np.maximum(
+        np.abs(ref),
+        _NORMALIZATION_FLOOR,
+    )
+
+
+def _energy_residual(
+    signed_slab: tuple[np.ndarray, np.ndarray],
+    signed_vacuum: tuple[np.ndarray, np.ndarray],
+    mask: np.ndarray,
+) -> np.ndarray:
+    signed_front = np.asarray(signed_slab[0])[mask]
+    signed_back = np.asarray(signed_slab[1])[mask]
+    signed_incident = np.asarray(signed_vacuum[0])[mask]
+    return np.abs(
+        (signed_front - signed_back)
+        / np.maximum(np.abs(signed_incident), _NORMALIZATION_FLOOR)
+    )
+
+
+def _unfloored_energy_residual(
+    signed_slab: tuple[np.ndarray, np.ndarray],
+    signed_vacuum: tuple[np.ndarray, np.ndarray],
+    mask: np.ndarray,
+) -> np.ndarray:
+    signed_front = np.asarray(signed_slab[0])[mask]
+    signed_back = np.asarray(signed_slab[1])[mask]
+    signed_incident = np.asarray(signed_vacuum[0])[mask]
+    denom = np.where(np.abs(signed_incident) > 0.0, np.abs(signed_incident), np.nan)
+    return np.abs((signed_front - signed_back) / denom)
+
+
+@lru_cache(maxsize=None)
+def _homogeneous_parity_for_aperture(aperture_size: float) -> dict[str, object]:
+    aperture_arg = (
+        None
+        if np.isclose(aperture_size, _FluxFixture.aperture_size[0])
+        else aperture_size
+    )
+    dt_ref, flux_ref, _signed_ref = _run_flux_fixture(
+        subgrid=False,
+        slab=False,
+        aperture_size=aperture_arg,
+    )
+    dt_sub, flux_sub, _signed_sub = _run_flux_fixture(
+        subgrid=True,
+        slab=False,
+        aperture_size=aperture_arg,
+    )
+    metadata: dict[str, object] = {
+        "aperture_size_m": float(aperture_size),
+        "dt_match": bool(np.allclose(dt_ref, dt_sub)),
+        "uniform_front_peak_magnitude": float(np.max(np.abs(flux_ref[0]))),
+        "uniform_back_peak_magnitude": float(np.max(np.abs(flux_ref[1]))),
+        "subgrid_front_peak_magnitude": float(np.max(np.abs(flux_sub[0]))),
+        "subgrid_back_peak_magnitude": float(np.max(np.abs(flux_sub[1]))),
+    }
+    metadata["uniform_front_peak_to_floor"] = float(
+        metadata["uniform_front_peak_magnitude"] / _NORMALIZATION_FLOOR
+    )
+    metadata["uniform_back_peak_to_floor"] = float(
+        metadata["uniform_back_peak_magnitude"] / _NORMALIZATION_FLOOR
+    )
+
+    mask = _usable_passband(flux_ref[0], flux_ref[1])
+    metadata["usable_bins"] = int(np.sum(mask))
+    metadata["scored_freqs_hz"] = _FluxFixture.scored_freqs[mask].tolist()
+    if int(np.sum(mask)) == 0:
+        metadata["classification"] = "inconclusive"
+        metadata["reason"] = "homogeneous runtime passband too weak to score"
+        return metadata
+
+    ref = np.concatenate([flux_ref[0][mask], flux_ref[1][mask]])
+    sub = np.concatenate([flux_sub[0][mask], flux_sub[1][mask]])
+    mag_error = _floor_relative_error(sub, ref)
+    phase_error = _phase_error_deg(sub, ref)
+    metadata.update(
+        {
+            "classification": "pass"
+            if float(np.max(mag_error)) <= 0.02
+            and float(np.max(phase_error)) <= 2.0
+            else "inconclusive",
+            "max_floor_relative_magnitude_error": float(np.max(mag_error)),
+            "max_complex_phase_error_deg": float(np.max(phase_error)),
+        }
+    )
+    return metadata
+
+
 @lru_cache(maxsize=None)
 def _homogeneous_parity_metadata() -> dict[str, object]:
-    dt_ref, flux_ref, _ = _run_flux_fixture(subgrid=False, slab=False)
-    dt_sub, flux_sub, _ = _run_flux_fixture(subgrid=True, slab=False)
+    dt_ref, flux_ref, signed_ref = _run_flux_fixture(subgrid=False, slab=False)
+    dt_sub, flux_sub, signed_sub = _run_flux_fixture(subgrid=True, slab=False)
     if not np.allclose(dt_ref, dt_sub):
         return {"classification": "fail", "reason": "uniform/subgrid dt mismatch"}
     for label, arrays in {"uniform": flux_ref, "subgrid": flux_sub}.items():
@@ -463,7 +745,7 @@ def _homogeneous_parity_metadata() -> dict[str, object]:
 
     ref = np.concatenate([flux_ref[0][mask], flux_ref[1][mask]])
     sub = np.concatenate([flux_sub[0][mask], flux_sub[1][mask]])
-    mag_error = np.abs(np.abs(sub) - np.abs(ref)) / np.maximum(np.abs(ref), 1e-30)
+    mag_error = _floor_relative_error(sub, ref)
     phase_error = _phase_error_deg(sub, ref)
     gates = {
         "magnitude": float(np.max(mag_error)) <= 0.02,
@@ -476,14 +758,35 @@ def _homogeneous_parity_metadata() -> dict[str, object]:
         "scored_freqs_hz": _FluxFixture.scored_freqs[mask].tolist(),
         "max_magnitude_error": float(np.max(mag_error)),
         "max_phase_error_deg": float(np.max(phase_error)),
+        "normalization_floor": _NORMALIZATION_FLOOR,
+        "public_claim_allowed": False,
+        "uniform_flux_diagnostics": _flux_diagnostics(flux_ref, signed_ref),
+        "subgrid_flux_diagnostics": _flux_diagnostics(flux_sub, signed_sub),
+        "aperture_sweep": [
+            _homogeneous_parity_for_aperture(_FluxFixture.aperture_size[0]),
+            _homogeneous_parity_for_aperture(0.014),
+        ],
+        "no_go_reason": _NO_GO_REASON,
+        "blocking_diagnostic": (
+            "homogeneous absolute flux parity remains below pass threshold, "
+            "and scored spectra sit at or below the configured normalization "
+            "floor for the point-source finite-aperture fixture"
+        ),
+        "next_prerequisite": _NEXT_PREREQUISITE,
+        "diagnostic_basis": (
+            "Synthetic multi-step/all-axis accumulator parity passes, but "
+            "runtime homogeneous parity is dominated by weak finite-aperture "
+            "point-source flux normalization rather than claims-bearing "
+            "incident/reflected/transmitted separation."
+        ),
     }
 
 
 @lru_cache(maxsize=None)
 def _plane_rt_metadata() -> dict[str, object]:
-    dt_ref, vac_ref, _ = _run_flux_fixture(subgrid=False, slab=False)
+    dt_ref, vac_ref, signed_vac_ref = _run_flux_fixture(subgrid=False, slab=False)
     dt_ref_slab, slab_ref, signed_ref_slab = _run_flux_fixture(subgrid=False, slab=True)
-    dt_sub, vac_sub, _ = _run_flux_fixture(subgrid=True, slab=False)
+    dt_sub, vac_sub, signed_vac_sub = _run_flux_fixture(subgrid=True, slab=False)
     dt_sub_slab, slab_sub, signed_sub_slab = _run_flux_fixture(subgrid=True, slab=True)
     dt_shift_vac, vac_shift, _ = _run_flux_fixture(
         subgrid=True,
@@ -525,8 +828,16 @@ def _plane_rt_metadata() -> dict[str, object]:
         }
 
     def rt(vac: tuple[np.ndarray, np.ndarray], slab: tuple[np.ndarray, np.ndarray]):
-        inc_front = np.where(np.abs(vac[0]) >= 1e-30, vac[0], 1e-30 + 0j)
-        inc_back = np.where(np.abs(vac[1]) >= 1e-30, vac[1], 1e-30 + 0j)
+        inc_front = np.where(
+            np.abs(vac[0]) >= _NORMALIZATION_FLOOR,
+            vac[0],
+            _NORMALIZATION_FLOOR + 0j,
+        )
+        inc_back = np.where(
+            np.abs(vac[1]) >= _NORMALIZATION_FLOOR,
+            vac[1],
+            _NORMALIZATION_FLOOR + 0j,
+        )
         return {
             "R": (slab[0] - vac[0]) / inc_front,
             "T": slab[1] / inc_back,
@@ -568,10 +879,18 @@ def _plane_rt_metadata() -> dict[str, object]:
     )
     # Signed plane-flux energy is advisory for this private gate.  It is used
     # to detect gross normalization drift, not to promote public true-R/T.
-    signed_front = np.asarray(signed_sub_slab[0])[freq_mask]
-    signed_back = np.asarray(signed_sub_slab[1])[freq_mask]
-    signed_incident = np.asarray(_run_flux_fixture(subgrid=True, slab=False)[2][0])[freq_mask]
-    energy_balance = np.abs((signed_front - signed_back) / np.maximum(np.abs(signed_incident), 1e-30))
+    energy_balance = _energy_residual(signed_sub_slab, signed_vac_sub, freq_mask)
+    uniform_energy_balance = _energy_residual(
+        signed_ref_slab,
+        signed_vac_ref,
+        freq_mask,
+    )
+    energy_delta = np.abs(energy_balance - uniform_energy_balance)
+    unfloored_energy_balance = _unfloored_energy_residual(
+        signed_sub_slab,
+        signed_vac_sub,
+        freq_mask,
+    )
 
     gates = {
         "r_magnitude": float(np.max(r_mag_error)) <= 0.05,
@@ -592,9 +911,29 @@ def _plane_rt_metadata() -> dict[str, object]:
         "max_t_magnitude_error": float(np.max(t_mag_error)),
         "max_phase_error_deg": float(np.max(phase_error)),
         "energy_balance_residual": float(np.max(energy_balance)),
+        "uniform_energy_balance_residual": float(np.max(uniform_energy_balance)),
+        "energy_residual_delta_vs_uniform": float(np.max(energy_delta)),
+        "unfloored_energy_balance_residual": float(np.nanmax(unfloored_energy_balance)),
+        "normalization_floor": _NORMALIZATION_FLOOR,
+        "public_claim_allowed": False,
         "max_plane_shift_r_delta": float(np.max(r_shift_delta)),
         "max_plane_shift_t_delta": float(np.max(t_shift_delta)),
         "max_plane_shift_phase_error_deg": float(np.max(shift_phase_error)),
+        "subgrid_vacuum_flux_diagnostics": _flux_diagnostics(vac_sub, signed_vac_sub),
+        "subgrid_slab_flux_diagnostics": _flux_diagnostics(slab_sub, signed_sub_slab),
+        "no_go_reason": _NO_GO_REASON,
+        "blocking_diagnostic": (
+            "the private point-source finite-aperture fixture keeps the energy "
+            "residual above threshold on a normalization-floor-dominated "
+            "incident flux, so the gate cannot be promoted as true R/T evidence"
+        ),
+        "next_prerequisite": _NEXT_PREREQUISITE,
+        "diagnostic_basis": (
+            "R/T magnitude and plane-shift checks are useful internal "
+            "diagnostics, but the energy-balance observable lacks a "
+            "claims-bearing incident-field normalization."
+        ),
+        "replacement_metric_allowed": bool(float(np.max(energy_delta)) <= 0.02),
     }
 
 
@@ -617,8 +956,9 @@ def test_private_plane_flux_matches_uniform_reference_in_homogeneous_cpml_fixtur
     _print_metadata("SBP-SAT private flux homogeneous parity metadata", metadata)
     _fail_or_xfail_inconclusive(
         metadata,
-        "Private flux runtime parity threshold is inconclusive; support matrix "
-        "must not promote public flux/DFT or true R/T.",
+        "Private flux runtime parity threshold is a principled no-go for "
+        "public promotion; support matrix must not promote public flux/DFT "
+        "or true R/T.",
     )
 
 
@@ -629,7 +969,8 @@ def test_private_plane_true_rt_benchmark_vs_uniform_fine():
     _print_metadata("SBP-SAT private flux true-R/T metadata", metadata)
     _fail_or_xfail_inconclusive(
         metadata,
-        "Private plane-flux true R/T gate is inconclusive; support matrix remains deferred.",
+        "Private plane-flux true R/T gate is a principled no-go for public "
+        "promotion; support matrix remains deferred.",
     )
 
 
@@ -642,3 +983,16 @@ def test_private_plane_true_rt_plane_shift_stability():
         metadata,
         "Private plane-shift stability gate is inconclusive; do not promote true R/T.",
     )
+
+
+@pytest.mark.gpu
+@pytest.mark.slow
+def test_private_plane_true_rt_no_go_metadata_is_explicit():
+    metadata = _plane_rt_metadata()
+
+    assert metadata["classification"] == "inconclusive"
+    assert metadata["no_go_reason"] == _NO_GO_REASON
+    assert metadata["next_prerequisite"] == _NEXT_PREREQUISITE
+    assert metadata["blocking_diagnostic"]
+    assert metadata["public_claim_allowed"] is False
+    assert metadata["energy_residual_delta_vs_uniform"] > 0.02

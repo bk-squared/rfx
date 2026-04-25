@@ -83,11 +83,20 @@ point-probe extraction path.  Its first run keeps the public claim blocked:
 
 - public DFT-plane and flux-monitor APIs still hard-fail under SBP-SAT
   refinement;
-- synthetic accumulator semantics match the uniform scan-kernel formula;
+- synthetic accumulator semantics match the uniform scan-kernel formula,
+  including multi-step, all-axis, windowed DFT accumulation;
 - the private plane-based R/T magnitude and plane-shift gates are within the
   provisional thresholds for the scored passband;
-- homogeneous no-slab flux parity and the energy-balance diagnostic remain
-  inconclusive, so the support matrix continues to mark true R/T as deferred.
+- homogeneous no-slab flux parity and the energy-balance diagnostic are
+  dominated by weak point-source finite-aperture flux normalization near the
+  configured floor;
+- this is therefore a **principled no-go** for public promotion, not a reason
+  to reinterpret thresholds or claim true R/T support.
+
+The next prerequisite is a claims-bearing incident-field normalization or a
+plane-wave/port fixture in a separate support-matrix plan.  Until that exists,
+the private flux/DFT gate remains internal diagnostic evidence only, and the
+support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
 
@@ -169,7 +178,8 @@ Until then, the support matrix must say:
   point-probe feasibility evidence plus private flux/DFT benchmark evidence
 - true R/T benchmark: deferred
 - feasibility probe gate: inconclusive
-- private flux/DFT benchmark gate: inconclusive
+- private flux/DFT benchmark gate: inconclusive / no-go under the current
+  point-source finite-aperture fixture
 - public support promotion: blocked
 
 ## Deferred issue record
