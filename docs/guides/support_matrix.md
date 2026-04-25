@@ -46,6 +46,9 @@ Current policy:
 - public support promotion is blocked until true R/T evidence exists
 - a bounded-CPML point-probe feasibility probe now exists, but it is
   inconclusive and remains internal evidence only
+- a private fine-owned flux/DFT benchmark gate now exists for internal true
+  R/T evidence; it is also inconclusive and does not enable public DFT planes,
+  flux monitors, S-parameters, or true R/T claims
 
 ### Benchmark evidence
 
@@ -57,6 +60,7 @@ Current policy:
 | boundary proxy crossval | implemented | `tests/test_sbp_sat_boundary_crossval.py` | internal PMC reflector plus periodic full-axis/interior proxy fixtures; mixed PMC+periodic remains blocked; **not** public R/T |
 | absorbing proxy crossval | implemented | `tests/test_sbp_sat_absorbing_crossval.py` | internal CPML interior-box decay and late-tail proxy fixtures; **not** public R/T or S-parameters |
 | bounded-CPML point-probe R/T feasibility | inconclusive | `tests/test_sbp_sat_true_rt_feasibility.py` | internal measurement-contract probe only; **not** public R/T, S-parameters, flux, or port evidence |
+| private fine-owned flux/DFT R/T benchmark gate | inconclusive | `tests/test_sbp_sat_true_rt_flux_dft_benchmark.py` | internal benchmark-only accumulator evidence; public DFT planes and flux monitors still hard-fail |
 | true reflection/transmission | deferred | `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md` | no public R/T, S-parameter, or calibrated open-boundary claim yet |
 
 Proxy tolerance is intentionally narrow and local: relative amplitude error

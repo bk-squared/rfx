@@ -10,6 +10,8 @@ PROMOTION = ROOT / "docs/guides/sbp_sat_support_promotion_proposal.md"
 CAVEATS = ROOT / "docs/guides/sbp_sat_release_migration_caveats.md"
 VERIFIER = ROOT / "docs/guides/sbp_sat_final_verifier_report.md"
 FULL_SPEC = ROOT / "docs/guides/sbp_sat_zslab_phase1_full_spec.md"
+SUPPORT_MATRIX = ROOT / "docs/guides/support_matrix.md"
+TRUE_RT_SPEC = ROOT / "docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md"
 CHANGELOG = ROOT / "docs/public/guide/changelog.mdx"
 MIGRATION = ROOT / "docs/public/guide/migration.md"
 
@@ -86,6 +88,20 @@ def test_full_spec_references_milestone9_artifacts_and_contract_test():
     assert "docs/guides/sbp_sat_release_migration_caveats.md" in text
     assert "docs/guides/sbp_sat_final_verifier_report.md" in text
     assert "tests/test_sbp_sat_promotion_artifacts_contract.py" in text
+
+
+def test_internal_flux_dft_gate_does_not_promote_public_observables():
+    support_text = _text(SUPPORT_MATRIX)
+    spec_text = _text(TRUE_RT_SPEC)
+
+    assert "private fine-owned flux/DFT benchmark gate" in support_text
+    assert "private fine-owned flux/DFT accumulator" in spec_text
+    for token in (
+        "public true R/T",
+        "public DFT-plane and flux-monitor APIs still hard-fail",
+        "support matrix continues to mark true R/T as deferred",
+    ):
+        assert token in spec_text
 
 
 def test_public_changelog_and_migration_keep_sbp_sat_narrow():

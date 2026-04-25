@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import NamedTuple
+
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -10,8 +13,179 @@ from rfx.grid import Grid
 from rfx.subgridding.sbp_sat_3d import phase1_3d_dt
 
 
-def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse,
-                        n_steps):
+_AXIS_TO_INDEX = {"x": 0, "y": 1, "z": 2}
+_STRICT_INTERIOR_MESSAGE = (
+    "private SBP-SAT benchmark flux planes must be fine-owned "
+    "strict-interior placements"
+)
+
+
+@dataclass(frozen=True)
+class _BenchmarkFluxPlaneRequest:
+    """Private benchmark-only flux plane request for the SBP-SAT lane.
+
+    This deliberately mirrors only the minimum geometry needed by tests and
+    internal benchmarks.  It is not accepted by ``Simulation.run()`` and does
+    not widen the public ``add_flux_monitor`` / ``add_dft_plane_probe`` API.
+    """
+
+    name: str
+    axis: str
+    coordinate: float
+    freqs: object
+    size: tuple[float, float]
+    center: tuple[float, float]
+    window: str = "rect"
+    window_alpha: float = 0.25
+
+
+class _BenchmarkFluxRun(NamedTuple):
+    """Private benchmark run result returned only by helper-level tests."""
+
+    result: object
+    benchmark_flux_planes: tuple
+
+
+def _axis_index(axis: str | int) -> int:
+    if isinstance(axis, str):
+        try:
+            return _AXIS_TO_INDEX[axis.lower()]
+        except KeyError as exc:
+            raise ValueError(f"unsupported benchmark flux axis {axis!r}") from exc
+    axis_i = int(axis)
+    if axis_i not in (0, 1, 2):
+        raise ValueError(f"unsupported benchmark flux axis {axis!r}")
+    return axis_i
+
+
+def _local_strict_normal_index(
+    *,
+    coordinate: float,
+    offset: float,
+    dx: float,
+    n_cells: int,
+) -> int:
+    idx = int(round((float(coordinate) - float(offset)) / float(dx)))
+    if not (1 <= idx <= n_cells - 2):
+        raise ValueError(
+            f"{_STRICT_INTERIOR_MESSAGE}; local normal index {idx} is outside "
+            f"the accepted range 1..{n_cells - 2}"
+        )
+    return idx
+
+
+def _local_strict_tangential_bounds(
+    *,
+    center: float,
+    size: float,
+    offset: float,
+    dx: float,
+    n_cells: int,
+    label: str,
+) -> tuple[int, int]:
+    if size is None or center is None:
+        raise ValueError(
+            f"{_STRICT_INTERIOR_MESSAGE}; finite {label} size and center are required"
+        )
+    size = float(size)
+    center = float(center)
+    if not (np.isfinite(size) and np.isfinite(center) and size > 0.0):
+        raise ValueError(
+            f"{_STRICT_INTERIOR_MESSAGE}; finite positive {label} size is required"
+        )
+
+    lo = int(round((center - 0.5 * size - offset) / dx))
+    hi = int(round((center + 0.5 * size - offset) / dx))
+    if not (1 <= lo < hi <= n_cells - 1):
+        raise ValueError(
+            f"{_STRICT_INTERIOR_MESSAGE}; {label} tangential bounds "
+            f"{lo}:{hi} must stay inside 1..{n_cells - 1}"
+        )
+    return lo, hi
+
+
+def _build_benchmark_flux_plane_specs(
+    requests: tuple[_BenchmarkFluxPlaneRequest, ...] | list[_BenchmarkFluxPlaneRequest],
+    *,
+    shape_f: tuple[int, int, int],
+    offsets: tuple[float, float, float],
+    dx_f: float,
+    n_steps: int,
+):
+    """Validate and lower private benchmark requests to JIT plane specs.
+
+    The placement contract intentionally fails closed: planes must be owned by
+    the fine grid, must not sit on the first/last normal slice, and must keep
+    their finite aperture away from tangential edges so no SBP-SAT interface or
+    corner samples enter the benchmark accumulator.
+    """
+
+    from rfx.subgridding.jit_runner import _BenchmarkFluxPlaneSpec
+
+    specs = []
+    for request in requests:
+        axis_i = _axis_index(request.axis)
+        tangential_axes = tuple(ax for ax in range(3) if ax != axis_i)
+        idx = _local_strict_normal_index(
+            coordinate=request.coordinate,
+            offset=offsets[axis_i],
+            dx=dx_f,
+            n_cells=shape_f[axis_i],
+        )
+        if request.size is None or request.center is None:
+            raise ValueError(
+                f"{_STRICT_INTERIOR_MESSAGE}; finite tangential size and "
+                "center are required"
+            )
+        if len(request.size) != 2 or len(request.center) != 2:
+            raise ValueError(
+                f"{_STRICT_INTERIOR_MESSAGE}; tangential size and center "
+                "must contain exactly two coordinates"
+            )
+        bounds = [
+            _local_strict_tangential_bounds(
+                center=float(request.center[t_i]),
+                size=float(request.size[t_i]),
+                offset=offsets[t_axis],
+                dx=dx_f,
+                n_cells=shape_f[t_axis],
+                label=f"axis {'xyz'[t_axis]}",
+            )
+            for t_i, t_axis in enumerate(tangential_axes)
+        ]
+        (lo1, hi1), (lo2, hi2) = bounds
+        freqs = jnp.asarray(request.freqs, dtype=jnp.float64)
+        if freqs.ndim != 1 or freqs.size == 0:
+            raise ValueError(
+                f"{_STRICT_INTERIOR_MESSAGE}; at least one benchmark "
+                "frequency is required"
+            )
+        specs.append(
+            _BenchmarkFluxPlaneSpec(
+                name=str(request.name),
+                axis=axis_i,
+                index=idx,
+                freqs=freqs,
+                dx=float(dx_f),
+                total_steps=int(n_steps),
+                window=str(request.window),
+                window_alpha=float(request.window_alpha),
+                lo1=int(lo1),
+                hi1=int(hi1),
+                lo2=int(lo2),
+                hi2=int(hi2),
+            )
+        )
+    return tuple(specs)
+
+
+def run_subgridded_path(
+    sim,
+    grid_coarse,
+    base_materials_coarse,
+    pec_mask_coarse,
+    n_steps,
+):
     """Run the canonical experimental SBP-SAT subgridding path (JIT-compiled).
 
     Parameters
@@ -31,6 +205,26 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
     -------
     Result
     """
+    return _run_subgridded_path_impl(
+        sim,
+        grid_coarse,
+        base_materials_coarse,
+        pec_mask_coarse,
+        n_steps,
+    ).result
+
+
+def _run_subgridded_path_impl(
+    sim,
+    grid_coarse,
+    base_materials_coarse,
+    pec_mask_coarse,
+    n_steps,
+    *,
+    _benchmark_flux_planes: tuple[_BenchmarkFluxPlaneRequest, ...] | None = None,
+) -> _BenchmarkFluxRun:
+    """Internal implementation shared by public and benchmark-only paths."""
+
     from rfx.api import Result
     from rfx.subgridding.face_ops import build_zface_ops
     from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
@@ -184,6 +378,16 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
         probe_indices_f.append(idx)
         probe_components.append(pe.component)
 
+    benchmark_flux_specs = ()
+    if _benchmark_flux_planes:
+        benchmark_flux_specs = _build_benchmark_flux_plane_specs(
+            tuple(_benchmark_flux_planes),
+            shape_f=shape_f,
+            offsets=(x_off, y_off, z_off),
+            dx_f=dx_f,
+            n_steps=n_steps,
+        )
+
     result = _run_sg(
         grid_coarse,
         mats_c,
@@ -210,9 +414,10 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
             )
         ),
         absorber_boundary=sim._boundary,
+        _benchmark_flux_planes=benchmark_flux_specs,
     )
 
-    return Result(
+    public_result = Result(
         state=result.state_f,
         time_series=result.time_series,
         s_params=None,
@@ -220,4 +425,42 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
         grid=fine_grid,
         dt=dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
+    )
+    return _BenchmarkFluxRun(
+        result=public_result,
+        benchmark_flux_planes=tuple(result.benchmark_flux_planes or ()),
+    )
+
+
+def run_subgridded_benchmark_flux(
+    sim,
+    *,
+    n_steps: int,
+    planes: tuple[_BenchmarkFluxPlaneRequest, ...] | list[_BenchmarkFluxPlaneRequest],
+) -> _BenchmarkFluxRun:
+    """Run the private SBP-SAT benchmark-only flux accumulator path.
+
+    Public DFT/flux requests still fail in the regular API validator.  This
+    helper accepts only private fine-owned plane requests and returns private
+    raw accumulators alongside the ordinary public ``Result`` to prove the
+    benchmark does not leak into ``Result.dft_planes`` or
+    ``Result.flux_monitors``.
+    """
+
+    if sim._dx is None and sim._geometry:
+        sim._auto_configure_mesh()
+    sim._validate_mesh_quality()
+    sim._validate_simulation_config()
+    if sim._refinement is None:
+        raise ValueError("private SBP-SAT benchmark flux requires refinement")
+
+    grid = sim._build_grid()
+    base_materials, _, _, pec_mask, _, _ = sim._assemble_materials(grid)
+    return _run_subgridded_path_impl(
+        sim,
+        grid,
+        base_materials,
+        pec_mask,
+        int(n_steps),
+        _benchmark_flux_planes=tuple(planes),
     )

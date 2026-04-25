@@ -121,6 +121,14 @@
             "claim_level": "internal_feasibility_only_not_public_rt_or_sparameters",
             "fallback": "minimal_benchmark_only_flux_or_dft_observable_plan",
             "reason": "point-probe extraction matched R magnitude and phase but missed the provisional T magnitude and probe-shift gates"
+          },
+          "benchmark_flux_dft_gate": {
+            "status": "inconclusive",
+            "test_file": "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py",
+            "fixture": "bounded_cpml_private_fine_owned_flux_plane_vacuum_slab",
+            "claim_level": "internal_benchmark_only_not_public_rt_or_sparameters",
+            "public_claim_allowed": false,
+            "reason": "private fine-owned flux/DFT accumulators are implemented and public DFT/flux hard-fails remain locked; the first benchmark run matches R/T magnitude gates but leaves homogeneous parity and energy-balance gates inconclusive"
           }
         },
         "box_proxy_crossval": {

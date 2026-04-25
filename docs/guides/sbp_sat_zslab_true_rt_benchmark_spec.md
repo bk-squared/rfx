@@ -61,6 +61,34 @@ If future work needs this gate to pass, the next separate plan should add a
 minimal benchmark-only flux/DFT observable contract rather than promoting
 point-probe evidence as calibrated true R/T.
 
+## Private flux/DFT benchmark gate
+
+A private fine-owned flux/DFT accumulator now exists for internal SBP-SAT
+benchmarking:
+
+- file: `tests/test_sbp_sat_true_rt_flux_dft_benchmark.py`
+- fixture: guarded all-CPML vacuum/dielectric-slab/vacuum setup using
+  z-normal flux planes fully inside the fine grid
+- observable contract: private raw DFT accumulators only; not public
+  `add_dft_plane_probe`, not public `add_flux_monitor`, and not
+  `Result.dft_planes` / `Result.flux_monitors`
+- placement contract: local normal index must satisfy `1 <= idx <= n-2`, and
+  the finite tangential aperture must remain strictly inside the fine region
+- classification: **inconclusive**
+- claim level: internal benchmark-only evidence; **not** public true R/T,
+  S-parameter, DFT-plane, flux-monitor, or port support
+
+The current private gate is useful because it removes the most fragile
+point-probe extraction path.  Its first run keeps the public claim blocked:
+
+- public DFT-plane and flux-monitor APIs still hard-fail under SBP-SAT
+  refinement;
+- synthetic accumulator semantics match the uniform scan-kernel formula;
+- the private plane-based R/T magnitude and plane-shift gates are within the
+  provisional thresholds for the scored passband;
+- homogeneous no-slab flux parity and the energy-balance diagnostic remain
+  inconclusive, so the support matrix continues to mark true R/T as deferred.
+
 ## Why true R/T is deferred
 
 A meaningful true R/T benchmark needs incident/reflected/transmitted separation.
@@ -138,9 +166,10 @@ Until then, the support matrix must say:
 
 - SBP-SAT subgridding status: `experimental`
 - benchmark evidence: proxy numerical equivalence plus bounded-CPML
-  point-probe feasibility evidence
+  point-probe feasibility evidence plus private flux/DFT benchmark evidence
 - true R/T benchmark: deferred
 - feasibility probe gate: inconclusive
+- private flux/DFT benchmark gate: inconclusive
 - public support promotion: blocked
 
 ## Deferred issue record
