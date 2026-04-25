@@ -516,6 +516,7 @@ def run_uniform(
                 boundary=sim._boundary,
                 debye_spec=debye_spec,
                 lorentz_spec=lorentz_spec,
+                pec_mask=pec_mask,
             )
 
     waveguide_ports_result = (

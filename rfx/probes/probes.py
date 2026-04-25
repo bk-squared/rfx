@@ -707,6 +707,7 @@ def extract_s_matrix(
     cpml_axes: str = "xyz",
     debye_spec: tuple[list, list[jnp.ndarray]] | None = None,
     lorentz_spec: tuple[list, list[jnp.ndarray]] | None = None,
+    pec_mask: object | None = None,
 ) -> jnp.ndarray:
     """Extract full N-port S-parameter matrix.
 
@@ -798,6 +799,18 @@ def extract_s_matrix(
                 state, cpml_state = apply_cpml_e(
                     state, cpml_params, cpml_state, grid, cpml_axes)
             state = apply_pec(state)
+
+            # Apply interior PEC mask (e.g. ground plane, scatterers
+            # added via ``Box(..., material="pec")``).  Without this,
+            # eval simulations driven from ``run(compute_s_params=True)``
+            # for lumped ports lose the ground-plane / scatterer
+            # geometry — antenna stops coupling and |S11| collapses
+            # toward 0 dB across the band, producing a 9–10 dB
+            # train/eval disconnect identical in shape to the prior
+            # time-gating-heuristic bug (issue #72).
+            if pec_mask is not None:
+                from rfx.boundaries.pec import apply_pec_mask
+                state = apply_pec_mask(state, pec_mask)
 
             # Record V / I at all ports BEFORE source injection so that
             # the sampled voltage reflects only the load/cavity response
