@@ -84,6 +84,7 @@ def optimize(
     n_warmup: int = 0,
     design_mask: jnp.ndarray | None = None,
     distributed: bool = False,
+    port_s11_freqs: object | None = None,
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
@@ -112,6 +113,11 @@ def optimize(
         10 for lower memory usage with minimal accuracy loss.
     verbose : bool
         Print progress every 10 iterations.
+    port_s11_freqs : array-like or None
+        Frequencies (Hz) at which to accumulate per-port V/I DFTs in the
+        JIT scan body so that ``result.s_params`` is populated with
+        wave-decomposition |S11| values.  Required when the objective is
+        :func:`minimize_s11_at_freq_wave_decomp` (issue #72).
 
     Returns
     -------
@@ -205,6 +211,7 @@ def optimize(
             n_warmup=n_warmup,
             design_mask=design_mask,
             distributed=distributed,
+            port_s11_freqs=port_s11_freqs,
             skip_preflight=True,  # already done at optimize() entry
         )
         import inspect
