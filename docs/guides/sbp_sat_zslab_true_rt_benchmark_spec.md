@@ -22,13 +22,52 @@ This proxy does **not** establish calibrated physical reflection coefficient
 `R(f)`, transmission coefficient `T(f)`, energy balance, S-parameters, or
 open-boundary behavior.
 
+## bounded-CPML feasibility result
+
+The bounded CPML coexistence subset now has an executable point-probe
+feasibility probe:
+
+- file: `tests/test_sbp_sat_true_rt_feasibility.py`
+- fixture: guarded all-CPML quasi-1D vacuum/dielectric-slab/vacuum setup
+  inside an axis-aligned refinement box
+- source / observables: one soft `Ez` point source and two `Ez` point probes
+- comparison: subgridded point-probe extraction vs a uniform-fine reference at
+  `1.5`, `2.0`, and `2.5 GHz`
+- classification: **inconclusive**
+- claim level: internal measurement-contract feasibility only; **not** public
+  true R/T, S-parameter, flux, DFT-plane, or port evidence
+
+The first run is useful because it separates the open-boundary question from
+the broader ports/observables question.  It is still not claims-bearing:
+
+- `|R|` magnitude and phase matched the uniform-fine reference within the
+  provisional gates;
+- `|T|` magnitude missed the provisional `<= 5%` gate (`~6.57%`);
+- the one-cell probe-shift perturbation missed the provisional transmitted
+  stability gate (`max |ΔT| ~= 0.0749`);
+- energy balance is recorded only as an advisory diagnostic because point
+  probes are not flux-normalized observables.
+
+Therefore the support matrix remains:
+
+- SBP-SAT subgridding status: `experimental`
+- benchmark evidence: proxy numerical equivalence plus bounded-CPML
+  point-probe feasibility evidence
+- true R/T benchmark: deferred
+- feasibility probe gate: inconclusive
+- public support promotion: blocked
+
+If future work needs this gate to pass, the next separate plan should add a
+minimal benchmark-only flux/DFT observable contract rather than promoting
+point-probe evidence as calibrated true R/T.
+
 ## Why true R/T is deferred
 
 A meaningful true R/T benchmark needs incident/reflected/transmitted separation.
-The current Phase-1 support surface deliberately hard-fails the surfaces that
-would make that benchmark clean and claims-bearing:
+The current Phase-1 support surface deliberately keeps most of the surfaces
+that would make that benchmark clean and claims-bearing outside public support:
 
-- CPML/UPML/open boundaries with subgridding
+- UPML/open-boundary variants beyond the guarded all-CPML subset
 - TFSF plane-wave excitation with subgridding
 - DFT plane probes and flux monitors with subgridding
 - waveguide/Floquet/S-parameter style ports with subgridding
@@ -98,8 +137,10 @@ for the subgridded path:
 Until then, the support matrix must say:
 
 - SBP-SAT subgridding status: `experimental`
-- benchmark evidence: proxy numerical equivalence only
+- benchmark evidence: proxy numerical equivalence plus bounded-CPML
+  point-probe feasibility evidence
 - true R/T benchmark: deferred
+- feasibility probe gate: inconclusive
 - public support promotion: blocked
 
 ## Deferred issue record

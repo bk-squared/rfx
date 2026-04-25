@@ -113,7 +113,15 @@
             "flux_sparameter_or_equivalent_observable_contract"
           ],
           "public_claim_allowed": false,
-          "deferred_issue": "docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md#deferred-issue-record"
+          "deferred_issue": "docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md#deferred-issue-record",
+          "feasibility_probe_gate": {
+            "status": "inconclusive",
+            "test_file": "tests/test_sbp_sat_true_rt_feasibility.py",
+            "fixture": "bounded_cpml_point_probe_vacuum_slab_quasi_1d",
+            "claim_level": "internal_feasibility_only_not_public_rt_or_sparameters",
+            "fallback": "minimal_benchmark_only_flux_or_dft_observable_plan",
+            "reason": "point-probe extraction matched R magnitude and phase but missed the provisional T magnitude and probe-shift gates"
+          }
         },
         "box_proxy_crossval": {
           "status": "implemented",

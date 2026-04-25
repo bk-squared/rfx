@@ -34,7 +34,9 @@ The current public/docs-safe claim set is:
 3. The shipped runtime supports **soft point sources** and **point probes** only.
 4. The current executable benchmark evidence is **proxy numerical equivalence**
    against a uniform-fine reference, not physical reflection/transmission.
-5. Unsupported combinations hard-fail instead of degrading silently.
+5. A bounded-CPML point-probe feasibility probe exists, but it is
+   **inconclusive** and remains internal/non-promotional.
+6. Unsupported combinations hard-fail instead of degrading silently.
 
 ## Rejected public claims
 
@@ -58,7 +60,10 @@ Do **not** claim any of the following today:
 Promotion beyond `experimental` is blocked by the following current facts:
 
 1. `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md` still records the true
-   R/T benchmark as **deferred**.
+   R/T benchmark as **deferred**.  The bounded-CPML point-probe feasibility
+   probe in `tests/test_sbp_sat_true_rt_feasibility.py` is inconclusive: it
+   matched the provisional reflection and phase gates, but missed the
+   provisional transmission-magnitude and probe-shift gates.
 2. Milestones 7-8 still remain **RFC/spec gates**, not widened runtime
    implementations:
    - ports and observables inside refined regions
@@ -91,6 +96,7 @@ Promotion beyond `experimental` is blocked by the following current facts:
 - `tests/test_sbp_sat_box_refinement_spec_contract.py`
 - `tests/test_sbp_sat_boundary_coexistence_spec_contract.py`
 - `tests/test_sbp_sat_absorbing_crossval.py`
+- `tests/test_sbp_sat_true_rt_feasibility.py`
 - `tests/test_sbp_sat_ports_observables_spec_contract.py`
 - `tests/test_sbp_sat_materials_time_integration_spec_contract.py`
 
@@ -98,7 +104,8 @@ Promotion beyond `experimental` is blocked by the following current facts:
 
 A future promotion proposal may recommend widening the lane only after:
 
-1. true R/T benchmark moves from deferred to implemented;
+1. true R/T benchmark moves from deferred/inconclusive point-probe feasibility
+   to implemented claims-bearing evidence;
 2. the relevant Milestones 5-8 RFCs have corresponding runtime implementations;
 3. support-matrix status and public docs can be updated without contradiction;
 4. the final verifier report can tie every widened claim to passing tests and
@@ -108,3 +115,5 @@ A future promotion proposal may recommend widening the lane only after:
 
 **Current decision:** retain SBP-SAT subgridding as an experimental, proxy-only,
 arbitrary-box lane with selected reflector/periodic and bounded CPML boundary subsets.
+The new bounded-CPML point-probe feasibility probe does not change that public
+decision.

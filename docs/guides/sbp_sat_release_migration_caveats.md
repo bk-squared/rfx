@@ -66,6 +66,10 @@ with subgridding:
 claims-bearing physical reflection / transmission benchmark, S-parameter
 benchmark, or open-boundary validation result.
 
+`tests/test_sbp_sat_true_rt_feasibility.py` is also **not** public true R/T
+evidence. It records an internal bounded-CPML point-probe feasibility attempt
+as inconclusive, so true R/T promotion remains blocked.
+
 ### Material / time caveat
 
 The current SBP-SAT lane does not yet claim support for:

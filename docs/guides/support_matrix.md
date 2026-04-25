@@ -44,6 +44,8 @@ Current policy:
 - preserved as a research lane, not a claims-bearing public support surface
 - unsupported combinations hard-fail instead of warning or silently dropping
 - public support promotion is blocked until true R/T evidence exists
+- a bounded-CPML point-probe feasibility probe now exists, but it is
+  inconclusive and remains internal evidence only
 
 ### Benchmark evidence
 
@@ -54,6 +56,7 @@ Current policy:
 | box proxy crossval | implemented | `tests/test_sbp_sat_box_crossval.py` | internal arbitrary-box x/y-face plus edge/corner proxy fixtures; **not** public R/T |
 | boundary proxy crossval | implemented | `tests/test_sbp_sat_boundary_crossval.py` | internal PMC reflector plus periodic full-axis/interior proxy fixtures; mixed PMC+periodic remains blocked; **not** public R/T |
 | absorbing proxy crossval | implemented | `tests/test_sbp_sat_absorbing_crossval.py` | internal CPML interior-box decay and late-tail proxy fixtures; **not** public R/T or S-parameters |
+| bounded-CPML point-probe R/T feasibility | inconclusive | `tests/test_sbp_sat_true_rt_feasibility.py` | internal measurement-contract probe only; **not** public R/T, S-parameters, flux, or port evidence |
 | true reflection/transmission | deferred | `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md` | no public R/T, S-parameter, or calibrated open-boundary claim yet |
 
 Proxy tolerance is intentionally narrow and local: relative amplitude error

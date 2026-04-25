@@ -24,7 +24,8 @@ The final verifier recommendation is:
 | SBP-SAT is experimental, not claims-bearing | `docs/guides/support_matrix.md`, `docs/guides/support_matrix.json`, `tests/test_support_matrix_sbp_sat.py` |
 | Public wording stays narrow and exact | `docs/public/guide/subgridding.mdx`, `docs/public/api/support-boundaries.mdx`, `README.md`, `tests/test_public_subgridding_docs_contract.py` |
 | Current runtime surface is arbitrary-box / selected reflector-periodic subset / bounded CPML subset / soft point source / point probe only | `docs/guides/support_matrix.json`, `tests/test_support_matrix_sbp_sat.py`, `tests/test_sbp_sat_api_guards.py`, `rfx/runners/subgridded.py` |
-| Current benchmark evidence is proxy-only | `tests/test_subgrid_crossval.py`, `tests/test_sbp_sat_box_crossval.py`, `tests/test_sbp_sat_boundary_crossval.py`, `tests/test_sbp_sat_absorbing_crossval.py`, `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md`, `tests/test_support_matrix_sbp_sat.py` |
+| Public benchmark evidence remains proxy-only | `tests/test_subgrid_crossval.py`, `tests/test_sbp_sat_box_crossval.py`, `tests/test_sbp_sat_boundary_crossval.py`, `tests/test_sbp_sat_absorbing_crossval.py`, `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md`, `tests/test_support_matrix_sbp_sat.py` |
+| Bounded-CPML point-probe R/T feasibility is internal and inconclusive, not public support | `tests/test_sbp_sat_true_rt_feasibility.py`, `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md`, `docs/guides/support_matrix.json`, `tests/test_support_matrix_sbp_sat.py` |
 | Future widening is blocked until explicit gates are met | Milestone 5-8 RFC docs + contract tests |
 
 ## Unsupported-case traceability
@@ -59,6 +60,8 @@ Artifacts:
 - support-matrix metadata locks
 - public-doc wording locks
 - proxy benchmark tests
+- bounded-CPML point-probe feasibility probe, currently inconclusive and
+  therefore non-promotional
 - API hard-fail tests
 - RFC contract tests for Milestones 5-8
 
@@ -71,6 +74,8 @@ The current verified statement is:
 
 > SBP-SAT subgridding is available as an experimental axis-aligned arbitrary-box
 > lane with selected reflector/periodic and bounded CPML boundary subsets, soft
-> point sources, point probes, and proxy benchmark evidence only.
+> point sources, point probes, proxy benchmark evidence, and internal
+> bounded-CPML point-probe feasibility evidence that is inconclusive for public
+> true R/T.
 
 Anything broader would exceed the presently verified evidence.

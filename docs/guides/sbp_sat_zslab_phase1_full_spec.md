@@ -47,7 +47,9 @@ runtime surfaces are reconciled.
   is a proxy numerical-equivalence benchmark only, while
   `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md` defines the deferred
   true reflection/transmission benchmark and `docs/guides/support_matrix.json`
-  records that public R/T claims remain blocked.
+  records that public R/T claims remain blocked.  The later bounded-CPML
+  point-probe feasibility probe (`tests/test_sbp_sat_true_rt_feasibility.py`)
+  is internal and inconclusive, so it does not change the public claim.
 
 ## 1. RALPLAN-DR summary
 
@@ -172,7 +174,7 @@ new work.
 | Impedance ports | **Unsupported in Milestone 1** | hard-fail nonzero impedance point ports and wire/extent ports; repair/support moves to a later port-support milestone |
 | NTFF/DFT/waveguide/Floquet/TFSF/RLC/coaxial ports | Unsupported | fail fast |
 | Arbitrary 3D box refinement | Implemented internally, still experimental | keep public claims proxy-only until later promotion review is updated |
-| CPML + subgrid coexistence | Implemented bounded subset | interior guarded boxes only; true R/T and S-parameter claims still deferred |
+| CPML + subgrid coexistence | Implemented bounded subset | interior guarded boxes only; point-probe true-R/T feasibility is inconclusive; true R/T and S-parameter claims still deferred |
 
 **Evidence:**
 
@@ -525,12 +527,15 @@ reflection/transmission validation.
   `tests/test_subgrid_crossval.py`.
 - Support-matrix metadata records the proxy tolerance and explicitly marks
   true R/T as deferred in `docs/guides/support_matrix.json`.
+- `tests/test_sbp_sat_true_rt_feasibility.py` records an internal bounded-CPML
+  point-probe feasibility probe as inconclusive, not public true R/T evidence.
 
 **Deferred true benchmark specification:**
 
 - Full spec: `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md`.
-- Current status: deferred because Phase 1 hard-fails the source/observable and
-  boundary surfaces needed for clean incident/reflected/transmitted separation.
+- Current status: deferred because Phase 1 still hard-fails the source/observable
+  surfaces needed for clean incident/reflected/transmitted separation; the
+  bounded-CPML point-probe attempt is inconclusive.
 
 **Required future true benchmark content:**
 
@@ -611,6 +616,9 @@ reflection/transmission validation.
   `docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md`.
 - True R/T tests explicitly deferred until the required boundary/source/observable
   contracts exist; the deferred issue record lives in the true R/T spec.
+- Bounded-CPML point-probe feasibility evidence is allowed only as internal,
+  inconclusive evidence unless the support matrix is updated by a later
+  claims-bearing benchmark gate.
 - Tolerance rationale documented in the true R/T spec and support matrix.
 
 **Exit gate:**

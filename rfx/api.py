@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import math
 import jax
 from numbers import Integral
-from typing import NamedTuple
+from typing import NamedTuple, TYPE_CHECKING
 
 import jax.numpy as jnp
 import numpy as np
@@ -51,6 +51,9 @@ from rfx.simulation import (
     SnapshotSpec,
 )
 from rfx.adi import ADIState2D, run_adi_2d
+
+if TYPE_CHECKING:
+    from rfx.boundaries.spec import BoundarySpec
 
 
 # ---------------------------------------------------------------------------
@@ -450,7 +453,7 @@ class Simulation:
         solver: str = "yee",
         adi_cfl_factor: float = 5.0,
     ):
-        from rfx.boundaries.spec import BoundarySpec, Boundary, normalize_boundary
+        from rfx.boundaries.spec import BoundarySpec, normalize_boundary
 
         # T7-B: accept BoundarySpec directly or normalise a legacy scalar
         # boundary=<str>. A BoundarySpec provided here is authoritative;
@@ -882,6 +885,63 @@ class Simulation:
         """Backward-compatible alias for the current boundary-mode validator."""
 
         self._validate_subgrid_boundary_mode()
+
+    def _validate_phase1_subgrid_feature_surface(self) -> None:
+        """Fail fast for unsupported Phase-1 SBP-SAT sources/observables.
+
+        The subgridded lane is intentionally limited to soft point sources
+        and point probes.  Keep this as a single source of truth so preflight,
+        ``run()``, and the extracted subgridded runner reject the same public
+        surface instead of warning or silently dropping unsupported features.
+        """
+
+        if self._refinement is None:
+            return
+
+        self._validate_phase1_subgrid_boundaries()
+        if self._ntff is not None:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support NTFF"
+            )
+        if self._dft_planes:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support "
+                "DFT plane probes"
+            )
+        if self._flux_monitors:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support "
+                "flux monitors"
+            )
+        if self._waveguide_ports:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support "
+                "waveguide ports"
+            )
+        if self._coaxial_ports:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support coaxial ports"
+            )
+        if self._floquet_ports:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support "
+                "Floquet ports"
+            )
+        if self._tfsf is not None:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support "
+                "TFSF sources"
+            )
+        if self._lumped_rlc:
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support "
+                "lumped RLC"
+            )
+        if any(pe.impedance != 0.0 or pe.extent is not None for pe in self._ports):
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding supports soft point sources "
+                "only; impedance point ports and wire/extent ports are deferred"
+            )
 
     # ---- material registration ----
 
@@ -3262,7 +3322,6 @@ class Simulation:
         inv_sq = sum(1.0 / di ** 2 for di in d)
         dt_cfl = 0.99 / (C0 * math.sqrt(inv_sq))
         omega = 2.0 * math.pi * self._freq_max
-        k0 = omega / C0
 
         errors = {}
         sin_wdt2 = math.sin(omega * dt_cfl / 2.0)
@@ -3766,13 +3825,6 @@ class Simulation:
 
         cpml_thick_lo = [_face_thickness(ax, "lo") for ax in range(3)]
         cpml_thick_hi = [_face_thickness(ax, "hi") for ax in range(3)]
-        # Legacy symmetric scalar kept for readers that treat it as
-        # "nominal CPML thickness on this axis"; per-side checks below
-        # use cpml_thick_lo / cpml_thick_hi.
-        cpml_thick_xyz = [
-            max(cpml_thick_lo[i], cpml_thick_hi[i]) for i in range(3)
-        ]
-
         # P1.1: Floquet + non-uniform mesh — no silent fallback allowed
         if self._floquet_ports and self._dz_profile is not None:
             raise ValueError(
@@ -4149,55 +4201,7 @@ class Simulation:
         # ================================================================
         # P4: Subgridded path limitations
         # ================================================================
-        if self._refinement is not None:
-            self._validate_phase1_subgrid_boundaries()
-            if self._ntff is not None:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding does not support NTFF"
-                )
-            if self._dft_planes:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding does not support "
-                    "DFT plane probes"
-                )
-            if self._flux_monitors:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding does not support "
-                    "flux monitors"
-                )
-            if self._waveguide_ports:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding does not support "
-                    "waveguide ports"
-                )
-            if self._coaxial_ports:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding does not support coaxial ports"
-                )
-            if self._floquet_ports:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding does not support "
-                    "Floquet ports"
-                )
-            if self._tfsf is not None:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding does not support "
-                    "TFSF sources"
-                )
-            if self._lumped_rlc:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding does not support "
-                    "lumped RLC"
-                )
-            unsupported_ports = [
-                pe for pe in self._ports
-                if pe.impedance != 0.0 or pe.extent is not None
-            ]
-            if unsupported_ports:
-                raise ValueError(
-                    "Phase-1 SBP-SAT z-slab subgridding supports soft point sources "
-                    "only; impedance point ports and wire/extent ports are deferred"
-                )
+        self._validate_phase1_subgrid_feature_surface()
 
         # P2.7 (obsolete): PMC / PEC + CPML on the same axis used to emit
         # a warning for the architectural offset between the reflector
@@ -4484,7 +4488,6 @@ class Simulation:
 
         from rfx.simulation import (
             run as _run,
-            make_source,
             make_probe,
             make_port_source,
             make_wire_port_sources,

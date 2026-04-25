@@ -76,12 +76,19 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert true_rt["spec"] == "docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md"
     assert true_rt["deferred_issue"].endswith("#deferred-issue-record")
     assert true_rt["public_claim_allowed"] is False
+    feasibility_gate = true_rt["feasibility_probe_gate"]
+    assert feasibility_gate["status"] == "inconclusive"
+    assert feasibility_gate["test_file"] == "tests/test_sbp_sat_true_rt_feasibility.py"
+    assert feasibility_gate["claim_level"] == "internal_feasibility_only_not_public_rt_or_sparameters"
+    assert feasibility_gate["fallback"] == "minimal_benchmark_only_flux_or_dft_observable_plan"
     assert TRUE_RT_SPEC.exists()
 
     spec_text = TRUE_RT_SPEC.read_text()
     assert "proxy numerical-equivalence benchmark" in spec_text
     assert "does **not** establish calibrated physical reflection" in spec_text
     assert "true R/T benchmark: deferred" in spec_text
+    assert "bounded-CPML feasibility result" in spec_text
+    assert "inconclusive" in spec_text
     assert "## Deferred issue record" in spec_text
 
 

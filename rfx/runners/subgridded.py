@@ -36,21 +36,24 @@ def run_subgridded_path(sim, grid_coarse, base_materials_coarse, pec_mask_coarse
     from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
     from rfx.subgridding.jit_runner import run_subgridded_jit as _run_sg
 
-    if hasattr(sim, "_validate_phase1_subgrid_boundaries"):
-        sim._validate_subgrid_boundary_mode()
-    elif sim._boundary != "pec":
-        raise ValueError(
-            "SBP-SAT subgridding supports boundary='pec' only in the legacy path"
-        )
-    if getattr(sim, "_coaxial_ports", None):
-        raise ValueError(
-            "Phase-1 SBP-SAT z-slab subgridding does not support coaxial ports"
-        )
-    if any(pe.impedance != 0.0 or pe.extent is not None for pe in sim._ports):
-        raise ValueError(
-            "Phase-1 SBP-SAT z-slab subgridding supports soft point sources only; "
-            "impedance point ports and wire/extent ports are deferred"
-        )
+    if hasattr(sim, "_validate_phase1_subgrid_feature_surface"):
+        sim._validate_phase1_subgrid_feature_surface()
+    else:
+        if hasattr(sim, "_validate_phase1_subgrid_boundaries"):
+            sim._validate_subgrid_boundary_mode()
+        elif sim._boundary != "pec":
+            raise ValueError(
+                "SBP-SAT subgridding supports boundary='pec' only in the legacy path"
+            )
+        if getattr(sim, "_coaxial_ports", None):
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding does not support coaxial ports"
+            )
+        if any(pe.impedance != 0.0 or pe.extent is not None for pe in sim._ports):
+            raise ValueError(
+                "Phase-1 SBP-SAT z-slab subgridding supports soft point sources only; "
+                "impedance point ports and wire/extent ports are deferred"
+            )
 
     ref = sim._refinement
     ratio = ref["ratio"]
