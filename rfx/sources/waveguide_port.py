@@ -611,14 +611,23 @@ def init_waveguide_port(
     # extraction. Empirically this drops PEC-short WR-90 |S11| from 1.0 to
     # 0.91 (see scripts/_aperture_trim_test.py and ../_aperture_trapezoidal_test.py).
     #
-    # Convention: half-weight (trapezoidal rule) at PEC +faces. This handles
-    # both alignments cleanly: when the cell centre is at the physical wall
-    # (dx | A_WG) the half-cell area is the physically correct contribution;
-    # when the cell centre is past the wall (dx ∤ A_WG, e.g. WR-90 22.86mm
-    # with dx=1mm) trapezoidal still recovers most of the deficit (8% → ~5%)
-    # without breaking convergence on dx | A_WG geometries. Zero-weighting
-    # the cell would over-correct on the dx | A_WG case and break mesh
-    # convergence (rfx test_mesh_convergence_s21_scaled_cpml regression).
+    # Convention: half-weight (trapezoidal rule) at PEC +faces. This is the
+    # compromise that survives both the TE10 PEC-short residual AND the
+    # higher-order-mode reciprocity tests:
+    #   * Drop (weight 0) at +face perfects TE10 PEC-short (|S11|=1.0) but
+    #     also removes the legitimate Ey/Ez contributions of higher-order
+    #     modes (TE21/TE30/...) at the y_hi/z_hi faces — see
+    #     ``test_reciprocity_asymmetric_obstacle_known_gap`` rises from
+    #     0.06 to 0.12 (failing 0.10 gate). Verified 2026-04-26 with both
+    #     "drop on v only" and "drop on both u,v" variants.
+    #   * Half (weight 0.5) recovers most of the deficit (8.6 % → 4.5 %)
+    #     while keeping the asymmetric reciprocity error at 0.06.
+    # The remaining 4.5 % residual is the cost of a single-mode V/I
+    # extractor against a multi-mode field at the PEC face. Closing it
+    # requires a mode-decomposed extractor (project onto each TE_mn / TM_mn
+    # separately rather than a single V/I overlap), which is beyond the
+    # aperture-weight knob this code controls. See the 2026-04-26 handover
+    # for the experiment record.
     # Detection: +face is PEC iff axis fully PEC (not in cpml_axes) OR per-
     # face spec marks it PEC. Only fires when slice reaches the grid edge.
     u_aperture_weights = np.ones_like(u_widths_np)
