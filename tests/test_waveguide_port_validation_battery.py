@@ -58,6 +58,7 @@ def _build_sim(
     obstacles=(),
     pec_short_x: float | None = None,
     waveform: str = "modulated_gaussian",
+    n_modes: int = 1,
 ):
     """Two-port rectangular waveguide simulation.
 
@@ -118,6 +119,7 @@ def _build_sim(
         f0=f0,
         bandwidth=bandwidth,
         waveform=waveform,
+        n_modes=n_modes,
         name="left",
     )
     sim.add_waveguide_port(
@@ -129,6 +131,7 @@ def _build_sim(
         f0=f0,
         bandwidth=bandwidth,
         waveform=waveform,
+        n_modes=n_modes,
         name="right",
     )
     return sim
@@ -141,6 +144,14 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
     )
     s = np.asarray(result.s_params)
     port_idx = {name: idx for idx, name in enumerate(result.port_names)}
+    # Multi-mode dispatch (n_modes>1) renames ports to
+    # "<name>_mode<k>_<TE/TM><mn>". Add a short alias mapping plain
+    # "left"/"right" → the dominant-mode index so test code that uses
+    # port_idx["left"] keeps working.
+    for name in list(port_idx):
+        if "_mode0_" in name:
+            short = name.split("_mode0_", 1)[0]
+            port_idx.setdefault(short, port_idx[name])
     freqs = np.asarray(result.freqs)
     return s, freqs, port_idx
 
@@ -338,17 +349,24 @@ def test_reciprocity_asymmetric_obstacle_known_gap():
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "DROP-weight regression awaiting multi-mode receive-side extractor. "
-        "After 2026-04-27 aperture +face DROP fix lifted PEC-short min |S11| "
-        "from 0.94 to 0.9997 (Meep class), this test's |S21| mesh-convergence "
-        "monotonicity regressed because the dropped boundary cell carried "
-        "legitimate higher-order TE21/TE30 contributions for non-trivial "
-        "obstacles. Per docs/research_notes/2026-04-26_phase2_aperture_weight_dead_end.md "
-        "the structural fix is to project the simulated E,H plane onto each "
-        "TE_mn/TM_mn separately and read the dominant TE10 amplitude — the "
-        "infrastructure exists in init_multimode_waveguide_port + "
-        "_gram_schmidt_modes but is not yet wired into the per-step recorder. "
-        "Re-enable (drop xfail) when that lands."
+        "Mesh-convergence regression after the 2026-04-27 DROP-weight fix "
+        "(commit bcd67d2 lifted PEC-short min |S11| 0.94 -> 0.9997). "
+        "The 2026-04-26 dead-end note hypothesised the multi-mode receive "
+        "extractor would recover this — it does not. Empirically (today, "
+        "scripts/spikes/2026-04-27/_path_c_ablation.py companion), running "
+        "with n_modes=2 dispatches through extract_multimode_s_params_normalized "
+        "and produces the same per-mesh |S21| values: at f=6 GHz the only "
+        "propagating mode in the 40x20 mm guide is TE10 (TE01 cutoff 7.5 GHz, "
+        "TE20 cutoff 7.5 GHz) so higher modes carry no power to the receive "
+        "port and there is nothing to project away. The actual root cause is "
+        "the modal-template normalisation's mesh-dependence: dropping the "
+        "+face cell changes integral(|E|^2.dA) by 7%/5%/4% at dx={3,2,1.5} mm, "
+        "and that uneven proportion shifts the effective TE10 amplitude "
+        "between meshes. Recovery requires either a fractional boundary-cell "
+        "weight that converges to a well-defined dx -> 0 limit (e.g. the "
+        "OpenEMS user-pinned integration box) or a probe-style integration "
+        "that doesn't go through aperture_dA-based template normalisation. "
+        "Out of scope for the DROP-weight closure; tracking as follow-up."
     ),
 )
 def test_mesh_convergence_s21_scaled_cpml():
