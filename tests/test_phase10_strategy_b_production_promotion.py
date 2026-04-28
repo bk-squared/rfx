@@ -59,6 +59,28 @@ def _fake_split_source_ref(tmp_path: Path, *, family: str, state: str = "pass") 
     }
 
 
+def _optimized_topology_replay_metrics(
+    *,
+    supported: bool = True,
+    finite: bool = True,
+    beta_matches: bool = True,
+    material_consistent: bool = True,
+    oracle_source: bool = True,
+) -> dict:
+    return {
+        "topology_replay_mode": phase9.TOPOLOGY_REPLAY_MODE,
+        "topology_replay_density_source": phase9.TOPOLOGY_REPLAY_DENSITY_SOURCE,
+        "topology_replay_supported": supported,
+        "topology_replay_finite": finite,
+        "topology_replay_beta_matches_optimizer": beta_matches,
+        "topology_replay_material_consistency_passed": material_consistent,
+        "topology_replay_source_is_required_physical_oracle": oracle_source,
+        "topology_replay_material_consistency_tolerance": (
+            phase9.TOPOLOGY_REPLAY_MATERIAL_ATOL
+        ),
+    }
+
+
 def _execution(
     family: str, *, physical_oracle: bool = True
 ) -> phase9.FloorExecutionResult:
@@ -81,6 +103,7 @@ def _execution(
                 "tail_to_previous_quarter_ratio": 0.8,
                 "cpml_tail_growth_limit": 1.1,
                 "post_source_window": {"source_off_window_verified": True},
+                **_optimized_topology_replay_metrics(),
             }
         )
     elif family == "pec_topology":
@@ -93,6 +116,7 @@ def _execution(
                 "quarter_energy": [1.0, 1.0, 1.0, 0.9],
                 "ratio_metrics_finite": True,
                 "post_source_window": {"source_off_window_verified": True},
+                **_optimized_topology_replay_metrics(),
             }
         )
     elif family == "port_proxy":
@@ -323,6 +347,52 @@ def test_pec_topology_requires_full_floor_physical_oracle(monkeypatch, tmp_path)
 
     assert decision["decision"] == "blocked"
     assert "family_specific_physical_oracle_not_valid" in decision["failed_gates"]
+
+
+def test_topology_base_only_physical_oracle_does_not_promote(monkeypatch, tmp_path):
+    _clean_worktree(monkeypatch)
+    execution = phase9.simulated_pass_result("cpml_topology")
+    execution.metrics.update(
+        {
+            "cpml_topology_tail_full_floor_pass": True,
+            "tail_to_previous_quarter_ratio": 0.8,
+            "cpml_tail_growth_limit": 1.1,
+            "post_source_window": {"source_off_window_verified": True},
+        }
+    )
+    _build_family(tmp_path, "cpml_topology", execution=execution)
+
+    decision = _decision(tmp_path, "cpml_topology")
+
+    assert decision["decision"] == "blocked"
+    assert "topology_optimized_density_replay_not_valid" in decision["failed_gates"]
+
+
+def test_topology_invalid_optimized_replay_policy_does_not_promote(
+    monkeypatch, tmp_path
+):
+    _clean_worktree(monkeypatch)
+    execution = phase9.simulated_pass_result("pec_topology")
+    execution.metrics.update(
+        {
+            "pec_topology_bounded_full_floor_pass": True,
+            "tail_to_previous_quarter_ratio": 0.9,
+            "tail_to_total_energy_ratio": 0.25,
+            "pec_energy_growth_limit": 1.1,
+            "quarter_energy": [1.0, 1.0, 1.0, 0.9],
+            "ratio_metrics_finite": True,
+            "post_source_window": {"source_off_window_verified": True},
+            **_optimized_topology_replay_metrics(
+                finite=False, material_consistent=False
+            ),
+        }
+    )
+    _build_family(tmp_path, "pec_topology", execution=execution)
+
+    decision = _decision(tmp_path, "pec_topology")
+
+    assert decision["decision"] == "blocked"
+    assert "topology_optimized_density_replay_not_valid" in decision["failed_gates"]
 
 
 def test_pec_topology_nonrepresentative_guard_remains_experimental_fallback(

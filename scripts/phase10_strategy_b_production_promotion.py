@@ -94,6 +94,21 @@ def _physical_oracle_valid(row: dict[str, Any]) -> bool:
     return oracle.get("present") is True and oracle.get("passed") is True
 
 
+def _topology_optimized_density_replay_valid(row: dict[str, Any]) -> bool:
+    oracle = row.get("required_physical_oracle", {})
+    return (
+        oracle.get("present") is True
+        and oracle.get("passed") is True
+        and oracle.get("replay_mode") == phase9.TOPOLOGY_REPLAY_MODE
+        and oracle.get("replay_density_source") == phase9.TOPOLOGY_REPLAY_DENSITY_SOURCE
+        and oracle.get("replay_supported") is True
+        and oracle.get("replay_finite") is True
+        and oracle.get("replay_beta_matches_optimizer") is True
+        and oracle.get("material_consistency_passed") is True
+        and oracle.get("replay_source_is_required_physical_oracle") is True
+    )
+
+
 def _worktree_clean(artifact: dict[str, Any]) -> bool:
     return (
         artifact.get("promotion_worktree_status") == phase9.PROMOTION_WORKTREE_CLEAN
@@ -195,6 +210,16 @@ def _family_decision(
         reasons.append(
             "family-specific full-floor physical oracle is missing or not passing"
         )
+    if (
+        family in phase9.TOPOLOGY_FAMILIES
+        and readiness_executed
+        and physical_executed
+        and not _topology_optimized_density_replay_valid(physical_row)
+    ):
+        failed.append("topology_optimized_density_replay_not_valid")
+        reasons.append(
+            "topology physical oracle is not sourced from valid optimized-density replay"
+        )
 
     if not failed:
         decision = "promoted_limited"
@@ -205,6 +230,7 @@ def _family_decision(
             "candidate_family_stale_provenance",
             "split_source_evidence_not_valid",
             "family_specific_physical_oracle_not_valid",
+            "topology_optimized_density_replay_not_valid",
         )
     ) or any("dirty_worktree" in gate or "fail_closed" in gate for gate in failed):
         decision = "blocked"

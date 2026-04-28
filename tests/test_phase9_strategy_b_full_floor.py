@@ -49,6 +49,28 @@ def _fake_split_source_ref(
     }
 
 
+def _optimized_topology_replay_metrics(
+    *,
+    supported: bool = True,
+    finite: bool = True,
+    beta_matches: bool = True,
+    material_consistent: bool = True,
+    oracle_source: bool = True,
+) -> dict:
+    return {
+        "topology_replay_mode": phase9.TOPOLOGY_REPLAY_MODE,
+        "topology_replay_density_source": phase9.TOPOLOGY_REPLAY_DENSITY_SOURCE,
+        "topology_replay_supported": supported,
+        "topology_replay_finite": finite,
+        "topology_replay_beta_matches_optimizer": beta_matches,
+        "topology_replay_material_consistency_passed": material_consistent,
+        "topology_replay_source_is_required_physical_oracle": oracle_source,
+        "topology_replay_material_consistency_tolerance": (
+            phase9.TOPOLOGY_REPLAY_MATERIAL_ATOL
+        ),
+    }
+
+
 def test_family_run_writes_schema_distinct_artifact_topology(tmp_path):
     fail = _fake_fail_closed(tmp_path)
     result = phase9.build_family_artifacts(
@@ -557,6 +579,7 @@ def test_phase9_cpml_topology_physical_requires_tail_or_post_source_oracle(tmp_p
             "tail_to_previous_quarter_ratio": 0.7,
             "cpml_tail_growth_limit": 1.1,
             "post_source_window": {"source_off_window_verified": True},
+            **_optimized_topology_replay_metrics(),
         }
     )
     physical = phase9.build_physical_artifact(
@@ -602,6 +625,7 @@ def test_phase9_pec_topology_physical_requires_bounded_post_source_oracle(tmp_pa
             "quarter_energy": [1.0, 1.0, 1.0, 0.95],
             "ratio_metrics_finite": True,
             "post_source_window": {"source_off_window_verified": True},
+            **_optimized_topology_replay_metrics(),
         }
     )
     physical = phase9.build_physical_artifact(
@@ -612,6 +636,96 @@ def test_phase9_pec_topology_physical_requires_bounded_post_source_oracle(tmp_pa
     )
     assert physical["summary"]["family_status"] == "physics_validated_limited"
     assert physical["rows"][0]["metric_name"] == "tail_to_previous_quarter_ratio"
+
+
+def test_phase9_topology_physical_requires_optimized_density_replay_source(tmp_path):
+    fail_closed = phase9.import_fail_closed_evidence(
+        _fake_fail_closed(tmp_path)["path"]
+    )
+    family_metrics = {
+        "cpml_topology": {
+            "cpml_topology_tail_full_floor_pass": True,
+            "tail_to_previous_quarter_ratio": 0.7,
+            "cpml_tail_growth_limit": 1.1,
+            "post_source_window": {"source_off_window_verified": True},
+        },
+        "pec_topology": {
+            "pec_topology_bounded_full_floor_pass": True,
+            "tail_to_previous_quarter_ratio": 0.95,
+            "tail_to_total_energy_ratio": 0.25,
+            "pec_energy_growth_limit": 1.1,
+            "quarter_energy": [1.0, 1.0, 1.0, 0.95],
+            "ratio_metrics_finite": True,
+            "post_source_window": {"source_off_window_verified": True},
+        },
+    }
+    for family, metrics in family_metrics.items():
+        provenance = phase9.build_provenance(
+            family=family,
+            mode="full",
+            command=["test"],
+            fail_closed=fail_closed,
+            thresholds={"max_cell_steps": 1, "execute_workload": True},
+            split_source_refs=_fake_split_source_ref(tmp_path, family=family)["ref"],
+        )
+        execution = phase9.simulated_pass_result(family)
+        execution.metrics.update(metrics)
+        physical = phase9.build_physical_artifact(
+            family=family,
+            execution=execution,
+            fail_closed=fail_closed,
+            provenance=provenance,
+        )
+        oracle = physical["rows"][0]["required_physical_oracle"]
+        assert physical["summary"]["family_status"] == "physics_experimental"
+        assert oracle["present"] is False
+        assert oracle["passed"] is False
+        assert "topology_replay_mode" in oracle["missing"]
+        assert "topology_replay_source_is_required_physical_oracle" in oracle["missing"]
+
+
+def test_phase9_topology_physical_blocks_invalid_optimized_replay_policy(tmp_path):
+    fail_closed = phase9.import_fail_closed_evidence(
+        _fake_fail_closed(tmp_path)["path"]
+    )
+    bad_replay_cases = [
+        _optimized_topology_replay_metrics(supported=False),
+        _optimized_topology_replay_metrics(finite=False),
+        _optimized_topology_replay_metrics(beta_matches=False),
+        _optimized_topology_replay_metrics(material_consistent=False),
+        _optimized_topology_replay_metrics(oracle_source=False),
+    ]
+    for replay_metrics in bad_replay_cases:
+        provenance = phase9.build_provenance(
+            family="cpml_topology",
+            mode="full",
+            command=["test"],
+            fail_closed=fail_closed,
+            thresholds={"max_cell_steps": 1, "execute_workload": True},
+            split_source_refs=_fake_split_source_ref(tmp_path, family="cpml_topology")[
+                "ref"
+            ],
+        )
+        execution = phase9.simulated_pass_result("cpml_topology")
+        execution.metrics.update(
+            {
+                "cpml_topology_tail_full_floor_pass": True,
+                "tail_to_previous_quarter_ratio": 0.7,
+                "cpml_tail_growth_limit": 1.1,
+                "post_source_window": {"source_off_window_verified": True},
+                **replay_metrics,
+            }
+        )
+        physical = phase9.build_physical_artifact(
+            family="cpml_topology",
+            execution=execution,
+            fail_closed=fail_closed,
+            provenance=provenance,
+        )
+        oracle = physical["rows"][0]["required_physical_oracle"]
+        assert physical["summary"]["family_status"] == "physics_blocked"
+        assert oracle["present"] is True
+        assert oracle["passed"] is False
 
 
 def test_phase9_pec_topology_physical_blocks_failed_or_incomplete_oracle(tmp_path):
@@ -637,6 +751,7 @@ def test_phase9_pec_topology_physical_blocks_failed_or_incomplete_oracle(tmp_pat
             "quarter_energy": [1.0, 1.0, 1.0, 1.2],
             "ratio_metrics_finite": True,
             "post_source_window": {"source_off_window_verified": True},
+            **_optimized_topology_replay_metrics(),
         },
         {
             "pec_topology_bounded_full_floor_pass": False,
@@ -646,6 +761,7 @@ def test_phase9_pec_topology_physical_blocks_failed_or_incomplete_oracle(tmp_pat
             "quarter_energy": [1.0, 1.0, 1.0, 0.9],
             "ratio_metrics_finite": True,
             "post_source_window": {"source_off_window_verified": False},
+            **_optimized_topology_replay_metrics(),
         },
         {
             "pec_topology_bounded_full_floor_pass": False,
@@ -655,6 +771,7 @@ def test_phase9_pec_topology_physical_blocks_failed_or_incomplete_oracle(tmp_pat
             "quarter_energy": [],
             "ratio_metrics_finite": False,
             "post_source_window": {"source_off_window_verified": True},
+            **_optimized_topology_replay_metrics(),
         },
     ]
     for metrics in bad_cases:

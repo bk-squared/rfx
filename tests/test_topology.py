@@ -31,6 +31,7 @@ from rfx.topology import (
     topology_optimize,
     _get_beta,
     _DEFAULT_BETA_SCHEDULE,
+    _inspect_topology_hybrid_support,
 )
 
 pytestmark = pytest.mark.gpu
@@ -85,6 +86,33 @@ def _make_phase4c_topology_case(
 
 def _topology_probe_energy_objective(result):
     return -jnp.sum(result.time_series ** 2)
+
+
+def test_phase13_topology_hybrid_support_accepts_explicit_init_density():
+    sim, region = _make_phase4c_topology_case(boundary="pec")
+    grid = sim._build_grid()
+    lo_idx = list(grid.position_to_index(region.corner_lo))
+    hi_idx = list(grid.position_to_index(region.corner_hi))
+    pads = (grid.pad_x, grid.pad_y, grid.pad_z)
+    dims = (grid.nx, grid.ny, grid.nz)
+    for axis in range(3):
+        lo_idx[axis] = max(lo_idx[axis], pads[axis])
+        hi_idx[axis] = min(hi_idx[axis], dims[axis] - 1 - pads[axis])
+    design_shape = tuple(hi_idx[axis] - lo_idx[axis] + 1 for axis in range(3))
+    density = jnp.linspace(
+        0.2, 0.8, int(np.prod(design_shape)), dtype=jnp.float32
+    ).reshape(design_shape)
+
+    inputs, report, _, _, _, _, _, _, _, fields = _inspect_topology_hybrid_support(
+        sim,
+        region,
+        init_density=density,
+        n_steps=8,
+    )
+
+    assert report.supported
+    assert inputs.n_steps == 8
+    assert np.asarray(fields.eps).shape == density.shape
 
 
 # ---------------------------------------------------------------------------

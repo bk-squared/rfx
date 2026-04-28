@@ -21,7 +21,7 @@ import platform
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Literal
@@ -35,6 +35,11 @@ import numpy as np  # noqa: E402
 
 from scripts import phase7_strategy_b_readiness as phase7  # noqa: E402
 from scripts import phase8_strategy_b_physical_validation as phase8  # noqa: E402
+from rfx.topology import (  # noqa: E402
+    _inspect_topology_hybrid_support,
+    apply_density_filter,
+    apply_projection,
+)
 
 SCHEMA_VERSION = 1
 PHASE_IX_CONTRACT = "phase_ix_strategy_b_full_floor_execution"
@@ -56,6 +61,10 @@ IMMUTABLE_SOURCE_REF_FIELDS = (
 )
 PROMOTION_WORKTREE_CLEAN = "clean_promotable_candidate"
 PROMOTION_WORKTREE_DIRTY = "debug_only_dirty_worktree"
+TOPOLOGY_FAMILIES = ("cpml_topology", "pec_topology")
+TOPOLOGY_REPLAY_MATERIAL_ATOL = 1e-5
+TOPOLOGY_REPLAY_MODE = "optimized_density"
+TOPOLOGY_REPLAY_DENSITY_SOURCE = "density"
 
 
 READINESS_ARTIFACT_TEMPLATE = "phase9_{family}_readiness_full.json"
@@ -598,6 +607,227 @@ def _pec_topology_full_floor_oracle(series: Any, *, inputs: Any) -> dict[str, An
     }
 
 
+def _array_max_abs_error(left: Any, right: Any) -> float:
+    left_arr = np.asarray(left)
+    right_arr = np.asarray(right)
+    if left_arr.shape != right_arr.shape:
+        return math.inf
+    if not left_arr.size and not right_arr.size:
+        return 0.0
+    delta = np.asarray(left_arr, dtype=np.float64) - np.asarray(
+        right_arr, dtype=np.float64
+    )
+    return float(np.max(np.abs(delta)))
+
+
+def _project_topology_density(
+    density: Any, *, filter_radius_cells: float | None, beta: float
+) -> Any:
+    projected = density
+    if filter_radius_cells is not None and filter_radius_cells >= 0.5:
+        projected = apply_density_filter(projected, filter_radius_cells)
+    return apply_projection(projected, beta)
+
+
+def _topology_replay_policy_metrics(
+    *,
+    result: Any,
+    replay_beta: float | None,
+    replay_supported: bool,
+    report_reasons: Iterable[str],
+    fields: Any | None = None,
+    filter_radius_cells: float | None = None,
+    replay_finite: bool | None = None,
+    replay_error: str | None = None,
+) -> dict[str, Any]:
+    optimizer_final_beta = (
+        float(result.beta_history[-1])
+        if getattr(result, "beta_history", None)
+        else None
+    )
+    beta_matches = (
+        replay_beta is not None
+        and optimizer_final_beta is not None
+        and math.isclose(
+            float(replay_beta), float(optimizer_final_beta), rel_tol=0.0, abs_tol=0.0
+        )
+    )
+    density = np.asarray(result.density)
+    density_projected = np.asarray(result.density_projected)
+    eps_design = np.asarray(result.eps_design)
+    density_finite = bool(np.all(np.isfinite(density)))
+    projected_finite = bool(np.all(np.isfinite(density_projected)))
+    eps_finite = bool(np.all(np.isfinite(eps_design)))
+
+    density_projected_error = math.inf
+    eps_error = math.inf
+    if fields is not None and replay_beta is not None:
+        regenerated_projected = _project_topology_density(
+            result.density,
+            filter_radius_cells=filter_radius_cells,
+            beta=float(replay_beta),
+        )
+        density_projected_error = _array_max_abs_error(
+            regenerated_projected, result.density_projected
+        )
+        eps_error = _array_max_abs_error(fields.eps, result.eps_design)
+
+    max_error = max(density_projected_error, eps_error)
+    material_consistency_passed = (
+        bool(replay_supported)
+        and beta_matches
+        and density_finite
+        and projected_finite
+        and eps_finite
+        and math.isfinite(max_error)
+        and max_error <= TOPOLOGY_REPLAY_MATERIAL_ATOL
+    )
+    return {
+        "topology_replay_mode": TOPOLOGY_REPLAY_MODE,
+        "topology_replay_density_source": TOPOLOGY_REPLAY_DENSITY_SOURCE,
+        "topology_replay_supported": bool(replay_supported),
+        "topology_replay_support_reasons": list(report_reasons),
+        "topology_replay_error": replay_error,
+        "topology_replay_density_shape": list(density.shape),
+        "topology_replay_density_projected_shape": list(density_projected.shape),
+        "topology_replay_eps_design_shape": list(eps_design.shape),
+        "topology_replay_density_finite": density_finite,
+        "topology_replay_density_projected_finite": projected_finite,
+        "topology_replay_eps_design_finite": eps_finite,
+        "topology_replay_finite": replay_finite,
+        "topology_replay_beta": replay_beta,
+        "topology_optimizer_final_beta": optimizer_final_beta,
+        "topology_replay_beta_matches_optimizer": bool(beta_matches),
+        "topology_replay_material_consistency_tolerance": TOPOLOGY_REPLAY_MATERIAL_ATOL,
+        "topology_replay_density_projected_max_abs_error": density_projected_error,
+        "topology_replay_eps_design_max_abs_error": eps_error,
+        "topology_replay_material_consistency_max_abs_error": max_error,
+        "topology_replay_material_consistency_passed": bool(
+            material_consistency_passed
+        ),
+        "topology_replay_source_is_required_physical_oracle": False,
+    }
+
+
+def _topology_optimized_density_replay(
+    sim: Any, region: Any, result: Any, floor: Any
+) -> tuple[Any | None, Any | None, dict[str, Any]]:
+    """Build and run the required topology replay from the optimized density."""
+
+    replay_beta = (
+        float(result.beta_history[-1])
+        if getattr(result, "beta_history", None)
+        else None
+    )
+    if replay_beta is None:
+        metrics = _topology_replay_policy_metrics(
+            result=result,
+            replay_beta=None,
+            replay_supported=False,
+            report_reasons=("optimizer_beta_history_missing",),
+            replay_error="optimizer_beta_history_missing",
+        )
+        return None, None, metrics
+
+    try:
+        replay_region = replace(region, beta_projection=replay_beta)
+        inputs, report, _, _, _, filter_radius_cells, *_, fields = (
+            _inspect_topology_hybrid_support(
+                sim,
+                replay_region,
+                init_density=result.density,
+                n_steps=floor.n_steps,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - evidence must fail closed with reasons.
+        metrics = _topology_replay_policy_metrics(
+            result=result,
+            replay_beta=replay_beta,
+            replay_supported=False,
+            report_reasons=(f"inspect_error:{exc.__class__.__name__}",),
+            replay_error=str(exc),
+        )
+        return None, None, metrics
+
+    if not report.supported:
+        metrics = _topology_replay_policy_metrics(
+            result=result,
+            replay_beta=replay_beta,
+            replay_supported=False,
+            report_reasons=report.reasons,
+            fields=fields,
+            filter_radius_cells=filter_radius_cells,
+        )
+        return inputs, None, metrics
+
+    replay_result = sim.forward_hybrid_phase1_from_inputs(
+        inputs,
+        strategy="b",
+        checkpoint_every=floor.checkpoint_every,
+    )
+    replay_series_metrics = _series_metrics(replay_result.time_series)
+    metrics = _topology_replay_policy_metrics(
+        result=result,
+        replay_beta=replay_beta,
+        replay_supported=True,
+        report_reasons=report.reasons,
+        fields=fields,
+        filter_radius_cells=filter_radius_cells,
+        replay_finite=bool(replay_series_metrics["finite"]),
+    )
+    metrics.update(
+        {
+            "topology_optimized_density_replay_series_metrics": replay_series_metrics,
+            "topology_replay_source_is_required_physical_oracle": False,
+        }
+    )
+    return inputs, replay_result, metrics
+
+
+def _topology_optimized_replay_missing(metrics: dict[str, Any]) -> list[str]:
+    required = (
+        "topology_replay_mode",
+        "topology_replay_density_source",
+        "topology_replay_supported",
+        "topology_replay_finite",
+        "topology_replay_beta_matches_optimizer",
+        "topology_replay_material_consistency_passed",
+        "topology_replay_source_is_required_physical_oracle",
+    )
+    return [key for key in required if key not in metrics]
+
+
+def _topology_optimized_replay_passed(metrics: dict[str, Any]) -> bool:
+    return (
+        metrics.get("topology_replay_mode") == TOPOLOGY_REPLAY_MODE
+        and metrics.get("topology_replay_density_source")
+        == TOPOLOGY_REPLAY_DENSITY_SOURCE
+        and metrics.get("topology_replay_supported") is True
+        and metrics.get("topology_replay_finite") is True
+        and metrics.get("topology_replay_beta_matches_optimizer") is True
+        and metrics.get("topology_replay_material_consistency_passed") is True
+        and metrics.get("topology_replay_source_is_required_physical_oracle") is True
+    )
+
+
+def _topology_oracle_policy_fields(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "replay_mode": metrics.get("topology_replay_mode"),
+        "replay_density_source": metrics.get("topology_replay_density_source"),
+        "replay_supported": metrics.get("topology_replay_supported"),
+        "replay_finite": metrics.get("topology_replay_finite"),
+        "replay_beta_matches_optimizer": metrics.get(
+            "topology_replay_beta_matches_optimizer"
+        ),
+        "material_consistency_passed": metrics.get(
+            "topology_replay_material_consistency_passed"
+        ),
+        "replay_source_is_required_physical_oracle": metrics.get(
+            "topology_replay_source_is_required_physical_oracle"
+        ),
+    }
+
+
 def _physical_oracle_evaluation(
     family: str, metrics: dict[str, Any], floor: dict[str, Any]
 ) -> dict[str, Any]:
@@ -634,9 +864,14 @@ def _physical_oracle_evaluation(
             "post_source_window",
         )
         missing = [key for key in required if key not in metrics]
+        missing.extend(_topology_optimized_replay_missing(metrics))
+        replay_passed = _topology_optimized_replay_passed(metrics)
         return {
             "present": not missing,
-            "passed": metrics.get("cpml_topology_tail_full_floor_pass") is True,
+            "passed": (
+                metrics.get("cpml_topology_tail_full_floor_pass") is True
+                and replay_passed
+            ),
             "missing": missing,
             "oracle_type": "cpml_tail_energy_absorption_full_floor",
             "metric_name": "tail_to_previous_quarter_ratio",
@@ -644,9 +879,14 @@ def _physical_oracle_evaluation(
             "tolerance": {
                 "cpml_tail_growth_limit": metrics.get(
                     "cpml_tail_growth_limit", phase8.DEFAULT_CPML_TAIL_GROWTH_LIMIT
-                )
+                ),
+                "topology_replay_material_consistency_tolerance": metrics.get(
+                    "topology_replay_material_consistency_tolerance",
+                    TOPOLOGY_REPLAY_MATERIAL_ATOL,
+                ),
             },
             "measured_value": metrics.get("tail_to_previous_quarter_ratio"),
+            **_topology_oracle_policy_fields(metrics),
         }
     if family == "port_proxy":
         required = ("passive_no_gain_pass", "passive_to_excited_power_ratio")
@@ -685,9 +925,14 @@ def _physical_oracle_evaluation(
             "ratio_metrics_finite",
         )
         missing = [key for key in required if key not in metrics]
+        missing.extend(_topology_optimized_replay_missing(metrics))
+        replay_passed = _topology_optimized_replay_passed(metrics)
         return {
             "present": not missing,
-            "passed": metrics.get("pec_topology_bounded_full_floor_pass") is True,
+            "passed": (
+                metrics.get("pec_topology_bounded_full_floor_pass") is True
+                and replay_passed
+            ),
             "missing": missing,
             "oracle_type": "pec_lossless_bounded_observable_full_floor",
             "metric_name": "tail_to_previous_quarter_ratio",
@@ -695,9 +940,14 @@ def _physical_oracle_evaluation(
             "tolerance": {
                 "pec_energy_growth_limit": metrics.get(
                     "pec_energy_growth_limit", phase8.DEFAULT_PEC_ENERGY_GROWTH_LIMIT
-                )
+                ),
+                "topology_replay_material_consistency_tolerance": metrics.get(
+                    "topology_replay_material_consistency_tolerance",
+                    TOPOLOGY_REPLAY_MATERIAL_ATOL,
+                ),
             },
             "measured_value": metrics.get("tail_to_previous_quarter_ratio"),
+            **_topology_oracle_policy_fields(metrics),
         }
     return {
         "present": False,
@@ -791,7 +1041,6 @@ def _execute_topology_floor(family: str) -> FloorExecutionResult:
         strategy="b",
         checkpoint_every=floor.checkpoint_every,
     )
-    runtime_s = time.perf_counter() - started
     history = np.asarray(result.history)
     metrics = {
         "history_shape": list(history.shape),
@@ -799,27 +1048,50 @@ def _execute_topology_floor(family: str) -> FloorExecutionResult:
         "history_last": float(history[-1]) if history.size else None,
         "density_shape": list(np.asarray(result.density).shape),
     }
-    if family in {"cpml_topology", "pec_topology"}:
-        oracle_inputs = sim.build_hybrid_phase1_inputs(n_steps=floor.n_steps)
-        oracle_result = sim.forward_hybrid_phase1_from_inputs(
-            oracle_inputs,
+    if family in TOPOLOGY_FAMILIES:
+        base_inputs = sim.build_hybrid_phase1_inputs(n_steps=floor.n_steps)
+        base_result = sim.forward_hybrid_phase1_from_inputs(
+            base_inputs,
             strategy="b",
             checkpoint_every=floor.checkpoint_every,
         )
         if family == "cpml_topology":
-            metrics.update(
-                _cpml_topology_full_floor_oracle(
-                    oracle_result.time_series,
-                    inputs=oracle_inputs,
-                )
+            base_oracle = _cpml_topology_full_floor_oracle(
+                base_result.time_series,
+                inputs=base_inputs,
             )
         else:
-            metrics.update(
-                _pec_topology_full_floor_oracle(
-                    oracle_result.time_series,
-                    inputs=oracle_inputs,
-                )
+            base_oracle = _pec_topology_full_floor_oracle(
+                base_result.time_series,
+                inputs=base_inputs,
             )
+        metrics["base_replay"] = {
+            "mode": "base_fresh",
+            "diagnostic_only": True,
+            "oracle": base_oracle,
+        }
+
+        replay_inputs, replay_result, replay_metrics = (
+            _topology_optimized_density_replay(sim, region, result, floor)
+        )
+        metrics.update(replay_metrics)
+        if replay_result is not None and replay_inputs is not None:
+            if family == "cpml_topology":
+                metrics.update(
+                    _cpml_topology_full_floor_oracle(
+                        replay_result.time_series,
+                        inputs=replay_inputs,
+                    )
+                )
+            else:
+                metrics.update(
+                    _pec_topology_full_floor_oracle(
+                        replay_result.time_series,
+                        inputs=replay_inputs,
+                    )
+                )
+            metrics["topology_replay_source_is_required_physical_oracle"] = True
+    runtime_s = time.perf_counter() - started
     cell_count = _floor_cell_count(family)
     strategy_a_gb, strategy_b_gb = phase7._estimate_memory(
         sim,
@@ -1100,6 +1372,22 @@ def build_physical_artifact(
     case = _case_for_family(family)
     floor = case.floor.as_dict()
     oracle = _physical_oracle_evaluation(family, execution.metrics, floor)
+    required_physical_oracle = {
+        "present": oracle["present"],
+        "passed": oracle["passed"],
+        "missing": oracle["missing"],
+    }
+    for key in (
+        "replay_mode",
+        "replay_density_source",
+        "replay_supported",
+        "replay_finite",
+        "replay_beta_matches_optimizer",
+        "material_consistency_passed",
+        "replay_source_is_required_physical_oracle",
+    ):
+        if key in oracle:
+            required_physical_oracle[key] = oracle[key]
     if (
         execution.executed
         and execution.row_state == "pass"
@@ -1141,11 +1429,7 @@ def build_physical_artifact(
         "tolerance": oracle["tolerance"],
         "measured_value": oracle["measured_value"],
         "physical_metrics": execution.metrics,
-        "required_physical_oracle": {
-            "present": oracle["present"],
-            "passed": oracle["passed"],
-            "missing": oracle["missing"],
-        },
+        "required_physical_oracle": required_physical_oracle,
         "row_state": row_state,
         "reason": (
             execution.reason
