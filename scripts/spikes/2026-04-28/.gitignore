@@ -1,0 +1,6 @@
+# Spike runtime outputs are not version-controlled.
+out/
+out_*/
+*.h5
+*.npz
+__pycache__/
