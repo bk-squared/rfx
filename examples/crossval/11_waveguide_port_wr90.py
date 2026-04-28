@@ -51,9 +51,22 @@ Exit code convention (per rfx crossval standard):
 Run:
   JAX_ENABLE_X64=1 python examples/crossval/11_waveguide_port_wr90.py
 
-P0 status:
-  - Geometry, analytic reference formulas, and accept gates defined.
-  - rfx run paths marked ``raise NotImplementedError`` until P2.1.
+Status (2026-04-28):
+  - Empty-guide and PEC-short magnitude gates: PASS (Meep-class).
+  - Single-slab analytic-Airy phase gate: FAIL (~143° vs 5° gate). Open
+    issue, tracked in `docs/agent-memory/rfx-known-issues.md` (port
+    extractor / dispersive-slab phase de-embedding).
+  - Per-frequency PEC-short |S11| oscillation ±6-13% (vs OpenEMS ±0.05%,
+    Meep ±1.5%) is a separate residual. Source-side and probe-side
+    spatial weighting were both refuted as causes by the 2026-04-28 codex
+    investigation (see ``docs/research_notes/2026-04-28_codex_arch_attempts.md``
+    and the archive at ``scripts/spikes/2026-04-28/refuted_codex_archive/``).
+    Remaining concrete candidate is FDTD-core axis-aligned PEC subpixel
+    handling — out of scope for this crossval, tracked under
+    memory ``project_wr90_architectural_candidates``.
+  - This script is therefore a diagnostic reporter, not a regression
+    lock. The authoritative correctness gates are in
+    ``tests/test_waveguide_port_validation_battery.py``.
 """
 
 from __future__ import annotations

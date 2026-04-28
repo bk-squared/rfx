@@ -388,7 +388,19 @@ def test_reciprocity_asymmetric_obstacle_known_gap():
         "intrinsic Yee dispersion footprint, NOT a port-code bug. True "
         "recovery would require finer mesh OR subpixel PEC handling in "
         "rfx/core/yee.py (multi-month FDTD-core work). Not in scope for "
-        "port-extractor follow-ups."
+        "port-extractor follow-ups. "
+        "(g) 2026-04-28 codex investigation closed two more architectural "
+        "candidates: #1 OE-style continuous-coordinate soft-current source "
+        "and #2 OE-style continuous-coordinate box-integrated probe. Dump-"
+        "derived |S11| spread changed from 0.13258 to 0.13265 (#1), 0.13213 "
+        "(#2), and 0.13145 (#1+#2) -- all FAIL vs ~0.020 gate. Source-side "
+        "and probe-side spatial weighting are therefore both refuted. "
+        "Implementation snapshots archived under "
+        "scripts/spikes/2026-04-28/refuted_codex_archive/ ; full diagnostic "
+        "in docs/research_notes/2026-04-28_codex_arch_attempts.md. Yee-core "
+        "TE10 isolation (codex #4) PASSED at 0.044%% RMS, refuting Yee "
+        "update equation as primary cause. Remaining concrete candidate is "
+        "axis-aligned PEC subpixel handling at the WR-90 walls."
     ),
 )
 def test_mesh_convergence_s21_scaled_cpml():
