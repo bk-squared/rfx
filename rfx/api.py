@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import math
 import jax
 from numbers import Integral
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -45,16 +45,12 @@ from rfx.sources.waveguide_port import (
     init_waveguide_port,
     init_multimode_waveguide_port,
     extract_multimode_s_matrix,
-    extract_multimode_s_params_normalized,
     waveguide_plane_positions,
 )
 from rfx.simulation import (
     SnapshotSpec,
 )
 from rfx.adi import ADIState2D, run_adi_2d
-
-if TYPE_CHECKING:
-    from rfx.boundaries.spec import BoundarySpec
 
 
 # ---------------------------------------------------------------------------
@@ -2260,7 +2256,6 @@ class Simulation:
                     port_mode_cfgs.append([raw])
 
             ref_shifts_mm = []
-            reference_planes_mm = []
             for entry, mode_cfgs in zip(entries, port_mode_cfgs):
                 first_cfg = mode_cfgs[0]
                 planes = waveguide_plane_positions(first_cfg)
@@ -2270,54 +2265,26 @@ class Simulation:
                     else planes["source"]
                 )
                 ref_shifts_mm.append(desired_ref - planes["reference"])
-                reference_planes_mm.append(desired_ref)
 
             if normalize:
-                from rfx.core.yee import init_materials as _init_vacuum_materials
-
-                ref_materials = _init_vacuum_materials(grid.shape)
-                aniso_eps = None
-                if subpixel_smoothing:
-                    from rfx.geometry.smoothing import compute_smoothed_eps
-                    shape_eps_pairs = [
-                        (geom_entry.shape, self._resolve_material(geom_entry.material_name).eps_r)
-                        for geom_entry in self._geometry
-                    ]
-                    if shape_eps_pairs:
-                        aniso_eps = compute_smoothed_eps(
-                            grid, shape_eps_pairs, background_eps=1.0,
-                        )
-
-                s_params, mode_map = extract_multimode_s_params_normalized(
-                    grid,
-                    materials,
-                    ref_materials,
-                    port_mode_cfgs,
-                    n_steps,
-                    boundary="cpml",
-                    cpml_axes=grid.cpml_axes,
-                    pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
-                    debye=debye,
-                    lorentz=lorentz,
-                    ref_debye=None,
-                    ref_lorentz=None,
-                    ref_shifts=ref_shifts_mm,
-                    aniso_eps=aniso_eps,
+                raise ValueError(
+                    "compute_waveguide_s_matrix(normalize=True) is not yet "
+                    "supported with n_modes > 1"
                 )
-            else:
-                s_params, mode_map = extract_multimode_s_matrix(
-                    grid,
-                    materials,
-                    port_mode_cfgs,
-                    n_steps,
-                    boundary="cpml",
-                    cpml_axes=grid.cpml_axes,
-                    pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
-                    debye=debye,
-                    lorentz=lorentz,
-                    ref_shifts=ref_shifts_mm,
-                )
-            reference_planes = np.array(reference_planes_mm, dtype=float)
+
+            s_params, mode_map = extract_multimode_s_matrix(
+                grid,
+                materials,
+                port_mode_cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
+                debye=debye,
+                lorentz=lorentz,
+                ref_shifts=ref_shifts_mm,
+            )
+            reference_planes = np.array(ref_shifts_mm, dtype=float)
             # Build port names including mode indices
             port_names_mm = []
             port_directions_mm = []
