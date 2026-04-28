@@ -19,12 +19,13 @@ Coordinate frame:
   rfx (crossval/11 absolute): domain x ∈ [0, 200] mm; port@+40 (=openems -60),
   PORT_RIGHT@+160. Offset: rfx_x = openems_x + 100.
 
-  PEC-short geometry mismatch in canonical configs:
+  PEC-short geometry (post-2026-04-28 commit f4b273c):
     OpenEMS canonical: PEC_SHORT_X = +45 mm (= rfx 145 mm)
-    rfx canonical:     PEC short at PORT_RIGHT_X − 5 mm = 155 mm
-                       (= openems +55 mm)
-  For an apples-to-apples comparison we run rfx with its short repositioned
-  to openems-canonical 145 mm. (See ``run_rfx_aligned_pec_short`` below.)
+    rfx canonical:     PEC_SHORT_X = MON_RIGHT_X − 5 mm = 145 mm
+                       (= openems +45 mm) — matched.
+  Both sides now share byte-identical PEC-short geometry.
+  ``run_rfx_aligned_pec_short`` reads ``cv.PEC_SHORT_X`` directly so any
+  future canonical drift in crossval/11 propagates here automatically.
 
 Modes:
   --inspect <h5>          Print HDF5 group/dataset hierarchy of one file.

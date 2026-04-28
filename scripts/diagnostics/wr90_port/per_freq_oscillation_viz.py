@@ -237,7 +237,7 @@ the port plane. Whatever discrete computation step diverges first — that's the
 
 <p style="color:#666;font-size:.9em;margin-top:2rem">
 rfx commit chain: <code>ecdd845..a005524</code>. Generated 2026-04-28 by
-<code>scripts/spikes/2026-04-28/_per_freq_oscillation_viz.py</code>.</p>
+<code>scripts/diagnostics/wr90_port/per_freq_oscillation_viz.py</code>.</p>
 </body></html>
 """
     html_path.write_text(html)
