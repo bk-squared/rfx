@@ -203,6 +203,17 @@ def run_rfx_dump(R: int, plane_name: str = "mon_left",
     # at R=1 (~8x), into Meep-class. See
     # ``scripts/diagnostics/wr90_port/production_vs_raw_same_sim.py`` for
     # the trace and ``commit 2fb9b76`` for the diagnostic chain.
+    #
+    # Per-tool stagger convention (verified 2026-04-29 via
+    # ``cross_tool_half_step_audit.py`` at R=1):
+    #   rfx     : NEEDS client-side correction (this block applies it).
+    #             dump-recipe spread 0.1326 -> 0.0166 with correction.
+    #   OpenEMS : already corrected internally by the OpenEMS dump writer.
+    #             dump-recipe spread 0.0036 unchanged; adding the same
+    #             correction client-side BREAKS it (0.0036 -> 0.1245).
+    #   Meep    : already corrected internally. dump-recipe spread 0.0152.
+    # Therefore the correction lives ONLY on this rfx path; the OpenEMS
+    # and Meep call sites in this file do not (and must not) apply it.
     if hasattr(sim, "_grid") and hasattr(sim._grid, "dt"):
         dt_sim = float(sim._grid.dt)
     else:

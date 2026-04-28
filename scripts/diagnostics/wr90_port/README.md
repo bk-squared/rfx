@@ -81,17 +81,24 @@ when adding new output directories).
 Apples-to-apples dump-derived `|S11|` spread at the canonical
 `mon_left` plane, R=1, with the cell-centred TE10 V/I recipe:
 
-| simulator | min | mean | max | spread | notes |
+| simulator | min | mean | max | spread | client-side half-step? |
 |---|---:|---:|---:|---:|---|
-| OpenEMS | 0.9966 | 0.9996 | 1.0003 | 0.0036 | reference baseline |
-| Meep    | 0.9960 | 1.0000 | 1.0112 | 0.0152 | reference baseline |
-| rfx     | 0.9916 | 0.9995 | 1.0082 | 0.0166 | Meep-class after Yee half-step correction (2026-04-28) |
+| OpenEMS | 0.9966 | 0.9996 | 1.0003 | 0.0036 | **NO** — applied internally by the OpenEMS dump writer |
+| Meep    | 0.9960 | 1.0000 | 1.0112 | 0.0152 | **NO** — applied internally by the Meep dump writer |
+| rfx     | 0.9916 | 0.9995 | 1.0082 | 0.0166 | **YES** — `s11_from_dumps.py` applies it on the rfx path |
+
+Per-tool convention is verified by
+``scripts/diagnostics/wr90_port/cross_tool_half_step_audit.py`` at R=1:
+adding the `exp(+jω·dt/2)` correction client-side leaves OpenEMS and
+Meep essentially unchanged or marginally worse (0.0036 → 0.1245 on
+OE, 0.0152 → 0.0182 on Meep), while it drops rfx 0.1326 → 0.0166.
+That asymmetry is the entire reason `s11_from_dumps.py` applies the
+correction only on the rfx path and not on the reference paths.
 
 The rfx number used to read 0.1326 spread before the comparator
-fix landed: the dump-derived recipe was missing the Yee leapfrog
-half-step correction (`exp(+jω·dt/2)` on the H spectrum) that the
-production extractor `compute_waveguide_s_matrix` always applied
-through `rfx/sources/waveguide_port.py::_co_located_current_spectrum`.
+fix landed: the dump-derived recipe was missing the same correction
+that the production extractor `compute_waveguide_s_matrix` always
+applied through `rfx/sources/waveguide_port.py::_co_located_current_spectrum`.
 The full diagnostic chain that traced this lives in commit
 `2fb9b76` and the four scripts named `pec_short_position_sweep`,
 `boundary_cell_trim`, `h_normal_average_test`, and
