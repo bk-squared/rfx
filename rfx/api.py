@@ -222,6 +222,14 @@ class ForwardResult(NamedTuple):
 
     Carries only the observables needed by gradient-based objectives,
     avoiding the broader stateful surface of :class:`Result`.
+
+    ``lumped_port_sparams`` exposes the raw per-port (V_dft, I_dft) tuples
+    accumulated inside the JIT scan body when ``forward(port_s11_freqs=...)``
+    is used.  Single-port objectives can keep using ``s_params`` (which is
+    populated with per-port |S11| via :func:`extract_lumped_s11`).  Multi-
+    port AD objectives (e.g. 2-port |S21| topology optimisation) read raw
+    V/I from this field and compose their own wave decomposition, since
+    ``extract_lumped_s11`` collapses each port to its self-reflection only.
     """
     time_series: jnp.ndarray
     ntff_data: object = None
@@ -229,6 +237,7 @@ class ForwardResult(NamedTuple):
     grid: object = None
     s_params: object = None
     freqs: object = None
+    lumped_port_sparams: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -4555,6 +4564,7 @@ class Simulation:
             grid=result.grid,
             s_params=s_params_out,
             freqs=freqs_out,
+            lumped_port_sparams=result.lumped_port_sparams,
         )
 
     def _forward_nonuniform_from_materials(
