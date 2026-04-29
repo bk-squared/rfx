@@ -415,6 +415,34 @@ class SnapshotSpec(NamedTuple):
     slice_index: int | None = None
 
 
+def _nearest_divisor(n: int, target: int) -> int:
+    """Return the divisor of `n` closest to `target` (≥1).
+
+    Used by the segmented-checkpointing path (issue #73) to suggest a
+    valid `checkpoint_segments` value when the user passes one that does
+    not divide `n_steps` evenly.
+    """
+    target = max(1, int(target))
+    best = 1
+    best_diff = abs(target - 1)
+    # Search divisors in [1, sqrt(n)] and their cofactors.
+    k = 1
+    while k * k <= n:
+        if n % k == 0:
+            for d in (k, n // k):
+                diff = abs(d - target)
+                if diff < best_diff:
+                    best, best_diff = d, diff
+        k += 1
+    return best
+
+
+def _suggest_checkpoint_segments(n_steps: int) -> int:
+    """Auto pick K ≈ √n_steps that divides n_steps."""
+    import math
+    return _nearest_divisor(n_steps, max(1, int(math.isqrt(n_steps))))
+
+
 def run(
     grid: Grid,
     materials: MaterialArrays,
@@ -435,6 +463,7 @@ def run(
     ntff: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
+    checkpoint_segments: int | None = None,
     aniso_eps: tuple | None = None,
     pec_mask: object | None = None,
     pec_occupancy: object | None = None,
@@ -1024,9 +1053,60 @@ def run(
         return new_carry, output
 
     # ---- run ----
-    body = jax.checkpoint(step_fn) if checkpoint else step_fn
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
-    final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+
+    if checkpoint_segments is None:
+        # Legacy path: optional per-step rematerialisation only. The scan
+        # itself still keeps every step's carry, so peak memory grows
+        # linearly with n_steps.
+        body = jax.checkpoint(step_fn) if checkpoint else step_fn
+        final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+    else:
+        # Segmented checkpointing (issue #73): split the n_steps scan into
+        # K segments of size s and rematerialise each segment as a unit.
+        # Forward keeps only K segment-boundary carries (instead of all
+        # n_steps), so peak memory drops from O(n_steps · |carry|) to
+        # O((K + s) · |carry|). With s ≈ √n_steps this is the standard
+        # √n_steps-memory trade-off (≈2× compute for backward).
+        #
+        # Implementation notes:
+        #   * `prevent_cse=False` on the segment-level checkpoint is
+        #     required so the inner scan is not CSE-deduplicated across
+        #     the outer scan (which would defeat the memory saving).
+        #   * `n_steps` must be divisible by K. We require this rather
+        #     than padding because the carry holds DFT accumulators
+        #     (lumped/wire/waveguide port S-params) that would integrate
+        #     over the padded zero-source steps and produce numerically
+        #     different results from an unsegmented run with the same
+        #     n_steps. Picking K as a divisor of n_steps preserves
+        #     bit-exact equivalence for forward and gradient.
+        K = int(checkpoint_segments)
+        if K < 1:
+            raise ValueError(
+                f"checkpoint_segments must be ≥ 1, got {checkpoint_segments}")
+        if n_steps % K != 0:
+            raise ValueError(
+                f"checkpoint_segments={K} does not divide n_steps={n_steps}; "
+                f"pick a divisor (e.g. K={_nearest_divisor(n_steps, K)} for "
+                f"≈ √n_steps memory). Padding is intentionally rejected "
+                f"because it would shift DFT accumulator integration windows."
+            )
+        s = n_steps // K
+        xs_segmented = jax.tree_util.tree_map(
+            lambda a: a.reshape(K, s, *a.shape[1:]), xs)
+
+        def segment_body(carry, seg_xs):
+            new_carry, seg_outputs = jax.lax.scan(step_fn, carry, seg_xs)
+            return new_carry, seg_outputs
+
+        seg_body_ckpt = jax.checkpoint(
+            segment_body, prevent_cse=False) if checkpoint else segment_body
+        final_carry, seg_outputs = jax.lax.scan(
+            seg_body_ckpt, carry_init, xs_segmented)
+        # seg_outputs leaves: (K, s, ...).  Flatten back to (n_steps, ...).
+        outputs = jax.tree_util.tree_map(
+            lambda a: a.reshape(n_steps, *a.shape[2:]),
+            seg_outputs)
 
     if use_snapshot:
         time_series = outputs[0]

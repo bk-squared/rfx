@@ -167,12 +167,25 @@ class WaveguidePortConfig(NamedTuple):
     e_inc_table: jnp.ndarray   # (n_steps,) float
     h_inc_table: jnp.ndarray   # (n_steps,) float
 
+    # Per-cell aperture area for modal V/I integration. Shape (nu, nv).
+    # Equals u_widths × v_widths for interior ports, but cells touching a
+    # PEC +face boundary at the array edge are weighted 0 to exclude
+    # ghost cells whose centre lies inside the conductor (where Ez is
+    # not zeroed by apply_pec_faces — Ez is "normal" by convention).
+    # Sentinel `(0, 0)` triggers a fallback in `_aperture_dA` for low-
+    # level callers that bypass `init_waveguide_port`.
+    aperture_dA: jnp.ndarray = jnp.zeros((0, 0), dtype=jnp.float32)
+    h_offset: tuple[float, float] = (0.0, 0.0)
+    mode_indices: tuple[int, int] = (0, 0)
+
 
 def _te_mode_profiles(a: float, b: float, m: int, n: int,
                       y_coords: np.ndarray, z_coords: np.ndarray,
                       *,
                       u_widths: np.ndarray | None = None,
                       v_widths: np.ndarray | None = None,
+                      aperture_dA: np.ndarray | None = None,
+                      h_offset: tuple[float, float] = (0.0, 0.0),
                       ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Compute TE_mn E and H transverse mode profiles.
 
@@ -192,25 +205,51 @@ def _te_mode_profiles(a: float, b: float, m: int, n: int,
     ey = -(n * np.pi / b) * np.cos(m * np.pi * Y / a) * np.sin(n * np.pi * Z / b) if n > 0 else np.zeros_like(Y)
     ez = (m * np.pi / a) * np.sin(m * np.pi * Y / a) * np.cos(n * np.pi * Z / b) if m > 0 else np.zeros_like(Y)
 
-    # H for forward +x propagation: hy = -ez, hz = ey (unnormalized)
-    # gives Poynting P_x = Ey*Hz - Ez*Hy = Ey² + Ez² > 0
-    hy = -ez.copy()
-    hz = ey.copy()
+    # H for forward +x propagation is the rotated E template
+    # (hy = -ez, hz = ey).  When requested, evaluate H on the Yee dual
+    # mesh rather than reusing the E-grid samples; modal_current samples
+    # the simulated H field with the same offset.
+    if h_offset != (0.0, 0.0):
+        if u_widths is None or v_widths is None:
+            raise ValueError("h_offset requires u_widths and v_widths")
+        u_h = np.asarray(y_coords) + float(h_offset[0]) * np.asarray(u_widths)
+        v_h = np.asarray(z_coords) + float(h_offset[1]) * np.asarray(v_widths)
+        Yh, Zh = np.meshgrid(u_h, v_h, indexing='ij')
+        hy = (
+            -(m * np.pi / a)
+            * np.sin(m * np.pi * Yh / a)
+            * np.cos(n * np.pi * Zh / b)
+            if m > 0 else np.zeros_like(Yh)
+        )
+        hz = (
+            -(n * np.pi / b)
+            * np.cos(m * np.pi * Yh / a)
+            * np.sin(n * np.pi * Zh / b)
+            if n > 0 else np.zeros_like(Yh)
+        )
+    else:
+        hy = -ez.copy()
+        hz = ey.copy()
 
     # Normalize: integral(Ey² + Ez²) dA = 1
-    if u_widths is not None and v_widths is not None:
+    if aperture_dA is not None:
+        dA = np.asarray(aperture_dA, dtype=np.float64)
+        power = float(np.sum((ey**2 + ez**2) * dA))
+    elif u_widths is not None and v_widths is not None:
         dA = np.asarray(u_widths)[:, None] * np.asarray(v_widths)[None, :]
         power = float(np.sum((ey**2 + ez**2) * dA))
     else:
         dy = y_coords[1] - y_coords[0] if len(y_coords) > 1 else a
         dz = z_coords[1] - z_coords[0] if len(z_coords) > 1 else b
-        power = np.sum(ey**2 + ez**2) * dy * dz
+        dA = np.full_like(ey, dy * dz, dtype=np.float64)
+        power = float(np.sum((ey**2 + ez**2) * dA))
     if power > 0:
         norm = np.sqrt(power)
         ey /= norm
         ez /= norm
         hy /= norm
         hz /= norm
+        hy, hz = _scale_h_to_unit_cross(ey, ez, hy, hz, dA)
 
     return ey, ez, hy, hz
 
@@ -220,6 +259,8 @@ def _tm_mode_profiles(a: float, b: float, m: int, n: int,
                       *,
                       u_widths: np.ndarray | None = None,
                       v_widths: np.ndarray | None = None,
+                      aperture_dA: np.ndarray | None = None,
+                      h_offset: tuple[float, float] = (0.0, 0.0),
                       ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Compute TM_mn E and H transverse mode profiles.
 
@@ -237,22 +278,38 @@ def _tm_mode_profiles(a: float, b: float, m: int, n: int,
     ey = (m * np.pi / a) * np.cos(m * np.pi * Y / a) * np.sin(n * np.pi * Z / b)
     ez = (n * np.pi / b) * np.sin(m * np.pi * Y / a) * np.cos(n * np.pi * Z / b)
 
-    hy = -ez.copy()
-    hz = ey.copy()
+    if h_offset != (0.0, 0.0):
+        if u_widths is None or v_widths is None:
+            raise ValueError("h_offset requires u_widths and v_widths")
+        u_h = np.asarray(y_coords) + float(h_offset[0]) * np.asarray(u_widths)
+        v_h = np.asarray(z_coords) + float(h_offset[1]) * np.asarray(v_widths)
+        Yh, Zh = np.meshgrid(u_h, v_h, indexing='ij')
+        ey_h = (m * np.pi / a) * np.cos(m * np.pi * Yh / a) * np.sin(n * np.pi * Zh / b)
+        ez_h = (n * np.pi / b) * np.sin(m * np.pi * Yh / a) * np.cos(n * np.pi * Zh / b)
+        hy = -ez_h
+        hz = ey_h
+    else:
+        hy = -ez.copy()
+        hz = ey.copy()
 
-    if u_widths is not None and v_widths is not None:
+    if aperture_dA is not None:
+        dA = np.asarray(aperture_dA, dtype=np.float64)
+        power = float(np.sum((ey**2 + ez**2) * dA))
+    elif u_widths is not None and v_widths is not None:
         dA = np.asarray(u_widths)[:, None] * np.asarray(v_widths)[None, :]
         power = float(np.sum((ey**2 + ez**2) * dA))
     else:
         dy = y_coords[1] - y_coords[0] if len(y_coords) > 1 else a
         dz = z_coords[1] - z_coords[0] if len(z_coords) > 1 else b
-        power = np.sum(ey**2 + ez**2) * dy * dz
+        dA = np.full_like(ey, dy * dz, dtype=np.float64)
+        power = float(np.sum((ey**2 + ez**2) * dA))
     if power > 0:
         norm = np.sqrt(power)
         ey /= norm
         ez /= norm
         hy /= norm
         hz /= norm
+        hy, hz = _scale_h_to_unit_cross(ey, ez, hy, hz, dA)
 
     return ey, ez, hy, hz
 
@@ -357,9 +414,121 @@ def _pick_eigenmode_by_overlap(evecs: np.ndarray,
     return int(np.argmax(overlaps))
 
 
+def _pick_eigenmode_by_target_then_overlap(
+    evecs: np.ndarray,
+    evals: np.ndarray,
+    analytic_flat: np.ndarray,
+    target_kc2: float,
+    num_candidates: int = 80,
+) -> int:
+    """Pick a mode by cutoff proximity, using overlap to break ties."""
+    n = min(num_candidates, evecs.shape[1])
+    target = max(float(target_kc2), 1e-30)
+    rel = np.abs(evals[:n] - target) / target
+    min_rel = float(np.min(rel))
+    candidates = np.where(rel <= min_rel + 0.05)[0]
+    if candidates.size == 1:
+        return int(candidates[0])
+
+    analytic_unit = analytic_flat / max(float(np.linalg.norm(analytic_flat)),
+                                         1e-30)
+    overlaps = np.abs(evecs[:, candidates].T @ analytic_unit)
+    return int(candidates[int(np.argmax(overlaps))])
+
+
+def _aperture_area(
+    u_widths: np.ndarray,
+    v_widths: np.ndarray,
+    aperture_dA: np.ndarray | None,
+) -> np.ndarray:
+    """Return the physical aperture integration measure used by extraction."""
+    if aperture_dA is None:
+        dA = np.asarray(u_widths, dtype=np.float64)[:, None] * np.asarray(
+            v_widths, dtype=np.float64
+        )[None, :]
+    else:
+        dA = np.asarray(aperture_dA, dtype=np.float64)
+    if dA.shape != (len(u_widths), len(v_widths)):
+        raise ValueError(
+            "aperture_dA must have shape "
+            f"({len(u_widths)}, {len(v_widths)}), got {dA.shape}"
+        )
+    flat = dA.ravel()
+    positive = flat[flat > 0.0]
+    if positive.size == 0:
+        raise ValueError("aperture_dA must contain at least one positive cell")
+    return dA
+
+
+def _shift_profile_to_dual(
+    profile: np.ndarray,
+    h_offset: tuple[float, float],
+) -> np.ndarray:
+    """Linearly shift a transverse template by supported half-cell offsets."""
+    out = np.asarray(profile, dtype=np.float64).copy()
+    for axis, offset in enumerate(h_offset):
+        if offset == 0.0:
+            continue
+        if offset != 0.5:
+            raise ValueError(
+                "h_offset currently supports only 0.0 or 0.5 per axis, "
+                f"got {h_offset!r}"
+            )
+        rolled = np.roll(out, -1, axis=axis)
+        out = 0.5 * (out + rolled)
+    return out
+
+
+def _orthonormalize_profile_arrays(
+    ey: np.ndarray,
+    ez: np.ndarray,
+    hy: np.ndarray,
+    hz: np.ndarray,
+    dA: np.ndarray,
+    previous: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Orthonormalize one stored profile against previous profiles."""
+    ey = np.asarray(ey, dtype=np.float64).copy()
+    ez = np.asarray(ez, dtype=np.float64).copy()
+    hy = np.asarray(hy, dtype=np.float64).copy()
+    hz = np.asarray(hz, dtype=np.float64).copy()
+    for pey, pez, phy, phz in previous:
+        c_prev = float(np.sum((pey * phz - pez * phy) * dA))
+        if abs(c_prev) <= 1e-30:
+            continue
+        proj = float(np.sum((ey * phz - ez * phy) * dA)) / c_prev
+        ey -= proj * pey
+        ez -= proj * pez
+        hy -= proj * phy
+        hz -= proj * phz
+    c_self = float(np.sum((ey * hz - ez * hy) * dA))
+    if abs(c_self) <= 1e-30:
+        raise ValueError("Cannot normalize waveguide mode with zero self-overlap")
+    scale = np.sqrt(abs(c_self))
+    return ey / scale, ez / scale, hy / scale, hz / scale
+
+
+def _scale_h_to_unit_cross(
+    ey: np.ndarray,
+    ez: np.ndarray,
+    hy: np.ndarray,
+    hz: np.ndarray,
+    dA: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Scale stored H templates so ∫(e×h)·n dA is unity."""
+    c_self = float(np.sum((ey * hz - ez * hy) * dA))
+    if abs(c_self) <= 1e-30:
+        return hy, hz
+    return hy / c_self, hz / c_self
+
+
 def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
                                 u_widths: np.ndarray,
                                 v_widths: np.ndarray,
+                                *,
+                                aperture_dA: np.ndarray | None = None,
+                                h_offset: tuple[float, float] = (0.0, 0.0),
+                                _orthogonalize: bool = True,
                                 ) -> tuple[np.ndarray, np.ndarray,
                                            np.ndarray, np.ndarray, float]:
     """Discrete Yee-grid TE_mn mode profile.
@@ -380,7 +549,12 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
     D_vv = _second_diff_1d(v_widths, bc="neumann")
     lap = np.kron(D_uu, np.eye(nv)) + np.kron(np.eye(nu), D_vv)
 
-    evals, evecs = np.linalg.eigh(-lap)  # eigenvalues = kc² ≥ 0, ascending
+    dA = _aperture_area(u_widths, v_widths, aperture_dA)
+    # Keep the physical Yee eigenfunctions/cutoffs on the full cell-centred
+    # operator, then normalize and orthogonalize the stored profiles under the
+    # extractor aperture. A reduced zero-dA subspace imposes an unintended
+    # Dirichlet-like wall at the dropped row/column and breaks source matching.
+    evals, evecs = np.linalg.eigh(-lap)
 
     # Pick eigenvector by overlap with analytic Hx = cos(mπy/a)·cos(nπz/b).
     # Rank picking fails when discrete kc² ordering swaps nearly-degenerate
@@ -389,12 +563,21 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
     v_c = np.cumsum(v_widths) - 0.5 * np.asarray(v_widths)
     hx_ana = (np.cos(m * np.pi * u_c / a)[:, None]
               * np.cos(n * np.pi * v_c / b)[None, :])
-    rank = _pick_eigenmode_by_overlap(evecs, evals, hx_ana.ravel())
-    kc2 = float(max(evals[rank], 0.0))
+    if aperture_dA is not None:
+        target_kc2 = (m * np.pi / a) ** 2 + (n * np.pi / b) ** 2
+        rank = _pick_eigenmode_by_target_then_overlap(
+            evecs, evals, hx_ana.ravel(), target_kc2,
+        )
+        kc2 = float(max(evals[rank], 0.0))
+    else:
+        rank = _pick_eigenmode_by_overlap(
+            evecs, evals, hx_ana.ravel(),
+        )
+        kc2 = float(max(evals[rank], 0.0))
     hx = evecs[:, rank].reshape(nu, nv)
 
     # Align sign (eigh returns arbitrary sign).
-    if float(np.sum(hx * hx_ana)) < 0.0:
+    if float(np.sum(hx * hx_ana * dA)) < 0.0:
         hx = -hx
 
     dHxdu = _cell_centred_gradient(hx, u_widths, axis=0, bc="neumann")
@@ -407,10 +590,15 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
     ey = dHxdv
     ez = -dHxdu
     # For forward +x propagation and Poynting x̂·P = Ey·Hz − Ez·Hy > 0:
-    hy = -ez.copy()
-    hz = ey.copy()
+    hy = -_shift_profile_to_dual(ez, h_offset)
+    hz = _shift_profile_to_dual(ey, h_offset)
 
-    dA = np.asarray(u_widths)[:, None] * np.asarray(v_widths)[None, :]
+    if aperture_dA is not None:
+        dropped = dA <= 0.0
+        ey = np.where(dropped, 0.0, ey)
+        ez = np.where(dropped, 0.0, ez)
+        hy = np.where(dropped, 0.0, hy)
+        hz = np.where(dropped, 0.0, hz)
     power = float(np.sum((ey ** 2 + ez ** 2) * dA))
     if power > 0:
         norm = np.sqrt(power)
@@ -418,12 +606,42 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
         ez /= norm
         hy /= norm
         hz /= norm
+        hy, hz = _scale_h_to_unit_cross(ey, ez, hy, hz, dA)
+    if aperture_dA is not None and _orthogonalize:
+        previous: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
+        if n == 0 and m > 1:
+            lower_modes = [(k, 0) for k in range(1, m)]
+        elif m == 0 and n > 1:
+            lower_modes = [(0, k) for k in range(1, n)]
+        else:
+            lower_modes = []
+        for lm, ln in lower_modes:
+            ley, lez, lhy, lhz, _ = _discrete_te_mode_profiles(
+                a, b, lm, ln, u_widths, v_widths,
+                aperture_dA=aperture_dA,
+                h_offset=h_offset,
+                _orthogonalize=True,
+            )
+            previous.append((ley, lez, lhy, lhz))
+        if previous:
+            ey, ez, hy, hz = _orthonormalize_profile_arrays(
+                ey, ez, hy, hz, dA, previous,
+            )
+            if aperture_dA is not None:
+                dropped = dA <= 0.0
+                ey = np.where(dropped, 0.0, ey)
+                ez = np.where(dropped, 0.0, ez)
+                hy = np.where(dropped, 0.0, hy)
+                hz = np.where(dropped, 0.0, hz)
     return ey, ez, hy, hz, float(np.sqrt(kc2))
 
 
 def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
                                 u_widths: np.ndarray,
                                 v_widths: np.ndarray,
+                                *,
+                                aperture_dA: np.ndarray | None = None,
+                                h_offset: tuple[float, float] = (0.0, 0.0),
                                 ) -> tuple[np.ndarray, np.ndarray,
                                            np.ndarray, np.ndarray, float]:
     """Discrete Yee-grid TM_mn mode profile.
@@ -439,6 +657,7 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
     D_vv = _second_diff_1d(v_widths, bc="dirichlet")
     lap = np.kron(D_uu, np.eye(nv)) + np.kron(np.eye(nu), D_vv)
 
+    dA = _aperture_area(u_widths, v_widths, aperture_dA)
     evals, evecs = np.linalg.eigh(-lap)
 
     # Overlap-pick eigenvector against analytic Ex = sin(mπy/a)·sin(nπz/b).
@@ -446,11 +665,20 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
     v_c = np.cumsum(v_widths) - 0.5 * np.asarray(v_widths)
     ex_ana = (np.sin(m * np.pi * u_c / a)[:, None]
               * np.sin(n * np.pi * v_c / b)[None, :])
-    rank = _pick_eigenmode_by_overlap(evecs, evals, ex_ana.ravel())
-    kc2 = float(max(evals[rank], 0.0))
+    if aperture_dA is not None:
+        target_kc2 = (m * np.pi / a) ** 2 + (n * np.pi / b) ** 2
+        rank = _pick_eigenmode_by_target_then_overlap(
+            evecs, evals, ex_ana.ravel(), target_kc2,
+        )
+        kc2 = float(max(evals[rank], 0.0))
+    else:
+        rank = _pick_eigenmode_by_overlap(
+            evecs, evals, ex_ana.ravel(),
+        )
+        kc2 = float(max(evals[rank], 0.0))
     ex = evecs[:, rank].reshape(nu, nv)
 
-    if float(np.sum(ex * ex_ana)) < 0.0:
+    if float(np.sum(ex * ex_ana * dA)) < 0.0:
         ex = -ex
 
     dExdu = _cell_centred_gradient(ex, u_widths, axis=0, bc="dirichlet")
@@ -460,10 +688,15 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
     #                     ez = (nπ/b)·sin(mπy/a)·cos(nπz/b) = ∂Ex/∂v
     ey = dExdu
     ez = dExdv
-    hy = -ez.copy()
-    hz = ey.copy()
+    hy = -_shift_profile_to_dual(ez, h_offset)
+    hz = _shift_profile_to_dual(ey, h_offset)
 
-    dA = np.asarray(u_widths)[:, None] * np.asarray(v_widths)[None, :]
+    if aperture_dA is not None:
+        dropped = dA <= 0.0
+        ey = np.where(dropped, 0.0, ey)
+        ez = np.where(dropped, 0.0, ez)
+        hy = np.where(dropped, 0.0, hy)
+        hz = np.where(dropped, 0.0, hz)
     power = float(np.sum((ey ** 2 + ez ** 2) * dA))
     if power > 0:
         norm = np.sqrt(power)
@@ -471,6 +704,7 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
         ez /= norm
         hy /= norm
         hz /= norm
+        hy, hz = _scale_h_to_unit_cross(ey, ez, hy, hz, dA)
     return ey, ez, hy, hz, float(np.sqrt(kc2))
 
 
@@ -487,6 +721,8 @@ def init_waveguide_port(
     dt: float = 0.0,
     waveform: str = "modulated_gaussian",
     mode_profile: str = "discrete",
+    grid=None,
+    h_offset: tuple[float, float] = (0.5, 0.5),
 ) -> WaveguidePortConfig:
     """Initialize a waveguide port with precomputed mode profiles.
 
@@ -500,13 +736,22 @@ def init_waveguide_port(
         Cells downstream from source for measurement probe.
     ref_offset : int
         Cells downstream from source for reference probe.
+    grid : Grid or None
+        Optional Grid object for face-aware aperture pruning. When passed,
+        the modal V/I aperture excludes "ghost" cells whose centre lies
+        inside a PEC conductor (the cell at the array boundary on a +face
+        marked PEC). Without this, uniform-Grid callers integrate over
+        the ghost row, producing an ~8% PEC-short |S11| deficit.
     """
-    # Duck-type: if `dx` looks like a grid (has dx_arr / dz arrays),
+    # Duck-type: if `dx` looks like a NU grid (has dx_arr / dz arrays),
     # use per-axis widths slicing the aperture; else assume scalar dx.
+    # When the explicit ``grid=`` kwarg is supplied (uniform Grid path),
+    # use it for boundary detection even though dx is still a scalar.
     grid_obj = None
     if hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
         grid_obj = dx
         dx = float(grid_obj.dx)
+    boundary_grid = grid_obj if grid_obj is not None else grid
     m, n = port.mode
     normal_axis = port.normal_axis
     if normal_axis not in ("x", "y", "z"):
@@ -537,6 +782,12 @@ def init_waveguide_port(
     # --- Per-axis cell widths covering the transverse aperture ---
     # The mapping (u,v) → (x,y,z) depends on normal_axis and is the same
     # one used by `_plane_indexer`.
+    # (u, v) → (axis name, grid size along that axis) mapping for the
+    # transverse-aperture face-PEC heuristic below. Filled from the grid
+    # object when one is available (NU duck-typed grid_obj, or explicit
+    # uniform Grid via the `grid=` kwarg).
+    u_axis_name = v_axis_name = None
+    u_grid_size = v_grid_size = -1
     if grid_obj is not None:
         dx_arr_np = np.asarray(grid_obj.dx_arr)
         dy_arr_np = np.asarray(grid_obj.dy_arr)
@@ -544,20 +795,83 @@ def init_waveguide_port(
         if normal_axis == "x":
             u_widths_np = dy_arr_np[u_lo:u_hi]
             v_widths_np = dz_arr_np[v_lo:v_hi]
+            u_axis_name, v_axis_name = "y", "z"
+            u_grid_size, v_grid_size = dy_arr_np.shape[0], dz_arr_np.shape[0]
         elif normal_axis == "y":
             u_widths_np = dx_arr_np[u_lo:u_hi]
             v_widths_np = dz_arr_np[v_lo:v_hi]
+            u_axis_name, v_axis_name = "x", "z"
+            u_grid_size, v_grid_size = dx_arr_np.shape[0], dz_arr_np.shape[0]
         else:  # z-normal
             u_widths_np = dx_arr_np[u_lo:u_hi]
             v_widths_np = dy_arr_np[u_lo:u_hi] if False else dy_arr_np[v_lo:v_hi]
+            u_axis_name, v_axis_name = "x", "y"
+            u_grid_size, v_grid_size = dx_arr_np.shape[0], dy_arr_np.shape[0]
     else:
         u_widths_np = np.full(nu_port, float(dx))
         v_widths_np = np.full(nv_port, float(dx))
+        if grid is not None:
+            # Uniform Grid: cell widths are scalar dx but boundary
+            # information is still on the Grid object.
+            if normal_axis == "x":
+                u_axis_name, v_axis_name = "y", "z"
+                u_grid_size, v_grid_size = grid.ny, grid.nz
+            elif normal_axis == "y":
+                u_axis_name, v_axis_name = "x", "z"
+                u_grid_size, v_grid_size = grid.nx, grid.nz
+            else:
+                u_axis_name, v_axis_name = "x", "y"
+                u_grid_size, v_grid_size = grid.nx, grid.ny
 
     # Cell-centre coordinates (cumulative-sum midpoints). For uniform
     # widths this collapses to the original `np.linspace(0.5*dx, ...)`.
     u_coords = np.cumsum(u_widths_np) - 0.5 * u_widths_np
     v_coords = np.cumsum(v_widths_np) - 0.5 * v_widths_np
+
+    # ----- Aperture dA with face-aware boundary-cell weighting -----
+    # Why: when a transverse face is PEC and the port slice reaches the array
+    # boundary on that side, the last Yee cell at index Nu-1 (or Nv-1) sits
+    # at-or-past the conductor surface. Including it with full weight in the
+    # modal V/I integral lets a spurious Ez (which apply_pec_faces does NOT
+    # zero — Ez is "normal" at z_hi by staircase convention) contaminate the
+    # extraction. Empirically this drops PEC-short WR-90 |S11| from 1.0 to
+    # 0.91 (see scripts/_aperture_trim_test.py and ../_aperture_trapezoidal_test.py).
+    #
+    # Convention: DROP PEC +face cells (weight=0.0). This matches the
+    # OpenEMS convention — its mode-function probe integration box is
+    # specified to the physical aperture, naturally excluding ghost
+    # cells that sit past the conductor (see /usr/lib/python3/dist-packages
+    # /openEMS/ports.py:347-360 for the WaveguidePort probe construction).
+    # Empirically: weight 0.5 (PROD half-weight kludge, used 2026-04-23..27)
+    # gives PEC-short min |S11| ≈ 0.94, weight 0.0 (DROP, OpenEMS-equivalent)
+    # gives min |S11| = 0.9997. The half-weight was a 2026-04-26 staging
+    # compromise (docs/research_notes/2026-04-26_phase2_aperture_weight_dead_end.md
+    # Phase 2 dead-end) that protected mesh-conv and asymmetric-obstacle
+    # reciprocity at the cost of capping PEC-short closure. With DROP,
+    # one mesh-conv |S21| test currently regresses (xfail-locked in
+    # tests/test_waveguide_port_validation_battery.py); the receive-side
+    # multi-mode extractor (per the dead-end note's recommendation) is the
+    # path to recovering that without re-introducing the PEC-short cap.
+    #
+    # Detection: +face is PEC iff axis fully PEC (not in cpml_axes) OR per-
+    # face spec marks it PEC. Only fires when slice reaches the grid edge.
+    u_aperture_weights = np.ones_like(u_widths_np)
+    v_aperture_weights = np.ones_like(v_widths_np)
+    if boundary_grid is not None and u_axis_name is not None:
+        cpml_axes = getattr(boundary_grid, "cpml_axes", "")
+        pec_faces = getattr(boundary_grid, "pec_faces", set()) or set()
+        u_hi_face_pec = (u_axis_name not in cpml_axes) or (
+            f"{u_axis_name}_hi" in pec_faces)
+        v_hi_face_pec = (v_axis_name not in cpml_axes) or (
+            f"{v_axis_name}_hi" in pec_faces)
+        if u_hi == u_grid_size and u_hi_face_pec and u_widths_np.size > 0:
+            u_aperture_weights[-1] = 0.0
+        if v_hi == v_grid_size and v_hi_face_pec and v_widths_np.size > 0:
+            v_aperture_weights[-1] = 0.0
+    aperture_dA_np = (
+        (u_widths_np * u_aperture_weights)[:, None]
+        * (v_widths_np * v_aperture_weights)[None, :]
+    )
 
     if mode_profile not in ("analytic", "discrete"):
         raise ValueError(
@@ -568,10 +882,14 @@ def init_waveguide_port(
         if port.mode_type == "TE":
             ey, ez, hy, hz, kc_num = _discrete_te_mode_profiles(
                 port.a, port.b, m, n, u_widths_np, v_widths_np,
+                aperture_dA=aperture_dA_np,
+                h_offset=h_offset,
             )
         else:
             ey, ez, hy, hz, kc_num = _discrete_tm_mode_profiles(
                 port.a, port.b, m, n, u_widths_np, v_widths_np,
+                aperture_dA=aperture_dA_np,
+                h_offset=h_offset,
             )
         # Use the discrete eigenvalue's kc for f_c so h_inc_table's
         # β(ω) = √(k² − kc_num²) matches the Yee-grid mode exactly.
@@ -581,11 +899,15 @@ def init_waveguide_port(
             ey, ez, hy, hz = _te_mode_profiles(
                 port.a, port.b, m, n, u_coords, v_coords,
                 u_widths=u_widths_np, v_widths=v_widths_np,
+                aperture_dA=aperture_dA_np,
+                h_offset=h_offset,
             )
         else:
             ey, ez, hy, hz = _tm_mode_profiles(
                 port.a, port.b, m, n, u_coords, v_coords,
                 u_widths=u_widths_np, v_widths=v_widths_np,
+                aperture_dA=aperture_dA_np,
+                h_offset=h_offset,
             )
         f_c = cutoff_frequency(port.a, port.b, m, n)
 
@@ -845,6 +1167,9 @@ def init_waveguide_port(
         n_steps_recorded=jnp.zeros((), dtype=jnp.int32),
         e_inc_table=e_inc_table,
         h_inc_table=h_inc_table,
+        aperture_dA=jnp.asarray(aperture_dA_np, dtype=jnp.float32),
+        h_offset=(float(h_offset[0]), float(h_offset[1])),
+        mode_indices=(int(m), int(n)),
     )
 
 
@@ -872,6 +1197,29 @@ def _plane_h_field(field, cfg: WaveguidePortConfig, plane_index: int):
         _plane_field(field, cfg, plane_index)
         + _plane_field(field, cfg, prev_index)
     )
+
+
+def _plane_h_field_at_dual(
+    field,
+    cfg: WaveguidePortConfig,
+    plane_index: int,
+    h_offset: tuple[float, float],
+):
+    """Extract H on the normal-averaged plane and optional transverse dual mesh."""
+    base = _plane_h_field(field, cfg, plane_index)
+    if h_offset == (0.0, 0.0):
+        return base
+    out = base
+    for axis, offset in enumerate(h_offset):
+        if offset == 0.0:
+            continue
+        if offset != 0.5:
+            raise ValueError(
+                "h_offset currently supports only 0.0 or 0.5 per axis, "
+                f"got {h_offset!r}"
+            )
+        out = 0.5 * (out + jnp.roll(out, -1, axis=axis))
+    return out
 
 
 def inject_waveguide_port(state, cfg: WaveguidePortConfig,
@@ -1039,7 +1387,16 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
 
 
 def _aperture_dA(cfg: WaveguidePortConfig) -> jnp.ndarray:
-    """Per-cell area element (nu, nv) on the port aperture."""
+    """Per-cell area element (nu, nv) on the port aperture.
+
+    Returns the precomputed `cfg.aperture_dA` when populated by
+    `init_waveguide_port` (which applies face-aware ghost-cell pruning at
+    PEC boundaries). Falls back to the legacy `u_widths × v_widths`
+    product when called on a cfg built without the precomputed area
+    (low-level test fixtures predating this field).
+    """
+    if cfg.aperture_dA.shape[0] > 0 and cfg.aperture_dA.shape[1] > 0:
+        return cfg.aperture_dA
     return cfg.u_widths[:, None] * cfg.v_widths[None, :]
 
 
@@ -1059,8 +1416,12 @@ def modal_current(state, cfg: WaveguidePortConfig, x_idx: int,
     H is averaged between x_idx-1 and x_idx to co-locate with E
     on the Yee grid (H sits at x+1/2, E sits at x).
     """
-    h_u_sim = _plane_h_field(getattr(state, cfg.h_u_component), cfg, x_idx)
-    h_v_sim = _plane_h_field(getattr(state, cfg.h_v_component), cfg, x_idx)
+    h_u_sim = _plane_h_field_at_dual(
+        getattr(state, cfg.h_u_component), cfg, x_idx, cfg.h_offset,
+    )
+    h_v_sim = _plane_h_field_at_dual(
+        getattr(state, cfg.h_v_component), cfg, x_idx, cfg.h_offset,
+    )
     dA = _aperture_dA(cfg)
     return jnp.sum((h_u_sim * cfg.hy_profile + h_v_sim * cfg.hz_profile) * dA)
 
@@ -1096,8 +1457,12 @@ def overlap_modal_amplitude(
     """
     e_u_sim = _plane_field(getattr(state, cfg.e_u_component), cfg, x_idx)
     e_v_sim = _plane_field(getattr(state, cfg.e_v_component), cfg, x_idx)
-    h_u_sim = _plane_h_field(getattr(state, cfg.h_u_component), cfg, x_idx)
-    h_v_sim = _plane_h_field(getattr(state, cfg.h_v_component), cfg, x_idx)
+    h_u_sim = _plane_h_field_at_dual(
+        getattr(state, cfg.h_u_component), cfg, x_idx, cfg.h_offset,
+    )
+    h_v_sim = _plane_h_field_at_dual(
+        getattr(state, cfg.h_v_component), cfg, x_idx, cfg.h_offset,
+    )
 
     dA = _aperture_dA(cfg)
     # P1 = ∫ (E_sim × H_mode) · n̂ dA
@@ -1932,6 +2297,8 @@ def init_multimode_waveguide_port(
     dt: float = 0.0,
     waveform: str = "modulated_gaussian",
     mode_profile: str = "discrete",
+    grid=None,
+    h_offset: tuple[float, float] = (0.5, 0.5),
 ) -> list[WaveguidePortConfig]:
     """Initialize a multi-mode waveguide port.
 
@@ -1974,6 +2341,7 @@ def init_multimode_waveguide_port(
             amplitude=amplitude, probe_offset=probe_offset,
             ref_offset=ref_offset, dft_total_steps=dft_total_steps,
             dt=dt, waveform=waveform, mode_profile=mode_profile,
+            grid=grid, h_offset=h_offset,
         )
         return [cfg]
 
@@ -2005,10 +2373,54 @@ def init_multimode_waveguide_port(
             amplitude=mode_amplitude, probe_offset=probe_offset,
             ref_offset=ref_offset, dft_total_steps=dft_total_steps,
             dt=dt, waveform=waveform, mode_profile=mode_profile,
+            grid=grid, h_offset=h_offset,
         )
         cfgs.append(cfg)
 
-    return cfgs
+    return _gram_schmidt_modes(cfgs)
+
+
+def _gram_schmidt_modes(
+    cfgs: list[WaveguidePortConfig],
+) -> list[WaveguidePortConfig]:
+    """Jointly orthonormalise stored modal profiles under shared dA."""
+    if len(cfgs) <= 1:
+        return cfgs
+    dA = np.asarray(_aperture_dA(cfgs[0]), dtype=np.float64)
+    out: list[WaveguidePortConfig] = []
+    for cfg in cfgs:
+        ey = np.asarray(cfg.ey_profile, dtype=np.float64).copy()
+        ez = np.asarray(cfg.ez_profile, dtype=np.float64).copy()
+        hy = np.asarray(cfg.hy_profile, dtype=np.float64).copy()
+        hz = np.asarray(cfg.hz_profile, dtype=np.float64).copy()
+
+        for prev in out:
+            pey = np.asarray(prev.ey_profile, dtype=np.float64)
+            pez = np.asarray(prev.ez_profile, dtype=np.float64)
+            phy = np.asarray(prev.hy_profile, dtype=np.float64)
+            phz = np.asarray(prev.hz_profile, dtype=np.float64)
+            c_prev = float(np.sum((pey * phz - pez * phy) * dA))
+            if abs(c_prev) <= 1e-30:
+                continue
+            proj = float(np.sum((ey * phz - ez * phy) * dA)) / c_prev
+            ey -= proj * pey
+            ez -= proj * pez
+            hy -= proj * phy
+            hz -= proj * phz
+
+        c_self = float(np.sum((ey * hz - ez * hy) * dA))
+        if abs(c_self) <= 1e-30:
+            raise ValueError(
+                "Cannot orthonormalize waveguide modes: zero self-overlap"
+            )
+        scale = np.sqrt(abs(c_self))
+        out.append(cfg._replace(
+            ey_profile=jnp.asarray(ey / scale, dtype=cfg.ey_profile.dtype),
+            ez_profile=jnp.asarray(ez / scale, dtype=cfg.ez_profile.dtype),
+            hy_profile=jnp.asarray(hy / scale, dtype=cfg.hy_profile.dtype),
+            hz_profile=jnp.asarray(hz / scale, dtype=cfg.hz_profile.dtype),
+        ))
+    return out
 
 
 def extract_multimode_s_matrix(
@@ -2057,7 +2469,6 @@ def extract_multimode_s_matrix(
     # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
     flat_cfgs: list[WaveguidePortConfig] = []
     mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
-    port_of_flat: list[int] = []
 
     for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
         for mode_within, cfg in enumerate(mode_cfgs):
@@ -2065,7 +2476,6 @@ def extract_multimode_s_matrix(
             # Extract mode info from the config
             m_idx = _mode_indices_from_config(cfg)
             mode_map.append((port_idx, mode_within, cfg.mode_type, m_idx))
-            port_of_flat.append(port_idx)
 
     n_total = len(flat_cfgs)
     n_freqs = len(flat_cfgs[0].freqs)
@@ -2139,11 +2549,175 @@ def extract_multimode_s_matrix(
     return jnp.asarray(s_matrix), mode_map
 
 
+def extract_multimode_s_params_normalized(
+    grid,
+    materials,
+    ref_materials,
+    port_mode_cfgs: list[list[WaveguidePortConfig]],
+    n_steps: int,
+    *,
+    boundary: str = "cpml",
+    cpml_axes: str = "x",
+    pec_axes: str = "yz",
+    periodic: tuple[bool, bool, bool] | None = None,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    ref_debye: tuple | None = None,
+    ref_lorentz: tuple | None = None,
+    ref_shifts: list[float] | tuple[float, ...] | None = None,
+    aniso_eps: tuple | None = None,
+) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
+    """Two-run normalized S-matrix for multi-mode waveguide ports.
+
+    The row/column ordering matches :func:`extract_multimode_s_matrix`.
+    Each drive mode gets its own empty-guide reference run. Channels with a
+    nonzero empty-guide through response are normalized by that reference
+    outgoing wave; reflection and mode-conversion channels subtract the
+    reference outgoing wave and normalize by the driven incident wave.
+    """
+    from rfx.simulation import run as run_simulation
+
+    flat_cfgs: list[WaveguidePortConfig] = []
+    mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
+    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
+        for mode_within, cfg in enumerate(mode_cfgs):
+            flat_cfgs.append(cfg)
+            mode_map.append((
+                port_idx,
+                mode_within,
+                cfg.mode_type,
+                _mode_indices_from_config(cfg),
+            ))
+
+    if len(flat_cfgs) < 2:
+        raise ValueError(
+            "extract_multimode_s_params_normalized requires at least two modal channels"
+        )
+
+    n_total = len(flat_cfgs)
+    n_freqs = len(flat_cfgs[0].freqs)
+    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=np.complex64)
+
+    n_ports = len(port_mode_cfgs)
+    if ref_shifts is None:
+        ref_shifts = tuple(0.0 for _ in range(n_ports))
+    if len(ref_shifts) != n_ports:
+        raise ValueError("ref_shifts must have one entry per physical port")
+    flat_ref_shifts: list[float] = []
+    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
+        flat_ref_shifts.extend([float(ref_shifts[port_idx])] * len(mode_cfgs))
+
+    def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
+        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        return cfg._replace(
+            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            v_probe_t=zeros_t,
+            v_ref_t=zeros_t,
+            i_probe_t=zeros_t,
+            i_ref_t=zeros_t,
+            v_inc_t=zeros_t,
+            n_steps_recorded=jnp.zeros((), dtype=jnp.int32),
+        )
+
+    common_run_kw = dict(
+        boundary=boundary,
+        cpml_axes=cpml_axes,
+        pec_axes=pec_axes,
+        periodic=periodic,
+    )
+    orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+
+    for drive_flat_idx in range(n_total):
+        ref_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+            for idx, cfg in enumerate(flat_cfgs)
+        ]
+        ref_cfgs[drive_flat_idx] = ref_cfgs[drive_flat_idx]._replace(
+            src_amp=orig_amp,
+        )
+        ref_result = run_simulation(
+            grid, ref_materials, n_steps,
+            debye=ref_debye, lorentz=ref_lorentz,
+            waveguide_ports=ref_cfgs, **common_run_kw,
+        )
+        ref_final_cfgs = ref_result.waveguide_ports or ()
+        if len(ref_final_cfgs) != n_total:
+            raise RuntimeError(
+                f"Expected {n_total} reference waveguide configs, got {len(ref_final_cfgs)}"
+            )
+
+        a_inc_ref, _ = extract_waveguide_port_waves(
+            ref_final_cfgs[drive_flat_idx],
+            ref_shift=flat_ref_shifts[drive_flat_idx],
+        )
+        a_inc_ref_np = np.array(a_inc_ref)
+        safe_a_inc = np.where(
+            np.abs(a_inc_ref_np) > 1e-30,
+            a_inc_ref_np,
+            np.ones_like(a_inc_ref_np),
+        )
+
+        b_out_ref = []
+        for recv_idx, cfg in enumerate(ref_final_cfgs):
+            _, b_ref_i = extract_waveguide_port_waves(
+                cfg,
+                ref_shift=flat_ref_shifts[recv_idx],
+            )
+            b_out_ref.append(np.array(b_ref_i))
+
+        dev_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+            for idx, cfg in enumerate(flat_cfgs)
+        ]
+        dev_cfgs[drive_flat_idx] = dev_cfgs[drive_flat_idx]._replace(
+            src_amp=orig_amp,
+        )
+        dev_result = run_simulation(
+            grid, materials, n_steps,
+            debye=debye, lorentz=lorentz,
+            waveguide_ports=dev_cfgs, aniso_eps=aniso_eps,
+            **common_run_kw,
+        )
+        dev_final_cfgs = dev_result.waveguide_ports or ()
+        if len(dev_final_cfgs) != n_total:
+            raise RuntimeError(
+                f"Expected {n_total} device waveguide configs, got {len(dev_final_cfgs)}"
+            )
+
+        for recv_idx, cfg in enumerate(dev_final_cfgs):
+            _, b_recv_dev = extract_waveguide_port_waves(
+                cfg,
+                ref_shift=flat_ref_shifts[recv_idx],
+            )
+            b_recv_dev_np = np.array(b_recv_dev)
+            b_ref_np = b_out_ref[recv_idx]
+            ref_nonzero = np.abs(b_ref_np) > 1e-30
+            safe_b_ref = np.where(ref_nonzero, b_ref_np, np.ones_like(b_ref_np))
+
+            with np.errstate(divide="ignore", invalid="ignore"):
+                if recv_idx == drive_flat_idx:
+                    s_matrix[recv_idx, drive_flat_idx, :] = (
+                        b_recv_dev_np - b_ref_np
+                    ) / safe_a_inc
+                else:
+                    through_norm = b_recv_dev_np / safe_b_ref
+                    conversion_norm = (b_recv_dev_np - b_ref_np) / safe_a_inc
+                    s_matrix[recv_idx, drive_flat_idx, :] = np.where(
+                        ref_nonzero,
+                        through_norm,
+                        conversion_norm,
+                    )
+
+    return jnp.asarray(s_matrix), mode_map
+
+
 def _mode_indices_from_config(cfg: WaveguidePortConfig) -> tuple[int, int]:
     """Best-effort extraction of (m, n) mode indices from a config.
 
     Uses the cutoff frequency and aperture dimensions to identify the mode.
     """
+    if getattr(cfg, "mode_indices", (0, 0)) != (0, 0):
+        return cfg.mode_indices
     a, b = cfg.a, cfg.b
     fc = cfg.f_cutoff
     kc = 2 * np.pi * fc / C0_LOCAL
@@ -2160,7 +2734,7 @@ def _mode_indices_from_config(cfg: WaveguidePortConfig) -> tuple[int, int]:
             if err < best_err:
                 best_err = err
                 best_mn = (m, n)
-    if best_err < 0.1:
+    if best_err < 0.35:
         return best_mn
     return (0, 0)
 
@@ -2178,13 +2752,20 @@ def _overlap_cross_products(
     dA = _aperture_dA(cfg)
     e_u_sim = _plane_field(getattr(state, cfg.e_u_component), cfg, x_idx)
     e_v_sim = _plane_field(getattr(state, cfg.e_v_component), cfg, x_idx)
-    h_u_sim = _plane_h_field(getattr(state, cfg.h_u_component), cfg, x_idx)
-    h_v_sim = _plane_h_field(getattr(state, cfg.h_v_component), cfg, x_idx)
+    h_u_sim = _plane_h_field_at_dual(
+        getattr(state, cfg.h_u_component), cfg, x_idx, cfg.h_offset,
+    )
+    h_v_sim = _plane_h_field_at_dual(
+        getattr(state, cfg.h_v_component), cfg, x_idx, cfg.h_offset,
+    )
 
-    # P1 = ∫(eu_sim * hv_mode - ev_sim * hu_mode) dA
-    p1 = jnp.sum((e_u_sim * cfg.hz_profile - e_v_sim * cfg.hy_profile) * dA)
-    # P2 = ∫(eu_mode * hv_sim - ev_mode * hu_sim) dA
-    p2 = jnp.sum((cfg.ey_profile * h_v_sim - cfg.ez_profile * h_u_sim) * dA)
+    # Preserve the production V/I-equivalent DFT path even when the stored H
+    # template is sampled on a transverse dual mesh (`h_offset != 0`).  In the
+    # unshifted case these are exactly the Lorentz cross-products because
+    # h_mode = n̂×e_mode; with dual-mesh H they remain the modal voltage/current
+    # quantities consumed by `_overlap_to_waves`.
+    p1 = jnp.sum((e_u_sim * cfg.ey_profile + e_v_sim * cfg.ez_profile) * dA)
+    p2 = jnp.sum((h_u_sim * cfg.hy_profile + h_v_sim * cfg.hz_profile) * dA)
 
     return p1, p2
 

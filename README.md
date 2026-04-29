@@ -116,7 +116,7 @@ Benchmarked against Balanis "Antenna Theory" and Pozar "Microwave Engineering":
 | Microstrip Z0 | Hammerstad-Jensen | 0.47% |
 | Coupled-line filter | Pozar Ch 8 | 22.5% (formula limitation) |
 
-Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavities and waveguides. For the current practical patch workflow on the nonuniform shadow lane, use `examples/crossval/05_patch_antenna.py` together with the validation pages rather than treating the example itself as the top-level claim source.
+Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavity Q-factors and guided-mode transmission (`examples/crossval/01-04, 09, 10`). WR-90 waveguide-port S-parameter magnitude on empty-guide and PEC-short matches Meep-class through `compute_waveguide_s_matrix`; phase de-embedding for dispersive single-slab interfaces is the one remaining open item on `examples/crossval/11_waveguide_port_wr90.py`. For the practical patch workflow on the nonuniform shadow lane, use `examples/crossval/05_patch_antenna.py` together with the validation pages rather than treating the example itself as the top-level claim source.
 
 ## Key Features
 

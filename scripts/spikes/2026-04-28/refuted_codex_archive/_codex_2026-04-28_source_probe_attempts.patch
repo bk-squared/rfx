@@ -1,0 +1,372 @@
+diff --git a/rfx/api.py b/rfx/api.py
+index ab63272..7e26751 100644
+--- a/rfx/api.py
++++ b/rfx/api.py
+@@ -346,6 +346,7 @@ class _WaveguidePortEntry:
+     n_modes: int = 1
+     waveform: str = "differentiated_gaussian"
+     mode_profile: str = "analytic"
++    source_type: str = "tfsf"
+ 
+ 
+ @dataclass(frozen=True)
+@@ -1206,6 +1207,7 @@ class Simulation:
+         n_modes: int = 1,
+         waveform: str = "modulated_gaussian",
+         mode_profile: str = "discrete",
++        source_type: str = "tfsf",
+     ) -> "Simulation":
+         """Add a rectangular waveguide port.
+ 
+@@ -1284,6 +1286,16 @@ class Simulation:
+                 "mode_profile must be 'analytic' or 'discrete', "
+                 f"got {mode_profile!r}"
+             )
++        if source_type not in ("tfsf", "soft_current"):
++            raise ValueError(
++                "source_type must be 'tfsf' or 'soft_current', "
++                f"got {source_type!r}"
++            )
++        if source_type == "soft_current" and n_modes != 1:
++            raise ValueError(
++                "source_type='soft_current' currently supports only n_modes=1; "
++                "drive each mode in turn for multimode workflows"
++            )
+         axis_name = direction[1]
+         axis_idx = {"x": 0, "y": 1, "z": 2}[axis_name]
+         if x_position < 0 or x_position > self._domain[axis_idx]:
+@@ -1425,6 +1437,7 @@ class Simulation:
+             n_modes=n_modes,
+             waveform=waveform,
+             mode_profile=mode_profile,
++            source_type=source_type,
+         ))
+         return self
+ 
+@@ -2100,6 +2113,7 @@ class Simulation:
+             waveform=entry.waveform,
+             mode_profile=entry.mode_profile,
+             grid=grid,
++            source_type=entry.source_type,
+         )
+         return cfg
+ 
+diff --git a/rfx/probes/__init__.py b/rfx/probes/__init__.py
+index ab6d0e7..121dcaf 100644
+--- a/rfx/probes/__init__.py
++++ b/rfx/probes/__init__.py
+@@ -10,3 +10,7 @@ from rfx.probes.fresnel import (
+     extract_fresnel_from_planes,
+     fresnel_r_te,
+ )
++from rfx.probes.waveguide_box import (
++    WaveguideBoxProbe,
++    s11_from_box_fields,
++)
+diff --git a/rfx/runners/nonuniform.py b/rfx/runners/nonuniform.py
+index 52cee89..e014ec7 100644
+--- a/rfx/runners/nonuniform.py
++++ b/rfx/runners/nonuniform.py
+@@ -190,6 +190,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
+         probe_offset=entry.probe_offset,
+         ref_offset=entry.ref_offset,
+         dft_total_steps=n_steps,
++        source_type=entry.source_type,
+     )
+ 
+ 
+diff --git a/rfx/sources/waveguide_port.py b/rfx/sources/waveguide_port.py
+index d6f1281..68d0958 100644
+--- a/rfx/sources/waveguide_port.py
++++ b/rfx/sources/waveguide_port.py
+@@ -178,6 +178,18 @@ class WaveguidePortConfig(NamedTuple):
+     h_offset: tuple[float, float] = (0.0, 0.0)
+     mode_indices: tuple[int, int] = (0, 0)
+ 
++    # Source-side topology and optional source-only templates.  The default
++    # ``"tfsf"`` path uses the canonical receive templates above for the
++    # two-plane H/E correction pair.  ``"soft_current"`` keeps the same Yee
++    # source slots and temporal scaling tables, but drives with OpenEMS-style
++    # continuous-coordinate analytic templates; receive-side V/I extraction is
++    # intentionally unchanged so this opt-in isolates source weighting.
++    source_type: str = "tfsf"
++    source_ey_profile: jnp.ndarray | None = None
++    source_ez_profile: jnp.ndarray | None = None
++    source_hy_profile: jnp.ndarray | None = None
++    source_hz_profile: jnp.ndarray | None = None
++
+ 
+ def _te_mode_profiles(a: float, b: float, m: int, n: int,
+                       y_coords: np.ndarray, z_coords: np.ndarray,
+@@ -314,6 +326,131 @@ def _tm_mode_profiles(a: float, b: float, m: int, n: int,
+     return ey, ez, hy, hz
+ 
+ 
++def _continuous_source_mode_profiles(
++    a: float,
++    b: float,
++    m: int,
++    n: int,
++    mode_type: str,
++    u_widths: np.ndarray,
++    v_widths: np.ndarray,
++    *,
++    aperture_dA: np.ndarray | None = None,
++    h_offset: tuple[float, float] = (0.5, 0.5),
++) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
++    """Continuous-coordinate analytic templates for soft-current drive.
++
++    The existing ``mode_profile="analytic"`` path samples an analytic mode on
++    rfx's cell-centred template grid and then uses that same template for
++    source and extractor.  Candidate #1 needs a source-only OpenEMS-style
++    weight: evaluate analytic functions over the *physical* aperture box.
++
++    The uniform rfx grid is allowed to fencepost/ceil past the requested
++    WR-90 dimensions.  OpenEMS' symbolic ``SetWeightFunction(E_func)`` is
++    defined in continuous coordinates over the requested aperture, so this
++    helper clips every Yee face cell to ``[0, a] × [0, b]`` and uses small
++    Gauss-Legendre quadrature to compute source-cell averages.  Cells fully
++    outside the physical aperture get zero drive instead of reusing the
++    receive-side DROP weighting kludge.
++    """
++    del aperture_dA  # Source-side normalization uses physical clipped areas.
++    u_widths = np.asarray(u_widths, dtype=np.float64)
++    v_widths = np.asarray(v_widths, dtype=np.float64)
++    nu = int(len(u_widths))
++    nv = int(len(v_widths))
++
++    def _edges(widths: np.ndarray) -> np.ndarray:
++        return np.concatenate(([0.0], np.cumsum(widths, dtype=np.float64)))
++
++    u_edges = _edges(u_widths)
++    v_edges = _edges(v_widths)
++
++    # Four-point tensor-product quadrature is enough for the trigonometric
++    # TE/TM weights here and keeps init cost negligible.
++    q_xi, q_w = np.polynomial.legendre.leggauss(4)
++    q_t = 0.5 * (q_xi + 1.0)
++    q_w = 0.5 * q_w
++
++    def _cell_average(func, *, offset: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
++        out = np.zeros((nu, nv), dtype=np.float64)
++        dA = np.zeros((nu, nv), dtype=np.float64)
++        for i in range(nu):
++            u0 = u_edges[i] + float(offset[0]) * u_widths[i]
++            u1 = u_edges[i + 1] + float(offset[0]) * u_widths[i]
++            uc0 = max(0.0, u0)
++            uc1 = min(float(a), u1)
++            if uc1 <= uc0:
++                continue
++            uq = uc0 + q_t * (uc1 - uc0)
++            for j in range(nv):
++                v0 = v_edges[j] + float(offset[1]) * v_widths[j]
++                v1 = v_edges[j + 1] + float(offset[1]) * v_widths[j]
++                vc0 = max(0.0, v0)
++                vc1 = min(float(b), v1)
++                if vc1 <= vc0:
++                    continue
++                vq = vc0 + q_t * (vc1 - vc0)
++                Y, Z = np.meshgrid(uq, vq, indexing="ij")
++                W = q_w[:, None] * q_w[None, :]
++                out[i, j] = float(np.sum(func(Y, Z) * W))
++                dA[i, j] = (uc1 - uc0) * (vc1 - vc0)
++        return out, dA
++
++    if mode_type == "TE":
++        def ey_func(Y, Z):
++            if n <= 0:
++                return np.zeros_like(Y)
++            return -(n * np.pi / b) * np.cos(m * np.pi * Y / a) * np.sin(n * np.pi * Z / b)
++
++        def ez_func(Y, Z):
++            if m <= 0:
++                return np.zeros_like(Y)
++            return (m * np.pi / a) * np.sin(m * np.pi * Y / a) * np.cos(n * np.pi * Z / b)
++
++        def hy_func(Y, Z):
++            if m <= 0:
++                return np.zeros_like(Y)
++            return -(m * np.pi / a) * np.sin(m * np.pi * Y / a) * np.cos(n * np.pi * Z / b)
++
++        def hz_func(Y, Z):
++            if n <= 0:
++                return np.zeros_like(Y)
++            return -(n * np.pi / b) * np.cos(m * np.pi * Y / a) * np.sin(n * np.pi * Z / b)
++
++    elif mode_type == "TM":
++        if m < 1 or n < 1:
++            raise ValueError(f"TM modes require m >= 1 and n >= 1, got ({m}, {n})")
++
++        def ey_func(Y, Z):
++            return (m * np.pi / a) * np.cos(m * np.pi * Y / a) * np.sin(n * np.pi * Z / b)
++
++        def ez_func(Y, Z):
++            return (n * np.pi / b) * np.sin(m * np.pi * Y / a) * np.cos(n * np.pi * Z / b)
++
++        def hy_func(Y, Z):
++            return -ez_func(Y, Z)
++
++        def hz_func(Y, Z):
++            return ey_func(Y, Z)
++    else:
++        raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
++
++    ey, dA_e = _cell_average(ey_func, offset=(0.0, 0.0))
++    ez, _ = _cell_average(ez_func, offset=(0.0, 0.0))
++    hy, dA_h = _cell_average(hy_func, offset=h_offset)
++    hz, _ = _cell_average(hz_func, offset=h_offset)
++
++    power = float(np.sum((ey ** 2 + ez ** 2) * dA_e))
++    if power > 0:
++        norm = np.sqrt(power)
++        ey /= norm
++        ez /= norm
++        hy /= norm
++        hz /= norm
++        hy, hz = _scale_h_to_unit_cross(ey, ez, hy, hz, dA_h)
++    return ey, ez, hy, hz
++
++
+ def cutoff_frequency(a: float, b: float, m: int, n: int) -> float:
+     """TE_mn or TM_mn cutoff frequency for rectangular waveguide."""
+     kc = np.sqrt((m * np.pi / a) ** 2 + (n * np.pi / b) ** 2)
+@@ -723,6 +860,7 @@ def init_waveguide_port(
+     mode_profile: str = "discrete",
+     grid=None,
+     h_offset: tuple[float, float] = (0.5, 0.5),
++    source_type: str = "tfsf",
+ ) -> WaveguidePortConfig:
+     """Initialize a waveguide port with precomputed mode profiles.
+ 
+@@ -878,6 +1016,11 @@ def init_waveguide_port(
+             "mode_profile must be 'analytic' or 'discrete', "
+             f"got {mode_profile!r}"
+         )
++    if source_type not in ("tfsf", "soft_current"):
++        raise ValueError(
++            "source_type must be 'tfsf' or 'soft_current', "
++            f"got {source_type!r}"
++        )
+     if mode_profile == "discrete":
+         if port.mode_type == "TE":
+             ey, ez, hy, hz, kc_num = _discrete_te_mode_profiles(
+@@ -911,6 +1054,20 @@ def init_waveguide_port(
+             )
+         f_c = cutoff_frequency(port.a, port.b, m, n)
+ 
++    source_ey = source_ez = source_hy = source_hz = None
++    if source_type == "soft_current":
++        source_ey, source_ez, source_hy, source_hz = _continuous_source_mode_profiles(
++            port.a,
++            port.b,
++            m,
++            n,
++            port.mode_type,
++            u_widths_np,
++            v_widths_np,
++            aperture_dA=aperture_dA_np,
++            h_offset=h_offset,
++        )
++
+     if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
+         raise ValueError(
+             "waveform must be 'differentiated_gaussian' or 'modulated_gaussian', "
+@@ -1170,6 +1327,19 @@ def init_waveguide_port(
+         aperture_dA=jnp.asarray(aperture_dA_np, dtype=jnp.float32),
+         h_offset=(float(h_offset[0]), float(h_offset[1])),
+         mode_indices=(int(m), int(n)),
++        source_type=str(source_type),
++        source_ey_profile=(
++            None if source_ey is None else jnp.asarray(source_ey, dtype=jnp.float32)
++        ),
++        source_ez_profile=(
++            None if source_ez is None else jnp.asarray(source_ez, dtype=jnp.float32)
++        ),
++        source_hy_profile=(
++            None if source_hy is None else jnp.asarray(source_hy, dtype=jnp.float32)
++        ),
++        source_hz_profile=(
++            None if source_hz is None else jnp.asarray(source_hz, dtype=jnp.float32)
++        ),
+     )
+ 
+ 
+@@ -1222,6 +1392,22 @@ def _plane_h_field_at_dual(
+     return out
+ 
+ 
++def _source_profiles(cfg: WaveguidePortConfig):
++    """Return source-side templates for the configured source topology."""
++    if cfg.source_type == "soft_current":
++        return (
++            cfg.source_ey_profile
++            if cfg.source_ey_profile is not None else cfg.ey_profile,
++            cfg.source_ez_profile
++            if cfg.source_ez_profile is not None else cfg.ez_profile,
++            cfg.source_hy_profile
++            if cfg.source_hy_profile is not None else cfg.hy_profile,
++            cfg.source_hz_profile
++            if cfg.source_hz_profile is not None else cfg.hz_profile,
++        )
++    return cfg.ey_profile, cfg.ez_profile, cfg.hy_profile, cfg.hz_profile
++
++
+ def inject_waveguide_port(state, cfg: WaveguidePortConfig,
+                           t: float, dt: float, dx: float):
+     """Legacy soft-E source (superseded by TFSF-style pair in scan body).
+@@ -1250,9 +1436,10 @@ def inject_waveguide_port(state, cfg: WaveguidePortConfig,
+     field_u = getattr(state, cfg.e_u_component)
+     field_v = getattr(state, cfg.e_v_component)
+     indexer = _plane_indexer(cfg)
++    src_ey, src_ez, _, _ = _source_profiles(cfg)
+ 
+-    field_u = field_u.at[indexer].add(src_val * cfg.ey_profile)
+-    field_v = field_v.at[indexer].add(src_val * cfg.ez_profile)
++    field_u = field_u.at[indexer].add(src_val * src_ey)
++    field_v = field_v.at[indexer].add(src_val * src_ez)
+ 
+     return state._replace(**{cfg.e_u_component: field_u, cfg.e_v_component: field_v})
+ 
+@@ -1300,10 +1487,11 @@ def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
+ 
+     h_u_field = getattr(state, cfg.h_u_component)
+     h_v_field = getattr(state, cfg.h_v_component)
++    src_ey, src_ez, _, _ = _source_profiles(cfg)
+ 
+     # H_u is driven by E_v (ez); H_v by E_u (ey) with opposite curl sign.
+-    h_u_field = h_u_field.at[indexer_h].add(sign * coeff * src_val * cfg.ez_profile)
+-    h_v_field = h_v_field.at[indexer_h].add(-sign * coeff * src_val * cfg.ey_profile)
++    h_u_field = h_u_field.at[indexer_h].add(sign * coeff * src_val * src_ez)
++    h_v_field = h_v_field.at[indexer_h].add(-sign * coeff * src_val * src_ey)
+ 
+     return state._replace(**{
+         cfg.h_u_component: h_u_field,
+@@ -1347,8 +1535,9 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
+         field_u = getattr(state, cfg.e_u_component)
+         field_v = getattr(state, cfg.e_v_component)
+         indexer = _plane_indexer(cfg)
+-        field_u = field_u.at[indexer].add(src_val * cfg.ey_profile)
+-        field_v = field_v.at[indexer].add(src_val * cfg.ez_profile)
++        src_ey, src_ez, _, _ = _source_profiles(cfg)
++        field_u = field_u.at[indexer].add(src_val * src_ey)
++        field_v = field_v.at[indexer].add(src_val * src_ez)
+         return state._replace(**{
+             cfg.e_u_component: field_u,
+             cfg.e_v_component: field_v,
+@@ -1372,13 +1561,14 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
+ 
+     e_u_field = getattr(state, cfg.e_u_component)
+     e_v_field = getattr(state, cfg.e_v_component)
++    _, _, src_hy, src_hz = _source_profiles(cfg)
+ 
+     # E_v is corrected by H_u (hy_profile); E_u by H_v (hz_profile) with
+     # opposite curl sign. The modal H amplitude (positive for positive
+     # forward E) multiplies the stored h*_profile which already carries
+     # the mode-specific sign relative to its e_*_profile counterpart.
+-    e_v_field = e_v_field.at[indexer_e].add(sign * coeff * h_inc_scalar * cfg.hy_profile)
+-    e_u_field = e_u_field.at[indexer_e].add(-sign * coeff * h_inc_scalar * cfg.hz_profile)
++    e_v_field = e_v_field.at[indexer_e].add(sign * coeff * h_inc_scalar * src_hy)
++    e_u_field = e_u_field.at[indexer_e].add(-sign * coeff * h_inc_scalar * src_hz)
+ 
+     return state._replace(**{
+         cfg.e_u_component: e_u_field,
