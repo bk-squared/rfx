@@ -94,16 +94,23 @@ def test_gate_policy_rejects_noncanonical_native_sparam_claim(tmp_path):
     assert "forbidden_native_sparam_artifact_key" in result["failed_gates"]
 
 
-def test_gate_policy_requires_current_strategy_b_seam_null_sparams(tmp_path):
+def test_gate_policy_rejects_native_sparam_true_with_null_arrays(tmp_path):
     artifact = _base_artifact(tmp_path)
-    artifact["strategy_b_seam"]["native_s_params_supported"] = True
-    artifact["strategy_b_seam"]["phase1_forward_result_s_params"] = [1.0]
+    seam = artifact["strategy_b_seam"]
+    seam["native_s_params_supported"] = True
+    seam["phase1_forward_result_s_params"] = None
+    seam["phase1_forward_result_freqs"] = None
+    seam["phase1_forward_result_s_params_shape"] = None
+    seam["phase1_forward_result_freqs_shape"] = None
+    seam["observable_source"] = "strategy_b_native_sparams"
+    seam["finite"] = False
 
     result = phase14.evaluate_artifact_gates(artifact)
 
     assert result["gates"]["native_sparams_truthfulness_valid"] is False
-    assert "native_strategy_b_sparams_claimed_without_support" in result["failed_gates"]
-    assert "phase1_forward_result_s_params_not_null" in result["failed_gates"]
+    assert "native_strategy_b_sparams_claimed_without_arrays" in result["failed_gates"]
+    assert "native_strategy_b_sparams_claimed_without_freqs" in result["failed_gates"]
+    assert "native_strategy_b_sparams_shape_invalid" in result["failed_gates"]
 
 
 def test_passivity_check_accepts_bounded_reference_sparams_and_rejects_gain():
@@ -174,7 +181,6 @@ def test_subprocess_meep_runner_accepts_isolated_python(monkeypatch):
     assert frequency == 123.0
 
 
-
 def test_optional_solver_wrapper_records_executed_pass_and_tolerance_fail():
     passed = phase14._run_optional_solver_correlation(
         "meep",
@@ -198,8 +204,6 @@ def test_optional_solver_wrapper_records_executed_pass_and_tolerance_fail():
     assert failed["executed"] is True
     assert failed["passed"] is False
     assert failed["failure_reason"] == "solver_correlation_tolerance_exceeded"
-
-
 
 
 def test_optional_solver_wrapper_restores_cwd_when_solver_changes_directory(tmp_path):
@@ -291,9 +295,14 @@ def test_default_harness_emits_complete_source_labelled_artifact(tmp_path):
     assert artifact["schema_version"] == phase14.SCHEMA_VERSION
     assert artifact["overall_status"] == "rf_observable_validated_limited"
     assert artifact["failed_gates"] == []
-    assert artifact["strategy_b_seam"]["native_s_params_supported"] is False
-    assert artifact["strategy_b_seam"]["phase1_forward_result_s_params"] is None
-    assert artifact["strategy_b_seam"]["phase1_forward_result_freqs"] is None
+    seam = artifact["strategy_b_seam"]
+    assert seam["native_s_params_supported"] is True
+    assert seam["observable_source"] == "strategy_b_native_sparams"
+    assert seam["phase1_forward_result_s_params_shape"] == [1, 1, 2]
+    assert seam["phase1_forward_result_freqs_shape"] == [2]
+    assert seam["phase1_forward_result_s_params"] is not None
+    assert seam["phase1_forward_result_freqs"] is not None
+    assert seam["finite"] is True
     resonance = artifact["fixtures"][0]["observables"]["resonance"]
     assert resonance["observable_source"] == "strategy_b_time_series"
     assert resonance["reference_source"] == "standard_rfx_time_series_reference"

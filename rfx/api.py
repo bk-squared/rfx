@@ -320,6 +320,7 @@ class _Phase1PortMetadata(NamedTuple):
     excited_lumped_port_cell: tuple[int, int, int] | None = None
     excited_lumped_port_component: str | None = None
     excited_lumped_port_sigma: float | None = None
+    excited_lumped_port_impedance_ohm: float | None = None
     excited_port_had_pec: bool = False
     design_region_overlaps_excited_port_cell: bool = False
     passive_lumped_port_cells: tuple[tuple[int, int, int], ...] = ()
@@ -3644,6 +3645,8 @@ class Simulation:
             reasons.append("Phase VI Strategy B does not support pec_mask replay")
         if inputs.pec_occupancy is not None:
             reasons.append("Phase VI Strategy B does not support pec_occupancy/PEC topology replay")
+        if inputs.s_param_request is not None and inputs.periodic != (False, False, False):
+            reasons.append("Phase XV native Strategy B S-parameters do not support periodic workflows")
 
         port_metadata = inputs.port_metadata
         total_ports = 0 if port_metadata is None else getattr(port_metadata, "total_ports", 0)
@@ -3672,12 +3675,30 @@ class Simulation:
                 reasons.append(
                     "Phase VI Strategy B port proxy rejects design-region overlap with a passive port cell"
                 )
+            if inputs.s_param_request is not None:
+                from rfx.hybrid_adjoint import _phase15_native_sparams_support_reasons
+
+                reasons.extend(
+                    _phase15_native_sparams_support_reasons(
+                        port_metadata,
+                        inputs.s_param_request,
+                    )
+                )
         elif (
             inputs.materials is not None
             and np.any(np.abs(np.asarray(inputs.materials.sigma)) > 0.0)
         ):
             reasons.append(
                 "Phase VI Strategy B supports conductivity only for the bounded lumped-port proxy"
+            )
+        elif inputs.s_param_request is not None:
+            from rfx.hybrid_adjoint import _phase15_native_sparams_support_reasons
+
+            reasons.extend(
+                _phase15_native_sparams_support_reasons(
+                    port_metadata,
+                    inputs.s_param_request,
+                )
             )
         return tuple(dict.fromkeys(reasons))
 
@@ -3767,12 +3788,53 @@ class Simulation:
             return grid.num_timesteps(num_periods=num_periods)
         return int(np.ceil(num_periods * (1.0 / float(self._freq_max)) / float(grid.dt)))
 
+    def _normalize_phase1_s_param_freqs(self, s_param_freqs: object | None) -> jnp.ndarray | None:
+        """Validate and normalize explicit native Phase XV S-parameter frequencies."""
+
+        if s_param_freqs is None:
+            return None
+        freqs_np = np.asarray(s_param_freqs, dtype=np.float64)
+        if freqs_np.ndim != 1:
+            raise ValueError("s_param_freqs must be a 1-D array")
+        if freqs_np.size == 0:
+            raise ValueError("s_param_freqs must be non-empty")
+        if not np.isfinite(freqs_np).all():
+            raise ValueError("s_param_freqs must contain only finite values")
+        if np.any(freqs_np <= 0.0):
+            raise ValueError("s_param_freqs must contain only positive frequencies")
+        return jnp.asarray(freqs_np, dtype=jnp.float32)
+
+    def _phase1_s_param_request_from_metadata(
+        self,
+        port_metadata: object | None,
+        s_param_freqs: object | None,
+    ) -> object | None:
+        """Build the static Strategy B native S-parameter request, if requested."""
+
+        freqs = self._normalize_phase1_s_param_freqs(s_param_freqs)
+        if freqs is None:
+            return None
+
+        from rfx.hybrid_adjoint import Phase1SParamRequest
+
+        cell = getattr(port_metadata, "excited_lumped_port_cell", None)
+        port_cell = tuple(int(v) for v in cell) if cell is not None else None
+        component = getattr(port_metadata, "excited_lumped_port_component", None)
+        impedance = getattr(port_metadata, "excited_lumped_port_impedance_ohm", None)
+        return Phase1SParamRequest(
+            freqs=freqs,
+            port_cell=port_cell,
+            component=str(component) if component is not None else None,
+            impedance_ohm=float(impedance) if impedance is not None else None,
+        )
+
     def build_hybrid_phase1_inputs(
         self,
         *,
         eps_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        s_param_freqs: object | None = None,
     ) -> "Phase1HybridInputs":
         """Build the seam-owned Phase 1 input spec for uniform hybrid preparation."""
 
@@ -3786,6 +3848,7 @@ class Simulation:
                 eps_override=eps_override,
                 n_steps=n_steps,
                 num_periods=num_periods,
+                s_param_freqs=s_param_freqs,
             )
 
         grid, prepared, report = self._inspect_hybrid_phase1_prepared(
@@ -3799,6 +3862,7 @@ class Simulation:
             report,
             n_steps=n_steps,
             num_periods=num_periods,
+            s_param_freqs=s_param_freqs,
         )
 
     def _build_nonuniform_hybrid_phase1_inputs(
@@ -3807,6 +3871,7 @@ class Simulation:
         eps_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        s_param_freqs: object | None = None,
     ) -> "Phase1HybridInputs":
         """Build the bounded Phase V non-uniform hybrid input surface."""
 
@@ -3849,9 +3914,14 @@ class Simulation:
 
         from rfx.hybrid_adjoint import Phase1HybridInputs, Phase1HybridInspection
 
-        if has_non_source_ports or self._waveguide_ports or self._floquet_ports:
+        s_param_request = self._phase1_s_param_request_from_metadata(None, s_param_freqs)
+        if has_non_source_ports or self._waveguide_ports or self._floquet_ports or s_param_request is not None:
             report = Phase1HybridInspection.unsupported(
-                reasons=("Phase V nonuniform hybrid supports only add_source()/probe workflows",),
+                reasons=(
+                    "Phase V nonuniform hybrid supports only add_source()/probe workflows"
+                    if s_param_request is None
+                    else "Phase XV native Strategy B S-parameters support only uniform one-port lumped workflows",
+                ),
                 source_count=len(raw_sources),
                 probe_count=len(probes),
                 boundary=self._boundary,
@@ -3880,6 +3950,7 @@ class Simulation:
             pec_axes="",
             cpml_axes=getattr(grid, "cpml_axes", ""),
             pec_faces=tuple(sorted(getattr(grid, "pec_faces", set()))),
+            s_param_request=s_param_request,
         )
 
     def _build_hybrid_phase1_inputs_from_materials(
@@ -3892,6 +3963,7 @@ class Simulation:
         n_steps: int,
         pec_mask: jnp.ndarray | None = None,
         pec_occupancy: jnp.ndarray | None = None,
+        s_param_freqs: object | None = None,
     ) -> "Phase1HybridInputs":
         """Build Phase 1 inputs from a preassembled uniform materials state.
 
@@ -3916,6 +3988,7 @@ class Simulation:
             grid,
             prepared_runner,
             n_steps=n_steps,
+            s_param_freqs=s_param_freqs,
         )
 
     def prepare_hybrid_phase1(
@@ -3924,6 +3997,7 @@ class Simulation:
         eps_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        s_param_freqs: object | None = None,
     ) -> "Phase1HybridPrepared":
         """Return the public inspection + context bundle for Phase 1 hybrid runs."""
 
@@ -3932,6 +4006,7 @@ class Simulation:
                 eps_override=eps_override,
                 n_steps=n_steps,
                 num_periods=num_periods,
+                s_param_freqs=s_param_freqs,
             )
         )
 
@@ -3941,6 +4016,7 @@ class Simulation:
         eps_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        s_param_freqs: object | None = None,
     ) -> "Phase1HybridContext":
         """Build the stable replay context for the supported Phase 1 seam."""
 
@@ -3949,6 +4025,7 @@ class Simulation:
                 eps_override=eps_override,
                 n_steps=n_steps,
                 num_periods=num_periods,
+                s_param_freqs=s_param_freqs,
             )
         )
 
@@ -3966,6 +4043,7 @@ class Simulation:
         *,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        s_param_freqs: object | None = None,
     ) -> "Phase1HybridInputs":
         """Build the Phase 1 input surface from the seam-owned prepared-runner state."""
 
@@ -3980,6 +4058,10 @@ class Simulation:
                 n_steps=n_steps,
                 num_periods=num_periods,
             ),
+            s_param_request=self._phase1_s_param_request_from_metadata(
+                prepared.port_metadata,
+                s_param_freqs,
+            ),
         )
 
     def build_hybrid_phase1_inputs_from_inspected_runner_state(
@@ -3990,6 +4072,7 @@ class Simulation:
         *,
         n_steps: int | None = None,
         num_periods: float = 20.0,
+        s_param_freqs: object | None = None,
     ) -> "Phase1HybridInputs":
         """Build the Phase 1 input surface from the seam-owned inspected-runner state."""
 
@@ -4005,6 +4088,10 @@ class Simulation:
                 grid,
                 n_steps=n_steps,
                 num_periods=num_periods,
+            ),
+            s_param_request=self._phase1_s_param_request_from_metadata(
+                prepared.port_metadata if prepared is not None else report.port_metadata,
+                s_param_freqs,
             ),
         )
 
@@ -4176,6 +4263,7 @@ class Simulation:
         from rfx.hybrid_adjoint import (
             _make_phase3_strategy_b_source_probe_forward,
             phase1_forward_result,
+            run_phase15_strategy_b_native_sparams,
         )
 
         context = self.build_hybrid_phase1_context_from_inputs(inputs)
@@ -4183,9 +4271,17 @@ class Simulation:
             context,
             checkpoint_every,
         )
+        eps_r = context.resolved_eps_r(eps_override)
+        time_series = forward(eps_r)
+        s_params = None
+        freqs = None
+        if context.s_param_request is not None:
+            s_params, freqs = run_phase15_strategy_b_native_sparams(context, eps_r)
         return phase1_forward_result(
             context.grid,
-            forward(context.resolved_eps_r(eps_override)),
+            time_series,
+            s_params=s_params,
+            freqs=freqs,
         )
 
     def forward_hybrid_phase1_from_context(
@@ -4332,6 +4428,7 @@ class Simulation:
         fallback: str = "pure_ad",
         strategy: str = "a",
         checkpoint_every: int | None = None,
+        s_param_freqs: object | None = None,
     ) -> ForwardResult:
         """Experimental Phase 1 hybrid-adjoint forward for seam observables.
 
@@ -4357,30 +4454,22 @@ class Simulation:
             eps_override=eps_override,
             n_steps=n_steps,
             num_periods=num_periods,
+            s_param_freqs=s_param_freqs,
         )
         report = self.inspect_hybrid_phase1_from_inputs(inputs)
         if strategy_key == "b":
-            strategy_b_reasons = self._phase3_strategy_b_source_probe_reasons(
+            strategy_b_report = self.inspect_hybrid_strategy_b_phase6_from_inputs(
                 inputs,
-                report,
+                report=report,
                 checkpoint_every=checkpoint_every,
             )
-            if strategy_b_reasons:
-                raise ValueError("; ".join(strategy_b_reasons))
-            assert checkpoint_every is not None
-            context = self.build_hybrid_phase1_context_from_inputs(inputs)
-            from rfx.hybrid_adjoint import (
-                _make_phase3_strategy_b_source_probe_forward,
-                phase1_forward_result,
-            )
-
-            forward = _make_phase3_strategy_b_source_probe_forward(
-                context,
-                checkpoint_every,
-            )
-            return phase1_forward_result(
-                context.grid,
-                forward(context.resolved_eps_r(eps_override)),
+            if not strategy_b_report.supported:
+                raise ValueError(strategy_b_report.reason_text)
+            return self.forward_hybrid_phase1_from_inputs(
+                inputs,
+                eps_override=eps_override,
+                strategy=strategy,
+                checkpoint_every=checkpoint_every,
             )
 
         if not report.supported:
@@ -4437,6 +4526,7 @@ class Simulation:
         excited_lumped_port_cell = None
         excited_lumped_port_component = None
         excited_lumped_port_sigma = None
+        excited_lumped_port_impedance_ohm = None
         excited_port_had_pec = False
         passive_lumped_port_cells = []
         passive_lumped_port_components = []
@@ -4520,6 +4610,7 @@ class Simulation:
                     excited_lumped_port_cell = idx
                     excited_lumped_port_component = pe.component
                     excited_lumped_port_sigma = port_sigma_value
+                    excited_lumped_port_impedance_ohm = float(pe.impedance)
                     excited_port_had_pec = port_had_pec
             else:
                 passive_lumped_port_cells.append(tuple(int(v) for v in idx))
@@ -4608,6 +4699,7 @@ class Simulation:
                 excited_lumped_port_cell=excited_lumped_port_cell,
                 excited_lumped_port_component=excited_lumped_port_component,
                 excited_lumped_port_sigma=excited_lumped_port_sigma,
+                excited_lumped_port_impedance_ohm=excited_lumped_port_impedance_ohm,
                 excited_port_had_pec=excited_port_had_pec,
                 passive_lumped_port_cells=tuple(passive_lumped_port_cells),
                 passive_lumped_port_components=tuple(passive_lumped_port_components),

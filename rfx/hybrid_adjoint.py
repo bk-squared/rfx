@@ -126,11 +126,23 @@ class _Phase1HybridObservables(NamedTuple):
     ntff_data: NTFFData | None = None
 
 
+class Phase1SParamRequest(NamedTuple):
+    """Static native S-parameter request for the Strategy B replay seam."""
+
+    freqs: jnp.ndarray
+    port_cell: tuple[int, int, int] | None
+    component: str | None
+    impedance_ohm: float | None
+    observable_source: str = "strategy_b_native_sparams"
+
+
 def phase1_forward_result(
     grid: Grid,
     time_series: jnp.ndarray,
     ntff_data: object = None,
     ntff_box: object = None,
+    s_params: object = None,
+    freqs: object = None,
 ) -> "ForwardResult":
     """Build the minimal ForwardResult for the Phase 1 seam."""
 
@@ -141,8 +153,8 @@ def phase1_forward_result(
         ntff_data=ntff_data,
         ntff_box=ntff_box,
         grid=grid,
-        s_params=None,
-        freqs=None,
+        s_params=s_params,
+        freqs=freqs,
     )
 
 
@@ -171,6 +183,8 @@ class Phase1HybridContext:
     prb_meta: tuple[tuple[int, int, int, str], ...]
     initial_state: Phase1FieldState
     inventory: Phase1HybridInventory
+    port_metadata: object | None = None
+    s_param_request: Phase1SParamRequest | None = None
 
     @classmethod
     def from_inputs(cls, inputs: Phase1HybridInputs) -> Phase1HybridContext:
@@ -202,6 +216,9 @@ class Phase1HybridContext:
             replay_inputs.append("sigma")
         if inputs.port_metadata is not None and _supports_phase2_lumped_port_proxy_subset(inputs.port_metadata):
             replay_inputs.append("port_metadata")
+        if inputs.s_param_request is not None:
+            replay_inputs.append("s_param_request")
+            replay_outputs.extend(("s_params", "freqs"))
         debye_spec = inputs.debye_spec
         lorentz_spec = inputs.lorentz_spec
         if debye_spec is not None and lorentz_spec is not None:
@@ -278,6 +295,8 @@ class Phase1HybridContext:
             prb_meta=prb_meta,
             initial_state=initial_state,
             inventory=inventory,
+            port_metadata=inputs.port_metadata,
+            s_param_request=inputs.s_param_request,
         )
 
     @classmethod
@@ -367,6 +386,7 @@ class Phase1HybridInputs:
     n_warmup: int = 0
     checkpoint_every: int | None = None
     scan_source_count: int | None = None
+    s_param_request: Phase1SParamRequest | None = None
     report_override: Phase1HybridInspection | None = field(default=None, repr=False)
 
     @classmethod
@@ -414,6 +434,7 @@ class Phase1HybridInputs:
         grid: Grid,
         prepared: Phase1HybridPreparedRunnerState,
         n_steps: int,
+        s_param_request: Phase1SParamRequest | None = None,
     ) -> Phase1HybridInputs:
         return cls(
             boundary=boundary,
@@ -436,6 +457,7 @@ class Phase1HybridInputs:
             cpml_axes=prepared.cpml_axes_run,
             pec_faces=tuple(sorted(getattr(grid, "pec_faces", set()))),
             scan_source_count=len(prepared.sources),
+            s_param_request=s_param_request,
         )
 
     @classmethod
@@ -448,6 +470,7 @@ class Phase1HybridInputs:
         prepared: Phase1HybridPreparedRunnerState | None,
         report: Phase1HybridInspection,
         n_steps: int | None,
+        s_param_request: Phase1SParamRequest | None = None,
     ) -> Phase1HybridInputs:
         if prepared is None:
             return cls.unsupported(report)
@@ -458,6 +481,7 @@ class Phase1HybridInputs:
             grid=grid,
             prepared=prepared,
             n_steps=n_steps,
+            s_param_request=s_param_request,
         )
 
     @property
@@ -579,6 +603,7 @@ class Phase1HybridInspection:
             pec_faces=inputs.pec_faces,
             n_warmup=inputs.n_warmup,
             checkpoint_every=inputs.checkpoint_every,
+            s_param_request=inputs.s_param_request,
         )
         if inputs.scan_source_count is not None and len(inputs.raw_sources) != inputs.scan_source_count:
             reasons = report.reasons + (
@@ -869,6 +894,96 @@ def _supports_phase2_lumped_port_proxy_subset(port_metadata: object | None) -> b
         and len(passive_had_pec) == port_metadata.passive_ports
         and not any(passive_had_pec)
         and len(set(port_cells)) == len(port_cells)
+    )
+
+
+def _phase15_native_sparams_support_reasons(
+    port_metadata: object | None,
+    s_param_request: Phase1SParamRequest | None,
+) -> tuple[str, ...]:
+    """Return fail-closed reasons for the Phase XV native one-port S11 subset."""
+
+    if s_param_request is None:
+        return ()
+
+    reasons: list[str] = []
+    freqs = np.asarray(s_param_request.freqs)
+    if freqs.ndim != 1 or freqs.size == 0 or not np.isfinite(freqs).all() or np.any(freqs <= 0.0):
+        reasons.append("Phase XV native Strategy B S-parameters require finite positive 1-D s_param_freqs")
+
+    if port_metadata is None:
+        reasons.append("Phase XV native Strategy B S-parameters require one excited lumped port")
+        return tuple(dict.fromkeys(reasons))
+
+    if getattr(port_metadata, "total_ports", 0) != 1:
+        reasons.append("Phase XV native Strategy B S-parameters support exactly one total lumped port")
+    if getattr(port_metadata, "excited_ports", 0) != 1:
+        reasons.append("Phase XV native Strategy B S-parameters require exactly one excited port")
+    if getattr(port_metadata, "passive_ports", 0) != 0:
+        reasons.append("Phase XV native Strategy B S-parameters do not support passive/two-port workflows")
+    if getattr(port_metadata, "wire_ports", 0) != 0:
+        reasons.append("Phase XV native Strategy B S-parameters do not support wire ports")
+    if getattr(port_metadata, "waveguide_ports", 0) != 0:
+        reasons.append("Phase XV native Strategy B S-parameters do not support waveguide ports")
+    if getattr(port_metadata, "floquet_ports", 0) != 0:
+        reasons.append("Phase XV native Strategy B S-parameters do not support Floquet ports")
+    if getattr(port_metadata, "soft_source_count", 0) != 0:
+        reasons.append("Phase XV native Strategy B S-parameters do not support mixed soft-source workflows")
+    if getattr(port_metadata, "excited_lumped_port_cell", None) is None:
+        reasons.append("Phase XV native Strategy B S-parameters require an excited lumped-port cell")
+    if getattr(port_metadata, "excited_lumped_port_component", None) is None:
+        reasons.append("Phase XV native Strategy B S-parameters require an excited lumped-port component")
+    if getattr(port_metadata, "excited_lumped_port_impedance_ohm", None) is None:
+        reasons.append("Phase XV native Strategy B S-parameters require explicit excited-port impedance")
+    if getattr(port_metadata, "excited_port_had_pec", False):
+        reasons.append("Phase XV native Strategy B S-parameters reject pre-existing PEC at the port cell")
+    if getattr(port_metadata, "design_region_overlaps_excited_port_cell", False):
+        reasons.append("Phase XV native Strategy B S-parameters reject design-region overlap with the port cell")
+
+    if s_param_request.port_cell is None:
+        reasons.append("Phase XV native Strategy B S-parameters request is missing the port cell")
+    elif (
+        getattr(port_metadata, "excited_lumped_port_cell", None) is not None
+        and tuple(int(v) for v in s_param_request.port_cell)
+        != tuple(int(v) for v in port_metadata.excited_lumped_port_cell)
+    ):
+        reasons.append("Phase XV native Strategy B S-parameter request cell does not match port metadata")
+
+    if s_param_request.component is None:
+        reasons.append("Phase XV native Strategy B S-parameters request is missing the component")
+    elif (
+        getattr(port_metadata, "excited_lumped_port_component", None) is not None
+        and str(s_param_request.component) != str(port_metadata.excited_lumped_port_component)
+    ):
+        reasons.append("Phase XV native Strategy B S-parameter request component does not match port metadata")
+
+    if s_param_request.impedance_ohm is None or not np.isfinite(float(s_param_request.impedance_ohm)):
+        reasons.append("Phase XV native Strategy B S-parameters request is missing finite impedance")
+    elif float(s_param_request.impedance_ohm) <= 0.0:
+        reasons.append("Phase XV native Strategy B S-parameters require positive impedance")
+    elif (
+        getattr(port_metadata, "excited_lumped_port_impedance_ohm", None) is not None
+        and not np.isclose(
+            float(s_param_request.impedance_ohm),
+            float(port_metadata.excited_lumped_port_impedance_ohm),
+            rtol=1e-9,
+            atol=0.0,
+        )
+    ):
+        reasons.append("Phase XV native Strategy B S-parameter request impedance does not match port metadata")
+
+    return tuple(dict.fromkeys(reasons))
+
+
+def _supports_phase15_native_sparams_subset(
+    port_metadata: object | None,
+    s_param_request: Phase1SParamRequest | None,
+) -> bool:
+    """Return whether metadata/request match the exact Phase XV one-port S11 subset."""
+
+    return s_param_request is not None and not _phase15_native_sparams_support_reasons(
+        port_metadata,
+        s_param_request,
     )
 
 
@@ -1196,6 +1311,7 @@ def inspect_phase1_hybrid(
     pec_faces: tuple[str, ...] = (),
     n_warmup: int = 0,
     checkpoint_every: int | None = None,
+    s_param_request: Phase1SParamRequest | None = None,
 ) -> Phase1HybridInspection:
     """Inspect whether the current configuration fits the Phase 1 seam."""
 
@@ -1291,6 +1407,7 @@ def inspect_phase1_hybrid(
                 pec_faces=pec_faces,
                 n_warmup=n_warmup,
                 checkpoint_every=checkpoint_every,
+                s_param_request=s_param_request,
             )
         ).inventory
     return Phase1HybridInspection(
@@ -1311,6 +1428,7 @@ def build_phase1_hybrid_inputs_from_prepared_runner_state(
     grid: Grid,
     prepared: Phase1HybridPreparedRunnerState,
     n_steps: int,
+    s_param_request: Phase1SParamRequest | None = None,
 ) -> Phase1HybridInputs:
     """Translate runner-prepared state into the canonical Phase 1 input spec."""
 
@@ -1319,6 +1437,7 @@ def build_phase1_hybrid_inputs_from_prepared_runner_state(
         grid=grid,
         prepared=prepared,
         n_steps=n_steps,
+        s_param_request=s_param_request,
     )
 
 
@@ -1330,6 +1449,7 @@ def build_phase1_hybrid_inputs_from_inspected_runner_state(
     prepared: Phase1HybridPreparedRunnerState | None,
     report: Phase1HybridInspection,
     n_steps: int | None,
+    s_param_request: Phase1SParamRequest | None = None,
 ) -> Phase1HybridInputs:
     """Translate inspected runner state into the canonical Phase 1 input spec."""
 
@@ -1340,6 +1460,7 @@ def build_phase1_hybrid_inputs_from_inspected_runner_state(
         prepared=prepared,
         report=report,
         n_steps=n_steps,
+        s_param_request=s_param_request,
     )
 
 
@@ -2553,6 +2674,183 @@ def _make_phase3_strategy_b_source_probe_forward(
 
     _forward_time_series.defvjp(_forward_fwd, _forward_bwd)
     return _forward_time_series
+
+
+def _phase15_sample_lumped_port_vi(
+    state: Phase1FieldState,
+    *,
+    grid: Grid,
+    port_cell: tuple[int, int, int],
+    component: str,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Sample lumped-port voltage/current using the standard S-param convention."""
+
+    i, j, k = port_cell
+    dx = grid.dx
+    voltage = -getattr(state, component)[i, j, k] * dx
+    if component == "ez":
+        current = (
+            state.hy[i, j, k]
+            - state.hy[i - 1, j, k]
+            - state.hx[i, j, k]
+            + state.hx[i, j - 1, k]
+        ) * dx
+    elif component == "ex":
+        current = (
+            state.hz[i, j, k]
+            - state.hz[i, j - 1, k]
+            - state.hy[i, j, k]
+            + state.hy[i, j, k - 1]
+        ) * dx
+    elif component == "ey":
+        current = (
+            state.hx[i, j, k]
+            - state.hx[i, j, k - 1]
+            - state.hz[i, j, k]
+            + state.hz[i - 1, j, k]
+        ) * dx
+    else:
+        raise ValueError(f"unsupported lumped-port component {component!r}")
+    return voltage, current
+
+
+def _phase15_assert_port_cell_supports_current_loop(
+    grid: Grid,
+    port_cell: tuple[int, int, int],
+    component: str,
+) -> None:
+    i, j, k = port_cell
+    if component == "ez" and (i <= 0 or j <= 0):
+        raise ValueError("Phase XV native S11 requires ez port cell away from -x/-y boundaries")
+    if component == "ex" and (j <= 0 or k <= 0):
+        raise ValueError("Phase XV native S11 requires ex port cell away from -y/-z boundaries")
+    if component == "ey" and (i <= 0 or k <= 0):
+        raise ValueError("Phase XV native S11 requires ey port cell away from -x/-z boundaries")
+    nx, ny, nz = grid.shape
+    if not (0 <= i < nx and 0 <= j < ny and 0 <= k < nz):
+        raise ValueError("Phase XV native S11 port cell is outside the grid")
+
+
+def _phase15_s11_from_vi_dft(
+    v_dft: jnp.ndarray,
+    i_dft: jnp.ndarray,
+    impedance_ohm: float,
+) -> jnp.ndarray:
+    """Compute one-port S11 from V/I DFTs using the full S-matrix convention."""
+
+    z0 = jnp.asarray(impedance_ohm, dtype=jnp.float32)
+    a = (-v_dft + z0 * i_dft) / (jnp.float32(2.0) * jnp.sqrt(z0))
+    b = (-v_dft - z0 * i_dft) / (jnp.float32(2.0) * jnp.sqrt(z0))
+    safe_a = jnp.where(jnp.abs(a) > 0.0, a, jnp.ones_like(a))
+    return b / safe_a
+
+
+def run_phase15_strategy_b_native_sparams(
+    context: Phase1HybridContext,
+    eps_r: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Run the forward-only Strategy B native one-port S11 sidecar replay."""
+
+    request = context.s_param_request
+    if request is None:
+        raise ValueError("Phase XV native S-parameters require an explicit s_param_request")
+    reasons = _phase15_native_sparams_support_reasons(context.port_metadata, request)
+    if reasons:
+        raise ValueError("; ".join(reasons))
+    if isinstance(context.grid, NonUniformGrid):
+        raise ValueError("Phase XV native Strategy B S-parameters support only uniform grids")
+    if context.periodic != (False, False, False):
+        raise ValueError("Phase XV native Strategy B S-parameters do not support periodic workflows")
+    if context.debye_spec is not None or context.lorentz_spec is not None:
+        raise ValueError("Phase XV native Strategy B S-parameters support only lossless nondispersive materials")
+    if context.boundary not in {"pec", "cpml"}:
+        raise ValueError(f"boundary={context.boundary!r} is unsupported")
+    assert request.port_cell is not None
+    assert request.component is not None
+    assert request.impedance_ohm is not None
+
+    port_cell = tuple(int(v) for v in request.port_cell)
+    component = str(request.component)
+    _phase15_assert_port_cell_supports_current_loop(context.grid, port_cell, component)
+
+    freqs = jnp.asarray(request.freqs, dtype=jnp.float32)
+    v0 = jnp.zeros(freqs.shape, dtype=jnp.complex64)
+    i0 = jnp.zeros(freqs.shape, dtype=jnp.complex64)
+    materials = _materials_from_eps(context, eps_r)
+    src_waveforms = _source_waveforms_from_eps(context, eps_r)
+    step_indices = jnp.arange(src_waveforms.shape[0], dtype=jnp.float32)
+
+    def accumulate(v_dft, i_dft, pre_source_state, step_index):
+        voltage, current = _phase15_sample_lumped_port_vi(
+            pre_source_state,
+            grid=context.grid,
+            port_cell=port_cell,
+            component=component,
+        )
+        post_update_time = (step_index + jnp.float32(1.0)) * jnp.float32(context.dt)
+        phase = jnp.exp(-1j * jnp.float32(2.0) * jnp.pi * freqs * post_update_time)
+        v_next = v_dft + voltage.astype(jnp.complex64) * phase * jnp.float32(context.dt)
+        i_next = i_dft + current.astype(jnp.complex64) * phase * jnp.float32(context.dt)
+        return v_next, i_next
+
+    if context.boundary == "cpml":
+        assert context.cpml_params is not None
+
+        def cpml_step(carry, xs):
+            state, cpml_state, v_dft, i_dft = carry
+            step_index, src_vals = xs
+            fdtd = update_h(_to_fdtd(state), materials, context.dt, context.dx, periodic=context.periodic)
+            fdtd, next_cpml_state = apply_cpml_h(
+                fdtd,
+                context.cpml_params,
+                cpml_state,
+                context.grid,
+                context.cpml_axes,
+                materials=materials,
+            )
+            fdtd = update_e(fdtd, materials, context.dt, context.dx, periodic=context.periodic)
+            fdtd, next_cpml_state = apply_cpml_e(
+                fdtd,
+                context.cpml_params,
+                next_cpml_state,
+                context.grid,
+                context.cpml_axes,
+                materials=materials,
+            )
+            if context.pec_axes:
+                fdtd = apply_pec(fdtd, axes=context.pec_axes)
+            if context.pec_faces:
+                fdtd = apply_pec_faces(fdtd, context.pec_faces)
+            pre_source_state = _from_fdtd(fdtd)
+            v_next, i_next = accumulate(v_dft, i_dft, pre_source_state, step_index)
+            next_state = _inject_sources(pre_source_state, src_vals, context.src_meta)
+            return (next_state, next_cpml_state, v_next, i_next), None
+
+        (_, _, v_dft, i_dft), _ = jax.lax.scan(
+            cpml_step,
+            (context.initial_state, _zero_cpml_state(context.grid), v0, i0),
+            (step_indices, src_waveforms),
+        )
+    else:
+        coeffs = _coeffs_from_materials(context, materials)
+
+        def pec_step(carry, xs):
+            state, v_dft, i_dft = carry
+            step_index, src_vals = xs
+            fdtd = update_he_fast(_to_fdtd(state), coeffs)
+            pre_source_state = _from_fdtd(fdtd)
+            v_next, i_next = accumulate(v_dft, i_dft, pre_source_state, step_index)
+            next_state = _inject_sources(pre_source_state, src_vals, context.src_meta)
+            return (next_state, v_next, i_next), None
+
+        (_, v_dft, i_dft), _ = jax.lax.scan(
+            pec_step,
+            (context.initial_state, v0, i0),
+            (step_indices, src_waveforms),
+        )
+
+    s11 = _phase15_s11_from_vi_dft(v_dft, i_dft, float(request.impedance_ohm))
+    return jax.lax.stop_gradient(s11[None, None, :]), jax.lax.stop_gradient(freqs)
 
 
 def _states_after_from_trace(

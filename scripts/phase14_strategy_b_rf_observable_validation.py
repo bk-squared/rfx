@@ -1,11 +1,12 @@
 """Phase XIV Strategy B RF-observable validation harness.
 
 This harness adds a source-labelled RF evidence layer after Phase XIII
-production promotion.  It deliberately does **not** claim native Strategy B
-S-parameters: the current Phase 1 hybrid seam returns ``s_params=None`` and
-``freqs=None``.  Required Phase XIV evidence therefore comes from Strategy B
-``time_series`` observables and explicit analytic/reference-rfx comparisons,
-while Meep/openEMS correlation remains opt-in and skip-aware.
+production promotion.  Phase XV promotes a strictly bounded native Strategy B
+one-port S11 sidecar, so the seam gate now accepts native S-parameter support
+only when actual Strategy B arrays, frequency arrays, finite checks, shapes,
+and the canonical ``strategy_b_native_sparams`` provenance label are present.
+Time-series resonance evidence and Meep/openEMS correlation remain separate
+opt-in RF-validation lanes.
 """
 
 from __future__ import annotations
@@ -40,11 +41,9 @@ import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 
-from rfx.grid import Grid  # noqa: E402
-from rfx.hybrid_adjoint import phase1_forward_result  # noqa: E402
 from scripts import phase7_strategy_b_readiness as phase7  # noqa: E402
 
-SCHEMA_VERSION = "phase14.rf_observable_validation.v1"
+SCHEMA_VERSION = "phase14.rf_observable_validation.v2"
 BENCHMARK_CONTRACT = "phase_xiv_strategy_b_rf_observable_validation"
 DEFAULT_PHASE13_BASELINE = Path(".omx/artifacts/phase13_all_promotion.json")
 DEFAULT_OUTPUT = Path(".omx/artifacts/phase14_rf_observable_validation.json")
@@ -65,6 +64,10 @@ CANONICAL_STRATEGY_B_SEAM_FIELDS = (
     "native_s_params_supported",
     "phase1_forward_result_s_params",
     "phase1_forward_result_freqs",
+    "phase1_forward_result_s_params_shape",
+    "phase1_forward_result_freqs_shape",
+    "observable_source",
+    "finite",
 )
 FORBIDDEN_NATIVE_SPARAM_KEYS = {
     "native_strategy_b_sparams",
@@ -79,6 +82,7 @@ ALLOWED_REQUIRED_SOURCES = (
     "analytic_reference",
     "standard_rfx_time_series_reference",
     "standard_rfx_sparams_reference",
+    "strategy_b_native_sparams",
 )
 
 
@@ -129,6 +133,15 @@ def environment_summary() -> dict[str, Any]:
     }
 
 
+def _jsonable_real_array(value: Any) -> list[float]:
+    return [float(v) for v in np.asarray(value, dtype=np.float64).reshape(-1)]
+
+
+def _jsonable_complex_array(value: Any) -> list[list[float]]:
+    arr = np.asarray(value)
+    return [[float(v.real), float(v.imag)] for v in arr.reshape(-1)]
+
+
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -177,15 +190,72 @@ def phase13_baseline_record(path: Path) -> dict[str, Any]:
 
 
 def strategy_b_seam_record() -> dict[str, Any]:
-    grid = Grid(freq_max=1e9, domain=(0.003, 0.003, 0.003), dx=0.001, cpml_layers=0)
-    result = phase1_forward_result(grid, jnp.zeros((4, 1), dtype=jnp.float32))
+    from rfx import GaussianPulse, Simulation
+
+    freqs = jnp.asarray([2.0e9, 3.0e9], dtype=jnp.float32)
+    sim = Simulation(
+        freq_max=5e9,
+        domain=(0.009, 0.009, 0.009),
+        dx=0.001,
+        boundary="pec",
+        cpml_layers=0,
+    )
+    sim.add_port(
+        (0.004, 0.004, 0.004),
+        "ez",
+        impedance=50.0,
+        waveform=GaussianPulse(f0=3.0e9, bandwidth=0.8),
+    )
+    sim.add_probe((0.006, 0.004, 0.004), "ez")
+    started = time.perf_counter()
+    try:
+        inputs = sim.build_hybrid_phase1_inputs(n_steps=32, s_param_freqs=freqs)
+        result = sim.forward_hybrid_phase1_from_inputs(
+            inputs,
+            strategy="b",
+            checkpoint_every=8,
+        )
+    except Exception as exc:  # noqa: BLE001 - convert native seam failures to gate evidence.
+        return {
+            "native_s_params_supported": False,
+            "phase1_forward_result_s_params": None,
+            "phase1_forward_result_freqs": None,
+            "phase1_forward_result_s_params_shape": None,
+            "phase1_forward_result_freqs_shape": None,
+            "observable_source": None,
+            "finite": False,
+            "failure_reason": "native_strategy_b_sparams_fixture_failed",
+            "error": str(exc),
+            "allowed_required_sources": list(ALLOWED_REQUIRED_SOURCES),
+            "runtime_surface": "Simulation.forward_hybrid_phase1_from_inputs(strategy='b')",
+            "runtime_s": round(time.perf_counter() - started, 6),
+            "gradient_policy": "forward_only_stop_gradient_sidecar",
+        }
+
+    s_params = np.asarray(result.s_params) if result.s_params is not None else None
+    freqs_out = np.asarray(result.freqs) if result.freqs is not None else None
+    finite = bool(
+        s_params is not None
+        and freqs_out is not None
+        and np.isfinite(s_params.real).all()
+        and np.isfinite(s_params.imag).all()
+        and np.isfinite(freqs_out).all()
+    )
     return {
-        "native_s_params_supported": result.s_params is not None
-        and result.freqs is not None,
-        "phase1_forward_result_s_params": result.s_params,
-        "phase1_forward_result_freqs": result.freqs,
+        "native_s_params_supported": bool(result.s_params is not None and result.freqs is not None),
+        "phase1_forward_result_s_params": _jsonable_complex_array(s_params) if s_params is not None else None,
+        "phase1_forward_result_freqs": _jsonable_real_array(freqs_out) if freqs_out is not None else None,
+        "phase1_forward_result_s_params_shape": list(s_params.shape) if s_params is not None else None,
+        "phase1_forward_result_freqs_shape": list(freqs_out.shape) if freqs_out is not None else None,
+        "observable_source": "strategy_b_native_sparams"
+        if result.s_params is not None and result.freqs is not None
+        else None,
+        "finite": finite,
+        "max_abs_s11": float(np.max(np.abs(s_params))) if s_params is not None and s_params.size else None,
         "allowed_required_sources": list(ALLOWED_REQUIRED_SOURCES),
-        "runtime_surface": "rfx.hybrid_adjoint.phase1_forward_result",
+        "runtime_surface": "Simulation.forward_hybrid_phase1_from_inputs(strategy='b')",
+        "runtime_s": round(time.perf_counter() - started, 6),
+        "gradient_policy": "forward_only_stop_gradient_sidecar",
     }
 
 
@@ -696,12 +766,37 @@ def evaluate_artifact_gates(artifact: Mapping[str, Any]) -> dict[str, Any]:
         ]
         if missing:
             failed.append("strategy_b_seam_canonical_fields_missing")
-        if seam.get("native_s_params_supported") is not False:
-            failed.append("native_strategy_b_sparams_claimed_without_support")
-        if seam.get("phase1_forward_result_s_params") is not None:
-            failed.append("phase1_forward_result_s_params_not_null")
-        if seam.get("phase1_forward_result_freqs") is not None:
-            failed.append("phase1_forward_result_freqs_not_null")
+        native_supported = seam.get("native_s_params_supported")
+        s_shape = seam.get("phase1_forward_result_s_params_shape")
+        f_shape = seam.get("phase1_forward_result_freqs_shape")
+        if native_supported is True:
+            if seam.get("observable_source") != "strategy_b_native_sparams":
+                failed.append("native_strategy_b_sparams_source_missing_or_ambiguous")
+            if seam.get("phase1_forward_result_s_params") is None:
+                failed.append("native_strategy_b_sparams_claimed_without_arrays")
+            if seam.get("phase1_forward_result_freqs") is None:
+                failed.append("native_strategy_b_sparams_claimed_without_freqs")
+            if seam.get("finite") is not True:
+                failed.append("native_strategy_b_sparams_nonfinite")
+            shape_ok = (
+                isinstance(s_shape, list)
+                and len(s_shape) == 3
+                and s_shape[0] == 1
+                and s_shape[1] == 1
+                and isinstance(f_shape, list)
+                and len(f_shape) == 1
+                and s_shape[2] == f_shape[0]
+                and s_shape[2] > 0
+            )
+            if not shape_ok:
+                failed.append("native_strategy_b_sparams_shape_invalid")
+        elif native_supported is False:
+            if seam.get("phase1_forward_result_s_params") is not None:
+                failed.append("phase1_forward_result_s_params_not_null")
+            if seam.get("phase1_forward_result_freqs") is not None:
+                failed.append("phase1_forward_result_freqs_not_null")
+        else:
+            failed.append("native_strategy_b_sparams_support_flag_invalid")
 
     if _contains_forbidden_native_sparam_key(artifact):
         failed.append("forbidden_native_sparam_artifact_key")
@@ -788,7 +883,12 @@ def evaluate_artifact_gates(artifact: Mapping[str, Any]) -> dict[str, Any]:
             in {
                 "strategy_b_seam_missing",
                 "strategy_b_seam_canonical_fields_missing",
-                "native_strategy_b_sparams_claimed_without_support",
+                "native_strategy_b_sparams_source_missing_or_ambiguous",
+                "native_strategy_b_sparams_claimed_without_arrays",
+                "native_strategy_b_sparams_claimed_without_freqs",
+                "native_strategy_b_sparams_nonfinite",
+                "native_strategy_b_sparams_shape_invalid",
+                "native_strategy_b_sparams_support_flag_invalid",
                 "phase1_forward_result_s_params_not_null",
                 "phase1_forward_result_freqs_not_null",
                 "forbidden_native_sparam_artifact_key",
