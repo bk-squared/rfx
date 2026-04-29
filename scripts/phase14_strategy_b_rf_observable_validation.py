@@ -53,6 +53,13 @@ DEFAULT_CHECKPOINT_EVERY = 32
 DEFAULT_RESONANCE_TOLERANCE = 0.02
 DEFAULT_PASSIVITY_TOLERANCE = 1.05
 DEFAULT_INPUT_IMPEDANCE_REL_TOLERANCE = 0.1
+ALIGNED_CAVITY_A_M = 0.1
+ALIGNED_CAVITY_B_M = 0.1
+ALIGNED_CAVITY_D_M = 0.05
+ALIGNED_CAVITY_DX_M = 0.001
+ALIGNED_CAVITY_FREQ_HZ = 299_792_458.0 / 2.0 * math.sqrt(
+    (1.0 / ALIGNED_CAVITY_A_M) ** 2 + (1.0 / ALIGNED_CAVITY_B_M) ** 2
+)
 OPTIONAL_SOLVERS = ("meep", "openems")
 CANONICAL_STRATEGY_B_SEAM_FIELDS = (
     "native_s_params_supported",
@@ -188,6 +195,9 @@ def extract_resonance_frequency(
     *,
     min_samples: int = 16,
     method: str = "fft_peak",
+    f_lo_hz: float | None = None,
+    f_hi_hz: float | None = None,
+    zero_pad_factor: int = 1,
 ) -> dict[str, Any]:
     """Extract a finite RF spectral peak from a time series.
 
@@ -207,24 +217,46 @@ def extract_resonance_frequency(
     if peak_abs <= 1e-18 or energy <= 1e-30:
         raise ValueError("no_resolvable_peak")
 
-    window = np.hanning(series.size)
-    spectrum = np.abs(np.fft.rfft(centered * window))
-    freqs = np.fft.rfftfreq(series.size, dt_s)
+    # Keep the spectral estimator aligned with the repository's solver
+    # cross-validation fixtures (tests.test_meep_crossval.fft_peak_freq): raw
+    # time-series FFT, optional zero-padding, and 3-point parabolic peak
+    # interpolation.  Hann-windowing suppresses the TM110 bin in the short
+    # Strategy B cavity trace and can select a lower transient mode instead.
+    n_fft = max(series.size, series.size * max(1, int(zero_pad_factor)))
+    spectrum = np.abs(np.fft.rfft(series, n=n_fft))
+    freqs = np.fft.rfftfreq(n_fft, dt_s)
     if spectrum.size <= 1:
         raise ValueError("no_positive_frequency_bins")
-    positive = spectrum[1:]
-    peak_index = int(np.argmax(positive)) + 1
+    search = spectrum.copy()
+    search[0] = 0.0
+    if f_lo_hz is not None:
+        search = np.where(freqs >= float(f_lo_hz), search, 0.0)
+    if f_hi_hz is not None:
+        search = np.where(freqs <= float(f_hi_hz), search, 0.0)
+    peak_index = int(np.argmax(search))
     peak_magnitude = float(spectrum[peak_index])
-    if peak_magnitude <= max(float(np.max(spectrum)) * 1e-12, 1e-30):
+    if peak_index <= 0 or peak_magnitude <= max(float(np.max(spectrum)) * 1e-12, 1e-30):
         raise ValueError("no_resolvable_peak")
+    peak_frequency = float(freqs[peak_index])
+    if 0 < peak_index < len(spectrum) - 1:
+        alpha = float(spectrum[peak_index - 1])
+        beta = float(spectrum[peak_index])
+        gamma = float(spectrum[peak_index + 1])
+        denom = alpha - 2.0 * beta + gamma
+        if beta >= alpha and beta >= gamma and abs(denom) > 1e-30:
+            offset = 0.5 * (alpha - gamma) / denom
+            if abs(offset) <= 1.0:
+                peak_frequency += offset * float(freqs[1] - freqs[0])
 
     return {
         "method": method,
-        "frequency_hz": float(freqs[peak_index]),
+        "frequency_hz": peak_frequency,
         "peak_bin": peak_index,
         "sample_count": int(series.size),
         "dt_s": float(dt_s),
         "spectral_resolution_hz": float(freqs[1] - freqs[0]),
+        "search_band_hz": [f_lo_hz, f_hi_hz],
+        "zero_pad_factor": int(zero_pad_factor),
         "peak_magnitude": peak_magnitude,
         "peak_abs_time_domain": peak_abs,
         "energy": energy,
@@ -370,8 +402,126 @@ def _solver_available(solver: str) -> bool:
     return importlib.util.find_spec(_solver_module_name(solver)) is not None
 
 
-def _default_solver_runner(solver: str) -> Callable[[Mapping[str, Any]], float]:
+def _subprocess_solver_available(
+    solver: str,
+    *,
+    solver_python: str,
+    solver_pythonpath: str | None = None,
+    timeout_s: float | None = None,
+) -> bool:
+    """Return whether the requested solver imports in an isolated Python runtime."""
+
+    if solver.lower() != "meep":
+        return _solver_available(solver)
+    env = os.environ.copy()
+    if solver_pythonpath:
+        env["PYTHONPATH"] = solver_pythonpath + os.pathsep + env.get("PYTHONPATH", "")
+    try:
+        completed = subprocess.run(
+            [solver_python, "-c", "import meep"],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_s,
+        )
+    except Exception:  # noqa: BLE001 - availability is best-effort evidence.
+        return False
+    return completed.returncode == 0
+
+
+def _standalone_meep_cavity_code() -> str:
+    return r"""
+import json
+import math
+
+import meep as mp
+
+C0 = 299_792_458.0
+CAVITY_A = 0.1
+CAVITY_B = 0.1
+CAVITY_D = 0.05
+F_ANALYTICAL = (C0 / 2.0) * math.sqrt((1.0 / CAVITY_A) ** 2 + (1.0 / CAVITY_B) ** 2)
+unit = 0.01
+Lx = CAVITY_A / unit
+Ly = CAVITY_B / unit
+Lz = CAVITY_D / unit
+fcen = F_ANALYTICAL * unit / C0
+df = fcen * 0.8
+sim = mp.Simulation(
+    cell_size=mp.Vector3(Lx, Ly, Lz),
+    resolution=10,
+    boundary_layers=[],
+    default_material=mp.Medium(epsilon=1),
+)
+sim.sources = [
+    mp.Source(
+        mp.GaussianSource(fcen, fwidth=df),
+        component=mp.Ez,
+        center=mp.Vector3(Lx / 3.0 - Lx / 2.0, Ly / 3.0 - Ly / 2.0, 0.0),
+    )
+]
+probe_pt = mp.Vector3(2.0 * Lx / 3.0 - Lx / 2.0, 2.0 * Ly / 3.0 - Ly / 2.0, 0.0)
+harminv = mp.Harminv(mp.Ez, probe_pt, fcen, df)
+sim.run(mp.after_sources(harminv), until_after_sources=200 / fcen)
+if not harminv.modes:
+    raise SystemExit("Meep Harminv found no modes")
+best = max(harminv.modes, key=lambda mode: abs(mode.amp))
+print(json.dumps({"frequency_hz": float(best.freq * C0 / unit), "q": float(best.Q)}))
+"""
+
+
+def _run_subprocess_solver(
+    solver: str,
+    *,
+    solver_python: str,
+    solver_pythonpath: str | None = None,
+    timeout_s: float | None = None,
+) -> float:
+    if solver.lower() != "meep":
+        raise ValueError("subprocess solver runtime is currently implemented for Meep")
+    env = os.environ.copy()
+    if solver_pythonpath:
+        env["PYTHONPATH"] = solver_pythonpath + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [solver_python, "-c", _standalone_meep_cavity_code()],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=timeout_s,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "subprocess solver failed: "
+            + (completed.stderr.strip() or completed.stdout.strip())
+        )
+    for line in reversed(completed.stdout.splitlines()):
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        return float(payload["frequency_hz"])
+    raise RuntimeError("subprocess solver did not emit a frequency JSON line")
+
+
+def _default_solver_runner(
+    solver: str,
+    *,
+    solver_python: str | None = None,
+    solver_pythonpath: str | None = None,
+    solver_timeout_s: float | None = None,
+) -> Callable[[Mapping[str, Any]], float]:
     normalized = solver.lower()
+    if solver_python is not None and normalized == "meep":
+        return lambda _fixture: _run_subprocess_solver(
+            normalized,
+            solver_python=solver_python,
+            solver_pythonpath=solver_pythonpath,
+            timeout_s=solver_timeout_s,
+        )
     if normalized == "meep":
         from tests.test_meep_crossval import run_meep_cavity
 
@@ -390,6 +540,7 @@ def skipped_solver_record(
     reason: str,
     strategy_b_frequency_hz: float | None = None,
     tolerance: float = DEFAULT_RESONANCE_TOLERANCE,
+    fixture_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "solver": solver,
@@ -399,6 +550,7 @@ def skipped_solver_record(
         "required": required,
         "skipped_reason": reason,
         "observable": "resonance_frequency",
+        "fixture_id": fixture_id,
         "reference_frequency_hz": None,
         "strategy_b_frequency_hz": strategy_b_frequency_hz,
         "relative_error": None,
@@ -416,20 +568,43 @@ def _run_optional_solver_correlation(
     runner: Callable[[Mapping[str, Any]], float] | None = None,
     availability_checker: Callable[[str], bool] = _solver_available,
     tolerance: float = DEFAULT_RESONANCE_TOLERANCE,
+    solver_python: str | None = None,
+    solver_pythonpath: str | None = None,
+    solver_timeout_s: float | None = None,
 ) -> dict[str, Any]:
     """Run or skip optional solver correlation with fail-closed semantics."""
 
     strategy_b_frequency = fixture.get("strategy_b_frequency_hz")
-    if not availability_checker(solver):
+    fixture_id = fixture.get("fixture_id")
+    if (
+        availability_checker is _solver_available
+        and solver_python is not None
+        and solver.lower() == "meep"
+    ):
+        available = _subprocess_solver_available(
+            solver,
+            solver_python=solver_python,
+            solver_pythonpath=solver_pythonpath,
+            timeout_s=solver_timeout_s,
+        )
+    else:
+        available = availability_checker(solver)
+    if not available:
         return skipped_solver_record(
             solver,
             required=required,
             reason="not_installed",
             strategy_b_frequency_hz=strategy_b_frequency,
             tolerance=tolerance,
+            fixture_id=str(fixture_id) if fixture_id is not None else None,
         )
 
-    runner = runner or _default_solver_runner(solver)
+    runner = runner or _default_solver_runner(
+        solver,
+        solver_python=solver_python,
+        solver_pythonpath=solver_pythonpath,
+        solver_timeout_s=solver_timeout_s,
+    )
     started = time.perf_counter()
     cwd_before = Path.cwd()
     try:
@@ -443,6 +618,7 @@ def _run_optional_solver_correlation(
             "required": required,
             "skipped_reason": None,
             "observable": "resonance_frequency",
+            "fixture_id": fixture_id,
             "reference_frequency_hz": None,
             "strategy_b_frequency_hz": strategy_b_frequency,
             "relative_error": None,
@@ -471,6 +647,7 @@ def _run_optional_solver_correlation(
         "required": required,
         "skipped_reason": None,
         "observable": "resonance_frequency",
+        "fixture_id": fixture_id,
         "reference_frequency_hz": reference_frequency,
         "strategy_b_frequency_hz": strategy_b_frequency,
         "relative_error": err,
@@ -719,6 +896,98 @@ def _run_default_strategy_b_fixture(
     }
 
 
+def _run_aligned_cavity_strategy_b_fixture(
+    *,
+    n_steps: int = 512,
+    checkpoint_every: int = DEFAULT_CHECKPOINT_EVERY,
+) -> dict[str, Any]:
+    from rfx import GaussianPulse, Simulation
+
+    sim = Simulation(
+        freq_max=5e9,
+        domain=(ALIGNED_CAVITY_A_M, ALIGNED_CAVITY_B_M, ALIGNED_CAVITY_D_M),
+        dx=ALIGNED_CAVITY_DX_M,
+        boundary="pec",
+        cpml_layers=0,
+    )
+    sim.add_source(
+        (
+            ALIGNED_CAVITY_A_M / 3.0,
+            ALIGNED_CAVITY_B_M / 3.0,
+            ALIGNED_CAVITY_D_M / 2.0,
+        ),
+        "ez",
+        waveform=GaussianPulse(f0=ALIGNED_CAVITY_FREQ_HZ, bandwidth=0.8),
+    )
+    sim.add_probe(
+        (
+            2.0 * ALIGNED_CAVITY_A_M / 3.0,
+            2.0 * ALIGNED_CAVITY_B_M / 3.0,
+            ALIGNED_CAVITY_D_M / 2.0,
+        ),
+        "ez",
+    )
+    inputs = sim.build_hybrid_phase1_inputs(n_steps=n_steps)
+    started = time.perf_counter()
+    strategy_b = sim.forward_hybrid_phase1_from_inputs(
+        inputs, strategy="b", checkpoint_every=checkpoint_every
+    )
+    runtime_s = time.perf_counter() - started
+    series = np.asarray(strategy_b.time_series).reshape(-1)
+    peak = extract_resonance_frequency(
+        series,
+        float(inputs.grid.dt),
+        f_lo_hz=0.5 * ALIGNED_CAVITY_FREQ_HZ,
+        f_hi_hz=1.5 * ALIGNED_CAVITY_FREQ_HZ,
+        zero_pad_factor=8,
+    )
+    err = relative_error(peak["frequency_hz"], ALIGNED_CAVITY_FREQ_HZ)
+    passed = bool(err <= DEFAULT_RESONANCE_TOLERANCE)
+    source_waveforms = [np.asarray(src[-1]).reshape(-1) for src in inputs.raw_sources]
+    excitation_series = np.concatenate(source_waveforms) if source_waveforms else None
+    return {
+        "fixture_id": "aligned_pec_cavity_tm110_strategy_b_time_series",
+        "alignment_target": "tests.test_meep_crossval/tests.test_openems_crossval PEC TM110 cavity",
+        "required": False,
+        "runtime_s": round(runtime_s, 6),
+        "n_steps": n_steps,
+        "checkpoint_every": checkpoint_every,
+        "grid_shape": list(inputs.grid.shape),
+        "strategy_b_frequency_hz": peak["frequency_hz"],
+        "analytic_frequency_hz": ALIGNED_CAVITY_FREQ_HZ,
+        "observables": {
+            "resonance": {
+                "observable_source": "strategy_b_time_series",
+                "method": peak["method"],
+                "frequency_hz": peak["frequency_hz"],
+                "reference_source": "analytic_reference",
+                "reference_frequency_hz": ALIGNED_CAVITY_FREQ_HZ,
+                "relative_error": err,
+                "tolerance": DEFAULT_RESONANCE_TOLERANCE,
+                "sample_count": peak["sample_count"],
+                "spectral_resolution_hz": peak["spectral_resolution_hz"],
+                "search_band_hz": peak["search_band_hz"],
+                "finite": peak["finite"],
+                "passed": passed,
+                "failure_reason": None
+                if passed
+                else "aligned_cavity_resonance_tolerance_exceeded",
+            },
+            "bounded_reflection_proxy": bounded_time_series_proxy(
+                series, excitation_series=excitation_series
+            ),
+            "input_impedance": input_impedance_check(
+                None,
+                applicable=False,
+                not_applicable_reason=(
+                    "aligned PEC cavity validates time-series resonance only; "
+                    "native Strategy B port/input-impedance seam is deferred"
+                ),
+            ),
+        },
+    }
+
+
 def build_phase14_artifact(
     *,
     phase13_baseline: Path = DEFAULT_PHASE13_BASELINE,
@@ -726,6 +995,9 @@ def build_phase14_artifact(
     require_external_solver: bool = False,
     execute_workload: bool = False,
     n_steps: int = DEFAULT_N_STEPS,
+    solver_python: str | None = None,
+    solver_pythonpath: str | None = None,
+    solver_timeout_s: float | None = None,
 ) -> dict[str, Any]:
     worktree = worktree_signature()
     baseline = phase13_baseline_record(phase13_baseline)
@@ -735,12 +1007,21 @@ def build_phase14_artifact(
     fixture["run_class"] = "explicit_workload" if execute_workload else "default_pr_safe"
 
     requested_solvers = tuple(dict.fromkeys(s.lower() for s in external_solvers))
+    fixtures = [fixture]
     if requested_solvers:
+        solver_fixture = _run_aligned_cavity_strategy_b_fixture(
+            n_steps=max(n_steps, 512)
+        )
+        solver_fixture["run_class"] = "external_solver_aligned"
+        fixtures.append(solver_fixture)
         solver_records = [
             _run_optional_solver_correlation(
                 solver,
                 required=require_external_solver,
-                fixture=fixture,
+                fixture=solver_fixture,
+                solver_python=solver_python,
+                solver_pythonpath=solver_pythonpath,
+                solver_timeout_s=solver_timeout_s,
             )
             for solver in requested_solvers
         ]
@@ -768,12 +1049,15 @@ def build_phase14_artifact(
         "environment": environment_summary(),
         "phase13_baseline": baseline,
         "strategy_b_seam": seam,
-        "fixtures": [fixture],
+        "fixtures": fixtures,
         "optional_solver_correlation": solver_records,
         "provenance": {
             "execute_workload": execute_workload,
             "external_solvers_requested": list(requested_solvers),
             "require_external_solver": require_external_solver,
+            "solver_python": solver_python,
+            "solver_pythonpath": solver_pythonpath,
+            "solver_timeout_s": solver_timeout_s,
             "worktree_signature": worktree,
         },
     }
@@ -817,6 +1101,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Mark this as an explicit production/full workload evidence run.",
     )
     parser.add_argument("--n-steps", type=int, default=DEFAULT_N_STEPS)
+    parser.add_argument(
+        "--solver-python",
+        help="Optional Python executable for subprocess-isolated Meep runs.",
+    )
+    parser.add_argument(
+        "--solver-pythonpath",
+        help="Optional PYTHONPATH prefix for subprocess-isolated solver runs.",
+    )
+    parser.add_argument(
+        "--solver-timeout-s",
+        type=float,
+        default=None,
+        help="Optional timeout for subprocess-isolated solver runs.",
+    )
     parser.add_argument("--indent", type=int, default=2)
     return parser.parse_args(argv)
 
@@ -829,6 +1127,9 @@ def main(argv: list[str] | None = None) -> int:
         require_external_solver=args.require_external_solver,
         execute_workload=args.execute_workload,
         n_steps=args.n_steps,
+        solver_python=args.solver_python,
+        solver_pythonpath=args.solver_pythonpath,
+        solver_timeout_s=args.solver_timeout_s,
     )
     cli_args = sys.argv[1:] if argv is None else argv
     artifact["command"] = [

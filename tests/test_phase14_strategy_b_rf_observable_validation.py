@@ -54,6 +54,7 @@ def test_extract_resonance_frequency_accepts_finite_ringdown():
 
     assert result["method"] == "fft_peak"
     assert math.isfinite(result["frequency_hz"])
+    assert result["frequency_hz"] > 0.0
     assert abs(result["frequency_hz"] - frequency) / frequency < 0.1
     assert result["finite"] is True
 
@@ -157,6 +158,23 @@ def test_optional_solver_wrapper_fails_closed_when_required_absent():
     assert record["failure_reason"] == "required_solver_not_installed"
 
 
+def test_subprocess_meep_runner_accepts_isolated_python(monkeypatch):
+    monkeypatch.setattr(
+        phase14,
+        "_standalone_meep_cavity_code",
+        lambda: "import json; print(json.dumps({'frequency_hz': 123.0}))",
+    )
+
+    frequency = phase14._run_subprocess_solver(
+        "meep",
+        solver_python=sys.executable,
+        timeout_s=10.0,
+    )
+
+    assert frequency == 123.0
+
+
+
 def test_optional_solver_wrapper_records_executed_pass_and_tolerance_fail():
     passed = phase14._run_optional_solver_correlation(
         "meep",
@@ -221,6 +239,32 @@ def test_phase13_baseline_policy_accepts_green_and_rejects_blocked(tmp_path):
     assert blocked["failure_reason"] == "phase13_not_all_eligible_promoted"
 
 
+def test_aligned_cavity_fixture_matches_analytic_reference_for_solver_correlation():
+    fixture = phase14._run_aligned_cavity_strategy_b_fixture(n_steps=512)
+    resonance = fixture["observables"]["resonance"]
+
+    assert fixture["fixture_id"] == "aligned_pec_cavity_tm110_strategy_b_time_series"
+    assert fixture["grid_shape"] == [101, 101, 51]
+    assert resonance["reference_source"] == "analytic_reference"
+    assert resonance["passed"] is True
+    assert resonance["relative_error"] <= phase14.DEFAULT_RESONANCE_TOLERANCE
+
+
+def test_optional_solver_correlation_passes_when_aligned_solver_matches():
+    fixture = phase14._run_aligned_cavity_strategy_b_fixture(n_steps=512)
+    record = phase14._run_optional_solver_correlation(
+        "openems",
+        required=True,
+        fixture=fixture,
+        runner=lambda _fixture: phase14.ALIGNED_CAVITY_FREQ_HZ,
+        availability_checker=lambda _solver: True,
+    )
+
+    assert record["fixture_id"] == fixture["fixture_id"]
+    assert record["passed"] is True
+    assert record["relative_error"] <= phase14.DEFAULT_RESONANCE_TOLERANCE
+
+
 def test_default_harness_emits_complete_source_labelled_artifact(tmp_path):
     output = tmp_path / "phase14_rf_observable_validation.json"
     result = subprocess.run(
@@ -253,6 +297,7 @@ def test_default_harness_emits_complete_source_labelled_artifact(tmp_path):
     resonance = artifact["fixtures"][0]["observables"]["resonance"]
     assert resonance["observable_source"] == "strategy_b_time_series"
     assert resonance["reference_source"] == "standard_rfx_time_series_reference"
+    assert resonance["frequency_hz"] > 0.0
     impedance = artifact["fixtures"][0]["observables"]["input_impedance"]
     assert impedance["applicable"] is False
     assert impedance["not_applicable_reason"]
