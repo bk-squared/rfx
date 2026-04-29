@@ -1502,44 +1502,20 @@ def run_until_decay(
                 st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
                 new_rlc_states.append(rlc_st_new)
 
-        # Soft sources — cast source value to field dtype to avoid
-        # mixed-precision scatter warnings (float32 -> float16).
-        for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
-            st = st._replace(**{sc: field})
-
+        # Compute step time first; wire/lumped S-param DFT blocks below
+        # need `t` and must accumulate BEFORE source injection per the
+        # rfx/probes/probes.py update_sparam_probe docstring contract
+        # ("sample after E-update/apply_pec but before apply_lumped_port
+        # so V reflects only the cavity/load response, not the driving
+        # waveform"). The Python-loop scan path (this file, around the
+        # forward() Python-loop body) already enforces this. The JIT
+        # scan path violated it via PR #72 ordering, producing 5–10 dB
+        # train/eval |S11| disagreement on near-matched antennas where
+        # source-injection contamination is large relative to V.
         t = step_idx.astype(jnp.float32) * dt
 
-        if use_tfsf:
-            if _tfsf_is_2d:
-                tfsf_new = update_tfsf_2d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
-            else:
-                tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
-
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
-                update_waveguide_port_probe,
-            )
-            new_waveguide_port_accs = []
-            for accs, cfg_meta in zip(carry_in["waveguide_port_accs"], waveguide_meta):
-                cfg = cfg_meta._replace(
-                    v_probe_t=accs[0], v_ref_t=accs[1],
-                    i_probe_t=accs[2], i_ref_t=accs[3],
-                    v_inc_t=accs[4],
-                    n_steps_recorded=accs[5],
-                )
-                # TFSF-style H/E corrections applied earlier in canonical
-                # Yee sub-steps (see L1247-L1288 region).
-                cfg_updated = update_waveguide_port_probe(cfg, st, dt, dx)
-                new_waveguide_port_accs.append((
-                    cfg_updated.v_probe_t, cfg_updated.v_ref_t,
-                    cfg_updated.i_probe_t, cfg_updated.i_ref_t,
-                    cfg_updated.v_inc_t,
-                    cfg_updated.n_steps_recorded,
-                ))
-
-        # Wire port S-param DFT accumulation (JIT-integrated)
+        # Wire port S-param DFT accumulation BEFORE source injection so
+        # that sampled V/I reflects only the load/cavity response.
         if use_wire_sparams:
             new_wire_accs = []
             for accs, wp_meta in zip(carry_in["wire_sparam_accs"], wire_sparam_meta):
@@ -1563,7 +1539,9 @@ def run_until_decay(
                     vinc_dft,
                 ))
 
-        # Lumped port S-param DFT accumulation (issue #72).
+        # Lumped port S-param DFT accumulation BEFORE source injection
+        # (issue #72). Same wave-decomposition pattern as the wire-port
+        # path; mirrors the Python-loop scan body ordering.
         if use_lumped_sparams:
             new_lumped_accs = []
             for accs, lp_meta in zip(carry_in["lumped_sparam_accs"], lumped_sparam_meta):
@@ -1584,6 +1562,45 @@ def run_until_decay(
                 new_lumped_accs.append((
                     v_dft_l + v_l * phase_l,
                     i_dft_l + i_val_l * phase_l,
+                ))
+
+        # Soft sources — cast source value to field dtype to avoid
+        # mixed-precision scatter warnings (float32 -> float16).
+        for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
+            field = getattr(st, sc)
+            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
+            st = st._replace(**{sc: field})
+
+        if use_tfsf:
+            if _tfsf_is_2d:
+                tfsf_new = update_tfsf_2d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
+            else:
+                tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
+
+        if use_waveguide_ports:
+            from rfx.sources.waveguide_port import (
+                update_waveguide_port_probe,
+            )
+            new_waveguide_port_accs = []
+            for accs, cfg_meta in zip(carry_in["waveguide_port_accs"], waveguide_meta):
+                cfg = cfg_meta._replace(
+                    v_probe_t=accs[0], v_ref_t=accs[1],
+                    i_probe_t=accs[2], i_ref_t=accs[3],
+                    v_inc_t=accs[4],
+                    n_steps_recorded=accs[5],
+                )
+                # TFSF-style H/E corrections applied earlier in canonical
+                # Yee sub-steps (see L1247-L1288 region).
+                # NOTE: this samples `st` AFTER source injection above.
+                # The same docstring-contract concern as wire/lumped
+                # applies here, but waveguide-port is out of scope for
+                # this fix (issue #29 OPEN tracks waveguide-port issues).
+                cfg_updated = update_waveguide_port_probe(cfg, st, dt, dx)
+                new_waveguide_port_accs.append((
+                    cfg_updated.v_probe_t, cfg_updated.v_ref_t,
+                    cfg_updated.i_probe_t, cfg_updated.i_ref_t,
+                    cfg_updated.v_inc_t,
+                    cfg_updated.n_steps_recorded,
                 ))
 
         # Probe samples
