@@ -3318,7 +3318,13 @@ class Simulation:
                         f"with no PEC crossing any face. Shrink or move the NTFF box."
                     )
 
-        # CHECK 3: λ/4 near-field gap to any geometry/source/probe
+        # CHECK 3: λ/2 (Huygens) and λ/4 (reactive-near-field) gaps to any
+        # geometry/source/probe. Issue #77: the λ/2 Huygens-equivalence rule
+        # was documented in papers/rfx-tap/CLAUDE.md but only the λ/4 strong
+        # tier was enforced; a face at λ/30 above a ground-plane PEC silently
+        # ran and produced corrupted directivity. The two-tier check below
+        # warns mildly in [λ/4, λ/2) (results may degrade) and strongly in
+        # < λ/4 (directivity / pattern likely corrupted).
         if freqs is None:
             return
         try:
@@ -3327,6 +3333,7 @@ class Simulation:
             f_max = float(self._freq_max)
         lam_min = C0 / max(f_max, 1.0)
         gap_thresh = lam_min / 4.0
+        huygens_thresh = lam_min / 2.0
 
         # Collect candidate bboxes and point positions
         bboxes: list[tuple[str, tuple, tuple]] = []
@@ -3382,9 +3389,19 @@ class Simulation:
                 _w.warn(
                     f"NTFF face {'xyz'[axis]}_{side} is {min_gap*1e3:.2f}mm "
                     f"from {culprit} — below λ/4 = {gap_thresh*1e3:.2f}mm at "
-                    f"f_max={f_max/1e9:.2f}GHz. Evanescent near-field may "
-                    f"contaminate the far-field pattern. Move NTFF box further "
-                    f"from radiating/scattering structures.",
+                    f"f_max={f_max/1e9:.2f}GHz. NTFF will integrate reactive "
+                    f"near-field; directivity / pattern likely corrupted. "
+                    f"Move NTFF box ≥ λ/2 from any radiating/scattering "
+                    f"structure (Huygens-equivalence rule).",
+                    stacklevel=3,
+                )
+            elif culprit is not None and min_gap < huygens_thresh:
+                _w.warn(
+                    f"NTFF face {'xyz'[axis]}_{side} is {min_gap*1e3:.2f}mm "
+                    f"from {culprit} — below λ/2 = {huygens_thresh*1e3:.2f}mm "
+                    f"at f_max={f_max/1e9:.2f}GHz. Close to reactive near-"
+                    f"field; far-field pattern accuracy may degrade. Move "
+                    f"NTFF box ≥ λ/2 from radiating/scattering structures.",
                     stacklevel=3,
                 )
 
