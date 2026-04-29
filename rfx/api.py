@@ -1832,6 +1832,51 @@ class Simulation:
     # Threshold above which sigma is treated as PEC (use mask instead).
     _PEC_SIGMA_THRESHOLD = 1e6
 
+    def _inject_conformal_boundary_boxes(self, grid, pec_shapes: list):
+        """Return (pec_shapes, any_conformal, wall_specs) for Stage 1 flat-wall conformal.
+
+        Reads self._boundary_spec for axes with conformal=True and records
+        (axis_name, wall_coord) tuples.  The wall coordinate is derived from
+        the largest waveguide-port aperture on that axis, falling back to the
+        domain extent.
+
+        Returns
+        -------
+        pec_shapes : unchanged list (no Box injection)
+        any_conformal : bool
+        wall_specs : list of (axis_name, wall_coord)
+        """
+        spec = self._boundary_spec
+        domain = self._domain
+        any_conformal = False
+        wall_specs = []
+        for axis_name, boundary in (("x", spec.x), ("y", spec.y), ("z", spec.z)):
+            if not getattr(boundary, "conformal", False):
+                continue
+            any_conformal = True
+            # Derive wall coordinate from largest waveguide-port aperture.
+            best_span = None
+            for entry in self._waveguide_ports:
+                normal = entry.direction[1]
+                if normal != "x":
+                    continue
+                if axis_name == "y":
+                    span = (entry.y_range[1] - entry.y_range[0]) if entry.y_range is not None else domain[1]
+                elif axis_name == "z":
+                    span = (entry.z_range[1] - entry.z_range[0]) if entry.z_range is not None else domain[2]
+                else:
+                    span = domain[0]
+                if best_span is None or span > best_span:
+                    best_span = span
+            if axis_name == "y":
+                wall_specs.append(("y", float(best_span if best_span is not None else domain[1])))
+            elif axis_name == "z":
+                wall_specs.append(("z", float(best_span if best_span is not None else domain[2])))
+            elif axis_name == "x":
+                wall_specs.append(("x", float(domain[0])))
+        return list(pec_shapes), any_conformal, wall_specs
+
+
     def _assemble_materials(
         self,
         grid: Grid,
@@ -2015,6 +2060,7 @@ class Simulation:
         grid: Grid,
         freqs: jnp.ndarray,
         n_steps: int,
+        conformal_faces: set = None,
     ):
         normal_axis = entry.direction[1]
         axis_idx = {"x": 0, "y": 1, "z": 2}[normal_axis]
@@ -2096,6 +2142,7 @@ class Simulation:
             waveform=entry.waveform,
             mode_profile=entry.mode_profile,
             grid=grid,
+            conformal_faces=conformal_faces,
         )
         return cfg
 
@@ -2358,6 +2405,43 @@ class Simulation:
                     grid, shape_eps_pairs, background_eps=1.0,
                 )
 
+        # Stage 1: flat-wall conformal PEC — zeroing only, no aniso_eps.
+        # aniso_eps (eps/w) is NOT applied here because grid.dt is at the
+        # vacuum Courant limit; eps_max>1 causes CFL instability.  The
+        # Dey-Mittra eps/w amplification is Stage 2 (requires dt override).
+        _conformal_weights_wg = None
+        _, _any_conformal_wg, _wall_specs_wg = self._inject_conformal_boundary_boxes(grid, [])
+        if _any_conformal_wg and _wall_specs_wg:
+            from rfx.geometry.conformal import (
+                compute_conformal_weights_flat_wall,
+                merge_conformal_weights,
+            )
+            _w_ex = jnp.ones(grid.shape, dtype=jnp.float32)
+            _w_ey = jnp.ones(grid.shape, dtype=jnp.float32)
+            _w_ez = jnp.ones(grid.shape, dtype=jnp.float32)
+            for _ax, _wc in _wall_specs_wg:
+                _wx, _wy, _wz = compute_conformal_weights_flat_wall(
+                    grid, _ax, _wc, w_min=0.5
+                )
+                _w_ex, _w_ey, _w_ez = merge_conformal_weights(
+                    _w_ex, _w_ey, _w_ez, _wx, _wy, _wz
+                )
+            _conformal_weights_wg = (_w_ex, _w_ey, _w_ez)
+            # Rebuild cfgs with conformal_faces so DROP zeroing is skipped.
+            _conf_faces: set = set()
+            _bspec = self._boundary_spec
+            for _ax_name, _bnd in (("x", _bspec.x), ("y", _bspec.y), ("z", _bspec.z)):
+                if getattr(_bnd, 'conformal', False):
+                    _conf_faces.add(f"{_ax_name}_lo")
+                    _conf_faces.add(f"{_ax_name}_hi")
+            if _conf_faces:
+                cfgs = [
+                    self._build_waveguide_port_config(
+                        entry, grid, freqs, n_steps, conformal_faces=_conf_faces,
+                    )
+                    for entry in entries
+                ]
+
         if normalize:
             # Build reference materials: vacuum everywhere (no user geometry).
             from rfx.core.yee import init_materials as _init_vacuum_materials
@@ -2377,6 +2461,9 @@ class Simulation:
                 ref_lorentz=None,
                 ref_shifts=ref_shifts,
                 aniso_eps=aniso_eps,
+                conformal_weights=_conformal_weights_wg,
+                ref_aniso_eps=None,
+                ref_conformal_weights=_conformal_weights_wg,
             )
         else:
             s_params = extract_waveguide_s_matrix(
@@ -2391,6 +2478,7 @@ class Simulation:
                 lorentz=lorentz,
                 ref_shifts=ref_shifts,
                 aniso_eps=aniso_eps,
+                conformal_weights=_conformal_weights_wg,
             )
         reference_planes = np.array(
             [
@@ -3309,7 +3397,13 @@ class Simulation:
                         f"with no PEC crossing any face. Shrink or move the NTFF box."
                     )
 
-        # CHECK 3: λ/4 near-field gap to any geometry/source/probe
+        # CHECK 3: λ/2 (Huygens) and λ/4 (reactive-near-field) gaps to any
+        # geometry/source/probe. Issue #77: the λ/2 Huygens-equivalence rule
+        # was documented in papers/rfx-tap/CLAUDE.md but only the λ/4 strong
+        # tier was enforced; a face at λ/30 above a ground-plane PEC silently
+        # ran and produced corrupted directivity. The two-tier check below
+        # warns mildly in [λ/4, λ/2) (results may degrade) and strongly in
+        # < λ/4 (directivity / pattern likely corrupted).
         if freqs is None:
             return
         try:
@@ -3318,6 +3412,7 @@ class Simulation:
             f_max = float(self._freq_max)
         lam_min = C0 / max(f_max, 1.0)
         gap_thresh = lam_min / 4.0
+        huygens_thresh = lam_min / 2.0
 
         # Collect candidate bboxes and point positions
         bboxes: list[tuple[str, tuple, tuple]] = []
@@ -3373,9 +3468,19 @@ class Simulation:
                 _w.warn(
                     f"NTFF face {'xyz'[axis]}_{side} is {min_gap*1e3:.2f}mm "
                     f"from {culprit} — below λ/4 = {gap_thresh*1e3:.2f}mm at "
-                    f"f_max={f_max/1e9:.2f}GHz. Evanescent near-field may "
-                    f"contaminate the far-field pattern. Move NTFF box further "
-                    f"from radiating/scattering structures.",
+                    f"f_max={f_max/1e9:.2f}GHz. NTFF will integrate reactive "
+                    f"near-field; directivity / pattern likely corrupted. "
+                    f"Move NTFF box ≥ λ/2 from any radiating/scattering "
+                    f"structure (Huygens-equivalence rule).",
+                    stacklevel=3,
+                )
+            elif culprit is not None and min_gap < huygens_thresh:
+                _w.warn(
+                    f"NTFF face {'xyz'[axis]}_{side} is {min_gap*1e3:.2f}mm "
+                    f"from {culprit} — below λ/2 = {huygens_thresh*1e3:.2f}mm "
+                    f"at f_max={f_max/1e9:.2f}GHz. Close to reactive near-"
+                    f"field; far-field pattern accuracy may degrade. Move "
+                    f"NTFF box ≥ λ/2 from radiating/scattering structures.",
                     stacklevel=3,
                 )
 
@@ -5343,6 +5448,11 @@ class Simulation:
 
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, kerr_chi3 = self._assemble_materials(grid)
+        # Stage 1: record flat-wall conformal specs for run_uniform.
+        pec_shapes, _any_conformal, _wall_specs = self._inject_conformal_boundary_boxes(grid, pec_shapes)
+        if _any_conformal:
+            conformal_pec = True
+        self._conformal_wall_specs = _wall_specs if _any_conformal else []
 
         if self._solver == "adi":
             if until_decay is not None:
