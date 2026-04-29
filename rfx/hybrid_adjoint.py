@@ -178,6 +178,17 @@ class _Phase17SMatrixColumnCheckpoints(NamedTuple):
     i_dft_final: jnp.ndarray
 
 
+class _Phase18SMatrixCPMLColumnCheckpoints(NamedTuple):
+    """Segment-start checkpoints for one driven CPML S-matrix objective column."""
+
+    states: Phase1FieldState
+    cpml_states: CPMLState
+    v_dft: jnp.ndarray
+    i_dft: jnp.ndarray
+    v_dft_final: jnp.ndarray
+    i_dft_final: jnp.ndarray
+
+
 def phase1_forward_result(
     grid: Grid,
     time_series: jnp.ndarray,
@@ -1231,13 +1242,8 @@ def _phase17_native_smatrix_objective_support_reasons(
         reasons.append("Phase XVII native Strategy B S-matrix objectives do not support periodic workflows")
     if debye_spec is not None or lorentz_spec is not None:
         reasons.append("Phase XVII native Strategy B S-matrix objectives support only lossless nondispersive materials")
-    if boundary == "cpml":
-        reasons.append(
-            "Phase XVII native Strategy B S-matrix objective gradients currently support PEC boundary only; "
-            "CPML remains value-only until its gradient gate passes"
-        )
-    elif boundary != "pec":
-        reasons.append("Phase XVII native Strategy B S-matrix objectives support only PEC boundary")
+    if boundary not in {"pec", "cpml"}:
+        reasons.append("Phase XVII native Strategy B S-matrix objectives support only PEC/CPML boundaries")
 
     reasons.extend(_phase16_native_smatrix_support_reasons(port_metadata, s_param_request))
     n_ports = int(getattr(port_metadata, "total_ports", 0)) if port_metadata is not None else 0
@@ -3567,6 +3573,389 @@ def _reverse_phase17_strategy_b_native_smatrix_objective_pec(
     return grad_eps
 
 
+def _run_phase18_strategy_b_native_smatrix_objective_cpml_segment(
+    context: Phase1HybridContext,
+    materials: MaterialArrays,
+    ports: tuple[Phase1SParamPortSpec, ...],
+    freqs: jnp.ndarray,
+    drive_port: Phase1SParamPortSpec,
+    *,
+    initial_state: Phase1FieldState,
+    initial_cpml_state: CPMLState,
+    initial_v_dft: jnp.ndarray,
+    initial_i_dft: jnp.ndarray,
+    step_indices: jnp.ndarray,
+    source_values: jnp.ndarray,
+    return_trace: bool = False,
+):
+    """Run one CPML objective segment using Phase XVI sample/source timing."""
+
+    assert context.cpml_params is not None
+
+    def cpml_step(carry, xs):
+        state, cpml_state, v_dft, i_dft = carry
+        step_index, source_value = xs
+        fdtd = update_h(_to_fdtd(state), materials, context.dt, context.dx, periodic=context.periodic)
+        fdtd, next_cpml_state = apply_cpml_h(
+            fdtd,
+            context.cpml_params,
+            cpml_state,
+            context.grid,
+            context.cpml_axes,
+            materials=materials,
+        )
+        fdtd = update_e(fdtd, materials, context.dt, context.dx, periodic=context.periodic)
+        fdtd, next_cpml_state = apply_cpml_e(
+            fdtd,
+            context.cpml_params,
+            next_cpml_state,
+            context.grid,
+            context.cpml_axes,
+            materials=materials,
+        )
+        if context.pec_axes:
+            fdtd = apply_pec(fdtd, axes=context.pec_axes)
+        if context.pec_faces:
+            fdtd = apply_pec_faces(fdtd, context.pec_faces)
+        pre_source_state = _from_fdtd(fdtd)
+        v_next, i_next = _phase16_accumulate_lumped_port_vi_dft(
+            context,
+            ports,
+            freqs,
+            v_dft,
+            i_dft,
+            pre_source_state,
+            step_index,
+        )
+        next_state = _phase16_inject_smatrix_column_source(
+            pre_source_state,
+            source_value,
+            drive_port,
+        )
+        if return_trace:
+            return (next_state, next_cpml_state, v_next, i_next), (
+                state,
+                cpml_state,
+                v_dft,
+                i_dft,
+            )
+        return (next_state, next_cpml_state, v_next, i_next), None
+
+    (final_state, final_cpml_state, final_v_dft, final_i_dft), outputs = jax.lax.scan(
+        cpml_step,
+        (initial_state, initial_cpml_state, initial_v_dft, initial_i_dft),
+        (step_indices, source_values),
+    )
+    if return_trace:
+        states_before, cpml_states_before, v_dft_before, i_dft_before = outputs
+        return (
+            final_state,
+            final_cpml_state,
+            final_v_dft,
+            final_i_dft,
+            states_before,
+            cpml_states_before,
+            v_dft_before,
+            i_dft_before,
+        )
+    return final_state, final_cpml_state, final_v_dft, final_i_dft
+
+
+def _run_phase18_strategy_b_native_smatrix_objective_cpml_column_forward(
+    context: Phase1HybridContext,
+    eps_r: jnp.ndarray,
+    ports: tuple[Phase1SParamPortSpec, ...],
+    freqs: jnp.ndarray,
+    drive_index: int,
+    checkpoint_every: int,
+) -> _Phase18SMatrixCPMLColumnCheckpoints:
+    """Forward one driven CPML S-matrix objective column, saving segment starts."""
+
+    assert isinstance(context.grid, Grid)
+    n_ports = len(ports)
+    n_freqs = int(freqs.shape[0])
+    v_dft = jnp.zeros((n_ports, n_freqs), dtype=jnp.complex64)
+    i_dft = jnp.zeros((n_ports, n_freqs), dtype=jnp.complex64)
+    state = context.initial_state
+    cpml_state = _zero_cpml_state(context.grid)
+    materials = _materials_from_eps(context, eps_r)
+    drive_port = ports[drive_index]
+    source_values = _phase16_sparam_source_values_from_eps(context, eps_r, drive_port)
+    step_indices = jnp.arange(context.n_steps, dtype=jnp.float32)
+
+    checkpoint_states: list[Phase1FieldState] = []
+    checkpoint_cpml_states: list[CPMLState] = []
+    checkpoint_v: list[jnp.ndarray] = []
+    checkpoint_i: list[jnp.ndarray] = []
+    for start, end in _phase3_strategy_b_segments(context.n_steps, checkpoint_every):
+        checkpoint_states.append(state)
+        checkpoint_cpml_states.append(cpml_state)
+        checkpoint_v.append(v_dft)
+        checkpoint_i.append(i_dft)
+        state, cpml_state, v_dft, i_dft = _run_phase18_strategy_b_native_smatrix_objective_cpml_segment(
+            context,
+            materials,
+            ports,
+            freqs,
+            drive_port,
+            initial_state=state,
+            initial_cpml_state=cpml_state,
+            initial_v_dft=v_dft,
+            initial_i_dft=i_dft,
+            step_indices=step_indices[start:end],
+            source_values=source_values[start:end],
+        )
+
+    return _Phase18SMatrixCPMLColumnCheckpoints(
+        states=_stack_phase1_field_states(tuple(checkpoint_states)),
+        cpml_states=_stack_cpml_states(tuple(checkpoint_cpml_states)),
+        v_dft=jnp.stack(checkpoint_v, axis=0),
+        i_dft=jnp.stack(checkpoint_i, axis=0),
+        v_dft_final=v_dft,
+        i_dft_final=i_dft,
+    )
+
+
+def _run_phase18_strategy_b_native_smatrix_objective_cpml_forward(
+    context: Phase1HybridContext,
+    eps_r: jnp.ndarray,
+    objective_request: Phase1SMatrixObjectiveRequest,
+    checkpoint_every: int,
+) -> tuple[jnp.ndarray, tuple[_Phase18SMatrixCPMLColumnCheckpoints, ...]]:
+    """Forward CPML value path for the Phase XVIII scalar objective custom VJP."""
+
+    assert context.s_param_request is not None
+    ports = tuple(context.s_param_request.ports)
+    freqs = jnp.asarray(objective_request.freqs, dtype=jnp.float32)
+    column_checkpoints = tuple(
+        _run_phase18_strategy_b_native_smatrix_objective_cpml_column_forward(
+            context,
+            eps_r,
+            ports,
+            freqs,
+            drive_index,
+            checkpoint_every,
+        )
+        for drive_index in range(len(ports))
+    )
+    columns = [
+        _phase16_smatrix_column_from_vi_dft(
+            checkpoints.v_dft_final,
+            checkpoints.i_dft_final,
+            ports,
+            drive_index,
+        )
+        for drive_index, checkpoints in enumerate(column_checkpoints)
+    ]
+    smatrix = jnp.stack(columns, axis=1)
+    return _phase17_weighted_smatrix_objective(smatrix, objective_request), column_checkpoints
+
+
+def _reverse_phase18_strategy_b_native_smatrix_objective_cpml_column(
+    context: Phase1HybridContext,
+    eps_r: jnp.ndarray,
+    column_checkpoints: _Phase18SMatrixCPMLColumnCheckpoints,
+    ports: tuple[Phase1SParamPortSpec, ...],
+    freqs: jnp.ndarray,
+    drive_index: int,
+    v_dft_bar: jnp.ndarray,
+    i_dft_bar: jnp.ndarray,
+    checkpoint_every: int,
+) -> jnp.ndarray:
+    """Reverse one CPML S-matrix objective column through segmented replay."""
+
+    assert context.cpml_params is not None
+    assert isinstance(context.grid, Grid)
+    materials = _materials_from_eps(context, eps_r)
+    drive_port = ports[drive_index]
+    source_values = _phase16_sparam_source_values_from_eps(context, eps_r, drive_port)
+    raw_source_values = jnp.asarray(drive_port.source_waveform_raw, dtype=jnp.float32)
+    step_indices = jnp.arange(context.n_steps, dtype=jnp.float32)
+    lambda_next = _zeros_like_state(context.initial_state)
+    lambda_cpml_next = _zero_cpml_state(context.grid)
+    v_bar_next = v_dft_bar
+    i_bar_next = i_dft_bar
+    grad_eps = jnp.zeros_like(eps_r)
+
+    for segment_index, (start, end) in reversed(
+        tuple(enumerate(_phase3_strategy_b_segments(context.n_steps, checkpoint_every)))
+    ):
+        segment_start_state = _phase1_field_state_at(column_checkpoints.states, segment_index)
+        segment_start_cpml = _cpml_state_at(column_checkpoints.cpml_states, segment_index)
+        segment_start_v = column_checkpoints.v_dft[segment_index]
+        segment_start_i = column_checkpoints.i_dft[segment_index]
+        _, _, _, _, states_before, cpml_states_before, v_before, i_before = (
+            _run_phase18_strategy_b_native_smatrix_objective_cpml_segment(
+                context,
+                materials,
+                ports,
+                freqs,
+                drive_port,
+                initial_state=segment_start_state,
+                initial_cpml_state=segment_start_cpml,
+                initial_v_dft=segment_start_v,
+                initial_i_dft=segment_start_i,
+                step_indices=step_indices[start:end],
+                source_values=source_values[start:end],
+                return_trace=True,
+            )
+        )
+
+        def reverse_step(carry, xs):
+            lambda_after, lambda_cpml_after, v_after_bar, i_after_bar, grad_accum = carry
+            state_before, cpml_before, v_dft_before, i_dft_before, step_index, raw_source_value = xs
+
+            def step_from_eps(
+                state: Phase1FieldState,
+                cpml_state: CPMLState,
+                v_dft: jnp.ndarray,
+                i_dft: jnp.ndarray,
+                eps_local: jnp.ndarray,
+            ):
+                materials_local = _materials_from_eps(context, eps_local)
+                fdtd = update_h(
+                    _to_fdtd(state),
+                    materials_local,
+                    context.dt,
+                    context.dx,
+                    periodic=context.periodic,
+                )
+                fdtd, next_cpml_state = apply_cpml_h(
+                    fdtd,
+                    context.cpml_params,
+                    cpml_state,
+                    context.grid,
+                    context.cpml_axes,
+                    materials=materials_local,
+                )
+                fdtd = update_e(
+                    fdtd,
+                    materials_local,
+                    context.dt,
+                    context.dx,
+                    periodic=context.periodic,
+                )
+                fdtd, next_cpml_state = apply_cpml_e(
+                    fdtd,
+                    context.cpml_params,
+                    next_cpml_state,
+                    context.grid,
+                    context.cpml_axes,
+                    materials=materials_local,
+                )
+                if context.pec_axes:
+                    fdtd = apply_pec(fdtd, axes=context.pec_axes)
+                if context.pec_faces:
+                    fdtd = apply_pec_faces(fdtd, context.pec_faces)
+                pre_source_state = _from_fdtd(fdtd)
+                v_next, i_next = _phase16_accumulate_lumped_port_vi_dft(
+                    context,
+                    ports,
+                    freqs,
+                    v_dft,
+                    i_dft,
+                    pre_source_state,
+                    step_index,
+                )
+                source_value = _phase16_sparam_source_value_from_raw(
+                    context,
+                    eps_local,
+                    drive_port,
+                    raw_source_value,
+                )
+                next_state = _phase16_inject_smatrix_column_source(
+                    pre_source_state,
+                    source_value,
+                    drive_port,
+                )
+                return next_state, next_cpml_state, v_next, i_next
+
+            _, step_vjp = jax.vjp(
+                step_from_eps,
+                state_before,
+                cpml_before,
+                v_dft_before,
+                i_dft_before,
+                eps_r,
+            )
+            lambda_before, lambda_cpml_before, v_before_bar, i_before_bar, grad_eps_step = step_vjp(
+                (lambda_after, lambda_cpml_after, v_after_bar, i_after_bar)
+            )
+            return (
+                lambda_before,
+                lambda_cpml_before,
+                v_before_bar,
+                i_before_bar,
+                grad_accum + grad_eps_step,
+            ), None
+
+        (lambda_next, lambda_cpml_next, v_bar_next, i_bar_next, grad_eps), _ = jax.lax.scan(
+            reverse_step,
+            (lambda_next, lambda_cpml_next, v_bar_next, i_bar_next, grad_eps),
+            (
+                states_before,
+                cpml_states_before,
+                v_before,
+                i_before,
+                step_indices[start:end],
+                raw_source_values[start:end],
+            ),
+            reverse=True,
+        )
+
+    return grad_eps
+
+
+def _reverse_phase18_strategy_b_native_smatrix_objective_cpml(
+    context: Phase1HybridContext,
+    eps_r: jnp.ndarray,
+    column_checkpoints: tuple[_Phase18SMatrixCPMLColumnCheckpoints, ...],
+    objective_request: Phase1SMatrixObjectiveRequest,
+    loss_bar: jnp.ndarray,
+    checkpoint_every: int,
+) -> jnp.ndarray:
+    """Reverse the scalar objective cotangent through all CPML replay columns."""
+
+    assert context.s_param_request is not None
+    ports = tuple(context.s_param_request.ports)
+    freqs = jnp.asarray(objective_request.freqs, dtype=jnp.float32)
+    v_finals = jnp.stack([checkpoints.v_dft_final for checkpoints in column_checkpoints], axis=0)
+    i_finals = jnp.stack([checkpoints.i_dft_final for checkpoints in column_checkpoints], axis=0)
+
+    def loss_from_final_vi(v_values: jnp.ndarray, i_values: jnp.ndarray) -> jnp.ndarray:
+        columns = [
+            _phase16_smatrix_column_from_vi_dft(
+                v_values[drive_index],
+                i_values[drive_index],
+                ports,
+                drive_index,
+            )
+            for drive_index in range(len(ports))
+        ]
+        return _phase17_weighted_smatrix_objective(
+            jnp.stack(columns, axis=1),
+            objective_request,
+        )
+
+    _, vi_vjp = jax.vjp(loss_from_final_vi, v_finals, i_finals)
+    v_bars, i_bars = vi_vjp(loss_bar)
+
+    grad_eps = jnp.zeros_like(eps_r)
+    for drive_index, checkpoints in enumerate(column_checkpoints):
+        grad_eps = grad_eps + _reverse_phase18_strategy_b_native_smatrix_objective_cpml_column(
+            context,
+            eps_r,
+            checkpoints,
+            ports,
+            freqs,
+            drive_index,
+            v_bars[drive_index],
+            i_bars[drive_index],
+            checkpoint_every,
+        )
+    return grad_eps
+
+
 def _make_phase17_strategy_b_smatrix_objective_forward(
     context: Phase1HybridContext,
     objective_request: Phase1SMatrixObjectiveRequest,
@@ -3576,6 +3965,14 @@ def _make_phase17_strategy_b_smatrix_objective_forward(
 
     @jax.custom_vjp
     def _forward_objective(eps_r: jnp.ndarray) -> jnp.ndarray:
+        if context.boundary == "cpml":
+            loss, _ = _run_phase18_strategy_b_native_smatrix_objective_cpml_forward(
+                context,
+                eps_r,
+                objective_request,
+                checkpoint_every,
+            )
+            return loss
         loss, _ = _run_phase17_strategy_b_native_smatrix_objective_pec_forward(
             context,
             eps_r,
@@ -3585,6 +3982,14 @@ def _make_phase17_strategy_b_smatrix_objective_forward(
         return loss
 
     def _forward_fwd(eps_r: jnp.ndarray):
+        if context.boundary == "cpml":
+            loss, checkpoints = _run_phase18_strategy_b_native_smatrix_objective_cpml_forward(
+                context,
+                eps_r,
+                objective_request,
+                checkpoint_every,
+            )
+            return loss, (eps_r, checkpoints)
         loss, checkpoints = _run_phase17_strategy_b_native_smatrix_objective_pec_forward(
             context,
             eps_r,
@@ -3595,14 +4000,24 @@ def _make_phase17_strategy_b_smatrix_objective_forward(
 
     def _forward_bwd(res, loss_bar: jnp.ndarray):
         eps_r, checkpoints = res
-        grad_eps = _reverse_phase17_strategy_b_native_smatrix_objective_pec(
-            context,
-            eps_r,
-            checkpoints,
-            objective_request,
-            loss_bar,
-            checkpoint_every,
-        )
+        if context.boundary == "cpml":
+            grad_eps = _reverse_phase18_strategy_b_native_smatrix_objective_cpml(
+                context,
+                eps_r,
+                checkpoints,
+                objective_request,
+                loss_bar,
+                checkpoint_every,
+            )
+        else:
+            grad_eps = _reverse_phase17_strategy_b_native_smatrix_objective_pec(
+                context,
+                eps_r,
+                checkpoints,
+                objective_request,
+                loss_bar,
+                checkpoint_every,
+            )
         return (grad_eps,)
 
     _forward_objective.defvjp(_forward_fwd, _forward_bwd)

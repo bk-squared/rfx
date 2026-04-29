@@ -259,7 +259,7 @@ def test_phase17_gradient_is_finite_nonzero_and_matches_finite_difference():
         assert abs_err <= 5e-5
 
 
-def test_phase17_cpml_objective_fails_closed_but_phase16_cpml_value_remains_supported():
+def test_phase17_cpml_objective_value_matches_phase16_after_phase18_promotion():
     sim = _make_one_port_sim(boundary="cpml")
     freqs = jnp.asarray([3.0e9], dtype=jnp.float32)
     inputs = sim.build_hybrid_phase1_inputs(n_steps=18, s_param_freqs=freqs)
@@ -274,15 +274,15 @@ def test_phase17_cpml_objective_fails_closed_but_phase16_cpml_value_remains_supp
         request,
         checkpoint_every=6,
     )
-    assert not report.supported
-    assert "CPML remains value-only" in report.reason_text
-    with pytest.raises(ValueError, match="CPML remains value-only"):
-        sim.forward_hybrid_phase1_smatrix_objective_from_inputs(
-            inputs,
-            request,
-            strategy="b",
-            checkpoint_every=6,
-        )
+    assert report.supported, report.reason_text
+    objective = sim.forward_hybrid_phase1_smatrix_objective_from_inputs(
+        inputs,
+        request,
+        strategy="b",
+        checkpoint_every=6,
+    )
+    expected = _phase17_weighted_smatrix_objective(phase16.s_params, request)
+    np.testing.assert_allclose(np.asarray(objective), np.asarray(expected), rtol=0.0, atol=1e-7)
 
 
 def test_phase17_default_sidecar_remains_stopped_while_objective_is_differentiable():
