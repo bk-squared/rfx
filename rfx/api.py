@@ -2831,9 +2831,19 @@ class Simulation:
         return pos_to_nu_index(grid, pos)
 
     def _run_nonuniform(self, *, n_steps, compute_s_params=None,
-                        s_param_freqs=None, subpixel_smoothing: bool = False,
+                        s_param_freqs=None,
+                        subpixel_smoothing: bool | str = False,
                         checkpoint: bool = False):
         """Run simulation on non-uniform grid with graded dz."""
+        if subpixel_smoothing == "kottke_pec":
+            raise NotImplementedError(
+                "subpixel_smoothing='kottke_pec' (Stage 2 unified PEC) "
+                "is not supported on the non-uniform mesh path. "
+                "Drop the dx/dy/dz profile or use the legacy "
+                "``Boundary(conformal=True)`` Stage 1 path on a "
+                "uniform mesh. Tracking: docs/agent-memory/"
+                "stage2_subpixel_pec_unified_design.md §8 Q2."
+            )
         from rfx.runners.nonuniform import run_nonuniform_path
         return run_nonuniform_path(
             self,
@@ -5298,7 +5308,7 @@ class Simulation:
         s_param_freqs: jnp.ndarray | None = None,
         s_param_n_steps: int | None = None,
         snapshot: SnapshotSpec | None = None,
-        subpixel_smoothing: bool = False,
+        subpixel_smoothing: bool | str = False,
         conformal_pec: bool | None = None,
         conformal_min_weight: float = 0.1,
         devices: list | None = None,

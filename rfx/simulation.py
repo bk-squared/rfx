@@ -17,7 +17,7 @@ import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
-    update_e, update_e_aniso, update_h, EPS_0, _shift_bwd,
+    update_e, update_e_aniso, update_e_aniso_inv, update_h, EPS_0, _shift_bwd,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_faces, apply_pec_occupancy
@@ -267,6 +267,7 @@ def _update_e_with_optional_dispersion(
     lorentz: tuple | None = None,
     periodic: tuple = (False, False, False),
     aniso_eps: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """Update E with standard, Debye, Lorentz, or mixed dispersion.
 
@@ -275,8 +276,17 @@ def _update_e_with_optional_dispersion(
     aniso_eps : (eps_ex, eps_ey, eps_ez) or None
         Per-component relative permittivity arrays for subpixel smoothing.
         Only used when no dispersion model is active.
+    aniso_inv_eps : (inv_xx, inv_yy, inv_zz) or None
+        Stage 2 unified path: per-component inverse-permittivity tensor
+        diagonal. When set, takes precedence over ``aniso_eps`` and
+        dispatches to ``update_e_aniso_inv``. Numerically stable in the
+        PEC limit (inv = 0); see derivation §5.
     """
     if debye is None and lorentz is None:
+        if aniso_inv_eps is not None:
+            inv_xx, inv_yy, inv_zz = aniso_inv_eps
+            return update_e_aniso_inv(state, materials, inv_xx, inv_yy, inv_zz,
+                                      dt, dx, periodic=periodic), None, None
         if aniso_eps is not None:
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
@@ -465,6 +475,7 @@ def run(
     checkpoint: bool = False,
     checkpoint_segments: int | None = None,
     aniso_eps: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
     pec_mask: object | None = None,
     pec_occupancy: object | None = None,
     conformal_weights: tuple | None = None,
@@ -578,6 +589,12 @@ def run(
     use_pec_mask = pec_mask is not None
     use_pec_occupancy = pec_occupancy is not None
     use_conformal = conformal_weights is not None
+    # Stage 2: when aniso_inv_eps is set, the inverse-permittivity
+    # tensor encodes both PEC behaviour (inv=0 freezes the field) and
+    # dielectric subpixel smoothing in a single pass — apply_conformal_pec
+    # is redundant and SKIPPED to avoid the double-zeroing antipattern
+    # of the 2026-04-29 first attempt.
+    use_aniso_inv = aniso_inv_eps is not None
     wire_port_sparams = wire_port_sparams or []
     use_wire_sparams = len(wire_port_sparams) > 0
     lumped_port_sparams = lumped_port_sparams or []
@@ -813,6 +830,7 @@ def run(
                     lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
                     periodic=periodic,
                     aniso_eps=aniso_eps,
+                    aniso_inv_eps=aniso_inv_eps,
                 )
 
             # Kerr nonlinear ADE correction (after linear E-update)
@@ -835,7 +853,10 @@ def run(
             if use_pec_faces:
                 st = apply_pec_faces(st, _pec_faces_frozen)
 
-            if use_conformal:
+            if use_conformal and not use_aniso_inv:
+                # Stage 1 path. Stage 2 (use_aniso_inv) skips this —
+                # the inv-eps tensor encodes the fully-PEC-cell zero
+                # already, so this would be redundant double-zeroing.
                 from rfx.geometry.conformal import apply_conformal_pec
                 st = apply_conformal_pec(st, conformal_weights[0], conformal_weights[1], conformal_weights[2])
             elif use_pec_mask:
@@ -1204,6 +1225,7 @@ def run_until_decay(
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
     pec_mask: object | None = None,
     pec_occupancy: object | None = None,
     conformal_weights: tuple | None = None,
@@ -1297,6 +1319,12 @@ def run_until_decay(
     use_pec_mask = pec_mask is not None
     use_pec_occupancy = pec_occupancy is not None
     use_conformal = conformal_weights is not None
+    # Stage 2: when aniso_inv_eps is set, the inverse-permittivity
+    # tensor encodes both PEC behaviour (inv=0 freezes the field) and
+    # dielectric subpixel smoothing in a single pass — apply_conformal_pec
+    # is redundant and SKIPPED to avoid the double-zeroing antipattern
+    # of the 2026-04-29 first attempt.
+    use_aniso_inv = aniso_inv_eps is not None
     wire_port_sparams = wire_port_sparams or []
     use_wire_sparams = len(wire_port_sparams) > 0
     lumped_port_sparams = lumped_port_sparams or []
@@ -1463,6 +1491,7 @@ def run_until_decay(
                 lorentz=(lorentz_coeffs, carry_in["lorentz"]) if use_lorentz else None,
                 periodic=periodic,
                 aniso_eps=aniso_eps,
+                aniso_inv_eps=aniso_inv_eps,
             )
 
         # Kerr nonlinear ADE correction (after linear E-update)
@@ -1485,7 +1514,9 @@ def run_until_decay(
         if use_pec_faces:
             st = apply_pec_faces(st, _pec_faces_frozen)
 
-        if use_conformal:
+        if use_conformal and not use_aniso_inv:
+            # Stage 1 path; Stage 2 (use_aniso_inv) skips this — see
+            # parallel block in run() above for explanation.
             from rfx.geometry.conformal import apply_conformal_pec
             st = apply_conformal_pec(st, conformal_weights[0], conformal_weights[1], conformal_weights[2])
         elif use_pec_mask:

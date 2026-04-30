@@ -34,7 +34,7 @@ def run_uniform(
     s_param_freqs=None,
     s_param_n_steps=None,
     snapshot=None,
-    subpixel_smoothing: bool = False,
+    subpixel_smoothing: bool | str = False,
     conformal_pec: bool = False,
     conformal_min_weight: float = 0.1,
     pec_shapes=None,
@@ -81,9 +81,33 @@ def run_uniform(
     for spec in sim._lumped_rlc:
         materials = setup_rlc_materials(grid, spec, materials)
 
-    # Compute per-component smoothed permittivity if requested
+    # Stage 2 unified path: subpixel_smoothing="kottke_pec" replaces
+    # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step
+    # apply_conformal_pec) chain with a single inverse-permittivity
+    # tensor that encodes both dielectric subpixel smoothing and PEC
+    # behaviour (inv = 0 freezes the field). See
+    # docs/agent-memory/stage2_subpixel_pec_unified_design.md §5.
     aniso_eps = None
-    if subpixel_smoothing:
+    aniso_inv_eps = None
+    use_kottke_pec = (subpixel_smoothing == "kottke_pec")
+    if use_kottke_pec:
+        from rfx.geometry.smoothing import compute_inv_eps_tensor_diag
+        shape_eps_pairs = [
+            (entry.shape, sim._resolve_material(entry.material_name).eps_r)
+            for entry in sim._geometry
+        ]
+        aniso_inv_eps = compute_inv_eps_tensor_diag(
+            grid,
+            dielectric_shapes=shape_eps_pairs,
+            pec_shapes=pec_shapes or [],
+            background_eps=1.0,
+        )
+        # Stage 2 owns the PEC tensor encoding — disable Stage 1 paths
+        # that would otherwise double-correct.
+        pec_mask = None
+        # ``conformal_weights`` is intentionally left unset (None) so
+        # the legacy ``apply_conformal_pec`` per-step zero is skipped.
+    elif subpixel_smoothing:
         from rfx.geometry.smoothing import compute_smoothed_eps
         shape_eps_pairs = [
             (entry.shape, sim._resolve_material(entry.material_name).eps_r)
@@ -92,9 +116,11 @@ def run_uniform(
         if shape_eps_pairs:
             aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 
-    # Conformal PEC: compute weights and produce anisotropic eps
+    # Conformal PEC (Stage 1): compute weights and produce anisotropic
+    # eps. Skipped when Stage 2 unified path is active (use_kottke_pec)
+    # — the inv-eps tensor already encodes the conformal behaviour.
     conformal_weights = None
-    if conformal_pec and pec_shapes:
+    if conformal_pec and pec_shapes and not use_kottke_pec:
         from rfx.geometry.conformal import (
             compute_conformal_weights_sdf,
             clamp_conformal_weights,
@@ -419,6 +445,7 @@ def run_uniform(
             snapshot=snapshot,
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
+            aniso_inv_eps=aniso_inv_eps,
             pec_mask=pec_mask,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
@@ -445,6 +472,7 @@ def run_uniform(
             snapshot=snapshot,
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
+            aniso_inv_eps=aniso_inv_eps,
             pec_mask=pec_mask,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
