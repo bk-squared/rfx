@@ -2262,7 +2262,7 @@ class Simulation:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask_wg, _, _ = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, _ = self._assemble_materials(grid)
         # Waveguide S-matrix runner doesn't support pec_mask yet.
         # Fold PEC mask back into high sigma for compatibility.
         if pec_mask_wg is not None:
@@ -2428,6 +2428,50 @@ class Simulation:
                     grid, shape_eps_pairs, background_eps=1.0,
                 )
 
+        # Stage 1 conformal PEC: when BoundarySpec declares conformal
+        # faces and pec_shapes was populated (boundary half-space +
+        # any user PEC), compute Dey-Mittra weights and apply
+        # eps_correction. Mirrors runners/uniform.py:96-124.
+        # ``conformal_weights`` flows through extract_waveguide_*
+        # into rfx.simulation.run, which already calls
+        # ``apply_conformal_pec`` per step in its scan body.
+        conformal_weights = None
+        ref_aniso_eps = None
+        if self._boundary_spec.conformal_faces() and pec_shapes:
+            from rfx.geometry.conformal import (
+                compute_conformal_weights_sdf,
+                clamp_conformal_weights,
+                conformal_eps_correction,
+            )
+            w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
+            w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, 0.1)
+            conformal_weights = (w_ex, w_ey, w_ez)
+            # Per-component conformal-corrected eps. Merge with the
+            # smoothed eps (if any): conformal overrides at boundary
+            # cells, smoothed survives in the interior.
+            eps_base = materials.eps_r
+            eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
+                eps_base, w_ex, w_ey, w_ez,
+            )
+            if aniso_eps is not None:
+                s_ex, s_ey, s_ez = aniso_eps
+                boundary_ex = w_ex < 1.0
+                boundary_ey = w_ey < 1.0
+                boundary_ez = w_ez < 1.0
+                eps_ex_c = jnp.where(boundary_ex, eps_ex_c, s_ex)
+                eps_ey_c = jnp.where(boundary_ey, eps_ey_c, s_ey)
+                eps_ez_c = jnp.where(boundary_ez, eps_ez_c, s_ez)
+            aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
+            # The reference run (vacuum) shares the same boundary
+            # walls, so the conformal eps correction applies equally.
+            # Build it from the ref vacuum eps so the only difference
+            # ref-vs-device is the obstacle in ``materials.eps_r``.
+            ref_eps_base = jnp.ones_like(eps_base)
+            ref_ex, ref_ey, ref_ez = conformal_eps_correction(
+                ref_eps_base, w_ex, w_ey, w_ez,
+            )
+            ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
+
         if normalize:
             # Build reference materials: vacuum everywhere (no user geometry).
             from rfx.core.yee import init_materials as _init_vacuum_materials
@@ -2447,6 +2491,8 @@ class Simulation:
                 ref_lorentz=None,
                 ref_shifts=ref_shifts,
                 aniso_eps=aniso_eps,
+                ref_aniso_eps=ref_aniso_eps,
+                conformal_weights=conformal_weights,
             )
         else:
             s_params = extract_waveguide_s_matrix(
@@ -2461,6 +2507,7 @@ class Simulation:
                 lorentz=lorentz,
                 ref_shifts=ref_shifts,
                 aniso_eps=aniso_eps,
+                conformal_weights=conformal_weights,
             )
         reference_planes = np.array(
             [

@@ -444,3 +444,85 @@ def test_run_battery_geometry_auto_routes():
         "battery-geometry conformal=True still bit-identical to "
         "baseline — Stage 1 step 3 did not close the silent no-op."
     )
+
+
+# -----------------------------------------------------------------------------
+# Stage 1 step 4: cv11-style PEC-short acceptance gate via S-matrix path
+# -----------------------------------------------------------------------------
+
+
+def _pec_short_sim(*, conformal: bool):
+    """Validation-battery-style PEC-short setup. Two ports + a thin
+    PEC wall midway through the guide; with num_periods=40 the round
+    trip settles inside the DFT window and |S11| → 1.0 for a correct
+    extractor. Mirrors ``tests/test_waveguide_port_validation_battery
+    ::test_pec_short_s11_magnitude`` so the gate is directly comparable."""
+    import jax.numpy as jnp
+
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        dx=0.003,
+        boundary=BoundarySpec(
+            x="cpml",
+            y=Boundary(lo="pec", hi="pec", conformal=conformal),
+            z=Boundary(lo="pec", hi="pec", conformal=conformal),
+        ),
+        cpml_layers=10,
+    )
+    sim.add(Box((0.085, 0, 0), (0.087, 0.04, 0.02)), material="pec")
+    freqs = jnp.linspace(5e9, 7e9, 6)
+    sim.add_waveguide_port(
+        0.010, direction="+x", mode=(1, 0), mode_type="TE",
+        freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
+    )
+    sim.add_waveguide_port(
+        0.090, direction="-x", mode=(1, 0), mode_type="TE",
+        freqs=freqs, f0=6e9, bandwidth=0.5, name="right",
+    )
+    return sim
+
+
+def test_pec_short_s11_with_conformal_face_pec():
+    """Acceptance gate: with ``Boundary(conformal=True)`` on the y/z
+    PEC faces, cv11-style PEC-short min |S11| must remain Meep-class
+    (≥0.99) — same target as the binary-baseline battery test.
+
+    Without the Stage 1 step 4 plumbing through
+    ``compute_waveguide_s_matrix``, the Step 3 DROP-skip on the +face
+    aperture row contaminates V/I via the PEC-normal Ey component
+    (which ``apply_pec_faces`` does NOT zero) and PEC-short collapses
+    to ~0.84. The ``conformal_eps_correction`` at the boundary cell
+    (eps_eff = eps / α with α≈0.83 at dx=3 mm) compensates by
+    suppressing the contaminated cell's contribution before the V/I
+    integral, restoring Meep-class closure.
+
+    Pre-implementation measurement (2026-04-30): conformal=False →
+    0.996; conformal=True → 0.843. Gate 0.99 must pass after step 4."""
+    sim = _pec_short_sim(conformal=True)
+    res = sim.compute_waveguide_s_matrix(num_periods=40, normalize=False)
+    s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
+    print(f"\n[step4 pec-short] |S11| range "
+          f"[{s11.min():.4f}, {s11.max():.4f}] mean={s11.mean():.4f}")
+    assert s11.min() >= 0.99, (
+        f"PEC-short |S11| with conformal=True regressed: "
+        f"min={s11.min():.4f} (gate 0.99). Likely cause: Stage 1 step 4 "
+        f"plumbing (compute_waveguide_s_matrix → conformal_weights → "
+        f"extract_waveguide_s_matrix → run_simulation) is incomplete, "
+        f"so DROP-skip runs without the compensating Dey-Mittra "
+        f"eps_correction."
+    )
+
+
+def test_pec_short_s11_baseline_unchanged_with_binary_path():
+    """Regression guard: ``Boundary(conformal=False)`` (default)
+    PEC-short |S11| stays at the pre-Stage-1 baseline. Catches any
+    accidental coupling between the conformal plumbing work and the
+    binary path."""
+    sim = _pec_short_sim(conformal=False)
+    res = sim.compute_waveguide_s_matrix(num_periods=40, normalize=False)
+    s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
+    assert s11.min() >= 0.99, (
+        f"PEC-short |S11| baseline regressed: min={s11.min():.4f} "
+        f"(gate 0.99). Stage 1 must not affect the binary path."
+    )
