@@ -674,9 +674,23 @@ def compute_inv_eps_tensor_diag(
     dielectric_shapes : list of (Shape, eps_r), optional
         Same as ``compute_smoothed_eps`` — applied first.
     pec_shapes : list of Shape, optional
-        PEC objects. Each is union'd into the existing tensor via
-        elementwise minimum (the most-restrictive inv contribution wins,
-        matching the union-of-PEC semantics).
+        PEC objects. Each is folded in via elementwise minimum on the
+        per-component inverse-eps tensor.
+
+        **Precondition (Stage 2 v1)**: ``pec_shapes`` must be
+        **non-overlapping** in space. Two overlapping PEC bodies with
+        different surface normals at the same Yee point would produce
+        incorrect tensor entries under the current min-merge — each
+        body contributes a Kottke result based on its own normal, and
+        ``min`` over independently-projected diagonals can collapse to
+        zero on both axes even when the geometric union of fills is
+        less than 1. The proper resolution is the union-SDF +
+        nearest-shape-normal pattern that ``compute_smoothed_eps``
+        already uses (see ``OrderedDict`` grouping, line 474+) —
+        deferred to Stage 2 v2 once a multi-PEC use case appears in
+        the acceptance ladder. For axis-aligned WR-90, mitred bend,
+        and Vivaldi (Tier 0-2 use cases), non-overlapping PEC is the
+        natural representation and this precondition holds trivially.
     background_eps : float
         Vacuum / background ε. Default 1.0.
 
@@ -684,8 +698,8 @@ def compute_inv_eps_tensor_diag(
     -------
     (inv_xx, inv_yy, inv_zz)
         Per-component inverse-permittivity diagonal arrays, each of
-        shape ``grid.shape``. Feed directly into ``update_e_aniso_inv``
-        (Stage 2 Step 2).
+        shape ``grid.shape``, dtype ``float32``. Feed directly into
+        ``update_e_aniso_inv`` (Stage 2 Step 2).
     """
     if dielectric_shapes is None:
         dielectric_shapes = []
@@ -703,9 +717,13 @@ def compute_inv_eps_tensor_diag(
         eps_ey = jnp.full(shape, background_eps, dtype=jnp.float32)
         eps_ez = jnp.full(shape, background_eps, dtype=jnp.float32)
 
-    inv_xx = 1.0 / eps_ex
-    inv_yy = 1.0 / eps_ey
-    inv_zz = 1.0 / eps_ez
+    # Cast to float32 explicitly — `compute_smoothed_eps` may return
+    # float64 if `background_eps` is a Python float, and downstream
+    # ``update_e_aniso_inv`` expects float32. Standardise here so the
+    # contract is independent of caller's eps_r dtype.
+    inv_xx = (1.0 / eps_ex).astype(jnp.float32)
+    inv_yy = (1.0 / eps_ey).astype(jnp.float32)
+    inv_zz = (1.0 / eps_ez).astype(jnp.float32)
 
     if not pec_shapes:
         return inv_xx, inv_yy, inv_zz
