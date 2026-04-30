@@ -371,6 +371,78 @@ _BoundaryExpandedFluxFixture = _FluxFixtureConfig(
 
 _RECOVERY_SWEEP_FIXTURES = (_FluxFixture, _BoundaryExpandedFluxFixture)
 
+_PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_STATUS = (
+    "measurement_contract_or_interface_floor_persists"
+)
+_PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_NEXT_PREREQUISITE = (
+    "private measurement-contract/interface-floor redesign after helper recovery failed "
+    "ralplan"
+)
+_PRIVATE_TIME_CENTERED_HELPER_C3_ROLLBACK_METRICS = {
+    "usable_bins": 3,
+    "transverse_magnitude_cv": 0.4518431429723011,
+    "transverse_phase_spread_deg": 144.39582467090602,
+    "vacuum_relative_magnitude_error": 0.8516395504247894,
+    "vacuum_phase_error_deg": 20.354022359965228,
+}
+_PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
+    {
+        "candidate_id": "C0_current_helper_original_fixture",
+        "candidate_type": "baseline_original_fixture",
+        "parameters": {
+            "fixture": "boundary_expanded",
+            "source_kind": "private_tfsf",
+            "plane_shift_cells": 0,
+            "aperture_size": 0.020,
+            "helper_relaxation": 0.02,
+        },
+        "solver_touch": False,
+        "can_claim_original_fixture_recovery": True,
+    },
+    {
+        "candidate_id": "C1_center_core_measurement_control",
+        "candidate_type": "measurement_control",
+        "parameters": {
+            "fixture": "boundary_expanded",
+            "source_kind": "private_tfsf",
+            "plane_shift_cells": 0,
+            "aperture_size": 0.010,
+            "helper_relaxation": 0.02,
+        },
+        "solver_touch": False,
+        "can_claim_original_fixture_recovery": False,
+    },
+    {
+        "candidate_id": "C2_one_cell_downstream_plane_control",
+        "candidate_type": "measurement_control",
+        "parameters": {
+            "fixture": "boundary_expanded",
+            "source_kind": "private_tfsf",
+            "plane_shift_cells": 1,
+            "aperture_size": 0.020,
+            "helper_relaxation": 0.02,
+        },
+        "solver_touch": False,
+        "can_claim_original_fixture_recovery": False,
+    },
+    {
+        "candidate_id": "C3_helper_relaxation_0p05_original_fixture",
+        "candidate_type": "single_solver_local_candidate",
+        "parameters": {
+            "fixture": "boundary_expanded",
+            "source_kind": "private_tfsf",
+            "plane_shift_cells": 0,
+            "aperture_size": 0.020,
+            "helper_relaxation": 0.05,
+            "only_allowed_solver_edit": (
+                "_TIME_CENTERED_HELPER_RELAXATION = 0.02 -> 0.05"
+            ),
+        },
+        "solver_touch": True,
+        "can_claim_original_fixture_recovery": True,
+    },
+)
+
 
 def _guard_sim() -> Simulation:
     sim = Simulation(
@@ -1921,6 +1993,247 @@ def _dominant_reference_quality_blocker(
     return "none"
 
 
+def _private_tfsf_candidate_metrics_from_runs(
+    *,
+    ref_run: _FixtureRun,
+    sub_run: _FixtureRun,
+    fixture: _FluxFixtureConfig,
+) -> dict[str, object]:
+    mask = _claims_bearing_passband(sub_run.complex_flux, sub_run.signed_flux)
+    uniformity = _transverse_uniformity_metadata(
+        sub_run.planes,
+        mask,
+        fixture,
+        component="ex",
+    )
+    vacuum_stability = _vacuum_stability_metadata(
+        ref_run.complex_flux,
+        sub_run.complex_flux,
+        mask,
+    )
+    front_signed = np.asarray(sub_run.signed_flux[0])
+    back_signed = np.asarray(sub_run.signed_flux[1])
+    usable_passband = int(np.sum(mask)) >= _MIN_CLAIMS_BEARING_BINS
+    nonfloor_flux = bool(
+        usable_passband
+        and np.all(np.abs(front_signed[mask]) >= _NORMALIZATION_FLOOR)
+        and np.all(np.abs(back_signed[mask]) >= _NORMALIZATION_FLOOR)
+    )
+    blockers = _reference_quality_blocker_ranking(
+        usable_bins=int(np.sum(mask)),
+        nonfloor_flux=nonfloor_flux,
+        uniformity=uniformity,
+        vacuum_stability=vacuum_stability,
+    )
+    gates = {
+        "usable_passband": bool(usable_passband),
+        "transverse_uniformity": bool(uniformity["passed"]),
+        "analytic_incident_consistency": bool(nonfloor_flux),
+        "same_contract_reference": True,
+        "vacuum_stability": bool(vacuum_stability["passed"]),
+    }
+    return {
+        "fixture_quality_gates": gates,
+        "reference_quality_ready": bool(all(gates.values())),
+        "usable_bins": int(np.sum(mask)),
+        "transverse_uniformity": uniformity,
+        "vacuum_stability": vacuum_stability,
+        "reference_quality_blockers": blockers,
+        "dominant_reference_quality_blocker": _dominant_reference_quality_blocker(
+            blockers
+        ),
+        "metrics": {
+            "usable_bins": int(np.sum(mask)),
+            "transverse_magnitude_cv": float(uniformity["max_magnitude_cv"]),
+            "transverse_phase_spread_deg": float(uniformity["max_phase_spread_deg"]),
+            "vacuum_relative_magnitude_error": float(
+                vacuum_stability["max_magnitude_error"]
+            ),
+            "vacuum_phase_error_deg": float(vacuum_stability["max_phase_error_deg"]),
+        },
+    }
+
+
+def _private_tfsf_candidate_metrics(
+    *,
+    plane_shift_cells: int,
+    aperture_size: float,
+) -> dict[str, object]:
+    ref_run = _run_flux_fixture(
+        subgrid=False,
+        slab=False,
+        fixture=_BoundaryExpandedFluxFixture,
+        plane_shift_cells=plane_shift_cells,
+        aperture_size=aperture_size,
+        source_kind="private_tfsf",
+    )
+    sub_run = _run_flux_fixture(
+        subgrid=True,
+        slab=False,
+        fixture=_BoundaryExpandedFluxFixture,
+        plane_shift_cells=plane_shift_cells,
+        aperture_size=aperture_size,
+        source_kind="private_tfsf",
+    )
+    return _private_tfsf_candidate_metrics_from_runs(
+        ref_run=ref_run,
+        sub_run=sub_run,
+        fixture=_BoundaryExpandedFluxFixture,
+    )
+
+
+def _private_time_centered_helper_c3_record() -> dict[str, object]:
+    metrics = _PRIVATE_TIME_CENTERED_HELPER_C3_ROLLBACK_METRICS
+    uniformity = {
+        "passed": False,
+        "max_magnitude_cv": metrics["transverse_magnitude_cv"],
+        "max_phase_spread_deg": metrics["transverse_phase_spread_deg"],
+    }
+    vacuum_stability = {
+        "passed": False,
+        "max_magnitude_error": metrics["vacuum_relative_magnitude_error"],
+        "max_phase_error_deg": metrics["vacuum_phase_error_deg"],
+    }
+    blockers = _reference_quality_blocker_ranking(
+        usable_bins=int(metrics["usable_bins"]),
+        nonfloor_flux=True,
+        uniformity=uniformity,
+        vacuum_stability=vacuum_stability,
+    )
+    return {
+        **_PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER[3],
+        "status": "evaluated_and_rolled_back",
+        "fixture_quality_gates": {
+            "usable_passband": True,
+            "transverse_uniformity": False,
+            "analytic_incident_consistency": True,
+            "same_contract_reference": True,
+            "vacuum_stability": False,
+        },
+        "reference_quality_ready": False,
+        "fixture_quality_ready": False,
+        "metrics": metrics,
+        "reference_quality_blockers": blockers,
+        "dominant_reference_quality_blocker": _dominant_reference_quality_blocker(
+            blockers
+        ),
+        "result_authority": (
+            "solver-local C3 failed unchanged original-fixture thresholds and was "
+            "rolled back to 0.02"
+        ),
+        "rollback_required": True,
+        "rollback_verified": True,
+        "retained_solver_relaxation": 0.02,
+    }
+
+
+def _private_time_centered_helper_fixture_quality_recovery_metadata(
+    *,
+    baseline_snapshot: dict[str, object],
+) -> dict[str, object]:
+    c0_metrics = _private_tfsf_candidate_metrics_from_runs(
+        ref_run=baseline_snapshot["ref_run"],
+        sub_run=baseline_snapshot["run"],
+        fixture=_BoundaryExpandedFluxFixture,
+    )
+    c0 = {
+        **_PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER[0],
+        "status": "scored",
+        "fixture_quality_ready": bool(c0_metrics["reference_quality_ready"]),
+        "result_authority": "current original fixture can claim recovery only if all gates pass",
+        **c0_metrics,
+    }
+    c1_metrics = _private_tfsf_candidate_metrics(
+        plane_shift_cells=0,
+        aperture_size=0.010,
+    )
+    c1 = {
+        **_PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER[1],
+        "status": "scored",
+        "fixture_quality_ready": bool(c1_metrics["reference_quality_ready"]),
+        "result_authority": (
+            "measurement-control pass cannot claim original fixture recovery"
+        ),
+        **c1_metrics,
+    }
+    c2_metrics = _private_tfsf_candidate_metrics(
+        plane_shift_cells=1,
+        aperture_size=0.020,
+    )
+    c2 = {
+        **_PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER[2],
+        "status": "scored",
+        "fixture_quality_ready": bool(c2_metrics["reference_quality_ready"]),
+        "result_authority": (
+            "measurement-control pass cannot claim original fixture recovery"
+        ),
+        **c2_metrics,
+    }
+    c3 = _private_time_centered_helper_c3_record()
+    candidates = [c0, c1, c2, c3]
+    original_recovered = any(
+        bool(candidate["can_claim_original_fixture_recovery"])
+        and bool(candidate["reference_quality_ready"])
+        for candidate in candidates
+    )
+    terminal_outcome = (
+        "private_time_centered_helper_fixture_quality_recovered"
+        if original_recovered
+        else _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_STATUS
+    )
+    selected = next(
+        (
+            candidate
+            for candidate in candidates
+            if bool(candidate["can_claim_original_fixture_recovery"])
+            and bool(candidate["reference_quality_ready"])
+        ),
+        c0,
+    )
+    return {
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite C0/C1/C2/C3 ladder; no adaptive sweeps, no threshold changes, "
+            "C1/C2 cannot claim original fixture recovery, and C3 is the only "
+            "solver-touching candidate"
+        ),
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "selected_candidate_id": selected["candidate_id"],
+        "selected_candidate_parameters": selected["parameters"],
+        "solver_hunk_touched": True,
+        "solver_hunk_retained": False,
+        "current_fixture_metrics_retained": True,
+        "slab_rt_private_only": True,
+        "fixture_quality_ready": bool(original_recovered),
+        "reference_quality_ready": bool(original_recovered),
+        "public_claim_allowed": False,
+        "public_observable_promoted": False,
+        "promotion_candidate_ready": False,
+        "hook_experiment_allowed": False,
+        "public_api_behavior_changed": False,
+        "public_default_tau_changed": False,
+        "simresult_changed": False,
+        "result_surface_changed": False,
+        "slab_rt_public_claim_allowed": False,
+        "candidates": candidates,
+        "current_fixture_metrics": c0["metrics"],
+        "dominant_reference_quality_blocker": c0["dominant_reference_quality_blocker"],
+        "reference_quality_blockers": c0["reference_quality_blockers"],
+        "next_prerequisite": (
+            _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "C0 original fixture, C1 center-core measurement control, C2 one-cell "
+            "downstream plane control, and C3 temporary 0.05 helper relaxation all "
+            "failed unchanged fixture/reference thresholds; C3 was rolled back and "
+            "public promotion remains closed"
+        ),
+    }
+
+
 def _serial_complex(values: np.ndarray) -> list[list[float]]:
     return [[float(value.real), float(value.imag)] for value in np.ravel(values)]
 
@@ -3453,16 +3766,33 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             baseline_metrics=baseline_metrics,
         )
     )
+    recovery_metadata = _private_time_centered_helper_fixture_quality_recovery_metadata(
+        baseline_snapshot=baseline_snapshot
+    )
+    base_metadata.update(
+        {
+            "private_time_centered_helper_fixture_quality_recovery_status": (
+                recovery_metadata["status"]
+            ),
+            "private_time_centered_helper_fixture_quality_recovery": (
+                recovery_metadata
+            ),
+            "private_time_centered_helper_fixture_quality_recovery_next_prerequisite": (
+                recovery_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_energy_transfer_repair_next_prerequisite"
+        "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
             "classification": "inconclusive",
             "reason": (
                 "same-contract private TFSF-style reference is implemented, "
-                "but vacuum/reference fixture-quality gates failed; slab R/T "
-                "scoring is intentionally skipped"
+                "but private time-centered helper recovery candidates failed "
+                "unchanged fixture-quality gates; slab R/T scoring is "
+                "intentionally skipped"
             ),
             "slab_rt_scored": False,
             "fixture_quality_ready": False,
@@ -3483,10 +3813,12 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"{base_metadata['interface_floor_subclass']}; slab R/T scoring "
                 "and public promotion stay closed; the private energy-transfer "
                 "repair stage records "
-                f"{base_metadata['private_energy_transfer_repair_status']}"
+                f"{base_metadata['private_energy_transfer_repair_status']}; "
+                "the private time-centered helper fixture-quality recovery stage "
+                f"records {recovery_metadata['terminal_outcome']}"
             ),
             "next_prerequisite": base_metadata[
-                "private_energy_transfer_repair_next_prerequisite"
+                "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
             ],
         }
 
@@ -4497,9 +4829,65 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         repair["next_prerequisite"]
         == (metadata["private_energy_transfer_repair_next_prerequisite"])
     )
+    recovery = metadata["private_time_centered_helper_fixture_quality_recovery"]
+    assert metadata["private_time_centered_helper_fixture_quality_recovery_status"] == (
+        "measurement_contract_or_interface_floor_persists"
+    )
+    assert (
+        recovery["terminal_outcome"]
+        == (metadata["private_time_centered_helper_fixture_quality_recovery_status"])
+    )
+    assert recovery["candidate_ladder_declared_before_slow_scoring"] is True
+    assert recovery["candidate_count"] == 4
+    assert recovery["thresholds_checksum"] == _reference_quality_thresholds_checksum()
+    assert recovery["selected_candidate_id"] == "C0_current_helper_original_fixture"
+    assert recovery["solver_hunk_touched"] is True
+    assert recovery["solver_hunk_retained"] is False
+    assert recovery["current_fixture_metrics_retained"] is True
+    assert recovery["slab_rt_private_only"] is True
+    assert recovery["slab_rt_public_claim_allowed"] is False
+    assert recovery["fixture_quality_ready"] is False
+    assert recovery["reference_quality_ready"] is False
+    assert recovery["public_claim_allowed"] is False
+    assert recovery["public_observable_promoted"] is False
+    assert recovery["hook_experiment_allowed"] is False
+    assert (
+        recovery["next_prerequisite"]
+        == metadata[
+            "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
+        ]
+    )
+    candidate_by_id = {
+        candidate["candidate_id"]: candidate for candidate in recovery["candidates"]
+    }
+    assert set(candidate_by_id) == {
+        "C0_current_helper_original_fixture",
+        "C1_center_core_measurement_control",
+        "C2_one_cell_downstream_plane_control",
+        "C3_helper_relaxation_0p05_original_fixture",
+    }
+    assert (
+        candidate_by_id["C1_center_core_measurement_control"][
+            "can_claim_original_fixture_recovery"
+        ]
+        is False
+    )
+    assert (
+        candidate_by_id["C2_one_cell_downstream_plane_control"][
+            "can_claim_original_fixture_recovery"
+        ]
+        is False
+    )
+    c3 = candidate_by_id["C3_helper_relaxation_0p05_original_fixture"]
+    assert c3["solver_touch"] is True
+    assert c3["rollback_required"] is True
+    assert c3["rollback_verified"] is True
+    assert c3["retained_solver_relaxation"] == 0.02
     assert (
         metadata["follow_up_recommendation"]
-        == metadata["private_energy_transfer_repair_next_prerequisite"]
+        == metadata[
+            "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
+        ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -4523,7 +4911,11 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == (metadata["private_energy_transfer_repair_next_prerequisite"])
+        == (
+            metadata[
+                "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
+            ]
+        )
     )
     assert (
         "same-contract private reference helper is present"
@@ -4532,6 +4924,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert "coarse_fine_energy_transfer_mismatch" in metadata["blocking_diagnostic"]
     assert (
         metadata["private_energy_transfer_repair_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_time_centered_helper_fixture_quality_recovery_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

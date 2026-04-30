@@ -163,6 +163,14 @@ keeps the public claim blocked:
   non-CPML paths and apply the selected `same_call_centered_h_bar` centered-H
   correction after E SAT with a predeclared bounded `0.02` relaxation, without
   adding hook/API/runner/public observable surfaces;
+- the private time-centered paired-face helper fixture-quality recovery stage now
+  records `measurement_contract_or_interface_floor_persists`: the finite
+  C0/C1/C2/C3 ladder keeps the C0 original fixture metrics visible, treats C1/C2
+  center-core/one-cell plane controls as measurement-only evidence that cannot
+  claim original-fixture recovery, and rejects the only solver-touching C3
+  helper-relaxation candidate after rollback to `0.02`; unchanged transverse
+  uniformity and vacuum-stability thresholds still fail, so public promotion
+  remains closed;
 - the prior boundary-expanded analytic-sheet sweep is retained as history, not
   as current slab R/T evidence;
 - the current recorded status is therefore **inconclusive**, not a public
@@ -186,9 +194,14 @@ patch, and because the private time-centered staging redesign records
 `time_centered_staging_contract_ready` as a production-expressible private
 staging contract rather than a public observable, and because the bounded private
 helper implementation now changes only solver-internal SBP-SAT behavior without
-public observables, the next safe lane is `private time-centered paired-face helper fixture-quality recovery ralplan`.  Hook experiments remain closed and
-public promotion remains closed.  Until those fixture-quality gates pass, the
-private flux/DFT gate remains internal diagnostic evidence only, and the support matrix continues to mark true R/T as deferred.
+public observables, and because the private fixture-quality recovery ladder now
+records `measurement_contract_or_interface_floor_persists`, the next safe lane is
+`private measurement-contract/interface-floor redesign after helper recovery failed
+ralplan`.  Hook experiments remain closed and public promotion remains closed.
+Until those fixture-quality gates pass, the private flux/DFT gate remains
+internal diagnostic evidence only, and the support matrix continues to mark true
+R/T as deferred.
+In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
 
@@ -272,7 +285,8 @@ Until then, the support matrix must say:
 - feasibility probe gate: inconclusive
 - private flux/DFT benchmark gate: inconclusive under the current private
   analytic-sheet bounded-CPML fixture-quality gates, even after the bounded
-  boundary-expanded recovery sweep
+  boundary-expanded recovery sweep and private time-centered helper
+  fixture-quality recovery ladder
 - public support promotion: blocked
 
 ## Deferred issue record

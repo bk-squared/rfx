@@ -144,6 +144,15 @@ fixture-quality plus R/T gates pass.  Periodic+CPML and public TFSF remain
 rejected for this lane; the next safe lane is `private time-centered paired-face
 helper fixture-quality recovery ralplan`, not a hook experiment, threshold
 reinterpretation, helper-specific switch, or public TFSF promotion.
+The private time-centered paired-face helper fixture-quality recovery lane now
+records `measurement_contract_or_interface_floor_persists`: the finite C0/C1/C2/C3
+candidate ladder keeps the original boundary-expanded fixture visible, treats
+C1/C2 as measurement controls that cannot claim original-fixture recovery, and
+rejects the only solver-touching C3 helper-relaxation candidate after rollback
+to `0.02`.  All candidates remain above unchanged transverse-uniformity or
+vacuum-stability thresholds, so public true-R/T/DFT/flux/TFSF/port/S-parameter
+promotion remains closed.  The next safe lane is private
+measurement-contract/interface-floor redesign, not a public observable promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

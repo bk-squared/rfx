@@ -440,10 +440,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == (paired_helper["next_prerequisite"])
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private time-centered paired-face helper fixture-quality recovery ralplan"
+        "private measurement-contract/interface-floor redesign after helper "
+        "recovery failed ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private time-centered paired-face helper fixture-quality recovery ralplan"
+        "private measurement-contract/interface-floor redesign after helper "
+        "recovery failed ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -588,6 +590,63 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert helper["next_prerequisite"] == (
         "private time-centered paired-face helper fixture-quality recovery ralplan"
     )
+    recovery = benchmark_gate["private_time_centered_helper_fixture_quality_recovery"]
+    assert (
+        benchmark_gate["private_time_centered_helper_fixture_quality_recovery_status"]
+        == "measurement_contract_or_interface_floor_persists"
+    )
+    assert recovery["terminal_outcome"] == (
+        "measurement_contract_or_interface_floor_persists"
+    )
+    assert recovery["candidate_ladder_declared_before_slow_scoring"] is True
+    assert recovery["candidate_count"] == 4
+    assert recovery["selected_candidate_id"] == "C0_current_helper_original_fixture"
+    assert recovery["solver_hunk_touched"] is True
+    assert recovery["solver_hunk_retained"] is False
+    assert recovery["current_fixture_metrics_retained"] is True
+    assert recovery["slab_rt_private_only"] is True
+    assert recovery["fixture_quality_ready"] is False
+    assert recovery["reference_quality_ready"] is False
+    assert recovery["public_claim_allowed"] is False
+    assert recovery["public_observable_promoted"] is False
+    assert recovery["hook_experiment_allowed"] is False
+    assert recovery["slab_rt_public_claim_allowed"] is False
+    candidate_by_id = {
+        candidate["candidate_id"]: candidate for candidate in recovery["candidates"]
+    }
+    assert set(candidate_by_id) == {
+        "C0_current_helper_original_fixture",
+        "C1_center_core_measurement_control",
+        "C2_one_cell_downstream_plane_control",
+        "C3_helper_relaxation_0p05_original_fixture",
+    }
+    assert (
+        candidate_by_id["C1_center_core_measurement_control"][
+            "can_claim_original_fixture_recovery"
+        ]
+        is False
+    )
+    assert (
+        candidate_by_id["C2_one_cell_downstream_plane_control"][
+            "can_claim_original_fixture_recovery"
+        ]
+        is False
+    )
+    c3 = candidate_by_id["C3_helper_relaxation_0p05_original_fixture"]
+    assert c3["solver_touch"] is True
+    assert c3["rollback_required"] is True
+    assert c3["rollback_verified"] is True
+    assert c3["retained_solver_relaxation"] == 0.02
+    assert (
+        benchmark_gate[
+            "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
+        ]
+        == recovery["next_prerequisite"]
+    )
+    assert benchmark_gate["next_prerequisite"] == (
+        "private measurement-contract/interface-floor redesign after helper "
+        "recovery failed ralplan"
+    )
     assert (
         "time_centered_staging_contract_ready"
         in (benchmark_gate["blocking_diagnostic"])
@@ -617,7 +676,11 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert "time_centered_staging_contract_ready" in spec_text
     assert "private_time_centered_paired_face_helper_implemented" in spec_text
     assert (
-        "private time-centered paired-face helper fixture-quality recovery ralplan"
+        "private time-centered paired-face helper fixture-quality recovery" in spec_text
+    )
+    assert "measurement_contract_or_interface_floor_persists" in spec_text
+    assert (
+        "private measurement-contract/interface-floor redesign after helper recovery failed"
         in spec_text
     )
     assert "## Deferred issue record" in spec_text
