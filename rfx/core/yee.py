@@ -504,6 +504,102 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
 
 
 @partial(jax.jit, static_argnums=(7,))
+def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
+                       inv_xx: jnp.ndarray, inv_yy: jnp.ndarray, inv_zz: jnp.ndarray,
+                       dt: float, dx: float,
+                       periodic: tuple = (False, False, False)) -> FDTDState:
+    """Electric field update with per-component **inverse** permittivity.
+
+    Stage 2 production form: takes the diagonal of the inverse-eps
+    tensor (``inv_xx``, ``inv_yy``, ``inv_zz``) and uses it directly in
+    the Yee update via *multiplication*. Numerically stable in the PEC
+    limit (``inv = 0``): the Ca/Cb coefficients reduce to ``Ca = 1``,
+    ``Cb = 0`` cleanly, freezing the field. Compare to
+    :func:`update_e_aniso` (forward-eps form), which would compute
+    ``1/(eps + 1e-30)`` and produce a huge but finite scaling — the
+    NaN-trap path the original Stage 1 implementation hit.
+
+    Derivation: ``stage2_ca_cb_derivation.md`` §5. Let ``μ = 1/ε_r``
+    (per-component dimensionless inverse permittivity); then
+    ``ε_abs = ε₀/μ``, so:
+
+        loss = σ · dt · μ / (2 · ε₀)
+        Ca   = (1 − loss) / (1 + loss)
+        Cb   = (dt · μ / ε₀) / (1 + loss)
+        E^{n+1} = Ca · E^n + Cb · curl(H^{n+1/2})
+
+    For PEC tangential (``μ = 0``): loss = 0 → Ca = 1, Cb = 0 → field
+    frozen. For dielectric (μ = 1/ε_r): same numerical form as the
+    legacy ``update_e_aniso`` to within float-arithmetic ordering
+    (~5 ULP). For partial-PEC perpendicular (``μ = (1−f)/ε_out``):
+    finite scaling, no division hazard.
+
+    Parameters
+    ----------
+    state : FDTDState
+    materials : MaterialArrays
+        Used only for ``sigma`` (conductivity, isotropic per cell).
+        ``materials.eps_r`` is **not** consulted — the per-component
+        inverse permittivity passed via ``inv_xx``/``inv_yy``/``inv_zz``
+        is the source of truth.
+    inv_xx, inv_yy, inv_zz : jnp.ndarray
+        Per-component inverse-permittivity arrays (shape grid.shape,
+        dtype float32). Typical sources:
+        :func:`rfx.geometry.smoothing.compute_inv_eps_tensor_diag`.
+    dt, dx : float
+    periodic : tuple of 3 bools
+    """
+    def bwd(arr, axis):
+        if periodic[axis]:
+            return jnp.roll(arr, 1, axis)
+        return _shift_bwd(arr, axis)
+
+    _fdtype = state.ex.dtype
+    hx = state.hx.astype(jnp.float32)
+    hy = state.hy.astype(jnp.float32)
+    hz = state.hz.astype(jnp.float32)
+    sigma = materials.sigma
+
+    # Per-component lossy update coefficients in inv-eps form.
+    # `loss = σ · dt · μ / (2 · ε₀)` is finite for any (σ, μ) ≥ 0; the
+    # `1 + loss` denominator is ≥ 1 so no division hazard.
+    inv_eps0 = 1.0 / EPS_0
+    loss_ex = 0.5 * sigma * dt * inv_xx * inv_eps0
+    loss_ey = 0.5 * sigma * dt * inv_yy * inv_eps0
+    loss_ez = 0.5 * sigma * dt * inv_zz * inv_eps0
+
+    ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
+    ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
+    ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
+
+    cb_ex = (dt * inv_xx * inv_eps0) / (1.0 + loss_ex)
+    cb_ey = (dt * inv_yy * inv_eps0) / (1.0 + loss_ey)
+    cb_ez = (dt * inv_zz * inv_eps0) / (1.0 + loss_ez)
+
+    # curl H (identical to update_e and update_e_aniso).
+    curl_x = (
+        (hz - bwd(hz, 1)) / dx
+        - (hy - bwd(hy, 2)) / dx
+    )
+    curl_y = (
+        (hx - bwd(hx, 2)) / dx
+        - (hz - bwd(hz, 0)) / dx
+    )
+    curl_z = (
+        (hy - bwd(hy, 0)) / dx
+        - (hx - bwd(hx, 1)) / dx
+    )
+
+    ex = (ca_ex * state.ex.astype(jnp.float32) + cb_ex * curl_x).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(jnp.float32) + cb_ey * curl_y).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(jnp.float32) + cb_ez * curl_z).astype(_fdtype)
+
+    return state._replace(
+        ex=ex, ey=ey, ez=ez,
+        step=state.step + 1,
+    )
+
+
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                    dt: float, dx: float,
