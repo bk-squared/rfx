@@ -30,7 +30,7 @@ import numpy as np
 from rfx.grid import Grid, C0
 from rfx.core.yee import MaterialArrays, EPS_0
 from rfx.core.jax_utils import is_tracer
-from rfx.geometry.csg import Shape
+from rfx.geometry.csg import Box, Shape
 from rfx.nonuniform import NonUniformGrid
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.coaxial_port import CoaxialPort
@@ -1949,6 +1949,57 @@ class Simulation:
                 grid, tc, materials, pec_mask=pec_mask)
             if tc.is_pec:
                 pec_shapes.append(tc.shape)
+
+        # Stage 1 conformal PEC face-shift (issue: WR-90 mesh-conv xfail).
+        # When an axis is declared ``Boundary(conformal=True)`` we promote
+        # its boundary-face PEC into a half-space ``Box`` injected into
+        # ``pec_shapes`` so the existing Dey-Mittra path
+        # (``run_uniform(conformal_pec=True, pec_shapes=…)``) sees a real
+        # PEC volume at the physical wall coordinate. Default off keeps
+        # the current binary ``apply_pec_faces`` semantics bit-identical.
+        conformal_faces = self._boundary_spec.conformal_faces()
+        if conformal_faces:
+            big = max(self._domain) * 100.0
+            for face in conformal_faces:
+                axis_name, side = face.split("_")
+                axis_idx = "xyz".index(axis_name)
+                # Auto-derive wall coordinate from waveguide ports whose
+                # propagation direction is *transverse* to this axis.
+                # Take the most restrictive aperture: max(lo) for the
+                # lo-face wall, min(hi) for the hi-face wall — that is
+                # the largest waveguide-interior region all ports agree
+                # to leave free of PEC.
+                wall_lo = 0.0
+                wall_hi = float(self._domain[axis_idx])
+                for entry in self._waveguide_ports:
+                    if entry.direction[1] == axis_name:
+                        # Port-normal axis — no transverse wall on this
+                        # face from this port.
+                        continue
+                    rng = (entry.x_range, entry.y_range,
+                           entry.z_range)[axis_idx]
+                    if rng is None:
+                        # Port covers full domain along this axis —
+                        # contributes no fractional cell.
+                        continue
+                    wall_lo = max(wall_lo, float(rng[0]))
+                    wall_hi = min(wall_hi, float(rng[1]))
+
+                corner_lo = [-big, -big, -big]
+                corner_hi = [big, big, big]
+                if side == "lo":
+                    if wall_lo <= 0.0:
+                        # No fractional cell on the lo face: domain edge
+                        # already coincides with the physical wall.
+                        continue
+                    corner_hi[axis_idx] = wall_lo
+                else:  # hi
+                    if wall_hi >= float(self._domain[axis_idx]):
+                        # No fractional cell on the hi face: domain
+                        # edge already coincides with the physical wall.
+                        continue
+                    corner_lo[axis_idx] = wall_hi
+                pec_shapes.append(Box(tuple(corner_lo), tuple(corner_hi)))
 
         debye_spec = None
         if debye_masks_by_pole:

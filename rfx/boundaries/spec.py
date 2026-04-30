@@ -53,12 +53,19 @@ class Boundary:
     Optional ``lo_thickness`` / ``hi_thickness`` (CPML/UPML only) override
     the global ``cpml_layers`` scalar for that face. A ``None`` value
     (default) defers to the scalar.
+
+    ``conformal=True`` opts the axis into Stage 1 Dey-Mittra conformal PEC
+    face-shift (boundary-face Box injection). Only valid when both ``lo``
+    and ``hi`` are ``pec`` — the flag drives the PEC face-shift path and
+    is meaningless on absorbing or periodic faces. Default ``False``
+    keeps today's binary ``apply_pec_faces`` behaviour bit-identical.
     """
 
     lo: str
     hi: str
     lo_thickness: int | None = None
     hi_thickness: int | None = None
+    conformal: bool = False
 
     def __post_init__(self):
         object.__setattr__(self, "lo", _normalise_token(self.lo))
@@ -88,6 +95,12 @@ class Boundary:
                 raise ValueError(
                     f"{name} must be a non-negative int, got {val!r}."
                 )
+        if self.conformal and (self.lo != "pec" or self.hi != "pec"):
+            raise ValueError(
+                f"conformal=True requires both faces to be 'pec'; got "
+                f"lo={self.lo!r} hi={self.hi!r}. Stage 1 conformal PEC "
+                f"face-shift only applies to symmetric PEC axes."
+            )
 
     @classmethod
     def from_string(cls, token: str) -> "Boundary":
@@ -101,6 +114,8 @@ class Boundary:
             out["lo_thickness"] = self.lo_thickness
         if self.hi_thickness is not None:
             out["hi_thickness"] = self.hi_thickness
+        if self.conformal:
+            out["conformal"] = True
         return out
 
     @classmethod
@@ -109,6 +124,7 @@ class Boundary:
             lo=d["lo"], hi=d["hi"],
             lo_thickness=d.get("lo_thickness"),
             hi_thickness=d.get("hi_thickness"),
+            conformal=d.get("conformal", False),
         )
 
     def resolved_lo_thickness(self, default: int) -> int:
@@ -219,6 +235,22 @@ class BoundarySpec:
     def pmc_faces(self) -> set[str]:
         """Face labels set to ``pmc``."""
         return self._faces_with_token("pmc")
+
+    def conformal_faces(self) -> set[str]:
+        """Face labels on an axis whose ``Boundary.conformal`` is True.
+
+        An axis with ``conformal=True`` contributes both faces (the flag
+        is per-axis; both lo and hi are PEC by validation). Used by
+        ``Simulation._assemble_materials`` to decide which boundary-face
+        PEC walls should be promoted into ``pec_shapes`` half-spaces and
+        routed through the existing Dey-Mittra path."""
+        out: set[str] = set()
+        for axis_name, boundary in (("x", self.x), ("y", self.y),
+                                    ("z", self.z)):
+            if boundary.conformal:
+                out.add(f"{axis_name}_lo")
+                out.add(f"{axis_name}_hi")
+        return out
 
     def to_dict(self) -> dict:
         return {
