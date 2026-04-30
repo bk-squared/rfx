@@ -31,6 +31,7 @@ from rfx.subgridding.face_ops import (
 
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 PHASE1_3D_CFL = 0.99
+_TIME_CENTERED_HELPER_RELAXATION = 0.02
 
 
 class SubgridConfig3D(NamedTuple):
@@ -639,6 +640,267 @@ def _apply_sat_pair_face(
     )
 
 
+def _time_centered_face_trace_energy(
+    coarse_e: tuple[jnp.ndarray, jnp.ndarray],
+    fine_e: tuple[jnp.ndarray, jnp.ndarray],
+    coarse_h: tuple[jnp.ndarray, jnp.ndarray],
+    fine_h: tuple[jnp.ndarray, jnp.ndarray],
+    ops: ZFaceOps,
+    coarse_mask: jnp.ndarray,
+    fine_mask: jnp.ndarray,
+) -> jnp.ndarray:
+    coarse_e_energy = jnp.sum(
+        (coarse_e[0] ** 2 + coarse_e[1] ** 2) * ops.coarse_norm * coarse_mask
+    )
+    fine_e_energy = jnp.sum(
+        (fine_e[0] ** 2 + fine_e[1] ** 2) * ops.fine_norm * fine_mask
+    )
+    coarse_h_energy = jnp.sum(
+        (coarse_h[0] ** 2 + coarse_h[1] ** 2) * ops.coarse_norm * coarse_mask
+    )
+    fine_h_energy = jnp.sum(
+        (fine_h[0] ** 2 + fine_h[1] ** 2) * ops.fine_norm * fine_mask
+    )
+    return 0.5 * EPS_0 * (coarse_e_energy + fine_e_energy) + 0.5 * MU_0 * (
+        coarse_h_energy + fine_h_energy
+    )
+
+
+def _time_centered_face_interface_work(
+    coarse_e: tuple[jnp.ndarray, jnp.ndarray],
+    fine_e: tuple[jnp.ndarray, jnp.ndarray],
+    coarse_h: tuple[jnp.ndarray, jnp.ndarray],
+    fine_h: tuple[jnp.ndarray, jnp.ndarray],
+    ops: ZFaceOps,
+    coarse_mask: jnp.ndarray,
+    *,
+    dt: float,
+    normal_sign: int,
+) -> jnp.ndarray:
+    coarse_sn = normal_sign * (coarse_e[0] * coarse_h[1] - coarse_e[1] * coarse_h[0])
+    fine_sn = normal_sign * (fine_e[0] * fine_h[1] - fine_e[1] * fine_h[0])
+    return dt * jnp.sum(
+        (coarse_sn - restrict_face(fine_sn, ops)) * ops.coarse_norm * coarse_mask
+    )
+
+
+def _minimum_norm_quadratic_root(
+    quadratic_a: jnp.ndarray,
+    quadratic_b: jnp.ndarray,
+    quadratic_c: jnp.ndarray,
+) -> jnp.ndarray:
+    eps = jnp.asarray(1.0e-36, dtype=quadratic_c.dtype)
+    zero = jnp.asarray(0.0, dtype=quadratic_c.dtype)
+    one = jnp.asarray(1.0, dtype=quadratic_c.dtype)
+
+    b_safe = jnp.where(jnp.abs(quadratic_b) > eps, quadratic_b, one)
+    linear_root = jnp.where(
+        jnp.abs(quadratic_b) > eps,
+        -quadratic_c / b_safe,
+        zero,
+    )
+
+    discriminant = jnp.maximum(
+        quadratic_b * quadratic_b - 4.0 * quadratic_a * quadratic_c,
+        zero,
+    )
+    root = jnp.sqrt(discriminant)
+    denominator = 2.0 * jnp.where(jnp.abs(quadratic_a) > eps, quadratic_a, one)
+    quadratic_root_pos = (-quadratic_b + root) / denominator
+    quadratic_root_neg = (-quadratic_b - root) / denominator
+    quadratic_root = jnp.where(
+        jnp.abs(quadratic_root_pos) <= jnp.abs(quadratic_root_neg),
+        quadratic_root_pos,
+        quadratic_root_neg,
+    )
+
+    return jnp.where(
+        jnp.abs(quadratic_c) <= eps,
+        zero,
+        jnp.where(jnp.abs(quadratic_a) <= eps, linear_root, quadratic_root),
+    )
+
+
+def _time_centered_paired_face_amplitude(
+    *,
+    e_pre_coarse: tuple[jnp.ndarray, jnp.ndarray],
+    e_pre_fine: tuple[jnp.ndarray, jnp.ndarray],
+    e_post_coarse: tuple[jnp.ndarray, jnp.ndarray],
+    e_post_fine: tuple[jnp.ndarray, jnp.ndarray],
+    h_pre_coarse: tuple[jnp.ndarray, jnp.ndarray],
+    h_pre_fine: tuple[jnp.ndarray, jnp.ndarray],
+    h_post_coarse: tuple[jnp.ndarray, jnp.ndarray],
+    h_post_fine: tuple[jnp.ndarray, jnp.ndarray],
+    coarse_h2_direction: jnp.ndarray,
+    fine_h2_direction: jnp.ndarray,
+    ops: ZFaceOps,
+    coarse_mask: jnp.ndarray,
+    fine_mask: jnp.ndarray,
+    dt: float,
+    normal_sign: int,
+) -> jnp.ndarray:
+    before_energy = _time_centered_face_trace_energy(
+        e_pre_coarse,
+        e_pre_fine,
+        h_pre_coarse,
+        h_pre_fine,
+        ops,
+        coarse_mask,
+        fine_mask,
+    )
+    after_energy_zero = _time_centered_face_trace_energy(
+        e_post_coarse,
+        e_post_fine,
+        h_post_coarse,
+        h_post_fine,
+        ops,
+        coarse_mask,
+        fine_mask,
+    )
+    h_bar_coarse_zero = tuple(
+        0.5 * (h_pre + h_post) for h_pre, h_post in zip(h_pre_coarse, h_post_coarse)
+    )
+    h_bar_fine_zero = tuple(
+        0.5 * (h_pre + h_post) for h_pre, h_post in zip(h_pre_fine, h_post_fine)
+    )
+    interface_work_zero = _time_centered_face_interface_work(
+        e_pre_coarse,
+        e_pre_fine,
+        h_bar_coarse_zero,
+        h_bar_fine_zero,
+        ops,
+        coarse_mask,
+        dt=dt,
+        normal_sign=normal_sign,
+    )
+
+    quadratic_a = (
+        0.5
+        * MU_0
+        * (
+            jnp.sum(coarse_h2_direction**2 * ops.coarse_norm * coarse_mask)
+            + jnp.sum(fine_h2_direction**2 * ops.fine_norm * fine_mask)
+        )
+    )
+    energy_linear = MU_0 * (
+        jnp.sum(h_post_coarse[1] * coarse_h2_direction * ops.coarse_norm * coarse_mask)
+        + jnp.sum(h_post_fine[1] * fine_h2_direction * ops.fine_norm * fine_mask)
+    )
+    work_linear = (
+        0.5
+        * dt
+        * jnp.sum(
+            normal_sign
+            * (
+                e_pre_coarse[0] * coarse_h2_direction
+                - restrict_face(e_pre_fine[0] * fine_h2_direction, ops)
+            )
+            * ops.coarse_norm
+            * coarse_mask
+        )
+    )
+    quadratic_b = energy_linear + work_linear
+    quadratic_c = after_energy_zero - before_energy + interface_work_zero
+    return _minimum_norm_quadratic_root(quadratic_a, quadratic_b, quadratic_c)
+
+
+def _apply_time_centered_paired_face_helper(
+    current_h_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_h_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    *,
+    h_pre_sat_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    h_pre_sat_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    h_post_sat_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    h_post_sat_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    e_pre_sat_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    e_pre_sat_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    e_post_sat_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    e_post_sat_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+) -> tuple[
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+]:
+    """Apply the private same-call centered-H paired-face correction.
+
+    The helper consumes only production-local face traces already present in the
+    SBP-SAT step functions: H immediately before/after H SAT, and E immediately
+    before/after E SAT.  It intentionally has no public switch or hook route.
+    """
+
+    coarse = current_h_coarse
+    fine = current_h_fine
+    for face in _active_faces(config):
+        orientation = FACE_ORIENTATIONS[face]
+        ops = _get_face_ops(config, face)
+        coarse_mask, fine_mask = _face_interior_masks(ops.coarse_shape, config.ratio)
+        coarse_h_mode = jnp.ones(ops.coarse_shape, dtype=jnp.float32) * coarse_mask
+        fine_h_mode = prolong_face(coarse_h_mode, ops)
+
+        h_pre_coarse = extract_tangential_h_face(
+            h_pre_sat_coarse, config, face, grid="coarse"
+        )
+        h_pre_fine = extract_tangential_h_face(
+            h_pre_sat_fine, config, face, grid="fine"
+        )
+        h_post_coarse = extract_tangential_h_face(
+            h_post_sat_coarse, config, face, grid="coarse"
+        )
+        h_post_fine = extract_tangential_h_face(
+            h_post_sat_fine, config, face, grid="fine"
+        )
+        e_pre_coarse = extract_tangential_e_face(
+            e_pre_sat_coarse, config, face, grid="coarse"
+        )
+        e_pre_fine = extract_tangential_e_face(
+            e_pre_sat_fine, config, face, grid="fine"
+        )
+        e_post_coarse = extract_tangential_e_face(
+            e_post_sat_coarse, config, face, grid="coarse"
+        )
+        e_post_fine = extract_tangential_e_face(
+            e_post_sat_fine, config, face, grid="fine"
+        )
+
+        amplitude = _time_centered_paired_face_amplitude(
+            e_pre_coarse=e_pre_coarse,
+            e_pre_fine=e_pre_fine,
+            e_post_coarse=e_post_coarse,
+            e_post_fine=e_post_fine,
+            h_pre_coarse=h_pre_coarse,
+            h_pre_fine=h_pre_fine,
+            h_post_coarse=h_post_coarse,
+            h_post_fine=h_post_fine,
+            coarse_h2_direction=coarse_h_mode,
+            fine_h2_direction=fine_h_mode,
+            ops=ops,
+            coarse_mask=coarse_mask,
+            fine_mask=fine_mask,
+            dt=config.dt,
+            normal_sign=orientation.normal_sign,
+        )
+        amplitude = amplitude * _TIME_CENTERED_HELPER_RELAXATION
+        current_h_coarse_face = extract_tangential_h_face(
+            coarse, config, face, grid="coarse"
+        )
+        current_h_fine_face = extract_tangential_h_face(fine, config, face, grid="fine")
+        corrected_h_coarse_face = (
+            current_h_coarse_face[0],
+            current_h_coarse_face[1] + amplitude * coarse_h_mode,
+        )
+        corrected_h_fine_face = (
+            current_h_fine_face[0],
+            current_h_fine_face[1] + amplitude * fine_h_mode,
+        )
+        coarse = scatter_tangential_h_face(
+            coarse, corrected_h_coarse_face, config, face, grid="coarse"
+        )
+        fine = scatter_tangential_h_face(
+            fine, corrected_h_fine_face, config, face, grid="fine"
+        )
+    return coarse, fine
+
+
 def _edge_slice(config: SubgridConfig3D, edge: str, *, grid: str) -> tuple:
     meta = EDGE_ORIENTATIONS[edge]
     axis = meta.varying_axis
@@ -1021,11 +1283,15 @@ def step_subgrid_3d_with_cpml(
             )
         )
         hx_f, hy_f, hz_f = hook_state.hx_f, hook_state.hy_f, hook_state.hz_f
+    h_pre_sat_coarse = (hx_c, hy_c, hz_c)
+    h_pre_sat_fine = (hx_f, hy_f, hz_f)
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = apply_sat_h_interfaces(
         (hx_c, hy_c, hz_c),
         (hx_f, hy_f, hz_f),
         config,
     )
+    h_post_sat_coarse = (hx_c, hy_c, hz_c)
+    h_post_sat_fine = (hx_f, hy_f, hz_f)
     hx_c, hy_c, hz_c = _zero_coarse_overlap_interior((hx_c, hy_c, hz_c), config)
 
     coarse_e = FDTDState(
@@ -1083,10 +1349,27 @@ def step_subgrid_3d_with_cpml(
             )
         )
         ex_f, ey_f, ez_f = hook_state.ex_f, hook_state.ey_f, hook_state.ez_f
+    e_pre_sat_coarse = (ex_c, ey_c, ez_c)
+    e_pre_sat_fine = (ex_f, ey_f, ez_f)
     (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = apply_sat_e_interfaces(
         (ex_c, ey_c, ez_c),
         (ex_f, ey_f, ez_f),
         config,
+    )
+    e_post_sat_coarse = (ex_c, ey_c, ez_c)
+    e_post_sat_fine = (ex_f, ey_f, ez_f)
+    (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = _apply_time_centered_paired_face_helper(
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        h_pre_sat_coarse=h_pre_sat_coarse,
+        h_pre_sat_fine=h_pre_sat_fine,
+        h_post_sat_coarse=h_post_sat_coarse,
+        h_post_sat_fine=h_post_sat_fine,
+        e_pre_sat_coarse=e_pre_sat_coarse,
+        e_pre_sat_fine=e_pre_sat_fine,
+        e_post_sat_coarse=e_post_sat_coarse,
+        e_post_sat_fine=e_post_sat_fine,
+        config=config,
     )
     ex_c, ey_c, ez_c = _zero_coarse_overlap_interior((ex_c, ey_c, ez_c), config)
 
@@ -1176,11 +1459,15 @@ def step_subgrid_3d(
             )
         )
         hx_f, hy_f, hz_f = hook_state.hx_f, hook_state.hy_f, hook_state.hz_f
+    h_pre_sat_coarse = (hx_c, hy_c, hz_c)
+    h_pre_sat_fine = (hx_f, hy_f, hz_f)
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = apply_sat_h_interfaces(
         (hx_c, hy_c, hz_c),
         (hx_f, hy_f, hz_f),
         config,
     )
+    h_post_sat_coarse = (hx_c, hy_c, hz_c)
+    h_post_sat_fine = (hx_f, hy_f, hz_f)
     hx_c, hy_c, hz_c = _zero_coarse_overlap_interior((hx_c, hy_c, hz_c), config)
 
     ex_c, ey_c, ez_c = _update_e_only(
@@ -1234,10 +1521,27 @@ def step_subgrid_3d(
             )
         )
         ex_f, ey_f, ez_f = hook_state.ex_f, hook_state.ey_f, hook_state.ez_f
+    e_pre_sat_coarse = (ex_c, ey_c, ez_c)
+    e_pre_sat_fine = (ex_f, ey_f, ez_f)
     (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = apply_sat_e_interfaces(
         (ex_c, ey_c, ez_c),
         (ex_f, ey_f, ez_f),
         config,
+    )
+    e_post_sat_coarse = (ex_c, ey_c, ez_c)
+    e_post_sat_fine = (ex_f, ey_f, ez_f)
+    (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = _apply_time_centered_paired_face_helper(
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        h_pre_sat_coarse=h_pre_sat_coarse,
+        h_pre_sat_fine=h_pre_sat_fine,
+        h_post_sat_coarse=h_post_sat_coarse,
+        h_post_sat_fine=h_post_sat_fine,
+        e_pre_sat_coarse=e_pre_sat_coarse,
+        e_pre_sat_fine=e_pre_sat_fine,
+        e_post_sat_coarse=e_post_sat_coarse,
+        e_post_sat_fine=e_post_sat_fine,
+        config=config,
     )
     ex_c, ey_c, ez_c = _zero_coarse_overlap_interior((ex_c, ey_c, ez_c), config)
 

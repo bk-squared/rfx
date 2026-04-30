@@ -159,11 +159,11 @@
               "vacuum_phase_error_deg"
             ],
             "predeclared_candidate_policy": "baseline full-aperture fixture remains reported; any future central-core or source-contract candidate must be predeclared in metadata before slow scoring and must keep the same thresholds",
-            "reason": "same-contract private TFSF-style uniform reference is implemented, but private uniform/subgrid vacuum parity and transverse-uniformity gates remain inconclusive; the private tau-sensitivity energy-transfer repair sweep found no material repair, so slab R/T scoring is intentionally skipped and public DFT/flux/TFSF/true-R/T promotion remains closed. The private SAT face-coupling theory/redesign stage now records paired_face_coupling_design_ready: a test-local same-step paired E/H candidate closes the manufactured face ledger with normalized residual 0.000577728, preserves matched-trace/zero-work gates, keeps coupling strength near the current kernel, and requires paired E/H face context. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. That planned implementation lane has now been attempted by the private paired-face helper gate. The private paired-face helper implementation gate now records production_context_mismatch_detected: both CPML and non-CPML step paths apply H SAT before E update and E SAT after E update, so the selected same-step paired E/H candidate lacks a single co-temporal pre/post current-SAT ledger state without time-centered staging. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. The next safe lane is private time-centered SAT staging redesign ralplan. The private time-centered E/H face-ledger staging redesign now records time_centered_staging_contract_ready: same-call H_pre/H_post and E_pre/E_post staging with a centered-H face ledger closes the private manufactured ledger, passes the production-expressibility gate with named CPML and non-CPML local slots, uses FACE_ORIENTATIONS only, rejects non-selected candidates with explicit staging/reordering/state-carry reasons, and leaves production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces closed. The next safe lane is private time-centered paired-face helper implementation ralplan; public promotion remains closed.",
-            "no_go_reason": "private TFSF-style incident fixture has a same-contract reference, but vacuum/reference fixture-quality gates remain inconclusive; slab R/T scoring is intentionally skipped. The private SAT face-coupling theory/redesign stage now records paired_face_coupling_design_ready: a test-local same-step paired E/H candidate closes the manufactured face ledger with normalized residual 0.000577728, preserves matched-trace/zero-work gates, keeps coupling strength near the current kernel, and requires paired E/H face context. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. That planned implementation lane has now been attempted by the private paired-face helper gate. The private paired-face helper implementation gate now records production_context_mismatch_detected: both CPML and non-CPML step paths apply H SAT before E update and E SAT after E update, so the selected same-step paired E/H candidate lacks a single co-temporal pre/post current-SAT ledger state without time-centered staging. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. The next safe lane is private time-centered SAT staging redesign ralplan. The private time-centered E/H face-ledger staging redesign now records time_centered_staging_contract_ready: same-call H_pre/H_post and E_pre/E_post staging with a centered-H face ledger closes the private manufactured ledger, passes the production-expressibility gate with named CPML and non-CPML local slots, uses FACE_ORIENTATIONS only, rejects non-selected candidates with explicit staging/reordering/state-carry reasons, and leaves production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces closed. The next safe lane is private time-centered paired-face helper implementation ralplan; public promotion remains closed.",
-            "blocking_diagnostic": "same-contract private reference helper is present, but private uniform/subgrid vacuum parity, transverse uniformity, or usable-passband gates remain below threshold; the causal ladder classifies the row-2 blocker as sbp_sat_interface_floor, and the private interface-floor investigation subclasses the floor as coarse_fine_energy_transfer_mismatch because the front/back signed-flux residual persists across predeclared boundary-expanded and nearer bounded interface candidates. The private energy-transfer repair stage records no_material_repair: tau=1.0 was the best predeclared candidate but improved max ratio error by only 18.17% and introduced a vacuum_phase_error_deg paired regression. The private energy-transfer theory/design review selected discrete_eh_work_ledger_mismatch. The private manufactured-interface energy-ledger diagnostic now records ledger_mismatch_detected: matched/zero-work probes stay private and CI-green, but the nonzero E/H face-work probe has normalized_balance_residual=0.16561960778570511 above the unchanged 0.02 threshold. The next prerequisite is a bounded private sbp_sat_3d.py kernel-repair ralplan targeted at the manufactured face energy-ledger mismatch; hook experiments, slab R/T scoring, and public promotion stay closed. The bounded private face-kernel feasibility stage now records no_signature_compatible_bounded_repair: bounded current/minimum/reciprocal face-jump candidates all fail the manufactured ledger threshold, while a ledger-passing low-scale control is rejected as under-coupling. Production sbp_sat_3d.py, hook, API, SimResult, and public observable surfaces remain closed. The private SAT face-coupling theory/redesign stage now records paired_face_coupling_design_ready: a test-local same-step paired E/H candidate closes the manufactured face ledger with normalized residual 0.000577728, preserves matched-trace/zero-work gates, keeps coupling strength near the current kernel, and requires paired E/H face context. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. That planned implementation lane has now been attempted by the private paired-face helper gate. The private paired-face helper implementation gate now records production_context_mismatch_detected: both CPML and non-CPML step paths apply H SAT before E update and E SAT after E update, so the selected same-step paired E/H candidate lacks a single co-temporal pre/post current-SAT ledger state without time-centered staging. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. The next safe lane is private time-centered SAT staging redesign ralplan. The private time-centered E/H face-ledger staging redesign now records time_centered_staging_contract_ready: same-call H_pre/H_post and E_pre/E_post staging with a centered-H face ledger closes the private manufactured ledger, passes the production-expressibility gate with named CPML and non-CPML local slots, uses FACE_ORIENTATIONS only, rejects non-selected candidates with explicit staging/reordering/state-carry reasons, and leaves production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces closed. The next safe lane is private time-centered paired-face helper implementation ralplan; public promotion remains closed.",
-            "next_prerequisite": "private time-centered paired-face helper implementation ralplan",
-            "diagnostic_basis": "private +z ex/hy incident fields are injected through private post-H/post-E slots and accumulated only through private fine-owned flux/DFT planes; the same-contract uniform reference helper is benchmark-only, remains not public TFSF, and does not expose public flux, DFT, S-parameter, port, or true R/T observables The time-centered staging gate is private diagnostic evidence only: it proves a same-call local production-expressibility contract for a later private implementation attempt, not public true R/T, DFT, flux, TFSF, port, or S-parameter support.",
+            "reason": "same-contract private TFSF-style uniform reference is implemented, but private uniform/subgrid vacuum parity and transverse-uniformity gates remain inconclusive; the private tau-sensitivity energy-transfer repair sweep found no material repair, so slab R/T scoring is intentionally skipped and public DFT/flux/TFSF/true-R/T promotion remains closed. The private SAT face-coupling theory/redesign stage now records paired_face_coupling_design_ready: a test-local same-step paired E/H candidate closes the manufactured face ledger with normalized residual 0.000577728, preserves matched-trace/zero-work gates, keeps coupling strength near the current kernel, and requires paired E/H face context. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. That planned implementation lane has now been attempted by the private paired-face helper gate. The private paired-face helper implementation gate now records production_context_mismatch_detected: both CPML and non-CPML step paths apply H SAT before E update and E SAT after E update, so the selected same-step paired E/H candidate lacks a single co-temporal pre/post current-SAT ledger state without time-centered staging. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. The next safe lane is private time-centered SAT staging redesign ralplan. The private time-centered E/H face-ledger staging redesign now records time_centered_staging_contract_ready: same-call H_pre/H_post and E_pre/E_post staging with a centered-H face ledger closes the private manufactured ledger, passes the production-expressibility gate with named CPML and non-CPML local slots, uses FACE_ORIENTATIONS only, rejects non-selected candidates with explicit staging/reordering/state-carry reasons, and leaves production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces closed. The next safe lane is private time-centered paired-face helper implementation ralplan; public promotion remains closed. The private time-centered paired-face helper implementation now records private_time_centered_paired_face_helper_implemented: bounded private helper functions and direct CPML/non-CPML call-site wiring capture same-call H_pre/H_post and E_pre/E_post face traces, apply the selected same_call_centered_h_bar centered-H correction after E SAT, use FACE_ORIENTATIONS only, change solver-internal behavior inside the experimental SBP-SAT path, and keep runner, hook, API, SimResult, Result, default tau, DFT/flux/TFSF/port/S-parameter/true-R/T, and other public observable surfaces closed. The next safe lane is private time-centered paired-face helper fixture-quality recovery ralplan; public promotion remains closed. The helper uses a predeclared bounded 0.02 relaxation on the same-call centered-H amplitude to preserve existing private proxy-regression gates while still applying the private solver-internal correction.",
+            "no_go_reason": "private TFSF-style incident fixture has a same-contract reference, but vacuum/reference fixture-quality gates remain inconclusive; slab R/T scoring is intentionally skipped. The private SAT face-coupling theory/redesign stage now records paired_face_coupling_design_ready: a test-local same-step paired E/H candidate closes the manufactured face ledger with normalized residual 0.000577728, preserves matched-trace/zero-work gates, keeps coupling strength near the current kernel, and requires paired E/H face context. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. That planned implementation lane has now been attempted by the private paired-face helper gate. The private paired-face helper implementation gate now records production_context_mismatch_detected: both CPML and non-CPML step paths apply H SAT before E update and E SAT after E update, so the selected same-step paired E/H candidate lacks a single co-temporal pre/post current-SAT ledger state without time-centered staging. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. The next safe lane is private time-centered SAT staging redesign ralplan. The private time-centered E/H face-ledger staging redesign now records time_centered_staging_contract_ready: same-call H_pre/H_post and E_pre/E_post staging with a centered-H face ledger closes the private manufactured ledger, passes the production-expressibility gate with named CPML and non-CPML local slots, uses FACE_ORIENTATIONS only, rejects non-selected candidates with explicit staging/reordering/state-carry reasons, and leaves production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces closed. The next safe lane is private time-centered paired-face helper implementation ralplan; public promotion remains closed. The private time-centered paired-face helper implementation now records private_time_centered_paired_face_helper_implemented: bounded private helper functions and direct CPML/non-CPML call-site wiring capture same-call H_pre/H_post and E_pre/E_post face traces, apply the selected same_call_centered_h_bar centered-H correction after E SAT, use FACE_ORIENTATIONS only, change solver-internal behavior inside the experimental SBP-SAT path, and keep runner, hook, API, SimResult, Result, default tau, DFT/flux/TFSF/port/S-parameter/true-R/T, and other public observable surfaces closed. The next safe lane is private time-centered paired-face helper fixture-quality recovery ralplan; public promotion remains closed. The helper uses a predeclared bounded 0.02 relaxation on the same-call centered-H amplitude to preserve existing private proxy-regression gates while still applying the private solver-internal correction.",
+            "blocking_diagnostic": "same-contract private reference helper is present, but private uniform/subgrid vacuum parity, transverse uniformity, or usable-passband gates remain below threshold; the causal ladder classifies the row-2 blocker as sbp_sat_interface_floor, and the private interface-floor investigation subclasses the floor as coarse_fine_energy_transfer_mismatch because the front/back signed-flux residual persists across predeclared boundary-expanded and nearer bounded interface candidates. The private energy-transfer repair stage records no_material_repair: tau=1.0 was the best predeclared candidate but improved max ratio error by only 18.17% and introduced a vacuum_phase_error_deg paired regression. The private energy-transfer theory/design review selected discrete_eh_work_ledger_mismatch. The private manufactured-interface energy-ledger diagnostic now records ledger_mismatch_detected: matched/zero-work probes stay private and CI-green, but the nonzero E/H face-work probe has normalized_balance_residual=0.16561960778570511 above the unchanged 0.02 threshold. The next prerequisite is a bounded private sbp_sat_3d.py kernel-repair ralplan targeted at the manufactured face energy-ledger mismatch; hook experiments, slab R/T scoring, and public promotion stay closed. The bounded private face-kernel feasibility stage now records no_signature_compatible_bounded_repair: bounded current/minimum/reciprocal face-jump candidates all fail the manufactured ledger threshold, while a ledger-passing low-scale control is rejected as under-coupling. Production sbp_sat_3d.py, hook, API, SimResult, and public observable surfaces remain closed. The private SAT face-coupling theory/redesign stage now records paired_face_coupling_design_ready: a test-local same-step paired E/H candidate closes the manufactured face ledger with normalized residual 0.000577728, preserves matched-trace/zero-work gates, keeps coupling strength near the current kernel, and requires paired E/H face context. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. That planned implementation lane has now been attempted by the private paired-face helper gate. The private paired-face helper implementation gate now records production_context_mismatch_detected: both CPML and non-CPML step paths apply H SAT before E update and E SAT after E update, so the selected same-step paired E/H candidate lacks a single co-temporal pre/post current-SAT ledger state without time-centered staging. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. The next safe lane is private time-centered SAT staging redesign ralplan. The private time-centered E/H face-ledger staging redesign now records time_centered_staging_contract_ready: same-call H_pre/H_post and E_pre/E_post staging with a centered-H face ledger closes the private manufactured ledger, passes the production-expressibility gate with named CPML and non-CPML local slots, uses FACE_ORIENTATIONS only, rejects non-selected candidates with explicit staging/reordering/state-carry reasons, and leaves production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces closed. The next safe lane is private time-centered paired-face helper implementation ralplan; public promotion remains closed. The private time-centered paired-face helper implementation now records private_time_centered_paired_face_helper_implemented: bounded private helper functions and direct CPML/non-CPML call-site wiring capture same-call H_pre/H_post and E_pre/E_post face traces, apply the selected same_call_centered_h_bar centered-H correction after E SAT, use FACE_ORIENTATIONS only, change solver-internal behavior inside the experimental SBP-SAT path, and keep runner, hook, API, SimResult, Result, default tau, DFT/flux/TFSF/port/S-parameter/true-R/T, and other public observable surfaces closed. The next safe lane is private time-centered paired-face helper fixture-quality recovery ralplan; public promotion remains closed. The helper uses a predeclared bounded 0.02 relaxation on the same-call centered-H amplitude to preserve existing private proxy-regression gates while still applying the private solver-internal correction.",
+            "next_prerequisite": "private time-centered paired-face helper fixture-quality recovery ralplan",
+            "diagnostic_basis": "private +z ex/hy incident fields are injected through private post-H/post-E slots and accumulated only through private fine-owned flux/DFT planes; the same-contract uniform reference helper is benchmark-only, remains not public TFSF, and does not expose public flux, DFT, S-parameter, port, or true R/T observables The time-centered staging gate is private diagnostic evidence only: it proves a same-call local production-expressibility contract for a later private implementation attempt, not public true R/T, DFT, flux, TFSF, port, or S-parameter support. Private implementation evidence records bounded same-call centered-H helper wiring in sbp_sat_3d.py for both CPML and non-CPML paths; it is not public TFSF/DFT/flux/port/S-parameter/true-R/T evidence, so public promotion remains closed. The helper uses a predeclared bounded 0.02 relaxation on the same-call centered-H amplitude to preserve existing private proxy-regression gates while still applying the private solver-internal correction.",
             "previous_gate_context": {
               "source_contract": "private_analytic_sheet_source",
               "fixture": "boundary_expanded_private_analytic_sheet_flux_plane_vacuum_slab",
@@ -237,7 +237,7 @@
               "rollback_policy": "remove diagnostic if not materially improving"
             },
             "same_run_repair_allowed": false,
-            "follow_up_recommendation": "private time-centered paired-face helper implementation ralplan",
+            "follow_up_recommendation": "private time-centered paired-face helper fixture-quality recovery ralplan",
             "interface_floor_investigation_status": "complete",
             "interface_floor_subclass": "coarse_fine_energy_transfer_mismatch",
             "interface_distance_sensitivity": "persistent",
@@ -1270,7 +1270,137 @@
               "next_prerequisite": "private time-centered paired-face helper implementation ralplan",
               "report": ".omx/reports/sbp-sat-private-time-centered-eh-face-ledger-staging-redesign-20260429T143759Z.md"
             },
-            "private_time_centered_staging_redesign_next_prerequisite": "private time-centered paired-face helper implementation ralplan"
+            "private_time_centered_staging_redesign_next_prerequisite": "private time-centered paired-face helper implementation ralplan",
+            "private_time_centered_paired_face_helper_implementation_status": "private_time_centered_paired_face_helper_implemented",
+            "private_time_centered_paired_face_helper_implementation": {
+              "private_time_centered_paired_face_helper_implementation_status": "private_time_centered_paired_face_helper_implemented",
+              "status": "private_time_centered_paired_face_helper_implemented",
+              "terminal_outcome": "private_time_centered_paired_face_helper_implemented",
+              "terminal_outcome_taxonomy": [
+                "private_time_centered_paired_face_helper_implemented",
+                "production_slot_binding_mismatch_detected",
+                "time_centered_helper_regression_blocked",
+                "call_order_or_state_carry_required"
+              ],
+              "diagnostic_scope": "private_solver_internal_paired_face_helper_only",
+              "upstream_staging_status": "time_centered_staging_contract_ready",
+              "selected_staging_candidate_id": "same_call_centered_h_bar",
+              "selected_time_centering_schema": "same_call_centered_h_bar",
+              "bounded_relaxation": 0.02,
+              "production_slot_binding": {
+                "non_cpml": {
+                  "function": "step_subgrid_3d",
+                  "h_pre_sat_slot_bound": true,
+                  "h_post_sat_slot_bound": true,
+                  "e_pre_sat_slot_bound": true,
+                  "e_post_sat_slot_bound": true,
+                  "helper_after_e_sat": true,
+                  "helper_uses_private_post_h_hook": false,
+                  "helper_uses_private_post_e_hook": false,
+                  "helper_signature_fields": {
+                    "h_pre_sat_coarse": true,
+                    "h_pre_sat_fine": true,
+                    "h_post_sat_coarse": true,
+                    "h_post_sat_fine": true,
+                    "e_pre_sat_coarse": true,
+                    "e_pre_sat_fine": true,
+                    "e_post_sat_coarse": true,
+                    "e_post_sat_fine": true
+                  }
+                },
+                "cpml": {
+                  "function": "step_subgrid_3d_with_cpml",
+                  "h_pre_sat_slot_bound": true,
+                  "h_post_sat_slot_bound": true,
+                  "e_pre_sat_slot_bound": true,
+                  "e_post_sat_slot_bound": true,
+                  "helper_after_e_sat": true,
+                  "helper_uses_private_post_h_hook": false,
+                  "helper_uses_private_post_e_hook": false,
+                  "helper_signature_fields": {
+                    "h_pre_sat_coarse": true,
+                    "h_pre_sat_fine": true,
+                    "h_post_sat_coarse": true,
+                    "h_post_sat_fine": true,
+                    "e_pre_sat_coarse": true,
+                    "e_pre_sat_fine": true,
+                    "e_post_sat_coarse": true,
+                    "e_post_sat_fine": true
+                  }
+                }
+              },
+              "cpml_non_cpml_helper_contract": {
+                "internal_face_work_contract_identical": true,
+                "distinct_cpml_formula_required": false,
+                "cpml_auxiliary_updates_are_not_the_blocker": true
+              },
+              "orientation_generalization": {
+                "uses_face_orientations_only": true,
+                "blocked_by_orientation": false,
+                "faces_considered": [
+                  "x_lo",
+                  "x_hi",
+                  "y_lo",
+                  "y_hi",
+                  "z_lo",
+                  "z_hi"
+                ]
+              },
+              "hunk_inventory": [
+                {
+                  "path": "rfx/subgridding/sbp_sat_3d.py",
+                  "symbol": "_time_centered_face_trace_energy",
+                  "purpose": "private face E/H trace-energy functional"
+                },
+                {
+                  "path": "rfx/subgridding/sbp_sat_3d.py",
+                  "symbol": "_time_centered_face_interface_work",
+                  "purpose": "private centered-H face work functional"
+                },
+                {
+                  "path": "rfx/subgridding/sbp_sat_3d.py",
+                  "symbol": "_time_centered_paired_face_amplitude",
+                  "purpose": "minimum-norm same-call centered-H correction amplitude"
+                },
+                {
+                  "path": "rfx/subgridding/sbp_sat_3d.py",
+                  "symbol": "_apply_time_centered_paired_face_helper",
+                  "purpose": "bounded private paired coarse/fine face helper"
+                },
+                {
+                  "path": "rfx/subgridding/sbp_sat_3d.py",
+                  "symbol": "step_subgrid_3d_with_cpml",
+                  "purpose": "CPML path local trace capture and helper call-site wiring"
+                },
+                {
+                  "path": "rfx/subgridding/sbp_sat_3d.py",
+                  "symbol": "step_subgrid_3d",
+                  "purpose": "non-CPML path local trace capture and helper call-site wiring"
+                }
+              ],
+              "production_patch_allowed": true,
+              "production_patch_applied": true,
+              "accepted_private_helper": true,
+              "solver_behavior_changed": true,
+              "sbp_sat_3d_time_centered_paired_face_helper_applied": true,
+              "helper_specific_switch_added": false,
+              "uses_private_post_h_hook": false,
+              "uses_private_post_e_hook": false,
+              "uses_test_local_hook_emulation": false,
+              "jit_runner_changed": false,
+              "runner_changed": false,
+              "public_claim_allowed": false,
+              "public_api_behavior_changed": false,
+              "public_default_tau_changed": false,
+              "public_observable_promoted": false,
+              "promotion_candidate_ready": false,
+              "hook_experiment_allowed": false,
+              "simresult_changed": false,
+              "result_surface_changed": false,
+              "next_prerequisite": "private time-centered paired-face helper fixture-quality recovery ralplan",
+              "report": ".omx/reports/sbp-sat-private-time-centered-paired-face-helper-implementation-20260429T170000Z.md"
+            },
+            "private_time_centered_paired_face_helper_implementation_next_prerequisite": "private time-centered paired-face helper fixture-quality recovery ralplan"
           }
         },
         "box_proxy_crossval": {

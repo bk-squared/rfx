@@ -157,6 +157,12 @@ keeps the public claim blocked:
   with named CPML and non-CPML local slots, keeps orientation generic through
   `FACE_ORIENTATIONS`, and rejects non-selected staging controls with explicit
   reordering, trace-availability, or cross-step-state reasons;
+- the private time-centered paired-face helper implementation records
+  `private_time_centered_paired_face_helper_implemented`: bounded private helper
+  functions in `sbp_sat_3d.py` bind those same-call slots in both CPML and
+  non-CPML paths and apply the selected `same_call_centered_h_bar` centered-H
+  correction after E SAT with a predeclared bounded `0.02` relaxation, without
+  adding hook/API/runner/public observable surfaces;
 - the prior boundary-expanded analytic-sheet sweep is retained as history, not
   as current slab R/T evidence;
 - the current recorded status is therefore **inconclusive**, not a public
@@ -178,11 +184,11 @@ public surfaces, and because the private paired-face helper implementation gate
 records `production_context_mismatch_detected` before any `sbp_sat_3d.py`
 patch, and because the private time-centered staging redesign records
 `time_centered_staging_contract_ready` as a production-expressible private
-staging contract rather than a public observable, the next safe lane is
-`private time-centered paired-face helper implementation ralplan`.  Hook
-experiments remain closed and public promotion remains closed.  Until those
-implementation and fixture-quality gates pass, the private flux/DFT gate remains
-internal diagnostic evidence only, and the support matrix continues to mark true R/T as deferred.
+staging contract rather than a public observable, and because the bounded private
+helper implementation now changes only solver-internal SBP-SAT behavior without
+public observables, the next safe lane is `private time-centered paired-face helper fixture-quality recovery ralplan`.  Hook experiments remain closed and
+public promotion remains closed.  Until those fixture-quality gates pass, the
+private flux/DFT gate remains internal diagnostic evidence only, and the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
 

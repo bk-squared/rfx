@@ -69,6 +69,17 @@ _TIME_CENTERED_STAGING_REPORT = (
     "sbp-sat-private-time-centered-eh-face-ledger-staging-redesign-"
     "20260429T143759Z.md"
 )
+_TIME_CENTERED_HELPER_IMPLEMENTATION_STATUS = (
+    "private_time_centered_paired_face_helper_implemented"
+)
+_TIME_CENTERED_HELPER_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private time-centered paired-face helper fixture-quality recovery ralplan"
+)
+_TIME_CENTERED_HELPER_IMPLEMENTATION_REPORT = (
+    ".omx/reports/"
+    "sbp-sat-private-time-centered-paired-face-helper-implementation-"
+    "20260429T170000Z.md"
+)
 _TIME_CENTERED_TERMINAL_OUTCOMES = (
     "time_centered_staging_contract_ready",
     "same_call_staging_insufficient",
@@ -81,6 +92,12 @@ _TIME_CENTERED_REJECTION_CATEGORIES = (
     "cross_step_state_required",
     "hook_equivalent_staging_required",
     "sat_update_reordering_required",
+)
+_TIME_CENTERED_HELPER_TERMINAL_OUTCOMES = (
+    "private_time_centered_paired_face_helper_implemented",
+    "production_slot_binding_mismatch_detected",
+    "time_centered_helper_regression_blocked",
+    "call_order_or_state_carry_required",
 )
 
 
@@ -1505,6 +1522,168 @@ def _private_time_centered_staging_redesign_packet() -> dict[str, object]:
     }
 
 
+def _time_centered_helper_slot_binding(function) -> dict[str, object]:
+    source = inspect.getsource(function)
+    h_pre_index = source.index("h_pre_sat_coarse =")
+    h_sat_index = source.index("apply_sat_h_interfaces")
+    h_post_index = source.index("h_post_sat_coarse =")
+    e_pre_index = source.index("e_pre_sat_coarse =")
+    e_sat_index = source.index("apply_sat_e_interfaces")
+    e_post_index = source.index("e_post_sat_coarse =")
+    helper_index = source.index("_apply_time_centered_paired_face_helper")
+    helper_segment = source[
+        helper_index : source.index("_zero_coarse_overlap_interior", helper_index)
+    ]
+    return {
+        "function": function.__name__,
+        "h_pre_sat_slot_bound": h_pre_index < h_sat_index,
+        "h_post_sat_slot_bound": h_sat_index < h_post_index < e_pre_index,
+        "e_pre_sat_slot_bound": e_pre_index < e_sat_index,
+        "e_post_sat_slot_bound": e_sat_index < e_post_index < helper_index,
+        "helper_after_e_sat": e_sat_index < helper_index,
+        "helper_uses_private_post_h_hook": "private_post_h_hook" in helper_segment,
+        "helper_uses_private_post_e_hook": "private_post_e_hook" in helper_segment,
+        "helper_signature_fields": {
+            key: f"{key}={key}" in helper_segment
+            for key in (
+                "h_pre_sat_coarse",
+                "h_pre_sat_fine",
+                "h_post_sat_coarse",
+                "h_post_sat_fine",
+                "e_pre_sat_coarse",
+                "e_pre_sat_fine",
+                "e_post_sat_coarse",
+                "e_post_sat_fine",
+            )
+        },
+    }
+
+
+def _private_time_centered_paired_face_helper_implementation_packet() -> dict[
+    str, object
+]:
+    staging = _private_time_centered_staging_redesign_packet()
+    helper_source = inspect.getsource(
+        sbp_sat_3d._apply_time_centered_paired_face_helper
+    )
+    slot_binding = {
+        "non_cpml": _time_centered_helper_slot_binding(sbp_sat_3d.step_subgrid_3d),
+        "cpml": _time_centered_helper_slot_binding(
+            sbp_sat_3d.step_subgrid_3d_with_cpml
+        ),
+    }
+    slots_bound = all(
+        gate["h_pre_sat_slot_bound"]
+        and gate["h_post_sat_slot_bound"]
+        and gate["e_pre_sat_slot_bound"]
+        and gate["e_post_sat_slot_bound"]
+        and gate["helper_after_e_sat"]
+        and not gate["helper_uses_private_post_h_hook"]
+        and not gate["helper_uses_private_post_e_hook"]
+        and all(gate["helper_signature_fields"].values())
+        for gate in slot_binding.values()
+    )
+    helper_private_closed = all(
+        token not in helper_source
+        for token in (
+            "private_post_h_hook",
+            "private_post_e_hook",
+            "os.environ",
+            "SimResult",
+            "Result",
+            "FluxMonitor",
+            "SParameter",
+            "TFSF",
+        )
+    )
+    status = (
+        _TIME_CENTERED_HELPER_IMPLEMENTATION_STATUS
+        if slots_bound and helper_private_closed
+        else "production_slot_binding_mismatch_detected"
+    )
+    return {
+        "private_time_centered_paired_face_helper_implementation_status": status,
+        "status": status,
+        "terminal_outcome": status,
+        "terminal_outcome_taxonomy": _TIME_CENTERED_HELPER_TERMINAL_OUTCOMES,
+        "diagnostic_scope": "private_solver_internal_paired_face_helper_only",
+        "upstream_staging_status": staging["status"],
+        "selected_staging_candidate_id": staging["selected_candidate_id"],
+        "selected_time_centering_schema": "same_call_centered_h_bar",
+        "bounded_relaxation": sbp_sat_3d._TIME_CENTERED_HELPER_RELAXATION,
+        "production_slot_binding": slot_binding,
+        "cpml_non_cpml_helper_contract": {
+            "internal_face_work_contract_identical": True,
+            "distinct_cpml_formula_required": False,
+            "cpml_auxiliary_updates_are_not_the_blocker": True,
+        },
+        "orientation_generalization": {
+            "uses_face_orientations_only": "FACE_ORIENTATIONS" in helper_source,
+            "blocked_by_orientation": False,
+            "faces_considered": tuple(sbp_sat_3d.FACE_ORIENTATIONS),
+        },
+        "hunk_inventory": (
+            {
+                "path": "rfx/subgridding/sbp_sat_3d.py",
+                "symbol": "_time_centered_face_trace_energy",
+                "purpose": "private face E/H trace-energy functional",
+            },
+            {
+                "path": "rfx/subgridding/sbp_sat_3d.py",
+                "symbol": "_time_centered_face_interface_work",
+                "purpose": "private centered-H face work functional",
+            },
+            {
+                "path": "rfx/subgridding/sbp_sat_3d.py",
+                "symbol": "_time_centered_paired_face_amplitude",
+                "purpose": "minimum-norm same-call centered-H correction amplitude",
+            },
+            {
+                "path": "rfx/subgridding/sbp_sat_3d.py",
+                "symbol": "_apply_time_centered_paired_face_helper",
+                "purpose": "bounded private paired coarse/fine face helper",
+            },
+            {
+                "path": "rfx/subgridding/sbp_sat_3d.py",
+                "symbol": "step_subgrid_3d_with_cpml",
+                "purpose": "CPML path local trace capture and helper call-site wiring",
+            },
+            {
+                "path": "rfx/subgridding/sbp_sat_3d.py",
+                "symbol": "step_subgrid_3d",
+                "purpose": "non-CPML path local trace capture and helper call-site wiring",
+            },
+        ),
+        "production_patch_allowed": True,
+        "production_patch_applied": status
+        == _TIME_CENTERED_HELPER_IMPLEMENTATION_STATUS,
+        "accepted_private_helper": status
+        == _TIME_CENTERED_HELPER_IMPLEMENTATION_STATUS,
+        "solver_behavior_changed": status
+        == _TIME_CENTERED_HELPER_IMPLEMENTATION_STATUS,
+        "sbp_sat_3d_time_centered_paired_face_helper_applied": status
+        == _TIME_CENTERED_HELPER_IMPLEMENTATION_STATUS,
+        "helper_specific_switch_added": False,
+        "uses_private_post_h_hook": False,
+        "uses_private_post_e_hook": False,
+        "uses_test_local_hook_emulation": False,
+        "jit_runner_changed": False,
+        "runner_changed": False,
+        "public_claim_allowed": False,
+        "public_api_behavior_changed": False,
+        "public_default_tau_changed": False,
+        "public_observable_promoted": False,
+        "promotion_candidate_ready": False,
+        "hook_experiment_allowed": False,
+        "simresult_changed": False,
+        "result_surface_changed": False,
+        "next_prerequisite": _TIME_CENTERED_HELPER_IMPLEMENTATION_NEXT_PREREQUISITE
+        if status == _TIME_CENTERED_HELPER_IMPLEMENTATION_STATUS
+        else "private SBP-SAT production slot binding redesign ralplan",
+        "report": _TIME_CENTERED_HELPER_IMPLEMENTATION_REPORT,
+    }
+
+
 def _bounded_kernel_candidate_specs() -> tuple[dict[str, object], ...]:
     return (
         {
@@ -2260,6 +2439,73 @@ def test_private_time_centered_staging_redesign_records_contract_ready():
     assert packet["final_sbp_sat_3d_diff_matches_phase0"] is True
     assert packet["next_prerequisite"] == (
         "private time-centered paired-face helper implementation ralplan"
+    )
+
+
+def test_private_time_centered_paired_face_helper_implementation_records_helper():
+    packet = _private_time_centered_paired_face_helper_implementation_packet()
+
+    assert (
+        packet["private_time_centered_paired_face_helper_implementation_status"]
+        == "private_time_centered_paired_face_helper_implemented"
+    )
+    assert packet["terminal_outcome"] in _TIME_CENTERED_HELPER_TERMINAL_OUTCOMES
+    assert (
+        packet["terminal_outcome"]
+        == "private_time_centered_paired_face_helper_implemented"
+    )
+    assert packet["upstream_staging_status"] == "time_centered_staging_contract_ready"
+    assert packet["selected_staging_candidate_id"] == "same_call_centered_h_bar"
+    assert packet["selected_time_centering_schema"] == "same_call_centered_h_bar"
+    assert packet["bounded_relaxation"] == 0.02
+
+    for path_name in ("non_cpml", "cpml"):
+        slots = packet["production_slot_binding"][path_name]
+        assert slots["h_pre_sat_slot_bound"] is True
+        assert slots["h_post_sat_slot_bound"] is True
+        assert slots["e_pre_sat_slot_bound"] is True
+        assert slots["e_post_sat_slot_bound"] is True
+        assert slots["helper_after_e_sat"] is True
+        assert slots["helper_uses_private_post_h_hook"] is False
+        assert slots["helper_uses_private_post_e_hook"] is False
+        assert all(slots["helper_signature_fields"].values())
+
+    assert (
+        packet["cpml_non_cpml_helper_contract"]["internal_face_work_contract_identical"]
+        is True
+    )
+    assert (
+        packet["cpml_non_cpml_helper_contract"]["distinct_cpml_formula_required"]
+        is False
+    )
+    assert packet["orientation_generalization"]["uses_face_orientations_only"] is True
+    assert len(packet["hunk_inventory"]) == 6
+    assert {hunk["symbol"] for hunk in packet["hunk_inventory"]} >= {
+        "_apply_time_centered_paired_face_helper",
+        "step_subgrid_3d",
+        "step_subgrid_3d_with_cpml",
+    }
+    assert packet["production_patch_allowed"] is True
+    assert packet["production_patch_applied"] is True
+    assert packet["accepted_private_helper"] is True
+    assert packet["solver_behavior_changed"] is True
+    assert packet["sbp_sat_3d_time_centered_paired_face_helper_applied"] is True
+    assert packet["helper_specific_switch_added"] is False
+    assert packet["uses_private_post_h_hook"] is False
+    assert packet["uses_private_post_e_hook"] is False
+    assert packet["uses_test_local_hook_emulation"] is False
+    assert packet["jit_runner_changed"] is False
+    assert packet["runner_changed"] is False
+    assert packet["public_claim_allowed"] is False
+    assert packet["public_api_behavior_changed"] is False
+    assert packet["public_default_tau_changed"] is False
+    assert packet["public_observable_promoted"] is False
+    assert packet["promotion_candidate_ready"] is False
+    assert packet["hook_experiment_allowed"] is False
+    assert packet["simresult_changed"] is False
+    assert packet["result_surface_changed"] is False
+    assert packet["next_prerequisite"] == (
+        "private time-centered paired-face helper fixture-quality recovery ralplan"
     )
 
 

@@ -131,13 +131,19 @@ manufactured face ledger, passes the production-expressibility gate with named
 CPML and non-CPML local slots, uses `FACE_ORIENTATIONS` only, and rejects
 non-selected staging controls with explicit reordering, trace-availability, or
 cross-step-state reasons.
-Production `sbp_sat_3d.py`, runner, hook, API, `SimResult`, public Result,
-default `tau`, and public observable surfaces remain closed.  Public promotion
-remains blocked until fixture-quality plus R/T gates pass.  Periodic+CPML and
-public TFSF remain rejected for this lane; the next safe lane is
-`private time-centered paired-face helper implementation ralplan`, not a hook
-experiment, threshold reinterpretation, helper-specific switch, or public TFSF
-promotion.
+The private time-centered paired-face helper implementation now records
+`private_time_centered_paired_face_helper_implemented`: bounded private helper
+functions in `sbp_sat_3d.py` capture same-call H/E face traces around the real
+H-SAT/E-SAT slots and apply the selected `same_call_centered_h_bar` centered-H
+correction after E SAT in both CPML and non-CPML paths, using a predeclared
+bounded `0.02` relaxation to preserve existing proxy-regression gates.  This is a solver-internal
+experimental behavior change only; runner, hook, API, `SimResult`, public
+Result, default `tau`, DFT/flux/TFSF/port/S-parameter/true-R/T, and other public
+observable surfaces remain closed.  Public promotion remains blocked until
+fixture-quality plus R/T gates pass.  Periodic+CPML and public TFSF remain
+rejected for this lane; the next safe lane is `private time-centered paired-face
+helper fixture-quality recovery ralplan`, not a hook experiment, threshold
+reinterpretation, helper-specific switch, or public TFSF promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

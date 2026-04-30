@@ -440,10 +440,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == (paired_helper["next_prerequisite"])
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private time-centered paired-face helper implementation ralplan"
+        "private time-centered paired-face helper fixture-quality recovery ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private time-centered paired-face helper implementation ralplan"
+        "private time-centered paired-face helper fixture-quality recovery ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -532,9 +532,69 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert staging["next_prerequisite"] == (
         "private time-centered paired-face helper implementation ralplan"
     )
+    helper = benchmark_gate["private_time_centered_paired_face_helper_implementation"]
+    assert (
+        benchmark_gate["private_time_centered_paired_face_helper_implementation_status"]
+        == "private_time_centered_paired_face_helper_implemented"
+    )
+    assert helper["status"] == "private_time_centered_paired_face_helper_implemented"
+    assert (
+        helper["terminal_outcome"]
+        == "private_time_centered_paired_face_helper_implemented"
+    )
+    assert helper["upstream_staging_status"] == "time_centered_staging_contract_ready"
+    assert helper["selected_time_centering_schema"] == "same_call_centered_h_bar"
+    assert helper["bounded_relaxation"] == 0.02
+    for path_name in ("non_cpml", "cpml"):
+        slots = helper["production_slot_binding"][path_name]
+        assert slots["h_pre_sat_slot_bound"] is True
+        assert slots["h_post_sat_slot_bound"] is True
+        assert slots["e_pre_sat_slot_bound"] is True
+        assert slots["e_post_sat_slot_bound"] is True
+        assert slots["helper_after_e_sat"] is True
+        assert slots["helper_uses_private_post_h_hook"] is False
+        assert slots["helper_uses_private_post_e_hook"] is False
+        assert all(slots["helper_signature_fields"].values())
+    assert (
+        helper["cpml_non_cpml_helper_contract"]["internal_face_work_contract_identical"]
+        is True
+    )
+    assert helper["orientation_generalization"]["uses_face_orientations_only"] is True
+    assert len(helper["hunk_inventory"]) == 6
+    assert helper["production_patch_applied"] is True
+    assert helper["accepted_private_helper"] is True
+    assert helper["solver_behavior_changed"] is True
+    assert helper["sbp_sat_3d_time_centered_paired_face_helper_applied"] is True
+    assert helper["helper_specific_switch_added"] is False
+    assert helper["uses_private_post_h_hook"] is False
+    assert helper["uses_private_post_e_hook"] is False
+    assert helper["uses_test_local_hook_emulation"] is False
+    assert helper["hook_experiment_allowed"] is False
+    assert helper["jit_runner_changed"] is False
+    assert helper["runner_changed"] is False
+    assert helper["public_claim_allowed"] is False
+    assert helper["public_api_behavior_changed"] is False
+    assert helper["public_default_tau_changed"] is False
+    assert helper["public_observable_promoted"] is False
+    assert helper["promotion_candidate_ready"] is False
+    assert helper["simresult_changed"] is False
+    assert helper["result_surface_changed"] is False
+    assert (
+        benchmark_gate[
+            "private_time_centered_paired_face_helper_implementation_next_prerequisite"
+        ]
+        == helper["next_prerequisite"]
+    )
+    assert helper["next_prerequisite"] == (
+        "private time-centered paired-face helper fixture-quality recovery ralplan"
+    )
     assert (
         "time_centered_staging_contract_ready"
         in (benchmark_gate["blocking_diagnostic"])
+    )
+    assert (
+        "private_time_centered_paired_face_helper_implemented"
+        in benchmark_gate["blocking_diagnostic"]
     )
     assert "no_material_repair" in benchmark_gate["blocking_diagnostic"]
     assert "not public TFSF" in benchmark_gate["diagnostic_basis"]
@@ -555,8 +615,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert "paired_face_coupling_design_ready" in spec_text
     assert "production_context_mismatch_detected" in spec_text
     assert "time_centered_staging_contract_ready" in spec_text
+    assert "private_time_centered_paired_face_helper_implemented" in spec_text
     assert (
-        "private time-centered paired-face helper implementation ralplan" in spec_text
+        "private time-centered paired-face helper fixture-quality recovery ralplan"
+        in spec_text
     )
     assert "## Deferred issue record" in spec_text
 
