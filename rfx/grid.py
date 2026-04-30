@@ -46,6 +46,7 @@ class Grid:
         pec_faces: set[str] | None = None,
         pmc_faces: set[str] | None = None,
         face_layers: dict | None = None,
+        conformal_faces: set[str] | None = None,
     ):
         if mode not in ("3d", "2d_tmz", "2d_tez"):
             raise ValueError(f"mode must be '3d', '2d_tmz', or '2d_tez', got {mode!r}")
@@ -59,6 +60,13 @@ class Grid:
         self.kappa_max = kappa_max
         self.pec_faces = pec_faces or set()
         self.pmc_faces = pmc_faces or set()
+        # Stage 1 conformal PEC: face labels whose enclosing axis is
+        # declared ``Boundary(conformal=True)``. ``init_waveguide_port``
+        # consults this set to skip the binary +face DROP on the modal
+        # V/I aperture — the Dey-Mittra eps_correction at the boundary
+        # cell is the principled handler when a conformal Box is in
+        # ``pec_shapes``.
+        self.conformal_faces = conformal_faces or set()
         # T7 Phase 2 PR2: per-face active CPML layer counts (thickness).
         # Defaults to the scalar ``cpml_layers`` on every face (the
         # symmetric fast path). Asymmetric thickness is achieved by

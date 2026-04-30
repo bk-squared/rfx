@@ -860,13 +860,24 @@ def init_waveguide_port(
     if boundary_grid is not None and u_axis_name is not None:
         cpml_axes = getattr(boundary_grid, "cpml_axes", "")
         pec_faces = getattr(boundary_grid, "pec_faces", set()) or set()
+        # Stage 1 conformal PEC: when a +face is conformal, the
+        # Dey-Mittra eps_correction handles the staircase shift at the
+        # boundary cell. Zeroing the same cell here in the modal V/I
+        # integral would be a second copy of that correction — the
+        # 2026-04-29 first-attempt failure mode where PEC-short |S11|
+        # diff vs OpenEMS regressed 0.025 → 0.094.
+        conformal_faces = getattr(boundary_grid, "conformal_faces", set()) or set()
         u_hi_face_pec = (u_axis_name not in cpml_axes) or (
             f"{u_axis_name}_hi" in pec_faces)
         v_hi_face_pec = (v_axis_name not in cpml_axes) or (
             f"{v_axis_name}_hi" in pec_faces)
-        if u_hi == u_grid_size and u_hi_face_pec and u_widths_np.size > 0:
+        u_hi_face_conformal = f"{u_axis_name}_hi" in conformal_faces
+        v_hi_face_conformal = f"{v_axis_name}_hi" in conformal_faces
+        if (u_hi == u_grid_size and u_hi_face_pec
+                and not u_hi_face_conformal and u_widths_np.size > 0):
             u_aperture_weights[-1] = 0.0
-        if v_hi == v_grid_size and v_hi_face_pec and v_widths_np.size > 0:
+        if (v_hi == v_grid_size and v_hi_face_pec
+                and not v_hi_face_conformal and v_widths_np.size > 0):
             v_aperture_weights[-1] = 0.0
     aperture_dA_np = (
         (u_widths_np * u_aperture_weights)[:, None]

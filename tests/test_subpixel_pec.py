@@ -303,3 +303,144 @@ def test_run_explicit_false_overrides_conformal_boundary():
         err_msg="explicit conformal_pec=False did not override the "
         "BoundarySpec.conformal_faces() auto-route.",
     )
+
+
+# -----------------------------------------------------------------------------
+# Stage 1 step 3: battery-geometry support + DROP-skip on conformal +face
+# -----------------------------------------------------------------------------
+#
+# The Stage 1 step 1 hi-side veto silently no-ops on the validation
+# battery's geometry: when ``y_range`` / ``z_range`` is omitted on
+# ``add_waveguide_port`` (the default), the port aperture spans the
+# *full* ``self._domain``, so ``wall_hi == self._domain[axis]`` and
+# the original "domain edge already coincides with the physical wall"
+# check skipped the Box. But the *grid* extends past ``self._domain``
+# due to dx-snap, so a fractional cell still exists at the boundary.
+# The fix is to always inject the hi-side Box (the SDF naturally
+# produces weight=1 when no fractional cell exists).
+#
+# Then the binary DROP in ``init_waveguide_port`` becomes wrong on
+# conformal axes: the staircase shift is now handled by Dey-Mittra
+# eps_correction at the boundary cell, so zeroing the same cell in
+# the modal V/I integral is double-counting (the failure mode the
+# 2026-04-29 first attempt produced).
+
+
+def _wr90_battery_sim(*, conformal: bool):
+    """Validation-battery-style WR-90 sim: domain edge == port wall,
+    ``y_range``/``z_range`` left at the default (full grid). Dx=3 mm
+    matches the battery's coarsest mesh."""
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        dx=0.003,
+        boundary=BoundarySpec(
+            x="cpml",
+            y=Boundary(lo="pec", hi="pec", conformal=conformal),
+            z=Boundary(lo="pec", hi="pec", conformal=conformal),
+        ),
+        cpml_layers=4,
+    )
+    sim.add_waveguide_port(
+        0.030,
+        direction="+x",
+        mode=(1, 0),
+        mode_type="TE",
+        f0=8e9,
+        bandwidth=0.5,
+        name="left",
+    )
+    return sim
+
+
+def test_assemble_materials_injects_when_yrange_omitted():
+    """Battery-geometry repro: no explicit y_range/z_range, but the
+    grid extends past ``self._domain`` due to dx-snap. The hi-side
+    Box must still be injected so the Dey-Mittra path kicks in at
+    the fractional boundary cell."""
+    sim = _wr90_battery_sim(conformal=True)
+    grid = sim._build_grid()
+    _, _, _, _, pec_shapes, _ = sim._assemble_materials(grid)
+
+    y_hi = _half_space_box_lo_y(pec_shapes, axis_idx=1, value=0.04)
+    z_hi = _half_space_box_lo_y(pec_shapes, axis_idx=2, value=0.02)
+    assert len(y_hi) >= 1, (
+        f"expected y_hi half-space Box at corner_lo[1]=0.04 m for "
+        f"battery geometry; got pec_shapes={pec_shapes!r}"
+    )
+    assert len(z_hi) >= 1, (
+        f"expected z_hi half-space Box at corner_lo[2]=0.02 m for "
+        f"battery geometry; got pec_shapes={pec_shapes!r}"
+    )
+
+
+def test_grid_carries_conformal_faces_from_boundaryspec():
+    """``Grid`` must surface the conformal-face inventory so that
+    ``init_waveguide_port`` can decide whether to skip the binary
+    DROP. ``apply_pec_faces`` already routes through
+    ``Grid.pec_faces``; conformal flag follows the same pattern."""
+    sim = _wr90_battery_sim(conformal=True)
+    grid = sim._build_grid()
+    assert getattr(grid, "conformal_faces", None) == {"y_lo", "y_hi",
+                                                       "z_lo", "z_hi"}
+
+    sim_off = _wr90_battery_sim(conformal=False)
+    grid_off = sim_off._build_grid()
+    assert getattr(grid_off, "conformal_faces", set()) == set()
+
+
+def test_waveguide_port_skips_drop_on_conformal_face():
+    """``init_waveguide_port``'s binary DROP at the +face boundary
+    cell must be suppressed when that face is conformal — the
+    Dey-Mittra eps_correction at the same cell is the principled
+    handler. Otherwise the cell is zeroed twice (DROP in V/I + 1/α
+    eps scaling) which over-corrects and caps PEC-short closure
+    (the 2026-04-29 first-attempt failure mode)."""
+    import jax.numpy as jnp
+
+    freqs = jnp.linspace(5e9, 9e9, 5)
+
+    sim_off = _wr90_battery_sim(conformal=False)
+    sim_on = _wr90_battery_sim(conformal=True)
+    grid_off = sim_off._build_grid()
+    grid_on = sim_on._build_grid()
+
+    cfg_off = sim_off._build_waveguide_port_config(
+        sim_off._waveguide_ports[0], grid_off, freqs, n_steps=200,
+    )
+    cfg_on = sim_on._build_waveguide_port_config(
+        sim_on._waveguide_ports[0], grid_on, freqs, n_steps=200,
+    )
+
+    dA_off = np.asarray(cfg_off.aperture_dA)
+    dA_on = np.asarray(cfg_on.aperture_dA)
+
+    # Without conformal: y_hi DROP zeroes the last u-row.
+    assert np.all(dA_off[-1, :] == 0.0), (
+        f"expected DROP at u_hi (y_hi) without conformal; got "
+        f"dA[-1,:]={dA_off[-1, :]}"
+    )
+    # With conformal: the DROP is skipped → boundary cell preserved.
+    assert np.all(dA_on[-1, :] > 0.0), (
+        f"expected aperture preserved at u_hi when conformal=True; "
+        f"got dA[-1,:]={dA_on[-1, :]}"
+    )
+    # Symmetric check on v_hi (z_hi).
+    assert np.all(dA_off[:, -1] == 0.0)
+    assert np.all(dA_on[:, -1] > 0.0)
+
+
+def test_run_battery_geometry_auto_routes():
+    """End-to-end: with the battery geometry and conformal=True, the
+    Dey-Mittra pipeline must produce a different field from the
+    binary baseline. Closes the silent-no-op gap that Stage 1 step 1
+    left for the most-common WR-90 setup pattern (no y_range)."""
+    n = 30
+    r_off = _wr90_battery_sim(conformal=False).run(n_steps=n)
+    r_on = _wr90_battery_sim(conformal=True).run(n_steps=n)
+    diff = float(np.max(np.abs(np.asarray(r_off.state.ey)
+                                - np.asarray(r_on.state.ey))))
+    assert diff > 1e-9, (
+        "battery-geometry conformal=True still bit-identical to "
+        "baseline — Stage 1 step 3 did not close the silent no-op."
+    )

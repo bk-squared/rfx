@@ -1809,6 +1809,7 @@ class Simulation:
                 pec_faces=self._pec_faces,
                 pmc_faces=self._boundary_spec.pmc_faces(),
                 face_layers=face_layers,
+                conformal_faces=self._boundary_spec.conformal_faces(),
             )
         return Grid(
             freq_max=self._freq_max,
@@ -1821,6 +1822,7 @@ class Simulation:
             pec_faces=self._pec_faces,
             pmc_faces=self._boundary_spec.pmc_faces(),
             face_layers=face_layers,
+            conformal_faces=self._boundary_spec.conformal_faces(),
         )
 
     def _resolve_face_layers(self) -> dict:
@@ -1988,16 +1990,24 @@ class Simulation:
                 corner_lo = [-big, -big, -big]
                 corner_hi = [big, big, big]
                 if side == "lo":
+                    # Skip when the wall coincides with the grid origin
+                    # (y=0 PEC face): the binary apply_pec_faces handles
+                    # this exactly and a Dey-Mittra Box at corner_hi=0
+                    # would impose a spurious 0.5 weight on the cell at
+                    # j=0. Only inject when an actual interior region
+                    # past the lo face needs to be PEC-fied.
                     if wall_lo <= 0.0:
-                        # No fractional cell on the lo face: domain edge
-                        # already coincides with the physical wall.
                         continue
                     corner_hi[axis_idx] = wall_lo
                 else:  # hi
-                    if wall_hi >= float(self._domain[axis_idx]):
-                        # No fractional cell on the hi face: domain
-                        # edge already coincides with the physical wall.
-                        continue
+                    # Always inject on the hi side. The grid often
+                    # extends past ``self._domain`` due to dx-snap or
+                    # CPML padding on other axes, so a fractional cell
+                    # exists at the wall even when ``wall_hi`` equals
+                    # the user-declared domain extent. When no
+                    # fractional cell is present (grid edge ≤
+                    # wall_hi), the SDF naturally produces weight=1
+                    # everywhere and the Box is a harmless no-op.
                     corner_lo[axis_idx] = wall_hi
                 pec_shapes.append(Box(tuple(corner_lo), tuple(corner_hi)))
 
