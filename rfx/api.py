@@ -238,6 +238,7 @@ class ForwardResult(NamedTuple):
     s_params: object = None
     freqs: object = None
     lumped_port_sparams: object = None
+    wire_port_sparams: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -4504,6 +4505,7 @@ class Simulation:
             make_port_source,
             make_wire_port_sources,
             LumpedPortSParamSpec,
+            WirePortSParamSpec,
         )
         from rfx.sources.sources import (
             LumpedPort,
@@ -4518,6 +4520,7 @@ class Simulation:
         pec_mask_local = pec_mask
         pec_occupancy_local = pec_occupancy
         lumped_port_sparam_specs: list = []
+        wire_port_sparam_specs: list = []
         # Resolve a freq array once for downstream auto-build (issue #72)
         if port_s11_freqs is not None:
             _s11_freqs_arr = jnp.asarray(port_s11_freqs, dtype=jnp.float32)
@@ -4548,11 +4551,28 @@ class Simulation:
                 materials = setup_wire_port(grid, wp, materials)
                 if pe.excite:
                     sources.extend(make_wire_port_sources(grid, wp, materials, n_steps))
-                for cell in _wire_port_cells(grid, wp):
+                wp_cells = _wire_port_cells(grid, wp)
+                for cell in wp_cells:
                     if pec_mask_local is not None:
                         pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
                     if pec_occupancy_local is not None:
                         pec_occupancy_local = pec_occupancy_local.at[cell[0], cell[1], cell[2]].set(0.0)
+                # Register a JIT-integrated S-param accumulator for this
+                # WirePort when forward(port_s11_freqs=...) was requested
+                # (issue #79 follow-up to PR #72). Mirrors the lumped
+                # registration below; uses the wire's midpoint cell as the
+                # V/I reference plane (consistent with wire_sparam_meta in
+                # the JIT scan body of rfx/simulation.py).
+                if _s11_freqs_arr is not None and wp_cells:
+                    mid_cell = wp_cells[len(wp_cells) // 2]
+                    wire_port_sparam_specs.append(WirePortSParamSpec(
+                        mid_i=int(mid_cell[0]),
+                        mid_j=int(mid_cell[1]),
+                        mid_k=int(mid_cell[2]),
+                        component=pe.component,
+                        freqs=_s11_freqs_arr,
+                        impedance=float(pe.impedance),
+                    ))
                 continue
 
             lp = LumpedPort(
@@ -4667,6 +4687,7 @@ class Simulation:
             pec_mask=pec_mask_local,
             pec_occupancy=pec_occupancy_local,
             lumped_port_sparams=lumped_port_sparam_specs or None,
+            wire_port_sparams=wire_port_sparam_specs or None,
             return_state=False,
         )
 
@@ -4678,9 +4699,19 @@ class Simulation:
             for spec, accs in result.lumped_port_sparams:
                 v_dft, i_dft = accs
                 s_list.append(extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
-            # Stacked as (n_ports, n_freqs); single-port shapes (n_freqs,).
             s_params_out = s_list[0] if len(s_list) == 1 else jnp.stack(s_list, axis=0)
             freqs_out = result.lumped_port_sparams[0][0].freqs
+        elif result.wire_port_sparams:
+            # Wire-port wave decomposition uses the same FDTD sign
+            # convention as lumped (V = -E·dx). Reuse extract_lumped_s11
+            # which implements S11 = (V + Z0·I)/(V − Z0·I).
+            from rfx.probes.probes import extract_lumped_s11
+            w_list = []
+            for spec, accs in result.wire_port_sparams:
+                v_dft, i_dft, _v_inc_dft = accs
+                w_list.append(extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
+            s_params_out = w_list[0] if len(w_list) == 1 else jnp.stack(w_list, axis=0)
+            freqs_out = result.wire_port_sparams[0][0].freqs
 
         return ForwardResult(
             time_series=result.time_series,
@@ -4690,6 +4721,7 @@ class Simulation:
             s_params=s_params_out,
             freqs=freqs_out,
             lumped_port_sparams=result.lumped_port_sparams,
+            wire_port_sparams=result.wire_port_sparams,
         )
 
     def _forward_nonuniform_from_materials(
