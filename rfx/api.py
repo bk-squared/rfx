@@ -5242,7 +5242,7 @@ class Simulation:
         s_param_n_steps: int | None = None,
         snapshot: SnapshotSpec | None = None,
         subpixel_smoothing: bool = False,
-        conformal_pec: bool = False,
+        conformal_pec: bool | None = None,
         conformal_min_weight: float = 0.1,
         devices: list | None = None,
         exchange_interval: int = 1,
@@ -5302,6 +5302,15 @@ class Simulation:
         # ---- P1: Auto mesh when dx not specified and geometry exists ----
         if self._dx is None and self._geometry:
             self._auto_configure_mesh()
+
+        # ---- Stage 1 conformal PEC auto-routing ----
+        # When the user passes ``conformal_pec=None`` (default), derive
+        # it from ``BoundarySpec.conformal_faces()``: any axis declared
+        # ``Boundary(conformal=True)`` flips conformal_pec on. Explicit
+        # True/False from the caller is preserved as a power-user
+        # override (e.g. for A/B regression diagnosis).
+        if conformal_pec is None:
+            conformal_pec = bool(self._boundary_spec.conformal_faces())
 
         # ---- P0: Pre-simulation validation ----
         self._validate_mesh_quality()

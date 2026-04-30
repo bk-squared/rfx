@@ -130,7 +130,7 @@ def _wr90_sim(*, conformal: bool):
         cpml_layers=8,
     )
     sim.add_waveguide_port(
-        0.005,
+        0.020,  # Inside the interior, well past the 8-layer x-CPML.
         y_range=(0.0, WR_90_A),
         z_range=(0.0, WR_90_B),
         direction="+x",
@@ -226,4 +226,80 @@ def test_conformal_weights_fractional_at_wr90_y_boundary_cell():
     assert abs(w_at_boundary - 0.36) < 0.05, (
         f"WR-90 dx=1 mm boundary-cell weight should be ≈0.36, got "
         f"{w_at_boundary:.4f}"
+    )
+
+
+# -----------------------------------------------------------------------------
+# Stage 1 step 2: end-to-end run smoke + auto-routing
+# -----------------------------------------------------------------------------
+
+
+def test_run_smokes_with_conformal_boundary():
+    """Stage 1 step 2: end-to-end run with ``Boundary(conformal=True)``
+    must not raise and must produce finite fields. Catches plumbing
+    bugs where the half-space Box trips up downstream code paths
+    (initialisation, JIT compile, scan body)."""
+    sim = _wr90_sim(conformal=True)
+    result = sim.run(n_steps=20)
+    ey = np.asarray(result.state.ey)
+    assert np.all(np.isfinite(ey)), "non-finite ey after conformal run"
+    assert float(np.max(np.abs(ey))) > 0, (
+        "ey is identically zero after 20 steps — source did not fire"
+    )
+
+
+def test_run_conformal_auto_routes_from_boundaryspec():
+    """``Boundary(conformal=True)`` alone must activate the Dey-Mittra
+    pipeline. Without auto-routing, ``conformal_pec`` stays False at
+    ``Simulation.run`` and the half-space Box from Stage 1 step 1
+    sits unused in ``pec_shapes`` — a silent no-op footgun.
+
+    Pins down two invariants:
+      * conformal=True (default kwargs) ≠ conformal=False (different
+        eps at the boundary cell drives different time evolution),
+      * conformal=True (default kwargs) == conformal=True with
+        explicit ``conformal_pec=True`` (auto-routing is consistent
+        with the manual flag, no surprise from setting both)."""
+    n = 30
+    r_off = _wr90_sim(conformal=False).run(n_steps=n)
+    r_on = _wr90_sim(conformal=True).run(n_steps=n)
+    r_on_explicit = _wr90_sim(conformal=True).run(
+        n_steps=n, conformal_pec=True,
+    )
+
+    ey_off = np.asarray(r_off.state.ey)
+    ey_on = np.asarray(r_on.state.ey)
+    ey_on_e = np.asarray(r_on_explicit.state.ey)
+
+    diff_vs_baseline = float(np.max(np.abs(ey_off - ey_on)))
+    assert diff_vs_baseline > 1e-9, (
+        "auto-routing failed: conformal=True produced bit-identical "
+        f"fields to conformal=False (max|diff|={diff_vs_baseline:g}). "
+        "BoundarySpec.conformal_faces() is non-empty but "
+        "Simulation.run did not flip conformal_pec to True."
+    )
+
+    np.testing.assert_allclose(
+        ey_on, ey_on_e, atol=1e-12, rtol=0,
+        err_msg="auto-routed conformal differs from explicit "
+        "conformal_pec=True — they should be the same path.",
+    )
+
+
+def test_run_explicit_false_overrides_conformal_boundary():
+    """Escape hatch: ``conformal_pec=False`` explicit kwarg must keep
+    the binary ``apply_pec_faces`` path even when the BoundarySpec
+    declares ``conformal=True``. Useful for A/B regression diagnosis
+    and for keeping older diagnostic scripts on the legacy path."""
+    n = 30
+    r_off = _wr90_sim(conformal=False).run(n_steps=n)
+    r_forced = _wr90_sim(conformal=True).run(
+        n_steps=n, conformal_pec=False,
+    )
+
+    np.testing.assert_array_equal(
+        np.asarray(r_off.state.ey),
+        np.asarray(r_forced.state.ey),
+        err_msg="explicit conformal_pec=False did not override the "
+        "BoundarySpec.conformal_faces() auto-route.",
     )
