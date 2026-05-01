@@ -394,6 +394,50 @@ class WaveguideSMatrixResult(NamedTuple):
     reference_planes: np.ndarray
 
 
+@dataclass(frozen=True)
+class _MSLPortEntry:
+    """Internal bookkeeping for a microstrip line port.
+
+    The port covers the trace cross-section ``width × height`` at feed
+    plane ``position[0]``; ``position[1]`` is the trace y-centre and
+    ``position[2]`` the substrate bottom.
+    """
+    name: str
+    position: tuple[float, float, float]
+    width: float
+    height: float
+    direction: str
+    impedance: float
+    waveform: object
+    excite: bool = True
+    n_probe_offset: int = 5
+    n_probe_spacing: int = 3
+
+
+@dataclass
+class MSLSMatrixResult:
+    """MSL S-matrix result.
+
+    Attributes
+    ----------
+    S : (n_ports, n_ports, n_freqs) complex
+        Full S-matrix.
+    freqs : (n_freqs,) float
+        Frequency grid in Hz.
+    Z0 : (n_ports, n_freqs) complex
+        Characteristic impedance extracted via 3-probe de-embedding,
+        per driven-port run (``Z0[i, :]`` is from run with port i driven).
+    beta : (n_freqs,) complex
+        Propagation constant β = -ln(q) / Δ at the first port's run.
+    port_names : tuple[str, ...]
+    """
+    S: np.ndarray
+    freqs: np.ndarray
+    Z0: np.ndarray
+    beta: np.ndarray
+    port_names: tuple[str, ...] = ()
+
+
 _DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
 _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 
@@ -629,6 +673,7 @@ class Simulation:
         self._dft_planes: list[_DFTPlaneEntry] = []
         self._flux_monitors: list[_FluxMonitorEntry] = []
         self._waveguide_ports: list[_WaveguidePortEntry] = []
+        self._msl_ports: list[_MSLPortEntry] = []
         self._periodic_axes: str = ""
         self._refinement: dict | None = None
         self._lumped_rlc: list[LumpedRLCSpec] = []
@@ -1041,6 +1086,90 @@ class Simulation:
             position=position, component=component,
             impedance=impedance, waveform=waveform,
             extent=extent, excite=excite, direction=direction,
+        ))
+        return self
+
+    def add_msl_port(
+        self,
+        position: tuple[float, float, float],
+        *,
+        width: float,
+        height: float,
+        direction: str = "+x",
+        impedance: float = 50.0,
+        waveform: GaussianPulse | None = None,
+        excite: bool = True,
+        n_probe_offset: int = 5,
+        n_probe_spacing: int = 3,
+        name: str | None = None,
+    ) -> "Simulation":
+        """Add a microstrip-line (MSL) port spanning the full trace cross-section.
+
+        Unlike :meth:`add_port` with ``extent=...`` (a one-cell-transverse
+        wire port), this port covers the full ``width × height``
+        cross-section under the trace and uses 3-probe numerical
+        de-embedding to extract β and Z0 empirically downstream of the
+        feed plane.
+
+        Parameters
+        ----------
+        position : (x_feed, y_centre, z_lo)
+            Feed plane x, trace centre y, and substrate bottom z.
+        width : float
+            Trace width in metres (y extent of the port).
+        height : float
+            Substrate thickness in metres (z extent of the port).
+        direction : "+x" or "-x"
+            Direction the launched wave propagates.
+        impedance : float
+            Target Z0 in ohms (default 50). Used for the σ distribution.
+        waveform : GaussianPulse or callable, optional
+            Excitation waveform. Defaults to a band-limited Gaussian
+            centred at ``freq_max/2``. Ignored when ``excite=False``.
+        excite : bool
+            ``True`` → resistive termination + active source; ``False``
+            → passive matched termination only.
+        n_probe_offset : int
+            Distance (cells) from the feed plane to the first probe plane.
+        n_probe_spacing : int
+            Distance (cells) between consecutive probe planes.
+        name : str, optional
+            Port label used in result dicts. Auto-generated when omitted.
+        """
+        if direction not in ("+x", "-x"):
+            raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
+        if width <= 0:
+            raise ValueError(f"width must be positive, got {width}")
+        if height <= 0:
+            raise ValueError(f"height must be positive, got {height}")
+        if impedance <= 0:
+            raise ValueError(f"impedance must be positive, got {impedance}")
+        if n_probe_offset < 3:
+            raise ValueError(
+                f"n_probe_offset must be >= 3 to avoid near-field, got {n_probe_offset}"
+            )
+        if n_probe_spacing < 1:
+            raise ValueError(
+                f"n_probe_spacing must be >= 1, got {n_probe_spacing}"
+            )
+
+        if waveform is None and excite:
+            waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
+
+        if name is None:
+            name = f"msl_{len(self._msl_ports)}"
+
+        self._msl_ports.append(_MSLPortEntry(
+            name=name,
+            position=position,
+            width=width,
+            height=height,
+            direction=direction,
+            impedance=impedance,
+            waveform=waveform,
+            excite=excite,
+            n_probe_offset=n_probe_offset,
+            n_probe_spacing=n_probe_spacing,
         ))
         return self
 
@@ -2649,6 +2778,228 @@ class Simulation:
             port_directions=tuple(entry.direction for entry in entries),
             reference_planes=reference_planes,
         )
+
+    def compute_msl_s_matrix(
+        self,
+        *,
+        n_steps: int | None = None,
+        num_periods: float = 40.0,
+        freqs: jnp.ndarray | None = None,
+        n_freqs: int = 100,
+    ) -> "MSLSMatrixResult":
+        """Compute the MSL S-matrix using 3-probe numerical de-embedding.
+
+        For each registered MSL port, runs one FDTD simulation with that
+        port driven and the others passive (matched termination). At
+        each port three downstream DFT plane probes record Ez and the
+        first probe also records Hy; β, Z0 and the wave amplitudes are
+        extracted post-scan via the OpenEMS-style 3-probe recurrence and
+        assembled into the full S-matrix.
+
+        Parameters
+        ----------
+        n_steps : int or None
+            Timesteps per FDTD run. ``None`` → auto from ``num_periods``.
+        num_periods : float
+            Source-period multiples used to derive ``n_steps`` when not
+            provided. Default 40 (MSL transients are slow to drain).
+        freqs : array, optional
+            Frequency grid. Defaults to
+            ``linspace(freq_max / 10, freq_max, n_freqs)``.
+        n_freqs : int
+            Number of frequencies if ``freqs`` is None.
+
+        Returns
+        -------
+        MSLSMatrixResult
+        """
+        from rfx.sources.msl_port import (
+            MSLPort,
+            _msl_yz_cells,
+            compute_s21,
+            extract_msl_s_params,
+            msl_forward_amplitude,
+            msl_probe_x_coords,
+        )
+
+        if not self._msl_ports:
+            raise ValueError("No MSL ports registered. Call add_msl_port() first.")
+
+        entries = list(self._msl_ports)
+        n_ports = len(entries)
+
+        grid = self._build_grid()
+
+        if freqs is None:
+            freqs_arr = np.asarray(jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs))
+        else:
+            freqs_arr = np.asarray(freqs)
+        n_freqs_used = int(freqs_arr.shape[0])
+
+        # Build MSLPort descriptors and probe x-coords once (geometry shared).
+        msl_ports: list[MSLPort] = []
+        for pe in entries:
+            x_feed, y_centre, z_lo = pe.position
+            msl_ports.append(MSLPort(
+                feed_x=float(x_feed),
+                y_lo=float(y_centre - pe.width / 2),
+                y_hi=float(y_centre + pe.width / 2),
+                z_lo=float(z_lo),
+                z_hi=float(z_lo + pe.height),
+                direction=pe.direction,
+                impedance=pe.impedance,
+                excitation=pe.waveform,
+            ))
+
+        probe_xs = [
+            msl_probe_x_coords(
+                grid, mp,
+                n_offset_cells=pe.n_probe_offset,
+                n_spacing_cells=pe.n_probe_spacing,
+            )
+            for mp, pe in zip(msl_ports, entries)
+        ]
+
+        # Per-axis cell-size arrays for V/I integration. Both uniform
+        # and non-uniform grids are supported.
+        def _profile(axis: str, n: int) -> np.ndarray:
+            attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
+            prof = getattr(grid, attr, None)
+            if prof is not None:
+                return np.asarray(prof, dtype=float)
+            return np.full(n, float(grid.dx), dtype=float)
+
+        dy_arr = _profile("y", grid.ny)
+        dz_arr = _profile("z", grid.nz)
+
+        # Fixed cross-section indices per port (same across all runs).
+        port_idx_meta = []
+        for mp in msl_ports:
+            cells = _msl_yz_cells(grid, mp)
+            j_set = sorted({c[1] for c in cells})
+            k_set = sorted({c[2] for c in cells})
+            j_lo, j_hi = j_set[0], j_set[-1]
+            k_lo, k_hi = k_set[0], k_set[-1]
+            j_centre = (j_lo + j_hi) // 2
+            k_top = k_hi  # trace sits at the top of the substrate
+            port_idx_meta.append(dict(
+                j_lo=j_lo, j_hi=j_hi,
+                k_lo=k_lo, k_hi=k_hi,
+                j_centre=j_centre, k_top=k_top,
+            ))
+
+        # Stash existing add_dft_plane_probe registrations and restore on exit.
+        saved_dft = list(self._dft_planes)
+        saved_msl = list(self._msl_ports)
+        saved_ports = list(self._ports)
+        try:
+            S = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
+            Z0_per_run = np.zeros((n_ports, n_freqs_used), dtype=complex)
+            beta_first = np.zeros(n_freqs_used, dtype=complex)
+
+            for driven in range(n_ports):
+                # Re-instantiate a clean simulation by mutating in place:
+                # use add_msl_port as the registration path, but here we
+                # need finer control over excite=True/False per-run, so
+                # rebuild ``self._msl_ports`` for this run.
+                run_entries = []
+                for idx, pe in enumerate(entries):
+                    new_excite = (idx == driven) and pe.excite
+                    if new_excite:
+                        wf = pe.waveform if pe.waveform is not None else \
+                            GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
+                    else:
+                        wf = None
+                    run_entries.append(_MSLPortEntry(
+                        name=pe.name, position=pe.position,
+                        width=pe.width, height=pe.height,
+                        direction=pe.direction, impedance=pe.impedance,
+                        waveform=wf, excite=new_excite,
+                        n_probe_offset=pe.n_probe_offset,
+                        n_probe_spacing=pe.n_probe_spacing,
+                    ))
+                self._msl_ports = run_entries
+
+                # Register DFT plane probes for V (Ez) and I (Hy).
+                self._dft_planes = list(saved_dft)
+                ez_probe_names: list[list[str]] = [[] for _ in range(n_ports)]
+                hy_probe_names: list[str] = [None] * n_ports  # type: ignore
+                for p_idx, (mp, pxs) in enumerate(zip(msl_ports, probe_xs)):
+                    for q_idx, x_coord in enumerate(pxs):
+                        nm = f"_msl_run{driven}_p{p_idx}_ez{q_idx}"
+                        self.add_dft_plane_probe(
+                            axis="x", coordinate=float(x_coord),
+                            component="ez", freqs=jnp.asarray(freqs_arr),
+                            name=nm,
+                        )
+                        ez_probe_names[p_idx].append(nm)
+                    nm_hy = f"_msl_run{driven}_p{p_idx}_hy"
+                    self.add_dft_plane_probe(
+                        axis="x", coordinate=float(pxs[0]),
+                        component="hy", freqs=jnp.asarray(freqs_arr),
+                        name=nm_hy,
+                    )
+                    hy_probe_names[p_idx] = nm_hy
+
+                # Run; pass n_steps through (None → auto).
+                result = self.run(
+                    n_steps=n_steps,
+                    num_periods=num_periods,
+                    compute_s_params=False,
+                )
+                planes = result.dft_planes or {}
+
+                # Helper: integrate V and I per port from the recorded planes.
+                v_per_port: list[list[np.ndarray]] = []
+                i_first_per_port: list[np.ndarray] = []
+                for p_idx, meta in enumerate(port_idx_meta):
+                    vs = []
+                    for nm in ez_probe_names[p_idx]:
+                        ez_plane = np.asarray(planes[nm].accumulator)
+                        # ez_plane shape: (n_freqs, ny, nz)
+                        v_f = np.zeros(n_freqs_used, dtype=complex)
+                        for k in range(meta["k_lo"], meta["k_hi"] + 1):
+                            v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
+                        vs.append(v_f)
+                    v_per_port.append(vs)
+                    hy_plane = np.asarray(planes[hy_probe_names[p_idx]].accumulator)
+                    i_f = np.zeros(n_freqs_used, dtype=complex)
+                    for j in range(meta["j_lo"], meta["j_hi"] + 1):
+                        i_f = i_f + hy_plane[:, j, meta["k_top"]] * float(dy_arr[j])
+                    i_first_per_port.append(i_f)
+
+                # Driven port: full 3-probe extraction → S[driven, driven].
+                v1d, v2d, v3d = v_per_port[driven]
+                i1d = i_first_per_port[driven]
+                s11_d, z0_d, q_d = extract_msl_s_params(v1d, v2d, v3d, i1d)
+                S[driven, driven, :] = s11_d
+                Z0_per_run[driven, :] = z0_d
+                if driven == 0:
+                    # β = -ln(q) / Δ; Δ = n_probe_spacing * dx
+                    spacing = entries[0].n_probe_spacing * float(grid.dx)
+                    beta_first = -np.log(q_d + 0j) / (spacing + 1e-30)
+
+                # Driven port forward amplitude (for S21-style off-diagonals).
+                alpha_d, _ = msl_forward_amplitude(v1d, v2d, v3d)
+
+                for j in range(n_ports):
+                    if j == driven:
+                        continue
+                    v1p, v2p, v3p = v_per_port[j]
+                    alpha_p, _ = msl_forward_amplitude(v1p, v2p, v3p)
+                    S[j, driven, :] = compute_s21(alpha_p, alpha_d)
+
+            return MSLSMatrixResult(
+                S=S,
+                freqs=np.asarray(freqs_arr),
+                Z0=Z0_per_run,
+                beta=beta_first,
+                port_names=tuple(pe.name for pe in entries),
+            )
+        finally:
+            self._dft_planes = saved_dft
+            self._msl_ports = saved_msl
+            self._ports = saved_ports
 
     def _compute_waveguide_s_matrix_nu(
         self,
