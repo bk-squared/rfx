@@ -99,8 +99,8 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave subgrid-vacuum parity blocker
-repair/design before true R/T readiness. The private solver-local skew E/H
+The immediate lane is now private plane-wave interface-floor repair
+implementation before true R/T readiness. The private solver-local skew E/H
 helper is retained as a bounded production-context hunk, the accepted boundary
 subset has direct helper-execution evidence, and the F0-F4 private
 fixture-quality repair ladder
@@ -120,10 +120,14 @@ private subgrid-vacuum parity scoring lane now records
 `private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion`: the
 private adapter scores reproducibly, but unchanged transverse phase-spread,
 transverse magnitude-CV, vacuum magnitude-error, and vacuum phase-error gates
-fail. The goal gate therefore remains claims-closed until a private blocker
-repair/design lane improves those parity metrics and later true R/T readiness
-proves the hunk improves the real solver path without breaking CPML/non-CPML
-symmetry, boundary guards, update/coupling bounds, or the unchanged `0.02`
+fail. The follow-up blocker repair/design lane now records
+`private_plane_wave_interface_floor_repair_design_required`: the failed parity
+packet remains the baseline, source/measurement relabeling is rejected, and the
+next executable lane must explicitly widen production scope for a private
+interface-floor repair. The goal gate therefore remains claims-closed until that
+repair improves the parity metrics and a later true R/T readiness lane proves
+the hunk improves the real solver path without breaking CPML/non-CPML symmetry,
+boundary guards, update/coupling bounds, or the unchanged `0.02`
 manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,

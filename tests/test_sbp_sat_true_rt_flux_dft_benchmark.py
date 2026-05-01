@@ -836,6 +836,26 @@ _PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_PRECEDENCE = (
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_STATUS = (
+    "private_plane_wave_interface_floor_repair_design_required"
+)
+_PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_NEXT_PREREQUISITE = (
+    "private plane-wave interface-floor repair implementation before true R/T "
+    "readiness ralplan"
+)
+_PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_TERMINAL_OUTCOMES = (
+    "private_plane_wave_phase_front_repair_candidate_ready",
+    "private_plane_wave_measurement_contract_repair_candidate_ready",
+    "private_plane_wave_interface_floor_repair_design_required",
+    "private_plane_wave_parity_blocker_repair_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_PRECEDENCE = (
+    "private_plane_wave_parity_blocker_repair_blocked_no_public_promotion",
+    "private_plane_wave_interface_floor_repair_design_required",
+    "private_plane_wave_measurement_contract_repair_candidate_ready",
+    "private_plane_wave_phase_front_repair_candidate_ready",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -6206,6 +6226,194 @@ def _private_subgrid_vacuum_plane_wave_parity_scoring_metadata(
     }
 
 
+def _private_plane_wave_parity_blocker_repair_design_metadata(
+    *,
+    plane_wave_parity_metadata: dict[str, object],
+    measurement_redesign_metadata: dict[str, object],
+    interface_repair_metadata: dict[str, object],
+    derivative_interface_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(plane_wave_parity_metadata["metrics"])
+    parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in plane_wave_parity_metadata["candidate_ladder"]
+    }
+    admission_gate = dict(
+        parity_candidates["P1_private_subgrid_vacuum_plane_wave_parity_score"][
+            "admission_gate"
+        ]
+    )
+    dominant_blocker = str(plane_wave_parity_metadata["dominant_parity_blocker"])
+    thresholds = {
+        "transverse_magnitude_cv_max": _TRANSVERSE_MAGNITUDE_CV_MAX,
+        "transverse_phase_spread_deg_max": _TRANSVERSE_PHASE_SPREAD_DEG_MAX,
+        "vacuum_relative_magnitude_error_max": _VACUUM_MAGNITUDE_ERROR_MAX,
+        "vacuum_phase_error_deg_max": _VACUUM_PHASE_ERROR_DEG_MAX,
+        "usable_passband_min_bins": _MIN_CLAIMS_BEARING_BINS,
+    }
+    b0 = {
+        "candidate_id": "B0_parity_failure_baseline_freeze",
+        "candidate_family": "upstream_private_parity_failure_freeze",
+        "accepted_candidate": False,
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "baseline_admission_gate": admission_gate,
+        "dominant_parity_blocker": dominant_blocker,
+        "baseline_metrics_preserved": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    b1 = {
+        "candidate_id": "B1_phase_front_plane_alignment_repair_design",
+        "candidate_family": "phase_front_plane_alignment",
+        "accepted_candidate": False,
+        "admission_gate": (
+            "reduce transverse phase spread without source or observable "
+            "laundering"
+        ),
+        "dominant_blocker_targeted": dominant_blocker,
+        "source_self_oracle_ready": True,
+        "same_contract_reference_ready": True,
+        "rejection_reason": (
+            "the W1/R1 source/reference self-oracles are already ready and "
+            "the failure appears only after the subgrid-vacuum path; within a "
+            "tests/docs-only lane, a phase-front-only change would be a "
+            "measurement/source relabel rather than a solver repair"
+        ),
+        "requires_production_scope": False,
+        "public_claim_allowed": False,
+    }
+    b2 = {
+        "candidate_id": "B2_aperture_or_measurement_contract_control",
+        "candidate_family": "measurement_contract_control",
+        "accepted_candidate": False,
+        "admission_gate": (
+            "prove the failure is measurement contract, not solver interface, "
+            "without narrowing claim gates"
+        ),
+        "prior_measurement_redesign_status": (
+            measurement_redesign_metadata["terminal_outcome"]
+        ),
+        "rejection_reason": (
+            "the allowed scope cannot narrow scoring planes, apertures, "
+            "frequency bins, or thresholds to hide the parity failure; prior "
+            "measurement-contract diagnostics already classify the floor as "
+            "interface-led rather than public-claim-ready"
+        ),
+        "thresholds_unchanged": True,
+        "public_claim_allowed": False,
+    }
+    b3 = {
+        "candidate_id": "B3_interface_floor_repair_reentry_design",
+        "candidate_family": "interface_floor_repair_reentry",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_STATUS
+        ),
+        "admission_gate": (
+            "tie the parity failure to the known SBP-SAT interface floor and "
+            "define the production scope needed for a later repair"
+        ),
+        "dominant_blocker_targeted": dominant_blocker,
+        "prior_measurement_redesign_status": (
+            measurement_redesign_metadata["terminal_outcome"]
+        ),
+        "prior_interface_repair_status": interface_repair_metadata[
+            "terminal_outcome"
+        ],
+        "prior_derivative_interface_status": derivative_interface_metadata[
+            "terminal_outcome"
+        ],
+        "production_scope_required": True,
+        "required_future_write_surface": (
+            "rfx/subgridding/sbp_sat_3d.py, rfx/subgridding/sbp_operators.py, "
+            "and private benchmark runner/JIT adapter tests only after a "
+            "separate implementation ralplan explicitly widens scope"
+        ),
+        "no_production_patch_in_this_lane": True,
+        "true_rt_readiness_unlocked": False,
+        "public_claim_allowed": False,
+    }
+    b4 = {
+        "candidate_id": "B4_blocker_repair_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_parity_blocker_repair_blocked_no_public_promotion"
+        ),
+        "rejection_reason": (
+            "not selected because the blocker can be routed to a bounded "
+            "interface-floor repair implementation plan without public "
+            "promotion"
+        ),
+    }
+    candidates = (b0, b1, b2, b3, b4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_STATUS,
+        "terminal_outcome": _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_parity_blocker_repair_design_only"
+        ),
+        "upstream_parity_scoring_status": (
+            plane_wave_parity_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite B0/B1/B2/B3/B4 ladder; preserve failed parity baseline, "
+            "reject source/measurement laundering, and route the next action "
+            "to a private interface-floor repair implementation plan"
+        ),
+        "selected_candidate_id": "B3_interface_floor_repair_reentry_design",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "dominant_parity_blocker": dominant_blocker,
+        "phase_front_repair_candidate_ready": False,
+        "measurement_contract_repair_candidate_ready": False,
+        "interface_floor_repair_design_required": True,
+        "production_scope_required": True,
+        "no_production_patch_in_this_lane": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "private plane-wave parity failed on a transverse phase/magnitude "
+            "and vacuum-error packet despite ready source/reference contracts; "
+            "the safe next lane is a private interface-floor repair "
+            "implementation plan with explicitly widened production scope, not "
+            "public true R/T promotion"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -8268,8 +8476,29 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_parity_repair_metadata = (
+        _private_plane_wave_parity_blocker_repair_design_metadata(
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+            measurement_redesign_metadata=measurement_redesign_metadata,
+            interface_repair_metadata=interface_repair_metadata,
+            derivative_interface_metadata=derivative_interface_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_parity_blocker_repair_design_status": (
+                plane_wave_parity_repair_metadata["status"]
+            ),
+            "private_plane_wave_parity_blocker_repair_design": (
+                plane_wave_parity_repair_metadata
+            ),
+            "private_plane_wave_parity_blocker_repair_design_next_prerequisite": (
+                plane_wave_parity_repair_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
+        "private_plane_wave_parity_blocker_repair_design_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -8344,6 +8573,8 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"{adapter_implementation_metadata['terminal_outcome']}"
                 "; the private subgrid-vacuum plane-wave parity scoring lane "
                 f"records {plane_wave_parity_metadata['terminal_outcome']}"
+                "; the private plane-wave parity blocker repair/design lane "
+                f"records {plane_wave_parity_repair_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -8353,7 +8584,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
+                "private_plane_wave_parity_blocker_repair_design_next_prerequisite"
             ],
         }
 
@@ -10619,11 +10850,78 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
         ]
     )
+    parity_repair = metadata["private_plane_wave_parity_blocker_repair_design"]
+    assert metadata["private_plane_wave_parity_blocker_repair_design_status"] == (
+        _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_STATUS
+    )
+    assert parity_repair["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_STATUS
+    )
+    assert parity_repair["upstream_parity_scoring_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert parity_repair["candidate_ladder_declared_before_slow_scoring"] is True
+    assert parity_repair["candidate_count"] == 5
+    assert parity_repair["selected_candidate_id"] == (
+        "B3_interface_floor_repair_reentry_design"
+    )
+    assert parity_repair["baseline_metrics_preserved"] is True
+    assert parity_repair["thresholds_unchanged"] is True
+    assert parity_repair["baseline_metrics"] == parity_scoring["metrics"]
+    assert (
+        parity_repair["dominant_parity_blocker"]
+        == parity_scoring["dominant_parity_blocker"]
+    )
+    assert parity_repair["phase_front_repair_candidate_ready"] is False
+    assert parity_repair["measurement_contract_repair_candidate_ready"] is False
+    assert parity_repair["interface_floor_repair_design_required"] is True
+    assert parity_repair["production_scope_required"] is True
+    assert parity_repair["no_production_patch_in_this_lane"] is True
+    assert parity_repair["subgrid_vacuum_parity_scored"] is True
+    assert parity_repair["subgrid_vacuum_parity_passed"] is False
+    assert parity_repair["fixture_quality_ready"] is False
+    assert parity_repair["true_rt_readiness_unlocked"] is False
+    repair_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in parity_repair["candidate_ladder"]
+    }
+    assert (
+        repair_candidates["B0_parity_failure_baseline_freeze"][
+            "baseline_metrics"
+        ]
+        == parity_scoring["metrics"]
+    )
+    assert (
+        repair_candidates["B1_phase_front_plane_alignment_repair_design"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert (
+        repair_candidates["B2_aperture_or_measurement_contract_control"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert (
+        repair_candidates["B3_interface_floor_repair_reentry_design"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert parity_repair["public_claim_allowed"] is False
+    assert parity_repair["public_observable_promoted"] is False
+    assert parity_repair["true_rt_public_observable_promoted"] is False
+    assert parity_repair["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        parity_repair["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_parity_blocker_repair_design_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata[
-            "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
-        ]
+        == metadata["private_plane_wave_parity_blocker_repair_design_next_prerequisite"]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -10647,9 +10945,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata[
-            "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
-        ]
+        == metadata["private_plane_wave_parity_blocker_repair_design_next_prerequisite"]
     )
     assert (
         "same-contract private reference helper is present"
@@ -10725,6 +11021,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_plane_wave_parity_blocker_repair_design_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

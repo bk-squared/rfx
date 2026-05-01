@@ -255,9 +255,13 @@ the W1/R1 plane-wave contract. The follow-up private subgrid-vacuum parity
 scoring lane now records
 `private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion`: the score
 is reproducible through the private adapter, but unchanged thresholds fail on
-transverse phase spread, transverse magnitude CV, and vacuum stability. The next
-safe lane is private plane-wave subgrid-vacuum parity blocker repair/design
-before true R/T readiness, not public promotion.
+transverse phase spread, transverse magnitude CV, and vacuum stability. The
+follow-up private blocker repair/design lane now records
+`private_plane_wave_interface_floor_repair_design_required`: the failed parity
+packet is preserved as the baseline, phase-front/source and measurement-contract
+laundering candidates are rejected, and the next safe lane is a private
+plane-wave interface-floor repair implementation plan with explicitly widened
+production scope. Public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

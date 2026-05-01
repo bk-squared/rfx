@@ -1408,13 +1408,59 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == parity_scoring["next_prerequisite"]
     )
+    parity_repair = benchmark_gate[
+        "private_plane_wave_parity_blocker_repair_design"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_parity_blocker_repair_design_status"
+    ] == "private_plane_wave_interface_floor_repair_design_required"
+    assert parity_repair["terminal_outcome"] == (
+        "private_plane_wave_interface_floor_repair_design_required"
+    )
+    assert parity_repair["upstream_parity_scoring_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert parity_repair["candidate_ladder_declared_before_slow_scoring"] is True
+    assert parity_repair["candidate_count"] == 5
+    assert parity_repair["selected_candidate_id"] == (
+        "B3_interface_floor_repair_reentry_design"
+    )
+    assert parity_repair["baseline_metrics"] == parity_scoring["metrics"]
+    assert parity_repair["baseline_metrics_preserved"] is True
+    assert parity_repair["thresholds_unchanged"] is True
+    assert parity_repair["dominant_parity_blocker"] == (
+        parity_scoring["dominant_parity_blocker"]
+    )
+    assert parity_repair["phase_front_repair_candidate_ready"] is False
+    assert parity_repair["measurement_contract_repair_candidate_ready"] is False
+    assert parity_repair["interface_floor_repair_design_required"] is True
+    assert parity_repair["production_scope_required"] is True
+    assert parity_repair["no_production_patch_in_this_lane"] is True
+    assert parity_repair["true_rt_readiness_unlocked"] is False
+    assert parity_repair["public_claim_allowed"] is False
+    repair_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in parity_repair["candidate_ladder"]
+    }
+    assert (
+        repair_candidates["B3_interface_floor_repair_reentry_design"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_parity_blocker_repair_design_next_prerequisite"
+        ]
+        == parity_repair["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave subgrid-vacuum parity blocker repair/design before "
-        "true R/T readiness ralplan"
+        "private plane-wave interface-floor repair implementation before true R/T "
+        "readiness ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave subgrid-vacuum parity blocker repair/design before "
-        "true R/T readiness ralplan"
+        "private plane-wave interface-floor repair implementation before true R/T "
+        "readiness ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1430,6 +1476,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_source_adapter_design_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_plane_wave_parity_blocker_repair_design_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -1696,8 +1746,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave subgrid-vacuum parity blocker repair/design before "
-        "true R/T readiness ralplan"
+        "private plane-wave interface-floor repair implementation before true R/T "
+        "readiness ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
@@ -1754,6 +1804,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion"
         in spec_text
+    )
+    assert (
+        "private_plane_wave_interface_floor_repair_design_required" in spec_text
     )
     assert "## Deferred issue record" in spec_text
 

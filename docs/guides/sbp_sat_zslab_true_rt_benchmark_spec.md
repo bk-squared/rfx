@@ -307,11 +307,14 @@ implementation lane now records
 `private_plane_wave_adapter_implemented_parity_pending`. The follow-up private
 subgrid-vacuum parity scoring lane now records
 `private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion`, so the
-next safe lane is `private plane-wave subgrid-vacuum parity blocker
-repair/design before true R/T readiness ralplan`. Hook experiments remain
-closed and public promotion remains closed. Until those fixture-quality gates
-pass, the private flux/DFT gate remains internal diagnostic evidence only, and
-the support matrix continues to mark true R/T as deferred.
+follow-up blocker repair/design lane now records
+`private_plane_wave_interface_floor_repair_design_required`. The next safe lane
+is `private plane-wave interface-floor repair implementation before true R/T
+readiness ralplan`, with explicitly widened private production scope. Hook
+experiments remain closed and public promotion remains closed. Until those
+fixture-quality gates pass, the private flux/DFT gate remains internal
+diagnostic evidence only, and the support matrix continues to mark true R/T as
+deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
