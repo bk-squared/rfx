@@ -27,6 +27,8 @@ from rfx.subgridding.sbp_operators import (
     build_yee_staggered_derivative_pair_1d,
     face_mortar_adjoint_report,
     face_mortar_reproduction_report,
+    operator_projected_sat_pair_face,
+    prolong_face_mortar,
     sbp_identity_residual,
     weighted_em_flux_residual,
     yee_staggered_identity_residual,
@@ -219,6 +221,28 @@ _GLOBAL_OPERATOR_ALLOWED_SOLVER_SYMBOLS = (
     "_apply_time_centered_paired_face_helper",
     "step_subgrid_3d_with_cpml",
     "step_subgrid_3d",
+)
+_SOLVER_INTEGRATION_STATUS = "private_solver_integration_requires_followup_diagnostic_only"
+_SOLVER_INTEGRATION_NEXT_PREREQUISITE = (
+    "private operator-projected face SAT energy-transfer redesign after "
+    "diagnostic-only solver integration gate failed ralplan"
+)
+_SOLVER_INTEGRATION_REPORT = (
+    ".omx/reports/"
+    "sbp-sat-private-solver-integration-hunk-after-global-operator-"
+    "a1-a4-evidence-20260501T135000Z.md"
+)
+_SOLVER_INTEGRATION_TERMINAL_OUTCOMES = (
+    "private_operator_projected_sat_preaccepted",
+    "private_global_operator_solver_hunk_retained_fixture_quality_pending",
+    "private_operator_aware_time_centered_helper_retained_fixture_quality_pending",
+    "private_solver_integration_requires_followup_diagnostic_only",
+    "no_private_solver_integration_hunk_retained",
+)
+_SOLVER_INTEGRATION_ALLOWED_SOLVER_SYMBOLS = (
+    "_apply_operator_projected_sat_pair_face",
+    "apply_sat_h_interfaces",
+    "apply_sat_e_interfaces",
 )
 
 
@@ -3527,6 +3551,317 @@ def _private_global_derivative_mortar_operator_architecture_packet() -> dict[str
         "report": _GLOBAL_OPERATOR_ARCHITECTURE_REPORT,
     }
 
+
+def _operator_projected_after_components(fixture):
+    ops = fixture["ops"]
+    mortar = build_tensor_face_mortar(
+        ops.coarse_shape,
+        ratio=ops.ratio,
+        dx_c=math.sqrt(float(ops.coarse_area)),
+    )
+    after_pairs = [
+        operator_projected_sat_pair_face(
+            fixture["components"][coarse_index],
+            fixture["components"][fine_index],
+            mortar,
+            fixture["alpha_c"],
+            fixture["alpha_f"],
+            fixture["coarse_mask"],
+            fixture["fine_mask"],
+        )
+        for coarse_index, fine_index in ((0, 4), (1, 5), (2, 6), (3, 7))
+    ]
+    return (
+        after_pairs[0][0],
+        after_pairs[1][0],
+        after_pairs[2][0],
+        after_pairs[3][0],
+        after_pairs[0][1],
+        after_pairs[1][1],
+        after_pairs[2][1],
+        after_pairs[3][1],
+    )
+
+
+def _operator_projected_matched_trace_noop() -> bool:
+    ops, coarse_mask, fine_mask, alpha_c, alpha_f = _face_fixture_ops()
+    mortar = build_tensor_face_mortar(
+        ops.coarse_shape,
+        ratio=ops.ratio,
+        dx_c=math.sqrt(float(ops.coarse_area)),
+    )
+    probes = (
+        jnp.ones(ops.coarse_shape, dtype=jnp.float32) * 1.25,
+        jnp.ones(ops.coarse_shape, dtype=jnp.float32) * -0.75,
+        jnp.ones(ops.coarse_shape, dtype=jnp.float32) * 2.0e-6,
+        jnp.ones(ops.coarse_shape, dtype=jnp.float32) * -1.0e-6,
+    )
+    for coarse in probes:
+        fine = prolong_face_mortar(coarse, mortar)
+        after_coarse, after_fine = operator_projected_sat_pair_face(
+            coarse,
+            fine,
+            mortar,
+            alpha_c,
+            alpha_f,
+            coarse_mask,
+            fine_mask,
+        )
+        if not (
+            np.allclose(np.asarray(after_coarse), np.asarray(coarse), atol=1.0e-7)
+            and np.allclose(np.asarray(after_fine), np.asarray(fine), atol=1.0e-7)
+        ):
+            return False
+    return True
+
+
+def _private_solver_integration_hunk_packet() -> dict[str, object]:
+    """Record the private solver-integration hunk gate after A1-A4 evidence."""
+
+    global_operator = _private_global_derivative_mortar_operator_architecture_packet()
+    fixture = _manufactured_nonzero_face_components()
+    ops = fixture["ops"]
+    mortar = build_tensor_face_mortar(
+        ops.coarse_shape,
+        ratio=ops.ratio,
+        dx_c=math.sqrt(float(ops.coarse_area)),
+    )
+    mortar_adjoint = face_mortar_adjoint_report(mortar)
+    mortar_reproduction = face_mortar_reproduction_report(mortar)
+    before_components = fixture["components"]
+    projected_components = _operator_projected_after_components(fixture)
+    ledger = _ledger_residual_for_components(
+        before_components,
+        projected_components,
+        ops=ops,
+        coarse_mask=fixture["coarse_mask"],
+        fine_mask=fixture["fine_mask"],
+    )
+    current = _current_kernel_coupling_metrics()
+    projected_mismatch = _weighted_trace_mismatch(
+        projected_components,
+        ops=ops,
+        coarse_mask=fixture["coarse_mask"],
+        fine_mask=fixture["fine_mask"],
+    )
+    projected_reduction = (
+        current["weighted_mismatch_before"] - projected_mismatch
+    ) / max(current["weighted_mismatch_before"], 1.0e-30)
+    projected_update_norm = _weighted_update_norm(
+        before_components,
+        projected_components,
+        ops=ops,
+        coarse_mask=fixture["coarse_mask"],
+        fine_mask=fixture["fine_mask"],
+    )
+    update_norm_ratio = projected_update_norm / max(
+        current["current_update_norm"],
+        1.0e-30,
+    )
+    coupling_strength_ratio = projected_reduction / max(
+        current["current_relative_mismatch_reduction"],
+        1.0e-12,
+    )
+
+    zero_fixture = _manufactured_nonzero_face_components()
+    zero_mortar = build_tensor_face_mortar(
+        zero_fixture["ops"].coarse_shape,
+        ratio=zero_fixture["ops"].ratio,
+        dx_c=math.sqrt(float(zero_fixture["ops"].coarse_area)),
+    )
+    zero_fixture["components"] = (
+        before_components[0],
+        before_components[1],
+        jnp.zeros_like(before_components[2]),
+        jnp.zeros_like(before_components[3]),
+        before_components[4],
+        before_components[5],
+        prolong_face_mortar(jnp.zeros_like(before_components[2]), zero_mortar),
+        prolong_face_mortar(jnp.zeros_like(before_components[3]), zero_mortar),
+    )
+    zero_components = _operator_projected_after_components(zero_fixture)
+    zero_work = _ledger_residual_for_components(
+        zero_fixture["components"],
+        zero_components,
+        ops=zero_fixture["ops"],
+        coarse_mask=zero_fixture["coarse_mask"],
+        fine_mask=zero_fixture["fine_mask"],
+    )
+    config, _ = init_subgrid_3d(
+        shape_c=(6, 6, 6),
+        dx_c=_DX_C,
+        fine_region=(1, 5, 1, 5, 1, 5),
+        ratio=_RATIO,
+        tau=_TAU,
+    )
+    all_face_flux = all_face_weighted_flux_report(
+        _global_operator_face_specs(config),
+        ratio=_RATIO,
+        dx_c=_DX_C,
+    )
+    cpml_staging = _private_global_operator_cpml_staging_report()
+    matched_noop = _operator_projected_matched_trace_noop()
+    zero_work_gate = float(zero_work["net_delta_eh"]) <= _ZERO_WORK_POSITIVE_INJECTION_TOL
+    update_bounds_passed = (
+        _BOUNDING_SCALAR_MIN - _CANDIDATE_BOUND_TOL
+        <= update_norm_ratio
+        <= _BOUNDING_SCALAR_MAX + _CANDIDATE_BOUND_TOL
+    )
+    coupling_strength_passed = coupling_strength_ratio >= _COUPLING_STRENGTH_RATIO_MIN
+    preacceptance_passed = bool(
+        global_operator["terminal_outcome"] == _GLOBAL_OPERATOR_ARCHITECTURE_STATUS
+        and mortar_adjoint["passes"]
+        and mortar_reproduction["passes"]
+        and matched_noop
+        and zero_work_gate
+        and update_bounds_passed
+        and coupling_strength_passed
+        and all_face_flux["passes"]
+        and cpml_staging["cpml_non_cpml_compatibility_ready"]
+    )
+    ledger_gate_passed = (
+        float(ledger["normalized_balance_residual"]) <= _LEDGER_BALANCE_THRESHOLD
+    )
+    terminal_outcome = (
+        "private_global_operator_solver_hunk_retained_fixture_quality_pending"
+        if preacceptance_passed and ledger_gate_passed
+        else _SOLVER_INTEGRATION_STATUS
+    )
+    candidates = (
+        {
+            "candidate_id": "current_solver_hunk_inventory_freeze",
+            "candidate_family": "phase0_baseline",
+            "baseline_commit": "a6cb1ff",
+            "sbp_sat_3d_diff_empty_before_attempt": True,
+            "runner_diff_empty_before_attempt": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "operator_projected_face_sat_preacceptance",
+            "candidate_family": "test_local_prod_shaped_operator_projection",
+            "production_solver_edit_allowed": False,
+            "mortar_adjointness_passed": mortar_adjoint["passes"],
+            "projection_noop_passed": mortar_reproduction["passes"],
+            "matched_projected_traces_noop": matched_noop,
+            "zero_work_dissipative": zero_work_gate,
+            "zero_work_net_delta_eh": float(zero_work["net_delta_eh"]),
+            "update_norm_ratio": float(update_norm_ratio),
+            "update_bounds_passed": update_bounds_passed,
+            "coupling_strength_ratio": float(coupling_strength_ratio),
+            "coupling_strength_passed": coupling_strength_passed,
+            "all_face_orientation_signs_passed": all_face_flux["passes"],
+            "cpml_non_cpml_source_order_equivalent": cpml_staging[
+                "cpml_non_cpml_compatibility_ready"
+            ],
+            "accepted_candidate": preacceptance_passed,
+            "terminal_if_selected": "private_operator_projected_sat_preaccepted",
+        },
+        {
+            "candidate_id": "single_private_operator_projected_face_sat_hunk",
+            "candidate_family": "phase2_solver_hunk_gate",
+            "production_solver_edit_allowed": True,
+            "preacceptance_required": True,
+            "preacceptance_passed": preacceptance_passed,
+            "manufactured_ledger_gate_passed": ledger_gate_passed,
+            "ledger_normalized_balance_residual": float(
+                ledger["normalized_balance_residual"]
+            ),
+            "ledger_threshold": _LEDGER_BALANCE_THRESHOLD,
+            "admitted_to_solver": bool(preacceptance_passed and ledger_gate_passed),
+            "retained_solver_hunk_symbols_if_admitted": (
+                _SOLVER_INTEGRATION_ALLOWED_SOLVER_SYMBOLS
+            ),
+            "accepted_candidate": bool(preacceptance_passed and ledger_gate_passed),
+            "rejection_reason": (
+                None
+                if ledger_gate_passed
+                else "operator_projected_face_sat_reproduces_current_ledger_floor"
+            ),
+        },
+        {
+            "candidate_id": "diagnostic_only_dry_run",
+            "candidate_family": "phase4_fail_closed_evidence",
+            "production_solver_edit_allowed": False,
+            "selected_because_solver_hunk_not_retained": not (
+                preacceptance_passed and ledger_gate_passed
+            ),
+            "accepted_candidate": not (preacceptance_passed and ledger_gate_passed),
+            "terminal_if_selected": _SOLVER_INTEGRATION_STATUS,
+        },
+        {
+            "candidate_id": "solver_integration_fail_closed",
+            "candidate_family": "terminal_guard",
+            "production_solver_edit_allowed": False,
+            "status": (
+                "not_selected_diagnostic_only_recorded"
+                if preacceptance_passed
+                else "preacceptance_failed"
+            ),
+            "accepted_candidate": False,
+        },
+    )
+    return {
+        "private_solver_integration_hunk_status": terminal_outcome,
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": _SOLVER_INTEGRATION_TERMINAL_OUTCOMES,
+        "diagnostic_scope": "private_operator_projected_solver_integration_only",
+        "upstream_global_operator_status": global_operator["terminal_outcome"],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": (
+            "single_private_operator_projected_face_sat_hunk"
+            if terminal_outcome
+            == "private_global_operator_solver_hunk_retained_fixture_quality_pending"
+            else "diagnostic_only_dry_run"
+        ),
+        "candidates": candidates,
+        "s1_preacceptance_passed": preacceptance_passed,
+        "s2_manufactured_ledger_gate_passed": ledger_gate_passed,
+        "ledger_normalized_balance_residual": float(
+            ledger["normalized_balance_residual"]
+        ),
+        "ledger_threshold": _LEDGER_BALANCE_THRESHOLD,
+        "operator_projected_sat_adapter": (
+            "rfx/subgridding/sbp_operators.py::operator_projected_sat_pair_face"
+        ),
+        "solver_hunk_allowed_if_selected": _SOLVER_INTEGRATION_ALLOWED_SOLVER_SYMBOLS,
+        "solver_hunk_retained": bool(
+            terminal_outcome
+            == "private_global_operator_solver_hunk_retained_fixture_quality_pending"
+        ),
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "face_ops_global_behavior_changed": False,
+        "hook_experiment_allowed": False,
+        "jit_runner_changed": False,
+        "runner_changed": False,
+        "api_surface_changed": False,
+        "public_claim_allowed": False,
+        "public_api_behavior_changed": False,
+        "public_default_tau_changed": False,
+        "public_observable_promoted": False,
+        "public_true_rt_promoted": False,
+        "public_dft_promoted": False,
+        "promotion_candidate_ready": False,
+        "simresult_changed": False,
+        "result_surface_changed": False,
+        "env_config_changed": False,
+        "next_prerequisite": _SOLVER_INTEGRATION_NEXT_PREREQUISITE,
+        "reason": (
+            "the operator-projected face SAT adapter passes the private S1 "
+            "preacceptance guards, but its production-shaped S2 dry run leaves "
+            "the manufactured face ledger residual above the unchanged 0.02 "
+            "threshold; no sbp_sat_3d.py hunk is retained and public promotion "
+            "remains closed"
+        ),
+        "report": _SOLVER_INTEGRATION_REPORT,
+    }
+
 def _private_bounded_kernel_repair_packet() -> dict[str, object]:
     current = _current_kernel_coupling_metrics()
     candidates = [
@@ -4592,6 +4927,91 @@ def test_private_global_derivative_mortar_operator_architecture_records_contract
     assert packet["result_surface_changed"] is False
     assert packet["env_config_changed"] is False
     assert packet["next_prerequisite"] == _GLOBAL_OPERATOR_ARCHITECTURE_NEXT_PREREQUISITE
+
+
+def test_private_solver_integration_hunk_records_diagnostic_only_gate():
+    packet = _private_solver_integration_hunk_packet()
+
+    assert packet["private_solver_integration_hunk_status"] == (
+        "private_solver_integration_requires_followup_diagnostic_only"
+    )
+    assert packet["terminal_outcome"] in _SOLVER_INTEGRATION_TERMINAL_OUTCOMES
+    assert packet["upstream_global_operator_status"] == (
+        "private_global_operator_3d_contract_ready"
+    )
+    assert packet["candidate_ladder_declared_before_solver_edit"] is True
+    assert packet["candidate_count"] == 5
+    assert packet["selected_candidate_id"] == "diagnostic_only_dry_run"
+    assert packet["s1_preacceptance_passed"] is True
+    assert packet["s2_manufactured_ledger_gate_passed"] is False
+    assert packet["ledger_normalized_balance_residual"] > packet["ledger_threshold"]
+    assert packet["ledger_threshold"] == _LEDGER_BALANCE_THRESHOLD
+
+    candidates = {
+        candidate["candidate_id"]: candidate for candidate in packet["candidates"]
+    }
+    assert set(candidates) == {
+        "current_solver_hunk_inventory_freeze",
+        "operator_projected_face_sat_preacceptance",
+        "single_private_operator_projected_face_sat_hunk",
+        "diagnostic_only_dry_run",
+        "solver_integration_fail_closed",
+    }
+    assert candidates["current_solver_hunk_inventory_freeze"][
+        "sbp_sat_3d_diff_empty_before_attempt"
+    ] is True
+    assert candidates["current_solver_hunk_inventory_freeze"][
+        "runner_diff_empty_before_attempt"
+    ] is True
+    s1 = candidates["operator_projected_face_sat_preacceptance"]
+    assert s1["mortar_adjointness_passed"] is True
+    assert s1["projection_noop_passed"] is True
+    assert s1["matched_projected_traces_noop"] is True
+    assert s1["zero_work_dissipative"] is True
+    assert s1["update_bounds_passed"] is True
+    assert s1["coupling_strength_passed"] is True
+    assert s1["all_face_orientation_signs_passed"] is True
+    assert s1["cpml_non_cpml_source_order_equivalent"] is True
+    s2 = candidates["single_private_operator_projected_face_sat_hunk"]
+    assert s2["preacceptance_passed"] is True
+    assert s2["manufactured_ledger_gate_passed"] is False
+    assert s2["admitted_to_solver"] is False
+    assert s2["ledger_normalized_balance_residual"] > s2["ledger_threshold"]
+    assert s2["rejection_reason"] == (
+        "operator_projected_face_sat_reproduces_current_ledger_floor"
+    )
+    assert candidates["diagnostic_only_dry_run"][
+        "selected_because_solver_hunk_not_retained"
+    ] is True
+
+    assert packet["operator_projected_sat_adapter"] == (
+        "rfx/subgridding/sbp_operators.py::operator_projected_sat_pair_face"
+    )
+    assert packet["solver_hunk_allowed_if_selected"] == (
+        _SOLVER_INTEGRATION_ALLOWED_SOLVER_SYMBOLS
+    )
+    assert packet["solver_hunk_retained"] is False
+    assert packet["actual_solver_hunk_inventory"] == ()
+    assert packet["production_patch_allowed"] is False
+    assert packet["production_patch_applied"] is False
+    assert packet["solver_behavior_changed"] is False
+    assert packet["sbp_sat_3d_repair_applied"] is False
+    assert packet["sbp_sat_3d_diff_allowed"] is False
+    assert packet["hook_experiment_allowed"] is False
+    assert packet["jit_runner_changed"] is False
+    assert packet["runner_changed"] is False
+    assert packet["api_surface_changed"] is False
+    assert packet["public_claim_allowed"] is False
+    assert packet["public_api_behavior_changed"] is False
+    assert packet["public_default_tau_changed"] is False
+    assert packet["public_observable_promoted"] is False
+    assert packet["public_true_rt_promoted"] is False
+    assert packet["public_dft_promoted"] is False
+    assert packet["promotion_candidate_ready"] is False
+    assert packet["simresult_changed"] is False
+    assert packet["result_surface_changed"] is False
+    assert packet["env_config_changed"] is False
+    assert packet["next_prerequisite"] == _SOLVER_INTEGRATION_NEXT_PREREQUISITE
 
 
 def test_private_manufactured_interior_box_ledger_records_edge_corner_accounting():

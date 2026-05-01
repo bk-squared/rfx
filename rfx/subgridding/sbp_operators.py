@@ -322,6 +322,46 @@ def restrict_face_mortar(fine_face: jnp.ndarray, mortar: TensorFaceMortar) -> jn
     return mortar.i.restrict @ fine_face @ mortar.j.restrict.T
 
 
+def operator_projected_sat_pair_face(
+    coarse_face: jnp.ndarray,
+    fine_face: jnp.ndarray,
+    mortar: TensorFaceMortar,
+    alpha_c: float,
+    alpha_f: float,
+    coarse_mask: jnp.ndarray,
+    fine_mask: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Apply the private operator-projected face SAT update.
+
+    This adapter is production-shaped but remains solver-independent: it uses
+    only the tensor mortar identities already proved by the private A1-A4
+    diagnostics and has no runner, hook, config, result, or observable surface.
+    The solver-integration lane can compare this update against the current
+    ``sbp_sat_3d.py`` face SAT path before deciding whether any solver hunk is
+    admissible.
+    """
+
+    coarse_face = jnp.asarray(coarse_face, dtype=jnp.float32)
+    fine_face = jnp.asarray(fine_face, dtype=jnp.float32)
+    coarse_mask = jnp.asarray(coarse_mask, dtype=jnp.float32)
+    fine_mask = jnp.asarray(fine_mask, dtype=jnp.float32)
+    if coarse_mask.shape != mortar.coarse_shape:
+        raise ValueError(
+            f"coarse_mask shape {coarse_mask.shape} does not match {mortar.coarse_shape}"
+        )
+    if fine_mask.shape != mortar.fine_shape:
+        raise ValueError(
+            f"fine_mask shape {fine_mask.shape} does not match {mortar.fine_shape}"
+        )
+
+    coarse_mismatch = restrict_face_mortar(fine_face, mortar) - coarse_face
+    fine_mismatch = prolong_face_mortar(coarse_face, mortar) - fine_face
+    return (
+        coarse_face + alpha_c * coarse_mismatch * coarse_mask,
+        fine_face + alpha_f * fine_mismatch * fine_mask,
+    )
+
+
 def face_mortar_adjoint_report(mortar: TensorFaceMortar) -> dict[str, float | bool]:
     """Return adjoint/noop defects for a tensor-product mortar."""
 

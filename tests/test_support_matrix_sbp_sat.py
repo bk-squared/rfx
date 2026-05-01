@@ -123,7 +123,11 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate["dominant_reference_quality_blocker"]
         == "transverse_phase_spread_deg"
     )
-    assert benchmark_gate["reference_quality_blockers"][:2] == [
+    blocker_names = [
+        blocker["name"] if isinstance(blocker, dict) else blocker
+        for blocker in benchmark_gate["reference_quality_blockers"][:2]
+    ]
+    assert blocker_names == [
         "transverse_phase_spread_deg",
         "transverse_magnitude_cv",
     ]
@@ -131,7 +135,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert benchmark_gate["causal_ladder_status"] == "row2_causal_classified"
     assert benchmark_gate["causal_class"] == "sbp_sat_interface_floor"
     assert benchmark_gate["causal_class"] != "public_claim_ready"
-    assert benchmark_gate["material_improvement_rule"] == {
+    assert {
         "dominant_improvement_min": 0.5,
         "paired_improvement_min": 0.25,
         "new_blocker_regression_max": 0.25,
@@ -139,18 +143,19 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "thresholds_checksum": (
             "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a"
         ),
-    }
-    assert benchmark_gate["causal_ladder_rungs"]["rung5_interface_floor"] == (
-        "implicated"
-    )
+    }.items() <= benchmark_gate["material_improvement_rule"].items()
+    rung5 = benchmark_gate["causal_ladder_rungs"]["rung5_interface_floor"]
+    assert (rung5["status"] if isinstance(rung5, dict) else rung5) == "implicated"
     assert (
         benchmark_gate["causal_ladder_candidates"][2]["candidate_id"]
         == "rung4_central_core_aperture"
     )
+    decision = benchmark_gate["causal_ladder_candidates"][2][
+        "classification_decision"
+    ]
     assert (
-        benchmark_gate["causal_ladder_candidates"][2]["classification_decision"]
-        == "inconclusive"
-    )
+        decision["classification_decision"] if isinstance(decision, dict) else decision
+    ) == "inconclusive"
     assert benchmark_gate["interface_floor_investigation_status"] == "complete"
     assert (
         benchmark_gate["interface_floor_subclass"]
@@ -682,13 +687,40 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == global_operator["next_prerequisite"]
     )
+    solver_integration = benchmark_gate["private_solver_integration_hunk"]
+    assert benchmark_gate["private_solver_integration_hunk_status"] == (
+        "private_solver_integration_requires_followup_diagnostic_only"
+    )
+    assert solver_integration["terminal_outcome"] == (
+        benchmark_gate["private_solver_integration_hunk_status"]
+    )
+    assert solver_integration["upstream_global_operator_status"] == (
+        benchmark_gate["private_global_derivative_mortar_operator_architecture_status"]
+    )
+    assert solver_integration["selected_candidate_id"] == "diagnostic_only_dry_run"
+    assert solver_integration["s1_preacceptance_passed"] is True
+    assert solver_integration["s2_manufactured_ledger_gate_passed"] is False
+    assert solver_integration["ledger_normalized_balance_residual"] > (
+        solver_integration["ledger_threshold"]
+    )
+    assert solver_integration["solver_hunk_retained"] is False
+    assert solver_integration["actual_solver_hunk_inventory"] == []
+    assert solver_integration["production_patch_applied"] is False
+    assert solver_integration["sbp_sat_3d_repair_applied"] is False
+    assert solver_integration["public_claim_allowed"] is False
+    assert solver_integration["public_observable_promoted"] is False
+    assert solver_integration["hook_experiment_allowed"] is False
+    assert (
+        benchmark_gate["private_solver_integration_hunk_next_prerequisite"]
+        == solver_integration["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private solver integration hunk from global SBP derivative/mortar "
-        "operator architecture after A1-A4 evidence summary ralplan"
+        "private operator-projected face SAT energy-transfer redesign after "
+        "diagnostic-only solver integration gate failed ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private solver integration hunk from global SBP derivative/mortar "
-        "operator architecture after A1-A4 evidence summary ralplan"
+        "private operator-projected face SAT energy-transfer redesign after "
+        "diagnostic-only solver integration gate failed ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -950,8 +982,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private solver integration hunk from global SBP derivative/mortar "
-        "operator architecture after A1-A4 evidence summary ralplan"
+        "private operator-projected face SAT energy-transfer redesign after "
+        "diagnostic-only solver integration gate failed ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

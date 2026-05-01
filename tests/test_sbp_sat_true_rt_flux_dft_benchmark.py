@@ -547,6 +547,25 @@ _PRIVATE_GLOBAL_OPERATOR_ALLOWED_SOLVER_SYMBOLS = (
     "step_subgrid_3d_with_cpml",
     "step_subgrid_3d",
 )
+_PRIVATE_SOLVER_INTEGRATION_HUNK_STATUS = (
+    "private_solver_integration_requires_followup_diagnostic_only"
+)
+_PRIVATE_SOLVER_INTEGRATION_HUNK_NEXT_PREREQUISITE = (
+    "private operator-projected face SAT energy-transfer redesign after "
+    "diagnostic-only solver integration gate failed ralplan"
+)
+_PRIVATE_SOLVER_INTEGRATION_HUNK_TERMINAL_OUTCOMES = (
+    "private_operator_projected_sat_preaccepted",
+    "private_global_operator_solver_hunk_retained_fixture_quality_pending",
+    "private_operator_aware_time_centered_helper_retained_fixture_quality_pending",
+    "private_solver_integration_requires_followup_diagnostic_only",
+    "no_private_solver_integration_hunk_retained",
+)
+_PRIVATE_SOLVER_INTEGRATION_ALLOWED_SOLVER_SYMBOLS = (
+    "_apply_operator_projected_sat_pair_face",
+    "apply_sat_h_interfaces",
+    "apply_sat_e_interfaces",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -3440,6 +3459,109 @@ def _private_global_derivative_mortar_operator_architecture_metadata(
         **_private_public_closure_metadata(),
     }
 
+
+def _private_solver_integration_hunk_metadata(
+    *,
+    global_operator_metadata: dict[str, object],
+) -> dict[str, object]:
+    ledger_residual = _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_LEDGER_RESIDUAL
+    candidates = (
+        {
+            "candidate_id": "current_solver_hunk_inventory_freeze",
+            "candidate_family": "phase0_baseline",
+            "baseline_commit": "a6cb1ff",
+            "sbp_sat_3d_diff_empty_before_attempt": True,
+            "runner_diff_empty_before_attempt": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "operator_projected_face_sat_preacceptance",
+            "candidate_family": "test_local_prod_shaped_operator_projection",
+            "production_solver_edit_allowed": False,
+            "mortar_adjointness_passed": True,
+            "projection_noop_passed": True,
+            "matched_projected_traces_noop": True,
+            "zero_work_dissipative": True,
+            "update_bounds_passed": True,
+            "coupling_strength_passed": True,
+            "all_face_orientation_signs_passed": True,
+            "cpml_non_cpml_source_order_equivalent": True,
+            "accepted_candidate": True,
+            "terminal_if_selected": "private_operator_projected_sat_preaccepted",
+        },
+        {
+            "candidate_id": "single_private_operator_projected_face_sat_hunk",
+            "candidate_family": "phase2_solver_hunk_gate",
+            "production_solver_edit_allowed": True,
+            "preacceptance_required": True,
+            "preacceptance_passed": True,
+            "manufactured_ledger_gate_passed": False,
+            "ledger_normalized_balance_residual": ledger_residual,
+            "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "admitted_to_solver": False,
+            "retained_solver_hunk_symbols_if_admitted": (
+                _PRIVATE_SOLVER_INTEGRATION_ALLOWED_SOLVER_SYMBOLS
+            ),
+            "accepted_candidate": False,
+            "rejection_reason": (
+                "operator_projected_face_sat_reproduces_current_ledger_floor"
+            ),
+        },
+        {
+            "candidate_id": "diagnostic_only_dry_run",
+            "candidate_family": "phase4_fail_closed_evidence",
+            "production_solver_edit_allowed": False,
+            "selected_because_solver_hunk_not_retained": True,
+            "accepted_candidate": True,
+            "terminal_if_selected": _PRIVATE_SOLVER_INTEGRATION_HUNK_STATUS,
+        },
+        {
+            "candidate_id": "solver_integration_fail_closed",
+            "candidate_family": "terminal_guard",
+            "production_solver_edit_allowed": False,
+            "status": "not_selected_diagnostic_only_recorded",
+            "accepted_candidate": False,
+        },
+    )
+    return {
+        "status": _PRIVATE_SOLVER_INTEGRATION_HUNK_STATUS,
+        "terminal_outcome": _PRIVATE_SOLVER_INTEGRATION_HUNK_STATUS,
+        "terminal_outcome_taxonomy": _PRIVATE_SOLVER_INTEGRATION_HUNK_TERMINAL_OUTCOMES,
+        "diagnostic_scope": "private_operator_projected_solver_integration_only",
+        "upstream_global_operator_status": global_operator_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": "diagnostic_only_dry_run",
+        "candidates": candidates,
+        "s1_preacceptance_passed": True,
+        "s2_manufactured_ledger_gate_passed": False,
+        "ledger_normalized_balance_residual": ledger_residual,
+        "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+        "operator_projected_sat_adapter": (
+            "rfx/subgridding/sbp_operators.py::operator_projected_sat_pair_face"
+        ),
+        "solver_hunk_allowed_if_selected": (
+            _PRIVATE_SOLVER_INTEGRATION_ALLOWED_SOLVER_SYMBOLS
+        ),
+        "solver_hunk_retained": False,
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "face_ops_global_behavior_changed": False,
+        "next_prerequisite": _PRIVATE_SOLVER_INTEGRATION_HUNK_NEXT_PREREQUISITE,
+        "reason": (
+            "operator-projected face SAT passes private S1 preacceptance, but "
+            "the production-shaped S2 dry run leaves the manufactured face "
+            "ledger residual above the unchanged 0.02 threshold; no "
+            "sbp_sat_3d.py hunk is retained"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -5085,6 +5207,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
         "vacuum_stability": bool(vacuum_stability["passed"]),
     }
     base_metadata: dict[str, object] = {
+        "status": "inconclusive",
+        "test_file": "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py",
+        "claim_level": "internal_benchmark_only_not_public_rt_or_sparameters",
         "fixture": ("boundary_expanded_private_tfsf_style_incident_flux_plane_vacuum"),
         "fixture_name": fixture.name,
         "fixture_parameters": fixture.to_metadata(),
@@ -5248,8 +5373,22 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    solver_integration_metadata = _private_solver_integration_hunk_metadata(
+        global_operator_metadata=global_operator_metadata,
+    )
+    base_metadata.update(
+        {
+            "private_solver_integration_hunk_status": (
+                solver_integration_metadata["status"]
+            ),
+            "private_solver_integration_hunk": solver_integration_metadata,
+            "private_solver_integration_hunk_next_prerequisite": (
+                solver_integration_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_global_derivative_mortar_operator_architecture_next_prerequisite"
+        "private_solver_integration_hunk_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -5293,11 +5432,11 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "derivative/interior-boundary ladder records "
                 f"{derivative_interface_metadata['terminal_outcome']}; the private "
                 "global SBP derivative/mortar operator architecture records "
-                f"{global_operator_metadata['terminal_outcome']}"
+                f"{global_operator_metadata['terminal_outcome']}; the private "
+                "solver-integration hunk gate records "
+                f"{solver_integration_metadata['terminal_outcome']}"
             ),
-            "next_prerequisite": base_metadata[
-                "private_global_derivative_mortar_operator_architecture_next_prerequisite"
-            ],
+            "next_prerequisite": base_metadata["private_solver_integration_hunk_next_prerequisite"],
         }
 
     slab_run = _run_flux_fixture(
@@ -6810,11 +6949,26 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert global_operator["result_surface_changed"] is False
     assert global_operator["runner_surface_changed"] is False
     assert global_operator["env_config_changed"] is False
+    solver_integration = metadata["private_solver_integration_hunk"]
+    assert metadata["private_solver_integration_hunk_status"] == (
+        "private_solver_integration_requires_followup_diagnostic_only"
+    )
+    assert solver_integration["upstream_global_operator_status"] == (
+        metadata["private_global_derivative_mortar_operator_architecture_status"]
+    )
+    assert solver_integration["selected_candidate_id"] == "diagnostic_only_dry_run"
+    assert solver_integration["s1_preacceptance_passed"] is True
+    assert solver_integration["s2_manufactured_ledger_gate_passed"] is False
+    assert solver_integration["solver_hunk_retained"] is False
+    assert solver_integration["actual_solver_hunk_inventory"] == ()
+    assert solver_integration["production_patch_applied"] is False
+    assert solver_integration["sbp_sat_3d_repair_applied"] is False
+    assert solver_integration["public_claim_allowed"] is False
+    assert solver_integration["public_observable_promoted"] is False
+    assert solver_integration["hook_experiment_allowed"] is False
     assert (
         metadata["follow_up_recommendation"]
-        == metadata[
-            "private_global_derivative_mortar_operator_architecture_next_prerequisite"
-        ]
+        == metadata["private_solver_integration_hunk_next_prerequisite"]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -6838,9 +6992,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata[
-            "private_global_derivative_mortar_operator_architecture_next_prerequisite"
-        ]
+        == metadata["private_solver_integration_hunk_next_prerequisite"]
     )
     assert (
         "same-contract private reference helper is present"
@@ -6875,4 +7027,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["private_global_derivative_mortar_operator_architecture_status"]
         in metadata["blocking_diagnostic"]
     )
+    assert metadata["private_solver_integration_hunk_status"] in metadata[
+        "blocking_diagnostic"
+    ]
     assert "not public TFSF" in metadata["diagnostic_basis"]

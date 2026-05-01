@@ -204,9 +204,14 @@ keeps the public claim blocked:
   diagonal-norm SBP derivatives including Yee-staggered dual operators,
   norm-compatible mortar projection, material/metric weighted tangential EM flux
   closure, all-six-face edge/corner partition closure, and CPML/non-CPML SAT
-  staging evidence. No `sbp_sat_3d.py` solver hunk is retained, and the next safe lane is private solver integration hunk
-  from global SBP derivative/mortar operator architecture after A1-A4 evidence
-  summary;
+  staging evidence. No `sbp_sat_3d.py` solver hunk is retained;
+- the private solver integration hunk gate now records
+  `private_solver_integration_requires_followup_diagnostic_only`: the
+  operator-projected face SAT adapter passes S1 preacceptance, but the
+  production-shaped S2 dry run reproduces the manufactured ledger floor above
+  the unchanged `0.02` threshold, so no `sbp_sat_3d.py` hunk is retained and the
+  next safe lane is private operator-projected face SAT energy-transfer redesign.
+  This gate is still the private solver integration hunk from global SBP derivative/mortar operator architecture evidence, not a public observable promotion;
 - the prior boundary-expanded analytic-sheet sweep is retained as history, not
   as current slab R/T evidence;
 - the current recorded status is therefore **inconclusive**, not a public
@@ -241,10 +246,12 @@ SBP face-norm/interface-operator redesign ladder now records
 derivative/interior-boundary ladder now records
 `no_private_derivative_interface_repair`, and because the private global SBP
 derivative/mortar operator architecture lane now records
-`private_global_operator_3d_contract_ready`, the next safe lane is `private solver
-integration hunk from global SBP derivative/mortar operator architecture after
-A1-A4 evidence summary ralplan`. Hook experiments remain closed and public
-promotion remains closed.
+`private_global_operator_3d_contract_ready`, and because the private
+solver-integration gate now records
+`private_solver_integration_requires_followup_diagnostic_only`, the next safe
+lane is `private operator-projected face SAT energy-transfer redesign after
+diagnostic-only solver integration gate failed ralplan`. Hook experiments remain
+closed and public promotion remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true
 R/T as deferred.

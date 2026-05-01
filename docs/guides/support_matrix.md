@@ -188,9 +188,13 @@ passes for diagonal-norm SBP derivatives including Yee-staggered dual operators,
 norm-compatible mortar projection, material/metric weighted tangential EM flux
 closure, all-six-face edge/corner partition closure, and CPML/non-CPML SAT
 staging evidence. No `sbp_sat_3d.py` solver hunk is retained, public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook
-promotion remains closed, and the next safe lane is private solver integration
-hunk from global SBP derivative/mortar operator architecture after A1-A4 evidence
-summary, not public observable promotion.
+promotion remains closed. The private solver-integration gate now records
+`private_solver_integration_requires_followup_diagnostic_only`: the
+operator-projected face SAT adapter passes S1 preacceptance, but the S2
+production-shaped dry run leaves the manufactured ledger residual above the
+unchanged `0.02` threshold, so no `sbp_sat_3d.py` hunk is retained and the next
+safe lane is private operator-projected face SAT energy-transfer redesign, not
+public observable promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
