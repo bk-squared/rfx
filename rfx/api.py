@@ -2351,102 +2351,8 @@ class Simulation:
                 for cfg in raw_cfgs
             ]
 
-        if has_multimode:
-            # Multi-mode path: each raw_cfg is a list of WaveguidePortConfig
-            port_mode_cfgs: list[list] = []
-            for entry, raw in zip(entries, raw_cfgs):
-                if isinstance(raw, list):
-                    port_mode_cfgs.append(raw)
-                else:
-                    port_mode_cfgs.append([raw])
-
-            ref_shifts_mm = []
-            for entry, mode_cfgs in zip(entries, port_mode_cfgs):
-                first_cfg = mode_cfgs[0]
-                planes = waveguide_plane_positions(first_cfg)
-                desired_ref = (
-                    entry.reference_plane
-                    if entry.reference_plane is not None
-                    else planes["source"]
-                )
-                ref_shifts_mm.append(desired_ref - planes["reference"])
-
-            if normalize:
-                raise ValueError(
-                    "compute_waveguide_s_matrix(normalize=True) is not yet "
-                    "supported with n_modes > 1"
-                )
-
-            s_params, mode_map = extract_multimode_s_matrix(
-                grid,
-                materials,
-                port_mode_cfgs,
-                n_steps,
-                boundary="cpml",
-                cpml_axes=grid.cpml_axes,
-                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
-                debye=debye,
-                lorentz=lorentz,
-                ref_shifts=ref_shifts_mm,
-            )
-            reference_planes = np.array(ref_shifts_mm, dtype=float)
-            # Build port names including mode indices
-            port_names_mm = []
-            port_directions_mm = []
-            for port_idx, mode_idx, mtype, m_n in mode_map:
-                entry = entries[port_idx]
-                port_names_mm.append(f"{entry.name}_mode{mode_idx}_{mtype}{m_n[0]}{m_n[1]}")
-                port_directions_mm.append(entry.direction)
-            return WaveguideSMatrixResult(
-                s_params=np.array(s_params),
-                freqs=np.array(freqs),
-                port_names=tuple(port_names_mm),
-                port_directions=tuple(port_directions_mm),
-                reference_planes=reference_planes,
-            )
-
-        # Single-mode path (original behavior)
-        cfgs = raw_cfgs
-
-        def _slices_overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
-            return max(a[0], b[0]) < min(a[1], b[1])
-
-        by_direction = {}
-        for entry, cfg in zip(entries, cfgs):
-            by_direction.setdefault(entry.direction, []).append(cfg)
-
-        for direction, side_cfgs in by_direction.items():
-            plane_indices = {cfg.x_index for cfg in side_cfgs}
-            if len(plane_indices) != 1:
-                raise ValueError(
-                    f"waveguide ports on boundary {direction} must share one boundary plane"
-                )
-            for i in range(len(side_cfgs)):
-                for j in range(i + 1, len(side_cfgs)):
-                    if _slices_overlap((side_cfgs[i].u_lo, side_cfgs[i].u_hi), (side_cfgs[j].u_lo, side_cfgs[j].u_hi)) and _slices_overlap((side_cfgs[i].v_lo, side_cfgs[i].v_hi), (side_cfgs[j].v_lo, side_cfgs[j].v_hi)):
-                        raise ValueError(
-                            f"waveguide ports on the same {direction} boundary must have disjoint apertures"
-                        )
-
-        ref_shifts = []
-        for entry, cfg in zip(entries, cfgs):
-            # Default reference plane = the user-facing port plane
-            # (snapped x_position). Previously defaulted to the internal
-            # ``reference_x_m`` (= source + ref_offset·dx) which left the
-            # returned S-matrix phase-shifted by `exp(-jβ·ref_offset·dx)`
-            # relative to the physical port — a silent convention mismatch
-            # vs. Meep, OpenEMS, and any analytic formula the user would
-            # compare against. Keep the ``entry.reference_plane`` override
-            # for explicit user control.
-            planes = waveguide_plane_positions(cfg)
-            desired_ref = (
-                entry.reference_plane
-                if entry.reference_plane is not None
-                else planes["source"]
-            )
-            ref_shifts.append(desired_ref - planes["reference"])
-
         # Compute Kottke per-component smoothed permittivity if requested.
+        # Shared by both single-mode and multi-mode paths.
         # Mirrors rfx/runners/uniform.py: shape_eps_pairs from sim geometry,
         # then compute_smoothed_eps. The reference run is vacuum and has no
         # ε interfaces, so it always passes aniso_eps=None inside the
@@ -2565,6 +2471,104 @@ class Simulation:
                 ref_eps_base, w_ex, w_ey, w_ez,
             )
             ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
+
+        if has_multimode:
+            # Multi-mode path: each raw_cfg is a list of WaveguidePortConfig
+            port_mode_cfgs: list[list] = []
+            for entry, raw in zip(entries, raw_cfgs):
+                if isinstance(raw, list):
+                    port_mode_cfgs.append(raw)
+                else:
+                    port_mode_cfgs.append([raw])
+
+            ref_shifts_mm = []
+            for entry, mode_cfgs in zip(entries, port_mode_cfgs):
+                first_cfg = mode_cfgs[0]
+                planes = waveguide_plane_positions(first_cfg)
+                desired_ref = (
+                    entry.reference_plane
+                    if entry.reference_plane is not None
+                    else planes["source"]
+                )
+                ref_shifts_mm.append(desired_ref - planes["reference"])
+
+            if normalize:
+                raise ValueError(
+                    "compute_waveguide_s_matrix(normalize=True) is not yet "
+                    "supported with n_modes > 1"
+                )
+
+            s_params, mode_map = extract_multimode_s_matrix(
+                grid,
+                materials,
+                port_mode_cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
+                debye=debye,
+                lorentz=lorentz,
+                ref_shifts=ref_shifts_mm,
+                aniso_eps=aniso_eps,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+            )
+            reference_planes = np.array(ref_shifts_mm, dtype=float)
+            # Build port names including mode indices
+            port_names_mm = []
+            port_directions_mm = []
+            for port_idx, mode_idx, mtype, m_n in mode_map:
+                entry = entries[port_idx]
+                port_names_mm.append(f"{entry.name}_mode{mode_idx}_{mtype}{m_n[0]}{m_n[1]}")
+                port_directions_mm.append(entry.direction)
+            return WaveguideSMatrixResult(
+                s_params=np.array(s_params),
+                freqs=np.array(freqs),
+                port_names=tuple(port_names_mm),
+                port_directions=tuple(port_directions_mm),
+                reference_planes=reference_planes,
+            )
+
+        # Single-mode path (original behavior)
+        cfgs = raw_cfgs
+
+        def _slices_overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
+            return max(a[0], b[0]) < min(a[1], b[1])
+
+        by_direction = {}
+        for entry, cfg in zip(entries, cfgs):
+            by_direction.setdefault(entry.direction, []).append(cfg)
+
+        for direction, side_cfgs in by_direction.items():
+            plane_indices = {cfg.x_index for cfg in side_cfgs}
+            if len(plane_indices) != 1:
+                raise ValueError(
+                    f"waveguide ports on boundary {direction} must share one boundary plane"
+                )
+            for i in range(len(side_cfgs)):
+                for j in range(i + 1, len(side_cfgs)):
+                    if _slices_overlap((side_cfgs[i].u_lo, side_cfgs[i].u_hi), (side_cfgs[j].u_lo, side_cfgs[j].u_hi)) and _slices_overlap((side_cfgs[i].v_lo, side_cfgs[i].v_hi), (side_cfgs[j].v_lo, side_cfgs[j].v_hi)):
+                        raise ValueError(
+                            f"waveguide ports on the same {direction} boundary must have disjoint apertures"
+                        )
+
+        ref_shifts = []
+        for entry, cfg in zip(entries, cfgs):
+            # Default reference plane = the user-facing port plane
+            # (snapped x_position). Previously defaulted to the internal
+            # ``reference_x_m`` (= source + ref_offset·dx) which left the
+            # returned S-matrix phase-shifted by `exp(-jβ·ref_offset·dx)`
+            # relative to the physical port — a silent convention mismatch
+            # vs. Meep, OpenEMS, and any analytic formula the user would
+            # compare against. Keep the ``entry.reference_plane`` override
+            # for explicit user control.
+            planes = waveguide_plane_positions(cfg)
+            desired_ref = (
+                entry.reference_plane
+                if entry.reference_plane is not None
+                else planes["source"]
+            )
+            ref_shifts.append(desired_ref - planes["reference"])
 
         _pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
         if normalize == "flux":

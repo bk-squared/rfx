@@ -2639,6 +2639,9 @@ def extract_multimode_s_matrix(
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     ref_shifts: list[float] | None = None,
+    aniso_eps: tuple | None = None,
+    conformal_weights: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Assemble a multi-mode waveguide S-matrix.
 
@@ -2729,6 +2732,9 @@ def extract_multimode_s_matrix(
             debye=debye,
             lorentz=lorentz,
             waveguide_ports=driven_cfgs,
+            aniso_eps=aniso_eps,
+            conformal_weights=conformal_weights,
+            aniso_inv_eps=aniso_inv_eps,
         )
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_total:
