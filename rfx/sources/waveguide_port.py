@@ -1996,6 +1996,179 @@ def extract_waveguide_s_matrix(
     return jnp.asarray(s_matrix)
 
 
+def extract_waveguide_s_matrix_flux(
+    grid,
+    materials,
+    ref_materials,
+    port_cfgs: list[WaveguidePortConfig],
+    n_steps: int,
+    *,
+    boundary: str = "cpml",
+    cpml_axes: str = "x",
+    pec_axes: str = "yz",
+    periodic: tuple[bool, bool, bool] | None = None,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    ref_debye: tuple | None = None,
+    ref_lorentz: tuple | None = None,
+    ref_shifts: list[float] | tuple[float, ...] | None = None,
+    aniso_eps: tuple | None = None,
+    conformal_weights: tuple | None = None,
+    ref_aniso_eps: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
+    ref_aniso_inv_eps: tuple | None = None,
+) -> jnp.ndarray:
+    """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
+
+    For each driven port ``i``:
+
+      1. Reference run (empty guide, port ``i`` driven) → incident
+         Poynting flux ``P_inc`` at the driven port probe plane.
+      2. Device run (port ``i`` driven) → Poynting flux at every port
+         probe plane.
+
+    Magnitudes are assembled from power ratios::
+
+        |S_ii|² = |F_ref[i] − F_dev[i]| / |F_ref[i]|   (reflection)
+        |S_ji|² = |F_dev[j]|            / |F_ref[i]|   (transmission, j≠i)
+
+    Phase is taken from the modal V/I decomposition of the device run.
+    This resolves both the Z_TE impedance-mismatch error that corrupts
+    ``normalize=False`` S11 (~3 % at dx/λ=0.07) and the round-trip
+    dispersion error in the ``normalize=True`` diagonal formula.
+
+    Parameters mirror ``extract_waveguide_s_params_normalized``; see that
+    function for argument documentation.
+    """
+    if len(port_cfgs) < 2:
+        raise ValueError(
+            "extract_waveguide_s_matrix_flux requires at least two waveguide ports"
+        )
+    if ref_shifts is None:
+        ref_shifts = tuple(0.0 for _ in port_cfgs)
+    if len(ref_shifts) != len(port_cfgs):
+        raise ValueError("ref_shifts must match the number of waveguide ports when provided")
+
+    from rfx.simulation import run as run_simulation
+    from rfx.probes.probes import init_flux_monitor, flux_spectrum
+
+    _AXIS_IDX = {"x": 0, "y": 1, "z": 2}
+
+    template_cfgs = tuple(port_cfgs)
+    n_ports = len(template_cfgs)
+    n_freqs = len(template_cfgs[0].freqs)
+    freqs = template_cfgs[0].freqs
+    s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+
+    def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
+        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        return cfg._replace(
+            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            v_probe_t=zeros_t,
+            v_ref_t=zeros_t,
+            i_probe_t=zeros_t,
+            i_ref_t=zeros_t,
+            v_inc_t=zeros_t,
+            n_steps_recorded=jnp.zeros((), dtype=jnp.int32),
+        )
+
+    def _make_flux_monitors():
+        return [
+            init_flux_monitor(
+                axis=_AXIS_IDX[cfg.normal_axis],
+                index=cfg.probe_x,
+                freqs=freqs,
+                grid_shape=grid.shape,
+                dx=cfg.dx,
+                dft_total_steps=n_steps,
+                lo1=cfg.u_lo, hi1=cfg.u_hi,
+                lo2=cfg.v_lo, hi2=cfg.v_hi,
+            )
+            for cfg in template_cfgs
+        ]
+
+    common_run_kw = dict(
+        boundary=boundary,
+        cpml_axes=cpml_axes,
+        pec_axes=pec_axes,
+        periodic=periodic,
+    )
+
+    for drive_idx in range(n_ports):
+        # --- Reference run (empty guide, port drive_idx driven) ---
+        ref_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+            for idx, cfg in enumerate(template_cfgs)
+        ]
+        ref_result = run_simulation(
+            grid, ref_materials, n_steps,
+            debye=ref_debye, lorentz=ref_lorentz,
+            waveguide_ports=ref_cfgs,
+            flux_monitors=_make_flux_monitors(),
+            aniso_eps=ref_aniso_eps,
+            aniso_inv_eps=ref_aniso_inv_eps,
+            **common_run_kw,
+        )
+        ref_final_cfgs = ref_result.waveguide_ports or ()
+        ref_final_mons = ref_result.flux_monitors or ()
+        if len(ref_final_cfgs) != n_ports:
+            raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+
+        # Incident power: signed flux at driven port in the reference guide.
+        # |F_ref| = P_inc regardless of port direction (+x vs −x).
+        F_ref_drive = np.array(flux_spectrum(ref_final_mons[drive_idx]))  # (n_freqs,)
+        P_inc = np.abs(F_ref_drive)
+        safe_P_inc = np.where(P_inc > 1e-60, P_inc, np.ones_like(P_inc))
+
+        # Modal incident wave (reference run) — used to determine phase reference
+        a_inc_ref, _ = extract_waveguide_port_waves(
+            ref_final_cfgs[drive_idx], ref_shift=ref_shifts[drive_idx]
+        )
+
+        # --- Device run (port drive_idx driven) ---
+        dev_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+            for idx, cfg in enumerate(template_cfgs)
+        ]
+        dev_result = run_simulation(
+            grid, materials, n_steps,
+            debye=debye, lorentz=lorentz,
+            waveguide_ports=dev_cfgs,
+            flux_monitors=_make_flux_monitors(),
+            aniso_eps=aniso_eps,
+            conformal_weights=conformal_weights,
+            aniso_inv_eps=aniso_inv_eps,
+            **common_run_kw,
+        )
+        dev_final_cfgs = dev_result.waveguide_ports or ()
+        dev_final_mons = dev_result.flux_monitors or ()
+        if len(dev_final_cfgs) != n_ports:
+            raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+
+        F_dev_drive = np.array(flux_spectrum(dev_final_mons[drive_idx]))
+
+        for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
+            # Phase from modal V/I decomposition of device run
+            _, b_recv_dev = extract_waveguide_port_waves(
+                dev_cfg, ref_shift=ref_shifts[recv_idx]
+            )
+            safe_a = jnp.where(jnp.abs(a_inc_ref) > 1e-60, a_inc_ref, jnp.ones_like(a_inc_ref))
+            phase = np.angle(np.array(b_recv_dev / safe_a))
+
+            if recv_idx == drive_idx:
+                # Reflection: ref_flux − dev_flux = power that turned around
+                P_refl = np.abs(F_ref_drive - F_dev_drive)
+                mag = np.sqrt(P_refl / safe_P_inc)
+            else:
+                # Transmission: net flux through receiving port's probe plane
+                F_dev_recv = np.array(flux_spectrum(dev_final_mons[recv_idx]))
+                P_trans = np.abs(F_dev_recv)
+                mag = np.sqrt(P_trans / safe_P_inc)
+
+            s_matrix[recv_idx, drive_idx, :] = mag * np.exp(1j * phase)
+
+    return jnp.asarray(s_matrix)
+
 
 def extract_waveguide_s_params_normalized(
     grid,

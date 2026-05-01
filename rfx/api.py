@@ -41,6 +41,7 @@ from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
 from rfx.sources.waveguide_port import (
     WaveguidePort,
     extract_waveguide_s_matrix,
+    extract_waveguide_s_matrix_flux,
     extract_waveguide_s_params_normalized,
     init_waveguide_port,
     init_multimode_waveguide_port,
@@ -2181,7 +2182,7 @@ class Simulation:
         *,
         n_steps: int | None = None,
         num_periods: float = 20.0,
-        normalize: bool = False,
+        normalize: bool | str = False,
         subpixel_smoothing: bool | str = False,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
@@ -2199,30 +2200,30 @@ class Simulation:
             the legacy ``num_periods_dft`` early-gate knob — the rect
             full-record DFT is finite-energy on the recorded transient
             so no gating is needed even on strong reflectors.
-        normalize : bool
-            When True, runs a two-run normalization that cancels Yee-grid
-            numerical dispersion for **transmission** (off-diagonal) terms.
-            A reference simulation (vacuum, no user geometry) is run
-            automatically; device outgoing waves are divided by the
-            reference waves measured at the same port.
+        normalize : bool or "flux"
+            Controls the S-parameter extraction algorithm:
 
-            **S21 / reciprocity**: use ``normalize=True``.  The reference
-            wave at port 2 accumulates the same one-way dispersion as the
-            device wave, so the ratio cancels the bias exactly.
+            ``False`` (default) — modal V/I decomposition, no reference
+            run.  Magnitude includes Yee impedance mismatch
+            (Z_TE_num/Z_TE_exact ≈ 3 % at dx/λ = 0.07).  Use for
+            |S11| of strong reflectors (PEC short, high-Q resonators)
+            where this error is smaller than the ±10–20 % round-trip
+            dispersion error introduced by ``normalize=True``.
 
-            **S11 of strong reflectors** (PEC short, high-Q resonators):
-            use ``normalize=False``.  The two-run diagonal formula
-            ``S11 = (b_dev − b_ref) / a_ref`` does *not* cancel
-            dispersion for reflection: the device wave is a round-trip
-            while the reference is one-way.  For strong reflectors this
-            mismatch causes ±10–20 % magnitude errors in |S11| with
-            ``normalize=True``, whereas ``normalize=False`` keeps |S11|
-            within the Yee dispersion floor (< 2 % at dx/λ < 0.05).
+            ``True`` — two-run modal normalization.  Cancels one-way
+            Yee dispersion for **transmission** (off-diagonal) by
+            dividing device outgoing waves by reference outgoing waves
+            at the same port.  **Does not** cancel dispersion for
+            reflection (round-trip vs one-way path mismatch); use
+            ``normalize=False`` or ``normalize="flux"`` for S11 of
+            strong reflectors.
 
-            **Future**: a power-flux (Poynting-vector) extraction —
-            analogous to Meep's ``add_flux`` — will give a method that
-            is correct for both S11 and S21 without a reference run.
-            Tracked in ``docs/agent-memory/rfx-known-issues.md``.
+            ``"flux"`` — hybrid power-flux extraction.  Magnitude from
+            Poynting-vector DFT (|S|² = P_flux / P_inc), phase from
+            modal V/I.  Corrects both the Z_TE impedance-mismatch error
+            in S11 and the round-trip dispersion error in the
+            ``normalize=True`` diagonal formula.  Costs 2 × N_ports
+            FDTD runs (same as ``normalize=True``).
         """
         if not normalize:
             import warnings
@@ -2266,7 +2267,7 @@ class Simulation:
         # raise so the user is not given silently-wrong numbers.
         if self._dx_profile is not None or self._dy_profile is not None:
             unsupported = []
-            if not normalize:
+            if normalize is not True:
                 unsupported.append("normalize=True is required")
             if any(entry.n_modes > 1 for entry in entries):
                 unsupported.append("multi-mode ports (n_modes>1) are not supported")
@@ -2565,8 +2566,31 @@ class Simulation:
             )
             ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
 
-        if normalize:
-            # Build reference materials: vacuum everywhere (no user geometry).
+        _pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
+        if normalize == "flux":
+            from rfx.core.yee import init_materials as _init_vacuum_materials
+            ref_materials = _init_vacuum_materials(grid.shape)
+            s_params = extract_waveguide_s_matrix_flux(
+                grid,
+                materials,
+                ref_materials,
+                cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes=_pec_axes,
+                debye=debye,
+                lorentz=lorentz,
+                ref_debye=None,
+                ref_lorentz=None,
+                ref_shifts=ref_shifts,
+                aniso_eps=aniso_eps,
+                ref_aniso_eps=ref_aniso_eps,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                ref_aniso_inv_eps=ref_aniso_inv_eps,
+            )
+        elif normalize:
             from rfx.core.yee import init_materials as _init_vacuum_materials
             ref_materials = _init_vacuum_materials(grid.shape)
             s_params = extract_waveguide_s_params_normalized(
@@ -2577,7 +2601,7 @@ class Simulation:
                 n_steps,
                 boundary="cpml",
                 cpml_axes=grid.cpml_axes,
-                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
+                pec_axes=_pec_axes,
                 debye=debye,
                 lorentz=lorentz,
                 ref_debye=None,
@@ -2597,7 +2621,7 @@ class Simulation:
                 n_steps,
                 boundary="cpml",
                 cpml_axes=grid.cpml_axes,
-                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
+                pec_axes=_pec_axes,
                 debye=debye,
                 lorentz=lorentz,
                 ref_shifts=ref_shifts,
