@@ -1361,11 +1361,60 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == adapter_implementation["next_prerequisite"]
     )
+    parity_scoring = benchmark_gate[
+        "private_subgrid_vacuum_plane_wave_parity_scoring"
+    ]
+    assert (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+        == "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion"
+    )
+    assert parity_scoring["terminal_outcome"] == (
+        "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion"
+    )
+    assert parity_scoring["upstream_adapter_implementation_status"] == (
+        benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
+    )
+    assert parity_scoring["candidate_ladder_declared_before_slow_scoring"] is True
+    assert parity_scoring["candidate_count"] == 3
+    assert parity_scoring["selected_candidate_id"] == (
+        "P1_private_subgrid_vacuum_plane_wave_parity_score"
+    )
+    assert parity_scoring["uses_private_plane_wave_request"] is True
+    assert parity_scoring["uses_private_plane_wave_spec"] is True
+    assert parity_scoring["existing_private_tfsf_hook_reused_as_w1"] is False
+    assert parity_scoring["same_contract_reference_ready"] is True
+    assert parity_scoring["plane_wave_fixture_path_wired"] is True
+    assert parity_scoring["subgrid_vacuum_parity_scored"] is True
+    assert parity_scoring["subgrid_vacuum_parity_passed"] is False
+    assert parity_scoring["fixture_quality_ready"] is False
+    assert parity_scoring["true_rt_readiness_unlocked"] is False
+    assert parity_scoring["dominant_parity_blocker"] == (
+        "transverse_phase_spread_deg"
+    )
+    assert parity_scoring["metrics"]["transverse_phase_spread_deg"] > 1.0
+    assert parity_scoring["metrics"]["vacuum_relative_magnitude_error"] > 0.02
+    assert parity_scoring["public_claim_allowed"] is False
+    assert parity_scoring["public_observable_promoted"] is False
+    parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in parity_scoring["candidate_ladder"]
+    }
+    assert parity_candidates["P1_private_subgrid_vacuum_plane_wave_parity_score"][
+        "private_request"
+    ] == "_PrivatePlaneWaveSourceRequest"
+    assert (
+        benchmark_gate[
+            "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
+        ]
+        == parity_scoring["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private subgrid-vacuum plane-wave parity scoring with private adapter ralplan"
+        "private plane-wave subgrid-vacuum parity blocker repair/design before "
+        "true R/T readiness ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private subgrid-vacuum plane-wave parity scoring with private adapter ralplan"
+        "private plane-wave subgrid-vacuum parity blocker repair/design before "
+        "true R/T readiness ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1385,6 +1434,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
     staging = benchmark_gate["private_time_centered_staging_redesign"]
@@ -1643,7 +1696,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private subgrid-vacuum plane-wave parity scoring with private adapter ralplan"
+        "private plane-wave subgrid-vacuum parity blocker repair/design before "
+        "true R/T readiness ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
@@ -1697,6 +1751,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert "CPML/non-CPML" in spec_text
     assert "private solver integration hunk" in spec_text
     assert "from global SBP derivative/mortar operator architecture" in spec_text
+    assert (
+        "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion"
+        in spec_text
+    )
     assert "## Deferred issue record" in spec_text
 
 

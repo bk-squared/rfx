@@ -99,10 +99,11 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private subgrid-vacuum plane-wave parity scoring with
-the private adapter. The private solver-local skew E/H helper is retained as a
-bounded production-context hunk, the accepted boundary subset has direct
-helper-execution evidence, and the F0-F4 private fixture-quality repair ladder
+The immediate lane is now private plane-wave subgrid-vacuum parity blocker
+repair/design before true R/T readiness. The private solver-local skew E/H
+helper is retained as a bounded production-context hunk, the accepted boundary
+subset has direct helper-execution evidence, and the F0-F4 private
+fixture-quality repair ladder
 preserves the failing boundary-expanded baseline. The previous analytic source
 lanes isolated the old sheet-source phase-front failure, recorded
 `private_uniform_plane_wave_source_self_oracle_ready` for a private prototype
@@ -114,9 +115,13 @@ fixture-path wiring lane recorded
 `private_plane_wave_fixture_path_wiring_blocked_no_public_promotion`; the
 request/spec adapter design lane recorded
 `private_runner_plane_wave_adapter_design_ready`; and the adapter implementation
-lane now records `private_plane_wave_adapter_implemented_parity_pending`. The
-goal gate therefore remains claims-closed until unchanged vacuum-stability
-thresholds are scored through that private adapter and later true R/T readiness
+lane recorded `private_plane_wave_adapter_implemented_parity_pending`. The
+private subgrid-vacuum parity scoring lane now records
+`private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion`: the
+private adapter scores reproducibly, but unchanged transverse phase-spread,
+transverse magnitude-CV, vacuum magnitude-error, and vacuum phase-error gates
+fail. The goal gate therefore remains claims-closed until a private blocker
+repair/design lane improves those parity metrics and later true R/T readiness
 proves the hunk improves the real solver path without breaking CPML/non-CPML
 symmetry, boundary guards, update/coupling bounds, or the unchanged `0.02`
 manufactured-ledger threshold.

@@ -251,9 +251,13 @@ existing private runner request/spec pattern rather than a direct JIT-only
 bypass. The follow-up adapter implementation lane now records
 `private_plane_wave_adapter_implemented_parity_pending`: the private request,
 builder, JIT spec, subgrid helper, and same-contract reference helper can carry
-the W1/R1 plane-wave contract, but subgrid-vacuum parity is still unscored. The
-next safe lane is private subgrid-vacuum plane-wave parity scoring with that
-private adapter, not public promotion.
+the W1/R1 plane-wave contract. The follow-up private subgrid-vacuum parity
+scoring lane now records
+`private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion`: the score
+is reproducible through the private adapter, but unchanged thresholds fail on
+transverse phase spread, transverse magnitude CV, and vacuum stability. The next
+safe lane is private plane-wave subgrid-vacuum parity blocker repair/design
+before true R/T readiness, not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

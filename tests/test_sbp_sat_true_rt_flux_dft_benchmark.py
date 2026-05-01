@@ -818,6 +818,24 @@ _PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_PRECEDENCE = (
     "private_plane_wave_request_builder_ready",
 )
 
+_PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_STATUS = (
+    "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion"
+)
+_PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_NEXT_PREREQUISITE = (
+    "private plane-wave subgrid-vacuum parity blocker repair/design before "
+    "true R/T readiness ralplan"
+)
+_PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_TERMINAL_OUTCOMES = (
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion",
+    "private_subgrid_vacuum_plane_wave_parity_blocked_no_public_promotion",
+)
+_PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_PRECEDENCE = (
+    "private_subgrid_vacuum_plane_wave_parity_blocked_no_public_promotion",
+    "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -1910,7 +1928,7 @@ def _run_flux_fixture(
     aperture_size: float | None = None,
     source_kind: str = "analytic_sheet",
 ) -> _FixtureRun:
-    if source_kind not in {"analytic_sheet", "private_tfsf"}:
+    if source_kind not in {"analytic_sheet", "private_tfsf", "private_plane_wave"}:
         raise ValueError(f"unknown private benchmark source kind {source_kind!r}")
 
     dx = fixture.coarse_dx if subgrid else fixture.uniform_dx
@@ -1954,15 +1972,29 @@ def _run_flux_fixture(
                     if source_kind == "private_tfsf"
                     else ()
                 ),
+                private_plane_wave_sources=(
+                    (_benchmark_plane_wave_source(fixture=fixture),)
+                    if source_kind == "private_plane_wave"
+                    else ()
+                ),
             )
         return _fixture_run_from_private_benchmark(run)
 
-    if source_kind == "private_tfsf":
+    if source_kind in {"private_tfsf", "private_plane_wave"}:
         run = run_private_tfsf_reference_flux(
             sim,
             n_steps=fixture.n_steps,
             planes=_plane_requests(plane_shift_cells, aperture_size, fixture),
-            private_tfsf_incidents=(_benchmark_tfsf_incident(fixture=fixture),),
+            private_tfsf_incidents=(
+                (_benchmark_tfsf_incident(fixture=fixture),)
+                if source_kind == "private_tfsf"
+                else ()
+            ),
+            private_plane_wave_sources=(
+                (_benchmark_plane_wave_source(fixture=fixture),)
+                if source_kind == "private_plane_wave"
+                else ()
+            ),
         )
         return _fixture_run_from_private_benchmark(run)
 
@@ -5958,6 +5990,222 @@ def _private_plane_wave_source_adapter_implementation_metadata(
     }
 
 
+def _private_subgrid_vacuum_plane_wave_parity_scoring_metadata(
+    *,
+    adapter_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    ref_run = _run_flux_fixture(
+        subgrid=False,
+        slab=False,
+        fixture=_BoundaryExpandedFluxFixture,
+        source_kind="private_plane_wave",
+    )
+    run = _run_flux_fixture(
+        subgrid=True,
+        slab=False,
+        fixture=_BoundaryExpandedFluxFixture,
+        source_kind="private_plane_wave",
+    )
+    freq_mask = _claims_bearing_passband(run.complex_flux, run.signed_flux)
+    uniformity = _transverse_uniformity_metadata(
+        run.planes,
+        freq_mask,
+        _BoundaryExpandedFluxFixture,
+        component="ex",
+    )
+    vacuum_stability = _vacuum_stability_metadata(
+        ref_run.complex_flux,
+        run.complex_flux,
+        freq_mask,
+    )
+    usable_bins = int(np.sum(freq_mask))
+    front_signed = np.asarray(run.signed_flux[0])
+    back_signed = np.asarray(run.signed_flux[1])
+    nonfloor_flux = bool(
+        usable_bins >= _MIN_CLAIMS_BEARING_BINS
+        and np.all(np.abs(front_signed[freq_mask]) >= _NORMALIZATION_FLOOR)
+        and np.all(np.abs(back_signed[freq_mask]) >= _NORMALIZATION_FLOOR)
+    )
+    metrics = _reference_quality_metrics(
+        usable_bins=usable_bins,
+        uniformity=uniformity,
+        vacuum_stability=vacuum_stability,
+    )
+    blockers = _reference_quality_blocker_ranking(
+        usable_bins=usable_bins,
+        nonfloor_flux=nonfloor_flux,
+        uniformity=uniformity,
+        vacuum_stability=vacuum_stability,
+    )
+    dominant_blocker = _dominant_reference_quality_blocker(blockers)
+    parity_passed = bool(
+        usable_bins >= _MIN_CLAIMS_BEARING_BINS
+        and uniformity["passed"]
+        and vacuum_stability["passed"]
+        and nonfloor_flux
+    )
+    terminal_outcome = (
+        "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending"
+        if parity_passed
+        else _PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_STATUS
+    )
+    p0 = {
+        "candidate_id": "P0_adapter_ready_freeze",
+        "candidate_family": "upstream_adapter_implementation_freeze",
+        "accepted_candidate": False,
+        "upstream_adapter_implementation_status": (
+            adapter_implementation_metadata["terminal_outcome"]
+        ),
+        "plane_wave_fixture_path_wired": bool(
+            adapter_implementation_metadata["plane_wave_fixture_path_wired"]
+        ),
+        "subgrid_vacuum_parity_scored": False,
+        "public_closure_retained": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+    }
+    p1 = {
+        "candidate_id": "P1_private_subgrid_vacuum_plane_wave_parity_score",
+        "candidate_family": "private_subgrid_vacuum_parity_scoring",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": terminal_outcome,
+        "uses_private_plane_wave_request": True,
+        "uses_private_plane_wave_spec": True,
+        "private_request": "_PrivatePlaneWaveSourceRequest",
+        "private_spec": "_PrivatePlaneWaveSourceSpec",
+        "existing_private_tfsf_hook_reused_as_w1": False,
+        "same_contract_reference_ready": True,
+        "plane_wave_fixture_path_wired": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": parity_passed,
+        "fixture_quality_ready": parity_passed,
+        "true_rt_readiness_unlocked": parity_passed,
+        "usable_bins": usable_bins,
+        "scored_freqs_hz": _BoundaryExpandedFluxFixture.scored_freqs[
+            freq_mask
+        ].tolist(),
+        "metrics": metrics,
+        "admission_gate": {
+            "usable_passband_min_bins": _MIN_CLAIMS_BEARING_BINS,
+            "transverse_magnitude_cv_max": _TRANSVERSE_MAGNITUDE_CV_MAX,
+            "transverse_phase_spread_deg_max": _TRANSVERSE_PHASE_SPREAD_DEG_MAX,
+            "vacuum_relative_magnitude_error_max": _VACUUM_MAGNITUDE_ERROR_MAX,
+            "vacuum_phase_error_deg_max": _VACUUM_PHASE_ERROR_DEG_MAX,
+            "nonfloor_flux": nonfloor_flux,
+            "passed": parity_passed,
+        },
+        "dominant_parity_blocker": dominant_blocker,
+        "parity_blockers": blockers,
+        "transverse_uniformity": uniformity,
+        "vacuum_stability": vacuum_stability,
+        "reference_vacuum_flux_diagnostics": _flux_diagnostics(
+            ref_run.complex_flux,
+            ref_run.signed_flux,
+            _BoundaryExpandedFluxFixture,
+        ),
+        "subgrid_vacuum_flux_diagnostics": _flux_diagnostics(
+            run.complex_flux,
+            run.signed_flux,
+            _BoundaryExpandedFluxFixture,
+        ),
+        "result_authority": (
+            "private subgrid-vacuum parity score only; even a pass would require "
+            "a separate private true R/T readiness lane before public promotion"
+        ),
+    }
+    p2 = {
+        "candidate_id": "P2_parity_score_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_subgrid_vacuum_plane_wave_parity_blocked_no_public_promotion"
+        ),
+        "rejection_reason": (
+            "not selected because the private adapter scored reproducibly; the "
+            "terminal outcome is a measured parity failure rather than a blocked "
+            "score"
+        ),
+    }
+    candidates = (p0, p1, p2)
+    return {
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_subgrid_vacuum_plane_wave_parity_scoring_only"
+        ),
+        "upstream_adapter_implementation_status": (
+            adapter_implementation_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite P0/P1/P2 parity ladder; P1 records a private "
+            "subgrid-vacuum score using the plane-wave request/spec adapter and "
+            "cannot promote public true R/T, DFT, flux, TFSF, port, or "
+            "S-parameter surfaces"
+        ),
+        "selected_candidate_id": "P1_private_subgrid_vacuum_plane_wave_parity_score",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "source_contract": "private_uniform_plane_wave_source",
+        "reference_contract": "private_uniform_plane_wave_same_contract_reference",
+        "uses_private_plane_wave_request": True,
+        "uses_private_plane_wave_spec": True,
+        "existing_private_tfsf_hook_reused_as_w1": False,
+        "same_contract_reference_ready": True,
+        "plane_wave_fixture_path_wired": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": parity_passed,
+        "fixture_quality_ready": parity_passed,
+        "true_rt_readiness_unlocked": parity_passed,
+        "slab_rt_scored": False,
+        "public_true_rt_ready": False,
+        "usable_bins": usable_bins,
+        "scored_freqs_hz": _BoundaryExpandedFluxFixture.scored_freqs[
+            freq_mask
+        ].tolist(),
+        "metrics": metrics,
+        "dominant_parity_blocker": dominant_blocker,
+        "parity_blockers": blockers,
+        "transverse_uniformity": uniformity,
+        "vacuum_stability": vacuum_stability,
+        "next_prerequisite": (
+            "private true-R/T readiness design after plane-wave parity pass ralplan"
+            if parity_passed
+            else _PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "private plane-wave adapter subgrid-vacuum parity passed unchanged "
+            "thresholds, but public promotion remains closed behind a separate "
+            "true R/T readiness lane"
+            if parity_passed
+            else (
+                "private plane-wave adapter scoring is reproducible, but unchanged "
+                f"subgrid-vacuum parity fails on {dominant_blocker}; public true "
+                "R/T and observable promotion remain closed"
+            )
+        ),
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -8002,8 +8250,26 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_parity_metadata = (
+        _private_subgrid_vacuum_plane_wave_parity_scoring_metadata(
+            adapter_implementation_metadata=adapter_implementation_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_subgrid_vacuum_plane_wave_parity_scoring_status": (
+                plane_wave_parity_metadata["status"]
+            ),
+            "private_subgrid_vacuum_plane_wave_parity_scoring": (
+                plane_wave_parity_metadata
+            ),
+            "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite": (
+                plane_wave_parity_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_source_adapter_implementation_next_prerequisite"
+        "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -8076,6 +8342,8 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave source request/spec adapter "
                 "implementation lane records "
                 f"{adapter_implementation_metadata['terminal_outcome']}"
+                "; the private subgrid-vacuum plane-wave parity scoring lane "
+                f"records {plane_wave_parity_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -8085,7 +8353,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_source_adapter_implementation_next_prerequisite"
+                "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
             ],
         }
 
@@ -10296,10 +10564,65 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_source_adapter_implementation_next_prerequisite"
         ]
     )
+    parity_scoring = metadata["private_subgrid_vacuum_plane_wave_parity_scoring"]
+    assert metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"] == (
+        _PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_STATUS
+    )
+    assert parity_scoring["terminal_outcome"] == (
+        _PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_PARITY_STATUS
+    )
+    assert parity_scoring["upstream_adapter_implementation_status"] == (
+        metadata["private_plane_wave_source_adapter_implementation_status"]
+    )
+    assert parity_scoring["candidate_ladder_declared_before_slow_scoring"] is True
+    assert parity_scoring["candidate_count"] == 3
+    assert parity_scoring["selected_candidate_id"] == (
+        "P1_private_subgrid_vacuum_plane_wave_parity_score"
+    )
+    assert parity_scoring["uses_private_plane_wave_request"] is True
+    assert parity_scoring["uses_private_plane_wave_spec"] is True
+    assert parity_scoring["existing_private_tfsf_hook_reused_as_w1"] is False
+    assert parity_scoring["same_contract_reference_ready"] is True
+    assert parity_scoring["plane_wave_fixture_path_wired"] is True
+    assert parity_scoring["subgrid_vacuum_parity_scored"] is True
+    assert parity_scoring["subgrid_vacuum_parity_passed"] is False
+    assert parity_scoring["fixture_quality_ready"] is False
+    assert parity_scoring["true_rt_readiness_unlocked"] is False
+    assert parity_scoring["slab_rt_scored"] is False
+    assert parity_scoring["usable_bins"] >= _MIN_CLAIMS_BEARING_BINS
+    assert parity_scoring["dominant_parity_blocker"] == "transverse_phase_spread_deg"
+    assert (
+        parity_scoring["metrics"]["transverse_phase_spread_deg"]
+        > _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+    )
+    assert (
+        parity_scoring["metrics"]["vacuum_relative_magnitude_error"]
+        > _VACUUM_MAGNITUDE_ERROR_MAX
+    )
+    p_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in parity_scoring["candidate_ladder"]
+    }
+    p1 = p_candidates["P1_private_subgrid_vacuum_plane_wave_parity_score"]
+    assert p1["accepted_candidate"] is True
+    assert p1["private_request"] == "_PrivatePlaneWaveSourceRequest"
+    assert p1["private_spec"] == "_PrivatePlaneWaveSourceSpec"
+    assert p1["admission_gate"]["passed"] is False
+    assert p_candidates["P2_parity_score_blocked"]["accepted_candidate"] is False
+    assert parity_scoring["public_claim_allowed"] is False
+    assert parity_scoring["public_observable_promoted"] is False
+    assert parity_scoring["true_rt_public_observable_promoted"] is False
+    assert parity_scoring["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        parity_scoring["next_prerequisite"]
+        == metadata[
+            "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_source_adapter_implementation_next_prerequisite"
+            "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -10325,7 +10648,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_source_adapter_implementation_next_prerequisite"
+            "private_subgrid_vacuum_plane_wave_parity_scoring_next_prerequisite"
         ]
     )
     assert (
@@ -10399,6 +10722,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_plane_wave_source_adapter_implementation_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
