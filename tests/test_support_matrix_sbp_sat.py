@@ -1266,12 +1266,65 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == plane_wave_wiring["next_prerequisite"]
     )
+    adapter_design = benchmark_gate["private_plane_wave_source_adapter_design"]
+    assert benchmark_gate["private_plane_wave_source_adapter_design_status"] == (
+        "private_runner_plane_wave_adapter_design_ready"
+    )
+    assert adapter_design["terminal_outcome"] == (
+        "private_runner_plane_wave_adapter_design_ready"
+    )
+    assert adapter_design[
+        "upstream_fixture_path_wiring_status"
+    ] == benchmark_gate["private_plane_wave_source_fixture_path_wiring_status"]
+    assert adapter_design["candidate_ladder_declared_before_implementation"] is True
+    assert adapter_design["candidate_ladder_declared_before_slow_scoring"] is True
+    assert adapter_design["candidate_count"] == 4
+    assert (
+        adapter_design["thresholds_checksum"]
+        == benchmark_gate["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert adapter_design["selected_candidate_id"] == (
+        "AD2_private_runner_request_spec_adapter_design"
+    )
+    assert adapter_design["design_ready"] is True
+    assert adapter_design["selected_design_requires_implementation"] is True
+    assert adapter_design["adapter_implementation_ready"] is False
+    assert adapter_design["subgrid_vacuum_parity_scored"] is False
+    assert adapter_design["fixture_quality_ready"] is False
+    assert "rfx/runners/subgridded.py" in adapter_design["allowed_write_surface"]
+    assert "rfx/subgridding/jit_runner.py" in adapter_design["allowed_write_surface"]
+    assert "rfx/api.py" in adapter_design["forbidden_public_surfaces"]
+    ad_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in adapter_design["candidate_ladder"]
+    }
+    assert ad_candidates["AD1_jit_runner_internal_plane_wave_spec_design"][
+        "accepted_candidate"
+    ] is False
+    ad2 = ad_candidates["AD2_private_runner_request_spec_adapter_design"]
+    assert ad2["accepted_candidate"] is True
+    assert ad2["reuses_existing_simulation_lowering"] is True
+    assert ad2["uses_private_request_object"] is True
+    assert ad2["uses_private_jit_spec"] is True
+    assert ad2["public_simulation_api_changed"] is False
+    assert ad2["public_result_surface_changed"] is False
+    assert ad2["implementation_intent"]["private_request"] == (
+        "_PrivatePlaneWaveSourceRequest"
+    )
+    assert adapter_design["public_claim_allowed"] is False
+    assert adapter_design["public_observable_promoted"] is False
+    assert adapter_design["true_rt_public_observable_promoted"] is False
+    assert adapter_design["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate["private_plane_wave_source_adapter_design_next_prerequisite"]
+        == adapter_design["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source request/spec adapter design before "
+        "private plane-wave source request/spec adapter implementation before "
         "subgrid-vacuum parity ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave source request/spec adapter design before "
+        "private plane-wave source request/spec adapter implementation before "
         "subgrid-vacuum parity ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
@@ -1284,6 +1337,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_source_fixture_path_wiring_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_plane_wave_source_adapter_design_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
     staging = benchmark_gate["private_time_centered_staging_redesign"]
@@ -1542,7 +1599,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source request/spec adapter design before "
+        "private plane-wave source request/spec adapter implementation before "
         "subgrid-vacuum parity ralplan"
     )
     assert (

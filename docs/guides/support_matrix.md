@@ -245,9 +245,11 @@ that W1/R1 contract is not wired through the private subgrid-vacuum fixture
 path. The follow-up fixture-path wiring lane now records
 `private_plane_wave_fixture_path_wiring_blocked_no_public_promotion`: existing
 private TFSF-style hooks are not the W1 plane-wave source contract, and this
-lane cannot change forbidden runner/API surfaces. The next safe lane is private
-plane-wave source request/spec adapter design before subgrid-vacuum parity, not
-public promotion.
+lane cannot change forbidden runner/API surfaces. The follow-up adapter design
+lane now records `private_runner_plane_wave_adapter_design_ready`, selecting the
+existing private runner request/spec pattern rather than a direct JIT-only
+bypass. The next safe lane is private plane-wave source request/spec adapter
+implementation before subgrid-vacuum parity, not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
