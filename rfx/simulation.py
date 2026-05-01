@@ -806,8 +806,20 @@ def run(
             if use_aniso_inv:
                 from rfx.boundaries.pec import apply_pec_h_mask
                 _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
-                _pec_h_cell = (_inv_xx == 0.0) & (_inv_yy == 0.0) & (_inv_zz == 0.0)
-                st = apply_pec_h_mask(st, _pec_h_cell)
+                _xx0 = (_inv_xx == 0.0)
+                _yy0 = (_inv_yy == 0.0)
+                _zz0 = (_inv_zz == 0.0)
+                # Per-component Yee-stagger-aware H damp: Hx has no
+                # driver if Ey AND Ez are both frozen at this cell;
+                # similarly for Hy, Hz. Catches boundary cells where
+                # only the perpendicular E component is fractional.
+                st = apply_pec_h_mask(
+                    st,
+                    pec_mask=_xx0 & _yy0 & _zz0,
+                    mask_hx=_yy0 & _zz0,
+                    mask_hy=_xx0 & _zz0,
+                    mask_hz=_xx0 & _yy0,
+                )
             if use_tfsf:
                 st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], dx, dt)
             if use_waveguide_ports:
@@ -1479,8 +1491,17 @@ def run_until_decay(
         if use_aniso_inv:
             from rfx.boundaries.pec import apply_pec_h_mask
             _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
-            _pec_h_cell = (_inv_xx == 0.0) & (_inv_yy == 0.0) & (_inv_zz == 0.0)
-            st = apply_pec_h_mask(st, _pec_h_cell)
+            _xx0 = (_inv_xx == 0.0)
+            _yy0 = (_inv_yy == 0.0)
+            _zz0 = (_inv_zz == 0.0)
+            # Per-component Yee-stagger-aware H damp; see run() above.
+            st = apply_pec_h_mask(
+                st,
+                pec_mask=_xx0 & _yy0 & _zz0,
+                mask_hx=_yy0 & _zz0,
+                mask_hy=_xx0 & _zz0,
+                mask_hz=_xx0 & _yy0,
+            )
         if use_tfsf:
             st = apply_tfsf_h(st, tfsf_cfg, carry_in["tfsf"], dx, dt)
         if use_waveguide_ports:

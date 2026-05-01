@@ -111,7 +111,8 @@ def apply_pec_mask(state, pec_mask) -> object:
     )
 
 
-def apply_pec_h_mask(state, pec_mask) -> object:
+def apply_pec_h_mask(state, pec_mask=None, *,
+                     mask_hx=None, mask_hy=None, mask_hz=None) -> object:
     """Zero H-field components inside PEC cells.
 
     Stage 2 unified-path companion to ``apply_pec_mask``. The Stage 2
@@ -122,24 +123,52 @@ def apply_pec_h_mask(state, pec_mask) -> object:
     provided implicit damping for both E and H via the
     sigma-coupled curl interaction; Stage 2 needs explicit H zeroing.
 
-    Implementation: zero all three H components at any cell where
-    ``pec_mask`` is True (cell-center inside PEC). H inside PEC is
-    physically undefined when E=0 inside (no curl source), so
-    zeroing is safe.
+    Two modes:
+
+    1. **Single cell-center mask** (``pec_mask``): zero all three H
+       components at any cell where ``pec_mask`` is True. Use this
+       when the "fully PEC" set has been pre-computed (all three
+       Yee-staggered E components frozen at this cell index).
+
+    2. **Per-component mask** (``mask_hx`` / ``mask_hy`` / ``mask_hz``,
+       Stage 2 step B-v2): zero each H component independently
+       according to its *driver* E components in the Yee curl. ``Hx``
+       at (i, j+½, k+½) is updated by ``∂Ez/∂y - ∂Ey/∂z``; if both
+       Ey (at index inv_yy) and Ez (at index inv_zz) are frozen at
+       this cell, Hx has no driver → safe to zero. This catches
+       boundary cells where one E component (perpendicular to the
+       wall) has fractional inv but the two tangential components
+       are zero — the mode that the all-zero ``pec_mask`` misses.
+
+    Pass either ``pec_mask`` or all three of ``mask_h*``; a mix is
+    accepted and the masks are OR'd.
 
     Parameters
     ----------
     state : FDTDState
-    pec_mask : (nx, ny, nz) boolean array
-        True where the cell-center is inside a PEC region. Same
-        convention as ``apply_pec_mask``.
+    pec_mask : (nx, ny, nz) boolean array, optional
+        True where the cell-center is inside a fully-PEC region.
+    mask_hx, mask_hy, mask_hz : (nx, ny, nz) boolean arrays, optional
+        Per-component zero masks (Yee-stagger aware). Stage 2 step
+        B-v2 derives these from ``(inv_xx==0, inv_yy==0, inv_zz==0)``
+        pairwise combinations.
     """
-    mask_dtype_h = pec_mask.astype(state.hx.dtype)
-    keep = 1.0 - mask_dtype_h
+    dtype = state.hx.dtype
+    # Build per-component boolean masks (default: nothing zeroed).
+    zero_hx = mask_hx
+    zero_hy = mask_hy
+    zero_hz = mask_hz
+    if pec_mask is not None:
+        zero_hx = pec_mask if zero_hx is None else (zero_hx | pec_mask)
+        zero_hy = pec_mask if zero_hy is None else (zero_hy | pec_mask)
+        zero_hz = pec_mask if zero_hz is None else (zero_hz | pec_mask)
+    keep_hx = (1.0 - zero_hx.astype(dtype)) if zero_hx is not None else 1.0
+    keep_hy = (1.0 - zero_hy.astype(dtype)) if zero_hy is not None else 1.0
+    keep_hz = (1.0 - zero_hz.astype(dtype)) if zero_hz is not None else 1.0
     return state._replace(
-        hx=state.hx * keep,
-        hy=state.hy * keep,
-        hz=state.hz * keep,
+        hx=state.hx * keep_hx,
+        hy=state.hy * keep_hy,
+        hz=state.hz * keep_hz,
     )
 
 
