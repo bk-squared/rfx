@@ -380,12 +380,15 @@ def operator_projected_skew_eh_sat_face(
     coarse_mask: jnp.ndarray,
     fine_mask: jnp.ndarray,
     normal_sign: int = 1,
+    include_scalar_projection: bool = True,
 ) -> tuple[jnp.ndarray, ...]:
     """Apply a private operator-projected skew E/H face-work candidate.
 
     The helper is intentionally solver-independent.  It combines a bounded
     ratio-derived scalar projection with an impedance-weighted tangential
-    skew-pair transfer.  Inputs are interpreted in a face-local tangential
+    skew-pair transfer.  Solver-local post-SAT callers may disable the scalar
+    projection to avoid stacking a second scalar SAT correction.  Inputs are
+    interpreted in a face-local tangential
     basis whose orientation already follows the outward face convention; in that
     local basis electric updates use projected magnetic jumps through the fixed
     tangential rotation and magnetic updates use projected electric jumps
@@ -431,29 +434,30 @@ def operator_projected_skew_eh_sat_face(
     jhx_c, jhx_f = _jump_pair(hx_c, hx_f)
     jhy_c, jhy_f = _jump_pair(hy_c, hy_f)
 
+    scalar_scale = ratio_weight if include_scalar_projection else 0.0
     scalar_deltas = (
-        scalar_pairs[0][0] - ex_c,
-        scalar_pairs[1][0] - ey_c,
-        scalar_pairs[2][0] - hx_c,
-        scalar_pairs[3][0] - hy_c,
-        scalar_pairs[0][1] - ex_f,
-        scalar_pairs[1][1] - ey_f,
-        scalar_pairs[2][1] - hx_f,
-        scalar_pairs[3][1] - hy_f,
+        scalar_scale * (scalar_pairs[0][0] - ex_c),
+        scalar_scale * (scalar_pairs[1][0] - ey_c),
+        scalar_scale * (scalar_pairs[2][0] - hx_c),
+        scalar_scale * (scalar_pairs[3][0] - hy_c),
+        scalar_scale * (scalar_pairs[0][1] - ex_f),
+        scalar_scale * (scalar_pairs[1][1] - ey_f),
+        scalar_scale * (scalar_pairs[2][1] - hx_f),
+        scalar_scale * (scalar_pairs[3][1] - hy_f),
     )
     skew_deltas = (
-        alpha_c * skew_weight * eta0 * (-jhy_c) * coarse_mask,
-        alpha_c * skew_weight * eta0 * jhx_c * coarse_mask,
-        alpha_c * skew_weight * (-jey_c) / eta0 * coarse_mask,
-        alpha_c * skew_weight * jex_c / eta0 * coarse_mask,
-        alpha_f * skew_weight * eta0 * (-jhy_f) * fine_mask,
-        alpha_f * skew_weight * eta0 * jhx_f * fine_mask,
-        alpha_f * skew_weight * (-jey_f) / eta0 * fine_mask,
-        alpha_f * skew_weight * jex_f / eta0 * fine_mask,
+        normal_sign * alpha_c * skew_weight * eta0 * (-jhy_c) * coarse_mask,
+        normal_sign * alpha_c * skew_weight * eta0 * jhx_c * coarse_mask,
+        normal_sign * alpha_c * skew_weight * (-jey_c) / eta0 * coarse_mask,
+        normal_sign * alpha_c * skew_weight * jex_c / eta0 * coarse_mask,
+        normal_sign * alpha_f * skew_weight * eta0 * (-jhy_f) * fine_mask,
+        normal_sign * alpha_f * skew_weight * eta0 * jhx_f * fine_mask,
+        normal_sign * alpha_f * skew_weight * (-jey_f) / eta0 * fine_mask,
+        normal_sign * alpha_f * skew_weight * jex_f / eta0 * fine_mask,
     )
     before = (ex_c, ey_c, hx_c, hy_c, ex_f, ey_f, hx_f, hy_f)
     return tuple(
-        component + ratio_weight * scalar_delta + skew_delta
+        component + scalar_delta + skew_delta
         for component, scalar_delta, skew_delta in zip(
             before,
             scalar_deltas,

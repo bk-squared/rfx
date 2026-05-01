@@ -7,15 +7,19 @@ import jax.numpy as jnp
 from rfx.subgridding.face_ops import build_face_ops, prolong_face, restrict_face
 from rfx.subgridding import jit_runner
 from rfx.subgridding.sbp_sat_3d import (
+    FACE_ORIENTATIONS,
+    _apply_operator_projected_skew_eh_face_helper,
     _apply_sat_pair_face,
     _apply_time_centered_paired_face_helper,
     _active_corners,
     _active_edges,
     _active_faces,
     _face_interior_masks,
+    _get_face_ops,
     apply_sat_e_interfaces,
     apply_sat_h_interfaces,
     compute_energy_3d,
+    extract_tangential_e_face,
     extract_tangential_h_face,
     init_subgrid_3d,
     sat_penalty_coefficients,
@@ -309,13 +313,209 @@ def test_time_centered_paired_face_helper_changes_private_h_trace():
         assert bool(jnp.all(jnp.isfinite(after)))
 
 
+def _seed_all_components_for_box(config, state):
+    coarse_values = (
+        jnp.linspace(-1.0, 1.0, int(np.prod(state.ex_c.shape)), dtype=jnp.float32)
+        .reshape(state.ex_c.shape)
+        * 1.0e-3
+    )
+    fine_values = (
+        jnp.linspace(-1.0, 1.0, int(np.prod(state.ex_f.shape)), dtype=jnp.float32)
+        .reshape(state.ex_f.shape)
+        * 1.5e-3
+    )
+    return state._replace(
+        ex_c=coarse_values,
+        ey_c=-0.5 * coarse_values,
+        ez_c=0.25 * coarse_values,
+        hx_c=1.0e-6 + 1.0e-3 * coarse_values,
+        hy_c=2.0e-6 - 1.5e-3 * coarse_values,
+        hz_c=-1.0e-6 + 0.75e-3 * coarse_values,
+        ex_f=fine_values,
+        ey_f=-0.5 * fine_values,
+        ez_f=0.25 * fine_values,
+        hx_f=1.0e-6 + 1.0e-3 * fine_values,
+        hy_f=2.0e-6 - 1.5e-3 * fine_values,
+        hz_f=-1.0e-6 + 0.75e-3 * fine_values,
+    )
+
+
+def test_operator_projected_skew_eh_helper_has_same_call_slot_map():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 10),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 3, 7),
+        ratio=2,
+    )
+    state = _seed_all_components_for_box(config, state)
+    e_coarse = (state.ex_c, state.ey_c, state.ez_c)
+    e_fine = (state.ex_f, state.ey_f, state.ez_f)
+    h_coarse = (state.hx_c, state.hy_c, state.hz_c)
+    h_fine = (state.hx_f, state.hy_f, state.hz_f)
+
+    out_e_c, out_e_f, out_h_c, out_h_f = _apply_operator_projected_skew_eh_face_helper(
+        e_coarse,
+        e_fine,
+        h_coarse,
+        h_fine,
+        config,
+    )
+
+    assert len(out_e_c) == len(out_e_f) == len(out_h_c) == len(out_h_f) == 3
+    assert set(_active_faces(config)) == set(FACE_ORIENTATIONS)
+    changed = False
+    for before, after in zip(e_coarse + e_fine + h_coarse + h_fine, out_e_c + out_e_f + out_h_c + out_h_f):
+        assert before.shape == after.shape
+        assert bool(jnp.all(jnp.isfinite(after)))
+        changed = changed or bool(jnp.any(jnp.abs(after - before) > 0.0))
+    assert changed
+
+
+def test_operator_projected_skew_eh_helper_declares_exact_face_local_slot_map():
+    expected = {
+        "x_lo": {"normal_sign": -1, "e": ("ey", "ez"), "h": ("hy", "hz")},
+        "x_hi": {"normal_sign": 1, "e": ("ey", "ez"), "h": ("hy", "hz")},
+        "y_lo": {"normal_sign": -1, "e": ("ex", "ez"), "h": ("hx", "hz")},
+        "y_hi": {"normal_sign": 1, "e": ("ex", "ez"), "h": ("hx", "hz")},
+        "z_lo": {"normal_sign": -1, "e": ("ex", "ey"), "h": ("hx", "hy")},
+        "z_hi": {"normal_sign": 1, "e": ("ex", "ey"), "h": ("hx", "hy")},
+    }
+
+    assert set(FACE_ORIENTATIONS) == set(expected)
+    for face, expected_map in expected.items():
+        orientation = FACE_ORIENTATIONS[face]
+        assert orientation.normal_sign == expected_map["normal_sign"]
+        assert orientation.tangential_e_components == expected_map["e"]
+        assert orientation.tangential_h_components == expected_map["h"]
+
+    source = inspect.getsource(_apply_operator_projected_skew_eh_face_helper)
+    assert "ex_c=e_c_face[0]" in source
+    assert "ey_c=e_c_face[1]" in source
+    assert "hx_c=h_c_face[0]" in source
+    assert "hy_c=h_c_face[1]" in source
+    assert "ex_f=e_f_face[0]" in source
+    assert "ey_f=e_f_face[1]" in source
+    assert "hx_f=h_f_face[0]" in source
+    assert "hy_f=h_f_face[1]" in source
+    assert "normal_sign=orientation.normal_sign" in source
+    assert "include_scalar_projection=False" in source
+
+
+def test_operator_projected_skew_eh_helper_orients_opposite_faces_once():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+
+    def _seed_fine_x_face_hz(face: str) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        hz_f = jnp.zeros_like(state.hz_f)
+        x_index = 0 if face == "x_lo" else config.nx_f - 1
+        hz_f = hz_f.at[x_index, :, :].set(1.0e-6)
+        return jnp.zeros_like(state.hx_f), jnp.zeros_like(state.hy_f), hz_f
+
+    deltas = {}
+    for face in ("x_lo", "x_hi"):
+        e_coarse = (
+            jnp.zeros_like(state.ex_c),
+            jnp.zeros_like(state.ey_c),
+            jnp.zeros_like(state.ez_c),
+        )
+        e_fine = (
+            jnp.zeros_like(state.ex_f),
+            jnp.zeros_like(state.ey_f),
+            jnp.zeros_like(state.ez_f),
+        )
+        h_coarse = (
+            jnp.zeros_like(state.hx_c),
+            jnp.zeros_like(state.hy_c),
+            jnp.zeros_like(state.hz_c),
+        )
+        h_fine = _seed_fine_x_face_hz(face)
+
+        out_e_c, _, _, _ = _apply_operator_projected_skew_eh_face_helper(
+            e_coarse,
+            e_fine,
+            h_coarse,
+            h_fine,
+            config,
+        )
+        before_t1 = extract_tangential_e_face(
+            e_coarse,
+            config,
+            face,
+            grid="coarse",
+        )[0]
+        after_t1 = extract_tangential_e_face(
+            out_e_c,
+            config,
+            face,
+            grid="coarse",
+        )[0]
+        ops = _get_face_ops(config, face)
+        coarse_mask, _ = _face_interior_masks(ops.coarse_shape, config.ratio)
+        interior = np.asarray(coarse_mask) == 1.0
+        deltas[face] = float(jnp.mean((after_t1 - before_t1)[interior]))
+
+    assert deltas["x_lo"] * deltas["x_hi"] < 0.0
+    np.testing.assert_allclose(
+        abs(deltas["x_lo"]),
+        abs(deltas["x_hi"]),
+        rtol=1.0e-6,
+    )
+
+
+def test_operator_projected_skew_eh_helper_keeps_edges_and_corners_unchanged():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 10),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 3, 7),
+        ratio=2,
+    )
+    state = _seed_all_components_for_box(config, state)
+    e_coarse = (state.ex_c, state.ey_c, state.ez_c)
+    e_fine = (state.ex_f, state.ey_f, state.ez_f)
+    h_coarse = (state.hx_c, state.hy_c, state.hz_c)
+    h_fine = (state.hx_f, state.hy_f, state.hz_f)
+
+    out_e_c, out_e_f, out_h_c, out_h_f = _apply_operator_projected_skew_eh_face_helper(
+        e_coarse,
+        e_fine,
+        h_coarse,
+        h_fine,
+        config,
+    )
+
+    for face in _active_faces(config):
+        ops = _get_face_ops(config, face)
+        coarse_mask, fine_mask = _face_interior_masks(ops.coarse_shape, config.ratio)
+        for before_fields, after_fields, extractor, mask in (
+            (e_coarse, out_e_c, extract_tangential_e_face, coarse_mask),
+            (h_coarse, out_h_c, extract_tangential_h_face, coarse_mask),
+            (e_fine, out_e_f, extract_tangential_e_face, fine_mask),
+            (h_fine, out_h_f, extract_tangential_h_face, fine_mask),
+        ):
+            grid = "coarse" if mask.shape == ops.coarse_shape else "fine"
+            before_t = extractor(before_fields, config, face, grid=grid)
+            after_t = extractor(after_fields, config, face, grid=grid)
+            edge_mask = np.asarray(mask) == 0.0
+            for before_face, after_face in zip(before_t, after_t):
+                np.testing.assert_allclose(
+                    np.asarray(after_face)[edge_mask],
+                    np.asarray(before_face)[edge_mask],
+                    atol=1.0e-12,
+                )
+
+
 def test_time_centered_paired_face_helper_is_wired_after_e_sat():
     for function in (step_subgrid_3d, step_subgrid_3d_with_cpml):
         source = inspect.getsource(function)
+        skew_index = source.index("_apply_operator_projected_skew_eh_face_helper")
         helper_index = source.index("_apply_time_centered_paired_face_helper")
         h_sat_index = source.index("apply_sat_h_interfaces")
         e_sat_index = source.index("apply_sat_e_interfaces")
-        assert h_sat_index < e_sat_index < helper_index
+        assert h_sat_index < e_sat_index < skew_index < helper_index
         assert "private_post_h_hook" in source
         assert "private_post_e_hook" in source
         helper_source = source[helper_index:]

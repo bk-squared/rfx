@@ -18,7 +18,8 @@ main-branch drift, boundary model, benchmark definitions, and unsupported
 runtime surfaces are reconciled.
 
 For a concise local statement of the long-term target and current private
-energy-transfer blocker, see `docs/guides/sbp_sat_final_goal.md`.
+solver-integration / boundary-coexistence handoff, see
+`docs/guides/sbp_sat_final_goal.md`.
 
 ### Current evidence
 

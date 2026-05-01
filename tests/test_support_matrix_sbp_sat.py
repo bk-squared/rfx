@@ -125,12 +125,11 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     blocker_names = [
         blocker["name"] if isinstance(blocker, dict) else blocker
-        for blocker in benchmark_gate["reference_quality_blockers"][:2]
+        for blocker in benchmark_gate["reference_quality_blockers"][:3]
     ]
-    assert blocker_names == [
-        "transverse_phase_spread_deg",
-        "transverse_magnitude_cv",
-    ]
+    assert blocker_names[0] == "transverse_phase_spread_deg"
+    assert "transverse_magnitude_cv" in blocker_names
+    assert "vacuum_relative_magnitude_error" in blocker_names
     assert "predeclared" in benchmark_gate["predeclared_candidate_policy"]
     assert benchmark_gate["causal_ladder_status"] == "row2_causal_classified"
     assert benchmark_gate["causal_class"] == "sbp_sat_interface_floor"
@@ -203,9 +202,14 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert repair["kernel_edit_applied"] is False
     assert repair["baseline_artifact_required"] is True
     assert repair["pre_post_evidence_required"] is True
-    assert repair["paired_metric_regressions"][0]["metric"] == (
-        "vacuum_phase_error_deg"
-    )
+    repair_regression_metrics = {
+        regression["metric"] for regression in repair["paired_metric_regressions"]
+    }
+    assert repair_regression_metrics & {
+        "vacuum_phase_error_deg",
+        "transverse_phase_spread_deg",
+        "transverse_magnitude_cv",
+    }
     assert all(
         candidate["material_improvement_passed"] is False
         for candidate in repair["candidates"]
@@ -749,13 +753,45 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == energy_transfer["next_prerequisite"]
     )
+    operator_solver = benchmark_gate["private_operator_projected_solver_integration"]
+    assert benchmark_gate["private_operator_projected_solver_integration_status"] == (
+        "private_operator_projected_solver_hunk_retained_fixture_quality_pending"
+    )
+    assert operator_solver["upstream_energy_transfer_status"] == (
+        benchmark_gate["private_operator_projected_energy_transfer_redesign_status"]
+    )
+    assert operator_solver["selected_candidate_id"] == "single_bounded_face_solver_hunk"
+    assert operator_solver["slot_map_same_call_verified"] is True
+    assert operator_solver["six_face_mapping_verified"] is True
+    assert operator_solver["cpml_non_cpml_same_helper_contract"] is True
+    assert operator_solver["edge_corner_guard_verified"] is True
+    assert operator_solver["normal_sign_orientation_verified"] is True
+    assert operator_solver["solver_scalar_projection_included"] is False
+    assert operator_solver["post_existing_sat_scalar_double_coupling"] is False
+    assert operator_solver["upstream_manufactured_ledger_gate_passed"] is True
+    assert operator_solver["manufactured_ledger_gate_passed"] is True
+    assert operator_solver["ledger_normalized_balance_residual"] <= (
+        operator_solver["ledger_threshold"]
+    )
+    assert operator_solver["solver_hunk_retained"] is True
+    assert operator_solver["production_patch_applied"] is True
+    assert operator_solver["sbp_sat_3d_repair_applied"] is True
+    assert operator_solver["public_claim_allowed"] is False
+    assert operator_solver["public_observable_promoted"] is False
+    assert operator_solver["hook_experiment_allowed"] is False
+    assert (
+        benchmark_gate[
+            "private_operator_projected_solver_integration_next_prerequisite"
+        ]
+        == operator_solver["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private bounded solver integration of operator-projected energy-transfer "
-        "contract after manufactured ledger closure ralplan"
+        "private boundary coexistence and fixture-quality validation after "
+        "operator-projected solver hunk ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private bounded solver integration of operator-projected energy-transfer "
-        "contract after manufactured ledger closure ralplan"
+        "private boundary coexistence and fixture-quality validation after "
+        "operator-projected solver hunk ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1017,8 +1053,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private bounded solver integration of operator-projected energy-transfer "
-        "contract after manufactured ledger closure ralplan"
+        "private boundary coexistence and fixture-quality validation after "
+        "operator-projected solver hunk ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

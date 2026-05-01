@@ -26,6 +26,7 @@ from rfx.subgridding.sbp_operators import (
     build_yee_staggered_derivative_pair_1d,
     face_mortar_adjoint_report,
     face_mortar_reproduction_report,
+    operator_projected_skew_eh_sat_face,
     sbp_identity_residual,
     weighted_em_flux_residual,
     yee_staggered_identity_residual,
@@ -296,6 +297,62 @@ def test_private_weighted_em_flux_contract_closes_for_all_face_signs():
             coarse_metric_weight=metric,
         )
         assert abs(residual) <= 1.0e-12
+
+
+def test_private_operator_projected_skew_eh_uses_face_normal_sign():
+    mortar = build_tensor_face_mortar((3, 3), ratio=2, dx_c=0.004)
+    coarse_i = jnp.arange(3, dtype=jnp.float32)[:, None]
+    coarse_j = jnp.arange(3, dtype=jnp.float32)[None, :]
+    fine_i = jnp.arange(6, dtype=jnp.float32)[:, None]
+    fine_j = jnp.arange(6, dtype=jnp.float32)[None, :]
+    coarse_zeros = jnp.zeros((3, 3), dtype=jnp.float32)
+    fine_zeros = jnp.zeros((6, 6), dtype=jnp.float32)
+    coarse_mask = jnp.ones((3, 3), dtype=jnp.float32)
+    fine_mask = jnp.ones((6, 6), dtype=jnp.float32)
+    args = {
+        "ex_c": 0.3 + 0.1 * coarse_i + 0.2 * coarse_j,
+        "ey_c": -0.2 + 0.05 * coarse_i - 0.03 * coarse_j,
+        "hx_c": 1.0e-6 + 0.2e-6 * coarse_i + coarse_zeros,
+        "hy_c": -2.0e-6 + 0.1e-6 * coarse_j + coarse_zeros,
+        "ex_f": 0.7 + 0.01 * fine_i - 0.02 * fine_j,
+        "ey_f": -0.4 + 0.02 * fine_i + 0.01 * fine_j,
+        "hx_f": 3.0e-6 + 0.02e-6 * fine_i + fine_zeros,
+        "hy_f": -1.0e-6 + 0.03e-6 * fine_j + fine_zeros,
+        "mortar": mortar,
+        "alpha_c": 0.25,
+        "alpha_f": 0.125,
+        "coarse_mask": coarse_mask,
+        "fine_mask": fine_mask,
+        "include_scalar_projection": False,
+    }
+
+    positive = operator_projected_skew_eh_sat_face(**args, normal_sign=1)
+    negative = operator_projected_skew_eh_sat_face(**args, normal_sign=-1)
+
+    assert any(
+        bool(jnp.any(jnp.abs(pos - neg) > 0.0))
+        for pos, neg in zip(positive, negative, strict=True)
+    )
+    for before, pos, neg in zip(
+        (
+            args["ex_c"],
+            args["ey_c"],
+            args["hx_c"],
+            args["hy_c"],
+            args["ex_f"],
+            args["ey_f"],
+            args["hx_f"],
+            args["hy_f"],
+        ),
+        positive,
+        negative,
+        strict=True,
+    ):
+        np.testing.assert_allclose(
+            np.asarray(pos - before),
+            -np.asarray(neg - before),
+            atol=1.0e-7,
+        )
 
 
 def test_private_all_face_surface_partition_and_flux_contract():

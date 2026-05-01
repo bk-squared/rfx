@@ -28,6 +28,10 @@ from rfx.subgridding.face_ops import (
     restrict_edge,
     restrict_face,
 )
+from rfx.subgridding.sbp_operators import (
+    build_tensor_face_mortar,
+    operator_projected_skew_eh_sat_face,
+)
 
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 PHASE1_3D_CFL = 0.99
@@ -638,6 +642,103 @@ def _apply_sat_pair_face(
         coarse_face + alpha_c * coarse_mismatch * coarse_mask,
         fine_face + alpha_f * fine_mismatch * fine_mask,
     )
+
+
+def _apply_operator_projected_skew_eh_face_helper(
+    current_e_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_e_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_h_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_h_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+) -> tuple[
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+]:
+    """Apply the private same-call operator-projected skew E/H face helper.
+
+    The helper is deliberately internal to the experimental SBP-SAT path.  It
+    consumes all eight tangential E/H face traces in one same-call local
+    context, applies the face-normal orientation through ``normal_sign`` exactly
+    once, then scatters only face-interior updates through the existing
+    tangential face scatter helpers.  Edge/corner SAT ownership remains in the
+    existing edge/corner paths.
+    """
+
+    alpha_c, alpha_f = sat_penalty_coefficients(config.ratio, config.tau)
+    e_coarse = current_e_coarse
+    e_fine = current_e_fine
+    h_coarse = current_h_coarse
+    h_fine = current_h_fine
+    for face in _active_faces(config):
+        orientation = FACE_ORIENTATIONS[face]
+        ops = _get_face_ops(config, face)
+        mortar = build_tensor_face_mortar(
+            ops.coarse_shape,
+            ratio=config.ratio,
+            dx_c=np.sqrt(float(ops.coarse_area)),
+        )
+        coarse_mask, fine_mask = _face_interior_masks(ops.coarse_shape, config.ratio)
+        e_c_face = extract_tangential_e_face(e_coarse, config, face, grid="coarse")
+        e_f_face = extract_tangential_e_face(e_fine, config, face, grid="fine")
+        h_c_face = extract_tangential_h_face(h_coarse, config, face, grid="coarse")
+        h_f_face = extract_tangential_h_face(h_fine, config, face, grid="fine")
+        (
+            e_c_t1,
+            e_c_t2,
+            h_c_t1,
+            h_c_t2,
+            e_f_t1,
+            e_f_t2,
+            h_f_t1,
+            h_f_t2,
+        ) = operator_projected_skew_eh_sat_face(
+            ex_c=e_c_face[0],
+            ey_c=e_c_face[1],
+            hx_c=h_c_face[0],
+            hy_c=h_c_face[1],
+            ex_f=e_f_face[0],
+            ey_f=e_f_face[1],
+            hx_f=h_f_face[0],
+            hy_f=h_f_face[1],
+            mortar=mortar,
+            alpha_c=alpha_c,
+            alpha_f=alpha_f,
+            coarse_mask=coarse_mask,
+            fine_mask=fine_mask,
+            normal_sign=orientation.normal_sign,
+            include_scalar_projection=False,
+        )
+        e_coarse = scatter_tangential_e_face(
+            e_coarse,
+            (e_c_t1, e_c_t2),
+            config,
+            face,
+            grid="coarse",
+        )
+        e_fine = scatter_tangential_e_face(
+            e_fine,
+            (e_f_t1, e_f_t2),
+            config,
+            face,
+            grid="fine",
+        )
+        h_coarse = scatter_tangential_h_face(
+            h_coarse,
+            (h_c_t1, h_c_t2),
+            config,
+            face,
+            grid="coarse",
+        )
+        h_fine = scatter_tangential_h_face(
+            h_fine,
+            (h_f_t1, h_f_t2),
+            config,
+            face,
+            grid="fine",
+        )
+    return e_coarse, e_fine, h_coarse, h_fine
 
 
 def _time_centered_face_trace_energy(
@@ -1358,6 +1459,22 @@ def step_subgrid_3d_with_cpml(
     )
     e_post_sat_coarse = (ex_c, ey_c, ez_c)
     e_post_sat_fine = (ex_f, ey_f, ez_f)
+    (
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+    ) = _apply_operator_projected_skew_eh_face_helper(
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        config,
+    )
+    e_post_sat_coarse = (ex_c, ey_c, ez_c)
+    e_post_sat_fine = (ex_f, ey_f, ez_f)
+    h_post_sat_coarse = (hx_c, hy_c, hz_c)
+    h_post_sat_fine = (hx_f, hy_f, hz_f)
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = _apply_time_centered_paired_face_helper(
         (hx_c, hy_c, hz_c),
         (hx_f, hy_f, hz_f),
@@ -1530,6 +1647,22 @@ def step_subgrid_3d(
     )
     e_post_sat_coarse = (ex_c, ey_c, ez_c)
     e_post_sat_fine = (ex_f, ey_f, ez_f)
+    (
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+    ) = _apply_operator_projected_skew_eh_face_helper(
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        config,
+    )
+    e_post_sat_coarse = (ex_c, ey_c, ez_c)
+    e_post_sat_fine = (ex_f, ey_f, ez_f)
+    h_post_sat_coarse = (hx_c, hy_c, hz_c)
+    h_post_sat_fine = (hx_f, hy_f, hz_f)
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = _apply_time_centered_paired_face_helper(
         (hx_c, hy_c, hz_c),
         (hx_f, hy_f, hz_f),

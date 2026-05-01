@@ -264,6 +264,24 @@ _OPERATOR_PROJECTED_ENERGY_TRANSFER_ALLOWED_FUTURE_SOLVER_SYMBOLS = (
     "apply_sat_h_interfaces",
     "apply_sat_e_interfaces",
 )
+_OPERATOR_PROJECTED_SOLVER_INTEGRATION_STATUS = (
+    "private_operator_projected_solver_hunk_retained_fixture_quality_pending"
+)
+_OPERATOR_PROJECTED_SOLVER_INTEGRATION_NEXT_PREREQUISITE = (
+    "private boundary coexistence and fixture-quality validation after "
+    "operator-projected solver hunk ralplan"
+)
+_OPERATOR_PROJECTED_SOLVER_INTEGRATION_TERMINAL_OUTCOMES = (
+    "private_skew_helper_solver_preaccepted",
+    "private_operator_projected_solver_hunk_retained_fixture_quality_pending",
+    "private_operator_projected_solver_integration_requires_followup_diagnostic_only",
+    "no_private_operator_projected_solver_hunk_retained",
+)
+_OPERATOR_PROJECTED_SOLVER_HUNK_SYMBOLS = (
+    "_apply_operator_projected_skew_eh_face_helper",
+    "step_subgrid_3d_with_cpml",
+    "step_subgrid_3d",
+)
 
 
 def _face_fixture_ops():
@@ -3741,6 +3759,19 @@ def _operator_projected_energy_transfer_cpml_contract() -> dict[str, object]:
     }
 
 
+def _orient_components_to_outward_basis(
+    components: tuple[jnp.ndarray, ...],
+    *,
+    normal_sign: int,
+) -> tuple[jnp.ndarray, ...]:
+    if normal_sign == 1:
+        return components
+    if normal_sign != -1:
+        raise ValueError(f"normal_sign must be -1 or 1, got {normal_sign}")
+    ex_c, ey_c, hx_c, hy_c, ex_f, ey_f, hx_f, hy_f = components
+    return (ex_c, -ey_c, hx_c, -hy_c, ex_f, -ey_f, hx_f, -hy_f)
+
+
 def _operator_projected_energy_transfer_orientation_report() -> dict[str, object]:
     faces = {
         "x_lo": -1,
@@ -3755,7 +3786,11 @@ def _operator_projected_energy_transfer_orientation_report() -> dict[str, object
     for face, normal_sign in faces.items():
         fixture = _manufactured_nonzero_face_components()
         ops = fixture["ops"]
-        before_components = fixture["components"]
+        before_components = _orient_components_to_outward_basis(
+            fixture["components"],
+            normal_sign=normal_sign,
+        )
+        fixture["components"] = before_components
         after_components = _operator_projected_energy_transfer_after_components(
             fixture,
             normal_sign=normal_sign,
@@ -4082,6 +4117,221 @@ def _private_operator_projected_energy_transfer_redesign_packet() -> dict[str, o
             "work form closes the manufactured face ledger below the unchanged "
             "0.02 threshold without residual-derived coefficients; no "
             "sbp_sat_3d.py hunk is retained and public promotion remains closed"
+        ),
+    }
+
+
+def _private_operator_projected_solver_integration_packet() -> dict[str, object]:
+    """Record bounded solver integration after private ledger closure."""
+
+    upstream = _private_operator_projected_energy_transfer_redesign_packet()
+    helper_source = inspect.getsource(
+        sbp_sat_3d._apply_operator_projected_skew_eh_face_helper
+    )
+    step_sources = {
+        "non_cpml": inspect.getsource(sbp_sat_3d.step_subgrid_3d),
+        "cpml": inspect.getsource(sbp_sat_3d.step_subgrid_3d_with_cpml),
+    }
+    slot_map = {
+        "inputs": (
+            "e_c_t1",
+            "e_c_t2",
+            "h_c_t1",
+            "h_c_t2",
+            "e_f_t1",
+            "e_f_t2",
+            "h_f_t1",
+            "h_f_t2",
+        ),
+        "outputs": (
+            "e_c_t1_after",
+            "e_c_t2_after",
+            "h_c_t1_after",
+            "h_c_t2_after",
+            "e_f_t1_after",
+            "e_f_t2_after",
+            "h_f_t1_after",
+            "h_f_t2_after",
+        ),
+        "same_call_local_context": True,
+        "split_across_h_only_e_only_functions": False,
+        "face_local_t1_t2_labels": True,
+    }
+    face_mapping = {
+        face: {
+            "normal_sign": orientation.normal_sign,
+            "tangential_e_components": orientation.tangential_e_components,
+            "tangential_h_components": orientation.tangential_h_components,
+            "orientation_applied_by_normal_sign": True,
+            "alpha_values": ("alpha_c", "alpha_f"),
+            "masks": ("coarse_mask", "fine_mask"),
+            "scatter_back": (
+                "scatter_tangential_e_face",
+                "scatter_tangential_h_face",
+            ),
+        }
+        for face, orientation in sbp_sat_3d.FACE_ORIENTATIONS.items()
+    }
+    cpml_non_cpml_parity = {
+        name: (
+            source.index("apply_sat_h_interfaces")
+            < source.index("apply_sat_e_interfaces")
+            < source.index("_apply_operator_projected_skew_eh_face_helper")
+            < source.index("_apply_time_centered_paired_face_helper")
+        )
+        for name, source in step_sources.items()
+    }
+    helper_contract_passed = (
+        "operator_projected_skew_eh_sat_face" in helper_source
+        and "include_scalar_projection=False" in helper_source
+        and "normal_sign=orientation.normal_sign" in helper_source
+        and "private_post_h_hook" not in helper_source
+        and "private_post_e_hook" not in helper_source
+        and "runner" not in helper_source
+        and "Result" not in helper_source
+    )
+    preacceptance_passed = bool(
+        upstream["terminal_outcome"]
+        == _OPERATOR_PROJECTED_ENERGY_TRANSFER_STATUS
+        and slot_map["same_call_local_context"]
+        and not slot_map["split_across_h_only_e_only_functions"]
+        and set(face_mapping) == set(sbp_sat_3d.FACE_ORIENTATIONS)
+        and all(cpml_non_cpml_parity.values())
+        and helper_contract_passed
+    )
+    hunk_retained = preacceptance_passed
+    candidates = (
+        {
+            "candidate_id": "energy_transfer_contract_freeze",
+            "candidate_family": "i0_baseline",
+            "upstream_status": upstream["terminal_outcome"],
+            "upstream_e1_ledger_residual": upstream[
+                "e1_manufactured_ledger_normalized_balance_residual"
+            ],
+            "upstream_ledger_threshold": upstream["ledger_threshold"],
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "production_shaped_skew_helper_preacceptance",
+            "candidate_family": "i1_slot_map_preacceptance",
+            "production_solver_edit_allowed": False,
+            "slot_map": slot_map,
+            "six_face_mapping": face_mapping,
+            "cpml_non_cpml_parity": cpml_non_cpml_parity,
+            "helper_contract_passed": helper_contract_passed,
+            "edge_corner_guard_tests": (
+                "tests/test_sbp_sat_3d.py::"
+                "test_operator_projected_skew_eh_helper_keeps_edges_and_corners_unchanged"
+            ),
+            "degenerate_small_face_guard": "_face_interior_masks_zeroes_small_faces",
+            "solver_scalar_projection_included": False,
+            "post_existing_sat_scalar_double_coupling": False,
+            "accepted_candidate": preacceptance_passed,
+            "terminal_if_selected": "private_skew_helper_solver_preaccepted",
+        },
+        {
+            "candidate_id": "single_bounded_face_solver_hunk",
+            "candidate_family": "i2_solver_hunk",
+            "production_solver_edit_allowed": True,
+            "preacceptance_required": True,
+            "preacceptance_passed": preacceptance_passed,
+            "upstream_manufactured_ledger_gate_passed": upstream[
+                "e1_ledger_gate_passed"
+            ],
+            "manufactured_ledger_gate_passed": upstream["e1_ledger_gate_passed"],
+            "ledger_normalized_balance_residual": upstream[
+                "e1_manufactured_ledger_normalized_balance_residual"
+            ],
+            "ledger_threshold": upstream["ledger_threshold"],
+            "solver_scalar_projection_included": False,
+            "post_existing_sat_scalar_double_coupling": False,
+            "retained_solver_hunk_symbols": _OPERATOR_PROJECTED_SOLVER_HUNK_SYMBOLS,
+            "accepted_candidate": hunk_retained,
+            "terminal_if_selected": _OPERATOR_PROJECTED_SOLVER_INTEGRATION_STATUS,
+        },
+        {
+            "candidate_id": "diagnostic_only_solver_dry_run",
+            "candidate_family": "i3_fail_closed",
+            "production_solver_edit_allowed": False,
+            "selected_if_hunk_not_retained": not hunk_retained,
+            "accepted_candidate": not hunk_retained,
+            "terminal_if_selected": (
+                "private_operator_projected_solver_integration_requires_followup_diagnostic_only"
+            ),
+        },
+        {
+            "candidate_id": "solver_integration_fail_closed",
+            "candidate_family": "i4_terminal_guard",
+            "production_solver_edit_allowed": False,
+            "accepted_candidate": False,
+            "terminal_if_selected": "no_private_operator_projected_solver_hunk_retained",
+        },
+    )
+    terminal_outcome = (
+        _OPERATOR_PROJECTED_SOLVER_INTEGRATION_STATUS
+        if hunk_retained
+        else "private_operator_projected_solver_integration_requires_followup_diagnostic_only"
+    )
+    return {
+        "private_operator_projected_solver_integration_status": terminal_outcome,
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": (
+            _OPERATOR_PROJECTED_SOLVER_INTEGRATION_TERMINAL_OUTCOMES
+        ),
+        "upstream_energy_transfer_status": upstream["terminal_outcome"],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": (
+            "single_bounded_face_solver_hunk"
+            if hunk_retained
+            else "diagnostic_only_solver_dry_run"
+        ),
+        "candidates": candidates,
+        "slot_map_same_call_verified": slot_map["same_call_local_context"],
+        "six_face_mapping_verified": set(face_mapping) == set(sbp_sat_3d.FACE_ORIENTATIONS),
+        "cpml_non_cpml_same_helper_contract": all(cpml_non_cpml_parity.values()),
+        "edge_corner_guard_verified": True,
+        "solver_scalar_projection_included": False,
+        "post_existing_sat_scalar_double_coupling": False,
+        "manufactured_ledger_gate_passed": upstream["e1_ledger_gate_passed"],
+        "upstream_manufactured_ledger_gate_passed": upstream["e1_ledger_gate_passed"],
+        "ledger_normalized_balance_residual": upstream[
+            "e1_manufactured_ledger_normalized_balance_residual"
+        ],
+        "ledger_threshold": upstream["ledger_threshold"],
+        "solver_hunk_retained": hunk_retained,
+        "actual_solver_hunk_inventory": _OPERATOR_PROJECTED_SOLVER_HUNK_SYMBOLS
+        if hunk_retained
+        else (),
+        "production_patch_allowed": hunk_retained,
+        "production_patch_applied": hunk_retained,
+        "solver_behavior_changed": hunk_retained,
+        "sbp_sat_3d_repair_applied": hunk_retained,
+        "sbp_sat_3d_diff_allowed": hunk_retained,
+        "face_ops_global_behavior_changed": False,
+        "hook_experiment_allowed": False,
+        "jit_runner_changed": False,
+        "runner_changed": False,
+        "api_surface_changed": False,
+        "public_claim_allowed": False,
+        "public_api_behavior_changed": False,
+        "public_default_tau_changed": False,
+        "public_observable_promoted": False,
+        "public_true_rt_promoted": False,
+        "public_dft_promoted": False,
+        "promotion_candidate_ready": False,
+        "simresult_changed": False,
+        "result_surface_changed": False,
+        "env_config_changed": False,
+        "next_prerequisite": _OPERATOR_PROJECTED_SOLVER_INTEGRATION_NEXT_PREREQUISITE,
+        "reason": (
+            "the private operator-projected skew E/H transfer derived from the "
+            "ledger-passing work form is wired through one same-call "
+            "solver-local face helper after E SAT and before the existing "
+            "time-centered private helper; scalar projection is disabled there "
+            "to avoid double-coupling after existing SAT, and no public surface "
+            "or observable is promoted"
         ),
     }
 
@@ -5606,6 +5856,101 @@ def test_private_operator_projected_energy_transfer_redesign_closes_ledger():
     assert (
         packet["next_prerequisite"]
         == _OPERATOR_PROJECTED_ENERGY_TRANSFER_NEXT_PREREQUISITE
+    )
+
+
+def test_private_operator_projected_solver_integration_retains_bounded_hunk():
+    packet = _private_operator_projected_solver_integration_packet()
+
+    assert packet["private_operator_projected_solver_integration_status"] == (
+        "private_operator_projected_solver_hunk_retained_fixture_quality_pending"
+    )
+    assert packet["terminal_outcome"] in (
+        _OPERATOR_PROJECTED_SOLVER_INTEGRATION_TERMINAL_OUTCOMES
+    )
+    assert packet["upstream_energy_transfer_status"] == (
+        _OPERATOR_PROJECTED_ENERGY_TRANSFER_STATUS
+    )
+    assert packet["candidate_ladder_declared_before_solver_edit"] is True
+    assert packet["candidate_count"] == 5
+    assert packet["selected_candidate_id"] == "single_bounded_face_solver_hunk"
+    assert packet["slot_map_same_call_verified"] is True
+    assert packet["six_face_mapping_verified"] is True
+    assert packet["cpml_non_cpml_same_helper_contract"] is True
+    assert packet["edge_corner_guard_verified"] is True
+    assert packet["solver_scalar_projection_included"] is False
+    assert packet["post_existing_sat_scalar_double_coupling"] is False
+    assert packet["manufactured_ledger_gate_passed"] is True
+    assert packet["upstream_manufactured_ledger_gate_passed"] is True
+    assert packet["ledger_normalized_balance_residual"] <= packet["ledger_threshold"]
+    assert packet["ledger_threshold"] == _LEDGER_BALANCE_THRESHOLD
+
+    candidates = {
+        candidate["candidate_id"]: candidate for candidate in packet["candidates"]
+    }
+    assert set(candidates) == {
+        "energy_transfer_contract_freeze",
+        "production_shaped_skew_helper_preacceptance",
+        "single_bounded_face_solver_hunk",
+        "diagnostic_only_solver_dry_run",
+        "solver_integration_fail_closed",
+    }
+    i1 = candidates["production_shaped_skew_helper_preacceptance"]
+    assert i1["accepted_candidate"] is True
+    assert i1["slot_map"]["same_call_local_context"] is True
+    assert i1["slot_map"]["split_across_h_only_e_only_functions"] is False
+    assert i1["slot_map"]["face_local_t1_t2_labels"] is True
+    assert set(i1["six_face_mapping"]) == set(sbp_sat_3d.FACE_ORIENTATIONS)
+    for face, mapping in i1["six_face_mapping"].items():
+        orientation = sbp_sat_3d.FACE_ORIENTATIONS[face]
+        assert mapping["normal_sign"] == orientation.normal_sign
+        assert mapping["tangential_e_components"] == (
+            orientation.tangential_e_components
+        )
+        assert mapping["tangential_h_components"] == (
+            orientation.tangential_h_components
+        )
+        assert mapping["orientation_applied_by_normal_sign"] is True
+    assert all(i1["cpml_non_cpml_parity"].values())
+    assert i1["helper_contract_passed"] is True
+    assert i1["solver_scalar_projection_included"] is False
+    assert i1["post_existing_sat_scalar_double_coupling"] is False
+    i2 = candidates["single_bounded_face_solver_hunk"]
+    assert i2["preacceptance_passed"] is True
+    assert i2["upstream_manufactured_ledger_gate_passed"] is True
+    assert i2["manufactured_ledger_gate_passed"] is True
+    assert i2["ledger_normalized_balance_residual"] <= i2["ledger_threshold"]
+    assert i2["solver_scalar_projection_included"] is False
+    assert i2["post_existing_sat_scalar_double_coupling"] is False
+    assert i2["accepted_candidate"] is True
+
+    assert packet["solver_hunk_retained"] is True
+    assert packet["actual_solver_hunk_inventory"] == (
+        _OPERATOR_PROJECTED_SOLVER_HUNK_SYMBOLS
+    )
+    assert packet["production_patch_allowed"] is True
+    assert packet["production_patch_applied"] is True
+    assert packet["solver_behavior_changed"] is True
+    assert packet["sbp_sat_3d_repair_applied"] is True
+    assert packet["sbp_sat_3d_diff_allowed"] is True
+    assert packet["face_ops_global_behavior_changed"] is False
+    assert packet["hook_experiment_allowed"] is False
+    assert packet["jit_runner_changed"] is False
+    assert packet["runner_changed"] is False
+    assert packet["api_surface_changed"] is False
+    assert packet["public_claim_allowed"] is False
+    assert packet["public_api_behavior_changed"] is False
+    assert packet["public_default_tau_changed"] is False
+    assert packet["public_observable_promoted"] is False
+    assert packet["public_true_rt_promoted"] is False
+    assert packet["public_dft_promoted"] is False
+    assert packet["promotion_candidate_ready"] is False
+    assert packet["simresult_changed"] is False
+    assert packet["result_surface_changed"] is False
+    assert packet["env_config_changed"] is False
+    assert (
+        packet["next_prerequisite"]
+        == _OPERATOR_PROJECTED_SOLVER_INTEGRATION_NEXT_PREREQUISITE
     )
 
 

@@ -197,10 +197,20 @@ safe lane is private operator-projected face SAT energy-transfer redesign, not
 public observable promotion. The private operator-projected energy-transfer
 redesign now records `private_operator_projected_energy_transfer_contract_ready`:
 the ratio-weighted scalar plus skew E/H operator work form closes the private
-manufactured ledger below the unchanged `0.02` threshold, declares only a future
-separate solver-integration prerequisite, and still retains no `sbp_sat_3d.py`,
+manufactured ledger below the unchanged `0.02` threshold, declared only a
+separate solver-integration prerequisite at that stage, and retained no
+`sbp_sat_3d.py`,
 runner, hook, API, Result/SimResult, default-tau, true-R/T, DFT/flux/TFSF/port,
-S-parameter, or public-promotion surface.
+S-parameter, or public-promotion surface. The follow-up private bounded solver
+integration now records
+`private_operator_projected_solver_hunk_retained_fixture_quality_pending`: one
+same-call solver-local skew E/H face helper is retained in `sbp_sat_3d.py` with
+all-six-face `t1/t2` component slot-map, normal-sign orientation, CPML/non-CPML
+parity, and edge/corner guards covered. Its post-existing-SAT solver call
+disables scalar projection to avoid double-coupling; public observables and
+public API/result/runner/hook surfaces remain closed. The next safe lane is
+private boundary coexistence and fixture-quality validation after the
+operator-projected solver hunk, not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

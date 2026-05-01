@@ -29,8 +29,13 @@ manufactured ledger still failed with `0.16561960778570511 > 0.02`.  The private
 operator-projected energy-transfer redesign now records a diagnostic contract
 ready state: a ratio-weighted scalar plus skew E/H operator work form closes the
 private manufactured ledger below the unchanged `0.02` threshold without
-residual-derived coefficients.  That closes the private algebra gate only; it
-does not retain a solver hunk or promote any public observable.
+residual-derived coefficients.  The follow-up bounded solver-integration lane
+now retains that contract through one private same-call solver-local face helper
+in `sbp_sat_3d.py`, with all-six-face `t1/t2` slot-map, normal-sign
+orientation, CPML/non-CPML parity, and edge/corner guards covered.  The retained
+solver-local call disables scalar projection after the existing SAT stages to
+avoid double-coupling.  That remains private fixture-quality-pending evidence
+only; it does not promote any public observable.
 
 ### 2. General 3-D refinement box
 
@@ -89,18 +94,18 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now the next private solver-integration plan for the
-ledger-passing operator-projected energy-transfer contract.  That future lane
-must decide whether the private skew E/H work-form contract can be wired into
-`sbp_sat_3d.py` as a bounded solver hunk while preserving CPML/non-CPML
-symmetry, update/coupling bounds, public-surface closure, and the unchanged
-`0.02` manufactured-ledger threshold.
+The immediate lane is now private boundary coexistence and fixture-quality
+validation after the operator-projected solver hunk.  The private solver-local
+skew E/H helper is retained as a bounded production-context hunk, but it remains
+claims-closed until coexistence checks, fixture-quality recovery, and later true
+R/T readiness gates prove that the hunk improves the real solver path without
+breaking CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
+unchanged `0.02` manufactured-ledger threshold.
 
-No `sbp_sat_3d.py` production hunk, public true R/T, DFT/flux, TFSF, port,
-S-parameter, API, runner, result, hook, env/config, default tau, or public
-observable promotion should be admitted until the private manufactured
-energy-ledger gate and a separate solver-integration plan both pass without
-threshold laundering.
+No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
+hook, env/config, default tau, or public observable promotion should be admitted
+until boundary coexistence, fixture-quality, true-R/T readiness, and promotion
+gates pass without threshold laundering.
 
 ## Related local documents
 
@@ -114,4 +119,7 @@ threshold laundering.
   support status and promotion gate metadata.
 - `.omx/plans/ralplan-sbp-sat-private-operator-projected-face-sat-energy-transfer-redesign-after-diagnostic-only-solver-integration-gate-failed.md`
   — historical private energy-transfer redesign plan whose execution produced
-  the current ledger-passing private contract.
+  the ledger-passing private contract.
+- `.omx/plans/ralplan-sbp-sat-private-bounded-solver-integration-after-energy-transfer-ledger-closure.md`
+  — private bounded solver-integration plan whose execution retained the
+  operator-projected solver-local hunk while keeping public surfaces closed.
