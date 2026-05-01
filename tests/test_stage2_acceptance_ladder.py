@@ -155,13 +155,16 @@ def test_kottke_pec_short_time_stability_30_periods():
 
 @pytest.mark.xfail(
     reason="R5 acceptance pending — 50·τ_period stability not yet "
-    "achieved. Stage 2 inv-eps tensor freezes E inside fully-PEC "
-    "cells (inv=0 → Ca=1, Cb=0) but does NOT damp H, which "
-    "propagates freely inside PEC via 1/μ. Stage 1's sigma=1e10 "
-    "fold provides implicit damping; Stage 2 lacks an equivalent. "
-    "Diagnosed 2026-05-01: NaN at k=z_max consistently around "
-    "n=3300 steps (~50·τ at f=8GHz, dt~1.5ps). Same root cause as "
-    "Step 4 thin-PEC issue. Three fix paths in design doc §6 R5."
+    "achieved despite the apply_pec_h_mask fix landed 2026-05-01. "
+    "The fix correctly zeros H inside fully-PEC cells (where inv "
+    "is zero across all 3 components), confirmed by the cylindrical "
+    "PEC dual-path and 30·τ tests passing. But NaN still occurs at "
+    "n=3300 (~50·τ) at k=z_max. Hypothesis: late-time growth is "
+    "not the deep-PEC-interior H propagation alone, but also "
+    "involves boundary cells (k=10 here, with inv_xx=inv_yy=0 but "
+    "inv_zz=0.16 — partial-PEC) where the all-zero mask doesn't "
+    "fire. Damping H at partial-PEC cells distorts physics; needs "
+    "Yee-stagger-aware H mask. Tracked as Step 5 follow-up."
 )
 def test_kottke_pec_late_time_stability_50_periods():
     """Original R5 gate. Documented xfail until the H-damping

@@ -111,6 +111,38 @@ def apply_pec_mask(state, pec_mask) -> object:
     )
 
 
+def apply_pec_h_mask(state, pec_mask) -> object:
+    """Zero H-field components inside PEC cells.
+
+    Stage 2 unified-path companion to ``apply_pec_mask``. The Stage 2
+    inverse-permittivity tensor freezes E inside PEC (inv=0 → Ca=1,
+    Cb=0) but does NOT damp H, which propagates freely via 1/μ. Over
+    many periods (≥30·τ at typical RF parameters), this seeds late-
+    time growth and float32 NaN. Stage 1's ``sigma=1e10`` fold
+    provided implicit damping for both E and H via the
+    sigma-coupled curl interaction; Stage 2 needs explicit H zeroing.
+
+    Implementation: zero all three H components at any cell where
+    ``pec_mask`` is True (cell-center inside PEC). H inside PEC is
+    physically undefined when E=0 inside (no curl source), so
+    zeroing is safe.
+
+    Parameters
+    ----------
+    state : FDTDState
+    pec_mask : (nx, ny, nz) boolean array
+        True where the cell-center is inside a PEC region. Same
+        convention as ``apply_pec_mask``.
+    """
+    mask_dtype_h = pec_mask.astype(state.hx.dtype)
+    keep = 1.0 - mask_dtype_h
+    return state._replace(
+        hx=state.hx * keep,
+        hy=state.hy * keep,
+        hz=state.hz * keep,
+    )
+
+
 def apply_pec_occupancy(state, pec_occupancy) -> object:
     """Apply a relaxed PEC occupancy field to tangential E components.
 

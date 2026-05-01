@@ -102,11 +102,23 @@ def run_uniform(
             pec_shapes=pec_shapes or [],
             background_eps=1.0,
         )
-        # Stage 2 owns the PEC tensor encoding — disable Stage 1 paths
-        # that would otherwise double-correct.
-        pec_mask = None
+        # Stage 2 *keeps* pec_mask alive (was previously null'd here).
+        # Reasons:
+        # 1. ``apply_pec_mask`` on top of inv=0 provides defense-in-
+        #    depth: numerical noise that creeps into PEC cells (e.g.
+        #    via float-arithmetic-ordering at boundary cells with
+        #    fractional inv) is zeroed each step rather than
+        #    accumulating.
+        # 2. ``apply_pec_h_mask`` (NEW, Step 5 fix) zeros H inside
+        #    PEC cells — Stage 1 lacked this but its ``sigma=1e10``
+        #    fold provided implicit damping that Stage 2 doesn't.
+        #    Without H zeroing, late-time NaN at the cells deep
+        #    inside PEC half-spaces (k=z_max in the 50·τ stability
+        #    test).
         # ``conformal_weights`` is intentionally left unset (None) so
-        # the legacy ``apply_conformal_pec`` per-step zero is skipped.
+        # the legacy ``apply_conformal_pec`` per-step E zero is
+        # skipped — that path's eps_correction would conflict with
+        # the inv tensor.
     elif subpixel_smoothing:
         from rfx.geometry.smoothing import compute_smoothed_eps
         shape_eps_pairs = [
