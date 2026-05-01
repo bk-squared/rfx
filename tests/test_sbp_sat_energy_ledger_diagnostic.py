@@ -282,6 +282,45 @@ _OPERATOR_PROJECTED_SOLVER_HUNK_SYMBOLS = (
     "step_subgrid_3d_with_cpml",
     "step_subgrid_3d",
 )
+_BOUNDARY_FIXTURE_VALIDATION_STATUS = (
+    "private_boundary_coexistence_passed_fixture_quality_blocked"
+)
+_BOUNDARY_FIXTURE_VALIDATION_NEXT_PREREQUISITE = (
+    "private fixture-quality blocker repair after boundary coexistence "
+    "validation ralplan"
+)
+_BOUNDARY_FIXTURE_VALIDATION_TERMINAL_OUTCOMES = (
+    "private_boundary_contract_locked_solver_hunk_present",
+    "private_boundary_coexistence_passed_fixture_quality_pending",
+    "private_boundary_coexistence_fixture_quality_ready",
+    "private_boundary_coexistence_passed_fixture_quality_blocked",
+    "private_boundary_fixture_bounded_repair_retained",
+    "private_boundary_coexistence_fail_closed_no_public_promotion",
+)
+_BOUNDARY_FIXTURE_VALIDATION_PRECEDENCE = (
+    "private_boundary_coexistence_fail_closed_no_public_promotion",
+    "private_boundary_fixture_bounded_repair_retained",
+    "private_boundary_coexistence_fixture_quality_ready",
+    "private_boundary_coexistence_passed_fixture_quality_blocked",
+    "private_boundary_coexistence_passed_fixture_quality_pending",
+    "private_boundary_contract_locked_solver_hunk_present",
+)
+_BOUNDARY_FIXTURE_ACCEPTED_CLASSES = (
+    "all_pec",
+    "selected_pmc_reflector_faces",
+    "periodic_axes_when_box_is_interior_or_spans_axis",
+    "scalar_cpml_bounded_interior_box",
+    "boundaryspec_uniform_cpml_bounded_interior_box",
+)
+_BOUNDARY_FIXTURE_UNSUPPORTED_CLASSES = (
+    "upml",
+    "per_face_cpml_thickness_overrides",
+    "mixed_cpml_reflector",
+    "mixed_cpml_periodic",
+    "mixed_pmc_periodic",
+    "one_side_touch_periodic_axis",
+    "mixed_absorber_families",
+)
 
 
 def _face_fixture_ops():
@@ -4336,6 +4375,107 @@ def _private_operator_projected_solver_integration_packet() -> dict[str, object]
     }
 
 
+def _private_boundary_coexistence_fixture_validation_packet() -> dict[str, object]:
+    """Record private boundary coexistence after the retained solver hunk."""
+
+    upstream = _private_operator_projected_solver_integration_packet()
+    step_sources = {
+        "non_cpml": inspect.getsource(sbp_sat_3d.step_subgrid_3d),
+        "cpml": inspect.getsource(sbp_sat_3d.step_subgrid_3d_with_cpml),
+    }
+    helper_present_in_step_paths = {
+        name: "_apply_operator_projected_skew_eh_face_helper" in source
+        for name, source in step_sources.items()
+    }
+    helper_slot_order = {
+        name: (
+            source.index("apply_sat_h_interfaces")
+            < source.index("apply_sat_e_interfaces")
+            < source.index("_apply_operator_projected_skew_eh_face_helper")
+            < source.index("_apply_time_centered_paired_face_helper")
+        )
+        for name, source in step_sources.items()
+    }
+    boundary_contract_locked = bool(
+        upstream["terminal_outcome"] == _OPERATOR_PROJECTED_SOLVER_INTEGRATION_STATUS
+        and upstream["solver_hunk_retained"]
+        and all(helper_present_in_step_paths.values())
+        and all(helper_slot_order.values())
+    )
+    runtime_probe_tests = {
+        "non_cpml_step_path_probe_tests": (
+            "tests/test_sbp_sat_3d.py::"
+            "test_operator_projected_helper_executes_under_representative_"
+            "non_cpml_boundaries",
+        ),
+        "cpml_step_path_probe_tests": (
+            "tests/test_sbp_sat_3d.py::"
+            "test_operator_projected_helper_executes_under_representative_"
+            "cpml_boundary",
+        ),
+        "direct_step_path_probe_required": True,
+        "high_level_api_smoke_not_sufficient_alone": True,
+    }
+    return {
+        "private_boundary_coexistence_fixture_validation_status": (
+            _BOUNDARY_FIXTURE_VALIDATION_STATUS
+        ),
+        "status": _BOUNDARY_FIXTURE_VALIDATION_STATUS,
+        "terminal_outcome": _BOUNDARY_FIXTURE_VALIDATION_STATUS,
+        "terminal_outcome_taxonomy": _BOUNDARY_FIXTURE_VALIDATION_TERMINAL_OUTCOMES,
+        "terminal_outcome_precedence": _BOUNDARY_FIXTURE_VALIDATION_PRECEDENCE,
+        "diagnostic_scope": "private_boundary_coexistence_fixture_quality_only",
+        "upstream_operator_projected_solver_integration_status": upstream[
+            "terminal_outcome"
+        ],
+        "solver_hunk_retained": bool(upstream["solver_hunk_retained"]),
+        "boundary_contract_locked": boundary_contract_locked,
+        "boundary_contract_source": "canonical BoundarySpec plus existing preflight",
+        "shadow_boundary_model_added": False,
+        "accepted_boundary_classes": _BOUNDARY_FIXTURE_ACCEPTED_CLASSES,
+        "unsupported_boundary_classes": _BOUNDARY_FIXTURE_UNSUPPORTED_CLASSES,
+        "helper_present_in_step_paths": helper_present_in_step_paths,
+        "helper_slot_order_after_e_sat_before_time_centered_helper": (
+            helper_slot_order
+        ),
+        "helper_execution_evidence": runtime_probe_tests,
+        "boundary_coexistence_passed": True,
+        "fixture_quality_replayed": True,
+        "fixture_quality_ready": False,
+        "reference_quality_ready": False,
+        "fixture_quality_blockers": (
+            "transverse_phase_spread_deg",
+            "transverse_magnitude_cv",
+            "vacuum_relative_magnitude_error",
+            "vacuum_phase_error_deg",
+        ),
+        "dominant_fixture_quality_blocker": "transverse_phase_spread_deg",
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "api_surface_changed": False,
+        "public_api_behavior_changed": False,
+        "public_claim_allowed": False,
+        "public_observable_promoted": False,
+        "public_true_rt_promoted": False,
+        "public_dft_promoted": False,
+        "hook_experiment_allowed": False,
+        "runner_changed": False,
+        "jit_runner_changed": False,
+        "result_surface_changed": False,
+        "env_config_changed": False,
+        "public_default_tau_changed": False,
+        "promotion_candidate_ready": False,
+        "next_prerequisite": _BOUNDARY_FIXTURE_VALIDATION_NEXT_PREREQUISITE,
+        "reason": (
+            "the retained private solver hunk remains present in CPML and "
+            "non-CPML step paths under the accepted BoundarySpec subset, but "
+            "unchanged fixture-quality gates are still blocked by transverse "
+            "uniformity and vacuum-parity errors; public promotion remains "
+            "closed"
+        ),
+    }
+
+
 def _private_solver_integration_hunk_packet() -> dict[str, object]:
     """Record the private solver-integration hunk gate after A1-A4 evidence."""
 
@@ -5952,6 +6092,70 @@ def test_private_operator_projected_solver_integration_retains_bounded_hunk():
         packet["next_prerequisite"]
         == _OPERATOR_PROJECTED_SOLVER_INTEGRATION_NEXT_PREREQUISITE
     )
+
+
+def test_private_boundary_coexistence_fixture_validation_records_blocked_fixture_quality():
+    packet = _private_boundary_coexistence_fixture_validation_packet()
+
+    assert packet["private_boundary_coexistence_fixture_validation_status"] == (
+        "private_boundary_coexistence_passed_fixture_quality_blocked"
+    )
+    assert packet["terminal_outcome"] in (
+        _BOUNDARY_FIXTURE_VALIDATION_TERMINAL_OUTCOMES
+    )
+    assert packet["terminal_outcome_precedence"] == (
+        _BOUNDARY_FIXTURE_VALIDATION_PRECEDENCE
+    )
+    assert packet["upstream_operator_projected_solver_integration_status"] == (
+        _OPERATOR_PROJECTED_SOLVER_INTEGRATION_STATUS
+    )
+    assert packet["solver_hunk_retained"] is True
+    assert packet["boundary_contract_locked"] is True
+    assert packet["shadow_boundary_model_added"] is False
+    assert packet["accepted_boundary_classes"] == _BOUNDARY_FIXTURE_ACCEPTED_CLASSES
+    assert (
+        packet["unsupported_boundary_classes"]
+        == _BOUNDARY_FIXTURE_UNSUPPORTED_CLASSES
+    )
+    assert all(packet["helper_present_in_step_paths"].values())
+    assert all(
+        packet["helper_slot_order_after_e_sat_before_time_centered_helper"].values()
+    )
+    helper_evidence = packet["helper_execution_evidence"]
+    assert helper_evidence["direct_step_path_probe_required"] is True
+    assert helper_evidence["high_level_api_smoke_not_sufficient_alone"] is True
+    assert any(
+        "test_operator_projected_helper_executes_under_representative_non_cpml"
+        in test_name
+        for test_name in helper_evidence["non_cpml_step_path_probe_tests"]
+    )
+    assert any(
+        "test_operator_projected_helper_executes_under_representative_cpml"
+        in test_name
+        for test_name in helper_evidence["cpml_step_path_probe_tests"]
+    )
+    assert packet["boundary_coexistence_passed"] is True
+    assert packet["fixture_quality_replayed"] is True
+    assert packet["fixture_quality_ready"] is False
+    assert packet["reference_quality_ready"] is False
+    assert packet["dominant_fixture_quality_blocker"] == "transverse_phase_spread_deg"
+    assert "transverse_magnitude_cv" in packet["fixture_quality_blockers"]
+    assert packet["api_preflight_changes_allowed"] is False
+    assert packet["rfx_api_changes_allowed"] is False
+    assert packet["api_surface_changed"] is False
+    assert packet["public_api_behavior_changed"] is False
+    assert packet["public_claim_allowed"] is False
+    assert packet["public_observable_promoted"] is False
+    assert packet["public_true_rt_promoted"] is False
+    assert packet["public_dft_promoted"] is False
+    assert packet["hook_experiment_allowed"] is False
+    assert packet["runner_changed"] is False
+    assert packet["jit_runner_changed"] is False
+    assert packet["result_surface_changed"] is False
+    assert packet["env_config_changed"] is False
+    assert packet["public_default_tau_changed"] is False
+    assert packet["promotion_candidate_ready"] is False
+    assert packet["next_prerequisite"] == _BOUNDARY_FIXTURE_VALIDATION_NEXT_PREREQUISITE
 
 
 def test_private_manufactured_interior_box_ledger_records_edge_corner_accounting():

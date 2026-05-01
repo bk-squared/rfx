@@ -785,13 +785,67 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == operator_solver["next_prerequisite"]
     )
+    boundary_fixture = benchmark_gate[
+        "private_boundary_coexistence_fixture_validation"
+    ]
+    assert benchmark_gate[
+        "private_boundary_coexistence_fixture_validation_status"
+    ] == "private_boundary_coexistence_passed_fixture_quality_blocked"
+    assert boundary_fixture[
+        "upstream_operator_projected_solver_integration_status"
+    ] == benchmark_gate["private_operator_projected_solver_integration_status"]
+    assert boundary_fixture["solver_hunk_retained"] is True
+    assert boundary_fixture["boundary_contract_locked"] is True
+    assert boundary_fixture["shadow_boundary_model_added"] is False
+    assert boundary_fixture["accepted_boundary_classes"] == [
+        "all_pec",
+        "selected_pmc_reflector_faces",
+        "periodic_axes_when_box_is_interior_or_spans_axis",
+        "scalar_cpml_bounded_interior_box",
+        "boundaryspec_uniform_cpml_bounded_interior_box",
+    ]
+    assert boundary_fixture["unsupported_boundary_classes"] == [
+        "upml",
+        "per_face_cpml_thickness_overrides",
+        "mixed_cpml_reflector",
+        "mixed_cpml_periodic",
+        "mixed_pmc_periodic",
+        "one_side_touch_periodic_axis",
+        "mixed_absorber_families",
+    ]
+    assert boundary_fixture["boundary_coexistence_passed"] is True
+    assert boundary_fixture["fixture_quality_replayed"] is True
+    assert boundary_fixture["fixture_quality_ready"] is False
+    assert boundary_fixture["reference_quality_ready"] is False
+    assert (
+        boundary_fixture["dominant_fixture_quality_blocker"]
+        == "transverse_phase_spread_deg"
+    )
+    assert (
+        boundary_fixture["helper_execution_evidence"][
+            "direct_step_path_probe_required"
+        ]
+        is True
+    )
+    assert boundary_fixture["api_preflight_changes_allowed"] is False
+    assert boundary_fixture["rfx_api_changes_allowed"] is False
+    assert boundary_fixture["api_surface_changed"] is False
+    assert boundary_fixture["public_api_behavior_changed"] is False
+    assert boundary_fixture["public_claim_allowed"] is False
+    assert boundary_fixture["public_observable_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_boundary_coexistence_fixture_validation_next_prerequisite"
+        ]
+        == boundary_fixture["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private boundary coexistence and fixture-quality validation after "
-        "operator-projected solver hunk ralplan"
+        "private fixture-quality blocker repair after boundary coexistence "
+        "validation ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private boundary coexistence and fixture-quality validation after "
-        "operator-projected solver hunk ralplan"
+        "private fixture-quality blocker repair after boundary coexistence "
+        "validation ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1053,8 +1107,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private boundary coexistence and fixture-quality validation after "
-        "operator-projected solver hunk ralplan"
+        "private fixture-quality blocker repair after boundary coexistence "
+        "validation ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

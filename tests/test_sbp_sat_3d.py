@@ -4,8 +4,10 @@ import inspect
 import numpy as np
 import jax.numpy as jnp
 
+from rfx.boundaries.cpml import init_cpml
+from rfx.grid import Grid
 from rfx.subgridding.face_ops import build_face_ops, prolong_face, restrict_face
-from rfx.subgridding import jit_runner
+from rfx.subgridding import jit_runner, sbp_sat_3d
 from rfx.subgridding.sbp_sat_3d import (
     FACE_ORIENTATIONS,
     _apply_operator_projected_skew_eh_face_helper,
@@ -521,6 +523,111 @@ def test_time_centered_paired_face_helper_is_wired_after_e_sat():
         helper_source = source[helper_index:]
         assert "private_post_h_hook" not in helper_source
         assert "private_post_e_hook" not in helper_source
+
+
+def _spy_operator_projected_helper(monkeypatch):
+    calls = []
+    original = sbp_sat_3d._apply_operator_projected_skew_eh_face_helper
+
+    def spy(e_coarse, e_fine, h_coarse, h_fine, config):
+        calls.append(
+            {
+                "coarse_shape": tuple(e_coarse[0].shape),
+                "fine_shape": tuple(e_fine[0].shape),
+                "active_faces": tuple(_active_faces(config)),
+            }
+        )
+        return original(e_coarse, e_fine, h_coarse, h_fine, config)
+
+    monkeypatch.setattr(
+        sbp_sat_3d,
+        "_apply_operator_projected_skew_eh_face_helper",
+        spy,
+    )
+    return calls
+
+
+def test_operator_projected_helper_executes_under_representative_non_cpml_boundaries(
+    monkeypatch,
+):
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    state = _seed_all_components_for_box(config, state)
+    calls = _spy_operator_projected_helper(monkeypatch)
+    non_cpml_cases = (
+        (
+            "all_pec",
+            {},
+        ),
+        (
+            "selected_pmc_reflector",
+            {
+                "outer_pec_faces": frozenset(
+                    {"x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}
+                ),
+                "outer_pmc_faces": frozenset({"x_lo"}),
+            },
+        ),
+        (
+            "periodic_axis_interior_box",
+            {
+                "outer_pec_faces": frozenset({"y_lo", "y_hi", "z_lo", "z_hi"}),
+                "periodic": (True, False, False),
+                "fine_periodic": (True, False, False),
+            },
+        ),
+    )
+
+    for case_name, kwargs in non_cpml_cases:
+        calls.clear()
+        next_state = step_subgrid_3d(state, config, **kwargs)
+
+        assert next_state.step == state.step + 1, case_name
+        assert len(calls) == 1, case_name
+        assert calls[0]["coarse_shape"] == state.ex_c.shape
+        assert calls[0]["fine_shape"] == state.ex_f.shape
+        assert calls[0]["active_faces"] == tuple(_active_faces(config))
+
+
+def test_operator_projected_helper_executes_under_representative_cpml_boundary(
+    monkeypatch,
+):
+    grid = Grid(
+        freq_max=5e9,
+        domain=(0.020, 0.020, 0.020),
+        dx=0.004,
+        cpml_layers=1,
+    )
+    assert grid.shape == (8, 8, 8)
+    config, state = init_subgrid_3d(
+        shape_c=grid.shape,
+        dx_c=grid.dx,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    state = _seed_all_components_for_box(config, state)
+    cpml_params, cpml_state = init_cpml(grid)
+    calls = _spy_operator_projected_helper(monkeypatch)
+
+    next_state, next_cpml_state = step_subgrid_3d_with_cpml(
+        state,
+        config,
+        cpml_params=cpml_params,
+        cpml_state=cpml_state,
+        grid_c=grid,
+        cpml_axes="xyz",
+    )
+
+    assert next_state.step == state.step + 1
+    assert next_cpml_state is not None
+    assert len(calls) == 1
+    assert calls[0]["coarse_shape"] == state.ex_c.shape
+    assert calls[0]["fine_shape"] == state.ex_f.shape
+    assert calls[0]["active_faces"] == tuple(_active_faces(config))
 
 
 def test_active_interfaces_for_full_span_zslab():

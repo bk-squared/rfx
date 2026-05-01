@@ -608,6 +608,45 @@ _PRIVATE_OPERATOR_PROJECTED_SOLVER_HUNK_SYMBOLS = (
     "step_subgrid_3d_with_cpml",
     "step_subgrid_3d",
 )
+_PRIVATE_BOUNDARY_FIXTURE_VALIDATION_STATUS = (
+    "private_boundary_coexistence_passed_fixture_quality_blocked"
+)
+_PRIVATE_BOUNDARY_FIXTURE_VALIDATION_NEXT_PREREQUISITE = (
+    "private fixture-quality blocker repair after boundary coexistence "
+    "validation ralplan"
+)
+_PRIVATE_BOUNDARY_FIXTURE_VALIDATION_TERMINAL_OUTCOMES = (
+    "private_boundary_contract_locked_solver_hunk_present",
+    "private_boundary_coexistence_passed_fixture_quality_pending",
+    "private_boundary_coexistence_fixture_quality_ready",
+    "private_boundary_coexistence_passed_fixture_quality_blocked",
+    "private_boundary_fixture_bounded_repair_retained",
+    "private_boundary_coexistence_fail_closed_no_public_promotion",
+)
+_PRIVATE_BOUNDARY_FIXTURE_VALIDATION_PRECEDENCE = (
+    "private_boundary_coexistence_fail_closed_no_public_promotion",
+    "private_boundary_fixture_bounded_repair_retained",
+    "private_boundary_coexistence_fixture_quality_ready",
+    "private_boundary_coexistence_passed_fixture_quality_blocked",
+    "private_boundary_coexistence_passed_fixture_quality_pending",
+    "private_boundary_contract_locked_solver_hunk_present",
+)
+_PRIVATE_BOUNDARY_FIXTURE_ACCEPTED_CLASSES = (
+    "all_pec",
+    "selected_pmc_reflector_faces",
+    "periodic_axes_when_box_is_interior_or_spans_axis",
+    "scalar_cpml_bounded_interior_box",
+    "boundaryspec_uniform_cpml_bounded_interior_box",
+)
+_PRIVATE_BOUNDARY_FIXTURE_UNSUPPORTED_CLASSES = (
+    "upml",
+    "per_face_cpml_thickness_overrides",
+    "mixed_cpml_reflector",
+    "mixed_cpml_periodic",
+    "mixed_pmc_periodic",
+    "one_side_touch_periodic_axis",
+    "mixed_absorber_families",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -3952,6 +3991,85 @@ def _private_operator_projected_solver_integration_metadata(
     }
 
 
+def _private_boundary_coexistence_fixture_validation_metadata(
+    *,
+    operator_solver_metadata: dict[str, object],
+    reference_quality_ready: bool,
+    fixture_quality_gates: dict[str, bool],
+    reference_quality_blockers: list[dict[str, object]],
+    dominant_reference_quality_blocker: str,
+) -> dict[str, object]:
+    fixture_quality_ready = bool(
+        reference_quality_ready and all(fixture_quality_gates.values())
+    )
+    solver_hunk_retained = bool(operator_solver_metadata["solver_hunk_retained"])
+    if not solver_hunk_retained:
+        terminal_outcome = "private_boundary_coexistence_fail_closed_no_public_promotion"
+        selected_candidate_id = "fail_closed_no_solver_hunk"
+    elif fixture_quality_ready:
+        terminal_outcome = "private_boundary_coexistence_fixture_quality_ready"
+        selected_candidate_id = "boundary_coexistence_fixture_quality_ready"
+    else:
+        terminal_outcome = _PRIVATE_BOUNDARY_FIXTURE_VALIDATION_STATUS
+        selected_candidate_id = "boundary_pass_fixture_quality_blocked"
+    blocker_names = tuple(
+        blocker["name"] if isinstance(blocker, dict) else str(blocker)
+        for blocker in reference_quality_blockers
+    )
+    return {
+        "private_boundary_coexistence_fixture_validation_status": terminal_outcome,
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_BOUNDARY_FIXTURE_VALIDATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_BOUNDARY_FIXTURE_VALIDATION_PRECEDENCE
+        ),
+        "diagnostic_scope": "private_boundary_coexistence_fixture_quality_only",
+        "upstream_operator_projected_solver_integration_status": (
+            operator_solver_metadata["terminal_outcome"]
+        ),
+        "selected_candidate_id": selected_candidate_id,
+        "solver_hunk_retained": solver_hunk_retained,
+        "boundary_contract_locked": solver_hunk_retained,
+        "boundary_contract_source": "canonical BoundarySpec plus existing preflight",
+        "shadow_boundary_model_added": False,
+        "accepted_boundary_classes": _PRIVATE_BOUNDARY_FIXTURE_ACCEPTED_CLASSES,
+        "unsupported_boundary_classes": _PRIVATE_BOUNDARY_FIXTURE_UNSUPPORTED_CLASSES,
+        "helper_execution_evidence": {
+            "non_cpml_step_path_probe_tests": (
+                "tests/test_sbp_sat_3d.py::"
+                "test_operator_projected_helper_executes_under_representative_"
+                "non_cpml_boundaries",
+            ),
+            "cpml_step_path_probe_tests": (
+                "tests/test_sbp_sat_3d.py::"
+                "test_operator_projected_helper_executes_under_representative_"
+                "cpml_boundary",
+            ),
+            "direct_step_path_probe_required": True,
+            "high_level_api_smoke_not_sufficient_alone": True,
+        },
+        "boundary_coexistence_passed": solver_hunk_retained,
+        "fixture_quality_replayed": True,
+        "fixture_quality_gates": fixture_quality_gates,
+        "fixture_quality_ready": fixture_quality_ready,
+        "reference_quality_ready": bool(reference_quality_ready),
+        "fixture_quality_blockers": blocker_names,
+        "dominant_fixture_quality_blocker": dominant_reference_quality_blocker,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "next_prerequisite": _PRIVATE_BOUNDARY_FIXTURE_VALIDATION_NEXT_PREREQUISITE,
+        "reason": (
+            "the retained private solver hunk is compatible with the accepted "
+            "BoundarySpec subset, but unchanged fixture-quality gates remain "
+            "below threshold; true R/T and public promotion stay closed"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -5811,8 +5929,30 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    boundary_fixture_metadata = (
+        _private_boundary_coexistence_fixture_validation_metadata(
+            operator_solver_metadata=operator_solver_metadata,
+            reference_quality_ready=reference_quality_ready,
+            fixture_quality_gates=fixture_quality_gates,
+            reference_quality_blockers=reference_quality_blockers,
+            dominant_reference_quality_blocker=dominant_reference_quality_blocker,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_boundary_coexistence_fixture_validation_status": (
+                boundary_fixture_metadata["status"]
+            ),
+            "private_boundary_coexistence_fixture_validation": (
+                boundary_fixture_metadata
+            ),
+            "private_boundary_coexistence_fixture_validation_next_prerequisite": (
+                boundary_fixture_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_operator_projected_solver_integration_next_prerequisite"
+        "private_boundary_coexistence_fixture_validation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -5863,9 +6003,11 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"{energy_transfer_metadata['terminal_outcome']}"
                 "; the private operator-projected solver integration records "
                 f"{operator_solver_metadata['terminal_outcome']}"
+                "; the private boundary coexistence fixture validation records "
+                f"{boundary_fixture_metadata['terminal_outcome']}"
             ),
             "next_prerequisite": base_metadata[
-                "private_operator_projected_solver_integration_next_prerequisite"
+                "private_boundary_coexistence_fixture_validation_next_prerequisite"
             ],
         }
 
@@ -7446,9 +7588,55 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert operator_solver["public_claim_allowed"] is False
     assert operator_solver["public_observable_promoted"] is False
     assert operator_solver["hook_experiment_allowed"] is False
+    boundary_fixture = metadata["private_boundary_coexistence_fixture_validation"]
+    assert metadata["private_boundary_coexistence_fixture_validation_status"] == (
+        "private_boundary_coexistence_passed_fixture_quality_blocked"
+    )
+    assert boundary_fixture["upstream_operator_projected_solver_integration_status"] == (
+        metadata["private_operator_projected_solver_integration_status"]
+    )
+    assert boundary_fixture["solver_hunk_retained"] is True
+    assert boundary_fixture["boundary_contract_locked"] is True
+    assert boundary_fixture["shadow_boundary_model_added"] is False
+    assert boundary_fixture["accepted_boundary_classes"] == (
+        _PRIVATE_BOUNDARY_FIXTURE_ACCEPTED_CLASSES
+    )
+    assert boundary_fixture["unsupported_boundary_classes"] == (
+        _PRIVATE_BOUNDARY_FIXTURE_UNSUPPORTED_CLASSES
+    )
+    assert (
+        boundary_fixture["helper_execution_evidence"][
+            "direct_step_path_probe_required"
+        ]
+        is True
+    )
+    assert (
+        boundary_fixture["helper_execution_evidence"][
+            "high_level_api_smoke_not_sufficient_alone"
+        ]
+        is True
+    )
+    assert boundary_fixture["boundary_coexistence_passed"] is True
+    assert boundary_fixture["fixture_quality_replayed"] is True
+    assert boundary_fixture["fixture_quality_ready"] is False
+    assert boundary_fixture["reference_quality_ready"] is False
+    assert (
+        boundary_fixture["dominant_fixture_quality_blocker"]
+        == "transverse_phase_spread_deg"
+    )
+    assert "transverse_magnitude_cv" in boundary_fixture["fixture_quality_blockers"]
+    assert boundary_fixture["api_preflight_changes_allowed"] is False
+    assert boundary_fixture["rfx_api_changes_allowed"] is False
+    assert boundary_fixture["api_surface_changed"] is False
+    assert boundary_fixture["public_api_behavior_changed"] is False
+    assert boundary_fixture["public_claim_allowed"] is False
+    assert boundary_fixture["public_observable_promoted"] is False
+    assert boundary_fixture["hook_experiment_allowed"] is False
     assert (
         metadata["follow_up_recommendation"]
-        == metadata["private_operator_projected_solver_integration_next_prerequisite"]
+        == metadata[
+            "private_boundary_coexistence_fixture_validation_next_prerequisite"
+        ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -7472,7 +7660,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata["private_operator_projected_solver_integration_next_prerequisite"]
+        == metadata[
+            "private_boundary_coexistence_fixture_validation_next_prerequisite"
+        ]
     )
     assert (
         "same-contract private reference helper is present"
@@ -7514,6 +7704,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_operator_projected_solver_integration_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_boundary_coexistence_fixture_validation_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

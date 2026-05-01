@@ -35,7 +35,12 @@ in `sbp_sat_3d.py`, with all-six-face `t1/t2` slot-map, normal-sign
 orientation, CPML/non-CPML parity, and edge/corner guards covered.  The retained
 solver-local call disables scalar projection after the existing SAT stages to
 avoid double-coupling.  That remains private fixture-quality-pending evidence
-only; it does not promote any public observable.
+only; it does not promote any public observable.  The subsequent private
+boundary coexistence validation confirms direct step-path helper execution under
+representative all-PEC, selected PMC, periodic, and bounded-CPML accepted
+boundary arguments while keeping unsupported `BoundarySpec` classes hard-fail,
+but unchanged fixture-quality replay is still blocked by transverse-uniformity
+and vacuum-parity errors.
 
 ### 2. General 3-D refinement box
 
@@ -94,13 +99,14 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private boundary coexistence and fixture-quality
-validation after the operator-projected solver hunk.  The private solver-local
-skew E/H helper is retained as a bounded production-context hunk, but it remains
-claims-closed until coexistence checks, fixture-quality recovery, and later true
-R/T readiness gates prove that the hunk improves the real solver path without
-breaking CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
-unchanged `0.02` manufactured-ledger threshold.
+The immediate lane is now private fixture-quality blocker repair after boundary
+coexistence validation.  The private solver-local skew E/H helper is retained as
+a bounded production-context hunk and the accepted boundary subset has direct
+helper-execution evidence, but the lane remains claims-closed until
+fixture-quality recovery and later true R/T readiness gates prove that the hunk
+improves the real solver path without breaking CPML/non-CPML symmetry, boundary
+guards, update/coupling bounds, or the unchanged `0.02` manufactured-ledger
+threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

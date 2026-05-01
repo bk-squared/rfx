@@ -208,9 +208,15 @@ same-call solver-local skew E/H face helper is retained in `sbp_sat_3d.py` with
 all-six-face `t1/t2` component slot-map, normal-sign orientation, CPML/non-CPML
 parity, and edge/corner guards covered. Its post-existing-SAT solver call
 disables scalar projection to avoid double-coupling; public observables and
-public API/result/runner/hook surfaces remain closed. The next safe lane is
-private boundary coexistence and fixture-quality validation after the
-operator-projected solver hunk, not public promotion.
+public API/result/runner/hook surfaces remain closed. The private boundary
+coexistence and fixture-quality validation lane now records
+`private_boundary_coexistence_passed_fixture_quality_blocked`: direct step-path
+probes exercise the retained helper under representative all-PEC, selected PMC,
+periodic, and bounded-CPML accepted boundary arguments, while the canonical
+`BoundarySpec` unsupported classes stay hard-fail. Unchanged fixture-quality
+gates remain blocked by transverse uniformity and vacuum-parity errors, so the
+next safe lane is private fixture-quality blocker repair after boundary
+coexistence validation, not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

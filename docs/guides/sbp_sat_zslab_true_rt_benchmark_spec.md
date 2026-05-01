@@ -228,6 +228,13 @@ keeps the public claim blocked:
   double-coupling. This is still private fixture-quality pending evidence, not a
   true R/T, DFT/flux, TFSF, port, S-parameter, API, result, runner, hook, or
   public-promotion claim;
+- the private boundary coexistence and fixture-quality validation lane now
+  records `private_boundary_coexistence_passed_fixture_quality_blocked`: direct
+  step-path probes exercise the retained helper under representative all-PEC,
+  selected PMC, periodic, and bounded-CPML accepted boundary arguments while
+  `BoundarySpec` unsupported classes remain hard-fail. The unchanged
+  fixture-quality gates still fail transverse-uniformity and vacuum-parity
+  thresholds, so this is not true-R/T readiness or public-promotion evidence;
 - the prior boundary-expanded analytic-sheet sweep is retained as history, not
   as current slab R/T evidence;
 - the current recorded status is therefore **inconclusive**, not a public
@@ -270,10 +277,13 @@ private operator-projected energy-transfer redesign now records
 private E/H skew work-form candidate, and because the follow-up private bounded
 solver integration now records
 `private_operator_projected_solver_hunk_retained_fixture_quality_pending` with a
-retained private solver-local hunk but no public observable, the next safe lane
-is `private boundary coexistence and fixture-quality validation after
-operator-projected solver hunk ralplan`. Hook experiments remain closed and
-public promotion remains closed.
+retained private solver-local hunk but no public observable, and because the
+private boundary coexistence and fixture-quality validation lane now records
+`private_boundary_coexistence_passed_fixture_quality_blocked` after direct
+accepted-boundary helper probes and unchanged fixture-quality replay, the next
+safe lane is `private fixture-quality blocker repair after boundary coexistence
+validation ralplan`. Hook experiments remain closed and public promotion remains
+closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true
 R/T as deferred.
