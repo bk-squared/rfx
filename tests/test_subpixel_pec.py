@@ -161,7 +161,7 @@ def test_assemble_materials_injects_halfspace_for_conformal_face():
     fractional weights at the boundary cell."""
     sim = _wr90_sim(conformal=True)
     grid = sim._build_grid()
-    _, _, _, _, pec_shapes, _ = sim._assemble_materials(grid)
+    _, _, _, _, pec_shapes, _, _ = sim._assemble_materials(grid)
 
     # y_hi: half-space whose corner_lo[1] == WR_90_A
     y_hi = _half_space_box_lo_y(pec_shapes, axis_idx=1, value=WR_90_A)
@@ -185,7 +185,7 @@ def test_assemble_materials_unchanged_without_conformal():
     is the load-bearing regression guard for the opt-in design."""
     sim = _wr90_sim(conformal=False)
     grid = sim._build_grid()
-    _, _, _, _, pec_shapes, _ = sim._assemble_materials(grid)
+    _, _, _, _, pec_shapes, _, _ = sim._assemble_materials(grid)
 
     # No geometry, no thin conductors — the only PEC is the boundary
     # spec, which should NOT spawn any pec_shapes entries.
@@ -203,7 +203,7 @@ def test_conformal_weights_fractional_at_wr90_y_boundary_cell():
 
     sim = _wr90_sim(conformal=True)
     grid = sim._build_grid()
-    _, _, _, _, pec_shapes, _ = sim._assemble_materials(grid)
+    _, _, _, _, pec_shapes, _, _ = sim._assemble_materials(grid)
     if not pec_shapes:
         pytest.skip("conformal injection not yet implemented")
 
@@ -360,7 +360,7 @@ def test_assemble_materials_injects_when_yrange_omitted():
     the fractional boundary cell."""
     sim = _wr90_battery_sim(conformal=True)
     grid = sim._build_grid()
-    _, _, _, _, pec_shapes, _ = sim._assemble_materials(grid)
+    _, _, _, _, pec_shapes, _, _ = sim._assemble_materials(grid)
 
     y_hi = _half_space_box_lo_y(pec_shapes, axis_idx=1, value=0.04)
     z_hi = _half_space_box_lo_y(pec_shapes, axis_idx=2, value=0.02)
