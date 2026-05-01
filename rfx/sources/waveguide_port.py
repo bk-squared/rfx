@@ -2021,29 +2021,36 @@ def extract_waveguide_s_params_normalized(
 ) -> jnp.ndarray:
     """Two-run normalized waveguide S-matrix.
 
-    Cancels Yee-grid numerical dispersion by normalizing device outgoing
-    waves against reference-run waves measured at the **same** port
-    location.
+    Cancels Yee-grid numerical dispersion for **transmission** (off-diagonal)
+    terms by normalizing device outgoing waves against reference-run waves
+    measured at the same port location.
 
     For each driven port j:
       1. Run reference (empty guide) with port j driven.
       2. Run device with port j driven.
       3. Off-diagonal (i != j):
            S_ij = b_out_device[i] / b_out_reference[i]
-         The reference b_out[i] captures the wave as it arrives at port i,
-         including all numerical dispersion, so dividing cancels the bias.
+         The reference b_out[i] accumulates the same one-way dispersion as
+         the device wave, so the ratio cancels the bias exactly.
       4. Diagonal (i == j):
            S_jj = (b_out_device[j] - b_out_reference[j]) / a_inc_reference[j]
          The subtraction removes the empty-guide CPML/discretization
          contribution at the driven port so S_jj measures only the
-         device-induced reflection. Spectra are computed POST-SCAN by
-         a rectangular full-record DFT on the recorded modal V/I
-         time series (Phase 2 cleanup, 2026-04-25); strong-reflector
-         cases no longer suffer the |S11| → ∞ growth that the legacy
-         in-scan windowed accumulator produced as the gate widened.
+         device-induced reflection.
 
-    This avoids the small/small blow-up of element-wise S_dev/S_ref for
-    reflection terms while still cancelling dispersion for transmission.
+    **Known limitation — S11 of strong reflectors**: the diagonal formula
+    above does NOT cancel dispersion for reflection. The device wave is a
+    round-trip (port → obstacle → port) while the reference wave is
+    one-way (port → CPML). The dispersion accumulated over these different
+    path lengths cannot cancel, and the source-plane impedance mismatch
+    (Z_TE_exact vs Z_TE_num, ~3 % at dx/λ=0.07) shows up as coherent
+    standing-wave error in b_ref[j] — producing ±10–20 % swings in |S11|.
+    For strong reflectors use ``normalize=False`` instead; Yee dispersion
+    contributes < 2 % to |S11| magnitude at dx/λ < 0.05.
+
+    A power-flux (Poynting-vector) extraction analogous to Meep's
+    ``add_flux`` would eliminate this limitation for both S11 and S21.
+    Tracked in ``docs/agent-memory/rfx-known-issues.md``.
 
     Parameters
     ----------

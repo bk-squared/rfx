@@ -2199,23 +2199,39 @@ class Simulation:
             full-record DFT is finite-energy on the recorded transient
             so no gating is needed even on strong reflectors.
         normalize : bool
-            When True, run a two-run normalization that cancels Yee-grid
-            numerical dispersion.  A reference simulation with vacuum (no
-            user geometry) is run automatically, and the device S-params
-            are divided by the reference incident waves.
+            When True, runs a two-run normalization that cancels Yee-grid
+            numerical dispersion for **transmission** (off-diagonal) terms.
+            A reference simulation (vacuum, no user geometry) is run
+            automatically; device outgoing waves are divided by the
+            reference waves measured at the same port.
 
-            **Recommendation:** Always use ``normalize=True`` for accurate
-            S-parameters, reciprocity (S12==S21), and comparison with
-            measurements.  Use ``normalize=False`` only for fast relative
-            comparisons (e.g., optimizer inner loop).
+            **S21 / reciprocity**: use ``normalize=True``.  The reference
+            wave at port 2 accumulates the same one-way dispersion as the
+            device wave, so the ratio cancels the bias exactly.
+
+            **S11 of strong reflectors** (PEC short, high-Q resonators):
+            use ``normalize=False``.  The two-run diagonal formula
+            ``S11 = (b_dev − b_ref) / a_ref`` does *not* cancel
+            dispersion for reflection: the device wave is a round-trip
+            while the reference is one-way.  For strong reflectors this
+            mismatch causes ±10–20 % magnitude errors in |S11| with
+            ``normalize=True``, whereas ``normalize=False`` keeps |S11|
+            within the Yee dispersion floor (< 2 % at dx/λ < 0.05).
+
+            **Future**: a power-flux (Poynting-vector) extraction —
+            analogous to Meep's ``add_flux`` — will give a method that
+            is correct for both S11 and S21 without a reference run.
+            Tracked in ``docs/agent-memory/rfx-known-issues.md``.
         """
         if not normalize:
             import warnings
             warnings.warn(
-                "compute_waveguide_s_matrix(normalize=False): S-parameters "
-                "include Yee numerical dispersion artifacts. For accurate "
-                "results, reciprocity, or measurement comparison, use "
-                "normalize=True.",
+                "compute_waveguide_s_matrix(normalize=False): S21 and "
+                "S-parameter phase include Yee numerical dispersion. "
+                "For S21 accuracy and reciprocity use normalize=True. "
+                "For |S11| of strong reflectors (PEC short, resonators) "
+                "normalize=False is more accurate — see the normalize "
+                "parameter docstring.",
                 stacklevel=2,
             )
         if self._ports or self._tfsf:
