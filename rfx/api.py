@@ -4586,9 +4586,15 @@ class Simulation:
             )
 
         # P0.5: No sources configured
-        if not self._ports and self._tfsf is None and not self._waveguide_ports and not self._floquet_ports:
+        if (
+            not self._ports
+            and self._tfsf is None
+            and not self._waveguide_ports
+            and not self._floquet_ports
+            and not self._msl_ports
+        ):
             _w.warn(
-                "No sources, ports, TFSF, or waveguide/Floquet ports configured. "
+                "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. "
                 "Simulation will produce zero fields.",
                 stacklevel=3,
             )
@@ -5064,6 +5070,40 @@ class Simulation:
                     freqs=_s11_freqs_arr,
                     impedance=float(pe.impedance),
                 ))
+
+        # MSL ports — full cross-section distributed feed; built like the
+        # wire-port branch above but with N_y × N_z cells.  S-parameters are
+        # extracted post-scan by ``compute_msl_s_matrix`` from registered
+        # DFT plane probes (no JIT accumulator wiring needed here).
+        if self._msl_ports:
+            from rfx.sources.msl_port import (
+                MSLPort,
+                _msl_yz_cells,
+                make_msl_port_sources,
+                setup_msl_port,
+            )
+            for pe in self._msl_ports:
+                x_feed, y_centre, z_lo = pe.position
+                mp = MSLPort(
+                    feed_x=float(x_feed),
+                    y_lo=float(y_centre - pe.width / 2),
+                    y_hi=float(y_centre + pe.width / 2),
+                    z_lo=float(z_lo),
+                    z_hi=float(z_lo + pe.height),
+                    direction=pe.direction,
+                    impedance=pe.impedance,
+                    excitation=pe.waveform,
+                )
+                materials = setup_msl_port(grid, mp, materials)
+                if pe.excite and pe.waveform is not None:
+                    sources.extend(make_msl_port_sources(grid, mp, materials, n_steps))
+                # Clear PEC mask over the cross-section so the source/σ cells
+                # are not zeroed by the PEC update.
+                for cell in _msl_yz_cells(grid, mp):
+                    if pec_mask_local is not None:
+                        pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
+                    if pec_occupancy_local is not None:
+                        pec_occupancy_local = pec_occupancy_local.at[cell[0], cell[1], cell[2]].set(0.0)
 
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))

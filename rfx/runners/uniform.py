@@ -253,6 +253,33 @@ def run_uniform(
                 impedance=wp.impedance,
             ))
 
+    # MSL ports — full cross-section distributed feed
+    if getattr(sim, "_msl_ports", None):
+        from rfx.sources.msl_port import (
+            MSLPort,
+            _msl_yz_cells,
+            make_msl_port_sources,
+            setup_msl_port,
+        )
+        for pe in sim._msl_ports:
+            x_feed, y_centre, z_lo = pe.position
+            mp = MSLPort(
+                feed_x=float(x_feed),
+                y_lo=float(y_centre - pe.width / 2),
+                y_hi=float(y_centre + pe.width / 2),
+                z_lo=float(z_lo),
+                z_hi=float(z_lo + pe.height),
+                direction=pe.direction,
+                impedance=pe.impedance,
+                excitation=pe.waveform,
+            )
+            materials = setup_msl_port(grid, mp, materials)
+            if pe.excite and pe.waveform is not None:
+                sources.extend(make_msl_port_sources(grid, mp, materials, n_steps))
+            if pec_mask is not None:
+                for cell in _msl_yz_cells(grid, mp):
+                    pec_mask = pec_mask.at[cell[0], cell[1], cell[2]].set(False)
+
     for pe in sim._probes:
         probes.append(make_probe(grid, pe.position, pe.component))
 
