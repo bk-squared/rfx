@@ -99,6 +99,86 @@ _TIME_CENTERED_HELPER_TERMINAL_OUTCOMES = (
     "time_centered_helper_regression_blocked",
     "call_order_or_state_carry_required",
 )
+_INTERFACE_FLOOR_REPAIR_STATUS = "no_bounded_private_interface_floor_repair"
+_INTERFACE_FLOOR_REPAIR_NEXT_PREREQUISITE = (
+    "private higher-order SBP face-norm/interface-operator redesign after "
+    "characteristic face repair manufactured gate failed ralplan"
+)
+_INTERFACE_FLOOR_REPAIR_REPORT = (
+    ".omx/reports/"
+    "sbp-sat-private-interface-floor-repair-theory-implementation-"
+    "20260430T164629Z.md"
+)
+_INTERFACE_FLOOR_REPAIR_TERMINAL_OUTCOMES = (
+    "private_characteristic_face_repair_candidate_accepted",
+    "private_interface_floor_repair_implemented_fixture_quality_pending",
+    "private_interface_floor_repair_candidate_ready_for_private_slab_scorer",
+    "no_bounded_private_interface_floor_repair",
+)
+_INTERFACE_FLOOR_REPAIR_ALLOWED_SOLVER_SYMBOLS = (
+    "_levi_civita_sign",
+    "_normal_cross_tangential_h_face",
+    "_characteristic_face_traces",
+    "_inverse_characteristic_face_traces",
+    "_characteristic_balanced_face_correction",
+    "_apply_characteristic_balanced_face_helper",
+    "step_subgrid_3d_with_cpml",
+    "step_subgrid_3d",
+)
+_FACE_NORM_OPERATOR_REPAIR_STATUS = "no_private_face_norm_operator_repair"
+_FACE_NORM_OPERATOR_REPAIR_NEXT_PREREQUISITE = (
+    "private broader SBP derivative/interior-boundary operator redesign after "
+    "face-norm/interface-operator ladder failed ralplan"
+)
+_FACE_NORM_OPERATOR_REPAIR_REPORT = (
+    ".omx/reports/"
+    "sbp-sat-private-higher-order-face-norm-interface-operator-redesign-"
+    "20260430T194140Z.md"
+)
+_FACE_NORM_OPERATOR_REPAIR_TERMINAL_OUTCOMES = (
+    "private_norm_adjoint_face_operator_repair_candidate_accepted",
+    "private_diagonal_face_norm_repair_candidate_accepted",
+    "private_face_norm_operator_repair_implemented_fixture_quality_pending",
+    "higher_order_projection_requires_broader_operator_plan",
+    "edge_corner_norm_inconsistency_suspected",
+    "no_private_face_norm_operator_repair",
+)
+_FACE_NORM_OPERATOR_ALLOWED_SOLVER_SYMBOLS = (
+    "_face_norm_inner",
+    "_face_norm_adjoint_defect",
+    "_norm_adjoint_restrict_face",
+    "_norm_adjoint_prolong_face",
+    "_apply_norm_compatible_sat_pair_face",
+    "_apply_norm_compatible_interface_helper",
+    "step_subgrid_3d_with_cpml",
+    "step_subgrid_3d",
+)
+_DERIVATIVE_INTERFACE_REPAIR_STATUS = "no_private_derivative_interface_repair"
+_DERIVATIVE_INTERFACE_REPAIR_NEXT_PREREQUISITE = (
+    "global SBP derivative/mortar operator architecture after private "
+    "derivative/interior-boundary ladder required operator refactor ralplan"
+)
+_DERIVATIVE_INTERFACE_REPAIR_REPORT = (
+    ".omx/reports/"
+    "sbp-sat-private-broader-derivative-interior-boundary-energy-stable-"
+    "interface-redesign-20260501T062334Z.md"
+)
+_DERIVATIVE_INTERFACE_REPAIR_TERMINAL_OUTCOMES = (
+    "private_reduced_derivative_flux_contract_ready",
+    "private_derivative_interface_flux_candidate_accepted",
+    "edge_corner_derivative_accounting_ready",
+    "requires_global_sbp_operator_refactor",
+    "private_derivative_interface_repair_implemented_fixture_quality_pending",
+    "no_private_derivative_interface_repair",
+)
+_DERIVATIVE_INTERFACE_ALLOWED_SOLVER_SYMBOLS = (
+    "_derivative_interface_energy_terms",
+    "_reduced_interface_flux_balance",
+    "_energy_stable_face_flux_update",
+    "_apply_energy_stable_derivative_interface_helper",
+    "step_subgrid_3d_with_cpml",
+    "step_subgrid_3d",
+)
 
 
 def _face_fixture_ops():
@@ -235,6 +315,211 @@ def _apply_face_sat_to_components(**kwargs):
         **kwargs,
         coarse_scale=1.0,
         fine_scale=1.0,
+    )
+
+
+def _levi_civita_sign(axis_a: int, axis_b: int, axis_c: int) -> int:
+    axes = (axis_a, axis_b, axis_c)
+    if len(set(axes)) != 3:
+        return 0
+    inversions = sum(
+        1
+        for left in range(3)
+        for right in range(left + 1, 3)
+        if axes[left] > axes[right]
+    )
+    return -1 if inversions % 2 else 1
+
+
+def _normal_cross_tangential_h_face(face: str, h_face):
+    orientation = sbp_sat_3d.FACE_ORIENTATIONS[face]
+    return tuple(
+        sum(
+            orientation.normal_sign
+            * _levi_civita_sign(orientation.normal_axis, h_axis, e_axis)
+            * h_component
+            for h_axis, h_component in zip(
+                orientation.tangential_axes,
+                h_face,
+                strict=True,
+            )
+        )
+        for e_axis in orientation.tangential_axes
+    )
+
+
+def _tangential_h_from_normal_cross(face: str, normal_cross_h_face):
+    orientation = sbp_sat_3d.FACE_ORIENTATIONS[face]
+    return tuple(
+        sum(
+            orientation.normal_sign
+            * _levi_civita_sign(orientation.normal_axis, h_axis, e_axis)
+            * cross_component
+            for e_axis, cross_component in zip(
+                orientation.tangential_axes,
+                normal_cross_h_face,
+                strict=True,
+            )
+        )
+        for h_axis in orientation.tangential_axes
+    )
+
+
+def _characteristic_face_traces(e_face, h_face, face: str):
+    eta0 = math.sqrt(MU_0 / EPS_0)
+    normal_cross_h = _normal_cross_tangential_h_face(face, h_face)
+    return (
+        tuple(e + eta0 * h for e, h in zip(e_face, normal_cross_h, strict=True)),
+        tuple(e - eta0 * h for e, h in zip(e_face, normal_cross_h, strict=True)),
+    )
+
+
+def _inverse_characteristic_face_traces(w_plus, w_minus, face: str):
+    eta0 = math.sqrt(MU_0 / EPS_0)
+    e_face = tuple(
+        0.5 * (plus + minus) for plus, minus in zip(w_plus, w_minus, strict=True)
+    )
+    normal_cross_h = tuple(
+        (plus - minus) / (2.0 * eta0)
+        for plus, minus in zip(w_plus, w_minus, strict=True)
+    )
+    h_face = _tangential_h_from_normal_cross(face, normal_cross_h)
+    return e_face, h_face
+
+
+def _apply_characteristic_trace_sat(
+    coarse_trace,
+    fine_trace,
+    *,
+    ops,
+    alpha_c,
+    alpha_f,
+    coarse_mask,
+    fine_mask,
+):
+    updated_pairs = tuple(
+        _apply_scaled_sat_pair_face(
+            coarse_component,
+            fine_component,
+            ops,
+            alpha_c,
+            alpha_f,
+            coarse_mask,
+            fine_mask,
+            coarse_scale=1.0,
+            fine_scale=1.0,
+        )
+        for coarse_component, fine_component in zip(
+            coarse_trace,
+            fine_trace,
+            strict=True,
+        )
+    )
+    return tuple(zip(*updated_pairs, strict=True))
+
+
+def _apply_characteristic_face_sat_to_components(
+    *,
+    ex_c,
+    ey_c,
+    hx_c,
+    hy_c,
+    ex_f,
+    ey_f,
+    hx_f,
+    hy_f,
+    ops,
+    coarse_mask,
+    fine_mask,
+    alpha_c,
+    alpha_f,
+    face: str = "z_hi",
+):
+    coarse_w_plus, coarse_w_minus = _characteristic_face_traces(
+        (ex_c, ey_c),
+        (hx_c, hy_c),
+        face,
+    )
+    fine_w_plus, fine_w_minus = _characteristic_face_traces(
+        (ex_f, ey_f),
+        (hx_f, hy_f),
+        face,
+    )
+    coarse_w_plus, fine_w_plus = _apply_characteristic_trace_sat(
+        coarse_w_plus,
+        fine_w_plus,
+        ops=ops,
+        alpha_c=alpha_c,
+        alpha_f=alpha_f,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    coarse_w_minus, fine_w_minus = _apply_characteristic_trace_sat(
+        coarse_w_minus,
+        fine_w_minus,
+        ops=ops,
+        alpha_c=alpha_c,
+        alpha_f=alpha_f,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+
+    coarse_e, coarse_h = _inverse_characteristic_face_traces(
+        coarse_w_plus,
+        coarse_w_minus,
+        face,
+    )
+    fine_e, fine_h = _inverse_characteristic_face_traces(
+        fine_w_plus,
+        fine_w_minus,
+        face,
+    )
+    return (
+        coarse_e[0],
+        coarse_e[1],
+        coarse_h[0],
+        coarse_h[1],
+        fine_e[0],
+        fine_e[1],
+        fine_h[0],
+        fine_h[1],
+    )
+
+
+def _characteristic_matched_projected_trace_noop() -> bool:
+    ops, coarse_mask, fine_mask, alpha_c, alpha_f = _face_fixture_ops()
+    ex_c = jnp.ones(ops.coarse_shape, dtype=jnp.float32) * 1.25
+    ey_c = jnp.ones(ops.coarse_shape, dtype=jnp.float32) * -0.75
+    hx_c = jnp.ones(ops.coarse_shape, dtype=jnp.float32) * 2.0e-6
+    hy_c = jnp.ones(ops.coarse_shape, dtype=jnp.float32) * -1.0e-6
+    before_components = (
+        ex_c,
+        ey_c,
+        hx_c,
+        hy_c,
+        prolong_face(ex_c, ops),
+        prolong_face(ey_c, ops),
+        prolong_face(hx_c, ops),
+        prolong_face(hy_c, ops),
+    )
+    after_components = _apply_characteristic_face_sat_to_components(
+        ex_c=before_components[0],
+        ey_c=before_components[1],
+        hx_c=before_components[2],
+        hy_c=before_components[3],
+        ex_f=before_components[4],
+        ey_f=before_components[5],
+        hx_f=before_components[6],
+        hy_f=before_components[7],
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+        alpha_c=alpha_c,
+        alpha_f=alpha_f,
+    )
+    return all(
+        np.allclose(np.asarray(after), np.asarray(before), atol=1.0e-7)
+        for before, after in zip(before_components, after_components, strict=True)
     )
 
 
@@ -1902,6 +2187,1016 @@ def _current_kernel_coupling_metrics() -> dict[str, float]:
     }
 
 
+def _private_interface_floor_repair_packet() -> dict[str, object]:
+    fixture = _manufactured_nonzero_face_components()
+    ops = fixture["ops"]
+    coarse_mask = fixture["coarse_mask"]
+    fine_mask = fixture["fine_mask"]
+    before_components = fixture["components"]
+    current = _current_kernel_coupling_metrics()
+    current_components = _current_kernel_after_components(fixture)
+    characteristic_components = _apply_characteristic_face_sat_to_components(
+        ex_c=before_components[0],
+        ey_c=before_components[1],
+        hx_c=before_components[2],
+        hy_c=before_components[3],
+        ex_f=before_components[4],
+        ey_f=before_components[5],
+        hx_f=before_components[6],
+        hy_f=before_components[7],
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+        alpha_c=fixture["alpha_c"],
+        alpha_f=fixture["alpha_f"],
+    )
+    characteristic_equals_current = all(
+        np.allclose(np.asarray(characteristic), np.asarray(current), atol=1.0e-12)
+        for characteristic, current in zip(
+            characteristic_components,
+            current_components,
+            strict=True,
+        )
+    )
+    ledger = _ledger_residual_for_components(
+        before_components,
+        characteristic_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    zero_work_fixture = _manufactured_nonzero_face_components()
+    zero_work_fixture["components"] = (
+        before_components[0],
+        before_components[1],
+        jnp.zeros_like(before_components[2]),
+        jnp.zeros_like(before_components[3]),
+        before_components[4],
+        before_components[5],
+        prolong_face(jnp.zeros_like(before_components[2]), ops),
+        prolong_face(jnp.zeros_like(before_components[3]), ops),
+    )
+    zero_before = zero_work_fixture["components"]
+    zero_candidate = _apply_characteristic_face_sat_to_components(
+        ex_c=zero_before[0],
+        ey_c=zero_before[1],
+        hx_c=zero_before[2],
+        hy_c=zero_before[3],
+        ex_f=zero_before[4],
+        ey_f=zero_before[5],
+        hx_f=zero_before[6],
+        hy_f=zero_before[7],
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+        alpha_c=fixture["alpha_c"],
+        alpha_f=fixture["alpha_f"],
+    )
+    zero_work = _ledger_residual_for_components(
+        zero_before,
+        zero_candidate,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    weighted_mismatch_before = _weighted_trace_mismatch(
+        before_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    weighted_mismatch_after_candidate = _weighted_trace_mismatch(
+        characteristic_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    candidate_reduction = (
+        weighted_mismatch_before - weighted_mismatch_after_candidate
+    ) / max(weighted_mismatch_before, 1.0e-30)
+    coupling_strength_ratio = candidate_reduction / max(
+        current["current_relative_mismatch_reduction"],
+        1.0e-12,
+    )
+    update_norm = _weighted_update_norm(
+        before_components,
+        characteristic_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    update_norm_ratio = update_norm / max(current["current_update_norm"], 1.0e-30)
+    ledger_gate_passed = (
+        float(ledger["normalized_balance_residual"]) <= _LEDGER_BALANCE_THRESHOLD
+    )
+    zero_work_gate_passed = float(zero_work["net_delta_eh"]) <= (
+        _ZERO_WORK_POSITIVE_INJECTION_TOL
+    )
+    matched_noop = _characteristic_matched_projected_trace_noop()
+    coupling_strength_passed = (
+        _COUPLING_STRENGTH_RATIO_MIN
+        <= coupling_strength_ratio
+        <= _BOUNDING_SCALAR_MAX + _CANDIDATE_BOUND_TOL
+    )
+    update_bounds_passed = (
+        _BOUNDING_SCALAR_MIN - _CANDIDATE_BOUND_TOL
+        <= update_norm_ratio
+        <= _BOUNDING_SCALAR_MAX + _CANDIDATE_BOUND_TOL
+    )
+    orientation_contract_passed = tuple(sbp_sat_3d.FACE_ORIENTATIONS) == (
+        "x_lo",
+        "x_hi",
+        "y_lo",
+        "y_hi",
+        "z_lo",
+        "z_hi",
+    )
+    f4_packet = _interior_box_ledger_packet()
+    edge_corner_gate_passed = (
+        f4_packet["matched_edge_noop_passed"] is True
+        and f4_packet["active_edges"] == 12
+        and f4_packet["active_corners"] == 8
+    )
+    accepted = bool(
+        orientation_contract_passed
+        and ledger_gate_passed
+        and zero_work_gate_passed
+        and matched_noop
+        and coupling_strength_passed
+        and update_bounds_passed
+        and edge_corner_gate_passed
+        and not characteristic_equals_current
+    )
+    f1_rejection_reasons = []
+    if not ledger_gate_passed:
+        f1_rejection_reasons.append("candidate_failed_manufactured_ledger_gate")
+    if characteristic_equals_current:
+        f1_rejection_reasons.append("candidate_collapses_to_current_component_sat")
+    if not edge_corner_gate_passed:
+        f1_rejection_reasons.append("candidate_failed_edge_corner_preacceptance")
+    f1_candidate = {
+        "candidate_id": "oriented_characteristic_face_balance",
+        "candidate_family": "characteristic_w_plus_minus_face_balance",
+        "production_edit_allowed": True,
+        "orientation_contract_passed": orientation_contract_passed,
+        "faces_considered": tuple(sbp_sat_3d.FACE_ORIENTATIONS),
+        "uses_face_orientations_only": True,
+        "characteristic_traces": "W± = E_t ± eta0*(n×H)_t",
+        "characteristic_equivalent_to_current_component_sat": characteristic_equals_current,
+        "ledger_normalized_balance_residual": float(
+            ledger["normalized_balance_residual"]
+        ),
+        "ledger_threshold": _LEDGER_BALANCE_THRESHOLD,
+        "ledger_gate_passed": ledger_gate_passed,
+        "zero_work_gate_passed": zero_work_gate_passed,
+        "zero_work_net_delta_eh": float(zero_work["net_delta_eh"]),
+        "matched_projected_traces_noop": matched_noop,
+        "weighted_mismatch_before": weighted_mismatch_before,
+        "weighted_mismatch_after_current": current["weighted_mismatch_after_current"],
+        "weighted_mismatch_after_candidate": weighted_mismatch_after_candidate,
+        "current_relative_mismatch_reduction": current[
+            "current_relative_mismatch_reduction"
+        ],
+        "candidate_relative_mismatch_reduction": float(candidate_reduction),
+        "coupling_strength_ratio": float(coupling_strength_ratio),
+        "coupling_strength_passed": coupling_strength_passed,
+        "current_update_norm": current["current_update_norm"],
+        "candidate_update_norm": float(update_norm),
+        "candidate_update_norm_ratio": float(update_norm_ratio),
+        "update_bounds_passed": update_bounds_passed,
+        "edge_corner_preacceptance_gate_passed": edge_corner_gate_passed,
+        "accepted_candidate": accepted,
+        "rejection_reasons": f1_rejection_reasons,
+    }
+    candidates = (
+        {
+            "candidate_id": "current_time_centered_helper_baseline",
+            "candidate_family": "baseline_only",
+            "production_edit_allowed": False,
+            "status": "scored_as_f0_baseline",
+            "ledger_normalized_balance_residual": float(
+                _ledger_residual_for_components(
+                    before_components,
+                    current_components,
+                    ops=ops,
+                    coarse_mask=coarse_mask,
+                    fine_mask=fine_mask,
+                )["normalized_balance_residual"]
+            ),
+            "accepted_candidate": False,
+        },
+        f1_candidate,
+        {
+            "candidate_id": "reciprocal_dual_field_scaling_historical_guard",
+            "candidate_family": "historical_guard",
+            "production_edit_allowed": False,
+            "status": "reciprocal_scaling_already_invalidated",
+            "identical_to_prior_bounded_reciprocal_family": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "current_minimum_norm_centered_h_guard",
+            "candidate_family": "historical_guard",
+            "production_edit_allowed": False,
+            "status": "minimum_norm_centered_h_already_implemented_fixture_pending",
+            "selected_as_new_repair_basis": False,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "edge_corner_preacceptance_gate",
+            "candidate_family": "preacceptance_guard",
+            "production_edit_allowed": False,
+            "status": (
+                "edge_corner_preacceptance_passed"
+                if edge_corner_gate_passed
+                else "edge_corner_interface_floor_suspected"
+            ),
+            "active_edges": f4_packet["active_edges"],
+            "active_corners": f4_packet["active_corners"],
+            "matched_edge_noop_passed": f4_packet["matched_edge_noop_passed"],
+            "accepted_candidate": False,
+        },
+    )
+    status = (
+        "private_characteristic_face_repair_candidate_accepted"
+        if accepted
+        else _INTERFACE_FLOOR_REPAIR_STATUS
+    )
+    return {
+        "private_interface_floor_repair_status": status,
+        "status": status,
+        "terminal_outcome": status,
+        "terminal_outcome_taxonomy": _INTERFACE_FLOOR_REPAIR_TERMINAL_OUTCOMES,
+        "diagnostic_scope": "private_manufactured_interface_only",
+        "upstream_measurement_contract_status": "persistent_interface_floor_confirmed",
+        "selected_candidate_id": f1_candidate["candidate_id"] if accepted else None,
+        "candidate_count": len(candidates),
+        "candidates": candidates,
+        "thresholds": {
+            "ledger_balance_threshold": _LEDGER_BALANCE_THRESHOLD,
+            "coupling_strength_ratio_min": _COUPLING_STRENGTH_RATIO_MIN,
+            "coupling_strength_ratio_max": _BOUNDING_SCALAR_MAX,
+            "update_norm_ratio_min": _BOUNDING_SCALAR_MIN,
+            "update_norm_ratio_max": _BOUNDING_SCALAR_MAX,
+        },
+        "selection_rule": "accept at most F1 only if every manufactured and F4 gate passes",
+        "solver_hunk_allowed_if_selected": _INTERFACE_FLOOR_REPAIR_ALLOWED_SOLVER_SYMBOLS,
+        "solver_hunk_retained": accepted,
+        "actual_solver_hunk_inventory": ()
+        if not accepted
+        else ("not_applicable_in_test",),
+        "production_patch_allowed": accepted,
+        "production_patch_applied": accepted,
+        "solver_behavior_changed": accepted,
+        "sbp_sat_3d_repair_applied": accepted,
+        "sbp_sat_3d_diff_allowed": accepted,
+        "hook_experiment_allowed": False,
+        "jit_runner_changed": False,
+        "runner_changed": False,
+        "api_surface_changed": False,
+        "public_claim_allowed": False,
+        "public_api_behavior_changed": False,
+        "public_default_tau_changed": False,
+        "public_observable_promoted": False,
+        "public_true_rt_promoted": False,
+        "public_dft_promoted": False,
+        "promotion_candidate_ready": False,
+        "simresult_changed": False,
+        "result_surface_changed": False,
+        "next_prerequisite": (
+            "private fixture-quality replay after characteristic face repair ralplan"
+            if accepted
+            else _INTERFACE_FLOOR_REPAIR_NEXT_PREREQUISITE
+        ),
+        "report": _INTERFACE_FLOOR_REPAIR_REPORT,
+    }
+
+
+
+def _face_norm_probe_suite(ops) -> tuple[dict[str, object], ...]:
+    coarse_shape = ops.coarse_shape
+    total = int(np.prod(coarse_shape))
+    alternating = np.where(
+        (np.indices(coarse_shape).sum(axis=0) % 2) == 0,
+        1.0,
+        -1.0,
+    ).astype(np.float32)
+    impulse = np.zeros(coarse_shape, dtype=np.float32)
+    impulse[coarse_shape[0] // 2, coarse_shape[1] // 2] = 1.0
+    return (
+        {
+            "probe_id": "constant",
+            "coarse_face": jnp.ones(coarse_shape, dtype=jnp.float32),
+        },
+        {
+            "probe_id": "ramp",
+            "coarse_face": jnp.linspace(
+                -1.0,
+                1.0,
+                total,
+                dtype=jnp.float32,
+            ).reshape(coarse_shape),
+        },
+        {
+            "probe_id": "alternating",
+            "coarse_face": jnp.asarray(alternating, dtype=jnp.float32),
+        },
+        {
+            "probe_id": "localized_impulse",
+            "coarse_face": jnp.asarray(impulse, dtype=jnp.float32),
+        },
+    )
+
+
+def _face_norm_inner(face_values, face_norm, mask) -> float:
+    return float(jnp.sum(face_values * face_norm * mask))
+
+
+def _norm_adjoint_restrict_face(fine_face, ops):
+    """Test-local unmasked mass-adjoint restriction from existing face weights."""
+
+    numerator = ops.prolong_i.T @ (fine_face * ops.fine_norm) @ ops.prolong_j
+    return numerator / ops.coarse_norm
+
+
+def _face_norm_adjoint_defect(
+    coarse_face,
+    fine_face,
+    ops,
+    coarse_mask,
+    fine_mask,
+    *,
+    restrict_fn,
+) -> float:
+    restricted = restrict_fn(fine_face, ops)
+    lhs = _face_norm_inner(coarse_face * restricted, ops.coarse_norm, coarse_mask)
+    rhs = _face_norm_inner(
+        prolong_face(coarse_face, ops) * fine_face,
+        ops.fine_norm,
+        fine_mask,
+    )
+    return float(lhs - rhs)
+
+
+def _face_norm_operator_audit_packet() -> dict[str, object]:
+    fixture = _manufactured_nonzero_face_components()
+    ops = fixture["ops"]
+    coarse_mask = fixture["coarse_mask"]
+    fine_mask = fixture["fine_mask"]
+    all_coarse = jnp.ones(ops.coarse_shape, dtype=jnp.float32)
+    all_fine = jnp.ones(ops.fine_shape, dtype=jnp.float32)
+    fine_probe = jnp.linspace(
+        -1.0,
+        1.0,
+        int(np.prod(ops.fine_shape)),
+        dtype=jnp.float32,
+    ).reshape(ops.fine_shape)
+    current_mass_adjoint_difference_max = float(
+        jnp.max(
+            jnp.abs(
+                restrict_face(fine_probe, ops)
+                - _norm_adjoint_restrict_face(fine_probe, ops)
+            )
+        )
+    )
+
+    probe_rows = []
+    current_masked_defects = []
+    mass_adjoint_defects = []
+    projection_noop_failures = []
+    for probe in _face_norm_probe_suite(ops):
+        probe_id = str(probe["probe_id"])
+        coarse_probe = probe["coarse_face"]
+        current_masked_defect = _face_norm_adjoint_defect(
+            coarse_probe,
+            fine_probe,
+            ops,
+            coarse_mask,
+            fine_mask,
+            restrict_fn=restrict_face,
+        )
+        mass_adjoint_defect = _face_norm_adjoint_defect(
+            coarse_probe,
+            fine_probe,
+            ops,
+            all_coarse,
+            all_fine,
+            restrict_fn=_norm_adjoint_restrict_face,
+        )
+        fine_matched = prolong_face(coarse_probe, ops)
+        current_restricted = restrict_face(fine_matched, ops)
+        projection_defect = float(
+            jnp.max(jnp.abs((current_restricted - coarse_probe) * coarse_mask))
+        )
+        if projection_defect > 1.0e-7:
+            projection_noop_failures.append(probe_id)
+        current_masked_defects.append(abs(current_masked_defect))
+        mass_adjoint_defects.append(abs(mass_adjoint_defect))
+        probe_rows.append(
+            {
+                "probe_id": probe_id,
+                "current_masked_adjoint_defect": current_masked_defect,
+                "unmasked_mass_adjoint_defect": mass_adjoint_defect,
+                "current_projection_noop_defect": projection_defect,
+            }
+        )
+
+    current_components = _current_kernel_after_components(fixture)
+    current_ledger = _ledger_residual_for_components(
+        fixture["components"],
+        current_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    interface_repair = _private_interface_floor_repair_packet()
+    f1 = next(
+        candidate
+        for candidate in interface_repair["candidates"]
+        if candidate["candidate_id"] == "oriented_characteristic_face_balance"
+    )
+    return {
+        "candidate_id": "current_face_operator_norm_adjoint_audit",
+        "candidate_family": "audit_only",
+        "production_edit_allowed": False,
+        "faces_considered": tuple(sbp_sat_3d.FACE_ORIENTATIONS),
+        "probe_ids": tuple(row["probe_id"] for row in probe_rows),
+        "probe_rows": tuple(probe_rows),
+        "current_unmasked_face_operator_already_norm_adjoint": bool(
+            max(mass_adjoint_defects) <= 1.0e-6
+            and current_mass_adjoint_difference_max <= 1.0e-7
+        ),
+        "current_restriction_equals_unmasked_mass_adjoint": bool(
+            current_mass_adjoint_difference_max <= 1.0e-7
+        ),
+        "current_mass_adjoint_difference_max": current_mass_adjoint_difference_max,
+        "current_masked_adjoint_defect_max": float(max(current_masked_defects)),
+        "unmasked_mass_adjoint_defect_max": float(max(mass_adjoint_defects)),
+        "projection_noop_failure_probe_ids": tuple(projection_noop_failures),
+        "current_projection_noop_passed_all_probes": not projection_noop_failures,
+        "current_manufactured_ledger_residual": float(
+            current_ledger["normalized_balance_residual"]
+        ),
+        "prior_f1_ledger_residual": f1["ledger_normalized_balance_residual"],
+        "prior_f1_collapsed_to_current_operator": f1[
+            "characteristic_equivalent_to_current_component_sat"
+        ],
+        "accepted_candidate": False,
+    }
+
+
+def _apply_face_sat_with_restrict_pair(
+    coarse_face,
+    fine_face,
+    ops,
+    alpha_c,
+    alpha_f,
+    coarse_mask,
+    fine_mask,
+    *,
+    restrict_fn,
+):
+    coarse_mismatch = restrict_fn(fine_face, ops) - coarse_face
+    fine_mismatch = prolong_face(coarse_face, ops) - fine_face
+    return (
+        coarse_face + alpha_c * coarse_mismatch * coarse_mask,
+        fine_face + alpha_f * fine_mismatch * fine_mask,
+    )
+
+
+def _apply_face_sat_with_restrict_to_components(
+    before_components,
+    *,
+    ops,
+    coarse_mask,
+    fine_mask,
+    alpha_c,
+    alpha_f,
+    restrict_fn,
+):
+    updated = []
+    for coarse_index, fine_index in ((0, 4), (1, 5), (2, 6), (3, 7)):
+        updated.append(
+            _apply_face_sat_with_restrict_pair(
+                before_components[coarse_index],
+                before_components[fine_index],
+                ops,
+                alpha_c,
+                alpha_f,
+                coarse_mask,
+                fine_mask,
+                restrict_fn=restrict_fn,
+            )
+        )
+    return (
+        updated[0][0],
+        updated[1][0],
+        updated[2][0],
+        updated[3][0],
+        updated[0][1],
+        updated[1][1],
+        updated[2][1],
+        updated[3][1],
+    )
+
+
+def _face_norm_projection_noop_packet(*, restrict_fn) -> dict[str, object]:
+    ops, coarse_mask, fine_mask, alpha_c, alpha_f = _face_fixture_ops()
+    rows = []
+    for probe in _face_norm_probe_suite(ops):
+        coarse = probe["coarse_face"]
+        fine = prolong_face(coarse, ops)
+        updated_coarse, updated_fine = _apply_face_sat_with_restrict_pair(
+            coarse,
+            fine,
+            ops,
+            alpha_c,
+            alpha_f,
+            coarse_mask,
+            fine_mask,
+            restrict_fn=restrict_fn,
+        )
+        coarse_delta = float(jnp.max(jnp.abs((updated_coarse - coarse) * coarse_mask)))
+        fine_delta = float(jnp.max(jnp.abs((updated_fine - fine) * fine_mask)))
+        rows.append(
+            {
+                "probe_id": probe["probe_id"],
+                "coarse_delta_max": coarse_delta,
+                "fine_delta_max": fine_delta,
+                "passed": coarse_delta <= 1.0e-7 and fine_delta <= 1.0e-7,
+            }
+        )
+    return {
+        "rows": tuple(rows),
+        "passed": all(row["passed"] for row in rows),
+        "failed_probe_ids": tuple(
+            str(row["probe_id"]) for row in rows if not row["passed"]
+        ),
+    }
+
+
+def _private_face_norm_operator_repair_packet() -> dict[str, object]:
+    fixture = _manufactured_nonzero_face_components()
+    ops = fixture["ops"]
+    coarse_mask = fixture["coarse_mask"]
+    fine_mask = fixture["fine_mask"]
+    before_components = fixture["components"]
+    current = _current_kernel_coupling_metrics()
+    audit = _face_norm_operator_audit_packet()
+
+    h1_components = _apply_face_sat_with_restrict_to_components(
+        before_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+        alpha_c=fixture["alpha_c"],
+        alpha_f=fixture["alpha_f"],
+        restrict_fn=_norm_adjoint_restrict_face,
+    )
+    h1_ledger = _ledger_residual_for_components(
+        before_components,
+        h1_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    zero_fixture = _manufactured_nonzero_face_components()
+    zero_fixture["components"] = (
+        before_components[0],
+        before_components[1],
+        jnp.zeros_like(before_components[2]),
+        jnp.zeros_like(before_components[3]),
+        before_components[4],
+        before_components[5],
+        prolong_face(jnp.zeros_like(before_components[2]), ops),
+        prolong_face(jnp.zeros_like(before_components[3]), ops),
+    )
+    h1_zero_components = _apply_face_sat_with_restrict_to_components(
+        zero_fixture["components"],
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+        alpha_c=fixture["alpha_c"],
+        alpha_f=fixture["alpha_f"],
+        restrict_fn=_norm_adjoint_restrict_face,
+    )
+    h1_zero = _ledger_residual_for_components(
+        zero_fixture["components"],
+        h1_zero_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    h1_noop = _face_norm_projection_noop_packet(
+        restrict_fn=_norm_adjoint_restrict_face
+    )
+    h1_update_norm = _weighted_update_norm(
+        before_components,
+        h1_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    h1_update_norm_ratio = h1_update_norm / max(current["current_update_norm"], 1.0e-30)
+    h1_ledger_gate_passed = (
+        float(h1_ledger["normalized_balance_residual"]) <= _LEDGER_BALANCE_THRESHOLD
+    )
+    h1_update_bounds_passed = (
+        _BOUNDING_SCALAR_MIN - _CANDIDATE_BOUND_TOL
+        <= h1_update_norm_ratio
+        <= _BOUNDING_SCALAR_MAX + _CANDIDATE_BOUND_TOL
+    )
+    h1_rejection_reasons = []
+    if not h1_ledger_gate_passed:
+        h1_rejection_reasons.append("candidate_failed_manufactured_ledger_gate")
+    if not h1_noop["passed"]:
+        h1_rejection_reasons.append("candidate_failed_higher_order_projection_noop")
+    if audit["current_unmasked_face_operator_already_norm_adjoint"]:
+        h1_rejection_reasons.append("candidate_collapses_to_current_norm_adjoint_operator")
+    if not h1_update_bounds_passed:
+        h1_rejection_reasons.append("candidate_failed_update_bound_gate")
+
+    edge_corner_packet = _interior_box_ledger_packet()
+    edge_corner_gate_passed = (
+        edge_corner_packet["matched_edge_noop_passed"] is True
+        and edge_corner_packet["active_edges"] == 12
+        and edge_corner_packet["active_corners"] == 8
+    )
+    h1 = {
+        "candidate_id": "mass_adjoint_restriction_face_sat",
+        "candidate_family": "norm_adjoint_face_operator",
+        "production_edit_allowed": True,
+        "operator_formula": "R* = Hc^-1 P^T Hf from existing face norms",
+        "unmasked_norm_adjoint_identity_passed": bool(
+            audit["unmasked_mass_adjoint_defect_max"] <= 1.0e-6
+        ),
+        "current_operator_already_uses_unmasked_mass_adjoint": bool(
+            audit["current_unmasked_face_operator_already_norm_adjoint"]
+        ),
+        "matched_projected_traces_noop": h1_noop["passed"],
+        "matched_projected_trace_noop_rows": h1_noop["rows"],
+        "failed_noop_probe_ids": h1_noop["failed_probe_ids"],
+        "ledger_normalized_balance_residual": float(
+            h1_ledger["normalized_balance_residual"]
+        ),
+        "ledger_threshold": _LEDGER_BALANCE_THRESHOLD,
+        "ledger_gate_passed": h1_ledger_gate_passed,
+        "zero_work_gate_passed": float(h1_zero["net_delta_eh"])
+        <= _ZERO_WORK_POSITIVE_INJECTION_TOL,
+        "zero_work_net_delta_eh": float(h1_zero["net_delta_eh"]),
+        "candidate_update_norm": float(h1_update_norm),
+        "candidate_update_norm_ratio": float(h1_update_norm_ratio),
+        "update_bounds_passed": h1_update_bounds_passed,
+        "edge_corner_preacceptance_gate_passed": edge_corner_gate_passed,
+        "accepted_candidate": False,
+        "rejection_reasons": tuple(h1_rejection_reasons),
+    }
+
+    h2_ledger = _ledger_residual_for_components(
+        before_components,
+        _current_kernel_after_components(fixture),
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    h2 = {
+        "candidate_id": "uniform_diagonal_face_norm_rescaling_guard",
+        "candidate_family": "diagonal_face_norm_rescaling_guard",
+        "production_edit_allowed": True,
+        "coarse_norm_ratio": 1.0,
+        "fine_norm_ratio": 1.0,
+        "ratio_derivation": (
+            "coarse_area / fine_area == ratio**2 is already encoded by "
+            "ops.coarse_norm and ops.fine_norm; no bounded alternate diagonal "
+            "ratio is available without tuning against the measured residual"
+        ),
+        "ratios_bounded": True,
+        "independent_of_measured_residual": True,
+        "identical_to_current_uniform_face_norms": True,
+        "ledger_normalized_balance_residual": float(
+            h2_ledger["normalized_balance_residual"]
+        ),
+        "ledger_threshold": _LEDGER_BALANCE_THRESHOLD,
+        "ledger_gate_passed": float(h2_ledger["normalized_balance_residual"])
+        <= _LEDGER_BALANCE_THRESHOLD,
+        "accepted_candidate": False,
+        "rejection_reasons": (
+            "candidate_redundant_with_current_uniform_face_norms",
+            "candidate_failed_manufactured_ledger_gate",
+        ),
+    }
+    h3 = {
+        "candidate_id": "higher_order_projection_guard",
+        "candidate_family": "higher_order_projection_guard",
+        "production_edit_allowed": False,
+        "status": "higher_order_projection_requires_broader_operator_plan",
+        "requires_new_stencils_or_derivative_operator_design": True,
+        "evidence": (
+            "current and mass-adjoint operators are norm compatible, but "
+            "alternating/localized matched-prolongation probes are not exact "
+            "coarse projection noops under the existing interpolation family"
+        ),
+        "failed_noop_probe_ids": audit["projection_noop_failure_probe_ids"],
+        "accepted_candidate": False,
+    }
+    h4 = {
+        "candidate_id": "full_box_edge_corner_norm_preacceptance",
+        "candidate_family": "preacceptance_guard",
+        "production_edit_allowed": False,
+        "status": (
+            "edge_corner_preacceptance_passed"
+            if edge_corner_gate_passed
+            else "edge_corner_norm_inconsistency_suspected"
+        ),
+        "active_edges": edge_corner_packet["active_edges"],
+        "active_corners": edge_corner_packet["active_corners"],
+        "matched_edge_noop_passed": edge_corner_packet["matched_edge_noop_passed"],
+        "accepted_candidate": False,
+    }
+    candidates = (audit, h1, h2, h3, h4)
+    accepted = [candidate for candidate in candidates if candidate["accepted_candidate"]]
+    status = (
+        "private_norm_adjoint_face_operator_repair_candidate_accepted"
+        if accepted
+        else _FACE_NORM_OPERATOR_REPAIR_STATUS
+    )
+    return {
+        "private_face_norm_operator_repair_status": status,
+        "status": status,
+        "terminal_outcome": status,
+        "terminal_outcome_taxonomy": _FACE_NORM_OPERATOR_REPAIR_TERMINAL_OUTCOMES,
+        "diagnostic_scope": "private_manufactured_interface_face_operator_only",
+        "upstream_interface_floor_repair_status": _INTERFACE_FLOOR_REPAIR_STATUS,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": accepted[0]["candidate_id"] if accepted else None,
+        "candidates": candidates,
+        "thresholds": {
+            "ledger_balance_threshold": _LEDGER_BALANCE_THRESHOLD,
+            "bounded_diagonal_norm_ratio_min": _BOUNDING_SCALAR_MIN,
+            "bounded_diagonal_norm_ratio_max": _BOUNDING_SCALAR_MAX,
+            "projection_noop_tolerance": 1.0e-7,
+            "norm_adjoint_defect_tolerance": 1.0e-6,
+        },
+        "selection_rule": (
+            "accept H1 before H2 only if norm-adjoint identity, matched-trace "
+            "noop, ledger, update-bound, and edge/corner gates all pass"
+        ),
+        "solver_hunk_allowed_if_selected": _FACE_NORM_OPERATOR_ALLOWED_SOLVER_SYMBOLS,
+        "solver_hunk_retained": False,
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "face_ops_global_behavior_changed": False,
+        "hook_experiment_allowed": False,
+        "jit_runner_changed": False,
+        "runner_changed": False,
+        "api_surface_changed": False,
+        "public_claim_allowed": False,
+        "public_api_behavior_changed": False,
+        "public_default_tau_changed": False,
+        "public_observable_promoted": False,
+        "public_true_rt_promoted": False,
+        "public_dft_promoted": False,
+        "promotion_candidate_ready": False,
+        "simresult_changed": False,
+        "result_surface_changed": False,
+        "next_prerequisite": _FACE_NORM_OPERATOR_REPAIR_NEXT_PREREQUISITE,
+        "reason": (
+            "the existing face restriction is already the unmasked mass-adjoint "
+            "of prolongation under the current diagonal norms, while higher-order "
+            "matched-prolongation probes expose projection/noop defects and both "
+            "H1/H2 keep the manufactured ledger above the unchanged 0.02 threshold"
+        ),
+        "report": _FACE_NORM_OPERATOR_REPAIR_REPORT,
+    }
+
+
+def _private_derivative_interface_repair_packet() -> dict[str, object]:
+    """Classify the post-face-norm lane against the full face energy identity.
+
+    This packet is intentionally private and fail-closed.  It widens the
+    diagnostic surface from face norm adjointness to the derivative/interior
+    boundary energy ledger, but it does not retain any solver hunk unless the
+    reduced, manufactured, edge/corner, and operator-widening gates all pass.
+    """
+
+    fixture = _manufactured_nonzero_face_components()
+    ops = fixture["ops"]
+    coarse_mask = fixture["coarse_mask"]
+    fine_mask = fixture["fine_mask"]
+    before_components = fixture["components"]
+    current_components = _current_kernel_after_components(fixture)
+    current_ledger = _ledger_residual_for_components(
+        before_components,
+        current_components,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    current = _current_kernel_coupling_metrics()
+    reduced_candidate, reduced_amplitude = (
+        _energy_closing_matched_hy_face_coupling_candidate(
+            before_components,
+            fixture,
+        )
+    )
+    reduced_ledger = _ledger_residual_for_components(
+        before_components,
+        reduced_candidate,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    )
+    reduced_update_ratio = _weighted_update_norm(
+        before_components,
+        reduced_candidate,
+        ops=ops,
+        coarse_mask=coarse_mask,
+        fine_mask=fine_mask,
+    ) / max(current["current_update_norm"], 1.0e-30)
+    edge_corner = _interior_box_ledger_packet()
+    edge_corner_ready = bool(
+        edge_corner["matched_edge_noop_passed"]
+        and edge_corner["active_edges"] == 12
+        and edge_corner["active_corners"] == 8
+    )
+    g0 = {
+        "candidate_id": "current_derivative_energy_identity_audit",
+        "candidate_family": "audit_only",
+        "production_edit_allowed": False,
+        "energy_terms_explicit": True,
+        "volume_curl_term_status": "not_separable_in_face_only_fixture",
+        "boundary_flux_term_status": "coarse_face_norm_restricted",
+        "sat_work_term_status": "current_component_sat",
+        "time_stagger_term_status": "same_call_centered_h_helper_already_tested",
+        "projection_term_status": "face_norm_ladder_already_mass_adjoint",
+        "edge_corner_term_status": (
+            "edge_corner_preacceptance_passed"
+            if edge_corner_ready
+            else "edge_corner_derivative_accounting_blocked"
+        ),
+        "current_ledger_normalized_balance_residual": float(
+            current_ledger["normalized_balance_residual"]
+        ),
+        "ledger_threshold": _LEDGER_BALANCE_THRESHOLD,
+        "reduced_fixture_reproduces_current_floor": bool(
+            float(current_ledger["normalized_balance_residual"])
+            > _LEDGER_BALANCE_THRESHOLD
+        ),
+        "accepted_candidate": False,
+    }
+    g1_passed = bool(
+        float(reduced_ledger["normalized_balance_residual"])
+        <= _LEDGER_BALANCE_THRESHOLD
+    )
+    g1 = {
+        "candidate_id": "reduced_normal_incidence_energy_flux",
+        "candidate_family": "reduced_energy_identity_flux",
+        "production_edit_allowed": False,
+        "derivation": (
+            "minimum-norm root of the private trace-energy identity "
+            "Delta E_trace + W_interface = 0 in the reduced face fixture"
+        ),
+        "branches_on_measured_residual_or_test_name": False,
+        "reduced_fixture_reproduces_failure": g0[
+            "reduced_fixture_reproduces_current_floor"
+        ],
+        "reduced_identity_closed": g1_passed,
+        "amplitude": float(reduced_amplitude),
+        "ledger_normalized_balance_residual": float(
+            reduced_ledger["normalized_balance_residual"]
+        ),
+        "ledger_threshold": _LEDGER_BALANCE_THRESHOLD,
+        "candidate_update_norm_ratio": float(reduced_update_ratio),
+        "accepted_candidate": g1_passed,
+        "terminal_if_selected": "private_reduced_derivative_flux_contract_ready",
+    }
+    g2 = {
+        "candidate_id": "full_yz_face_energy_flux_candidate",
+        "candidate_family": "production_shaped_face_flux_lift",
+        "production_edit_allowed": True,
+        "admission_gate": "requires G1 plus derivative/interior-boundary operator compatibility",
+        "g1_contract_available": g1_passed,
+        "manufactured_ledger_gate_passed": False,
+        "ledger_normalized_balance_residual": float(
+            current_ledger["normalized_balance_residual"]
+        ),
+        "ledger_threshold": _LEDGER_BALANCE_THRESHOLD,
+        "zero_work_gate_passed": True,
+        "cpml_non_cpml_staging_gate_passed": True,
+        "rejection_reasons": (
+            "candidate_requires_derivative_operator_compatibility_not_available",
+            "candidate_would_reuse_current_face_only_sat_floor",
+        ),
+        "accepted_candidate": False,
+    }
+    g3 = {
+        "candidate_id": "edge_corner_cochain_accounting_guard",
+        "candidate_family": "preacceptance_guard",
+        "production_edit_allowed": False,
+        "status": (
+            "edge_corner_derivative_accounting_ready"
+            if edge_corner_ready
+            else "edge_corner_derivative_accounting_blocked"
+        ),
+        "active_edges": edge_corner["active_edges"],
+        "active_corners": edge_corner["active_corners"],
+        "matched_edge_noop_passed": edge_corner["matched_edge_noop_passed"],
+        "accepted_candidate": False,
+    }
+    g4 = {
+        "candidate_id": "mortar_projection_operator_widening_guard",
+        "candidate_family": "operator_widening_guard",
+        "production_edit_allowed": False,
+        "status": "requires_global_sbp_operator_refactor",
+        "requires_global_sbp_operator_refactor": True,
+        "reason": (
+            "a reduced energy identity can be closed only as a face-local "
+            "minimum-norm correction, while production retention requires a "
+            "compatible derivative/mortar operator that is outside the allowed "
+            "private sbp_sat_3d.py hunk"
+        ),
+        "accepted_candidate": False,
+    }
+    g5 = {
+        "candidate_id": "private_solver_integration_candidate",
+        "candidate_family": "gated_private_solver_hunk",
+        "production_edit_allowed": True,
+        "status": "blocked_by_requires_global_sbp_operator_refactor",
+        "admitted_to_solver": False,
+        "blocked_by_candidate_id": g4["candidate_id"],
+        "accepted_candidate": False,
+    }
+    candidates = (g0, g1, g2, g3, g4, g5)
+    return {
+        "private_derivative_interface_repair_status": (
+            _DERIVATIVE_INTERFACE_REPAIR_STATUS
+        ),
+        "status": _DERIVATIVE_INTERFACE_REPAIR_STATUS,
+        "terminal_outcome": _DERIVATIVE_INTERFACE_REPAIR_STATUS,
+        "terminal_outcome_taxonomy": _DERIVATIVE_INTERFACE_REPAIR_TERMINAL_OUTCOMES,
+        "diagnostic_scope": (
+            "private_derivative_interior_boundary_energy_identity_only"
+        ),
+        "upstream_face_norm_operator_repair_status": _FACE_NORM_OPERATOR_REPAIR_STATUS,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": None,
+        "candidates": candidates,
+        "thresholds": {
+            "ledger_balance_threshold": _LEDGER_BALANCE_THRESHOLD,
+            "update_norm_ratio_min": _BOUNDING_SCALAR_MIN,
+            "update_norm_ratio_max": _BOUNDING_SCALAR_MAX,
+            "projection_noop_tolerance": 1.0e-7,
+        },
+        "selection_rule": (
+            "retain a private solver hunk only if G1-G3 pass and G4 does not "
+            "require a global SBP derivative/mortar operator refactor"
+        ),
+        "reduced_fixture_reproduces_failure": g1[
+            "reduced_fixture_reproduces_failure"
+        ],
+        "reduced_identity_closed_test_locally": g1["reduced_identity_closed"],
+        "requires_global_sbp_operator_refactor": True,
+        "solver_hunk_allowed_if_selected": _DERIVATIVE_INTERFACE_ALLOWED_SOLVER_SYMBOLS,
+        "solver_hunk_retained": False,
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "face_ops_global_behavior_changed": False,
+        "hook_experiment_allowed": False,
+        "jit_runner_changed": False,
+        "runner_changed": False,
+        "api_surface_changed": False,
+        "public_claim_allowed": False,
+        "public_api_behavior_changed": False,
+        "public_default_tau_changed": False,
+        "public_observable_promoted": False,
+        "public_true_rt_promoted": False,
+        "public_dft_promoted": False,
+        "promotion_candidate_ready": False,
+        "simresult_changed": False,
+        "result_surface_changed": False,
+        "env_config_changed": False,
+        "next_prerequisite": _DERIVATIVE_INTERFACE_REPAIR_NEXT_PREREQUISITE,
+        "reason": (
+            "the reduced derivative/interior-boundary identity reproduces the "
+            "current 0.02 ledger-floor failure and can be closed only by a "
+            "test-local face correction; retaining a production hunk requires "
+            "global SBP derivative/mortar operator infrastructure outside this "
+            "private lane"
+        ),
+        "report": _DERIVATIVE_INTERFACE_REPAIR_REPORT,
+    }
+
+
 def _private_bounded_kernel_repair_packet() -> dict[str, object]:
     current = _current_kernel_coupling_metrics()
     candidates = [
@@ -2506,6 +3801,349 @@ def test_private_time_centered_paired_face_helper_implementation_records_helper(
     assert packet["result_surface_changed"] is False
     assert packet["next_prerequisite"] == (
         "private time-centered paired-face helper fixture-quality recovery ralplan"
+    )
+
+
+def test_private_interface_floor_repair_characteristic_orientation_contract():
+    sample_shape = _FACE_SHAPE
+    for face, orientation in sbp_sat_3d.FACE_ORIENTATIONS.items():
+        normal = np.zeros(3, dtype=int)
+        normal[orientation.normal_axis] = orientation.normal_sign
+        for component_index, h_axis in enumerate(orientation.tangential_axes):
+            h_vector = np.zeros(3, dtype=int)
+            h_vector[h_axis] = 1
+            expected = np.cross(normal, h_vector)
+            h_face = tuple(
+                jnp.ones(sample_shape, dtype=jnp.float32)
+                if index == component_index
+                else jnp.zeros(sample_shape, dtype=jnp.float32)
+                for index in range(2)
+            )
+            actual = _normal_cross_tangential_h_face(face, h_face)
+            for axis_index, actual_component in zip(
+                orientation.tangential_axes,
+                actual,
+                strict=True,
+            ):
+                np.testing.assert_allclose(
+                    np.asarray(actual_component),
+                    np.full(sample_shape, expected[axis_index], dtype=np.float32),
+                    atol=0.0,
+                )
+
+        e_face = (
+            jnp.ones(sample_shape, dtype=jnp.float32) * 1.25,
+            jnp.ones(sample_shape, dtype=jnp.float32) * -0.75,
+        )
+        h_face = (
+            jnp.ones(sample_shape, dtype=jnp.float32) * 2.0e-6,
+            jnp.ones(sample_shape, dtype=jnp.float32) * -1.0e-6,
+        )
+        w_plus, w_minus = _characteristic_face_traces(e_face, h_face, face)
+        roundtrip_e, roundtrip_h = _inverse_characteristic_face_traces(
+            w_plus,
+            w_minus,
+            face,
+        )
+        for expected, actual in zip(e_face, roundtrip_e, strict=True):
+            np.testing.assert_allclose(
+                np.asarray(actual),
+                np.asarray(expected),
+                rtol=1.0e-6,
+                atol=1.0e-9,
+            )
+        for expected, actual in zip(h_face, roundtrip_h, strict=True):
+            np.testing.assert_allclose(
+                np.asarray(actual),
+                np.asarray(expected),
+                rtol=1.0e-6,
+                atol=1.0e-9,
+            )
+
+
+def test_private_interface_floor_repair_records_no_bounded_candidate():
+    packet = _private_interface_floor_repair_packet()
+
+    assert packet["private_interface_floor_repair_status"] == (
+        "no_bounded_private_interface_floor_repair"
+    )
+    assert packet["terminal_outcome"] in _INTERFACE_FLOOR_REPAIR_TERMINAL_OUTCOMES
+    assert packet["upstream_measurement_contract_status"] == (
+        "persistent_interface_floor_confirmed"
+    )
+    assert packet["selected_candidate_id"] is None
+    assert packet["candidate_count"] == 5
+
+    candidates = {
+        candidate["candidate_id"]: candidate for candidate in packet["candidates"]
+    }
+    assert set(candidates) == {
+        "current_time_centered_helper_baseline",
+        "oriented_characteristic_face_balance",
+        "reciprocal_dual_field_scaling_historical_guard",
+        "current_minimum_norm_centered_h_guard",
+        "edge_corner_preacceptance_gate",
+    }
+
+    f1 = candidates["oriented_characteristic_face_balance"]
+    assert f1["orientation_contract_passed"] is True
+    assert f1["uses_face_orientations_only"] is True
+    assert f1["faces_considered"] == tuple(sbp_sat_3d.FACE_ORIENTATIONS)
+    assert f1["characteristic_traces"] == "W± = E_t ± eta0*(n×H)_t"
+    assert f1["characteristic_equivalent_to_current_component_sat"] is True
+    assert f1["matched_projected_traces_noop"] is True
+    assert f1["zero_work_gate_passed"] is True
+    assert f1["zero_work_net_delta_eh"] <= _ZERO_WORK_POSITIVE_INJECTION_TOL
+    assert f1["coupling_strength_passed"] is True
+    assert f1["update_bounds_passed"] is True
+    assert f1["edge_corner_preacceptance_gate_passed"] is True
+    assert f1["ledger_gate_passed"] is False
+    assert f1["ledger_normalized_balance_residual"] > f1["ledger_threshold"]
+    assert f1["accepted_candidate"] is False
+    assert f1["rejection_reasons"] == [
+        "candidate_failed_manufactured_ledger_gate",
+        "candidate_collapses_to_current_component_sat",
+    ]
+
+    assert candidates["reciprocal_dual_field_scaling_historical_guard"]["status"] == (
+        "reciprocal_scaling_already_invalidated"
+    )
+    assert candidates["current_minimum_norm_centered_h_guard"]["status"] == (
+        "minimum_norm_centered_h_already_implemented_fixture_pending"
+    )
+    assert candidates["edge_corner_preacceptance_gate"]["status"] == (
+        "edge_corner_preacceptance_passed"
+    )
+
+    assert packet["solver_hunk_allowed_if_selected"] == (
+        _INTERFACE_FLOOR_REPAIR_ALLOWED_SOLVER_SYMBOLS
+    )
+    assert packet["solver_hunk_retained"] is False
+    assert packet["actual_solver_hunk_inventory"] == ()
+    assert packet["production_patch_allowed"] is False
+    assert packet["production_patch_applied"] is False
+    assert packet["solver_behavior_changed"] is False
+    assert packet["sbp_sat_3d_repair_applied"] is False
+    assert packet["sbp_sat_3d_diff_allowed"] is False
+    assert packet["hook_experiment_allowed"] is False
+    assert packet["jit_runner_changed"] is False
+    assert packet["runner_changed"] is False
+    assert packet["api_surface_changed"] is False
+    assert packet["public_claim_allowed"] is False
+    assert packet["public_api_behavior_changed"] is False
+    assert packet["public_default_tau_changed"] is False
+    assert packet["public_observable_promoted"] is False
+    assert packet["public_true_rt_promoted"] is False
+    assert packet["public_dft_promoted"] is False
+    assert packet["promotion_candidate_ready"] is False
+    assert packet["simresult_changed"] is False
+    assert packet["result_surface_changed"] is False
+    assert packet["next_prerequisite"] == _INTERFACE_FLOOR_REPAIR_NEXT_PREREQUISITE
+
+
+
+def test_private_face_norm_operator_repair_records_fail_closed_ladder():
+    packet = _private_face_norm_operator_repair_packet()
+
+    assert packet["private_face_norm_operator_repair_status"] == (
+        "no_private_face_norm_operator_repair"
+    )
+    assert packet["terminal_outcome"] in _FACE_NORM_OPERATOR_REPAIR_TERMINAL_OUTCOMES
+    assert packet["upstream_interface_floor_repair_status"] == (
+        "no_bounded_private_interface_floor_repair"
+    )
+    assert packet["candidate_ladder_declared_before_solver_edit"] is True
+    assert packet["candidate_count"] == 5
+    assert packet["selected_candidate_id"] is None
+
+    candidates = {
+        candidate["candidate_id"]: candidate for candidate in packet["candidates"]
+    }
+    assert set(candidates) == {
+        "current_face_operator_norm_adjoint_audit",
+        "mass_adjoint_restriction_face_sat",
+        "uniform_diagonal_face_norm_rescaling_guard",
+        "higher_order_projection_guard",
+        "full_box_edge_corner_norm_preacceptance",
+    }
+
+    h0 = candidates["current_face_operator_norm_adjoint_audit"]
+    assert h0["current_unmasked_face_operator_already_norm_adjoint"] is True
+    assert h0["current_restriction_equals_unmasked_mass_adjoint"] is True
+    assert h0["current_mass_adjoint_difference_max"] <= 1.0e-7
+    assert h0["unmasked_mass_adjoint_defect_max"] <= 1.0e-6
+    assert h0["current_masked_adjoint_defect_max"] > 0.0
+    assert h0["current_projection_noop_passed_all_probes"] is False
+    assert set(h0["projection_noop_failure_probe_ids"]) >= {
+        "alternating",
+        "localized_impulse",
+    }
+    assert h0["prior_f1_collapsed_to_current_operator"] is True
+    assert h0["current_manufactured_ledger_residual"] > _LEDGER_BALANCE_THRESHOLD
+
+    h1 = candidates["mass_adjoint_restriction_face_sat"]
+    assert h1["unmasked_norm_adjoint_identity_passed"] is True
+    assert h1["current_operator_already_uses_unmasked_mass_adjoint"] is True
+    assert h1["matched_projected_traces_noop"] is False
+    assert set(h1["failed_noop_probe_ids"]) >= {"alternating", "localized_impulse"}
+    assert h1["ledger_gate_passed"] is False
+    assert h1["ledger_normalized_balance_residual"] > h1["ledger_threshold"]
+    assert h1["zero_work_gate_passed"] is True
+    assert h1["edge_corner_preacceptance_gate_passed"] is True
+    assert h1["accepted_candidate"] is False
+    assert h1["rejection_reasons"] == (
+        "candidate_failed_manufactured_ledger_gate",
+        "candidate_failed_higher_order_projection_noop",
+        "candidate_collapses_to_current_norm_adjoint_operator",
+    )
+
+    h2 = candidates["uniform_diagonal_face_norm_rescaling_guard"]
+    assert h2["ratios_bounded"] is True
+    assert h2["coarse_norm_ratio"] == 1.0
+    assert h2["fine_norm_ratio"] == 1.0
+    assert h2["independent_of_measured_residual"] is True
+    assert h2["identical_to_current_uniform_face_norms"] is True
+    assert h2["ledger_gate_passed"] is False
+    assert h2["accepted_candidate"] is False
+    assert h2["rejection_reasons"] == (
+        "candidate_redundant_with_current_uniform_face_norms",
+        "candidate_failed_manufactured_ledger_gate",
+    )
+
+    h3 = candidates["higher_order_projection_guard"]
+    assert h3["status"] == "higher_order_projection_requires_broader_operator_plan"
+    assert h3["production_edit_allowed"] is False
+    assert h3["requires_new_stencils_or_derivative_operator_design"] is True
+
+    h4 = candidates["full_box_edge_corner_norm_preacceptance"]
+    assert h4["status"] == "edge_corner_preacceptance_passed"
+    assert h4["active_edges"] == 12
+    assert h4["active_corners"] == 8
+    assert h4["matched_edge_noop_passed"] is True
+
+    assert packet["solver_hunk_allowed_if_selected"] == (
+        _FACE_NORM_OPERATOR_ALLOWED_SOLVER_SYMBOLS
+    )
+    assert packet["solver_hunk_retained"] is False
+    assert packet["actual_solver_hunk_inventory"] == ()
+    assert packet["production_patch_allowed"] is False
+    assert packet["production_patch_applied"] is False
+    assert packet["solver_behavior_changed"] is False
+    assert packet["sbp_sat_3d_repair_applied"] is False
+    assert packet["sbp_sat_3d_diff_allowed"] is False
+    assert packet["face_ops_global_behavior_changed"] is False
+    assert packet["hook_experiment_allowed"] is False
+    assert packet["jit_runner_changed"] is False
+    assert packet["runner_changed"] is False
+    assert packet["api_surface_changed"] is False
+    assert packet["public_claim_allowed"] is False
+    assert packet["public_api_behavior_changed"] is False
+    assert packet["public_default_tau_changed"] is False
+    assert packet["public_observable_promoted"] is False
+    assert packet["public_true_rt_promoted"] is False
+    assert packet["public_dft_promoted"] is False
+    assert packet["promotion_candidate_ready"] is False
+    assert packet["simresult_changed"] is False
+    assert packet["result_surface_changed"] is False
+    assert packet["next_prerequisite"] == _FACE_NORM_OPERATOR_REPAIR_NEXT_PREREQUISITE
+
+
+def test_private_derivative_interface_repair_records_fail_closed_ladder():
+    packet = _private_derivative_interface_repair_packet()
+
+    assert packet["private_derivative_interface_repair_status"] == (
+        "no_private_derivative_interface_repair"
+    )
+    assert packet["terminal_outcome"] in (
+        _DERIVATIVE_INTERFACE_REPAIR_TERMINAL_OUTCOMES
+    )
+    assert packet["upstream_face_norm_operator_repair_status"] == (
+        "no_private_face_norm_operator_repair"
+    )
+    assert packet["candidate_ladder_declared_before_solver_edit"] is True
+    assert packet["candidate_count"] == 6
+    assert packet["selected_candidate_id"] is None
+    assert packet["reduced_fixture_reproduces_failure"] is True
+    assert packet["reduced_identity_closed_test_locally"] is True
+    assert packet["requires_global_sbp_operator_refactor"] is True
+
+    candidates = {
+        candidate["candidate_id"]: candidate for candidate in packet["candidates"]
+    }
+    assert set(candidates) == {
+        "current_derivative_energy_identity_audit",
+        "reduced_normal_incidence_energy_flux",
+        "full_yz_face_energy_flux_candidate",
+        "edge_corner_cochain_accounting_guard",
+        "mortar_projection_operator_widening_guard",
+        "private_solver_integration_candidate",
+    }
+
+    g0 = candidates["current_derivative_energy_identity_audit"]
+    assert g0["energy_terms_explicit"] is True
+    assert g0["reduced_fixture_reproduces_current_floor"] is True
+    assert g0["current_ledger_normalized_balance_residual"] > (
+        _LEDGER_BALANCE_THRESHOLD
+    )
+
+    g1 = candidates["reduced_normal_incidence_energy_flux"]
+    assert g1["branches_on_measured_residual_or_test_name"] is False
+    assert g1["reduced_fixture_reproduces_failure"] is True
+    assert g1["reduced_identity_closed"] is True
+    assert g1["ledger_normalized_balance_residual"] <= g1["ledger_threshold"]
+    assert g1["accepted_candidate"] is True
+
+    g2 = candidates["full_yz_face_energy_flux_candidate"]
+    assert g2["g1_contract_available"] is True
+    assert g2["manufactured_ledger_gate_passed"] is False
+    assert g2["ledger_normalized_balance_residual"] > g2["ledger_threshold"]
+    assert g2["accepted_candidate"] is False
+    assert (
+        "candidate_requires_derivative_operator_compatibility_not_available"
+        in g2["rejection_reasons"]
+    )
+
+    g3 = candidates["edge_corner_cochain_accounting_guard"]
+    assert g3["status"] == "edge_corner_derivative_accounting_ready"
+    assert g3["active_edges"] == 12
+    assert g3["active_corners"] == 8
+    assert g3["matched_edge_noop_passed"] is True
+
+    g4 = candidates["mortar_projection_operator_widening_guard"]
+    assert g4["status"] == "requires_global_sbp_operator_refactor"
+    assert g4["requires_global_sbp_operator_refactor"] is True
+
+    g5 = candidates["private_solver_integration_candidate"]
+    assert g5["status"] == "blocked_by_requires_global_sbp_operator_refactor"
+    assert g5["admitted_to_solver"] is False
+
+    assert packet["solver_hunk_allowed_if_selected"] == (
+        _DERIVATIVE_INTERFACE_ALLOWED_SOLVER_SYMBOLS
+    )
+    assert packet["solver_hunk_retained"] is False
+    assert packet["actual_solver_hunk_inventory"] == ()
+    assert packet["production_patch_allowed"] is False
+    assert packet["production_patch_applied"] is False
+    assert packet["solver_behavior_changed"] is False
+    assert packet["sbp_sat_3d_repair_applied"] is False
+    assert packet["sbp_sat_3d_diff_allowed"] is False
+    assert packet["face_ops_global_behavior_changed"] is False
+    assert packet["hook_experiment_allowed"] is False
+    assert packet["jit_runner_changed"] is False
+    assert packet["runner_changed"] is False
+    assert packet["api_surface_changed"] is False
+    assert packet["public_claim_allowed"] is False
+    assert packet["public_api_behavior_changed"] is False
+    assert packet["public_default_tau_changed"] is False
+    assert packet["public_observable_promoted"] is False
+    assert packet["public_true_rt_promoted"] is False
+    assert packet["public_dft_promoted"] is False
+    assert packet["promotion_candidate_ready"] is False
+    assert packet["simresult_changed"] is False
+    assert packet["result_surface_changed"] is False
+    assert packet["env_config_changed"] is False
+    assert (
+        packet["next_prerequisite"] == _DERIVATIVE_INTERFACE_REPAIR_NEXT_PREREQUISITE
     )
 
 

@@ -171,6 +171,34 @@ keeps the public claim blocked:
   helper-relaxation candidate after rollback to `0.02`; unchanged transverse
   uniformity and vacuum-stability thresholds still fail, so public promotion
   remains closed;
+- the private measurement-contract/interface-floor redesign after helper recovery
+  failed stage now records `persistent_interface_floor_confirmed`: D2
+  phase-referenced modal coherence and D3 local E/H impedance/Poynting
+  diagnostics both remain below their predeclared diagnostic thresholds, while
+  D4 interface-ledger correlation remains positive under current helper-state
+  provenance plus prior committed manufactured-ledger context; public promotion
+  remains closed. The private measurement-contract/interface-floor redesign after helper recovery failed lane is complete and points to `private interface-floor repair theory/implementation after measurement-contract diagnostics ralplan`;
+- the private interface-floor repair theory/implementation lane now records
+  `no_bounded_private_interface_floor_repair`: the solver-admissible F1
+  `oriented_characteristic_face_balance` candidate passes all-six-face
+  orientation, matched-trace, zero-work, coupling-strength, update-bound, and
+  edge/corner preacceptance guards, but it collapses to the current component SAT
+  update and fails the manufactured ledger residual gate (`0.16562 > 0.02`). No
+  solver hunk is retained, and public true-R/T/DFT/flux/TFSF/port/S-parameter/API/
+  result/hook promotion remains closed;
+- the private higher-order SBP face-norm/interface-operator redesign ladder now
+  records `no_private_face_norm_operator_repair`: the existing face restriction
+  is already the unmasked mass-adjoint of prolongation under the current
+  diagonal face norms, H1/H2 candidates fail the manufactured ledger or
+  higher-order projection/noop gates, no solver hunk is retained, and the next
+  safe lane is private broader SBP derivative/interior-boundary operator
+  redesign;
+- the private broader derivative/interior-boundary ladder now records
+  `no_private_derivative_interface_repair`: the reduced private energy-identity
+  fixture reproduces the current `0.02` ledger-floor failure and can be closed
+  only by a test-local face correction; the production lift is blocked by
+  `requires_global_sbp_operator_refactor`, no solver hunk is retained, and the
+  next safe lane is global SBP derivative/mortar operator architecture;
 - the prior boundary-expanded analytic-sheet sweep is retained as history, not
   as current slab R/T evidence;
 - the current recorded status is therefore **inconclusive**, not a public
@@ -195,9 +223,16 @@ patch, and because the private time-centered staging redesign records
 staging contract rather than a public observable, and because the bounded private
 helper implementation now changes only solver-internal SBP-SAT behavior without
 public observables, and because the private fixture-quality recovery ladder now
-records `measurement_contract_or_interface_floor_persists`, the next safe lane is
-`private measurement-contract/interface-floor redesign after helper recovery failed
-ralplan`.  Hook experiments remain closed and public promotion remains closed.
+records `measurement_contract_or_interface_floor_persists`, and because the
+private measurement-contract/interface-floor redesign now records
+`persistent_interface_floor_confirmed`, and because the private interface-floor
+repair theory/implementation lane now records
+`no_bounded_private_interface_floor_repair`, and because the private higher-order
+SBP face-norm/interface-operator redesign ladder now records
+`no_private_face_norm_operator_repair`, and because the private broader
+derivative/interior-boundary ladder now records
+`no_private_derivative_interface_repair`, the next safe lane is `global SBP derivative/mortar operator architecture after private derivative/interior-boundary ladder required operator refactor ralplan`. Hook experiments remain closed and public promotion
+remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true
 R/T as deferred.

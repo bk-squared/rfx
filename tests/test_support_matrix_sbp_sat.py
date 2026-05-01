@@ -439,13 +439,152 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate["private_paired_face_helper_implementation_next_prerequisite"]
         == (paired_helper["next_prerequisite"])
     )
+    repair = benchmark_gate["private_interface_floor_repair"]
+    assert benchmark_gate["private_interface_floor_repair_status"] == (
+        "no_bounded_private_interface_floor_repair"
+    )
+    assert (
+        repair["terminal_outcome"]
+        == benchmark_gate["private_interface_floor_repair_status"]
+    )
+    assert repair["candidate_ladder_declared_before_solver_edit"] is True
+    assert repair["candidate_count"] == 5
+    repair_candidates = {
+        candidate["candidate_id"]: candidate for candidate in repair["candidates"]
+    }
+    assert (
+        repair_candidates["oriented_characteristic_face_balance"]["ledger_gate_passed"]
+        is False
+    )
+    assert (
+        repair_candidates["oriented_characteristic_face_balance"][
+            "characteristic_equivalent_to_current_component_sat"
+        ]
+        is True
+    )
+    assert repair["solver_hunk_retained"] is False
+    assert repair["actual_solver_hunk_inventory"] == []
+    assert repair["production_patch_allowed"] is False
+    assert repair["production_patch_applied"] is False
+    assert repair["public_claim_allowed"] is False
+    assert repair["public_observable_promoted"] is False
+    assert (
+        benchmark_gate["private_interface_floor_repair_next_prerequisite"]
+        == repair["next_prerequisite"]
+    )
+    face_norm = benchmark_gate["private_face_norm_operator_repair"]
+    assert benchmark_gate["private_face_norm_operator_repair_status"] == (
+        "no_private_face_norm_operator_repair"
+    )
+    assert (
+        face_norm["terminal_outcome"]
+        == benchmark_gate["private_face_norm_operator_repair_status"]
+    )
+    assert face_norm["candidate_ladder_declared_before_solver_edit"] is True
+    assert face_norm["candidate_count"] == 5
+    face_norm_candidates = {
+        candidate["candidate_id"]: candidate for candidate in face_norm["candidates"]
+    }
+    assert set(face_norm_candidates) == {
+        "current_face_operator_norm_adjoint_audit",
+        "mass_adjoint_restriction_face_sat",
+        "uniform_diagonal_face_norm_rescaling_guard",
+        "higher_order_projection_guard",
+        "full_box_edge_corner_norm_preacceptance",
+    }
+    assert (
+        face_norm_candidates["mass_adjoint_restriction_face_sat"][
+            "ledger_gate_passed"
+        ]
+        is False
+    )
+    assert (
+        face_norm_candidates["mass_adjoint_restriction_face_sat"][
+            "matched_projected_traces_noop"
+        ]
+        is False
+    )
+    assert (
+        face_norm_candidates["uniform_diagonal_face_norm_rescaling_guard"][
+            "identical_to_current_uniform_face_norms"
+        ]
+        is True
+    )
+    assert (
+        face_norm_candidates["higher_order_projection_guard"]["status"]
+        == "higher_order_projection_requires_broader_operator_plan"
+    )
+    assert face_norm["solver_hunk_retained"] is False
+    assert face_norm["production_patch_allowed"] is False
+    assert face_norm["production_patch_applied"] is False
+    assert face_norm["public_claim_allowed"] is False
+    assert face_norm["public_observable_promoted"] is False
+    assert (
+        benchmark_gate["private_face_norm_operator_repair_next_prerequisite"]
+        == face_norm["next_prerequisite"]
+    )
+    derivative = benchmark_gate["private_derivative_interface_repair"]
+    assert benchmark_gate["private_derivative_interface_repair_status"] == (
+        "no_private_derivative_interface_repair"
+    )
+    assert (
+        derivative["terminal_outcome"]
+        == benchmark_gate["private_derivative_interface_repair_status"]
+    )
+    assert derivative["upstream_face_norm_operator_repair_status"] == (
+        benchmark_gate["private_face_norm_operator_repair_status"]
+    )
+    assert derivative["candidate_ladder_declared_before_solver_edit"] is True
+    assert derivative["candidate_count"] == 6
+    assert derivative["selected_candidate_id"] is None
+    assert derivative["reduced_fixture_reproduces_failure"] is True
+    assert derivative["reduced_identity_closed_test_locally"] is True
+    assert derivative["requires_global_sbp_operator_refactor"] is True
+    derivative_candidates = {
+        candidate["candidate_id"]: candidate for candidate in derivative["candidates"]
+    }
+    assert set(derivative_candidates) == {
+        "current_derivative_energy_identity_audit",
+        "reduced_normal_incidence_energy_flux",
+        "full_yz_face_energy_flux_candidate",
+        "edge_corner_cochain_accounting_guard",
+        "mortar_projection_operator_widening_guard",
+        "private_solver_integration_candidate",
+    }
+    assert (
+        derivative_candidates["full_yz_face_energy_flux_candidate"][
+            "manufactured_ledger_gate_passed"
+        ]
+        is False
+    )
+    assert (
+        derivative_candidates["mortar_projection_operator_widening_guard"]["status"]
+        == "requires_global_sbp_operator_refactor"
+    )
+    assert derivative["solver_hunk_retained"] is False
+    assert derivative["actual_solver_hunk_inventory"] == []
+    assert derivative["production_patch_allowed"] is False
+    assert derivative["production_patch_applied"] is False
+    assert derivative["solver_behavior_changed"] is False
+    assert derivative["sbp_sat_3d_repair_applied"] is False
+    assert derivative["public_claim_allowed"] is False
+    assert derivative["public_observable_promoted"] is False
+    assert derivative["hook_experiment_allowed"] is False
+    assert derivative["api_surface_changed"] is False
+    assert derivative["result_surface_changed"] is False
+    assert derivative["runner_surface_changed"] is False
+    assert derivative["env_config_changed"] is False
+    assert (
+        benchmark_gate["private_derivative_interface_repair_next_prerequisite"]
+        == derivative["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private measurement-contract/interface-floor redesign after helper "
-        "recovery failed ralplan"
+        "global SBP derivative/mortar operator architecture after private "
+        "derivative/interior-boundary ladder required operator refactor ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private measurement-contract/interface-floor redesign after helper "
-        "recovery failed ralplan"
+        "global SBP derivative/mortar operator architecture after private "
+        "derivative/interior-boundary ladder required operator refactor ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -643,9 +782,72 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == recovery["next_prerequisite"]
     )
+    redesign = benchmark_gate["private_measurement_contract_interface_floor_redesign"]
+    assert (
+        benchmark_gate["private_measurement_contract_interface_floor_redesign_status"]
+        == "persistent_interface_floor_confirmed"
+    )
+    assert (
+        redesign["terminal_outcome"]
+        == (
+            benchmark_gate[
+                "private_measurement_contract_interface_floor_redesign_status"
+            ]
+        )
+    )
+    assert redesign["diagnostic_ladder_declared_before_scoring"] is True
+    assert redesign["diagnostic_count"] == 5
+    assert redesign["diagnostic_ids"] == [
+        "D0_current_integrated_flux_contract",
+        "D1_prior_measurement_controls_summary",
+        "D2_phase_referenced_modal_coherence_projection",
+        "D3_local_eh_impedance_poynting_projection",
+        "D4_interface_ledger_correlation",
+    ]
+    assert redesign["d2_ready"] is False
+    assert redesign["d3_ready"] is False
+    assert redesign["d4_positive"] is True
+    assert redesign["solver_hunk_touched"] is False
+    assert redesign["public_claim_allowed"] is False
+    assert redesign["public_observable_promoted"] is False
+    assert redesign["hook_experiment_allowed"] is False
+    assert redesign["api_surface_changed"] is False
+    assert redesign["result_surface_changed"] is False
+    assert redesign["runner_surface_changed"] is False
+    assert redesign["env_config_changed"] is False
+    diagnostic_by_id = {
+        diagnostic["diagnostic_id"]: diagnostic
+        for diagnostic in redesign["diagnostics"]
+    }
+    assert set(diagnostic_by_id) == set(redesign["diagnostic_ids"])
+    d2 = diagnostic_by_id["D2_phase_referenced_modal_coherence_projection"]
+    assert d2["field_array_inputs"] == ["e1_dft", "e2_dft", "h1_dft", "h2_dft"]
+    assert d2["fixture_quality_gate_replacement"] is False
+    assert d2["d2_ready"] is False
+    assert d2["uniform_reference_ready"] is False
+    d3 = diagnostic_by_id["D3_local_eh_impedance_poynting_projection"]
+    assert d3["fixture_quality_gate_replacement"] is False
+    assert d3["mask_provenance_ready"] is True
+    assert d3["d3_ready"] is False
+    assert d3["metrics"]["mask_provenance_mismatch_count"] == 0
+    d4 = diagnostic_by_id["D4_interface_ledger_correlation"]
+    assert d4["d4_positive"] is True
+    assert d4["provenance"]["interface_energy_transfer_diagnostics"] == (
+        "current_helper_state_recomputed"
+    )
+    assert d4["provenance"]["manufactured_face_ledger_evidence"] == (
+        "prior_committed_evidence"
+    )
+    assert d4["manufactured_face_ledger_evidence"]["context_only"] is True
+    assert (
+        benchmark_gate[
+            "private_measurement_contract_interface_floor_redesign_next_prerequisite"
+        ]
+        == redesign["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private measurement-contract/interface-floor redesign after helper "
-        "recovery failed ralplan"
+        "global SBP derivative/mortar operator architecture after private "
+        "derivative/interior-boundary ladder required operator refactor ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
@@ -683,6 +885,16 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "private measurement-contract/interface-floor redesign after helper recovery failed"
         in spec_text
     )
+    assert "persistent_interface_floor_confirmed" in spec_text
+    assert "private interface-floor repair theory/implementation" in spec_text
+    assert "no_bounded_private_interface_floor_repair" in spec_text
+    assert "oriented_characteristic_face_balance" in spec_text
+    assert "higher-order SBP face-norm/interface-operator redesign" in spec_text
+    assert "no_private_face_norm_operator_repair" in spec_text
+    assert "private broader SBP derivative/interior-boundary operator" in spec_text
+    assert "no_private_derivative_interface_repair" in spec_text
+    assert "requires_global_sbp_operator_refactor" in spec_text
+    assert "global SBP derivative/mortar operator architecture" in spec_text
     assert "## Deferred issue record" in spec_text
 
 

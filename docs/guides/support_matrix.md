@@ -153,6 +153,37 @@ to `0.02`.  All candidates remain above unchanged transverse-uniformity or
 vacuum-stability thresholds, so public true-R/T/DFT/flux/TFSF/port/S-parameter
 promotion remains closed.  The next safe lane is private
 measurement-contract/interface-floor redesign, not a public observable promotion.
+The private measurement-contract/interface-floor redesign lane now records
+`persistent_interface_floor_confirmed`: the D0 authoritative integrated-flux
+contract remains blocked, D2 phase-referenced modal coherence is not ready,
+D3 local E/H impedance/Poynting normalization is not ready despite clean
+intersection-mask provenance, and D4 current helper-state interface residual
+evidence remains positive with prior committed manufactured-ledger context.
+This is private diagnostic evidence only; public true-R/T/DFT/flux/TFSF/port/
+S-parameter/API/result/hook promotion remains closed; public promotion remains closed.
+The private interface-floor repair theory/implementation lane now records
+`no_bounded_private_interface_floor_repair`: the F1
+`oriented_characteristic_face_balance` candidate passes all-six-face orientation,
+matched-trace, zero-work, coupling-strength, update-bound, and edge/corner
+preacceptance guards, but it is algebraically equivalent to the current component
+SAT update and leaves the manufactured ledger residual at `0.16562 > 0.02`.
+No `sbp_sat_3d.py` repair hunk is retained, and public true-R/T/DFT/flux/TFSF/
+port/S-parameter/API/result/hook promotion remains closed. The private higher-order
+SBP face-norm/interface-operator redesign ladder now records
+`no_private_face_norm_operator_repair`: the existing face restriction is already
+the unmasked mass-adjoint of prolongation under the current diagonal face norms,
+H1/H2 candidates fail the manufactured ledger or higher-order projection/noop
+gates, and no solver hunk is retained. The next safe lane is
+`private broader SBP derivative/interior-boundary operator redesign after face-norm/interface-operator ladder failed ralplan`.
+That broader derivative/interior-boundary lane now records
+`no_private_derivative_interface_repair`: the current ledger floor is reproduced
+in the reduced private energy-identity fixture, a test-local face correction can
+close that reduced identity, but the production lift is blocked by
+`requires_global_sbp_operator_refactor`. No `sbp_sat_3d.py` or `face_ops.py`
+solver/operator hunk is retained, the ledger threshold remains `0.02`, and
+public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains
+closed. The next safe lane is global SBP derivative/mortar operator architecture,
+not public observable promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

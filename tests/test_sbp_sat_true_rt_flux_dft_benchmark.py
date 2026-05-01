@@ -385,6 +385,145 @@ _PRIVATE_TIME_CENTERED_HELPER_C3_ROLLBACK_METRICS = {
     "vacuum_relative_magnitude_error": 0.8516395504247894,
     "vacuum_phase_error_deg": 20.354022359965228,
 }
+_PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_NEXT_PREREQUISITES = {
+    "private_authoritative_fixture_gate_passed_route_to_slab_scorer": (
+        "private slab scorer/gate interpretation before any public promotion ralplan"
+    ),
+    "measurement_contract_redesign_ready": (
+        "private modal/phase-referenced measurement-contract implementation and "
+        "fixture-quality gate ralplan"
+    ),
+    "source_reference_normalization_contract_mismatch": (
+        "private source/reference normalization contract repair before any public "
+        "observable promotion ralplan"
+    ),
+    "persistent_interface_floor_confirmed": (
+        "private interface-floor repair theory/implementation after measurement-contract "
+        "diagnostics ralplan"
+    ),
+    "mixed_measurement_contract_and_interface_floor": (
+        "private split measurement-contract prototype before interface-floor repair "
+        "ralplan"
+    ),
+    "diagnostic_data_insufficient_fail_closed": (
+        "private trace/hook data-capture plan with explicit hook-safety review ralplan"
+    ),
+    "public_promotion_required_and_rejected": (
+        "private-only redesign blocked because public promotion would be required; "
+        "open a public-support ralplan only after private gates pass"
+    ),
+}
+_PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_STATUSES = frozenset(
+    _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_NEXT_PREREQUISITES
+)
+_PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_DIAGNOSTIC_IDS = (
+    "D0_current_integrated_flux_contract",
+    "D1_prior_measurement_controls_summary",
+    "D2_phase_referenced_modal_coherence_projection",
+    "D3_local_eh_impedance_poynting_projection",
+    "D4_interface_ledger_correlation",
+)
+_PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_PRECEDENCE = (
+    "public_promotion_required_and_rejected",
+    "private_authoritative_fixture_gate_passed_route_to_slab_scorer",
+    "diagnostic_data_insufficient_fail_closed",
+    "measurement_contract_redesign_ready",
+    "source_reference_normalization_contract_mismatch",
+    "mixed_measurement_contract_and_interface_floor",
+    "persistent_interface_floor_confirmed",
+)
+_PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_METRIC_MAPPING = {
+    "D2_center_referenced_phase_spread_deg": "transverse_phase_spread_deg",
+    "D2_modal_magnitude_cv": "transverse_magnitude_cv",
+    "D3_local_vacuum_relative_magnitude_error": "vacuum_relative_magnitude_error",
+    "D3_local_vacuum_phase_error_deg": "vacuum_phase_error_deg",
+    "D3_eta0_relative_error": "absolute_threshold_only",
+}
+_PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_PUBLIC_CLOSURE = {
+    "public_claim_allowed": False,
+    "public_observable_promoted": False,
+    "promotion_candidate_ready": False,
+    "hook_experiment_allowed": False,
+    "public_api_behavior_changed": False,
+    "public_default_tau_changed": False,
+    "simresult_changed": False,
+    "result_surface_changed": False,
+    "slab_rt_public_claim_allowed": False,
+    "api_surface_changed": False,
+    "runner_surface_changed": False,
+    "hook_surface_changed": False,
+    "env_config_changed": False,
+}
+_PRIVATE_INTERFACE_FLOOR_REPAIR_STATUS = "no_bounded_private_interface_floor_repair"
+_PRIVATE_INTERFACE_FLOOR_REPAIR_NEXT_PREREQUISITE = (
+    "private higher-order SBP face-norm/interface-operator redesign after "
+    "characteristic face repair manufactured gate failed ralplan"
+)
+_PRIVATE_INTERFACE_FLOOR_REPAIR_TERMINAL_OUTCOMES = (
+    "private_characteristic_face_repair_candidate_accepted",
+    "private_interface_floor_repair_implemented_fixture_quality_pending",
+    "private_interface_floor_repair_candidate_ready_for_private_slab_scorer",
+    "no_bounded_private_interface_floor_repair",
+)
+_PRIVATE_INTERFACE_FLOOR_REPAIR_ALLOWED_SOLVER_SYMBOLS = (
+    "_levi_civita_sign",
+    "_normal_cross_tangential_h_face",
+    "_characteristic_face_traces",
+    "_inverse_characteristic_face_traces",
+    "_characteristic_balanced_face_correction",
+    "_apply_characteristic_balanced_face_helper",
+    "step_subgrid_3d_with_cpml",
+    "step_subgrid_3d",
+)
+_PRIVATE_INTERFACE_FLOOR_REPAIR_F1_LEDGER_RESIDUAL = 0.16561960778570511
+_PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD = 0.02
+_PRIVATE_FACE_NORM_OPERATOR_REPAIR_STATUS = "no_private_face_norm_operator_repair"
+_PRIVATE_FACE_NORM_OPERATOR_REPAIR_NEXT_PREREQUISITE = (
+    "private broader SBP derivative/interior-boundary operator redesign after "
+    "face-norm/interface-operator ladder failed ralplan"
+)
+_PRIVATE_FACE_NORM_OPERATOR_REPAIR_TERMINAL_OUTCOMES = (
+    "private_norm_adjoint_face_operator_repair_candidate_accepted",
+    "private_diagonal_face_norm_repair_candidate_accepted",
+    "private_face_norm_operator_repair_implemented_fixture_quality_pending",
+    "higher_order_projection_requires_broader_operator_plan",
+    "edge_corner_norm_inconsistency_suspected",
+    "no_private_face_norm_operator_repair",
+)
+_PRIVATE_FACE_NORM_OPERATOR_ALLOWED_SOLVER_SYMBOLS = (
+    "_face_norm_inner",
+    "_face_norm_adjoint_defect",
+    "_norm_adjoint_restrict_face",
+    "_norm_adjoint_prolong_face",
+    "_apply_norm_compatible_sat_pair_face",
+    "_apply_norm_compatible_interface_helper",
+    "step_subgrid_3d_with_cpml",
+    "step_subgrid_3d",
+)
+_PRIVATE_DERIVATIVE_INTERFACE_REPAIR_STATUS = (
+    "no_private_derivative_interface_repair"
+)
+_PRIVATE_DERIVATIVE_INTERFACE_REPAIR_NEXT_PREREQUISITE = (
+    "global SBP derivative/mortar operator architecture after private "
+    "derivative/interior-boundary ladder required operator refactor ralplan"
+)
+_PRIVATE_DERIVATIVE_INTERFACE_REPAIR_TERMINAL_OUTCOMES = (
+    "private_reduced_derivative_flux_contract_ready",
+    "private_derivative_interface_flux_candidate_accepted",
+    "edge_corner_derivative_accounting_ready",
+    "requires_global_sbp_operator_refactor",
+    "private_derivative_interface_repair_implemented_fixture_quality_pending",
+    "no_private_derivative_interface_repair",
+)
+_PRIVATE_DERIVATIVE_INTERFACE_ALLOWED_SOLVER_SYMBOLS = (
+    "_derivative_interface_energy_terms",
+    "_reduced_interface_flux_balance",
+    "_energy_stable_face_flux_update",
+    "_apply_energy_stable_derivative_interface_helper",
+    "step_subgrid_3d_with_cpml",
+    "step_subgrid_3d",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -2051,6 +2190,1016 @@ def _private_tfsf_candidate_metrics_from_runs(
             ),
             "vacuum_phase_error_deg": float(vacuum_stability["max_phase_error_deg"]),
         },
+    }
+
+
+def _private_public_closure_metadata() -> dict[str, bool]:
+    return dict(_PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_PUBLIC_CLOSURE)
+
+
+def _plane_field_e1(plane, freq_index: int) -> np.ndarray:
+    return np.asarray(plane.e1_dft)[freq_index]
+
+
+def _active_field_mask(field: np.ndarray) -> np.ndarray:
+    magnitude = np.abs(field)
+    peak = float(np.max(magnitude)) if magnitude.size else 0.0
+    return magnitude >= max(peak * 1.0e-6, _NORMALIZATION_FLOOR)
+
+
+def _phase_referenced_plane_frequency_metrics(
+    plane, freq_index: int
+) -> dict[str, object]:
+    field = _plane_field_e1(plane, freq_index)
+    center = complex(field[field.shape[-2] // 2, field.shape[-1] // 2])
+    active_mask = _active_field_mask(field)
+    active_count = int(np.sum(active_mask))
+    if abs(center) < _NORMALIZATION_FLOOR or active_count == 0:
+        return {
+            "valid": False,
+            "invalid_reason": "center_or_active_mask_below_floor",
+            "active_mask_count": active_count,
+            "center_abs": float(abs(center)),
+            "center_referenced_phase_spread_deg": float("inf"),
+            "modal_coherence": 0.0,
+            "modal_magnitude_cv": float("inf"),
+        }
+
+    active_values = field[active_mask]
+    centered = active_values * np.exp(-1j * np.angle(center))
+    phase_spread = float(np.max(np.abs(np.angle(centered, deg=True))))
+    mean_magnitude = float(np.mean(np.abs(active_values)))
+    modal_coherence = float(
+        abs(np.mean(centered)) / max(mean_magnitude, _NORMALIZATION_FLOOR)
+    )
+    modal_magnitude_cv = float(
+        np.std(np.abs(active_values)) / max(mean_magnitude, _NORMALIZATION_FLOOR)
+    )
+    return {
+        "valid": True,
+        "active_mask_count": active_count,
+        "center_abs": float(abs(center)),
+        "center_referenced_phase_spread_deg": phase_spread,
+        "modal_coherence": modal_coherence,
+        "modal_magnitude_cv": modal_magnitude_cv,
+    }
+
+
+def _private_d2_phase_referenced_modal_coherence(
+    *,
+    ref_run: _FixtureRun,
+    sub_run: _FixtureRun,
+    mask: np.ndarray,
+    fixture: _FluxFixtureConfig,
+    d0_metrics: dict[str, float | int],
+    dominant_metric: str,
+) -> dict[str, object]:
+    per_plane_frequency: list[dict[str, object]] = []
+    max_sub_phase = 0.0
+    max_sub_cv = 0.0
+    min_sub_coherence = float("inf")
+    max_ref_phase = 0.0
+    max_ref_cv = 0.0
+    min_ref_coherence = float("inf")
+    valid = True
+
+    for plane_name, ref_plane, sub_plane in zip(
+        ("front", "back"), ref_run.planes, sub_run.planes, strict=True
+    ):
+        for freq_index in np.flatnonzero(mask):
+            ref_metrics = _phase_referenced_plane_frequency_metrics(
+                ref_plane, int(freq_index)
+            )
+            sub_metrics = _phase_referenced_plane_frequency_metrics(
+                sub_plane, int(freq_index)
+            )
+            valid = valid and bool(ref_metrics["valid"]) and bool(sub_metrics["valid"])
+            max_ref_phase = max(
+                max_ref_phase,
+                float(ref_metrics["center_referenced_phase_spread_deg"]),
+            )
+            max_ref_cv = max(max_ref_cv, float(ref_metrics["modal_magnitude_cv"]))
+            min_ref_coherence = min(
+                min_ref_coherence,
+                float(ref_metrics["modal_coherence"]),
+            )
+            max_sub_phase = max(
+                max_sub_phase,
+                float(sub_metrics["center_referenced_phase_spread_deg"]),
+            )
+            max_sub_cv = max(max_sub_cv, float(sub_metrics["modal_magnitude_cv"]))
+            min_sub_coherence = min(
+                min_sub_coherence,
+                float(sub_metrics["modal_coherence"]),
+            )
+            per_plane_frequency.append(
+                {
+                    "plane": plane_name,
+                    "freq_hz": float(fixture.scored_freqs[int(freq_index)]),
+                    "uniform": ref_metrics,
+                    "subgrid": sub_metrics,
+                }
+            )
+
+    if not per_plane_frequency:
+        valid = False
+        max_ref_phase = max_sub_phase = float("inf")
+        max_ref_cv = max_sub_cv = float("inf")
+        min_ref_coherence = min_sub_coherence = 0.0
+
+    uniform_reference_ready = bool(
+        valid
+        and max_ref_phase <= _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+        and max_ref_cv <= _TRANSVERSE_MAGNITUDE_CV_MAX
+        and min_ref_coherence >= 0.99
+    )
+    phase_spread_ready = bool(
+        valid and max_sub_phase <= _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+    )
+    magnitude_cv_ready = bool(valid and max_sub_cv <= _TRANSVERSE_MAGNITUDE_CV_MAX)
+    coherence_ready = bool(valid and min_sub_coherence >= 0.99)
+    d2_ready = bool(
+        uniform_reference_ready
+        and phase_spread_ready
+        and magnitude_cv_ready
+        and coherence_ready
+    )
+    candidate_metrics = dict(d0_metrics)
+    candidate_metrics["transverse_phase_spread_deg"] = float(max_sub_phase)
+    candidate_metrics["transverse_magnitude_cv"] = float(max_sub_cv)
+    material_decision = _material_improvement_decision(
+        baseline_metrics=d0_metrics,
+        candidate_metrics=candidate_metrics,
+        dominant_metric=dominant_metric,
+    )
+    return {
+        "diagnostic_id": "D2_phase_referenced_modal_coherence_projection",
+        "input_source": "same D0 private TFSF uniform/subgrid plane e1_dft fields",
+        "uses_existing_private_plane_data": True,
+        "diagnostic_only": True,
+        "fixture_quality_gate_replacement": False,
+        "field_array_inputs": ["e1_dft", "e2_dft", "h1_dft", "h2_dft"],
+        "primary_field": "e1_dft",
+        "formula": {
+            "center": "E[E.shape[-2]//2, E.shape[-1]//2]",
+            "active_mask": "abs(E) >= max(max(abs(E))*1e-6, floor)",
+            "centered": "E * exp(-1j * angle(center))",
+            "phase_spread": "max(abs(angle(centered[active_mask], deg=True)))",
+            "modal_coherence": "abs(mean(centered))/max(mean(abs(E)), floor)",
+            "modal_magnitude_cv": "std(abs(E))/max(mean(abs(E)), floor)",
+        },
+        "thresholds": {
+            "phase_spread_deg_max": _TRANSVERSE_PHASE_SPREAD_DEG_MAX,
+            "modal_magnitude_cv_max": _TRANSVERSE_MAGNITUDE_CV_MAX,
+            "modal_coherence_min": 0.99,
+        },
+        "aggregation": "max phase/CV and min coherence across front/back/scored bins",
+        "uniform_reference_ready": uniform_reference_ready,
+        "phase_spread_ready": phase_spread_ready,
+        "magnitude_cv_ready": magnitude_cv_ready,
+        "coherence_ready": coherence_ready,
+        "d2_ready": d2_ready,
+        "d2_measurement_phase_artifact_candidate": bool(
+            d2_ready
+            and (
+                float(d0_metrics["transverse_phase_spread_deg"])
+                > _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+                or float(d0_metrics["transverse_magnitude_cv"])
+                > _TRANSVERSE_MAGNITUDE_CV_MAX
+            )
+        ),
+        "metrics": {
+            "max_uniform_center_referenced_phase_spread_deg": float(max_ref_phase),
+            "max_uniform_modal_magnitude_cv": float(max_ref_cv),
+            "min_uniform_modal_coherence": float(min_ref_coherence),
+            "max_subgrid_center_referenced_phase_spread_deg": float(max_sub_phase),
+            "max_subgrid_modal_magnitude_cv": float(max_sub_cv),
+            "min_subgrid_modal_coherence": float(min_sub_coherence),
+            "usable_bins": int(np.sum(mask)),
+        },
+        "candidate_metrics_for_material_rule": candidate_metrics,
+        "material_improvement_decision": material_decision,
+        "metric_mapping": {
+            "center_referenced_phase_spread_deg": "transverse_phase_spread_deg",
+            "modal_magnitude_cv": "transverse_magnitude_cv",
+        },
+        "per_plane_frequency": per_plane_frequency,
+        "classification": "diagnostic_ready" if d2_ready else "below_threshold",
+        "result_authority": (
+            "diagnostic-only phase/coherence projection; cannot set fixture_quality_ready"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
+def _eta0_relative_error(e1: np.ndarray, h2: np.ndarray, mask: np.ndarray) -> float:
+    from rfx.core.yee import EPS_0, MU_0
+
+    valid_mask = mask & (np.abs(h2) >= _NORMALIZATION_FLOOR)
+    if int(np.sum(valid_mask)) == 0:
+        return float("inf")
+    eta0 = float(np.sqrt(MU_0 / EPS_0))
+    eta = e1[valid_mask] / h2[valid_mask]
+    return float(np.max(np.abs(np.abs(eta) - eta0) / max(eta0, _NORMALIZATION_FLOOR)))
+
+
+def _private_d3_local_eh_impedance_poynting(
+    *,
+    ref_run: _FixtureRun,
+    sub_run: _FixtureRun,
+    mask: np.ndarray,
+    fixture: _FluxFixtureConfig,
+    d0_metrics: dict[str, float | int],
+    dominant_metric: str,
+) -> dict[str, object]:
+    per_plane_frequency: list[dict[str, object]] = []
+    ref_modals: list[complex] = []
+    sub_modals: list[complex] = []
+    eta_errors: list[float] = []
+    valid_bins_by_plane = {"front": 0, "back": 0}
+    mask_mismatches: list[dict[str, object]] = []
+
+    for plane_name, ref_plane, sub_plane in zip(
+        ("front", "back"), ref_run.planes, sub_run.planes, strict=True
+    ):
+        for freq_index in np.flatnonzero(mask):
+            freq_index = int(freq_index)
+            ref_e1 = np.asarray(ref_plane.e1_dft)[freq_index]
+            ref_e2 = np.asarray(ref_plane.e2_dft)[freq_index]
+            ref_h1 = np.asarray(ref_plane.h1_dft)[freq_index]
+            ref_h2 = np.asarray(ref_plane.h2_dft)[freq_index]
+            sub_e1 = np.asarray(sub_plane.e1_dft)[freq_index]
+            sub_e2 = np.asarray(sub_plane.e2_dft)[freq_index]
+            sub_h1 = np.asarray(sub_plane.h1_dft)[freq_index]
+            sub_h2 = np.asarray(sub_plane.h2_dft)[freq_index]
+            ref_mask = _active_field_mask(ref_e1)
+            sub_mask = _active_field_mask(sub_e1)
+            comparison_mask = ref_mask & sub_mask
+            ref_count = int(np.sum(ref_mask))
+            sub_count = int(np.sum(sub_mask))
+            comparison_count = int(np.sum(comparison_mask))
+            ref_divergence = 1.0 - comparison_count / max(ref_count, 1)
+            sub_divergence = 1.0 - comparison_count / max(sub_count, 1)
+            mismatch = bool(
+                comparison_count == 0 or ref_divergence > 0.10 or sub_divergence > 0.10
+            )
+            if mismatch:
+                mask_mismatches.append(
+                    {
+                        "plane": plane_name,
+                        "freq_hz": float(fixture.scored_freqs[freq_index]),
+                        "ref_active_count": ref_count,
+                        "sub_active_count": sub_count,
+                        "comparison_count": comparison_count,
+                        "ref_divergence": float(ref_divergence),
+                        "sub_divergence": float(sub_divergence),
+                    }
+                )
+            else:
+                valid_bins_by_plane[plane_name] += 1
+
+            ref_eta_error = _eta0_relative_error(ref_e1, ref_h2, comparison_mask)
+            sub_eta_error = _eta0_relative_error(sub_e1, sub_h2, comparison_mask)
+            eta_errors.extend([ref_eta_error, sub_eta_error])
+            ref_sz = ref_e1 * np.conj(ref_h2) - ref_e2 * np.conj(ref_h1)
+            sub_sz = sub_e1 * np.conj(sub_h2) - sub_e2 * np.conj(sub_h1)
+            if comparison_count == 0:
+                ref_modal = complex(np.nan, np.nan)
+                sub_modal = complex(np.nan, np.nan)
+            else:
+                ref_modal = complex(
+                    np.mean(ref_sz[comparison_mask] * ref_plane.dx * ref_plane.dx)
+                )
+                sub_modal = complex(
+                    np.mean(sub_sz[comparison_mask] * sub_plane.dx * sub_plane.dx)
+                )
+                if not mismatch:
+                    ref_modals.append(ref_modal)
+                    sub_modals.append(sub_modal)
+            per_plane_frequency.append(
+                {
+                    "plane": plane_name,
+                    "freq_hz": float(fixture.scored_freqs[freq_index]),
+                    "mask_counts": {
+                        "uniform_active_mask": ref_count,
+                        "subgrid_active_mask": sub_count,
+                        "comparison_mask": comparison_count,
+                    },
+                    "mask_divergence": {
+                        "uniform": float(ref_divergence),
+                        "subgrid": float(sub_divergence),
+                    },
+                    "mask_provenance_mismatch": mismatch,
+                    "uniform_eta0_relative_error": float(ref_eta_error),
+                    "subgrid_eta0_relative_error": float(sub_eta_error),
+                    "uniform_local_poynting_modal": [
+                        float(np.real(ref_modal)),
+                        float(np.imag(ref_modal)),
+                    ],
+                    "subgrid_local_poynting_modal": [
+                        float(np.real(sub_modal)),
+                        float(np.imag(sub_modal)),
+                    ],
+                }
+            )
+
+    if ref_modals and sub_modals:
+        ref_array = np.asarray(ref_modals, dtype=np.complex128)
+        sub_array = np.asarray(sub_modals, dtype=np.complex128)
+        local_mag_error = _floor_relative_error(sub_array, ref_array)
+        local_phase_error = _phase_error_deg(sub_array, ref_array)
+        max_local_mag_error = float(np.max(local_mag_error))
+        max_local_phase_error = float(np.max(local_phase_error))
+    else:
+        max_local_mag_error = float("inf")
+        max_local_phase_error = float("inf")
+
+    max_eta_error = float(np.max(eta_errors)) if eta_errors else float("inf")
+    mask_provenance_ready = bool(
+        not mask_mismatches
+        and all(
+            count >= _MIN_CLAIMS_BEARING_BINS for count in valid_bins_by_plane.values()
+        )
+    )
+    eta0_ready = bool(max_eta_error <= _VACUUM_MAGNITUDE_ERROR_MAX)
+    local_magnitude_ready = bool(max_local_mag_error <= _VACUUM_MAGNITUDE_ERROR_MAX)
+    local_phase_ready = bool(max_local_phase_error <= _VACUUM_PHASE_ERROR_DEG_MAX)
+    d3_ready = bool(
+        eta0_ready
+        and local_magnitude_ready
+        and local_phase_ready
+        and mask_provenance_ready
+    )
+    candidate_metrics = dict(d0_metrics)
+    candidate_metrics["vacuum_relative_magnitude_error"] = max_local_mag_error
+    candidate_metrics["vacuum_phase_error_deg"] = max_local_phase_error
+    material_decision = _material_improvement_decision(
+        baseline_metrics=d0_metrics,
+        candidate_metrics=candidate_metrics,
+        dominant_metric=dominant_metric,
+    )
+    return {
+        "diagnostic_id": "D3_local_eh_impedance_poynting_projection",
+        "input_source": "same D0 private TFSF uniform/subgrid e/h DFT plane fields",
+        "uses_existing_private_plane_data": True,
+        "diagnostic_only": True,
+        "fixture_quality_gate_replacement": False,
+        "field_array_inputs": ["e1_dft", "e2_dft", "h1_dft", "h2_dft"],
+        "formula": {
+            "comparison_mask": "uniform_active_mask & subgrid_active_mask",
+            "local_impedance_eta": "E1[mask] / H2[mask]",
+            "eta0_relative_error": "max(abs(abs(eta)-eta0)/eta0)",
+            "local_poynting": "(E1*conj(H2) - E2*conj(H1)) * plane.dx**2",
+            "local_poynting_modal": "mean(local_poynting[comparison_mask])",
+            "local_vacuum_errors": "_floor_relative_error and _phase_error_deg on sub/ref modal poynting",
+        },
+        "thresholds": {
+            "eta0_relative_error_max": _VACUUM_MAGNITUDE_ERROR_MAX,
+            "local_vacuum_relative_magnitude_error_max": _VACUUM_MAGNITUDE_ERROR_MAX,
+            "local_vacuum_phase_error_deg_max": _VACUUM_PHASE_ERROR_DEG_MAX,
+            "mask_divergence_max": 0.10,
+            "min_valid_bins_per_plane": _MIN_CLAIMS_BEARING_BINS,
+        },
+        "aggregation": "max errors across front/back/scored bins using intersection masks",
+        "mask_provenance_ready": mask_provenance_ready,
+        "eta0_ready": eta0_ready,
+        "local_magnitude_ready": local_magnitude_ready,
+        "local_phase_ready": local_phase_ready,
+        "d3_ready": d3_ready,
+        "d3_normalization_contract_ready": d3_ready,
+        "metrics": {
+            "max_eta0_relative_error": max_eta_error,
+            "max_local_vacuum_relative_magnitude_error": max_local_mag_error,
+            "max_local_vacuum_phase_error_deg": max_local_phase_error,
+            "valid_bins_by_plane": valid_bins_by_plane,
+            "mask_provenance_mismatch_count": len(mask_mismatches),
+        },
+        "candidate_metrics_for_material_rule": candidate_metrics,
+        "material_improvement_decision": material_decision,
+        "metric_mapping": {
+            "local_vacuum_relative_magnitude_error": "vacuum_relative_magnitude_error",
+            "local_vacuum_phase_error_deg": "vacuum_phase_error_deg",
+            "eta0_relative_error": "absolute_threshold_only",
+        },
+        "mask_mismatches": mask_mismatches,
+        "per_plane_frequency": per_plane_frequency,
+        "classification": "diagnostic_ready" if d3_ready else "below_threshold",
+        "result_authority": (
+            "diagnostic-only local impedance/Poynting projection; cannot set "
+            "fixture_quality_ready"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
+def _private_d4_interface_ledger_correlation(
+    base_metadata: dict[str, object],
+) -> dict[str, object]:
+    energy = base_metadata["interface_energy_transfer_diagnostics"]
+    direct_tests = list(base_metadata["direct_invariant_tests"])
+    direct_invariants_pass = all(bool(test["passed"]) for test in direct_tests)
+    interface_residual_stable = bool(energy["interface_residual_stable"])
+    uniform_reference_below_threshold = bool(
+        energy["uniform_reference_below_threshold"]
+    )
+    manufactured_face_ledger = {
+        "provenance": "prior_committed_evidence",
+        "status": "paired_face_coupling_design_ready_context",
+        "context_only": True,
+        "ledger_normalized_balance_residual": 0.0005777277317993488,
+        "reason": (
+            "prior committed paired-face theory/design evidence is used only as "
+            "context; D0-D3 current diagnostics still decide this lane"
+        ),
+    }
+    d4_positive = bool(
+        interface_residual_stable
+        and uniform_reference_below_threshold
+        and direct_invariants_pass
+        and manufactured_face_ledger["provenance"]
+        in {
+            "current_helper_state_recomputed",
+            "prior_committed_evidence",
+        }
+    )
+    return {
+        "diagnostic_id": "D4_interface_ledger_correlation",
+        "input_source": "existing private interface energy ledger metadata",
+        "uses_existing_private_plane_data": False,
+        "diagnostic_only": True,
+        "fixture_quality_gate_replacement": False,
+        "provenance": {
+            "interface_energy_transfer_diagnostics": "current_helper_state_recomputed",
+            "direct_invariant_tests": "current_helper_state_recomputed",
+            "manufactured_face_ledger_evidence": "prior_committed_evidence",
+        },
+        "interface_residual_stable": interface_residual_stable,
+        "uniform_reference_below_threshold": uniform_reference_below_threshold,
+        "direct_invariants_pass": direct_invariants_pass,
+        "manufactured_face_ledger_evidence": manufactured_face_ledger,
+        "d4_positive": d4_positive,
+        "metrics": {
+            "front_back_ratio_formula": energy["front_back_ratio_formula"],
+            "max_ratio_error": energy["max_ratio_error"],
+            "interface_residual_stable": interface_residual_stable,
+            "uniform_reference_below_threshold": uniform_reference_below_threshold,
+            "direct_invariant_count": len(direct_tests),
+        },
+        "classification": "positive" if d4_positive else "not_positive",
+        "result_authority": (
+            "correlates current private interface residuals with prior committed "
+            "manufactured-ledger context; cannot promote public support"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
+def _private_measurement_contract_interface_floor_outcome(
+    *,
+    d0: dict[str, object],
+    d2: dict[str, object],
+    d3: dict[str, object],
+    d4: dict[str, object],
+) -> tuple[str, str]:
+    if bool(d0["reference_quality_ready"]):
+        return (
+            "private_authoritative_fixture_gate_passed_route_to_slab_scorer",
+            "D0 authoritative private fixture gates passed unexpectedly; route to a "
+            "private slab scorer plan without public claims",
+        )
+    if not d2["per_plane_frequency"] or not d3["per_plane_frequency"]:
+        return (
+            "diagnostic_data_insufficient_fail_closed",
+            "existing private plane data was insufficient for D2/D3 diagnostics",
+        )
+    d2_ready = bool(d2["d2_ready"])
+    d3_ready = bool(d3["d3_ready"])
+    d4_positive = bool(d4["d4_positive"])
+    if d2_ready and d3_ready:
+        return (
+            "measurement_contract_redesign_ready",
+            "D2 and D3 are diagnostic-ready while D0 remains blocked, so a "
+            "private measurement-contract redesign is justified",
+        )
+    if d2_ready and not d3_ready:
+        return (
+            "source_reference_normalization_contract_mismatch",
+            "D2 phase/coherence is diagnostic-ready but D3 local impedance/Poynting "
+            "normalization remains below threshold",
+        )
+    material_improved = bool(d2["material_improvement_decision"]["passed"]) or bool(
+        d3["material_improvement_decision"]["passed"]
+    )
+    if material_improved and d4_positive:
+        return (
+            "mixed_measurement_contract_and_interface_floor",
+            "D2 or D3 materially improved a mapped blocker, but diagnostic readiness "
+            "still failed while D4 remained positive",
+        )
+    if d4_positive:
+        return (
+            "persistent_interface_floor_confirmed",
+            "D2/D3 did not show a measurement-only coherent path and D4 current "
+            "interface-ledger evidence remains positive",
+        )
+    return (
+        "diagnostic_data_insufficient_fail_closed",
+        "D2/D3 did not justify redesign and D4 was not positive enough to classify "
+        "the interface floor",
+    )
+
+
+def _private_measurement_contract_interface_floor_redesign_metadata(
+    *,
+    baseline_snapshot: dict[str, object],
+    base_metadata: dict[str, object],
+    recovery_metadata: dict[str, object],
+) -> dict[str, object]:
+    fixture = _BoundaryExpandedFluxFixture
+    d0_metrics_packet = _private_tfsf_candidate_metrics_from_runs(
+        ref_run=baseline_snapshot["ref_run"],
+        sub_run=baseline_snapshot["run"],
+        fixture=fixture,
+    )
+    d0 = {
+        "diagnostic_id": "D0_current_integrated_flux_contract",
+        "input_source": "C0 current helper original fixture integrated flux contract",
+        "uses_existing_private_plane_data": True,
+        "diagnostic_only": False,
+        "fixture_quality_gate_replacement": False,
+        "classification": "authoritative_ready"
+        if d0_metrics_packet["reference_quality_ready"]
+        else "blocked",
+        "metrics": d0_metrics_packet["metrics"],
+        "fixture_quality_gates": d0_metrics_packet["fixture_quality_gates"],
+        "reference_quality_ready": bool(d0_metrics_packet["reference_quality_ready"]),
+        "result_authority": "baseline authoritative private fixture gate state",
+        **_private_public_closure_metadata(),
+    }
+    c1 = next(
+        candidate
+        for candidate in recovery_metadata["candidates"]
+        if candidate["candidate_id"] == "C1_center_core_measurement_control"
+    )
+    c2 = next(
+        candidate
+        for candidate in recovery_metadata["candidates"]
+        if candidate["candidate_id"] == "C2_one_cell_downstream_plane_control"
+    )
+    d1 = {
+        "diagnostic_id": "D1_prior_measurement_controls_summary",
+        "input_source": "C1/C2 measurement controls from failed helper recovery ladder",
+        "uses_existing_private_plane_data": True,
+        "diagnostic_only": True,
+        "fixture_quality_gate_replacement": False,
+        "classification": "measurement_controls_not_authoritative",
+        "controls": [c1, c2],
+        "metrics": {
+            "c1": c1["metrics"],
+            "c2": c2["metrics"],
+        },
+        "result_authority": (
+            "C1/C2 may indicate measurement sensitivity but cannot claim original "
+            "fixture recovery"
+        ),
+        **_private_public_closure_metadata(),
+    }
+    d2 = _private_d2_phase_referenced_modal_coherence(
+        ref_run=baseline_snapshot["ref_run"],
+        sub_run=baseline_snapshot["run"],
+        mask=baseline_snapshot["freq_mask"],
+        fixture=fixture,
+        d0_metrics=baseline_snapshot["metrics"],
+        dominant_metric=str(base_metadata["dominant_reference_quality_blocker"]),
+    )
+    d3 = _private_d3_local_eh_impedance_poynting(
+        ref_run=baseline_snapshot["ref_run"],
+        sub_run=baseline_snapshot["run"],
+        mask=baseline_snapshot["freq_mask"],
+        fixture=fixture,
+        d0_metrics=baseline_snapshot["metrics"],
+        dominant_metric=str(base_metadata["dominant_reference_quality_blocker"]),
+    )
+    d4 = _private_d4_interface_ledger_correlation(base_metadata)
+    terminal_outcome, reason = _private_measurement_contract_interface_floor_outcome(
+        d0=d0,
+        d2=d2,
+        d3=d3,
+        d4=d4,
+    )
+    return {
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "diagnostic_ladder_declared_before_scoring": True,
+        "diagnostic_count": 5,
+        "diagnostic_ids": list(
+            _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_DIAGNOSTIC_IDS
+        ),
+        "diagnostics": [d0, d1, d2, d3, d4],
+        "selected_classification": terminal_outcome,
+        "classification_reason": reason,
+        "terminal_outcome_precedence": list(
+            _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_PRECEDENCE
+        ),
+        "metric_mapping": _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_METRIC_MAPPING,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "d2_ready": bool(d2["d2_ready"]),
+        "d3_ready": bool(d3["d3_ready"]),
+        "d4_positive": bool(d4["d4_positive"]),
+        "fixture_quality_ready": bool(d0["reference_quality_ready"]),
+        "reference_quality_ready": bool(d0["reference_quality_ready"]),
+        "c1_c2_can_claim_original_fixture_recovery": False,
+        "solver_hunk_touched": False,
+        "next_prerequisite": (
+            _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_NEXT_PREREQUISITES[
+                terminal_outcome
+            ]
+        ),
+        "reason": reason,
+        **_private_public_closure_metadata(),
+    }
+
+
+def _private_interface_floor_repair_metadata(
+    *,
+    measurement_redesign_metadata: dict[str, object],
+) -> dict[str, object]:
+    f1_candidate = {
+        "candidate_id": "oriented_characteristic_face_balance",
+        "candidate_family": "characteristic_w_plus_minus_face_balance",
+        "production_edit_allowed": True,
+        "orientation_contract_passed": True,
+        "faces_considered": ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"),
+        "uses_face_orientations_only": True,
+        "characteristic_traces": "W± = E_t ± eta0*(n×H)_t",
+        "characteristic_equivalent_to_current_component_sat": True,
+        "ledger_normalized_balance_residual": (
+            _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_LEDGER_RESIDUAL
+        ),
+        "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+        "ledger_gate_passed": False,
+        "zero_work_gate_passed": True,
+        "matched_projected_traces_noop": True,
+        "coupling_strength_ratio": 1.0,
+        "coupling_strength_passed": True,
+        "candidate_update_norm_ratio": 1.0,
+        "update_bounds_passed": True,
+        "edge_corner_preacceptance_gate_passed": True,
+        "accepted_candidate": False,
+        "rejection_reasons": (
+            "candidate_failed_manufactured_ledger_gate",
+            "candidate_collapses_to_current_component_sat",
+        ),
+    }
+    candidates = (
+        {
+            "candidate_id": "current_time_centered_helper_baseline",
+            "candidate_family": "baseline_only",
+            "production_edit_allowed": False,
+            "status": "scored_as_f0_baseline",
+            "accepted_candidate": False,
+        },
+        f1_candidate,
+        {
+            "candidate_id": "reciprocal_dual_field_scaling_historical_guard",
+            "candidate_family": "historical_guard",
+            "production_edit_allowed": False,
+            "status": "reciprocal_scaling_already_invalidated",
+            "identical_to_prior_bounded_reciprocal_family": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "current_minimum_norm_centered_h_guard",
+            "candidate_family": "historical_guard",
+            "production_edit_allowed": False,
+            "status": "minimum_norm_centered_h_already_implemented_fixture_pending",
+            "selected_as_new_repair_basis": False,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "edge_corner_preacceptance_gate",
+            "candidate_family": "preacceptance_guard",
+            "production_edit_allowed": False,
+            "status": "edge_corner_preacceptance_passed",
+            "active_edges": 12,
+            "active_corners": 8,
+            "matched_edge_noop_passed": True,
+            "accepted_candidate": False,
+        },
+    )
+    return {
+        "status": _PRIVATE_INTERFACE_FLOOR_REPAIR_STATUS,
+        "terminal_outcome": _PRIVATE_INTERFACE_FLOOR_REPAIR_STATUS,
+        "terminal_outcome_taxonomy": _PRIVATE_INTERFACE_FLOOR_REPAIR_TERMINAL_OUTCOMES,
+        "diagnostic_scope": "private_manufactured_interface_only",
+        "upstream_measurement_contract_status": measurement_redesign_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": None,
+        "candidates": candidates,
+        "thresholds": {
+            "ledger_balance_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "coupling_strength_ratio_min": 0.5,
+            "coupling_strength_ratio_max": 2.0,
+            "update_norm_ratio_min": 0.5,
+            "update_norm_ratio_max": 2.0,
+        },
+        "selection_rule": "accept at most F1 only if every manufactured and F4 gate passes",
+        "solver_hunk_allowed_if_selected": (
+            _PRIVATE_INTERFACE_FLOOR_REPAIR_ALLOWED_SOLVER_SYMBOLS
+        ),
+        "solver_hunk_retained": False,
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "next_prerequisite": _PRIVATE_INTERFACE_FLOOR_REPAIR_NEXT_PREREQUISITE,
+        "reason": (
+            "the only solver-admissible characteristic W± face balance candidate "
+            "is orientation-correct but algebraically collapses to the current "
+            "component SAT update and keeps the manufactured ledger residual "
+            f"{_PRIVATE_INTERFACE_FLOOR_REPAIR_F1_LEDGER_RESIDUAL:.6g} above "
+            f"the {_PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD:.2g} threshold"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
+
+def _private_face_norm_operator_repair_metadata(
+    *,
+    interface_repair_metadata: dict[str, object],
+) -> dict[str, object]:
+    candidates = (
+        {
+            "candidate_id": "current_face_operator_norm_adjoint_audit",
+            "candidate_family": "audit_only",
+            "production_edit_allowed": False,
+            "current_unmasked_face_operator_already_norm_adjoint": True,
+            "current_restriction_equals_unmasked_mass_adjoint": True,
+            "current_mass_adjoint_difference_max": 0.0,
+            "unmasked_mass_adjoint_defect_max": 0.0,
+            "current_masked_adjoint_defect_max_positive": True,
+            "current_projection_noop_passed_all_probes": False,
+            "projection_noop_failure_probe_ids": (
+                "alternating",
+                "localized_impulse",
+            ),
+            "current_manufactured_ledger_residual": (
+                _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_LEDGER_RESIDUAL
+            ),
+            "prior_f1_collapsed_to_current_operator": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "mass_adjoint_restriction_face_sat",
+            "candidate_family": "norm_adjoint_face_operator",
+            "production_edit_allowed": True,
+            "operator_formula": "R* = Hc^-1 P^T Hf from existing face norms",
+            "unmasked_norm_adjoint_identity_passed": True,
+            "current_operator_already_uses_unmasked_mass_adjoint": True,
+            "matched_projected_traces_noop": False,
+            "failed_noop_probe_ids": ("alternating", "localized_impulse"),
+            "ledger_normalized_balance_residual": 0.16561960778570511,
+            "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "ledger_gate_passed": False,
+            "zero_work_gate_passed": True,
+            "edge_corner_preacceptance_gate_passed": True,
+            "accepted_candidate": False,
+            "rejection_reasons": (
+                "candidate_failed_manufactured_ledger_gate",
+                "candidate_failed_higher_order_projection_noop",
+                "candidate_collapses_to_current_norm_adjoint_operator",
+            ),
+        },
+        {
+            "candidate_id": "uniform_diagonal_face_norm_rescaling_guard",
+            "candidate_family": "diagonal_face_norm_rescaling_guard",
+            "production_edit_allowed": True,
+            "coarse_norm_ratio": 1.0,
+            "fine_norm_ratio": 1.0,
+            "ratios_bounded": True,
+            "independent_of_measured_residual": True,
+            "identical_to_current_uniform_face_norms": True,
+            "ledger_normalized_balance_residual": 0.16561960778570511,
+            "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "ledger_gate_passed": False,
+            "accepted_candidate": False,
+            "rejection_reasons": (
+                "candidate_redundant_with_current_uniform_face_norms",
+                "candidate_failed_manufactured_ledger_gate",
+            ),
+        },
+        {
+            "candidate_id": "higher_order_projection_guard",
+            "candidate_family": "higher_order_projection_guard",
+            "production_edit_allowed": False,
+            "status": "higher_order_projection_requires_broader_operator_plan",
+            "requires_new_stencils_or_derivative_operator_design": True,
+            "failed_noop_probe_ids": ("alternating", "localized_impulse"),
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "full_box_edge_corner_norm_preacceptance",
+            "candidate_family": "preacceptance_guard",
+            "production_edit_allowed": False,
+            "status": "edge_corner_preacceptance_passed",
+            "active_edges": 12,
+            "active_corners": 8,
+            "matched_edge_noop_passed": True,
+            "accepted_candidate": False,
+        },
+    )
+    return {
+        "status": _PRIVATE_FACE_NORM_OPERATOR_REPAIR_STATUS,
+        "terminal_outcome": _PRIVATE_FACE_NORM_OPERATOR_REPAIR_STATUS,
+        "terminal_outcome_taxonomy": _PRIVATE_FACE_NORM_OPERATOR_REPAIR_TERMINAL_OUTCOMES,
+        "diagnostic_scope": "private_manufactured_interface_face_operator_only",
+        "upstream_interface_floor_repair_status": interface_repair_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": None,
+        "candidates": candidates,
+        "thresholds": {
+            "ledger_balance_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "bounded_diagonal_norm_ratio_min": 0.5,
+            "bounded_diagonal_norm_ratio_max": 2.0,
+            "projection_noop_tolerance": 1.0e-7,
+            "norm_adjoint_defect_tolerance": 1.0e-6,
+        },
+        "selection_rule": (
+            "accept H1 before H2 only if norm-adjoint identity, matched-trace "
+            "noop, ledger, update-bound, and edge/corner gates all pass"
+        ),
+        "solver_hunk_allowed_if_selected": (
+            _PRIVATE_FACE_NORM_OPERATOR_ALLOWED_SOLVER_SYMBOLS
+        ),
+        "solver_hunk_retained": False,
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "face_ops_global_behavior_changed": False,
+        "next_prerequisite": _PRIVATE_FACE_NORM_OPERATOR_REPAIR_NEXT_PREREQUISITE,
+        "reason": (
+            "existing face restriction is already unmasked mass-adjoint under "
+            "the current diagonal norms, but higher-order matched-prolongation "
+            "probes expose projection/noop defects and H1/H2 leave the "
+            "manufactured ledger above the unchanged 0.02 threshold"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
+def _private_derivative_interface_repair_metadata(
+    *,
+    face_norm_operator_metadata: dict[str, object],
+) -> dict[str, object]:
+    candidates = (
+        {
+            "candidate_id": "current_derivative_energy_identity_audit",
+            "candidate_family": "audit_only",
+            "production_edit_allowed": False,
+            "energy_terms_explicit": True,
+            "volume_curl_term_status": "not_separable_in_face_only_fixture",
+            "boundary_flux_term_status": "coarse_face_norm_restricted",
+            "sat_work_term_status": "current_component_sat",
+            "time_stagger_term_status": "same_call_centered_h_helper_already_tested",
+            "projection_term_status": "face_norm_ladder_already_mass_adjoint",
+            "edge_corner_term_status": "edge_corner_preacceptance_passed",
+            "current_ledger_normalized_balance_residual": (
+                _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_LEDGER_RESIDUAL
+            ),
+            "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "reduced_fixture_reproduces_current_floor": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "reduced_normal_incidence_energy_flux",
+            "candidate_family": "reduced_energy_identity_flux",
+            "production_edit_allowed": False,
+            "derivation": (
+                "minimum-norm root of the private trace-energy identity "
+                "Delta E_trace + W_interface = 0 in the reduced face fixture"
+            ),
+            "branches_on_measured_residual_or_test_name": False,
+            "reduced_fixture_reproduces_failure": True,
+            "reduced_identity_closed": True,
+            "ledger_normalized_balance_residual": 0.0,
+            "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "accepted_candidate": True,
+            "terminal_if_selected": "private_reduced_derivative_flux_contract_ready",
+        },
+        {
+            "candidate_id": "full_yz_face_energy_flux_candidate",
+            "candidate_family": "production_shaped_face_flux_lift",
+            "production_edit_allowed": True,
+            "admission_gate": "requires G1 plus derivative/interior-boundary operator compatibility",
+            "g1_contract_available": True,
+            "manufactured_ledger_gate_passed": False,
+            "ledger_normalized_balance_residual": (
+                _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_LEDGER_RESIDUAL
+            ),
+            "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "zero_work_gate_passed": True,
+            "cpml_non_cpml_staging_gate_passed": True,
+            "rejection_reasons": (
+                "candidate_requires_derivative_operator_compatibility_not_available",
+                "candidate_would_reuse_current_face_only_sat_floor",
+            ),
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "edge_corner_cochain_accounting_guard",
+            "candidate_family": "preacceptance_guard",
+            "production_edit_allowed": False,
+            "status": "edge_corner_derivative_accounting_ready",
+            "active_edges": 12,
+            "active_corners": 8,
+            "matched_edge_noop_passed": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "mortar_projection_operator_widening_guard",
+            "candidate_family": "operator_widening_guard",
+            "production_edit_allowed": False,
+            "status": "requires_global_sbp_operator_refactor",
+            "requires_global_sbp_operator_refactor": True,
+            "reason": (
+                "a reduced energy identity can be closed only as a face-local "
+                "minimum-norm correction, while production retention requires a "
+                "compatible derivative/mortar operator that is outside the allowed "
+                "private sbp_sat_3d.py hunk"
+            ),
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "private_solver_integration_candidate",
+            "candidate_family": "gated_private_solver_hunk",
+            "production_edit_allowed": True,
+            "status": "blocked_by_requires_global_sbp_operator_refactor",
+            "admitted_to_solver": False,
+            "blocked_by_candidate_id": "mortar_projection_operator_widening_guard",
+            "accepted_candidate": False,
+        },
+    )
+    return {
+        "status": _PRIVATE_DERIVATIVE_INTERFACE_REPAIR_STATUS,
+        "terminal_outcome": _PRIVATE_DERIVATIVE_INTERFACE_REPAIR_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_DERIVATIVE_INTERFACE_REPAIR_TERMINAL_OUTCOMES
+        ),
+        "diagnostic_scope": (
+            "private_derivative_interior_boundary_energy_identity_only"
+        ),
+        "upstream_face_norm_operator_repair_status": (
+            face_norm_operator_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": None,
+        "candidates": candidates,
+        "thresholds": {
+            "ledger_balance_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "update_norm_ratio_min": 0.5,
+            "update_norm_ratio_max": 2.0,
+            "projection_noop_tolerance": 1.0e-7,
+        },
+        "selection_rule": (
+            "retain a private solver hunk only if G1-G3 pass and G4 does not "
+            "require a global SBP derivative/mortar operator refactor"
+        ),
+        "reduced_fixture_reproduces_failure": True,
+        "reduced_identity_closed_test_locally": True,
+        "requires_global_sbp_operator_refactor": True,
+        "solver_hunk_allowed_if_selected": (
+            _PRIVATE_DERIVATIVE_INTERFACE_ALLOWED_SOLVER_SYMBOLS
+        ),
+        "solver_hunk_retained": False,
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "face_ops_global_behavior_changed": False,
+        "next_prerequisite": _PRIVATE_DERIVATIVE_INTERFACE_REPAIR_NEXT_PREREQUISITE,
+        "reason": (
+            "the reduced derivative/interior-boundary identity reproduces the "
+            "current 0.02 ledger-floor failure and can be closed only by a "
+            "test-local face correction; retaining a production hunk requires "
+            "global SBP derivative/mortar operator infrastructure outside this "
+            "private lane"
+        ),
+        **_private_public_closure_metadata(),
     }
 
 
@@ -3782,8 +4931,70 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    measurement_redesign_metadata = (
+        _private_measurement_contract_interface_floor_redesign_metadata(
+            baseline_snapshot=baseline_snapshot,
+            base_metadata=base_metadata,
+            recovery_metadata=recovery_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_measurement_contract_interface_floor_redesign_status": (
+                measurement_redesign_metadata["status"]
+            ),
+            "private_measurement_contract_interface_floor_redesign": (
+                measurement_redesign_metadata
+            ),
+            "private_measurement_contract_interface_floor_redesign_next_prerequisite": (
+                measurement_redesign_metadata["next_prerequisite"]
+            ),
+        }
+    )
+    interface_repair_metadata = _private_interface_floor_repair_metadata(
+        measurement_redesign_metadata=measurement_redesign_metadata,
+    )
+    base_metadata.update(
+        {
+            "private_interface_floor_repair_status": (
+                interface_repair_metadata["status"]
+            ),
+            "private_interface_floor_repair": interface_repair_metadata,
+            "private_interface_floor_repair_next_prerequisite": (
+                interface_repair_metadata["next_prerequisite"]
+            ),
+        }
+    )
+    face_norm_operator_metadata = _private_face_norm_operator_repair_metadata(
+        interface_repair_metadata=interface_repair_metadata,
+    )
+    base_metadata.update(
+        {
+            "private_face_norm_operator_repair_status": (
+                face_norm_operator_metadata["status"]
+            ),
+            "private_face_norm_operator_repair": face_norm_operator_metadata,
+            "private_face_norm_operator_repair_next_prerequisite": (
+                face_norm_operator_metadata["next_prerequisite"]
+            ),
+        }
+    )
+    derivative_interface_metadata = _private_derivative_interface_repair_metadata(
+        face_norm_operator_metadata=face_norm_operator_metadata,
+    )
+    base_metadata.update(
+        {
+            "private_derivative_interface_repair_status": (
+                derivative_interface_metadata["status"]
+            ),
+            "private_derivative_interface_repair": derivative_interface_metadata,
+            "private_derivative_interface_repair_next_prerequisite": (
+                derivative_interface_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
+        "private_derivative_interface_repair_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -3791,8 +5002,10 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             "reason": (
                 "same-contract private TFSF-style reference is implemented, "
                 "but private time-centered helper recovery candidates failed "
-                "unchanged fixture-quality gates; slab R/T scoring is "
-                "intentionally skipped"
+                "unchanged fixture-quality gates and the private measurement-"
+                "contract/interface-floor diagnostic ledger classified the "
+                f"remaining blocker as {measurement_redesign_metadata['terminal_outcome']}; "
+                "slab R/T scoring is intentionally skipped"
             ),
             "slab_rt_scored": False,
             "fixture_quality_ready": False,
@@ -3815,10 +5028,18 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "repair stage records "
                 f"{base_metadata['private_energy_transfer_repair_status']}; "
                 "the private time-centered helper fixture-quality recovery stage "
-                f"records {recovery_metadata['terminal_outcome']}"
+                f"records {recovery_metadata['terminal_outcome']}; the private "
+                "measurement-contract/interface-floor redesign ledger records "
+                f"{measurement_redesign_metadata['terminal_outcome']}; the private "
+                "interface-floor repair ladder records "
+                f"{interface_repair_metadata['terminal_outcome']}; the private "
+                "face-norm/interface-operator ladder records "
+                f"{face_norm_operator_metadata['terminal_outcome']}; the private "
+                "derivative/interior-boundary ladder records "
+                f"{derivative_interface_metadata['terminal_outcome']}"
             ),
             "next_prerequisite": base_metadata[
-                "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
+                "private_derivative_interface_repair_next_prerequisite"
             ],
         }
 
@@ -4244,6 +5465,87 @@ def _synthetic_reference_metrics(**overrides: float | int) -> dict[str, float | 
     }
     metrics.update(overrides)
     return metrics
+
+
+def _synthetic_measurement_contract_outcome_inputs(
+    *,
+    d0_ready: bool = False,
+    d2_data: bool = True,
+    d3_data: bool = True,
+    d2_ready: bool = False,
+    d3_ready: bool = False,
+    d2_material: bool = False,
+    d3_material: bool = False,
+    d4_positive: bool = True,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, object]]:
+    return (
+        {"reference_quality_ready": d0_ready},
+        {
+            "per_plane_frequency": [{}] if d2_data else [],
+            "d2_ready": d2_ready,
+            "material_improvement_decision": {"passed": d2_material},
+        },
+        {
+            "per_plane_frequency": [{}] if d3_data else [],
+            "d3_ready": d3_ready,
+            "material_improvement_decision": {"passed": d3_material},
+        },
+        {"d4_positive": d4_positive},
+    )
+
+
+def test_measurement_contract_outcome_fails_closed_when_d2_d3_data_missing():
+    d0, d2, d3, d4 = _synthetic_measurement_contract_outcome_inputs(
+        d2_data=False,
+        d3_data=False,
+        d4_positive=True,
+    )
+
+    status, reason = _private_measurement_contract_interface_floor_outcome(
+        d0=d0, d2=d2, d3=d3, d4=d4
+    )
+
+    assert status == "diagnostic_data_insufficient_fail_closed"
+    assert "insufficient" in reason
+    assert status != "persistent_interface_floor_confirmed"
+
+
+def test_measurement_contract_outcome_routes_authoritative_d0_before_fail_closed():
+    d0, d2, d3, d4 = _synthetic_measurement_contract_outcome_inputs(
+        d0_ready=True,
+        d2_data=False,
+        d3_data=False,
+        d4_positive=True,
+    )
+
+    status, reason = _private_measurement_contract_interface_floor_outcome(
+        d0=d0, d2=d2, d3=d3, d4=d4
+    )
+
+    assert status == "private_authoritative_fixture_gate_passed_route_to_slab_scorer"
+    assert "D0 authoritative" in reason
+    assert _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_PRECEDENCE.index(
+        status
+    ) < _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_PRECEDENCE.index(
+        "diagnostic_data_insufficient_fail_closed"
+    )
+
+
+def test_measurement_contract_outcome_requires_current_d2_d3_data_for_interface_floor():
+    d0, d2, d3, d4 = _synthetic_measurement_contract_outcome_inputs(
+        d2_data=True,
+        d3_data=True,
+        d2_ready=False,
+        d3_ready=False,
+        d4_positive=True,
+    )
+
+    status, reason = _private_measurement_contract_interface_floor_outcome(
+        d0=d0, d2=d2, d3=d3, d4=d4
+    )
+
+    assert status == "persistent_interface_floor_confirmed"
+    assert "D4 current interface-ledger evidence remains positive" in reason
 
 
 def test_causal_class_truth_table_requires_positive_and_guard_evidence():
@@ -4883,11 +6185,274 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert c3["rollback_required"] is True
     assert c3["rollback_verified"] is True
     assert c3["retained_solver_relaxation"] == 0.02
+    redesign = metadata["private_measurement_contract_interface_floor_redesign"]
+    assert metadata["private_measurement_contract_interface_floor_redesign_status"] == (
+        "persistent_interface_floor_confirmed"
+    )
+    assert (
+        redesign["terminal_outcome"]
+        == (metadata["private_measurement_contract_interface_floor_redesign_status"])
+    )
+    assert redesign["terminal_outcome"] in (
+        _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_STATUSES
+    )
+    assert redesign["diagnostic_ladder_declared_before_scoring"] is True
+    assert redesign["diagnostic_count"] == 5
+    assert redesign["diagnostic_ids"] == list(
+        _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_DIAGNOSTIC_IDS
+    )
+    assert redesign["terminal_outcome_precedence"] == list(
+        _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_PRECEDENCE
+    )
+    assert redesign["metric_mapping"] == (
+        _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_METRIC_MAPPING
+    )
+    assert redesign["d2_ready"] is False
+    assert redesign["d3_ready"] is False
+    assert redesign["d4_positive"] is True
+    assert redesign["solver_hunk_touched"] is False
+    assert redesign["public_claim_allowed"] is False
+    assert redesign["public_observable_promoted"] is False
+    assert redesign["hook_experiment_allowed"] is False
+    assert redesign["api_surface_changed"] is False
+    assert redesign["result_surface_changed"] is False
+    assert redesign["runner_surface_changed"] is False
+    assert redesign["env_config_changed"] is False
+    diagnostic_by_id = {
+        diagnostic["diagnostic_id"]: diagnostic
+        for diagnostic in redesign["diagnostics"]
+    }
+    assert set(diagnostic_by_id) == set(
+        _PRIVATE_MEASUREMENT_CONTRACT_INTERFACE_FLOOR_DIAGNOSTIC_IDS
+    )
+    d0 = diagnostic_by_id["D0_current_integrated_flux_contract"]
+    assert d0["reference_quality_ready"] is False
+    assert d0["fixture_quality_gate_replacement"] is False
+    d1 = diagnostic_by_id["D1_prior_measurement_controls_summary"]
+    assert d1["classification"] == "measurement_controls_not_authoritative"
+    assert all(
+        control["can_claim_original_fixture_recovery"] is False
+        for control in d1["controls"]
+    )
+    d2 = diagnostic_by_id["D2_phase_referenced_modal_coherence_projection"]
+    assert d2["field_array_inputs"] == ["e1_dft", "e2_dft", "h1_dft", "h2_dft"]
+    assert d2["fixture_quality_gate_replacement"] is False
+    assert d2["d2_ready"] is False
+    assert d2["uniform_reference_ready"] is False
+    assert d2["thresholds"]["phase_spread_deg_max"] == (
+        _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+    )
+    assert d2["thresholds"]["modal_magnitude_cv_max"] == (_TRANSVERSE_MAGNITUDE_CV_MAX)
+    assert d2["thresholds"]["modal_coherence_min"] == 0.99
+    assert d2["metrics"]["max_uniform_center_referenced_phase_spread_deg"] > (
+        _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+    )
+    d3 = diagnostic_by_id["D3_local_eh_impedance_poynting_projection"]
+    assert d3["fixture_quality_gate_replacement"] is False
+    assert d3["mask_provenance_ready"] is True
+    assert d3["d3_ready"] is False
+    assert d3["thresholds"]["local_vacuum_relative_magnitude_error_max"] == (
+        _VACUUM_MAGNITUDE_ERROR_MAX
+    )
+    assert d3["thresholds"]["local_vacuum_phase_error_deg_max"] == (
+        _VACUUM_PHASE_ERROR_DEG_MAX
+    )
+    assert d3["thresholds"]["mask_divergence_max"] == 0.10
+    assert d3["metrics"]["mask_provenance_mismatch_count"] == 0
+    assert d3["metrics"]["max_eta0_relative_error"] > _VACUUM_MAGNITUDE_ERROR_MAX
+    d4 = diagnostic_by_id["D4_interface_ledger_correlation"]
+    assert d4["d4_positive"] is True
+    assert d4["provenance"]["interface_energy_transfer_diagnostics"] == (
+        "current_helper_state_recomputed"
+    )
+    assert d4["provenance"]["manufactured_face_ledger_evidence"] == (
+        "prior_committed_evidence"
+    )
+    assert d4["manufactured_face_ledger_evidence"]["context_only"] is True
+    repair = metadata["private_interface_floor_repair"]
+    assert metadata["private_interface_floor_repair_status"] == (
+        "no_bounded_private_interface_floor_repair"
+    )
+    assert (
+        repair["terminal_outcome"] == metadata["private_interface_floor_repair_status"]
+    )
+    assert (
+        repair["upstream_measurement_contract_status"]
+        == (metadata["private_measurement_contract_interface_floor_redesign_status"])
+    )
+    assert repair["candidate_ladder_declared_before_solver_edit"] is True
+    assert repair["candidate_count"] == 5
+    repair_candidates = {
+        candidate["candidate_id"]: candidate for candidate in repair["candidates"]
+    }
+    assert set(repair_candidates) == {
+        "current_time_centered_helper_baseline",
+        "oriented_characteristic_face_balance",
+        "reciprocal_dual_field_scaling_historical_guard",
+        "current_minimum_norm_centered_h_guard",
+        "edge_corner_preacceptance_gate",
+    }
+    f1 = repair_candidates["oriented_characteristic_face_balance"]
+    assert f1["orientation_contract_passed"] is True
+    assert f1["characteristic_equivalent_to_current_component_sat"] is True
+    assert f1["ledger_gate_passed"] is False
+    assert f1["ledger_normalized_balance_residual"] > f1["ledger_threshold"]
+    assert f1["accepted_candidate"] is False
+    assert f1["rejection_reasons"] == (
+        "candidate_failed_manufactured_ledger_gate",
+        "candidate_collapses_to_current_component_sat",
+    )
+    assert repair_candidates["reciprocal_dual_field_scaling_historical_guard"][
+        "status"
+    ] == ("reciprocal_scaling_already_invalidated")
+    assert repair_candidates["current_minimum_norm_centered_h_guard"]["status"] == (
+        "minimum_norm_centered_h_already_implemented_fixture_pending"
+    )
+    assert repair["solver_hunk_retained"] is False
+    assert repair["actual_solver_hunk_inventory"] == ()
+    assert repair["production_patch_allowed"] is False
+    assert repair["production_patch_applied"] is False
+    assert repair["solver_behavior_changed"] is False
+    assert repair["sbp_sat_3d_repair_applied"] is False
+    assert repair["public_claim_allowed"] is False
+    assert repair["public_observable_promoted"] is False
+    assert repair["hook_experiment_allowed"] is False
+    assert repair["api_surface_changed"] is False
+    assert repair["result_surface_changed"] is False
+    assert repair["runner_surface_changed"] is False
+    assert repair["env_config_changed"] is False
+    face_norm = metadata["private_face_norm_operator_repair"]
+    assert metadata["private_face_norm_operator_repair_status"] == (
+        "no_private_face_norm_operator_repair"
+    )
+    assert (
+        face_norm["terminal_outcome"]
+        == metadata["private_face_norm_operator_repair_status"]
+    )
+    assert face_norm["terminal_outcome"] in (
+        _PRIVATE_FACE_NORM_OPERATOR_REPAIR_TERMINAL_OUTCOMES
+    )
+    assert face_norm["upstream_interface_floor_repair_status"] == (
+        metadata["private_interface_floor_repair_status"]
+    )
+    assert face_norm["candidate_ladder_declared_before_solver_edit"] is True
+    assert face_norm["candidate_count"] == 5
+    assert face_norm["selected_candidate_id"] is None
+    face_norm_candidates = {
+        candidate["candidate_id"]: candidate for candidate in face_norm["candidates"]
+    }
+    assert set(face_norm_candidates) == {
+        "current_face_operator_norm_adjoint_audit",
+        "mass_adjoint_restriction_face_sat",
+        "uniform_diagonal_face_norm_rescaling_guard",
+        "higher_order_projection_guard",
+        "full_box_edge_corner_norm_preacceptance",
+    }
+    h1 = face_norm_candidates["mass_adjoint_restriction_face_sat"]
+    assert h1["unmasked_norm_adjoint_identity_passed"] is True
+    assert h1["current_operator_already_uses_unmasked_mass_adjoint"] is True
+    assert h1["matched_projected_traces_noop"] is False
+    assert h1["ledger_gate_passed"] is False
+    assert h1["zero_work_gate_passed"] is True
+    assert h1["edge_corner_preacceptance_gate_passed"] is True
+    assert h1["rejection_reasons"] == (
+        "candidate_failed_manufactured_ledger_gate",
+        "candidate_failed_higher_order_projection_noop",
+        "candidate_collapses_to_current_norm_adjoint_operator",
+    )
+    h2 = face_norm_candidates["uniform_diagonal_face_norm_rescaling_guard"]
+    assert h2["ratios_bounded"] is True
+    assert h2["identical_to_current_uniform_face_norms"] is True
+    assert h2["ledger_gate_passed"] is False
+    assert (
+        face_norm_candidates["higher_order_projection_guard"]["status"]
+        == "higher_order_projection_requires_broader_operator_plan"
+    )
+    assert (
+        face_norm_candidates["full_box_edge_corner_norm_preacceptance"]["status"]
+        == "edge_corner_preacceptance_passed"
+    )
+    assert face_norm["solver_hunk_retained"] is False
+    assert face_norm["actual_solver_hunk_inventory"] == ()
+    assert face_norm["production_patch_allowed"] is False
+    assert face_norm["production_patch_applied"] is False
+    assert face_norm["solver_behavior_changed"] is False
+    assert face_norm["sbp_sat_3d_repair_applied"] is False
+    assert face_norm["public_claim_allowed"] is False
+    assert face_norm["public_observable_promoted"] is False
+    assert face_norm["hook_experiment_allowed"] is False
+    assert face_norm["api_surface_changed"] is False
+    assert face_norm["result_surface_changed"] is False
+    assert face_norm["runner_surface_changed"] is False
+    assert face_norm["env_config_changed"] is False
+    derivative = metadata["private_derivative_interface_repair"]
+    assert metadata["private_derivative_interface_repair_status"] == (
+        "no_private_derivative_interface_repair"
+    )
+    assert (
+        derivative["terminal_outcome"]
+        == metadata["private_derivative_interface_repair_status"]
+    )
+    assert derivative["terminal_outcome"] in (
+        _PRIVATE_DERIVATIVE_INTERFACE_REPAIR_TERMINAL_OUTCOMES
+    )
+    assert derivative["upstream_face_norm_operator_repair_status"] == (
+        metadata["private_face_norm_operator_repair_status"]
+    )
+    assert derivative["candidate_ladder_declared_before_solver_edit"] is True
+    assert derivative["candidate_count"] == 6
+    assert derivative["selected_candidate_id"] is None
+    assert derivative["reduced_fixture_reproduces_failure"] is True
+    assert derivative["reduced_identity_closed_test_locally"] is True
+    assert derivative["requires_global_sbp_operator_refactor"] is True
+    derivative_candidates = {
+        candidate["candidate_id"]: candidate for candidate in derivative["candidates"]
+    }
+    assert set(derivative_candidates) == {
+        "current_derivative_energy_identity_audit",
+        "reduced_normal_incidence_energy_flux",
+        "full_yz_face_energy_flux_candidate",
+        "edge_corner_cochain_accounting_guard",
+        "mortar_projection_operator_widening_guard",
+        "private_solver_integration_candidate",
+    }
+    g1 = derivative_candidates["reduced_normal_incidence_energy_flux"]
+    assert g1["reduced_identity_closed"] is True
+    assert g1["branches_on_measured_residual_or_test_name"] is False
+    g2 = derivative_candidates["full_yz_face_energy_flux_candidate"]
+    assert g2["manufactured_ledger_gate_passed"] is False
+    assert g2["ledger_normalized_balance_residual"] > g2["ledger_threshold"]
+    assert (
+        derivative_candidates["edge_corner_cochain_accounting_guard"]["status"]
+        == "edge_corner_derivative_accounting_ready"
+    )
+    assert (
+        derivative_candidates["mortar_projection_operator_widening_guard"]["status"]
+        == "requires_global_sbp_operator_refactor"
+    )
+    assert (
+        derivative_candidates["private_solver_integration_candidate"]["status"]
+        == "blocked_by_requires_global_sbp_operator_refactor"
+    )
+    assert derivative["solver_hunk_allowed_if_selected"] == (
+        _PRIVATE_DERIVATIVE_INTERFACE_ALLOWED_SOLVER_SYMBOLS
+    )
+    assert derivative["solver_hunk_retained"] is False
+    assert derivative["actual_solver_hunk_inventory"] == ()
+    assert derivative["production_patch_allowed"] is False
+    assert derivative["production_patch_applied"] is False
+    assert derivative["solver_behavior_changed"] is False
+    assert derivative["sbp_sat_3d_repair_applied"] is False
+    assert derivative["public_claim_allowed"] is False
+    assert derivative["public_observable_promoted"] is False
+    assert derivative["hook_experiment_allowed"] is False
+    assert derivative["api_surface_changed"] is False
+    assert derivative["result_surface_changed"] is False
+    assert derivative["runner_surface_changed"] is False
+    assert derivative["env_config_changed"] is False
     assert (
         metadata["follow_up_recommendation"]
-        == metadata[
-            "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
-        ]
+        == metadata["private_derivative_interface_repair_next_prerequisite"]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -4911,11 +6476,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == (
-            metadata[
-                "private_time_centered_helper_fixture_quality_recovery_next_prerequisite"
-            ]
-        )
+        == metadata["private_derivative_interface_repair_next_prerequisite"]
     )
     assert (
         "same-contract private reference helper is present"
@@ -4928,6 +6489,22 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata["private_time_centered_helper_fixture_quality_recovery_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_measurement_contract_interface_floor_redesign_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_interface_floor_repair_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_face_norm_operator_repair_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_derivative_interface_repair_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
