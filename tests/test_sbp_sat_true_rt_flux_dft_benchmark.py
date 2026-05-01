@@ -876,6 +876,28 @@ _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_PRECEDENCE = (
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_STATUS = (
+    "private_plane_wave_interface_energy_form_root_cause_identified"
+)
+_PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_NEXT_PREREQUISITE = (
+    "private plane-wave interface energy-form architecture repair design "
+    "before implementation ralplan"
+)
+_PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_TERMINAL_OUTCOMES = (
+    "private_plane_wave_source_stagger_root_cause_identified",
+    "private_plane_wave_interface_energy_form_root_cause_identified",
+    "private_plane_wave_mortar_metric_root_cause_identified",
+    "private_plane_wave_fixture_geometry_root_cause_identified",
+    "private_plane_wave_root_cause_redesign_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_PRECEDENCE = (
+    "private_plane_wave_root_cause_redesign_blocked_no_public_promotion",
+    "private_plane_wave_interface_energy_form_root_cause_identified",
+    "private_plane_wave_mortar_metric_root_cause_identified",
+    "private_plane_wave_fixture_geometry_root_cause_identified",
+    "private_plane_wave_source_stagger_root_cause_identified",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -6599,6 +6621,187 @@ def _private_plane_wave_interface_floor_implementation_metadata(
     }
 
 
+def _private_plane_wave_root_cause_redesign_metadata(
+    *,
+    interface_implementation_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+    measurement_redesign_metadata: dict[str, object],
+    operator_solver_metadata: dict[str, object],
+    energy_transfer_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(interface_implementation_metadata["baseline_metrics"])
+    thresholds = dict(interface_implementation_metadata["thresholds"])
+    r0 = {
+        "candidate_id": "R0_failed_implementation_packet_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_implementation_status": (
+            interface_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_selected_candidate_id": (
+            interface_implementation_metadata["selected_candidate_id"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    r1 = {
+        "candidate_id": "R1_source_staggering_root_cause",
+        "candidate_family": "source_or_field_staggering",
+        "accepted_candidate": False,
+        "source_self_oracle_ready": True,
+        "same_contract_reference_ready": True,
+        "private_plane_wave_adapter_scored": True,
+        "rejection_reason": (
+            "the source/reference self-oracles and private request/spec adapter "
+            "are already ready; the dominant failure appears after the "
+            "subgrid-vacuum interface path, so this lane cannot blame source "
+            "staggering without new evidence"
+        ),
+        "next_implementation_allowed": False,
+        "public_claim_allowed": False,
+    }
+    r2 = {
+        "candidate_id": "R2_interface_sat_energy_form_root_cause",
+        "candidate_family": "interface_sat_energy_form",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_STATUS
+        ),
+        "causal_class": "sbp_sat_interface_floor",
+        "interface_floor_subclass": "coarse_fine_energy_transfer_mismatch",
+        "prior_measurement_redesign_status": (
+            measurement_redesign_metadata["terminal_outcome"]
+        ),
+        "prior_energy_transfer_status": energy_transfer_metadata["terminal_outcome"],
+        "prior_operator_solver_status": operator_solver_metadata["terminal_outcome"],
+        "bounded_implementation_status": (
+            interface_implementation_metadata["terminal_outcome"]
+        ),
+        "d4_interface_ledger_correlation_positive": True,
+        "root_cause_identified": True,
+        "next_lane_requires_design_before_solver_edit": True,
+        "production_patch_applied": False,
+        "public_claim_allowed": False,
+        "rationale": (
+            "measurement diagnostics, ledger correlation, retained operator-"
+            "projected hunk evidence, and the failed bounded implementation "
+            "all point to the interface energy form rather than source, "
+            "geometry, or projection-only causes"
+        ),
+    }
+    r3 = {
+        "candidate_id": "R3_mortar_metric_operator_root_cause",
+        "candidate_family": "mortar_metric_operator_contract",
+        "accepted_candidate": False,
+        "a1_a4_operator_evidence_ready": True,
+        "prior_operator_projected_solver_status": operator_solver_metadata[
+            "terminal_outcome"
+        ],
+        "rejection_reason": (
+            "operator identities and a retained operator-projected solver hunk "
+            "are already in the evidence chain; the private parity failure "
+            "persists, so a projection-only root cause is not selected"
+        ),
+        "next_implementation_allowed": False,
+        "public_claim_allowed": False,
+    }
+    r4 = {
+        "candidate_id": "R4_benchmark_fixture_geometry_root_cause",
+        "candidate_family": "benchmark_fixture_geometry",
+        "accepted_candidate": False,
+        "geometry_change_claim_safe": False,
+        "threshold_laundering_rejected": True,
+        "rejection_reason": (
+            "changing aperture, geometry, scored bins, or thresholds would hide "
+            "the failed claim gates rather than repair the interface energy form"
+        ),
+        "next_implementation_allowed": False,
+        "public_claim_allowed": False,
+    }
+    r5 = {
+        "candidate_id": "R5_root_cause_redesign_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_root_cause_redesign_blocked_no_public_promotion"
+        ),
+        "rejection_reason": (
+            "not selected because R2 isolates a private interface energy-form "
+            "root cause and can route a design-only follow-up without public "
+            "promotion"
+        ),
+    }
+    candidates = (r0, r1, r2, r3, r4, r5)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_STATUS,
+        "terminal_outcome": _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_PRECEDENCE
+        ),
+        "diagnostic_scope": "private_plane_wave_root_cause_redesign_only",
+        "upstream_implementation_status": (
+            interface_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_parity_scoring_status": (
+            plane_wave_parity_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite R0/R1/R2/R3/R4/R5 root-cause ladder; preserve the failed "
+            "parity packet, reject source/geometry/projection-only laundering, "
+            "and select interface energy-form architecture redesign before any "
+            "new solver hunk"
+        ),
+        "selected_candidate_id": "R2_interface_sat_energy_form_root_cause",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "root_cause_family": "interface_sat_energy_form",
+        "root_cause_identified": True,
+        "source_stagger_root_cause_identified": False,
+        "mortar_metric_root_cause_identified": False,
+        "fixture_geometry_root_cause_identified": False,
+        "next_lane_requires_design_before_solver_edit": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the failed private plane-wave parity packet is now routed to an "
+            "interface SAT energy-form architecture redesign; no production "
+            "solver edit or public promotion is admitted by this redesign-only "
+            "lane"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -8703,8 +8906,32 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_root_cause_redesign_metadata = (
+        _private_plane_wave_root_cause_redesign_metadata(
+            interface_implementation_metadata=(
+                plane_wave_interface_implementation_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+            measurement_redesign_metadata=measurement_redesign_metadata,
+            operator_solver_metadata=operator_solver_metadata,
+            energy_transfer_metadata=energy_transfer_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_root_cause_redesign_status": (
+                plane_wave_root_cause_redesign_metadata["status"]
+            ),
+            "private_plane_wave_root_cause_redesign": (
+                plane_wave_root_cause_redesign_metadata
+            ),
+            "private_plane_wave_root_cause_redesign_next_prerequisite": (
+                plane_wave_root_cause_redesign_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_interface_floor_implementation_next_prerequisite"
+        "private_plane_wave_root_cause_redesign_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -8784,6 +9011,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave interface-floor implementation lane "
                 "records "
                 f"{plane_wave_interface_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave interface-floor root-cause redesign "
+                "lane records "
+                f"{plane_wave_root_cause_redesign_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -8793,7 +9023,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_interface_floor_implementation_next_prerequisite"
+                "private_plane_wave_root_cause_redesign_next_prerequisite"
             ],
         }
 
@@ -11188,11 +11418,73 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_interface_floor_implementation_next_prerequisite"
         ]
     )
+    root_cause = metadata["private_plane_wave_root_cause_redesign"]
+    assert metadata["private_plane_wave_root_cause_redesign_status"] == (
+        _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_STATUS
+    )
+    assert root_cause["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_STATUS
+    )
+    assert root_cause["upstream_implementation_status"] == (
+        metadata["private_plane_wave_interface_floor_implementation_status"]
+    )
+    assert root_cause["upstream_parity_scoring_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert root_cause["candidate_ladder_declared_before_slow_scoring"] is True
+    assert root_cause["candidate_count"] == 6
+    assert root_cause["selected_candidate_id"] == (
+        "R2_interface_sat_energy_form_root_cause"
+    )
+    assert root_cause["baseline_metrics"] == interface_impl["baseline_metrics"]
+    assert root_cause["baseline_metrics_preserved"] is True
+    assert root_cause["thresholds_unchanged"] is True
+    assert root_cause["root_cause_family"] == "interface_sat_energy_form"
+    assert root_cause["root_cause_identified"] is True
+    assert root_cause["source_stagger_root_cause_identified"] is False
+    assert root_cause["mortar_metric_root_cause_identified"] is False
+    assert root_cause["fixture_geometry_root_cause_identified"] is False
+    assert root_cause["next_lane_requires_design_before_solver_edit"] is True
+    assert root_cause["production_patch_applied"] is False
+    assert root_cause["solver_behavior_changed"] is False
+    assert root_cause["true_rt_readiness_unlocked"] is False
+    root_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in root_cause["candidate_ladder"]
+    }
+    assert (
+        root_candidates["R1_source_staggering_root_cause"]["accepted_candidate"]
+        is False
+    )
+    assert (
+        root_candidates["R2_interface_sat_energy_form_root_cause"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert (
+        root_candidates["R3_mortar_metric_operator_root_cause"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert (
+        root_candidates["R4_benchmark_fixture_geometry_root_cause"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert root_cause["public_claim_allowed"] is False
+    assert root_cause["public_observable_promoted"] is False
+    assert root_cause["true_rt_public_observable_promoted"] is False
+    assert root_cause["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        root_cause["next_prerequisite"]
+        == metadata["private_plane_wave_root_cause_redesign_next_prerequisite"]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata[
-            "private_plane_wave_interface_floor_implementation_next_prerequisite"
-        ]
+        == metadata["private_plane_wave_root_cause_redesign_next_prerequisite"]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -11216,9 +11508,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata[
-            "private_plane_wave_interface_floor_implementation_next_prerequisite"
-        ]
+        == metadata["private_plane_wave_root_cause_redesign_next_prerequisite"]
     )
     assert (
         "same-contract private reference helper is present"
@@ -11300,6 +11590,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_plane_wave_interface_floor_implementation_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_plane_wave_root_cause_redesign_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

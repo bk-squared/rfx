@@ -265,7 +265,11 @@ production scope. That implementation lane now records
 `no_private_plane_wave_interface_floor_repair`: no bounded local characteristic
 or projection-only hunk can honestly claim material improvement over the failed
 parity packet, so the next safe lane is private plane-wave interface-floor
-architecture/root-cause redesign. Public promotion remains closed.
+architecture/root-cause redesign. That redesign lane now records
+`private_plane_wave_interface_energy_form_root_cause_identified`: the source,
+fixture-geometry, and projection-only explanations are rejected, and the next
+safe lane is a private interface energy-form architecture repair design before
+any new implementation hunk. Public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

@@ -314,10 +314,13 @@ readiness ralplan`, with explicitly widened private production scope. That
 implementation lane now records `no_private_plane_wave_interface_floor_repair`,
 so the next safe lane is `private plane-wave interface-floor
 architecture/root-cause redesign after bounded implementation failed ralplan`.
-Hook experiments remain closed and public promotion remains closed. Until those
-fixture-quality gates pass, the private flux/DFT gate remains internal
-diagnostic evidence only, and the support matrix continues to mark true R/T as
-deferred.
+That redesign lane now records
+`private_plane_wave_interface_energy_form_root_cause_identified`, so the next
+safe lane is `private plane-wave interface energy-form architecture repair
+design before implementation ralplan`. Hook experiments remain closed and
+public promotion remains closed. Until those fixture-quality gates pass, the
+private flux/DFT gate remains internal diagnostic evidence only, and the support
+matrix continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

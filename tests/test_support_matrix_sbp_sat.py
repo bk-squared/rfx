@@ -1498,13 +1498,61 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == interface_impl["next_prerequisite"]
     )
+    root_cause = benchmark_gate["private_plane_wave_root_cause_redesign"]
+    assert benchmark_gate["private_plane_wave_root_cause_redesign_status"] == (
+        "private_plane_wave_interface_energy_form_root_cause_identified"
+    )
+    assert root_cause["terminal_outcome"] == (
+        "private_plane_wave_interface_energy_form_root_cause_identified"
+    )
+    assert root_cause["upstream_implementation_status"] == (
+        benchmark_gate["private_plane_wave_interface_floor_implementation_status"]
+    )
+    assert root_cause["upstream_parity_scoring_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert root_cause["candidate_ladder_declared_before_slow_scoring"] is True
+    assert root_cause["candidate_count"] == 6
+    assert root_cause["selected_candidate_id"] == (
+        "R2_interface_sat_energy_form_root_cause"
+    )
+    assert root_cause["baseline_metrics"] == interface_impl["baseline_metrics"]
+    assert root_cause["root_cause_family"] == "interface_sat_energy_form"
+    assert root_cause["root_cause_identified"] is True
+    assert root_cause["source_stagger_root_cause_identified"] is False
+    assert root_cause["mortar_metric_root_cause_identified"] is False
+    assert root_cause["fixture_geometry_root_cause_identified"] is False
+    assert root_cause["next_lane_requires_design_before_solver_edit"] is True
+    assert root_cause["production_patch_applied"] is False
+    assert root_cause["true_rt_readiness_unlocked"] is False
+    assert root_cause["public_claim_allowed"] is False
+    root_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in root_cause["candidate_ladder"]
+    }
+    assert (
+        root_candidates["R2_interface_sat_energy_form_root_cause"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert (
+        root_candidates["R4_benchmark_fixture_geometry_root_cause"][
+            "threshold_laundering_rejected"
+        ]
+        is True
+    )
+    assert (
+        benchmark_gate["private_plane_wave_root_cause_redesign_next_prerequisite"]
+        == root_cause["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave interface-floor architecture/root-cause redesign after "
-        "bounded implementation failed ralplan"
+        "private plane-wave interface energy-form architecture repair design "
+        "before implementation ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave interface-floor architecture/root-cause redesign after "
-        "bounded implementation failed ralplan"
+        "private plane-wave interface energy-form architecture repair design "
+        "before implementation ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1528,6 +1576,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_interface_floor_implementation_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_plane_wave_root_cause_redesign_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -1794,8 +1846,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave interface-floor architecture/root-cause redesign after "
-        "bounded implementation failed ralplan"
+        "private plane-wave interface energy-form architecture repair design "
+        "before implementation ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
@@ -1857,6 +1909,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "private_plane_wave_interface_floor_repair_design_required" in spec_text
     )
     assert "no_private_plane_wave_interface_floor_repair" in spec_text
+    assert (
+        "private_plane_wave_interface_energy_form_root_cause_identified"
+        in spec_text
+    )
     assert "## Deferred issue record" in spec_text
 
 

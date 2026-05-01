@@ -99,9 +99,9 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave interface-floor
-architecture/root-cause redesign after the bounded implementation lane failed.
-The private solver-local skew E/H helper is retained as a bounded
+The immediate lane is now private plane-wave interface energy-form architecture
+repair design before implementation. The private solver-local skew E/H helper
+is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
 fixture-quality repair ladder
@@ -128,8 +128,12 @@ next executable lane explicitly widened production scope for a private
 interface-floor implementation. That implementation lane now records
 `no_private_plane_wave_interface_floor_repair`: no bounded local characteristic
 or operator-projection-only hunk is accepted as material improvement over the
-failed parity packet. The goal gate therefore remains claims-closed until a
-broader architecture/root-cause redesign produces a private repair that improves
+failed parity packet. The follow-up architecture/root-cause redesign lane now
+records `private_plane_wave_interface_energy_form_root_cause_identified`:
+source/staggering, projection-only, and fixture-geometry explanations are not
+selected, so the next executable unit is an interface energy-form architecture
+repair design before any new implementation hunk. The goal gate therefore
+remains claims-closed until that design produces a private repair that improves
 the parity metrics and a later true R/T readiness lane proves the hunk improves
 the real solver path without breaking CPML/non-CPML symmetry, boundary guards,
 update/coupling bounds, or the unchanged `0.02`
