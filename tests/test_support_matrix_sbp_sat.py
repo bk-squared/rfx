@@ -1454,13 +1454,57 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == parity_repair["next_prerequisite"]
     )
+    interface_impl = benchmark_gate[
+        "private_plane_wave_interface_floor_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_interface_floor_implementation_status"
+    ] == "no_private_plane_wave_interface_floor_repair"
+    assert interface_impl["terminal_outcome"] == (
+        "no_private_plane_wave_interface_floor_repair"
+    )
+    assert interface_impl["upstream_repair_design_status"] == (
+        benchmark_gate["private_plane_wave_parity_blocker_repair_design_status"]
+    )
+    assert interface_impl["upstream_parity_scoring_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert interface_impl["candidate_ladder_declared_before_slow_scoring"] is True
+    assert interface_impl["candidate_count"] == 4
+    assert interface_impl["selected_candidate_id"] == (
+        "I3_no_bounded_interface_floor_implementation"
+    )
+    assert interface_impl["baseline_metrics"] == parity_repair["baseline_metrics"]
+    assert interface_impl["accepted_private_repair"] is False
+    assert interface_impl["material_improvement_demonstrated"] is False
+    assert interface_impl["production_scope_was_opened"] is True
+    assert interface_impl["production_patch_applied"] is False
+    assert interface_impl["requires_architecture_root_cause_redesign"] is True
+    assert interface_impl["true_rt_readiness_unlocked"] is False
+    assert interface_impl["public_claim_allowed"] is False
+    implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in interface_impl["candidate_ladder"]
+    }
+    assert (
+        implementation_candidates["I3_no_bounded_interface_floor_implementation"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_interface_floor_implementation_next_prerequisite"
+        ]
+        == interface_impl["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave interface-floor repair implementation before true R/T "
-        "readiness ralplan"
+        "private plane-wave interface-floor architecture/root-cause redesign after "
+        "bounded implementation failed ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave interface-floor repair implementation before true R/T "
-        "readiness ralplan"
+        "private plane-wave interface-floor architecture/root-cause redesign after "
+        "bounded implementation failed ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1480,6 +1524,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_parity_blocker_repair_design_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_plane_wave_interface_floor_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -1746,8 +1794,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave interface-floor repair implementation before true R/T "
-        "readiness ralplan"
+        "private plane-wave interface-floor architecture/root-cause redesign after "
+        "bounded implementation failed ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
@@ -1808,6 +1856,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         "private_plane_wave_interface_floor_repair_design_required" in spec_text
     )
+    assert "no_private_plane_wave_interface_floor_repair" in spec_text
     assert "## Deferred issue record" in spec_text
 
 

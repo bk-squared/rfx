@@ -261,7 +261,11 @@ follow-up private blocker repair/design lane now records
 packet is preserved as the baseline, phase-front/source and measurement-contract
 laundering candidates are rejected, and the next safe lane is a private
 plane-wave interface-floor repair implementation plan with explicitly widened
-production scope. Public promotion remains closed.
+production scope. That implementation lane now records
+`no_private_plane_wave_interface_floor_repair`: no bounded local characteristic
+or projection-only hunk can honestly claim material improvement over the failed
+parity packet, so the next safe lane is private plane-wave interface-floor
+architecture/root-cause redesign. Public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

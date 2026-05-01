@@ -99,10 +99,11 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave interface-floor repair
-implementation before true R/T readiness. The private solver-local skew E/H
-helper is retained as a bounded production-context hunk, the accepted boundary
-subset has direct helper-execution evidence, and the F0-F4 private
+The immediate lane is now private plane-wave interface-floor
+architecture/root-cause redesign after the bounded implementation lane failed.
+The private solver-local skew E/H helper is retained as a bounded
+production-context hunk, the accepted boundary subset has direct
+helper-execution evidence, and the F0-F4 private
 fixture-quality repair ladder
 preserves the failing boundary-expanded baseline. The previous analytic source
 lanes isolated the old sheet-source phase-front failure, recorded
@@ -123,11 +124,15 @@ transverse magnitude-CV, vacuum magnitude-error, and vacuum phase-error gates
 fail. The follow-up blocker repair/design lane now records
 `private_plane_wave_interface_floor_repair_design_required`: the failed parity
 packet remains the baseline, source/measurement relabeling is rejected, and the
-next executable lane must explicitly widen production scope for a private
-interface-floor repair. The goal gate therefore remains claims-closed until that
-repair improves the parity metrics and a later true R/T readiness lane proves
-the hunk improves the real solver path without breaking CPML/non-CPML symmetry,
-boundary guards, update/coupling bounds, or the unchanged `0.02`
+next executable lane explicitly widened production scope for a private
+interface-floor implementation. That implementation lane now records
+`no_private_plane_wave_interface_floor_repair`: no bounded local characteristic
+or operator-projection-only hunk is accepted as material improvement over the
+failed parity packet. The goal gate therefore remains claims-closed until a
+broader architecture/root-cause redesign produces a private repair that improves
+the parity metrics and a later true R/T readiness lane proves the hunk improves
+the real solver path without breaking CPML/non-CPML symmetry, boundary guards,
+update/coupling bounds, or the unchanged `0.02`
 manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,

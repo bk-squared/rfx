@@ -856,6 +856,26 @@ _PRIVATE_PLANE_WAVE_PARITY_BLOCKER_REPAIR_PRECEDENCE = (
     "private_plane_wave_phase_front_repair_candidate_ready",
 )
 
+_PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_STATUS = (
+    "no_private_plane_wave_interface_floor_repair"
+)
+_PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private plane-wave interface-floor architecture/root-cause redesign after "
+    "bounded implementation failed ralplan"
+)
+_PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_interface_floor_repair_candidate_accepted",
+    "private_plane_wave_operator_projection_repair_candidate_accepted",
+    "no_private_plane_wave_interface_floor_repair",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
+_PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_PRECEDENCE = (
+    "no_private_plane_wave_interface_floor_repair",
+    "private_plane_wave_operator_projection_repair_candidate_accepted",
+    "private_plane_wave_interface_floor_repair_candidate_accepted",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -6414,6 +6434,171 @@ def _private_plane_wave_parity_blocker_repair_design_metadata(
     }
 
 
+def _private_plane_wave_interface_floor_implementation_metadata(
+    *,
+    parity_blocker_repair_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+    operator_solver_metadata: dict[str, object],
+    boundary_fixture_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(parity_blocker_repair_metadata["baseline_metrics"])
+    thresholds = dict(parity_blocker_repair_metadata["thresholds"])
+    prior_operator_solver_status = operator_solver_metadata["terminal_outcome"]
+    prior_boundary_status = boundary_fixture_metadata["terminal_outcome"]
+    i0 = {
+        "candidate_id": "I0_parity_and_ledger_baseline_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_repair_design_status": (
+            parity_blocker_repair_metadata["terminal_outcome"]
+        ),
+        "upstream_selected_candidate_id": (
+            parity_blocker_repair_metadata["selected_candidate_id"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    i1 = {
+        "candidate_id": "I1_bounded_characteristic_interface_energy_transfer_repair",
+        "candidate_family": "bounded_characteristic_interface_repair",
+        "accepted_candidate": False,
+        "admission_gate": (
+            "improve dominant parity blocker and manufactured-ledger residual "
+            "without CPML/non-CPML boundary regressions"
+        ),
+        "prior_interface_floor_attempt": "no_bounded_private_interface_floor_repair",
+        "prior_operator_projected_solver_status": prior_operator_solver_status,
+        "prior_boundary_coexistence_status": prior_boundary_status,
+        "material_improvement_demonstrated": False,
+        "rejection_reason": (
+            "existing characteristic and time-centered helper attempts did not "
+            "clear fixture-quality gates; no additional bounded local "
+            "characteristic hunk is admitted without a new root-cause design"
+        ),
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "public_claim_allowed": False,
+    }
+    i2 = {
+        "candidate_id": "I2_derivative_mortar_face_projection_consistency_repair",
+        "candidate_family": "derivative_mortar_projection_consistency",
+        "accepted_candidate": False,
+        "admission_gate": (
+            "improve B3 parity packet while preserving A1-A4 operator evidence"
+        ),
+        "prior_global_operator_status": (
+            "private_global_operator_3d_contract_ready"
+        ),
+        "prior_operator_projected_solver_status": prior_operator_solver_status,
+        "material_improvement_demonstrated": False,
+        "rejection_reason": (
+            "the operator-projected solver hunk is already retained, but the "
+            "private plane-wave parity packet still fails; another local "
+            "projection-only edit would be an unproved solver hunk"
+        ),
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "public_claim_allowed": False,
+    }
+    i3 = {
+        "candidate_id": "I3_no_bounded_interface_floor_implementation",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_STATUS
+        ),
+        "material_improvement_demonstrated": False,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "requires_architecture_root_cause_redesign": True,
+        "next_safe_lane": (
+            _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "true_rt_readiness_unlocked": False,
+        "public_claim_allowed": False,
+        "rejection_reason": (
+            "no bounded private production hunk is accepted in this lane; the "
+            "next step must redesign the interface-floor architecture/root "
+            "cause before another solver edit"
+        ),
+    }
+    candidates = (i0, i1, i2, i3)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_interface_floor_implementation_only"
+        ),
+        "upstream_repair_design_status": (
+            parity_blocker_repair_metadata["terminal_outcome"]
+        ),
+        "upstream_parity_scoring_status": (
+            plane_wave_parity_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite I0/I1/I2/I3 implementation ladder; freeze the failed "
+            "private parity packet, reject unproved bounded characteristic or "
+            "projection-only hunks, and fail closed to a root-cause redesign "
+            "without public promotion"
+        ),
+        "selected_candidate_id": "I3_no_bounded_interface_floor_implementation",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "dominant_parity_blocker": (
+            parity_blocker_repair_metadata["dominant_parity_blocker"]
+        ),
+        "accepted_private_repair": False,
+        "material_improvement_demonstrated": False,
+        "production_scope_was_opened": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "operator_projection_repair_applied": False,
+        "requires_architecture_root_cause_redesign": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the widened private implementation lane found no bounded local "
+            "interface-floor hunk that can honestly claim material improvement "
+            "over the failed plane-wave parity packet; public promotion remains "
+            "closed and the next step is root-cause architecture redesign"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -8497,8 +8682,29 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_interface_implementation_metadata = (
+        _private_plane_wave_interface_floor_implementation_metadata(
+            parity_blocker_repair_metadata=plane_wave_parity_repair_metadata,
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+            operator_solver_metadata=operator_solver_metadata,
+            boundary_fixture_metadata=boundary_fixture_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_interface_floor_implementation_status": (
+                plane_wave_interface_implementation_metadata["status"]
+            ),
+            "private_plane_wave_interface_floor_implementation": (
+                plane_wave_interface_implementation_metadata
+            ),
+            "private_plane_wave_interface_floor_implementation_next_prerequisite": (
+                plane_wave_interface_implementation_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_parity_blocker_repair_design_next_prerequisite"
+        "private_plane_wave_interface_floor_implementation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -8575,6 +8781,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"records {plane_wave_parity_metadata['terminal_outcome']}"
                 "; the private plane-wave parity blocker repair/design lane "
                 f"records {plane_wave_parity_repair_metadata['terminal_outcome']}"
+                "; the private plane-wave interface-floor implementation lane "
+                "records "
+                f"{plane_wave_interface_implementation_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -8584,7 +8793,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_parity_blocker_repair_design_next_prerequisite"
+                "private_plane_wave_interface_floor_implementation_next_prerequisite"
             ],
         }
 
@@ -10919,9 +11128,71 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_parity_blocker_repair_design_next_prerequisite"
         ]
     )
+    interface_impl = metadata["private_plane_wave_interface_floor_implementation"]
+    assert metadata["private_plane_wave_interface_floor_implementation_status"] == (
+        _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_STATUS
+    )
+    assert interface_impl["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_INTERFACE_FLOOR_IMPLEMENTATION_STATUS
+    )
+    assert interface_impl["upstream_repair_design_status"] == (
+        metadata["private_plane_wave_parity_blocker_repair_design_status"]
+    )
+    assert interface_impl["upstream_parity_scoring_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert interface_impl["candidate_ladder_declared_before_slow_scoring"] is True
+    assert interface_impl["candidate_count"] == 4
+    assert interface_impl["selected_candidate_id"] == (
+        "I3_no_bounded_interface_floor_implementation"
+    )
+    assert interface_impl["baseline_metrics"] == parity_repair["baseline_metrics"]
+    assert interface_impl["baseline_metrics_preserved"] is True
+    assert interface_impl["thresholds_unchanged"] is True
+    assert interface_impl["accepted_private_repair"] is False
+    assert interface_impl["material_improvement_demonstrated"] is False
+    assert interface_impl["production_scope_was_opened"] is True
+    assert interface_impl["production_patch_applied"] is False
+    assert interface_impl["solver_behavior_changed"] is False
+    assert interface_impl["requires_architecture_root_cause_redesign"] is True
+    assert interface_impl["true_rt_readiness_unlocked"] is False
+    implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in interface_impl["candidate_ladder"]
+    }
+    assert (
+        implementation_candidates["I1_bounded_characteristic_interface_energy_transfer_repair"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert (
+        implementation_candidates["I2_derivative_mortar_face_projection_consistency_repair"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert (
+        implementation_candidates["I3_no_bounded_interface_floor_implementation"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert interface_impl["public_claim_allowed"] is False
+    assert interface_impl["public_observable_promoted"] is False
+    assert interface_impl["true_rt_public_observable_promoted"] is False
+    assert interface_impl["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        interface_impl["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_interface_floor_implementation_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata["private_plane_wave_parity_blocker_repair_design_next_prerequisite"]
+        == metadata[
+            "private_plane_wave_interface_floor_implementation_next_prerequisite"
+        ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -10945,7 +11216,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata["private_plane_wave_parity_blocker_repair_design_next_prerequisite"]
+        == metadata[
+            "private_plane_wave_interface_floor_implementation_next_prerequisite"
+        ]
     )
     assert (
         "same-contract private reference helper is present"
@@ -11024,6 +11297,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_plane_wave_parity_blocker_repair_design_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_plane_wave_interface_floor_implementation_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
