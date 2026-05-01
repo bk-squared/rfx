@@ -184,6 +184,59 @@ def test_default_simulation_run_unchanged():
 # -----------------------------------------------------------------------------
 
 
+def test_dual_path_dielectric_only_equivalent_to_ulp():
+    """Step 3b dual-path equivalence: for a sim with **only**
+    dielectric content (no PEC), ``subpixel_smoothing=True`` (Stage 1
+    Kottke) and ``subpixel_smoothing="kottke_pec"`` (Stage 2 unified)
+    must give field results that agree to ULP tolerance.
+
+    Why: both paths run identical Kottke math at dielectric
+    interfaces; the only difference is the eps-divide vs inv-eps-
+    multiply arithmetic ordering in the Yee update. With no PEC
+    content, the two paths should be numerically equivalent.
+
+    A diff larger than ~5 ULP (relative) signals the Stage 2 path is
+    silently introducing a non-equivalent transformation in the
+    dielectric branch — a regression that would block Step 3c's
+    default routing flip."""
+    from rfx.geometry.csg import Box
+
+    def _build():
+        sim = Simulation(
+            freq_max=10e9,
+            domain=(0.04, 0.04, 0.04),
+            dx=0.002,
+            boundary="cpml",
+            cpml_layers=4,
+        )
+        sim.add_material("substrate", eps_r=4.0, sigma=0.0)
+        sim.add(Box((0.012, 0.012, 0.012), (0.028, 0.028, 0.028)),
+                material="substrate")
+        sim.add_waveguide_port(
+            0.020, direction="+x", mode=(1, 0), mode_type="TE",
+            f0=8e9, bandwidth=0.5, name="left",
+        )
+        return sim
+
+    n = 100
+    r_stage1 = _build().run(n_steps=n, subpixel_smoothing=True)
+    r_stage2 = _build().run(n_steps=n, subpixel_smoothing="kottke_pec")
+
+    for component in ("ex", "ey", "ez"):
+        a = np.asarray(getattr(r_stage1.state, component))
+        b = np.asarray(getattr(r_stage2.state, component))
+        scale = max(float(np.max(np.abs(a))), float(np.max(np.abs(b))), 1e-30)
+        rel_diff = float(np.max(np.abs(a - b))) / scale
+        assert rel_diff < 5e-5, (
+            f"dielectric-only dual-path diverges on {component}: "
+            f"rel_diff={rel_diff:.2e}, max|a|={np.max(np.abs(a)):.3e}, "
+            f"max|b|={np.max(np.abs(b)):.3e}. Step 3c default flip "
+            f"would re-bless reference values for any test that "
+            f"asserts {component} to bit precision under "
+            f"subpixel_smoothing=True."
+        )
+
+
 def test_nu_runner_hard_fails_on_kottke_pec():
     """Per Step 3a scope decision: NU + Stage 2 unified path is out
     of scope for v1. Must hard-fail at run time, not silently
