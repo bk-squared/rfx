@@ -248,8 +248,12 @@ private TFSF-style hooks are not the W1 plane-wave source contract, and this
 lane cannot change forbidden runner/API surfaces. The follow-up adapter design
 lane now records `private_runner_plane_wave_adapter_design_ready`, selecting the
 existing private runner request/spec pattern rather than a direct JIT-only
-bypass. The next safe lane is private plane-wave source request/spec adapter
-implementation before subgrid-vacuum parity, not public promotion.
+bypass. The follow-up adapter implementation lane now records
+`private_plane_wave_adapter_implemented_parity_pending`: the private request,
+builder, JIT spec, subgrid helper, and same-contract reference helper can carry
+the W1/R1 plane-wave contract, but subgrid-vacuum parity is still unscored. The
+next safe lane is private subgrid-vacuum plane-wave parity scoring with that
+private adapter, not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

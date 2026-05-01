@@ -32,9 +32,11 @@ from rfx.probes.probes import flux_spectrum
 from rfx.runners.subgridded import (
     _BenchmarkFluxPlaneRequest,
     _PrivateAnalyticSheetSourceRequest,
+    _PrivatePlaneWaveSourceRequest,
     _PrivateTFSFIncidentRequest,
     _build_benchmark_flux_plane_specs,
     _build_private_analytic_sheet_source_specs,
+    _build_private_plane_wave_source_specs,
     _build_private_tfsf_incident_specs,
     run_private_tfsf_reference_flux,
     run_subgridded_benchmark_flux,
@@ -44,8 +46,11 @@ from rfx.subgridding.jit_runner import (
     _BenchmarkFluxPlaneResult,
     _BenchmarkFluxPlaneSpec,
     _PrivateAnalyticSheetSourceSpec,
+    _PrivatePlaneWaveSourceSpec,
     _PrivateTFSFIncidentSpec,
     _accumulate_benchmark_flux_plane,
+    _apply_private_plane_wave_source_e,
+    _apply_private_plane_wave_source_h,
     _apply_private_tfsf_incident_e,
     _apply_private_tfsf_incident_h,
     _benchmark_flux_spectrum,
@@ -796,6 +801,23 @@ _PRIVATE_PLANE_WAVE_ADAPTER_DESIGN_PRECEDENCE = (
     "private_jit_plane_wave_adapter_design_ready",
 )
 
+_PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_STATUS = (
+    "private_plane_wave_adapter_implemented_parity_pending"
+)
+_PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private subgrid-vacuum plane-wave parity scoring with private adapter ralplan"
+)
+_PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_request_builder_ready",
+    "private_plane_wave_adapter_implemented_parity_pending",
+    "private_plane_wave_adapter_implementation_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_PRECEDENCE = (
+    "private_plane_wave_adapter_implementation_blocked_no_public_promotion",
+    "private_plane_wave_adapter_implemented_parity_pending",
+    "private_plane_wave_request_builder_ready",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -923,6 +945,23 @@ def _private_guard_tfsf_incident() -> _PrivateTFSFIncidentRequest:
     )
 
 
+def _private_guard_plane_wave_source() -> _PrivatePlaneWaveSourceRequest:
+    return _PrivatePlaneWaveSourceRequest(
+        name="private_guard_plane_wave_source",
+        axis="z",
+        coordinate=0.020,
+        electric_component="ex",
+        magnetic_component="hy",
+        propagation_sign=1,
+        amplitude=1.0,
+        f0_hz=2.0e9,
+        bandwidth=0.8,
+        phase_rad=0.0,
+        x_span=(0.017, 0.023),
+        y_span=(0.017, 0.023),
+    )
+
+
 def test_public_dft_plane_probe_still_hard_fails_with_subgrid():
     sim = _guard_sim()
     sim.add_dft_plane_probe(
@@ -978,6 +1017,20 @@ def test_private_tfsf_benchmark_run_does_not_populate_public_dft_or_flux_results
     assert run.benchmark_flux_planes[0].name == "private_guard"
 
 
+def test_private_plane_wave_benchmark_run_does_not_populate_public_dft_or_flux_results():
+    run = run_subgridded_benchmark_flux(
+        _guard_sim(),
+        n_steps=4,
+        planes=(_private_guard_plane(),),
+        private_plane_wave_sources=(_private_guard_plane_wave_source(),),
+    )
+
+    assert run.result.dft_planes is None
+    assert run.result.flux_monitors is None
+    assert len(run.benchmark_flux_planes) == 1
+    assert run.benchmark_flux_planes[0].name == "private_guard"
+
+
 def test_private_tfsf_reference_run_does_not_populate_public_dft_or_flux_results():
     sim = _guard_reference_sim()
     assert sim._refinement is None
@@ -987,6 +1040,25 @@ def test_private_tfsf_reference_run_does_not_populate_public_dft_or_flux_results
         n_steps=4,
         planes=(_private_guard_plane(),),
         private_tfsf_incidents=(_private_guard_tfsf_incident(),),
+    )
+
+    assert sim._refinement is None
+    assert run.result.dft_planes is None
+    assert run.result.flux_monitors is None
+    assert len(run.benchmark_flux_planes) == 1
+    assert run.benchmark_flux_planes[0].name == "private_guard"
+
+
+def test_private_plane_wave_reference_run_does_not_populate_public_dft_or_flux_results():
+    sim = _guard_reference_sim()
+    assert sim._refinement is None
+
+    run = run_private_tfsf_reference_flux(
+        sim,
+        n_steps=4,
+        planes=(_private_guard_plane(),),
+        private_tfsf_incidents=(),
+        private_plane_wave_sources=(_private_guard_plane_wave_source(),),
     )
 
     assert sim._refinement is None
@@ -1109,12 +1181,53 @@ def _benchmark_tfsf_incident(
     )
 
 
+def _benchmark_plane_wave_source(
+    *,
+    fixture: _FluxFixtureConfig = _FluxFixture,
+    coordinate: float | None = None,
+    axis: str = "z",
+    electric_component: str = "ex",
+    magnetic_component: str = "hy",
+    propagation_sign: int = 1,
+    x_span: tuple[float, float] | None = None,
+    y_span: tuple[float, float] | None = None,
+) -> _PrivatePlaneWaveSourceRequest:
+    return _PrivatePlaneWaveSourceRequest(
+        name="private_plane_wave_source",
+        axis=axis,
+        coordinate=fixture.sheet_coordinate if coordinate is None else coordinate,
+        electric_component=electric_component,
+        magnetic_component=magnetic_component,
+        propagation_sign=propagation_sign,
+        amplitude=fixture.sheet_amplitude,
+        f0_hz=fixture.source_freq,
+        bandwidth=fixture.source_bandwidth,
+        phase_rad=fixture.sheet_phase_rad,
+        x_span=fixture.sheet_x_span if x_span is None else x_span,
+        y_span=fixture.sheet_y_span if y_span is None else y_span,
+    )
+
+
 def _tfsf_specs(
     *incidents: _PrivateTFSFIncidentRequest,
     fixture: _FluxFixtureConfig = _FluxFixture,
 ) -> tuple[_PrivateTFSFIncidentSpec, ...]:
     return _build_private_tfsf_incident_specs(
         incidents,
+        shape_f=fixture.shape_f,
+        offsets=fixture.offsets,
+        dx_f=fixture.dx_f,
+        dt=1.0e-12,
+        n_steps=fixture.n_steps,
+    )
+
+
+def _plane_wave_source_specs(
+    *sources: _PrivatePlaneWaveSourceRequest,
+    fixture: _FluxFixtureConfig = _FluxFixture,
+) -> tuple[_PrivatePlaneWaveSourceSpec, ...]:
+    return _build_private_plane_wave_source_specs(
+        sources,
         shape_f=fixture.shape_f,
         offsets=fixture.offsets,
         dx_f=fixture.dx_f,
@@ -1210,6 +1323,29 @@ def test_private_tfsf_incident_accepts_strict_interior_ex_hy_pair():
     assert 300.0 < float(np.mean(eta)) < 500.0
 
 
+def test_private_plane_wave_source_accepts_strict_interior_ex_hy_pair():
+    (source,) = _plane_wave_source_specs(_benchmark_plane_wave_source())
+
+    assert source.axis == 2
+    assert source.index == 8
+    assert source.electric_component == "ex"
+    assert source.magnetic_component == "hy"
+    assert source.propagation_sign == 1
+    assert source.contract == "private_uniform_plane_wave_source"
+    assert source.lo1 == source.lo2 == 1
+    assert source.hi1 == source.hi2 == 15
+    assert source.electric_values.shape == (_FluxFixture.n_steps,)
+    assert source.magnetic_values.shape == (_FluxFixture.n_steps,)
+    assert not isinstance(_benchmark_plane_wave_source(), _PrivateTFSFIncidentRequest)
+
+    electric = np.asarray(source.electric_values)
+    magnetic = np.asarray(source.magnetic_values)
+    nonzero = np.abs(electric) > 1.0e-12 * np.max(np.abs(electric))
+    eta = electric[nonzero] / magnetic[nonzero]
+    assert np.all(np.isfinite(eta))
+    assert 300.0 < float(np.mean(eta)) < 500.0
+
+
 @pytest.mark.parametrize(
     "source",
     [
@@ -1241,6 +1377,23 @@ def test_private_tfsf_incident_rejects_public_or_edge_touching_shapes(
 ):
     with pytest.raises(ValueError, match="TFSF-style incident fields"):
         _tfsf_specs(incident)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _benchmark_plane_wave_source(axis="x"),
+        _benchmark_plane_wave_source(electric_component="ey"),
+        _benchmark_plane_wave_source(magnetic_component="hx"),
+        _benchmark_plane_wave_source(propagation_sign=-1),
+        _benchmark_plane_wave_source(x_span=(0.011, 0.027)),
+    ],
+)
+def test_private_plane_wave_source_rejects_public_or_edge_touching_shapes(
+    source: _PrivatePlaneWaveSourceRequest,
+):
+    with pytest.raises(ValueError, match="plane-wave sources"):
+        _plane_wave_source_specs(source)
 
 
 def test_private_sheet_source_injection_adds_selected_tangential_field_only():
@@ -1321,6 +1474,52 @@ def test_private_tfsf_incident_ex_hy_signs_produce_positive_z_poynting():
 
     with_h = _apply_private_tfsf_incident_h(state, incident, jnp.array(0.5))
     out = _apply_private_tfsf_incident_e(with_h, incident, jnp.array(2.0))
+
+    ex = np.asarray(out.ex_f)
+    hy = np.asarray(out.hy_f)
+    assert np.allclose(ex[1:5, 1:5, 3], 2.0)
+    assert np.allclose(hy[1:5, 1:5, 2], 0.5)
+    assert np.count_nonzero(ex) == 16
+    assert np.count_nonzero(hy) == 16
+    assert float(np.mean(ex[1:5, 1:5, 3] * hy[1:5, 1:5, 2])) > 0.0
+
+
+def test_private_plane_wave_source_ex_hy_signs_produce_positive_z_poynting():
+    shape = (6, 6, 6)
+    zeros = jnp.zeros(shape, dtype=jnp.float64)
+    state = SubgridState3D(
+        ex_c=zeros,
+        ey_c=zeros,
+        ez_c=zeros,
+        hx_c=zeros,
+        hy_c=zeros,
+        hz_c=zeros,
+        ex_f=zeros,
+        ey_f=zeros,
+        ez_f=zeros,
+        hx_f=zeros,
+        hy_f=zeros,
+        hz_f=zeros,
+        step=jnp.array(0, dtype=jnp.int32),
+    )
+    source = _PrivatePlaneWaveSourceSpec(
+        name="synthetic_plane_wave",
+        axis=2,
+        index=3,
+        electric_component="ex",
+        magnetic_component="hy",
+        propagation_sign=1,
+        electric_values=jnp.asarray([2.0], dtype=jnp.float64),
+        magnetic_values=jnp.asarray([0.5], dtype=jnp.float64),
+        lo1=1,
+        hi1=5,
+        lo2=1,
+        hi2=5,
+        contract="private_uniform_plane_wave_source",
+    )
+
+    with_h = _apply_private_plane_wave_source_h(state, source, jnp.array(0.5))
+    out = _apply_private_plane_wave_source_e(with_h, source, jnp.array(2.0))
 
     ex = np.asarray(out.ex_f)
     hy = np.asarray(out.hy_f)
@@ -5614,6 +5813,151 @@ def _private_plane_wave_source_adapter_design_metadata(
     }
 
 
+def _private_plane_wave_source_adapter_implementation_metadata(
+    *,
+    adapter_design_metadata: dict[str, object],
+) -> dict[str, object]:
+    ad2 = {
+        candidate["candidate_id"]: candidate
+        for candidate in adapter_design_metadata["candidate_ladder"]
+    }["AD2_private_runner_request_spec_adapter_design"]
+    allowed_write_surface = tuple(adapter_design_metadata["allowed_write_surface"])
+    forbidden_public_surfaces = tuple(adapter_design_metadata["forbidden_public_surfaces"])
+    impl0 = {
+        "candidate_id": "IMPL0_ad2_design_freeze",
+        "candidate_family": "upstream_adapter_design_freeze",
+        "accepted_candidate": False,
+        "upstream_adapter_design_status": adapter_design_metadata["terminal_outcome"],
+        "upstream_selected_candidate_id": adapter_design_metadata[
+            "selected_candidate_id"
+        ],
+        "design_ready": bool(adapter_design_metadata["design_ready"]),
+        "subgrid_vacuum_parity_scored": False,
+        "public_closure_retained": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+    }
+    impl1 = {
+        "candidate_id": "IMPL1_private_plane_wave_request_and_builder",
+        "candidate_family": "private_runner_request_builder",
+        "accepted_candidate": False,
+        "request_builder_ready": True,
+        "private_request": "_PrivatePlaneWaveSourceRequest",
+        "builder": "_build_private_plane_wave_source_specs",
+        "strict_fine_owned_placement_validation": True,
+        "axis_contract": "z_only",
+        "polarization_contract": "ex_hy_only",
+        "existing_private_tfsf_hook_reused_as_w1": False,
+        "superseded_by": "IMPL2_private_plane_wave_jit_spec_and_injection",
+    }
+    impl2 = {
+        "candidate_id": "IMPL2_private_plane_wave_jit_spec_and_injection",
+        "candidate_family": "private_runner_request_to_jit_spec_adapter",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            "private_plane_wave_adapter_implemented_parity_pending"
+        ),
+        "request_builder_ready": True,
+        "private_request": "_PrivatePlaneWaveSourceRequest",
+        "private_spec": "_PrivatePlaneWaveSourceSpec",
+        "builder": "_build_private_plane_wave_source_specs",
+        "jit_h_hook": "_apply_private_plane_wave_source_h",
+        "jit_e_hook": "_apply_private_plane_wave_source_e",
+        "runner_helper": "run_subgridded_benchmark_flux",
+        "uniform_reference_helper": "run_private_tfsf_reference_flux",
+        "w1_contract_runtime_represented": True,
+        "plane_wave_fixture_path_wired": True,
+        "subgrid_vacuum_parity_scored": False,
+        "fixture_quality_ready": False,
+        "public_simulation_api_changed": False,
+        "public_result_surface_changed": False,
+        "public_observable_promoted": False,
+        "existing_private_tfsf_hook_reused_as_w1": False,
+        "result_authority": (
+            "private request/spec adapter implementation only; parity scoring, "
+            "true R/T readiness, and public observables remain closed"
+        ),
+    }
+    impl3 = {
+        "candidate_id": "IMPL3_adapter_implementation_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_adapter_implementation_blocked_no_public_promotion"
+        ),
+        "rejection_reason": (
+            "not selected because the private request/spec adapter was implemented "
+            "inside the allowed runner and JIT surfaces without public promotion"
+        ),
+    }
+    candidates = (impl0, impl1, impl2, impl3)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_STATUS,
+        "terminal_outcome": _PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_PRECEDENCE
+        ),
+        "diagnostic_scope": "private_plane_wave_adapter_implementation_only",
+        "upstream_adapter_design_status": adapter_design_metadata["terminal_outcome"],
+        "upstream_adapter_design_selected_candidate_id": adapter_design_metadata[
+            "selected_candidate_id"
+        ],
+        "upstream_ad2_design_ready": bool(ad2["design_ready"]),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite IMPL0/IMPL1/IMPL2/IMPL3 implementation ladder; IMPL2 is "
+            "selected because a private runner request/spec adapter now carries "
+            "the W1/R1 plane-wave source contract without public API or "
+            "observable promotion"
+        ),
+        "selected_candidate_id": "IMPL2_private_plane_wave_jit_spec_and_injection",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "design_ready": True,
+        "request_builder_ready": True,
+        "adapter_implementation_ready": True,
+        "plane_wave_fixture_path_wired": True,
+        "w1_contract_runtime_represented": True,
+        "source_self_oracle_ready": True,
+        "same_contract_reference_ready": True,
+        "reference_quality_ready": bool(
+            adapter_design_metadata["reference_quality_ready"]
+        ),
+        "subgrid_vacuum_parity_scored": False,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "subgrid_vacuum_parity_used_for_selection": False,
+        "allowed_write_surface": allowed_write_surface,
+        "forbidden_public_surfaces": forbidden_public_surfaces,
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "private plane-wave request/spec wiring is now implementation-ready, "
+            "but unchanged subgrid-vacuum parity remains unscored and is the next "
+            "required gate before fixture quality or true R/T readiness"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -7640,8 +7984,26 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    adapter_implementation_metadata = (
+        _private_plane_wave_source_adapter_implementation_metadata(
+            adapter_design_metadata=adapter_design_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_source_adapter_implementation_status": (
+                adapter_implementation_metadata["status"]
+            ),
+            "private_plane_wave_source_adapter_implementation": (
+                adapter_implementation_metadata
+            ),
+            "private_plane_wave_source_adapter_implementation_next_prerequisite": (
+                adapter_implementation_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_source_adapter_design_next_prerequisite"
+        "private_plane_wave_source_adapter_implementation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -7711,6 +8073,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"records {plane_wave_wiring_metadata['terminal_outcome']}"
                 "; the private plane-wave source request/spec adapter design "
                 f"lane records {adapter_design_metadata['terminal_outcome']}"
+                "; the private plane-wave source request/spec adapter "
+                "implementation lane records "
+                f"{adapter_implementation_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -7720,7 +8085,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_source_adapter_design_next_prerequisite"
+                "private_plane_wave_source_adapter_implementation_next_prerequisite"
             ],
         }
 
@@ -9878,9 +10243,64 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         adapter_design["next_prerequisite"]
         == metadata["private_plane_wave_source_adapter_design_next_prerequisite"]
     )
+    adapter_implementation = metadata[
+        "private_plane_wave_source_adapter_implementation"
+    ]
+    assert metadata["private_plane_wave_source_adapter_implementation_status"] == (
+        _PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_STATUS
+    )
+    assert adapter_implementation["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_ADAPTER_IMPLEMENTATION_STATUS
+    )
+    assert adapter_implementation["upstream_adapter_design_status"] == (
+        metadata["private_plane_wave_source_adapter_design_status"]
+    )
+    assert (
+        adapter_implementation["candidate_ladder_declared_before_implementation"]
+        is True
+    )
+    assert adapter_implementation["candidate_ladder_declared_before_slow_scoring"] is True
+    assert adapter_implementation["candidate_count"] == 4
+    assert adapter_implementation["selected_candidate_id"] == (
+        "IMPL2_private_plane_wave_jit_spec_and_injection"
+    )
+    assert adapter_implementation["request_builder_ready"] is True
+    assert adapter_implementation["adapter_implementation_ready"] is True
+    assert adapter_implementation["plane_wave_fixture_path_wired"] is True
+    assert adapter_implementation["w1_contract_runtime_represented"] is True
+    assert adapter_implementation["subgrid_vacuum_parity_scored"] is False
+    assert adapter_implementation["fixture_quality_ready"] is False
+    assert adapter_implementation["true_rt_readiness_unlocked"] is False
+    assert "rfx/api.py" in adapter_implementation["forbidden_public_surfaces"]
+    impl_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in adapter_implementation["candidate_ladder"]
+    }
+    assert impl_candidates["IMPL1_private_plane_wave_request_and_builder"][
+        "request_builder_ready"
+    ] is True
+    impl2 = impl_candidates["IMPL2_private_plane_wave_jit_spec_and_injection"]
+    assert impl2["accepted_candidate"] is True
+    assert impl2["private_request"] == "_PrivatePlaneWaveSourceRequest"
+    assert impl2["private_spec"] == "_PrivatePlaneWaveSourceSpec"
+    assert impl2["existing_private_tfsf_hook_reused_as_w1"] is False
+    assert adapter_implementation["public_claim_allowed"] is False
+    assert adapter_implementation["public_observable_promoted"] is False
+    assert adapter_implementation["true_rt_public_observable_promoted"] is False
+    assert (
+        adapter_implementation["dft_flux_tfsf_port_sparameter_promoted"] is False
+    )
+    assert (
+        adapter_implementation["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_adapter_implementation_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata["private_plane_wave_source_adapter_design_next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_adapter_implementation_next_prerequisite"
+        ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -9904,7 +10324,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata["private_plane_wave_source_adapter_design_next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_adapter_implementation_next_prerequisite"
+        ]
     )
     assert (
         "same-contract private reference helper is present"
@@ -9974,6 +10396,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_plane_wave_source_adapter_design_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_plane_wave_source_adapter_implementation_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

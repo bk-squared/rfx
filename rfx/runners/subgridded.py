@@ -26,6 +26,10 @@ _PRIVATE_TFSF_MESSAGE = (
     "private SBP-SAT benchmark TFSF-style incident fields must be fine-owned "
     "strict-interior placements"
 )
+_PRIVATE_PLANE_WAVE_MESSAGE = (
+    "private SBP-SAT benchmark plane-wave sources must be fine-owned "
+    "strict-interior placements"
+)
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,32 @@ class _PrivateTFSFIncidentRequest:
     only by ``run_subgridded_benchmark_flux`` and exists to test whether a
     paired incident E/H correction can recover private fixture quality without
     widening ``Simulation.add_tfsf_source`` or public ``Result`` surfaces.
+    """
+
+    name: str
+    axis: str
+    coordinate: float
+    electric_component: str
+    magnetic_component: str
+    propagation_sign: int
+    amplitude: float
+    f0_hz: float
+    bandwidth: float
+    phase_rad: float
+    x_span: tuple[float, float]
+    y_span: tuple[float, float]
+    window: str = "rect"
+    window_alpha: float = 0.25
+
+
+@dataclass(frozen=True)
+class _PrivatePlaneWaveSourceRequest:
+    """Private benchmark-only uniform plane-wave source for SBP-SAT evidence.
+
+    This request is the private W1/R1 source contract carrier.  It is accepted
+    only by private benchmark helpers and is intentionally not public TFSF,
+    not a public source API, and not surfaced through ``Simulation.run()`` or
+    public ``Result`` fields.
     """
 
     name: str
@@ -275,6 +305,31 @@ def _private_tfsf_electric_waveform(
     return amplitude * carrier * envelope * taper
 
 
+def _private_plane_wave_electric_waveform(
+    request: _PrivatePlaneWaveSourceRequest,
+    *,
+    dt: float,
+    n_steps: int,
+) -> np.ndarray:
+    f0 = float(request.f0_hz)
+    bandwidth = float(request.bandwidth)
+    amplitude = float(request.amplitude)
+    if not (np.isfinite(f0) and f0 > 0.0):
+        raise ValueError(f"{_PRIVATE_PLANE_WAVE_MESSAGE}; f0_hz must be positive")
+    if not (np.isfinite(bandwidth) and bandwidth > 0.0):
+        raise ValueError(f"{_PRIVATE_PLANE_WAVE_MESSAGE}; bandwidth must be positive")
+    if not np.isfinite(amplitude):
+        raise ValueError(f"{_PRIVATE_PLANE_WAVE_MESSAGE}; amplitude must be finite")
+
+    times = np.arange(n_steps, dtype=np.float64) * float(dt)
+    tau = 1.0 / (np.pi * f0 * bandwidth)
+    t0 = 5.0 * tau
+    envelope = np.exp(-(((times - t0) / tau) ** 2))
+    carrier = np.sin(2.0 * np.pi * f0 * times + float(request.phase_rad))
+    taper = _sheet_temporal_window(n_steps, request.window, request.window_alpha)
+    return amplitude * carrier * envelope * taper
+
+
 def _build_private_tfsf_incident_specs(
     requests: (
         tuple[_PrivateTFSFIncidentRequest, ...] | list[_PrivateTFSFIncidentRequest]
@@ -355,6 +410,94 @@ def _build_private_tfsf_incident_specs(
                 hi1=int(hi1),
                 lo2=int(lo2),
                 hi2=int(hi2),
+            )
+        )
+    return tuple(specs)
+
+
+def _build_private_plane_wave_source_specs(
+    requests: (
+        tuple[_PrivatePlaneWaveSourceRequest, ...] | list[_PrivatePlaneWaveSourceRequest]
+    ),
+    *,
+    shape_f: tuple[int, int, int],
+    offsets: tuple[float, float, float],
+    dx_f: float,
+    dt: float,
+    n_steps: int,
+):
+    """Validate and lower private benchmark plane-wave sources."""
+
+    from rfx.core.yee import EPS_0, MU_0
+    from rfx.subgridding.jit_runner import _PrivatePlaneWaveSourceSpec
+
+    specs = []
+    eta0 = float(np.sqrt(MU_0 / EPS_0))
+    for request in requests:
+        axis_i = _axis_index(request.axis)
+        if axis_i != 2:
+            raise ValueError(
+                f"{_PRIVATE_PLANE_WAVE_MESSAGE}; only z-axis incidence is supported"
+            )
+        if int(request.propagation_sign) != 1:
+            raise ValueError(
+                f"{_PRIVATE_PLANE_WAVE_MESSAGE}; only +z propagation is supported"
+            )
+        if request.electric_component != "ex" or request.magnetic_component != "hy":
+            raise ValueError(
+                f"{_PRIVATE_PLANE_WAVE_MESSAGE}; only ex/hy polarization is supported"
+            )
+
+        try:
+            index = _local_strict_normal_index(
+                coordinate=request.coordinate,
+                offset=offsets[axis_i],
+                dx=dx_f,
+                n_cells=shape_f[axis_i],
+            )
+        except ValueError as exc:
+            raise ValueError(
+                str(exc).replace(
+                    _STRICT_INTERIOR_MESSAGE, _PRIVATE_PLANE_WAVE_MESSAGE
+                )
+            ) from exc
+        lo1, hi1 = _local_strict_span_bounds(
+            span=request.x_span,
+            offset=offsets[0],
+            dx=dx_f,
+            n_cells=shape_f[0],
+            label="x",
+            message=_PRIVATE_PLANE_WAVE_MESSAGE,
+        )
+        lo2, hi2 = _local_strict_span_bounds(
+            span=request.y_span,
+            offset=offsets[1],
+            dx=dx_f,
+            n_cells=shape_f[1],
+            label="y",
+            message=_PRIVATE_PLANE_WAVE_MESSAGE,
+        )
+        electric_values = _private_plane_wave_electric_waveform(
+            request,
+            dt=float(dt),
+            n_steps=int(n_steps),
+        )
+        magnetic_values = electric_values / eta0
+        specs.append(
+            _PrivatePlaneWaveSourceSpec(
+                name=str(request.name),
+                axis=axis_i,
+                index=int(index),
+                electric_component=str(request.electric_component),
+                magnetic_component=str(request.magnetic_component),
+                propagation_sign=int(request.propagation_sign),
+                electric_values=jnp.asarray(electric_values, dtype=jnp.float32),
+                magnetic_values=jnp.asarray(magnetic_values, dtype=jnp.float32),
+                lo1=int(lo1),
+                hi1=int(hi1),
+                lo2=int(lo2),
+                hi2=int(hi2),
+                contract="private_uniform_plane_wave_source",
             )
         )
     return tuple(specs)
@@ -624,7 +767,11 @@ def run_private_tfsf_reference_flux(
     planes: tuple[_BenchmarkFluxPlaneRequest, ...] | list[_BenchmarkFluxPlaneRequest],
     private_tfsf_incidents: (
         tuple[_PrivateTFSFIncidentRequest, ...] | list[_PrivateTFSFIncidentRequest]
-    ),
+    ) = (),
+    private_plane_wave_sources: (
+        tuple[_PrivatePlaneWaveSourceRequest, ...]
+        | list[_PrivatePlaneWaveSourceRequest]
+    ) = (),
 ) -> _BenchmarkFluxRun:
     """Run a private same-contract uniform reference for SBP-SAT TFSF evidence.
 
@@ -646,6 +793,8 @@ def run_private_tfsf_reference_flux(
     from rfx.subgridding.jit_runner import (
         _BenchmarkFluxPlaneResult,
         _accumulate_benchmark_flux_plane,
+        _apply_private_plane_wave_source_e,
+        _apply_private_plane_wave_source_h,
         _apply_private_tfsf_incident_e,
         _apply_private_tfsf_incident_h,
         _empty_benchmark_flux_accumulator,
@@ -701,6 +850,14 @@ def run_private_tfsf_reference_flux(
         dt=float(grid.dt),
         n_steps=n_steps,
     )
+    private_plane_wave_specs = _build_private_plane_wave_source_specs(
+        tuple(private_plane_wave_sources),
+        shape_f=shape,
+        offsets=offsets,
+        dx_f=float(grid.dx),
+        dt=float(grid.dt),
+        n_steps=n_steps,
+    )
 
     use_cpml = (
         sim._boundary == "cpml"
@@ -732,6 +889,12 @@ def run_private_tfsf_reference_flux(
                 incident,
                 incident.magnetic_values[step_idx],
             )
+        for source in private_plane_wave_specs:
+            private_state = _apply_private_plane_wave_source_h(
+                private_state,
+                source,
+                source.magnetic_values[step_idx],
+            )
         return _state_from_private_subgrid(state, private_state)
 
     def _apply_private_e_all(state: FDTDState, step_idx):
@@ -741,6 +904,12 @@ def run_private_tfsf_reference_flux(
                 private_state,
                 incident,
                 incident.electric_values[step_idx],
+            )
+        for source in private_plane_wave_specs:
+            private_state = _apply_private_plane_wave_source_e(
+                private_state,
+                source,
+                source.electric_values[step_idx],
             )
         return _state_from_private_subgrid(state, private_state)
 
@@ -889,6 +1058,8 @@ def _run_subgridded_path_impl(
     _private_sheet_sources: tuple[_PrivateAnalyticSheetSourceRequest, ...]
     | None = None,
     _private_tfsf_incidents: tuple[_PrivateTFSFIncidentRequest, ...] | None = None,
+    _private_plane_wave_sources: tuple[_PrivatePlaneWaveSourceRequest, ...]
+    | None = None,
 ) -> _BenchmarkFluxRun:
     """Internal implementation shared by public and benchmark-only paths."""
 
@@ -1093,6 +1264,16 @@ def _run_subgridded_path_impl(
             dt=float(dt),
             n_steps=n_steps,
         )
+    private_plane_wave_specs = ()
+    if _private_plane_wave_sources:
+        private_plane_wave_specs = _build_private_plane_wave_source_specs(
+            tuple(_private_plane_wave_sources),
+            shape_f=shape_f,
+            offsets=(x_off, y_off, z_off),
+            dx_f=dx_f,
+            dt=float(dt),
+            n_steps=n_steps,
+        )
 
     result = _run_sg(
         grid_coarse,
@@ -1141,6 +1322,7 @@ def _run_subgridded_path_impl(
         _benchmark_flux_planes=benchmark_flux_specs,
         _private_sheet_sources=private_sheet_specs,
         _private_tfsf_incidents=private_tfsf_specs,
+        _private_plane_wave_sources=private_plane_wave_specs,
     )
 
     public_result = Result(
@@ -1173,15 +1355,20 @@ def run_subgridded_benchmark_flux(
         | list[_PrivateTFSFIncidentRequest]
         | None
     ) = None,
+    private_plane_wave_sources: (
+        tuple[_PrivatePlaneWaveSourceRequest, ...]
+        | list[_PrivatePlaneWaveSourceRequest]
+        | None
+    ) = None,
 ) -> _BenchmarkFluxRun:
     """Run the private SBP-SAT benchmark-only flux accumulator path.
 
     Public DFT/flux requests still fail in the regular API validator.  This
     helper accepts only private fine-owned plane requests plus optional
-    private analytic sheet sources or private TFSF-style incident fields, and
-    returns private raw accumulators alongside the ordinary public ``Result``
-    to prove the benchmark does not leak into ``Result.dft_planes`` or
-    ``Result.flux_monitors``.
+    private analytic sheet sources, private TFSF-style incident fields, or
+    private plane-wave sources, and returns private raw accumulators alongside
+    the ordinary public ``Result`` to prove the benchmark does not leak into
+    ``Result.dft_planes`` or ``Result.flux_monitors``.
     """
 
     if sim._dx is None and sim._geometry:
@@ -1202,4 +1389,5 @@ def run_subgridded_benchmark_flux(
         _benchmark_flux_planes=tuple(planes),
         _private_sheet_sources=tuple(sheet_sources or ()),
         _private_tfsf_incidents=tuple(private_tfsf_incidents or ()),
+        _private_plane_wave_sources=tuple(private_plane_wave_sources or ()),
     )

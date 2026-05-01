@@ -99,25 +99,26 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave source request/spec adapter
-implementation before subgrid-vacuum parity. The private solver-local skew E/H
-helper is retained as a bounded production-context hunk, the accepted boundary
-subset has direct helper-execution evidence, and the F0-F4 private
-fixture-quality repair ladder preserves the failing boundary-expanded baseline.
-The previous analytic source lanes isolated the old sheet-source phase-front
-failure, recorded `private_uniform_plane_wave_source_self_oracle_ready` for a
-private prototype uniform plane-wave source self-oracle, and then recorded
+The immediate lane is now private subgrid-vacuum plane-wave parity scoring with
+the private adapter. The private solver-local skew E/H helper is retained as a
+bounded production-context hunk, the accepted boundary subset has direct
+helper-execution evidence, and the F0-F4 private fixture-quality repair ladder
+preserves the failing boundary-expanded baseline. The previous analytic source
+lanes isolated the old sheet-source phase-front failure, recorded
+`private_uniform_plane_wave_source_self_oracle_ready` for a private prototype
+uniform plane-wave source self-oracle, and then recorded
 `private_uniform_plane_wave_reference_contract_ready` for the private
 same-contract uniform reference. The follow-up subgrid-vacuum lane recorded
 `private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion`; the
 fixture-path wiring lane recorded
-`private_plane_wave_fixture_path_wiring_blocked_no_public_promotion`; and the
-request/spec adapter design lane now records
-`private_runner_plane_wave_adapter_design_ready`. The goal gate therefore
-remains claims-closed until that private adapter is implemented, unchanged
-vacuum-stability thresholds are scored, and later true R/T readiness proves the
-hunk improves the real solver path without breaking CPML/non-CPML symmetry,
-boundary guards, update/coupling bounds, or the unchanged `0.02`
+`private_plane_wave_fixture_path_wiring_blocked_no_public_promotion`; the
+request/spec adapter design lane recorded
+`private_runner_plane_wave_adapter_design_ready`; and the adapter implementation
+lane now records `private_plane_wave_adapter_implemented_parity_pending`. The
+goal gate therefore remains claims-closed until unchanged vacuum-stability
+thresholds are scored through that private adapter and later true R/T readiness
+proves the hunk improves the real solver path without breaking CPML/non-CPML
+symmetry, boundary guards, update/coupling bounds, or the unchanged `0.02`
 manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,

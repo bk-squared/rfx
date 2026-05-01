@@ -111,6 +111,30 @@ class _PrivateTFSFIncidentSpec(NamedTuple):
     hi2: int
 
 
+class _PrivatePlaneWaveSourceSpec(NamedTuple):
+    """Private benchmark-only uniform z-normal plane-wave source.
+
+    This is the W1/R1 fixture contract carrier for private SBP-SAT benchmark
+    evidence.  It is intentionally separate from the private TFSF-style
+    incident spec so fixture-quality recovery cannot relabel the older TFSF
+    hook as a plane-wave source.
+    """
+
+    name: str
+    axis: int
+    index: int
+    electric_component: str
+    magnetic_component: str
+    propagation_sign: int
+    electric_values: jnp.ndarray
+    magnetic_values: jnp.ndarray
+    lo1: int
+    hi1: int
+    lo2: int
+    hi2: int
+    contract: str
+
+
 class SubgridResult(NamedTuple):
     """Result from the canonical JIT subgridded runner."""
 
@@ -312,6 +336,46 @@ def _apply_private_tfsf_incident_e(
     return state._replace(ex_f=ex_f)
 
 
+def _apply_private_plane_wave_source_h(
+    state: SubgridState3D,
+    source: _PrivatePlaneWaveSourceSpec,
+    magnetic_value,
+) -> SubgridState3D:
+    """Apply the private plane-wave H field in the post-H hook slot."""
+
+    if source.axis != 2:
+        raise ValueError("private plane-wave source currently supports z axis only")
+    if source.magnetic_component != "hy":
+        raise ValueError("private plane-wave source magnetic component must be hy")
+    magnetic_value = jnp.asarray(magnetic_value, dtype=state.hy_f.dtype)
+    hy_f = state.hy_f.at[
+        source.lo1 : source.hi1,
+        source.lo2 : source.hi2,
+        source.index - 1,
+    ].add(magnetic_value)
+    return state._replace(hy_f=hy_f)
+
+
+def _apply_private_plane_wave_source_e(
+    state: SubgridState3D,
+    source: _PrivatePlaneWaveSourceSpec,
+    electric_value,
+) -> SubgridState3D:
+    """Apply the private plane-wave E field in the post-E hook slot."""
+
+    if source.axis != 2:
+        raise ValueError("private plane-wave source currently supports z axis only")
+    if source.electric_component != "ex":
+        raise ValueError("private plane-wave source electric component must be ex")
+    electric_value = jnp.asarray(electric_value, dtype=state.ex_f.dtype)
+    ex_f = state.ex_f.at[
+        source.lo1 : source.hi1,
+        source.lo2 : source.hi2,
+        source.index,
+    ].add(electric_value)
+    return state._replace(ex_f=ex_f)
+
+
 def run_subgridded_jit(
     grid_c: Grid,
     mats_c: MaterialArrays,
@@ -332,6 +396,8 @@ def run_subgridded_jit(
     _benchmark_flux_planes: tuple[_BenchmarkFluxPlaneSpec, ...] | None = None,
     _private_sheet_sources: tuple[_PrivateAnalyticSheetSourceSpec, ...] | None = None,
     _private_tfsf_incidents: tuple[_PrivateTFSFIncidentSpec, ...] | None = None,
+    _private_plane_wave_sources: tuple[_PrivatePlaneWaveSourceSpec, ...]
+    | None = None,
 ) -> SubgridResult:
     """Run the canonical Phase-1 subgridding lane via ``jax.lax.scan``."""
 
@@ -365,6 +431,7 @@ def run_subgridded_jit(
     benchmark_flux_planes = tuple(_benchmark_flux_planes or ())
     private_sheet_sources = tuple(_private_sheet_sources or ())
     private_tfsf_incidents = tuple(_private_tfsf_incidents or ())
+    private_plane_wave_sources = tuple(_private_plane_wave_sources or ())
     use_benchmark_flux = bool(benchmark_flux_planes)
 
     shape_c = (config.nx_c, config.ny_c, config.nz_c)
@@ -463,6 +530,30 @@ def run_subgridded_jit(
             )
         return state
 
+    def _apply_private_plane_wave_source_h_all(
+        state: SubgridState3D,
+        step_idx: jnp.ndarray,
+    ) -> SubgridState3D:
+        for source in private_plane_wave_sources:
+            state = _apply_private_plane_wave_source_h(
+                state,
+                source,
+                source.magnetic_values[step_idx],
+            )
+        return state
+
+    def _apply_private_plane_wave_source_e_all(
+        state: SubgridState3D,
+        step_idx: jnp.ndarray,
+    ) -> SubgridState3D:
+        for source in private_plane_wave_sources:
+            state = _apply_private_plane_wave_source_e(
+                state,
+                source,
+                source.electric_values[step_idx],
+            )
+        return state
+
     def _sample_probes(state: SubgridState3D) -> jnp.ndarray:
         if not prb_meta:
             return jnp.zeros(0, dtype=jnp.float32)
@@ -486,13 +577,15 @@ def run_subgridded_jit(
     def _advance(state: SubgridState3D, cpml_state, step_idx: jnp.ndarray):
         private_post_h_hook = None
         private_post_e_hook = None
-        if private_tfsf_incidents:
+        if private_tfsf_incidents or private_plane_wave_sources:
 
             def private_post_h_hook(hook_state):
-                return _apply_private_tfsf_incident_h_all(hook_state, step_idx)
+                hook_state = _apply_private_tfsf_incident_h_all(hook_state, step_idx)
+                return _apply_private_plane_wave_source_h_all(hook_state, step_idx)
 
             def private_post_e_hook(hook_state):
-                return _apply_private_tfsf_incident_e_all(hook_state, step_idx)
+                hook_state = _apply_private_tfsf_incident_e_all(hook_state, step_idx)
+                return _apply_private_plane_wave_source_e_all(hook_state, step_idx)
 
         if use_cpml:
             return step_subgrid_3d_with_cpml(
