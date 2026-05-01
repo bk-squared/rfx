@@ -224,9 +224,15 @@ transverse-uniformity and vacuum-parity gates still fail. The follow-up private
 source/reference phase-front fixture-contract redesign lane now records
 `private_source_phase_front_self_oracle_failed`: the uniform private
 source/reference phase-front self-oracle itself exceeds unchanged phase-spread
-and magnitude-CV thresholds before subgrid vacuum parity can be blamed. The next
-safe lane is private analytic source phase-front self-oracle repair, not public
-promotion.
+and magnitude-CV thresholds before subgrid vacuum parity can be blamed. The
+follow-up private analytic source phase-front self-oracle repair lane now
+records
+`private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion`:
+global temporal phase changes, sheet phase-center reasoning, the existing
+center-core aperture proxy, and active-mask observable narrowing do not produce
+a private uniform-reference phase-front self-oracle that passes unchanged
+thresholds. The next safe lane is private analytic plane-wave source
+implementation redesign, not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

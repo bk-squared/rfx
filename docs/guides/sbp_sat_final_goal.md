@@ -99,19 +99,20 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private analytic source phase-front self-oracle repair
-after the source/reference phase-front fixture-contract redesign failed at the
-uniform-reference self-oracle.  The private solver-local skew E/H helper is
-retained as a bounded production-context hunk, the accepted boundary subset has
-direct helper-execution evidence, and the F0-F4 private fixture-quality repair
-ladder preserves the failing boundary-expanded baseline.  However, the current
-uniform private source/reference phase front itself exceeds unchanged
-phase-spread and magnitude-CV thresholds before subgrid vacuum parity can be
-blamed, so the lane remains claims-closed until that analytic source self-oracle
-can recover fixture quality and later true R/T readiness proves the hunk
-improves the real solver path without breaking CPML/non-CPML symmetry, boundary
-guards, update/coupling bounds, or the unchanged `0.02` manufactured-ledger
-threshold.
+The immediate lane is now private analytic plane-wave source implementation
+redesign after the analytic source phase-front self-oracle repair lane failed
+closed.  The private solver-local skew E/H helper is retained as a bounded
+production-context hunk, the accepted boundary subset has direct
+helper-execution evidence, and the F0-F4 private fixture-quality repair ladder
+preserves the failing boundary-expanded baseline.  However, the current uniform
+private source/reference phase front itself exceeds unchanged phase-spread and
+magnitude-CV thresholds before subgrid vacuum parity can be blamed, and the
+A0-A5 self-oracle repair ladder did not produce a passing private source
+contract. The lane therefore remains claims-closed until an analytic plane-wave
+source implementation can create a clean uniform-reference phase-front
+self-oracle and later true R/T readiness proves the hunk improves the real solver
+path without breaking CPML/non-CPML symmetry, boundary guards,
+update/coupling bounds, or the unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

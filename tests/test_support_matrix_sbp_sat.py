@@ -965,13 +965,77 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == source_reference["next_prerequisite"]
     )
+    analytic_source = benchmark_gate[
+        "private_analytic_source_phase_front_self_oracle"
+    ]
+    assert benchmark_gate[
+        "private_analytic_source_phase_front_self_oracle_status"
+    ] == "private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion"
+    assert analytic_source["terminal_outcome"] == (
+        "private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion"
+    )
+    assert analytic_source[
+        "upstream_source_reference_phase_front_status"
+    ] == benchmark_gate["private_source_reference_phase_front_fixture_contract_status"]
+    assert analytic_source["candidate_ladder_declared_before_slow_scoring"] is True
+    assert analytic_source["candidate_count"] == 6
+    assert (
+        analytic_source["thresholds_checksum"]
+        == benchmark_gate["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert analytic_source["selected_candidate_id"] == (
+        "A5_fail_closed_analytic_source_self_oracle_blocked"
+    )
+    assert analytic_source["source_self_oracle_separated_from_subgrid_parity"] is True
+    assert analytic_source["subgrid_vacuum_parity_used_for_selection"] is False
+    assert analytic_source["source_phase_front_self_oracle_ready"] is False
+    assert analytic_source["source_phase_front_self_oracle_blocked"] is True
+    assert analytic_source["private_fixture_contract_ready"] is False
+    analytic_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in analytic_source["candidate_ladder"]
+    }
+    a1 = analytic_candidates["A1_temporal_phase_waveform_self_oracle"]
+    assert a1["global_time_phase_rotation_invariant"] is True
+    assert a1["changes_center_referenced_phase_spread"] is False
+    assert a1["accepted_candidate"] is False
+    a3 = analytic_candidates["A3_aperture_edge_taper_or_guard_contract"]
+    assert a3["uses_existing_center_core_proxy"] is True
+    assert a3["proxy_not_authoritative_source_self_oracle"] is True
+    assert a3["metrics"]["transverse_phase_spread_deg"] > 1.0
+    a4 = analytic_candidates["A4_uniform_reference_observable_contract"]
+    assert a4["single_cell_or_center_only_mask_rejected"] is True
+    assert a4["threshold_laundering_rejected"] is True
+    assert a4["accepted_candidate"] is False
+    assert (
+        analytic_candidates["A5_fail_closed_analytic_source_self_oracle_blocked"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert analytic_source["solver_hunk_retained"] is False
+    assert analytic_source["solver_behavior_changed"] is False
+    assert analytic_source["production_patch_applied"] is False
+    assert analytic_source["sbp_sat_3d_repair_applied"] is False
+    assert analytic_source["api_preflight_changes_allowed"] is False
+    assert analytic_source["rfx_api_changes_allowed"] is False
+    assert analytic_source["public_claim_allowed"] is False
+    assert analytic_source["public_observable_promoted"] is False
+    assert analytic_source["true_rt_public_observable_promoted"] is False
+    assert analytic_source["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_analytic_source_phase_front_self_oracle_next_prerequisite"
+        ]
+        == analytic_source["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private analytic source phase-front self-oracle repair before "
-        "fixture-contract candidates ralplan"
+        "private analytic plane-wave source implementation redesign after "
+        "source self-oracle blocked ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private analytic source phase-front self-oracle repair before "
-        "fixture-contract candidates ralplan"
+        "private analytic plane-wave source implementation redesign after "
+        "source self-oracle blocked ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1233,8 +1297,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private analytic source phase-front self-oracle repair before "
-        "fixture-contract candidates ralplan"
+        "private analytic plane-wave source implementation redesign after "
+        "source self-oracle blocked ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

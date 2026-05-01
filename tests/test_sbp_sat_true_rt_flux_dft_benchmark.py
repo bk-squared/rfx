@@ -687,6 +687,27 @@ _PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_PRECEDENCE = (
     "private_reference_normalization_contract_ready",
     "private_source_phase_front_self_oracle_failed",
 )
+_PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_STATUS = (
+    "private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion"
+)
+_PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_NEXT_PREREQUISITE = (
+    "private analytic plane-wave source implementation redesign after "
+    "source self-oracle blocked ralplan"
+)
+_PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_TERMINAL_OUTCOMES = (
+    "private_temporal_phase_source_contract_ready",
+    "private_spatial_phase_center_contract_ready",
+    "private_aperture_guard_phase_front_contract_ready",
+    "private_uniform_reference_observable_contract_ready",
+    "private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion",
+)
+_PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_PRECEDENCE = (
+    "private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion",
+    "private_uniform_reference_observable_contract_ready",
+    "private_aperture_guard_phase_front_contract_ready",
+    "private_spatial_phase_center_contract_ready",
+    "private_temporal_phase_source_contract_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -4537,6 +4558,157 @@ def _private_source_reference_phase_front_fixture_contract_metadata(
     }
 
 
+def _private_analytic_source_phase_front_self_oracle_metadata(
+    *,
+    source_reference_metadata: dict[str, object],
+    fixture_repair_metadata: dict[str, object],
+) -> dict[str, object]:
+    source_candidates = {
+        candidate["source_candidate_id"]: candidate
+        for candidate in fixture_repair_metadata["private_fixture_candidates"]
+    }
+    phase_front_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_reference_metadata["candidate_ladder"]
+    }
+    p1 = phase_front_candidates["P1_phase_front_self_oracle"]
+    p2 = phase_front_candidates["P2_same_contract_reference_normalization_redesign"]
+    c1_aperture_proxy = source_candidates["C1_center_core_measurement_control"]
+    baseline_metrics = p1["metrics"]
+    thresholds = p1["thresholds"]
+    a0 = {
+        "candidate_id": "A0_source_phase_front_baseline_freeze",
+        "candidate_family": "baseline_failure_freeze",
+        "accepted_candidate": False,
+        "upstream_source_reference_status": source_reference_metadata[
+            "terminal_outcome"
+        ],
+        "metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_failure_retained": True,
+    }
+    a1 = {
+        "candidate_id": "A1_temporal_phase_waveform_self_oracle",
+        "candidate_family": "global_temporal_phase_convention",
+        "accepted_candidate": False,
+        "global_time_phase_rotation_invariant": True,
+        "changes_center_referenced_phase_spread": False,
+        "changes_modal_magnitude_cv": False,
+        "metrics": baseline_metrics,
+        "rejection_reason": (
+            "global temporal phase conventions cannot change center-referenced "
+            "spatial phase spread or modal magnitude CV"
+        ),
+    }
+    a2 = {
+        "candidate_id": "A2_spatial_sheet_phase_center_contract",
+        "candidate_family": "sheet_coordinate_y_stagger_phase_center",
+        "accepted_candidate": False,
+        "phase_center_candidate_documented": True,
+        "solver_edit_attempted": False,
+        "production_patch_applied": False,
+        "metrics": baseline_metrics,
+        "rejection_reason": (
+            "current sheet phase-center evidence still leaves the uniform "
+            "reference phase spread and magnitude CV above unchanged thresholds"
+        ),
+    }
+    a3 = {
+        "candidate_id": "A3_aperture_edge_taper_or_guard_contract",
+        "candidate_family": "finite_aperture_guard_proxy",
+        "accepted_candidate": False,
+        "uses_existing_center_core_proxy": True,
+        "proxy_candidate_id": c1_aperture_proxy["source_candidate_id"],
+        "proxy_not_authoritative_source_self_oracle": True,
+        "metrics": c1_aperture_proxy["metrics"],
+        "rejection_reason": (
+            "the best existing aperture guard proxy remains measurement-only "
+            "and still fails unchanged phase-front and vacuum-parity gates"
+        ),
+    }
+    a4 = {
+        "candidate_id": "A4_uniform_reference_observable_contract",
+        "candidate_family": "uniform_reference_active_mask_observable_contract",
+        "accepted_candidate": False,
+        "active_mask_cells": 400,
+        "single_cell_or_center_only_mask_rejected": True,
+        "threshold_laundering_rejected": True,
+        "metrics": baseline_metrics,
+        "normalization_metrics": p2["metrics"],
+        "rejection_reason": (
+            "the physically documented active-mask uniform-reference observable "
+            "fails unchanged phase-front thresholds; narrowing to a center-only "
+            "mask would be measurement substitution"
+        ),
+    }
+    a5 = {
+        "candidate_id": "A5_fail_closed_analytic_source_self_oracle_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_STATUS,
+        "next_prerequisite": _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_NEXT_PREREQUISITE,
+        "reason": (
+            "A1-A4 did not produce a private uniform-reference phase-front "
+            "self-oracle passing unchanged phase/CV thresholds"
+        ),
+    }
+    candidates = (a0, a1, a2, a3, a4, a5)
+    return {
+        "status": _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_STATUS,
+        "terminal_outcome": _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_PRECEDENCE
+        ),
+        "diagnostic_scope": "private_analytic_source_phase_front_self_oracle_only",
+        "upstream_source_reference_phase_front_status": source_reference_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite A0/A1/A2/A3/A4/A5 ladder; P1 remains a uniform-reference "
+            "source self-oracle and cannot use subgrid-vacuum parity or public "
+            "TFSF/DFT/flux observables"
+        ),
+        "selected_candidate_id": "A5_fail_closed_analytic_source_self_oracle_blocked",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "source_self_oracle_separated_from_subgrid_parity": True,
+        "subgrid_vacuum_parity_used_for_selection": False,
+        "baseline_phase_front_metrics": baseline_metrics,
+        "best_aperture_proxy_metrics": c1_aperture_proxy["metrics"],
+        "source_phase_front_self_oracle_ready": False,
+        "source_phase_front_self_oracle_blocked": True,
+        "private_fixture_contract_ready": False,
+        "fixture_quality_ready": False,
+        "reference_quality_ready": False,
+        "measurement_controls_can_replace_original_fixture": False,
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_NEXT_PREREQUISITE,
+        "reason": (
+            "the private analytic sheet source does not yet create a uniform "
+            "reference phase-front self-oracle under unchanged thresholds; "
+            "fixture candidates, solver blame, and true R/T remain blocked"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -6458,8 +6630,27 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    analytic_source_metadata = (
+        _private_analytic_source_phase_front_self_oracle_metadata(
+            source_reference_metadata=source_reference_metadata,
+            fixture_repair_metadata=fixture_repair_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_analytic_source_phase_front_self_oracle_status": (
+                analytic_source_metadata["status"]
+            ),
+            "private_analytic_source_phase_front_self_oracle": (
+                analytic_source_metadata
+            ),
+            "private_analytic_source_phase_front_self_oracle_next_prerequisite": (
+                analytic_source_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_source_reference_phase_front_fixture_contract_next_prerequisite"
+        "private_analytic_source_phase_front_self_oracle_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -6517,6 +6708,8 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private source/reference phase-front fixture-contract "
                 "redesign lane records "
                 f"{source_reference_metadata['terminal_outcome']}"
+                "; the private analytic source phase-front self-oracle repair "
+                f"lane records {analytic_source_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -6526,7 +6719,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_source_reference_phase_front_fixture_contract_next_prerequisite"
+                "private_analytic_source_phase_front_self_oracle_next_prerequisite"
             ],
         }
 
@@ -8278,11 +8471,72 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_source_reference_phase_front_fixture_contract_next_prerequisite"
         ]
     )
+    analytic_source = metadata["private_analytic_source_phase_front_self_oracle"]
+    assert metadata["private_analytic_source_phase_front_self_oracle_status"] == (
+        _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_STATUS
+    )
+    assert analytic_source["terminal_outcome"] == (
+        _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_STATUS
+    )
+    assert analytic_source[
+        "upstream_source_reference_phase_front_status"
+    ] == metadata["private_source_reference_phase_front_fixture_contract_status"]
+    assert analytic_source["candidate_ladder_declared_before_slow_scoring"] is True
+    assert analytic_source["candidate_count"] == 6
+    assert analytic_source["thresholds_checksum"] == (
+        metadata["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert analytic_source["selected_candidate_id"] == (
+        "A5_fail_closed_analytic_source_self_oracle_blocked"
+    )
+    assert analytic_source["source_self_oracle_separated_from_subgrid_parity"] is True
+    assert analytic_source["subgrid_vacuum_parity_used_for_selection"] is False
+    assert analytic_source["source_phase_front_self_oracle_ready"] is False
+    assert analytic_source["source_phase_front_self_oracle_blocked"] is True
+    assert analytic_source["private_fixture_contract_ready"] is False
+    a_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in analytic_source["candidate_ladder"]
+    }
+    a1 = a_candidates["A1_temporal_phase_waveform_self_oracle"]
+    assert a1["global_time_phase_rotation_invariant"] is True
+    assert a1["changes_center_referenced_phase_spread"] is False
+    assert a1["accepted_candidate"] is False
+    a3 = a_candidates["A3_aperture_edge_taper_or_guard_contract"]
+    assert a3["uses_existing_center_core_proxy"] is True
+    assert a3["proxy_not_authoritative_source_self_oracle"] is True
+    assert a3["metrics"]["transverse_phase_spread_deg"] > (
+        _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+    )
+    a4 = a_candidates["A4_uniform_reference_observable_contract"]
+    assert a4["single_cell_or_center_only_mask_rejected"] is True
+    assert a4["threshold_laundering_rejected"] is True
+    assert a4["accepted_candidate"] is False
+    assert (
+        a_candidates["A5_fail_closed_analytic_source_self_oracle_blocked"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert analytic_source["solver_hunk_retained"] is False
+    assert analytic_source["solver_behavior_changed"] is False
+    assert analytic_source["production_patch_applied"] is False
+    assert analytic_source["sbp_sat_3d_repair_applied"] is False
+    assert analytic_source["api_preflight_changes_allowed"] is False
+    assert analytic_source["rfx_api_changes_allowed"] is False
+    assert analytic_source["public_claim_allowed"] is False
+    assert analytic_source["public_observable_promoted"] is False
+    assert analytic_source["true_rt_public_observable_promoted"] is False
+    assert analytic_source["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        analytic_source["next_prerequisite"]
+        == metadata[
+            "private_analytic_source_phase_front_self_oracle_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata[
-            "private_source_reference_phase_front_fixture_contract_next_prerequisite"
-        ]
+        == metadata["private_analytic_source_phase_front_self_oracle_next_prerequisite"]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -8306,9 +8560,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata[
-            "private_source_reference_phase_front_fixture_contract_next_prerequisite"
-        ]
+        == metadata["private_analytic_source_phase_front_self_oracle_next_prerequisite"]
     )
     assert (
         "same-contract private reference helper is present"
@@ -8361,5 +8613,8 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["private_source_reference_phase_front_fixture_contract_status"]
         in metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_analytic_source_phase_front_self_oracle_status"] in (
+        metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

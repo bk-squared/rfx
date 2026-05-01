@@ -287,8 +287,12 @@ F0-F4 ladder, and because the private source/reference phase-front
 fixture-contract redesign lane now records
 `private_source_phase_front_self_oracle_failed`, the next safe lane is `private
 analytic source phase-front self-oracle repair before fixture-contract
-candidates ralplan`. Hook experiments remain closed and public promotion
-remains closed.
+candidates ralplan`. The follow-up private analytic source phase-front
+self-oracle repair lane now records
+`private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion`,
+so the next safe lane is `private analytic plane-wave source implementation
+redesign after source self-oracle blocked ralplan`. Hook experiments remain
+closed and public promotion remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true
 R/T as deferred.
