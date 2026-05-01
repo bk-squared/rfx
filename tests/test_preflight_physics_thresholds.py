@@ -221,3 +221,58 @@ def test_dielectric_sparam_active_raises_threshold_to_20():
     assert any("S-parameter extraction" in i for i in issues_b), (
         f"S-param-specific suffix missing; issues: {issues_b!r}"
     )
+
+
+def test_wg_port_evanescent_no_warning_below_threshold():
+    """freqs up to 6.5 GHz in a 40×20 mm guide: fc_TE20=7.5 GHz,
+    threshold=0.90×7.5=6.75 GHz → 6.5 < 6.75, no evanescent warning."""
+    import jax.numpy as jnp
+    from rfx.boundaries.spec import BoundarySpec, Boundary
+
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        dx=0.003,
+        boundary=BoundarySpec(
+            x="cpml",
+            y=Boundary(lo="pec", hi="pec"),
+            z=Boundary(lo="pec", hi="pec"),
+        ),
+        cpml_layers=4,
+    )
+    sim.add_waveguide_port(
+        0.020, direction="+x", mode=(1, 0), mode_type="TE",
+        freqs=jnp.linspace(5e9, 6.5e9, 4), f0=6e9, bandwidth=0.5,
+    )
+    issues = _issues(sim)
+    assert not _has(issues, "evanescent"), (
+        f"6.5 GHz < 0.90×fc_TE20=6.75 GHz should not warn; issues: {issues!r}"
+    )
+
+
+def test_wg_port_evanescent_warns_above_threshold():
+    """freqs up to 7.0 GHz in a 40×20 mm guide: fc_TE20=7.5 GHz,
+    threshold=0.90×7.5=6.75 GHz → 7.0 > 6.75, evanescent warning must fire."""
+    import jax.numpy as jnp
+    from rfx.boundaries.spec import BoundarySpec, Boundary
+
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        dx=0.003,
+        boundary=BoundarySpec(
+            x="cpml",
+            y=Boundary(lo="pec", hi="pec"),
+            z=Boundary(lo="pec", hi="pec"),
+        ),
+        cpml_layers=4,
+    )
+    sim.add_waveguide_port(
+        0.020, direction="+x", mode=(1, 0), mode_type="TE",
+        freqs=jnp.linspace(5e9, 7.0e9, 4), f0=6e9, bandwidth=0.5,
+    )
+    issues = _issues(sim)
+    assert _has(issues, "contamination"), (
+        f"7.0 GHz > 0.90×fc_next must trigger evanescent contamination warning; "
+        f"issues: {issues!r}"
+    )

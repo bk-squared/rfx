@@ -3372,6 +3372,89 @@ class Simulation:
                         stacklevel=4,
                     )
 
+    def _check_waveguide_port_evanescent(self) -> None:
+        """Warn when measurement frequencies exceed 0.90 × fc_next for any port.
+
+        At f/fc_next > 0.90 the evanescent decay constant is short enough
+        that the next higher mode leaks into the single-mode extractor.
+        Empirically (40 mm × 20 mm guide, 74 mm port-short spacing):
+          f/fc_next = 0.87 → 0.3 % contamination — acceptable for |S11| gate 0.99
+          f/fc_next = 0.93 → 1.5 % contamination — registers as |S11| < 1
+
+        Uses port.freqs (measurement freqs) when set; falls back to freq_max.
+        """
+        import warnings as _w
+
+        for entry in self._waveguide_ports:
+            axis = entry.direction[1]  # 'x', 'y', or 'z'
+            if axis == "x":
+                dim0 = (entry.y_range[1] - entry.y_range[0]
+                        if entry.y_range is not None else self._domain[1])
+                dim1 = (entry.z_range[1] - entry.z_range[0]
+                        if entry.z_range is not None else self._domain[2])
+            elif axis == "y":
+                dim0 = (entry.x_range[1] - entry.x_range[0]
+                        if entry.x_range is not None else self._domain[0])
+                dim1 = (entry.z_range[1] - entry.z_range[0]
+                        if entry.z_range is not None else self._domain[2])
+            else:
+                dim0 = (entry.x_range[1] - entry.x_range[0]
+                        if entry.x_range is not None else self._domain[0])
+                dim1 = (entry.y_range[1] - entry.y_range[0]
+                        if entry.y_range is not None else self._domain[1])
+
+            a, b = max(dim0, dim1), min(dim0, dim1)
+            if a <= 0 or b <= 0:
+                continue
+
+            m0, n0 = entry.mode
+
+            def _fc(m, n, _a=a, _b=b):
+                return (C0 / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
+
+            fc_excited = _fc(m0, n0)
+            fc_next = min(
+                (
+                    _fc(m, n)
+                    for m in range(0, 4)
+                    for n in range(0, 4)
+                    if not (m == 0 and n == 0)
+                    and not (m == m0 and n == n0)
+                    and _fc(m, n) > fc_excited * (1 + 1e-6)
+                ),
+                default=None,
+            )
+            if fc_next is None:
+                continue
+
+            if entry.freqs is not None:
+                f_check = float(np.max(np.asarray(entry.freqs)))
+            else:
+                f_check = self._freq_max
+
+            threshold = 0.90 * fc_next
+            if f_check > threshold:
+                mn_next = min(
+                    ((m, n) for m in range(0, 4) for n in range(0, 4)
+                     if not (m == 0 and n == 0) and not (m == m0 and n == n0)
+                     and abs(_fc(m, n) - fc_next) < 1.0),
+                    default=(None, None),
+                )
+                next_label = (f"TE{mn_next[0]}{mn_next[1]}"
+                              if mn_next[0] is not None else "next")
+                _w.warn(
+                    f"Waveguide port '{entry.name}': max measurement frequency "
+                    f"{f_check / 1e9:.3f} GHz exceeds 0.90 × fc_next="
+                    f"{threshold / 1e9:.3f} GHz "
+                    f"(fc_{entry.mode_type}{m0}{n0}={fc_excited / 1e9:.3f} GHz, "
+                    f"fc_{next_label}={fc_next / 1e9:.3f} GHz). "
+                    f"Evanescent {next_label} contamination may exceed 1 % and "
+                    f"registers as |S11| < 1 in a lossless structure. "
+                    f"Restrict measurement freqs below {threshold / 1e9:.3f} GHz "
+                    f"or increase port-to-obstacle distance.",
+                    stacklevel=4,
+                )
+
     def preflight(
         self,
         *,
@@ -4282,6 +4365,8 @@ class Simulation:
                                 stacklevel=3,
                             )
                             break
+
+        self._check_waveguide_port_evanescent()
 
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""
