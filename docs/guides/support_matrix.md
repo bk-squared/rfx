@@ -215,8 +215,14 @@ probes exercise the retained helper under representative all-PEC, selected PMC,
 periodic, and bounded-CPML accepted boundary arguments, while the canonical
 `BoundarySpec` unsupported classes stay hard-fail. Unchanged fixture-quality
 gates remain blocked by transverse uniformity and vacuum-parity errors, so the
-next safe lane is private fixture-quality blocker repair after boundary
-coexistence validation, not public promotion.
+follow-up private fixture-quality blocker repair lane now records
+`private_fixture_quality_blocker_persists_no_public_promotion`: the F0-F4
+finite ladder preserves the boundary-expanded baseline, reuses the existing
+private fixture/source candidates and phase-referenced measurement diagnostics,
+and selects the fail-closed terminal outcome because unchanged
+transverse-uniformity and vacuum-parity gates still fail. The next safe lane is
+private source/reference phase-front fixture-contract redesign, not public
+promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

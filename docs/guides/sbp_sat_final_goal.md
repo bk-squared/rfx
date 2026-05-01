@@ -99,14 +99,17 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private fixture-quality blocker repair after boundary
-coexistence validation.  The private solver-local skew E/H helper is retained as
-a bounded production-context hunk and the accepted boundary subset has direct
-helper-execution evidence, but the lane remains claims-closed until
-fixture-quality recovery and later true R/T readiness gates prove that the hunk
-improves the real solver path without breaking CPML/non-CPML symmetry, boundary
-guards, update/coupling bounds, or the unchanged `0.02` manufactured-ledger
-threshold.
+The immediate lane is now private source/reference phase-front fixture-contract
+redesign after the fixture-quality blocker repair ladder failed closed.  The
+private solver-local skew E/H helper is retained as a bounded production-context
+hunk, the accepted boundary subset has direct helper-execution evidence, and the
+F0-F4 private fixture-quality repair ladder preserves the failing
+boundary-expanded baseline.  However, unchanged transverse-uniformity and
+vacuum-parity gates still fail, so the lane remains claims-closed until a
+source/reference phase-front fixture contract can recover fixture quality and
+later true R/T readiness proves the hunk improves the real solver path without
+breaking CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
+unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

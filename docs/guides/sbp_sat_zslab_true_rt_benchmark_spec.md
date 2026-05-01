@@ -281,9 +281,11 @@ retained private solver-local hunk but no public observable, and because the
 private boundary coexistence and fixture-quality validation lane now records
 `private_boundary_coexistence_passed_fixture_quality_blocked` after direct
 accepted-boundary helper probes and unchanged fixture-quality replay, the next
-safe lane is `private fixture-quality blocker repair after boundary coexistence
-validation ralplan`. Hook experiments remain closed and public promotion remains
-closed.
+private fixture-quality blocker repair lane records
+`private_fixture_quality_blocker_persists_no_public_promotion` after a finite
+F0-F4 ladder. The next safe lane is `private source/reference phase-front
+fixture-contract redesign after fixture-quality blocker persisted ralplan`. Hook
+experiments remain closed and public promotion remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true
 R/T as deferred.

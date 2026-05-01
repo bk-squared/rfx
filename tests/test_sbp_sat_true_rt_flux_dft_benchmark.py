@@ -647,6 +647,25 @@ _PRIVATE_BOUNDARY_FIXTURE_UNSUPPORTED_CLASSES = (
     "one_side_touch_periodic_axis",
     "mixed_absorber_families",
 )
+_PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_STATUS = (
+    "private_fixture_quality_blocker_persists_no_public_promotion"
+)
+_PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_NEXT_PREREQUISITE = (
+    "private source/reference phase-front fixture-contract redesign after "
+    "fixture-quality blocker persisted ralplan"
+)
+_PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_TERMINAL_OUTCOMES = (
+    "private_fixture_quality_candidate_ready_true_rt_pending",
+    "private_measurement_contract_repair_candidate_ready",
+    "private_fixture_quality_solver_local_repair_retained",
+    "private_fixture_quality_blocker_persists_no_public_promotion",
+)
+_PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_PRECEDENCE = (
+    "private_fixture_quality_blocker_persists_no_public_promotion",
+    "private_fixture_quality_solver_local_repair_retained",
+    "private_measurement_contract_repair_candidate_ready",
+    "private_fixture_quality_candidate_ready_true_rt_pending",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -4070,6 +4089,222 @@ def _private_boundary_coexistence_fixture_validation_metadata(
     }
 
 
+def _private_fixture_quality_blocker_repair_metadata(
+    *,
+    boundary_fixture_metadata: dict[str, object],
+    recovery_metadata: dict[str, object],
+    measurement_redesign_metadata: dict[str, object],
+    reference_quality_ready: bool,
+    fixture_quality_gates: dict[str, bool],
+    reference_quality_blockers: list[dict[str, object]],
+    dominant_reference_quality_blocker: str,
+) -> dict[str, object]:
+    blocker_names = tuple(
+        blocker["name"] if isinstance(blocker, dict) else str(blocker)
+        for blocker in reference_quality_blockers
+    )
+
+    def _candidate_summary(candidate: dict[str, object]) -> dict[str, object]:
+        can_claim = bool(candidate["can_claim_original_fixture_recovery"])
+        ready = bool(candidate["reference_quality_ready"])
+        accepted = can_claim and ready
+        return {
+            "candidate_id": f"F1_{candidate['candidate_id']}",
+            "source_candidate_id": candidate["candidate_id"],
+            "candidate_type": candidate["candidate_type"],
+            "parameters": candidate["parameters"],
+            "solver_touch": bool(candidate["solver_touch"]),
+            "reference_quality_ready": ready,
+            "fixture_quality_ready": bool(candidate["fixture_quality_ready"]),
+            "can_claim_private_fixture_quality": accepted,
+            "measurement_control_only": not can_claim,
+            "accepted_candidate": accepted,
+            "metrics": candidate["metrics"],
+            "fixture_quality_gates": candidate["fixture_quality_gates"],
+            "dominant_reference_quality_blocker": candidate[
+                "dominant_reference_quality_blocker"
+            ],
+            "rejection_reason": None
+            if accepted
+            else (
+                "measurement_control_cannot_claim_original_fixture_recovery"
+                if not can_claim
+                else "unchanged_fixture_quality_thresholds_not_satisfied"
+            ),
+        }
+
+    private_fixture_candidates = [
+        _candidate_summary(candidate) for candidate in recovery_metadata["candidates"]
+    ]
+    accepted_fixture_candidate = next(
+        (
+            candidate
+            for candidate in private_fixture_candidates
+            if candidate["accepted_candidate"]
+        ),
+        None,
+    )
+    measurement_contract_ready_outcomes = (
+        "measurement_contract_redesign_ready",
+        "source_reference_normalization_contract_mismatch",
+        "mixed_measurement_contract_and_interface_floor",
+    )
+    measurement_contract_candidate_ready = (
+        measurement_redesign_metadata["terminal_outcome"]
+        in measurement_contract_ready_outcomes
+    )
+    solver_local_candidate_retained = False
+    if accepted_fixture_candidate is not None:
+        terminal_outcome = "private_fixture_quality_candidate_ready_true_rt_pending"
+        selected_candidate_id = accepted_fixture_candidate["candidate_id"]
+    elif solver_local_candidate_retained:
+        terminal_outcome = "private_fixture_quality_solver_local_repair_retained"
+        selected_candidate_id = "F3_localized_solver_residual_probe"
+    elif measurement_contract_candidate_ready:
+        terminal_outcome = "private_measurement_contract_repair_candidate_ready"
+        selected_candidate_id = "F2_phase_referenced_measurement_contract_probe"
+    else:
+        terminal_outcome = _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_STATUS
+        selected_candidate_id = "F4_fail_closed_fixture_blocker_persists"
+
+    current_fixture_metrics = recovery_metadata["current_fixture_metrics"]
+    f0 = {
+        "candidate_id": "F0_baseline_boundary_fixture_freeze",
+        "candidate_family": "baseline_failure_freeze",
+        "accepted_candidate": False,
+        "upstream_boundary_status": boundary_fixture_metadata["terminal_outcome"],
+        "metrics": current_fixture_metrics,
+        "fixture_quality_gates": fixture_quality_gates,
+        "fixture_quality_blockers": blocker_names,
+        "dominant_fixture_quality_blocker": dominant_reference_quality_blocker,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_failure_retained": not bool(reference_quality_ready),
+        "rejection_reason": "baseline_preserved_as_failure_until_all_gates_pass",
+    }
+    f1 = {
+        "candidate_id": "F1_private_fixture_geometry_source_contract_ladder",
+        "candidate_family": "predeclared_fixture_source_measurement_controls",
+        "candidate_count": len(private_fixture_candidates),
+        "accepted_candidate": accepted_fixture_candidate is not None,
+        "selected_private_fixture_candidate_id": None
+        if accepted_fixture_candidate is None
+        else accepted_fixture_candidate["candidate_id"],
+        "candidates": private_fixture_candidates,
+        "result_authority": (
+            "finite private fixture/source ladder only; measurement controls "
+            "cannot replace original fixture-quality gates"
+        ),
+    }
+    f2 = {
+        "candidate_id": "F2_phase_referenced_measurement_contract_probe",
+        "candidate_family": "phase_mode_measurement_contract_diagnostics",
+        "diagnostic_only": True,
+        "accepted_candidate": measurement_contract_candidate_ready,
+        "selected_classification": measurement_redesign_metadata[
+            "selected_classification"
+        ],
+        "d2_ready": bool(measurement_redesign_metadata["d2_ready"]),
+        "d3_ready": bool(measurement_redesign_metadata["d3_ready"]),
+        "d4_positive": bool(measurement_redesign_metadata["d4_positive"]),
+        "diagnostic_ids": measurement_redesign_metadata["diagnostic_ids"],
+        "fixture_quality_gate_replacement": False,
+        "rejection_reason": None
+        if measurement_contract_candidate_ready
+        else "phase_referenced_diagnostics_did_not_justify_measurement_contract_repair",
+    }
+    f3 = {
+        "candidate_id": "F3_localized_solver_residual_probe",
+        "candidate_family": "bounded_private_solver_contingency",
+        "solver_edit_attempted": False,
+        "accepted_candidate": solver_local_candidate_retained,
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "rejection_reason": (
+            "no localized residual solver repair was justified after the "
+            "private fixture/source and measurement-contract evidence"
+        ),
+    }
+    f4 = {
+        "candidate_id": "F4_fail_closed_fixture_blocker_persists",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": terminal_outcome
+        == _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_STATUS,
+        "selected_terminal_outcome": _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_STATUS,
+        "next_prerequisite": (
+            _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "unchanged transverse-uniformity and vacuum-parity fixture-quality "
+            "gates remain below threshold after the finite private ladder"
+        ),
+    }
+    return {
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_PRECEDENCE
+        ),
+        "diagnostic_scope": "private_fixture_quality_blocker_repair_only",
+        "upstream_boundary_coexistence_fixture_validation_status": (
+            boundary_fixture_metadata["terminal_outcome"]
+        ),
+        "upstream_fixture_recovery_status": recovery_metadata["terminal_outcome"],
+        "upstream_measurement_contract_status": measurement_redesign_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": 5,
+        "candidate_policy": (
+            "finite F0/F1/F2/F3/F4 ladder; no adaptive sweeps, no threshold "
+            "changes, no public observable promotion, and no solver edit unless "
+            "localized private residual evidence first justifies it"
+        ),
+        "selection_rule": (
+            "select fixture-quality readiness only when an original/private "
+            "fixture candidate passes unchanged gates; otherwise select the "
+            "deepest justified fail-closed blocker"
+        ),
+        "selected_candidate_id": selected_candidate_id,
+        "candidate_ladder": (f0, f1, f2, f3, f4),
+        "private_fixture_candidates": tuple(private_fixture_candidates),
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "reference_quality_thresholds": _reference_quality_thresholds(),
+        "current_fixture_metrics": current_fixture_metrics,
+        "fixture_quality_gates": fixture_quality_gates,
+        "fixture_quality_ready": bool(reference_quality_ready),
+        "reference_quality_ready": bool(reference_quality_ready),
+        "baseline_failure_retained": not bool(reference_quality_ready),
+        "fixture_quality_blockers": blocker_names,
+        "dominant_fixture_quality_blocker": dominant_reference_quality_blocker,
+        "measurement_controls_can_replace_original_fixture": False,
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_NEXT_PREREQUISITE,
+        "reason": (
+            "boundary coexistence is locked for the retained private solver hunk, "
+            "but the finite private fixture-quality blocker repair ladder did "
+            "not produce a claims-bearing fixture candidate under unchanged "
+            "thresholds; public promotion remains closed"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -5951,8 +6186,28 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    fixture_repair_metadata = _private_fixture_quality_blocker_repair_metadata(
+        boundary_fixture_metadata=boundary_fixture_metadata,
+        recovery_metadata=recovery_metadata,
+        measurement_redesign_metadata=measurement_redesign_metadata,
+        reference_quality_ready=reference_quality_ready,
+        fixture_quality_gates=fixture_quality_gates,
+        reference_quality_blockers=reference_quality_blockers,
+        dominant_reference_quality_blocker=dominant_reference_quality_blocker,
+    )
+    base_metadata.update(
+        {
+            "private_fixture_quality_blocker_repair_status": (
+                fixture_repair_metadata["status"]
+            ),
+            "private_fixture_quality_blocker_repair": fixture_repair_metadata,
+            "private_fixture_quality_blocker_repair_next_prerequisite": (
+                fixture_repair_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_boundary_coexistence_fixture_validation_next_prerequisite"
+        "private_fixture_quality_blocker_repair_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -6005,9 +6260,18 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"{operator_solver_metadata['terminal_outcome']}"
                 "; the private boundary coexistence fixture validation records "
                 f"{boundary_fixture_metadata['terminal_outcome']}"
+                "; the private fixture-quality blocker repair lane records "
+                f"{fixture_repair_metadata['terminal_outcome']}"
+                "; historical private design lanes remain part of the blocker "
+                "chain: discrete_eh_work_ledger_mismatch, "
+                "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
+                "paired_face_coupling_design_ready, "
+                "production_context_mismatch_detected, "
+                "time_centered_staging_contract_ready, and "
+                "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_boundary_coexistence_fixture_validation_next_prerequisite"
+                "private_fixture_quality_blocker_repair_next_prerequisite"
             ],
         }
 
@@ -7632,11 +7896,60 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert boundary_fixture["public_claim_allowed"] is False
     assert boundary_fixture["public_observable_promoted"] is False
     assert boundary_fixture["hook_experiment_allowed"] is False
+    fixture_repair = metadata["private_fixture_quality_blocker_repair"]
+    assert metadata["private_fixture_quality_blocker_repair_status"] == (
+        _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_STATUS
+    )
+    assert fixture_repair["terminal_outcome"] == (
+        _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_STATUS
+    )
+    assert fixture_repair[
+        "upstream_boundary_coexistence_fixture_validation_status"
+    ] == metadata["private_boundary_coexistence_fixture_validation_status"]
+    assert fixture_repair["candidate_ladder_declared_before_slow_scoring"] is True
+    assert fixture_repair["candidate_count"] == 5
+    assert fixture_repair["thresholds_checksum"] == (
+        metadata["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert fixture_repair["baseline_failure_retained"] is True
+    assert fixture_repair["fixture_quality_ready"] is False
+    assert fixture_repair["reference_quality_ready"] is False
+    assert (
+        fixture_repair["selected_candidate_id"]
+        == "F4_fail_closed_fixture_blocker_persists"
+    )
+    assert fixture_repair["candidate_ladder"][-1]["accepted_candidate"] is True
+    assert fixture_repair["measurement_controls_can_replace_original_fixture"] is False
+    assert fixture_repair["solver_hunk_retained"] is False
+    assert fixture_repair["solver_behavior_changed"] is False
+    assert fixture_repair["production_patch_applied"] is False
+    assert fixture_repair["sbp_sat_3d_repair_applied"] is False
+    assert fixture_repair["api_preflight_changes_allowed"] is False
+    assert fixture_repair["rfx_api_changes_allowed"] is False
+    assert fixture_repair["public_claim_allowed"] is False
+    assert fixture_repair["public_observable_promoted"] is False
+    assert fixture_repair["true_rt_public_observable_promoted"] is False
+    assert fixture_repair["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        fixture_repair["next_prerequisite"]
+        == metadata["private_fixture_quality_blocker_repair_next_prerequisite"]
+    )
+    f1_candidates = {
+        candidate["source_candidate_id"]: candidate
+        for candidate in fixture_repair["private_fixture_candidates"]
+    }
+    assert "C0_current_helper_original_fixture" in f1_candidates
+    assert "C1_center_core_measurement_control" in f1_candidates
+    assert f1_candidates["C1_center_core_measurement_control"][
+        "measurement_control_only"
+    ] is True
+    assert not any(
+        candidate["accepted_candidate"]
+        for candidate in fixture_repair["private_fixture_candidates"]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata[
-            "private_boundary_coexistence_fixture_validation_next_prerequisite"
-        ]
+        == metadata["private_fixture_quality_blocker_repair_next_prerequisite"]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -7660,9 +7973,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata[
-            "private_boundary_coexistence_fixture_validation_next_prerequisite"
-        ]
+        == metadata["private_fixture_quality_blocker_repair_next_prerequisite"]
     )
     assert (
         "same-contract private reference helper is present"
@@ -7707,6 +8018,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_boundary_coexistence_fixture_validation_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_fixture_quality_blocker_repair_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

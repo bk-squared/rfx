@@ -839,13 +839,65 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == boundary_fixture["next_prerequisite"]
     )
+    fixture_repair = benchmark_gate["private_fixture_quality_blocker_repair"]
+    assert benchmark_gate["private_fixture_quality_blocker_repair_status"] == (
+        "private_fixture_quality_blocker_persists_no_public_promotion"
+    )
+    assert fixture_repair["terminal_outcome"] == (
+        "private_fixture_quality_blocker_persists_no_public_promotion"
+    )
+    assert fixture_repair[
+        "upstream_boundary_coexistence_fixture_validation_status"
+    ] == benchmark_gate["private_boundary_coexistence_fixture_validation_status"]
+    assert fixture_repair["candidate_ladder_declared_before_slow_scoring"] is True
+    assert fixture_repair["candidate_count"] == 5
+    assert (
+        fixture_repair["thresholds_checksum"]
+        == benchmark_gate["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert fixture_repair["baseline_failure_retained"] is True
+    assert fixture_repair["fixture_quality_ready"] is False
+    assert fixture_repair["reference_quality_ready"] is False
+    assert (
+        fixture_repair["selected_candidate_id"]
+        == "F4_fail_closed_fixture_blocker_persists"
+    )
+    assert fixture_repair["candidate_ladder"][-1]["accepted_candidate"] is True
+    assert fixture_repair["measurement_controls_can_replace_original_fixture"] is False
+    assert fixture_repair["solver_hunk_retained"] is False
+    assert fixture_repair["solver_behavior_changed"] is False
+    assert fixture_repair["production_patch_applied"] is False
+    assert fixture_repair["sbp_sat_3d_repair_applied"] is False
+    assert fixture_repair["api_preflight_changes_allowed"] is False
+    assert fixture_repair["rfx_api_changes_allowed"] is False
+    assert fixture_repair["public_claim_allowed"] is False
+    assert fixture_repair["public_observable_promoted"] is False
+    assert fixture_repair["true_rt_public_observable_promoted"] is False
+    assert fixture_repair["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate["private_fixture_quality_blocker_repair_next_prerequisite"]
+        == fixture_repair["next_prerequisite"]
+    )
+    fixture_candidates = {
+        candidate["source_candidate_id"]: candidate
+        for candidate in fixture_repair["private_fixture_candidates"]
+    }
+    assert "C0_current_helper_original_fixture" in fixture_candidates
+    assert "C1_center_core_measurement_control" in fixture_candidates
+    assert fixture_candidates["C1_center_core_measurement_control"][
+        "measurement_control_only"
+    ] is True
+    assert not any(
+        candidate["accepted_candidate"]
+        for candidate in fixture_repair["private_fixture_candidates"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private fixture-quality blocker repair after boundary coexistence "
-        "validation ralplan"
+        "private source/reference phase-front fixture-contract redesign after "
+        "fixture-quality blocker persisted ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private fixture-quality blocker repair after boundary coexistence "
-        "validation ralplan"
+        "private source/reference phase-front fixture-contract redesign after "
+        "fixture-quality blocker persisted ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1107,8 +1159,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private fixture-quality blocker repair after boundary coexistence "
-        "validation ralplan"
+        "private source/reference phase-front fixture-contract redesign after "
+        "fixture-quality blocker persisted ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
