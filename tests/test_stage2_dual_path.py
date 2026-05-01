@@ -98,9 +98,20 @@ def test_runners_uniform_kottke_pec_smoke():
 
 
 def test_runners_uniform_kottke_pec_differs_from_default():
-    """Stage 2 unified path with PEC must produce *different* fields
-    from the same sim run with the default Stage 1 path. Confirms the
-    new code path is actually exercised (not silently no-op)."""
+    """Stage 2 unified path with a PEC geometry object must produce
+    *different* fields from Stage 1 default. Confirms the kottke_pec
+    code path is exercised (not silently no-op).
+
+    For pure boundary-face PEC (no geometry shapes), Stage 1 and Stage
+    2 are numerically equivalent — both correctly zero ghost cells and
+    apply the same vacuum update. The distinction only appears at PEC
+    *geometry* boundary cells, where Stage 2 uses Kottke inv-eps
+    averaging (fractional inv) while Stage 1 uses sigma=1e10 (binary
+    masking). A thin PEC strip across the waveguide cross-section
+    creates this sub-pixel geometry difference.
+    """
+    from rfx.geometry.csg import Box
+
     def _build():
         sim = Simulation(
             freq_max=10e9,
@@ -113,24 +124,22 @@ def test_runners_uniform_kottke_pec_differs_from_default():
             ),
             cpml_layers=4,
         )
+        # Thin PEC strip (1 mm wide in x) at x=25mm inside the waveguide.
+        # Stage 2 assigns fractional inv tensor at the PEC boundary cells
+        # via Kottke averaging; Stage 1 uses sigma=1e10 + binary mask.
+        sim.add(Box((0.025, 0.005, 0.002), (0.026, 0.020, 0.010)),
+                material="pec")
         sim.add_waveguide_port(
-            0.030, direction="+x", mode=(1, 0), mode_type="TE",
+            0.010, direction="+x", mode=(1, 0), mode_type="TE",
             f0=8e9, bandwidth=0.5, name="left",
         )
         return sim
 
-    # n=30 is too few to ramp the modulated-Gaussian source past
-    # noise floor (~1e-17 vacuum decay); use n=100 so the dominant Ez
-    # signal develops to ~1e-2. The two paths give visibly different
-    # boundary-cell behaviour at that point.
-    n = 100
-    r_stage1 = _build().run(n_steps=n)  # default: Stage 1 unified
+    n = 200
+    r_stage1 = _build().run(n_steps=n)
     r_stage2 = _build().run(n_steps=n, subpixel_smoothing="kottke_pec")
     diff_ez = float(np.max(np.abs(np.asarray(r_stage1.state.ez)
                                   - np.asarray(r_stage2.state.ez))))
-    # The two paths use different PEC handling — ULP-level diff is
-    # the floor; the boundary-cell difference shows up at the percent
-    # level once the source has driven the field.
     assert diff_ez > 1e-4, (
         "Stage 2 'kottke_pec' produced near-identical Ez fields to "
         f"Stage 1 default — unified path not exercised. diff={diff_ez:g}"

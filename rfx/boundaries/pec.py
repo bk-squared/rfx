@@ -39,6 +39,8 @@ def apply_pec(state, axes: str = "xyz") -> object:
         ex = ex.at[:, :, -1].set(0.0)
         ey = ey.at[:, :, 0].set(0.0)
         ey = ey.at[:, :, -1].set(0.0)
+        # Ez at k=nz-1 is a ghost cell outside the physical domain.
+        ez = ez.at[:, :, -1].set(0.0)
 
     return state._replace(ex=ex, ey=ey, ez=ez)
 
@@ -76,6 +78,9 @@ def apply_pec_faces(state, faces: set[str]) -> object:
     if "z_hi" in faces:
         ex = ex.at[:, :, -1].set(0.0)
         ey = ey.at[:, :, -1].set(0.0)
+        # Ez at k=nz-1 is a ghost cell at z=(nz-0.5)*dx, outside the
+        # physical domain. Zero it to prevent ghost-layer accumulation.
+        ez = ez.at[:, :, -1].set(0.0)
 
     return state._replace(ex=ex, ey=ey, ez=ez)
 

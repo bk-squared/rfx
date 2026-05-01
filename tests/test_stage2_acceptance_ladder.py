@@ -129,7 +129,7 @@ def test_kottke_pec_short_time_stability_30_periods():
     # Sample the field magnitude at a few checkpoints to detect any
     # growing mode that would be absorbed once it propagates.
     period_steps = int(round((1.0 / 8e9) / sim._build_grid().dt))
-    checkpoint_periods = (5, 15, 30)  # 50 fails — see xfailed companion test
+    checkpoint_periods = (5, 15, 30)  # 50 also passes — ghost-layer fix 2026-05-01
     max_magnitudes = []
     for n_periods in checkpoint_periods:
         n_steps = n_periods * period_steps
@@ -153,22 +153,16 @@ def test_kottke_pec_short_time_stability_30_periods():
     )
 
 
-@pytest.mark.xfail(
-    reason="R5 acceptance pending — 50·τ_period stability not yet "
-    "achieved despite the apply_pec_h_mask fix landed 2026-05-01. "
-    "The fix correctly zeros H inside fully-PEC cells (where inv "
-    "is zero across all 3 components), confirmed by the cylindrical "
-    "PEC dual-path and 30·τ tests passing. But NaN still occurs at "
-    "n=3300 (~50·τ) at k=z_max. Hypothesis: late-time growth is "
-    "not the deep-PEC-interior H propagation alone, but also "
-    "involves boundary cells (k=10 here, with inv_xx=inv_yy=0 but "
-    "inv_zz=0.16 — partial-PEC) where the all-zero mask doesn't "
-    "fire. Damping H at partial-PEC cells distorts physics; needs "
-    "Yee-stagger-aware H mask. Tracked as Step 5 follow-up."
-)
 def test_kottke_pec_late_time_stability_50_periods():
-    """Original R5 gate. Documented xfail until the H-damping
-    architectural gap is closed."""
+    """R5 acceptance: Stage 2 must be stable at 50·τ_period.
+
+    Root cause of the prior xfail (2026-05-01): ez[:,:,-1] at the
+    z_hi PEC boundary is a ghost cell at z=(nz-0.5)*dx, outside the
+    physical domain. It was freely updated by update_e_aniso_inv and
+    formed a resonant feedback loop with hx/hy[:,:,-1] over ~40+
+    periods, eventually overflowing to NaN. Fixed by zeroing this
+    ghost Ez in apply_pec_faces("z_hi") — same fix applies to Stage 1.
+    """
     sim = Simulation(
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
