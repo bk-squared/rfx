@@ -194,7 +194,13 @@ operator-projected face SAT adapter passes S1 preacceptance, but the S2
 production-shaped dry run leaves the manufactured ledger residual above the
 unchanged `0.02` threshold, so no `sbp_sat_3d.py` hunk is retained and the next
 safe lane is private operator-projected face SAT energy-transfer redesign, not
-public observable promotion.
+public observable promotion. The private operator-projected energy-transfer
+redesign now records `private_operator_projected_energy_transfer_contract_ready`:
+the ratio-weighted scalar plus skew E/H operator work form closes the private
+manufactured ledger below the unchanged `0.02` threshold, declares only a future
+separate solver-integration prerequisite, and still retains no `sbp_sat_3d.py`,
+runner, hook, API, Result/SimResult, default-tau, true-R/T, DFT/flux/TFSF/port,
+S-parameter, or public-promotion surface.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

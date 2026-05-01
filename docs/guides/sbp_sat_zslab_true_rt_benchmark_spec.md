@@ -212,6 +212,13 @@ keeps the public claim blocked:
   the unchanged `0.02` threshold, so no `sbp_sat_3d.py` hunk is retained and the
   next safe lane is private operator-projected face SAT energy-transfer redesign.
   This gate is still the private solver integration hunk from global SBP derivative/mortar operator architecture evidence, not a public observable promotion;
+- the private operator-projected energy-transfer redesign now records
+  `private_operator_projected_energy_transfer_contract_ready`: the
+  ratio-weighted scalar plus skew E/H operator work form closes the private
+  manufactured ledger below the unchanged `0.02` threshold without
+  residual-derived coefficients, but this is still a private future-integration
+  contract only, not a retained `sbp_sat_3d.py` solver hunk or public observable
+  promotion;
 - the prior boundary-expanded analytic-sheet sweep is retained as history, not
   as current slab R/T evidence;
 - the current recorded status is therefore **inconclusive**, not a public
@@ -248,9 +255,12 @@ derivative/interior-boundary ladder now records
 derivative/mortar operator architecture lane now records
 `private_global_operator_3d_contract_ready`, and because the private
 solver-integration gate now records
-`private_solver_integration_requires_followup_diagnostic_only`, the next safe
-lane is `private operator-projected face SAT energy-transfer redesign after
-diagnostic-only solver integration gate failed ralplan`. Hook experiments remain
+`private_solver_integration_requires_followup_diagnostic_only`, and because the
+private operator-projected energy-transfer redesign now records
+`private_operator_projected_energy_transfer_contract_ready` with a ledger-passing
+private E/H skew work-form candidate but no retained solver hunk, the next safe
+lane is `private bounded solver integration of operator-projected energy-transfer
+contract after manufactured ledger closure ralplan`. Hook experiments remain
 closed and public promotion remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true

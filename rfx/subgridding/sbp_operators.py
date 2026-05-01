@@ -14,6 +14,8 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.core.yee import EPS_0, MU_0
+
 
 class SBPDerivative1D(NamedTuple):
     """First-derivative SBP operator with a diagonal norm."""
@@ -359,6 +361,105 @@ def operator_projected_sat_pair_face(
     return (
         coarse_face + alpha_c * coarse_mismatch * coarse_mask,
         fine_face + alpha_f * fine_mismatch * fine_mask,
+    )
+
+
+def operator_projected_skew_eh_sat_face(
+    *,
+    ex_c: jnp.ndarray,
+    ey_c: jnp.ndarray,
+    hx_c: jnp.ndarray,
+    hy_c: jnp.ndarray,
+    ex_f: jnp.ndarray,
+    ey_f: jnp.ndarray,
+    hx_f: jnp.ndarray,
+    hy_f: jnp.ndarray,
+    mortar: TensorFaceMortar,
+    alpha_c: float,
+    alpha_f: float,
+    coarse_mask: jnp.ndarray,
+    fine_mask: jnp.ndarray,
+    normal_sign: int = 1,
+) -> tuple[jnp.ndarray, ...]:
+    """Apply a private operator-projected skew E/H face-work candidate.
+
+    The helper is intentionally solver-independent.  It combines a bounded
+    ratio-derived scalar projection with an impedance-weighted tangential
+    skew-pair transfer.  Inputs are interpreted in a face-local tangential
+    basis whose orientation already follows the outward face convention; in that
+    local basis electric updates use projected magnetic jumps through the fixed
+    tangential rotation and magnetic updates use projected electric jumps
+    through the same rotation.  The weights are derived only from the mortar
+    ratio and vacuum impedance, so the candidate stays usable as private
+    energy-transfer evidence without adding public APIs, hooks, runtime
+    switches, or solver wiring.
+    """
+
+    if normal_sign not in (-1, 1):
+        raise ValueError(f"normal_sign must be -1 or 1, got {normal_sign}")
+
+    eta0 = float(np.sqrt(MU_0 / EPS_0))
+    ratio_weight = 1.0 / float(mortar.ratio)
+    skew_weight = 1.0 + ratio_weight
+
+    scalar_pairs = [
+        operator_projected_sat_pair_face(
+            coarse,
+            fine,
+            mortar,
+            alpha_c,
+            alpha_f,
+            coarse_mask,
+            fine_mask,
+        )
+        for coarse, fine in (
+            (ex_c, ex_f),
+            (ey_c, ey_f),
+            (hx_c, hx_f),
+            (hy_c, hy_f),
+        )
+    ]
+
+    def _jump_pair(coarse: jnp.ndarray, fine: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        return restrict_face_mortar(fine, mortar) - coarse, prolong_face_mortar(
+            coarse,
+            mortar,
+        ) - fine
+
+    jex_c, jex_f = _jump_pair(ex_c, ex_f)
+    jey_c, jey_f = _jump_pair(ey_c, ey_f)
+    jhx_c, jhx_f = _jump_pair(hx_c, hx_f)
+    jhy_c, jhy_f = _jump_pair(hy_c, hy_f)
+
+    scalar_deltas = (
+        scalar_pairs[0][0] - ex_c,
+        scalar_pairs[1][0] - ey_c,
+        scalar_pairs[2][0] - hx_c,
+        scalar_pairs[3][0] - hy_c,
+        scalar_pairs[0][1] - ex_f,
+        scalar_pairs[1][1] - ey_f,
+        scalar_pairs[2][1] - hx_f,
+        scalar_pairs[3][1] - hy_f,
+    )
+    skew_deltas = (
+        alpha_c * skew_weight * eta0 * (-jhy_c) * coarse_mask,
+        alpha_c * skew_weight * eta0 * jhx_c * coarse_mask,
+        alpha_c * skew_weight * (-jey_c) / eta0 * coarse_mask,
+        alpha_c * skew_weight * jex_c / eta0 * coarse_mask,
+        alpha_f * skew_weight * eta0 * (-jhy_f) * fine_mask,
+        alpha_f * skew_weight * eta0 * jhx_f * fine_mask,
+        alpha_f * skew_weight * (-jey_f) / eta0 * fine_mask,
+        alpha_f * skew_weight * jex_f / eta0 * fine_mask,
+    )
+    before = (ex_c, ey_c, hx_c, hy_c, ex_f, ey_f, hx_f, hy_f)
+    return tuple(
+        component + ratio_weight * scalar_delta + skew_delta
+        for component, scalar_delta, skew_delta in zip(
+            before,
+            scalar_deltas,
+            skew_deltas,
+            strict=True,
+        )
     )
 
 

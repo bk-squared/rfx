@@ -17,6 +17,9 @@ must continue to describe SBP-SAT subgridding as experimental until the
 main-branch drift, boundary model, benchmark definitions, and unsupported
 runtime surfaces are reconciled.
 
+For a concise local statement of the long-term target and current private
+energy-transfer blocker, see `docs/guides/sbp_sat_final_goal.md`.
+
 ### Current evidence
 
 - `Simulation.add_refinement(...)` currently accepts `z_range`, `ratio`,

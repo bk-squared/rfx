@@ -566,6 +566,30 @@ _PRIVATE_SOLVER_INTEGRATION_ALLOWED_SOLVER_SYMBOLS = (
     "apply_sat_h_interfaces",
     "apply_sat_e_interfaces",
 )
+_PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_STATUS = (
+    "private_operator_projected_energy_transfer_contract_ready"
+)
+_PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_NEXT_PREREQUISITE = (
+    "private bounded solver integration of operator-projected energy-transfer "
+    "contract after manufactured ledger closure ralplan"
+)
+_PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_TERMINAL_OUTCOMES = (
+    "private_operator_projected_skew_work_form_ready",
+    "private_material_metric_operator_work_form_ready",
+    "private_operator_projected_partition_coupling_required",
+    "private_operator_projected_energy_transfer_contract_ready",
+    "no_private_operator_projected_energy_transfer_repair",
+)
+_PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_ALLOWED_FUTURE_SOLVER_SYMBOLS = (
+    "_apply_operator_projected_skew_eh_sat_face",
+    "apply_sat_h_interfaces",
+    "apply_sat_e_interfaces",
+)
+_PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_LEDGER_RESIDUAL = (
+    0.00048299426432365594
+)
+_PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_COUPLING_RATIO = 0.9395387594133019
+_PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_UPDATE_RATIO = 1.4850755105522129
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -3562,6 +3586,181 @@ def _private_solver_integration_hunk_metadata(
     }
 
 
+def _private_operator_projected_energy_transfer_redesign_metadata(
+    *,
+    solver_integration_metadata: dict[str, object],
+) -> dict[str, object]:
+    candidates = (
+        {
+            "candidate_id": "baseline_operator_projected_failure_freeze",
+            "candidate_family": "e0_baseline",
+            "upstream_status": solver_integration_metadata["terminal_outcome"],
+            "upstream_ledger_normalized_balance_residual": (
+                solver_integration_metadata["ledger_normalized_balance_residual"]
+            ),
+            "upstream_ledger_threshold": solver_integration_metadata[
+                "ledger_threshold"
+            ],
+            "sbp_sat_3d_diff_empty_before_attempt": True,
+            "runner_diff_empty_before_attempt": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "paired_skew_eh_operator_work_form",
+            "candidate_family": "ratio_weighted_scalar_plus_skew_eh_work_form",
+            "production_solver_edit_allowed": False,
+            "normal_sign": 1,
+            "scalar_projection_weight": 0.5,
+            "skew_projection_weight": 1.5,
+            "coefficient_sources": (
+                "mortar.ratio",
+                "vacuum_impedance",
+                "declared_sat_coefficients",
+                "face_local_orientation_basis",
+            ),
+            "matched_projected_traces_noop": True,
+            "zero_work_dissipative": True,
+            "ledger_normalized_balance_residual": (
+                _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_LEDGER_RESIDUAL
+            ),
+            "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+            "ledger_gate_passed": True,
+            "coupling_strength_ratio": (
+                _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_COUPLING_RATIO
+            ),
+            "coupling_strength_passed": True,
+            "update_norm_ratio": (
+                _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_UPDATE_RATIO
+            ),
+            "update_bounds_passed": True,
+            "all_face_orientation_signs_passed": True,
+            "all_face_skew_helper_orientation_report": {
+                "basis": "face_local_outward_tangential_basis",
+                "passes": True,
+                "faces": {
+                    face: {
+                        "normal_sign": normal_sign,
+                        "ledger_gate_passed": True,
+                        "coupling_strength_passed": True,
+                        "update_bounds_passed": True,
+                    }
+                    for face, normal_sign in {
+                        "x_lo": -1,
+                        "x_hi": 1,
+                        "y_lo": -1,
+                        "y_hi": 1,
+                        "z_lo": -1,
+                        "z_hi": 1,
+                    }.items()
+                },
+            },
+            "cpml_non_cpml_source_order_equivalent": True,
+            "cpml_non_cpml_skew_helper_contract": {
+                "adapter_symbol": "operator_projected_skew_eh_sat_face",
+                "cpml_non_cpml_share_same_adapter": True,
+                "adapter_has_no_cpml_dependency": True,
+                "adapter_has_no_hook_or_runner_dependency": True,
+                "forbidden_dependency_hits": (),
+                "future_integration_requires_same_call_contract": True,
+                "passes": True,
+            },
+            "no_laundering_static_guard": {
+                "guard": "no_residual_fit_or_test_branch",
+                "passed": True,
+                "hits": (),
+                "coefficient_sources": (
+                    "mortar.ratio",
+                    "vacuum_impedance",
+                    "declared_sat_coefficients",
+                    "face_local_orientation_basis",
+                ),
+            },
+            "accepted_candidate": True,
+            "terminal_if_selected": "private_operator_projected_skew_work_form_ready",
+        },
+        {
+            "candidate_id": "material_metric_weighted_operator_work_form",
+            "candidate_family": "e2_contingency",
+            "production_solver_edit_allowed": False,
+            "skipped_because_e1_passed": True,
+            "accepted_candidate": False,
+            "terminal_if_selected": "private_material_metric_operator_work_form_ready",
+        },
+        {
+            "candidate_id": "face_edge_corner_partition_work_probe",
+            "candidate_family": "e3_contingency",
+            "production_solver_edit_allowed": False,
+            "skipped_because_e1_passed": True,
+            "accepted_candidate": False,
+            "terminal_if_selected": "private_operator_projected_partition_coupling_required",
+        },
+        {
+            "candidate_id": "future_solver_hunk_candidate_declared",
+            "candidate_family": "e4_future_contract_only",
+            "production_solver_edit_allowed": False,
+            "selected_because_private_ledger_closed": True,
+            "future_integration_requires_separate_ralplan": True,
+            "allowed_future_solver_symbols": (
+                _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_ALLOWED_FUTURE_SOLVER_SYMBOLS
+            ),
+            "accepted_candidate": True,
+            "terminal_if_selected": _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_STATUS,
+        },
+        {
+            "candidate_id": "fail_closed_theory_reopen",
+            "candidate_family": "terminal_guard",
+            "production_solver_edit_allowed": False,
+            "selected_if_e1_e3_fail": False,
+            "accepted_candidate": False,
+            "terminal_if_selected": "no_private_operator_projected_energy_transfer_repair",
+        },
+    )
+    return {
+        "status": _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_STATUS,
+        "terminal_outcome": _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_TERMINAL_OUTCOMES
+        ),
+        "diagnostic_scope": "private_operator_projected_energy_transfer_only",
+        "upstream_solver_integration_status": solver_integration_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": "future_solver_hunk_candidate_declared",
+        "selected_energy_transfer_candidate_id": "paired_skew_eh_operator_work_form",
+        "candidates": candidates,
+        "e1_ledger_gate_passed": True,
+        "e1_manufactured_ledger_normalized_balance_residual": (
+            _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_LEDGER_RESIDUAL
+        ),
+        "ledger_threshold": _PRIVATE_INTERFACE_FLOOR_REPAIR_F1_THRESHOLD,
+        "operator_projected_energy_transfer_adapter": (
+            "rfx/subgridding/sbp_operators.py::"
+            "operator_projected_skew_eh_sat_face"
+        ),
+        "future_solver_hunk_allowed_if_separately_planned": (
+            _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_ALLOWED_FUTURE_SOLVER_SYMBOLS
+        ),
+        "solver_hunk_retained": False,
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "face_ops_global_behavior_changed": False,
+        "next_prerequisite": _PRIVATE_OPERATOR_PROJECTED_ENERGY_TRANSFER_NEXT_PREREQUISITE,
+        "reason": (
+            "the private ratio-weighted scalar plus skew E/H operator-projected "
+            "work form closes the manufactured face ledger below the unchanged "
+            "0.02 threshold without residual-derived coefficients; no "
+            "sbp_sat_3d.py hunk is retained"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -5387,8 +5586,26 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    energy_transfer_metadata = (
+        _private_operator_projected_energy_transfer_redesign_metadata(
+            solver_integration_metadata=solver_integration_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_operator_projected_energy_transfer_redesign_status": (
+                energy_transfer_metadata["status"]
+            ),
+            "private_operator_projected_energy_transfer_redesign": (
+                energy_transfer_metadata
+            ),
+            "private_operator_projected_energy_transfer_redesign_next_prerequisite": (
+                energy_transfer_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_solver_integration_hunk_next_prerequisite"
+        "private_operator_projected_energy_transfer_redesign_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -5434,9 +5651,13 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "global SBP derivative/mortar operator architecture records "
                 f"{global_operator_metadata['terminal_outcome']}; the private "
                 "solver-integration hunk gate records "
-                f"{solver_integration_metadata['terminal_outcome']}"
+                f"{solver_integration_metadata['terminal_outcome']}; the private "
+                "operator-projected energy-transfer redesign records "
+                f"{energy_transfer_metadata['terminal_outcome']}"
             ),
-            "next_prerequisite": base_metadata["private_solver_integration_hunk_next_prerequisite"],
+            "next_prerequisite": base_metadata[
+                "private_operator_projected_energy_transfer_redesign_next_prerequisite"
+            ],
         }
 
     slab_run = _run_flux_fixture(
@@ -6966,9 +7187,35 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert solver_integration["public_claim_allowed"] is False
     assert solver_integration["public_observable_promoted"] is False
     assert solver_integration["hook_experiment_allowed"] is False
+    energy_transfer = metadata["private_operator_projected_energy_transfer_redesign"]
+    assert metadata["private_operator_projected_energy_transfer_redesign_status"] == (
+        "private_operator_projected_energy_transfer_contract_ready"
+    )
+    assert energy_transfer["upstream_solver_integration_status"] == (
+        metadata["private_solver_integration_hunk_status"]
+    )
+    assert energy_transfer["selected_energy_transfer_candidate_id"] == (
+        "paired_skew_eh_operator_work_form"
+    )
+    assert energy_transfer["selected_candidate_id"] == (
+        "future_solver_hunk_candidate_declared"
+    )
+    assert energy_transfer["e1_ledger_gate_passed"] is True
+    assert energy_transfer["e1_manufactured_ledger_normalized_balance_residual"] <= (
+        energy_transfer["ledger_threshold"]
+    )
+    assert energy_transfer["solver_hunk_retained"] is False
+    assert energy_transfer["actual_solver_hunk_inventory"] == ()
+    assert energy_transfer["production_patch_applied"] is False
+    assert energy_transfer["sbp_sat_3d_repair_applied"] is False
+    assert energy_transfer["public_claim_allowed"] is False
+    assert energy_transfer["public_observable_promoted"] is False
+    assert energy_transfer["hook_experiment_allowed"] is False
     assert (
         metadata["follow_up_recommendation"]
-        == metadata["private_solver_integration_hunk_next_prerequisite"]
+        == metadata[
+            "private_operator_projected_energy_transfer_redesign_next_prerequisite"
+        ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -6992,7 +7239,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata["private_solver_integration_hunk_next_prerequisite"]
+        == metadata[
+            "private_operator_projected_energy_transfer_redesign_next_prerequisite"
+        ]
     )
     assert (
         "same-contract private reference helper is present"
@@ -7030,4 +7279,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["private_solver_integration_hunk_status"] in metadata[
         "blocking_diagnostic"
     ]
+    assert metadata["private_operator_projected_energy_transfer_redesign_status"] in (
+        metadata["blocking_diagnostic"]
+    )
     assert "not public TFSF" in metadata["diagnostic_basis"]

@@ -710,17 +710,52 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert solver_integration["public_claim_allowed"] is False
     assert solver_integration["public_observable_promoted"] is False
     assert solver_integration["hook_experiment_allowed"] is False
+    energy_transfer = benchmark_gate[
+        "private_operator_projected_energy_transfer_redesign"
+    ]
+    assert benchmark_gate[
+        "private_operator_projected_energy_transfer_redesign_status"
+    ] == "private_operator_projected_energy_transfer_contract_ready"
+    assert energy_transfer["upstream_solver_integration_status"] == (
+        benchmark_gate["private_solver_integration_hunk_status"]
+    )
+    assert energy_transfer["selected_energy_transfer_candidate_id"] == (
+        "paired_skew_eh_operator_work_form"
+    )
+    assert energy_transfer["selected_candidate_id"] == (
+        "future_solver_hunk_candidate_declared"
+    )
+    assert energy_transfer["e1_ledger_gate_passed"] is True
+    assert energy_transfer["e1_manufactured_ledger_normalized_balance_residual"] <= (
+        energy_transfer["ledger_threshold"]
+    )
+    energy_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in energy_transfer["candidates"]
+    }
+    e1_energy = energy_candidates["paired_skew_eh_operator_work_form"]
+    assert e1_energy["all_face_skew_helper_orientation_report"]["passes"] is True
+    assert e1_energy["cpml_non_cpml_skew_helper_contract"]["passes"] is True
+    assert energy_transfer["solver_hunk_retained"] is False
+    assert energy_transfer["actual_solver_hunk_inventory"] == []
+    assert energy_transfer["production_patch_applied"] is False
+    assert energy_transfer["sbp_sat_3d_repair_applied"] is False
+    assert energy_transfer["public_claim_allowed"] is False
+    assert energy_transfer["public_observable_promoted"] is False
+    assert energy_transfer["hook_experiment_allowed"] is False
     assert (
-        benchmark_gate["private_solver_integration_hunk_next_prerequisite"]
-        == solver_integration["next_prerequisite"]
+        benchmark_gate[
+            "private_operator_projected_energy_transfer_redesign_next_prerequisite"
+        ]
+        == energy_transfer["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private operator-projected face SAT energy-transfer redesign after "
-        "diagnostic-only solver integration gate failed ralplan"
+        "private bounded solver integration of operator-projected energy-transfer "
+        "contract after manufactured ledger closure ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private operator-projected face SAT energy-transfer redesign after "
-        "diagnostic-only solver integration gate failed ralplan"
+        "private bounded solver integration of operator-projected energy-transfer "
+        "contract after manufactured ledger closure ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -982,8 +1017,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private operator-projected face SAT energy-transfer redesign after "
-        "diagnostic-only solver integration gate failed ralplan"
+        "private bounded solver integration of operator-projected energy-transfer "
+        "contract after manufactured ledger closure ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
