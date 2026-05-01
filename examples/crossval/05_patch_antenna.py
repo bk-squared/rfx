@@ -70,6 +70,10 @@ import numpy as np
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 C0 = 2.998e8
 
+# Stage 2 gate: set RFX_SUBPIXEL_SMOOTHING=kottke_pec to test Stage 2 path
+_sps_env = os.environ.get("RFX_SUBPIXEL_SMOOTHING", "")
+SUBPIXEL_SMOOTHING = _sps_env if _sps_env else False
+
 # =============================================================================
 # Parameters — 2.4 GHz patch on FR4
 # =============================================================================
@@ -284,7 +288,7 @@ def build_patch(with_port: bool,
 print("Running rfx source-excitation run for Harminv...")
 sim_h = build_patch(with_port=False)
 t0 = time.time()
-res_h = sim_h.run(num_periods=60)
+res_h = sim_h.run(num_periods=60, subpixel_smoothing=SUBPIXEL_SMOOTHING)
 print(f"Done in {time.time()-t0:.1f}s")
 
 ts = np.asarray(res_h.time_series).ravel()
@@ -564,6 +568,7 @@ result = sim.run(
     compute_s_params=True,
     s_param_freqs=freqs_s,
     s_param_n_steps=12000,
+    subpixel_smoothing=SUBPIXEL_SMOOTHING,
 )
 print(f"Done in {time.time()-t0:.1f}s")
 
