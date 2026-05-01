@@ -891,13 +891,87 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         candidate["accepted_candidate"]
         for candidate in fixture_repair["private_fixture_candidates"]
     )
+    source_reference = benchmark_gate[
+        "private_source_reference_phase_front_fixture_contract"
+    ]
+    assert benchmark_gate[
+        "private_source_reference_phase_front_fixture_contract_status"
+    ] == "private_source_phase_front_self_oracle_failed"
+    assert source_reference["terminal_outcome"] == (
+        "private_source_phase_front_self_oracle_failed"
+    )
+    assert source_reference[
+        "upstream_fixture_quality_blocker_repair_status"
+    ] == benchmark_gate["private_fixture_quality_blocker_repair_status"]
+    assert source_reference[
+        "upstream_boundary_coexistence_fixture_validation_status"
+    ] == benchmark_gate["private_boundary_coexistence_fixture_validation_status"]
+    assert (
+        source_reference["candidate_ladder_declared_before_slow_scoring"] is True
+    )
+    assert source_reference["candidate_count"] == 6
+    assert (
+        source_reference["thresholds_checksum"]
+        == benchmark_gate["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert source_reference["selected_candidate_id"] == (
+        "P1_phase_front_self_oracle"
+    )
+    assert source_reference["source_phase_front_self_oracle_failed"] is True
+    assert source_reference["source_phase_front_self_oracle_ready"] is False
+    assert source_reference["reference_normalization_contract_ready"] is False
+    assert source_reference["private_fixture_contract_ready"] is False
+    assert source_reference["solver_interface_floor_reconfirmed"] is False
+    assert (
+        source_reference[
+            "source_reference_self_oracle_separated_from_subgrid_parity"
+        ]
+        is True
+    )
+    assert source_reference["subgrid_vacuum_parity_used_for_p1_selection"] is False
+    phase_front_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_reference["candidate_ladder"]
+    }
+    p1 = phase_front_candidates["P1_phase_front_self_oracle"]
+    assert p1["self_oracle_uses_uniform_reference_only"] is True
+    assert p1["subgrid_vacuum_parity_used_for_self_oracle"] is False
+    assert p1["uniform_reference_ready"] is False
+    assert p1["metrics"]["max_uniform_center_referenced_phase_spread_deg"] > 1.0
+    assert p1["metrics"]["max_uniform_modal_magnitude_cv"] > 0.01
+    p2 = phase_front_candidates[
+        "P2_same_contract_reference_normalization_redesign"
+    ]
+    assert p2["accepted_candidate"] is False
+    assert p2["d3_normalization_contract_ready"] is False
+    assert p2["mask_provenance_ready"] is True
+    p3 = phase_front_candidates["P3_finite_fixture_contract_candidates"]
+    assert p3["old_c0_failure_retained"] is True
+    assert p3["measurement_controls_can_replace_original_fixture"] is False
+    assert p3["accepted_candidate"] is False
+    assert source_reference["solver_hunk_retained"] is False
+    assert source_reference["solver_behavior_changed"] is False
+    assert source_reference["production_patch_applied"] is False
+    assert source_reference["sbp_sat_3d_repair_applied"] is False
+    assert source_reference["api_preflight_changes_allowed"] is False
+    assert source_reference["rfx_api_changes_allowed"] is False
+    assert source_reference["public_claim_allowed"] is False
+    assert source_reference["public_observable_promoted"] is False
+    assert source_reference["true_rt_public_observable_promoted"] is False
+    assert source_reference["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_source_reference_phase_front_fixture_contract_next_prerequisite"
+        ]
+        == source_reference["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private source/reference phase-front fixture-contract redesign after "
-        "fixture-quality blocker persisted ralplan"
+        "private analytic source phase-front self-oracle repair before "
+        "fixture-contract candidates ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private source/reference phase-front fixture-contract redesign after "
-        "fixture-quality blocker persisted ralplan"
+        "private analytic source phase-front self-oracle repair before "
+        "fixture-contract candidates ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1159,8 +1233,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private source/reference phase-front fixture-contract redesign after "
-        "fixture-quality blocker persisted ralplan"
+        "private analytic source phase-front self-oracle repair before "
+        "fixture-contract candidates ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

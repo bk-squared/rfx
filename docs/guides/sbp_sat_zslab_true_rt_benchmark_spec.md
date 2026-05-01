@@ -283,9 +283,12 @@ private boundary coexistence and fixture-quality validation lane now records
 accepted-boundary helper probes and unchanged fixture-quality replay, the next
 private fixture-quality blocker repair lane records
 `private_fixture_quality_blocker_persists_no_public_promotion` after a finite
-F0-F4 ladder. The next safe lane is `private source/reference phase-front
-fixture-contract redesign after fixture-quality blocker persisted ralplan`. Hook
-experiments remain closed and public promotion remains closed.
+F0-F4 ladder, and because the private source/reference phase-front
+fixture-contract redesign lane now records
+`private_source_phase_front_self_oracle_failed`, the next safe lane is `private
+analytic source phase-front self-oracle repair before fixture-contract
+candidates ralplan`. Hook experiments remain closed and public promotion
+remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true
 R/T as deferred.

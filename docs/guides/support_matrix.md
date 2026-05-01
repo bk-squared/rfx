@@ -220,8 +220,12 @@ follow-up private fixture-quality blocker repair lane now records
 finite ladder preserves the boundary-expanded baseline, reuses the existing
 private fixture/source candidates and phase-referenced measurement diagnostics,
 and selects the fail-closed terminal outcome because unchanged
-transverse-uniformity and vacuum-parity gates still fail. The next safe lane is
-private source/reference phase-front fixture-contract redesign, not public
+transverse-uniformity and vacuum-parity gates still fail. The follow-up private
+source/reference phase-front fixture-contract redesign lane now records
+`private_source_phase_front_self_oracle_failed`: the uniform private
+source/reference phase-front self-oracle itself exceeds unchanged phase-spread
+and magnitude-CV thresholds before subgrid vacuum parity can be blamed. The next
+safe lane is private analytic source phase-front self-oracle repair, not public
 promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane

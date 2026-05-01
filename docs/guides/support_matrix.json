@@ -161,8 +161,8 @@
             "predeclared_candidate_policy": "baseline full-aperture fixture remains reported; any future central-core or source-contract candidate must be predeclared in metadata before slow scoring and must keep the same thresholds",
             "reason": "same-contract private TFSF-style uniform reference is implemented, but private uniform/subgrid vacuum parity and transverse-uniformity gates remain inconclusive; the private tau-sensitivity energy-transfer repair sweep found no material repair, so slab R/T scoring is intentionally skipped and public DFT/flux/TFSF/true-R/T promotion remains closed. The private SAT face-coupling theory/redesign stage now records paired_face_coupling_design_ready: a test-local same-step paired E/H candidate closes the manufactured face ledger with normalized residual 0.000577728, preserves matched-trace/zero-work gates, keeps coupling strength near the current kernel, and requires paired E/H face context. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. That planned implementation lane has now been attempted by the private paired-face helper gate. The private paired-face helper implementation gate now records production_context_mismatch_detected: both CPML and non-CPML step paths apply H SAT before E update and E SAT after E update, so the selected same-step paired E/H candidate lacks a single co-temporal pre/post current-SAT ledger state without time-centered staging. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. The next safe lane is private time-centered SAT staging redesign ralplan. The private time-centered E/H face-ledger staging redesign now records time_centered_staging_contract_ready: same-call H_pre/H_post and E_pre/E_post staging with a centered-H face ledger closes the private manufactured ledger, passes the production-expressibility gate with named CPML and non-CPML local slots, uses FACE_ORIENTATIONS only, rejects non-selected candidates with explicit staging/reordering/state-carry reasons, and leaves production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces closed. The next safe lane is private time-centered paired-face helper implementation ralplan; public promotion remains closed. The private time-centered paired-face helper implementation now records private_time_centered_paired_face_helper_implemented: bounded private helper functions and direct CPML/non-CPML call-site wiring capture same-call H_pre/H_post and E_pre/E_post face traces, apply the selected same_call_centered_h_bar centered-H correction after E SAT, use FACE_ORIENTATIONS only, change solver-internal behavior inside the experimental SBP-SAT path, and keep runner, hook, API, SimResult, Result, default tau, DFT/flux/TFSF/port/S-parameter/true-R/T, and other public observable surfaces closed. The next safe lane is private time-centered paired-face helper fixture-quality recovery ralplan; public promotion remains closed. The helper uses a predeclared bounded 0.02 relaxation on the same-call centered-H amplitude to preserve existing private proxy-regression gates while still applying the private solver-internal correction. The private time-centered paired-face helper fixture-quality recovery stage now records measurement_contract_or_interface_floor_persists: C0 original fixture, C1 center-core measurement control, C2 one-cell downstream plane control, and C3 temporary 0.05 helper relaxation all fail unchanged fixture/reference thresholds; C1/C2 are measurement controls only, C3 is rolled back to 0.02, and public true-R/T/DFT/flux/TFSF/port/S-parameter promotion remains closed. The next safe lane is private measurement-contract/interface-floor redesign after helper recovery failed ralplan. The private measurement-contract/interface-floor redesign stage now records persistent_interface_floor_confirmed: D2 phase-referenced modal coherence is not ready (uniform max phase spread 31.479 deg; subgrid max phase spread 154.787 deg), D3 local E/H impedance/Poynting is not ready (eta0 relative error 0.858047; local vacuum magnitude error 0.833793), and D4 interface-ledger correlation remains positive with current helper-state interface residual evidence plus prior committed manufactured-ledger context. This confirms a persistent private interface-floor lane; public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private interface-floor repair theory/implementation after measurement-contract diagnostics ralplan. The private broader derivative/interior-boundary ladder now records no_private_derivative_interface_repair: the reduced energy identity reproduces the 0.02 ledger-floor failure and can be closed only in a test-local face fixture; production retention is blocked by requires_global_sbp_operator_refactor, no solver hunk is retained, and public true R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is global SBP derivative/mortar operator architecture. The private global SBP derivative/mortar operator architecture now records private_global_operator_3d_contract_ready: A1-A4 identity evidence passes for diagonal-norm SBP derivatives including Yee-staggered dual operators, norm-compatible mortar projection, material/metric weighted tangential EM flux closure, and all-six-face edge/corner partition closure plus CPML/non-CPML SAT staging evidence. No sbp_sat_3d.py solver hunk is retained; public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private solver integration hunk from global SBP derivative/mortar operator architecture after A1-A4 evidence summary ralplan.",
             "no_go_reason": "private TFSF-style incident fixture has a same-contract reference, but vacuum/reference fixture-quality gates remain inconclusive; slab R/T scoring is intentionally skipped. The private SAT face-coupling theory/redesign stage now records paired_face_coupling_design_ready: a test-local same-step paired E/H candidate closes the manufactured face ledger with normalized residual 0.000577728, preserves matched-trace/zero-work gates, keeps coupling strength near the current kernel, and requires paired E/H face context. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. That planned implementation lane has now been attempted by the private paired-face helper gate. The private paired-face helper implementation gate now records production_context_mismatch_detected: both CPML and non-CPML step paths apply H SAT before E update and E SAT after E update, so the selected same-step paired E/H candidate lacks a single co-temporal pre/post current-SAT ledger state without time-centered staging. Production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces remain closed. The next safe lane is private time-centered SAT staging redesign ralplan. The private time-centered E/H face-ledger staging redesign now records time_centered_staging_contract_ready: same-call H_pre/H_post and E_pre/E_post staging with a centered-H face ledger closes the private manufactured ledger, passes the production-expressibility gate with named CPML and non-CPML local slots, uses FACE_ORIENTATIONS only, rejects non-selected candidates with explicit staging/reordering/state-carry reasons, and leaves production sbp_sat_3d.py, runner, hook, API, SimResult, Result, default tau, and public observable surfaces closed. The next safe lane is private time-centered paired-face helper implementation ralplan; public promotion remains closed. The private time-centered paired-face helper implementation now records private_time_centered_paired_face_helper_implemented: bounded private helper functions and direct CPML/non-CPML call-site wiring capture same-call H_pre/H_post and E_pre/E_post face traces, apply the selected same_call_centered_h_bar centered-H correction after E SAT, use FACE_ORIENTATIONS only, change solver-internal behavior inside the experimental SBP-SAT path, and keep runner, hook, API, SimResult, Result, default tau, DFT/flux/TFSF/port/S-parameter/true-R/T, and other public observable surfaces closed. The next safe lane is private time-centered paired-face helper fixture-quality recovery ralplan; public promotion remains closed. The helper uses a predeclared bounded 0.02 relaxation on the same-call centered-H amplitude to preserve existing private proxy-regression gates while still applying the private solver-internal correction. The private time-centered paired-face helper fixture-quality recovery stage now records measurement_contract_or_interface_floor_persists: C0 original fixture, C1 center-core measurement control, C2 one-cell downstream plane control, and C3 temporary 0.05 helper relaxation all fail unchanged fixture/reference thresholds; C1/C2 are measurement controls only, C3 is rolled back to 0.02, and public true-R/T/DFT/flux/TFSF/port/S-parameter promotion remains closed. The next safe lane is private measurement-contract/interface-floor redesign after helper recovery failed ralplan. The private measurement-contract/interface-floor redesign stage now records persistent_interface_floor_confirmed: D2 phase-referenced modal coherence is not ready (uniform max phase spread 31.479 deg; subgrid max phase spread 154.787 deg), D3 local E/H impedance/Poynting is not ready (eta0 relative error 0.858047; local vacuum magnitude error 0.833793), and D4 interface-ledger correlation remains positive with current helper-state interface residual evidence plus prior committed manufactured-ledger context. This confirms a persistent private interface-floor lane; public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private interface-floor repair theory/implementation after measurement-contract diagnostics ralplan. The private interface-floor repair ladder now records no_bounded_private_interface_floor_repair: F1 oriented_characteristic_face_balance passes all-six-face orientation, matched-trace, zero-work, coupling, update-bound, and edge/corner preacceptance guards, but it algebraically collapses to the current component SAT and fails the manufactured ledger residual gate (0.16562 > 0.02). No solver hunk is retained; public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private higher-order SBP face-norm/interface-operator redesign. The private face-norm/interface-operator redesign ladder now records no_private_face_norm_operator_repair: the existing face restriction is already the unmasked mass-adjoint of prolongation under current diagonal norms, H1 mass-adjoint and H2 diagonal-norm candidates fail the manufactured ledger or higher-order projection/noop gates, and no solver hunk is retained. Public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private broader SBP derivative/interior-boundary operator redesign. The private broader derivative/interior-boundary ladder now records no_private_derivative_interface_repair: the reduced energy identity reproduces the 0.02 ledger-floor failure and can be closed only in a test-local face fixture; production retention is blocked by requires_global_sbp_operator_refactor, no solver hunk is retained, and public true R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is global SBP derivative/mortar operator architecture. The private global SBP derivative/mortar operator architecture now records private_global_operator_3d_contract_ready: A1-A4 identity evidence passes for diagonal-norm SBP derivatives including Yee-staggered dual operators, norm-compatible mortar projection, material/metric weighted tangential EM flux closure, and all-six-face edge/corner partition closure plus CPML/non-CPML SAT staging evidence. No sbp_sat_3d.py solver hunk is retained; public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private solver integration hunk from global SBP derivative/mortar operator architecture after A1-A4 evidence summary ralplan.",
-            "blocking_diagnostic": "same-contract private reference helper is present, but private uniform/subgrid vacuum parity, transverse uniformity, or usable-passband gates remain below threshold; the causal ladder now classifies the row-2 blocker as sbp_sat_interface_floor because source, plane-shift, and central-core aperture controls did not satisfy the paired material-improvement rule; the interface-floor investigation now records coarse_fine_energy_transfer_mismatch; slab R/T scoring and public promotion stay closed; the private energy-transfer repair stage records no_material_repair; the private time-centered helper fixture-quality recovery stage records measurement_contract_or_interface_floor_persists; the private measurement-contract/interface-floor redesign ledger records persistent_interface_floor_confirmed; the private interface-floor repair ladder records no_bounded_private_interface_floor_repair; the private face-norm/interface-operator ladder records no_private_face_norm_operator_repair; the private derivative/interior-boundary ladder records no_private_derivative_interface_repair; the private global SBP derivative/mortar operator architecture records private_global_operator_3d_contract_ready; the private solver-integration hunk gate records private_solver_integration_requires_followup_diagnostic_only; the private operator-projected energy-transfer redesign records private_operator_projected_energy_transfer_contract_ready; the private operator-projected solver integration records private_operator_projected_solver_hunk_retained_fixture_quality_pending; the private boundary coexistence fixture validation records private_boundary_coexistence_passed_fixture_quality_blocked; the private fixture-quality blocker repair lane records private_fixture_quality_blocker_persists_no_public_promotion; historical private design lanes remain part of the blocker chain: discrete_eh_work_ledger_mismatch, ledger_mismatch_detected, no_signature_compatible_bounded_repair, paired_face_coupling_design_ready, production_context_mismatch_detected, time_centered_staging_contract_ready, and private_time_centered_paired_face_helper_implemented",
-            "next_prerequisite": "private source/reference phase-front fixture-contract redesign after fixture-quality blocker persisted ralplan",
+            "blocking_diagnostic": "same-contract private reference helper is present, but private uniform/subgrid vacuum parity, transverse uniformity, or usable-passband gates remain below threshold; the causal ladder now classifies the row-2 blocker as sbp_sat_interface_floor because source, plane-shift, and central-core aperture controls did not satisfy the paired material-improvement rule; the interface-floor investigation now records coarse_fine_energy_transfer_mismatch; slab R/T scoring and public promotion stay closed; the private energy-transfer repair stage records no_material_repair; the private time-centered helper fixture-quality recovery stage records measurement_contract_or_interface_floor_persists; the private measurement-contract/interface-floor redesign ledger records persistent_interface_floor_confirmed; the private interface-floor repair ladder records no_bounded_private_interface_floor_repair; the private face-norm/interface-operator ladder records no_private_face_norm_operator_repair; the private derivative/interior-boundary ladder records no_private_derivative_interface_repair; the private global SBP derivative/mortar operator architecture records private_global_operator_3d_contract_ready; the private solver-integration hunk gate records private_solver_integration_requires_followup_diagnostic_only; the private operator-projected energy-transfer redesign records private_operator_projected_energy_transfer_contract_ready; the private operator-projected solver integration records private_operator_projected_solver_hunk_retained_fixture_quality_pending; the private boundary coexistence fixture validation records private_boundary_coexistence_passed_fixture_quality_blocked; the private fixture-quality blocker repair lane records private_fixture_quality_blocker_persists_no_public_promotion; the private source/reference phase-front fixture-contract redesign lane records private_source_phase_front_self_oracle_failed; historical private design lanes remain part of the blocker chain: discrete_eh_work_ledger_mismatch, ledger_mismatch_detected, no_signature_compatible_bounded_repair, paired_face_coupling_design_ready, production_context_mismatch_detected, time_centered_staging_contract_ready, and private_time_centered_paired_face_helper_implemented",
+            "next_prerequisite": "private analytic source phase-front self-oracle repair before fixture-contract candidates ralplan",
             "diagnostic_basis": "private +z ex/hy incident fields are injected through private post-H/post-E slots and accumulated only through private fine-owned flux/DFT planes; the same-contract uniform reference helper is benchmark-only, remains not public TFSF, and does not expose public flux, DFT, S-parameter, port, or true R/T observables The time-centered staging gate is private diagnostic evidence only: it proves a same-call local production-expressibility contract for a later private implementation attempt, not public true R/T, DFT, flux, TFSF, port, or S-parameter support. Private implementation evidence records bounded same-call centered-H helper wiring in sbp_sat_3d.py for both CPML and non-CPML paths; it is not public TFSF/DFT/flux/port/S-parameter/true-R/T evidence, so public promotion remains closed. The helper uses a predeclared bounded 0.02 relaxation on the same-call centered-H amplitude to preserve existing private proxy-regression gates while still applying the private solver-internal correction. The private helper fixture-quality recovery ladder is finite and private-only; even C1/C2 measurement-control improvements cannot claim original fixture recovery, and C3 was rolled back rather than retained as a public or configurable helper switch. The private measurement-contract/interface-floor redesign stage now records persistent_interface_floor_confirmed: D2 phase-referenced modal coherence is not ready (uniform max phase spread 31.479 deg; subgrid max phase spread 154.787 deg), D3 local E/H impedance/Poynting is not ready (eta0 relative error 0.858047; local vacuum magnitude error 0.833793), and D4 interface-ledger correlation remains positive with current helper-state interface residual evidence plus prior committed manufactured-ledger context. This confirms a persistent private interface-floor lane; public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private interface-floor repair theory/implementation after measurement-contract diagnostics ralplan. The private interface-floor repair ladder now records no_bounded_private_interface_floor_repair: F1 oriented_characteristic_face_balance passes all-six-face orientation, matched-trace, zero-work, coupling, update-bound, and edge/corner preacceptance guards, but it algebraically collapses to the current component SAT and fails the manufactured ledger residual gate (0.16562 > 0.02). No solver hunk is retained; public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private higher-order SBP face-norm/interface-operator redesign. The private face-norm/interface-operator redesign ladder now records no_private_face_norm_operator_repair: the existing face restriction is already the unmasked mass-adjoint of prolongation under current diagonal norms, H1 mass-adjoint and H2 diagonal-norm candidates fail the manufactured ledger or higher-order projection/noop gates, and no solver hunk is retained. Public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains closed. The next safe lane is private broader SBP derivative/interior-boundary operator redesign. The global derivative/mortar architecture evidence is private operator-contract evidence only: it adds rfx/subgridding/sbp_operators.py and tests A1-A4 without adding public TFSF/DFT/flux/port/S-parameter/true-R/T surfaces or a retained solver hunk. The global derivative/mortar A4 guard now records all-six-face edge/corner partition closure plus CPML/non-CPML SAT staging evidence.",
             "previous_gate_context": {
               "source_contract": "private_analytic_sheet_source",
@@ -237,7 +237,7 @@
               "rollback_policy": "remove diagnostic if not materially improving"
             },
             "same_run_repair_allowed": false,
-            "follow_up_recommendation": "private source/reference phase-front fixture-contract redesign after fixture-quality blocker persisted ralplan",
+            "follow_up_recommendation": "private analytic source phase-front self-oracle repair before fixture-contract candidates ralplan",
             "interface_floor_investigation_status": "complete",
             "interface_floor_subclass": "coarse_fine_energy_transfer_mismatch",
             "interface_distance_sensitivity": "persistent",
@@ -4508,7 +4508,340 @@
               "hook_surface_changed": false,
               "env_config_changed": false
             },
-            "private_fixture_quality_blocker_repair_next_prerequisite": "private source/reference phase-front fixture-contract redesign after fixture-quality blocker persisted ralplan"
+            "private_fixture_quality_blocker_repair_next_prerequisite": "private source/reference phase-front fixture-contract redesign after fixture-quality blocker persisted ralplan",
+            "private_source_reference_phase_front_fixture_contract_status": "private_source_phase_front_self_oracle_failed",
+            "private_source_reference_phase_front_fixture_contract": {
+              "status": "private_source_phase_front_self_oracle_failed",
+              "terminal_outcome": "private_source_phase_front_self_oracle_failed",
+              "terminal_outcome_taxonomy": [
+                "private_phase_front_fixture_contract_ready_true_rt_pending",
+                "private_reference_normalization_contract_ready",
+                "private_source_phase_front_self_oracle_failed",
+                "private_solver_interface_floor_reconfirmed",
+                "private_source_reference_fixture_contract_blocked_no_public_promotion"
+              ],
+              "terminal_outcome_precedence": [
+                "private_source_reference_fixture_contract_blocked_no_public_promotion",
+                "private_solver_interface_floor_reconfirmed",
+                "private_phase_front_fixture_contract_ready_true_rt_pending",
+                "private_reference_normalization_contract_ready",
+                "private_source_phase_front_self_oracle_failed"
+              ],
+              "diagnostic_scope": "private_source_reference_phase_front_fixture_contract_only",
+              "upstream_fixture_quality_blocker_repair_status": "private_fixture_quality_blocker_persists_no_public_promotion",
+              "upstream_boundary_coexistence_fixture_validation_status": "private_boundary_coexistence_passed_fixture_quality_blocked",
+              "candidate_ladder_declared_before_slow_scoring": true,
+              "candidate_count": 6,
+              "candidate_policy": "finite P0/P1/P2/P3/P4/P5 ladder; source/reference self-oracles are evaluated before solver blame, and no public observable or threshold change is permitted",
+              "selected_candidate_id": "P1_phase_front_self_oracle",
+              "candidate_ladder": [
+                {
+                  "candidate_id": "P0_baseline_fixture_blocker_freeze",
+                  "candidate_family": "baseline_failure_freeze",
+                  "accepted_candidate": false,
+                  "upstream_fixture_repair_status": "private_fixture_quality_blocker_persists_no_public_promotion",
+                  "upstream_boundary_status": "private_boundary_coexistence_passed_fixture_quality_blocked",
+                  "metrics": {
+                    "usable_bins": 3,
+                    "transverse_magnitude_cv": 0.44908395350634805,
+                    "transverse_phase_spread_deg": 114.98593935742637,
+                    "vacuum_relative_magnitude_error": 0.9010421890370277,
+                    "vacuum_phase_error_deg": 42.91350635096882
+                  },
+                  "fixture_quality_gates": {
+                    "usable_passband": true,
+                    "transverse_uniformity": false,
+                    "analytic_incident_consistency": true,
+                    "same_contract_reference": true,
+                    "vacuum_stability": false
+                  },
+                  "fixture_quality_blockers": [
+                    "transverse_phase_spread_deg",
+                    "vacuum_relative_magnitude_error",
+                    "transverse_magnitude_cv",
+                    "vacuum_phase_error_deg",
+                    "usable_passband_bins",
+                    "nonfloor_front_back_flux"
+                  ],
+                  "thresholds_checksum": "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a",
+                  "baseline_failure_retained": true
+                },
+                {
+                  "candidate_id": "P1_phase_front_self_oracle",
+                  "candidate_family": "uniform_reference_phase_front_self_oracle",
+                  "accepted_candidate": false,
+                  "self_oracle_uses_uniform_reference_only": true,
+                  "subgrid_vacuum_parity_used_for_self_oracle": false,
+                  "uniform_reference_ready": false,
+                  "phase_spread_ready": false,
+                  "magnitude_cv_ready": false,
+                  "coherence_ready": false,
+                  "thresholds": {
+                    "phase_spread_deg_max": 1.0,
+                    "modal_magnitude_cv_max": 0.01,
+                    "modal_coherence_min": 0.99
+                  },
+                  "metrics": {
+                    "max_uniform_center_referenced_phase_spread_deg": 31.479007406799347,
+                    "max_uniform_modal_magnitude_cv": 0.2292475121151182,
+                    "min_uniform_modal_coherence": 0.9909924924694156,
+                    "usable_bins": 3
+                  },
+                  "classification": "failed",
+                  "rejection_reason": "uniform private source/reference phase front exceeds unchanged phase-spread or magnitude-CV thresholds before subgrid-vacuum parity can be blamed"
+                },
+                {
+                  "candidate_id": "P2_same_contract_reference_normalization_redesign",
+                  "candidate_family": "reference_normalization_diagnostic",
+                  "accepted_candidate": false,
+                  "diagnostic_only": true,
+                  "d3_normalization_contract_ready": false,
+                  "mask_provenance_ready": true,
+                  "eta0_ready": false,
+                  "local_magnitude_ready": false,
+                  "local_phase_ready": false,
+                  "thresholds": {
+                    "eta0_relative_error_max": 0.02,
+                    "local_vacuum_relative_magnitude_error_max": 0.02,
+                    "local_vacuum_phase_error_deg_max": 2.0,
+                    "mask_divergence_max": 0.1,
+                    "min_valid_bins_per_plane": 2
+                  },
+                  "metrics": {
+                    "max_eta0_relative_error": 0.9394748854200681,
+                    "max_local_vacuum_relative_magnitude_error": 0.9010421890370278,
+                    "max_local_vacuum_phase_error_deg": 42.91350635096882,
+                    "valid_bins_by_plane": {
+                      "front": 3,
+                      "back": 3
+                    },
+                    "mask_provenance_mismatch_count": 0
+                  },
+                  "classification": "not_ready",
+                  "rejection_reason": "same-contract local E/H normalization remains outside unchanged thresholds"
+                },
+                {
+                  "candidate_id": "P3_finite_fixture_contract_candidates",
+                  "candidate_family": "predeclared_private_fixture_contract_candidates",
+                  "candidate_count": 4,
+                  "accepted_candidate": false,
+                  "source_candidates": [
+                    {
+                      "candidate_id": "F1_C0_current_helper_original_fixture",
+                      "source_candidate_id": "C0_current_helper_original_fixture",
+                      "candidate_type": "baseline_original_fixture",
+                      "parameters": {
+                        "fixture": "boundary_expanded",
+                        "source_kind": "private_tfsf",
+                        "plane_shift_cells": 0,
+                        "aperture_size": 0.02,
+                        "helper_relaxation": 0.02
+                      },
+                      "solver_touch": false,
+                      "reference_quality_ready": false,
+                      "fixture_quality_ready": false,
+                      "can_claim_private_fixture_quality": false,
+                      "measurement_control_only": false,
+                      "accepted_candidate": false,
+                      "metrics": {
+                        "usable_bins": 3,
+                        "transverse_magnitude_cv": 0.44908395350634805,
+                        "transverse_phase_spread_deg": 114.98593935742637,
+                        "vacuum_relative_magnitude_error": 0.9010421890370277,
+                        "vacuum_phase_error_deg": 42.91350635096882
+                      },
+                      "fixture_quality_gates": {
+                        "usable_passband": true,
+                        "transverse_uniformity": false,
+                        "analytic_incident_consistency": true,
+                        "same_contract_reference": true,
+                        "vacuum_stability": false
+                      },
+                      "dominant_reference_quality_blocker": "transverse_phase_spread_deg",
+                      "rejection_reason": "unchanged_fixture_quality_thresholds_not_satisfied"
+                    },
+                    {
+                      "candidate_id": "F1_C1_center_core_measurement_control",
+                      "source_candidate_id": "C1_center_core_measurement_control",
+                      "candidate_type": "measurement_control",
+                      "parameters": {
+                        "fixture": "boundary_expanded",
+                        "source_kind": "private_tfsf",
+                        "plane_shift_cells": 0,
+                        "aperture_size": 0.01,
+                        "helper_relaxation": 0.02
+                      },
+                      "solver_touch": false,
+                      "reference_quality_ready": false,
+                      "fixture_quality_ready": false,
+                      "can_claim_private_fixture_quality": false,
+                      "measurement_control_only": true,
+                      "accepted_candidate": false,
+                      "metrics": {
+                        "usable_bins": 3,
+                        "transverse_magnitude_cv": 0.20106638956074768,
+                        "transverse_phase_spread_deg": 11.079042130113633,
+                        "vacuum_relative_magnitude_error": 0.9086873606379557,
+                        "vacuum_phase_error_deg": 37.13519296318714
+                      },
+                      "fixture_quality_gates": {
+                        "usable_passband": true,
+                        "transverse_uniformity": false,
+                        "analytic_incident_consistency": true,
+                        "same_contract_reference": true,
+                        "vacuum_stability": false
+                      },
+                      "dominant_reference_quality_blocker": "vacuum_relative_magnitude_error",
+                      "rejection_reason": "measurement_control_cannot_claim_original_fixture_recovery"
+                    },
+                    {
+                      "candidate_id": "F1_C2_one_cell_downstream_plane_control",
+                      "source_candidate_id": "C2_one_cell_downstream_plane_control",
+                      "candidate_type": "measurement_control",
+                      "parameters": {
+                        "fixture": "boundary_expanded",
+                        "source_kind": "private_tfsf",
+                        "plane_shift_cells": 1,
+                        "aperture_size": 0.02,
+                        "helper_relaxation": 0.02
+                      },
+                      "solver_touch": false,
+                      "reference_quality_ready": false,
+                      "fixture_quality_ready": false,
+                      "can_claim_private_fixture_quality": false,
+                      "measurement_control_only": true,
+                      "accepted_candidate": false,
+                      "metrics": {
+                        "usable_bins": 3,
+                        "transverse_magnitude_cv": 0.4279794917580553,
+                        "transverse_phase_spread_deg": 111.51852742733591,
+                        "vacuum_relative_magnitude_error": 0.9075053443315436,
+                        "vacuum_phase_error_deg": 46.7209292822547
+                      },
+                      "fixture_quality_gates": {
+                        "usable_passband": true,
+                        "transverse_uniformity": false,
+                        "analytic_incident_consistency": true,
+                        "same_contract_reference": true,
+                        "vacuum_stability": false
+                      },
+                      "dominant_reference_quality_blocker": "transverse_phase_spread_deg",
+                      "rejection_reason": "measurement_control_cannot_claim_original_fixture_recovery"
+                    },
+                    {
+                      "candidate_id": "F1_C3_helper_relaxation_0p05_original_fixture",
+                      "source_candidate_id": "C3_helper_relaxation_0p05_original_fixture",
+                      "candidate_type": "single_solver_local_candidate",
+                      "parameters": {
+                        "fixture": "boundary_expanded",
+                        "source_kind": "private_tfsf",
+                        "plane_shift_cells": 0,
+                        "aperture_size": 0.02,
+                        "helper_relaxation": 0.05,
+                        "only_allowed_solver_edit": "_TIME_CENTERED_HELPER_RELAXATION = 0.02 -> 0.05"
+                      },
+                      "solver_touch": true,
+                      "reference_quality_ready": false,
+                      "fixture_quality_ready": false,
+                      "can_claim_private_fixture_quality": false,
+                      "measurement_control_only": false,
+                      "accepted_candidate": false,
+                      "metrics": {
+                        "usable_bins": 3,
+                        "transverse_magnitude_cv": 0.4518431429723011,
+                        "transverse_phase_spread_deg": 144.39582467090602,
+                        "vacuum_relative_magnitude_error": 0.8516395504247894,
+                        "vacuum_phase_error_deg": 20.354022359965228
+                      },
+                      "fixture_quality_gates": {
+                        "usable_passband": true,
+                        "transverse_uniformity": false,
+                        "analytic_incident_consistency": true,
+                        "same_contract_reference": true,
+                        "vacuum_stability": false
+                      },
+                      "dominant_reference_quality_blocker": "transverse_phase_spread_deg",
+                      "rejection_reason": "unchanged_fixture_quality_thresholds_not_satisfied"
+                    }
+                  ],
+                  "old_c0_failure_retained": true,
+                  "measurement_controls_can_replace_original_fixture": false,
+                  "rejection_reason": "no private fixture/source candidate passed every unchanged gate"
+                },
+                {
+                  "candidate_id": "P4_solver_interface_floor_reconfirmed",
+                  "candidate_family": "solver_interface_floor_classification",
+                  "accepted_candidate": false,
+                  "solver_edit_attempted": false,
+                  "production_patch_applied": false,
+                  "solver_behavior_changed": false,
+                  "classification": "not_reconfirmed",
+                  "rejection_reason": "source/reference self-oracles are not ready enough to blame solver floor"
+                },
+                {
+                  "candidate_id": "P5_fail_closed_source_reference_contract_blocked",
+                  "candidate_family": "fail_closed_no_public_promotion",
+                  "accepted_candidate": false,
+                  "next_prerequisite": "private analytic source phase-front self-oracle repair before fixture-contract candidates ralplan",
+                  "reason": "no public promotion is allowed until source/reference phase-front self-oracles and unchanged fixture-quality gates pass"
+                }
+              ],
+              "thresholds_checksum": "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a",
+              "source_phase_front_self_oracle_ready": false,
+              "source_phase_front_self_oracle_failed": true,
+              "reference_normalization_contract_ready": false,
+              "private_fixture_contract_ready": false,
+              "solver_interface_floor_reconfirmed": false,
+              "source_reference_self_oracle_separated_from_subgrid_parity": true,
+              "subgrid_vacuum_parity_used_for_p1_selection": false,
+              "uniform_phase_front_metrics": {
+                "max_uniform_center_referenced_phase_spread_deg": 31.479007406799347,
+                "max_uniform_modal_magnitude_cv": 0.2292475121151182,
+                "min_uniform_modal_coherence": 0.9909924924694156,
+                "usable_bins": 3
+              },
+              "reference_normalization_metrics": {
+                "max_eta0_relative_error": 0.9394748854200681,
+                "max_local_vacuum_relative_magnitude_error": 0.9010421890370278,
+                "max_local_vacuum_phase_error_deg": 42.91350635096882,
+                "valid_bins_by_plane": {
+                  "front": 3,
+                  "back": 3
+                },
+                "mask_provenance_mismatch_count": 0
+              },
+              "fixture_quality_ready": false,
+              "reference_quality_ready": false,
+              "measurement_controls_can_replace_original_fixture": false,
+              "solver_hunk_retained": false,
+              "solver_behavior_changed": false,
+              "production_patch_applied": false,
+              "sbp_sat_3d_repair_applied": false,
+              "api_preflight_changes_allowed": false,
+              "rfx_api_changes_allowed": false,
+              "package_export_changed": false,
+              "readme_changed": false,
+              "docs_public_changed": false,
+              "examples_changed": false,
+              "true_rt_public_observable_promoted": false,
+              "dft_flux_tfsf_port_sparameter_promoted": false,
+              "next_prerequisite": "private analytic source phase-front self-oracle repair before fixture-contract candidates ralplan",
+              "reason": "the uniform private source/reference phase-front self-oracle fails the unchanged phase-front/magnitude thresholds before the remaining subgrid vacuum-parity error can be assigned to solver interface floor; fixture and true-R/T promotion remain closed",
+              "public_claim_allowed": false,
+              "public_observable_promoted": false,
+              "promotion_candidate_ready": false,
+              "hook_experiment_allowed": false,
+              "public_api_behavior_changed": false,
+              "public_default_tau_changed": false,
+              "simresult_changed": false,
+              "result_surface_changed": false,
+              "slab_rt_public_claim_allowed": false,
+              "api_surface_changed": false,
+              "runner_surface_changed": false,
+              "hook_surface_changed": false,
+              "env_config_changed": false
+            },
+            "private_source_reference_phase_front_fixture_contract_next_prerequisite": "private analytic source phase-front self-oracle repair before fixture-contract candidates ralplan"
           }
         },
         "box_proxy_crossval": {

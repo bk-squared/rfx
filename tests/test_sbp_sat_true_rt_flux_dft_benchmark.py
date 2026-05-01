@@ -666,6 +666,27 @@ _PRIVATE_FIXTURE_QUALITY_BLOCKER_REPAIR_PRECEDENCE = (
     "private_measurement_contract_repair_candidate_ready",
     "private_fixture_quality_candidate_ready_true_rt_pending",
 )
+_PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_STATUS = (
+    "private_source_phase_front_self_oracle_failed"
+)
+_PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_NEXT_PREREQUISITE = (
+    "private analytic source phase-front self-oracle repair before "
+    "fixture-contract candidates ralplan"
+)
+_PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_TERMINAL_OUTCOMES = (
+    "private_phase_front_fixture_contract_ready_true_rt_pending",
+    "private_reference_normalization_contract_ready",
+    "private_source_phase_front_self_oracle_failed",
+    "private_solver_interface_floor_reconfirmed",
+    "private_source_reference_fixture_contract_blocked_no_public_promotion",
+)
+_PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_PRECEDENCE = (
+    "private_source_reference_fixture_contract_blocked_no_public_promotion",
+    "private_solver_interface_floor_reconfirmed",
+    "private_phase_front_fixture_contract_ready_true_rt_pending",
+    "private_reference_normalization_contract_ready",
+    "private_source_phase_front_self_oracle_failed",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -4305,6 +4326,217 @@ def _private_fixture_quality_blocker_repair_metadata(
     }
 
 
+def _private_source_reference_phase_front_fixture_contract_metadata(
+    *,
+    fixture_repair_metadata: dict[str, object],
+    boundary_fixture_metadata: dict[str, object],
+    measurement_redesign_metadata: dict[str, object],
+) -> dict[str, object]:
+    diagnostics = {
+        diagnostic["diagnostic_id"]: diagnostic
+        for diagnostic in measurement_redesign_metadata["diagnostics"]
+    }
+    d2 = diagnostics["D2_phase_referenced_modal_coherence_projection"]
+    d3 = diagnostics["D3_local_eh_impedance_poynting_projection"]
+    uniform_phase_front_metrics = {
+        "max_uniform_center_referenced_phase_spread_deg": d2["metrics"][
+            "max_uniform_center_referenced_phase_spread_deg"
+        ],
+        "max_uniform_modal_magnitude_cv": d2["metrics"][
+            "max_uniform_modal_magnitude_cv"
+        ],
+        "min_uniform_modal_coherence": d2["metrics"][
+            "min_uniform_modal_coherence"
+        ],
+        "usable_bins": d2["metrics"]["usable_bins"],
+    }
+    p1_self_oracle_ready = bool(d2["uniform_reference_ready"])
+    p2_reference_normalization_ready = bool(d3["d3_normalization_contract_ready"])
+    p3_ready = any(
+        bool(candidate["accepted_candidate"])
+        and not bool(candidate["measurement_control_only"])
+        for candidate in fixture_repair_metadata["private_fixture_candidates"]
+    )
+    p4_solver_floor_reconfirmed = bool(
+        p1_self_oracle_ready
+        and p2_reference_normalization_ready
+        and not p3_ready
+        and d3["d3_ready"] is False
+    )
+    if p3_ready:
+        terminal_outcome = "private_phase_front_fixture_contract_ready_true_rt_pending"
+        selected_candidate_id = "P3_finite_fixture_contract_candidates"
+    elif p2_reference_normalization_ready:
+        terminal_outcome = "private_reference_normalization_contract_ready"
+        selected_candidate_id = "P2_same_contract_reference_normalization_redesign"
+    elif not p1_self_oracle_ready:
+        terminal_outcome = _PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_STATUS
+        selected_candidate_id = "P1_phase_front_self_oracle"
+    elif p4_solver_floor_reconfirmed:
+        terminal_outcome = "private_solver_interface_floor_reconfirmed"
+        selected_candidate_id = "P4_solver_interface_floor_reconfirmed"
+    else:
+        terminal_outcome = (
+            "private_source_reference_fixture_contract_blocked_no_public_promotion"
+        )
+        selected_candidate_id = "P5_fail_closed_source_reference_contract_blocked"
+
+    p0 = {
+        "candidate_id": "P0_baseline_fixture_blocker_freeze",
+        "candidate_family": "baseline_failure_freeze",
+        "accepted_candidate": False,
+        "upstream_fixture_repair_status": fixture_repair_metadata["terminal_outcome"],
+        "upstream_boundary_status": boundary_fixture_metadata["terminal_outcome"],
+        "metrics": fixture_repair_metadata["current_fixture_metrics"],
+        "fixture_quality_gates": fixture_repair_metadata["fixture_quality_gates"],
+        "fixture_quality_blockers": fixture_repair_metadata[
+            "fixture_quality_blockers"
+        ],
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_failure_retained": True,
+    }
+    p1 = {
+        "candidate_id": "P1_phase_front_self_oracle",
+        "candidate_family": "uniform_reference_phase_front_self_oracle",
+        "accepted_candidate": p1_self_oracle_ready,
+        "self_oracle_uses_uniform_reference_only": True,
+        "subgrid_vacuum_parity_used_for_self_oracle": False,
+        "uniform_reference_ready": bool(d2["uniform_reference_ready"]),
+        "phase_spread_ready": bool(d2["phase_spread_ready"]),
+        "magnitude_cv_ready": bool(d2["magnitude_cv_ready"]),
+        "coherence_ready": bool(d2["coherence_ready"]),
+        "thresholds": d2["thresholds"],
+        "metrics": uniform_phase_front_metrics,
+        "classification": "failed" if not p1_self_oracle_ready else "passed",
+        "rejection_reason": None
+        if p1_self_oracle_ready
+        else (
+            "uniform private source/reference phase front exceeds unchanged "
+            "phase-spread or magnitude-CV thresholds before subgrid-vacuum "
+            "parity can be blamed"
+        ),
+    }
+    p2 = {
+        "candidate_id": "P2_same_contract_reference_normalization_redesign",
+        "candidate_family": "reference_normalization_diagnostic",
+        "accepted_candidate": p2_reference_normalization_ready,
+        "diagnostic_only": True,
+        "d3_normalization_contract_ready": bool(
+            d3["d3_normalization_contract_ready"]
+        ),
+        "mask_provenance_ready": bool(d3["mask_provenance_ready"]),
+        "eta0_ready": bool(d3["eta0_ready"]),
+        "local_magnitude_ready": bool(d3["local_magnitude_ready"]),
+        "local_phase_ready": bool(d3["local_phase_ready"]),
+        "thresholds": d3["thresholds"],
+        "metrics": d3["metrics"],
+        "classification": "ready"
+        if p2_reference_normalization_ready
+        else "not_ready",
+        "rejection_reason": None
+        if p2_reference_normalization_ready
+        else "same-contract local E/H normalization remains outside unchanged thresholds",
+    }
+    p3 = {
+        "candidate_id": "P3_finite_fixture_contract_candidates",
+        "candidate_family": "predeclared_private_fixture_contract_candidates",
+        "candidate_count": len(fixture_repair_metadata["private_fixture_candidates"]),
+        "accepted_candidate": p3_ready,
+        "source_candidates": fixture_repair_metadata["private_fixture_candidates"],
+        "old_c0_failure_retained": True,
+        "measurement_controls_can_replace_original_fixture": False,
+        "rejection_reason": None
+        if p3_ready
+        else "no private fixture/source candidate passed every unchanged gate",
+    }
+    p4 = {
+        "candidate_id": "P4_solver_interface_floor_reconfirmed",
+        "candidate_family": "solver_interface_floor_classification",
+        "accepted_candidate": p4_solver_floor_reconfirmed,
+        "solver_edit_attempted": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "classification": "not_reconfirmed"
+        if not p4_solver_floor_reconfirmed
+        else "reconfirmed",
+        "rejection_reason": None
+        if p4_solver_floor_reconfirmed
+        else "source/reference self-oracles are not ready enough to blame solver floor",
+    }
+    p5 = {
+        "candidate_id": "P5_fail_closed_source_reference_contract_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": terminal_outcome
+        == "private_source_reference_fixture_contract_blocked_no_public_promotion",
+        "next_prerequisite": _PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_NEXT_PREREQUISITE,
+        "reason": (
+            "no public promotion is allowed until source/reference phase-front "
+            "self-oracles and unchanged fixture-quality gates pass"
+        ),
+    }
+    return {
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_source_reference_phase_front_fixture_contract_only"
+        ),
+        "upstream_fixture_quality_blocker_repair_status": fixture_repair_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_boundary_coexistence_fixture_validation_status": (
+            boundary_fixture_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": 6,
+        "candidate_policy": (
+            "finite P0/P1/P2/P3/P4/P5 ladder; source/reference self-oracles "
+            "are evaluated before solver blame, and no public observable or "
+            "threshold change is permitted"
+        ),
+        "selected_candidate_id": selected_candidate_id,
+        "candidate_ladder": (p0, p1, p2, p3, p4, p5),
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "source_phase_front_self_oracle_ready": p1_self_oracle_ready,
+        "source_phase_front_self_oracle_failed": not p1_self_oracle_ready,
+        "reference_normalization_contract_ready": p2_reference_normalization_ready,
+        "private_fixture_contract_ready": p3_ready,
+        "solver_interface_floor_reconfirmed": p4_solver_floor_reconfirmed,
+        "source_reference_self_oracle_separated_from_subgrid_parity": True,
+        "subgrid_vacuum_parity_used_for_p1_selection": False,
+        "uniform_phase_front_metrics": uniform_phase_front_metrics,
+        "reference_normalization_metrics": d3["metrics"],
+        "fixture_quality_ready": False,
+        "reference_quality_ready": False,
+        "measurement_controls_can_replace_original_fixture": False,
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": _PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_NEXT_PREREQUISITE,
+        "reason": (
+            "the uniform private source/reference phase-front self-oracle fails "
+            "the unchanged phase-front/magnitude thresholds before the remaining "
+            "subgrid vacuum-parity error can be assigned to solver interface "
+            "floor; fixture and true-R/T promotion remain closed"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -6206,8 +6438,28 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    source_reference_metadata = (
+        _private_source_reference_phase_front_fixture_contract_metadata(
+            fixture_repair_metadata=fixture_repair_metadata,
+            boundary_fixture_metadata=boundary_fixture_metadata,
+            measurement_redesign_metadata=measurement_redesign_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_source_reference_phase_front_fixture_contract_status": (
+                source_reference_metadata["status"]
+            ),
+            "private_source_reference_phase_front_fixture_contract": (
+                source_reference_metadata
+            ),
+            "private_source_reference_phase_front_fixture_contract_next_prerequisite": (
+                source_reference_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_fixture_quality_blocker_repair_next_prerequisite"
+        "private_source_reference_phase_front_fixture_contract_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -6262,6 +6514,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"{boundary_fixture_metadata['terminal_outcome']}"
                 "; the private fixture-quality blocker repair lane records "
                 f"{fixture_repair_metadata['terminal_outcome']}"
+                "; the private source/reference phase-front fixture-contract "
+                "redesign lane records "
+                f"{source_reference_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -6271,7 +6526,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_fixture_quality_blocker_repair_next_prerequisite"
+                "private_source_reference_phase_front_fixture_contract_next_prerequisite"
             ],
         }
 
@@ -7947,9 +8202,87 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         candidate["accepted_candidate"]
         for candidate in fixture_repair["private_fixture_candidates"]
     )
+    source_reference = metadata[
+        "private_source_reference_phase_front_fixture_contract"
+    ]
+    assert (
+        metadata["private_source_reference_phase_front_fixture_contract_status"]
+        == _PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_STATUS
+    )
+    assert source_reference["terminal_outcome"] == (
+        _PRIVATE_SOURCE_REFERENCE_PHASE_FRONT_STATUS
+    )
+    assert source_reference[
+        "upstream_fixture_quality_blocker_repair_status"
+    ] == metadata["private_fixture_quality_blocker_repair_status"]
+    assert source_reference[
+        "upstream_boundary_coexistence_fixture_validation_status"
+    ] == metadata["private_boundary_coexistence_fixture_validation_status"]
+    assert (
+        source_reference["candidate_ladder_declared_before_slow_scoring"] is True
+    )
+    assert source_reference["candidate_count"] == 6
+    assert source_reference["thresholds_checksum"] == (
+        metadata["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert source_reference["selected_candidate_id"] == (
+        "P1_phase_front_self_oracle"
+    )
+    assert source_reference["source_phase_front_self_oracle_failed"] is True
+    assert source_reference["source_phase_front_self_oracle_ready"] is False
+    assert source_reference["reference_normalization_contract_ready"] is False
+    assert source_reference["private_fixture_contract_ready"] is False
+    assert source_reference["solver_interface_floor_reconfirmed"] is False
+    assert (
+        source_reference[
+            "source_reference_self_oracle_separated_from_subgrid_parity"
+        ]
+        is True
+    )
+    assert source_reference["subgrid_vacuum_parity_used_for_p1_selection"] is False
+    p_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_reference["candidate_ladder"]
+    }
+    p1 = p_candidates["P1_phase_front_self_oracle"]
+    assert p1["self_oracle_uses_uniform_reference_only"] is True
+    assert p1["subgrid_vacuum_parity_used_for_self_oracle"] is False
+    assert p1["uniform_reference_ready"] is False
+    assert p1["metrics"]["max_uniform_center_referenced_phase_spread_deg"] > (
+        _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+    )
+    assert p1["metrics"]["max_uniform_modal_magnitude_cv"] > (
+        _TRANSVERSE_MAGNITUDE_CV_MAX
+    )
+    p2 = p_candidates["P2_same_contract_reference_normalization_redesign"]
+    assert p2["accepted_candidate"] is False
+    assert p2["d3_normalization_contract_ready"] is False
+    assert p2["mask_provenance_ready"] is True
+    p3 = p_candidates["P3_finite_fixture_contract_candidates"]
+    assert p3["old_c0_failure_retained"] is True
+    assert p3["measurement_controls_can_replace_original_fixture"] is False
+    assert p3["accepted_candidate"] is False
+    assert source_reference["solver_hunk_retained"] is False
+    assert source_reference["solver_behavior_changed"] is False
+    assert source_reference["production_patch_applied"] is False
+    assert source_reference["sbp_sat_3d_repair_applied"] is False
+    assert source_reference["api_preflight_changes_allowed"] is False
+    assert source_reference["rfx_api_changes_allowed"] is False
+    assert source_reference["public_claim_allowed"] is False
+    assert source_reference["public_observable_promoted"] is False
+    assert source_reference["true_rt_public_observable_promoted"] is False
+    assert source_reference["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        source_reference["next_prerequisite"]
+        == metadata[
+            "private_source_reference_phase_front_fixture_contract_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata["private_fixture_quality_blocker_repair_next_prerequisite"]
+        == metadata[
+            "private_source_reference_phase_front_fixture_contract_next_prerequisite"
+        ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -7973,7 +8306,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata["private_fixture_quality_blocker_repair_next_prerequisite"]
+        == metadata[
+            "private_source_reference_phase_front_fixture_contract_next_prerequisite"
+        ]
     )
     assert (
         "same-contract private reference helper is present"
@@ -8022,5 +8357,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert metadata["private_fixture_quality_blocker_repair_status"] in (
         metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_source_reference_phase_front_fixture_contract_status"]
+        in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
