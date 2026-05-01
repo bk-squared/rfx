@@ -1926,6 +1926,7 @@ def extract_waveguide_s_matrix(
     ref_shifts: list[float] | tuple[float, float] | None = None,
     aniso_eps: tuple | None = None,
     conformal_weights: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
 ) -> jnp.ndarray:
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs."""
     if len(port_cfgs) < 2:
@@ -1974,6 +1975,7 @@ def extract_waveguide_s_matrix(
             waveguide_ports=driven_cfgs,
             aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
+            aniso_inv_eps=aniso_inv_eps,
         )
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_ports:
@@ -2014,6 +2016,8 @@ def extract_waveguide_s_params_normalized(
     aniso_eps: tuple | None = None,
     conformal_weights: tuple | None = None,
     ref_aniso_eps: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
+    ref_aniso_inv_eps: tuple | None = None,
 ) -> jnp.ndarray:
     """Two-run normalized waveguide S-matrix.
 
@@ -2115,7 +2119,9 @@ def extract_waveguide_s_params_normalized(
         ref_result = run_simulation(
             grid, ref_materials, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
-            waveguide_ports=ref_cfgs, **common_run_kw,
+            waveguide_ports=ref_cfgs,
+            aniso_inv_eps=ref_aniso_inv_eps,
+            **common_run_kw,
         )
         ref_final_cfgs = ref_result.waveguide_ports or ()
         if len(ref_final_cfgs) != n_ports:
@@ -2154,6 +2160,7 @@ def extract_waveguide_s_params_normalized(
             debye=debye, lorentz=lorentz,
             waveguide_ports=dev_cfgs, aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
+            aniso_inv_eps=aniso_inv_eps,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()

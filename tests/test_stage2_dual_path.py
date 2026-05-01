@@ -237,6 +237,71 @@ def test_dual_path_dielectric_only_equivalent_to_ulp():
         )
 
 
+@pytest.mark.xfail(
+    reason="Stage 2 step 4 acceptance pending — interior thin-PEC "
+    "handling on the s_matrix path is incomplete. "
+    "Diagnosed 2026-05-01: a 2 mm PEC short on a 3 mm Yee cell "
+    "yields Kottke fill f=0.667 (mathematically correct partial-PEC) "
+    "vs Stage 1's binary pec_mask (treats the whole cell as PEC, "
+    "approximation but stable). Stage 2 reproduces ~0.44 |S11| at "
+    "n=30 periods and NaNs at n=40 due to late-time growth seeded "
+    "by H field propagating freely inside the partially-PEC cell. "
+    "Fix paths: (a) thicken PEC short to ≥1 cell (user-side workaround); "
+    "(b) Stage 2 detects mask/Kottke divergence and applies binary "
+    "fallback in those cells (architectural — needs care to avoid "
+    "the Ca→-1 trap with sigma=1e10); (c) per-step apply_pec_mask "
+    "zero on top of inv tensor (matches Stage 1 stability)."
+)
+def test_pec_short_s11_with_kottke_pec_path():
+    """Stage 2 step 4 acceptance: cv11-style PEC-short |S11| ≥ 0.99
+    via the unified ``subpixel_smoothing="kottke_pec"`` path on
+    ``compute_waveguide_s_matrix``.
+
+    Pre-step-4 (Stage 1 path with Boundary(conformal=True)) achieves
+    min|S11| ~ 0.996 (commit e070c34). The Stage 2 unified path on
+    the same geometry must match that — within 0.02 of Stage 1's
+    number — to clear the migration. A larger gap signals the
+    s_matrix path's rewire to ``aniso_inv_eps`` either (a) lost
+    plumbing somewhere, or (b) introduced a real physics shift that
+    needs investigation."""
+    from rfx.geometry.csg import Box
+
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        dx=0.003,
+        boundary=BoundarySpec(
+            x="cpml",
+            y=Boundary(lo="pec", hi="pec", conformal=True),
+            z=Boundary(lo="pec", hi="pec", conformal=True),
+        ),
+        cpml_layers=10,
+    )
+    sim.add(Box((0.085, 0, 0), (0.087, 0.04, 0.02)), material="pec")
+    freqs = jnp.linspace(5e9, 7e9, 6)
+    sim.add_waveguide_port(
+        0.010, direction="+x", mode=(1, 0), mode_type="TE",
+        freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
+    )
+    sim.add_waveguide_port(
+        0.090, direction="-x", mode=(1, 0), mode_type="TE",
+        freqs=freqs, f0=6e9, bandwidth=0.5, name="right",
+    )
+    res = sim.compute_waveguide_s_matrix(
+        num_periods=40, normalize=False,
+        subpixel_smoothing="kottke_pec",
+    )
+    s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
+    print(f"\n[stage2 step4 pec-short] |S11| range "
+          f"[{s11.min():.4f}, {s11.max():.4f}] mean={s11.mean():.4f}")
+    assert s11.min() >= 0.99, (
+        f"Stage 2 unified path PEC-short |S11| regressed: "
+        f"min={s11.min():.4f} (gate 0.99). "
+        f"Step 4 plumbing through compute_waveguide_s_matrix and "
+        f"extract_waveguide_* extractors is incomplete."
+    )
+
+
 def test_nu_runner_hard_fails_on_kottke_pec():
     """Per Step 3a scope decision: NU + Stage 2 unified path is out
     of scope for v1. Must hard-fail at run time, not silently

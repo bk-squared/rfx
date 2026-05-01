@@ -2175,7 +2175,7 @@ class Simulation:
         n_steps: int | None = None,
         num_periods: float = 20.0,
         normalize: bool = False,
-        subpixel_smoothing: bool = False,
+        subpixel_smoothing: bool | str = False,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
@@ -2265,7 +2265,18 @@ class Simulation:
         base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, _ = self._assemble_materials(grid)
         # Waveguide S-matrix runner doesn't support pec_mask yet.
         # Fold PEC mask back into high sigma for compatibility.
-        if pec_mask_wg is not None:
+        # **Stage 2 caveat**: when ``subpixel_smoothing="kottke_pec"`` is
+        # active (use_kottke_pec, computed below), the inverse-eps
+        # tensor encodes the PEC zero directly (inv = 0 freezes the
+        # field). Folding pec_mask to sigma=1e10 then would conflict
+        # with the Yee-stagger offsets in inv_xx/yy/zz: pec_mask is
+        # per-cell-center, but inv_xx is at Ex(i+0.5, j, k) offsets,
+        # so PEC boundary cells can have sigma=1e10 AND a fractional
+        # inv > 0 — that combo blows up Ca ≈ -1 and field NaNs.
+        # Skipped for Stage 2; the Kottke union (inv=0 inside PEC,
+        # fractional at boundary) is the single source of truth.
+        _use_kottke_pec_early = (subpixel_smoothing == "kottke_pec")
+        if pec_mask_wg is not None and not _use_kottke_pec_early:
             base_materials = base_materials._replace(
                 sigma=jnp.where(pec_mask_wg, 1e10, base_materials.sigma))
         materials = base_materials
@@ -2416,8 +2427,62 @@ class Simulation:
         # then compute_smoothed_eps. The reference run is vacuum and has no
         # ε interfaces, so it always passes aniso_eps=None inside the
         # extractor.
+        # Stage 2 unified path: subpixel_smoothing="kottke_pec" routes
+        # through compute_inv_eps_tensor_diag and skips the Stage 1
+        # eps_correction + apply_conformal_pec chain entirely. Both
+        # device and reference (vacuum) runs see the same boundary-
+        # face PEC walls, so the inverse-permittivity tensor is
+        # computed twice (once per material context).
+        use_kottke_pec = (subpixel_smoothing == "kottke_pec")
         aniso_eps = None
-        if subpixel_smoothing:
+        aniso_inv_eps = None
+        ref_aniso_inv_eps = None
+        if use_kottke_pec:
+            from rfx.geometry.smoothing import compute_inv_eps_tensor_diag
+            shape_eps_pairs = [
+                (entry.shape, self._resolve_material(entry.material_name).eps_r)
+                for entry in self._geometry
+            ]
+            aniso_inv_eps = compute_inv_eps_tensor_diag(
+                grid,
+                dielectric_shapes=shape_eps_pairs,
+                pec_shapes=pec_shapes or [],
+                background_eps=1.0,
+            )
+            # Reference run is vacuum + same PEC walls. No dielectrics.
+            ref_aniso_inv_eps = compute_inv_eps_tensor_diag(
+                grid,
+                dielectric_shapes=[],
+                pec_shapes=pec_shapes or [],
+                background_eps=1.0,
+            )
+            # Yee-stagger correction: the Kottke union reaches inv=0
+            # on Yee-staggered components only when the cell-center
+            # AND the offset position are both inside the PEC shape.
+            # For thin PEC obstacles (e.g. a 1-cell-wide PEC short),
+            # cell-center is inside but Ey/Ez Yee positions are at
+            # cell-corner offsets that fall *outside* the box → inv
+            # remains 1 (vacuum). That leaves the H field free to
+            # propagate inside the PEC region and seeds late-time
+            # exponential growth.
+            #
+            # Fix: where ``pec_mask`` (cell-center binary) is True,
+            # force all three inv components to zero. This is the
+            # cell-center analogue of Stage 1's sigma=1e10 fold,
+            # without the Ca→-1 instability that the sigma fold has
+            # at Yee-staggered cells where inv > 0.
+            if pec_mask_wg is not None:
+                inv_xx, inv_yy, inv_zz = aniso_inv_eps
+                inv_xx = jnp.where(pec_mask_wg, 0.0, inv_xx)
+                inv_yy = jnp.where(pec_mask_wg, 0.0, inv_yy)
+                inv_zz = jnp.where(pec_mask_wg, 0.0, inv_zz)
+                aniso_inv_eps = (inv_xx, inv_yy, inv_zz)
+                ref_inv_xx, ref_inv_yy, ref_inv_zz = ref_aniso_inv_eps
+                ref_inv_xx = jnp.where(pec_mask_wg, 0.0, ref_inv_xx)
+                ref_inv_yy = jnp.where(pec_mask_wg, 0.0, ref_inv_yy)
+                ref_inv_zz = jnp.where(pec_mask_wg, 0.0, ref_inv_zz)
+                ref_aniso_inv_eps = (ref_inv_xx, ref_inv_yy, ref_inv_zz)
+        elif subpixel_smoothing:
             from rfx.geometry.smoothing import compute_smoothed_eps
             shape_eps_pairs = [
                 (entry.shape, self._resolve_material(entry.material_name).eps_r)
@@ -2435,9 +2500,12 @@ class Simulation:
         # ``conformal_weights`` flows through extract_waveguide_*
         # into rfx.simulation.run, which already calls
         # ``apply_conformal_pec`` per step in its scan body.
+        # Suppressed when use_kottke_pec — Stage 2 owns the PEC
+        # tensor encoding and the eps_correction would double-correct.
         conformal_weights = None
         ref_aniso_eps = None
-        if self._boundary_spec.conformal_faces() and pec_shapes:
+        if (self._boundary_spec.conformal_faces() and pec_shapes
+                and not use_kottke_pec):
             from rfx.geometry.conformal import (
                 compute_conformal_weights_sdf,
                 clamp_conformal_weights,
@@ -2493,6 +2561,8 @@ class Simulation:
                 aniso_eps=aniso_eps,
                 ref_aniso_eps=ref_aniso_eps,
                 conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                ref_aniso_inv_eps=ref_aniso_inv_eps,
             )
         else:
             s_params = extract_waveguide_s_matrix(
@@ -2508,6 +2578,7 @@ class Simulation:
                 ref_shifts=ref_shifts,
                 aniso_eps=aniso_eps,
                 conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
             )
         reference_planes = np.array(
             [
