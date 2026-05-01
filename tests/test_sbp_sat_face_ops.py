@@ -16,6 +16,20 @@ from rfx.subgridding.face_ops import (
     restrict_face,
     restrict_zface,
 )
+
+from rfx.subgridding.sbp_operators import (
+    FaceFluxSpec,
+    all_face_weighted_flux_report,
+    box_surface_partition_report,
+    build_sbp_first_derivative_1d,
+    build_tensor_face_mortar,
+    build_yee_staggered_derivative_pair_1d,
+    face_mortar_adjoint_report,
+    face_mortar_reproduction_report,
+    sbp_identity_residual,
+    weighted_em_flux_residual,
+    yee_staggered_identity_residual,
+)
 from rfx.subgridding.sbp_sat_3d import (
     extract_tangential_e_face,
     extract_tangential_h_face,
@@ -214,3 +228,97 @@ def test_scatter_roundtrip_zface_preserves_nonface_entries():
     np.testing.assert_allclose(ex_masked, np.array(ex))
     np.testing.assert_allclose(ey_masked, np.array(ey))
     np.testing.assert_allclose(np.array(ez_out), np.array(ez))
+
+
+
+def test_private_sbp_derivative_norm_boundary_contract():
+    operator = build_sbp_first_derivative_1d(6, 0.004, grid_role="electric_primal")
+
+    assert operator.derivative.shape == (6, 6)
+    assert operator.norm.shape == (6,)
+    assert np.all(np.asarray(operator.norm) > 0.0)
+    assert operator.left_boundary[0] == 1.0
+    assert operator.right_boundary[-1] == 1.0
+    np.testing.assert_allclose(
+        np.asarray(sbp_identity_residual(operator)),
+        np.zeros((6, 6), dtype=np.float32),
+        atol=1.0e-6,
+    )
+
+
+def test_private_yee_staggered_dual_derivative_contract():
+    pair = build_yee_staggered_derivative_pair_1d(7, 0.004)
+
+    assert pair.primal_to_dual.shape == (6, 7)
+    assert pair.dual_to_primal.shape == (7, 6)
+    assert np.all(np.asarray(pair.primal_norm) > 0.0)
+    assert np.all(np.asarray(pair.dual_norm) > 0.0)
+    np.testing.assert_allclose(
+        np.asarray(yee_staggered_identity_residual(pair)),
+        np.zeros((7, 6), dtype=np.float32),
+        atol=1.0e-6,
+    )
+
+
+def test_private_norm_compatible_mortar_contract_is_adjoint_and_noop():
+    mortar = build_tensor_face_mortar((4, 3), ratio=2, dx_c=0.004)
+
+    adjoint = face_mortar_adjoint_report(mortar)
+    reproduction = face_mortar_reproduction_report(mortar)
+
+    assert mortar.fine_shape == (8, 6)
+    assert adjoint["passes"], adjoint
+    assert reproduction["passes"], reproduction
+    assert reproduction["constant_max_error"] <= 1.0e-6
+    assert reproduction["linear_i_max_error"] <= 1.0e-6
+    assert reproduction["linear_j_max_error"] <= 1.0e-6
+
+
+def test_private_weighted_em_flux_contract_closes_for_all_face_signs():
+    mortar = build_tensor_face_mortar((4, 3), ratio=2, dx_c=0.004)
+    i = jnp.arange(4, dtype=jnp.float32)[:, None]
+    j = jnp.arange(3, dtype=jnp.float32)[None, :]
+    ex = 1.0 + 0.1 * i + 0.2 * j
+    ey = -0.5 + 0.05 * i - 0.1 * j
+    zeros = jnp.zeros((4, 3), dtype=jnp.float32)
+    hx = 2.0e-6 + 0.1e-6 * i + zeros
+    hy = -1.0e-6 + 0.2e-6 * j + zeros
+    metric = 1.0 + 0.01 * i + 0.02 * j
+
+    for normal_sign in (-1, 1):
+        residual = weighted_em_flux_residual(
+            mortar,
+            ex_c=ex,
+            ey_c=ey,
+            hx_c=hx,
+            hy_c=hy,
+            normal_sign=normal_sign,
+            coarse_metric_weight=metric,
+        )
+        assert abs(residual) <= 1.0e-12
+
+
+def test_private_all_face_surface_partition_and_flux_contract():
+    face_specs = (
+        FaceFluxSpec("x_lo", (4, 4), -1),
+        FaceFluxSpec("x_hi", (4, 4), 1),
+        FaceFluxSpec("y_lo", (4, 4), -1),
+        FaceFluxSpec("y_hi", (4, 4), 1),
+        FaceFluxSpec("z_lo", (4, 4), -1),
+        FaceFluxSpec("z_hi", (4, 4), 1),
+    )
+
+    partition = box_surface_partition_report((4, 4, 4))
+    flux = all_face_weighted_flux_report(face_specs, ratio=2, dx_c=0.004)
+
+    assert partition["status"] == "all_face_edge_corner_accounting_closed"
+    assert partition["active_faces"] == 6
+    assert partition["active_edges"] == 12
+    assert partition["active_corners"] == 8
+    assert partition["surface_cells"] == 56
+    assert partition["counted_surface_cells"] == partition["surface_cells"]
+    assert partition["partition_closes"] is True
+    assert flux["faces_tested"] == ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+    assert flux["face_count"] == 6
+    assert flux["passes"] is True
+    assert flux["max_abs_residual"] <= 1.0e-12

@@ -578,13 +578,117 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate["private_derivative_interface_repair_next_prerequisite"]
         == derivative["next_prerequisite"]
     )
+    global_operator = benchmark_gate[
+        "private_global_derivative_mortar_operator_architecture"
+    ]
+    assert (
+        benchmark_gate[
+            "private_global_derivative_mortar_operator_architecture_status"
+        ]
+        == "private_global_operator_3d_contract_ready"
+    )
+    assert (
+        global_operator["terminal_outcome"]
+        == benchmark_gate[
+            "private_global_derivative_mortar_operator_architecture_status"
+        ]
+    )
+    assert global_operator["upstream_derivative_interface_repair_status"] == (
+        benchmark_gate["private_derivative_interface_repair_status"]
+    )
+    assert global_operator["candidate_ladder_declared_before_solver_edit"] is True
+    assert global_operator["candidate_count"] == 7
+    assert global_operator["selected_candidate_id"] == (
+        "all_faces_edge_corner_operator_guard"
+    )
+    assert global_operator["a1_a4_evidence_summary"] == {
+        "sbp_derivative_norm_boundary_contract": True,
+        "norm_compatible_mortar_projection_contract": True,
+        "em_tangential_interface_flux_contract": True,
+        "all_faces_edge_corner_operator_guard": True,
+    }
+    global_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in global_operator["candidates"]
+    }
+    assert set(global_candidates) == {
+        "current_operator_inventory_and_freeze",
+        "sbp_derivative_norm_boundary_contract",
+        "norm_compatible_mortar_projection_contract",
+        "em_tangential_interface_flux_contract",
+        "all_faces_edge_corner_operator_guard",
+        "private_solver_integration_hunk",
+        "operator_architecture_fail_closed",
+    }
+    assert global_candidates["sbp_derivative_norm_boundary_contract"][
+        "yee_staggered_dual_identity_passed"
+    ] is True
+    assert global_candidates["norm_compatible_mortar_projection_contract"][
+        "mortar_adjointness_passed"
+    ] is True
+    assert global_candidates["norm_compatible_mortar_projection_contract"][
+        "linear_reproduction_passed"
+    ] is True
+    assert global_candidates["em_tangential_interface_flux_contract"][
+        "material_metric_weighting_explicit"
+    ] is True
+    assert global_candidates["em_tangential_interface_flux_contract"][
+        "flux_identity_passed"
+    ] is True
+    assert global_candidates["all_faces_edge_corner_operator_guard"][
+        "active_faces"
+    ] == 6
+    assert global_candidates["all_faces_edge_corner_operator_guard"][
+        "active_edges"
+    ] == 12
+    assert global_candidates["all_faces_edge_corner_operator_guard"][
+        "active_corners"
+    ] == 8
+    assert global_candidates["all_faces_edge_corner_operator_guard"][
+        "all_face_flux_identity_passed"
+    ] is True
+    assert global_candidates["all_faces_edge_corner_operator_guard"][
+        "all_face_flux_identity_max_abs_residual"
+    ] <= 1.0e-12
+    assert global_candidates["all_faces_edge_corner_operator_guard"][
+        "surface_partition_closes"
+    ] is True
+    assert global_candidates["all_faces_edge_corner_operator_guard"][
+        "edge_corner_accounting_status"
+    ] == "all_face_edge_corner_accounting_closed"
+    assert global_candidates["all_faces_edge_corner_operator_guard"][
+        "cpml_staging_report"
+    ]["operator_module_has_no_cpml_dependency"] is True
+    assert global_candidates["private_solver_integration_hunk"][
+        "a1_a4_evidence_summary_present"
+    ] is True
+    assert global_candidates["private_solver_integration_hunk"][
+        "admitted_to_solver"
+    ] is False
+    assert global_operator["operator_module_added"] is True
+    assert global_operator["operator_module"] == "rfx/subgridding/sbp_operators.py"
+    assert global_operator["solver_hunk_retained"] is False
+    assert global_operator["actual_solver_hunk_inventory"] == []
+    assert global_operator["production_patch_allowed"] is False
+    assert global_operator["production_patch_applied"] is False
+    assert global_operator["solver_behavior_changed"] is False
+    assert global_operator["sbp_sat_3d_repair_applied"] is False
+    assert global_operator["public_claim_allowed"] is False
+    assert global_operator["public_observable_promoted"] is False
+    assert global_operator["hook_experiment_allowed"] is False
+    assert (
+        benchmark_gate[
+            "private_global_derivative_mortar_operator_architecture_next_prerequisite"
+        ]
+        == global_operator["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "global SBP derivative/mortar operator architecture after private "
-        "derivative/interior-boundary ladder required operator refactor ralplan"
+        "private solver integration hunk from global SBP derivative/mortar "
+        "operator architecture after A1-A4 evidence summary ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "global SBP derivative/mortar operator architecture after private "
-        "derivative/interior-boundary ladder required operator refactor ralplan"
+        "private solver integration hunk from global SBP derivative/mortar "
+        "operator architecture after A1-A4 evidence summary ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -846,8 +950,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "global SBP derivative/mortar operator architecture after private "
-        "derivative/interior-boundary ladder required operator refactor ralplan"
+        "private solver integration hunk from global SBP derivative/mortar "
+        "operator architecture after A1-A4 evidence summary ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
@@ -895,6 +999,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert "no_private_derivative_interface_repair" in spec_text
     assert "requires_global_sbp_operator_refactor" in spec_text
     assert "global SBP derivative/mortar operator architecture" in spec_text
+    assert "private_global_operator_3d_contract_ready" in spec_text
+    assert "A1-A4 identity evidence" in spec_text
+    assert "all-six-face edge/corner partition closure" in spec_text
+    assert "CPML/non-CPML" in spec_text
+    assert "private solver integration hunk" in spec_text
+    assert "from global SBP derivative/mortar operator architecture" in spec_text
     assert "## Deferred issue record" in spec_text
 
 

@@ -199,6 +199,14 @@ keeps the public claim blocked:
   only by a test-local face correction; the production lift is blocked by
   `requires_global_sbp_operator_refactor`, no solver hunk is retained, and the
   next safe lane is global SBP derivative/mortar operator architecture;
+- the private global SBP derivative/mortar operator architecture lane now records
+  `private_global_operator_3d_contract_ready`: A1-A4 identity evidence passes for
+  diagonal-norm SBP derivatives including Yee-staggered dual operators,
+  norm-compatible mortar projection, material/metric weighted tangential EM flux
+  closure, all-six-face edge/corner partition closure, and CPML/non-CPML SAT
+  staging evidence. No `sbp_sat_3d.py` solver hunk is retained, and the next safe lane is private solver integration hunk
+  from global SBP derivative/mortar operator architecture after A1-A4 evidence
+  summary;
 - the prior boundary-expanded analytic-sheet sweep is retained as history, not
   as current slab R/T evidence;
 - the current recorded status is therefore **inconclusive**, not a public
@@ -231,8 +239,12 @@ repair theory/implementation lane now records
 SBP face-norm/interface-operator redesign ladder now records
 `no_private_face_norm_operator_repair`, and because the private broader
 derivative/interior-boundary ladder now records
-`no_private_derivative_interface_repair`, the next safe lane is `global SBP derivative/mortar operator architecture after private derivative/interior-boundary ladder required operator refactor ralplan`. Hook experiments remain closed and public promotion
-remains closed.
+`no_private_derivative_interface_repair`, and because the private global SBP
+derivative/mortar operator architecture lane now records
+`private_global_operator_3d_contract_ready`, the next safe lane is `private solver
+integration hunk from global SBP derivative/mortar operator architecture after
+A1-A4 evidence summary ralplan`. Hook experiments remain closed and public
+promotion remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true
 R/T as deferred.

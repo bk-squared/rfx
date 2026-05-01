@@ -15,8 +15,22 @@ import numpy as np
 
 from rfx.core.yee import EPS_0, MU_0
 from rfx.grid import C0
+import rfx.subgridding.sbp_operators as sbp_operators
 import rfx.subgridding.sbp_sat_3d as sbp_sat_3d
 from rfx.subgridding.face_ops import build_face_ops, prolong_face, restrict_face
+from rfx.subgridding.sbp_operators import (
+    FaceFluxSpec,
+    all_face_weighted_flux_report,
+    box_surface_partition_report,
+    build_sbp_first_derivative_1d,
+    build_tensor_face_mortar,
+    build_yee_staggered_derivative_pair_1d,
+    face_mortar_adjoint_report,
+    face_mortar_reproduction_report,
+    sbp_identity_residual,
+    weighted_em_flux_residual,
+    yee_staggered_identity_residual,
+)
 from rfx.subgridding.sbp_sat_3d import (
     _active_corners,
     _active_edges,
@@ -176,6 +190,33 @@ _DERIVATIVE_INTERFACE_ALLOWED_SOLVER_SYMBOLS = (
     "_reduced_interface_flux_balance",
     "_energy_stable_face_flux_update",
     "_apply_energy_stable_derivative_interface_helper",
+    "step_subgrid_3d_with_cpml",
+    "step_subgrid_3d",
+)
+
+_GLOBAL_OPERATOR_ARCHITECTURE_STATUS = "private_global_operator_3d_contract_ready"
+_GLOBAL_OPERATOR_ARCHITECTURE_NEXT_PREREQUISITE = (
+    "private solver integration hunk from global SBP derivative/mortar operator "
+    "architecture after A1-A4 evidence summary ralplan"
+)
+_GLOBAL_OPERATOR_ARCHITECTURE_REPORT = (
+    ".omx/reports/"
+    "sbp-sat-global-sbp-derivative-mortar-operator-architecture-"
+    "20260501T081353Z.md"
+)
+_GLOBAL_OPERATOR_ARCHITECTURE_TERMINAL_OUTCOMES = (
+    "private_sbp_derivative_contract_ready",
+    "private_mortar_projection_contract_ready",
+    "private_em_mortar_flux_contract_ready",
+    "private_global_operator_3d_contract_ready",
+    "private_global_derivative_mortar_repair_implemented_fixture_quality_pending",
+    "no_private_global_derivative_mortar_operator_repair",
+)
+_GLOBAL_OPERATOR_ALLOWED_SOLVER_SYMBOLS = (
+    "_get_face_ops",
+    "apply_sat_h_interfaces",
+    "apply_sat_e_interfaces",
+    "_apply_time_centered_paired_face_helper",
     "step_subgrid_3d_with_cpml",
     "step_subgrid_3d",
 )
@@ -3197,6 +3238,295 @@ def _private_derivative_interface_repair_packet() -> dict[str, object]:
     }
 
 
+def _global_operator_face_specs(
+    config: sbp_sat_3d.SubgridConfig3D,
+) -> tuple[FaceFluxSpec, ...]:
+    box_shape = sbp_sat_3d._coarse_box_shape(config)
+    return tuple(
+        FaceFluxSpec(
+            face=face,
+            coarse_shape=tuple(box_shape[axis] for axis in orientation.tangential_axes),
+            normal_sign=orientation.normal_sign,
+        )
+        for face, orientation in sbp_sat_3d.FACE_ORIENTATIONS.items()
+    )
+
+
+def _private_global_operator_cpml_staging_report() -> dict[str, object]:
+    plain_source = inspect.getsource(sbp_sat_3d.step_subgrid_3d)
+    cpml_source = inspect.getsource(sbp_sat_3d.step_subgrid_3d_with_cpml)
+    operator_source = inspect.getsource(sbp_operators)
+    sat_symbols = ("apply_sat_h_interfaces", "apply_sat_e_interfaces")
+
+    plain_sat_symbols = tuple(symbol for symbol in sat_symbols if symbol in plain_source)
+    cpml_sat_symbols = tuple(symbol for symbol in sat_symbols if symbol in cpml_source)
+    cpml_boundary_symbols = ("apply_cpml_h", "apply_cpml_e")
+    cpml_boundary_calls = tuple(
+        symbol for symbol in cpml_boundary_symbols if symbol in cpml_source
+    )
+    h_sat_after_cpml_boundary = cpml_source.index(
+        "apply_sat_h_interfaces"
+    ) > cpml_source.index("apply_cpml_h")
+    e_sat_after_cpml_boundary = cpml_source.index(
+        "apply_sat_e_interfaces"
+    ) > cpml_source.index("apply_cpml_e")
+    operator_module_has_no_cpml_dependency = "cpml" not in operator_source.lower()
+    shared_sat_sequence = plain_sat_symbols == cpml_sat_symbols == sat_symbols
+    cpml_non_cpml_compatibility_ready = bool(
+        shared_sat_sequence
+        and set(cpml_boundary_calls) == set(cpml_boundary_symbols)
+        and h_sat_after_cpml_boundary
+        and e_sat_after_cpml_boundary
+        and operator_module_has_no_cpml_dependency
+    )
+    return {
+        "plain_sat_symbols": plain_sat_symbols,
+        "cpml_sat_symbols": cpml_sat_symbols,
+        "cpml_boundary_calls": cpml_boundary_calls,
+        "shared_sat_sequence": shared_sat_sequence,
+        "h_sat_after_cpml_boundary": h_sat_after_cpml_boundary,
+        "e_sat_after_cpml_boundary": e_sat_after_cpml_boundary,
+        "operator_module_has_no_cpml_dependency": operator_module_has_no_cpml_dependency,
+        "private_hooks_required_for_operator_guard": False,
+        "cpml_non_cpml_compatibility_ready": cpml_non_cpml_compatibility_ready,
+    }
+
+
+def _private_global_derivative_mortar_operator_architecture_packet() -> dict[str, object]:
+    """Record the private global SBP derivative/mortar architecture gate."""
+
+    derivative_packet = _private_derivative_interface_repair_packet()
+    scalar_operator = build_sbp_first_derivative_1d(6, _DX_C, grid_role="electric")
+    scalar_defect = float(jnp.max(jnp.abs(sbp_identity_residual(scalar_operator))))
+    yee_pair = build_yee_staggered_derivative_pair_1d(7, _DX_C)
+    yee_defect = float(jnp.max(jnp.abs(yee_staggered_identity_residual(yee_pair))))
+    mortar = build_tensor_face_mortar(_FACE_SHAPE, ratio=_RATIO, dx_c=_DX_C)
+    mortar_adjoint = face_mortar_adjoint_report(mortar)
+    mortar_reproduction = face_mortar_reproduction_report(mortar)
+
+    i = jnp.arange(_FACE_SHAPE[0], dtype=jnp.float32)[:, None]
+    j = jnp.arange(_FACE_SHAPE[1], dtype=jnp.float32)[None, :]
+    zeros = jnp.zeros(_FACE_SHAPE, dtype=jnp.float32)
+    flux_residuals = tuple(
+        abs(
+            weighted_em_flux_residual(
+                mortar,
+                ex_c=1.0 + 0.1 * i + 0.2 * j,
+                ey_c=-0.5 + 0.05 * i - 0.1 * j,
+                hx_c=2.0e-6 + 0.1e-6 * i + zeros,
+                hy_c=-1.0e-6 + 0.2e-6 * j + zeros,
+                normal_sign=normal_sign,
+                coarse_metric_weight=1.0 + 0.01 * i + 0.02 * j,
+            )
+        )
+        for normal_sign in (-1, 1)
+    )
+    config, _ = init_subgrid_3d(
+        shape_c=(6, 6, 6),
+        dx_c=_DX_C,
+        fine_region=(1, 5, 1, 5, 1, 5),
+        ratio=_RATIO,
+        tau=_TAU,
+    )
+    surface_partition = box_surface_partition_report(
+        sbp_sat_3d._coarse_box_shape(config)
+    )
+    all_face_flux = all_face_weighted_flux_report(
+        _global_operator_face_specs(config),
+        ratio=_RATIO,
+        dx_c=_DX_C,
+    )
+    cpml_staging = _private_global_operator_cpml_staging_report()
+    a1_passed = bool(scalar_defect <= 1.0e-6 and yee_defect <= 1.0e-6)
+    a2_passed = bool(mortar_adjoint["passes"] and mortar_reproduction["passes"])
+    a3_passed = bool(max(flux_residuals) <= 1.0e-12)
+    a4_passed = bool(
+        all_face_flux["passes"] is True
+        and all_face_flux["face_count"] == 6
+        and surface_partition["active_faces"] == 6
+        and surface_partition["active_edges"] == 12
+        and surface_partition["active_corners"] == 8
+        and surface_partition["partition_closes"] is True
+        and cpml_staging["cpml_non_cpml_compatibility_ready"] is True
+    )
+    candidates = (
+        {
+            "candidate_id": "current_operator_inventory_and_freeze",
+            "candidate_family": "audit_only",
+            "production_solver_edit_allowed": False,
+            "upstream_derivative_status": derivative_packet["terminal_outcome"],
+            "prior_solver_hunk_retained": derivative_packet["solver_hunk_retained"],
+            "prior_actual_solver_hunk_inventory": derivative_packet[
+                "actual_solver_hunk_inventory"
+            ],
+            "public_closure_locked": True,
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "sbp_derivative_norm_boundary_contract",
+            "candidate_family": "diagonal_norm_sbp_first_derivative",
+            "production_solver_edit_allowed": False,
+            "norm_positive": bool(jnp.all(scalar_operator.norm > 0.0)),
+            "collocated_sbp_identity_passed": scalar_defect <= 1.0e-6,
+            "collocated_identity_max_defect": scalar_defect,
+            "yee_staggered_dual_identity_passed": yee_defect <= 1.0e-6,
+            "yee_staggered_dual_identity_max_defect": yee_defect,
+            "boundary_extraction_signs_explicit": True,
+            "accepted_candidate": a1_passed,
+            "terminal_if_selected": "private_sbp_derivative_contract_ready",
+        },
+        {
+            "candidate_id": "norm_compatible_mortar_projection_contract",
+            "candidate_family": "piecewise_constant_norm_compatible_mortar",
+            "production_solver_edit_allowed": False,
+            "mortar_adjointness_passed": mortar_adjoint["passes"],
+            "mortar_adjointness_max_defect": mortar_adjoint["max_defect"],
+            "constant_reproduction_passed": (
+                mortar_reproduction["constant_max_error"] <= 1.0e-6
+            ),
+            "linear_reproduction_passed": (
+                mortar_reproduction["linear_i_max_error"] <= 1.0e-6
+                and mortar_reproduction["linear_j_max_error"] <= 1.0e-6
+            ),
+            "projection_noop_passed": mortar_reproduction["passes"],
+            "branches_on_measured_residual_or_test_name": False,
+            "accepted_candidate": a2_passed,
+            "terminal_if_selected": "private_mortar_projection_contract_ready",
+        },
+        {
+            "candidate_id": "em_tangential_interface_flux_contract",
+            "candidate_family": "weighted_tangential_em_flux_identity",
+            "production_solver_edit_allowed": False,
+            "uses_yee_tangential_orientation": True,
+            "material_metric_weighting_explicit": True,
+            "normal_signs_tested": (-1, 1),
+            "flux_residuals": flux_residuals,
+            "flux_identity_passed": a3_passed,
+            "accepted_candidate": a3_passed,
+            "terminal_if_selected": "private_em_mortar_flux_contract_ready",
+        },
+        {
+            "candidate_id": "all_faces_edge_corner_operator_guard",
+            "candidate_family": "all_six_face_edge_corner_guard",
+            "production_solver_edit_allowed": False,
+            "faces_tested": all_face_flux["faces_tested"],
+            "all_face_flux_identity_passed": all_face_flux["passes"],
+            "all_face_flux_identity_max_abs_residual": all_face_flux[
+                "max_abs_residual"
+            ],
+            "all_face_flux_identity_residuals": all_face_flux["residuals"],
+            "active_faces": surface_partition["active_faces"],
+            "active_edges": surface_partition["active_edges"],
+            "active_corners": surface_partition["active_corners"],
+            "face_interior_cells": surface_partition["face_interior_cells"],
+            "edge_interior_cells": surface_partition["edge_interior_cells"],
+            "corner_cells": surface_partition["corner_cells"],
+            "surface_cells": surface_partition["surface_cells"],
+            "counted_surface_cells": surface_partition["counted_surface_cells"],
+            "surface_partition_closes": surface_partition["partition_closes"],
+            "edge_corner_accounting_status": surface_partition["status"],
+            "cpml_exclusion_staging_explicit": cpml_staging[
+                "operator_module_has_no_cpml_dependency"
+            ],
+            "cpml_non_cpml_compatibility_ready": cpml_staging[
+                "cpml_non_cpml_compatibility_ready"
+            ],
+            "cpml_staging_report": cpml_staging,
+            "accepted_candidate": a4_passed,
+            "terminal_if_selected": "private_global_operator_3d_contract_ready",
+        },
+        {
+            "candidate_id": "private_solver_integration_hunk",
+            "candidate_family": "gated_private_solver_hunk",
+            "production_solver_edit_allowed": True,
+            "a1_a4_evidence_summary_required": True,
+            "a1_a4_evidence_summary_present": all(
+                (a1_passed, a2_passed, a3_passed, a4_passed)
+            ),
+            "admitted_to_solver": False,
+            "reason": (
+                "A1-A4 operator identities are ready, but this architecture lane "
+                "retains no sbp_sat_3d.py hunk; a single-owner solver-integration "
+                "lane must bind the private operators next"
+            ),
+            "accepted_candidate": False,
+        },
+        {
+            "candidate_id": "operator_architecture_fail_closed",
+            "candidate_family": "terminal_guard",
+            "production_solver_edit_allowed": False,
+            "status": "not_selected_operator_contract_ready",
+            "accepted_candidate": False,
+        },
+    )
+    return {
+        "private_global_derivative_mortar_operator_architecture_status": (
+            _GLOBAL_OPERATOR_ARCHITECTURE_STATUS
+        ),
+        "status": _GLOBAL_OPERATOR_ARCHITECTURE_STATUS,
+        "terminal_outcome": _GLOBAL_OPERATOR_ARCHITECTURE_STATUS,
+        "terminal_outcome_taxonomy": _GLOBAL_OPERATOR_ARCHITECTURE_TERMINAL_OUTCOMES,
+        "diagnostic_scope": "private_global_sbp_derivative_mortar_operator_only",
+        "upstream_derivative_interface_repair_status": derivative_packet[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_count": len(candidates),
+        "selected_candidate_id": "all_faces_edge_corner_operator_guard",
+        "candidates": candidates,
+        "a1_a4_evidence_summary": {
+            "sbp_derivative_norm_boundary_contract": a1_passed,
+            "norm_compatible_mortar_projection_contract": a2_passed,
+            "em_tangential_interface_flux_contract": a3_passed,
+            "all_faces_edge_corner_operator_guard": a4_passed,
+        },
+        "thresholds": {
+            "sbp_identity_tolerance": 1.0e-6,
+            "mortar_adjoint_tolerance": 1.0e-6,
+            "em_flux_residual_tolerance": 1.0e-12,
+            "ledger_balance_threshold": _LEDGER_BALANCE_THRESHOLD,
+        },
+        "selection_rule": (
+            "allow at most one private solver hunk after A1-A4 evidence is "
+            "summarized; retain no solver hunk in this architecture lane"
+        ),
+        "operator_module_added": True,
+        "operator_module": "rfx/subgridding/sbp_operators.py",
+        "solver_hunk_allowed_if_selected": _GLOBAL_OPERATOR_ALLOWED_SOLVER_SYMBOLS,
+        "solver_hunk_retained": False,
+        "actual_solver_hunk_inventory": (),
+        "production_patch_allowed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "sbp_sat_3d_diff_allowed": False,
+        "face_ops_global_behavior_changed": False,
+        "hook_experiment_allowed": False,
+        "jit_runner_changed": False,
+        "runner_changed": False,
+        "api_surface_changed": False,
+        "public_claim_allowed": False,
+        "public_api_behavior_changed": False,
+        "public_default_tau_changed": False,
+        "public_observable_promoted": False,
+        "public_true_rt_promoted": False,
+        "public_dft_promoted": False,
+        "promotion_candidate_ready": False,
+        "simresult_changed": False,
+        "result_surface_changed": False,
+        "env_config_changed": False,
+        "next_prerequisite": _GLOBAL_OPERATOR_ARCHITECTURE_NEXT_PREREQUISITE,
+        "reason": (
+            "the private global SBP derivative/mortar operator contract now "
+            "has A1-A4 identity evidence, including Yee-staggered dual norms, "
+            "norm-compatible mortar projection, material/metric weighted EM "
+            "flux closure, all-six-face edge/corner partition closure, and "
+            "CPML/non-CPML SAT staging evidence; no solver hunk is retained "
+            "and public promotion remains closed"
+        ),
+        "report": _GLOBAL_OPERATOR_ARCHITECTURE_REPORT,
+    }
+
 def _private_bounded_kernel_repair_packet() -> dict[str, object]:
     current = _current_kernel_coupling_metrics()
     candidates = [
@@ -4145,6 +4475,123 @@ def test_private_derivative_interface_repair_records_fail_closed_ladder():
     assert (
         packet["next_prerequisite"] == _DERIVATIVE_INTERFACE_REPAIR_NEXT_PREREQUISITE
     )
+
+
+def test_private_global_derivative_mortar_operator_architecture_records_contract_ready():
+    packet = _private_global_derivative_mortar_operator_architecture_packet()
+
+    assert packet["private_global_derivative_mortar_operator_architecture_status"] == (
+        "private_global_operator_3d_contract_ready"
+    )
+    assert packet["terminal_outcome"] in _GLOBAL_OPERATOR_ARCHITECTURE_TERMINAL_OUTCOMES
+    assert packet["upstream_derivative_interface_repair_status"] == (
+        "no_private_derivative_interface_repair"
+    )
+    assert packet["candidate_ladder_declared_before_solver_edit"] is True
+    assert packet["candidate_count"] == 7
+    assert packet["selected_candidate_id"] == "all_faces_edge_corner_operator_guard"
+    assert packet["a1_a4_evidence_summary"] == {
+        "sbp_derivative_norm_boundary_contract": True,
+        "norm_compatible_mortar_projection_contract": True,
+        "em_tangential_interface_flux_contract": True,
+        "all_faces_edge_corner_operator_guard": True,
+    }
+
+    candidates = {
+        candidate["candidate_id"]: candidate for candidate in packet["candidates"]
+    }
+    assert set(candidates) == {
+        "current_operator_inventory_and_freeze",
+        "sbp_derivative_norm_boundary_contract",
+        "norm_compatible_mortar_projection_contract",
+        "em_tangential_interface_flux_contract",
+        "all_faces_edge_corner_operator_guard",
+        "private_solver_integration_hunk",
+        "operator_architecture_fail_closed",
+    }
+
+    a1 = candidates["sbp_derivative_norm_boundary_contract"]
+    assert a1["norm_positive"] is True
+    assert a1["collocated_sbp_identity_passed"] is True
+    assert a1["yee_staggered_dual_identity_passed"] is True
+    assert a1["boundary_extraction_signs_explicit"] is True
+
+    a2 = candidates["norm_compatible_mortar_projection_contract"]
+    assert a2["mortar_adjointness_passed"] is True
+    assert a2["constant_reproduction_passed"] is True
+    assert a2["linear_reproduction_passed"] is True
+    assert a2["projection_noop_passed"] is True
+    assert a2["branches_on_measured_residual_or_test_name"] is False
+
+    a3 = candidates["em_tangential_interface_flux_contract"]
+    assert a3["uses_yee_tangential_orientation"] is True
+    assert a3["material_metric_weighting_explicit"] is True
+    assert a3["normal_signs_tested"] == (-1, 1)
+    assert a3["flux_identity_passed"] is True
+    assert max(a3["flux_residuals"]) <= 1.0e-12
+
+    a4 = candidates["all_faces_edge_corner_operator_guard"]
+    assert a4["faces_tested"] == ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+    assert a4["all_face_flux_identity_passed"] is True
+    assert a4["all_face_flux_identity_max_abs_residual"] <= 1.0e-12
+    assert len(a4["all_face_flux_identity_residuals"]) == 6
+    assert a4["active_faces"] == 6
+    assert a4["active_edges"] == 12
+    assert a4["active_corners"] == 8
+    assert a4["face_interior_cells"] == 24
+    assert a4["edge_interior_cells"] == 24
+    assert a4["corner_cells"] == 8
+    assert a4["surface_cells"] == 56
+    assert a4["counted_surface_cells"] == a4["surface_cells"]
+    assert a4["surface_partition_closes"] is True
+    assert (
+        a4["edge_corner_accounting_status"]
+        == "all_face_edge_corner_accounting_closed"
+    )
+    assert a4["cpml_exclusion_staging_explicit"] is True
+    assert a4["cpml_non_cpml_compatibility_ready"] is True
+    cpml_staging = a4["cpml_staging_report"]
+    assert cpml_staging["plain_sat_symbols"] == (
+        "apply_sat_h_interfaces",
+        "apply_sat_e_interfaces",
+    )
+    assert cpml_staging["cpml_sat_symbols"] == cpml_staging["plain_sat_symbols"]
+    assert cpml_staging["operator_module_has_no_cpml_dependency"] is True
+    assert cpml_staging["private_hooks_required_for_operator_guard"] is False
+
+    a5 = candidates["private_solver_integration_hunk"]
+    assert a5["a1_a4_evidence_summary_required"] is True
+    assert a5["a1_a4_evidence_summary_present"] is True
+    assert a5["admitted_to_solver"] is False
+
+    assert packet["operator_module_added"] is True
+    assert packet["operator_module"] == "rfx/subgridding/sbp_operators.py"
+    assert packet["solver_hunk_allowed_if_selected"] == (
+        _GLOBAL_OPERATOR_ALLOWED_SOLVER_SYMBOLS
+    )
+    assert packet["solver_hunk_retained"] is False
+    assert packet["actual_solver_hunk_inventory"] == ()
+    assert packet["production_patch_allowed"] is False
+    assert packet["production_patch_applied"] is False
+    assert packet["solver_behavior_changed"] is False
+    assert packet["sbp_sat_3d_repair_applied"] is False
+    assert packet["sbp_sat_3d_diff_allowed"] is False
+    assert packet["face_ops_global_behavior_changed"] is False
+    assert packet["hook_experiment_allowed"] is False
+    assert packet["jit_runner_changed"] is False
+    assert packet["runner_changed"] is False
+    assert packet["api_surface_changed"] is False
+    assert packet["public_claim_allowed"] is False
+    assert packet["public_api_behavior_changed"] is False
+    assert packet["public_default_tau_changed"] is False
+    assert packet["public_observable_promoted"] is False
+    assert packet["public_true_rt_promoted"] is False
+    assert packet["public_dft_promoted"] is False
+    assert packet["promotion_candidate_ready"] is False
+    assert packet["simresult_changed"] is False
+    assert packet["result_surface_changed"] is False
+    assert packet["env_config_changed"] is False
+    assert packet["next_prerequisite"] == _GLOBAL_OPERATOR_ARCHITECTURE_NEXT_PREREQUISITE
 
 
 def test_private_manufactured_interior_box_ledger_records_edge_corner_accounting():

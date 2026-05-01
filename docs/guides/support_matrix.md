@@ -182,8 +182,15 @@ close that reduced identity, but the production lift is blocked by
 `requires_global_sbp_operator_refactor`. No `sbp_sat_3d.py` or `face_ops.py`
 solver/operator hunk is retained, the ledger threshold remains `0.02`, and
 public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook promotion remains
-closed. The next safe lane is global SBP derivative/mortar operator architecture,
-not public observable promotion.
+closed. The private global SBP derivative/mortar operator architecture lane now
+records `private_global_operator_3d_contract_ready`: A1-A4 identity evidence
+passes for diagonal-norm SBP derivatives including Yee-staggered dual operators,
+norm-compatible mortar projection, material/metric weighted tangential EM flux
+closure, all-six-face edge/corner partition closure, and CPML/non-CPML SAT
+staging evidence. No `sbp_sat_3d.py` solver hunk is retained, public true-R/T/DFT/flux/TFSF/port/S-parameter/API/result/hook
+promotion remains closed, and the next safe lane is private solver integration
+hunk from global SBP derivative/mortar operator architecture after A1-A4 evidence
+summary, not public observable promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
