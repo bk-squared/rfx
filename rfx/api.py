@@ -2886,6 +2886,7 @@ class Simulation:
                 j_lo=j_lo, j_hi=j_hi,
                 k_lo=k_lo, k_hi=k_hi,
                 j_centre=j_centre, k_top=k_top,
+                height=mp.z_hi - mp.z_lo,
             ))
 
         # Stash existing add_dft_plane_probe registrations and restore on exit.
@@ -2963,9 +2964,19 @@ class Simulation:
                         vs.append(v_f)
                     v_per_port.append(vs)
                     hy_plane = np.asarray(planes[hy_probe_names[p_idx]].accumulator)
+                    ny_grid = hy_plane.shape[1]
+                    # Yee: Hy[:,j,k] lives at z=(k+0.5)*dz; k_hi-1 is inside
+                    # substrate just below trace surface where H is largest.
+                    k_h = max(meta["k_lo"], meta["k_top"] - 1)
+                    # fringing return current extends ~2*h laterally;
+                    # widen y-integration to capture the full Ampere integral.
+                    dy_local = float(dy_arr[meta["j_centre"]])
+                    n_y_margin = max(2, int(round(2 * meta["height"] / dy_local)))
+                    j_lo_ext = max(0, meta["j_lo"] - n_y_margin)
+                    j_hi_ext = min(ny_grid - 1, meta["j_hi"] + n_y_margin)
                     i_f = np.zeros(n_freqs_used, dtype=complex)
-                    for j in range(meta["j_lo"], meta["j_hi"] + 1):
-                        i_f = i_f + hy_plane[:, j, meta["k_top"]] * float(dy_arr[j])
+                    for j in range(j_lo_ext, j_hi_ext + 1):
+                        i_f = i_f + hy_plane[:, j, k_h] * float(dy_arr[j])
                     i_first_per_port.append(i_f)
 
                 # Driven port: full 3-probe extraction → S[driven, driven].
