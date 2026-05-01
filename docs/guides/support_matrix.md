@@ -231,8 +231,12 @@ records
 global temporal phase changes, sheet phase-center reasoning, the existing
 center-core aperture proxy, and active-mask observable narrowing do not produce
 a private uniform-reference phase-front self-oracle that passes unchanged
-thresholds. The next safe lane is private analytic plane-wave source
-implementation redesign, not public promotion.
+thresholds. The follow-up private analytic plane-wave source implementation
+redesign lane now records `private_uniform_plane_wave_source_self_oracle_ready`:
+a private prototype uniform plane-wave source self-oracle passes unchanged
+phase-front thresholds without adding public TFSF/DFT/flux observables or
+runtime/API surfaces. The next safe lane is private fixture contract recovery
+using the plane-wave source self-oracle, not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

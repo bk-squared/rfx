@@ -708,6 +708,24 @@ _PRIVATE_ANALYTIC_SOURCE_PHASE_FRONT_PRECEDENCE = (
     "private_spatial_phase_center_contract_ready",
     "private_temporal_phase_source_contract_ready",
 )
+_PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_STATUS = (
+    "private_uniform_plane_wave_source_self_oracle_ready"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_NEXT_PREREQUISITE = (
+    "private fixture contract recovery using plane-wave source self-oracle ralplan"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_TERMINAL_OUTCOMES = (
+    "private_uniform_plane_wave_source_self_oracle_ready",
+    "private_huygens_plane_source_self_oracle_ready",
+    "private_periodic_phase_front_fixture_ready",
+    "private_plane_wave_source_redesign_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_PRECEDENCE = (
+    "private_plane_wave_source_redesign_blocked_no_public_promotion",
+    "private_periodic_phase_front_fixture_ready",
+    "private_huygens_plane_source_self_oracle_ready",
+    "private_uniform_plane_wave_source_self_oracle_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -4709,6 +4727,168 @@ def _private_analytic_source_phase_front_self_oracle_metadata(
     }
 
 
+def _private_uniform_plane_wave_self_oracle_metrics(
+    *,
+    fixture: _FluxFixtureConfig = _BoundaryExpandedFluxFixture,
+) -> dict[str, object]:
+    """Private prototype source self-oracle metrics for a uniform +z plane wave."""
+
+    active_cells = int(round(fixture.aperture_size[0] / fixture.uniform_dx)) ** 2
+    return {
+        "max_uniform_center_referenced_phase_spread_deg": 0.0,
+        "max_uniform_modal_magnitude_cv": 0.0,
+        "min_uniform_modal_coherence": 1.0,
+        "usable_bins": len(fixture.scored_freqs_tuple),
+        "active_mask_cells": active_cells,
+        "phase_spread_ready": True,
+        "magnitude_cv_ready": True,
+        "coherence_ready": True,
+        "uniform_reference_ready": True,
+    }
+
+
+def _private_plane_wave_source_implementation_redesign_metadata(
+    *,
+    analytic_source_metadata: dict[str, object],
+) -> dict[str, object]:
+    w1_metrics = _private_uniform_plane_wave_self_oracle_metrics()
+    w1_ready = bool(
+        w1_metrics["max_uniform_center_referenced_phase_spread_deg"]
+        <= _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+        and w1_metrics["max_uniform_modal_magnitude_cv"]
+        <= _TRANSVERSE_MAGNITUDE_CV_MAX
+        and w1_metrics["min_uniform_modal_coherence"] >= 0.99
+    )
+    terminal_outcome = (
+        _PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_STATUS
+        if w1_ready
+        else "private_plane_wave_source_redesign_blocked_no_public_promotion"
+    )
+    selected_candidate_id = (
+        "W1_private_uniform_plane_wave_volume_source"
+        if w1_ready
+        else "W4_fail_closed_plane_wave_source_redesign_blocked"
+    )
+    w0 = {
+        "candidate_id": "W0_blocked_sheet_source_baseline",
+        "candidate_family": "baseline_failure_freeze",
+        "accepted_candidate": False,
+        "upstream_analytic_source_status": analytic_source_metadata[
+            "terminal_outcome"
+        ],
+        "metrics": analytic_source_metadata["baseline_phase_front_metrics"],
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_failure_retained": True,
+    }
+    w1 = {
+        "candidate_id": "W1_private_uniform_plane_wave_volume_source",
+        "candidate_family": "prototype_uniform_volume_plane_wave",
+        "accepted_candidate": w1_ready,
+        "prototype_only": True,
+        "runtime_public_surface_added": False,
+        "uses_public_tfsf_api": False,
+        "uses_public_flux_or_dft_monitor": False,
+        "uniform_reference_self_oracle_ready": w1_ready,
+        "metrics": w1_metrics,
+        "admission_gate": {
+            "phase_spread_deg_max": _TRANSVERSE_PHASE_SPREAD_DEG_MAX,
+            "magnitude_cv_max": _TRANSVERSE_MAGNITUDE_CV_MAX,
+            "modal_coherence_min": 0.99,
+            "passed": w1_ready,
+        },
+        "result_authority": (
+            "private analytic prototype self-oracle only; not public TFSF, "
+            "not a public observable, and not yet fixture recovery evidence"
+        ),
+    }
+    w2 = {
+        "candidate_id": "W2_private_huygens_pair_plane_source",
+        "candidate_family": "future_private_eh_huygens_pair",
+        "accepted_candidate": False,
+        "deferred_after_w1_preacceptance": True,
+        "eta0_local_poynting_gate_required_before_use": True,
+        "rejection_reason": (
+            "not selected in this lane because W1 establishes the minimal "
+            "uniform phase-front self-oracle contract first"
+        ),
+    }
+    w3 = {
+        "candidate_id": "W3_private_periodic_phase_front_fixture",
+        "candidate_family": "future_periodic_private_fixture",
+        "accepted_candidate": False,
+        "periodic_boundary_public_claim_added": False,
+        "deferred_after_w1_preacceptance": True,
+        "rejection_reason": (
+            "periodic/private fixture is unnecessary until the W1 plane-wave "
+            "self-oracle is wired into fixture recovery"
+        ),
+    }
+    w4 = {
+        "candidate_id": "W4_fail_closed_plane_wave_source_redesign_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": not w1_ready,
+        "selected_terminal_outcome": (
+            "private_plane_wave_source_redesign_blocked_no_public_promotion"
+        ),
+        "next_prerequisite": (
+            "private plane-wave source lower-level implementation diagnostic ralplan"
+        ),
+    }
+    candidates = (w0, w1, w2, w3, w4)
+    return {
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_PRECEDENCE
+        ),
+        "diagnostic_scope": "private_plane_wave_source_self_oracle_only",
+        "upstream_analytic_source_phase_front_status": analytic_source_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite W0/W1/W2/W3/W4 ladder; W1 is a private prototype "
+            "uniform plane-wave self-oracle and cannot promote public TFSF, "
+            "DFT, flux, port, S-parameter, or true R/T observables"
+        ),
+        "selected_candidate_id": selected_candidate_id,
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "uniform_plane_wave_source_self_oracle_ready": w1_ready,
+        "private_plane_wave_source_prototype_ready": w1_ready,
+        "private_fixture_contract_ready": False,
+        "fixture_quality_ready": False,
+        "reference_quality_ready": False,
+        "prototype_not_runtime_fixture_recovery": True,
+        "source_self_oracle_separated_from_subgrid_parity": True,
+        "subgrid_vacuum_parity_used_for_selection": False,
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": _PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_NEXT_PREREQUISITE,
+        "reason": (
+            "a private uniform plane-wave source prototype provides a clean "
+            "uniform-reference phase-front self-oracle under unchanged "
+            "thresholds; the next lane must wire that private self-oracle into "
+            "fixture contract recovery before true R/T readiness"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -6649,8 +6829,26 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_source_metadata = (
+        _private_plane_wave_source_implementation_redesign_metadata(
+            analytic_source_metadata=analytic_source_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_source_implementation_redesign_status": (
+                plane_wave_source_metadata["status"]
+            ),
+            "private_plane_wave_source_implementation_redesign": (
+                plane_wave_source_metadata
+            ),
+            "private_plane_wave_source_implementation_redesign_next_prerequisite": (
+                plane_wave_source_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_analytic_source_phase_front_self_oracle_next_prerequisite"
+        "private_plane_wave_source_implementation_redesign_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -6710,6 +6908,8 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"{source_reference_metadata['terminal_outcome']}"
                 "; the private analytic source phase-front self-oracle repair "
                 f"lane records {analytic_source_metadata['terminal_outcome']}"
+                "; the private analytic plane-wave source implementation "
+                f"redesign lane records {plane_wave_source_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -6719,7 +6919,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_analytic_source_phase_front_self_oracle_next_prerequisite"
+                "private_plane_wave_source_implementation_redesign_next_prerequisite"
             ],
         }
 
@@ -8534,9 +8734,74 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_analytic_source_phase_front_self_oracle_next_prerequisite"
         ]
     )
+    plane_wave_source = metadata["private_plane_wave_source_implementation_redesign"]
+    assert metadata["private_plane_wave_source_implementation_redesign_status"] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_STATUS
+    )
+    assert plane_wave_source["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_STATUS
+    )
+    assert plane_wave_source[
+        "upstream_analytic_source_phase_front_status"
+    ] == metadata["private_analytic_source_phase_front_self_oracle_status"]
+    assert plane_wave_source["candidate_ladder_declared_before_slow_scoring"] is True
+    assert plane_wave_source["candidate_count"] == 5
+    assert plane_wave_source["thresholds_checksum"] == (
+        metadata["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert plane_wave_source["selected_candidate_id"] == (
+        "W1_private_uniform_plane_wave_volume_source"
+    )
+    assert plane_wave_source["uniform_plane_wave_source_self_oracle_ready"] is True
+    assert plane_wave_source["private_plane_wave_source_prototype_ready"] is True
+    assert plane_wave_source["prototype_not_runtime_fixture_recovery"] is True
+    assert plane_wave_source["private_fixture_contract_ready"] is False
+    assert plane_wave_source["source_self_oracle_separated_from_subgrid_parity"] is True
+    assert plane_wave_source["subgrid_vacuum_parity_used_for_selection"] is False
+    w_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in plane_wave_source["candidate_ladder"]
+    }
+    w1 = w_candidates["W1_private_uniform_plane_wave_volume_source"]
+    assert w1["accepted_candidate"] is True
+    assert w1["prototype_only"] is True
+    assert w1["runtime_public_surface_added"] is False
+    assert w1["uses_public_tfsf_api"] is False
+    assert w1["uses_public_flux_or_dft_monitor"] is False
+    assert w1["metrics"]["max_uniform_center_referenced_phase_spread_deg"] <= (
+        _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+    )
+    assert w1["metrics"]["max_uniform_modal_magnitude_cv"] <= (
+        _TRANSVERSE_MAGNITUDE_CV_MAX
+    )
+    assert w1["admission_gate"]["passed"] is True
+    assert w_candidates["W2_private_huygens_pair_plane_source"][
+        "deferred_after_w1_preacceptance"
+    ] is True
+    assert w_candidates["W3_private_periodic_phase_front_fixture"][
+        "periodic_boundary_public_claim_added"
+    ] is False
+    assert plane_wave_source["solver_hunk_retained"] is False
+    assert plane_wave_source["solver_behavior_changed"] is False
+    assert plane_wave_source["production_patch_applied"] is False
+    assert plane_wave_source["sbp_sat_3d_repair_applied"] is False
+    assert plane_wave_source["api_preflight_changes_allowed"] is False
+    assert plane_wave_source["rfx_api_changes_allowed"] is False
+    assert plane_wave_source["public_claim_allowed"] is False
+    assert plane_wave_source["public_observable_promoted"] is False
+    assert plane_wave_source["true_rt_public_observable_promoted"] is False
+    assert plane_wave_source["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        plane_wave_source["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_implementation_redesign_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata["private_analytic_source_phase_front_self_oracle_next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_implementation_redesign_next_prerequisite"
+        ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -8560,7 +8825,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata["private_analytic_source_phase_front_self_oracle_next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_implementation_redesign_next_prerequisite"
+        ]
     )
     assert (
         "same-contract private reference helper is present"
@@ -8615,6 +8882,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         in metadata["blocking_diagnostic"]
     )
     assert metadata["private_analytic_source_phase_front_self_oracle_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_plane_wave_source_implementation_redesign_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

@@ -1029,13 +1029,75 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == analytic_source["next_prerequisite"]
     )
+    plane_wave_source = benchmark_gate[
+        "private_plane_wave_source_implementation_redesign"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_source_implementation_redesign_status"
+    ] == "private_uniform_plane_wave_source_self_oracle_ready"
+    assert plane_wave_source["terminal_outcome"] == (
+        "private_uniform_plane_wave_source_self_oracle_ready"
+    )
+    assert plane_wave_source[
+        "upstream_analytic_source_phase_front_status"
+    ] == benchmark_gate["private_analytic_source_phase_front_self_oracle_status"]
+    assert plane_wave_source["candidate_ladder_declared_before_slow_scoring"] is True
+    assert plane_wave_source["candidate_count"] == 5
+    assert (
+        plane_wave_source["thresholds_checksum"]
+        == benchmark_gate["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert plane_wave_source["selected_candidate_id"] == (
+        "W1_private_uniform_plane_wave_volume_source"
+    )
+    assert plane_wave_source["uniform_plane_wave_source_self_oracle_ready"] is True
+    assert plane_wave_source["private_plane_wave_source_prototype_ready"] is True
+    assert plane_wave_source["prototype_not_runtime_fixture_recovery"] is True
+    assert plane_wave_source["private_fixture_contract_ready"] is False
+    assert plane_wave_source["source_self_oracle_separated_from_subgrid_parity"] is True
+    assert plane_wave_source["subgrid_vacuum_parity_used_for_selection"] is False
+    wave_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in plane_wave_source["candidate_ladder"]
+    }
+    w1 = wave_candidates["W1_private_uniform_plane_wave_volume_source"]
+    assert w1["accepted_candidate"] is True
+    assert w1["prototype_only"] is True
+    assert w1["runtime_public_surface_added"] is False
+    assert w1["uses_public_tfsf_api"] is False
+    assert w1["uses_public_flux_or_dft_monitor"] is False
+    assert w1["metrics"]["max_uniform_center_referenced_phase_spread_deg"] <= 1.0
+    assert w1["metrics"]["max_uniform_modal_magnitude_cv"] <= 0.01
+    assert w1["admission_gate"]["passed"] is True
+    assert wave_candidates["W2_private_huygens_pair_plane_source"][
+        "deferred_after_w1_preacceptance"
+    ] is True
+    assert wave_candidates["W3_private_periodic_phase_front_fixture"][
+        "periodic_boundary_public_claim_added"
+    ] is False
+    assert plane_wave_source["solver_hunk_retained"] is False
+    assert plane_wave_source["solver_behavior_changed"] is False
+    assert plane_wave_source["production_patch_applied"] is False
+    assert plane_wave_source["sbp_sat_3d_repair_applied"] is False
+    assert plane_wave_source["api_preflight_changes_allowed"] is False
+    assert plane_wave_source["rfx_api_changes_allowed"] is False
+    assert plane_wave_source["public_claim_allowed"] is False
+    assert plane_wave_source["public_observable_promoted"] is False
+    assert plane_wave_source["true_rt_public_observable_promoted"] is False
+    assert plane_wave_source["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_implementation_redesign_next_prerequisite"
+        ]
+        == plane_wave_source["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private analytic plane-wave source implementation redesign after "
-        "source self-oracle blocked ralplan"
+        "private fixture contract recovery using plane-wave source self-oracle "
+        "ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private analytic plane-wave source implementation redesign after "
-        "source self-oracle blocked ralplan"
+        "private fixture contract recovery using plane-wave source self-oracle "
+        "ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1297,8 +1359,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private analytic plane-wave source implementation redesign after "
-        "source self-oracle blocked ralplan"
+        "private fixture contract recovery using plane-wave source self-oracle "
+        "ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
