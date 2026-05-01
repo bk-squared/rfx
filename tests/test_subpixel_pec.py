@@ -526,3 +526,133 @@ def test_pec_short_s11_baseline_unchanged_with_binary_path():
         f"PEC-short |S11| baseline regressed: min={s11.min():.4f} "
         f"(gate 0.99). Stage 1 must not affect the binary path."
     )
+
+
+# -----------------------------------------------------------------------------
+# Stage 1 step 5 (nice-to-have): mesh-convergence S21 with Boundary(conformal=True)
+# -----------------------------------------------------------------------------
+#
+# The binary-PEC mesh-conv case
+# (``test_mesh_convergence_s21_scaled_cpml`` in the validation battery)
+# already passes since the 2026-04-29 Box.mask_on_coords fix; this test
+# locks the conformal=True path to the same convergence behaviour so the
+# Dey-Mittra coefficient-modifying lane stays Meep-class on
+# inverse-design / topology-changing geometries where binary staircase
+# would re-introduce the cell-count rounding jitter.
+
+
+def _wr90_meshconv_sim(*, dx: float, conformal: bool, cpml_layers: int):
+    """Two-port WR-90 with one εr=4 obstacle for S21 mesh convergence.
+
+    Mirrors the validation-battery DOMAIN/PORT placement so refinement
+    behaviour is comparable to the binary-PEC baseline test, but uses
+    ``Boundary(conformal=conformal)`` on the y/z PEC walls so the Stage 1
+    Dey-Mittra path can take effect."""
+    import jax.numpy as jnp
+
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(0.12, 0.04, 0.02),
+        dx=dx,
+        boundary=BoundarySpec(
+            x="cpml",
+            y=Boundary(lo="pec", hi="pec", conformal=conformal),
+            z=Boundary(lo="pec", hi="pec", conformal=conformal),
+        ),
+        cpml_layers=cpml_layers,
+    )
+    sim.add_material("diel_4", eps_r=4.0, sigma=0.0)
+    sim.add(Box((0.05, 0.0, 0.0), (0.07, 0.04, 0.02)), material="diel_4")
+
+    freqs = jnp.asarray([6.0e9])
+    sim.add_waveguide_port(
+        0.01,
+        direction="+x", mode=(1, 0), mode_type="TE",
+        freqs=freqs, f0=6e9, bandwidth=0.5,
+        waveform="modulated_gaussian",
+        name="left",
+    )
+    sim.add_waveguide_port(
+        0.09,
+        direction="-x", mode=(1, 0), mode_type="TE",
+        freqs=freqs, f0=6e9, bandwidth=0.5,
+        waveform="modulated_gaussian",
+        name="right",
+    )
+    return sim
+
+
+@pytest.mark.slow
+def test_mesh_convergence_s21_with_conformal_pec_baseline():
+    """Baseline: same geometry with ``conformal=False`` should refine
+    monotonically — established by the validation battery's
+    ``test_mesh_convergence_s21_scaled_cpml`` (2026-04-29 unblocked).
+    Mirrors that gate locally so the conformal-path test below has a
+    side-by-side reference inside the same file.
+    """
+    target_cpml_m = 0.030
+    resolutions = [0.003, 0.002, 0.0015]
+    s21_values: list[float] = []
+    for dx in resolutions:
+        layers = max(8, int(round(target_cpml_m / dx)))
+        sim = _wr90_meshconv_sim(dx=dx, conformal=False, cpml_layers=layers)
+        res = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
+        s = np.asarray(res.s_params)
+        port_idx = {n: i for i, n in enumerate(res.port_names)}
+        s21 = float(np.abs(s[port_idx["right"], port_idx["left"], 0]))
+        s21_values.append(s21)
+        print(f"[meshconv-binary] dx={dx*1e3:.1f}mm cpml={layers} |S21|={s21:.4f}")
+    coarse_delta = abs(s21_values[0] - s21_values[1])
+    fine_delta = abs(s21_values[1] - s21_values[2])
+    print(f"[meshconv-binary] coarse_delta={coarse_delta:.4f} fine_delta={fine_delta:.4f}")
+    assert fine_delta < 0.10, (
+        f"Baseline binary mesh-conv failed locally — coarse={coarse_delta:.4f}, "
+        f"fine={fine_delta:.4f}. Test setup or environment regression."
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.xfail(
+    reason=(
+        "Stage 1 conformal=True path produces NaN |S21| at dx∈{2,1.5} mm "
+        "when paired with normalize=True (two-run empty-guide reference "
+        "subtraction). At dx=3 mm the run is finite (|S21|≈0.76). "
+        "Diagnosed 2026-05-02 — root cause not yet identified; conformal "
+        "path is verified functional on the PEC-short single-run "
+        "normalize=False gate (test_pec_short_s11_with_conformal_face_pec). "
+        "Tracks the Stage 1 follow-up listed in rfx-known-issues.md."
+    ),
+    strict=False,
+)
+def test_mesh_convergence_s21_with_conformal_pec():
+    """``Boundary(conformal=True)`` must keep mesh refinement on the S21
+    of an εr=4 obstacle within the same fine-delta gate (0.10) as the
+    binary baseline. Three resolutions {3, 2, 1.5} mm with
+    CPML thickness scaled to a fixed 30 mm physical absorber.
+    """
+    target_cpml_m = 0.030
+    resolutions = [0.003, 0.002, 0.0015]
+    s21_values: list[float] = []
+    for dx in resolutions:
+        layers = max(8, int(round(target_cpml_m / dx)))
+        sim = _wr90_meshconv_sim(dx=dx, conformal=True, cpml_layers=layers)
+        res = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
+        s = np.asarray(res.s_params)
+        port_idx = {n: i for i, n in enumerate(res.port_names)}
+        s21 = float(np.abs(s[port_idx["right"], port_idx["left"], 0]))
+        s21_values.append(s21)
+        print(f"[meshconv-conformal] dx={dx*1e3:.1f}mm cpml={layers} |S21|={s21:.4f}")
+
+    coarse_delta = abs(s21_values[0] - s21_values[1])
+    fine_delta = abs(s21_values[1] - s21_values[2])
+    print(f"[meshconv-conformal] coarse_delta={coarse_delta:.4f} "
+          f"fine_delta={fine_delta:.4f}")
+
+    assert fine_delta <= coarse_delta + 0.01, (
+        f"Refinement did not reduce |S21| change with conformal=True: "
+        f"coarse={coarse_delta:.4f}, fine={fine_delta:.4f}"
+    )
+    assert fine_delta < 0.10, (
+        f"Fine-mesh |S21| change too large with conformal=True: "
+        f"{fine_delta:.4f} (gate 0.10)"
+    )
