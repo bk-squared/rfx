@@ -760,6 +760,24 @@ _PRIVATE_SUBGRID_VACUUM_PLANE_WAVE_FIXTURE_PRECEDENCE = (
     "private_plane_wave_fixture_contract_ready_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_STATUS = (
+    "private_plane_wave_fixture_path_wiring_blocked_no_public_promotion"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_NEXT_PREREQUISITE = (
+    "private plane-wave source request/spec adapter design before "
+    "subgrid-vacuum parity ralplan"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_TERMINAL_OUTCOMES = (
+    "private_plane_wave_fixture_path_wired_parity_pending",
+    "private_plane_wave_fixture_contract_ready_true_rt_pending",
+    "private_plane_wave_fixture_path_wiring_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_PRECEDENCE = (
+    "private_plane_wave_fixture_path_wiring_blocked_no_public_promotion",
+    "private_plane_wave_fixture_contract_ready_true_rt_pending",
+    "private_plane_wave_fixture_path_wired_parity_pending",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -5220,6 +5238,184 @@ def _private_subgrid_vacuum_plane_wave_fixture_contract_metadata(
     }
 
 
+def _private_plane_wave_source_fixture_path_wiring_metadata(
+    *,
+    subgrid_plane_wave_fixture_metadata: dict[str, object],
+) -> dict[str, object]:
+    subgrid_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in subgrid_plane_wave_fixture_metadata["candidate_ladder"]
+    }
+    v2 = subgrid_candidates["V2_subgrid_plane_wave_fixture_blocker_classified"]
+    source_ready = bool(v2["source_self_oracle_ready"])
+    reference_ready = bool(v2["same_contract_reference_ready"])
+    thresholds_checksum = _reference_quality_thresholds_checksum()
+    adapter_surface_available = False
+    parity_ready = False
+    terminal_outcome = (
+        "private_plane_wave_fixture_contract_ready_true_rt_pending"
+        if parity_ready
+        else "private_plane_wave_fixture_path_wired_parity_pending"
+        if adapter_surface_available
+        else _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_STATUS
+    )
+    selected_candidate_id = (
+        "WIRE2_private_subgrid_vacuum_parity_score"
+        if parity_ready
+        else "WIRE1_private_plane_wave_source_fixture_path_adapter"
+        if adapter_surface_available
+        else "WIRE3_fixture_path_wiring_blocker_classified"
+    )
+    wire0 = {
+        "candidate_id": "WIRE0_current_private_fixture_path_freeze",
+        "candidate_family": "upstream_v2_freeze",
+        "accepted_candidate": False,
+        "upstream_subgrid_vacuum_fixture_status": (
+            subgrid_plane_wave_fixture_metadata["terminal_outcome"]
+        ),
+        "upstream_selected_candidate_id": (
+            subgrid_plane_wave_fixture_metadata["selected_candidate_id"]
+        ),
+        "source_self_oracle_ready": source_ready,
+        "same_contract_reference_ready": reference_ready,
+        "subgrid_vacuum_parity_scored": False,
+        "public_closure_retained": True,
+        "thresholds_checksum": thresholds_checksum,
+    }
+    wire1 = {
+        "candidate_id": "WIRE1_private_plane_wave_source_fixture_path_adapter",
+        "candidate_family": "private_fixture_path_adapter",
+        "accepted_candidate": adapter_surface_available,
+        "source_self_oracle_ready": source_ready,
+        "same_contract_reference_ready": reference_ready,
+        "adapter_implementation_surface_available": adapter_surface_available,
+        "plane_wave_fixture_path_wired": False,
+        "w1_contract_runtime_represented": False,
+        "existing_private_tfsf_hook_reusable_as_w1": False,
+        "existing_private_tfsf_hook_reason": (
+            "the existing private TFSF-style path injects an ex/hy sheet "
+            "correction through post-H/post-E hooks; it is not the W1 uniform "
+            "plane-wave source contract and cannot be relabeled as that "
+            "fixture-path adapter"
+        ),
+        "public_runner_or_api_change_required_for_current_helper": True,
+        "rfx_runners_change_allowed_this_lane": False,
+        "jit_runner_private_spec_available": False,
+        "subgrid_vacuum_parity_scored": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "rejection_reason": (
+            "no private request/spec adapter currently carries the W1/R1 "
+            "plane-wave contract into the subgrid-vacuum fixture path without "
+            "changing forbidden runner/API surfaces"
+        ),
+    }
+    wire2 = {
+        "candidate_id": "WIRE2_private_subgrid_vacuum_parity_score",
+        "candidate_family": "private_parity_score_after_adapter",
+        "accepted_candidate": parity_ready,
+        "plane_wave_fixture_path_wired": False,
+        "subgrid_vacuum_parity_scored": False,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "admission_gate": {
+            "transverse_magnitude_cv_max": _TRANSVERSE_MAGNITUDE_CV_MAX,
+            "transverse_phase_spread_deg_max": _TRANSVERSE_PHASE_SPREAD_DEG_MAX,
+            "vacuum_relative_magnitude_error_max": _VACUUM_MAGNITUDE_ERROR_MAX,
+            "vacuum_phase_error_deg_max": _VACUUM_PHASE_ERROR_DEG_MAX,
+            "passed": False,
+        },
+        "not_scored_reason": (
+            "WIRE1 did not provide a safe private plane-wave fixture-path "
+            "adapter, so unchanged subgrid-vacuum parity cannot be scored"
+        ),
+    }
+    wire3 = {
+        "candidate_id": "WIRE3_fixture_path_wiring_blocker_classified",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": not adapter_surface_available,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_STATUS
+        ),
+        "source_self_oracle_ready": source_ready,
+        "same_contract_reference_ready": reference_ready,
+        "plane_wave_fixture_path_wired": False,
+        "subgrid_vacuum_parity_scored": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_NEXT_PREREQUISITE
+        ),
+        "classification_reason": (
+            "the next work must design a private request/spec adapter for the "
+            "W1 plane-wave contract before parity scoring; current evidence "
+            "cannot be promoted or treated as true R/T readiness"
+        ),
+    }
+    candidates = (wire0, wire1, wire2, wire3)
+    return {
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_source_fixture_path_wiring_only"
+        ),
+        "upstream_subgrid_vacuum_fixture_status": (
+            subgrid_plane_wave_fixture_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite WIRE0/WIRE1/WIRE2/WIRE3 ladder; existing TFSF-style "
+            "private hooks cannot be relabeled as the W1 plane-wave source "
+            "fixture adapter, and WIRE2 cannot score parity until WIRE1 exists"
+        ),
+        "selected_candidate_id": selected_candidate_id,
+        "candidate_ladder": candidates,
+        "thresholds_checksum": thresholds_checksum,
+        "source_self_oracle_ready": source_ready,
+        "same_contract_reference_ready": reference_ready,
+        "plane_wave_fixture_path_wired": False,
+        "adapter_implementation_surface_available": adapter_surface_available,
+        "subgrid_vacuum_parity_scored": False,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "reference_quality_ready": bool(
+            subgrid_plane_wave_fixture_metadata["reference_quality_ready"]
+        ),
+        "true_rt_readiness_unlocked": False,
+        "source_self_oracle_separated_from_subgrid_parity": True,
+        "subgrid_vacuum_parity_used_for_selection": False,
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the W1/R1 plane-wave self-oracle/reference evidence remains "
+            "private and visible, but no safe private fixture-path adapter "
+            "currently carries it into subgrid-vacuum parity scoring"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -7214,8 +7410,26 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_wiring_metadata = (
+        _private_plane_wave_source_fixture_path_wiring_metadata(
+            subgrid_plane_wave_fixture_metadata=subgrid_plane_wave_fixture_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_source_fixture_path_wiring_status": (
+                plane_wave_wiring_metadata["status"]
+            ),
+            "private_plane_wave_source_fixture_path_wiring": (
+                plane_wave_wiring_metadata
+            ),
+            "private_plane_wave_source_fixture_path_wiring_next_prerequisite": (
+                plane_wave_wiring_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_subgrid_vacuum_plane_wave_fixture_contract_next_prerequisite"
+        "private_plane_wave_source_fixture_path_wiring_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -7281,6 +7495,8 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"records {plane_wave_fixture_metadata['terminal_outcome']}"
                 "; the private subgrid-vacuum plane-wave fixture contract "
                 f"lane records {subgrid_plane_wave_fixture_metadata['terminal_outcome']}"
+                "; the private plane-wave source fixture-path wiring lane "
+                f"records {plane_wave_wiring_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -7290,7 +7506,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_subgrid_vacuum_plane_wave_fixture_contract_next_prerequisite"
+                "private_plane_wave_source_fixture_path_wiring_next_prerequisite"
             ],
         }
 
@@ -9316,10 +9532,74 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_subgrid_vacuum_plane_wave_fixture_contract_next_prerequisite"
         ]
     )
+    plane_wave_wiring = metadata["private_plane_wave_source_fixture_path_wiring"]
+    assert metadata["private_plane_wave_source_fixture_path_wiring_status"] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_STATUS
+    )
+    assert plane_wave_wiring["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_STATUS
+    )
+    assert plane_wave_wiring[
+        "upstream_subgrid_vacuum_fixture_status"
+    ] == metadata["private_subgrid_vacuum_plane_wave_fixture_contract_status"]
+    assert plane_wave_wiring["candidate_ladder_declared_before_slow_scoring"] is True
+    assert plane_wave_wiring["candidate_count"] == 4
+    assert plane_wave_wiring["thresholds_checksum"] == (
+        metadata["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert plane_wave_wiring["selected_candidate_id"] == (
+        "WIRE3_fixture_path_wiring_blocker_classified"
+    )
+    assert plane_wave_wiring["source_self_oracle_ready"] is True
+    assert plane_wave_wiring["same_contract_reference_ready"] is True
+    assert plane_wave_wiring["plane_wave_fixture_path_wired"] is False
+    assert plane_wave_wiring["adapter_implementation_surface_available"] is False
+    assert plane_wave_wiring["subgrid_vacuum_parity_scored"] is False
+    assert plane_wave_wiring["fixture_quality_ready"] is False
+    assert plane_wave_wiring["reference_quality_ready"] is True
+    assert plane_wave_wiring["true_rt_readiness_unlocked"] is False
+    wire_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in plane_wave_wiring["candidate_ladder"]
+    }
+    wire1 = wire_candidates["WIRE1_private_plane_wave_source_fixture_path_adapter"]
+    assert wire1["accepted_candidate"] is False
+    assert wire1["w1_contract_runtime_represented"] is False
+    assert wire1["existing_private_tfsf_hook_reusable_as_w1"] is False
+    assert wire1["public_runner_or_api_change_required_for_current_helper"] is True
+    assert wire1["rfx_runners_change_allowed_this_lane"] is False
+    assert wire1["jit_runner_private_spec_available"] is False
+    wire2 = wire_candidates["WIRE2_private_subgrid_vacuum_parity_score"]
+    assert wire2["accepted_candidate"] is False
+    assert wire2["plane_wave_fixture_path_wired"] is False
+    assert wire2["subgrid_vacuum_parity_scored"] is False
+    assert wire2["admission_gate"]["passed"] is False
+    wire3 = wire_candidates["WIRE3_fixture_path_wiring_blocker_classified"]
+    assert wire3["accepted_candidate"] is True
+    assert wire3["selected_terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_FIXTURE_PATH_WIRING_STATUS
+    )
+    assert wire3["fixture_quality_ready"] is False
+    assert plane_wave_wiring["solver_hunk_retained"] is False
+    assert plane_wave_wiring["solver_behavior_changed"] is False
+    assert plane_wave_wiring["production_patch_applied"] is False
+    assert plane_wave_wiring["sbp_sat_3d_repair_applied"] is False
+    assert plane_wave_wiring["api_preflight_changes_allowed"] is False
+    assert plane_wave_wiring["rfx_api_changes_allowed"] is False
+    assert plane_wave_wiring["public_claim_allowed"] is False
+    assert plane_wave_wiring["public_observable_promoted"] is False
+    assert plane_wave_wiring["true_rt_public_observable_promoted"] is False
+    assert plane_wave_wiring["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        plane_wave_wiring["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_fixture_path_wiring_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_subgrid_vacuum_plane_wave_fixture_contract_next_prerequisite"
+            "private_plane_wave_source_fixture_path_wiring_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -9345,7 +9625,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_subgrid_vacuum_plane_wave_fixture_contract_next_prerequisite"
+            "private_plane_wave_source_fixture_path_wiring_next_prerequisite"
         ]
     )
     assert (
@@ -9410,6 +9690,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_subgrid_vacuum_plane_wave_fixture_contract_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_plane_wave_source_fixture_path_wiring_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

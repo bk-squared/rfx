@@ -1211,13 +1211,68 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == subgrid_vacuum_fixture["next_prerequisite"]
     )
+    plane_wave_wiring = benchmark_gate[
+        "private_plane_wave_source_fixture_path_wiring"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_source_fixture_path_wiring_status"
+    ] == "private_plane_wave_fixture_path_wiring_blocked_no_public_promotion"
+    assert plane_wave_wiring["terminal_outcome"] == (
+        "private_plane_wave_fixture_path_wiring_blocked_no_public_promotion"
+    )
+    assert plane_wave_wiring[
+        "upstream_subgrid_vacuum_fixture_status"
+    ] == benchmark_gate["private_subgrid_vacuum_plane_wave_fixture_contract_status"]
+    assert plane_wave_wiring["candidate_ladder_declared_before_slow_scoring"] is True
+    assert plane_wave_wiring["candidate_count"] == 4
+    assert (
+        plane_wave_wiring["thresholds_checksum"]
+        == benchmark_gate["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert plane_wave_wiring["selected_candidate_id"] == (
+        "WIRE3_fixture_path_wiring_blocker_classified"
+    )
+    assert plane_wave_wiring["source_self_oracle_ready"] is True
+    assert plane_wave_wiring["same_contract_reference_ready"] is True
+    assert plane_wave_wiring["plane_wave_fixture_path_wired"] is False
+    assert plane_wave_wiring["adapter_implementation_surface_available"] is False
+    assert plane_wave_wiring["subgrid_vacuum_parity_scored"] is False
+    assert plane_wave_wiring["fixture_quality_ready"] is False
+    assert plane_wave_wiring["reference_quality_ready"] is True
+    assert plane_wave_wiring["true_rt_readiness_unlocked"] is False
+    wire_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in plane_wave_wiring["candidate_ladder"]
+    }
+    wire1 = wire_candidates["WIRE1_private_plane_wave_source_fixture_path_adapter"]
+    assert wire1["accepted_candidate"] is False
+    assert wire1["w1_contract_runtime_represented"] is False
+    assert wire1["existing_private_tfsf_hook_reusable_as_w1"] is False
+    assert wire1["rfx_runners_change_allowed_this_lane"] is False
+    wire2 = wire_candidates["WIRE2_private_subgrid_vacuum_parity_score"]
+    assert wire2["subgrid_vacuum_parity_scored"] is False
+    assert wire2["admission_gate"]["passed"] is False
+    wire3 = wire_candidates["WIRE3_fixture_path_wiring_blocker_classified"]
+    assert wire3["accepted_candidate"] is True
+    assert plane_wave_wiring["public_claim_allowed"] is False
+    assert plane_wave_wiring["public_observable_promoted"] is False
+    assert plane_wave_wiring["true_rt_public_observable_promoted"] is False
+    assert (
+        plane_wave_wiring["dft_flux_tfsf_port_sparameter_promoted"] is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_fixture_path_wiring_next_prerequisite"
+        ]
+        == plane_wave_wiring["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source fixture-path wiring before subgrid-vacuum "
-        "parity ralplan"
+        "private plane-wave source request/spec adapter design before "
+        "subgrid-vacuum parity ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave source fixture-path wiring before subgrid-vacuum "
-        "parity ralplan"
+        "private plane-wave source request/spec adapter design before "
+        "subgrid-vacuum parity ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1225,6 +1280,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_subgrid_vacuum_plane_wave_fixture_contract_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_plane_wave_source_fixture_path_wiring_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
     staging = benchmark_gate["private_time_centered_staging_redesign"]
@@ -1483,8 +1542,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source fixture-path wiring before subgrid-vacuum "
-        "parity ralplan"
+        "private plane-wave source request/spec adapter design before "
+        "subgrid-vacuum parity ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
