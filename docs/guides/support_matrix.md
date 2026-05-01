@@ -235,8 +235,12 @@ thresholds. The follow-up private analytic plane-wave source implementation
 redesign lane now records `private_uniform_plane_wave_source_self_oracle_ready`:
 a private prototype uniform plane-wave source self-oracle passes unchanged
 phase-front thresholds without adding public TFSF/DFT/flux observables or
-runtime/API surfaces. The next safe lane is private fixture contract recovery
-using the plane-wave source self-oracle, not public promotion.
+runtime/API surfaces. The follow-up private fixture contract recovery lane now
+records `private_uniform_plane_wave_reference_contract_ready`: the plane-wave
+self-oracle is accepted as a private same-contract uniform reference, but it is
+not yet wired through subgrid-vacuum parity and does not unlock true R/T. The
+next safe lane is private subgrid-vacuum plane-wave fixture contract recovery,
+not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

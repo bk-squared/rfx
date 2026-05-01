@@ -295,7 +295,11 @@ redesign after source self-oracle blocked ralplan`. That follow-up lane now
 records `private_uniform_plane_wave_source_self_oracle_ready` for a private
 prototype uniform plane-wave source self-oracle, so the next safe lane is
 `private fixture contract recovery using plane-wave source self-oracle ralplan`.
-Hook experiments remain closed and public promotion remains closed.
+That follow-up lane now records
+`private_uniform_plane_wave_reference_contract_ready`, so the next safe lane is
+`private subgrid-vacuum plane-wave fixture contract using plane-wave source
+self-oracle ralplan`. Hook experiments remain closed and public promotion
+remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains
 internal diagnostic evidence only, and the support matrix continues to mark true
 R/T as deferred.

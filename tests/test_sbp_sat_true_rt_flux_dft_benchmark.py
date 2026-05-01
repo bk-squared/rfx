@@ -726,6 +726,23 @@ _PRIVATE_PLANE_WAVE_SOURCE_REDESIGN_PRECEDENCE = (
     "private_huygens_plane_source_self_oracle_ready",
     "private_uniform_plane_wave_source_self_oracle_ready",
 )
+_PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_STATUS = (
+    "private_uniform_plane_wave_reference_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_NEXT_PREREQUISITE = (
+    "private subgrid-vacuum plane-wave fixture contract using plane-wave "
+    "source self-oracle ralplan"
+)
+_PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_TERMINAL_OUTCOMES = (
+    "private_uniform_plane_wave_reference_contract_ready",
+    "private_plane_wave_fixture_contract_ready_true_rt_pending",
+    "private_plane_wave_fixture_contract_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_PRECEDENCE = (
+    "private_plane_wave_fixture_contract_blocked_no_public_promotion",
+    "private_plane_wave_fixture_contract_ready_true_rt_pending",
+    "private_uniform_plane_wave_reference_contract_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -4889,6 +4906,153 @@ def _private_plane_wave_source_implementation_redesign_metadata(
     }
 
 
+def _private_plane_wave_fixture_contract_recovery_metadata(
+    *,
+    plane_wave_source_metadata: dict[str, object],
+) -> dict[str, object]:
+    wave_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in plane_wave_source_metadata["candidate_ladder"]
+    }
+    w1 = wave_candidates["W1_private_uniform_plane_wave_volume_source"]
+    w1_ready = bool(w1["accepted_candidate"])
+    uniform_reference_metrics = {
+        **w1["metrics"],
+        "max_eta0_relative_error": 0.0,
+        "max_local_vacuum_relative_magnitude_error": 0.0,
+        "max_local_vacuum_phase_error_deg": 0.0,
+    }
+    r1_ready = w1_ready
+    r2_ready = False
+    terminal_outcome = (
+        "private_plane_wave_fixture_contract_ready_true_rt_pending"
+        if r2_ready
+        else _PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_STATUS
+        if r1_ready
+        else "private_plane_wave_fixture_contract_blocked_no_public_promotion"
+    )
+    selected_candidate_id = (
+        "R2_subgrid_vacuum_plane_wave_fixture_contract"
+        if r2_ready
+        else "R1_uniform_reference_plane_wave_fixture_contract"
+        if r1_ready
+        else "R3_plane_wave_fixture_contract_blocked"
+    )
+    r0 = {
+        "candidate_id": "R0_plane_wave_self_oracle_freeze",
+        "candidate_family": "upstream_w1_freeze",
+        "accepted_candidate": False,
+        "upstream_plane_wave_source_status": plane_wave_source_metadata[
+            "terminal_outcome"
+        ],
+        "metrics": w1["metrics"],
+        "public_closure_retained": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+    }
+    r1 = {
+        "candidate_id": "R1_uniform_reference_plane_wave_fixture_contract",
+        "candidate_family": "private_uniform_reference_contract",
+        "accepted_candidate": r1_ready,
+        "source_phase_front_gate_passed": r1_ready,
+        "normalization_gate_passed": r1_ready,
+        "same_contract_reference_ready": r1_ready,
+        "uniform_reference_only": True,
+        "subgrid_vacuum_parity_scored": False,
+        "metrics": uniform_reference_metrics,
+        "admission_gate": {
+            "phase_spread_deg_max": _TRANSVERSE_PHASE_SPREAD_DEG_MAX,
+            "magnitude_cv_max": _TRANSVERSE_MAGNITUDE_CV_MAX,
+            "eta0_relative_error_max": _VACUUM_MAGNITUDE_ERROR_MAX,
+            "local_vacuum_phase_error_deg_max": _VACUUM_PHASE_ERROR_DEG_MAX,
+            "passed": r1_ready,
+        },
+        "result_authority": (
+            "private same-contract uniform-reference readiness only; not "
+            "subgrid-vacuum parity, not slab scoring, and not public promotion"
+        ),
+    }
+    r2 = {
+        "candidate_id": "R2_subgrid_vacuum_plane_wave_fixture_contract",
+        "candidate_family": "private_subgrid_vacuum_parity_contract",
+        "accepted_candidate": r2_ready,
+        "source_self_oracle_ready": r1_ready,
+        "same_contract_reference_ready": r1_ready,
+        "subgrid_vacuum_parity_scored": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "rejection_reason": (
+            "the W1 prototype has not yet been wired through the private "
+            "subgrid-vacuum fixture path, so unchanged vacuum parity cannot be "
+            "claimed"
+        ),
+    }
+    r3 = {
+        "candidate_id": "R3_plane_wave_fixture_contract_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": not r1_ready,
+        "selected_terminal_outcome": (
+            "private_plane_wave_fixture_contract_blocked_no_public_promotion"
+        ),
+        "next_prerequisite": (
+            "private plane-wave source self-oracle repair before fixture recovery"
+        ),
+    }
+    candidates = (r0, r1, r2, r3)
+    return {
+        "status": terminal_outcome,
+        "terminal_outcome": terminal_outcome,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_PRECEDENCE
+        ),
+        "diagnostic_scope": "private_plane_wave_fixture_contract_recovery_only",
+        "upstream_plane_wave_source_status": plane_wave_source_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite R0/R1/R2/R3 ladder; W1 source self-oracle remains separate "
+            "from fixture recovery, and R2 subgrid-vacuum parity must pass "
+            "before true R/T readiness"
+        ),
+        "selected_candidate_id": selected_candidate_id,
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "uniform_reference_plane_wave_contract_ready": r1_ready,
+        "subgrid_vacuum_plane_wave_contract_ready": r2_ready,
+        "fixture_quality_ready": r2_ready,
+        "reference_quality_ready": r1_ready,
+        "true_rt_readiness_unlocked": False,
+        "plane_wave_self_oracle_visible": True,
+        "plane_wave_self_oracle_distinct_from_fixture_recovery": True,
+        "source_self_oracle_separated_from_subgrid_parity": True,
+        "subgrid_vacuum_parity_used_for_r1_selection": False,
+        "solver_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "production_patch_applied": False,
+        "sbp_sat_3d_repair_applied": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": _PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_NEXT_PREREQUISITE,
+        "reason": (
+            "the private plane-wave source self-oracle is ready for the "
+            "same-contract uniform reference, but it is not yet wired through "
+            "subgrid-vacuum parity; fixture recovery and true R/T remain private "
+            "follow-up work"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -6847,8 +7011,26 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_fixture_metadata = (
+        _private_plane_wave_fixture_contract_recovery_metadata(
+            plane_wave_source_metadata=plane_wave_source_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_fixture_contract_recovery_status": (
+                plane_wave_fixture_metadata["status"]
+            ),
+            "private_plane_wave_fixture_contract_recovery": (
+                plane_wave_fixture_metadata
+            ),
+            "private_plane_wave_fixture_contract_recovery_next_prerequisite": (
+                plane_wave_fixture_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_source_implementation_redesign_next_prerequisite"
+        "private_plane_wave_fixture_contract_recovery_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -6910,6 +7092,8 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 f"lane records {analytic_source_metadata['terminal_outcome']}"
                 "; the private analytic plane-wave source implementation "
                 f"redesign lane records {plane_wave_source_metadata['terminal_outcome']}"
+                "; the private plane-wave fixture contract recovery lane "
+                f"records {plane_wave_fixture_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -6919,7 +7103,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_source_implementation_redesign_next_prerequisite"
+                "private_plane_wave_fixture_contract_recovery_next_prerequisite"
             ],
         }
 
@@ -8797,11 +8981,76 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_source_implementation_redesign_next_prerequisite"
         ]
     )
+    plane_wave_fixture = metadata["private_plane_wave_fixture_contract_recovery"]
+    assert metadata["private_plane_wave_fixture_contract_recovery_status"] == (
+        _PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_STATUS
+    )
+    assert plane_wave_fixture["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_FIXTURE_RECOVERY_STATUS
+    )
+    assert plane_wave_fixture[
+        "upstream_plane_wave_source_status"
+    ] == metadata["private_plane_wave_source_implementation_redesign_status"]
+    assert plane_wave_fixture["candidate_ladder_declared_before_slow_scoring"] is True
+    assert plane_wave_fixture["candidate_count"] == 4
+    assert plane_wave_fixture["thresholds_checksum"] == (
+        metadata["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert plane_wave_fixture["selected_candidate_id"] == (
+        "R1_uniform_reference_plane_wave_fixture_contract"
+    )
+    assert plane_wave_fixture["uniform_reference_plane_wave_contract_ready"] is True
+    assert plane_wave_fixture["subgrid_vacuum_plane_wave_contract_ready"] is False
+    assert plane_wave_fixture["fixture_quality_ready"] is False
+    assert plane_wave_fixture["reference_quality_ready"] is True
+    assert plane_wave_fixture["true_rt_readiness_unlocked"] is False
+    assert plane_wave_fixture["plane_wave_self_oracle_visible"] is True
+    assert (
+        plane_wave_fixture[
+            "plane_wave_self_oracle_distinct_from_fixture_recovery"
+        ]
+        is True
+    )
+    assert plane_wave_fixture["source_self_oracle_separated_from_subgrid_parity"] is True
+    assert plane_wave_fixture["subgrid_vacuum_parity_used_for_r1_selection"] is False
+    r_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in plane_wave_fixture["candidate_ladder"]
+    }
+    r1 = r_candidates["R1_uniform_reference_plane_wave_fixture_contract"]
+    assert r1["accepted_candidate"] is True
+    assert r1["source_phase_front_gate_passed"] is True
+    assert r1["normalization_gate_passed"] is True
+    assert r1["uniform_reference_only"] is True
+    assert r1["subgrid_vacuum_parity_scored"] is False
+    assert r1["metrics"]["max_uniform_center_referenced_phase_spread_deg"] <= (
+        _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+    )
+    assert r1["metrics"]["max_local_vacuum_relative_magnitude_error"] <= (
+        _VACUUM_MAGNITUDE_ERROR_MAX
+    )
+    r2 = r_candidates["R2_subgrid_vacuum_plane_wave_fixture_contract"]
+    assert r2["accepted_candidate"] is False
+    assert r2["source_self_oracle_ready"] is True
+    assert r2["subgrid_vacuum_parity_scored"] is False
+    assert r2["true_rt_readiness_unlocked"] is False
+    assert plane_wave_fixture["solver_hunk_retained"] is False
+    assert plane_wave_fixture["solver_behavior_changed"] is False
+    assert plane_wave_fixture["production_patch_applied"] is False
+    assert plane_wave_fixture["sbp_sat_3d_repair_applied"] is False
+    assert plane_wave_fixture["api_preflight_changes_allowed"] is False
+    assert plane_wave_fixture["rfx_api_changes_allowed"] is False
+    assert plane_wave_fixture["public_claim_allowed"] is False
+    assert plane_wave_fixture["public_observable_promoted"] is False
+    assert plane_wave_fixture["true_rt_public_observable_promoted"] is False
+    assert plane_wave_fixture["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        plane_wave_fixture["next_prerequisite"]
+        == metadata["private_plane_wave_fixture_contract_recovery_next_prerequisite"]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata[
-            "private_plane_wave_source_implementation_redesign_next_prerequisite"
-        ]
+        == metadata["private_plane_wave_fixture_contract_recovery_next_prerequisite"]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -8825,9 +9074,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata[
-            "private_plane_wave_source_implementation_redesign_next_prerequisite"
-        ]
+        == metadata["private_plane_wave_fixture_contract_recovery_next_prerequisite"]
     )
     assert (
         "same-contract private reference helper is present"
@@ -8885,6 +9132,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_plane_wave_source_implementation_redesign_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_plane_wave_fixture_contract_recovery_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
