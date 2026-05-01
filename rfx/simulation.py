@@ -795,31 +795,6 @@ def run(
                 st = apply_upml_h(st, upml_coeffs, periodic=periodic)
             else:
                 st = update_h(st, materials, dt, dx, periodic=periodic)
-            # Stage 2 H damping inside fully-PEC cells (Step 5 fix).
-            # The inv-eps tensor freezes E inside PEC but doesn't damp
-            # H, which propagates freely via 1/μ. Apply per-step H zero
-            # so late-time energy doesn't accumulate at the PEC
-            # interior. Derive the "fully-PEC" cell mask from the inv
-            # tensor itself (all three components zero) so it works
-            # for both interior PEC (pec_mask path) and boundary-face
-            # PEC (pec_shapes injection only).
-            if use_aniso_inv:
-                from rfx.boundaries.pec import apply_pec_h_mask
-                _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
-                _xx0 = (_inv_xx == 0.0)
-                _yy0 = (_inv_yy == 0.0)
-                _zz0 = (_inv_zz == 0.0)
-                # Per-component Yee-stagger-aware H damp: Hx has no
-                # driver if Ey AND Ez are both frozen at this cell;
-                # similarly for Hy, Hz. Catches boundary cells where
-                # only the perpendicular E component is fractional.
-                st = apply_pec_h_mask(
-                    st,
-                    pec_mask=_xx0 & _yy0 & _zz0,
-                    mask_hx=_yy0 & _zz0,
-                    mask_hy=_xx0 & _zz0,
-                    mask_hz=_xx0 & _yy0,
-                )
             if use_tfsf:
                 st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], dx, dt)
             if use_waveguide_ports:
@@ -830,6 +805,21 @@ def run(
                 st, cpml_new = apply_cpml_h(
                     st, cpml_params, carry["cpml"], grid, cpml_axes,
                     materials=materials)
+            # Stage 2 H damping — applied AFTER CPML-H so CPML cannot
+            # un-zero H at Kottke-frozen PEC cells.
+            if use_aniso_inv:
+                from rfx.boundaries.pec import apply_pec_h_mask
+                _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
+                _xx0 = (_inv_xx == 0.0)
+                _yy0 = (_inv_yy == 0.0)
+                _zz0 = (_inv_zz == 0.0)
+                st = apply_pec_h_mask(
+                    st,
+                    pec_mask=_xx0 & _yy0 & _zz0,
+                    mask_hx=_yy0 & _zz0,
+                    mask_hy=_xx0 & _zz0,
+                    mask_hz=_xx0 & _yy0,
+                )
             if use_pmc_faces:
                 from rfx.boundaries.pmc import apply_pmc_faces
                 st = apply_pmc_faces(st, _pmc_faces_frozen)
@@ -872,6 +862,17 @@ def run(
                 st, cpml_new = apply_cpml_e(
                     st, cpml_params, cpml_new, grid, cpml_axes,
                     materials=materials)
+            # Re-enforce Kottke-frozen E cells after CPML-E correction.
+            # CPML adds a psi-driven correction that can thaw cells
+            # where inv_eps==0; re-zero them here so the frozen
+            # boundary condition is not violated.
+            if use_aniso_inv:
+                _inv_xx_r, _inv_yy_r, _inv_zz_r = aniso_inv_eps
+                st = st._replace(
+                    ex=jnp.where(_inv_xx_r == 0.0, 0.0, st.ex),
+                    ey=jnp.where(_inv_yy_r == 0.0, 0.0, st.ey),
+                    ez=jnp.where(_inv_zz_r == 0.0, 0.0, st.ez),
+                )
 
             if pec_axes:
                 st = apply_pec(st, axes=pec_axes)
@@ -1484,24 +1485,6 @@ def run_until_decay(
             st = apply_upml_h(st, upml_coeffs, periodic=periodic)
         else:
             st = update_h(st, materials, dt, dx, periodic=periodic)
-        # Stage 2 H damping inside fully-PEC cells (Step 5 fix;
-        # mirrors the run() scan body block above; derives the cell
-        # mask from inv tensor for both interior- and boundary-face
-        # PEC paths).
-        if use_aniso_inv:
-            from rfx.boundaries.pec import apply_pec_h_mask
-            _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
-            _xx0 = (_inv_xx == 0.0)
-            _yy0 = (_inv_yy == 0.0)
-            _zz0 = (_inv_zz == 0.0)
-            # Per-component Yee-stagger-aware H damp; see run() above.
-            st = apply_pec_h_mask(
-                st,
-                pec_mask=_xx0 & _yy0 & _zz0,
-                mask_hx=_yy0 & _zz0,
-                mask_hy=_xx0 & _zz0,
-                mask_hz=_xx0 & _yy0,
-            )
         if use_tfsf:
             st = apply_tfsf_h(st, tfsf_cfg, carry_in["tfsf"], dx, dt)
         if use_waveguide_ports:
@@ -1512,6 +1495,20 @@ def run_until_decay(
             st, cpml_new = apply_cpml_h(
                 st, cpml_params, carry_in["cpml"], grid, cpml_axes,
                 materials=materials)
+        # Stage 2 H damping — after CPML-H so CPML cannot un-zero H.
+        if use_aniso_inv:
+            from rfx.boundaries.pec import apply_pec_h_mask
+            _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
+            _xx0 = (_inv_xx == 0.0)
+            _yy0 = (_inv_yy == 0.0)
+            _zz0 = (_inv_zz == 0.0)
+            st = apply_pec_h_mask(
+                st,
+                pec_mask=_xx0 & _yy0 & _zz0,
+                mask_hx=_yy0 & _zz0,
+                mask_hy=_xx0 & _zz0,
+                mask_hz=_xx0 & _yy0,
+            )
         if use_pmc_faces:
             from rfx.boundaries.pmc import apply_pmc_faces
             st = apply_pmc_faces(st, _pmc_faces_frozen)
@@ -1551,6 +1548,14 @@ def run_until_decay(
             st, cpml_new = apply_cpml_e(
                 st, cpml_params, cpml_new, grid, cpml_axes,
                 materials=materials)
+        # Re-enforce Kottke-frozen E cells after CPML-E correction.
+        if use_aniso_inv:
+            _inv_xx_r, _inv_yy_r, _inv_zz_r = aniso_inv_eps
+            st = st._replace(
+                ex=jnp.where(_inv_xx_r == 0.0, 0.0, st.ex),
+                ey=jnp.where(_inv_yy_r == 0.0, 0.0, st.ey),
+                ez=jnp.where(_inv_zz_r == 0.0, 0.0, st.ez),
+            )
 
         if pec_axes:
             st = apply_pec(st, axes=pec_axes)

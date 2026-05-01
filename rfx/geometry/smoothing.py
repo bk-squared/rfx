@@ -768,11 +768,23 @@ def compute_inv_eps_tensor_diag(
                 f, jnp.inf, eps_outside_local,
                 n_x, n_y, n_z, is_pec=True,
             )
+            # Kottke correctly zeros parallel (tangential) components for
+            # f > 0, but assigns inv_perp = (1−f)/ε > 0 when the
+            # E-position is inside the PEC body (SDF < 0, 0 < f < 1).
+            # That fractional inv for a point already inside the PEC is
+            # physically wrong (E = 0 inside a conductor) and creates a
+            # CPML resonance at boundary cells near domain walls.
+            # Override: wherever the E-component Yee position is inside
+            # the PEC shape (SDF ≤ 0), force its inv component to 0.
+            e_inside = (sdf <= 0.0)
             if comp == "ex":
+                inv_xx_c = jnp.where(e_inside, 0.0, inv_xx_c)
                 inv_xx = jnp.minimum(inv_xx, inv_xx_c)
             elif comp == "ey":
+                inv_yy_c = jnp.where(e_inside, 0.0, inv_yy_c)
                 inv_yy = jnp.minimum(inv_yy, inv_yy_c)
             else:
+                inv_zz_c = jnp.where(e_inside, 0.0, inv_zz_c)
                 inv_zz = jnp.minimum(inv_zz, inv_zz_c)
 
     return inv_xx, inv_yy, inv_zz

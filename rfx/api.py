@@ -1959,6 +1959,10 @@ class Simulation:
         # (``run_uniform(conformal_pec=True, pec_shapes=…)``) sees a real
         # PEC volume at the physical wall coordinate. Default off keeps
         # the current binary ``apply_pec_faces`` semantics bit-identical.
+        # Boundary-face half-space boxes (conformal=True faces only).
+        # Tracked separately from geometry pec_shapes so the normalize=True
+        # reference run sees only boundary walls — not interior PEC obstacles.
+        boundary_pec_shapes: list = []
         conformal_faces = self._boundary_spec.conformal_faces()
         if conformal_faces:
             big = max(self._domain) * 100.0
@@ -2009,7 +2013,9 @@ class Simulation:
                     # wall_hi), the SDF naturally produces weight=1
                     # everywhere and the Box is a harmless no-op.
                     corner_lo[axis_idx] = wall_hi
-                pec_shapes.append(Box(tuple(corner_lo), tuple(corner_hi)))
+                _bpec_box = Box(tuple(corner_lo), tuple(corner_hi))
+                pec_shapes.append(_bpec_box)
+                boundary_pec_shapes.append(_bpec_box)
 
         debye_spec = None
         if debye_masks_by_pole:
@@ -2025,7 +2031,7 @@ class Simulation:
 
         has_pec = bool(jnp.any(pec_mask))
         kerr_chi3 = chi3_arr if has_kerr else None
-        return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes, kerr_chi3
+        return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes, boundary_pec_shapes, kerr_chi3
 
     @staticmethod
     def _init_dispersion(
@@ -2049,7 +2055,7 @@ class Simulation:
 
     def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Build material arrays and optional Debye/Lorentz coefficients."""
-        materials, debye_spec, lorentz_spec, _, _, _ = self._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, _, _, _, _ = self._assemble_materials(grid)
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec)
         return materials, debye, lorentz
@@ -2262,7 +2268,7 @@ class Simulation:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, _ = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = self._assemble_materials(grid)
         # Waveguide S-matrix runner doesn't support pec_mask yet.
         # Fold PEC mask back into high sigma for compatibility.
         # **Stage 2 caveat**: when ``subpixel_smoothing="kottke_pec"`` is
@@ -2449,11 +2455,14 @@ class Simulation:
                 pec_shapes=pec_shapes or [],
                 background_eps=1.0,
             )
-            # Reference run is vacuum + same PEC walls. No dielectrics.
+            # Reference run is empty guide with same boundary walls only.
+            # Must NOT include interior PEC geometry (e.g. PEC short box):
+            # if device and reference share the same obstacle, both DFTs
+            # are identical and (device - reference) / incident = 0.
             ref_aniso_inv_eps = compute_inv_eps_tensor_diag(
                 grid,
                 dielectric_shapes=[],
-                pec_shapes=pec_shapes or [],
+                pec_shapes=boundary_pec_shapes,
                 background_eps=1.0,
             )
             # Yee-stagger correction: the Kottke union reaches inv=0
@@ -2477,11 +2486,10 @@ class Simulation:
                 inv_yy = jnp.where(pec_mask_wg, 0.0, inv_yy)
                 inv_zz = jnp.where(pec_mask_wg, 0.0, inv_zz)
                 aniso_inv_eps = (inv_xx, inv_yy, inv_zz)
-                ref_inv_xx, ref_inv_yy, ref_inv_zz = ref_aniso_inv_eps
-                ref_inv_xx = jnp.where(pec_mask_wg, 0.0, ref_inv_xx)
-                ref_inv_yy = jnp.where(pec_mask_wg, 0.0, ref_inv_yy)
-                ref_inv_zz = jnp.where(pec_mask_wg, 0.0, ref_inv_zz)
-                ref_aniso_inv_eps = (ref_inv_xx, ref_inv_yy, ref_inv_zz)
+                # pec_mask_wg marks interior PEC geometry (e.g. the PEC
+                # short). The reference run has no interior PEC — do NOT
+                # apply pec_mask_wg to ref_aniso_inv_eps, or the reference
+                # becomes identical to the device and S11 = 0.
         elif subpixel_smoothing:
             from rfx.geometry.smoothing import compute_smoothed_eps
             shape_eps_pairs = [
@@ -5333,7 +5341,7 @@ class Simulation:
                 "uniform path — the same step_fn stop_gradient pattern applies."
             )
         grid = self._build_grid()
-        materials, debye_spec, lorentz_spec, pec_mask, _, _ = self._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = self._assemble_materials(grid)
 
         if eps_override is not None or sigma_override is not None:
             materials = MaterialArrays(
@@ -5567,7 +5575,7 @@ class Simulation:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, kerr_chi3 = self._assemble_materials(grid)
+        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(grid)
 
         if self._solver == "adi":
             if until_decay is not None:
