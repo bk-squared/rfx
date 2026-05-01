@@ -296,13 +296,14 @@ records `private_uniform_plane_wave_source_self_oracle_ready` for a private
 prototype uniform plane-wave source self-oracle, so the next safe lane is
 `private fixture contract recovery using plane-wave source self-oracle ralplan`.
 That follow-up lane now records
-`private_uniform_plane_wave_reference_contract_ready`, so the next safe lane is
-`private subgrid-vacuum plane-wave fixture contract using plane-wave source
-self-oracle ralplan`. Hook experiments remain closed and public promotion
-remains closed.
-Until those fixture-quality gates pass, the private flux/DFT gate remains
-internal diagnostic evidence only, and the support matrix continues to mark true
-R/T as deferred.
+`private_uniform_plane_wave_reference_contract_ready`. The follow-up
+subgrid-vacuum fixture lane now records
+`private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion`, so the
+next safe lane is `private plane-wave source fixture-path wiring before
+subgrid-vacuum parity ralplan`. Hook experiments remain closed and public
+promotion remains closed. Until those fixture-quality gates pass, the private
+flux/DFT gate remains internal diagnostic evidence only, and the support matrix
+continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

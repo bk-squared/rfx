@@ -1155,17 +1155,77 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate["private_plane_wave_fixture_contract_recovery_next_prerequisite"]
         == plane_wave_fixture["next_prerequisite"]
     )
+    subgrid_vacuum_fixture = benchmark_gate[
+        "private_subgrid_vacuum_plane_wave_fixture_contract"
+    ]
+    assert benchmark_gate[
+        "private_subgrid_vacuum_plane_wave_fixture_contract_status"
+    ] == "private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion"
+    assert subgrid_vacuum_fixture["terminal_outcome"] == (
+        "private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion"
+    )
+    assert subgrid_vacuum_fixture[
+        "upstream_plane_wave_fixture_status"
+    ] == benchmark_gate["private_plane_wave_fixture_contract_recovery_status"]
+    assert (
+        subgrid_vacuum_fixture["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert subgrid_vacuum_fixture["candidate_count"] == 3
+    assert (
+        subgrid_vacuum_fixture["thresholds_checksum"]
+        == benchmark_gate["material_improvement_rule"]["thresholds_checksum"]
+    )
+    assert subgrid_vacuum_fixture["selected_candidate_id"] == (
+        "V2_subgrid_plane_wave_fixture_blocker_classified"
+    )
+    assert subgrid_vacuum_fixture["plane_wave_source_self_oracle_ready"] is True
+    assert subgrid_vacuum_fixture["same_contract_reference_ready"] is True
+    assert subgrid_vacuum_fixture["uniform_reference_plane_wave_contract_ready"] is True
+    assert subgrid_vacuum_fixture["plane_wave_fixture_path_wired"] is False
+    assert subgrid_vacuum_fixture["subgrid_vacuum_parity_scored"] is False
+    assert subgrid_vacuum_fixture["fixture_quality_ready"] is False
+    assert subgrid_vacuum_fixture["reference_quality_ready"] is True
+    assert subgrid_vacuum_fixture["true_rt_readiness_unlocked"] is False
+    subgrid_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in subgrid_vacuum_fixture["candidate_ladder"]
+    }
+    v1 = subgrid_candidates["V1_private_subgrid_plane_wave_vacuum_parity_probe"]
+    assert v1["source_self_oracle_ready"] is True
+    assert v1["same_contract_reference_ready"] is True
+    assert v1["subgrid_vacuum_parity_scored"] is False
+    assert v1["admission_gate"]["passed"] is False
+    v2 = subgrid_candidates["V2_subgrid_plane_wave_fixture_blocker_classified"]
+    assert v2["accepted_candidate"] is True
+    assert v2["fixture_quality_ready"] is False
+    assert subgrid_vacuum_fixture["public_claim_allowed"] is False
+    assert subgrid_vacuum_fixture["public_observable_promoted"] is False
+    assert subgrid_vacuum_fixture["true_rt_public_observable_promoted"] is False
+    assert (
+        subgrid_vacuum_fixture["dft_flux_tfsf_port_sparameter_promoted"] is False
+    )
+    assert (
+        benchmark_gate[
+            "private_subgrid_vacuum_plane_wave_fixture_contract_next_prerequisite"
+        ]
+        == subgrid_vacuum_fixture["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private subgrid-vacuum plane-wave fixture contract using plane-wave "
-        "source self-oracle ralplan"
+        "private plane-wave source fixture-path wiring before subgrid-vacuum "
+        "parity ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private subgrid-vacuum plane-wave fixture contract using plane-wave "
-        "source self-oracle ralplan"
+        "private plane-wave source fixture-path wiring before subgrid-vacuum "
+        "parity ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
         "production_context_mismatch_detected" in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_fixture_contract_status"]
+        in benchmark_gate["blocking_diagnostic"]
     )
     staging = benchmark_gate["private_time_centered_staging_redesign"]
     assert benchmark_gate["private_time_centered_staging_redesign_status"] == (
@@ -1423,8 +1483,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private subgrid-vacuum plane-wave fixture contract using plane-wave "
-        "source self-oracle ralplan"
+        "private plane-wave source fixture-path wiring before subgrid-vacuum "
+        "parity ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

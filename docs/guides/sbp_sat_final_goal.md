@@ -99,21 +99,23 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private subgrid-vacuum plane-wave fixture contract
-recovery.  The private solver-local skew E/H helper is retained as a bounded
-production-context hunk, the accepted boundary subset has direct
+The immediate lane is now private plane-wave source fixture-path wiring before
+subgrid-vacuum parity. The private solver-local skew E/H helper is retained as a
+bounded production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private fixture-quality repair ladder
-preserves the failing boundary-expanded baseline.  The previous analytic source
+preserves the failing boundary-expanded baseline. The previous analytic source
 lanes isolated the old sheet-source phase-front failure, recorded
 `private_uniform_plane_wave_source_self_oracle_ready` for a private prototype
 uniform plane-wave source self-oracle, and then recorded
 `private_uniform_plane_wave_reference_contract_ready` for the private
-same-contract uniform reference.  However, subgrid-vacuum parity is not yet
-scored with that plane-wave contract, so the lane remains claims-closed until
-unchanged vacuum-stability gates pass and later true R/T readiness proves the
-hunk improves the real solver path without breaking CPML/non-CPML symmetry,
-boundary guards, update/coupling bounds, or the unchanged `0.02`
-manufactured-ledger threshold.
+same-contract uniform reference. The follow-up subgrid-vacuum lane now records
+`private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion` because
+the W1/R1 plane-wave source/reference contract is not yet wired through the
+private subgrid-vacuum fixture path. The goal gate therefore remains
+claims-closed until fixture-path wiring can score unchanged vacuum-stability
+thresholds and later true R/T readiness proves the hunk improves the real
+solver path without breaking CPML/non-CPML symmetry, boundary guards,
+update/coupling bounds, or the unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

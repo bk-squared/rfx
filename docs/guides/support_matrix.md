@@ -239,8 +239,11 @@ runtime/API surfaces. The follow-up private fixture contract recovery lane now
 records `private_uniform_plane_wave_reference_contract_ready`: the plane-wave
 self-oracle is accepted as a private same-contract uniform reference, but it is
 not yet wired through subgrid-vacuum parity and does not unlock true R/T. The
-next safe lane is private subgrid-vacuum plane-wave fixture contract recovery,
-not public promotion.
+follow-up private subgrid-vacuum plane-wave fixture lane now records
+`private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion` because
+that W1/R1 contract is not wired through the private subgrid-vacuum fixture
+path. The next safe lane is private plane-wave source fixture-path wiring before
+subgrid-vacuum parity, not public promotion.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
