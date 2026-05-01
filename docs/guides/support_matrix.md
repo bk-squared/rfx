@@ -269,7 +269,12 @@ architecture/root-cause redesign. That redesign lane now records
 `private_plane_wave_interface_energy_form_root_cause_identified`: the source,
 fixture-geometry, and projection-only explanations are rejected, and the next
 safe lane is a private interface energy-form architecture repair design before
-any new implementation hunk. Public promotion remains closed.
+any new implementation hunk. That design lane now records
+`private_plane_wave_interface_energy_form_implementation_contract_ready`: the
+energy-potential and time-centered Poynting-work form are combined into a
+future implementation contract with CPML/non-CPML, edge/corner, slow-metadata,
+and public-surface guards. The next safe lane is private implementation after
+that design contract; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

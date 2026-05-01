@@ -898,6 +898,26 @@ _PRIVATE_PLANE_WAVE_ROOT_CAUSE_REDESIGN_PRECEDENCE = (
     "private_plane_wave_source_stagger_root_cause_identified",
 )
 
+_PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_STATUS = (
+    "private_plane_wave_interface_energy_form_implementation_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_NEXT_PREREQUISITE = (
+    "private plane-wave interface energy-form implementation after design "
+    "contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_TERMINAL_OUTCOMES = (
+    "private_plane_wave_interface_energy_potential_design_ready",
+    "private_plane_wave_time_centered_energy_form_design_ready",
+    "private_plane_wave_interface_energy_form_implementation_contract_ready",
+    "private_plane_wave_interface_energy_form_design_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_PRECEDENCE = (
+    "private_plane_wave_interface_energy_form_design_blocked_no_public_promotion",
+    "private_plane_wave_interface_energy_form_implementation_contract_ready",
+    "private_plane_wave_time_centered_energy_form_design_ready",
+    "private_plane_wave_interface_energy_potential_design_ready",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -6802,6 +6822,192 @@ def _private_plane_wave_root_cause_redesign_metadata(
     }
 
 
+def _private_plane_wave_energy_form_architecture_design_metadata(
+    *,
+    root_cause_redesign_metadata: dict[str, object],
+    interface_implementation_metadata: dict[str, object],
+    boundary_fixture_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(root_cause_redesign_metadata["baseline_metrics"])
+    thresholds = dict(root_cause_redesign_metadata["thresholds"])
+    future_write_surface = (
+        "rfx/subgridding/sbp_sat_3d.py",
+        "rfx/subgridding/sbp_operators.py",
+        "tests/test_sbp_sat_3d.py",
+        "tests/test_sbp_sat_energy_ledger_diagnostic.py",
+        "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py",
+        "tests/test_support_matrix_sbp_sat.py",
+        "docs/guides/support_matrix.json",
+        "docs/guides/support_matrix.md",
+        "docs/guides/sbp_sat_final_goal.md",
+        "docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md",
+    )
+    implementation_gates = {
+        "baseline_packet_preserved_before_edit": True,
+        "dominant_parity_blocker_must_improve": "transverse_phase_spread_deg",
+        "paired_metrics_must_not_regress": (
+            "transverse_magnitude_cv",
+            "vacuum_relative_magnitude_error",
+            "vacuum_phase_error_deg",
+        ),
+        "cpml_non_cpml_boundary_smoke_required": True,
+        "energy_ledger_diagnostics_required": True,
+        "slow_private_plane_wave_metadata_required": True,
+        "forbidden_public_surface_diff_required": True,
+    }
+    e0 = {
+        "candidate_id": "E0_root_cause_packet_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_root_cause_status": root_cause_redesign_metadata[
+            "terminal_outcome"
+        ],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    e1 = {
+        "candidate_id": "E1_discrete_interface_energy_potential_design",
+        "candidate_family": "symmetric_interface_energy_potential",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "energy_potential_contract": (
+            "define one private interface energy potential over paired E/H "
+            "coarse/fine tangential traces before splitting any update"
+        ),
+        "requires_both_e_and_h_traces": True,
+        "rejection_reason": (
+            "not selected alone because the implementation also needs a "
+            "time-centered work form plus boundary/coexistence guard contract"
+        ),
+        "superseded_by": "E3_boundary_coexistence_preserving_implementation_contract",
+        "public_claim_allowed": False,
+    }
+    e2 = {
+        "candidate_id": "E2_time_centered_poynting_work_form_design",
+        "candidate_family": "time_centered_poynting_work_form",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "work_form_contract": (
+            "use same-step centered H/E interface work; forbid private "
+            "post-H/post-E hooks as a fixture substitute"
+        ),
+        "hook_experiment_allowed": False,
+        "requires_public_api": False,
+        "rejection_reason": (
+            "not selected alone because time centering must be bound to an "
+            "implementation contract that preserves CPML/non-CPML, edge/corner, "
+            "and public-surface guards"
+        ),
+        "superseded_by": "E3_boundary_coexistence_preserving_implementation_contract",
+        "public_claim_allowed": False,
+    }
+    e3 = {
+        "candidate_id": "E3_boundary_coexistence_preserving_implementation_contract",
+        "candidate_family": "implementation_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": _PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_STATUS,
+        "future_write_surface": future_write_surface,
+        "implementation_gates": implementation_gates,
+        "boundary_coexistence_status": boundary_fixture_metadata["terminal_outcome"],
+        "bounded_implementation_status": (
+            interface_implementation_metadata["terminal_outcome"]
+        ),
+        "design_uses_energy_potential": True,
+        "design_uses_time_centered_work_form": True,
+        "design_preserves_edge_corner_partition": True,
+        "design_preserves_cpml_non_cpml_contract": True,
+        "design_forbids_public_surface_changes": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "true_rt_readiness_unlocked": False,
+        "public_claim_allowed": False,
+    }
+    e4 = {
+        "candidate_id": "E4_energy_form_design_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_interface_energy_form_design_blocked_no_public_promotion"
+        ),
+        "rejection_reason": (
+            "not selected because E3 defines a bounded private implementation "
+            "contract with explicit future write surface and gates"
+        ),
+    }
+    candidates = (e0, e1, e2, e3, e4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_STATUS,
+        "terminal_outcome": _PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_interface_energy_form_design_only"
+        ),
+        "upstream_root_cause_status": root_cause_redesign_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_implementation_status": interface_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite E0/E1/E2/E3/E4 design ladder; combine the interface "
+            "energy potential and time-centered Poynting-work form into an "
+            "implementation contract before any new solver hunk"
+        ),
+        "selected_candidate_id": (
+            "E3_boundary_coexistence_preserving_implementation_contract"
+        ),
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "energy_potential_design_ready": True,
+        "time_centered_work_form_design_ready": True,
+        "implementation_contract_ready": True,
+        "future_write_surface": future_write_surface,
+        "implementation_gates": implementation_gates,
+        "next_lane_requires_implementation_plan": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "a private interface energy-form implementation contract is ready, "
+            "but no production solver hunk or public promotion is admitted until "
+            "the follow-up implementation lane proves material parity "
+            "improvement against unchanged gates"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -8930,8 +9136,30 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_energy_form_design_metadata = (
+        _private_plane_wave_energy_form_architecture_design_metadata(
+            root_cause_redesign_metadata=plane_wave_root_cause_redesign_metadata,
+            interface_implementation_metadata=(
+                plane_wave_interface_implementation_metadata
+            ),
+            boundary_fixture_metadata=boundary_fixture_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_interface_energy_form_design_status": (
+                plane_wave_energy_form_design_metadata["status"]
+            ),
+            "private_plane_wave_interface_energy_form_design": (
+                plane_wave_energy_form_design_metadata
+            ),
+            "private_plane_wave_interface_energy_form_design_next_prerequisite": (
+                plane_wave_energy_form_design_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_root_cause_redesign_next_prerequisite"
+        "private_plane_wave_interface_energy_form_design_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -9014,6 +9242,8 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave interface-floor root-cause redesign "
                 "lane records "
                 f"{plane_wave_root_cause_redesign_metadata['terminal_outcome']}"
+                "; the private plane-wave interface energy-form design lane "
+                f"records {plane_wave_energy_form_design_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -9023,7 +9253,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_root_cause_redesign_next_prerequisite"
+                "private_plane_wave_interface_energy_form_design_next_prerequisite"
             ],
         }
 
@@ -11482,9 +11712,75 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         root_cause["next_prerequisite"]
         == metadata["private_plane_wave_root_cause_redesign_next_prerequisite"]
     )
+    energy_form_design = metadata["private_plane_wave_interface_energy_form_design"]
+    assert metadata["private_plane_wave_interface_energy_form_design_status"] == (
+        _PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_STATUS
+    )
+    assert energy_form_design["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_ENERGY_FORM_DESIGN_STATUS
+    )
+    assert energy_form_design["upstream_root_cause_status"] == (
+        metadata["private_plane_wave_root_cause_redesign_status"]
+    )
+    assert energy_form_design["upstream_implementation_status"] == (
+        metadata["private_plane_wave_interface_floor_implementation_status"]
+    )
+    assert energy_form_design["candidate_ladder_declared_before_slow_scoring"] is True
+    assert energy_form_design["candidate_count"] == 5
+    assert energy_form_design["selected_candidate_id"] == (
+        "E3_boundary_coexistence_preserving_implementation_contract"
+    )
+    assert energy_form_design["baseline_metrics"] == root_cause["baseline_metrics"]
+    assert energy_form_design["baseline_metrics_preserved"] is True
+    assert energy_form_design["thresholds_unchanged"] is True
+    assert energy_form_design["energy_potential_design_ready"] is True
+    assert energy_form_design["time_centered_work_form_design_ready"] is True
+    assert energy_form_design["implementation_contract_ready"] is True
+    assert energy_form_design["next_lane_requires_implementation_plan"] is True
+    assert energy_form_design["production_patch_applied"] is False
+    assert energy_form_design["solver_behavior_changed"] is False
+    assert energy_form_design["true_rt_readiness_unlocked"] is False
+    assert "rfx/subgridding/sbp_sat_3d.py" in energy_form_design[
+        "future_write_surface"
+    ]
+    assert energy_form_design["implementation_gates"][
+        "cpml_non_cpml_boundary_smoke_required"
+    ] is True
+    energy_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in energy_form_design["candidate_ladder"]
+    }
+    assert (
+        energy_candidates["E1_discrete_interface_energy_potential_design"][
+            "design_component_ready"
+        ]
+        is True
+    )
+    assert (
+        energy_candidates["E2_time_centered_poynting_work_form_design"][
+            "design_component_ready"
+        ]
+        is True
+    )
+    assert (
+        energy_candidates[
+            "E3_boundary_coexistence_preserving_implementation_contract"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert energy_form_design["public_claim_allowed"] is False
+    assert energy_form_design["public_observable_promoted"] is False
+    assert energy_form_design["true_rt_public_observable_promoted"] is False
+    assert energy_form_design["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        energy_form_design["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_interface_energy_form_design_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
-        == metadata["private_plane_wave_root_cause_redesign_next_prerequisite"]
+        == metadata["private_plane_wave_interface_energy_form_design_next_prerequisite"]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
@@ -11508,7 +11804,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert metadata["no_go_reason"] == _TFSF_NO_GO_REASON
     assert (
         metadata["next_prerequisite"]
-        == metadata["private_plane_wave_root_cause_redesign_next_prerequisite"]
+        == metadata["private_plane_wave_interface_energy_form_design_next_prerequisite"]
     )
     assert (
         "same-contract private reference helper is present"
@@ -11593,6 +11889,9 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata["blocking_diagnostic"]
     )
     assert metadata["private_plane_wave_root_cause_redesign_status"] in (
+        metadata["blocking_diagnostic"]
+    )
+    assert metadata["private_plane_wave_interface_energy_form_design_status"] in (
         metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
