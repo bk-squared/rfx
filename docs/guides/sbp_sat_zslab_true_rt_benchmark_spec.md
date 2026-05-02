@@ -329,10 +329,15 @@ records `private_plane_wave_energy_form_redesign_contract_ready`: the failed
 local implementation attempt is explained as missing an operator-owned,
 time-centered interface energy-state contract, so the next safe lane is
 `private plane-wave operator/mortar time-centered energy-form implementation
-after failure theory contract ready ralplan`. Hook experiments remain closed
-and public promotion remains closed. Until those fixture-quality gates pass,
-the private flux/DFT gate remains internal diagnostic evidence only, and the
-support matrix continues to mark true R/T as deferred.
+after failure theory contract ready ralplan`. That implementation lane now
+records `no_private_plane_wave_operator_mortar_energy_form_implementation`: the
+current solver staging does not expose a bounded owner for that time-centered
+interface energy state, so the next safe lane is `private plane-wave transverse
+phase-coherence architecture redesign after operator/mortar energy-form
+implementation blocked ralplan`. Hook experiments remain closed and public
+promotion remains closed. Until those fixture-quality gates pass, the private
+flux/DFT gate remains internal diagnostic evidence only, and the support matrix
+continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

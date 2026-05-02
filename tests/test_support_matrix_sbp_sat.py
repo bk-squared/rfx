@@ -1750,13 +1750,79 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == failure_theory["next_prerequisite"]
     )
+    operator_mortar_impl = benchmark_gate[
+        "private_plane_wave_operator_mortar_energy_form_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_operator_mortar_energy_form_implementation_status"
+    ] == "no_private_plane_wave_operator_mortar_energy_form_implementation"
+    assert operator_mortar_impl["terminal_outcome"] == (
+        "no_private_plane_wave_operator_mortar_energy_form_implementation"
+    )
+    assert operator_mortar_impl["upstream_failure_theory_status"] == (
+        benchmark_gate["private_plane_wave_interface_energy_form_failure_theory_status"]
+    )
+    assert operator_mortar_impl["upstream_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_interface_energy_form_implementation_status"
+        ]
+    )
+    assert operator_mortar_impl["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert operator_mortar_impl["candidate_ladder_declared_before_slow_scoring"] is True
+    assert operator_mortar_impl["candidate_count"] == 5
+    assert operator_mortar_impl["selected_candidate_id"] == (
+        "H3_operator_mortar_implementation_blocked"
+    )
+    assert operator_mortar_impl["baseline_metrics"] == failure_theory["baseline_metrics"]
+    assert operator_mortar_impl["dominant_metric"] == "transverse_phase_spread_deg"
+    assert operator_mortar_impl["dominant_metric_improved"] is False
+    assert operator_mortar_impl["implementation_lane_executed"] is True
+    assert operator_mortar_impl["operator_mortar_contract_ready"] is True
+    assert operator_mortar_impl["operator_mortar_energy_state_hunk_retained"] is False
+    assert operator_mortar_impl["time_centered_operator_mortar_hunk_retained"] is False
+    assert operator_mortar_impl["production_patch_applied"] is False
+    assert operator_mortar_impl["solver_behavior_changed"] is False
+    assert operator_mortar_impl["new_solver_hunk_retained"] is False
+    assert operator_mortar_impl["no_bounded_hunk_accepted"] is True
+    assert operator_mortar_impl["true_rt_readiness_unlocked"] is False
+    operator_mortar_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in operator_mortar_impl["candidate_ladder"]
+    }
+    assert (
+        operator_mortar_candidates[
+            "H1_operator_owned_interface_energy_state_helper"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        operator_mortar_candidates[
+            "H2_time_centered_eh_projection_before_helper_stack"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        operator_mortar_candidates[
+            "H3_operator_mortar_implementation_blocked"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert operator_mortar_impl["public_claim_allowed"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_operator_mortar_energy_form_implementation_next_prerequisite"
+        ]
+        == operator_mortar_impl["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave operator/mortar time-centered energy-form "
-        "implementation after failure theory contract ready ralplan"
+        "private plane-wave transverse phase-coherence architecture redesign after "
+        "operator/mortar energy-form implementation blocked ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave operator/mortar time-centered energy-form "
-        "implementation after failure theory contract ready ralplan"
+        "private plane-wave transverse phase-coherence architecture redesign after "
+        "operator/mortar energy-form implementation blocked ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1799,6 +1865,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_interface_energy_form_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_operator_mortar_energy_form_implementation_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -2066,8 +2138,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave operator/mortar time-centered energy-form "
-        "implementation after failure theory contract ready ralplan"
+        "private plane-wave transverse phase-coherence architecture redesign after "
+        "operator/mortar energy-form implementation blocked ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

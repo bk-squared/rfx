@@ -281,8 +281,12 @@ theory/design review before true R/T readiness. That theory/design lane now
 records `private_plane_wave_energy_form_redesign_contract_ready`: the local
 implementation failure is explained as a missing operator-owned, time-centered
 interface energy-state contract, and the next safe lane is a private
-operator/mortar time-centered energy-form implementation plan; public promotion
-remains closed.
+operator/mortar time-centered energy-form implementation plan. That
+implementation lane now records
+`no_private_plane_wave_operator_mortar_energy_form_implementation`: the current
+solver staging does not expose a bounded owner for that time-centered interface
+energy state, so the next safe lane is a private transverse phase-coherence
+architecture redesign; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

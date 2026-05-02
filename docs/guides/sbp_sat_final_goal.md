@@ -99,9 +99,9 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave operator/mortar time-centered
-energy-form implementation after the failure-theory contract became ready. The
-private solver-local
+The immediate lane is now private plane-wave transverse phase-coherence
+architecture redesign after the operator/mortar implementation lane failed
+closed. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
@@ -145,11 +145,16 @@ follow-up failure theory/design lane now records
 `private_plane_wave_energy_form_redesign_contract_ready`: the failed local
 implementation attempt is explained as missing an operator-owned,
 time-centered interface energy-state contract, and the next bounded unit is a
-private operator/mortar time-centered energy-form implementation plan. The goal
-gate therefore remains claims-closed until that later implementation improves
-the parity metrics and a later true R/T readiness lane proves the hunk improves
-the real solver path without breaking CPML/non-CPML symmetry, boundary guards,
-update/coupling bounds, or the unchanged `0.02` manufactured-ledger threshold.
+private operator/mortar time-centered energy-form implementation plan. That
+implementation lane now records
+`no_private_plane_wave_operator_mortar_energy_form_implementation`: the current
+solver staging does not expose a bounded owner for that time-centered interface
+energy state. The goal gate therefore remains claims-closed until a transverse
+phase-coherence architecture redesign identifies a production-safe ownership
+model, a later implementation improves the parity metrics, and a later true R/T
+readiness lane proves the hunk improves the real solver path without breaking
+CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
+unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted
