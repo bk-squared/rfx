@@ -575,6 +575,14 @@ the retained private hunk has finite score evidence, but unchanged
 material-improvement and fixture-quality gates remain closed, so true R/T
 and public observable promotion stay locked; the next safe lane is private
 metric-shape calibration failure-theory redesign.
+The projected target residual-basis energy-biorthogonal metric-shape
+calibration failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_transverse_modal_coupling_floor_theory_ready`:
+the retained face-local scalar metric calibration produced no material score
+change after normal signs, masks, and weights were already present, so the
+remaining private theory is a transverse modal basis-coupling floor rather
+than public readiness or threshold adjustment; the next safe lane is private
+transverse modal-coupling metric design.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

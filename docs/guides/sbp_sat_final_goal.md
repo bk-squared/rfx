@@ -100,9 +100,9 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave modal projection/normalizer
-projected target residual-basis energy-biorthogonal metric-shape calibration
-failure-theory redesign after private parity scoring found the retained
-face-local metric hunk still fixture-quality insufficient.
+projected target residual-basis energy-biorthogonal transverse modal-coupling
+metric design after failure theory classified the retained face-local scalar
+metric calibration as fixture-quality insufficient.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -256,6 +256,14 @@ the retained private hunk has finite score evidence, but unchanged
 material-improvement and fixture-quality gates remain closed, so true R/T
 and public observable promotion stay locked; the next safe lane is private
 metric-shape calibration failure-theory redesign.
+The projected target residual-basis energy-biorthogonal metric-shape
+calibration failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_transverse_modal_coupling_floor_theory_ready`:
+the retained face-local scalar metric calibration produced no material score
+change after normal signs, masks, and weights were already present, so the
+remaining private theory is a transverse modal basis-coupling floor rather
+than public readiness or threshold adjustment; the next safe lane is private
+transverse modal-coupling metric design.
 The private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

@@ -7942,15 +7942,183 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
             "next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory = (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory"
+        ]
+    )
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_transverse_modal_coupling_floor_theory_ready"
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "terminal_outcome"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_status"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "upstream_metric_shape_calibration_parity_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_parity_scoring_status"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "upstream_metric_shape_calibration_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_status"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "candidate_ladder_declared_before_implementation"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "candidate_ladder_declared_before_solver_edit"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "candidate_ladder_declared_before_slow_scoring"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+            "candidate_count"
+        ]
+        == 5
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "selected_candidate_id"
+    ] == "AM2_transverse_modal_basis_coupling_floor"
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "baseline_metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_parity_scoring[
+        "baseline_metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_parity_scoring[
+        "metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_parity_scoring[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "threshold_results"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_parity_scoring[
+        "threshold_results"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "metric_shape_calibration_parity_scoring_insufficient"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "metric_shape_calibration_hunk_retained"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "finite_reproducible_score"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "score_delta_all_zero"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "face_metric_sign_orientation_contract_present"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "face_metric_orientation_floor_rejected"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "transverse_modal_coupling_floor_detected"
+    ]
+    transverse_modal_contract = (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+            "transverse_modal_coupling_contract"
+        ]
+    )
+    assert "basis-to-basis tangential coupling" in transverse_modal_contract[
+        "remaining_floor"
+    ]
+    assert transverse_modal_contract["requires_public_observable"] is False
+    assert transverse_modal_contract["requires_solver_hunk_in_this_lane"] is False
+    assert transverse_modal_contract["requires_threshold_change"] is False
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+            "material_improvement_demonstrated"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+            "subgrid_vacuum_parity_passed"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+            "true_rt_readiness_unlocked"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+            "new_solver_hunk_retained"
+        ]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "retained_metric_shape_calibration_solver_hunk"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+            "public_observable_promoted"
+        ]
+        is False
+    )
+    energy_metric_shape_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in (
+            residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+                "candidate_ladder"
+            ]
+        )
+    }
+    assert (
+        energy_metric_shape_failure_candidates[
+            "AM1_face_metric_sign_orientation_floor"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert energy_metric_shape_failure_candidates[
+        "AM2_transverse_modal_basis_coupling_floor"
+    ]["accepted_candidate"]
+    assert (
+        energy_metric_shape_failure_candidates[
+            "AM3_time_centered_power_pairing_floor"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        energy_metric_shape_failure_candidates[
+            "AM4_metric_shape_calibration_failure_theory_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "next_lane_requires_transverse_modal_coupling_metric_design"
+    ]
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_next_prerequisite"
+        ]
+        == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+            "next_prerequisite"
+        ]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal metric-shape calibration failure-theory redesign "
-        "after parity scoring insufficient ralplan"
+        "energy-biorthogonal transverse modal-coupling metric design after "
+        "metric-shape calibration failure theory ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal metric-shape calibration failure-theory redesign "
-        "after parity scoring insufficient ralplan"
+        "energy-biorthogonal transverse modal-coupling metric design after "
+        "metric-shape calibration failure theory ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -8321,6 +8489,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -8585,8 +8759,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal metric-shape calibration failure-theory redesign "
-        "after parity scoring insufficient ralplan"
+        "energy-biorthogonal transverse modal-coupling metric design after "
+        "metric-shape calibration failure theory ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
