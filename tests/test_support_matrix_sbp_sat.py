@@ -2604,13 +2604,121 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == physical_correction["next_prerequisite"]
     )
+    modal_architecture = benchmark_gate[
+        "private_plane_wave_face_local_modal_correction_architecture"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_face_local_modal_correction_architecture_status"
+    ] == "private_plane_wave_face_local_modal_correction_contract_ready"
+    assert modal_architecture["terminal_outcome"] == (
+        "private_plane_wave_face_local_modal_correction_contract_ready"
+    )
+    assert modal_architecture["upstream_physical_correction_status"] == (
+        benchmark_gate[
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_status"
+        ]
+    )
+    assert modal_architecture["upstream_owner_scan_wiring_status"] == (
+        benchmark_gate["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
+    )
+    assert modal_architecture["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert modal_architecture[
+        "candidate_ladder_declared_before_slow_scoring"
+    ] is True
+    assert modal_architecture["candidate_count"] == 5
+    assert modal_architecture["selected_candidate_id"] == (
+        "S3_combined_phase_cv_modal_correction_contract"
+    )
+    assert modal_architecture["baseline_metrics"] == (
+        physical_correction["baseline_metrics"]
+    )
+    assert modal_architecture["baseline_metrics_preserved"] is True
+    assert modal_architecture["thresholds_unchanged"] is True
+    assert modal_architecture["face_local_phase_modal_contract_ready"] is True
+    assert modal_architecture["face_local_magnitude_modal_contract_ready"] is True
+    assert modal_architecture["face_local_modal_correction_contract_ready"] is True
+    assert modal_architecture["implementation_contract_ready"] is True
+    assert modal_architecture["bounded_follow_up_implementation_surface"] is True
+    phase_modal_contract = modal_architecture["phase_modal_contract"]
+    assert phase_modal_contract["owner_phase_reference_input"] is True
+    assert phase_modal_contract["face_local_tangential_modes_required"] is True
+    assert (
+        phase_modal_contract["modal_distribution"]
+        == "interior_masked_tangential_characteristic_mode"
+    )
+    assert phase_modal_contract["paired_magnitude_cv_guard_required"] is True
+    assert phase_modal_contract["vacuum_regression_guard_required"] is True
+    assert phase_modal_contract["cpml_non_cpml_symmetry_required"] is True
+    assert phase_modal_contract["no_public_observable"] is True
+    magnitude_modal_contract = modal_architecture["magnitude_modal_contract"]
+    assert magnitude_modal_contract["owner_magnitude_reference_input"] is True
+    assert magnitude_modal_contract["face_local_tangential_modes_required"] is True
+    assert (
+        magnitude_modal_contract["modal_distribution"]
+        == "interior_masked_energy_weighted_tangential_mode"
+    )
+    assert magnitude_modal_contract["paired_phase_spread_guard_required"] is True
+    assert magnitude_modal_contract["vacuum_regression_guard_required"] is True
+    assert magnitude_modal_contract["cpml_non_cpml_symmetry_required"] is True
+    assert magnitude_modal_contract["no_public_observable"] is True
+    combined_modal_contract = modal_architecture["combined_contract"]
+    assert combined_modal_contract["requires_phase_modal_operator"] is True
+    assert combined_modal_contract["requires_magnitude_modal_operator"] is True
+    assert combined_modal_contract["requires_owner_scan_scorer"] is True
+    assert combined_modal_contract["requires_paired_phase_cv_gate"] is True
+    assert combined_modal_contract["requires_vacuum_magnitude_phase_gate"] is True
+    assert (
+        combined_modal_contract["field_update_behavior_change_requires_slow_gate"]
+        is True
+    )
+    assert combined_modal_contract["public_promotion_allowed"] is False
+    assert modal_architecture["production_patch_applied"] is False
+    assert modal_architecture["solver_behavior_changed"] is False
+    assert modal_architecture["field_update_behavior_changed"] is False
+    assert modal_architecture["runner_behavior_changed"] is False
+    assert modal_architecture["new_solver_hunk_retained"] is False
+    assert modal_architecture["true_rt_readiness_unlocked"] is False
+    modal_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_architecture["candidate_ladder"]
+    }
+    assert modal_candidates[
+        "S1_face_local_phase_modal_operator_design"
+    ]["design_component_ready"] is True
+    assert modal_candidates[
+        "S1_face_local_phase_modal_operator_design"
+    ]["superseded_by"] == "S3_combined_phase_cv_modal_correction_contract"
+    assert modal_candidates[
+        "S2_face_local_magnitude_modal_operator_design"
+    ]["design_component_ready"] is True
+    assert modal_candidates[
+        "S2_face_local_magnitude_modal_operator_design"
+    ]["superseded_by"] == "S3_combined_phase_cv_modal_correction_contract"
+    assert modal_candidates[
+        "S3_combined_phase_cv_modal_correction_contract"
+    ]["accepted_candidate"] is True
+    assert modal_candidates[
+        "S4_modal_correction_architecture_blocked"
+    ]["accepted_candidate"] is False
+    assert modal_architecture["public_claim_allowed"] is False
+    assert modal_architecture["public_observable_promoted"] is False
+    assert modal_architecture["true_rt_public_observable_promoted"] is False
+    assert modal_architecture["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_correction_architecture_next_prerequisite"
+        ]
+        == modal_architecture["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave face-local modal correction architecture after "
-        "owner-backed physical correction blocked ralplan"
+        "private plane-wave face-local modal correction implementation after "
+        "architecture contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave face-local modal correction architecture after "
-        "owner-backed physical correction blocked ralplan"
+        "private plane-wave face-local modal correction implementation after "
+        "architecture contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -2705,6 +2813,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_owner_backed_physical_phase_cv_correction_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_correction_architecture_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -2972,8 +3086,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave face-local modal correction architecture after "
-        "owner-backed physical correction blocked ralplan"
+        "private plane-wave face-local modal correction implementation after "
+        "architecture contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

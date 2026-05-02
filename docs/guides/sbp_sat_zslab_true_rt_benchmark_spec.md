@@ -368,12 +368,16 @@ retained. The follow-up physical correction lane now records
 `no_private_plane_wave_owner_backed_physical_phase_cv_correction`: the retained
 owner scorer is face-scalar diagnostic state, so no field-update correction is
 retained before a face-local modal correction architecture proves paired
-phase/CV and vacuum-regression gates. The next safe lane is `private plane-wave
-face-local modal correction architecture after owner-backed physical correction
-blocked ralplan`. Hook experiments remain closed and public promotion remains
-closed. Until those fixture-quality gates pass, the private flux/DFT gate
-remains internal diagnostic evidence only, and the support matrix continues to
-mark true R/T as deferred.
+phase/CV and vacuum-regression gates. That architecture lane now records
+`private_plane_wave_face_local_modal_correction_contract_ready`: phase and
+magnitude owner references map to private face-local tangential modal
+contracts with paired phase/CV, vacuum-regression, and CPML/non-CPML symmetry
+guards before any field-update hunk. The next safe lane is `private plane-wave
+face-local modal correction implementation after architecture contract ready
+ralplan`. Hook experiments remain closed and public promotion remains closed.
+Until those fixture-quality gates pass, the private flux/DFT gate remains
+internal diagnostic evidence only, and the support matrix continues to mark
+true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
