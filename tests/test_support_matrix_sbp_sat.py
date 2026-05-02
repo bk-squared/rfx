@@ -1816,13 +1816,83 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == operator_mortar_impl["next_prerequisite"]
     )
+    phase_architecture = benchmark_gate[
+        "private_plane_wave_transverse_phase_coherence_architecture"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_transverse_phase_coherence_architecture_status"
+    ] == "private_plane_wave_phase_coherence_staging_contract_ready"
+    assert phase_architecture["terminal_outcome"] == (
+        "private_plane_wave_phase_coherence_staging_contract_ready"
+    )
+    assert phase_architecture["upstream_operator_mortar_status"] == (
+        benchmark_gate[
+            "private_plane_wave_operator_mortar_energy_form_implementation_status"
+        ]
+    )
+    assert phase_architecture["upstream_failure_theory_status"] == (
+        benchmark_gate["private_plane_wave_interface_energy_form_failure_theory_status"]
+    )
+    assert phase_architecture["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert phase_architecture["candidate_ladder_declared_before_slow_scoring"] is True
+    assert phase_architecture["candidate_count"] == 5
+    assert phase_architecture["selected_candidate_id"] == (
+        "J3_combined_phase_coherence_staging_contract"
+    )
+    assert phase_architecture["baseline_metrics"] == operator_mortar_impl[
+        "baseline_metrics"
+    ]
+    assert phase_architecture["interface_state_ownership_design_ready"] is True
+    assert phase_architecture["transverse_phase_coherence_design_ready"] is True
+    assert phase_architecture["phase_coherence_staging_contract_ready"] is True
+    assert phase_architecture["explains_operator_mortar_blocker"] is True
+    assert phase_architecture["bounded_follow_up_implementation_surface"] is True
+    assert phase_architecture["staging_contract"][
+        "single_interface_state_owner_required"
+    ] is True
+    assert phase_architecture["staging_contract"]["no_threshold_laundering"] is True
+    assert phase_architecture["production_patch_applied"] is False
+    assert phase_architecture["solver_behavior_changed"] is False
+    assert phase_architecture["new_solver_hunk_retained"] is False
+    assert phase_architecture["true_rt_readiness_unlocked"] is False
+    phase_architecture_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in phase_architecture["candidate_ladder"]
+    }
+    assert (
+        phase_architecture_candidates[
+            "J1_interface_energy_state_ownership_design"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        phase_architecture_candidates[
+            "J2_transverse_phase_coherence_score_coupling_design"
+        ]["threshold_laundering_rejected"]
+        is True
+    )
+    assert (
+        phase_architecture_candidates[
+            "J3_combined_phase_coherence_staging_contract"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert phase_architecture["public_claim_allowed"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_transverse_phase_coherence_architecture_next_prerequisite"
+        ]
+        == phase_architecture["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave transverse phase-coherence architecture redesign after "
-        "operator/mortar energy-form implementation blocked ralplan"
+        "private plane-wave phase-coherence staging implementation after "
+        "architecture contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave transverse phase-coherence architecture redesign after "
-        "operator/mortar energy-form implementation blocked ralplan"
+        "private plane-wave phase-coherence staging implementation after "
+        "architecture contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1871,6 +1941,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_operator_mortar_energy_form_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_transverse_phase_coherence_architecture_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -2138,8 +2214,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave transverse phase-coherence architecture redesign after "
-        "operator/mortar energy-form implementation blocked ralplan"
+        "private plane-wave phase-coherence staging implementation after "
+        "architecture contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

@@ -978,6 +978,26 @@ _PRIVATE_PLANE_WAVE_OPERATOR_MORTAR_IMPLEMENTATION_PRECEDENCE = (
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_STATUS = (
+    "private_plane_wave_phase_coherence_staging_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_NEXT_PREREQUISITE = (
+    "private plane-wave phase-coherence staging implementation after "
+    "architecture contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_TERMINAL_OUTCOMES = (
+    "private_plane_wave_interface_state_ownership_design_ready",
+    "private_plane_wave_transverse_phase_coherence_design_ready",
+    "private_plane_wave_phase_coherence_staging_contract_ready",
+    "private_plane_wave_phase_coherence_architecture_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_PRECEDENCE = (
+    "private_plane_wave_phase_coherence_architecture_blocked_no_public_promotion",
+    "private_plane_wave_phase_coherence_staging_contract_ready",
+    "private_plane_wave_transverse_phase_coherence_design_ready",
+    "private_plane_wave_interface_state_ownership_design_ready",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -7623,6 +7643,191 @@ def _private_plane_wave_operator_mortar_energy_form_implementation_metadata(
     }
 
 
+def _private_plane_wave_transverse_phase_coherence_architecture_metadata(
+    *,
+    operator_mortar_implementation_metadata: dict[str, object],
+    failure_theory_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(operator_mortar_implementation_metadata["baseline_metrics"])
+    thresholds = dict(operator_mortar_implementation_metadata["thresholds"])
+    follow_up_write_surface = (
+        "rfx/subgridding/sbp_sat_3d.py",
+        "rfx/subgridding/sbp_operators.py",
+        "tests/test_sbp_sat_3d.py",
+        "tests/test_sbp_sat_energy_ledger_diagnostic.py",
+        "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py",
+        "tests/test_support_matrix_sbp_sat.py",
+        "docs/guides/support_matrix.json",
+        "docs/guides/support_matrix.md",
+        "docs/guides/sbp_sat_final_goal.md",
+        "docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md",
+    )
+    staging_contract = {
+        "single_interface_state_owner_required": True,
+        "cpml_non_cpml_owner_identity_required": True,
+        "phase_coherence_score_remains_private": True,
+        "phase_spread_and_magnitude_cv_must_improve_together": True,
+        "no_threshold_laundering": True,
+        "no_public_hook_or_observable": True,
+        "slow_private_metadata_before_retention": True,
+    }
+    j0 = {
+        "candidate_id": "J0_blocked_operator_mortar_packet_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_operator_mortar_status": (
+            operator_mortar_implementation_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    j1 = {
+        "candidate_id": "J1_interface_energy_state_ownership_design",
+        "candidate_family": "interface_state_ownership",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "explains_h1_blocker": True,
+        "ownership_contract": (
+            "introduce one private interface energy-state owner spanning "
+            "operator/mortar-projected coarse/fine tangential traces in both "
+            "CPML and non-CPML step paths"
+        ),
+        "requires_public_api": False,
+        "superseded_by": "J3_combined_phase_coherence_staging_contract",
+        "public_claim_allowed": False,
+    }
+    j2 = {
+        "candidate_id": "J2_transverse_phase_coherence_score_coupling_design",
+        "candidate_family": "phase_coherence_score_coupling",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "explains_phase_and_magnitude_joint_blocker": True,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "score_contract": (
+            "do not optimize phase spread alone; any implementation must score "
+            "phase spread and transverse magnitude CV together under the frozen "
+            "private plane-wave parity packet"
+        ),
+        "threshold_laundering_rejected": True,
+        "superseded_by": "J3_combined_phase_coherence_staging_contract",
+        "public_claim_allowed": False,
+    }
+    j3 = {
+        "candidate_id": "J3_combined_phase_coherence_staging_contract",
+        "candidate_family": "solver_staging_architecture_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_STATUS
+        ),
+        "architecture_contract_ready": True,
+        "staging_contract": staging_contract,
+        "future_write_surface": follow_up_write_surface,
+        "explains_h1_h2_blocker": True,
+        "bounded_follow_up_implementation_surface": True,
+        "requires_single_interface_state_owner": True,
+        "requires_phase_coherence_joint_score": True,
+        "requires_cpml_non_cpml_staging_identity": True,
+        "forbids_hidden_hook_or_public_surface": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "true_rt_readiness_unlocked": False,
+        "public_claim_allowed": False,
+    }
+    j4 = {
+        "candidate_id": "J4_phase_coherence_architecture_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_phase_coherence_architecture_blocked_no_public_promotion"
+        ),
+        "rejection_reason": (
+            "not selected because J1/J2 provide bounded design components and "
+            "J3 combines them into a follow-up private implementation contract"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (j0, j1, j2, j3, j4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_STATUS,
+        "terminal_outcome": _PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_transverse_phase_coherence_architecture_design_only"
+        ),
+        "upstream_operator_mortar_status": (
+            operator_mortar_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_failure_theory_status": failure_theory_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite J0/J1/J2/J3/J4 architecture ladder; select a combined "
+            "private phase-coherence staging contract before any new solver "
+            "hunk or true R/T readiness claim"
+        ),
+        "selected_candidate_id": "J3_combined_phase_coherence_staging_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "interface_state_ownership_design_ready": True,
+        "transverse_phase_coherence_design_ready": True,
+        "phase_coherence_staging_contract_ready": True,
+        "explains_operator_mortar_blocker": True,
+        "explains_h1_h2_blocker": True,
+        "bounded_follow_up_implementation_surface": True,
+        "staging_contract": staging_contract,
+        "future_write_surface": follow_up_write_surface,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_implementation_plan": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the operator/mortar implementation blocker is now narrowed to a "
+            "private phase-coherence staging contract: one interface state "
+            "owner must preserve transverse phase spread and magnitude CV "
+            "jointly before any true R/T readiness claim"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -9840,8 +10045,30 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_phase_coherence_architecture_metadata = (
+        _private_plane_wave_transverse_phase_coherence_architecture_metadata(
+            operator_mortar_implementation_metadata=(
+                plane_wave_operator_mortar_implementation_metadata
+            ),
+            failure_theory_metadata=plane_wave_energy_form_failure_theory_metadata,
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_transverse_phase_coherence_architecture_status": (
+                plane_wave_phase_coherence_architecture_metadata["status"]
+            ),
+            "private_plane_wave_transverse_phase_coherence_architecture": (
+                plane_wave_phase_coherence_architecture_metadata
+            ),
+            "private_plane_wave_transverse_phase_coherence_architecture_next_prerequisite": (
+                plane_wave_phase_coherence_architecture_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_operator_mortar_energy_form_implementation_next_prerequisite"
+        "private_plane_wave_transverse_phase_coherence_architecture_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -9935,6 +10162,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave operator/mortar energy-form "
                 "implementation lane records "
                 f"{plane_wave_operator_mortar_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave transverse phase-coherence "
+                "architecture lane records "
+                f"{plane_wave_phase_coherence_architecture_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -9944,7 +10174,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_operator_mortar_energy_form_implementation_next_prerequisite"
+                "private_plane_wave_transverse_phase_coherence_architecture_next_prerequisite"
             ],
         }
 
@@ -12697,10 +12927,87 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_operator_mortar_energy_form_implementation_next_prerequisite"
         ]
     )
+    phase_architecture = metadata[
+        "private_plane_wave_transverse_phase_coherence_architecture"
+    ]
+    assert metadata[
+        "private_plane_wave_transverse_phase_coherence_architecture_status"
+    ] == _PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_STATUS
+    assert phase_architecture["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_PHASE_COHERENCE_ARCHITECTURE_STATUS
+    )
+    assert phase_architecture["upstream_operator_mortar_status"] == (
+        metadata["private_plane_wave_operator_mortar_energy_form_implementation_status"]
+    )
+    assert phase_architecture["upstream_failure_theory_status"] == (
+        metadata["private_plane_wave_interface_energy_form_failure_theory_status"]
+    )
+    assert phase_architecture["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert phase_architecture["candidate_ladder_declared_before_slow_scoring"] is True
+    assert phase_architecture["candidate_count"] == 5
+    assert phase_architecture["selected_candidate_id"] == (
+        "J3_combined_phase_coherence_staging_contract"
+    )
+    assert phase_architecture["baseline_metrics"] == operator_mortar_impl[
+        "baseline_metrics"
+    ]
+    assert phase_architecture["baseline_metrics_preserved"] is True
+    assert phase_architecture["thresholds_unchanged"] is True
+    assert phase_architecture["interface_state_ownership_design_ready"] is True
+    assert phase_architecture["transverse_phase_coherence_design_ready"] is True
+    assert phase_architecture["phase_coherence_staging_contract_ready"] is True
+    assert phase_architecture["explains_operator_mortar_blocker"] is True
+    assert phase_architecture["explains_h1_h2_blocker"] is True
+    assert phase_architecture["bounded_follow_up_implementation_surface"] is True
+    assert phase_architecture["staging_contract"][
+        "single_interface_state_owner_required"
+    ] is True
+    assert phase_architecture["staging_contract"][
+        "phase_spread_and_magnitude_cv_must_improve_together"
+    ] is True
+    assert phase_architecture["production_patch_applied"] is False
+    assert phase_architecture["solver_behavior_changed"] is False
+    assert phase_architecture["new_solver_hunk_retained"] is False
+    assert phase_architecture["true_rt_readiness_unlocked"] is False
+    assert phase_architecture["next_lane_requires_implementation_plan"] is True
+    phase_architecture_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in phase_architecture["candidate_ladder"]
+    }
+    assert (
+        phase_architecture_candidates[
+            "J1_interface_energy_state_ownership_design"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        phase_architecture_candidates[
+            "J2_transverse_phase_coherence_score_coupling_design"
+        ]["threshold_laundering_rejected"]
+        is True
+    )
+    assert (
+        phase_architecture_candidates[
+            "J3_combined_phase_coherence_staging_contract"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert phase_architecture["public_claim_allowed"] is False
+    assert phase_architecture["public_observable_promoted"] is False
+    assert phase_architecture["true_rt_public_observable_promoted"] is False
+    assert phase_architecture["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        phase_architecture["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_transverse_phase_coherence_architecture_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_operator_mortar_energy_form_implementation_next_prerequisite"
+            "private_plane_wave_transverse_phase_coherence_architecture_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -12726,7 +13033,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_operator_mortar_energy_form_implementation_next_prerequisite"
+            "private_plane_wave_transverse_phase_coherence_architecture_next_prerequisite"
         ]
     )
     assert (
@@ -12829,6 +13136,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata[
             "private_plane_wave_operator_mortar_energy_form_implementation_status"
         ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_transverse_phase_coherence_architecture_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

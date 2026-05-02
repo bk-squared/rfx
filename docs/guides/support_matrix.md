@@ -286,7 +286,11 @@ implementation lane now records
 `no_private_plane_wave_operator_mortar_energy_form_implementation`: the current
 solver staging does not expose a bounded owner for that time-centered interface
 energy state, so the next safe lane is a private transverse phase-coherence
-architecture redesign; public promotion remains closed.
+architecture redesign. That architecture lane now records
+`private_plane_wave_phase_coherence_staging_contract_ready`: a single private
+interface-state owner must preserve transverse phase spread and magnitude CV
+jointly before any implementation hunk or true R/T readiness claim; public
+promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

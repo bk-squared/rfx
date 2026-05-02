@@ -334,10 +334,14 @@ records `no_private_plane_wave_operator_mortar_energy_form_implementation`: the
 current solver staging does not expose a bounded owner for that time-centered
 interface energy state, so the next safe lane is `private plane-wave transverse
 phase-coherence architecture redesign after operator/mortar energy-form
-implementation blocked ralplan`. Hook experiments remain closed and public
-promotion remains closed. Until those fixture-quality gates pass, the private
-flux/DFT gate remains internal diagnostic evidence only, and the support matrix
-continues to mark true R/T as deferred.
+implementation blocked ralplan`. That architecture lane now records
+`private_plane_wave_phase_coherence_staging_contract_ready`: a single private
+interface-state owner must preserve transverse phase spread and magnitude CV
+jointly, so the next safe lane is `private plane-wave phase-coherence staging
+implementation after architecture contract ready ralplan`. Hook experiments
+remain closed and public promotion remains closed. Until those fixture-quality
+gates pass, the private flux/DFT gate remains internal diagnostic evidence
+only, and the support matrix continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
