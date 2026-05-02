@@ -4801,13 +4801,117 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == time_aligned_design["next_prerequisite"]
     )
+    time_aligned_implementation = benchmark_gate[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_status"
+    ] == (
+        "private_plane_wave_source_interface_time_aligned_packet_staging_hunk_retained_fixture_quality_pending"
+    )
+    assert time_aligned_implementation["terminal_outcome"] == (
+        "private_plane_wave_source_interface_time_aligned_packet_staging_hunk_retained_fixture_quality_pending"
+    )
+    assert time_aligned_implementation["upstream_design_status"] == benchmark_gate[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_design_status"
+    ]
+    assert time_aligned_implementation["upstream_failure_theory_status"] == (
+        benchmark_gate[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
+        ]
+    )
+    assert time_aligned_implementation["candidate_ladder_declared_before_solver_edit"]
+    assert time_aligned_implementation[
+        "candidate_ladder_declared_before_slow_scoring"
+    ]
+    assert time_aligned_implementation["candidate_count"] == 5
+    assert time_aligned_implementation["selected_candidate_id"] == (
+        "N3_modal_retry_time_aligned_consumer_hunk"
+    )
+    assert time_aligned_implementation["baseline_metrics"] == (
+        time_aligned_design["baseline_metrics"]
+    )
+    assert time_aligned_implementation["metrics"] == time_aligned_design["metrics"]
+    assert time_aligned_implementation["thresholds"] == (
+        time_aligned_design["thresholds"]
+    )
+    assert time_aligned_implementation["baseline_metrics_preserved"]
+    assert time_aligned_implementation["thresholds_unchanged"]
+    assert time_aligned_implementation["time_aligned_packet_staging_design_ready"]
+    assert time_aligned_implementation["staged_packet_fields_retained"]
+    assert time_aligned_implementation["staged_packets_initialized_to_zero"]
+    assert time_aligned_implementation["staged_packets_fixed_shape"]
+    assert time_aligned_implementation[
+        "staged_packets_do_not_alias_current_packets"
+    ]
+    assert time_aligned_implementation["previous_source_packet_fields_retained"]
+    assert time_aligned_implementation["previous_interface_packet_fields_retained"]
+    assert time_aligned_implementation["stage_helper_retained"]
+    assert time_aligned_implementation["stage_helper_runs_after_observable_proxy"]
+    assert time_aligned_implementation["stage_helper_runs_before_source_overwrite"]
+    assert time_aligned_implementation["source_overwrite_occurs_after_staging"]
+    assert time_aligned_implementation["interface_scan_occurs_after_modal_retry"]
+    assert time_aligned_implementation[
+        "cpml_non_cpml_staging_initialization_retained"
+    ]
+    assert time_aligned_implementation["cpml_non_cpml_wiring_symmetric"]
+    assert time_aligned_implementation["jit_runner_staging_initialization_preserved"]
+    assert time_aligned_implementation[
+        "modal_retry_consumes_time_aligned_packet_pair"
+    ]
+    assert time_aligned_implementation["modal_retry_reads_previous_source_packet"]
+    assert time_aligned_implementation["modal_retry_reads_previous_interface_packet"]
+    implementation_timing = time_aligned_implementation["consumer_timing_contract"]
+    assert implementation_timing["staging_helper"] == (
+        "_stage_private_time_aligned_owner_packets"
+    )
+    assert implementation_timing["stage_helper_runs_before_source_overwrite"]
+    assert time_aligned_implementation["implementation_lane_executed"]
+    assert time_aligned_implementation["production_patch_applied"]
+    assert time_aligned_implementation["solver_behavior_changed"]
+    assert time_aligned_implementation["field_update_behavior_changed"]
+    assert time_aligned_implementation["new_solver_hunk_retained"]
+    assert time_aligned_implementation["benchmark_plane_dft_observable_imported"] is False
+    assert time_aligned_implementation["true_rt_readiness_unlocked"] is False
+    assert time_aligned_implementation[
+        "next_lane_requires_time_aligned_modal_retry_parity_scoring"
+    ]
+    time_aligned_implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in time_aligned_implementation["candidate_ladder"]
+    }
+    assert time_aligned_implementation_candidates[
+        "N1_private_staged_packet_fields_and_initialization"
+    ]["staged_packet_fields_retained"]
+    assert time_aligned_implementation_candidates[
+        "N2_cpml_non_cpml_jit_safe_staging_wiring"
+    ]["cpml_non_cpml_wiring_symmetric"]
+    assert time_aligned_implementation_candidates[
+        "N3_modal_retry_time_aligned_consumer_hunk"
+    ]["accepted_candidate"]
+    assert time_aligned_implementation_candidates[
+        "N4_time_aligned_packet_staging_implementation_blocked"
+    ]["accepted_candidate"] is False
+    assert time_aligned_implementation["public_claim_allowed"] is False
+    assert time_aligned_implementation["public_observable_promoted"] is False
+    assert time_aligned_implementation["true_rt_public_observable_promoted"] is False
+    assert (
+        time_aligned_implementation["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_next_prerequisite"
+        ]
+        == time_aligned_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source/interface time-aligned packet staging implementation "
-        "after design contract ready ralplan"
+        "private plane-wave time-aligned modal retry parity scoring after staged "
+        "packet hunk retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave source/interface time-aligned packet staging implementation "
-        "after design contract ready ralplan"
+        "private plane-wave time-aligned modal retry parity scoring after staged "
+        "packet hunk retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -5024,6 +5128,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_source_interface_time_aligned_packet_staging_design_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -5291,8 +5401,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source/interface time-aligned packet staging implementation "
-        "after design contract ready ralplan"
+        "private plane-wave time-aligned modal retry parity scoring after staged "
+        "packet hunk retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

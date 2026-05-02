@@ -477,8 +477,13 @@ design after that theory contract. That design lane now records
 `private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready`:
 private fixed-shape staged source/interface packet slots, CPML/non-CPML/JIT
 initialization, and modal-retry consumer timing are specified without hooks or
-public observables. The next safe lane is private source/interface
-time-aligned packet staging implementation after design contract ready.
+public observables. The implementation lane now records
+`private_plane_wave_source_interface_time_aligned_packet_staging_hunk_retained_fixture_quality_pending`:
+previous source/interface packet fields are retained in private owner state, a
+staging helper snapshots the last completed pair before source overwrite, and
+propagation-aware modal retry now consumes that time-aligned pair without hooks
+or public observables. The next safe lane is private time-aligned modal retry
+parity scoring after the staged packet hunk is retained.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

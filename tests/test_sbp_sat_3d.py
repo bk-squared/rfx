@@ -22,6 +22,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _get_face_ops,
     _init_private_interface_owner_state,
     _private_interface_owner_joint_score,
+    _stage_private_time_aligned_owner_packets,
     _update_private_interface_owner_state_from_scan,
     _update_private_source_owner_state_from_scan,
     apply_sat_e_interfaces,
@@ -522,6 +523,7 @@ def test_time_centered_paired_face_helper_is_wired_after_e_sat():
         skew_index = source.index("_apply_operator_projected_skew_eh_face_helper")
         helper_index = source.index("_apply_time_centered_paired_face_helper")
         proxy_index = source.index("_apply_observable_proxy_modal_retry_face_helper")
+        stage_index = source.index("_stage_private_time_aligned_owner_packets")
         source_index = source.index("_update_private_source_owner_state_from_scan")
         propagation_index = source.index(
             "_apply_propagation_aware_modal_retry_face_helper"
@@ -534,6 +536,7 @@ def test_time_centered_paired_face_helper_is_wired_after_e_sat():
             < skew_index
             < helper_index
             < proxy_index
+            < stage_index
             < source_index
             < propagation_index
         )
@@ -570,6 +573,8 @@ def _assert_private_owner_packet_shape(owner_state, config):
     )
     assert owner_state.face_proxy_reference_real.shape == (packet_size,)
     assert owner_state.face_proxy_reference_imag.shape == (packet_size,)
+    assert owner_state.face_proxy_reference_prev_real.shape == (packet_size,)
+    assert owner_state.face_proxy_reference_prev_imag.shape == (packet_size,)
     assert owner_state.face_proxy_weight.shape == (packet_size,)
     assert owner_state.face_proxy_mask.shape == (packet_size,)
     np.testing.assert_array_equal(
@@ -598,6 +603,8 @@ def _assert_private_owner_packet_shape(owner_state, config):
     )
     assert owner_state.source_owner_reference_real.shape == (packet_size,)
     assert owner_state.source_owner_reference_imag.shape == (packet_size,)
+    assert owner_state.source_owner_reference_prev_real.shape == (packet_size,)
+    assert owner_state.source_owner_reference_prev_imag.shape == (packet_size,)
     assert owner_state.source_owner_weight.shape == (packet_size,)
     assert owner_state.source_owner_mask.shape == (packet_size,)
     assert owner_state.source_incident_normalizer_real.shape == (packet_size,)
@@ -658,11 +665,27 @@ def test_private_interface_owner_state_initializes_for_active_faces():
     np.testing.assert_allclose(np.asarray(owner_state.face_proxy_reference_real), 0.0)
     np.testing.assert_allclose(np.asarray(owner_state.face_proxy_reference_imag), 0.0)
     np.testing.assert_allclose(
+        np.asarray(owner_state.face_proxy_reference_prev_real),
+        0.0,
+    )
+    np.testing.assert_allclose(
+        np.asarray(owner_state.face_proxy_reference_prev_imag),
+        0.0,
+    )
+    np.testing.assert_allclose(
         np.asarray(owner_state.source_owner_reference_real),
         0.0,
     )
     np.testing.assert_allclose(
         np.asarray(owner_state.source_owner_reference_imag),
+        0.0,
+    )
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_owner_reference_prev_real),
+        0.0,
+    )
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_owner_reference_prev_imag),
         0.0,
     )
     np.testing.assert_allclose(
@@ -758,6 +781,71 @@ def test_private_source_owner_population_updates_source_packet_only():
     np.testing.assert_allclose(
         np.asarray(updated.source_incident_normalizer_imag),
         0.0,
+    )
+
+
+def test_private_time_aligned_owner_packet_staging_snapshots_previous_pair():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    owner_state = _init_private_interface_owner_state(config)
+    owner_state = _update_private_interface_owner_state_from_scan(
+        owner_state,
+        e_post_sat_coarse=(state.ex_c + 1.0, state.ey_c + 2.0, state.ez_c + 3.0),
+        e_post_sat_fine=(state.ex_f + 1.5, state.ey_f + 2.5, state.ez_f + 3.5),
+        h_post_sat_coarse=(state.hx_c + 0.1, state.hy_c + 0.2, state.hz_c + 0.3),
+        h_post_sat_fine=(state.hx_f + 0.15, state.hy_f + 0.25, state.hz_f + 0.35),
+        config=config,
+    )
+    owner_state = _update_private_source_owner_state_from_scan(
+        owner_state,
+        e_source_coarse=(state.ex_c + 4.0, state.ey_c + 5.0, state.ez_c + 6.0),
+        e_source_fine=(state.ex_f + 4.5, state.ey_f + 5.5, state.ez_f + 6.5),
+        h_source_coarse=(state.hx_c + 0.4, state.hy_c + 0.5, state.hz_c + 0.6),
+        h_source_fine=(state.hx_f + 0.45, state.hy_f + 0.55, state.hz_f + 0.65),
+        config=config,
+    )
+
+    staged = _stage_private_time_aligned_owner_packets(owner_state)
+    overwritten = _update_private_source_owner_state_from_scan(
+        staged,
+        e_source_coarse=(state.ex_c + 7.0, state.ey_c + 8.0, state.ez_c + 9.0),
+        e_source_fine=(state.ex_f + 7.5, state.ey_f + 8.5, state.ez_f + 9.5),
+        h_source_coarse=(state.hx_c + 0.7, state.hy_c + 0.8, state.hz_c + 0.9),
+        h_source_fine=(state.hx_f + 0.75, state.hy_f + 0.85, state.hz_f + 0.95),
+        config=config,
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(staged.face_proxy_reference_prev_real),
+        np.asarray(owner_state.face_proxy_reference_real),
+    )
+    np.testing.assert_allclose(
+        np.asarray(staged.face_proxy_reference_prev_imag),
+        np.asarray(owner_state.face_proxy_reference_imag),
+    )
+    np.testing.assert_allclose(
+        np.asarray(staged.source_owner_reference_prev_real),
+        np.asarray(owner_state.source_owner_reference_real),
+    )
+    np.testing.assert_allclose(
+        np.asarray(staged.source_owner_reference_prev_imag),
+        np.asarray(owner_state.source_owner_reference_imag),
+    )
+    np.testing.assert_allclose(
+        np.asarray(overwritten.source_owner_reference_prev_real),
+        np.asarray(staged.source_owner_reference_prev_real),
+    )
+    np.testing.assert_allclose(
+        np.asarray(overwritten.source_owner_reference_prev_imag),
+        np.asarray(staged.source_owner_reference_prev_imag),
+    )
+    assert not np.allclose(
+        np.asarray(overwritten.source_owner_reference_real),
+        np.asarray(overwritten.source_owner_reference_prev_real),
     )
 
 
@@ -937,8 +1025,12 @@ def _private_owner_with_source_interface_reference(config, *, source_active):
         face_update_count=jnp.ones_like(owner_state.face_update_count),
         face_proxy_reference_real=0.30 * mask,
         face_proxy_reference_imag=0.25 * mask,
+        face_proxy_reference_prev_real=0.30 * mask,
+        face_proxy_reference_prev_imag=0.25 * mask,
         source_owner_reference_real=source_real,
         source_owner_reference_imag=source_imag,
+        source_owner_reference_prev_real=source_real,
+        source_owner_reference_prev_imag=source_imag,
         source_incident_normalizer_real=2.0 * source_mask,
         source_incident_normalizer_imag=jnp.zeros_like(source_mask),
     )
@@ -1085,6 +1177,7 @@ def test_private_interface_owner_scan_wiring_is_after_same_step_eh_sat():
         e_sat_index = source.index("apply_sat_e_interfaces")
         helper_index = source.index("_apply_time_centered_paired_face_helper")
         proxy_index = source.index("_apply_observable_proxy_modal_retry_face_helper")
+        stage_index = source.index("_stage_private_time_aligned_owner_packets")
         source_index = source.index("_update_private_source_owner_state_from_scan")
         propagation_index = source.index(
             "_apply_propagation_aware_modal_retry_face_helper"
@@ -1095,6 +1188,7 @@ def test_private_interface_owner_scan_wiring_is_after_same_step_eh_sat():
             < e_sat_index
             < helper_index
             < proxy_index
+            < stage_index
             < source_index
             < propagation_index
             < scan_index

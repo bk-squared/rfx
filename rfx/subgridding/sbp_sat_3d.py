@@ -99,6 +99,8 @@ class _PrivateInterfaceOwnerState(NamedTuple):
     face_update_count: jnp.ndarray
     face_proxy_reference_real: jnp.ndarray
     face_proxy_reference_imag: jnp.ndarray
+    face_proxy_reference_prev_real: jnp.ndarray
+    face_proxy_reference_prev_imag: jnp.ndarray
     face_proxy_weight: jnp.ndarray
     face_proxy_mask: jnp.ndarray
     face_packet_offsets: jnp.ndarray
@@ -109,6 +111,8 @@ class _PrivateInterfaceOwnerState(NamedTuple):
     face_tangential_axis_1: jnp.ndarray
     source_owner_reference_real: jnp.ndarray
     source_owner_reference_imag: jnp.ndarray
+    source_owner_reference_prev_real: jnp.ndarray
+    source_owner_reference_prev_imag: jnp.ndarray
     source_owner_weight: jnp.ndarray
     source_owner_mask: jnp.ndarray
     source_incident_normalizer_real: jnp.ndarray
@@ -600,6 +604,14 @@ def _init_private_interface_owner_state(
             face_proxy_reference,
             dtype=jnp.float32,
         ),
+        face_proxy_reference_prev_real=jnp.asarray(
+            face_proxy_reference,
+            dtype=jnp.float32,
+        ),
+        face_proxy_reference_prev_imag=jnp.asarray(
+            face_proxy_reference,
+            dtype=jnp.float32,
+        ),
         face_proxy_weight=jnp.asarray(face_proxy_weight, dtype=jnp.float32),
         face_proxy_mask=jnp.asarray(face_proxy_mask, dtype=jnp.float32),
         face_packet_offsets=jnp.asarray(face_packet_offsets, dtype=jnp.int32),
@@ -619,6 +631,14 @@ def _init_private_interface_owner_state(
             dtype=jnp.float32,
         ),
         source_owner_reference_imag=jnp.asarray(
+            face_proxy_reference,
+            dtype=jnp.float32,
+        ),
+        source_owner_reference_prev_real=jnp.asarray(
+            face_proxy_reference,
+            dtype=jnp.float32,
+        ),
+        source_owner_reference_prev_imag=jnp.asarray(
             face_proxy_reference,
             dtype=jnp.float32,
         ),
@@ -661,6 +681,27 @@ def _advance_private_interface_owner_state(
 ) -> _PrivateInterfaceOwnerState:
     return owner_state._replace(
         face_update_count=owner_state.face_update_count + jnp.asarray(1, dtype=jnp.int32)
+    )
+
+
+def _stage_private_time_aligned_owner_packets(
+    owner_state: _PrivateInterfaceOwnerState,
+) -> _PrivateInterfaceOwnerState:
+    """Stage the last completed source/interface packet pair for modal retry.
+
+    The propagation-aware modal retry consumes source and interface packets from
+    the same completed solver step.  The current source packet is overwritten
+    before that retry in each step, so this private staging helper snapshots the
+    previous current pair immediately before the overwrite.  It stays entirely
+    inside ``_PrivateInterfaceOwnerState`` and does not create public observables,
+    hooks, or benchmark monitor dependencies.
+    """
+
+    return owner_state._replace(
+        face_proxy_reference_prev_real=owner_state.face_proxy_reference_real,
+        face_proxy_reference_prev_imag=owner_state.face_proxy_reference_imag,
+        source_owner_reference_prev_real=owner_state.source_owner_reference_real,
+        source_owner_reference_prev_imag=owner_state.source_owner_reference_imag,
     )
 
 
@@ -1046,18 +1087,22 @@ def _apply_propagation_aware_modal_retry_face_helper(
             ops.coarse_shape
         )
         packet_mask = interface_mask * source_mask
-        interface_real = owner_state.face_proxy_reference_real[packet_slice].reshape(
+        interface_real = owner_state.face_proxy_reference_prev_real[
+            packet_slice
+        ].reshape(
             ops.coarse_shape
         )
-        interface_imag = owner_state.face_proxy_reference_imag[packet_slice].reshape(
+        interface_imag = owner_state.face_proxy_reference_prev_imag[
+            packet_slice
+        ].reshape(
             ops.coarse_shape
         )
-        source_real = owner_state.source_owner_reference_real[packet_slice].reshape(
-            ops.coarse_shape
-        )
-        source_imag = owner_state.source_owner_reference_imag[packet_slice].reshape(
-            ops.coarse_shape
-        )
+        source_real = owner_state.source_owner_reference_prev_real[
+            packet_slice
+        ].reshape(ops.coarse_shape)
+        source_imag = owner_state.source_owner_reference_prev_imag[
+            packet_slice
+        ].reshape(ops.coarse_shape)
         normalizer_real = owner_state.source_incident_normalizer_real[
             packet_slice
         ].reshape(ops.coarse_shape)
@@ -2207,6 +2252,9 @@ def step_subgrid_3d_with_cpml(
         private_interface_owner_state,
         config,
     )
+    private_interface_owner_state = _stage_private_time_aligned_owner_packets(
+        private_interface_owner_state
+    )
     private_interface_owner_state = _update_private_source_owner_state_from_scan(
         private_interface_owner_state,
         e_source_coarse=(ex_c, ey_c, ez_c),
@@ -2451,6 +2499,9 @@ def step_subgrid_3d(
         (hx_f, hy_f, hz_f),
         private_interface_owner_state,
         config,
+    )
+    private_interface_owner_state = _stage_private_time_aligned_owner_packets(
+        private_interface_owner_state
     )
     private_interface_owner_state = _update_private_source_owner_state_from_scan(
         private_interface_owner_state,
