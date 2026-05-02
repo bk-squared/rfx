@@ -2199,13 +2199,143 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == solver_wide_owner_implementation["next_prerequisite"]
     )
+    solver_state_owner_propagation = benchmark_gate[
+        "private_plane_wave_solver_state_owner_propagation_boundary"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_solver_state_owner_propagation_boundary_status"
+    ] == "private_plane_wave_solver_state_owner_propagation_contract_ready"
+    assert solver_state_owner_propagation["terminal_outcome"] == (
+        "private_plane_wave_solver_state_owner_propagation_contract_ready"
+    )
+    assert solver_state_owner_propagation["upstream_owner_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
+        ]
+    )
+    assert solver_state_owner_propagation["upstream_owner_architecture_status"] == (
+        benchmark_gate[
+            "private_plane_wave_solver_wide_interface_state_owner_architecture_status"
+        ]
+    )
+    assert solver_state_owner_propagation["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert (
+        solver_state_owner_propagation[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert solver_state_owner_propagation["candidate_count"] == 5
+    assert solver_state_owner_propagation["selected_candidate_id"] == (
+        "N3_combined_owner_propagation_contract"
+    )
+    assert solver_state_owner_propagation["baseline_metrics"] == (
+        solver_wide_owner_implementation["baseline_metrics"]
+    )
+    assert solver_state_owner_propagation["baseline_metrics_preserved"] is True
+    assert solver_state_owner_propagation["thresholds_unchanged"] is True
+    assert solver_state_owner_propagation["state_pytree_boundary_ready"] is True
+    assert (
+        solver_state_owner_propagation[
+            "runner_jit_initialization_boundary_ready"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation[
+            "solver_state_owner_propagation_contract_ready"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["explains_owner_implementation_blocker"]
+        is True
+    )
+    assert solver_state_owner_propagation["explains_m1_m2_m3_blocker"] is True
+    assert (
+        solver_state_owner_propagation["bounded_follow_up_implementation_surface"]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["state_pytree_boundary"][
+            "jax_pytree_boundary_defined"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["runner_jit_boundary"][
+            "jit_runner_initializes_owner_state"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["runner_jit_boundary"][
+            "subgridded_runner_initializes_owner_state"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["runner_jit_boundary"]["result_surface_unchanged"]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["propagation_contract"][
+            "requires_cpml_non_cpml_step_identity"
+        ]
+        is True
+    )
+    assert solver_state_owner_propagation["production_patch_applied"] is False
+    assert solver_state_owner_propagation["solver_behavior_changed"] is False
+    assert solver_state_owner_propagation["runner_behavior_changed"] is False
+    assert solver_state_owner_propagation["new_solver_hunk_retained"] is False
+    assert solver_state_owner_propagation["true_rt_readiness_unlocked"] is False
+    propagation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in solver_state_owner_propagation["candidate_ladder"]
+    }
+    assert (
+        propagation_candidates["N1_subgrid_state_owner_pytree_boundary"][
+            "design_component_ready"
+        ]
+        is True
+    )
+    assert (
+        propagation_candidates["N2_runner_jit_owner_initialization_boundary"][
+            "design_component_ready"
+        ]
+        is True
+    )
+    assert (
+        propagation_candidates["N3_combined_owner_propagation_contract"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert solver_state_owner_propagation["public_claim_allowed"] is False
+    assert solver_state_owner_propagation["public_observable_promoted"] is False
+    assert (
+        solver_state_owner_propagation["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        solver_state_owner_propagation["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_solver_state_owner_propagation_boundary_next_prerequisite"
+        ]
+        == solver_state_owner_propagation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave solver-state owner propagation boundary design after "
-        "interface-state owner implementation blocked ralplan"
+        "private plane-wave solver-state owner propagation implementation after "
+        "boundary contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave solver-state owner propagation boundary design after "
-        "interface-state owner implementation blocked ralplan"
+        "private plane-wave solver-state owner propagation implementation after "
+        "boundary contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -2278,6 +2408,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_solver_state_owner_propagation_boundary_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -2545,8 +2681,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave solver-state owner propagation boundary design after "
-        "interface-state owner implementation blocked ralplan"
+        "private plane-wave solver-state owner propagation implementation after "
+        "boundary contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

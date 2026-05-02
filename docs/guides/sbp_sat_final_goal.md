@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave solver-state owner propagation
-boundary design after the interface-state owner implementation lane failed
-closed. The private solver-local skew E/H helper is retained as a bounded
+implementation after the boundary contract became ready. The private solver-local
+skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
 fixture-quality repair ladder
@@ -162,11 +162,14 @@ bounded solver hunk. The follow-up implementation lane now records
 `no_private_plane_wave_solver_wide_interface_state_owner_implementation`: owner
 state shape and same-step scan wiring require a private solver-state propagation
 boundary contract for JAX pytree shape and runner/JIT initialization before any
-bounded hunk can be retained. The goal gate therefore remains claims-closed
-until that boundary is defined, a later implementation improves the parity
-metrics, and a later true R/T readiness lane proves the hunk improves the real
-solver path without breaking CPML/non-CPML symmetry, boundary guards,
-update/coupling bounds, or the unchanged `0.02` manufactured-ledger threshold.
+bounded hunk can be retained. The follow-up boundary design lane now records
+`private_plane_wave_solver_state_owner_propagation_contract_ready`: state pytree
+shape plus runner/JIT initialization boundaries are defined before retrying the
+bounded owner implementation. The goal gate therefore remains claims-closed
+until that implementation improves the parity metrics, and a later true R/T
+readiness lane proves the hunk improves the real solver path without breaking
+CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
+unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

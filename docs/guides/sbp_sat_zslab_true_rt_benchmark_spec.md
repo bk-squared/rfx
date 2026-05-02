@@ -353,10 +353,15 @@ owner state shape and same-step scan wiring require a private solver-state
 propagation boundary contract for JAX pytree shape and runner/JIT
 initialization before any bounded hunk can be retained, so the next safe lane is
 `private plane-wave solver-state owner propagation boundary design after
-interface-state owner implementation blocked ralplan`. Hook experiments remain
-closed and public promotion remains closed. Until those fixture-quality gates
-pass, the private flux/DFT gate remains internal diagnostic evidence only, and
-the support matrix continues to mark true R/T as deferred.
+interface-state owner implementation blocked ralplan`. That design lane now
+records `private_plane_wave_solver_state_owner_propagation_contract_ready`:
+state pytree shape plus runner/JIT initialization boundaries are defined before
+retrying the bounded owner implementation, so the next safe lane is `private
+plane-wave solver-state owner propagation implementation after boundary contract
+ready ralplan`. Hook experiments remain closed and public promotion remains
+closed. Until those fixture-quality gates pass, the private flux/DFT gate
+remains internal diagnostic evidence only, and the support matrix continues to
+mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

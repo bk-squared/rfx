@@ -1058,6 +1058,26 @@ _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_PRECEDENCE 
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_STATUS = (
+    "private_plane_wave_solver_state_owner_propagation_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_NEXT_PREREQUISITE = (
+    "private plane-wave solver-state owner propagation implementation after "
+    "boundary contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_TERMINAL_OUTCOMES = (
+    "private_plane_wave_subgrid_state_owner_pytree_boundary_ready",
+    "private_plane_wave_runner_jit_owner_initialization_boundary_ready",
+    "private_plane_wave_solver_state_owner_propagation_contract_ready",
+    "no_private_plane_wave_solver_state_owner_propagation_boundary_design",
+)
+_PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_PRECEDENCE = (
+    "no_private_plane_wave_solver_state_owner_propagation_boundary_design",
+    "private_plane_wave_solver_state_owner_propagation_contract_ready",
+    "private_plane_wave_runner_jit_owner_initialization_boundary_ready",
+    "private_plane_wave_subgrid_state_owner_pytree_boundary_ready",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -8487,6 +8507,205 @@ def _private_plane_wave_solver_wide_interface_state_owner_implementation_metadat
     }
 
 
+def _private_plane_wave_solver_state_owner_propagation_boundary_metadata(
+    *,
+    owner_implementation_metadata: dict[str, object],
+    owner_architecture_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(owner_implementation_metadata["baseline_metrics"])
+    thresholds = dict(owner_implementation_metadata["thresholds"])
+    owner_contract = dict(owner_architecture_metadata["owner_contract"])
+    scan_staging_contract = dict(owner_architecture_metadata["scan_staging_contract"])
+    state_pytree_boundary = {
+        "state_owner_field": "private_interface_owner_state",
+        "state_shape_stable": True,
+        "jax_pytree_boundary_defined": True,
+        "default_initializer_private": True,
+        "step_returns_owner_state": True,
+        "cpml_step_propagates_owner_state": True,
+        "non_cpml_step_propagates_owner_state": True,
+        "missing_state_initializes_private_default": True,
+        "no_public_api_surface": True,
+    }
+    runner_jit_boundary = {
+        "jit_runner_initializes_owner_state": True,
+        "subgridded_runner_initializes_owner_state": True,
+        "scan_carry_includes_owner_state": True,
+        "result_surface_unchanged": True,
+        "config_surface_unchanged": True,
+        "env_surface_unchanged": True,
+        "no_public_observable": True,
+        "no_hook_required": True,
+    }
+    propagation_contract = {
+        "requires_state_pytree_boundary": True,
+        "requires_runner_jit_boundary": True,
+        "requires_cpml_non_cpml_step_identity": True,
+        "requires_same_step_h_e_visibility": True,
+        "requires_joint_phase_magnitude_guard": True,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "thresholds_unchanged": True,
+        "public_promotion_allowed": False,
+    }
+    n0 = {
+        "candidate_id": "N0_blocked_owner_implementation_packet_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_owner_implementation_status": owner_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_owner_architecture_status": owner_architecture_metadata[
+            "terminal_outcome"
+        ],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "m1_m2_m3_failure_reasons_preserved": True,
+        "public_closure_retained": True,
+    }
+    n1 = {
+        "candidate_id": "N1_subgrid_state_owner_pytree_boundary",
+        "candidate_family": "subgrid_state_owner_pytree_boundary",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "state_pytree_boundary": state_pytree_boundary,
+        "explains_m1_blocker": True,
+        "requires_public_api": False,
+        "superseded_by": "N3_combined_owner_propagation_contract",
+        "public_claim_allowed": False,
+    }
+    n2 = {
+        "candidate_id": "N2_runner_jit_owner_initialization_boundary",
+        "candidate_family": "runner_jit_owner_initialization_boundary",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "runner_jit_boundary": runner_jit_boundary,
+        "explains_m1_runner_boundary_blocker": True,
+        "explains_m2_scan_boundary_blocker": True,
+        "requires_public_result_surface": False,
+        "requires_hook": False,
+        "superseded_by": "N3_combined_owner_propagation_contract",
+        "public_claim_allowed": False,
+    }
+    n3 = {
+        "candidate_id": "N3_combined_owner_propagation_contract",
+        "candidate_family": "solver_state_owner_propagation_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_STATUS
+        ),
+        "architecture_contract_ready": True,
+        "state_pytree_boundary": state_pytree_boundary,
+        "runner_jit_boundary": runner_jit_boundary,
+        "propagation_contract": propagation_contract,
+        "bounded_follow_up_implementation_surface": True,
+        "explains_m1_m2_m3_blocker": True,
+        "requires_private_state_propagation_boundary": True,
+        "requires_cpml_non_cpml_step_identity": True,
+        "forbids_hidden_hook_or_public_surface": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "true_rt_readiness_unlocked": False,
+        "public_claim_allowed": False,
+    }
+    n4 = {
+        "candidate_id": "N4_propagation_boundary_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_solver_state_owner_propagation_boundary_design"
+        ),
+        "rejection_reason": (
+            "not selected because N1/N2 define a private state propagation "
+            "boundary that can be handed to a bounded implementation lane "
+            "without public API/result, hook, or threshold changes"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (n0, n1, n2, n3, n4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_solver_state_owner_propagation_boundary_design_only"
+        ),
+        "upstream_owner_implementation_status": owner_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_owner_architecture_status": owner_architecture_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite N0/N1/N2/N3/N4 design ladder; define the private solver-"
+            "state propagation boundary for owner pytree shape and runner/JIT "
+            "initialization before any new owner implementation hunk"
+        ),
+        "selected_candidate_id": "N3_combined_owner_propagation_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "owner_contract": owner_contract,
+        "scan_staging_contract": scan_staging_contract,
+        "state_pytree_boundary": state_pytree_boundary,
+        "runner_jit_boundary": runner_jit_boundary,
+        "propagation_contract": propagation_contract,
+        "state_pytree_boundary_ready": True,
+        "runner_jit_initialization_boundary_ready": True,
+        "solver_state_owner_propagation_contract_ready": True,
+        "explains_owner_implementation_blocker": True,
+        "explains_m1_m2_m3_blocker": True,
+        "bounded_follow_up_implementation_surface": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_implementation_plan": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private solver-state owner propagation boundary is now ready: "
+            "state pytree shape plus runner/JIT initialization boundaries are "
+            "defined before retrying the bounded owner implementation"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -10804,8 +11023,34 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_solver_state_owner_propagation_boundary_metadata = (
+        _private_plane_wave_solver_state_owner_propagation_boundary_metadata(
+            owner_implementation_metadata=(
+                plane_wave_solver_wide_state_owner_implementation_metadata
+            ),
+            owner_architecture_metadata=(
+                plane_wave_solver_wide_state_owner_architecture_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_solver_state_owner_propagation_boundary_status": (
+                plane_wave_solver_state_owner_propagation_boundary_metadata["status"]
+            ),
+            "private_plane_wave_solver_state_owner_propagation_boundary": (
+                plane_wave_solver_state_owner_propagation_boundary_metadata
+            ),
+            "private_plane_wave_solver_state_owner_propagation_boundary_next_prerequisite": (
+                plane_wave_solver_state_owner_propagation_boundary_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
+        "private_plane_wave_solver_state_owner_propagation_boundary_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -10911,6 +11156,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave solver-wide interface-state owner "
                 "implementation lane records "
                 f"{plane_wave_solver_wide_state_owner_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave solver-state owner propagation "
+                "boundary design lane records "
+                f"{plane_wave_solver_state_owner_propagation_boundary_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -10920,7 +11168,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
+                "private_plane_wave_solver_state_owner_propagation_boundary_next_prerequisite"
             ],
         }
 
@@ -14080,10 +14328,156 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
         ]
     )
+    solver_state_owner_propagation = metadata[
+        "private_plane_wave_solver_state_owner_propagation_boundary"
+    ]
+    assert metadata[
+        "private_plane_wave_solver_state_owner_propagation_boundary_status"
+    ] == _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_STATUS
+    assert solver_state_owner_propagation["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_BOUNDARY_STATUS
+    )
+    assert solver_state_owner_propagation["upstream_owner_implementation_status"] == (
+        metadata[
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
+        ]
+    )
+    assert solver_state_owner_propagation["upstream_owner_architecture_status"] == (
+        metadata[
+            "private_plane_wave_solver_wide_interface_state_owner_architecture_status"
+        ]
+    )
+    assert solver_state_owner_propagation["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert (
+        solver_state_owner_propagation[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert solver_state_owner_propagation["candidate_count"] == 5
+    assert solver_state_owner_propagation["selected_candidate_id"] == (
+        "N3_combined_owner_propagation_contract"
+    )
+    assert solver_state_owner_propagation["baseline_metrics"] == (
+        solver_wide_owner_implementation["baseline_metrics"]
+    )
+    assert solver_state_owner_propagation["baseline_metrics_preserved"] is True
+    assert solver_state_owner_propagation["thresholds_unchanged"] is True
+    assert solver_state_owner_propagation["state_pytree_boundary_ready"] is True
+    assert (
+        solver_state_owner_propagation[
+            "runner_jit_initialization_boundary_ready"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation[
+            "solver_state_owner_propagation_contract_ready"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["explains_owner_implementation_blocker"]
+        is True
+    )
+    assert solver_state_owner_propagation["explains_m1_m2_m3_blocker"] is True
+    assert (
+        solver_state_owner_propagation["bounded_follow_up_implementation_surface"]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["state_pytree_boundary"][
+            "jax_pytree_boundary_defined"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["state_pytree_boundary"][
+            "step_returns_owner_state"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["runner_jit_boundary"][
+            "jit_runner_initializes_owner_state"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["runner_jit_boundary"][
+            "subgridded_runner_initializes_owner_state"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["runner_jit_boundary"]["result_surface_unchanged"]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["propagation_contract"][
+            "requires_cpml_non_cpml_step_identity"
+        ]
+        is True
+    )
+    assert (
+        solver_state_owner_propagation["propagation_contract"][
+            "requires_joint_phase_magnitude_guard"
+        ]
+        is True
+    )
+    assert solver_state_owner_propagation["production_patch_applied"] is False
+    assert solver_state_owner_propagation["solver_behavior_changed"] is False
+    assert solver_state_owner_propagation["runner_behavior_changed"] is False
+    assert solver_state_owner_propagation["new_solver_hunk_retained"] is False
+    assert solver_state_owner_propagation["true_rt_readiness_unlocked"] is False
+    assert (
+        solver_state_owner_propagation["next_lane_requires_implementation_plan"]
+        is True
+    )
+    solver_state_propagation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in solver_state_owner_propagation["candidate_ladder"]
+    }
+    assert (
+        solver_state_propagation_candidates[
+            "N1_subgrid_state_owner_pytree_boundary"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        solver_state_propagation_candidates[
+            "N2_runner_jit_owner_initialization_boundary"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        solver_state_propagation_candidates[
+            "N3_combined_owner_propagation_contract"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert solver_state_owner_propagation["public_claim_allowed"] is False
+    assert solver_state_owner_propagation["public_observable_promoted"] is False
+    assert (
+        solver_state_owner_propagation["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        solver_state_owner_propagation["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        solver_state_owner_propagation["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_solver_state_owner_propagation_boundary_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
+            "private_plane_wave_solver_state_owner_propagation_boundary_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -14109,7 +14503,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
+            "private_plane_wave_solver_state_owner_propagation_boundary_next_prerequisite"
         ]
     )
     assert (
@@ -14231,6 +14625,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_solver_state_owner_propagation_boundary_status"
         ]
         in metadata["blocking_diagnostic"]
     )

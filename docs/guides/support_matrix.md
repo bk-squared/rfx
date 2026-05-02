@@ -305,8 +305,12 @@ that implementation lane now records
 state shape and same-step scan wiring require a private solver-state
 propagation boundary contract for JAX pytree shape and runner/JIT
 initialization before any bounded hunk can be retained. The next safe lane is
-private plane-wave solver-state owner propagation boundary design; public
-promotion remains closed.
+private plane-wave solver-state owner propagation boundary design. That design
+lane now records `private_plane_wave_solver_state_owner_propagation_contract_ready`:
+state pytree shape plus runner/JIT initialization boundaries are defined before
+retrying the bounded owner implementation. The next safe lane is private
+plane-wave solver-state owner propagation implementation; public promotion
+remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
