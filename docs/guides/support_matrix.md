@@ -520,7 +520,13 @@ lane now records
 `private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_insufficient_fixture_quality_pending`:
 the retained residual-basis hunk has finite private score evidence, but unchanged
 material-improvement and fixture-quality gates remain closed, so the next safe
-lane is private residual-basis failure-theory redesign.
+lane is private residual-basis failure-theory redesign. The projected target
+residual-basis failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready`:
+the retained hunk removed the single-incident-basis floor, but its residual modes
+are scalar weighted complex-L2 packet modes rather than an energy-biorthogonal
+characteristic E/H basis; the next safe lane is private energy-biorthogonal
+residual-basis redesign.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

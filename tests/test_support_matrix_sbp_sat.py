@@ -6590,13 +6590,132 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == residual_basis_parity_scoring["next_prerequisite"]
     )
+    residual_basis_failure_theory = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready"
+    )
+    assert residual_basis_failure_theory["terminal_outcome"] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready"
+    )
+    assert residual_basis_failure_theory[
+        "upstream_residual_basis_parity_scoring_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_status"
+    ]
+    assert residual_basis_failure_theory[
+        "upstream_residual_basis_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_implementation_status"
+    ]
+    assert residual_basis_failure_theory["candidate_ladder_declared_before_implementation"]
+    assert residual_basis_failure_theory["candidate_ladder_declared_before_solver_edit"]
+    assert residual_basis_failure_theory["candidate_ladder_declared_before_slow_scoring"]
+    assert residual_basis_failure_theory["candidate_count"] == 5
+    assert residual_basis_failure_theory["selected_candidate_id"] == (
+        "AE1_modal_orthogonality_energy_inner_product_floor"
+    )
+    assert residual_basis_failure_theory["baseline_metrics"] == (
+        residual_basis_parity_scoring["baseline_metrics"]
+    )
+    assert residual_basis_failure_theory["metrics"] == (
+        residual_basis_parity_scoring["metrics"]
+    )
+    assert residual_basis_failure_theory["thresholds"] == (
+        residual_basis_parity_scoring["thresholds"]
+    )
+    assert residual_basis_failure_theory["threshold_results"] == (
+        residual_basis_parity_scoring["threshold_results"]
+    )
+    assert residual_basis_failure_theory["baseline_metrics_preserved"]
+    assert residual_basis_failure_theory["thresholds_unchanged"]
+    assert residual_basis_failure_theory["residual_basis_parity_scoring_insufficient"]
+    assert residual_basis_failure_theory["residual_basis_hunk_retained"]
+    assert residual_basis_failure_theory["residual_basis_modes_projected"]
+    assert residual_basis_failure_theory["source_packet_projected"]
+    assert residual_basis_failure_theory["interface_packet_projected"]
+    assert residual_basis_failure_theory["subtraction_uses_projected_packets_only"]
+    assert residual_basis_failure_theory["single_incident_basis_replaced"]
+    assert residual_basis_failure_theory["single_incident_basis_only"] is False
+    assert residual_basis_failure_theory["projection_gate_fail_closed"]
+    assert residual_basis_failure_theory["contract_gate_fail_closed"]
+    assert residual_basis_failure_theory["finite_reproducible_score"]
+    assert residual_basis_failure_theory["scalar_l2_orthogonality_only"]
+    assert residual_basis_failure_theory["energy_biorthogonal_basis_missing"]
+    assert residual_basis_failure_theory["characteristic_impedance_weighting_missing"]
+    assert residual_basis_failure_theory["source_interface_packet_timing_floor_deferred"]
+    assert residual_basis_failure_theory["normalizer_weight_mask_floor_deferred"]
+    assert residual_basis_failure_theory["failure_theory_lane_executed"]
+    assert residual_basis_failure_theory["material_improvement_demonstrated"] is False
+    assert residual_basis_failure_theory["paired_passed"] is False
+    assert residual_basis_failure_theory["fixture_quality_ready"] is False
+    assert residual_basis_failure_theory["fixture_quality_pending"]
+    assert residual_basis_failure_theory["subgrid_vacuum_parity_scored"]
+    assert residual_basis_failure_theory["subgrid_vacuum_parity_passed"] is False
+    assert residual_basis_failure_theory["true_rt_readiness_unlocked"] is False
+    assert residual_basis_failure_theory["slab_rt_scored"] is False
+    assert residual_basis_failure_theory["production_patch_applied"] is False
+    assert residual_basis_failure_theory["solver_behavior_changed"] is False
+    assert residual_basis_failure_theory["new_solver_hunk_retained"] is False
+    assert residual_basis_failure_theory[
+        "next_lane_requires_energy_biorthogonal_residual_basis_design"
+    ]
+    floor_contract = residual_basis_failure_theory["modal_floor_contract"]
+    assert floor_contract["projection_helper"] == "_project_private_modal_basis_packets"
+    assert "scalar weighted complex L2" in floor_contract["current_hunk_behavior"]
+    assert "energy-biorthogonal" in floor_contract["remaining_floor"]
+    assert floor_contract["requires_public_observable"] is False
+    assert floor_contract["requires_solver_hunk_in_this_lane"] is False
+    residual_basis_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_failure_theory["candidate_ladder"]
+    }
+    assert residual_basis_failure_candidates[
+        "AE1_modal_orthogonality_energy_inner_product_floor"
+    ]["accepted_candidate"]
+    assert (
+        residual_basis_failure_candidates[
+            "AE2_source_interface_packet_timing_floor"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        residual_basis_failure_candidates[
+            "AE3_normalizer_weight_mask_floor"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        residual_basis_failure_candidates[
+            "AE4_residual_basis_failure_theory_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_failure_theory["public_claim_allowed"] is False
+    assert residual_basis_failure_theory["public_observable_promoted"] is False
+    assert (
+        residual_basis_failure_theory["true_rt_public_observable_promoted"] is False
+    )
+    assert (
+        residual_basis_failure_theory["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
+        ]
+        == residual_basis_failure_theory["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "energy-biorthogonal redesign after modal orthogonality floor theory ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "energy-biorthogonal redesign after modal orthogonality floor theory ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -6919,6 +7038,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -7183,7 +7308,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "energy-biorthogonal redesign after modal orthogonality floor theory ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

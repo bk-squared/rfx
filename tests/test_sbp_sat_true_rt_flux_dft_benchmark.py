@@ -1896,6 +1896,25 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal redesign after modal orthogonality floor theory ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_packet_timing_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_normalizer_weight_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_blocked",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_PRECEDENCE = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_blocked",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_packet_timing_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_normalizer_weight_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -17468,6 +17487,209 @@ def _private_plane_wave_modal_projection_normalizer_projected_target_residual_ba
     }
 
 
+def _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata(
+    *,
+    residual_basis_parity_scoring_metadata: dict[str, object],
+    residual_basis_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(residual_basis_parity_scoring_metadata["baseline_metrics"])
+    metrics = dict(residual_basis_parity_scoring_metadata["metrics"])
+    thresholds = dict(residual_basis_parity_scoring_metadata["thresholds"])
+    threshold_results = dict(residual_basis_parity_scoring_metadata["threshold_results"])
+    material_decision = dict(
+        residual_basis_parity_scoring_metadata["material_improvement_decision"]
+    )
+    score_delta = dict(residual_basis_parity_scoring_metadata["score_delta"])
+    relative_improvement = dict(
+        residual_basis_parity_scoring_metadata["relative_improvement"]
+    )
+    basis_vectors = tuple(residual_basis_parity_scoring_metadata["basis_vectors"])
+    modal_floor_contract = {
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "projection_helper": "_project_private_modal_basis_packets",
+        "current_hunk_behavior": (
+            "source and interface packets are projected through incident, "
+            "source-residual, and interface-residual modes using a scalar "
+            "weighted complex L2 packet inner product"
+        ),
+        "remaining_floor": (
+            "the residual modes are algebraic packet residuals, not an "
+            "energy-biorthogonal characteristic basis for coupled E/H power transfer"
+        ),
+        "bounded_next_state": (
+            "private energy-biorthogonal residual-basis redesign contract"
+        ),
+        "requires_public_observable": False,
+        "requires_benchmark_dft_or_flux_publication": False,
+        "requires_hook": False,
+        "requires_solver_hunk_in_this_lane": False,
+    }
+    ae0 = {
+        "candidate_id": "AE0_residual_basis_parity_score_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_residual_basis_parity_scoring_status": (
+            residual_basis_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    ae1 = {
+        "candidate_id": "AE1_modal_orthogonality_energy_inner_product_floor",
+        "candidate_family": "private_energy_biorthogonal_basis_theory",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_STATUS
+        ),
+        "modal_floor_contract": modal_floor_contract,
+        "scalar_l2_orthogonality_only": True,
+        "energy_biorthogonal_basis_missing": True,
+        "characteristic_impedance_weighting_missing": True,
+        "public_claim_allowed": False,
+    }
+    ae2 = {
+        "candidate_id": "AE2_source_interface_packet_timing_floor",
+        "candidate_family": "private_packet_timing_floor_theory",
+        "accepted_candidate": False,
+        "packet_timing_floor_possible": True,
+        "deferred_until_energy_biorthogonal_basis_contract": True,
+        "not_selected_reason": (
+            "time alignment is already represented by the retained owner-state "
+            "packet path; the first missing private contract is the modal energy "
+            "inner product used by the residual basis"
+        ),
+        "public_claim_allowed": False,
+    }
+    ae3 = {
+        "candidate_id": "AE3_normalizer_weight_mask_floor",
+        "candidate_family": "private_normalizer_weight_mask_floor_theory",
+        "accepted_candidate": False,
+        "normalizer_weight_mask_floor_possible": True,
+        "deferred_until_energy_biorthogonal_basis_contract": True,
+        "not_selected_reason": (
+            "normalizer, weight, and mask refinements remain possible residuals, "
+            "but changing those before the modal energy form would risk tuning the "
+            "private scorer rather than explaining the floor"
+        ),
+        "public_claim_allowed": False,
+    }
+    ae4 = {
+        "candidate_id": "AE4_residual_basis_failure_theory_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_blocked"
+        ),
+        "not_selected_reason": (
+            "the retained residual-basis hunk and parity-scoring evidence provide "
+            "a bounded private explanation target without public promotion"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (ae0, ae1, ae2, ae3, ae4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_only"
+        ),
+        "upstream_residual_basis_parity_scoring_status": (
+            residual_basis_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "upstream_residual_basis_implementation_status": (
+            residual_basis_implementation_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite AE0/AE1/AE2/AE3/AE4 failure-theory ladder; choose only a "
+            "private theory/design next step and keep public promotion closed"
+        ),
+        "selected_candidate_id": "AE1_modal_orthogonality_energy_inner_product_floor",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "residual_basis_parity_scoring_insufficient": True,
+        "residual_basis_hunk_retained": True,
+        "basis_vectors": basis_vectors,
+        "residual_basis_modes_projected": True,
+        "source_packet_projected": True,
+        "interface_packet_projected": True,
+        "subtraction_uses_projected_packets_only": True,
+        "single_incident_basis_replaced": True,
+        "single_incident_basis_only": False,
+        "projection_gate_fail_closed": True,
+        "contract_gate_fail_closed": True,
+        "finite_reproducible_score": True,
+        "modal_floor_contract": modal_floor_contract,
+        "scalar_l2_orthogonality_only": True,
+        "energy_biorthogonal_basis_missing": True,
+        "characteristic_impedance_weighting_missing": True,
+        "source_interface_packet_timing_floor_deferred": True,
+        "normalizer_weight_mask_floor_deferred": True,
+        "failure_theory_lane_executed": True,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "paired_passed": material_decision["paired_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "next_lane_requires_energy_biorthogonal_residual_basis_design": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the retained residual-basis hunk removed the single-incident-basis "
+            "floor but still uses a scalar packet L2 basis; private failure "
+            "theory therefore selects an energy-biorthogonal characteristic "
+            "residual-basis redesign before any new solver hunk or public claim"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -20874,8 +21096,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata = (
+        _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata(
+            residual_basis_parity_scoring_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_metadata
+            ),
+            residual_basis_implementation_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_implementation_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_status": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -21110,6 +21359,10 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave modal projection/normalizer "
                 "projected target residual-basis parity scoring lane records "
                 f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis failure-theory redesign lane "
+                "records "
+                f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -21119,7 +21372,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
             ],
         }
 
@@ -29077,10 +29330,150 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_next_prerequisite"
         ]
     )
+    residual_basis_failure_theory = metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory"
+    ]
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_status"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_STATUS
+    )
+    assert residual_basis_failure_theory["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_FAILURE_THEORY_STATUS
+    )
+    assert residual_basis_failure_theory[
+        "upstream_residual_basis_parity_scoring_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_status"
+    ]
+    assert residual_basis_failure_theory[
+        "upstream_residual_basis_implementation_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_implementation_status"
+    ]
+    assert (
+        residual_basis_failure_theory["candidate_ladder_declared_before_implementation"]
+        is True
+    )
+    assert (
+        residual_basis_failure_theory["candidate_ladder_declared_before_solver_edit"]
+        is True
+    )
+    assert (
+        residual_basis_failure_theory["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert residual_basis_failure_theory["candidate_count"] == 5
+    assert residual_basis_failure_theory["selected_candidate_id"] == (
+        "AE1_modal_orthogonality_energy_inner_product_floor"
+    )
+    assert residual_basis_failure_theory["baseline_metrics"] == (
+        residual_basis_parity_scoring["baseline_metrics"]
+    )
+    assert residual_basis_failure_theory["metrics"] == (
+        residual_basis_parity_scoring["metrics"]
+    )
+    assert residual_basis_failure_theory["thresholds"] == (
+        residual_basis_parity_scoring["thresholds"]
+    )
+    assert residual_basis_failure_theory["threshold_results"] == (
+        residual_basis_parity_scoring["threshold_results"]
+    )
+    assert residual_basis_failure_theory["baseline_metrics_preserved"] is True
+    assert residual_basis_failure_theory["thresholds_unchanged"] is True
+    assert (
+        residual_basis_failure_theory["residual_basis_parity_scoring_insufficient"]
+        is True
+    )
+    assert residual_basis_failure_theory["residual_basis_hunk_retained"] is True
+    assert residual_basis_failure_theory["residual_basis_modes_projected"] is True
+    assert residual_basis_failure_theory["source_packet_projected"] is True
+    assert residual_basis_failure_theory["interface_packet_projected"] is True
+    assert (
+        residual_basis_failure_theory["subtraction_uses_projected_packets_only"]
+        is True
+    )
+    assert residual_basis_failure_theory["single_incident_basis_replaced"] is True
+    assert residual_basis_failure_theory["single_incident_basis_only"] is False
+    assert residual_basis_failure_theory["projection_gate_fail_closed"] is True
+    assert residual_basis_failure_theory["contract_gate_fail_closed"] is True
+    assert residual_basis_failure_theory["finite_reproducible_score"] is True
+    assert residual_basis_failure_theory["scalar_l2_orthogonality_only"] is True
+    assert residual_basis_failure_theory["energy_biorthogonal_basis_missing"] is True
+    assert (
+        residual_basis_failure_theory["characteristic_impedance_weighting_missing"]
+        is True
+    )
+    assert (
+        residual_basis_failure_theory["source_interface_packet_timing_floor_deferred"]
+        is True
+    )
+    assert (
+        residual_basis_failure_theory["normalizer_weight_mask_floor_deferred"]
+        is True
+    )
+    assert residual_basis_failure_theory["failure_theory_lane_executed"] is True
+    assert residual_basis_failure_theory["material_improvement_demonstrated"] is False
+    assert residual_basis_failure_theory["paired_passed"] is False
+    assert residual_basis_failure_theory["fixture_quality_ready"] is False
+    assert residual_basis_failure_theory["fixture_quality_pending"] is True
+    assert residual_basis_failure_theory["subgrid_vacuum_parity_scored"] is True
+    assert residual_basis_failure_theory["subgrid_vacuum_parity_passed"] is False
+    assert residual_basis_failure_theory["true_rt_readiness_unlocked"] is False
+    assert residual_basis_failure_theory["slab_rt_scored"] is False
+    assert residual_basis_failure_theory["production_patch_applied"] is False
+    assert residual_basis_failure_theory["solver_behavior_changed"] is False
+    assert residual_basis_failure_theory["new_solver_hunk_retained"] is False
+    assert (
+        residual_basis_failure_theory[
+            "next_lane_requires_energy_biorthogonal_residual_basis_design"
+        ]
+        is True
+    )
+    floor_contract = residual_basis_failure_theory["modal_floor_contract"]
+    assert floor_contract["projection_helper"] == "_project_private_modal_basis_packets"
+    assert "scalar weighted complex L2" in floor_contract["current_hunk_behavior"]
+    assert "energy-biorthogonal" in floor_contract["remaining_floor"]
+    assert floor_contract["requires_public_observable"] is False
+    assert floor_contract["requires_solver_hunk_in_this_lane"] is False
+    residual_basis_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_failure_theory["candidate_ladder"]
+    }
+    assert residual_basis_failure_candidates[
+        "AE1_modal_orthogonality_energy_inner_product_floor"
+    ]["accepted_candidate"] is True
+    assert residual_basis_failure_candidates[
+        "AE2_source_interface_packet_timing_floor"
+    ]["accepted_candidate"] is False
+    assert residual_basis_failure_candidates[
+        "AE3_normalizer_weight_mask_floor"
+    ]["accepted_candidate"] is False
+    assert (
+        residual_basis_failure_candidates[
+            "AE4_residual_basis_failure_theory_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_failure_theory["public_claim_allowed"] is False
+    assert residual_basis_failure_theory["public_observable_promoted"] is False
+    assert (
+        residual_basis_failure_theory["true_rt_public_observable_promoted"] is False
+    )
+    assert (
+        residual_basis_failure_theory["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        residual_basis_failure_theory["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -29106,7 +29499,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
         ]
     )
     assert (
@@ -29458,6 +29851,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_status"
         ]
         in metadata["blocking_diagnostic"]
     )

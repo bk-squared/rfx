@@ -211,8 +211,8 @@
             "predeclared_candidate_policy": "baseline full-aperture fixture remains reported; any future central-core or source-contract candidate must be predeclared in metadata before slow scoring and must keep these same thresholds",
             "reason": "same-contract private TFSF-style reference is implemented, but private time-centered helper recovery candidates failed unchanged fixture-quality gates and the private measurement-contract/interface-floor diagnostic ledger classified the remaining blocker as persistent_interface_floor_confirmed; slab R/T scoring is intentionally skipped",
             "no_go_reason": "private TFSF-style incident fixture has a same-contract reference, but vacuum/reference fixture-quality gates remain inconclusive; slab R/T scoring is intentionally skipped",
-            "blocking_diagnostic": "same-contract private reference helper is present, but private uniform/subgrid vacuum parity, transverse uniformity, or usable-passband gates remain below threshold; the causal ladder now classifies the row-2 blocker as sbp_sat_interface_floor because source, plane-shift, and central-core aperture controls did not satisfy the paired material-improvement rule; the interface-floor investigation now records coarse_fine_energy_transfer_mismatch; slab R/T scoring and public promotion stay closed; the private energy-transfer repair stage records no_material_repair; the private time-centered helper fixture-quality recovery stage records measurement_contract_or_interface_floor_persists; the private measurement-contract/interface-floor redesign ledger records persistent_interface_floor_confirmed; the private interface-floor repair ladder records no_bounded_private_interface_floor_repair; the private face-norm/interface-operator ladder records no_private_face_norm_operator_repair; the private derivative/interior-boundary ladder records no_private_derivative_interface_repair; the private global SBP derivative/mortar operator architecture records private_global_operator_3d_contract_ready; the private solver-integration hunk gate records private_solver_integration_requires_followup_diagnostic_only; the private operator-projected energy-transfer redesign records private_operator_projected_energy_transfer_contract_ready; the private operator-projected solver integration records private_operator_projected_solver_hunk_retained_fixture_quality_pending; the private boundary coexistence fixture validation records private_boundary_coexistence_passed_fixture_quality_blocked; the private fixture-quality blocker repair lane records private_fixture_quality_blocker_persists_no_public_promotion; the private source/reference phase-front fixture-contract redesign lane records private_source_phase_front_self_oracle_failed; the private analytic source phase-front self-oracle repair lane records private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion; the private analytic plane-wave source implementation redesign lane records private_uniform_plane_wave_source_self_oracle_ready; the private plane-wave fixture contract recovery lane records private_uniform_plane_wave_reference_contract_ready; the private subgrid-vacuum plane-wave fixture contract lane records private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion; the private plane-wave source fixture-path wiring lane records private_plane_wave_fixture_path_wiring_blocked_no_public_promotion; the private plane-wave source request/spec adapter design lane records private_runner_plane_wave_adapter_design_ready; the private plane-wave source request/spec adapter implementation lane records private_plane_wave_adapter_implemented_parity_pending; the private subgrid-vacuum plane-wave parity scoring lane records private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion; the private plane-wave parity blocker repair/design lane records private_plane_wave_interface_floor_repair_design_required; the private plane-wave interface-floor implementation lane records no_private_plane_wave_interface_floor_repair; the private plane-wave interface-floor root-cause redesign lane records private_plane_wave_interface_energy_form_root_cause_identified; the private plane-wave interface energy-form design lane records private_plane_wave_interface_energy_form_implementation_contract_ready; the private plane-wave interface energy-form implementation lane records no_private_plane_wave_energy_form_implementation; the private plane-wave interface energy-form failure theory/design lane records private_plane_wave_energy_form_redesign_contract_ready; the private plane-wave operator/mortar energy-form implementation lane records no_private_plane_wave_operator_mortar_energy_form_implementation; the private plane-wave transverse phase-coherence architecture lane records private_plane_wave_phase_coherence_staging_contract_ready; the private plane-wave phase-coherence staging implementation lane records no_private_plane_wave_phase_coherence_staging_implementation; the private plane-wave solver-wide interface-state owner architecture lane records private_plane_wave_solver_wide_interface_state_owner_contract_ready; the private plane-wave solver-wide interface-state owner implementation lane records no_private_plane_wave_solver_wide_interface_state_owner_implementation; the private plane-wave solver-state owner propagation boundary design lane records private_plane_wave_solver_state_owner_propagation_contract_ready; the private plane-wave solver-state owner propagation implementation lane records private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending; the private plane-wave owner scan-wiring/joint-scoring lane records private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending; the private plane-wave owner-backed physical phase/CV correction lane records no_private_plane_wave_owner_backed_physical_phase_cv_correction; the private plane-wave face-local modal correction architecture lane records private_plane_wave_face_local_modal_correction_contract_ready; the private plane-wave face-local modal correction implementation lane records no_private_plane_wave_face_local_modal_correction_implementation; the private plane-wave face-local modal correction failure-theory redesign lane records private_plane_wave_face_local_modal_failure_theory_contract_ready; the private plane-wave face-local modal correction implementation retry lane records no_private_plane_wave_face_local_modal_retry_implementation; the private plane-wave observable-proxy modal architecture lane records private_plane_wave_observable_proxy_modal_retry_contract_ready; the private plane-wave observable-proxy modal implementation lane records no_private_plane_wave_observable_proxy_modal_retry_implementation; the private plane-wave observable-proxy face-packet state-shape design lane records private_plane_wave_proxy_face_packet_state_contract_ready; the private plane-wave observable-proxy face-packet state-shape implementation lane records private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending; the private plane-wave observable-proxy modal retry after face-packet state lane records private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending; the private plane-wave observable-proxy modal retry parity scoring lane records private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending; the private plane-wave observable-proxy modal retry failure theory redesign lane records private_plane_wave_modal_retry_failure_theory_redesign_contract_ready; the private plane-wave observable-proxy modal retry redesign implementation lane records no_private_plane_wave_observable_proxy_modal_retry_redesign_implementation; the private plane-wave source/interface ownership state-shape design lane records private_plane_wave_source_interface_owner_state_shape_contract_ready; the private plane-wave source/interface ownership state-shape implementation lane records private_plane_wave_source_interface_state_shape_hunk_retained_fixture_quality_pending; the private plane-wave propagation-aware modal retry implementation lane records private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending; the private plane-wave propagation-aware modal retry parity scoring lane records private_plane_wave_propagation_aware_modal_retry_parity_scored_fixture_quality_pending; the private plane-wave source-owner incident packet population design lane records private_plane_wave_source_owner_incident_packet_population_contract_ready; the private plane-wave source-owner incident packet population implementation lane records private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending; the private plane-wave source-populated propagation-aware modal retry parity scoring lane records private_plane_wave_source_populated_propagation_aware_modal_retry_hunk_insufficient_fixture_quality_pending; the private plane-wave source-populated propagation-aware modal retry failure-theory redesign lane records private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready; the private plane-wave source/interface time-aligned packet staging design lane records private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready; the private plane-wave source/interface time-aligned packet staging implementation lane records private_plane_wave_source_interface_time_aligned_packet_staging_hunk_retained_fixture_quality_pending; the private plane-wave time-aligned modal retry parity scoring lane records private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending; the private plane-wave time-aligned modal retry failure theory redesign lane records private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready; the private plane-wave modal projection/normalizer contract design lane records private_plane_wave_modal_projection_normalizer_contract_design_ready; the private plane-wave modal projection/normalizer contract implementation lane records private_plane_wave_modal_projection_normalizer_contract_hunk_retained_fixture_quality_pending; the private plane-wave modal projection/normalizer contract parity scoring lane records private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending; the private plane-wave modal projection/normalizer contract failure-theory redesign lane records private_plane_wave_modal_projection_normalizer_projected_basis_redesign_contract_ready; the private plane-wave modal projection/normalizer projected-basis design lane records private_plane_wave_modal_projection_normalizer_projected_basis_contract_design_ready; the private plane-wave modal projection/normalizer projected-basis implementation lane records private_plane_wave_modal_projection_normalizer_projected_basis_hunk_retained_fixture_quality_pending; the private plane-wave modal projection/normalizer projected-basis parity scoring lane records private_plane_wave_modal_projection_normalizer_projected_basis_hunk_insufficient_fixture_quality_pending; the private plane-wave modal projection/normalizer projected-basis failure-theory redesign lane records private_plane_wave_modal_projection_normalizer_projected_target_basis_redesign_contract_ready; the private plane-wave modal projection/normalizer projected target/source-interface basis implementation lane records private_plane_wave_modal_projection_normalizer_projected_target_basis_hunk_retained_fixture_quality_pending; the private plane-wave modal projection/normalizer projected target/source-interface basis parity scoring lane records private_plane_wave_modal_projection_normalizer_projected_target_basis_hunk_insufficient_fixture_quality_pending; the private plane-wave modal projection/normalizer projected target/source-interface basis failure-theory redesign lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_redesign_contract_ready; the private plane-wave modal projection/normalizer projected target residual-basis design lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_contract_design_ready; the private plane-wave modal projection/normalizer projected target residual-basis implementation lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_retained_fixture_quality_pending; the private plane-wave modal projection/normalizer projected target residual-basis parity scoring lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_insufficient_fixture_quality_pending; historical private design lanes remain part of the blocker chain: discrete_eh_work_ledger_mismatch, ledger_mismatch_detected, no_signature_compatible_bounded_repair, paired_face_coupling_design_ready, production_context_mismatch_detected, time_centered_staging_contract_ready, and private_time_centered_paired_face_helper_implemented",
-            "next_prerequisite": "private plane-wave modal projection/normalizer projected target residual-basis failure-theory redesign after parity scoring insufficient ralplan",
+            "blocking_diagnostic": "same-contract private reference helper is present, but private uniform/subgrid vacuum parity, transverse uniformity, or usable-passband gates remain below threshold; the causal ladder now classifies the row-2 blocker as sbp_sat_interface_floor because source, plane-shift, and central-core aperture controls did not satisfy the paired material-improvement rule; the interface-floor investigation now records coarse_fine_energy_transfer_mismatch; slab R/T scoring and public promotion stay closed; the private energy-transfer repair stage records no_material_repair; the private time-centered helper fixture-quality recovery stage records measurement_contract_or_interface_floor_persists; the private measurement-contract/interface-floor redesign ledger records persistent_interface_floor_confirmed; the private interface-floor repair ladder records no_bounded_private_interface_floor_repair; the private face-norm/interface-operator ladder records no_private_face_norm_operator_repair; the private derivative/interior-boundary ladder records no_private_derivative_interface_repair; the private global SBP derivative/mortar operator architecture records private_global_operator_3d_contract_ready; the private solver-integration hunk gate records private_solver_integration_requires_followup_diagnostic_only; the private operator-projected energy-transfer redesign records private_operator_projected_energy_transfer_contract_ready; the private operator-projected solver integration records private_operator_projected_solver_hunk_retained_fixture_quality_pending; the private boundary coexistence fixture validation records private_boundary_coexistence_passed_fixture_quality_blocked; the private fixture-quality blocker repair lane records private_fixture_quality_blocker_persists_no_public_promotion; the private source/reference phase-front fixture-contract redesign lane records private_source_phase_front_self_oracle_failed; the private analytic source phase-front self-oracle repair lane records private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion; the private analytic plane-wave source implementation redesign lane records private_uniform_plane_wave_source_self_oracle_ready; the private plane-wave fixture contract recovery lane records private_uniform_plane_wave_reference_contract_ready; the private subgrid-vacuum plane-wave fixture contract lane records private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion; the private plane-wave source fixture-path wiring lane records private_plane_wave_fixture_path_wiring_blocked_no_public_promotion; the private plane-wave source request/spec adapter design lane records private_runner_plane_wave_adapter_design_ready; the private plane-wave source request/spec adapter implementation lane records private_plane_wave_adapter_implemented_parity_pending; the private subgrid-vacuum plane-wave parity scoring lane records private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion; the private plane-wave parity blocker repair/design lane records private_plane_wave_interface_floor_repair_design_required; the private plane-wave interface-floor implementation lane records no_private_plane_wave_interface_floor_repair; the private plane-wave interface-floor root-cause redesign lane records private_plane_wave_interface_energy_form_root_cause_identified; the private plane-wave interface energy-form design lane records private_plane_wave_interface_energy_form_implementation_contract_ready; the private plane-wave interface energy-form implementation lane records no_private_plane_wave_energy_form_implementation; the private plane-wave interface energy-form failure theory/design lane records private_plane_wave_energy_form_redesign_contract_ready; the private plane-wave operator/mortar energy-form implementation lane records no_private_plane_wave_operator_mortar_energy_form_implementation; the private plane-wave transverse phase-coherence architecture lane records private_plane_wave_phase_coherence_staging_contract_ready; the private plane-wave phase-coherence staging implementation lane records no_private_plane_wave_phase_coherence_staging_implementation; the private plane-wave solver-wide interface-state owner architecture lane records private_plane_wave_solver_wide_interface_state_owner_contract_ready; the private plane-wave solver-wide interface-state owner implementation lane records no_private_plane_wave_solver_wide_interface_state_owner_implementation; the private plane-wave solver-state owner propagation boundary design lane records private_plane_wave_solver_state_owner_propagation_contract_ready; the private plane-wave solver-state owner propagation implementation lane records private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending; the private plane-wave owner scan-wiring/joint-scoring lane records private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending; the private plane-wave owner-backed physical phase/CV correction lane records no_private_plane_wave_owner_backed_physical_phase_cv_correction; the private plane-wave face-local modal correction architecture lane records private_plane_wave_face_local_modal_correction_contract_ready; the private plane-wave face-local modal correction implementation lane records no_private_plane_wave_face_local_modal_correction_implementation; the private plane-wave face-local modal correction failure-theory redesign lane records private_plane_wave_face_local_modal_failure_theory_contract_ready; the private plane-wave face-local modal correction implementation retry lane records no_private_plane_wave_face_local_modal_retry_implementation; the private plane-wave observable-proxy modal architecture lane records private_plane_wave_observable_proxy_modal_retry_contract_ready; the private plane-wave observable-proxy modal implementation lane records no_private_plane_wave_observable_proxy_modal_retry_implementation; the private plane-wave observable-proxy face-packet state-shape design lane records private_plane_wave_proxy_face_packet_state_contract_ready; the private plane-wave observable-proxy face-packet state-shape implementation lane records private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending; the private plane-wave observable-proxy modal retry after face-packet state lane records private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending; the private plane-wave observable-proxy modal retry parity scoring lane records private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending; the private plane-wave observable-proxy modal retry failure theory redesign lane records private_plane_wave_modal_retry_failure_theory_redesign_contract_ready; the private plane-wave observable-proxy modal retry redesign implementation lane records no_private_plane_wave_observable_proxy_modal_retry_redesign_implementation; the private plane-wave source/interface ownership state-shape design lane records private_plane_wave_source_interface_owner_state_shape_contract_ready; the private plane-wave source/interface ownership state-shape implementation lane records private_plane_wave_source_interface_state_shape_hunk_retained_fixture_quality_pending; the private plane-wave propagation-aware modal retry implementation lane records private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending; the private plane-wave propagation-aware modal retry parity scoring lane records private_plane_wave_propagation_aware_modal_retry_parity_scored_fixture_quality_pending; the private plane-wave source-owner incident packet population design lane records private_plane_wave_source_owner_incident_packet_population_contract_ready; the private plane-wave source-owner incident packet population implementation lane records private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending; the private plane-wave source-populated propagation-aware modal retry parity scoring lane records private_plane_wave_source_populated_propagation_aware_modal_retry_hunk_insufficient_fixture_quality_pending; the private plane-wave source-populated propagation-aware modal retry failure-theory redesign lane records private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready; the private plane-wave source/interface time-aligned packet staging design lane records private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready; the private plane-wave source/interface time-aligned packet staging implementation lane records private_plane_wave_source_interface_time_aligned_packet_staging_hunk_retained_fixture_quality_pending; the private plane-wave time-aligned modal retry parity scoring lane records private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending; the private plane-wave time-aligned modal retry failure theory redesign lane records private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready; the private plane-wave modal projection/normalizer contract design lane records private_plane_wave_modal_projection_normalizer_contract_design_ready; the private plane-wave modal projection/normalizer contract implementation lane records private_plane_wave_modal_projection_normalizer_contract_hunk_retained_fixture_quality_pending; the private plane-wave modal projection/normalizer contract parity scoring lane records private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending; the private plane-wave modal projection/normalizer contract failure-theory redesign lane records private_plane_wave_modal_projection_normalizer_projected_basis_redesign_contract_ready; the private plane-wave modal projection/normalizer projected-basis design lane records private_plane_wave_modal_projection_normalizer_projected_basis_contract_design_ready; the private plane-wave modal projection/normalizer projected-basis implementation lane records private_plane_wave_modal_projection_normalizer_projected_basis_hunk_retained_fixture_quality_pending; the private plane-wave modal projection/normalizer projected-basis parity scoring lane records private_plane_wave_modal_projection_normalizer_projected_basis_hunk_insufficient_fixture_quality_pending; the private plane-wave modal projection/normalizer projected-basis failure-theory redesign lane records private_plane_wave_modal_projection_normalizer_projected_target_basis_redesign_contract_ready; the private plane-wave modal projection/normalizer projected target/source-interface basis implementation lane records private_plane_wave_modal_projection_normalizer_projected_target_basis_hunk_retained_fixture_quality_pending; the private plane-wave modal projection/normalizer projected target/source-interface basis parity scoring lane records private_plane_wave_modal_projection_normalizer_projected_target_basis_hunk_insufficient_fixture_quality_pending; the private plane-wave modal projection/normalizer projected target/source-interface basis failure-theory redesign lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_redesign_contract_ready; the private plane-wave modal projection/normalizer projected target residual-basis design lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_contract_design_ready; the private plane-wave modal projection/normalizer projected target residual-basis implementation lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_retained_fixture_quality_pending; the private plane-wave modal projection/normalizer projected target residual-basis parity scoring lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_insufficient_fixture_quality_pending; the private plane-wave modal projection/normalizer projected target residual-basis failure-theory redesign lane records private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready; historical private design lanes remain part of the blocker chain: discrete_eh_work_ledger_mismatch, ledger_mismatch_detected, no_signature_compatible_bounded_repair, paired_face_coupling_design_ready, production_context_mismatch_detected, time_centered_staging_contract_ready, and private_time_centered_paired_face_helper_implemented",
+            "next_prerequisite": "private plane-wave modal projection/normalizer projected target residual-basis energy-biorthogonal redesign after modal orthogonality floor theory ready ralplan",
             "diagnostic_basis": "This private fixture injects +z ex/hy incident fields through private post-H/post-E slots and accumulates only private fine-owned flux/DFT planes. A same-contract private uniform reference now exists, but it remains benchmark-only, not public TFSF, and does not expose public flux, DFT, S-parameter, port, or true R/T observables.",
             "previous_gate_context": {
               "source_contract": "private_analytic_sheet_source",
@@ -607,7 +607,7 @@
               "rollback_policy": "remove diagnostic if not materially improving"
             },
             "same_run_repair_allowed": false,
-            "follow_up_recommendation": "private plane-wave modal projection/normalizer projected target residual-basis failure-theory redesign after parity scoring insufficient ralplan",
+            "follow_up_recommendation": "private plane-wave modal projection/normalizer projected target residual-basis energy-biorthogonal redesign after modal orthogonality floor theory ready ralplan",
             "interface_floor_investigation_status": "complete",
             "interface_floor_subclass": "coarse_fine_energy_transfer_mismatch",
             "interface_distance_sensitivity": "persistent",
@@ -20814,7 +20814,277 @@
               "runner_surface_changed": false,
               "env_config_changed": false
             },
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_next_prerequisite": "private plane-wave modal projection/normalizer projected target residual-basis failure-theory redesign after parity scoring insufficient ralplan"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_next_prerequisite": "private plane-wave modal projection/normalizer projected target residual-basis failure-theory redesign after parity scoring insufficient ralplan",
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_status": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready",
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory": {
+              "status": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready",
+              "terminal_outcome": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready",
+              "terminal_outcome_taxonomy": [
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready",
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_packet_timing_floor_theory_ready",
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_normalizer_weight_floor_theory_ready",
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_blocked"
+              ],
+              "terminal_outcome_precedence": [
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_blocked",
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_packet_timing_floor_theory_ready",
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_normalizer_weight_floor_theory_ready",
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready"
+              ],
+              "diagnostic_scope": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_only",
+              "upstream_residual_basis_parity_scoring_status": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_insufficient_fixture_quality_pending",
+              "upstream_residual_basis_implementation_status": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_retained_fixture_quality_pending",
+              "candidate_ladder_declared_before_implementation": true,
+              "candidate_ladder_declared_before_solver_edit": true,
+              "candidate_ladder_declared_before_slow_scoring": true,
+              "candidate_count": 5,
+              "candidate_policy": "finite AE0/AE1/AE2/AE3/AE4 failure-theory ladder; choose only a private theory/design next step and keep public promotion closed",
+              "selected_candidate_id": "AE1_modal_orthogonality_energy_inner_product_floor",
+              "candidate_ladder": [
+                {
+                  "candidate_id": "AE0_residual_basis_parity_score_freeze",
+                  "candidate_family": "baseline_freeze",
+                  "accepted_candidate": false,
+                  "upstream_residual_basis_parity_scoring_status": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_insufficient_fixture_quality_pending",
+                  "baseline_metrics": {
+                    "transverse_phase_spread_deg": 113.93059029755555,
+                    "transverse_magnitude_cv": 0.45873404006266116,
+                    "vacuum_relative_magnitude_error": 0.9000360608553826,
+                    "vacuum_phase_error_deg": 41.266951636859915,
+                    "usable_bins": 3
+                  },
+                  "metrics": {
+                    "transverse_phase_spread_deg": 113.93059029755555,
+                    "transverse_magnitude_cv": 0.45873404006266116,
+                    "vacuum_relative_magnitude_error": 0.9000360608553826,
+                    "vacuum_phase_error_deg": 41.266951636859915,
+                    "usable_bins": 3
+                  },
+                  "thresholds": {
+                    "transverse_magnitude_cv_max": 0.01,
+                    "transverse_phase_spread_deg_max": 1.0,
+                    "vacuum_relative_magnitude_error_max": 0.02,
+                    "vacuum_phase_error_deg_max": 2.0,
+                    "usable_passband_min_bins": 2
+                  },
+                  "threshold_results": {
+                    "usable_passband": true,
+                    "transverse_magnitude_cv": false,
+                    "transverse_phase_spread_deg": false,
+                    "vacuum_relative_magnitude_error": false,
+                    "vacuum_phase_error_deg": false
+                  },
+                  "score_delta": {
+                    "transverse_magnitude_cv": 0.0,
+                    "transverse_phase_spread_deg": 0.0,
+                    "vacuum_relative_magnitude_error": 0.0,
+                    "vacuum_phase_error_deg": 0.0
+                  },
+                  "relative_improvement": {
+                    "transverse_magnitude_cv": 0.0,
+                    "transverse_phase_spread_deg": 0.0,
+                    "vacuum_relative_magnitude_error": 0.0,
+                    "vacuum_phase_error_deg": 0.0
+                  },
+                  "thresholds_checksum": "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a",
+                  "public_closure_retained": true
+                },
+                {
+                  "candidate_id": "AE1_modal_orthogonality_energy_inner_product_floor",
+                  "candidate_family": "private_energy_biorthogonal_basis_theory",
+                  "accepted_candidate": true,
+                  "selected_terminal_outcome": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready",
+                  "modal_floor_contract": {
+                    "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+                    "projection_helper": "_project_private_modal_basis_packets",
+                    "current_hunk_behavior": "source and interface packets are projected through incident, source-residual, and interface-residual modes using a scalar weighted complex L2 packet inner product",
+                    "remaining_floor": "the residual modes are algebraic packet residuals, not an energy-biorthogonal characteristic basis for coupled E/H power transfer",
+                    "bounded_next_state": "private energy-biorthogonal residual-basis redesign contract",
+                    "requires_public_observable": false,
+                    "requires_benchmark_dft_or_flux_publication": false,
+                    "requires_hook": false,
+                    "requires_solver_hunk_in_this_lane": false
+                  },
+                  "scalar_l2_orthogonality_only": true,
+                  "energy_biorthogonal_basis_missing": true,
+                  "characteristic_impedance_weighting_missing": true,
+                  "public_claim_allowed": false
+                },
+                {
+                  "candidate_id": "AE2_source_interface_packet_timing_floor",
+                  "candidate_family": "private_packet_timing_floor_theory",
+                  "accepted_candidate": false,
+                  "packet_timing_floor_possible": true,
+                  "deferred_until_energy_biorthogonal_basis_contract": true,
+                  "not_selected_reason": "time alignment is already represented by the retained owner-state packet path; the first missing private contract is the modal energy inner product used by the residual basis",
+                  "public_claim_allowed": false
+                },
+                {
+                  "candidate_id": "AE3_normalizer_weight_mask_floor",
+                  "candidate_family": "private_normalizer_weight_mask_floor_theory",
+                  "accepted_candidate": false,
+                  "normalizer_weight_mask_floor_possible": true,
+                  "deferred_until_energy_biorthogonal_basis_contract": true,
+                  "not_selected_reason": "normalizer, weight, and mask refinements remain possible residuals, but changing those before the modal energy form would risk tuning the private scorer rather than explaining the floor",
+                  "public_claim_allowed": false
+                },
+                {
+                  "candidate_id": "AE4_residual_basis_failure_theory_blocked",
+                  "candidate_family": "fail_closed_no_public_promotion",
+                  "accepted_candidate": false,
+                  "selected_terminal_outcome": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_blocked",
+                  "not_selected_reason": "the retained residual-basis hunk and parity-scoring evidence provide a bounded private explanation target without public promotion",
+                  "public_claim_allowed": false
+                }
+              ],
+              "thresholds_checksum": "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a",
+              "baseline_metrics": {
+                "transverse_phase_spread_deg": 113.93059029755555,
+                "transverse_magnitude_cv": 0.45873404006266116,
+                "vacuum_relative_magnitude_error": 0.9000360608553826,
+                "vacuum_phase_error_deg": 41.266951636859915,
+                "usable_bins": 3
+              },
+              "metrics": {
+                "transverse_phase_spread_deg": 113.93059029755555,
+                "transverse_magnitude_cv": 0.45873404006266116,
+                "vacuum_relative_magnitude_error": 0.9000360608553826,
+                "vacuum_phase_error_deg": 41.266951636859915,
+                "usable_bins": 3
+              },
+              "thresholds": {
+                "transverse_magnitude_cv_max": 0.01,
+                "transverse_phase_spread_deg_max": 1.0,
+                "vacuum_relative_magnitude_error_max": 0.02,
+                "vacuum_phase_error_deg_max": 2.0,
+                "usable_passband_min_bins": 2
+              },
+              "threshold_results": {
+                "usable_passband": true,
+                "transverse_magnitude_cv": false,
+                "transverse_phase_spread_deg": false,
+                "vacuum_relative_magnitude_error": false,
+                "vacuum_phase_error_deg": false
+              },
+              "score_delta": {
+                "transverse_magnitude_cv": 0.0,
+                "transverse_phase_spread_deg": 0.0,
+                "vacuum_relative_magnitude_error": 0.0,
+                "vacuum_phase_error_deg": 0.0
+              },
+              "relative_improvement": {
+                "transverse_magnitude_cv": 0.0,
+                "transverse_phase_spread_deg": 0.0,
+                "vacuum_relative_magnitude_error": 0.0,
+                "vacuum_phase_error_deg": 0.0
+              },
+              "baseline_metrics_preserved": true,
+              "thresholds_unchanged": true,
+              "residual_basis_parity_scoring_insufficient": true,
+              "residual_basis_hunk_retained": true,
+              "residual_basis_modes_projected": true,
+              "source_packet_projected": true,
+              "interface_packet_projected": true,
+              "subtraction_uses_projected_packets_only": true,
+              "single_incident_basis_replaced": true,
+              "single_incident_basis_only": false,
+              "projection_gate_fail_closed": true,
+              "contract_gate_fail_closed": true,
+              "finite_reproducible_score": true,
+              "modal_floor_contract": {
+                "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+                "projection_helper": "_project_private_modal_basis_packets",
+                "current_hunk_behavior": "source and interface packets are projected through incident, source-residual, and interface-residual modes using a scalar weighted complex L2 packet inner product",
+                "remaining_floor": "the residual modes are algebraic packet residuals, not an energy-biorthogonal characteristic basis for coupled E/H power transfer",
+                "bounded_next_state": "private energy-biorthogonal residual-basis redesign contract",
+                "requires_public_observable": false,
+                "requires_benchmark_dft_or_flux_publication": false,
+                "requires_hook": false,
+                "requires_solver_hunk_in_this_lane": false
+              },
+              "scalar_l2_orthogonality_only": true,
+              "energy_biorthogonal_basis_missing": true,
+              "characteristic_impedance_weighting_missing": true,
+              "source_interface_packet_timing_floor_deferred": true,
+              "normalizer_weight_mask_floor_deferred": true,
+              "failure_theory_lane_executed": true,
+              "material_improvement_decision": {
+                "version": 1,
+                "dominant_improvement_min": 0.5,
+                "paired_improvement_min": 0.25,
+                "new_blocker_regression_max": 0.25,
+                "dominant_metric": "transverse_phase_spread_deg",
+                "dominant": {
+                  "baseline": 113.93059029755555,
+                  "candidate": 113.93059029755555,
+                  "relative_improvement": 0.0,
+                  "threshold_crossed": false,
+                  "passed": false
+                },
+                "paired": {
+                  "transverse_magnitude_cv": {
+                    "baseline": 0.45873404006266116,
+                    "candidate": 0.45873404006266116,
+                    "relative_improvement": 0.0,
+                    "threshold_crossed": false,
+                    "passed": false
+                  },
+                  "vacuum_phase_error_deg": {
+                    "baseline": 41.266951636859915,
+                    "candidate": 41.266951636859915,
+                    "relative_improvement": 0.0,
+                    "threshold_crossed": false,
+                    "passed": false
+                  }
+                },
+                "paired_passed": false,
+                "usable_bins_passed": true,
+                "thresholds_checksum": "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a",
+                "expected_thresholds_checksum": "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a",
+                "thresholds_checksum_matches": true,
+                "new_blocker_regressions": [],
+                "passed": false,
+                "classification_decision": "inconclusive"
+              },
+              "material_improvement_demonstrated": false,
+              "paired_passed": false,
+              "fixture_quality_ready": false,
+              "fixture_quality_pending": true,
+              "subgrid_vacuum_parity_scored": true,
+              "subgrid_vacuum_parity_passed": false,
+              "true_rt_readiness_unlocked": false,
+              "slab_rt_scored": false,
+              "production_patch_applied": false,
+              "solver_behavior_changed": false,
+              "field_update_behavior_changed": false,
+              "runner_behavior_changed": false,
+              "new_solver_hunk_retained": false,
+              "next_lane_requires_energy_biorthogonal_residual_basis_design": true,
+              "api_preflight_changes_allowed": false,
+              "rfx_api_changes_allowed": false,
+              "package_export_changed": false,
+              "readme_changed": false,
+              "docs_public_changed": false,
+              "examples_changed": false,
+              "hook_surface_changed": false,
+              "true_rt_public_observable_promoted": false,
+              "dft_flux_tfsf_port_sparameter_promoted": false,
+              "next_prerequisite": "private plane-wave modal projection/normalizer projected target residual-basis energy-biorthogonal redesign after modal orthogonality floor theory ready ralplan",
+              "reason": "the retained residual-basis hunk removed the single-incident-basis floor but still uses a scalar packet L2 basis; private failure theory therefore selects an energy-biorthogonal characteristic residual-basis redesign before any new solver hunk or public claim",
+              "public_claim_allowed": false,
+              "public_observable_promoted": false,
+              "promotion_candidate_ready": false,
+              "hook_experiment_allowed": false,
+              "public_api_behavior_changed": false,
+              "public_default_tau_changed": false,
+              "simresult_changed": false,
+              "result_surface_changed": false,
+              "slab_rt_public_claim_allowed": false,
+              "api_surface_changed": false,
+              "runner_surface_changed": false,
+              "env_config_changed": false
+            },
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite": "private plane-wave modal projection/normalizer projected target residual-basis energy-biorthogonal redesign after modal orthogonality floor theory ready ralplan"
           }
         },
         "box_proxy_crossval": {
