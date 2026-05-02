@@ -1054,13 +1054,13 @@ def _project_private_modal_basis_packets(
     source_mask: jnp.ndarray,
     interface_mask: jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Project private source packets onto a shared incident modal basis.
+    """Project private source/interface packets onto a shared target basis.
 
     This helper is deliberately solver-local and fixed-shape.  It consumes the
     existing private owner-state packets, forms one mask/weight-compatible
-    incident basis from the source normalizer, projects the private source onto
-    that basis, and subtracts only the projected incident mode from the
-    interface packet.  Missing projection energy returns a scalar zero gate so
+    incident basis from the source normalizer, projects both the private source
+    and interface packets onto that basis, and subtracts only the shared
+    projected modes.  Missing projection energy returns a scalar zero gate so
     callers can fail closed without branching or exposing public observables.
     """
 
@@ -1085,15 +1085,35 @@ def _project_private_modal_basis_packets(
     source_coeff_imag = jnp.sum(
         packet_weight * (source_imag * unit_real - source_real * unit_imag)
     )
+    interface_coeff_real = jnp.sum(
+        packet_weight * (interface_real * unit_real + interface_imag * unit_imag)
+    )
+    interface_coeff_imag = jnp.sum(
+        packet_weight * (interface_imag * unit_real - interface_real * unit_imag)
+    )
     projected_source_real = (
         source_coeff_real * unit_real - source_coeff_imag * unit_imag
     )
     projected_source_imag = (
         source_coeff_real * unit_imag + source_coeff_imag * unit_real
     )
+    projected_interface_real = (
+        interface_coeff_real * unit_real - interface_coeff_imag * unit_imag
+    )
+    projected_interface_imag = (
+        interface_coeff_real * unit_imag + interface_coeff_imag * unit_real
+    )
     projection_ready = (basis_power > floor) & (source_power > eps)
-    projected_target_real = interface_real - projected_source_real
-    projected_target_imag = interface_imag - projected_source_imag
+    projected_target_real = jnp.where(
+        projection_ready,
+        projected_interface_real - projected_source_real,
+        interface_real,
+    )
+    projected_target_imag = jnp.where(
+        projection_ready,
+        projected_interface_imag - projected_source_imag,
+        interface_imag,
+    )
     projection_gate = jnp.where(
         projection_ready,
         jnp.asarray(1.0, dtype=dtype),

@@ -489,7 +489,12 @@ failure-theory lane now records
 `private_plane_wave_modal_projection_normalizer_projected_target_basis_redesign_contract_ready`:
 the retained hunk projects the source packet but leaves the interface target
 unprojected, so the next safe lane is a private projected target/source-interface
-basis implementation; public promotion remains closed.
+basis implementation; public promotion remains closed. The projected
+target/source-interface basis implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_basis_hunk_retained_fixture_quality_pending`:
+`_project_private_modal_basis_packets` now projects both source and interface
+packets onto the shared incident-normalizer basis before subtraction; public
+promotion remains closed and the next safe lane is private parity scoring.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

@@ -1037,10 +1037,10 @@ def _private_owner_with_source_interface_reference(config, *, source_active):
     )
 
 
-def test_project_private_modal_basis_packets_projects_source_onto_shared_basis():
+def test_project_private_modal_basis_packets_projects_source_and_interface():
     source_real = jnp.asarray([[1.0, 1.0], [3.0, 3.0]], dtype=jnp.float32)
     source_imag = jnp.zeros_like(source_real)
-    interface_real = 5.0 * jnp.ones_like(source_real)
+    interface_real = jnp.asarray([[5.0, 7.0], [5.0, 7.0]], dtype=jnp.float32)
     interface_imag = jnp.zeros_like(source_real)
     normalizer_real = jnp.ones_like(source_real)
     normalizer_imag = jnp.zeros_like(source_real)
@@ -1063,7 +1063,7 @@ def test_project_private_modal_basis_packets_projects_source_onto_shared_basis()
     )
 
     np.testing.assert_allclose(np.asarray(projection_gate), 1.0)
-    np.testing.assert_allclose(np.asarray(target_real), 3.0)
+    np.testing.assert_allclose(np.asarray(target_real), 4.0)
     np.testing.assert_allclose(np.asarray(target_imag), 0.0)
 
 
