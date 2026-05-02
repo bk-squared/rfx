@@ -425,7 +425,12 @@ a private packetization helper populates source-owner incident packets before
 propagation-aware modal retry, preserves the interface-owner packet, and keeps
 CPML/non-CPML wiring plus public promotion closed. The next safe lane is private
 source-populated propagation-aware modal retry parity scoring after the
-source-owner packet hunk is retained.
+source-owner packet hunk is retained. That scoring lane now records
+`private_plane_wave_source_populated_propagation_aware_modal_retry_hunk_insufficient_fixture_quality_pending`:
+the populated source-owner packet is consumed by the private modal retry, but
+unchanged paired material-improvement and true R/T readiness gates remain
+closed. The next safe lane is private source-populated propagation-aware modal
+retry failure-theory redesign after parity scoring insufficient.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

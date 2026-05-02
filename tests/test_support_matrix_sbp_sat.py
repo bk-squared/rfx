@@ -4495,13 +4495,111 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == source_owner_population_impl["next_prerequisite"]
     )
+    source_populated_parity = benchmark_gate[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_status"
+    ] == (
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_hunk_insufficient_fixture_quality_pending"
+    )
+    assert source_populated_parity["terminal_outcome"] == (
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_hunk_insufficient_fixture_quality_pending"
+    )
+    assert source_populated_parity["upstream_source_owner_population_status"] == (
+        benchmark_gate[
+            "private_plane_wave_source_owner_incident_packet_population_implementation_status"
+        ]
+    )
+    assert source_populated_parity["candidate_ladder_declared_before_solver_edit"]
+    assert source_populated_parity["candidate_ladder_declared_before_slow_scoring"]
+    assert source_populated_parity["candidate_count"] == 5
+    assert source_populated_parity["selected_candidate_id"] == (
+        "K1_finite_source_populated_private_parity_score"
+    )
+    assert source_populated_parity["baseline_metrics"] == (
+        source_owner_population_impl["baseline_metrics"]
+    )
+    assert source_populated_parity["metrics"] == source_owner_population_impl["metrics"]
+    assert source_populated_parity["thresholds"] == (
+        source_owner_population_impl["thresholds"]
+    )
+    assert source_populated_parity["baseline_metrics_preserved"]
+    assert source_populated_parity["thresholds_unchanged"]
+    assert source_populated_parity["source_owner_population_hunk_retained"]
+    assert source_populated_parity["source_owner_incident_packet_populated"]
+    assert source_populated_parity["source_packet_consumed_by_modal_retry"]
+    consumption_contract = source_populated_parity[
+        "source_packet_consumption_contract"
+    ]
+    assert consumption_contract["population_helper"] == (
+        "_update_private_source_owner_state_from_scan"
+    )
+    assert consumption_contract["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert consumption_contract["source_packet_populated_before_consumer"]
+    assert consumption_contract["source_packet_consumed_by_modal_retry"]
+    assert consumption_contract["public_observable_required"] is False
+    assert source_populated_parity[
+        "source_population_before_propagation_aware_modal_retry"
+    ]
+    assert source_populated_parity["source_population_before_interface_owner_scan"]
+    assert source_populated_parity["interface_owner_packet_preserved"]
+    assert source_populated_parity["source_interface_buffers_do_not_alias"]
+    assert source_populated_parity["parity_scoring_lane_executed"]
+    assert source_populated_parity["finite_reproducible_score"]
+    assert source_populated_parity["material_improvement_demonstrated"] is False
+    assert source_populated_parity["paired_passed"] is False
+    assert source_populated_parity["fixture_quality_pending"]
+    assert source_populated_parity["subgrid_vacuum_parity_scored"]
+    assert source_populated_parity["subgrid_vacuum_parity_passed"] is False
+    assert source_populated_parity["true_rt_readiness_unlocked"] is False
+    assert source_populated_parity["production_patch_applied"] is False
+    assert source_populated_parity["solver_behavior_changed"] is False
+    assert source_populated_parity["field_update_behavior_changed"] is False
+    assert source_populated_parity["new_solver_hunk_retained"] is False
+    assert source_populated_parity["benchmark_plane_dft_observable_imported"] is False
+    assert source_populated_parity["solver_local_proxy_uses_plane_dft_monitor"] is False
+    assert source_populated_parity[
+        "next_lane_requires_source_populated_failure_theory_redesign"
+    ]
+    source_populated_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_populated_parity["candidate_ladder"]
+    }
+    assert source_populated_candidates[
+        "K1_finite_source_populated_private_parity_score"
+    ]["accepted_candidate"]
+    assert source_populated_candidates[
+        "K1_finite_source_populated_private_parity_score"
+    ]["source_packet_consumed_by_modal_retry"]
+    assert source_populated_candidates[
+        "K2_material_improvement_gate"
+    ]["material_improvement_demonstrated"] is False
+    assert source_populated_candidates[
+        "K4_source_populated_parity_scoring_blocked"
+    ]["accepted_candidate"] is False
+    assert source_populated_parity["public_claim_allowed"] is False
+    assert source_populated_parity["public_observable_promoted"] is False
+    assert source_populated_parity["true_rt_public_observable_promoted"] is False
+    assert (
+        source_populated_parity["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_next_prerequisite"
+        ]
+        == source_populated_parity["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source-populated propagation-aware modal retry parity "
-        "scoring after source-owner packet hunk retained ralplan"
+        "private plane-wave source-populated propagation-aware modal retry "
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave source-populated propagation-aware modal retry parity "
-        "scoring after source-owner packet hunk retained ralplan"
+        "private plane-wave source-populated propagation-aware modal retry "
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -4700,6 +4798,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_source_owner_incident_packet_population_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -4967,8 +5071,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source-populated propagation-aware modal retry parity "
-        "scoring after source-owner packet hunk retained ralplan"
+        "private plane-wave source-populated propagation-aware modal retry "
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
