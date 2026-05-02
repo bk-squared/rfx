@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave modal projection/normalizer
-contract failure-theory redesign after parity scoring found the retained hunk
-insufficient.
+projected-basis redesign contract after failure theory selected the remaining
+projection-basis floor.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -144,7 +144,11 @@ retry. The parity-scoring lane now records
 `private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending`:
 the retained contract gate hunk is finite under private scoring, but unchanged
 material-improvement, transverse-uniformity, and vacuum-stability gates remain
-closed; the next safe lane is private failure-theory redesign. The
+closed. The failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_basis_redesign_contract_ready`:
+the scalar fail-closed gate only proves packet compatibility and does not apply
+a shared projected modal-basis transform, so the next safe lane is private
+projected-basis redesign contract. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

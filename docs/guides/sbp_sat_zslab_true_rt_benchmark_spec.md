@@ -500,8 +500,11 @@ retry. The parity-scoring lane now records
 `private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending`:
 the retained contract gate hunk is finite under private scoring, but unchanged
 material-improvement, transverse-uniformity, and vacuum-stability gates remain
-closed; the next safe lane is private modal projection/normalizer
-failure-theory redesign.
+closed. The failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_basis_redesign_contract_ready`:
+the scalar fail-closed gate only proves packet compatibility and does not apply
+a shared projected modal-basis transform, so the next safe lane is private
+modal projection/normalizer projected-basis redesign contract.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
