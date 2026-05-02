@@ -300,7 +300,13 @@ interface-state owner architecture redesign. That architecture lane now records
 private owner and explicit scan/staging state-shape contract must be
 implemented before phase-coherence parity repair can be claimed. The next safe
 lane is private plane-wave solver-wide interface-state owner implementation;
-public promotion remains closed.
+that implementation lane now records
+`no_private_plane_wave_solver_wide_interface_state_owner_implementation`: owner
+state shape and same-step scan wiring require a private solver-state
+propagation boundary contract for JAX pytree shape and runner/JIT
+initialization before any bounded hunk can be retained. The next safe lane is
+private plane-wave solver-state owner propagation boundary design; public
+promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

@@ -347,10 +347,16 @@ now records `private_plane_wave_solver_wide_interface_state_owner_contract_ready
 one private owner and explicit scan/staging state-shape contract must be
 implemented before phase-coherence parity repair can be claimed, so the next
 safe lane is `private plane-wave solver-wide interface-state owner implementation
-after architecture contract ready ralplan`. Hook experiments remain closed and
-public promotion remains closed. Until those fixture-quality gates pass, the
-private flux/DFT gate remains internal diagnostic evidence only, and the support
-matrix continues to mark true R/T as deferred.
+after architecture contract ready ralplan`. That implementation lane now
+records `no_private_plane_wave_solver_wide_interface_state_owner_implementation`:
+owner state shape and same-step scan wiring require a private solver-state
+propagation boundary contract for JAX pytree shape and runner/JIT
+initialization before any bounded hunk can be retained, so the next safe lane is
+`private plane-wave solver-state owner propagation boundary design after
+interface-state owner implementation blocked ralplan`. Hook experiments remain
+closed and public promotion remains closed. Until those fixture-quality gates
+pass, the private flux/DFT gate remains internal diagnostic evidence only, and
+the support matrix continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

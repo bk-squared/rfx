@@ -1038,6 +1038,26 @@ _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_ARCHITECTURE_PRECEDENCE = 
     "private_plane_wave_solver_wide_interface_state_owner_architecture_ready",
 )
 
+_PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_STATUS = (
+    "no_private_plane_wave_solver_wide_interface_state_owner_implementation"
+)
+_PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private plane-wave solver-state owner propagation boundary design after "
+    "interface-state owner implementation blocked ralplan"
+)
+_PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_solver_wide_interface_state_owner_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_solver_wide_scan_staging_hunk_retained_fixture_quality_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    "no_private_plane_wave_solver_wide_interface_state_owner_implementation",
+)
+_PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_PRECEDENCE = (
+    "no_private_plane_wave_solver_wide_interface_state_owner_implementation",
+    "private_plane_wave_solver_wide_scan_staging_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_solver_wide_interface_state_owner_hunk_retained_fixture_quality_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -8272,6 +8292,201 @@ def _private_plane_wave_solver_wide_interface_state_owner_architecture_metadata(
     }
 
 
+def _private_plane_wave_solver_wide_interface_state_owner_implementation_metadata(
+    *,
+    owner_architecture_metadata: dict[str, object],
+    phase_staging_implementation_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(owner_architecture_metadata["baseline_metrics"])
+    thresholds = dict(owner_architecture_metadata["thresholds"])
+    owner_contract = dict(owner_architecture_metadata["owner_contract"])
+    scan_staging_contract = dict(owner_architecture_metadata["scan_staging_contract"])
+    material_rule = {
+        "dominant_improvement_min": _DOMINANT_IMPROVEMENT_MIN,
+        "paired_improvement_min": _PAIRED_IMPROVEMENT_MIN,
+        "new_blocker_regression_max": _NEW_BLOCKER_REGRESSION_MAX,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metrics": ("transverse_magnitude_cv", "vacuum_phase_error_deg"),
+        "joint_phase_magnitude_required": True,
+    }
+    m0 = {
+        "candidate_id": "M0_owner_architecture_and_failed_baseline_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_owner_architecture_status": owner_architecture_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_phase_staging_status": phase_staging_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "owner_contract_preserved": True,
+        "scan_staging_contract_preserved": True,
+        "public_closure_retained": True,
+    }
+    m1 = {
+        "candidate_id": "M1_private_owner_state_shape_hunk",
+        "candidate_family": "solver_wide_owner_state_shape",
+        "accepted_candidate": False,
+        "production_hunk_retained": False,
+        "bounded_local_admission": False,
+        "owner_state_shape_added": False,
+        "owner_contract": owner_contract,
+        "rejection_reason": (
+            "adding a persistent per-interface owner to SubgridState3D requires "
+            "coordinated state-shape initialization across the low-level step "
+            "functions, jit_runner, and the subgridded runner; hiding the owner "
+            "behind defaults would not provide a stable JAX pytree or scan state"
+        ),
+        "blocked_by": "requires_solver_state_owner_propagation_boundary_design",
+        "requires_runner_or_jit_state_boundary": True,
+        "public_claim_allowed": False,
+    }
+    m2 = {
+        "candidate_id": "M2_same_step_scan_staging_owner_wiring",
+        "candidate_family": "same_step_scan_staging_owner_wiring",
+        "accepted_candidate": False,
+        "production_hunk_retained": False,
+        "bounded_local_admission": False,
+        "scan_staging_hunk_retained": False,
+        "scan_staging_contract": scan_staging_contract,
+        "rejection_reason": (
+            "same-step H/E SAT scan staging cannot consume the owner until M1 "
+            "defines a persistent state-shape boundary shared by CPML and "
+            "non-CPML step paths"
+        ),
+        "blocked_by": "requires_m1_owner_state_shape_before_scan_wiring",
+        "public_claim_allowed": False,
+    }
+    m3 = {
+        "candidate_id": "M3_joint_phase_cv_parity_scoring_with_owner",
+        "candidate_family": "private_parity_scoring_with_owner",
+        "accepted_candidate": False,
+        "production_hunk_retained": False,
+        "joint_phase_magnitude_improved": False,
+        "subgrid_vacuum_parity_passed": False,
+        "material_improvement_rule": material_rule,
+        "rejection_reason": (
+            "joint phase/CV scoring remains a guard only; with no retained owner "
+            "state or scan-staging hunk, it cannot claim solver-path repair or "
+            "true R/T readiness"
+        ),
+        "blocked_by": "requires_owner_and_scan_wiring_before_scoring",
+        "public_claim_allowed": False,
+    }
+    m4 = {
+        "candidate_id": "M4_solver_wide_owner_implementation_blocked",
+        "candidate_family": "fail_closed_no_bounded_hunk",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_STATUS
+        ),
+        "production_hunk_retained": False,
+        "solver_behavior_changed": False,
+        "no_bounded_hunk_accepted": True,
+        "material_improvement_rule": material_rule,
+        "baseline_packet_id": plane_wave_parity_metadata.get(
+            "baseline_packet_id",
+            "private_plane_wave_adapter_parity:"
+            f"{_reference_quality_thresholds_checksum()[:12]}",
+        ),
+        "blocking_baseline_status": plane_wave_parity_metadata["terminal_outcome"],
+        "rejection_reason": (
+            "the implementation lane cannot retain an owner/scan hunk without a "
+            "private propagation boundary contract for solver state, JAX pytree "
+            "shape, and runner/JIT initialization"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (m0, m1, m2, m3, m4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_only"
+        ),
+        "upstream_owner_architecture_status": owner_architecture_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_phase_staging_status": phase_staging_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite M0/M1/M2/M3/M4 implementation ladder; retain a solver-wide "
+            "owner hunk only if owner state, same-step scan staging, and joint "
+            "phase/CV parity scoring can be expressed without public or runner "
+            "surface promotion"
+        ),
+        "selected_candidate_id": "M4_solver_wide_owner_implementation_blocked",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "owner_contract": owner_contract,
+        "scan_staging_contract": scan_staging_contract,
+        "solver_wide_interface_state_owner_contract_ready": True,
+        "implementation_lane_executed": True,
+        "owner_state_shape_hunk_retained": False,
+        "scan_staging_hunk_retained": False,
+        "joint_score_with_owner_hunk_retained": False,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "joint_phase_magnitude_improved": False,
+        "material_improvement_rule": material_rule,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "no_bounded_hunk_accepted": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_state_pytree_runner_boundary_design": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private solver-wide interface-state owner implementation lane "
+            "is fail-closed: owner state shape and same-step scan wiring require "
+            "a private solver-state propagation boundary contract before any "
+            "bounded hunk can be retained"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -10563,8 +10778,34 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_solver_wide_state_owner_implementation_metadata = (
+        _private_plane_wave_solver_wide_interface_state_owner_implementation_metadata(
+            owner_architecture_metadata=(
+                plane_wave_solver_wide_state_owner_architecture_metadata
+            ),
+            phase_staging_implementation_metadata=(
+                plane_wave_phase_coherence_staging_implementation_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_status": (
+                plane_wave_solver_wide_state_owner_implementation_metadata["status"]
+            ),
+            "private_plane_wave_solver_wide_interface_state_owner_implementation": (
+                plane_wave_solver_wide_state_owner_implementation_metadata
+            ),
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite": (
+                plane_wave_solver_wide_state_owner_implementation_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_solver_wide_interface_state_owner_architecture_next_prerequisite"
+        "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -10667,6 +10908,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave solver-wide interface-state owner "
                 "architecture lane records "
                 f"{plane_wave_solver_wide_state_owner_architecture_metadata['terminal_outcome']}"
+                "; the private plane-wave solver-wide interface-state owner "
+                "implementation lane records "
+                f"{plane_wave_solver_wide_state_owner_implementation_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -10676,7 +10920,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_solver_wide_interface_state_owner_architecture_next_prerequisite"
+                "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
             ],
         }
 
@@ -13724,10 +13968,122 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_solver_wide_interface_state_owner_architecture_next_prerequisite"
         ]
     )
+    solver_wide_owner_implementation = metadata[
+        "private_plane_wave_solver_wide_interface_state_owner_implementation"
+    ]
+    assert metadata[
+        "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
+    ] == (
+        _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_STATUS
+    )
+    assert solver_wide_owner_implementation["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_SOLVER_WIDE_INTERFACE_STATE_OWNER_IMPLEMENTATION_STATUS
+    )
+    assert solver_wide_owner_implementation["upstream_owner_architecture_status"] == (
+        metadata[
+            "private_plane_wave_solver_wide_interface_state_owner_architecture_status"
+        ]
+    )
+    assert solver_wide_owner_implementation["upstream_phase_staging_status"] == (
+        metadata["private_plane_wave_phase_coherence_staging_implementation_status"]
+    )
+    assert solver_wide_owner_implementation["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert (
+        solver_wide_owner_implementation[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert solver_wide_owner_implementation["candidate_count"] == 5
+    assert solver_wide_owner_implementation["selected_candidate_id"] == (
+        "M4_solver_wide_owner_implementation_blocked"
+    )
+    assert solver_wide_owner_implementation["baseline_metrics"] == (
+        solver_wide_owner_architecture["baseline_metrics"]
+    )
+    assert solver_wide_owner_implementation["baseline_metrics_preserved"] is True
+    assert solver_wide_owner_implementation["thresholds_unchanged"] is True
+    assert (
+        solver_wide_owner_implementation[
+            "solver_wide_interface_state_owner_contract_ready"
+        ]
+        is True
+    )
+    assert solver_wide_owner_implementation["implementation_lane_executed"] is True
+    assert solver_wide_owner_implementation["owner_state_shape_hunk_retained"] is False
+    assert solver_wide_owner_implementation["scan_staging_hunk_retained"] is False
+    assert (
+        solver_wide_owner_implementation["joint_score_with_owner_hunk_retained"]
+        is False
+    )
+    assert solver_wide_owner_implementation["joint_phase_magnitude_improved"] is False
+    assert solver_wide_owner_implementation["production_patch_applied"] is False
+    assert solver_wide_owner_implementation["solver_behavior_changed"] is False
+    assert solver_wide_owner_implementation["new_solver_hunk_retained"] is False
+    assert solver_wide_owner_implementation["no_bounded_hunk_accepted"] is True
+    assert solver_wide_owner_implementation["true_rt_readiness_unlocked"] is False
+    assert (
+        solver_wide_owner_implementation[
+            "next_lane_requires_state_pytree_runner_boundary_design"
+        ]
+        is True
+    )
+    solver_wide_implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in solver_wide_owner_implementation["candidate_ladder"]
+    }
+    assert (
+        solver_wide_implementation_candidates[
+            "M1_private_owner_state_shape_hunk"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        solver_wide_implementation_candidates[
+            "M1_private_owner_state_shape_hunk"
+        ]["requires_runner_or_jit_state_boundary"]
+        is True
+    )
+    assert (
+        solver_wide_implementation_candidates[
+            "M2_same_step_scan_staging_owner_wiring"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        solver_wide_implementation_candidates[
+            "M3_joint_phase_cv_parity_scoring_with_owner"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        solver_wide_implementation_candidates[
+            "M4_solver_wide_owner_implementation_blocked"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert solver_wide_owner_implementation["public_claim_allowed"] is False
+    assert solver_wide_owner_implementation["public_observable_promoted"] is False
+    assert (
+        solver_wide_owner_implementation["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        solver_wide_owner_implementation["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        solver_wide_owner_implementation["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_solver_wide_interface_state_owner_architecture_next_prerequisite"
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -13753,7 +14109,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_solver_wide_interface_state_owner_architecture_next_prerequisite"
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
         ]
     )
     assert (
@@ -13869,6 +14225,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_solver_wide_interface_state_owner_architecture_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
         ]
         in metadata["blocking_diagnostic"]
     )

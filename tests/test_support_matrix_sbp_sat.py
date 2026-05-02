@@ -2087,13 +2087,125 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == solver_wide_owner_architecture["next_prerequisite"]
     )
+    solver_wide_owner_implementation = benchmark_gate[
+        "private_plane_wave_solver_wide_interface_state_owner_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
+    ] == "no_private_plane_wave_solver_wide_interface_state_owner_implementation"
+    assert solver_wide_owner_implementation["terminal_outcome"] == (
+        "no_private_plane_wave_solver_wide_interface_state_owner_implementation"
+    )
+    assert solver_wide_owner_implementation["upstream_owner_architecture_status"] == (
+        benchmark_gate[
+            "private_plane_wave_solver_wide_interface_state_owner_architecture_status"
+        ]
+    )
+    assert solver_wide_owner_implementation["upstream_phase_staging_status"] == (
+        benchmark_gate[
+            "private_plane_wave_phase_coherence_staging_implementation_status"
+        ]
+    )
+    assert solver_wide_owner_implementation["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert (
+        solver_wide_owner_implementation[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert solver_wide_owner_implementation["candidate_count"] == 5
+    assert solver_wide_owner_implementation["selected_candidate_id"] == (
+        "M4_solver_wide_owner_implementation_blocked"
+    )
+    assert solver_wide_owner_implementation["baseline_metrics"] == (
+        solver_wide_owner_architecture["baseline_metrics"]
+    )
+    assert solver_wide_owner_implementation["baseline_metrics_preserved"] is True
+    assert solver_wide_owner_implementation["thresholds_unchanged"] is True
+    assert (
+        solver_wide_owner_implementation[
+            "solver_wide_interface_state_owner_contract_ready"
+        ]
+        is True
+    )
+    assert solver_wide_owner_implementation["implementation_lane_executed"] is True
+    assert solver_wide_owner_implementation["owner_state_shape_hunk_retained"] is False
+    assert solver_wide_owner_implementation["scan_staging_hunk_retained"] is False
+    assert (
+        solver_wide_owner_implementation["joint_score_with_owner_hunk_retained"]
+        is False
+    )
+    assert solver_wide_owner_implementation["joint_phase_magnitude_improved"] is False
+    assert solver_wide_owner_implementation["production_patch_applied"] is False
+    assert solver_wide_owner_implementation["solver_behavior_changed"] is False
+    assert solver_wide_owner_implementation["new_solver_hunk_retained"] is False
+    assert solver_wide_owner_implementation["no_bounded_hunk_accepted"] is True
+    assert solver_wide_owner_implementation["true_rt_readiness_unlocked"] is False
+    assert (
+        solver_wide_owner_implementation[
+            "next_lane_requires_state_pytree_runner_boundary_design"
+        ]
+        is True
+    )
+    solver_wide_implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in solver_wide_owner_implementation["candidate_ladder"]
+    }
+    assert (
+        solver_wide_implementation_candidates[
+            "M1_private_owner_state_shape_hunk"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        solver_wide_implementation_candidates[
+            "M1_private_owner_state_shape_hunk"
+        ]["requires_runner_or_jit_state_boundary"]
+        is True
+    )
+    assert (
+        solver_wide_implementation_candidates[
+            "M2_same_step_scan_staging_owner_wiring"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        solver_wide_implementation_candidates[
+            "M3_joint_phase_cv_parity_scoring_with_owner"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        solver_wide_implementation_candidates[
+            "M4_solver_wide_owner_implementation_blocked"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert solver_wide_owner_implementation["public_claim_allowed"] is False
+    assert solver_wide_owner_implementation["public_observable_promoted"] is False
+    assert (
+        solver_wide_owner_implementation["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        solver_wide_owner_implementation["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_next_prerequisite"
+        ]
+        == solver_wide_owner_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave solver-wide interface-state owner implementation "
-        "after architecture contract ready ralplan"
+        "private plane-wave solver-state owner propagation boundary design after "
+        "interface-state owner implementation blocked ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave solver-wide interface-state owner implementation "
-        "after architecture contract ready ralplan"
+        "private plane-wave solver-state owner propagation boundary design after "
+        "interface-state owner implementation blocked ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -2160,6 +2272,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_solver_wide_interface_state_owner_architecture_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -2427,8 +2545,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave solver-wide interface-state owner implementation "
-        "after architecture contract ready ralplan"
+        "private plane-wave solver-state owner propagation boundary design after "
+        "interface-state owner implementation blocked ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
