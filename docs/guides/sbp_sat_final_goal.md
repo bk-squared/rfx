@@ -100,8 +100,7 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave modal projection/normalizer
-contract implementation after the private design lane made the bounded contract
-ready.
+contract parity scoring after the implementation hunk was retained.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -137,7 +136,10 @@ observable or true R/T readiness claim. The contract design lane now records
 `private_plane_wave_modal_projection_normalizer_contract_design_ready`: shared
 modal basis, incident normalizer, and face-mask weighting contracts are ready
 for a bounded private implementation lane while public observables remain
-closed. The
+closed. The implementation lane now records
+`private_plane_wave_modal_projection_normalizer_contract_hunk_retained_fixture_quality_pending`:
+a fail-closed private contract gate is retained inside propagation-aware modal
+retry, and the next safe lane is private parity scoring after the hunk. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

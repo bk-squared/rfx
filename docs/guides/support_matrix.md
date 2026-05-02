@@ -456,8 +456,11 @@ baseline, so the design lane now records
 `private_plane_wave_modal_projection_normalizer_contract_design_ready`: shared
 modal basis, incident normalizer, and face-mask weighting contracts are ready
 for a bounded private implementation lane while public observables remain
-closed. The next safe lane is private modal projection/normalizer contract
-implementation after design ready.
+closed. The implementation lane now records
+`private_plane_wave_modal_projection_normalizer_contract_hunk_retained_fixture_quality_pending`:
+a fail-closed private contract gate is retained inside propagation-aware modal
+retry, and the next safe lane is private modal projection/normalizer parity
+scoring after the hunk.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

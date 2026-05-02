@@ -1089,6 +1089,61 @@ def test_propagation_aware_modal_retry_helper_uses_source_owner_packet():
         assert np.max(np.abs(delta_f1[fine_active])) <= 0.20 * 0.01 + 1.0e-8
 
 
+def test_propagation_aware_modal_retry_helper_requires_private_contract():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    owner_state = _private_owner_with_source_interface_reference(
+        config,
+        source_active=True,
+    )
+    e_coarse = (state.ex_c, state.ey_c, state.ez_c)
+    e_fine = (state.ex_f, state.ey_f, state.ez_f)
+    h_coarse = (state.hx_c, state.hy_c, state.hz_c)
+    h_fine = (state.hx_f, state.hy_f, state.hz_f)
+    contract_breakers = (
+        owner_state._replace(
+            source_normal_sign=-owner_state.source_normal_sign,
+        ),
+        owner_state._replace(
+            source_incident_normalizer_real=jnp.zeros_like(
+                owner_state.source_incident_normalizer_real
+            ),
+        ),
+        owner_state._replace(
+            source_owner_weight=2.0 * owner_state.source_owner_weight,
+        ),
+    )
+
+    for broken_owner_state in contract_breakers:
+        out_e_c, out_e_f, out_h_c, out_h_f = (
+            _apply_propagation_aware_modal_retry_face_helper(
+                e_coarse,
+                e_fine,
+                h_coarse,
+                h_fine,
+                broken_owner_state,
+                config,
+            )
+        )
+
+        for before_fields, after_fields in (
+            (e_coarse, out_e_c),
+            (e_fine, out_e_f),
+            (h_coarse, out_h_c),
+            (h_fine, out_h_f),
+        ):
+            for before, after in zip(before_fields, after_fields):
+                np.testing.assert_allclose(
+                    np.asarray(after),
+                    np.asarray(before),
+                    atol=0.0,
+                )
+
+
 def test_propagation_aware_modal_retry_helper_waits_for_source_packet():
     config, state = init_subgrid_3d(
         shape_c=(8, 8, 8),

@@ -1041,6 +1041,97 @@ def _incident_normalized_source_packet(
     return normalized_real, normalized_imag
 
 
+def _private_modal_projection_normalizer_contract_gate(
+    *,
+    owner_state: _PrivateInterfaceOwnerState,
+    face_index: int,
+    packet_slice: slice,
+    ops: ZFaceOps,
+    dtype: jnp.dtype,
+) -> jnp.ndarray:
+    """Gate private modal retry on the projection/normalizer contract.
+
+    The gate is intentionally private and fail-closed.  It verifies that the
+    source-owner and interface-owner packets use the same face packet layout,
+    orientation metadata, masks, weights, and incident-normalizer availability
+    before the modal retry consumes the packet pair.  It does not expose any
+    public observable or configuration surface.
+    """
+
+    expected_length = jnp.asarray(int(np.prod(ops.coarse_shape)), dtype=jnp.int32)
+    packet_eps = jnp.asarray(1.0e-6, dtype=dtype)
+    source_mask = owner_state.source_owner_mask[packet_slice].reshape(
+        ops.coarse_shape
+    )
+    interface_mask = owner_state.face_proxy_mask[packet_slice].reshape(
+        ops.coarse_shape
+    )
+    source_weight = owner_state.source_owner_weight[packet_slice].reshape(
+        ops.coarse_shape
+    )
+    interface_weight = owner_state.face_proxy_weight[packet_slice].reshape(
+        ops.coarse_shape
+    )
+    normalizer_real = owner_state.source_incident_normalizer_real[
+        packet_slice
+    ].reshape(ops.coarse_shape)
+    normalizer_imag = owner_state.source_incident_normalizer_imag[
+        packet_slice
+    ].reshape(ops.coarse_shape)
+
+    face_offset = owner_state.face_packet_offsets[face_index]
+    source_offset = owner_state.source_packet_offsets[face_index]
+    face_length = owner_state.face_packet_lengths[face_index]
+    source_length = owner_state.source_packet_lengths[face_index]
+    layout_contract = (
+        (face_offset == source_offset)
+        & (face_length == source_length)
+        & (face_length == expected_length)
+    )
+
+    face_normal_axis = owner_state.face_normal_axis[face_index]
+    source_normal_axis = owner_state.source_normal_axis[face_index]
+    face_normal_sign = owner_state.face_normal_sign[face_index]
+    source_normal_sign = owner_state.source_normal_sign[face_index]
+    orientation_contract = (
+        (face_normal_axis == source_normal_axis)
+        & (face_normal_sign == source_normal_sign)
+        & (
+            owner_state.face_tangential_axis_0[face_index]
+            == owner_state.source_tangential_axis_0[face_index]
+        )
+        & (
+            owner_state.face_tangential_axis_1[face_index]
+            == owner_state.source_tangential_axis_1[face_index]
+        )
+    )
+    mask_contract = jnp.max(jnp.abs(source_mask - interface_mask)) <= packet_eps
+    active_measure = jnp.maximum(
+        jnp.sum(interface_mask),
+        jnp.asarray(1.0, dtype=dtype),
+    )
+    weight_contract = (
+        jnp.sum(jnp.abs(source_weight - interface_weight) * interface_mask)
+        <= packet_eps * active_measure
+    )
+    normalizer_energy = (
+        normalizer_real * normalizer_real + normalizer_imag * normalizer_imag
+    )
+    normalizer_contract = jnp.sum(normalizer_energy * source_mask) > packet_eps
+    contract_ready = (
+        layout_contract
+        & orientation_contract
+        & mask_contract
+        & weight_contract
+        & normalizer_contract
+    )
+    return jnp.where(
+        contract_ready,
+        jnp.asarray(1.0, dtype=dtype),
+        jnp.asarray(0.0, dtype=dtype),
+    )
+
+
 def _apply_propagation_aware_modal_retry_face_helper(
     current_e_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
     current_e_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
@@ -1117,6 +1208,13 @@ def _apply_propagation_aware_modal_retry_face_helper(
                 normalizer_imag=normalizer_imag,
             )
         )
+        contract_gate = _private_modal_projection_normalizer_contract_gate(
+            owner_state=owner_state,
+            face_index=face_index,
+            packet_slice=packet_slice,
+            ops=ops,
+            dtype=source_real.dtype,
+        )
         source_energy = (source_real * source_real + source_imag * source_imag) * (
             source_mask
         )
@@ -1131,7 +1229,7 @@ def _apply_propagation_aware_modal_retry_face_helper(
             jnp.asarray(1.0, dtype=source_real.dtype),
             jnp.asarray(0.0, dtype=source_real.dtype),
         )
-        active_scale = source_active_scale * interface_active_scale
+        active_scale = source_active_scale * interface_active_scale * contract_gate
 
         target_real = interface_real - normalized_source_real
         target_imag = interface_imag - normalized_source_imag
