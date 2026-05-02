@@ -546,7 +546,13 @@ parity-scoring lane now records
 the retained private hunk has finite score evidence, but unchanged material-
 improvement and fixture-quality gates remain closed, so true R/T and public
 observable promotion stay locked; the next safe lane is private
-energy-biorthogonal failure-theory redesign.
+energy-biorthogonal failure-theory redesign. The projected target residual-
+basis energy-biorthogonal failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_floor_theory_ready`:
+the finite-but-insufficient score is classified as a packet-local energy
+metric-shape floor rather than a public-readiness signal; thresholds remain
+unchanged, no solver hunk is added, and the next safe lane is private
+energy-biorthogonal metric-shape calibration design.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

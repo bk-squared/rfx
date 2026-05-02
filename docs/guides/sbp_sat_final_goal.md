@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave modal projection/normalizer
-projected target residual-basis energy-biorthogonal failure-theory redesign
-after parity scoring remained insufficient.
+projected target residual-basis energy-biorthogonal metric-shape calibration
+design after failure theory selected the packet-local metric-shape floor.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -226,7 +226,13 @@ parity-scoring lane now records
 the retained private hunk has finite score evidence, but unchanged material-
 improvement and fixture-quality gates remain closed, so true R/T and public
 observable promotion stay locked; the next safe lane is private
-energy-biorthogonal failure-theory redesign. The
+energy-biorthogonal failure-theory redesign. The projected target residual-
+basis energy-biorthogonal failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_floor_theory_ready`:
+the finite-but-insufficient score is classified as a packet-local energy
+metric-shape floor rather than a public-readiness signal; thresholds remain
+unchanged, no solver hunk is added, and the next safe lane is private
+energy-biorthogonal metric-shape calibration design. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
