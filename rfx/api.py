@@ -2977,6 +2977,15 @@ class Simulation:
                     i_f = np.zeros(n_freqs_used, dtype=complex)
                     for j in range(j_lo_ext, j_hi_ext + 1):
                         i_f = i_f + hy_plane[:, j, k_h] * float(dy_arr[j])
+                    # Sign convention: for a +x propagating quasi-TEM wave
+                    # with Ez>0 (ground→trace), Hy<0 (x̂×ẑ = −ŷ), so the
+                    # raw Hy integral gives I<0 and Z0<0.  Negate for +x
+                    # ports so that Z0 = V/I > 0 matches the physical
+                    # current direction (current flows +x on trace).
+                    # For -x ports the sign is already correct.
+                    mp_p = msl_ports[p_idx]
+                    if mp_p.direction == "+x":
+                        i_f = -i_f
                     i_first_per_port.append(i_f)
 
                 # Driven port: full 3-probe extraction → S[driven, driven].
