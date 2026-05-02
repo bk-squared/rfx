@@ -540,7 +540,13 @@ the private helper weights packet coefficients by a characteristic E/H energy
 form and projects source/interface packets through a fixed-shape
 energy-biorthogonal Gram system before target subtraction, with public
 promotion still closed; the next safe lane is private energy-biorthogonal
-parity scoring.
+parity scoring. The projected target residual-basis energy-biorthogonal
+parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_hunk_insufficient_fixture_quality_pending`:
+the retained private hunk has finite score evidence, but unchanged material-
+improvement and fixture-quality gates remain closed, so true R/T and public
+observable promotion stay locked; the next safe lane is private
+energy-biorthogonal failure-theory redesign.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
