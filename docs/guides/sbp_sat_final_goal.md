@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave modal projection/normalizer
-projected target residual-basis redesign contract after failure theory selected
-the remaining single-basis floor.
+projected target residual-basis implementation after the design contract
+selected a bounded private residual/reflected/transverse target-basis surface.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -185,7 +185,11 @@ target/source-interface failure-theory lane now records
 the retained hunk projects both source and interface packets, but it still uses
 one incident-normalizer basis for the full correction; the next safe lane is a
 private residual/reflected/transverse projected target-basis redesign contract.
-The
+The projected target residual-basis design lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_contract_design_ready`:
+fixed-shape incident, reflected, and transverse residual target modes are ready
+as a private implementation contract without public observables or threshold
+laundering; the next safe lane is private residual-basis implementation. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

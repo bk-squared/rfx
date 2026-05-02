@@ -505,6 +505,11 @@ target/source-interface failure-theory lane now records
 the retained hunk projects both source and interface packets, but it still uses
 one incident-normalizer basis for the full correction; the next safe lane is a
 private residual/reflected/transverse projected target-basis redesign contract.
+The projected target residual-basis design lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_contract_design_ready`:
+fixed-shape incident, reflected, and transverse residual target modes are ready
+as a private implementation contract without public observables or threshold
+laundering; the next safe lane is private residual-basis implementation.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

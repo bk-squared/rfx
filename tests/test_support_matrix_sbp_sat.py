@@ -6261,13 +6261,126 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == projected_target_failure_theory["next_prerequisite"]
     )
+    residual_basis_design = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_design"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_design_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_contract_design_ready"
+    )
+    assert residual_basis_design["terminal_outcome"] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_contract_design_ready"
+    )
+    assert residual_basis_design[
+        "upstream_projected_target_failure_theory_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_failure_theory_status"
+    ]
+    assert residual_basis_design["candidate_ladder_declared_before_implementation"]
+    assert residual_basis_design["candidate_ladder_declared_before_solver_edit"]
+    assert residual_basis_design["candidate_ladder_declared_before_slow_scoring"]
+    assert residual_basis_design["candidate_count"] == 5
+    assert residual_basis_design["selected_candidate_id"] == (
+        "AB3_combined_residual_basis_design_contract"
+    )
+    assert residual_basis_design["baseline_metrics"] == (
+        projected_target_failure_theory["baseline_metrics"]
+    )
+    assert residual_basis_design["metrics"] == (
+        projected_target_failure_theory["metrics"]
+    )
+    assert residual_basis_design["thresholds"] == (
+        projected_target_failure_theory["thresholds"]
+    )
+    assert residual_basis_design["threshold_results"] == (
+        projected_target_failure_theory["threshold_results"]
+    )
+    assert residual_basis_design["baseline_metrics_preserved"]
+    assert residual_basis_design["thresholds_unchanged"]
+    assert residual_basis_design["failure_theory_contract_consumed"]
+    assert residual_basis_design["projected_target_residual_basis_design_ready"]
+    assert residual_basis_design["residual_basis_schema_ready"]
+    assert residual_basis_design["residual_coefficient_contract_ready"]
+    assert residual_basis_design["normalizer_contract_ready"]
+    assert residual_basis_design["residual_basis_contract_ready"]
+    assert residual_basis_design["bounded_private_implementation_contract_ready"]
+    assert residual_basis_design["basis_vectors"] == [
+        "incident_normal_mode",
+        "reflected_normal_mode",
+        "transverse_residual_mode",
+    ]
+    assert residual_basis_design["source_packet_projected"]
+    assert residual_basis_design["interface_packet_projected"]
+    assert residual_basis_design["subtraction_uses_projected_packets_only"]
+    assert residual_basis_design["single_incident_basis_replaced"]
+    assert residual_basis_design["single_incident_basis_only"] is False
+    assert residual_basis_design["projection_gate_fail_closed"]
+    assert residual_basis_design["contract_gate_fail_closed"]
+    assert residual_basis_design["fail_closed_if_projection_energy_missing"]
+    assert residual_basis_design["reuse_existing_owner_packet_shapes"]
+    assert residual_basis_design["fixed_shape_private_coefficients"]
+    assert residual_basis_design["fixed_shape_reductions"]
+    assert residual_basis_design["jit_safe_reduction"]
+    assert residual_basis_design["no_threshold_laundering"]
+    design_contract = residual_basis_design["residual_basis_contract"]
+    assert design_contract["projection_helper"] == "_project_private_modal_basis_packets"
+    assert "incident, reflected" in design_contract["target_basis_behavior"]
+    assert design_contract["single_incident_basis_replaced"]
+    assert design_contract["fixed_shape_reductions"]
+    assert design_contract["no_threshold_laundering"]
+    design_schema = residual_basis_design["residual_basis_schema"]
+    assert design_schema["basis_vectors"] == residual_basis_design["basis_vectors"]
+    assert design_schema["fixed_shape_reductions"]
+    assert design_schema["jit_safe_reduction"]
+    assert design_schema["requires_public_observable"] is False
+    assert residual_basis_design["material_improvement_demonstrated"] is False
+    assert residual_basis_design["paired_passed"] is False
+    assert residual_basis_design["fixture_quality_ready"] is False
+    assert residual_basis_design["fixture_quality_pending"]
+    assert residual_basis_design["true_rt_readiness_unlocked"] is False
+    assert residual_basis_design["production_patch_applied"] is False
+    assert residual_basis_design["solver_behavior_changed"] is False
+    assert residual_basis_design["new_solver_hunk_retained"] is False
+    assert residual_basis_design[
+        "next_lane_requires_projected_target_residual_basis_implementation"
+    ]
+    residual_basis_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_design["candidate_ladder"]
+    }
+    assert residual_basis_candidates[
+        "AB1_residual_reflected_transverse_basis_schema"
+    ]["residual_basis_schema_ready"]
+    assert residual_basis_candidates[
+        "AB2_target_residual_coefficient_normalizer_contract"
+    ]["residual_coefficient_contract_ready"]
+    assert residual_basis_candidates[
+        "AB3_combined_residual_basis_design_contract"
+    ]["accepted_candidate"]
+    assert (
+        residual_basis_candidates[
+            "AB4_residual_basis_design_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_design["public_claim_allowed"] is False
+    assert residual_basis_design["public_observable_promoted"] is False
+    assert residual_basis_design["true_rt_public_observable_promoted"] is False
+    assert residual_basis_design["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_design_next_prerequisite"
+        ]
+        == residual_basis_design["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "redesign contract after failure theory ready ralplan"
+        "implementation after design contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "redesign contract after failure theory ready ralplan"
+        "implementation after design contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -6572,6 +6685,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_design_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -6836,7 +6955,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "redesign contract after failure theory ready ralplan"
+        "implementation after design contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
