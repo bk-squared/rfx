@@ -938,6 +938,26 @@ _PRIVATE_PLANE_WAVE_ENERGY_FORM_IMPLEMENTATION_PRECEDENCE = (
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_STATUS = (
+    "private_plane_wave_energy_form_redesign_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_NEXT_PREREQUISITE = (
+    "private plane-wave operator/mortar time-centered energy-form "
+    "implementation after failure theory contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_TERMINAL_OUTCOMES = (
+    "private_plane_wave_energy_state_design_ready",
+    "private_plane_wave_source_interface_energy_design_ready",
+    "private_plane_wave_energy_form_redesign_contract_ready",
+    "private_plane_wave_energy_form_failure_theory_blocked_no_public_promotion",
+)
+_PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_PRECEDENCE = (
+    "private_plane_wave_energy_form_failure_theory_blocked_no_public_promotion",
+    "private_plane_wave_energy_form_redesign_contract_ready",
+    "private_plane_wave_source_interface_energy_design_ready",
+    "private_plane_wave_energy_state_design_ready",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -7211,6 +7231,197 @@ def _private_plane_wave_energy_form_implementation_metadata(
     }
 
 
+def _private_plane_wave_energy_form_failure_theory_design_metadata(
+    *,
+    energy_form_implementation_metadata: dict[str, object],
+    energy_form_design_metadata: dict[str, object],
+    root_cause_redesign_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(energy_form_implementation_metadata["baseline_metrics"])
+    thresholds = dict(energy_form_implementation_metadata["thresholds"])
+    follow_up_write_surface = (
+        "rfx/subgridding/sbp_sat_3d.py",
+        "rfx/subgridding/sbp_operators.py",
+        "tests/test_sbp_sat_3d.py",
+        "tests/test_sbp_sat_energy_ledger_diagnostic.py",
+        "tests/test_sbp_sat_true_rt_flux_dft_benchmark.py",
+        "tests/test_support_matrix_sbp_sat.py",
+        "docs/guides/support_matrix.json",
+        "docs/guides/support_matrix.md",
+        "docs/guides/sbp_sat_final_goal.md",
+        "docs/guides/sbp_sat_zslab_true_rt_benchmark_spec.md",
+    )
+    redesign_prerequisites = {
+        "preserve_frozen_parity_baseline": True,
+        "preserve_unchanged_thresholds": True,
+        "introduce_no_public_hook_or_switch": True,
+        "use_operator_mortar_projection_energy_form": True,
+        "bind_time_centered_eh_state_before_local_sat_helper_stack": True,
+        "prove_material_parity_improvement_before_retaining_solver_hunk": True,
+        "rerun_cpml_non_cpml_and_slow_private_metadata": True,
+        "keep_public_surface_diff_guard_clean": True,
+    }
+    g0 = {
+        "candidate_id": "G0_failed_implementation_packet_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_implementation_status": (
+            energy_form_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_design_status": energy_form_design_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    g1 = {
+        "candidate_id": "G1_missing_interface_energy_state_invariant",
+        "candidate_family": "interface_energy_state_variable",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "explains_f1_f2_failure": True,
+        "failure_theory": (
+            "same-call local helpers operate on post-SAT face traces without a "
+            "single operator-owned interface energy state, so stacking another "
+            "local potential or work helper cannot prove global parity "
+            "improvement against the frozen packet"
+        ),
+        "required_invariant": (
+            "coarse/fine tangential traces must share one mortar-projected "
+            "interface energy state before any retained SAT correction is "
+            "accepted"
+        ),
+        "superseded_by": "G3_operator_mortar_time_centering_redesign_contract",
+        "public_claim_allowed": False,
+    }
+    g2 = {
+        "candidate_id": "G2_source_interface_coupled_energy_balance_design",
+        "candidate_family": "source_interface_coupled_balance",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "explains_phase_front_and_interface_floor_together": True,
+        "failure_theory": (
+            "the plane-wave source contract can be self-oracle-ready while the "
+            "subgrid interface still destroys transverse phase coherence; the "
+            "next repair must score source/reference parity through the same "
+            "operator-projected interface energy balance"
+        ),
+        "requires_public_observable": False,
+        "superseded_by": "G3_operator_mortar_time_centering_redesign_contract",
+        "public_claim_allowed": False,
+    }
+    g3 = {
+        "candidate_id": "G3_operator_mortar_time_centering_redesign_contract",
+        "candidate_family": "operator_mortar_time_centered_energy_form_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_STATUS
+        ),
+        "redesign_contract_ready": True,
+        "implementation_prerequisites": redesign_prerequisites,
+        "future_write_surface": follow_up_write_surface,
+        "explains_f1_f2_rejection": True,
+        "bounded_follow_up_implementation_surface": True,
+        "requires_operator_mortar_projection": True,
+        "requires_time_centered_eh_state": True,
+        "requires_source_interface_coupled_scoring": True,
+        "forbids_helper_stacking_without_energy_state": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "true_rt_readiness_unlocked": False,
+        "public_claim_allowed": False,
+    }
+    g4 = {
+        "candidate_id": "G4_failure_theory_design_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_energy_form_failure_theory_blocked_no_public_promotion"
+        ),
+        "rejection_reason": (
+            "not selected because G1/G2 provide component theory and G3 defines "
+            "a bounded private implementation contract without public promotion"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (g0, g1, g2, g3, g4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_STATUS,
+        "terminal_outcome": _PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_STATUS,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_interface_energy_form_failure_theory_design_only"
+        ),
+        "upstream_implementation_status": (
+            energy_form_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_design_status": energy_form_design_metadata["terminal_outcome"],
+        "upstream_root_cause_status": root_cause_redesign_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite G0/G1/G2/G3/G4 theory/design ladder; select a bounded "
+            "operator/mortar time-centered energy-form contract before any "
+            "new production solver hunk or true R/T readiness claim"
+        ),
+        "selected_candidate_id": "G3_operator_mortar_time_centering_redesign_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "energy_state_design_ready": True,
+        "source_interface_coupling_design_ready": True,
+        "operator_mortar_time_centering_design_ready": True,
+        "redesign_contract_ready": True,
+        "explains_local_hunk_failure": True,
+        "explains_f1_f2_rejection": True,
+        "bounded_follow_up_implementation_surface": True,
+        "implementation_prerequisites": redesign_prerequisites,
+        "future_write_surface": follow_up_write_surface,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_implementation_plan": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the fail-closed implementation packet is now explained as a "
+            "missing operator-owned, time-centered interface energy-state "
+            "contract; the next safe unit is a private implementation plan, "
+            "not true R/T or public observable promotion"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -9381,8 +9592,31 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_energy_form_failure_theory_metadata = (
+        _private_plane_wave_energy_form_failure_theory_design_metadata(
+            energy_form_implementation_metadata=(
+                plane_wave_energy_form_implementation_metadata
+            ),
+            energy_form_design_metadata=plane_wave_energy_form_design_metadata,
+            root_cause_redesign_metadata=plane_wave_root_cause_redesign_metadata,
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_interface_energy_form_failure_theory_status": (
+                plane_wave_energy_form_failure_theory_metadata["status"]
+            ),
+            "private_plane_wave_interface_energy_form_failure_theory": (
+                plane_wave_energy_form_failure_theory_metadata
+            ),
+            "private_plane_wave_interface_energy_form_failure_theory_next_prerequisite": (
+                plane_wave_energy_form_failure_theory_metadata["next_prerequisite"]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_interface_energy_form_implementation_next_prerequisite"
+        "private_plane_wave_interface_energy_form_failure_theory_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -9470,6 +9704,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave interface energy-form implementation "
                 "lane records "
                 f"{plane_wave_energy_form_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave interface energy-form failure "
+                "theory/design lane records "
+                f"{plane_wave_energy_form_failure_theory_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -9479,7 +9716,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_interface_energy_form_implementation_next_prerequisite"
+                "private_plane_wave_interface_energy_form_failure_theory_next_prerequisite"
             ],
         }
 
@@ -12083,10 +12320,89 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_interface_energy_form_implementation_next_prerequisite"
         ]
     )
+    failure_theory = metadata[
+        "private_plane_wave_interface_energy_form_failure_theory"
+    ]
+    assert metadata[
+        "private_plane_wave_interface_energy_form_failure_theory_status"
+    ] == _PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_STATUS
+    assert failure_theory["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_ENERGY_FORM_FAILURE_THEORY_STATUS
+    )
+    assert failure_theory["upstream_implementation_status"] == (
+        metadata["private_plane_wave_interface_energy_form_implementation_status"]
+    )
+    assert failure_theory["upstream_design_status"] == (
+        metadata["private_plane_wave_interface_energy_form_design_status"]
+    )
+    assert failure_theory["upstream_root_cause_status"] == (
+        metadata["private_plane_wave_root_cause_redesign_status"]
+    )
+    assert failure_theory["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert failure_theory["candidate_ladder_declared_before_slow_scoring"] is True
+    assert failure_theory["candidate_count"] == 5
+    assert failure_theory["selected_candidate_id"] == (
+        "G3_operator_mortar_time_centering_redesign_contract"
+    )
+    assert (
+        failure_theory["baseline_metrics"]
+        == energy_form_implementation["baseline_metrics"]
+    )
+    assert failure_theory["baseline_metrics_preserved"] is True
+    assert failure_theory["thresholds_unchanged"] is True
+    assert failure_theory["energy_state_design_ready"] is True
+    assert failure_theory["source_interface_coupling_design_ready"] is True
+    assert failure_theory["operator_mortar_time_centering_design_ready"] is True
+    assert failure_theory["redesign_contract_ready"] is True
+    assert failure_theory["explains_local_hunk_failure"] is True
+    assert failure_theory["explains_f1_f2_rejection"] is True
+    assert failure_theory["bounded_follow_up_implementation_surface"] is True
+    assert failure_theory["implementation_prerequisites"][
+        "use_operator_mortar_projection_energy_form"
+    ] is True
+    assert failure_theory["production_patch_applied"] is False
+    assert failure_theory["solver_behavior_changed"] is False
+    assert failure_theory["new_solver_hunk_retained"] is False
+    assert failure_theory["true_rt_readiness_unlocked"] is False
+    assert failure_theory["next_lane_requires_implementation_plan"] is True
+    failure_theory_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in failure_theory["candidate_ladder"]
+    }
+    assert (
+        failure_theory_candidates[
+            "G1_missing_interface_energy_state_invariant"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        failure_theory_candidates[
+            "G2_source_interface_coupled_energy_balance_design"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        failure_theory_candidates[
+            "G3_operator_mortar_time_centering_redesign_contract"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert failure_theory["public_claim_allowed"] is False
+    assert failure_theory["public_observable_promoted"] is False
+    assert failure_theory["true_rt_public_observable_promoted"] is False
+    assert failure_theory["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        failure_theory["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_interface_energy_form_failure_theory_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_interface_energy_form_implementation_next_prerequisite"
+            "private_plane_wave_interface_energy_form_failure_theory_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -12112,7 +12428,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_interface_energy_form_implementation_next_prerequisite"
+            "private_plane_wave_interface_energy_form_failure_theory_next_prerequisite"
         ]
     )
     assert (
@@ -12205,6 +12521,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata["private_plane_wave_interface_energy_form_implementation_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_interface_energy_form_failure_theory_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

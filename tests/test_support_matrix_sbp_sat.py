@@ -1676,13 +1676,87 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == energy_form_implementation["next_prerequisite"]
     )
+    failure_theory = benchmark_gate[
+        "private_plane_wave_interface_energy_form_failure_theory"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_interface_energy_form_failure_theory_status"
+    ] == "private_plane_wave_energy_form_redesign_contract_ready"
+    assert failure_theory["terminal_outcome"] == (
+        "private_plane_wave_energy_form_redesign_contract_ready"
+    )
+    assert failure_theory["upstream_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_interface_energy_form_implementation_status"
+        ]
+    )
+    assert failure_theory["upstream_design_status"] == (
+        benchmark_gate["private_plane_wave_interface_energy_form_design_status"]
+    )
+    assert failure_theory["upstream_root_cause_status"] == (
+        benchmark_gate["private_plane_wave_root_cause_redesign_status"]
+    )
+    assert failure_theory["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert failure_theory["candidate_ladder_declared_before_slow_scoring"] is True
+    assert failure_theory["candidate_count"] == 5
+    assert failure_theory["selected_candidate_id"] == (
+        "G3_operator_mortar_time_centering_redesign_contract"
+    )
+    assert (
+        failure_theory["baseline_metrics"]
+        == energy_form_implementation["baseline_metrics"]
+    )
+    assert failure_theory["energy_state_design_ready"] is True
+    assert failure_theory["source_interface_coupling_design_ready"] is True
+    assert failure_theory["operator_mortar_time_centering_design_ready"] is True
+    assert failure_theory["redesign_contract_ready"] is True
+    assert failure_theory["explains_local_hunk_failure"] is True
+    assert failure_theory["bounded_follow_up_implementation_surface"] is True
+    assert failure_theory["implementation_prerequisites"][
+        "bind_time_centered_eh_state_before_local_sat_helper_stack"
+    ] is True
+    assert failure_theory["production_patch_applied"] is False
+    assert failure_theory["solver_behavior_changed"] is False
+    assert failure_theory["new_solver_hunk_retained"] is False
+    assert failure_theory["true_rt_readiness_unlocked"] is False
+    failure_theory_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in failure_theory["candidate_ladder"]
+    }
+    assert (
+        failure_theory_candidates[
+            "G1_missing_interface_energy_state_invariant"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        failure_theory_candidates[
+            "G2_source_interface_coupled_energy_balance_design"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        failure_theory_candidates[
+            "G3_operator_mortar_time_centering_redesign_contract"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert failure_theory["public_claim_allowed"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_interface_energy_form_failure_theory_next_prerequisite"
+        ]
+        == failure_theory["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave interface energy-form failure theory/design before "
-        "true R/T readiness ralplan"
+        "private plane-wave operator/mortar time-centered energy-form "
+        "implementation after failure theory contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave interface energy-form failure theory/design before "
-        "true R/T readiness ralplan"
+        "private plane-wave operator/mortar time-centered energy-form "
+        "implementation after failure theory contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1719,6 +1793,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_interface_energy_form_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_interface_energy_form_failure_theory_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -1986,8 +2066,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave interface energy-form failure theory/design before "
-        "true R/T readiness ralplan"
+        "private plane-wave operator/mortar time-centered energy-form "
+        "implementation after failure theory contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

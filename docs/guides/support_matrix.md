@@ -277,8 +277,12 @@ and public-surface guards. The follow-up implementation lane now records
 `no_private_plane_wave_energy_form_implementation`: the frozen parity packet is
 preserved, no bounded F1/F2 local solver hunk is retained as material
 improvement, and the next safe lane is a private interface energy-form failure
-theory/design review before true R/T readiness; public promotion remains
-closed.
+theory/design review before true R/T readiness. That theory/design lane now
+records `private_plane_wave_energy_form_redesign_contract_ready`: the local
+implementation failure is explained as a missing operator-owned, time-centered
+interface energy-state contract, and the next safe lane is a private
+operator/mortar time-centered energy-form implementation plan; public promotion
+remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
