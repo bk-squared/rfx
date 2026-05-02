@@ -400,7 +400,15 @@ and orientation buffers are retained separately from the existing interface
 packet, with CPML/non-CPML/JIT initialization symmetry and no modal field-update
 behavior change. The next safe lane is private propagation-aware modal retry
 implementation after source-interface state-shape hunk retained; public
-promotion remains closed.
+promotion remains closed. That implementation lane now records
+`private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending`:
+a bounded solver-local helper subtracts the private incident-normalized
+source-owner packet from the lagged interface-owner packet before applying a
+small tangential-E modal correction. It is no-op until source-owner incident
+packets are populated, imports no benchmark DFT/flux/TFSF/port/S-parameter
+state, and keeps true R/T readiness pending. The next safe lane is private
+propagation-aware modal retry parity scoring after the source-normalized hunk
+is retained; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

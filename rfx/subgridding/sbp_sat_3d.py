@@ -37,6 +37,7 @@ C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 PHASE1_3D_CFL = 0.99
 _TIME_CENTERED_HELPER_RELAXATION = 0.02
 _OBSERVABLE_PROXY_MODAL_RETRY_RELAXATION = 0.02
+_PROPAGATION_AWARE_MODAL_RETRY_RELAXATION = 0.01
 
 
 class SubgridConfig3D(NamedTuple):
@@ -858,6 +859,176 @@ def _apply_observable_proxy_modal_retry_face_helper(
             dtype=current_real.dtype,
         )
         eps = jnp.asarray(1.0e-30, dtype=current_real.dtype)
+        delta_real = relaxation * (target_real - current_real)
+        delta_imag = relaxation * (target_imag - current_imag)
+        bound_real = relaxation * (jnp.abs(target_real) + jnp.abs(current_real) + eps)
+        bound_imag = relaxation * (jnp.abs(target_imag) + jnp.abs(current_imag) + eps)
+        delta_real = (
+            jnp.clip(delta_real, -bound_real, bound_real)
+            * packet_mask
+            * active_scale
+        )
+        delta_imag = (
+            jnp.clip(delta_imag, -bound_imag, bound_imag)
+            * packet_mask
+            * active_scale
+        )
+        corrected_coarse_e = (
+            coarse_e[0] + delta_real,
+            coarse_e[1] + delta_imag,
+        )
+        corrected_fine_e = (
+            fine_e[0] + prolong_face(delta_real, ops),
+            fine_e[1] + prolong_face(delta_imag, ops),
+        )
+        e_coarse = scatter_tangential_e_face(
+            e_coarse,
+            corrected_coarse_e,
+            config,
+            face,
+            grid="coarse",
+        )
+        e_fine = scatter_tangential_e_face(
+            e_fine,
+            corrected_fine_e,
+            config,
+            face,
+            grid="fine",
+        )
+    return e_coarse, e_fine, h_coarse, h_fine
+
+
+def _incident_normalized_source_packet(
+    *,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    normalizer_real: jnp.ndarray,
+    normalizer_imag: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return the private source-owner packet divided by its incident normalizer."""
+
+    eps = jnp.asarray(1.0e-30, dtype=source_real.dtype)
+    denominator = jnp.maximum(
+        normalizer_real * normalizer_real + normalizer_imag * normalizer_imag,
+        eps,
+    )
+    normalized_real = (
+        source_real * normalizer_real + source_imag * normalizer_imag
+    ) / denominator
+    normalized_imag = (
+        source_imag * normalizer_real - source_real * normalizer_imag
+    ) / denominator
+    return normalized_real, normalized_imag
+
+
+def _apply_propagation_aware_modal_retry_face_helper(
+    current_e_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_e_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_h_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_h_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    owner_state: _PrivateInterfaceOwnerState,
+    config: SubgridConfig3D,
+) -> tuple[
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+]:
+    """Apply a private source/interface-aware modal E retry.
+
+    This hunk is intentionally bounded and solver-local.  It consumes only the
+    private source-owner packet, incident normalizer packet, and interface-owner
+    packet already carried by ``_PrivateInterfaceOwnerState``.  It does not read
+    benchmark DFT/flux/TFSF/port/S-parameter state, hooks, or public observables.
+
+    The source packet is treated as an incident modal basis and subtracted from
+    the lagged interface packet before a small correction is scattered back onto
+    tangential E faces.  If no source-owner packet has been populated yet, the
+    helper is a no-op; the existing observable-proxy helper remains the only
+    active lagged correction.
+    """
+
+    e_coarse = current_e_coarse
+    e_fine = current_e_fine
+    h_coarse = current_h_coarse
+    h_fine = current_h_fine
+    packet_offset = 0
+    for face_index, face in enumerate(_active_faces(config)):
+        orientation = FACE_ORIENTATIONS[face]
+        ops = _get_face_ops(config, face)
+        packet_length = int(np.prod(ops.coarse_shape))
+        packet_slice = slice(packet_offset, packet_offset + packet_length)
+        packet_offset += packet_length
+
+        interface_mask = owner_state.face_proxy_mask[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        source_mask = owner_state.source_owner_mask[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        packet_mask = interface_mask * source_mask
+        interface_real = owner_state.face_proxy_reference_real[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        interface_imag = owner_state.face_proxy_reference_imag[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        source_real = owner_state.source_owner_reference_real[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        source_imag = owner_state.source_owner_reference_imag[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        normalizer_real = owner_state.source_incident_normalizer_real[
+            packet_slice
+        ].reshape(ops.coarse_shape)
+        normalizer_imag = owner_state.source_incident_normalizer_imag[
+            packet_slice
+        ].reshape(ops.coarse_shape)
+        normalized_source_real, normalized_source_imag = (
+            _incident_normalized_source_packet(
+                source_real=source_real,
+                source_imag=source_imag,
+                normalizer_real=normalizer_real,
+                normalizer_imag=normalizer_imag,
+            )
+        )
+        source_energy = (source_real * source_real + source_imag * source_imag) * (
+            source_mask
+        )
+        eps = jnp.asarray(1.0e-30, dtype=source_real.dtype)
+        source_active_scale = jnp.where(
+            jnp.sum(source_energy) > eps,
+            jnp.asarray(1.0, dtype=source_real.dtype),
+            jnp.asarray(0.0, dtype=source_real.dtype),
+        )
+        interface_active_scale = jnp.where(
+            owner_state.face_update_count[face_index] > 0,
+            jnp.asarray(1.0, dtype=source_real.dtype),
+            jnp.asarray(0.0, dtype=source_real.dtype),
+        )
+        active_scale = source_active_scale * interface_active_scale
+
+        target_real = interface_real - normalized_source_real
+        target_imag = interface_imag - normalized_source_imag
+        coarse_e = extract_tangential_e_face(e_coarse, config, face, grid="coarse")
+        fine_e = extract_tangential_e_face(e_fine, config, face, grid="fine")
+        coarse_h = extract_tangential_h_face(h_coarse, config, face, grid="coarse")
+        fine_h = extract_tangential_h_face(h_fine, config, face, grid="fine")
+        current_distribution = _private_owner_face_complex_distribution(
+            coarse_e=coarse_e,
+            fine_e=fine_e,
+            coarse_h=coarse_h,
+            fine_h=fine_h,
+            ops=ops,
+            normal_sign=orientation.normal_sign,
+        )
+        current_real = jnp.real(current_distribution).astype(jnp.float32)
+        current_imag = jnp.imag(current_distribution).astype(jnp.float32)
+        relaxation = jnp.asarray(
+            _PROPAGATION_AWARE_MODAL_RETRY_RELAXATION,
+            dtype=current_real.dtype,
+        )
         delta_real = relaxation * (target_real - current_real)
         delta_imag = relaxation * (target_imag - current_imag)
         bound_real = relaxation * (jnp.abs(target_real) + jnp.abs(current_real) + eps)
@@ -1957,6 +2128,19 @@ def step_subgrid_3d_with_cpml(
         private_interface_owner_state,
         config,
     )
+    (
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+    ) = _apply_propagation_aware_modal_retry_face_helper(
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        private_interface_owner_state,
+        config,
+    )
     private_interface_owner_state = _update_private_interface_owner_state_from_scan(
         private_interface_owner_state,
         e_post_sat_coarse=(ex_c, ey_c, ez_c),
@@ -2174,6 +2358,19 @@ def step_subgrid_3d(
         (hx_c, hy_c, hz_c),
         (hx_f, hy_f, hz_f),
     ) = _apply_observable_proxy_modal_retry_face_helper(
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        private_interface_owner_state,
+        config,
+    )
+    (
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+    ) = _apply_propagation_aware_modal_retry_face_helper(
         (ex_c, ey_c, ez_c),
         (ex_f, ey_f, ez_f),
         (hx_c, hy_c, hz_c),

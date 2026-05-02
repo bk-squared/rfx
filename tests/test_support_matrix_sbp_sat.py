@@ -4086,13 +4086,103 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == source_interface_impl["next_prerequisite"]
     )
+    propagation_retry_impl = benchmark_gate[
+        "private_plane_wave_propagation_aware_modal_retry_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_propagation_aware_modal_retry_implementation_status"
+    ] == (
+        "private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending"
+    )
+    assert propagation_retry_impl["terminal_outcome"] == (
+        "private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending"
+    )
+    assert propagation_retry_impl["upstream_state_shape_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_source_interface_ownership_state_shape_implementation_status"
+        ]
+    )
+    assert propagation_retry_impl["candidate_ladder_declared_before_solver_edit"] is True
+    assert (
+        propagation_retry_impl["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert propagation_retry_impl["candidate_count"] == 5
+    assert propagation_retry_impl["selected_candidate_id"] == (
+        "G1_source_normalized_modal_basis_hunk"
+    )
+    assert propagation_retry_impl["baseline_metrics"] == (
+        source_interface_impl["baseline_metrics"]
+    )
+    assert propagation_retry_impl["metrics"] == source_interface_impl["metrics"]
+    assert propagation_retry_impl["thresholds"] == source_interface_impl["thresholds"]
+    assert propagation_retry_impl["baseline_metrics_preserved"] is True
+    assert propagation_retry_impl["thresholds_unchanged"] is True
+    assert propagation_retry_impl["state_shape_implementation_ready"] is True
+    assert propagation_retry_impl["implementation_lane_executed"] is True
+    assert propagation_retry_impl["source_interface_state_shape_hunk_retained"] is True
+    assert propagation_retry_impl["source_owner_packet_used"] is True
+    assert propagation_retry_impl["interface_owner_packet_used"] is True
+    assert propagation_retry_impl["incident_normalizer_packet_used"] is True
+    assert propagation_retry_impl["source_interface_buffers_do_not_alias"] is True
+    assert (
+        propagation_retry_impl["propagation_aware_modal_basis_hunk_retained"]
+        is True
+    )
+    assert propagation_retry_impl["bounded_field_update_hunk_retained"] is True
+    assert propagation_retry_impl["no_op_without_source_packet"] is True
+    assert propagation_retry_impl["requires_source_packet_population"] is True
+    assert propagation_retry_impl["production_patch_applied"] is True
+    assert propagation_retry_impl["solver_behavior_changed"] is True
+    assert propagation_retry_impl["field_update_behavior_changed"] is True
+    assert propagation_retry_impl["runner_behavior_changed"] is False
+    assert propagation_retry_impl["new_solver_hunk_retained"] is True
+    assert propagation_retry_impl["benchmark_plane_dft_observable_imported"] is False
+    assert propagation_retry_impl["solver_local_proxy_uses_plane_dft_monitor"] is False
+    assert propagation_retry_impl["subgrid_vacuum_parity_scored"] is True
+    assert propagation_retry_impl["subgrid_vacuum_parity_passed"] is False
+    assert propagation_retry_impl["material_improvement_demonstrated"] is False
+    assert propagation_retry_impl["fixture_quality_pending"] is True
+    assert propagation_retry_impl["true_rt_readiness_unlocked"] is False
+    assert (
+        propagation_retry_impl[
+            "next_lane_requires_propagation_aware_modal_retry_parity_scoring"
+        ]
+        is True
+    )
+    propagation_retry_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in propagation_retry_impl["candidate_ladder"]
+    }
+    assert propagation_retry_candidates[
+        "G1_source_normalized_modal_basis_hunk"
+    ]["accepted_candidate"] is True
+    assert propagation_retry_candidates[
+        "G1_source_normalized_modal_basis_hunk"
+    ]["bounded_field_update_hunk_retained"] is True
+    assert propagation_retry_candidates[
+        "G2_private_parity_material_improvement_score"
+    ]["material_improvement_demonstrated"] is False
+    assert propagation_retry_candidates[
+        "G4_propagation_aware_modal_retry_implementation_blocked"
+    ]["accepted_candidate"] is False
+    assert propagation_retry_impl["public_claim_allowed"] is False
+    assert propagation_retry_impl["public_observable_promoted"] is False
+    assert propagation_retry_impl["true_rt_public_observable_promoted"] is False
+    assert propagation_retry_impl["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_propagation_aware_modal_retry_implementation_next_prerequisite"
+        ]
+        == propagation_retry_impl["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave propagation-aware modal retry implementation after "
-        "source-interface state-shape hunk retained ralplan"
+        "private plane-wave propagation-aware modal retry parity scoring after "
+        "source-normalized hunk retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave propagation-aware modal retry implementation after "
-        "source-interface state-shape hunk retained ralplan"
+        "private plane-wave propagation-aware modal retry parity scoring after "
+        "source-normalized hunk retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -4267,6 +4357,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_source_interface_ownership_state_shape_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_propagation_aware_modal_retry_implementation_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -4534,8 +4630,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave propagation-aware modal retry implementation after "
-        "source-interface state-shape hunk retained ralplan"
+        "private plane-wave propagation-aware modal retry parity scoring after "
+        "source-normalized hunk retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

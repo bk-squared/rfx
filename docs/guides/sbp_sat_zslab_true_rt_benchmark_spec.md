@@ -438,6 +438,13 @@ and orientation buffers are retained separately from the existing interface
 packet, with CPML/non-CPML/JIT initialization symmetry and no modal field-update
 behavior change. The next safe lane is private propagation-aware modal retry
 implementation after source-interface state-shape hunk retained.
+That implementation lane now records
+`private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending`:
+a bounded private helper uses only the source-owner packet, incident normalizer,
+and lagged interface-owner packet, remains no-op without populated source
+packets, and does not import benchmark DFT/flux/TFSF/port/S-parameter or public
+observable state. The next safe lane is private propagation-aware modal retry
+parity scoring after the source-normalized hunk is retained.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

@@ -1422,6 +1422,25 @@ _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_IMPLEMENTATION_PRECED
     "private_plane_wave_interface_owner_separation_hunk_retained_fixture_quality_pending",
     "private_plane_wave_source_interface_state_shape_hunk_retained_fixture_quality_pending",
 )
+_PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_STATUS = (
+    "private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending"
+)
+_PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private plane-wave propagation-aware modal retry parity scoring after "
+    "source-normalized hunk retained ralplan"
+)
+_PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_propagation_aware_modal_retry_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    "no_private_plane_wave_propagation_aware_modal_retry_implementation",
+)
+_PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_PRECEDENCE = (
+    "no_private_plane_wave_propagation_aware_modal_retry_implementation",
+    "private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_propagation_aware_modal_retry_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -12206,6 +12225,203 @@ def _private_plane_wave_source_interface_ownership_state_shape_implementation_me
     }
 
 
+def _private_plane_wave_propagation_aware_modal_retry_implementation_metadata(
+    *,
+    state_shape_implementation_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(state_shape_implementation_metadata["baseline_metrics"])
+    metrics = dict(state_shape_implementation_metadata["metrics"])
+    thresholds = dict(state_shape_implementation_metadata["thresholds"])
+    implementation_contract = {
+        "solver_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "source_state_target": "_PrivateInterfaceOwnerState.source_owner_reference_*",
+        "interface_state_target": "_PrivateInterfaceOwnerState.face_proxy_reference_*",
+        "incident_normalizer_target": (
+            "_PrivateInterfaceOwnerState.source_incident_normalizer_*"
+        ),
+        "uses_source_owner_packet": True,
+        "uses_interface_owner_packet": True,
+        "uses_incident_normalizer_packet": True,
+        "requires_source_packet_population": True,
+        "no_op_without_source_packet": True,
+        "bounded_relaxation": 0.01,
+        "benchmark_dft_required": False,
+        "public_tfsf_required": False,
+        "hook_required": False,
+    }
+    g0 = {
+        "candidate_id": "G0_source_interface_state_shape_hunk_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_state_shape_implementation_status": (
+            state_shape_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    g1 = {
+        "candidate_id": "G1_source_normalized_modal_basis_hunk",
+        "candidate_family": "private_solver_local_source_interface_modal_retry",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_STATUS
+        ),
+        "implementation_contract": implementation_contract,
+        "source_interface_state_shape_hunk_retained": True,
+        "source_owner_packet_used": True,
+        "interface_owner_packet_used": True,
+        "incident_normalizer_packet_used": True,
+        "source_interface_buffers_do_not_alias": True,
+        "propagation_aware_modal_basis_hunk_retained": True,
+        "bounded_field_update_hunk_retained": True,
+        "no_public_observable_coupling": True,
+        "fixture_quality_pending": True,
+        "public_claim_allowed": False,
+    }
+    g2 = {
+        "candidate_id": "G2_private_parity_material_improvement_score",
+        "candidate_family": "private_parity_material_improvement_gate",
+        "accepted_candidate": False,
+        "private_plane_wave_parity_scored": True,
+        "finite_reproducible_score": True,
+        "metrics": metrics,
+        "material_improvement_demonstrated": False,
+        "not_selected_reason": (
+            "this lane retains the bounded source-normalized hunk, but the "
+            "source-owner incident packet is not populated by a production "
+            "source path yet; parity evidence therefore remains fixture-quality "
+            "pending under unchanged thresholds"
+        ),
+        "public_claim_allowed": False,
+    }
+    g3 = {
+        "candidate_id": "G3_private_true_rt_readiness_pass",
+        "candidate_family": "fixture_quality_and_true_rt_readiness_gate",
+        "accepted_candidate": False,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "not_selected_reason": (
+            "source/interface modal hunk retention alone does not satisfy the "
+            "unchanged private parity, vacuum magnitude, or phase gates"
+        ),
+        "public_claim_allowed": False,
+    }
+    g4 = {
+        "candidate_id": "G4_propagation_aware_modal_retry_implementation_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_propagation_aware_modal_retry_implementation"
+        ),
+        "not_selected_reason": (
+            "the source/interface owner-state buffers are sufficient to retain "
+            "a bounded private source-normalized modal hunk without public "
+            "surface changes"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (g0, g1, g2, g3, g4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_propagation_aware_modal_retry_implementation_only"
+        ),
+        "upstream_state_shape_implementation_status": (
+            state_shape_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite G0/G1/G2/G3/G4 implementation ladder; retain a private "
+            "source-normalized modal field-update hunk only through existing "
+            "source/interface owner-state buffers and without benchmark "
+            "observable or public-surface coupling"
+        ),
+        "selected_candidate_id": "G1_source_normalized_modal_basis_hunk",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "state_shape_implementation_ready": True,
+        "implementation_lane_executed": True,
+        "source_interface_state_shape_hunk_retained": True,
+        "source_owner_buffers_hunk_retained": True,
+        "source_owner_packet_used": True,
+        "interface_owner_packet_used": True,
+        "incident_normalizer_packet_used": True,
+        "source_incident_normalizer_buffers_retained": True,
+        "source_interface_buffers_do_not_alias": True,
+        "propagation_aware_modal_basis_hunk_retained": True,
+        "source_normalized_modal_basis_hunk_retained": True,
+        "bounded_field_update_hunk_retained": True,
+        "no_op_without_source_packet": True,
+        "requires_source_packet_population": True,
+        "cpml_non_cpml_helper_wiring_retained": True,
+        "implementation_contract": implementation_contract,
+        "production_patch_applied": True,
+        "solver_behavior_changed": True,
+        "field_update_behavior_changed": True,
+        "runner_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": True,
+        "new_solver_hunk_retained": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "material_improvement_demonstrated": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_propagation_aware_modal_retry_parity_scoring": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private propagation-aware modal retry implementation retains "
+            "a bounded source-normalized face helper using only the private "
+            "source-owner packet, incident normalizer, and interface-owner "
+            "packet; fixture quality remains pending because source-owner "
+            "incident packet population and unchanged parity gates are not "
+            "yet passed"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -15001,8 +15217,33 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_propagation_aware_modal_retry_implementation_metadata = (
+        _private_plane_wave_propagation_aware_modal_retry_implementation_metadata(
+            state_shape_implementation_metadata=(
+                plane_wave_source_interface_ownership_state_shape_implementation_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_propagation_aware_modal_retry_implementation_status": (
+                plane_wave_propagation_aware_modal_retry_implementation_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_propagation_aware_modal_retry_implementation": (
+                plane_wave_propagation_aware_modal_retry_implementation_metadata
+            ),
+            "private_plane_wave_propagation_aware_modal_retry_implementation_next_prerequisite": (
+                plane_wave_propagation_aware_modal_retry_implementation_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_source_interface_ownership_state_shape_implementation_next_prerequisite"
+        "private_plane_wave_propagation_aware_modal_retry_implementation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -15162,6 +15403,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave source/interface ownership "
                 "state-shape implementation lane records "
                 f"{plane_wave_source_interface_ownership_state_shape_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave propagation-aware modal retry "
+                "implementation lane records "
+                f"{plane_wave_propagation_aware_modal_retry_implementation_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -15171,7 +15415,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_source_interface_ownership_state_shape_implementation_next_prerequisite"
+                "private_plane_wave_propagation_aware_modal_retry_implementation_next_prerequisite"
             ],
         }
 
@@ -20335,10 +20579,98 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_source_interface_ownership_state_shape_implementation_next_prerequisite"
         ]
     )
+    propagation_retry_impl = metadata[
+        "private_plane_wave_propagation_aware_modal_retry_implementation"
+    ]
+    assert metadata[
+        "private_plane_wave_propagation_aware_modal_retry_implementation_status"
+    ] == _PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_STATUS
+    assert propagation_retry_impl["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_PROPAGATION_AWARE_MODAL_RETRY_IMPLEMENTATION_STATUS
+    )
+    assert propagation_retry_impl["upstream_state_shape_implementation_status"] == (
+        metadata[
+            "private_plane_wave_source_interface_ownership_state_shape_implementation_status"
+        ]
+    )
+    assert propagation_retry_impl["candidate_ladder_declared_before_solver_edit"] is True
+    assert (
+        propagation_retry_impl["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert propagation_retry_impl["candidate_count"] == 5
+    assert propagation_retry_impl["selected_candidate_id"] == (
+        "G1_source_normalized_modal_basis_hunk"
+    )
+    assert propagation_retry_impl["baseline_metrics"] == (
+        source_interface_impl["baseline_metrics"]
+    )
+    assert propagation_retry_impl["metrics"] == source_interface_impl["metrics"]
+    assert propagation_retry_impl["thresholds"] == source_interface_impl["thresholds"]
+    assert propagation_retry_impl["baseline_metrics_preserved"] is True
+    assert propagation_retry_impl["thresholds_unchanged"] is True
+    assert propagation_retry_impl["state_shape_implementation_ready"] is True
+    assert propagation_retry_impl["implementation_lane_executed"] is True
+    assert propagation_retry_impl["source_interface_state_shape_hunk_retained"] is True
+    assert propagation_retry_impl["source_owner_packet_used"] is True
+    assert propagation_retry_impl["interface_owner_packet_used"] is True
+    assert propagation_retry_impl["incident_normalizer_packet_used"] is True
+    assert propagation_retry_impl["source_interface_buffers_do_not_alias"] is True
+    assert (
+        propagation_retry_impl["propagation_aware_modal_basis_hunk_retained"]
+        is True
+    )
+    assert propagation_retry_impl["bounded_field_update_hunk_retained"] is True
+    assert propagation_retry_impl["no_op_without_source_packet"] is True
+    assert propagation_retry_impl["requires_source_packet_population"] is True
+    assert propagation_retry_impl["production_patch_applied"] is True
+    assert propagation_retry_impl["solver_behavior_changed"] is True
+    assert propagation_retry_impl["field_update_behavior_changed"] is True
+    assert propagation_retry_impl["runner_behavior_changed"] is False
+    assert propagation_retry_impl["new_solver_hunk_retained"] is True
+    assert propagation_retry_impl["benchmark_plane_dft_observable_imported"] is False
+    assert propagation_retry_impl["solver_local_proxy_uses_plane_dft_monitor"] is False
+    assert propagation_retry_impl["subgrid_vacuum_parity_scored"] is True
+    assert propagation_retry_impl["subgrid_vacuum_parity_passed"] is False
+    assert propagation_retry_impl["material_improvement_demonstrated"] is False
+    assert propagation_retry_impl["fixture_quality_pending"] is True
+    assert propagation_retry_impl["true_rt_readiness_unlocked"] is False
+    assert (
+        propagation_retry_impl[
+            "next_lane_requires_propagation_aware_modal_retry_parity_scoring"
+        ]
+        is True
+    )
+    propagation_retry_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in propagation_retry_impl["candidate_ladder"]
+    }
+    assert propagation_retry_candidates[
+        "G1_source_normalized_modal_basis_hunk"
+    ]["accepted_candidate"] is True
+    assert propagation_retry_candidates[
+        "G1_source_normalized_modal_basis_hunk"
+    ]["bounded_field_update_hunk_retained"] is True
+    assert propagation_retry_candidates[
+        "G2_private_parity_material_improvement_score"
+    ]["material_improvement_demonstrated"] is False
+    assert propagation_retry_candidates[
+        "G4_propagation_aware_modal_retry_implementation_blocked"
+    ]["accepted_candidate"] is False
+    assert propagation_retry_impl["public_claim_allowed"] is False
+    assert propagation_retry_impl["public_observable_promoted"] is False
+    assert propagation_retry_impl["true_rt_public_observable_promoted"] is False
+    assert propagation_retry_impl["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        propagation_retry_impl["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_propagation_aware_modal_retry_implementation_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_source_interface_ownership_state_shape_implementation_next_prerequisite"
+            "private_plane_wave_propagation_aware_modal_retry_implementation_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -20364,7 +20696,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_source_interface_ownership_state_shape_implementation_next_prerequisite"
+            "private_plane_wave_propagation_aware_modal_retry_implementation_next_prerequisite"
         ]
     )
     assert (
@@ -20580,6 +20912,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_source_interface_ownership_state_shape_implementation_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_propagation_aware_modal_retry_implementation_status"
         ]
         in metadata["blocking_diagnostic"]
     )

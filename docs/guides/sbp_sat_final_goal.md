@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave propagation-aware modal retry
-implementation after the source-interface state-shape hunk was retained. The
-private owner state shape now propagates through CPML and non-CPML subgrid steps plus
+parity scoring after the source-normalized hunk was retained. The private
+owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
 correction lane failed closed because the retained scorer is face-scalar
@@ -170,7 +170,14 @@ private source-owner reference, incident-normalizer, weight/mask, offset/length,
 and orientation buffers are retained separately from the existing interface
 packet, with CPML/non-CPML/JIT initialization symmetry and no modal field-update
 behavior change. The next lane may use the retained source/interface state shape
-for a private propagation-aware modal retry. The private solver-local
+for a private propagation-aware modal retry. That implementation lane now
+records
+`private_plane_wave_propagation_aware_modal_basis_hunk_retained_fixture_quality_pending`:
+a bounded solver-local helper uses the private source-owner packet, incident
+normalizer, and lagged interface-owner packet while remaining no-op without
+populated source-owner incident packets and importing no public observable or
+benchmark DFT/flux/TFSF/port/S-parameter state. The next lane is private
+propagation-aware modal retry parity scoring. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
