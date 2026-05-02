@@ -1886,13 +1886,93 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == phase_architecture["next_prerequisite"]
     )
+    phase_staging_impl = benchmark_gate[
+        "private_plane_wave_phase_coherence_staging_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_phase_coherence_staging_implementation_status"
+    ] == "no_private_plane_wave_phase_coherence_staging_implementation"
+    assert phase_staging_impl["terminal_outcome"] == (
+        "no_private_plane_wave_phase_coherence_staging_implementation"
+    )
+    assert phase_staging_impl["upstream_phase_architecture_status"] == (
+        benchmark_gate[
+            "private_plane_wave_transverse_phase_coherence_architecture_status"
+        ]
+    )
+    assert phase_staging_impl["upstream_operator_mortar_status"] == (
+        benchmark_gate[
+            "private_plane_wave_operator_mortar_energy_form_implementation_status"
+        ]
+    )
+    assert phase_staging_impl["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert phase_staging_impl["candidate_ladder_declared_before_slow_scoring"] is True
+    assert phase_staging_impl["candidate_count"] == 5
+    assert phase_staging_impl["selected_candidate_id"] == (
+        "K3_phase_coherence_staging_implementation_blocked"
+    )
+    assert phase_staging_impl["baseline_metrics"] == phase_architecture[
+        "baseline_metrics"
+    ]
+    assert phase_staging_impl["baseline_metrics_preserved"] is True
+    assert phase_staging_impl["thresholds_unchanged"] is True
+    assert phase_staging_impl["dominant_metric"] == "transverse_phase_spread_deg"
+    assert phase_staging_impl["paired_metric"] == "transverse_magnitude_cv"
+    assert phase_staging_impl["joint_phase_magnitude_improved"] is False
+    assert phase_staging_impl["phase_coherence_contract_ready"] is True
+    assert phase_staging_impl["implementation_lane_executed"] is True
+    assert phase_staging_impl["phase_coherence_state_owner_hunk_retained"] is False
+    assert phase_staging_impl["phase_coherence_joint_score_hunk_retained"] is False
+    assert phase_staging_impl["production_patch_applied"] is False
+    assert phase_staging_impl["solver_behavior_changed"] is False
+    assert phase_staging_impl["new_solver_hunk_retained"] is False
+    assert phase_staging_impl["no_bounded_hunk_accepted"] is True
+    assert phase_staging_impl["true_rt_readiness_unlocked"] is False
+    assert (
+        phase_staging_impl["next_lane_requires_solver_state_architecture_redesign"]
+        is True
+    )
+    phase_staging_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in phase_staging_impl["candidate_ladder"]
+    }
+    assert (
+        phase_staging_candidates[
+            "K1_private_interface_state_owner_solver_staging"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        phase_staging_candidates[
+            "K2_phase_coherence_joint_score_guard"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        phase_staging_candidates[
+            "K3_phase_coherence_staging_implementation_blocked"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert phase_staging_impl["public_claim_allowed"] is False
+    assert phase_staging_impl["public_observable_promoted"] is False
+    assert phase_staging_impl["true_rt_public_observable_promoted"] is False
+    assert phase_staging_impl["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_phase_coherence_staging_implementation_next_prerequisite"
+        ]
+        == phase_staging_impl["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave phase-coherence staging implementation after "
-        "architecture contract ready ralplan"
+        "private plane-wave solver-wide interface-state owner architecture redesign "
+        "after phase-coherence staging implementation blocked ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave phase-coherence staging implementation after "
-        "architecture contract ready ralplan"
+        "private plane-wave solver-wide interface-state owner architecture redesign "
+        "after phase-coherence staging implementation blocked ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1947,6 +2027,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_transverse_phase_coherence_architecture_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_phase_coherence_staging_implementation_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -2214,8 +2300,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave phase-coherence staging implementation after "
-        "architecture contract ready ralplan"
+        "private plane-wave solver-wide interface-state owner architecture redesign "
+        "after phase-coherence staging implementation blocked ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

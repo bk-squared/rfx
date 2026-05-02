@@ -337,8 +337,12 @@ phase-coherence architecture redesign after operator/mortar energy-form
 implementation blocked ralplan`. That architecture lane now records
 `private_plane_wave_phase_coherence_staging_contract_ready`: a single private
 interface-state owner must preserve transverse phase spread and magnitude CV
-jointly, so the next safe lane is `private plane-wave phase-coherence staging
-implementation after architecture contract ready ralplan`. Hook experiments
+jointly. The follow-up implementation lane now records
+`no_private_plane_wave_phase_coherence_staging_implementation`: the required
+interface-state owner changes solver state shape and scan staging, and a joint
+score guard alone cannot claim material repair. The next safe lane is `private
+plane-wave solver-wide interface-state owner architecture redesign after
+phase-coherence staging implementation blocked ralplan`. Hook experiments
 remain closed and public promotion remains closed. Until those fixture-quality
 gates pass, the private flux/DFT gate remains internal diagnostic evidence
 only, and the support matrix continues to mark true R/T as deferred.

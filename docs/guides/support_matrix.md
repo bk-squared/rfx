@@ -290,7 +290,12 @@ architecture redesign. That architecture lane now records
 `private_plane_wave_phase_coherence_staging_contract_ready`: a single private
 interface-state owner must preserve transverse phase spread and magnitude CV
 jointly before any implementation hunk or true R/T readiness claim; public
-promotion remains closed.
+promotion remains closed. The follow-up implementation lane now records
+`no_private_plane_wave_phase_coherence_staging_implementation`: K1 would change
+solver state shape and scan staging to introduce that private interface-state
+owner, while K2 is only a scoring guard and cannot repair the solver path
+without K1. The next safe lane is private plane-wave solver-wide
+interface-state owner architecture redesign; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
