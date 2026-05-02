@@ -4391,13 +4391,117 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == source_owner_population_design["next_prerequisite"]
     )
+    source_owner_population_impl = benchmark_gate[
+        "private_plane_wave_source_owner_incident_packet_population_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_source_owner_incident_packet_population_implementation_status"
+    ] == (
+        "private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending"
+    )
+    assert source_owner_population_impl["terminal_outcome"] == (
+        "private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending"
+    )
+    assert source_owner_population_impl["upstream_population_design_status"] == (
+        benchmark_gate[
+            "private_plane_wave_source_owner_incident_packet_population_design_status"
+        ]
+    )
+    assert source_owner_population_impl["candidate_ladder_declared_before_solver_edit"]
+    assert source_owner_population_impl["candidate_ladder_declared_before_slow_scoring"]
+    assert source_owner_population_impl["candidate_count"] == 5
+    assert source_owner_population_impl["selected_candidate_id"] == (
+        "J2_cpml_non_cpml_source_owner_population_wiring"
+    )
+    assert source_owner_population_impl["baseline_metrics"] == (
+        source_owner_population_design["baseline_metrics"]
+    )
+    assert source_owner_population_impl["metrics"] == (
+        source_owner_population_design["metrics"]
+    )
+    assert source_owner_population_impl["thresholds"] == (
+        source_owner_population_design["thresholds"]
+    )
+    assert source_owner_population_impl["baseline_metrics_preserved"]
+    assert source_owner_population_impl["thresholds_unchanged"]
+    assert source_owner_population_impl["population_design_contract_ready"]
+    assert source_owner_population_impl["implementation_lane_executed"]
+    assert source_owner_population_impl[
+        "source_owner_incident_packet_population_hunk_retained"
+    ]
+    assert source_owner_population_impl["source_owner_incident_packet_populated"]
+    assert source_owner_population_impl[
+        "source_owner_incident_packet_population_implemented"
+    ]
+    assert source_owner_population_impl["source_packet_updates_only_source_owner_fields"]
+    assert source_owner_population_impl["interface_owner_packet_preserved"]
+    assert source_owner_population_impl["source_interface_buffers_do_not_alias"]
+    assert source_owner_population_impl[
+        "source_incident_normalizer_real_set_to_mask"
+    ]
+    assert source_owner_population_impl["source_incident_normalizer_imag_zero"]
+    assert source_owner_population_impl["cpml_source_population_wiring_retained"]
+    assert source_owner_population_impl["non_cpml_source_population_wiring_retained"]
+    assert source_owner_population_impl["cpml_non_cpml_wiring_symmetry_retained"]
+    assert source_owner_population_impl[
+        "source_population_before_propagation_aware_modal_retry"
+    ]
+    assert source_owner_population_impl["source_population_before_interface_owner_scan"]
+    impl_contract = source_owner_population_impl["implementation_contract"]
+    assert impl_contract["solver_helper"] == "_update_private_source_owner_state_from_scan"
+    assert "_apply_propagation_aware_modal_retry_face_helper" in impl_contract[
+        "population_slot"
+    ]
+    assert impl_contract["source_packet_updates_only_source_owner_fields"]
+    assert source_owner_population_impl["production_patch_applied"]
+    assert source_owner_population_impl["solver_behavior_changed"]
+    assert source_owner_population_impl["field_update_behavior_changed"] is False
+    assert source_owner_population_impl["runner_behavior_changed"] is False
+    assert source_owner_population_impl["new_solver_hunk_retained"]
+    assert source_owner_population_impl["benchmark_plane_dft_observable_imported"] is False
+    assert source_owner_population_impl["solver_local_proxy_uses_plane_dft_monitor"] is False
+    assert source_owner_population_impl["fixture_quality_pending"]
+    assert source_owner_population_impl["subgrid_vacuum_parity_passed"] is False
+    assert source_owner_population_impl["true_rt_readiness_unlocked"] is False
+    assert source_owner_population_impl[
+        "next_lane_requires_source_populated_modal_retry_parity_scoring"
+    ]
+    source_owner_impl_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_owner_population_impl["candidate_ladder"]
+    }
+    assert source_owner_impl_candidates[
+        "J1_source_owner_packet_population_helper"
+    ]["source_owner_incident_packet_population_hunk_retained"]
+    assert source_owner_impl_candidates[
+        "J1_source_owner_packet_population_helper"
+    ]["superseded_by"] == "J2_cpml_non_cpml_source_owner_population_wiring"
+    assert source_owner_impl_candidates[
+        "J2_cpml_non_cpml_source_owner_population_wiring"
+    ]["accepted_candidate"]
+    assert source_owner_impl_candidates[
+        "J4_source_owner_population_implementation_blocked"
+    ]["accepted_candidate"] is False
+    assert source_owner_population_impl["public_claim_allowed"] is False
+    assert source_owner_population_impl["public_observable_promoted"] is False
+    assert source_owner_population_impl["true_rt_public_observable_promoted"] is False
+    assert (
+        source_owner_population_impl["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_owner_incident_packet_population_implementation_next_prerequisite"
+        ]
+        == source_owner_population_impl["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source-owner incident packet population implementation "
-        "after design contract ready ralplan"
+        "private plane-wave source-populated propagation-aware modal retry parity "
+        "scoring after source-owner packet hunk retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave source-owner incident packet population implementation "
-        "after design contract ready ralplan"
+        "private plane-wave source-populated propagation-aware modal retry parity "
+        "scoring after source-owner packet hunk retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -4590,6 +4694,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_source_owner_incident_packet_population_design_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_owner_incident_packet_population_implementation_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -4857,8 +4967,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source-owner incident packet population implementation "
-        "after design contract ready ralplan"
+        "private plane-wave source-populated propagation-aware modal retry parity "
+        "scoring after source-owner packet hunk retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

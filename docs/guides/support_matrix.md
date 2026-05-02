@@ -418,9 +418,14 @@ closed. That design lane now records
 `private_plane_wave_source_owner_incident_packet_population_contract_ready`:
 source-owner reference, incident-normalizer, packet offset/orientation, and
 pre-modal-retry timing contracts are private, fixed-shape, CPML/non-CPML/JIT
-symmetric, and non-aliasing with the interface-owner packet. The next safe lane
-is private source-owner incident packet population implementation after design
-contract ready; public promotion remains closed.
+symmetric, and non-aliasing with the interface-owner packet. The implementation
+lane now records
+`private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
+a private packetization helper populates source-owner incident packets before
+propagation-aware modal retry, preserves the interface-owner packet, and keeps
+CPML/non-CPML wiring plus public promotion closed. The next safe lane is private
+source-populated propagation-aware modal retry parity scoring after the
+source-owner packet hunk is retained.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

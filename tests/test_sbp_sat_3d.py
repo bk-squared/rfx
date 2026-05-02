@@ -23,6 +23,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _init_private_interface_owner_state,
     _private_interface_owner_joint_score,
     _update_private_interface_owner_state_from_scan,
+    _update_private_source_owner_state_from_scan,
     apply_sat_e_interfaces,
     apply_sat_h_interfaces,
     compute_energy_3d,
@@ -521,6 +522,7 @@ def test_time_centered_paired_face_helper_is_wired_after_e_sat():
         skew_index = source.index("_apply_operator_projected_skew_eh_face_helper")
         helper_index = source.index("_apply_time_centered_paired_face_helper")
         proxy_index = source.index("_apply_observable_proxy_modal_retry_face_helper")
+        source_index = source.index("_update_private_source_owner_state_from_scan")
         propagation_index = source.index(
             "_apply_propagation_aware_modal_retry_face_helper"
         )
@@ -532,6 +534,7 @@ def test_time_centered_paired_face_helper_is_wired_after_e_sat():
             < skew_index
             < helper_index
             < proxy_index
+            < source_index
             < propagation_index
         )
         assert "private_post_h_hook" in source
@@ -710,6 +713,51 @@ def test_private_source_owner_buffers_are_separate_from_interface_packet():
     np.testing.assert_allclose(
         np.asarray(updated.source_incident_normalizer_real),
         source_normalizer_before,
+    )
+
+
+def test_private_source_owner_population_updates_source_packet_only():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    owner_state = _init_private_interface_owner_state(config)
+    face_real_before = np.asarray(owner_state.face_proxy_reference_real)
+    face_imag_before = np.asarray(owner_state.face_proxy_reference_imag)
+
+    updated = _update_private_source_owner_state_from_scan(
+        owner_state,
+        e_source_coarse=(state.ex_c + 1.0, state.ey_c + 2.0, state.ez_c + 3.0),
+        e_source_fine=(state.ex_f + 1.5, state.ey_f + 2.5, state.ez_f + 3.5),
+        h_source_coarse=(state.hx_c + 0.1, state.hy_c + 0.2, state.hz_c + 0.3),
+        h_source_fine=(state.hx_f + 0.15, state.hy_f + 0.25, state.hz_f + 0.35),
+        config=config,
+    )
+    active_source = np.asarray(updated.source_owner_mask) > 0.0
+
+    assert np.any(
+        np.abs(np.asarray(updated.source_owner_reference_real)[active_source]) > 0.0
+    )
+    assert np.any(
+        np.abs(np.asarray(updated.source_owner_reference_imag)[active_source]) > 0.0
+    )
+    np.testing.assert_allclose(
+        np.asarray(updated.face_proxy_reference_real),
+        face_real_before,
+    )
+    np.testing.assert_allclose(
+        np.asarray(updated.face_proxy_reference_imag),
+        face_imag_before,
+    )
+    np.testing.assert_allclose(
+        np.asarray(updated.source_incident_normalizer_real),
+        np.asarray(updated.source_owner_mask),
+    )
+    np.testing.assert_allclose(
+        np.asarray(updated.source_incident_normalizer_imag),
+        0.0,
     )
 
 
@@ -1015,6 +1063,13 @@ def _assert_private_owner_joint_score(owner_state, config):
     assert np.all(np.isfinite(np.asarray(owner_state.face_proxy_reference_imag)))
     active_proxy = np.asarray(owner_state.face_proxy_mask) > 0.0
     assert np.any(np.abs(np.asarray(owner_state.face_proxy_reference_real)[active_proxy]) > 0.0)
+    active_source = np.asarray(owner_state.source_owner_mask) > 0.0
+    assert np.all(np.isfinite(np.asarray(owner_state.source_owner_reference_real)))
+    assert np.all(np.isfinite(np.asarray(owner_state.source_owner_reference_imag)))
+    assert np.any(
+        np.abs(np.asarray(owner_state.source_owner_reference_real)[active_source])
+        > 0.0
+    )
     score = _private_interface_owner_joint_score(owner_state)
     assert int(np.asarray(score.usable_face_count)) == len(_active_faces(config))
     assert np.isfinite(float(np.asarray(score.transverse_magnitude_cv)))
@@ -1030,6 +1085,7 @@ def test_private_interface_owner_scan_wiring_is_after_same_step_eh_sat():
         e_sat_index = source.index("apply_sat_e_interfaces")
         helper_index = source.index("_apply_time_centered_paired_face_helper")
         proxy_index = source.index("_apply_observable_proxy_modal_retry_face_helper")
+        source_index = source.index("_update_private_source_owner_state_from_scan")
         propagation_index = source.index(
             "_apply_propagation_aware_modal_retry_face_helper"
         )
@@ -1039,6 +1095,7 @@ def test_private_interface_owner_scan_wiring_is_after_same_step_eh_sat():
             < e_sat_index
             < helper_index
             < proxy_index
+            < source_index
             < propagation_index
             < scan_index
         )

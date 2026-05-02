@@ -792,6 +792,85 @@ def _update_private_interface_owner_state_from_scan(
     )
 
 
+def _update_private_source_owner_state_from_scan(
+    owner_state: _PrivateInterfaceOwnerState,
+    *,
+    e_source_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    e_source_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    h_source_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    h_source_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+) -> _PrivateInterfaceOwnerState:
+    """Populate private source-owner packets before modal retry.
+
+    This is a solver-local packetization step only: it samples the same private
+    tangential E/H face distribution used by the owner-state diagnostics, writes
+    it into the source-owner packet fields, and leaves the interface-owner packet
+    untouched.  It does not consume benchmark monitors, public TFSF state, hooks,
+    ports, S-parameters, or public observables.
+    """
+
+    packet_real = []
+    packet_imag = []
+    packet_weight = []
+    packet_mask = []
+    for face in _active_faces(config):
+        orientation = FACE_ORIENTATIONS[face]
+        ops = _get_face_ops(config, face)
+        coarse_mask, _ = _face_interior_masks(ops.coarse_shape, config.ratio)
+        coarse_e = extract_tangential_e_face(
+            e_source_coarse,
+            config,
+            face,
+            grid="coarse",
+        )
+        fine_e = extract_tangential_e_face(
+            e_source_fine,
+            config,
+            face,
+            grid="fine",
+        )
+        coarse_h = extract_tangential_h_face(
+            h_source_coarse,
+            config,
+            face,
+            grid="coarse",
+        )
+        fine_h = extract_tangential_h_face(
+            h_source_fine,
+            config,
+            face,
+            grid="fine",
+        )
+        source_distribution = _private_owner_face_complex_distribution(
+            coarse_e=coarse_e,
+            fine_e=fine_e,
+            coarse_h=coarse_h,
+            fine_h=fine_h,
+            ops=ops,
+            normal_sign=orientation.normal_sign,
+        )
+        packet_real.append(
+            jnp.ravel(jnp.real(source_distribution).astype(jnp.float32) * coarse_mask)
+        )
+        packet_imag.append(
+            jnp.ravel(jnp.imag(source_distribution).astype(jnp.float32) * coarse_mask)
+        )
+        packet_weight.append(jnp.ravel(ops.coarse_norm * coarse_mask))
+        packet_mask.append(jnp.ravel(coarse_mask))
+    if not packet_real:
+        return owner_state
+    source_mask = jnp.concatenate(packet_mask).astype(jnp.float32)
+    return owner_state._replace(
+        source_owner_reference_real=jnp.concatenate(packet_real),
+        source_owner_reference_imag=jnp.concatenate(packet_imag),
+        source_owner_weight=jnp.concatenate(packet_weight).astype(jnp.float32),
+        source_owner_mask=source_mask,
+        source_incident_normalizer_real=source_mask,
+        source_incident_normalizer_imag=jnp.zeros_like(source_mask),
+    )
+
+
 def _apply_observable_proxy_modal_retry_face_helper(
     current_e_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
     current_e_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
@@ -2128,6 +2207,14 @@ def step_subgrid_3d_with_cpml(
         private_interface_owner_state,
         config,
     )
+    private_interface_owner_state = _update_private_source_owner_state_from_scan(
+        private_interface_owner_state,
+        e_source_coarse=(ex_c, ey_c, ez_c),
+        e_source_fine=(ex_f, ey_f, ez_f),
+        h_source_coarse=(hx_c, hy_c, hz_c),
+        h_source_fine=(hx_f, hy_f, hz_f),
+        config=config,
+    )
     (
         (ex_c, ey_c, ez_c),
         (ex_f, ey_f, ez_f),
@@ -2364,6 +2451,14 @@ def step_subgrid_3d(
         (hx_f, hy_f, hz_f),
         private_interface_owner_state,
         config,
+    )
+    private_interface_owner_state = _update_private_source_owner_state_from_scan(
+        private_interface_owner_state,
+        e_source_coarse=(ex_c, ey_c, ez_c),
+        e_source_fine=(ex_f, ey_f, ez_f),
+        h_source_coarse=(hx_c, hy_c, hz_c),
+        h_source_fine=(hx_f, hy_f, hz_f),
+        config=config,
     )
     (
         (ex_c, ey_c, ez_c),

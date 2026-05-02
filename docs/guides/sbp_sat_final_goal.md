@@ -99,10 +99,14 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave source-owner incident packet
-population implementation after the private population design contract became
-ready. The private
-owner state shape now propagates through CPML and non-CPML subgrid steps plus
+The immediate lane is now private plane-wave source-populated propagation-aware
+modal retry parity scoring after the source-owner packet hunk was retained.
+The previous implementation lane records
+`private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
+a solver-local packetization helper now populates private source-owner incident
+packets before propagation-aware modal retry, preserves the interface-owner
+packet, and keeps CPML/non-CPML wiring plus public promotion closed. The private
+owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
 correction lane failed closed because the retained scorer is face-scalar
@@ -188,7 +192,10 @@ incident packet population design. That design lane now records
 source-owner reference, incident-normalizer, packet offset/orientation, and
 pre-modal-retry timing contracts can stay private, fixed-shape,
 CPML/non-CPML/JIT symmetric, and non-aliasing with the interface-owner packet.
-The next lane is private source-owner incident packet population implementation.
+The implementation lane now records
+`private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`,
+so the next lane is private source-populated propagation-aware modal retry
+parity scoring after the source-owner packet hunk is retained.
 The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
@@ -283,10 +290,12 @@ the missing source-owner/incident-normalizer packet, so the next private design
 step was source-interface ownership state shape. That design contract is now
 ready, and the fixed-shape source-owner/interface-owner state has now been
 retained without public promotion or modal field-update behavior changes. The
-goal gate therefore remains claims-closed until a later redesign/readiness lane
-proves the real solver path improves without breaking CPML/non-CPML symmetry,
-boundary guards, update/coupling bounds, or the unchanged `0.02`
-manufactured-ledger threshold.
+private source-owner incident packet population hunk is also retained, so the
+next private gate is source-populated propagation-aware modal retry parity
+scoring. The goal gate therefore remains claims-closed until a later
+redesign/readiness lane proves the real solver path improves without breaking
+CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
+unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

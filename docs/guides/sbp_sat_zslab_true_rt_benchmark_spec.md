@@ -456,8 +456,13 @@ That design lane now records
 source-owner reference, incident-normalizer, packet offset/orientation, and
 pre-modal-retry timing contracts can remain private, fixed-shape,
 CPML/non-CPML/JIT symmetric, and separate from interface-owner packets. The
-next safe lane is private source-owner incident packet population implementation
-after design contract ready.
+implementation lane now records
+`private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
+a solver-local packetization helper populates private source-owner incident
+packets before propagation-aware modal retry, preserves interface-owner packets,
+and keeps CPML/non-CPML wiring plus public promotion closed. The next safe lane
+is private source-populated propagation-aware modal retry parity scoring after
+the source-owner packet hunk is retained.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
