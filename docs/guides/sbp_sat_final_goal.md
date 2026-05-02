@@ -99,8 +99,8 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave observable-proxy modal retry
-redesign implementation after the failure-theory contract became ready. The
+The immediate lane is now private plane-wave source-interface ownership
+state-shape design after modal retry redesign implementation blocked. The
 private owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
@@ -153,8 +153,12 @@ thresholds. The failure-theory lane now records
 lagged packed face packet only aligned local face distribution state, while the
 remaining blocker is propagation-aware transverse phase coherence plus an
 incident-normalized observable basis with source/interface ownership separation.
-The next lane may attempt a private bounded modal-retry redesign implementation,
-but true R/T readiness is still pending. The private solver-local
+The follow-up implementation attempt keeps true R/T readiness pending and records
+`no_private_plane_wave_observable_proxy_modal_retry_redesign_implementation`:
+no new propagation-aware modal-basis hunk is retained because the current
+private owner state has only the interface-observed packet and no separate
+source-owner/incident-normalizer packet. The next lane must define private
+source/interface ownership state shape before another field-update hunk. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
@@ -241,12 +245,14 @@ the face-packet implementation lane has retained the packed state/capture hunk,
 and the modal retry lane has retained the private packed-state E-modal correction
 hunk, but the parity-scoring lane has shown that hunk is insufficient under the
 unchanged material-improvement rule. The failure-theory lane now defines the
-private redesign contract: the next implementation must use a
+private redesign contract: a later implementation must use a
 propagation-aware, incident-normalized modal basis with source/interface
-ownership separation. The goal gate therefore remains claims-closed until a
-later redesign/readiness lane proves the real solver path improves without
-breaking CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
-unchanged `0.02` manufactured-ledger threshold.
+ownership separation. The redesign implementation lane has now failed closed on
+the missing source-owner/incident-normalizer packet, so the next private design
+step is source-interface ownership state shape. The goal gate therefore remains
+claims-closed until a later redesign/readiness lane proves the real solver path
+improves without breaking CPML/non-CPML symmetry, boundary guards,
+update/coupling bounds, or the unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

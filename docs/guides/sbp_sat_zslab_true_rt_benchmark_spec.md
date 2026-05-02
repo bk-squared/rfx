@@ -419,8 +419,13 @@ lagged packed face packet only aligned local face distribution state, while the
 remaining blocker is propagation-aware transverse phase coherence plus an
 incident-normalized observable basis with source/interface ownership separation.
 The next safe lane is private modal-retry redesign implementation after that
-failure-theory contract. Hook experiments remain closed and public promotion
-remains closed.
+failure-theory contract. That implementation lane now records
+`no_private_plane_wave_observable_proxy_modal_retry_redesign_implementation`:
+no new propagation-aware modal-basis hunk is retained because the current
+private owner state has only the interface-observed packet and no separate
+source-owner/incident-normalizer packet. The next safe lane is private
+source-interface ownership state-shape design. Hook experiments remain closed
+and public promotion remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

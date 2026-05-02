@@ -379,7 +379,13 @@ remaining blocker is propagation-aware transverse phase coherence plus an
 incident-normalized observable basis with source/interface ownership separation.
 The next safe lane is private plane-wave observable-proxy modal retry redesign
 implementation after failure-theory contract ready; public promotion remains
-closed.
+closed. That implementation lane now records
+`no_private_plane_wave_observable_proxy_modal_retry_redesign_implementation`:
+no new propagation-aware modal-basis hunk is retained because the current
+private owner state has only the interface-observed packet and no separate
+source-owner/incident-normalizer packet. The next safe lane is private
+plane-wave source-interface ownership state-shape design after modal retry
+redesign implementation blocked; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

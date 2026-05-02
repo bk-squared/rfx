@@ -3705,13 +3705,172 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == modal_retry_failure_theory["next_prerequisite"]
     )
+    modal_retry_redesign_implementation = benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_retry_redesign_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_status"
+    ] == "no_private_plane_wave_observable_proxy_modal_retry_redesign_implementation"
+    assert modal_retry_redesign_implementation["terminal_outcome"] == (
+        "no_private_plane_wave_observable_proxy_modal_retry_redesign_implementation"
+    )
+    assert modal_retry_redesign_implementation["upstream_failure_theory_status"] == (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_retry_failure_theory_status"
+        ]
+    )
+    assert modal_retry_redesign_implementation[
+        "upstream_modal_retry_parity_status"
+    ] == benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_retry_parity_scoring_status"
+    ]
+    assert (
+        modal_retry_redesign_implementation[
+            "candidate_ladder_declared_before_solver_edit"
+        ]
+        is True
+    )
+    assert (
+        modal_retry_redesign_implementation[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert modal_retry_redesign_implementation["candidate_count"] == 5
+    assert modal_retry_redesign_implementation["selected_candidate_id"] == (
+        "D4_redesign_implementation_blocked"
+    )
+    assert modal_retry_redesign_implementation["baseline_metrics"] == (
+        modal_retry_failure_theory["baseline_metrics"]
+    )
+    assert modal_retry_redesign_implementation["metrics"] == (
+        modal_retry_failure_theory["metrics"]
+    )
+    assert modal_retry_redesign_implementation["thresholds"] == (
+        modal_retry_failure_theory["thresholds"]
+    )
+    assert modal_retry_redesign_implementation["baseline_metrics_preserved"] is True
+    assert modal_retry_redesign_implementation["thresholds_unchanged"] is True
+    assert modal_retry_redesign_implementation["failure_theory_contract_ready"] is True
+    assert modal_retry_redesign_implementation["implementation_lane_executed"] is True
+    assert (
+        modal_retry_redesign_implementation[
+            "source_interface_ownership_state_required"
+        ]
+        is True
+    )
+    assert (
+        modal_retry_redesign_implementation[
+            "incident_normalized_modal_basis_required"
+        ]
+        is True
+    )
+    assert (
+        modal_retry_redesign_implementation[
+            "propagation_aware_modal_basis_required"
+        ]
+        is True
+    )
+    assert modal_retry_redesign_implementation[
+        "source_interface_state_gap"
+    ]["incident_source_packet_available"] is False
+    assert modal_retry_redesign_implementation[
+        "source_interface_state_gap"
+    ]["bounded_solver_hunk_requires_prior_state_shape_design"] is True
+    assert (
+        modal_retry_redesign_implementation["source_interface_ownership_hunk_retained"]
+        is False
+    )
+    assert (
+        modal_retry_redesign_implementation[
+            "incident_normalized_modal_basis_hunk_retained"
+        ]
+        is False
+    )
+    assert (
+        modal_retry_redesign_implementation[
+            "propagation_aware_modal_basis_hunk_retained"
+        ]
+        is False
+    )
+    assert modal_retry_redesign_implementation["modal_retry_hunk_retained"] is True
+    assert modal_retry_redesign_implementation["packed_state_hunk_retained"] is True
+    assert modal_retry_redesign_implementation["no_bounded_hunk_accepted"] is True
+    assert modal_retry_redesign_implementation["production_patch_applied"] is False
+    assert modal_retry_redesign_implementation["solver_behavior_changed"] is False
+    assert modal_retry_redesign_implementation["field_update_behavior_changed"] is False
+    assert modal_retry_redesign_implementation["new_solver_hunk_retained"] is False
+    assert (
+        modal_retry_redesign_implementation[
+            "benchmark_plane_dft_observable_imported"
+        ]
+        is False
+    )
+    assert (
+        modal_retry_redesign_implementation[
+            "solver_local_proxy_uses_plane_dft_monitor"
+        ]
+        is False
+    )
+    assert modal_retry_redesign_implementation["subgrid_vacuum_parity_scored"] is True
+    assert modal_retry_redesign_implementation[
+        "subgrid_vacuum_parity_passed"
+    ] is False
+    assert modal_retry_redesign_implementation[
+        "material_improvement_demonstrated"
+    ] is False
+    assert modal_retry_redesign_implementation["fixture_quality_pending"] is True
+    assert modal_retry_redesign_implementation["true_rt_readiness_unlocked"] is False
+    assert (
+        modal_retry_redesign_implementation[
+            "next_lane_requires_source_interface_owner_state_shape_design"
+        ]
+        is True
+    )
+    modal_retry_redesign_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_retry_redesign_implementation["candidate_ladder"]
+    }
+    assert modal_retry_redesign_candidates[
+        "D1_propagation_aware_incident_normalized_modal_basis_owner_hunk"
+    ]["attempted_in_this_lane"] is True
+    assert modal_retry_redesign_candidates[
+        "D1_propagation_aware_incident_normalized_modal_basis_owner_hunk"
+    ]["propagation_aware_modal_basis_hunk_retained"] is False
+    assert modal_retry_redesign_candidates[
+        "D2_private_parity_material_improvement_score"
+    ]["finite_reproducible_score"] is True
+    assert modal_retry_redesign_candidates[
+        "D3_private_true_rt_readiness_pass"
+    ]["accepted_candidate"] is False
+    assert modal_retry_redesign_candidates[
+        "D4_redesign_implementation_blocked"
+    ]["accepted_candidate"] is True
+    assert modal_retry_redesign_implementation["public_claim_allowed"] is False
+    assert modal_retry_redesign_implementation["public_observable_promoted"] is False
+    assert (
+        modal_retry_redesign_implementation["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        modal_retry_redesign_implementation[
+            "dft_flux_tfsf_port_sparameter_promoted"
+        ]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_next_prerequisite"
+        ]
+        == modal_retry_redesign_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy modal retry redesign implementation "
-        "after failure-theory contract ready ralplan"
+        "private plane-wave source-interface ownership state-shape design after "
+        "modal retry redesign implementation blocked ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave observable-proxy modal retry redesign implementation "
-        "after failure-theory contract ready ralplan"
+        "private plane-wave source-interface ownership state-shape design after "
+        "modal retry redesign implementation blocked ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -3868,6 +4027,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_observable_proxy_modal_retry_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -4135,8 +4300,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy modal retry redesign implementation "
-        "after failure-theory contract ready ralplan"
+        "private plane-wave source-interface ownership state-shape design after "
+        "modal retry redesign implementation blocked ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
