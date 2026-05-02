@@ -326,8 +326,13 @@ face-local modal correction architecture. That architecture lane now records
 magnitude owner references map to private face-local tangential modal
 contracts with paired phase/CV, vacuum-regression, and CPML/non-CPML symmetry
 guards before any field-update hunk. The next safe lane is private plane-wave
-face-local modal correction implementation after architecture contract ready;
-public promotion remains closed.
+face-local modal correction implementation after architecture contract ready.
+That implementation lane now records
+`no_private_plane_wave_face_local_modal_correction_implementation`: no bounded
+field-update hunk is retained because paired phase/CV and vacuum-regression
+gates were not honestly improved. The next safe lane is private plane-wave
+face-local modal correction failure-theory redesign after the bounded
+implementation failed; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

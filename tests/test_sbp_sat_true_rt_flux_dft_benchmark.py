@@ -1158,6 +1158,28 @@ _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_ARCHITECTURE_PRECEDENCE = (
     "private_plane_wave_face_local_modal_correction_contract_ready",
 )
 
+_PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_STATUS = (
+    "no_private_plane_wave_face_local_modal_correction_implementation"
+)
+_PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private plane-wave face-local modal correction failure-theory redesign "
+    "after bounded implementation failed ralplan"
+)
+_PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_face_local_phase_modal_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_face_local_magnitude_modal_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_face_local_modal_correction_hunk_retained_fixture_quality_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    "no_private_plane_wave_face_local_modal_correction_implementation",
+)
+_PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_PRECEDENCE = (
+    "no_private_plane_wave_face_local_modal_correction_implementation",
+    "private_plane_wave_face_local_magnitude_modal_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_face_local_phase_modal_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_face_local_modal_correction_hunk_retained_fixture_quality_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -9484,6 +9506,186 @@ def _private_plane_wave_face_local_modal_correction_architecture_metadata(
     }
 
 
+def _private_plane_wave_face_local_modal_correction_implementation_metadata(
+    *,
+    architecture_metadata: dict[str, object],
+    physical_correction_metadata: dict[str, object],
+    owner_scan_wiring_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(architecture_metadata["baseline_metrics"])
+    thresholds = dict(architecture_metadata["thresholds"])
+    t0 = {
+        "candidate_id": "T0_architecture_contract_baseline_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_architecture_status": architecture_metadata["terminal_outcome"],
+        "upstream_physical_correction_status": physical_correction_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_owner_scan_wiring_status": owner_scan_wiring_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    t1 = {
+        "candidate_id": "T1_face_local_phase_modal_helper",
+        "candidate_family": "face_local_phase_modal_implementation",
+        "accepted_candidate": False,
+        "attempted_in_this_lane": True,
+        "phase_modal_contract_ready": True,
+        "phase_modal_hunk_retained": False,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric_guard": "transverse_magnitude_cv",
+        "rejection_reason": (
+            "a bounded face-local phase modal field-update hunk was not "
+            "retained because the implementation probe did not prove dominant "
+            "phase improvement without paired magnitude/vacuum regression"
+        ),
+        "requires_public_api": False,
+        "requires_hook": False,
+        "public_claim_allowed": False,
+    }
+    t2 = {
+        "candidate_id": "T2_face_local_magnitude_modal_helper",
+        "candidate_family": "face_local_magnitude_modal_implementation",
+        "accepted_candidate": False,
+        "attempted_in_this_lane": True,
+        "magnitude_modal_contract_ready": True,
+        "magnitude_modal_hunk_retained": False,
+        "dominant_metric_guard": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "rejection_reason": (
+            "a bounded face-local magnitude modal hunk was not retained because "
+            "the implementation probe did not prove paired phase/vacuum guards"
+        ),
+        "requires_public_api": False,
+        "requires_hook": False,
+        "public_claim_allowed": False,
+    }
+    t3 = {
+        "candidate_id": "T3_combined_phase_cv_modal_private_parity_pass",
+        "candidate_family": "fixture_quality_private_parity_pass",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending"
+        ),
+        "combined_modal_hunk_retained": False,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "not_selected_reason": (
+            "T1/T2 were not retained, so no combined modal correction can "
+            "honestly unlock private true-R/T readiness in this lane"
+        ),
+        "public_claim_allowed": False,
+    }
+    t4 = {
+        "candidate_id": "T4_face_local_modal_implementation_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_STATUS
+        ),
+        "rejection_summary": (
+            "no bounded face-local modal correction hunk is retained; the next "
+            "safe lane must redesign the failure theory before another solver "
+            "field-update attempt"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (t0, t1, t2, t3, t4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_face_local_modal_correction_implementation_only"
+        ),
+        "upstream_architecture_status": architecture_metadata["terminal_outcome"],
+        "upstream_physical_correction_status": physical_correction_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_owner_scan_wiring_status": owner_scan_wiring_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite T0/T1/T2/T3/T4 implementation ladder; retain a private "
+            "face-local modal hunk only if paired phase/CV and vacuum "
+            "regression gates improve honestly"
+        ),
+        "selected_candidate_id": "T4_face_local_modal_implementation_blocked",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "architecture_contract_ready": True,
+        "face_local_phase_modal_contract_ready": True,
+        "face_local_magnitude_modal_contract_ready": True,
+        "face_local_modal_correction_contract_ready": True,
+        "implementation_lane_executed": True,
+        "phase_modal_hunk_retained": False,
+        "magnitude_modal_hunk_retained": False,
+        "combined_modal_hunk_retained": False,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "joint_phase_magnitude_improved": False,
+        "material_improvement_demonstrated": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "no_bounded_hunk_accepted": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_failure_theory_redesign": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private face-local modal correction implementation lane is "
+            "fail-closed: the architecture contract is ready, but no bounded "
+            "field-update hunk is retained because paired phase/CV and vacuum-"
+            "regression gates are not honestly improved"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -11927,8 +12129,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_face_local_modal_implementation_metadata = (
+        _private_plane_wave_face_local_modal_correction_implementation_metadata(
+            architecture_metadata=plane_wave_face_local_modal_architecture_metadata,
+            physical_correction_metadata=(
+                plane_wave_owner_backed_physical_correction_metadata
+            ),
+            owner_scan_wiring_metadata=(
+                plane_wave_owner_scan_wiring_joint_scoring_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_face_local_modal_correction_implementation_status": (
+                plane_wave_face_local_modal_implementation_metadata["status"]
+            ),
+            "private_plane_wave_face_local_modal_correction_implementation": (
+                plane_wave_face_local_modal_implementation_metadata
+            ),
+            "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite": (
+                plane_wave_face_local_modal_implementation_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_face_local_modal_correction_architecture_next_prerequisite"
+        "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -12049,6 +12278,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave face-local modal correction "
                 "architecture lane records "
                 f"{plane_wave_face_local_modal_architecture_metadata['terminal_outcome']}"
+                "; the private plane-wave face-local modal correction "
+                "implementation lane records "
+                f"{plane_wave_face_local_modal_implementation_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -12058,7 +12290,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_face_local_modal_correction_architecture_next_prerequisite"
+                "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
             ],
         }
 
@@ -15774,10 +16006,97 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_face_local_modal_correction_architecture_next_prerequisite"
         ]
     )
+    modal_implementation = metadata[
+        "private_plane_wave_face_local_modal_correction_implementation"
+    ]
+    assert metadata[
+        "private_plane_wave_face_local_modal_correction_implementation_status"
+    ] == _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_STATUS
+    assert modal_implementation["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_STATUS
+    )
+    assert modal_implementation["upstream_architecture_status"] == (
+        metadata[
+            "private_plane_wave_face_local_modal_correction_architecture_status"
+        ]
+    )
+    assert modal_implementation["upstream_physical_correction_status"] == (
+        metadata["private_plane_wave_owner_backed_physical_phase_cv_correction_status"]
+    )
+    assert modal_implementation["upstream_owner_scan_wiring_status"] == (
+        metadata["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
+    )
+    assert modal_implementation["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert modal_implementation[
+        "candidate_ladder_declared_before_slow_scoring"
+    ] is True
+    assert modal_implementation["candidate_count"] == 5
+    assert modal_implementation["selected_candidate_id"] == (
+        "T4_face_local_modal_implementation_blocked"
+    )
+    assert modal_implementation["baseline_metrics"] == (
+        modal_architecture["baseline_metrics"]
+    )
+    assert modal_implementation["baseline_metrics_preserved"] is True
+    assert modal_implementation["thresholds_unchanged"] is True
+    assert modal_implementation["architecture_contract_ready"] is True
+    assert modal_implementation["face_local_phase_modal_contract_ready"] is True
+    assert modal_implementation["face_local_magnitude_modal_contract_ready"] is True
+    assert modal_implementation["face_local_modal_correction_contract_ready"] is True
+    assert modal_implementation["implementation_lane_executed"] is True
+    assert modal_implementation["phase_modal_hunk_retained"] is False
+    assert modal_implementation["magnitude_modal_hunk_retained"] is False
+    assert modal_implementation["combined_modal_hunk_retained"] is False
+    assert modal_implementation["joint_phase_magnitude_improved"] is False
+    assert modal_implementation["material_improvement_demonstrated"] is False
+    assert modal_implementation["production_patch_applied"] is False
+    assert modal_implementation["solver_behavior_changed"] is False
+    assert modal_implementation["field_update_behavior_changed"] is False
+    assert modal_implementation["runner_behavior_changed"] is False
+    assert modal_implementation["new_solver_hunk_retained"] is False
+    assert modal_implementation["no_bounded_hunk_accepted"] is True
+    assert modal_implementation["true_rt_readiness_unlocked"] is False
+    assert (
+        modal_implementation["next_lane_requires_failure_theory_redesign"] is True
+    )
+    implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_implementation["candidate_ladder"]
+    }
+    assert implementation_candidates[
+        "T1_face_local_phase_modal_helper"
+    ]["attempted_in_this_lane"] is True
+    assert implementation_candidates[
+        "T1_face_local_phase_modal_helper"
+    ]["accepted_candidate"] is False
+    assert implementation_candidates[
+        "T2_face_local_magnitude_modal_helper"
+    ]["attempted_in_this_lane"] is True
+    assert implementation_candidates[
+        "T2_face_local_magnitude_modal_helper"
+    ]["accepted_candidate"] is False
+    assert implementation_candidates[
+        "T3_combined_phase_cv_modal_private_parity_pass"
+    ]["accepted_candidate"] is False
+    assert implementation_candidates[
+        "T4_face_local_modal_implementation_blocked"
+    ]["accepted_candidate"] is True
+    assert modal_implementation["public_claim_allowed"] is False
+    assert modal_implementation["public_observable_promoted"] is False
+    assert modal_implementation["true_rt_public_observable_promoted"] is False
+    assert modal_implementation["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        modal_implementation["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_face_local_modal_correction_architecture_next_prerequisite"
+            "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -15803,7 +16122,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_face_local_modal_correction_architecture_next_prerequisite"
+            "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
         ]
     )
     assert (
@@ -15953,6 +16272,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_face_local_modal_correction_architecture_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_face_local_modal_correction_implementation_status"
         ]
         in metadata["blocking_diagnostic"]
     )
