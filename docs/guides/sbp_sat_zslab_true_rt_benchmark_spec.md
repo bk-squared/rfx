@@ -642,6 +642,13 @@ the retained private 3x3 helper has finite private score evidence, but unchanged
 material-improvement, transverse-uniformity, and vacuum-stability gates remain
 closed, so true R/T and public observable promotion stay locked; the next safe
 lane is private failure-theory redesign.
+The projected target residual-basis energy-biorthogonal transverse modal-
+coupling metric failure-theory redesign lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_source_interface_transfer_floor_theory_ready`:
+the retained in-packet 3x3 coupling is finite but insufficient, so the selected
+private next target is a fixed-shape source/interface transverse modal transfer
+map before another solver hunk; solver edits, threshold changes, and public
+promotion remain deferred.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
