@@ -95,6 +95,16 @@ class _PrivateInterfaceOwnerState(NamedTuple):
     face_phase_reference: jnp.ndarray
     face_magnitude_reference: jnp.ndarray
     face_update_count: jnp.ndarray
+    face_proxy_reference_real: jnp.ndarray
+    face_proxy_reference_imag: jnp.ndarray
+    face_proxy_weight: jnp.ndarray
+    face_proxy_mask: jnp.ndarray
+    face_packet_offsets: jnp.ndarray
+    face_packet_lengths: jnp.ndarray
+    face_normal_axis: jnp.ndarray
+    face_normal_sign: jnp.ndarray
+    face_tangential_axis_0: jnp.ndarray
+    face_tangential_axis_1: jnp.ndarray
 
 
 class _PrivateInterfaceOwnerJointScore(NamedTuple):
@@ -498,14 +508,97 @@ def _active_faces(config: SubgridConfig3D) -> tuple[str, ...]:
     return tuple(face for face in FACE_ORIENTATIONS if _face_is_internal(config, face))
 
 
+def _private_owner_face_packet_layout(
+    config: SubgridConfig3D,
+) -> tuple[np.ndarray, ...]:
+    active_faces = _active_faces(config)
+    lengths: list[int] = []
+    masks: list[np.ndarray] = []
+    weights: list[np.ndarray] = []
+    normal_axes: list[int] = []
+    normal_signs: list[int] = []
+    tangential_axis_0: list[int] = []
+    tangential_axis_1: list[int] = []
+    offset = 0
+    offsets = []
+    for face in active_faces:
+        orientation = FACE_ORIENTATIONS[face]
+        ops = _get_face_ops(config, face)
+        coarse_mask, _ = _face_interior_masks(ops.coarse_shape, config.ratio)
+        mask = np.asarray(coarse_mask, dtype=np.float32).reshape(-1)
+        weight = (
+            np.asarray(ops.coarse_norm, dtype=np.float32).reshape(-1) * mask
+        )
+        offsets.append(offset)
+        lengths.append(int(mask.size))
+        masks.append(mask)
+        weights.append(weight)
+        normal_axes.append(int(orientation.normal_axis))
+        normal_signs.append(int(orientation.normal_sign))
+        tangential_axis_0.append(int(orientation.tangential_axes[0]))
+        tangential_axis_1.append(int(orientation.tangential_axes[1]))
+        offset += int(mask.size)
+    packet_size = offset
+    if masks:
+        packet_mask = np.concatenate(masks).astype(np.float32)
+        packet_weight = np.concatenate(weights).astype(np.float32)
+    else:
+        packet_mask = np.zeros((0,), dtype=np.float32)
+        packet_weight = np.zeros((0,), dtype=np.float32)
+    return (
+        np.asarray(offsets, dtype=np.int32),
+        np.asarray(lengths, dtype=np.int32),
+        np.asarray(normal_axes, dtype=np.int32),
+        np.asarray(normal_signs, dtype=np.int32),
+        np.asarray(tangential_axis_0, dtype=np.int32),
+        np.asarray(tangential_axis_1, dtype=np.int32),
+        packet_weight,
+        packet_mask,
+        np.zeros((packet_size,), dtype=np.float32),
+    )
+
+
 def _init_private_interface_owner_state(
     config: SubgridConfig3D,
 ) -> _PrivateInterfaceOwnerState:
     face_count = len(_active_faces(config))
+    (
+        face_packet_offsets,
+        face_packet_lengths,
+        face_normal_axis,
+        face_normal_sign,
+        face_tangential_axis_0,
+        face_tangential_axis_1,
+        face_proxy_weight,
+        face_proxy_mask,
+        face_proxy_reference,
+    ) = _private_owner_face_packet_layout(config)
     return _PrivateInterfaceOwnerState(
         face_phase_reference=jnp.zeros((face_count,), dtype=jnp.float32),
         face_magnitude_reference=jnp.zeros((face_count,), dtype=jnp.float32),
         face_update_count=jnp.zeros((face_count,), dtype=jnp.int32),
+        face_proxy_reference_real=jnp.asarray(
+            face_proxy_reference,
+            dtype=jnp.float32,
+        ),
+        face_proxy_reference_imag=jnp.asarray(
+            face_proxy_reference,
+            dtype=jnp.float32,
+        ),
+        face_proxy_weight=jnp.asarray(face_proxy_weight, dtype=jnp.float32),
+        face_proxy_mask=jnp.asarray(face_proxy_mask, dtype=jnp.float32),
+        face_packet_offsets=jnp.asarray(face_packet_offsets, dtype=jnp.int32),
+        face_packet_lengths=jnp.asarray(face_packet_lengths, dtype=jnp.int32),
+        face_normal_axis=jnp.asarray(face_normal_axis, dtype=jnp.int32),
+        face_normal_sign=jnp.asarray(face_normal_sign, dtype=jnp.int32),
+        face_tangential_axis_0=jnp.asarray(
+            face_tangential_axis_0,
+            dtype=jnp.int32,
+        ),
+        face_tangential_axis_1=jnp.asarray(
+            face_tangential_axis_1,
+            dtype=jnp.int32,
+        ),
     )
 
 
@@ -534,14 +627,13 @@ def _masked_face_mean(value: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
     return jnp.sum(value * mask) / denominator
 
 
-def _private_owner_face_complex_reference(
+def _private_owner_face_complex_distribution(
     *,
     coarse_e: tuple[jnp.ndarray, jnp.ndarray],
     fine_e: tuple[jnp.ndarray, jnp.ndarray],
     coarse_h: tuple[jnp.ndarray, jnp.ndarray],
     fine_h: tuple[jnp.ndarray, jnp.ndarray],
     ops: ZFaceOps,
-    coarse_mask: jnp.ndarray,
     normal_sign: int,
 ) -> jnp.ndarray:
     eta0 = jnp.asarray(np.sqrt(MU_0 / EPS_0), dtype=coarse_e[0].dtype)
@@ -554,6 +646,27 @@ def _private_owner_face_complex_reference(
     fine_w2 = fine_e_restricted[1] + sign * eta0 * fine_h_restricted[0]
     face_reference = 0.5 * (
         (coarse_w1 + 1j * coarse_w2) + (fine_w1 + 1j * fine_w2)
+    )
+    return face_reference
+
+
+def _private_owner_face_complex_reference(
+    *,
+    coarse_e: tuple[jnp.ndarray, jnp.ndarray],
+    fine_e: tuple[jnp.ndarray, jnp.ndarray],
+    coarse_h: tuple[jnp.ndarray, jnp.ndarray],
+    fine_h: tuple[jnp.ndarray, jnp.ndarray],
+    ops: ZFaceOps,
+    coarse_mask: jnp.ndarray,
+    normal_sign: int,
+) -> jnp.ndarray:
+    face_reference = _private_owner_face_complex_distribution(
+        coarse_e=coarse_e,
+        fine_e=fine_e,
+        coarse_h=coarse_h,
+        fine_h=fine_h,
+        ops=ops,
+        normal_sign=normal_sign,
     )
     return _masked_face_mean(face_reference, coarse_mask)
 
@@ -571,34 +684,66 @@ def _update_private_interface_owner_state_from_scan(
 
     phase_references = []
     magnitude_references = []
+    packet_real = []
+    packet_imag = []
+    packet_weight = []
+    packet_mask = []
     for face in _active_faces(config):
         orientation = FACE_ORIENTATIONS[face]
         ops = _get_face_ops(config, face)
         coarse_mask, _ = _face_interior_masks(ops.coarse_shape, config.ratio)
-        face_reference = _private_owner_face_complex_reference(
-            coarse_e=extract_tangential_e_face(
-                e_post_sat_coarse, config, face, grid="coarse"
-            ),
-            fine_e=extract_tangential_e_face(
-                e_post_sat_fine, config, face, grid="fine"
-            ),
-            coarse_h=extract_tangential_h_face(
-                h_post_sat_coarse, config, face, grid="coarse"
-            ),
-            fine_h=extract_tangential_h_face(
-                h_post_sat_fine, config, face, grid="fine"
-            ),
+        coarse_e = extract_tangential_e_face(
+            e_post_sat_coarse,
+            config,
+            face,
+            grid="coarse",
+        )
+        fine_e = extract_tangential_e_face(
+            e_post_sat_fine,
+            config,
+            face,
+            grid="fine",
+        )
+        coarse_h = extract_tangential_h_face(
+            h_post_sat_coarse,
+            config,
+            face,
+            grid="coarse",
+        )
+        fine_h = extract_tangential_h_face(
+            h_post_sat_fine,
+            config,
+            face,
+            grid="fine",
+        )
+        face_distribution = _private_owner_face_complex_distribution(
+            coarse_e=coarse_e,
+            fine_e=fine_e,
+            coarse_h=coarse_h,
+            fine_h=fine_h,
             ops=ops,
-            coarse_mask=coarse_mask,
             normal_sign=orientation.normal_sign,
         )
+        face_reference = _masked_face_mean(face_distribution, coarse_mask)
         phase_references.append(jnp.angle(face_reference).astype(jnp.float32))
         magnitude_references.append(jnp.abs(face_reference).astype(jnp.float32))
+        packet_real.append(
+            jnp.ravel(jnp.real(face_distribution).astype(jnp.float32) * coarse_mask)
+        )
+        packet_imag.append(
+            jnp.ravel(jnp.imag(face_distribution).astype(jnp.float32) * coarse_mask)
+        )
+        packet_weight.append(jnp.ravel(ops.coarse_norm * coarse_mask))
+        packet_mask.append(jnp.ravel(coarse_mask))
     if not phase_references:
         return owner_state
     return owner_state._replace(
         face_phase_reference=jnp.stack(phase_references),
         face_magnitude_reference=jnp.stack(magnitude_references),
+        face_proxy_reference_real=jnp.concatenate(packet_real),
+        face_proxy_reference_imag=jnp.concatenate(packet_imag),
+        face_proxy_weight=jnp.concatenate(packet_weight).astype(jnp.float32),
+        face_proxy_mask=jnp.concatenate(packet_mask).astype(jnp.float32),
     )
 
 

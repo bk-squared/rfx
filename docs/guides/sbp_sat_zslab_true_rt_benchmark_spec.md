@@ -401,10 +401,15 @@ offsets and masks before any field-update hunk can be retained. The state-shape
 design lane now records `private_plane_wave_proxy_face_packet_state_contract_ready`:
 packed face-local proxy buffers, `FACE_ORIENTATIONS`-derived index metadata, and
 CPML/non-CPML initialization symmetry can be specified without public API, hooks,
-benchmark DFT, or public observable promotion. Hook experiments remain closed and
-public promotion remains closed. Until those fixture-quality gates pass, the
-private flux/DFT gate remains internal diagnostic evidence only, and the support
-matrix continues to mark true R/T as deferred.
+benchmark DFT, or public observable promotion. The implementation lane now records
+`private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending`:
+the private owner state carries fixed-shape packed face-local proxy references,
+offsets, masks, orientation metadata, and CPML/non-CPML/JIT initialization
+symmetry, while modal field-update behavior remains deferred to the next private
+modal retry lane. Hook experiments remain closed and public promotion remains
+closed. Until those fixture-quality gates pass, the private flux/DFT gate remains
+internal diagnostic evidence only, and the support matrix continues to mark true
+R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

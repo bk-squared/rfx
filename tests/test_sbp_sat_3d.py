@@ -527,6 +527,55 @@ def test_time_centered_paired_face_helper_is_wired_after_e_sat():
         assert "private_post_e_hook" not in helper_source
 
 
+def _expected_private_owner_packet_lengths(config):
+    return np.asarray(
+        [
+            int(np.prod(_get_face_ops(config, face).coarse_shape))
+            for face in _active_faces(config)
+        ],
+        dtype=np.int32,
+    )
+
+
+def _assert_private_owner_packet_shape(owner_state, config):
+    lengths = _expected_private_owner_packet_lengths(config)
+    offsets = np.concatenate(([0], np.cumsum(lengths[:-1]))).astype(np.int32)
+    packet_size = int(np.sum(lengths))
+    active_faces = _active_faces(config)
+
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.face_packet_lengths),
+        lengths,
+    )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.face_packet_offsets),
+        offsets,
+    )
+    assert owner_state.face_proxy_reference_real.shape == (packet_size,)
+    assert owner_state.face_proxy_reference_imag.shape == (packet_size,)
+    assert owner_state.face_proxy_weight.shape == (packet_size,)
+    assert owner_state.face_proxy_mask.shape == (packet_size,)
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.face_normal_axis),
+        [FACE_ORIENTATIONS[face].normal_axis for face in active_faces],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.face_normal_sign),
+        [FACE_ORIENTATIONS[face].normal_sign for face in active_faces],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.face_tangential_axis_0),
+        [FACE_ORIENTATIONS[face].tangential_axes[0] for face in active_faces],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.face_tangential_axis_1),
+        [FACE_ORIENTATIONS[face].tangential_axes[1] for face in active_faces],
+    )
+    assert np.all(np.asarray(owner_state.face_proxy_mask) >= 0.0)
+    assert np.all(np.asarray(owner_state.face_proxy_weight) >= 0.0)
+    assert np.any(np.asarray(owner_state.face_proxy_mask) > 0.0)
+
+
 def test_private_interface_owner_state_initializes_for_active_faces():
     config, state = init_subgrid_3d(
         shape_c=(8, 8, 8),
@@ -541,9 +590,12 @@ def test_private_interface_owner_state_initializes_for_active_faces():
     assert owner_state.face_phase_reference.shape == (len(_active_faces(config)),)
     assert owner_state.face_magnitude_reference.shape == (len(_active_faces(config)),)
     assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
+    _assert_private_owner_packet_shape(owner_state, config)
     np.testing.assert_allclose(np.asarray(owner_state.face_phase_reference), 0.0)
     np.testing.assert_allclose(np.asarray(owner_state.face_magnitude_reference), 0.0)
     np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 0)
+    np.testing.assert_allclose(np.asarray(owner_state.face_proxy_reference_real), 0.0)
+    np.testing.assert_allclose(np.asarray(owner_state.face_proxy_reference_imag), 0.0)
 
 
 def test_private_interface_owner_state_propagates_through_non_cpml_step():
@@ -560,6 +612,7 @@ def test_private_interface_owner_state_propagates_through_non_cpml_step():
     owner_state = next_state.private_interface_owner_state
     assert owner_state is not None
     assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
+    _assert_private_owner_packet_shape(owner_state, config)
     np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 1)
 
 
@@ -591,6 +644,7 @@ def test_private_interface_owner_state_propagates_through_cpml_step():
     owner_state = next_state.private_interface_owner_state
     assert owner_state is not None
     assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
+    _assert_private_owner_packet_shape(owner_state, config)
     np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 1)
 
 
@@ -607,6 +661,7 @@ def test_private_interface_owner_state_initializes_in_jit_runner():
     owner_state = _init_private_interface_owner_state(config)
 
     assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
+    _assert_private_owner_packet_shape(owner_state, config)
 
 
 def _seed_private_owner_scan_fields(state):
@@ -630,9 +685,14 @@ def _assert_private_owner_joint_score(owner_state, config):
     assert owner_state is not None
     assert owner_state.face_magnitude_reference.shape == (len(_active_faces(config)),)
     assert owner_state.face_phase_reference.shape == (len(_active_faces(config)),)
+    _assert_private_owner_packet_shape(owner_state, config)
     assert np.all(np.isfinite(np.asarray(owner_state.face_magnitude_reference)))
     assert np.all(np.isfinite(np.asarray(owner_state.face_phase_reference)))
     assert np.any(np.asarray(owner_state.face_magnitude_reference) > 0.0)
+    assert np.all(np.isfinite(np.asarray(owner_state.face_proxy_reference_real)))
+    assert np.all(np.isfinite(np.asarray(owner_state.face_proxy_reference_imag)))
+    active_proxy = np.asarray(owner_state.face_proxy_mask) > 0.0
+    assert np.any(np.abs(np.asarray(owner_state.face_proxy_reference_real)[active_proxy]) > 0.0)
     score = _private_interface_owner_joint_score(owner_state)
     assert int(np.asarray(score.usable_face_count)) == len(_active_faces(config))
     assert np.isfinite(float(np.asarray(score.transverse_magnitude_cv)))

@@ -1284,6 +1284,26 @@ _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_SHAPE_PRECEDENCE = (
     "private_plane_wave_proxy_face_packet_state_contract_ready",
 )
 
+_PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_STATUS = (
+    "private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending"
+)
+_PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private plane-wave observable-proxy modal retry implementation after "
+    "face-packet state hunk retained ralplan"
+)
+_PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_proxy_face_packet_buffer_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_proxy_face_packet_init_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending",
+    "no_private_plane_wave_observable_proxy_face_packet_state_shape_implementation",
+)
+_PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_PRECEDENCE = (
+    "no_private_plane_wave_observable_proxy_face_packet_state_shape_implementation",
+    "private_plane_wave_proxy_face_packet_buffer_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_proxy_face_packet_init_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -10751,6 +10771,186 @@ def _private_plane_wave_observable_proxy_face_packet_state_shape_metadata(
     }
 
 
+def _private_plane_wave_observable_proxy_face_packet_state_implementation_metadata(
+    *,
+    state_shape_metadata: dict[str, object],
+    modal_implementation_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(state_shape_metadata["baseline_metrics"])
+    thresholds = dict(state_shape_metadata["thresholds"])
+    z0 = {
+        "candidate_id": "Z0_face_packet_state_contract_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_state_shape_status": state_shape_metadata["terminal_outcome"],
+        "upstream_modal_implementation_status": modal_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    z1 = {
+        "candidate_id": "Z1_packed_owner_state_buffers_hunk",
+        "candidate_family": "private_owner_state_shape_extension",
+        "accepted_candidate": False,
+        "production_hunk_retained": True,
+        "packed_owner_state_buffers_hunk_retained": True,
+        "face_proxy_reference_buffers_retained": True,
+        "face_proxy_weight_mask_buffers_retained": True,
+        "face_packet_offset_length_buffers_retained": True,
+        "fixed_jax_pytree_shapes": True,
+        "field_update_behavior_changed": False,
+        "requires_public_api": False,
+        "requires_hook": False,
+        "superseded_by": "Z3_face_packet_proxy_capture_hunk",
+        "public_claim_allowed": False,
+    }
+    z2 = {
+        "candidate_id": "Z2_cpml_non_cpml_jit_initialization_hunk",
+        "candidate_family": "private_state_initialization_symmetry",
+        "accepted_candidate": False,
+        "production_hunk_retained": True,
+        "cpml_initialization_hunk_retained": True,
+        "non_cpml_initialization_hunk_retained": True,
+        "jit_initialization_hunk_retained": True,
+        "cpml_non_cpml_shape_symmetry_retained": True,
+        "runner_behavior_changed": True,
+        "field_update_behavior_changed": False,
+        "requires_public_api": False,
+        "requires_hook": False,
+        "superseded_by": "Z3_face_packet_proxy_capture_hunk",
+        "public_claim_allowed": False,
+    }
+    z3 = {
+        "candidate_id": "Z3_face_packet_proxy_capture_hunk",
+        "candidate_family": "private_face_packet_proxy_capture",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_STATUS
+        ),
+        "production_hunk_retained": True,
+        "packed_owner_state_buffers_hunk_retained": True,
+        "face_packet_proxy_capture_hunk_retained": True,
+        "capture_uses_private_face_samples_only": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "uses_plane_dft_monitor": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": True,
+        "solver_behavior_changed": True,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "public_claim_allowed": False,
+    }
+    z4 = {
+        "candidate_id": "Z4_face_packet_state_shape_implementation_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_observable_proxy_face_packet_state_shape_implementation"
+        ),
+        "not_selected_reason": (
+            "Z1/Z2/Z3 retained the private packed state-shape and face-packet "
+            "capture hunk; modal field-update behavior remains deferred to the "
+            "next private implementation lane"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (z0, z1, z2, z3, z4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_observable_proxy_face_packet_state_implementation_only"
+        ),
+        "upstream_state_shape_status": state_shape_metadata["terminal_outcome"],
+        "upstream_modal_implementation_status": modal_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite Z0/Z1/Z2/Z3/Z4 implementation ladder; retain private "
+            "packed face-packet state and capture before any modal field update"
+        ),
+        "selected_candidate_id": "Z3_face_packet_proxy_capture_hunk",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "state_shape_contract_ready": True,
+        "implementation_lane_executed": True,
+        "packed_owner_state_buffers_hunk_retained": True,
+        "face_proxy_reference_buffers_retained": True,
+        "face_proxy_weight_mask_buffers_retained": True,
+        "face_packet_offset_length_buffers_retained": True,
+        "face_packet_orientation_buffers_retained": True,
+        "cpml_initialization_hunk_retained": True,
+        "non_cpml_initialization_hunk_retained": True,
+        "jit_initialization_hunk_retained": True,
+        "cpml_non_cpml_shape_symmetry_retained": True,
+        "face_packet_proxy_capture_hunk_retained": True,
+        "capture_uses_private_face_samples_only": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "imports_benchmark_fixture_metadata": False,
+        "production_patch_applied": True,
+        "solver_behavior_changed": True,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": True,
+        "sbp_sat_3d_repair_applied": True,
+        "new_solver_hunk_retained": True,
+        "joint_phase_magnitude_improved": False,
+        "material_improvement_demonstrated": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_modal_retry_with_packed_state": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private observable-proxy face-packet state-shape implementation "
+            "retained a bounded hunk: private owner state now carries fixed-shape "
+            "packed face-local proxy references, offsets, masks, orientation "
+            "metadata, and CPML/non-CPML/JIT initialization symmetry; modal "
+            "field-update behavior remains deferred"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -13355,8 +13555,36 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_observable_proxy_face_packet_state_implementation_metadata = (
+        _private_plane_wave_observable_proxy_face_packet_state_implementation_metadata(
+            state_shape_metadata=(
+                plane_wave_observable_proxy_face_packet_state_shape_metadata
+            ),
+            modal_implementation_metadata=(
+                plane_wave_observable_proxy_modal_implementation_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_observable_proxy_face_packet_state_implementation_status": (
+                plane_wave_observable_proxy_face_packet_state_implementation_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_observable_proxy_face_packet_state_implementation": (
+                plane_wave_observable_proxy_face_packet_state_implementation_metadata
+            ),
+            "private_plane_wave_observable_proxy_face_packet_state_implementation_next_prerequisite": (
+                plane_wave_observable_proxy_face_packet_state_implementation_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_observable_proxy_face_packet_state_shape_next_prerequisite"
+        "private_plane_wave_observable_proxy_face_packet_state_implementation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -13495,6 +13723,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave observable-proxy face-packet "
                 "state-shape design lane records "
                 f"{plane_wave_observable_proxy_face_packet_state_shape_metadata['terminal_outcome']}"
+                "; the private plane-wave observable-proxy face-packet "
+                "state-shape implementation lane records "
+                f"{plane_wave_observable_proxy_face_packet_state_implementation_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -13504,7 +13735,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_observable_proxy_face_packet_state_shape_next_prerequisite"
+                "private_plane_wave_observable_proxy_face_packet_state_implementation_next_prerequisite"
             ],
         }
 
@@ -17894,10 +18125,112 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_observable_proxy_face_packet_state_shape_next_prerequisite"
         ]
     )
+    face_packet_implementation = metadata[
+        "private_plane_wave_observable_proxy_face_packet_state_implementation"
+    ]
+    assert metadata[
+        "private_plane_wave_observable_proxy_face_packet_state_implementation_status"
+    ] == _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_STATUS
+    assert face_packet_implementation["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_FACE_PACKET_STATE_IMPLEMENTATION_STATUS
+    )
+    assert face_packet_implementation["upstream_state_shape_status"] == (
+        metadata["private_plane_wave_observable_proxy_face_packet_state_shape_status"]
+    )
+    assert face_packet_implementation["upstream_modal_implementation_status"] == (
+        metadata["private_plane_wave_observable_proxy_modal_implementation_status"]
+    )
+    assert face_packet_implementation["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert (
+        face_packet_implementation["candidate_ladder_declared_before_solver_edit"]
+        is True
+    )
+    assert (
+        face_packet_implementation["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert face_packet_implementation["candidate_count"] == 5
+    assert face_packet_implementation["selected_candidate_id"] == (
+        "Z3_face_packet_proxy_capture_hunk"
+    )
+    assert face_packet_implementation["baseline_metrics"] == (
+        face_packet_shape["baseline_metrics"]
+    )
+    assert face_packet_implementation["thresholds"] == face_packet_shape["thresholds"]
+    assert face_packet_implementation["baseline_metrics_preserved"] is True
+    assert face_packet_implementation["thresholds_unchanged"] is True
+    assert face_packet_implementation["state_shape_contract_ready"] is True
+    assert face_packet_implementation["implementation_lane_executed"] is True
+    assert face_packet_implementation["packed_owner_state_buffers_hunk_retained"] is True
+    assert face_packet_implementation["face_proxy_reference_buffers_retained"] is True
+    assert face_packet_implementation["face_proxy_weight_mask_buffers_retained"] is True
+    assert (
+        face_packet_implementation["face_packet_offset_length_buffers_retained"]
+        is True
+    )
+    assert face_packet_implementation["face_packet_orientation_buffers_retained"] is True
+    assert face_packet_implementation["cpml_initialization_hunk_retained"] is True
+    assert face_packet_implementation["non_cpml_initialization_hunk_retained"] is True
+    assert face_packet_implementation["jit_initialization_hunk_retained"] is True
+    assert face_packet_implementation["cpml_non_cpml_shape_symmetry_retained"] is True
+    assert face_packet_implementation["face_packet_proxy_capture_hunk_retained"] is True
+    assert face_packet_implementation["capture_uses_private_face_samples_only"] is True
+    assert face_packet_implementation["benchmark_plane_dft_observable_imported"] is False
+    assert face_packet_implementation["solver_local_proxy_uses_plane_dft_monitor"] is False
+    assert face_packet_implementation["production_patch_applied"] is True
+    assert face_packet_implementation["solver_behavior_changed"] is True
+    assert face_packet_implementation["field_update_behavior_changed"] is False
+    assert face_packet_implementation["runner_behavior_changed"] is True
+    assert face_packet_implementation["new_solver_hunk_retained"] is True
+    assert face_packet_implementation["joint_phase_magnitude_improved"] is False
+    assert face_packet_implementation["material_improvement_demonstrated"] is False
+    assert face_packet_implementation["subgrid_vacuum_parity_scored"] is True
+    assert face_packet_implementation["subgrid_vacuum_parity_passed"] is False
+    assert face_packet_implementation["true_rt_readiness_unlocked"] is False
+    assert (
+        face_packet_implementation["next_lane_requires_modal_retry_with_packed_state"]
+        is True
+    )
+    face_packet_implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in face_packet_implementation["candidate_ladder"]
+    }
+    assert face_packet_implementation_candidates[
+        "Z1_packed_owner_state_buffers_hunk"
+    ]["packed_owner_state_buffers_hunk_retained"] is True
+    assert face_packet_implementation_candidates[
+        "Z1_packed_owner_state_buffers_hunk"
+    ]["superseded_by"] == "Z3_face_packet_proxy_capture_hunk"
+    assert face_packet_implementation_candidates[
+        "Z2_cpml_non_cpml_jit_initialization_hunk"
+    ]["cpml_non_cpml_shape_symmetry_retained"] is True
+    assert face_packet_implementation_candidates[
+        "Z2_cpml_non_cpml_jit_initialization_hunk"
+    ]["superseded_by"] == "Z3_face_packet_proxy_capture_hunk"
+    assert face_packet_implementation_candidates[
+        "Z3_face_packet_proxy_capture_hunk"
+    ]["accepted_candidate"] is True
+    assert face_packet_implementation_candidates[
+        "Z4_face_packet_state_shape_implementation_blocked"
+    ]["accepted_candidate"] is False
+    assert face_packet_implementation["public_claim_allowed"] is False
+    assert face_packet_implementation["public_observable_promoted"] is False
+    assert face_packet_implementation["true_rt_public_observable_promoted"] is False
+    assert (
+        face_packet_implementation["dft_flux_tfsf_port_sparameter_promoted"] is False
+    )
+    assert (
+        face_packet_implementation["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_observable_proxy_face_packet_state_implementation_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_observable_proxy_face_packet_state_shape_next_prerequisite"
+            "private_plane_wave_observable_proxy_face_packet_state_implementation_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -17923,7 +18256,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_observable_proxy_face_packet_state_shape_next_prerequisite"
+            "private_plane_wave_observable_proxy_face_packet_state_implementation_next_prerequisite"
         ]
     )
     assert (
@@ -18100,6 +18433,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata["private_plane_wave_observable_proxy_face_packet_state_shape_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_observable_proxy_face_packet_state_implementation_status"
+        ]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

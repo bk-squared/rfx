@@ -358,9 +358,13 @@ state-shape design. That design lane now records
 `private_plane_wave_proxy_face_packet_state_contract_ready`: packed face-local
 proxy buffers, `FACE_ORIENTATIONS`-derived index metadata, and CPML/non-CPML
 initialization symmetry can be specified without public API, hooks, benchmark
-DFT, or public observable promotion. The next safe lane is private plane-wave
-observable-proxy face-packet state-shape implementation; public promotion
-remains closed.
+DFT, or public observable promotion. That implementation lane now records
+`private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending`:
+the private owner state carries fixed-shape packed face-local proxy references,
+offsets, masks, orientation metadata, and CPML/non-CPML/JIT initialization
+symmetry. Modal field-update behavior remains deferred. The next safe lane is
+private plane-wave observable-proxy modal retry implementation after the
+face-packet state hunk is retained; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
