@@ -366,9 +366,13 @@ symmetry. The modal retry lane now records
 `private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending`:
 a private solver-local, lagged packed-state E-modal correction hunk is retained
 with update/coupling bounds, CPML/non-CPML symmetry, and no benchmark DFT import.
-Fixture-quality parity/readiness remains pending. The next safe lane is private
-plane-wave observable-proxy modal retry parity scoring after the packed-state
-hunk is retained; public promotion remains closed.
+The parity-scoring lane now records
+`private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending`:
+the retained hunk is finite and reproducible, but it reduces the dominant phase
+spread by only about 0.16% and remains far above unchanged phase/CV/vacuum
+thresholds. The next safe lane is private plane-wave observable-proxy modal retry
+failure-theory redesign after packed-state parity scoring insufficient; public
+promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

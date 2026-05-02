@@ -409,10 +409,14 @@ symmetry. The modal retry lane now records
 `private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending`:
 a private solver-local, lagged packed-state E-modal correction hunk is retained
 with update/coupling bounds, CPML/non-CPML symmetry, and no benchmark DFT import.
-Fixture-quality parity/readiness remains pending. Hook experiments remain closed
-and public promotion remains closed. Until those fixture-quality gates pass, the
-private flux/DFT gate remains internal diagnostic evidence only, and the support
-matrix continues to mark true R/T as deferred.
+The parity-scoring lane now records
+`private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending`:
+the retained hunk is finite and reproducible, but it reduces the dominant phase
+spread by only about 0.16% and remains far above unchanged phase/CV/vacuum
+thresholds. Hook experiments remain closed and public promotion remains closed.
+Until those fixture-quality gates pass, the private flux/DFT gate remains internal
+diagnostic evidence only, and the support matrix continues to mark true R/T as
+deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
