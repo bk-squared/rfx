@@ -4998,13 +4998,121 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == time_aligned_scoring["next_prerequisite"]
     )
+    time_aligned_failure_theory = benchmark_gate[
+        "private_plane_wave_time_aligned_modal_retry_failure_theory"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_time_aligned_modal_retry_failure_theory_status"
+    ] == (
+        "private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready"
+    )
+    assert time_aligned_failure_theory["terminal_outcome"] == (
+        "private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready"
+    )
+    assert time_aligned_failure_theory["upstream_time_aligned_parity_status"] == (
+        benchmark_gate[
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_status"
+        ]
+    )
+    assert time_aligned_failure_theory[
+        "upstream_staging_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_status"
+    ]
+    assert time_aligned_failure_theory["candidate_ladder_declared_before_implementation"]
+    assert time_aligned_failure_theory["candidate_ladder_declared_before_solver_edit"]
+    assert time_aligned_failure_theory["candidate_ladder_declared_before_slow_scoring"]
+    assert time_aligned_failure_theory["candidate_count"] == 5
+    assert time_aligned_failure_theory["selected_candidate_id"] == (
+        "P1_modal_projection_normalizer_floor_theory"
+    )
+    assert time_aligned_failure_theory["baseline_metrics"] == (
+        time_aligned_scoring["baseline_metrics"]
+    )
+    assert time_aligned_failure_theory["metrics"] == time_aligned_scoring["metrics"]
+    assert time_aligned_failure_theory["thresholds"] == time_aligned_scoring[
+        "thresholds"
+    ]
+    assert time_aligned_failure_theory["threshold_results"] == (
+        time_aligned_scoring["threshold_results"]
+    )
+    assert time_aligned_failure_theory["baseline_metrics_preserved"]
+    assert time_aligned_failure_theory["thresholds_unchanged"]
+    assert time_aligned_failure_theory["staged_packet_hunk_retained"]
+    assert time_aligned_failure_theory["time_aligned_packet_staging_hunk_retained"]
+    assert time_aligned_failure_theory["time_aligned_parity_insufficient"]
+    assert time_aligned_failure_theory["time_alignment_no_material_delta"]
+    assert time_aligned_failure_theory[
+        "metrics_identical_to_source_populated_baseline"
+    ]
+    assert all(
+        abs(value) <= 1.0e-12
+        for value in time_aligned_failure_theory["score_delta"].values()
+    )
+    assert time_aligned_failure_theory["finite_reproducible_score"]
+    assert time_aligned_failure_theory["material_improvement_demonstrated"] is False
+    assert time_aligned_failure_theory["paired_passed"] is False
+    assert time_aligned_failure_theory["fixture_quality_ready"] is False
+    assert time_aligned_failure_theory["fixture_quality_pending"]
+    assert time_aligned_failure_theory["transverse_phase_floor_persists"]
+    assert time_aligned_failure_theory["transverse_magnitude_floor_persists"]
+    assert time_aligned_failure_theory["vacuum_stability_floor_persists"]
+    assert time_aligned_failure_theory[
+        "modal_projection_or_normalizer_floor_selected"
+    ]
+    projection_contract = time_aligned_failure_theory[
+        "projection_normalizer_contract"
+    ]
+    assert projection_contract["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert projection_contract["requires_new_public_observable"] is False
+    assert projection_contract["requires_benchmark_dft_or_flux_publication"] is False
+    assert projection_contract["requires_hook"] is False
+    assert projection_contract["requires_solver_hunk_in_this_lane"] is False
+    assert time_aligned_failure_theory["failure_theory_lane_executed"]
+    assert time_aligned_failure_theory["true_rt_readiness_unlocked"] is False
+    assert time_aligned_failure_theory["production_patch_applied"] is False
+    assert time_aligned_failure_theory["solver_behavior_changed"] is False
+    assert time_aligned_failure_theory["field_update_behavior_changed"] is False
+    assert time_aligned_failure_theory["new_solver_hunk_retained"] is False
+    assert time_aligned_failure_theory["benchmark_plane_dft_observable_imported"] is False
+    assert time_aligned_failure_theory[
+        "next_lane_requires_modal_projection_normalizer_contract_design"
+    ]
+    time_aligned_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in time_aligned_failure_theory["candidate_ladder"]
+    }
+    assert time_aligned_failure_candidates[
+        "P1_modal_projection_normalizer_floor_theory"
+    ]["accepted_candidate"]
+    assert time_aligned_failure_candidates[
+        "P2_transverse_phase_coherence_residual_theory"
+    ]["accepted_candidate"] is False
+    assert time_aligned_failure_candidates[
+        "P3_fixture_source_contract_residual_theory"
+    ]["accepted_candidate"] is False
+    assert time_aligned_failure_candidates[
+        "P4_time_aligned_modal_retry_failure_theory_blocked"
+    ]["accepted_candidate"] is False
+    assert time_aligned_failure_theory["public_claim_allowed"] is False
+    assert time_aligned_failure_theory["public_observable_promoted"] is False
+    assert time_aligned_failure_theory["true_rt_public_observable_promoted"] is False
+    assert time_aligned_failure_theory["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
+        ]
+        == time_aligned_failure_theory["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave time-aligned modal retry failure-theory redesign after "
-        "parity scoring insufficient ralplan"
+        "private plane-wave modal projection/normalizer contract design after "
+        "time-aligned modal retry theory ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave time-aligned modal retry failure-theory redesign after "
-        "parity scoring insufficient ralplan"
+        "private plane-wave modal projection/normalizer contract design after "
+        "time-aligned modal retry theory ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -5233,6 +5341,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_time_aligned_modal_retry_parity_scoring_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_time_aligned_modal_retry_failure_theory_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -5500,8 +5614,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave time-aligned modal retry failure-theory redesign after "
-        "parity scoring insufficient ralplan"
+        "private plane-wave modal projection/normalizer contract design after "
+        "time-aligned modal retry theory ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

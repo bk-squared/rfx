@@ -1595,6 +1595,25 @@ _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_PRECEDENCE = (
     "private_plane_wave_time_aligned_modal_retry_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_STATUS = (
+    "private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer contract design after "
+    "time-aligned modal retry theory ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_TERMINAL_OUTCOMES = (
+    "private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready",
+    "private_plane_wave_time_aligned_modal_retry_transverse_phase_floor_theory_contract_ready",
+    "private_plane_wave_time_aligned_modal_retry_fixture_source_contract_theory_ready",
+    "no_private_plane_wave_time_aligned_modal_retry_failure_theory",
+)
+_PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_PRECEDENCE = (
+    "no_private_plane_wave_time_aligned_modal_retry_failure_theory",
+    "private_plane_wave_time_aligned_modal_retry_fixture_source_contract_theory_ready",
+    "private_plane_wave_time_aligned_modal_retry_transverse_phase_floor_theory_contract_ready",
+    "private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -14123,6 +14142,234 @@ def _private_plane_wave_time_aligned_modal_retry_parity_scoring_metadata(
     }
 
 
+def _private_plane_wave_time_aligned_modal_retry_failure_theory_metadata(
+    *,
+    time_aligned_parity_scoring_metadata: dict[str, object],
+    staging_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(time_aligned_parity_scoring_metadata["baseline_metrics"])
+    metrics = dict(time_aligned_parity_scoring_metadata["metrics"])
+    thresholds = dict(time_aligned_parity_scoring_metadata["thresholds"])
+    material_decision = dict(
+        time_aligned_parity_scoring_metadata["material_improvement_decision"]
+    )
+    threshold_results = dict(time_aligned_parity_scoring_metadata["threshold_results"])
+    score_delta = {
+        name: float(metrics[name]) - float(baseline_metrics[name])
+        for name in (
+            "transverse_magnitude_cv",
+            "transverse_phase_spread_deg",
+            "vacuum_relative_magnitude_error",
+            "vacuum_phase_error_deg",
+        )
+    }
+    relative_improvement = {
+        name: (
+            (float(baseline_metrics[name]) - float(metrics[name]))
+            / max(abs(float(baseline_metrics[name])), 1.0e-12)
+        )
+        for name in score_delta
+    }
+    metrics_identical_to_source_populated_baseline = bool(
+        all(abs(value) <= 1.0e-12 for value in score_delta.values())
+        and int(metrics["usable_bins"]) == int(baseline_metrics["usable_bins"])
+    )
+    projection_normalizer_contract = {
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "source_packet_fields": (
+            "_PrivateInterfaceOwnerState.previous_source_owner_reference_*"
+        ),
+        "interface_packet_fields": (
+            "_PrivateInterfaceOwnerState.previous_face_proxy_reference_*"
+        ),
+        "current_projection_contract": (
+            "face-local modal retry subtracts packet amplitudes after private "
+            "packet staging"
+        ),
+        "missing_contract": (
+            "shared modal projection basis, packet normalization, and face "
+            "mask weighting equivalence"
+        ),
+        "bounded_next_state": "private modal projection/normalizer contract design",
+        "requires_new_public_observable": False,
+        "requires_benchmark_dft_or_flux_publication": False,
+        "requires_hook": False,
+        "requires_solver_hunk_in_this_lane": False,
+    }
+    p0 = {
+        "candidate_id": "P0_time_aligned_scoring_packet_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_time_aligned_parity_status": (
+            time_aligned_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    p1 = {
+        "candidate_id": "P1_modal_projection_normalizer_floor_theory",
+        "candidate_family": "private_projection_normalizer_theory",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_STATUS
+        ),
+        "projection_normalizer_contract": projection_normalizer_contract,
+        "metrics_identical_to_source_populated_baseline": (
+            metrics_identical_to_source_populated_baseline
+        ),
+        "time_alignment_no_material_delta": (
+            metrics_identical_to_source_populated_baseline
+        ),
+        "modal_projection_or_normalizer_floor_selected": True,
+        "bounded_private_next_target": (
+            projection_normalizer_contract["bounded_next_state"]
+        ),
+        "public_claim_allowed": False,
+    }
+    p2 = {
+        "candidate_id": "P2_transverse_phase_coherence_residual_theory",
+        "candidate_family": "private_transverse_phase_floor_theory",
+        "accepted_candidate": False,
+        "transverse_phase_floor_observed": True,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "not_selected_reason": (
+            "transverse phase spread remains the dominant symptom, but the "
+            "zero-delta time-aligned score first requires proving the shared "
+            "modal projection/normalizer contract before another phase hunk"
+        ),
+        "public_claim_allowed": False,
+    }
+    p3 = {
+        "candidate_id": "P3_fixture_source_contract_residual_theory",
+        "candidate_family": "private_fixture_source_contract_theory",
+        "accepted_candidate": False,
+        "source_owner_packet_populated": True,
+        "time_aligned_packet_pair_retained": True,
+        "fixture_source_contract_residual_possible": True,
+        "not_selected_reason": (
+            "source-owner packet population and time-aligned packet staging are "
+            "already retained, so the narrower next proof is packet projection "
+            "and normalization equivalence"
+        ),
+        "public_claim_allowed": False,
+    }
+    p4 = {
+        "candidate_id": "P4_time_aligned_modal_retry_failure_theory_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_time_aligned_modal_retry_failure_theory"
+        ),
+        "not_selected_reason": (
+            "a bounded private projection/normalizer contract target is available, "
+            "so the theory lane does not fail closed"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (p0, p1, p2, p3, p4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_time_aligned_modal_retry_failure_theory_only"
+        ),
+        "upstream_time_aligned_parity_status": (
+            time_aligned_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "upstream_staging_implementation_status": (
+            staging_implementation_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite P0/P1/P2/P3/P4 failure-theory ladder; select only a "
+            "bounded private theory/design target and keep public promotion closed"
+        ),
+        "selected_candidate_id": "P1_modal_projection_normalizer_floor_theory",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "staged_packet_hunk_retained": True,
+        "time_aligned_packet_staging_hunk_retained": True,
+        "time_aligned_parity_insufficient": True,
+        "time_alignment_no_material_delta": (
+            metrics_identical_to_source_populated_baseline
+        ),
+        "metrics_identical_to_source_populated_baseline": (
+            metrics_identical_to_source_populated_baseline
+        ),
+        "finite_reproducible_score": True,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "paired_passed": material_decision["paired_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "transverse_phase_floor_persists": True,
+        "transverse_magnitude_floor_persists": True,
+        "vacuum_stability_floor_persists": True,
+        "modal_projection_or_normalizer_floor_selected": True,
+        "projection_normalizer_contract": projection_normalizer_contract,
+        "failure_theory_lane_executed": True,
+        "bounded_private_next_target": (
+            projection_normalizer_contract["bounded_next_state"]
+        ),
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_modal_projection_normalizer_contract_design": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "time-aligned modal retry scoring is finite but unchanged from the "
+            "source-populated baseline; because timing is now staged, the next "
+            "bounded private theory target is the shared modal projection and "
+            "normalizer contract rather than true-R/T or public observable promotion"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -17157,8 +17404,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_time_aligned_modal_retry_failure_theory_metadata = (
+        _private_plane_wave_time_aligned_modal_retry_failure_theory_metadata(
+            time_aligned_parity_scoring_metadata=(
+                plane_wave_time_aligned_modal_retry_parity_scoring_metadata
+            ),
+            staging_implementation_metadata=(
+                plane_wave_source_interface_time_aligned_packet_staging_implementation_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_time_aligned_modal_retry_failure_theory_status": (
+                plane_wave_time_aligned_modal_retry_failure_theory_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_time_aligned_modal_retry_failure_theory": (
+                plane_wave_time_aligned_modal_retry_failure_theory_metadata
+            ),
+            "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite": (
+                plane_wave_time_aligned_modal_retry_failure_theory_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
+        "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -17345,6 +17619,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave time-aligned modal retry parity "
                 "scoring lane records "
                 f"{plane_wave_time_aligned_modal_retry_parity_scoring_metadata['terminal_outcome']}"
+                "; the private plane-wave time-aligned modal retry failure "
+                "theory redesign lane records "
+                f"{plane_wave_time_aligned_modal_retry_failure_theory_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -17354,7 +17631,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
+                "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
             ],
         }
 
@@ -23523,10 +23800,148 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
         ]
     )
+    time_aligned_failure_theory = metadata[
+        "private_plane_wave_time_aligned_modal_retry_failure_theory"
+    ]
+    assert metadata[
+        "private_plane_wave_time_aligned_modal_retry_failure_theory_status"
+    ] == _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_STATUS
+    assert time_aligned_failure_theory["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_STATUS
+    )
+    assert time_aligned_failure_theory["upstream_time_aligned_parity_status"] == (
+        metadata["private_plane_wave_time_aligned_modal_retry_parity_scoring_status"]
+    )
+    assert time_aligned_failure_theory[
+        "upstream_staging_implementation_status"
+    ] == metadata[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_status"
+    ]
+    assert (
+        time_aligned_failure_theory["candidate_ladder_declared_before_implementation"]
+        is True
+    )
+    assert (
+        time_aligned_failure_theory["candidate_ladder_declared_before_solver_edit"]
+        is True
+    )
+    assert (
+        time_aligned_failure_theory["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert time_aligned_failure_theory["candidate_count"] == 5
+    assert time_aligned_failure_theory["selected_candidate_id"] == (
+        "P1_modal_projection_normalizer_floor_theory"
+    )
+    assert time_aligned_failure_theory["baseline_metrics"] == (
+        time_aligned_scoring["baseline_metrics"]
+    )
+    assert time_aligned_failure_theory["metrics"] == time_aligned_scoring["metrics"]
+    assert time_aligned_failure_theory["thresholds"] == (
+        time_aligned_scoring["thresholds"]
+    )
+    assert time_aligned_failure_theory["threshold_results"] == (
+        time_aligned_scoring["threshold_results"]
+    )
+    assert time_aligned_failure_theory["baseline_metrics_preserved"] is True
+    assert time_aligned_failure_theory["thresholds_unchanged"] is True
+    assert time_aligned_failure_theory["staged_packet_hunk_retained"] is True
+    assert (
+        time_aligned_failure_theory["time_aligned_packet_staging_hunk_retained"]
+        is True
+    )
+    assert time_aligned_failure_theory["time_aligned_parity_insufficient"] is True
+    assert time_aligned_failure_theory["time_alignment_no_material_delta"] is True
+    assert (
+        time_aligned_failure_theory[
+            "metrics_identical_to_source_populated_baseline"
+        ]
+        is True
+    )
+    assert all(
+        abs(value) <= 1.0e-12
+        for value in time_aligned_failure_theory["score_delta"].values()
+    )
+    assert all(
+        abs(value) <= 1.0e-12
+        for value in time_aligned_failure_theory["relative_improvement"].values()
+    )
+    assert time_aligned_failure_theory["finite_reproducible_score"] is True
+    assert time_aligned_failure_theory["material_improvement_demonstrated"] is False
+    assert time_aligned_failure_theory["paired_passed"] is False
+    assert time_aligned_failure_theory["fixture_quality_ready"] is False
+    assert time_aligned_failure_theory["fixture_quality_pending"] is True
+    assert time_aligned_failure_theory["transverse_phase_floor_persists"] is True
+    assert time_aligned_failure_theory["transverse_magnitude_floor_persists"] is True
+    assert time_aligned_failure_theory["vacuum_stability_floor_persists"] is True
+    assert (
+        time_aligned_failure_theory[
+            "modal_projection_or_normalizer_floor_selected"
+        ]
+        is True
+    )
+    projection_contract = time_aligned_failure_theory[
+        "projection_normalizer_contract"
+    ]
+    assert projection_contract["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert projection_contract["requires_new_public_observable"] is False
+    assert projection_contract["requires_benchmark_dft_or_flux_publication"] is False
+    assert projection_contract["requires_hook"] is False
+    assert projection_contract["requires_solver_hunk_in_this_lane"] is False
+    assert time_aligned_failure_theory["failure_theory_lane_executed"] is True
+    assert time_aligned_failure_theory["true_rt_readiness_unlocked"] is False
+    assert time_aligned_failure_theory["production_patch_applied"] is False
+    assert time_aligned_failure_theory["solver_behavior_changed"] is False
+    assert time_aligned_failure_theory["field_update_behavior_changed"] is False
+    assert time_aligned_failure_theory["new_solver_hunk_retained"] is False
+    assert (
+        time_aligned_failure_theory["benchmark_plane_dft_observable_imported"]
+        is False
+    )
+    assert (
+        time_aligned_failure_theory[
+            "next_lane_requires_modal_projection_normalizer_contract_design"
+        ]
+        is True
+    )
+    time_aligned_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in time_aligned_failure_theory["candidate_ladder"]
+    }
+    assert time_aligned_failure_candidates[
+        "P1_modal_projection_normalizer_floor_theory"
+    ]["accepted_candidate"] is True
+    assert time_aligned_failure_candidates[
+        "P2_transverse_phase_coherence_residual_theory"
+    ]["accepted_candidate"] is False
+    assert time_aligned_failure_candidates[
+        "P3_fixture_source_contract_residual_theory"
+    ]["accepted_candidate"] is False
+    assert time_aligned_failure_candidates[
+        "P4_time_aligned_modal_retry_failure_theory_blocked"
+    ]["accepted_candidate"] is False
+    assert time_aligned_failure_theory["public_claim_allowed"] is False
+    assert time_aligned_failure_theory["public_observable_promoted"] is False
+    assert (
+        time_aligned_failure_theory["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        time_aligned_failure_theory["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        time_aligned_failure_theory["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
+            "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -23552,7 +23967,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
+            "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
         ]
     )
     assert (
@@ -23821,6 +24236,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata["private_plane_wave_time_aligned_modal_retry_parity_scoring_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_time_aligned_modal_retry_failure_theory_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

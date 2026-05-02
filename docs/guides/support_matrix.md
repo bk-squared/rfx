@@ -449,8 +449,11 @@ or public observables. The scoring lane now records
 `private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending`:
 the retained staged-packet hunk is finite under private scoring, but unchanged
 paired material-improvement, transverse-uniformity, and vacuum-stability gates
-remain closed. The next safe lane is private time-aligned modal retry
-failure theory redesign after parity scoring remains insufficient.
+remain closed. The failure-theory lane now records
+`private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready`:
+time alignment made no material score delta against the source-populated
+baseline, so the next safe lane is private modal projection/normalizer contract
+design after the time-aligned modal retry theory is ready.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
