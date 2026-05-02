@@ -1069,8 +1069,23 @@ def _project_private_modal_basis_packets(
     floor = jnp.asarray(1.0e-12, dtype=dtype)
     eps = jnp.asarray(1.0e-30, dtype=dtype)
     packet_mask = source_mask * interface_mask
-    packet_weight = 0.5 * (source_weight + interface_weight) * packet_mask
+    base_packet_weight = 0.5 * (source_weight + interface_weight) * packet_mask
     source_energy = source_real * source_real + source_imag * source_imag
+    interface_energy = interface_real * interface_real + interface_imag * interface_imag
+    normalizer_energy = (
+        normalizer_real * normalizer_real + normalizer_imag * normalizer_imag
+    )
+    characteristic_admittance = jnp.asarray(np.sqrt(EPS_0 / MU_0), dtype=dtype)
+    active_weight = jnp.maximum(jnp.sum(base_packet_weight), floor)
+    energy_density = normalizer_energy + 0.5 * (source_energy + interface_energy)
+    mean_energy_density = jnp.sum(base_packet_weight * energy_density) / active_weight
+    relative_energy_density = energy_density / jnp.maximum(mean_energy_density, floor)
+    energy_shape = jnp.clip(
+        relative_energy_density,
+        jnp.asarray(0.25, dtype=dtype),
+        jnp.asarray(4.0, dtype=dtype),
+    )
+    packet_weight = base_packet_weight * characteristic_admittance * energy_shape
     source_power = jnp.sum(packet_weight * source_energy)
 
     def _complex_coeff(
@@ -1142,23 +1157,35 @@ def _project_private_modal_basis_packets(
     def _project_packet(
         packet_real: jnp.ndarray,
         packet_imag: jnp.ndarray,
-        mode_real: jnp.ndarray,
-        mode_imag: jnp.ndarray,
-        mode_active: jnp.ndarray,
     ) -> tuple[jnp.ndarray, jnp.ndarray]:
-        coeff_real, coeff_imag = _complex_coeff(
-            packet_real,
-            packet_imag,
-            mode_real,
-            mode_imag,
+        modes_real = jnp.stack((incident_real, reflected_real, transverse_real))
+        modes_imag = jnp.stack((incident_imag, reflected_imag, transverse_imag))
+        mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
+        modes = (modes_real + 1j * modes_imag).astype(jnp.complex64)
+        packet = (packet_real + 1j * packet_imag).astype(jnp.complex64)
+        weight = packet_weight.astype(jnp.complex64)
+        active = mode_active.astype(jnp.complex64)
+        spatial_axes = tuple(range(2, modes.ndim + 1))
+        gram = jnp.sum(
+            weight[None, None, ...] * jnp.conj(modes[:, None, ...]) * modes[None, ...],
+            axis=spatial_axes,
         )
-        projected_real, projected_imag = _apply_coeff(
-            coeff_real,
-            coeff_imag,
-            mode_real,
-            mode_imag,
+        active_outer = active[:, None] * active[None, :]
+        identity = jnp.eye(3, dtype=jnp.complex64)
+        regularizer = floor.astype(jnp.complex64) * identity
+        inactive_diagonal = jnp.diag(1.0 - active).astype(jnp.complex64)
+        gram = gram * active_outer + inactive_diagonal + regularizer
+        rhs = (
+            jnp.sum(
+                weight[None, ...] * jnp.conj(modes) * packet[None, ...],
+                axis=tuple(range(1, modes.ndim)),
+            )
+            * active
         )
-        return mode_active * projected_real, mode_active * projected_imag
+        coeff = jnp.linalg.solve(gram, rhs)
+        coeff_shape = (coeff.size,) + (1,) * (modes.ndim - 1)
+        projected = jnp.sum((coeff * active).reshape(coeff_shape) * modes, axis=0)
+        return jnp.real(projected).astype(dtype), jnp.imag(projected).astype(dtype)
 
     incident_real, incident_imag, incident_active = _normalize_mode(
         normalizer_real,
@@ -1193,36 +1220,21 @@ def _project_private_modal_basis_packets(
         interface_residual_real,
         interface_residual_imag,
     )
+    projected_source_real, projected_source_imag = _project_packet(
+        source_real,
+        source_imag,
+    )
+    projected_interface_real, projected_interface_imag = _project_packet(
+        interface_real,
+        interface_imag,
+    )
+    basis_ready = (incident_active + reflected_active + transverse_active) > 0.0
 
-    projected_source_real = jnp.zeros_like(source_real)
-    projected_source_imag = jnp.zeros_like(source_imag)
-    projected_interface_real = jnp.zeros_like(interface_real)
-    projected_interface_imag = jnp.zeros_like(interface_imag)
-    for mode_real, mode_imag, mode_active in (
-        (incident_real, incident_imag, incident_active),
-        (reflected_real, reflected_imag, reflected_active),
-        (transverse_real, transverse_imag, transverse_active),
-    ):
-        source_mode_real, source_mode_imag = _project_packet(
-            source_real,
-            source_imag,
-            mode_real,
-            mode_imag,
-            mode_active,
-        )
-        interface_mode_real, interface_mode_imag = _project_packet(
-            interface_real,
-            interface_imag,
-            mode_real,
-            mode_imag,
-            mode_active,
-        )
-        projected_source_real = projected_source_real + source_mode_real
-        projected_source_imag = projected_source_imag + source_mode_imag
-        projected_interface_real = projected_interface_real + interface_mode_real
-        projected_interface_imag = projected_interface_imag + interface_mode_imag
-
-    projection_ready = (incident_active > 0.0) & (source_power > eps)
+    projection_ready = (
+        (incident_active > 0.0)
+        & (source_power > eps)
+        & basis_ready
+    )
     projected_target_real = jnp.where(
         projection_ready,
         projected_interface_real - projected_source_real,

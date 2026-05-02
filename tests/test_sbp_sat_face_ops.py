@@ -32,6 +32,7 @@ from rfx.subgridding.sbp_operators import (
     yee_staggered_identity_residual,
 )
 from rfx.subgridding.sbp_sat_3d import (
+    _project_private_modal_basis_packets,
     extract_tangential_e_face,
     extract_tangential_h_face,
     init_subgrid_3d,
@@ -379,3 +380,52 @@ def test_private_all_face_surface_partition_and_flux_contract():
     assert flux["face_count"] == 6
     assert flux["passes"] is True
     assert flux["max_abs_residual"] <= 1.0e-12
+
+
+def test_private_modal_projection_energy_biorthogonal_contract_is_fixed_shape():
+    i = jnp.arange(3, dtype=jnp.float32)[:, None]
+    j = jnp.arange(2, dtype=jnp.float32)[None, :]
+    source_real = 1.0 + 0.1 * i + 0.05 * j
+    source_imag = 0.2 + 0.03 * i - 0.02 * j
+    normalizer_real = jnp.ones((3, 2), dtype=jnp.float32)
+    normalizer_imag = jnp.zeros((3, 2), dtype=jnp.float32)
+    packet_weight = 1.0 + 0.2 * i + 0.1 * j
+    packet_mask = jnp.ones((3, 2), dtype=jnp.float32)
+
+    same_real, same_imag, same_gate = _project_private_modal_basis_packets(
+        source_real=source_real,
+        source_imag=source_imag,
+        interface_real=source_real,
+        interface_imag=source_imag,
+        normalizer_real=normalizer_real,
+        normalizer_imag=normalizer_imag,
+        source_weight=packet_weight,
+        interface_weight=packet_weight,
+        source_mask=packet_mask,
+        interface_mask=packet_mask,
+    )
+
+    assert same_real.shape == source_real.shape
+    assert same_imag.shape == source_imag.shape
+    assert float(same_gate) == 1.0
+    np.testing.assert_allclose(np.asarray(same_real), np.zeros((3, 2)), atol=1e-5)
+    np.testing.assert_allclose(np.asarray(same_imag), np.zeros((3, 2)), atol=1e-5)
+
+    shifted_real, shifted_imag, shifted_gate = _project_private_modal_basis_packets(
+        source_real=source_real,
+        source_imag=source_imag,
+        interface_real=source_real + 0.01 * i,
+        interface_imag=source_imag - 0.02 * j,
+        normalizer_real=normalizer_real,
+        normalizer_imag=normalizer_imag,
+        source_weight=packet_weight,
+        interface_weight=packet_weight + 0.05 * j,
+        source_mask=packet_mask,
+        interface_mask=packet_mask,
+    )
+
+    assert shifted_real.shape == source_real.shape
+    assert shifted_imag.shape == source_imag.shape
+    assert float(shifted_gate) == 1.0
+    assert float(jnp.max(jnp.abs(shifted_real))) > 0.0
+    assert float(jnp.max(jnp.abs(shifted_imag))) > 0.0

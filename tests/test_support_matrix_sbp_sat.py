@@ -6916,13 +6916,179 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == residual_basis_energy_biorthogonal_design["next_prerequisite"]
     )
+    residual_basis_energy_biorthogonal_implementation = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_implementation_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_hunk_retained_fixture_quality_pending"
+    )
+    assert residual_basis_energy_biorthogonal_implementation[
+        "terminal_outcome"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_hunk_retained_fixture_quality_pending"
+    )
+    assert residual_basis_energy_biorthogonal_implementation[
+        "upstream_energy_biorthogonal_design_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_status"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "candidate_ladder_declared_before_implementation"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "candidate_ladder_declared_before_solver_edit"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "candidate_ladder_declared_before_slow_scoring"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation["candidate_count"] == 5
+    assert residual_basis_energy_biorthogonal_implementation[
+        "selected_candidate_id"
+    ] == "AG3_combined_energy_biorthogonal_residual_basis_helper_hunk"
+    assert residual_basis_energy_biorthogonal_implementation[
+        "baseline_metrics"
+    ] == residual_basis_energy_biorthogonal_design["baseline_metrics"]
+    assert residual_basis_energy_biorthogonal_implementation["metrics"] == (
+        residual_basis_energy_biorthogonal_design["metrics"]
+    )
+    assert residual_basis_energy_biorthogonal_implementation["thresholds"] == (
+        residual_basis_energy_biorthogonal_design["thresholds"]
+    )
+    assert residual_basis_energy_biorthogonal_implementation[
+        "threshold_results"
+    ] == residual_basis_energy_biorthogonal_design["threshold_results"]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "energy_biorthogonal_design_ready"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "energy_biorthogonal_contract_consumed"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "energy_biorthogonal_helper_retained"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "energy_biorthogonal_contract"
+    ] == residual_basis_energy_biorthogonal_design["energy_biorthogonal_contract"]
+    assert (
+        residual_basis_energy_biorthogonal_implementation["projection_helper"]
+        == "_project_private_modal_basis_packets"
+    )
+    assert (
+        residual_basis_energy_biorthogonal_implementation["consumer_helper"]
+        == "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert residual_basis_energy_biorthogonal_implementation["basis_vectors"] == (
+        residual_basis_energy_biorthogonal_design["basis_vectors"]
+    )
+    assert residual_basis_energy_biorthogonal_implementation[
+        "characteristic_admittance_weighted"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "energy_density_shape_weighted"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "energy_biorthogonal_gram_projection"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "scalar_l2_orthogonality_replaced"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "subtraction_uses_projected_packets_only"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "single_incident_basis_replaced"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "projection_gate_fail_closed"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "fail_closed_if_projection_energy_missing"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "reuse_existing_owner_packet_shapes"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation["fixed_shape_reductions"]
+    assert residual_basis_energy_biorthogonal_implementation["jit_safe_reduction"]
+    assert residual_basis_energy_biorthogonal_implementation["no_threshold_laundering"]
+    assert (
+        residual_basis_energy_biorthogonal_implementation[
+            "material_improvement_demonstrated"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_implementation[
+            "subgrid_vacuum_parity_scored"
+        ]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_implementation[
+        "fixture_quality_pending"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation["production_patch_applied"]
+    assert residual_basis_energy_biorthogonal_implementation["solver_behavior_changed"]
+    assert residual_basis_energy_biorthogonal_implementation[
+        "field_update_behavior_changed"
+    ]
+    assert residual_basis_energy_biorthogonal_implementation["new_solver_hunk_retained"]
+    energy_impl_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_energy_biorthogonal_implementation[
+            "candidate_ladder"
+        ]
+    }
+    assert energy_impl_candidates[
+        "AG1_characteristic_eh_energy_weight_helper"
+    ]["characteristic_admittance_weighted"]
+    assert energy_impl_candidates[
+        "AG2_energy_biorthogonal_packet_projection"
+    ]["energy_biorthogonal_gram_projection"]
+    assert energy_impl_candidates[
+        "AG3_combined_energy_biorthogonal_residual_basis_helper_hunk"
+    ]["accepted_candidate"]
+    assert (
+        energy_impl_candidates["AG4_energy_biorthogonal_implementation_blocked"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_implementation["public_claim_allowed"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_implementation[
+            "public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_implementation[
+            "true_rt_public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_implementation[
+            "dft_flux_tfsf_port_sparameter_promoted"
+        ]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_implementation_next_prerequisite"
+        ]
+        == residual_basis_energy_biorthogonal_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal implementation after design contract ready ralplan"
+        "energy-biorthogonal parity scoring after implementation hunk retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal implementation after design contract ready ralplan"
+        "energy-biorthogonal parity scoring after implementation hunk retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -7257,6 +7423,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -7521,7 +7693,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal implementation after design contract ready ralplan"
+        "energy-biorthogonal parity scoring after implementation hunk retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

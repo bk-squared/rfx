@@ -533,7 +533,14 @@ the design replaces scalar packet-L2 residual modes with fixed-shape private
 incident, reflected, and transverse characteristic E/H power modes, keeps
 thresholds unchanged, reuses existing private owner packet shapes, and leaves
 all public observable/API/result/export surfaces closed; the next safe lane is
-private energy-biorthogonal implementation.
+private energy-biorthogonal implementation. The projected target residual-basis
+energy-biorthogonal implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_hunk_retained_fixture_quality_pending`:
+the private helper weights packet coefficients by a characteristic E/H energy
+form and projects source/interface packets through a fixed-shape
+energy-biorthogonal Gram system before target subtraction, with public
+promotion still closed; the next safe lane is private energy-biorthogonal
+parity scoring.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
