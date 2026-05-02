@@ -431,7 +431,13 @@ normalizer buffers can remain fixed-shape, CPML/non-CPML/JIT symmetric, and
 separate without public TFSF, benchmark DFT, hooks, or public observable
 promotion. The next safe lane is private source-interface ownership state-shape
 implementation after design contract ready. Hook experiments remain closed and
-public promotion remains closed.
+public promotion remains closed. That implementation lane now records
+`private_plane_wave_source_interface_state_shape_hunk_retained_fixture_quality_pending`:
+private source-owner reference, incident-normalizer, weight/mask, offset/length,
+and orientation buffers are retained separately from the existing interface
+packet, with CPML/non-CPML/JIT initialization symmetry and no modal field-update
+behavior change. The next safe lane is private propagation-aware modal retry
+implementation after source-interface state-shape hunk retained.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

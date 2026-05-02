@@ -106,6 +106,18 @@ class _PrivateInterfaceOwnerState(NamedTuple):
     face_normal_sign: jnp.ndarray
     face_tangential_axis_0: jnp.ndarray
     face_tangential_axis_1: jnp.ndarray
+    source_owner_reference_real: jnp.ndarray
+    source_owner_reference_imag: jnp.ndarray
+    source_owner_weight: jnp.ndarray
+    source_owner_mask: jnp.ndarray
+    source_incident_normalizer_real: jnp.ndarray
+    source_incident_normalizer_imag: jnp.ndarray
+    source_packet_offsets: jnp.ndarray
+    source_packet_lengths: jnp.ndarray
+    source_normal_axis: jnp.ndarray
+    source_normal_sign: jnp.ndarray
+    source_tangential_axis_0: jnp.ndarray
+    source_tangential_axis_1: jnp.ndarray
 
 
 class _PrivateInterfaceOwnerJointScore(NamedTuple):
@@ -574,6 +586,7 @@ def _init_private_interface_owner_state(
         face_proxy_mask,
         face_proxy_reference,
     ) = _private_owner_face_packet_layout(config)
+    source_incident_normalizer_imag = np.zeros_like(face_proxy_reference)
     return _PrivateInterfaceOwnerState(
         face_phase_reference=jnp.zeros((face_count,), dtype=jnp.float32),
         face_magnitude_reference=jnp.zeros((face_count,), dtype=jnp.float32),
@@ -597,6 +610,36 @@ def _init_private_interface_owner_state(
             dtype=jnp.int32,
         ),
         face_tangential_axis_1=jnp.asarray(
+            face_tangential_axis_1,
+            dtype=jnp.int32,
+        ),
+        source_owner_reference_real=jnp.asarray(
+            face_proxy_reference,
+            dtype=jnp.float32,
+        ),
+        source_owner_reference_imag=jnp.asarray(
+            face_proxy_reference,
+            dtype=jnp.float32,
+        ),
+        source_owner_weight=jnp.asarray(face_proxy_weight, dtype=jnp.float32),
+        source_owner_mask=jnp.asarray(face_proxy_mask, dtype=jnp.float32),
+        source_incident_normalizer_real=jnp.asarray(
+            face_proxy_mask,
+            dtype=jnp.float32,
+        ),
+        source_incident_normalizer_imag=jnp.asarray(
+            source_incident_normalizer_imag,
+            dtype=jnp.float32,
+        ),
+        source_packet_offsets=jnp.asarray(face_packet_offsets, dtype=jnp.int32),
+        source_packet_lengths=jnp.asarray(face_packet_lengths, dtype=jnp.int32),
+        source_normal_axis=jnp.asarray(face_normal_axis, dtype=jnp.int32),
+        source_normal_sign=jnp.asarray(face_normal_sign, dtype=jnp.int32),
+        source_tangential_axis_0=jnp.asarray(
+            face_tangential_axis_0,
+            dtype=jnp.int32,
+        ),
+        source_tangential_axis_1=jnp.asarray(
             face_tangential_axis_1,
             dtype=jnp.int32,
         ),

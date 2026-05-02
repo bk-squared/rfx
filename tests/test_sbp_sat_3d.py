@@ -21,6 +21,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _get_face_ops,
     _init_private_interface_owner_state,
     _private_interface_owner_joint_score,
+    _update_private_interface_owner_state_from_scan,
     apply_sat_e_interfaces,
     apply_sat_h_interfaces,
     compute_energy_3d,
@@ -573,9 +574,53 @@ def _assert_private_owner_packet_shape(owner_state, config):
         np.asarray(owner_state.face_tangential_axis_1),
         [FACE_ORIENTATIONS[face].tangential_axes[1] for face in active_faces],
     )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.source_packet_lengths),
+        lengths,
+    )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.source_packet_offsets),
+        offsets,
+    )
+    assert owner_state.source_owner_reference_real.shape == (packet_size,)
+    assert owner_state.source_owner_reference_imag.shape == (packet_size,)
+    assert owner_state.source_owner_weight.shape == (packet_size,)
+    assert owner_state.source_owner_mask.shape == (packet_size,)
+    assert owner_state.source_incident_normalizer_real.shape == (packet_size,)
+    assert owner_state.source_incident_normalizer_imag.shape == (packet_size,)
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.source_normal_axis),
+        [FACE_ORIENTATIONS[face].normal_axis for face in active_faces],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.source_normal_sign),
+        [FACE_ORIENTATIONS[face].normal_sign for face in active_faces],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.source_tangential_axis_0),
+        [FACE_ORIENTATIONS[face].tangential_axes[0] for face in active_faces],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(owner_state.source_tangential_axis_1),
+        [FACE_ORIENTATIONS[face].tangential_axes[1] for face in active_faces],
+    )
     assert np.all(np.asarray(owner_state.face_proxy_mask) >= 0.0)
     assert np.all(np.asarray(owner_state.face_proxy_weight) >= 0.0)
     assert np.any(np.asarray(owner_state.face_proxy_mask) > 0.0)
+    assert np.all(np.asarray(owner_state.source_owner_mask) >= 0.0)
+    assert np.all(np.asarray(owner_state.source_owner_weight) >= 0.0)
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_owner_mask),
+        np.asarray(owner_state.face_proxy_mask),
+    )
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_incident_normalizer_real),
+        np.asarray(owner_state.source_owner_mask),
+    )
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_incident_normalizer_imag),
+        0.0,
+    )
 
 
 def test_private_interface_owner_state_initializes_for_active_faces():
@@ -598,6 +643,63 @@ def test_private_interface_owner_state_initializes_for_active_faces():
     np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 0)
     np.testing.assert_allclose(np.asarray(owner_state.face_proxy_reference_real), 0.0)
     np.testing.assert_allclose(np.asarray(owner_state.face_proxy_reference_imag), 0.0)
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_owner_reference_real),
+        0.0,
+    )
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_owner_reference_imag),
+        0.0,
+    )
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_incident_normalizer_real),
+        np.asarray(owner_state.source_owner_mask),
+    )
+    np.testing.assert_allclose(
+        np.asarray(owner_state.source_incident_normalizer_imag),
+        0.0,
+    )
+
+
+def test_private_source_owner_buffers_are_separate_from_interface_packet():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    owner_state = _init_private_interface_owner_state(config)
+    source_real_before = np.asarray(owner_state.source_owner_reference_real)
+    source_imag_before = np.asarray(owner_state.source_owner_reference_imag)
+    source_normalizer_before = np.asarray(
+        owner_state.source_incident_normalizer_real
+    )
+
+    updated = _update_private_interface_owner_state_from_scan(
+        owner_state,
+        e_post_sat_coarse=(state.ex_c + 1.0, state.ey_c + 2.0, state.ez_c + 3.0),
+        e_post_sat_fine=(state.ex_f + 1.5, state.ey_f + 2.5, state.ez_f + 3.5),
+        h_post_sat_coarse=(state.hx_c + 0.1, state.hy_c + 0.2, state.hz_c + 0.3),
+        h_post_sat_fine=(state.hx_f + 0.15, state.hy_f + 0.25, state.hz_f + 0.35),
+        config=config,
+    )
+    active_proxy = np.asarray(updated.face_proxy_mask) > 0.0
+
+    assert np.any(
+        np.abs(np.asarray(updated.face_proxy_reference_real)[active_proxy]) > 0.0
+    )
+    np.testing.assert_allclose(
+        np.asarray(updated.source_owner_reference_real),
+        source_real_before,
+    )
+    np.testing.assert_allclose(
+        np.asarray(updated.source_owner_reference_imag),
+        source_imag_before,
+    )
+    np.testing.assert_allclose(
+        np.asarray(updated.source_incident_normalizer_real),
+        source_normalizer_before,
+    )
 
 
 def test_private_interface_owner_state_propagates_through_non_cpml_step():
