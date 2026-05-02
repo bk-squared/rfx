@@ -424,8 +424,14 @@ failure-theory contract. That implementation lane now records
 no new propagation-aware modal-basis hunk is retained because the current
 private owner state has only the interface-observed packet and no separate
 source-owner/incident-normalizer packet. The next safe lane is private
-source-interface ownership state-shape design. Hook experiments remain closed
-and public promotion remains closed.
+source-interface ownership state-shape design. That design lane now records
+`private_plane_wave_source_interface_owner_state_shape_contract_ready`: private
+source-owner incident packets, interface-owner observed packets, and incident
+normalizer buffers can remain fixed-shape, CPML/non-CPML/JIT symmetric, and
+separate without public TFSF, benchmark DFT, hooks, or public observable
+promotion. The next safe lane is private source-interface ownership state-shape
+implementation after design contract ready. Hook experiments remain closed and
+public promotion remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

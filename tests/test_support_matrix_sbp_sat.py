@@ -3864,13 +3864,131 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == modal_retry_redesign_implementation["next_prerequisite"]
     )
+    source_interface_shape = benchmark_gate[
+        "private_plane_wave_source_interface_ownership_state_shape"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_source_interface_ownership_state_shape_status"
+    ] == "private_plane_wave_source_interface_owner_state_shape_contract_ready"
+    assert source_interface_shape["terminal_outcome"] == (
+        "private_plane_wave_source_interface_owner_state_shape_contract_ready"
+    )
+    assert source_interface_shape["upstream_redesign_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_status"
+        ]
+    )
+    assert source_interface_shape["upstream_failure_theory_status"] == (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_retry_failure_theory_status"
+        ]
+    )
+    assert (
+        source_interface_shape["candidate_ladder_declared_before_solver_edit"]
+        is True
+    )
+    assert (
+        source_interface_shape["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert source_interface_shape["candidate_count"] == 5
+    assert source_interface_shape["selected_candidate_id"] == (
+        "E3_combined_source_interface_state_shape_contract"
+    )
+    assert source_interface_shape["baseline_metrics"] == (
+        modal_retry_redesign_implementation["baseline_metrics"]
+    )
+    assert source_interface_shape["metrics"] == (
+        modal_retry_redesign_implementation["metrics"]
+    )
+    assert source_interface_shape["thresholds"] == (
+        modal_retry_redesign_implementation["thresholds"]
+    )
+    assert source_interface_shape["baseline_metrics_preserved"] is True
+    assert source_interface_shape["thresholds_unchanged"] is True
+    assert source_interface_shape["redesign_implementation_blocker_preserved"] is True
+    assert source_interface_shape["source_owner_packet_state_contract_ready"] is True
+    assert (
+        source_interface_shape["interface_owner_packet_separation_contract_ready"]
+        is True
+    )
+    assert source_interface_shape[
+        "source_interface_owner_state_shape_contract_ready"
+    ] is True
+    assert source_interface_shape["incident_normalizer_state_contract_ready"] is True
+    assert source_interface_shape["fixed_jax_pytree_shapes"] is True
+    assert (
+        source_interface_shape["cpml_non_cpml_initialization_contract_ready"] is True
+    )
+    assert source_interface_shape["jit_runner_initialization_contract_ready"] is True
+    assert source_interface_shape["private_state_only"] is True
+    assert source_interface_shape["source_owner_packet_contract"][
+        "public_tfsf_required"
+    ] is False
+    assert source_interface_shape["source_owner_packet_contract"][
+        "benchmark_dft_required"
+    ] is False
+    assert source_interface_shape["interface_owner_separation_contract"][
+        "source_packet_must_not_alias_interface_packet"
+    ] is True
+    assert source_interface_shape["combined_state_shape_contract"][
+        "bounded_follow_up_implementation_surface"
+    ] is True
+    assert source_interface_shape["production_patch_applied"] is False
+    assert source_interface_shape["solver_behavior_changed"] is False
+    assert source_interface_shape["field_update_behavior_changed"] is False
+    assert source_interface_shape["runner_behavior_changed"] is False
+    assert source_interface_shape["new_solver_hunk_retained"] is False
+    assert source_interface_shape["subgrid_vacuum_parity_scored"] is True
+    assert source_interface_shape["subgrid_vacuum_parity_passed"] is False
+    assert source_interface_shape["material_improvement_demonstrated"] is False
+    assert source_interface_shape["fixture_quality_pending"] is True
+    assert source_interface_shape["true_rt_readiness_unlocked"] is False
+    assert (
+        source_interface_shape[
+            "next_lane_requires_source_interface_owner_state_shape_implementation"
+        ]
+        is True
+    )
+    source_interface_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_interface_shape["candidate_ladder"]
+    }
+    assert source_interface_candidates[
+        "E1_source_owner_packet_state_contract"
+    ]["design_component_ready"] is True
+    assert source_interface_candidates[
+        "E1_source_owner_packet_state_contract"
+    ]["superseded_by"] == "E3_combined_source_interface_state_shape_contract"
+    assert source_interface_candidates[
+        "E2_interface_owner_packet_separation_contract"
+    ]["design_component_ready"] is True
+    assert source_interface_candidates[
+        "E2_interface_owner_packet_separation_contract"
+    ]["superseded_by"] == "E3_combined_source_interface_state_shape_contract"
+    assert source_interface_candidates[
+        "E3_combined_source_interface_state_shape_contract"
+    ]["accepted_candidate"] is True
+    assert source_interface_candidates[
+        "E4_source_interface_state_shape_design_blocked"
+    ]["accepted_candidate"] is False
+    assert source_interface_shape["public_claim_allowed"] is False
+    assert source_interface_shape["public_observable_promoted"] is False
+    assert source_interface_shape["true_rt_public_observable_promoted"] is False
+    assert source_interface_shape["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_interface_ownership_state_shape_next_prerequisite"
+        ]
+        == source_interface_shape["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source-interface ownership state-shape design after "
-        "modal retry redesign implementation blocked ralplan"
+        "private plane-wave source-interface ownership state-shape implementation "
+        "after design contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave source-interface ownership state-shape design after "
-        "modal retry redesign implementation blocked ralplan"
+        "private plane-wave source-interface ownership state-shape implementation "
+        "after design contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -4033,6 +4151,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_interface_ownership_state_shape_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -4300,8 +4424,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source-interface ownership state-shape design after "
-        "modal retry redesign implementation blocked ralplan"
+        "private plane-wave source-interface ownership state-shape implementation "
+        "after design contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

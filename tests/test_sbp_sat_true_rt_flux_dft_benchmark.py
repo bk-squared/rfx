@@ -1384,6 +1384,25 @@ _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_RETRY_REDESIGN_IMPLEMENTATION_PRECEDE
     "private_plane_wave_modal_retry_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_STATUS = (
+    "private_plane_wave_source_interface_owner_state_shape_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_NEXT_PREREQUISITE = (
+    "private plane-wave source-interface ownership state-shape implementation "
+    "after design contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_TERMINAL_OUTCOMES = (
+    "private_plane_wave_source_owner_packet_state_contract_ready",
+    "private_plane_wave_interface_owner_packet_separation_contract_ready",
+    "private_plane_wave_source_interface_owner_state_shape_contract_ready",
+    "no_private_plane_wave_source_interface_ownership_state_shape_design",
+)
+_PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_PRECEDENCE = (
+    "no_private_plane_wave_source_interface_ownership_state_shape_design",
+    "private_plane_wave_source_owner_packet_state_contract_ready",
+    "private_plane_wave_interface_owner_packet_separation_contract_ready",
+    "private_plane_wave_source_interface_owner_state_shape_contract_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -11766,6 +11785,220 @@ def _private_plane_wave_observable_proxy_modal_retry_redesign_implementation_met
     }
 
 
+def _private_plane_wave_source_interface_ownership_state_shape_metadata(
+    *,
+    redesign_implementation_metadata: dict[str, object],
+    failure_theory_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(redesign_implementation_metadata["baseline_metrics"])
+    metrics = dict(redesign_implementation_metadata["metrics"])
+    thresholds = dict(redesign_implementation_metadata["thresholds"])
+    source_owner_packet_contract = {
+        "state_extension_target": "_PrivateInterfaceOwnerState",
+        "packet_role": "source_owner_incident_reference",
+        "required_float_buffers": (
+            "source_owner_reference_real",
+            "source_owner_reference_imag",
+            "source_owner_weight",
+            "source_owner_mask",
+            "source_incident_normalizer_real",
+            "source_incident_normalizer_imag",
+        ),
+        "required_index_buffers": (
+            "source_packet_offsets",
+            "source_packet_lengths",
+            "source_normal_axis",
+            "source_normal_sign",
+            "source_tangential_axis_0",
+            "source_tangential_axis_1",
+        ),
+        "fixed_jax_pytree_shapes": True,
+        "private_state_only": True,
+        "public_tfsf_required": False,
+        "benchmark_dft_required": False,
+        "hook_required": False,
+    }
+    interface_owner_separation_contract = {
+        "existing_interface_packet_role": "interface_observed_reference",
+        "source_packet_must_not_alias_interface_packet": True,
+        "interface_packet_remains_lagged": True,
+        "incident_normalizer_is_source_owned": True,
+        "modal_basis_can_reference_both_packets": True,
+        "requires_public_api": False,
+        "imports_benchmark_fixture_metadata": False,
+    }
+    combined_state_shape_contract = {
+        "source_owner_packet_contract_ready": True,
+        "interface_owner_packet_separation_contract_ready": True,
+        "incident_normalizer_state_contract_ready": True,
+        "cpml_non_cpml_initialization_symmetry_required": True,
+        "jit_runner_initialization_symmetry_required": True,
+        "same_shape_when_no_active_faces": True,
+        "bounded_follow_up_implementation_surface": True,
+        "forbids_public_promotion": True,
+    }
+    e0 = {
+        "candidate_id": "E0_redesign_implementation_blocker_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_redesign_implementation_status": (
+            redesign_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_failure_theory_status": failure_theory_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    e1 = {
+        "candidate_id": "E1_source_owner_packet_state_contract",
+        "candidate_family": "source_owner_packet_state_shape",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "selected_terminal_outcome": (
+            "private_plane_wave_source_owner_packet_state_contract_ready"
+        ),
+        "source_owner_packet_contract": source_owner_packet_contract,
+        "superseded_by": "E3_combined_source_interface_state_shape_contract",
+        "public_claim_allowed": False,
+    }
+    e2 = {
+        "candidate_id": "E2_interface_owner_packet_separation_contract",
+        "candidate_family": "interface_owner_packet_separation",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "selected_terminal_outcome": (
+            "private_plane_wave_interface_owner_packet_separation_contract_ready"
+        ),
+        "interface_owner_separation_contract": interface_owner_separation_contract,
+        "superseded_by": "E3_combined_source_interface_state_shape_contract",
+        "public_claim_allowed": False,
+    }
+    e3 = {
+        "candidate_id": "E3_combined_source_interface_state_shape_contract",
+        "candidate_family": "combined_private_state_shape_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_STATUS
+        ),
+        "source_owner_packet_contract": source_owner_packet_contract,
+        "interface_owner_separation_contract": interface_owner_separation_contract,
+        "combined_state_shape_contract": combined_state_shape_contract,
+        "source_owner_packet_state_contract_ready": True,
+        "interface_owner_packet_separation_contract_ready": True,
+        "source_interface_owner_state_shape_contract_ready": True,
+        "incident_normalizer_state_contract_ready": True,
+        "bounded_follow_up_implementation_surface": True,
+        "public_claim_allowed": False,
+    }
+    e4 = {
+        "candidate_id": "E4_source_interface_state_shape_design_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_source_interface_ownership_state_shape_design"
+        ),
+        "not_selected_reason": (
+            "a private fixed-shape source/interface ownership state contract "
+            "can be specified without public TFSF, benchmark DFT, hooks, or "
+            "public observable promotion"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (e0, e1, e2, e3, e4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_source_interface_ownership_state_shape_design_only"
+        ),
+        "upstream_redesign_implementation_status": (
+            redesign_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_failure_theory_status": failure_theory_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite E0/E1/E2/E3/E4 state-shape ladder; define private "
+            "source-owner and interface-owner packet separation before any "
+            "propagation-aware modal field-update hunk"
+        ),
+        "selected_candidate_id": "E3_combined_source_interface_state_shape_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "redesign_implementation_blocker_preserved": True,
+        "source_owner_packet_state_contract_ready": True,
+        "interface_owner_packet_separation_contract_ready": True,
+        "source_interface_owner_state_shape_contract_ready": True,
+        "incident_normalizer_state_contract_ready": True,
+        "fixed_jax_pytree_shapes": True,
+        "cpml_non_cpml_initialization_contract_ready": True,
+        "jit_runner_initialization_contract_ready": True,
+        "private_state_only": True,
+        "source_owner_packet_contract": source_owner_packet_contract,
+        "interface_owner_separation_contract": interface_owner_separation_contract,
+        "combined_state_shape_contract": combined_state_shape_contract,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "material_improvement_demonstrated": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_source_interface_owner_state_shape_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private source/interface ownership state-shape contract is "
+            "ready: source-owner incident packets, interface-owner observed "
+            "packets, and incident normalizer buffers can be kept private, "
+            "fixed-shape, and CPML/non-CPML/JIT symmetric before any later "
+            "propagation-aware modal hunk"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -14507,8 +14740,34 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_source_interface_ownership_state_shape_metadata = (
+        _private_plane_wave_source_interface_ownership_state_shape_metadata(
+            redesign_implementation_metadata=(
+                plane_wave_observable_proxy_modal_retry_redesign_implementation_metadata
+            ),
+            failure_theory_metadata=(
+                plane_wave_observable_proxy_modal_retry_failure_theory_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_source_interface_ownership_state_shape_status": (
+                plane_wave_source_interface_ownership_state_shape_metadata["status"]
+            ),
+            "private_plane_wave_source_interface_ownership_state_shape": (
+                plane_wave_source_interface_ownership_state_shape_metadata
+            ),
+            "private_plane_wave_source_interface_ownership_state_shape_next_prerequisite": (
+                plane_wave_source_interface_ownership_state_shape_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_next_prerequisite"
+        "private_plane_wave_source_interface_ownership_state_shape_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -14662,6 +14921,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave observable-proxy modal retry "
                 "redesign implementation lane records "
                 f"{plane_wave_observable_proxy_modal_retry_redesign_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave source/interface ownership "
+                "state-shape design lane records "
+                f"{plane_wave_source_interface_ownership_state_shape_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -14671,7 +14933,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_next_prerequisite"
+                "private_plane_wave_source_interface_ownership_state_shape_next_prerequisite"
             ],
         }
 
@@ -19611,10 +19873,128 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_next_prerequisite"
         ]
     )
+    source_interface_shape = metadata[
+        "private_plane_wave_source_interface_ownership_state_shape"
+    ]
+    assert metadata[
+        "private_plane_wave_source_interface_ownership_state_shape_status"
+    ] == _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_STATUS
+    assert source_interface_shape["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_OWNERSHIP_STATE_SHAPE_STATUS
+    )
+    assert source_interface_shape["upstream_redesign_implementation_status"] == (
+        metadata[
+            "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_status"
+        ]
+    )
+    assert source_interface_shape["upstream_failure_theory_status"] == (
+        metadata[
+            "private_plane_wave_observable_proxy_modal_retry_failure_theory_status"
+        ]
+    )
+    assert (
+        source_interface_shape["candidate_ladder_declared_before_solver_edit"]
+        is True
+    )
+    assert (
+        source_interface_shape["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert source_interface_shape["candidate_count"] == 5
+    assert source_interface_shape["selected_candidate_id"] == (
+        "E3_combined_source_interface_state_shape_contract"
+    )
+    assert source_interface_shape["baseline_metrics"] == (
+        modal_retry_redesign_implementation["baseline_metrics"]
+    )
+    assert source_interface_shape["metrics"] == (
+        modal_retry_redesign_implementation["metrics"]
+    )
+    assert source_interface_shape["thresholds"] == (
+        modal_retry_redesign_implementation["thresholds"]
+    )
+    assert source_interface_shape["baseline_metrics_preserved"] is True
+    assert source_interface_shape["thresholds_unchanged"] is True
+    assert source_interface_shape["redesign_implementation_blocker_preserved"] is True
+    assert source_interface_shape["source_owner_packet_state_contract_ready"] is True
+    assert (
+        source_interface_shape["interface_owner_packet_separation_contract_ready"]
+        is True
+    )
+    assert source_interface_shape[
+        "source_interface_owner_state_shape_contract_ready"
+    ] is True
+    assert source_interface_shape["incident_normalizer_state_contract_ready"] is True
+    assert source_interface_shape["fixed_jax_pytree_shapes"] is True
+    assert (
+        source_interface_shape["cpml_non_cpml_initialization_contract_ready"] is True
+    )
+    assert source_interface_shape["jit_runner_initialization_contract_ready"] is True
+    assert source_interface_shape["private_state_only"] is True
+    assert source_interface_shape["source_owner_packet_contract"][
+        "public_tfsf_required"
+    ] is False
+    assert source_interface_shape["source_owner_packet_contract"][
+        "benchmark_dft_required"
+    ] is False
+    assert source_interface_shape["interface_owner_separation_contract"][
+        "source_packet_must_not_alias_interface_packet"
+    ] is True
+    assert source_interface_shape["combined_state_shape_contract"][
+        "bounded_follow_up_implementation_surface"
+    ] is True
+    assert source_interface_shape["production_patch_applied"] is False
+    assert source_interface_shape["solver_behavior_changed"] is False
+    assert source_interface_shape["field_update_behavior_changed"] is False
+    assert source_interface_shape["runner_behavior_changed"] is False
+    assert source_interface_shape["new_solver_hunk_retained"] is False
+    assert source_interface_shape["subgrid_vacuum_parity_scored"] is True
+    assert source_interface_shape["subgrid_vacuum_parity_passed"] is False
+    assert source_interface_shape["material_improvement_demonstrated"] is False
+    assert source_interface_shape["fixture_quality_pending"] is True
+    assert source_interface_shape["true_rt_readiness_unlocked"] is False
+    assert (
+        source_interface_shape[
+            "next_lane_requires_source_interface_owner_state_shape_implementation"
+        ]
+        is True
+    )
+    source_interface_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_interface_shape["candidate_ladder"]
+    }
+    assert source_interface_candidates[
+        "E1_source_owner_packet_state_contract"
+    ]["design_component_ready"] is True
+    assert source_interface_candidates[
+        "E1_source_owner_packet_state_contract"
+    ]["superseded_by"] == "E3_combined_source_interface_state_shape_contract"
+    assert source_interface_candidates[
+        "E2_interface_owner_packet_separation_contract"
+    ]["design_component_ready"] is True
+    assert source_interface_candidates[
+        "E2_interface_owner_packet_separation_contract"
+    ]["superseded_by"] == "E3_combined_source_interface_state_shape_contract"
+    assert source_interface_candidates[
+        "E3_combined_source_interface_state_shape_contract"
+    ]["accepted_candidate"] is True
+    assert source_interface_candidates[
+        "E4_source_interface_state_shape_design_blocked"
+    ]["accepted_candidate"] is False
+    assert source_interface_shape["public_claim_allowed"] is False
+    assert source_interface_shape["public_observable_promoted"] is False
+    assert source_interface_shape["true_rt_public_observable_promoted"] is False
+    assert source_interface_shape["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        source_interface_shape["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_interface_ownership_state_shape_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_next_prerequisite"
+            "private_plane_wave_source_interface_ownership_state_shape_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -19640,7 +20020,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_next_prerequisite"
+            "private_plane_wave_source_interface_ownership_state_shape_next_prerequisite"
         ]
     )
     assert (
@@ -19847,6 +20227,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata[
             "private_plane_wave_observable_proxy_modal_retry_redesign_implementation_status"
         ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_source_interface_ownership_state_shape_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
