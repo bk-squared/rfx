@@ -99,9 +99,9 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave source-populated propagation-aware
-modal retry failure-theory redesign after source-populated parity scoring
-remained insufficient. The previous implementation lane records
+The immediate lane is now private plane-wave source/interface time-aligned
+packet staging design after the source-populated modal retry theory contract
+became ready. The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
 packets before propagation-aware modal retry, preserves the interface-owner
@@ -110,6 +110,10 @@ scoring lane records
 `private_plane_wave_source_populated_propagation_aware_modal_retry_hunk_insufficient_fixture_quality_pending`:
 the populated source-owner packet is consumed by the private modal retry, but
 unchanged material-improvement and true R/T readiness gates remain closed. The
+failure-theory lane now records
+`private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready`:
+the next bounded private target is time-aligning the lagged interface-owner
+packet with the same-step source-owner packet before another modal retry hunk. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
@@ -198,8 +202,8 @@ pre-modal-retry timing contracts can stay private, fixed-shape,
 CPML/non-CPML/JIT symmetric, and non-aliasing with the interface-owner packet.
 The implementation lane now records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`,
-so the next lane is private source-populated propagation-aware modal retry
-failure-theory redesign after parity scoring insufficient.
+the source-populated scoring lane is insufficient, and the failure-theory lane
+now selects private source/interface time-aligned packet staging design.
 The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
@@ -295,10 +299,10 @@ step was source-interface ownership state shape. That design contract is now
 ready, and the fixed-shape source-owner/interface-owner state has now been
 retained without public promotion or modal field-update behavior changes. The
 private source-owner incident packet population hunk is also retained and the
-source-populated modal retry parity scoring lane is now insufficient. The next
-private gate is failure-theory redesign for the source-populated
-propagation-aware modal retry. The goal gate therefore remains claims-closed
-until a later redesign/readiness lane proves the real solver path improves without breaking
+source-populated modal retry parity scoring lane is now insufficient. The
+failure-theory lane selects time-aligned source/interface packet staging as the
+next private gate. The goal gate therefore remains claims-closed until a later
+redesign/readiness lane proves the real solver path improves without breaking
 CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
 unchanged `0.02` manufactured-ledger threshold.
 

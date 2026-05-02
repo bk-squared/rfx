@@ -1519,6 +1519,25 @@ _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_PARITY_SCORIN
     "private_plane_wave_source_populated_propagation_aware_modal_retry_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_STATUS = (
+    "private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_NEXT_PREREQUISITE = (
+    "private plane-wave source/interface time-aligned packet staging design "
+    "after source-populated modal retry theory contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_TERMINAL_OUTCOMES = (
+    "private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready",
+    "private_plane_wave_source_populated_modal_retry_projection_theory_contract_ready",
+    "private_plane_wave_source_populated_modal_retry_transverse_phase_floor_contract_ready",
+    "no_private_plane_wave_source_populated_modal_retry_failure_theory",
+)
+_PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_PRECEDENCE = (
+    "no_private_plane_wave_source_populated_modal_retry_failure_theory",
+    "private_plane_wave_source_populated_modal_retry_projection_theory_contract_ready",
+    "private_plane_wave_source_populated_modal_retry_transverse_phase_floor_contract_ready",
+    "private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -13292,6 +13311,175 @@ def _private_plane_wave_source_populated_propagation_aware_modal_retry_parity_sc
     }
 
 
+def _private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata(
+    *,
+    source_populated_parity_scoring_metadata: dict[str, object],
+    source_owner_population_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(source_populated_parity_scoring_metadata["baseline_metrics"])
+    metrics = dict(source_populated_parity_scoring_metadata["metrics"])
+    thresholds = dict(source_populated_parity_scoring_metadata["thresholds"])
+    timing_contract = {
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "source_population_helper": "_update_private_source_owner_state_from_scan",
+        "lagged_interface_packet": "_PrivateInterfaceOwnerState.face_proxy_reference_*",
+        "same_step_source_packet": "_PrivateInterfaceOwnerState.source_owner_reference_*",
+        "time_alignment_required": True,
+        "candidate_next_state": "private time-aligned source/interface packet staging",
+        "public_observable_required": False,
+        "benchmark_dft_required": False,
+        "hook_required": False,
+    }
+    l0 = {
+        "candidate_id": "L0_source_populated_scoring_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_source_populated_parity_status": (
+            source_populated_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    l1 = {
+        "candidate_id": "L1_lagged_interface_current_source_timing_diagnosis",
+        "candidate_family": "private_time_alignment_theory",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_STATUS
+        ),
+        "timing_contract": timing_contract,
+        "lagged_interface_packet_current_source_packet_mismatch": True,
+        "modal_retry_subtracts_different_time_levels": True,
+        "time_aligned_packet_staging_required": True,
+        "public_claim_allowed": False,
+    }
+    l2 = {
+        "candidate_id": "L2_modal_projection_normalizer_diagnosis",
+        "candidate_family": "private_projection_theory",
+        "accepted_candidate": False,
+        "projection_or_normalizer_floor_possible": True,
+        "not_selected_reason": (
+            "projection and normalizer details remain plausible, but the "
+            "first bounded theory target is the explicit lagged-interface vs "
+            "same-step-source packet timing mismatch"
+        ),
+        "public_claim_allowed": False,
+    }
+    l3 = {
+        "candidate_id": "L3_transverse_phase_coherence_floor_diagnosis",
+        "candidate_family": "private_phase_coherence_floor_theory",
+        "accepted_candidate": False,
+        "transverse_phase_floor_observed": True,
+        "not_selected_reason": (
+            "the transverse phase floor is the observed symptom; the selected "
+            "timing theory gives the next private design surface before another "
+            "field-update hunk"
+        ),
+        "public_claim_allowed": False,
+    }
+    l4 = {
+        "candidate_id": "L4_source_populated_failure_theory_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_source_populated_modal_retry_failure_theory"
+        ),
+        "not_selected_reason": (
+            "the lagged-interface/current-source timing mismatch is a bounded "
+            "private theory target, so the lane does not fail closed"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (l0, l1, l2, l3, l4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_only"
+        ),
+        "upstream_source_populated_parity_status": (
+            source_populated_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "upstream_source_owner_population_status": (
+            source_owner_population_implementation_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite L0/L1/L2/L3/L4 failure-theory ladder; select only a "
+            "private theory/design target and keep public promotion closed"
+        ),
+        "selected_candidate_id": (
+            "L1_lagged_interface_current_source_timing_diagnosis"
+        ),
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "source_owner_incident_packet_populated": True,
+        "source_packet_consumed_by_modal_retry": True,
+        "source_populated_parity_insufficient": True,
+        "material_improvement_demonstrated": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "failure_theory_lane_executed": True,
+        "stale_interface_source_timing_theory_selected": True,
+        "lagged_interface_packet_current_source_packet_mismatch": True,
+        "modal_retry_subtracts_different_time_levels": True,
+        "time_aligned_packet_staging_required": True,
+        "timing_contract": timing_contract,
+        "projection_normalizer_theory_deferred": True,
+        "transverse_phase_floor_theory_deferred": True,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_time_aligned_packet_staging_design": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "source-populated modal retry evidence is finite but insufficient; "
+            "the next private theory target is time-aligning the lagged "
+            "interface-owner packet with the same-step source-owner packet "
+            "before another modal retry hunk is attempted"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -16218,8 +16406,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata = (
+        _private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata(
+            source_populated_parity_scoring_metadata=(
+                plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_metadata
+            ),
+            source_owner_population_implementation_metadata=(
+                plane_wave_source_owner_incident_packet_population_implementation_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status": (
+                plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory": (
+                plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata
+            ),
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite": (
+                plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_next_prerequisite"
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -16394,6 +16609,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave source-populated propagation-aware "
                 "modal retry parity scoring lane records "
                 f"{plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_metadata['terminal_outcome']}"
+                "; the private plane-wave source-populated propagation-aware "
+                "modal retry failure-theory redesign lane records "
+                f"{plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -16403,7 +16621,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_next_prerequisite"
+                "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
             ],
         }
 
@@ -22099,10 +22317,134 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_next_prerequisite"
         ]
     )
+    source_populated_failure_theory = metadata[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory"
+    ]
+    assert metadata[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
+    ] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_STATUS
+    )
+    assert source_populated_failure_theory["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEORY_STATUS
+    )
+    assert source_populated_failure_theory[
+        "upstream_source_populated_parity_status"
+    ] == metadata[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_status"
+    ]
+    assert source_populated_failure_theory[
+        "upstream_source_owner_population_status"
+    ] == metadata[
+        "private_plane_wave_source_owner_incident_packet_population_implementation_status"
+    ]
+    assert (
+        source_populated_failure_theory["candidate_ladder_declared_before_implementation"]
+        is True
+    )
+    assert (
+        source_populated_failure_theory["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert source_populated_failure_theory["candidate_count"] == 5
+    assert source_populated_failure_theory["selected_candidate_id"] == (
+        "L1_lagged_interface_current_source_timing_diagnosis"
+    )
+    assert source_populated_failure_theory["baseline_metrics"] == (
+        source_populated_parity["baseline_metrics"]
+    )
+    assert source_populated_failure_theory["metrics"] == source_populated_parity["metrics"]
+    assert source_populated_failure_theory["thresholds"] == (
+        source_populated_parity["thresholds"]
+    )
+    assert source_populated_failure_theory["baseline_metrics_preserved"] is True
+    assert source_populated_failure_theory["thresholds_unchanged"] is True
+    assert source_populated_failure_theory["source_owner_incident_packet_populated"] is True
+    assert source_populated_failure_theory["source_packet_consumed_by_modal_retry"] is True
+    assert source_populated_failure_theory["source_populated_parity_insufficient"] is True
+    assert source_populated_failure_theory["material_improvement_demonstrated"] is False
+    assert source_populated_failure_theory["true_rt_readiness_unlocked"] is False
+    assert source_populated_failure_theory["failure_theory_lane_executed"] is True
+    assert (
+        source_populated_failure_theory[
+            "stale_interface_source_timing_theory_selected"
+        ]
+        is True
+    )
+    assert (
+        source_populated_failure_theory[
+            "lagged_interface_packet_current_source_packet_mismatch"
+        ]
+        is True
+    )
+    assert (
+        source_populated_failure_theory["modal_retry_subtracts_different_time_levels"]
+        is True
+    )
+    assert source_populated_failure_theory["time_aligned_packet_staging_required"] is True
+    timing_contract = source_populated_failure_theory["timing_contract"]
+    assert timing_contract["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert timing_contract["source_population_helper"] == (
+        "_update_private_source_owner_state_from_scan"
+    )
+    assert timing_contract["time_alignment_required"] is True
+    assert timing_contract["public_observable_required"] is False
+    assert source_populated_failure_theory["projection_normalizer_theory_deferred"] is True
+    assert source_populated_failure_theory["transverse_phase_floor_theory_deferred"] is True
+    assert source_populated_failure_theory["solver_behavior_changed"] is False
+    assert source_populated_failure_theory["field_update_behavior_changed"] is False
+    assert source_populated_failure_theory["new_solver_hunk_retained"] is False
+    assert (
+        source_populated_failure_theory["benchmark_plane_dft_observable_imported"]
+        is False
+    )
+    assert (
+        source_populated_failure_theory[
+            "next_lane_requires_time_aligned_packet_staging_design"
+        ]
+        is True
+    )
+    source_populated_theory_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_populated_failure_theory["candidate_ladder"]
+    }
+    assert source_populated_theory_candidates[
+        "L1_lagged_interface_current_source_timing_diagnosis"
+    ]["accepted_candidate"] is True
+    assert source_populated_theory_candidates[
+        "L1_lagged_interface_current_source_timing_diagnosis"
+    ]["time_aligned_packet_staging_required"] is True
+    assert source_populated_theory_candidates[
+        "L2_modal_projection_normalizer_diagnosis"
+    ]["accepted_candidate"] is False
+    assert source_populated_theory_candidates[
+        "L3_transverse_phase_coherence_floor_diagnosis"
+    ]["accepted_candidate"] is False
+    assert source_populated_theory_candidates[
+        "L4_source_populated_failure_theory_blocked"
+    ]["accepted_candidate"] is False
+    assert source_populated_failure_theory["public_claim_allowed"] is False
+    assert source_populated_failure_theory["public_observable_promoted"] is False
+    assert (
+        source_populated_failure_theory["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        source_populated_failure_theory["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        source_populated_failure_theory["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_next_prerequisite"
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -22128,7 +22470,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_next_prerequisite"
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
         ]
     )
     assert (
@@ -22374,6 +22716,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
         ]
         in metadata["blocking_diagnostic"]
     )

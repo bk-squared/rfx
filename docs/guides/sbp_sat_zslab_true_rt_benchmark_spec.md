@@ -467,7 +467,13 @@ the source-owner packet hunk is retained. That scoring lane now records
 the populated source-owner packet is consumed by the private modal retry, but
 unchanged paired material-improvement and true R/T readiness gates remain
 closed. The next safe lane is private source-populated propagation-aware modal
-retry failure-theory redesign after parity scoring insufficient.
+retry failure-theory redesign after parity scoring insufficient. That theory
+lane now records
+`private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready`:
+the next bounded private target is time-aligning the lagged interface-owner
+packet with the same-step source-owner packet before another modal retry hunk.
+The next safe lane is private source/interface time-aligned packet staging
+design after that theory contract.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

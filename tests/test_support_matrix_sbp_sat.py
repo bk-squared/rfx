@@ -4593,13 +4593,127 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == source_populated_parity["next_prerequisite"]
     )
+    source_populated_failure_theory = benchmark_gate[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
+    ] == (
+        "private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready"
+    )
+    assert source_populated_failure_theory["terminal_outcome"] == (
+        "private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready"
+    )
+    assert source_populated_failure_theory[
+        "upstream_source_populated_parity_status"
+    ] == benchmark_gate[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_status"
+    ]
+    assert source_populated_failure_theory[
+        "upstream_source_owner_population_status"
+    ] == benchmark_gate[
+        "private_plane_wave_source_owner_incident_packet_population_implementation_status"
+    ]
+    assert source_populated_failure_theory[
+        "candidate_ladder_declared_before_implementation"
+    ]
+    assert source_populated_failure_theory[
+        "candidate_ladder_declared_before_slow_scoring"
+    ]
+    assert source_populated_failure_theory["candidate_count"] == 5
+    assert source_populated_failure_theory["selected_candidate_id"] == (
+        "L1_lagged_interface_current_source_timing_diagnosis"
+    )
+    assert source_populated_failure_theory["baseline_metrics"] == (
+        source_populated_parity["baseline_metrics"]
+    )
+    assert source_populated_failure_theory["metrics"] == source_populated_parity[
+        "metrics"
+    ]
+    assert source_populated_failure_theory["thresholds"] == source_populated_parity[
+        "thresholds"
+    ]
+    assert source_populated_failure_theory["baseline_metrics_preserved"]
+    assert source_populated_failure_theory["thresholds_unchanged"]
+    assert source_populated_failure_theory["source_owner_incident_packet_populated"]
+    assert source_populated_failure_theory["source_packet_consumed_by_modal_retry"]
+    assert source_populated_failure_theory["source_populated_parity_insufficient"]
+    assert source_populated_failure_theory["material_improvement_demonstrated"] is False
+    assert source_populated_failure_theory["true_rt_readiness_unlocked"] is False
+    assert source_populated_failure_theory["failure_theory_lane_executed"]
+    assert source_populated_failure_theory[
+        "stale_interface_source_timing_theory_selected"
+    ]
+    assert source_populated_failure_theory[
+        "lagged_interface_packet_current_source_packet_mismatch"
+    ]
+    assert source_populated_failure_theory[
+        "modal_retry_subtracts_different_time_levels"
+    ]
+    assert source_populated_failure_theory["time_aligned_packet_staging_required"]
+    timing_contract = source_populated_failure_theory["timing_contract"]
+    assert timing_contract["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert timing_contract["source_population_helper"] == (
+        "_update_private_source_owner_state_from_scan"
+    )
+    assert timing_contract["time_alignment_required"]
+    assert timing_contract["public_observable_required"] is False
+    assert source_populated_failure_theory["projection_normalizer_theory_deferred"]
+    assert source_populated_failure_theory["transverse_phase_floor_theory_deferred"]
+    assert source_populated_failure_theory["solver_behavior_changed"] is False
+    assert source_populated_failure_theory["field_update_behavior_changed"] is False
+    assert source_populated_failure_theory["new_solver_hunk_retained"] is False
+    assert (
+        source_populated_failure_theory["benchmark_plane_dft_observable_imported"]
+        is False
+    )
+    assert source_populated_failure_theory[
+        "next_lane_requires_time_aligned_packet_staging_design"
+    ]
+    source_populated_theory_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_populated_failure_theory["candidate_ladder"]
+    }
+    assert source_populated_theory_candidates[
+        "L1_lagged_interface_current_source_timing_diagnosis"
+    ]["accepted_candidate"]
+    assert source_populated_theory_candidates[
+        "L1_lagged_interface_current_source_timing_diagnosis"
+    ]["time_aligned_packet_staging_required"]
+    assert source_populated_theory_candidates[
+        "L2_modal_projection_normalizer_diagnosis"
+    ]["accepted_candidate"] is False
+    assert source_populated_theory_candidates[
+        "L3_transverse_phase_coherence_floor_diagnosis"
+    ]["accepted_candidate"] is False
+    assert source_populated_theory_candidates[
+        "L4_source_populated_failure_theory_blocked"
+    ]["accepted_candidate"] is False
+    assert source_populated_failure_theory["public_claim_allowed"] is False
+    assert source_populated_failure_theory["public_observable_promoted"] is False
+    assert (
+        source_populated_failure_theory["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        source_populated_failure_theory["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
+        ]
+        == source_populated_failure_theory["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source-populated propagation-aware modal retry "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "private plane-wave source/interface time-aligned packet staging design "
+        "after source-populated modal retry theory contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave source-populated propagation-aware modal retry "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "private plane-wave source/interface time-aligned packet staging design "
+        "after source-populated modal retry theory contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -4804,6 +4918,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -5071,8 +5191,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source-populated propagation-aware modal retry "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "private plane-wave source/interface time-aligned packet staging design "
+        "after source-populated modal retry theory contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
