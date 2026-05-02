@@ -1966,13 +1966,134 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == phase_staging_impl["next_prerequisite"]
     )
+    solver_wide_owner_architecture = benchmark_gate[
+        "private_plane_wave_solver_wide_interface_state_owner_architecture"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_solver_wide_interface_state_owner_architecture_status"
+    ] == "private_plane_wave_solver_wide_interface_state_owner_contract_ready"
+    assert solver_wide_owner_architecture["terminal_outcome"] == (
+        "private_plane_wave_solver_wide_interface_state_owner_contract_ready"
+    )
+    assert solver_wide_owner_architecture["upstream_phase_staging_status"] == (
+        benchmark_gate[
+            "private_plane_wave_phase_coherence_staging_implementation_status"
+        ]
+    )
+    assert solver_wide_owner_architecture["upstream_phase_architecture_status"] == (
+        benchmark_gate[
+            "private_plane_wave_transverse_phase_coherence_architecture_status"
+        ]
+    )
+    assert solver_wide_owner_architecture["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert (
+        solver_wide_owner_architecture[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert solver_wide_owner_architecture["candidate_count"] == 5
+    assert solver_wide_owner_architecture["selected_candidate_id"] == (
+        "L3_combined_interface_state_owner_implementation_contract"
+    )
+    assert solver_wide_owner_architecture["baseline_metrics"] == (
+        phase_staging_impl["baseline_metrics"]
+    )
+    assert solver_wide_owner_architecture["baseline_metrics_preserved"] is True
+    assert solver_wide_owner_architecture["thresholds_unchanged"] is True
+    assert (
+        solver_wide_owner_architecture[
+            "solver_wide_interface_state_owner_design_ready"
+        ]
+        is True
+    )
+    assert (
+        solver_wide_owner_architecture["scan_staging_state_shape_contract_ready"]
+        is True
+    )
+    assert (
+        solver_wide_owner_architecture[
+            "solver_wide_interface_state_owner_contract_ready"
+        ]
+        is True
+    )
+    assert solver_wide_owner_architecture["explains_k1_k2_blocker"] is True
+    assert (
+        solver_wide_owner_architecture["bounded_follow_up_implementation_surface"]
+        is True
+    )
+    assert (
+        solver_wide_owner_architecture["owner_contract"]["single_owner_per_interface"]
+        is True
+    )
+    assert (
+        solver_wide_owner_architecture["scan_staging_contract"][
+            "state_shape_change_required"
+        ]
+        is True
+    )
+    assert (
+        solver_wide_owner_architecture["scan_staging_contract"][
+            "cpml_non_cpml_slots_identical"
+        ]
+        is True
+    )
+    assert (
+        solver_wide_owner_architecture["implementation_contract"][
+            "joint_phase_magnitude_required"
+        ]
+        is True
+    )
+    assert solver_wide_owner_architecture["production_patch_applied"] is False
+    assert solver_wide_owner_architecture["solver_behavior_changed"] is False
+    assert solver_wide_owner_architecture["new_solver_hunk_retained"] is False
+    solver_wide_owner_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in solver_wide_owner_architecture["candidate_ladder"]
+    }
+    assert (
+        solver_wide_owner_candidates[
+            "L1_solver_wide_interface_state_owner_architecture"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        solver_wide_owner_candidates[
+            "L2_scan_staging_state_shape_contract"
+        ]["design_component_ready"]
+        is True
+    )
+    assert (
+        solver_wide_owner_candidates[
+            "L3_combined_interface_state_owner_implementation_contract"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert solver_wide_owner_architecture["public_claim_allowed"] is False
+    assert solver_wide_owner_architecture["public_observable_promoted"] is False
+    assert (
+        solver_wide_owner_architecture["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        solver_wide_owner_architecture["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_solver_wide_interface_state_owner_architecture_next_prerequisite"
+        ]
+        == solver_wide_owner_architecture["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave solver-wide interface-state owner architecture redesign "
-        "after phase-coherence staging implementation blocked ralplan"
+        "private plane-wave solver-wide interface-state owner implementation "
+        "after architecture contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave solver-wide interface-state owner architecture redesign "
-        "after phase-coherence staging implementation blocked ralplan"
+        "private plane-wave solver-wide interface-state owner implementation "
+        "after architecture contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -2033,6 +2154,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_phase_coherence_staging_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_solver_wide_interface_state_owner_architecture_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -2300,8 +2427,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave solver-wide interface-state owner architecture redesign "
-        "after phase-coherence staging implementation blocked ralplan"
+        "private plane-wave solver-wide interface-state owner implementation "
+        "after architecture contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

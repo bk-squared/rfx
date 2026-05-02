@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave solver-wide interface-state owner
-architecture redesign after the phase-coherence staging implementation lane
-failed closed. The private solver-local skew E/H helper is retained as a bounded
+implementation after the architecture contract became ready. The private
+solver-local skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
 fixture-quality repair ladder
@@ -155,12 +155,14 @@ magnitude CV jointly. The follow-up implementation lane now records
 `no_private_plane_wave_phase_coherence_staging_implementation`: K1 would require
 a solver-wide interface-state owner that changes solver state shape and scan
 staging, while K2 is only a joint scoring guard and cannot repair the solver
-path without that owner. The goal gate therefore remains claims-closed until
-the next architecture lane defines that state owner, a later implementation
-improves the parity metrics, and a later true R/T readiness lane proves the hunk
-improves the real solver path without breaking CPML/non-CPML symmetry, boundary
-guards, update/coupling bounds, or the unchanged `0.02` manufactured-ledger
-threshold.
+path without that owner. The follow-up architecture lane now records
+`private_plane_wave_solver_wide_interface_state_owner_contract_ready`: one
+private owner and scan/staging state-shape contract are defined for the next
+bounded solver hunk. The goal gate therefore remains claims-closed until that
+implementation improves the parity metrics, and a later true R/T readiness lane
+proves the hunk improves the real solver path without breaking CPML/non-CPML
+symmetry, boundary guards, update/coupling bounds, or the unchanged `0.02`
+manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

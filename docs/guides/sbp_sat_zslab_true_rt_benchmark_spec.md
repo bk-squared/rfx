@@ -342,10 +342,15 @@ jointly. The follow-up implementation lane now records
 interface-state owner changes solver state shape and scan staging, and a joint
 score guard alone cannot claim material repair. The next safe lane is `private
 plane-wave solver-wide interface-state owner architecture redesign after
-phase-coherence staging implementation blocked ralplan`. Hook experiments
-remain closed and public promotion remains closed. Until those fixture-quality
-gates pass, the private flux/DFT gate remains internal diagnostic evidence
-only, and the support matrix continues to mark true R/T as deferred.
+phase-coherence staging implementation blocked ralplan`. That architecture lane
+now records `private_plane_wave_solver_wide_interface_state_owner_contract_ready`:
+one private owner and explicit scan/staging state-shape contract must be
+implemented before phase-coherence parity repair can be claimed, so the next
+safe lane is `private plane-wave solver-wide interface-state owner implementation
+after architecture contract ready ralplan`. Hook experiments remain closed and
+public promotion remains closed. Until those fixture-quality gates pass, the
+private flux/DFT gate remains internal diagnostic evidence only, and the support
+matrix continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

@@ -295,7 +295,12 @@ promotion remains closed. The follow-up implementation lane now records
 solver state shape and scan staging to introduce that private interface-state
 owner, while K2 is only a scoring guard and cannot repair the solver path
 without K1. The next safe lane is private plane-wave solver-wide
-interface-state owner architecture redesign; public promotion remains closed.
+interface-state owner architecture redesign. That architecture lane now records
+`private_plane_wave_solver_wide_interface_state_owner_contract_ready`: one
+private owner and explicit scan/staging state-shape contract must be
+implemented before phase-coherence parity repair can be claimed. The next safe
+lane is private plane-wave solver-wide interface-state owner implementation;
+public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
