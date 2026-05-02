@@ -504,7 +504,12 @@ closed. The failure-theory lane now records
 `private_plane_wave_modal_projection_normalizer_projected_basis_redesign_contract_ready`:
 the scalar fail-closed gate only proves packet compatibility and does not apply
 a shared projected modal-basis transform, so the next safe lane is private
-modal projection/normalizer projected-basis redesign contract.
+modal projection/normalizer projected-basis redesign contract. The projected-basis
+design lane now records
+`private_plane_wave_modal_projection_normalizer_projected_basis_contract_design_ready`:
+private basis vectors, power normalization, mask weighting, and fail-closed
+implementation preconditions are frozen; the next safe lane is private
+projected-basis implementation.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
