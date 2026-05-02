@@ -413,7 +413,14 @@ The parity-scoring lane now records
 `private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending`:
 the retained hunk is finite and reproducible, but it reduces the dominant phase
 spread by only about 0.16% and remains far above unchanged phase/CV/vacuum
-thresholds. Hook experiments remain closed and public promotion remains closed.
+thresholds. The failure-theory lane now records
+`private_plane_wave_modal_retry_failure_theory_redesign_contract_ready`: the
+lagged packed face packet only aligned local face distribution state, while the
+remaining blocker is propagation-aware transverse phase coherence plus an
+incident-normalized observable basis with source/interface ownership separation.
+The next safe lane is private modal-retry redesign implementation after that
+failure-theory contract. Hook experiments remain closed and public promotion
+remains closed.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

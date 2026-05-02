@@ -211,8 +211,8 @@
             "predeclared_candidate_policy": "baseline full-aperture fixture remains reported; any future central-core or source-contract candidate must be predeclared in metadata before slow scoring and must keep these same thresholds",
             "reason": "same-contract private TFSF-style reference is implemented, but private time-centered helper recovery candidates failed unchanged fixture-quality gates and the private measurement-contract/interface-floor diagnostic ledger classified the remaining blocker as persistent_interface_floor_confirmed; slab R/T scoring is intentionally skipped",
             "no_go_reason": "private TFSF-style incident fixture has a same-contract reference, but vacuum/reference fixture-quality gates remain inconclusive; slab R/T scoring is intentionally skipped",
-            "blocking_diagnostic": "same-contract private reference helper is present, but private uniform/subgrid vacuum parity, transverse uniformity, or usable-passband gates remain below threshold; the causal ladder now classifies the row-2 blocker as sbp_sat_interface_floor because source, plane-shift, and central-core aperture controls did not satisfy the paired material-improvement rule; the interface-floor investigation now records coarse_fine_energy_transfer_mismatch; slab R/T scoring and public promotion stay closed; the private energy-transfer repair stage records no_material_repair; the private time-centered helper fixture-quality recovery stage records measurement_contract_or_interface_floor_persists; the private measurement-contract/interface-floor redesign ledger records persistent_interface_floor_confirmed; the private interface-floor repair ladder records no_bounded_private_interface_floor_repair; the private face-norm/interface-operator ladder records no_private_face_norm_operator_repair; the private derivative/interior-boundary ladder records no_private_derivative_interface_repair; the private global SBP derivative/mortar operator architecture records private_global_operator_3d_contract_ready; the private solver-integration hunk gate records private_solver_integration_requires_followup_diagnostic_only; the private operator-projected energy-transfer redesign records private_operator_projected_energy_transfer_contract_ready; the private operator-projected solver integration records private_operator_projected_solver_hunk_retained_fixture_quality_pending; the private boundary coexistence fixture validation records private_boundary_coexistence_passed_fixture_quality_blocked; the private fixture-quality blocker repair lane records private_fixture_quality_blocker_persists_no_public_promotion; the private source/reference phase-front fixture-contract redesign lane records private_source_phase_front_self_oracle_failed; the private analytic source phase-front self-oracle repair lane records private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion; the private analytic plane-wave source implementation redesign lane records private_uniform_plane_wave_source_self_oracle_ready; the private plane-wave fixture contract recovery lane records private_uniform_plane_wave_reference_contract_ready; the private subgrid-vacuum plane-wave fixture contract lane records private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion; the private plane-wave source fixture-path wiring lane records private_plane_wave_fixture_path_wiring_blocked_no_public_promotion; the private plane-wave source request/spec adapter design lane records private_runner_plane_wave_adapter_design_ready; the private plane-wave source request/spec adapter implementation lane records private_plane_wave_adapter_implemented_parity_pending; the private subgrid-vacuum plane-wave parity scoring lane records private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion; the private plane-wave parity blocker repair/design lane records private_plane_wave_interface_floor_repair_design_required; the private plane-wave interface-floor implementation lane records no_private_plane_wave_interface_floor_repair; the private plane-wave interface-floor root-cause redesign lane records private_plane_wave_interface_energy_form_root_cause_identified; the private plane-wave interface energy-form design lane records private_plane_wave_interface_energy_form_implementation_contract_ready; the private plane-wave interface energy-form implementation lane records no_private_plane_wave_energy_form_implementation; the private plane-wave interface energy-form failure theory/design lane records private_plane_wave_energy_form_redesign_contract_ready; the private plane-wave operator/mortar energy-form implementation lane records no_private_plane_wave_operator_mortar_energy_form_implementation; the private plane-wave transverse phase-coherence architecture lane records private_plane_wave_phase_coherence_staging_contract_ready; the private plane-wave phase-coherence staging implementation lane records no_private_plane_wave_phase_coherence_staging_implementation; the private plane-wave solver-wide interface-state owner architecture lane records private_plane_wave_solver_wide_interface_state_owner_contract_ready; the private plane-wave solver-wide interface-state owner implementation lane records no_private_plane_wave_solver_wide_interface_state_owner_implementation; the private plane-wave solver-state owner propagation boundary design lane records private_plane_wave_solver_state_owner_propagation_contract_ready; the private plane-wave solver-state owner propagation implementation lane records private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending; the private plane-wave owner scan-wiring/joint-scoring lane records private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending; the private plane-wave owner-backed physical phase/CV correction lane records no_private_plane_wave_owner_backed_physical_phase_cv_correction; the private plane-wave face-local modal correction architecture lane records private_plane_wave_face_local_modal_correction_contract_ready; the private plane-wave face-local modal correction implementation lane records no_private_plane_wave_face_local_modal_correction_implementation; the private plane-wave face-local modal correction failure-theory redesign lane records private_plane_wave_face_local_modal_failure_theory_contract_ready; the private plane-wave face-local modal correction implementation retry lane records no_private_plane_wave_face_local_modal_retry_implementation; the private plane-wave observable-proxy modal architecture lane records private_plane_wave_observable_proxy_modal_retry_contract_ready; the private plane-wave observable-proxy modal implementation lane records no_private_plane_wave_observable_proxy_modal_retry_implementation; the private plane-wave observable-proxy face-packet state-shape design lane records private_plane_wave_proxy_face_packet_state_contract_ready; the private plane-wave observable-proxy face-packet state-shape implementation lane records private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending; the private plane-wave observable-proxy modal retry after face-packet state lane records private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending; the private plane-wave observable-proxy modal retry parity scoring lane records private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending; historical private design lanes remain part of the blocker chain: discrete_eh_work_ledger_mismatch, ledger_mismatch_detected, no_signature_compatible_bounded_repair, paired_face_coupling_design_ready, production_context_mismatch_detected, time_centered_staging_contract_ready, and private_time_centered_paired_face_helper_implemented",
-            "next_prerequisite": "private plane-wave observable-proxy modal retry failure-theory redesign after packed-state parity scoring insufficient ralplan",
+            "blocking_diagnostic": "same-contract private reference helper is present, but private uniform/subgrid vacuum parity, transverse uniformity, or usable-passband gates remain below threshold; the causal ladder now classifies the row-2 blocker as sbp_sat_interface_floor because source, plane-shift, and central-core aperture controls did not satisfy the paired material-improvement rule; the interface-floor investigation now records coarse_fine_energy_transfer_mismatch; slab R/T scoring and public promotion stay closed; the private energy-transfer repair stage records no_material_repair; the private time-centered helper fixture-quality recovery stage records measurement_contract_or_interface_floor_persists; the private measurement-contract/interface-floor redesign ledger records persistent_interface_floor_confirmed; the private interface-floor repair ladder records no_bounded_private_interface_floor_repair; the private face-norm/interface-operator ladder records no_private_face_norm_operator_repair; the private derivative/interior-boundary ladder records no_private_derivative_interface_repair; the private global SBP derivative/mortar operator architecture records private_global_operator_3d_contract_ready; the private solver-integration hunk gate records private_solver_integration_requires_followup_diagnostic_only; the private operator-projected energy-transfer redesign records private_operator_projected_energy_transfer_contract_ready; the private operator-projected solver integration records private_operator_projected_solver_hunk_retained_fixture_quality_pending; the private boundary coexistence fixture validation records private_boundary_coexistence_passed_fixture_quality_blocked; the private fixture-quality blocker repair lane records private_fixture_quality_blocker_persists_no_public_promotion; the private source/reference phase-front fixture-contract redesign lane records private_source_phase_front_self_oracle_failed; the private analytic source phase-front self-oracle repair lane records private_analytic_source_phase_front_self_oracle_blocked_no_public_promotion; the private analytic plane-wave source implementation redesign lane records private_uniform_plane_wave_source_self_oracle_ready; the private plane-wave fixture contract recovery lane records private_uniform_plane_wave_reference_contract_ready; the private subgrid-vacuum plane-wave fixture contract lane records private_plane_wave_subgrid_vacuum_fixture_blocked_no_public_promotion; the private plane-wave source fixture-path wiring lane records private_plane_wave_fixture_path_wiring_blocked_no_public_promotion; the private plane-wave source request/spec adapter design lane records private_runner_plane_wave_adapter_design_ready; the private plane-wave source request/spec adapter implementation lane records private_plane_wave_adapter_implemented_parity_pending; the private subgrid-vacuum plane-wave parity scoring lane records private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion; the private plane-wave parity blocker repair/design lane records private_plane_wave_interface_floor_repair_design_required; the private plane-wave interface-floor implementation lane records no_private_plane_wave_interface_floor_repair; the private plane-wave interface-floor root-cause redesign lane records private_plane_wave_interface_energy_form_root_cause_identified; the private plane-wave interface energy-form design lane records private_plane_wave_interface_energy_form_implementation_contract_ready; the private plane-wave interface energy-form implementation lane records no_private_plane_wave_energy_form_implementation; the private plane-wave interface energy-form failure theory/design lane records private_plane_wave_energy_form_redesign_contract_ready; the private plane-wave operator/mortar energy-form implementation lane records no_private_plane_wave_operator_mortar_energy_form_implementation; the private plane-wave transverse phase-coherence architecture lane records private_plane_wave_phase_coherence_staging_contract_ready; the private plane-wave phase-coherence staging implementation lane records no_private_plane_wave_phase_coherence_staging_implementation; the private plane-wave solver-wide interface-state owner architecture lane records private_plane_wave_solver_wide_interface_state_owner_contract_ready; the private plane-wave solver-wide interface-state owner implementation lane records no_private_plane_wave_solver_wide_interface_state_owner_implementation; the private plane-wave solver-state owner propagation boundary design lane records private_plane_wave_solver_state_owner_propagation_contract_ready; the private plane-wave solver-state owner propagation implementation lane records private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending; the private plane-wave owner scan-wiring/joint-scoring lane records private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending; the private plane-wave owner-backed physical phase/CV correction lane records no_private_plane_wave_owner_backed_physical_phase_cv_correction; the private plane-wave face-local modal correction architecture lane records private_plane_wave_face_local_modal_correction_contract_ready; the private plane-wave face-local modal correction implementation lane records no_private_plane_wave_face_local_modal_correction_implementation; the private plane-wave face-local modal correction failure-theory redesign lane records private_plane_wave_face_local_modal_failure_theory_contract_ready; the private plane-wave face-local modal correction implementation retry lane records no_private_plane_wave_face_local_modal_retry_implementation; the private plane-wave observable-proxy modal architecture lane records private_plane_wave_observable_proxy_modal_retry_contract_ready; the private plane-wave observable-proxy modal implementation lane records no_private_plane_wave_observable_proxy_modal_retry_implementation; the private plane-wave observable-proxy face-packet state-shape design lane records private_plane_wave_proxy_face_packet_state_contract_ready; the private plane-wave observable-proxy face-packet state-shape implementation lane records private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending; the private plane-wave observable-proxy modal retry after face-packet state lane records private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending; the private plane-wave observable-proxy modal retry parity scoring lane records private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending; the private plane-wave observable-proxy modal retry failure theory redesign lane records private_plane_wave_modal_retry_failure_theory_redesign_contract_ready; historical private design lanes remain part of the blocker chain: discrete_eh_work_ledger_mismatch, ledger_mismatch_detected, no_signature_compatible_bounded_repair, paired_face_coupling_design_ready, production_context_mismatch_detected, time_centered_staging_contract_ready, and private_time_centered_paired_face_helper_implemented",
+            "next_prerequisite": "private plane-wave observable-proxy modal retry redesign implementation after failure-theory contract ready ralplan",
             "diagnostic_basis": "This private fixture injects +z ex/hy incident fields through private post-H/post-E slots and accumulates only private fine-owned flux/DFT planes. A same-contract private uniform reference now exists, but it remains benchmark-only, not public TFSF, and does not expose public flux, DFT, S-parameter, port, or true R/T observables.",
             "previous_gate_context": {
               "source_contract": "private_analytic_sheet_source",
@@ -607,7 +607,7 @@
               "rollback_policy": "remove diagnostic if not materially improving"
             },
             "same_run_repair_allowed": false,
-            "follow_up_recommendation": "private plane-wave observable-proxy modal retry failure-theory redesign after packed-state parity scoring insufficient ralplan",
+            "follow_up_recommendation": "private plane-wave observable-proxy modal retry redesign implementation after failure-theory contract ready ralplan",
             "interface_floor_investigation_status": "complete",
             "interface_floor_subclass": "coarse_fine_energy_transfer_mismatch",
             "interface_distance_sensitivity": "persistent",
@@ -13176,7 +13176,252 @@
               "runner_surface_changed": false,
               "env_config_changed": false
             },
-            "private_plane_wave_observable_proxy_modal_retry_parity_scoring_next_prerequisite": "private plane-wave observable-proxy modal retry failure-theory redesign after packed-state parity scoring insufficient ralplan"
+            "private_plane_wave_observable_proxy_modal_retry_parity_scoring_next_prerequisite": "private plane-wave observable-proxy modal retry failure-theory redesign after packed-state parity scoring insufficient ralplan",
+            "private_plane_wave_observable_proxy_modal_retry_failure_theory_status": "private_plane_wave_modal_retry_failure_theory_redesign_contract_ready",
+            "private_plane_wave_observable_proxy_modal_retry_failure_theory": {
+              "status": "private_plane_wave_modal_retry_failure_theory_redesign_contract_ready",
+              "terminal_outcome": "private_plane_wave_modal_retry_failure_theory_redesign_contract_ready",
+              "terminal_outcome_taxonomy": [
+                "private_plane_wave_modal_retry_phase_model_mismatch_theory_ready",
+                "private_plane_wave_modal_retry_observable_basis_mismatch_theory_ready",
+                "private_plane_wave_modal_retry_failure_theory_redesign_contract_ready",
+                "private_plane_wave_modal_retry_failure_theory_blocked_no_public_promotion"
+              ],
+              "terminal_outcome_precedence": [
+                "private_plane_wave_modal_retry_failure_theory_blocked_no_public_promotion",
+                "private_plane_wave_modal_retry_phase_model_mismatch_theory_ready",
+                "private_plane_wave_modal_retry_observable_basis_mismatch_theory_ready",
+                "private_plane_wave_modal_retry_failure_theory_redesign_contract_ready"
+              ],
+              "diagnostic_scope": "private_plane_wave_observable_proxy_modal_retry_failure_theory_redesign_only",
+              "upstream_modal_retry_parity_status": "private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending",
+              "upstream_modal_retry_status": "private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending",
+              "upstream_parity_status": "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion",
+              "candidate_ladder_declared_before_solver_edit": true,
+              "candidate_ladder_declared_before_slow_scoring": true,
+              "candidate_count": 5,
+              "candidate_policy": "finite C0/C1/C2/C3/C4 failure-theory ladder; explain why the packed-state modal retry scored finite but insufficient before another private solver edit",
+              "selected_candidate_id": "C3_source_interface_ownership_redesign_contract",
+              "candidate_ladder": [
+                {
+                  "candidate_id": "C0_insufficient_packed_state_parity_packet_freeze",
+                  "candidate_family": "baseline_freeze",
+                  "accepted_candidate": false,
+                  "upstream_modal_retry_parity_status": "private_plane_wave_observable_proxy_modal_retry_hunk_insufficient_fixture_quality_pending",
+                  "upstream_modal_retry_status": "private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending",
+                  "upstream_parity_status": "private_subgrid_vacuum_plane_wave_parity_failed_no_public_promotion",
+                  "baseline_metrics": {
+                    "transverse_phase_spread_deg": 114.98593935742637,
+                    "transverse_magnitude_cv": 0.44908395350634805,
+                    "vacuum_relative_magnitude_error": 0.9010421890370277,
+                    "vacuum_phase_error_deg": 42.91350635096882,
+                    "usable_bins": 3
+                  },
+                  "metrics": {
+                    "transverse_phase_spread_deg": 114.79807371805006,
+                    "transverse_magnitude_cv": 0.4485509325266906,
+                    "vacuum_relative_magnitude_error": 0.9008831892279797,
+                    "vacuum_phase_error_deg": 42.84680334959501,
+                    "usable_bins": 3
+                  },
+                  "thresholds": {
+                    "transverse_magnitude_cv_max": 0.01,
+                    "transverse_phase_spread_deg_max": 1.0,
+                    "vacuum_relative_magnitude_error_max": 0.02,
+                    "vacuum_phase_error_deg_max": 2.0,
+                    "usable_passband_min_bins": 2
+                  },
+                  "baseline_metrics_preserved": true,
+                  "thresholds_unchanged": true,
+                  "thresholds_checksum": "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a",
+                  "public_closure_retained": true
+                },
+                {
+                  "candidate_id": "C1_lagged_packet_phase_model_mismatch_theory",
+                  "candidate_family": "phase_model_mismatch",
+                  "accepted_candidate": false,
+                  "design_component_ready": true,
+                  "phase_model_mismatch_theory": {
+                    "lagged_packet_alignment_scope": "face_local_distribution",
+                    "benchmark_blocker_scope": "global_transverse_propagation_phase",
+                    "explains_marginal_dominant_phase_improvement": true,
+                    "requires_propagation_aware_modal_basis": true,
+                    "requires_incident_normalized_phase_owner": true,
+                    "requires_source_interface_ownership_separation": true
+                  },
+                  "root_cause": "the lagged packed face packet aligns only the local face distribution, not the global transverse propagation phase and coherence packet measured by the private plane-wave fixture",
+                  "requires_public_api": false,
+                  "requires_hook": false,
+                  "superseded_by": "C3_source_interface_ownership_redesign_contract",
+                  "public_claim_allowed": false
+                },
+                {
+                  "candidate_id": "C2_observable_proxy_basis_mismatch_theory",
+                  "candidate_family": "observable_proxy_basis_mismatch",
+                  "accepted_candidate": false,
+                  "design_component_ready": true,
+                  "observable_basis_mismatch_theory": {
+                    "solver_proxy_basis": "lagged_E_only_face_local_packet",
+                    "benchmark_observable_basis": "incident_normalized_transverse_plane_dft",
+                    "basis_mismatch_explains_remaining_phase_cv_floor": true,
+                    "requires_eh_energy_consistent_packet": true,
+                    "requires_transverse_modal_phase_coherence_owner": true,
+                    "forbids_benchmark_dft_import_into_solver": true
+                  },
+                  "root_cause": "the E-only characteristic proxy correction lacks a propagation-aware, incident-normalized modal basis and does not separate source ownership from interface ownership",
+                  "requires_public_api": false,
+                  "requires_hook": false,
+                  "superseded_by": "C3_source_interface_ownership_redesign_contract",
+                  "public_claim_allowed": false
+                },
+                {
+                  "candidate_id": "C3_source_interface_ownership_redesign_contract",
+                  "candidate_family": "failure_theory_redesign_contract",
+                  "accepted_candidate": true,
+                  "selected_terminal_outcome": "private_plane_wave_modal_retry_failure_theory_redesign_contract_ready",
+                  "phase_model_mismatch_theory": {
+                    "lagged_packet_alignment_scope": "face_local_distribution",
+                    "benchmark_blocker_scope": "global_transverse_propagation_phase",
+                    "explains_marginal_dominant_phase_improvement": true,
+                    "requires_propagation_aware_modal_basis": true,
+                    "requires_incident_normalized_phase_owner": true,
+                    "requires_source_interface_ownership_separation": true
+                  },
+                  "observable_basis_mismatch_theory": {
+                    "solver_proxy_basis": "lagged_E_only_face_local_packet",
+                    "benchmark_observable_basis": "incident_normalized_transverse_plane_dft",
+                    "basis_mismatch_explains_remaining_phase_cv_floor": true,
+                    "requires_eh_energy_consistent_packet": true,
+                    "requires_transverse_modal_phase_coherence_owner": true,
+                    "forbids_benchmark_dft_import_into_solver": true
+                  },
+                  "redesign_contract": {
+                    "requires_phase_model_mismatch_theory": true,
+                    "requires_observable_basis_mismatch_theory": true,
+                    "requires_propagation_aware_incident_normalized_modal_basis": true,
+                    "requires_source_interface_ownership_separation": true,
+                    "requires_private_parity_material_improvement_gate": true,
+                    "requires_unchanged_thresholds": true,
+                    "requires_cpml_non_cpml_symmetry_tests": true,
+                    "forbids_public_promotion": true
+                  },
+                  "failure_theory_contract_ready": true,
+                  "phase_model_mismatch_theory_ready": true,
+                  "observable_basis_mismatch_theory_ready": true,
+                  "source_interface_ownership_redesign_contract_ready": true,
+                  "next_lane_requires_implementation_plan": true,
+                  "production_patch_applied": false,
+                  "solver_behavior_changed": false,
+                  "field_update_behavior_changed": false,
+                  "new_solver_hunk_retained": false,
+                  "true_rt_readiness_unlocked": false,
+                  "public_claim_allowed": false
+                },
+                {
+                  "candidate_id": "C4_failure_theory_blocked_no_public_promotion",
+                  "candidate_family": "fail_closed_no_public_promotion",
+                  "accepted_candidate": false,
+                  "selected_terminal_outcome": "private_plane_wave_modal_retry_failure_theory_blocked_no_public_promotion",
+                  "rejection_reason": "not selected because C1/C2/C3 define a bounded private redesign contract without public API/result, hook, benchmark DFT import, or threshold changes",
+                  "public_claim_allowed": false
+                }
+              ],
+              "thresholds_checksum": "d288ae050423c6c2078c3b696da1cbcc05e5095a0ce727b4665b9ecfdb881f9a",
+              "baseline_metrics": {
+                "transverse_phase_spread_deg": 114.98593935742637,
+                "transverse_magnitude_cv": 0.44908395350634805,
+                "vacuum_relative_magnitude_error": 0.9010421890370277,
+                "vacuum_phase_error_deg": 42.91350635096882,
+                "usable_bins": 3
+              },
+              "metrics": {
+                "transverse_phase_spread_deg": 114.79807371805006,
+                "transverse_magnitude_cv": 0.4485509325266906,
+                "vacuum_relative_magnitude_error": 0.9008831892279797,
+                "vacuum_phase_error_deg": 42.84680334959501,
+                "usable_bins": 3
+              },
+              "thresholds": {
+                "transverse_magnitude_cv_max": 0.01,
+                "transverse_phase_spread_deg_max": 1.0,
+                "vacuum_relative_magnitude_error_max": 0.02,
+                "vacuum_phase_error_deg_max": 2.0,
+                "usable_passband_min_bins": 2
+              },
+              "baseline_metrics_preserved": true,
+              "thresholds_unchanged": true,
+              "insufficient_packed_state_parity_packet_frozen": true,
+              "modal_retry_hunk_retained": true,
+              "packed_state_hunk_retained": true,
+              "phase_model_mismatch_theory_ready": true,
+              "observable_basis_mismatch_theory_ready": true,
+              "failure_theory_contract_ready": true,
+              "source_interface_ownership_redesign_contract_ready": true,
+              "phase_model_mismatch_theory": {
+                "lagged_packet_alignment_scope": "face_local_distribution",
+                "benchmark_blocker_scope": "global_transverse_propagation_phase",
+                "explains_marginal_dominant_phase_improvement": true,
+                "requires_propagation_aware_modal_basis": true,
+                "requires_incident_normalized_phase_owner": true,
+                "requires_source_interface_ownership_separation": true
+              },
+              "observable_basis_mismatch_theory": {
+                "solver_proxy_basis": "lagged_E_only_face_local_packet",
+                "benchmark_observable_basis": "incident_normalized_transverse_plane_dft",
+                "basis_mismatch_explains_remaining_phase_cv_floor": true,
+                "requires_eh_energy_consistent_packet": true,
+                "requires_transverse_modal_phase_coherence_owner": true,
+                "forbids_benchmark_dft_import_into_solver": true
+              },
+              "redesign_contract": {
+                "requires_phase_model_mismatch_theory": true,
+                "requires_observable_basis_mismatch_theory": true,
+                "requires_propagation_aware_incident_normalized_modal_basis": true,
+                "requires_source_interface_ownership_separation": true,
+                "requires_private_parity_material_improvement_gate": true,
+                "requires_unchanged_thresholds": true,
+                "requires_cpml_non_cpml_symmetry_tests": true,
+                "forbids_public_promotion": true
+              },
+              "production_patch_applied": false,
+              "solver_behavior_changed": false,
+              "field_update_behavior_changed": false,
+              "runner_behavior_changed": false,
+              "sbp_sat_3d_repair_applied": false,
+              "new_solver_hunk_retained": false,
+              "subgrid_vacuum_parity_scored": true,
+              "subgrid_vacuum_parity_passed": false,
+              "material_improvement_demonstrated": false,
+              "fixture_quality_ready": false,
+              "fixture_quality_pending": true,
+              "true_rt_readiness_unlocked": false,
+              "slab_rt_scored": false,
+              "next_lane_requires_implementation_plan": true,
+              "api_preflight_changes_allowed": false,
+              "rfx_api_changes_allowed": false,
+              "package_export_changed": false,
+              "readme_changed": false,
+              "docs_public_changed": false,
+              "examples_changed": false,
+              "hook_surface_changed": false,
+              "true_rt_public_observable_promoted": false,
+              "dft_flux_tfsf_port_sparameter_promoted": false,
+              "next_prerequisite": "private plane-wave observable-proxy modal retry redesign implementation after failure-theory contract ready ralplan",
+              "reason": "the packed-state modal retry failure theory is ready: the lagged face packet fixed only local face distribution state, while the remaining blocker is propagation-aware transverse phase coherence and an incident-normalized observable basis with source/interface ownership separation; the next lane may attempt a private bounded implementation under unchanged gates",
+              "public_claim_allowed": false,
+              "public_observable_promoted": false,
+              "promotion_candidate_ready": false,
+              "hook_experiment_allowed": false,
+              "public_api_behavior_changed": false,
+              "public_default_tau_changed": false,
+              "simresult_changed": false,
+              "result_surface_changed": false,
+              "slab_rt_public_claim_allowed": false,
+              "api_surface_changed": false,
+              "runner_surface_changed": false,
+              "env_config_changed": false
+            },
+            "private_plane_wave_observable_proxy_modal_retry_failure_theory_next_prerequisite": "private plane-wave observable-proxy modal retry redesign implementation after failure-theory contract ready ralplan"
           }
         },
         "box_proxy_crossval": {

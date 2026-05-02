@@ -372,7 +372,14 @@ the retained hunk is finite and reproducible, but it reduces the dominant phase
 spread by only about 0.16% and remains far above unchanged phase/CV/vacuum
 thresholds. The next safe lane is private plane-wave observable-proxy modal retry
 failure-theory redesign after packed-state parity scoring insufficient; public
-promotion remains closed.
+promotion remains closed. That failure-theory lane now records
+`private_plane_wave_modal_retry_failure_theory_redesign_contract_ready`: the
+lagged packed face packet only aligned local face distribution state, while the
+remaining blocker is propagation-aware transverse phase coherence plus an
+incident-normalized observable basis with source/interface ownership separation.
+The next safe lane is private plane-wave observable-proxy modal retry redesign
+implementation after failure-theory contract ready; public promotion remains
+closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
