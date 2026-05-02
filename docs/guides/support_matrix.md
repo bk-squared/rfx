@@ -354,7 +354,13 @@ the current solver owner state stores scalar phase/magnitude references per
 active face, while a solver-local modal proxy requires packed face-local
 distributions with offsets and masks before any field-update hunk can be
 retained. The next safe lane is private plane-wave observable-proxy face-packet
-state-shape design; public promotion remains closed.
+state-shape design. That design lane now records
+`private_plane_wave_proxy_face_packet_state_contract_ready`: packed face-local
+proxy buffers, `FACE_ORIENTATIONS`-derived index metadata, and CPML/non-CPML
+initialization symmetry can be specified without public API, hooks, benchmark
+DFT, or public observable promotion. The next safe lane is private plane-wave
+observable-proxy face-packet state-shape implementation; public promotion
+remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

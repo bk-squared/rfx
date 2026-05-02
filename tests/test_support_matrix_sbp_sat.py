@@ -3199,13 +3199,125 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == proxy_implementation["next_prerequisite"]
     )
+    face_packet_shape = benchmark_gate[
+        "private_plane_wave_observable_proxy_face_packet_state_shape"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_observable_proxy_face_packet_state_shape_status"
+    ] == "private_plane_wave_proxy_face_packet_state_contract_ready"
+    assert face_packet_shape["terminal_outcome"] == (
+        "private_plane_wave_proxy_face_packet_state_contract_ready"
+    )
+    assert face_packet_shape["upstream_implementation_status"] == (
+        benchmark_gate["private_plane_wave_observable_proxy_modal_implementation_status"]
+    )
+    assert face_packet_shape["upstream_architecture_status"] == (
+        benchmark_gate["private_plane_wave_observable_proxy_modal_architecture_status"]
+    )
+    assert face_packet_shape["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert face_packet_shape["candidate_ladder_declared_before_solver_edit"] is True
+    assert face_packet_shape["candidate_ladder_declared_before_slow_scoring"] is True
+    assert face_packet_shape["candidate_count"] == 5
+    assert face_packet_shape["selected_candidate_id"] == (
+        "Y3_proxy_face_packet_state_contract"
+    )
+    assert face_packet_shape["baseline_metrics"] == (
+        proxy_implementation["baseline_metrics"]
+    )
+    assert face_packet_shape["thresholds"] == proxy_implementation["thresholds"]
+    assert face_packet_shape["baseline_metrics_preserved"] is True
+    assert face_packet_shape["thresholds_unchanged"] is True
+    assert face_packet_shape["implementation_fail_closed_packet_frozen"] is True
+    assert face_packet_shape["packed_face_proxy_buffer_contract_ready"] is True
+    assert face_packet_shape["face_orientation_index_contract_ready"] is True
+    assert face_packet_shape["cpml_non_cpml_initialization_contract_ready"] is True
+    assert face_packet_shape["proxy_face_packet_state_contract_ready"] is True
+    assert face_packet_shape["implementation_contract_ready"] is True
+    packed_buffer_contract = face_packet_shape["packed_buffer_contract"]
+    assert packed_buffer_contract["state_extension_target"] == (
+        "_PrivateInterfaceOwnerState"
+    )
+    assert packed_buffer_contract["buffer_layout"] == (
+        "static_packed_face_local_proxy_distribution"
+    )
+    assert (
+        packed_buffer_contract[
+            "heterogeneous_faces_supported_by_offsets_and_masks"
+        ]
+        is True
+    )
+    assert packed_buffer_contract["fixed_jax_pytree_shapes"] is True
+    face_index_contract = face_packet_shape["face_index_contract"]
+    assert face_index_contract["face_order_source"] == "FACE_ORIENTATIONS"
+    assert face_index_contract["active_face_order_uses_existing_active_faces"] is True
+    assert face_index_contract["x_y_z_face_shapes_supported"] is True
+    assert face_index_contract["requires_public_config"] is False
+    assert face_index_contract["imports_benchmark_fixture_metadata"] is False
+    initialization_contract = face_packet_shape["initialization_contract"]
+    assert initialization_contract["non_cpml_initialization_boundary"] == (
+        "_init_private_interface_owner_state"
+    )
+    assert initialization_contract["cpml_initialization_boundary"] == (
+        "_init_private_interface_owner_state"
+    )
+    assert initialization_contract["jit_runner_initialization_boundary"] == (
+        "_init_private_interface_owner_state"
+    )
+    assert initialization_contract["cpml_non_cpml_shape_symmetry_required"] is True
+    assert initialization_contract["benchmark_plane_dft_observable_imported"] is False
+    assert face_packet_shape["packed_face_packet_state_required"] is True
+    assert (
+        face_packet_shape["heterogeneous_faces_supported_by_offsets_and_masks"] is True
+    )
+    assert face_packet_shape["fixed_jax_pytree_shapes"] is True
+    assert face_packet_shape["derives_from_face_orientations"] is True
+    assert face_packet_shape["production_patch_applied"] is False
+    assert face_packet_shape["solver_behavior_changed"] is False
+    assert face_packet_shape["field_update_behavior_changed"] is False
+    assert face_packet_shape["runner_behavior_changed"] is False
+    assert face_packet_shape["new_solver_hunk_retained"] is False
+    assert face_packet_shape["true_rt_readiness_unlocked"] is False
+    assert (
+        face_packet_shape[
+            "next_lane_requires_face_packet_state_shape_implementation"
+        ]
+        is True
+    )
+    face_packet_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in face_packet_shape["candidate_ladder"]
+    }
+    assert face_packet_candidates[
+        "Y1_packed_per_face_proxy_buffer_design"
+    ]["design_component_ready"] is True
+    assert face_packet_candidates[
+        "Y2_face_orientation_index_metadata_design"
+    ]["design_component_ready"] is True
+    assert face_packet_candidates[
+        "Y3_proxy_face_packet_state_contract"
+    ]["accepted_candidate"] is True
+    assert face_packet_candidates[
+        "Y4_face_packet_state_shape_design_blocked"
+    ]["accepted_candidate"] is False
+    assert face_packet_shape["public_claim_allowed"] is False
+    assert face_packet_shape["public_observable_promoted"] is False
+    assert face_packet_shape["true_rt_public_observable_promoted"] is False
+    assert face_packet_shape["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_face_packet_state_shape_next_prerequisite"
+        ]
+        == face_packet_shape["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy face-packet state-shape design after "
-        "modal retry implementation blocked ralplan"
+        "private plane-wave observable-proxy face-packet state-shape implementation "
+        "after design contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave observable-proxy face-packet state-shape design after "
-        "modal retry implementation blocked ralplan"
+        "private plane-wave observable-proxy face-packet state-shape implementation "
+        "after design contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -3332,6 +3444,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_observable_proxy_modal_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_face_packet_state_shape_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -3599,8 +3717,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy face-packet state-shape design after "
-        "modal retry implementation blocked ralplan"
+        "private plane-wave observable-proxy face-packet state-shape implementation "
+        "after design contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
