@@ -337,7 +337,13 @@ implementation failed. That redesign lane now records
 implementation is explained by same-step diagnostic owner-reference feedback
 and characteristic-vs-observable modal-basis mismatch, so the next retry
 requires a lagged owner reference and observable-aligned modal basis under
-paired phase/CV and vacuum gates; public promotion remains closed.
+paired phase/CV and vacuum gates. The implementation retry lane now records
+`no_private_plane_wave_face_local_modal_retry_implementation`: lagged owner
+timing alone is insufficient, and the claims-bearing transverse plane-DFT
+observable cannot be imported into solver-local field updates without private
+observable-proxy modal-basis architecture. The next safe lane is private
+plane-wave observable-proxy modal-basis architecture; public promotion remains
+closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

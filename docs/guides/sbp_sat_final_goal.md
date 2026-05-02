@@ -99,8 +99,8 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave face-local modal correction
-implementation retry after the failure-theory contract became ready. The
+The immediate lane is now private plane-wave observable-proxy modal-basis
+architecture after the implementation retry failed closed. The
 private owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
@@ -117,6 +117,12 @@ gates were not honestly improved. The follow-up failure-theory lane now records
 diagnostic owner-reference feedback and characteristic-vs-observable
 modal-basis mismatch explain the failed hunk, so the next retry requires a
 lagged owner reference and observable-aligned modal basis under paired gates.
+The implementation retry lane now records
+`no_private_plane_wave_face_local_modal_retry_implementation`: lagged owner
+timing alone is insufficient, and the claims-bearing transverse plane-DFT
+observable cannot be imported into solver-local field updates without a private
+observable-proxy modal basis. The next architecture lane must define a
+solver-local observable proxy before another bounded solver hunk is allowed.
 True R/T readiness is still pending. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
@@ -195,10 +201,12 @@ update correction is retained before a face-local modal correction architecture
 can prove paired phase/CV and vacuum-regression gates. The architecture lane
 has now proven the private contract and the implementation lane has failed
 closed without retaining a solver hunk. The failure-theory lane has now
-defined the retry contract; the goal gate therefore remains claims-closed until
-a later implementation/readiness lane proves the hunk improves the real solver
-path without breaking CPML/non-CPML symmetry, boundary guards, update/coupling
-bounds, or the unchanged `0.02` manufactured-ledger threshold.
+defined the retry contract, and the retry implementation lane has failed closed
+without retaining a lagged/observable-aligned hunk. The goal gate therefore
+remains claims-closed until a later observable-proxy architecture,
+implementation, and readiness lane proves the hunk improves the real solver path
+without breaking CPML/non-CPML symmetry, boundary guards, update/coupling bounds,
+or the unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

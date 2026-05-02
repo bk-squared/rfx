@@ -2893,13 +2893,117 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == modal_failure_theory["next_prerequisite"]
     )
+    modal_retry_implementation = benchmark_gate[
+        "private_plane_wave_face_local_modal_retry_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_face_local_modal_retry_implementation_status"
+    ] == "no_private_plane_wave_face_local_modal_retry_implementation"
+    assert modal_retry_implementation["terminal_outcome"] == (
+        "no_private_plane_wave_face_local_modal_retry_implementation"
+    )
+    assert modal_retry_implementation["upstream_failure_theory_status"] == (
+        benchmark_gate["private_plane_wave_face_local_modal_failure_theory_status"]
+    )
+    assert modal_retry_implementation["upstream_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_correction_implementation_status"
+        ]
+    )
+    assert modal_retry_implementation["upstream_architecture_status"] == (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_correction_architecture_status"
+        ]
+    )
+    assert modal_retry_implementation["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert modal_retry_implementation[
+        "candidate_ladder_declared_before_slow_scoring"
+    ] is True
+    assert modal_retry_implementation["candidate_count"] == 5
+    assert modal_retry_implementation["selected_candidate_id"] == (
+        "V4_retry_implementation_blocked"
+    )
+    assert modal_retry_implementation["baseline_metrics"] == (
+        modal_failure_theory["baseline_metrics"]
+    )
+    assert modal_retry_implementation["thresholds"] == (
+        modal_failure_theory["thresholds"]
+    )
+    assert modal_retry_implementation["baseline_metrics_preserved"] is True
+    assert modal_retry_implementation["thresholds_unchanged"] is True
+    assert modal_retry_implementation["failure_theory_contract_ready"] is True
+    assert modal_retry_implementation["implementation_retry_lane_executed"] is True
+    assert modal_retry_implementation["lagged_owner_reference_required"] is True
+    assert (
+        modal_retry_implementation["observable_aligned_modal_basis_required"] is True
+    )
+    assert modal_retry_implementation["lagged_owner_modal_hunk_retained"] is False
+    assert (
+        modal_retry_implementation["observable_aligned_modal_hunk_retained"] is False
+    )
+    assert modal_retry_implementation["combined_retry_hunk_retained"] is False
+    assert modal_retry_implementation["production_patch_applied"] is False
+    assert modal_retry_implementation["solver_behavior_changed"] is False
+    assert modal_retry_implementation["field_update_behavior_changed"] is False
+    assert modal_retry_implementation["runner_behavior_changed"] is False
+    assert modal_retry_implementation["new_solver_hunk_retained"] is False
+    assert modal_retry_implementation["no_bounded_hunk_accepted"] is True
+    assert modal_retry_implementation["subgrid_vacuum_parity_scored"] is True
+    assert modal_retry_implementation["subgrid_vacuum_parity_passed"] is False
+    assert modal_retry_implementation["true_rt_readiness_unlocked"] is False
+    assert (
+        modal_retry_implementation["next_lane_requires_observable_proxy_architecture"]
+        is True
+    )
+    retry_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_retry_implementation["candidate_ladder"]
+    }
+    assert retry_candidates[
+        "V1_lagged_owner_reference_modal_helper"
+    ]["attempted_in_this_lane"] is True
+    assert retry_candidates[
+        "V1_lagged_owner_reference_modal_helper"
+    ]["accepted_candidate"] is False
+    assert retry_candidates[
+        "V1_lagged_owner_reference_modal_helper"
+    ]["lagged_owner_modal_hunk_retained"] is False
+    assert retry_candidates[
+        "V2_observable_aligned_tangential_modal_basis"
+    ]["attempted_in_this_lane"] is True
+    assert retry_candidates[
+        "V2_observable_aligned_tangential_modal_basis"
+    ]["accepted_candidate"] is False
+    assert retry_candidates[
+        "V2_observable_aligned_tangential_modal_basis"
+    ]["observable_aligned_modal_hunk_retained"] is False
+    assert retry_candidates[
+        "V3_combined_lagged_observable_modal_private_parity_pass"
+    ]["accepted_candidate"] is False
+    assert retry_candidates[
+        "V4_retry_implementation_blocked"
+    ]["accepted_candidate"] is True
+    assert modal_retry_implementation["public_claim_allowed"] is False
+    assert modal_retry_implementation["public_observable_promoted"] is False
+    assert modal_retry_implementation["true_rt_public_observable_promoted"] is False
+    assert (
+        modal_retry_implementation["dft_flux_tfsf_port_sparameter_promoted"] is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_retry_implementation_next_prerequisite"
+        ]
+        == modal_retry_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave face-local modal correction implementation retry after "
-        "failure-theory contract ready ralplan"
+        "private plane-wave observable-proxy modal basis architecture after retry "
+        "implementation blocked ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave face-local modal correction implementation retry after "
-        "failure-theory contract ready ralplan"
+        "private plane-wave observable-proxy modal basis architecture after retry "
+        "implementation blocked ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -3011,6 +3115,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_face_local_modal_failure_theory_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_retry_implementation_status"
+        ]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -3277,8 +3387,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave face-local modal correction implementation retry after "
-        "failure-theory contract ready ralplan"
+        "private plane-wave observable-proxy modal basis architecture after retry "
+        "implementation blocked ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

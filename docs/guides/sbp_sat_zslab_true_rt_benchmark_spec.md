@@ -384,10 +384,14 @@ implementation failed ralplan`. That redesign lane now records
 implementation is explained by same-step diagnostic owner-reference feedback
 and characteristic-vs-observable modal-basis mismatch, so the next retry
 requires a lagged owner reference and observable-aligned modal basis under
-paired phase/CV and vacuum gates. Hook experiments remain closed and public
-promotion remains closed. Until those fixture-quality gates pass, the private
-flux/DFT gate remains internal diagnostic evidence only, and the support matrix
-continues to mark true R/T as deferred.
+paired phase/CV and vacuum gates. The implementation retry lane now records
+`no_private_plane_wave_face_local_modal_retry_implementation`: lagged owner
+timing alone is insufficient, and the claims-bearing transverse plane-DFT
+observable cannot be imported into solver-local field updates without private
+observable-proxy modal-basis architecture. Hook experiments remain closed and
+public promotion remains closed. Until those fixture-quality gates pass, the
+private flux/DFT gate remains internal diagnostic evidence only, and the support
+matrix continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
