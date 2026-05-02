@@ -19,6 +19,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _face_interior_masks,
     _get_face_ops,
     _init_private_interface_owner_state,
+    _private_interface_owner_joint_score,
     apply_sat_e_interfaces,
     apply_sat_h_interfaces,
     compute_energy_3d,
@@ -606,6 +607,94 @@ def test_private_interface_owner_state_initializes_in_jit_runner():
     owner_state = _init_private_interface_owner_state(config)
 
     assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
+
+
+def _seed_private_owner_scan_fields(state):
+    return state._replace(
+        ex_c=jnp.ones_like(state.ex_c),
+        ey_c=2.0 * jnp.ones_like(state.ey_c),
+        ez_c=3.0 * jnp.ones_like(state.ez_c),
+        hx_c=0.10 * jnp.ones_like(state.hx_c),
+        hy_c=0.20 * jnp.ones_like(state.hy_c),
+        hz_c=0.30 * jnp.ones_like(state.hz_c),
+        ex_f=1.5 * jnp.ones_like(state.ex_f),
+        ey_f=2.5 * jnp.ones_like(state.ey_f),
+        ez_f=3.5 * jnp.ones_like(state.ez_f),
+        hx_f=0.15 * jnp.ones_like(state.hx_f),
+        hy_f=0.25 * jnp.ones_like(state.hy_f),
+        hz_f=0.35 * jnp.ones_like(state.hz_f),
+    )
+
+
+def _assert_private_owner_joint_score(owner_state, config):
+    assert owner_state is not None
+    assert owner_state.face_magnitude_reference.shape == (len(_active_faces(config)),)
+    assert owner_state.face_phase_reference.shape == (len(_active_faces(config)),)
+    assert np.all(np.isfinite(np.asarray(owner_state.face_magnitude_reference)))
+    assert np.all(np.isfinite(np.asarray(owner_state.face_phase_reference)))
+    assert np.any(np.asarray(owner_state.face_magnitude_reference) > 0.0)
+    score = _private_interface_owner_joint_score(owner_state)
+    assert int(np.asarray(score.usable_face_count)) == len(_active_faces(config))
+    assert np.isfinite(float(np.asarray(score.transverse_magnitude_cv)))
+    assert np.isfinite(float(np.asarray(score.transverse_phase_spread_deg)))
+    assert float(np.asarray(score.transverse_magnitude_cv)) >= 0.0
+    assert float(np.asarray(score.transverse_phase_spread_deg)) >= 0.0
+
+
+def test_private_interface_owner_scan_wiring_is_after_same_step_eh_sat():
+    for step_func in (step_subgrid_3d, step_subgrid_3d_with_cpml):
+        source = inspect.getsource(step_func)
+        h_sat_index = source.index("apply_sat_h_interfaces")
+        e_sat_index = source.index("apply_sat_e_interfaces")
+        helper_index = source.index("_apply_time_centered_paired_face_helper")
+        scan_index = source.index("_update_private_interface_owner_state_from_scan")
+        assert h_sat_index < e_sat_index < helper_index < scan_index
+
+
+def test_private_interface_owner_scan_wiring_records_joint_score_non_cpml():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    state = _seed_private_owner_scan_fields(state)
+
+    next_state = step_subgrid_3d(state, config)
+
+    owner_state = next_state.private_interface_owner_state
+    np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 1)
+    _assert_private_owner_joint_score(owner_state, config)
+
+
+def test_private_interface_owner_scan_wiring_records_joint_score_cpml():
+    grid = Grid(
+        freq_max=5e9,
+        domain=(0.020, 0.020, 0.020),
+        dx=0.004,
+        cpml_layers=1,
+    )
+    config, state = init_subgrid_3d(
+        shape_c=grid.shape,
+        dx_c=grid.dx,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    cpml_params, cpml_state = init_cpml(grid)
+    state = _seed_private_owner_scan_fields(state)
+
+    next_state, _ = step_subgrid_3d_with_cpml(
+        state,
+        config,
+        cpml_params=cpml_params,
+        cpml_state=cpml_state,
+        grid_c=grid,
+        cpml_axes="xyz",
+    )
+
+    owner_state = next_state.private_interface_owner_state
+    np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 1)
+    _assert_private_owner_joint_score(owner_state, config)
 
 
 def _spy_operator_projected_helper(monkeypatch):

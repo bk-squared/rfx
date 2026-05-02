@@ -360,13 +360,16 @@ retrying the bounded owner implementation. The follow-up implementation lane now
 records
 `private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending`:
 the private owner state shape is carried through CPML and non-CPML subgrid steps
-and JIT-runner initialization, but same-step owner scan wiring and joint
-phase/CV parity scoring remain pending. The next safe lane is `private
-plane-wave solver-wide owner scan wiring and joint parity scoring after
-propagation hunk retained ralplan`. Hook experiments remain closed and public
-promotion remains closed. Until those fixture-quality gates pass, the private
-flux/DFT gate remains internal diagnostic evidence only, and the support matrix
-continues to mark true R/T as deferred.
+and JIT-runner initialization. The follow-up owner scan-wiring/joint-scoring
+lane now records
+`private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending`:
+same-step E/H owner scan capture and owner-backed joint phase/CV scoring are
+retained, but physical phase/CV correction and true R/T readiness remain
+pending. The next safe lane is `private plane-wave owner-backed physical
+phase/CV correction after scan wiring scorer retained ralplan`. Hook experiments
+remain closed and public promotion remains closed. Until those fixture-quality
+gates pass, the private flux/DFT gate remains internal diagnostic evidence only,
+and the support matrix continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

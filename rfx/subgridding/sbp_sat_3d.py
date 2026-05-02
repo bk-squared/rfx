@@ -97,6 +97,14 @@ class _PrivateInterfaceOwnerState(NamedTuple):
     face_update_count: jnp.ndarray
 
 
+class _PrivateInterfaceOwnerJointScore(NamedTuple):
+    """Private owner-backed transverse phase/magnitude score."""
+
+    transverse_magnitude_cv: jnp.ndarray
+    transverse_phase_spread_deg: jnp.ndarray
+    usable_face_count: jnp.ndarray
+
+
 class SubgridState3D(NamedTuple):
     """Field state for the canonical Phase-1 z-slab lane."""
 
@@ -515,6 +523,110 @@ def _advance_private_interface_owner_state(
 ) -> _PrivateInterfaceOwnerState:
     return owner_state._replace(
         face_update_count=owner_state.face_update_count + jnp.asarray(1, dtype=jnp.int32)
+    )
+
+
+def _masked_face_mean(value: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
+    denominator = jnp.maximum(
+        jnp.sum(mask),
+        jnp.asarray(1.0, dtype=mask.dtype),
+    )
+    return jnp.sum(value * mask) / denominator
+
+
+def _private_owner_face_complex_reference(
+    *,
+    coarse_e: tuple[jnp.ndarray, jnp.ndarray],
+    fine_e: tuple[jnp.ndarray, jnp.ndarray],
+    coarse_h: tuple[jnp.ndarray, jnp.ndarray],
+    fine_h: tuple[jnp.ndarray, jnp.ndarray],
+    ops: ZFaceOps,
+    coarse_mask: jnp.ndarray,
+    normal_sign: int,
+) -> jnp.ndarray:
+    eta0 = jnp.asarray(np.sqrt(MU_0 / EPS_0), dtype=coarse_e[0].dtype)
+    sign = jnp.asarray(normal_sign, dtype=coarse_e[0].dtype)
+    fine_e_restricted = tuple(restrict_face(trace, ops) for trace in fine_e)
+    fine_h_restricted = tuple(restrict_face(trace, ops) for trace in fine_h)
+    coarse_w1 = coarse_e[0] + sign * eta0 * (-coarse_h[1])
+    coarse_w2 = coarse_e[1] + sign * eta0 * coarse_h[0]
+    fine_w1 = fine_e_restricted[0] + sign * eta0 * (-fine_h_restricted[1])
+    fine_w2 = fine_e_restricted[1] + sign * eta0 * fine_h_restricted[0]
+    face_reference = 0.5 * (
+        (coarse_w1 + 1j * coarse_w2) + (fine_w1 + 1j * fine_w2)
+    )
+    return _masked_face_mean(face_reference, coarse_mask)
+
+
+def _update_private_interface_owner_state_from_scan(
+    owner_state: _PrivateInterfaceOwnerState,
+    *,
+    e_post_sat_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    e_post_sat_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    h_post_sat_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    h_post_sat_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    config: SubgridConfig3D,
+) -> _PrivateInterfaceOwnerState:
+    """Capture private owner face references from the same-step E/H SAT scan."""
+
+    phase_references = []
+    magnitude_references = []
+    for face in _active_faces(config):
+        orientation = FACE_ORIENTATIONS[face]
+        ops = _get_face_ops(config, face)
+        coarse_mask, _ = _face_interior_masks(ops.coarse_shape, config.ratio)
+        face_reference = _private_owner_face_complex_reference(
+            coarse_e=extract_tangential_e_face(
+                e_post_sat_coarse, config, face, grid="coarse"
+            ),
+            fine_e=extract_tangential_e_face(
+                e_post_sat_fine, config, face, grid="fine"
+            ),
+            coarse_h=extract_tangential_h_face(
+                h_post_sat_coarse, config, face, grid="coarse"
+            ),
+            fine_h=extract_tangential_h_face(
+                h_post_sat_fine, config, face, grid="fine"
+            ),
+            ops=ops,
+            coarse_mask=coarse_mask,
+            normal_sign=orientation.normal_sign,
+        )
+        phase_references.append(jnp.angle(face_reference).astype(jnp.float32))
+        magnitude_references.append(jnp.abs(face_reference).astype(jnp.float32))
+    if not phase_references:
+        return owner_state
+    return owner_state._replace(
+        face_phase_reference=jnp.stack(phase_references),
+        face_magnitude_reference=jnp.stack(magnitude_references),
+    )
+
+
+def _private_interface_owner_joint_score(
+    owner_state: _PrivateInterfaceOwnerState,
+) -> _PrivateInterfaceOwnerJointScore:
+    """Score the private owner face references without exposing an observable."""
+
+    magnitudes = owner_state.face_magnitude_reference
+    phases = owner_state.face_phase_reference
+    if magnitudes.size == 0:
+        zero = jnp.asarray(0.0, dtype=jnp.float32)
+        return _PrivateInterfaceOwnerJointScore(
+            transverse_magnitude_cv=zero,
+            transverse_phase_spread_deg=zero,
+            usable_face_count=jnp.asarray(0, dtype=jnp.int32),
+        )
+    eps = jnp.asarray(1.0e-30, dtype=magnitudes.dtype)
+    magnitude_mean = jnp.maximum(jnp.mean(jnp.abs(magnitudes)), eps)
+    magnitude_cv = jnp.std(magnitudes) / magnitude_mean
+    phase_spread = (jnp.max(phases) - jnp.min(phases)) * (
+        jnp.asarray(180.0, dtype=phases.dtype) / jnp.asarray(np.pi, dtype=phases.dtype)
+    )
+    usable_face_count = jnp.asarray(magnitudes.size, dtype=jnp.int32)
+    return _PrivateInterfaceOwnerJointScore(
+        transverse_magnitude_cv=magnitude_cv.astype(jnp.float32),
+        transverse_phase_spread_deg=phase_spread.astype(jnp.float32),
+        usable_face_count=usable_face_count,
     )
 
 
@@ -1537,6 +1649,14 @@ def step_subgrid_3d_with_cpml(
         e_post_sat_fine=e_post_sat_fine,
         config=config,
     )
+    private_interface_owner_state = _update_private_interface_owner_state_from_scan(
+        private_interface_owner_state,
+        e_post_sat_coarse=(ex_c, ey_c, ez_c),
+        e_post_sat_fine=(ex_f, ey_f, ez_f),
+        h_post_sat_coarse=(hx_c, hy_c, hz_c),
+        h_post_sat_fine=(hx_f, hy_f, hz_f),
+        config=config,
+    )
     ex_c, ey_c, ez_c = _zero_coarse_overlap_interior((ex_c, ey_c, ez_c), config)
 
     return (
@@ -1738,6 +1858,14 @@ def step_subgrid_3d(
         e_pre_sat_fine=e_pre_sat_fine,
         e_post_sat_coarse=e_post_sat_coarse,
         e_post_sat_fine=e_post_sat_fine,
+        config=config,
+    )
+    private_interface_owner_state = _update_private_interface_owner_state_from_scan(
+        private_interface_owner_state,
+        e_post_sat_coarse=(ex_c, ey_c, ez_c),
+        e_post_sat_fine=(ex_f, ey_f, ez_f),
+        h_post_sat_coarse=(hx_c, hy_c, hz_c),
+        h_post_sat_fine=(hx_f, hy_f, hz_f),
         config=config,
     )
     ex_c, ey_c, ez_c = _zero_coarse_overlap_interior((ex_c, ey_c, ez_c), config)

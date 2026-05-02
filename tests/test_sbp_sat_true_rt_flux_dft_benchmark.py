@@ -1098,6 +1098,26 @@ _PRIVATE_PLANE_WAVE_SOLVER_STATE_OWNER_PROPAGATION_IMPLEMENTATION_PRECEDENCE = (
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_STATUS = (
+    "private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending"
+)
+_PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_NEXT_PREREQUISITE = (
+    "private plane-wave owner-backed physical phase/CV correction after "
+    "scan wiring scorer retained ralplan"
+)
+_PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_TERMINAL_OUTCOMES = (
+    "private_plane_wave_owner_scan_wiring_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    "no_private_plane_wave_solver_wide_owner_scan_wiring_joint_parity_scoring",
+)
+_PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_PRECEDENCE = (
+    "no_private_plane_wave_solver_wide_owner_scan_wiring_joint_parity_scoring",
+    "private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_owner_scan_wiring_hunk_retained_fixture_quality_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -8895,6 +8915,170 @@ def _private_plane_wave_solver_state_owner_propagation_implementation_metadata(
     }
 
 
+def _private_plane_wave_owner_scan_wiring_joint_scoring_metadata(
+    *,
+    propagation_implementation_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(propagation_implementation_metadata["baseline_metrics"])
+    thresholds = dict(propagation_implementation_metadata["thresholds"])
+    q0 = {
+        "candidate_id": "Q0_propagation_hunk_baseline_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_propagation_implementation_status": (
+            propagation_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    q1 = {
+        "candidate_id": "Q1_same_step_owner_scan_wiring_hunk",
+        "candidate_family": "same_step_owner_scan_wiring",
+        "accepted_candidate": False,
+        "production_hunk_retained": True,
+        "owner_scan_wiring_hunk_retained": True,
+        "cpml_owner_scan_wiring_retained": True,
+        "non_cpml_owner_scan_wiring_retained": True,
+        "same_step_h_e_scan_visibility": True,
+        "private_owner_reference_phase_recorded": True,
+        "private_owner_reference_magnitude_recorded": True,
+        "field_update_behavior_changed": False,
+        "requires_public_api": False,
+        "requires_hook": False,
+        "superseded_by": "Q2_owner_joint_phase_cv_scoring_guard",
+        "public_claim_allowed": False,
+    }
+    q2 = {
+        "candidate_id": "Q2_owner_joint_phase_cv_scoring_guard",
+        "candidate_family": "owner_backed_joint_phase_cv_scoring",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_STATUS
+        ),
+        "production_hunk_retained": True,
+        "owner_scan_wiring_hunk_retained": True,
+        "owner_joint_parity_scoring_hunk_retained": True,
+        "joint_phase_cv_guard_retained": True,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "joint_phase_magnitude_improved": False,
+        "true_rt_readiness_unlocked": False,
+        "fixture_quality_pending": True,
+        "public_claim_allowed": False,
+    }
+    q3 = {
+        "candidate_id": "Q3_private_parity_passes_true_rt_pending",
+        "candidate_family": "fixture_quality_private_parity_pass",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending"
+        ),
+        "subgrid_vacuum_parity_passed": False,
+        "joint_phase_magnitude_improved": False,
+        "not_selected_reason": (
+            "Q1/Q2 retained scan wiring and an owner-backed score guard, but "
+            "the frozen parity packet still fails unchanged fixture-quality gates"
+        ),
+        "public_claim_allowed": False,
+    }
+    q4 = {
+        "candidate_id": "Q4_owner_scan_wiring_joint_scoring_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_solver_wide_owner_scan_wiring_joint_parity_scoring"
+        ),
+        "not_selected_reason": (
+            "not selected because Q1/Q2 retained a private scan-wiring and "
+            "owner-backed scoring hunk without public promotion"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (q0, q1, q2, q3, q4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_solver_wide_owner_scan_wiring_joint_scoring_only"
+        ),
+        "upstream_propagation_implementation_status": (
+            propagation_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite Q0/Q1/Q2/Q3/Q4 implementation ladder; retain only private "
+            "owner scan wiring and owner-backed joint phase/CV scoring before "
+            "any physical parity-correction lane"
+        ),
+        "selected_candidate_id": "Q2_owner_joint_phase_cv_scoring_guard",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "owner_scan_wiring_hunk_retained": True,
+        "cpml_owner_scan_wiring_retained": True,
+        "non_cpml_owner_scan_wiring_retained": True,
+        "same_step_h_e_scan_visibility": True,
+        "private_owner_reference_phase_recorded": True,
+        "private_owner_reference_magnitude_recorded": True,
+        "owner_joint_parity_scoring_hunk_retained": True,
+        "joint_phase_cv_guard_retained": True,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "joint_phase_magnitude_improved": False,
+        "production_patch_applied": True,
+        "solver_behavior_changed": True,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_physical_phase_cv_correction": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private solver-wide owner scan wiring lane retained same-step "
+            "E/H scan capture and an owner-backed joint phase/CV scoring guard, "
+            "but unchanged fixture-quality gates remain pending and public "
+            "promotion stays closed"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -11266,8 +11450,31 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_owner_scan_wiring_joint_scoring_metadata = (
+        _private_plane_wave_owner_scan_wiring_joint_scoring_metadata(
+            propagation_implementation_metadata=(
+                plane_wave_solver_state_owner_propagation_implementation_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_owner_scan_wiring_joint_scoring_status": (
+                plane_wave_owner_scan_wiring_joint_scoring_metadata["status"]
+            ),
+            "private_plane_wave_owner_scan_wiring_joint_scoring": (
+                plane_wave_owner_scan_wiring_joint_scoring_metadata
+            ),
+            "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite": (
+                plane_wave_owner_scan_wiring_joint_scoring_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_solver_state_owner_propagation_implementation_next_prerequisite"
+        "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -11379,6 +11586,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave solver-state owner propagation "
                 "implementation lane records "
                 f"{plane_wave_solver_state_owner_propagation_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave owner scan-wiring/joint-scoring "
+                "lane records "
+                f"{plane_wave_owner_scan_wiring_joint_scoring_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -11388,7 +11598,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_solver_state_owner_propagation_implementation_next_prerequisite"
+                "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
             ],
         }
 
@@ -14810,10 +15020,102 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_solver_state_owner_propagation_implementation_next_prerequisite"
         ]
     )
+    owner_scan_wiring = metadata[
+        "private_plane_wave_owner_scan_wiring_joint_scoring"
+    ]
+    assert metadata[
+        "private_plane_wave_owner_scan_wiring_joint_scoring_status"
+    ] == _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_STATUS
+    assert owner_scan_wiring["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_STATUS
+    )
+    assert owner_scan_wiring["upstream_propagation_implementation_status"] == (
+        metadata[
+            "private_plane_wave_solver_state_owner_propagation_implementation_status"
+        ]
+    )
+    assert owner_scan_wiring["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert owner_scan_wiring["candidate_ladder_declared_before_slow_scoring"] is True
+    assert owner_scan_wiring["candidate_count"] == 5
+    assert owner_scan_wiring["selected_candidate_id"] == (
+        "Q2_owner_joint_phase_cv_scoring_guard"
+    )
+    assert owner_scan_wiring["baseline_metrics"] == (
+        solver_state_owner_implementation["baseline_metrics"]
+    )
+    assert owner_scan_wiring["baseline_metrics_preserved"] is True
+    assert owner_scan_wiring["thresholds_unchanged"] is True
+    assert owner_scan_wiring["owner_scan_wiring_hunk_retained"] is True
+    assert owner_scan_wiring["cpml_owner_scan_wiring_retained"] is True
+    assert owner_scan_wiring["non_cpml_owner_scan_wiring_retained"] is True
+    assert owner_scan_wiring["same_step_h_e_scan_visibility"] is True
+    assert owner_scan_wiring["private_owner_reference_phase_recorded"] is True
+    assert owner_scan_wiring["private_owner_reference_magnitude_recorded"] is True
+    assert owner_scan_wiring["owner_joint_parity_scoring_hunk_retained"] is True
+    assert owner_scan_wiring["joint_phase_cv_guard_retained"] is True
+    assert owner_scan_wiring["joint_phase_magnitude_improved"] is False
+    assert owner_scan_wiring["production_patch_applied"] is True
+    assert owner_scan_wiring["solver_behavior_changed"] is True
+    assert owner_scan_wiring["field_update_behavior_changed"] is False
+    assert owner_scan_wiring["runner_behavior_changed"] is False
+    assert owner_scan_wiring["new_solver_hunk_retained"] is True
+    assert owner_scan_wiring["subgrid_vacuum_parity_passed"] is False
+    assert owner_scan_wiring["fixture_quality_pending"] is True
+    assert owner_scan_wiring["true_rt_readiness_unlocked"] is False
+    assert (
+        owner_scan_wiring["next_lane_requires_physical_phase_cv_correction"]
+        is True
+    )
+    owner_scan_wiring_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in owner_scan_wiring["candidate_ladder"]
+    }
+    assert (
+        owner_scan_wiring_candidates[
+            "Q1_same_step_owner_scan_wiring_hunk"
+        ]["production_hunk_retained"]
+        is True
+    )
+    assert (
+        owner_scan_wiring_candidates[
+            "Q1_same_step_owner_scan_wiring_hunk"
+        ]["superseded_by"]
+        == "Q2_owner_joint_phase_cv_scoring_guard"
+    )
+    assert (
+        owner_scan_wiring_candidates[
+            "Q2_owner_joint_phase_cv_scoring_guard"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert (
+        owner_scan_wiring_candidates[
+            "Q3_private_parity_passes_true_rt_pending"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        owner_scan_wiring_candidates[
+            "Q4_owner_scan_wiring_joint_scoring_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert owner_scan_wiring["public_claim_allowed"] is False
+    assert owner_scan_wiring["public_observable_promoted"] is False
+    assert owner_scan_wiring["true_rt_public_observable_promoted"] is False
+    assert owner_scan_wiring["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        owner_scan_wiring["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_solver_state_owner_propagation_implementation_next_prerequisite"
+            "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -14839,7 +15141,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_solver_state_owner_propagation_implementation_next_prerequisite"
+            "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
         ]
     )
     assert (
@@ -14974,6 +15276,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata[
             "private_plane_wave_solver_state_owner_propagation_implementation_status"
         ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
