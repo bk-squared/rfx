@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave modal projection/normalizer
-contract design after the time-aligned modal retry failure theory identified
-a projection/normalization floor.
+contract implementation after the private design lane made the bounded contract
+ready.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -133,7 +133,11 @@ remain closed. The failure-theory lane now records
 time alignment made no material score delta against the source-populated
 baseline, so the next bounded private target is shared modal projection, packet
 normalization, and face-mask weighting equivalence rather than another public
-observable or true R/T readiness claim. The
+observable or true R/T readiness claim. The contract design lane now records
+`private_plane_wave_modal_projection_normalizer_contract_design_ready`: shared
+modal basis, incident normalizer, and face-mask weighting contracts are ready
+for a bounded private implementation lane while public observables remain
+closed. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

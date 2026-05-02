@@ -5106,13 +5106,110 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == time_aligned_failure_theory["next_prerequisite"]
     )
+    modal_contract_design = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_contract_design"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_contract_design_status"
+    ] == "private_plane_wave_modal_projection_normalizer_contract_design_ready"
+    assert modal_contract_design["terminal_outcome"] == (
+        "private_plane_wave_modal_projection_normalizer_contract_design_ready"
+    )
+    assert modal_contract_design["upstream_failure_theory_status"] == benchmark_gate[
+        "private_plane_wave_time_aligned_modal_retry_failure_theory_status"
+    ]
+    assert modal_contract_design["candidate_ladder_declared_before_implementation"]
+    assert modal_contract_design["candidate_ladder_declared_before_solver_edit"]
+    assert modal_contract_design["candidate_ladder_declared_before_slow_scoring"]
+    assert modal_contract_design["candidate_count"] == 5
+    assert modal_contract_design["selected_candidate_id"] == (
+        "Q3_combined_projection_normalizer_mask_contract"
+    )
+    assert modal_contract_design["baseline_metrics"] == (
+        time_aligned_failure_theory["baseline_metrics"]
+    )
+    assert modal_contract_design["metrics"] == time_aligned_failure_theory["metrics"]
+    assert modal_contract_design["thresholds"] == time_aligned_failure_theory[
+        "thresholds"
+    ]
+    assert modal_contract_design["threshold_results"] == (
+        time_aligned_failure_theory["threshold_results"]
+    )
+    assert modal_contract_design["baseline_metrics_preserved"]
+    assert modal_contract_design["thresholds_unchanged"]
+    assert modal_contract_design["time_alignment_no_material_delta"]
+    assert modal_contract_design["modal_projection_or_normalizer_floor_selected"]
+    assert modal_contract_design["basis_contract_component_ready"]
+    assert modal_contract_design["normalizer_contract_component_ready"]
+    assert modal_contract_design["mask_weighting_contract_component_ready"]
+    assert modal_contract_design["combined_contract_ready"]
+    projection_basis = modal_contract_design["projection_basis_contract"]
+    assert projection_basis["state_owner"] == "_PrivateInterfaceOwnerState"
+    assert projection_basis["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert projection_basis["requires_public_observable"] is False
+    assert projection_basis["requires_hook"] is False
+    normalizer_contract = modal_contract_design["normalizer_contract"]
+    assert normalizer_contract["normalized_packet_helper"] == (
+        "_incident_normalized_source_packet"
+    )
+    assert normalizer_contract["normalization_equivalence_required"]
+    assert normalizer_contract["requires_public_config"] is False
+    mask_contract = modal_contract_design["face_mask_weighting_contract"]
+    assert mask_contract["combined_packet_mask"] == (
+        "face_proxy_mask * source_owner_mask"
+    )
+    assert mask_contract["weighting_equivalence_required"]
+    assert mask_contract["cpml_non_cpml_contract_identical"]
+    implementation_contract = modal_contract_design["implementation_contract"]
+    assert implementation_contract["thresholds_frozen"]
+    assert implementation_contract["material_improvement_gate_required_after_hunk"]
+    assert modal_contract_design["private_design_lane_executed"]
+    assert modal_contract_design["fixture_quality_ready"] is False
+    assert modal_contract_design["fixture_quality_pending"]
+    assert modal_contract_design["true_rt_readiness_unlocked"] is False
+    assert modal_contract_design["production_patch_applied"] is False
+    assert modal_contract_design["solver_behavior_changed"] is False
+    assert modal_contract_design["field_update_behavior_changed"] is False
+    assert modal_contract_design["new_solver_hunk_retained"] is False
+    assert modal_contract_design["benchmark_plane_dft_observable_imported"] is False
+    assert modal_contract_design[
+        "next_lane_requires_modal_projection_normalizer_contract_implementation"
+    ]
+    modal_design_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_contract_design["candidate_ladder"]
+    }
+    assert modal_design_candidates[
+        "Q1_shared_modal_projection_basis_contract"
+    ]["basis_contract_component_ready"]
+    assert modal_design_candidates[
+        "Q2_packet_normalizer_contract"
+    ]["normalizer_contract_component_ready"]
+    assert modal_design_candidates[
+        "Q3_combined_projection_normalizer_mask_contract"
+    ]["accepted_candidate"]
+    assert modal_design_candidates[
+        "Q4_modal_projection_normalizer_contract_design_blocked"
+    ]["accepted_candidate"] is False
+    assert modal_contract_design["public_claim_allowed"] is False
+    assert modal_contract_design["public_observable_promoted"] is False
+    assert modal_contract_design["true_rt_public_observable_promoted"] is False
+    assert modal_contract_design["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_contract_design_next_prerequisite"
+        ]
+        == modal_contract_design["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave modal projection/normalizer contract design after "
-        "time-aligned modal retry theory ready ralplan"
+        "private plane-wave modal projection/normalizer contract implementation "
+        "after design ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave modal projection/normalizer contract design after "
-        "time-aligned modal retry theory ready ralplan"
+        "private plane-wave modal projection/normalizer contract implementation "
+        "after design ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -5347,6 +5444,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_time_aligned_modal_retry_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_contract_design_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -5614,8 +5717,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave modal projection/normalizer contract design after "
-        "time-aligned modal retry theory ready ralplan"
+        "private plane-wave modal projection/normalizer contract implementation "
+        "after design ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

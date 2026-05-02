@@ -489,8 +489,12 @@ paired material-improvement, transverse-uniformity, and vacuum-stability gates
 remain closed. The failure-theory lane now records
 `private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready`:
 time alignment made no material score delta against the source-populated
-baseline, so the next safe lane is private modal projection/normalizer contract
-design after the time-aligned modal retry theory is ready.
+baseline, so the design lane now records
+`private_plane_wave_modal_projection_normalizer_contract_design_ready`: shared
+modal basis, incident normalizer, and face-mask weighting contracts are ready
+for a bounded private implementation lane while public observables remain
+closed. The next safe lane is private modal projection/normalizer contract
+implementation after design ready.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

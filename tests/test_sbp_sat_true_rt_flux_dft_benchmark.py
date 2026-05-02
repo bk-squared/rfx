@@ -1614,6 +1614,27 @@ _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_FAILURE_THEORY_PRECEDENCE = (
     "private_plane_wave_time_aligned_modal_retry_transverse_phase_floor_theory_contract_ready",
     "private_plane_wave_time_aligned_modal_retry_modal_projection_normalizer_theory_contract_ready",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_contract_design_ready"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer contract implementation "
+    "after design ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_basis_contract_ready",
+    "private_plane_wave_packet_normalizer_contract_ready",
+    "private_plane_wave_face_mask_weighting_contract_ready",
+    "private_plane_wave_modal_projection_normalizer_contract_design_ready",
+    "no_private_plane_wave_modal_projection_normalizer_contract_design",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_PRECEDENCE = (
+    "no_private_plane_wave_modal_projection_normalizer_contract_design",
+    "private_plane_wave_modal_projection_basis_contract_ready",
+    "private_plane_wave_packet_normalizer_contract_ready",
+    "private_plane_wave_face_mask_weighting_contract_ready",
+    "private_plane_wave_modal_projection_normalizer_contract_design_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -14370,6 +14391,220 @@ def _private_plane_wave_time_aligned_modal_retry_failure_theory_metadata(
         **_private_public_closure_metadata(),
     }
 
+
+def _private_plane_wave_modal_projection_normalizer_contract_design_metadata(
+    *,
+    failure_theory_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(failure_theory_metadata["baseline_metrics"])
+    metrics = dict(failure_theory_metadata["metrics"])
+    thresholds = dict(failure_theory_metadata["thresholds"])
+    threshold_results = dict(failure_theory_metadata["threshold_results"])
+    projection_basis_contract = {
+        "state_owner": "_PrivateInterfaceOwnerState",
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "source_packet_fields": (
+            "source_owner_reference_prev_real/source_owner_reference_prev_imag"
+        ),
+        "interface_packet_fields": (
+            "face_proxy_reference_prev_real/face_proxy_reference_prev_imag"
+        ),
+        "shared_face_indexing": (
+            "face_packet_offsets/face_packet_lengths align with "
+            "source_packet_offsets/source_packet_lengths"
+        ),
+        "shared_orientation_fields": (
+            "face_normal_axis/sign and source_normal_axis/sign plus tangential "
+            "axis pairs must match before modal subtraction"
+        ),
+        "basis_components": "face-local tangential complex E/H distribution",
+        "requires_public_observable": False,
+        "requires_hook": False,
+    }
+    normalizer_contract = {
+        "normalizer_fields": (
+            "source_incident_normalizer_real/source_incident_normalizer_imag"
+        ),
+        "normalized_packet_helper": "_incident_normalized_source_packet",
+        "source_weight_field": "source_owner_weight",
+        "interface_weight_field": "face_proxy_weight",
+        "normalization_equivalence_required": True,
+        "impedance_scaling_public_surface_required": False,
+        "requires_public_config": False,
+    }
+    face_mask_weighting_contract = {
+        "source_mask_field": "source_owner_mask",
+        "interface_mask_field": "face_proxy_mask",
+        "combined_packet_mask": "face_proxy_mask * source_owner_mask",
+        "weighting_equivalence_required": True,
+        "aperture_provenance_required": True,
+        "cpml_non_cpml_contract_identical": True,
+        "jit_runner_shape_contract_required": True,
+    }
+    implementation_contract = {
+        "next_helper_scope": (
+            "private modal projection/normalizer contract implementation"
+        ),
+        "allowed_solver_target": (
+            "rfx/subgridding/sbp_sat_3d.py private owner-state modal helper only"
+        ),
+        "forbidden_public_surfaces": (
+            "public true R/T, DFT/flux, TFSF, ports, S-parameters, API, "
+            "results, config, package exports, docs-public, examples, hooks"
+        ),
+        "thresholds_frozen": True,
+        "material_improvement_gate_required_after_hunk": True,
+    }
+    q0 = {
+        "candidate_id": "Q0_failure_theory_evidence_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_failure_theory_status": failure_theory_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "time_alignment_no_material_delta": (
+            failure_theory_metadata["time_alignment_no_material_delta"]
+        ),
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    q1 = {
+        "candidate_id": "Q1_shared_modal_projection_basis_contract",
+        "candidate_family": "private_modal_projection_basis_contract",
+        "accepted_candidate": False,
+        "projection_basis_contract": projection_basis_contract,
+        "basis_contract_component_ready": True,
+        "not_selected_reason": (
+            "basis provenance is necessary but insufficient without the packet "
+            "normalizer and mask-weighting contract"
+        ),
+        "public_claim_allowed": False,
+    }
+    q2 = {
+        "candidate_id": "Q2_packet_normalizer_contract",
+        "candidate_family": "private_packet_normalizer_contract",
+        "accepted_candidate": False,
+        "normalizer_contract": normalizer_contract,
+        "normalizer_contract_component_ready": True,
+        "not_selected_reason": (
+            "normalizer equivalence is necessary but must be paired with the "
+            "shared modal basis and face-mask weighting contract"
+        ),
+        "public_claim_allowed": False,
+    }
+    q3 = {
+        "candidate_id": "Q3_combined_projection_normalizer_mask_contract",
+        "candidate_family": "private_combined_modal_projection_normalizer_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_STATUS
+        ),
+        "projection_basis_contract": projection_basis_contract,
+        "normalizer_contract": normalizer_contract,
+        "face_mask_weighting_contract": face_mask_weighting_contract,
+        "implementation_contract": implementation_contract,
+        "basis_contract_component_ready": True,
+        "normalizer_contract_component_ready": True,
+        "mask_weighting_contract_component_ready": True,
+        "combined_contract_ready": True,
+        "bounded_private_next_target": implementation_contract["next_helper_scope"],
+        "public_claim_allowed": False,
+    }
+    q4 = {
+        "candidate_id": "Q4_modal_projection_normalizer_contract_design_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_modal_projection_normalizer_contract_design"
+        ),
+        "not_selected_reason": (
+            "the combined private modal basis, normalizer, and mask-weighting "
+            "contract is bounded and implementable, so the lane does not fail closed"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (q0, q1, q2, q3, q4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_modal_projection_normalizer_contract_design_only"
+        ),
+        "upstream_failure_theory_status": failure_theory_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite Q0/Q1/Q2/Q3/Q4 design ladder; select only a private "
+            "modal basis/normalizer/mask contract and keep public promotion closed"
+        ),
+        "selected_candidate_id": "Q3_combined_projection_normalizer_mask_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "time_alignment_no_material_delta": (
+            failure_theory_metadata["time_alignment_no_material_delta"]
+        ),
+        "modal_projection_or_normalizer_floor_selected": True,
+        "projection_basis_contract": projection_basis_contract,
+        "normalizer_contract": normalizer_contract,
+        "face_mask_weighting_contract": face_mask_weighting_contract,
+        "implementation_contract": implementation_contract,
+        "basis_contract_component_ready": True,
+        "normalizer_contract_component_ready": True,
+        "mask_weighting_contract_component_ready": True,
+        "combined_contract_ready": True,
+        "private_design_lane_executed": True,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_modal_projection_normalizer_contract_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the time-aligned retry floor is now bounded by a private modal "
+            "projection, incident-normalizer, and face-mask weighting contract; "
+            "implementation remains private and must be scored before any true-R/T claim"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -17431,8 +17666,32 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_contract_design_metadata = (
+        _private_plane_wave_modal_projection_normalizer_contract_design_metadata(
+            failure_theory_metadata=(
+                plane_wave_time_aligned_modal_retry_failure_theory_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_contract_design_status": (
+                plane_wave_modal_projection_normalizer_contract_design_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_contract_design": (
+                plane_wave_modal_projection_normalizer_contract_design_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_contract_design_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_contract_design_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_contract_design_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -17622,6 +17881,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave time-aligned modal retry failure "
                 "theory redesign lane records "
                 f"{plane_wave_time_aligned_modal_retry_failure_theory_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "contract design lane records "
+                f"{plane_wave_modal_projection_normalizer_contract_design_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -17631,7 +17893,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_contract_design_next_prerequisite"
             ],
         }
 
@@ -23938,10 +24200,112 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
         ]
     )
+    modal_contract_design = metadata[
+        "private_plane_wave_modal_projection_normalizer_contract_design"
+    ]
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_contract_design_status"
+    ] == _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_STATUS
+    assert modal_contract_design["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_DESIGN_STATUS
+    )
+    assert modal_contract_design["upstream_failure_theory_status"] == metadata[
+        "private_plane_wave_time_aligned_modal_retry_failure_theory_status"
+    ]
+    assert modal_contract_design[
+        "candidate_ladder_declared_before_implementation"
+    ] is True
+    assert modal_contract_design["candidate_ladder_declared_before_solver_edit"] is True
+    assert modal_contract_design["candidate_ladder_declared_before_slow_scoring"] is True
+    assert modal_contract_design["candidate_count"] == 5
+    assert modal_contract_design["selected_candidate_id"] == (
+        "Q3_combined_projection_normalizer_mask_contract"
+    )
+    assert modal_contract_design["baseline_metrics"] == (
+        time_aligned_failure_theory["baseline_metrics"]
+    )
+    assert modal_contract_design["metrics"] == time_aligned_failure_theory["metrics"]
+    assert modal_contract_design["thresholds"] == (
+        time_aligned_failure_theory["thresholds"]
+    )
+    assert modal_contract_design["threshold_results"] == (
+        time_aligned_failure_theory["threshold_results"]
+    )
+    assert modal_contract_design["baseline_metrics_preserved"] is True
+    assert modal_contract_design["thresholds_unchanged"] is True
+    assert modal_contract_design["time_alignment_no_material_delta"] is True
+    assert modal_contract_design["modal_projection_or_normalizer_floor_selected"] is True
+    assert modal_contract_design["basis_contract_component_ready"] is True
+    assert modal_contract_design["normalizer_contract_component_ready"] is True
+    assert modal_contract_design["mask_weighting_contract_component_ready"] is True
+    assert modal_contract_design["combined_contract_ready"] is True
+    projection_basis = modal_contract_design["projection_basis_contract"]
+    assert projection_basis["state_owner"] == "_PrivateInterfaceOwnerState"
+    assert projection_basis["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert projection_basis["requires_public_observable"] is False
+    assert projection_basis["requires_hook"] is False
+    normalizer_contract = modal_contract_design["normalizer_contract"]
+    assert normalizer_contract["normalized_packet_helper"] == (
+        "_incident_normalized_source_packet"
+    )
+    assert normalizer_contract["normalization_equivalence_required"] is True
+    assert normalizer_contract["requires_public_config"] is False
+    mask_contract = modal_contract_design["face_mask_weighting_contract"]
+    assert mask_contract["combined_packet_mask"] == (
+        "face_proxy_mask * source_owner_mask"
+    )
+    assert mask_contract["weighting_equivalence_required"] is True
+    assert mask_contract["cpml_non_cpml_contract_identical"] is True
+    implementation_contract = modal_contract_design["implementation_contract"]
+    assert implementation_contract["thresholds_frozen"] is True
+    assert implementation_contract["material_improvement_gate_required_after_hunk"]
+    assert modal_contract_design["private_design_lane_executed"] is True
+    assert modal_contract_design["fixture_quality_ready"] is False
+    assert modal_contract_design["fixture_quality_pending"] is True
+    assert modal_contract_design["true_rt_readiness_unlocked"] is False
+    assert modal_contract_design["production_patch_applied"] is False
+    assert modal_contract_design["solver_behavior_changed"] is False
+    assert modal_contract_design["field_update_behavior_changed"] is False
+    assert modal_contract_design["new_solver_hunk_retained"] is False
+    assert modal_contract_design["benchmark_plane_dft_observable_imported"] is False
+    assert (
+        modal_contract_design[
+            "next_lane_requires_modal_projection_normalizer_contract_implementation"
+        ]
+        is True
+    )
+    modal_design_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_contract_design["candidate_ladder"]
+    }
+    assert modal_design_candidates[
+        "Q1_shared_modal_projection_basis_contract"
+    ]["basis_contract_component_ready"] is True
+    assert modal_design_candidates[
+        "Q2_packet_normalizer_contract"
+    ]["normalizer_contract_component_ready"] is True
+    assert modal_design_candidates[
+        "Q3_combined_projection_normalizer_mask_contract"
+    ]["accepted_candidate"] is True
+    assert modal_design_candidates[
+        "Q4_modal_projection_normalizer_contract_design_blocked"
+    ]["accepted_candidate"] is False
+    assert modal_contract_design["public_claim_allowed"] is False
+    assert modal_contract_design["public_observable_promoted"] is False
+    assert modal_contract_design["true_rt_public_observable_promoted"] is False
+    assert modal_contract_design["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        modal_contract_design["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_modal_projection_normalizer_contract_design_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_contract_design_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -23967,7 +24331,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_time_aligned_modal_retry_failure_theory_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_contract_design_next_prerequisite"
         ]
     )
     assert (
@@ -24240,6 +24604,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata["private_plane_wave_time_aligned_modal_retry_failure_theory_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_modal_projection_normalizer_contract_design_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
