@@ -7619,15 +7619,171 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
             "next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_metric_shape_calibration_implementation = (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation"
+        ]
+    )
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_hunk_retained_fixture_quality_pending"
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "terminal_outcome"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_hunk_retained_fixture_quality_pending"
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "upstream_metric_shape_calibration_design_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_status"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "candidate_ladder_declared_before_implementation"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "candidate_ladder_declared_before_solver_edit"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "candidate_ladder_declared_before_slow_scoring"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "candidate_count"
+        ]
+        == 5
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "selected_candidate_id"
+    ] == "AK3_combined_metric_shape_calibration_hunk"
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "baseline_metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_design[
+        "baseline_metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_design["metrics"]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_design[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "threshold_results"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_design[
+        "threshold_results"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "metric_shape_calibration_contract_consumed"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "metric_shape_calibration_schema"
+        ]
+        == metric_shape_calibration_schema
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "metric_shape_calibration_contract"
+        ]
+        == metric_shape_calibration_contract
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "face_local_sbp_mortar_metric_applied"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "metric_normalized_projection"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "packet_local_energy_density_shape_replaced"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "normal_sign_contract_fail_closed"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "finite_reproducible_score"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "production_patch_applied"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "solver_behavior_changed"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "field_update_behavior_changed"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "new_solver_hunk_retained"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "runner_behavior_changed"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "true_rt_public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "dft_flux_tfsf_port_sparameter_promoted"
+        ]
+        is False
+    )
+    energy_metric_shape_impl_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in (
+            residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+                "candidate_ladder"
+            ]
+        )
+    }
+    assert energy_metric_shape_impl_candidates[
+        "AK1_face_local_sbp_mortar_metric_helper"
+    ]["face_local_sbp_mortar_metric_applied"]
+    assert energy_metric_shape_impl_candidates[
+        "AK2_metric_normalized_energy_gram_projection"
+    ]["metric_normalized_projection"]
+    assert energy_metric_shape_impl_candidates[
+        "AK3_combined_metric_shape_calibration_hunk"
+    ]["accepted_candidate"]
+    assert (
+        energy_metric_shape_impl_candidates[
+            "AK4_metric_shape_calibration_implementation_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "next_lane_requires_metric_shape_calibration_parity_scoring"
+    ]
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_next_prerequisite"
+        ]
+        == residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "next_prerequisite"
+        ]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal metric-shape calibration implementation after design "
-        "contract ready ralplan"
+        "energy-biorthogonal metric-shape calibration parity scoring after "
+        "implementation hunk retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal metric-shape calibration implementation after design "
-        "contract ready ralplan"
+        "energy-biorthogonal metric-shape calibration parity scoring after "
+        "implementation hunk retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -7986,6 +8142,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -8250,8 +8412,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal metric-shape calibration implementation after design "
-        "contract ready ralplan"
+        "energy-biorthogonal metric-shape calibration parity scoring after "
+        "implementation hunk retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

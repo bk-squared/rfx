@@ -1053,15 +1053,19 @@ def _project_private_modal_basis_packets(
     interface_weight: jnp.ndarray,
     source_mask: jnp.ndarray,
     interface_mask: jnp.ndarray,
+    source_normal_sign: int | jnp.ndarray = 1,
+    interface_normal_sign: int | jnp.ndarray = 1,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Project private source/interface packets onto shared target bases.
 
     This helper is deliberately solver-local and fixed-shape.  It consumes the
-    existing private owner-state packets, forms mask/weight-compatible incident,
-    source-residual, and interface-residual modes, projects both private source
-    and interface packets onto those modes, and subtracts only the shared
-    projected packets.  Missing incident projection energy returns a scalar zero
-    gate so callers can fail closed without branching or exposing public
+    existing private owner-state packets, calibrates their shared face-local
+    SBP/mortar power metric from existing weights, masks, and normal signs,
+    forms mask/weight-compatible incident, source-residual, and
+    interface-residual modes, projects both private source and interface packets
+    onto those modes, and subtracts only the shared projected packets.  Missing
+    incident projection energy or incompatible metric shape returns a scalar
+    zero gate so callers can fail closed without branching or exposing public
     observables.
     """
 
@@ -1069,23 +1073,60 @@ def _project_private_modal_basis_packets(
     floor = jnp.asarray(1.0e-12, dtype=dtype)
     eps = jnp.asarray(1.0e-30, dtype=dtype)
     packet_mask = source_mask * interface_mask
-    base_packet_weight = 0.5 * (source_weight + interface_weight) * packet_mask
+    source_metric_weight = source_weight * packet_mask
+    interface_metric_weight = interface_weight * packet_mask
+    mortar_weight = jnp.sqrt(
+        jnp.maximum(source_metric_weight * interface_metric_weight, 0.0)
+    )
     source_energy = source_real * source_real + source_imag * source_imag
     interface_energy = interface_real * interface_real + interface_imag * interface_imag
     normalizer_energy = (
         normalizer_real * normalizer_real + normalizer_imag * normalizer_imag
     )
     characteristic_admittance = jnp.asarray(np.sqrt(EPS_0 / MU_0), dtype=dtype)
-    active_weight = jnp.maximum(jnp.sum(base_packet_weight), floor)
-    energy_density = normalizer_energy + 0.5 * (source_energy + interface_energy)
-    mean_energy_density = jnp.sum(base_packet_weight * energy_density) / active_weight
-    relative_energy_density = energy_density / jnp.maximum(mean_energy_density, floor)
-    energy_shape = jnp.clip(
-        relative_energy_density,
+    active_weight = jnp.maximum(jnp.sum(mortar_weight), floor)
+    source_metric_measure = jnp.maximum(jnp.sum(source_metric_weight), floor)
+    interface_metric_measure = jnp.maximum(jnp.sum(interface_metric_weight), floor)
+    source_power_density = (
+        jnp.sum(source_metric_weight * source_energy) / source_metric_measure
+    )
+    interface_power_density = (
+        jnp.sum(interface_metric_weight * interface_energy) / interface_metric_measure
+    )
+    normalizer_power_density = (
+        jnp.sum(mortar_weight * normalizer_energy) / active_weight
+    )
+    coupled_power_density = (
+        normalizer_power_density + 0.5 * (source_power_density + interface_power_density)
+    )
+    metric_reference_density = jnp.maximum(
+        normalizer_power_density
+        + jnp.sqrt(jnp.maximum(source_power_density * interface_power_density, 0.0)),
+        floor,
+    )
+    face_metric_scale = jnp.clip(
+        coupled_power_density / metric_reference_density,
         jnp.asarray(0.25, dtype=dtype),
         jnp.asarray(4.0, dtype=dtype),
     )
-    packet_weight = base_packet_weight * characteristic_admittance * energy_shape
+    source_sign = jnp.asarray(source_normal_sign, dtype=dtype)
+    interface_sign = jnp.asarray(interface_normal_sign, dtype=dtype)
+    metric_sign_contract = jnp.where(
+        source_sign * interface_sign > jnp.asarray(0.0, dtype=dtype),
+        jnp.asarray(1.0, dtype=dtype),
+        jnp.asarray(0.0, dtype=dtype),
+    )
+    metric_shape_ready = jnp.where(
+        (jnp.sum(mortar_weight) > floor) & (face_metric_scale > 0.0),
+        metric_sign_contract,
+        jnp.asarray(0.0, dtype=dtype),
+    )
+    packet_weight = (
+        mortar_weight
+        * characteristic_admittance
+        * face_metric_scale
+        * metric_shape_ready
+    )
     source_power = jnp.sum(packet_weight * source_energy)
 
     def _complex_coeff(
@@ -1234,6 +1275,7 @@ def _project_private_modal_basis_packets(
         (incident_active > 0.0)
         & (source_power > eps)
         & basis_ready
+        & (metric_shape_ready > 0.0)
     )
     projected_target_real = jnp.where(
         projection_ready,
@@ -1430,6 +1472,8 @@ def _apply_propagation_aware_modal_retry_face_helper(
                 interface_weight=interface_weight,
                 source_mask=source_mask,
                 interface_mask=interface_mask,
+                source_normal_sign=owner_state.source_normal_sign[face_index],
+                interface_normal_sign=owner_state.face_normal_sign[face_index],
             )
         )
         contract_gate = _private_modal_projection_normalizer_contract_gate(

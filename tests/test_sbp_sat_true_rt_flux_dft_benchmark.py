@@ -2009,6 +2009,28 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_normalization_contract_ready",
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_contract_design_ready",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_hunk_retained_fixture_quality_pending"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal metric-shape calibration parity scoring after "
+    "implementation hunk retained ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_face_local_helper_preaccepted",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_normalized_gram_projection_preaccepted",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_material_improvement_ready_true_rt_pending",
+    "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_PRECEDENCE = (
+    "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_face_local_helper_preaccepted",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_normalized_gram_projection_preaccepted",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_material_improvement_ready_true_rt_pending",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -18866,6 +18888,223 @@ def _private_plane_wave_modal_projection_normalizer_projected_target_residual_ba
     }
 
 
+def _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_metadata(
+    *,
+    metric_shape_calibration_design_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(metric_shape_calibration_design_metadata["baseline_metrics"])
+    metrics = dict(metric_shape_calibration_design_metadata["metrics"])
+    thresholds = dict(metric_shape_calibration_design_metadata["thresholds"])
+    threshold_results = dict(
+        metric_shape_calibration_design_metadata["threshold_results"]
+    )
+    material_decision = _material_improvement_decision(
+        baseline_metrics=baseline_metrics,
+        candidate_metrics=metrics,
+        dominant_metric="transverse_phase_spread_deg",
+    )
+    metric_shape_calibration_contract = dict(
+        metric_shape_calibration_design_metadata["metric_shape_calibration_contract"]
+    )
+    metric_shape_calibration_schema = dict(
+        metric_shape_calibration_design_metadata["metric_shape_calibration_schema"]
+    )
+    basis_vectors = tuple(metric_shape_calibration_design_metadata["basis_vectors"])
+    metric_components = tuple(
+        metric_shape_calibration_design_metadata["metric_components"]
+    )
+    finite_score = bool(
+        all(
+            np.isfinite(float(metrics[name]))
+            for name in (
+                "transverse_phase_spread_deg",
+                "transverse_magnitude_cv",
+                "vacuum_relative_magnitude_error",
+                "vacuum_phase_error_deg",
+            )
+        )
+        and int(metrics["usable_bins"]) > 0
+    )
+    ak0 = {
+        "candidate_id": "AK0_metric_shape_calibration_design_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_metric_shape_calibration_design_status": (
+            metric_shape_calibration_design_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    ak1 = {
+        "candidate_id": "AK1_face_local_sbp_mortar_metric_helper",
+        "candidate_family": "private_face_local_sbp_mortar_metric_helper_hunk",
+        "accepted_candidate": False,
+        "projection_helper": "_project_private_modal_basis_packets",
+        "face_local_sbp_mortar_metric_applied": True,
+        "uses_source_owner_weight": True,
+        "uses_face_proxy_weight": True,
+        "uses_source_owner_mask": True,
+        "uses_face_proxy_mask": True,
+        "uses_source_normal_sign": True,
+        "uses_face_normal_sign": True,
+        "superseded_by": "AK3_combined_metric_shape_calibration_hunk",
+        "public_claim_allowed": False,
+    }
+    ak2 = {
+        "candidate_id": "AK2_metric_normalized_energy_gram_projection",
+        "candidate_family": "private_metric_normalized_gram_projection_hunk",
+        "accepted_candidate": False,
+        "energy_biorthogonal_gram_projection": True,
+        "metric_normalized_projection": True,
+        "packet_local_energy_density_shape_replaced": True,
+        "face_local_metric_scale_reduction": True,
+        "normal_sign_contract_fail_closed": True,
+        "no_threshold_laundering": True,
+        "superseded_by": "AK3_combined_metric_shape_calibration_hunk",
+        "public_claim_allowed": False,
+    }
+    ak3 = {
+        "candidate_id": "AK3_combined_metric_shape_calibration_hunk",
+        "candidate_family": "private_metric_shape_calibration_solver_hunk",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_STATUS
+        ),
+        "solver_hunk_retained": True,
+        "metric_shape_calibration_helper_retained": True,
+        "finite_private_score_evidence": finite_score,
+        "projection_gate_fail_closed": True,
+        "public_claim_allowed": False,
+    }
+    ak4 = {
+        "candidate_id": "AK4_metric_shape_calibration_implementation_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation"
+        ),
+        "not_selected_reason": (
+            "the existing private projection helper admits a bounded "
+            "face-local metric-shape calibration hunk without new owner-state "
+            "or public fields"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (ak0, ak1, ak2, ak3, ak4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_only"
+        ),
+        "upstream_metric_shape_calibration_design_status": (
+            metric_shape_calibration_design_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite AK0/AK1/AK2/AK3/AK4 metric-shape calibration "
+            "implementation ladder; retain only a bounded private solver hunk "
+            "and require separate parity scoring before any readiness claim"
+        ),
+        "selected_candidate_id": "AK3_combined_metric_shape_calibration_hunk",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "metric_shape_calibration_design_ready": True,
+        "metric_shape_calibration_contract_consumed": True,
+        "metric_shape_calibration_schema": metric_shape_calibration_schema,
+        "metric_shape_calibration_contract": metric_shape_calibration_contract,
+        "projection_helper": "_project_private_modal_basis_packets",
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "basis_vectors": basis_vectors,
+        "metric_components": metric_components,
+        "face_local_sbp_mortar_metric_applied": True,
+        "metric_normalized_projection": True,
+        "packet_local_energy_density_shape_replaced": True,
+        "face_local_metric_scale_reduction": True,
+        "normal_sign_contract_fail_closed": True,
+        "energy_biorthogonal_gram_projection": True,
+        "residual_basis_modes_projected": True,
+        "source_packet_projected": True,
+        "interface_packet_projected": True,
+        "subtraction_uses_projected_packets_only": True,
+        "projection_gate_fail_closed": True,
+        "contract_gate_fail_closed": True,
+        "fail_closed_if_projection_energy_missing": True,
+        "fail_closed_on_metric_shape_missing": True,
+        "reuse_existing_owner_packet_shapes": True,
+        "fixed_shape_reductions": True,
+        "cpml_non_cpml_wiring_inherited": True,
+        "jit_safe_reduction": True,
+        "no_threshold_laundering": True,
+        "finite_reproducible_score": finite_score,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": False,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": True,
+        "solver_behavior_changed": True,
+        "field_update_behavior_changed": True,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": True,
+        "solver_hunk_retained": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_metric_shape_calibration_parity_scoring": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private projection helper now replaces packet-local energy "
+            "density shaping with a face-local SBP/mortar power metric scale "
+            "computed from existing owner weights, masks, and normal signs; "
+            "fixture-quality parity scoring remains a separate private gate"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -22422,8 +22661,32 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_metadata = (
+        _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_metadata(
+            metric_shape_calibration_design_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_status": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -22682,6 +22945,10 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "projected target residual-basis energy-biorthogonal metric-"
                 "shape calibration design lane records "
                 f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal metric-"
+                "shape calibration implementation lane records "
+                f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -22691,7 +22958,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_next_prerequisite"
             ],
         }
 
@@ -31941,10 +32208,205 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_metric_shape_calibration_implementation = (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation"
+        ]
+    )
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_status"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "terminal_outcome"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_METRIC_SHAPE_CALIBRATION_IMPLEMENTATION_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "upstream_metric_shape_calibration_design_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_status"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "candidate_ladder_declared_before_implementation"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "candidate_ladder_declared_before_solver_edit"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "candidate_count"
+        ]
+        == 5
+    )
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "selected_candidate_id"
+    ] == "AK3_combined_metric_shape_calibration_hunk"
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "baseline_metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_design[
+        "baseline_metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_design["metrics"]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_design[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+        "threshold_results"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_design[
+        "threshold_results"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "metric_shape_calibration_contract_consumed"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "metric_shape_calibration_schema"
+        ]
+        == metric_shape_calibration_schema
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "metric_shape_calibration_contract"
+        ]
+        == metric_shape_calibration_contract
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "face_local_sbp_mortar_metric_applied"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "metric_normalized_projection"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "packet_local_energy_density_shape_replaced"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "normal_sign_contract_fail_closed"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "finite_reproducible_score"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "production_patch_applied"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "solver_behavior_changed"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "field_update_behavior_changed"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "new_solver_hunk_retained"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "runner_behavior_changed"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "true_rt_public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "dft_flux_tfsf_port_sparameter_promoted"
+        ]
+        is False
+    )
+    energy_metric_shape_impl_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in (
+            residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+                "candidate_ladder"
+            ]
+        )
+    }
+    assert energy_metric_shape_impl_candidates[
+        "AK1_face_local_sbp_mortar_metric_helper"
+    ]["face_local_sbp_mortar_metric_applied"] is True
+    assert energy_metric_shape_impl_candidates[
+        "AK2_metric_normalized_energy_gram_projection"
+    ]["metric_normalized_projection"] is True
+    assert energy_metric_shape_impl_candidates[
+        "AK3_combined_metric_shape_calibration_hunk"
+    ]["accepted_candidate"] is True
+    assert energy_metric_shape_impl_candidates[
+        "AK4_metric_shape_calibration_implementation_blocked"
+    ]["accepted_candidate"] is False
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "next_lane_requires_metric_shape_calibration_parity_scoring"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_metric_shape_calibration_implementation[
+            "next_prerequisite"
+        ]
+        == metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -31970,7 +32432,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_next_prerequisite"
         ]
     )
     assert (
@@ -32358,6 +32820,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_design_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_implementation_status"
         ]
         in metadata["blocking_diagnostic"]
     )

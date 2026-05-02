@@ -101,8 +101,8 @@ Promotion requires synchronized updates to:
 
 The immediate lane is now private plane-wave modal projection/normalizer
 projected target residual-basis energy-biorthogonal metric-shape calibration
-implementation after the design contract selected a private face-local
-SBP/mortar power metric over existing owner packet shapes.
+parity scoring after the implementation retained a private face-local
+SBP/mortar power-metric hunk.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -241,8 +241,15 @@ the design defines a private face-local SBP/mortar power metric calibration
 contract over existing owner packet shapes, keeps thresholds and public
 surfaces unchanged, and defers solver edits to a separate implementation
 lane; the next safe lane is private metric-shape calibration implementation.
-The
-private owner state shape also propagates through CPML and non-CPML subgrid steps plus
+The projected target residual-basis energy-biorthogonal metric-shape
+calibration implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_hunk_retained_fixture_quality_pending`:
+the private projection helper now replaces packet-local energy-density
+shaping with a face-local SBP/mortar power metric scale computed from
+existing owner weights, masks, and normal signs; thresholds and public
+surfaces remain unchanged, and the next safe lane is private metric-shape
+calibration parity scoring.
+The private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
 correction lane failed closed because the retained scorer is face-scalar

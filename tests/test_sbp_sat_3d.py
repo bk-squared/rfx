@@ -1095,6 +1095,60 @@ def test_project_private_modal_basis_packets_fails_closed_without_basis_energy()
     np.testing.assert_allclose(np.asarray(target_imag), 3.0)
 
 
+def test_project_private_modal_basis_packets_requires_metric_shape_contract():
+    source_real = jnp.asarray([[1.0, 1.2], [1.4, 1.6]], dtype=jnp.float32)
+    source_imag = 0.1 * source_real
+    interface_real = source_real + 0.25
+    interface_imag = source_imag - 0.05
+    normalizer_real = jnp.ones_like(source_real)
+    normalizer_imag = jnp.zeros_like(source_real)
+    source_weight = jnp.asarray([[1.0, 1.5], [2.0, 2.5]], dtype=jnp.float32)
+    interface_weight = jnp.asarray([[2.0, 1.5], [1.0, 0.5]], dtype=jnp.float32)
+    packet_mask = jnp.ones_like(source_real)
+
+    target_real, target_imag, projection_gate = (
+        _project_private_modal_basis_packets(
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            normalizer_real=normalizer_real,
+            normalizer_imag=normalizer_imag,
+            source_weight=source_weight,
+            interface_weight=interface_weight,
+            source_mask=packet_mask,
+            interface_mask=packet_mask,
+            source_normal_sign=1,
+            interface_normal_sign=1,
+        )
+    )
+
+    assert target_real.shape == source_real.shape
+    assert target_imag.shape == source_imag.shape
+    np.testing.assert_allclose(np.asarray(projection_gate), 1.0)
+
+    blocked_real, blocked_imag, blocked_gate = (
+        _project_private_modal_basis_packets(
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            normalizer_real=normalizer_real,
+            normalizer_imag=normalizer_imag,
+            source_weight=source_weight,
+            interface_weight=interface_weight,
+            source_mask=packet_mask,
+            interface_mask=packet_mask,
+            source_normal_sign=-1,
+            interface_normal_sign=1,
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_real), np.asarray(interface_real))
+    np.testing.assert_allclose(np.asarray(blocked_imag), np.asarray(interface_imag))
+
+
 def test_propagation_aware_modal_retry_helper_uses_source_owner_packet():
     config, state = init_subgrid_3d(
         shape_c=(8, 8, 8),
