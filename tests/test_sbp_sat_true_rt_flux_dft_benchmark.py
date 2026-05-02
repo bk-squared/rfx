@@ -2073,6 +2073,24 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_face_metric_orientation_floor_theory_ready",
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_transverse_modal_coupling_floor_theory_ready",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_contract_design_ready"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal transverse modal-coupling metric implementation after "
+    "design contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_schema_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_contract_design_ready",
+    "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_PRECEDENCE = (
+    "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_schema_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_contract_design_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -19660,6 +19678,261 @@ def _private_plane_wave_modal_projection_normalizer_projected_target_residual_ba
         **_private_public_closure_metadata(),
     }
 
+
+def _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_metadata(
+    *,
+    metric_shape_calibration_failure_theory_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(
+        metric_shape_calibration_failure_theory_metadata["baseline_metrics"]
+    )
+    metrics = dict(metric_shape_calibration_failure_theory_metadata["metrics"])
+    thresholds = dict(metric_shape_calibration_failure_theory_metadata["thresholds"])
+    threshold_results = dict(
+        metric_shape_calibration_failure_theory_metadata["threshold_results"]
+    )
+    material_decision = dict(
+        metric_shape_calibration_failure_theory_metadata[
+            "material_improvement_decision"
+        ]
+    )
+    score_delta = dict(metric_shape_calibration_failure_theory_metadata["score_delta"])
+    relative_improvement = dict(
+        metric_shape_calibration_failure_theory_metadata["relative_improvement"]
+    )
+    basis_vectors = tuple(metric_shape_calibration_failure_theory_metadata["basis_vectors"])
+    metric_components = tuple(
+        metric_shape_calibration_failure_theory_metadata["metric_components"]
+    )
+    failure_contract = dict(
+        metric_shape_calibration_failure_theory_metadata[
+            "transverse_modal_coupling_contract"
+        ]
+    )
+    transverse_modal_coupling_schema = {
+        "state_owner": "_PrivateInterfaceOwnerState",
+        "projection_helper": "_project_private_modal_basis_packets",
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "coupling_surface": "private_transverse_modal_power_coupling_metric",
+        "matrix_shape": (3, 3),
+        "basis_vectors": basis_vectors,
+        "metric_components": metric_components
+        + (
+            "transverse_modal_coupling_matrix",
+            "basis_to_basis_tangential_power_terms",
+        ),
+        "matrix_symmetry": "hermitian_real_safe_projection",
+        "fixed_shape_reductions": True,
+        "jit_safe_reduction": True,
+        "reuse_existing_owner_packet_shapes": True,
+        "requires_new_solver_state_in_design_lane": False,
+        "requires_public_observable": False,
+        "requires_threshold_change": False,
+    }
+    transverse_modal_coupling_contract = {
+        "upstream_failure_contract": failure_contract,
+        "transverse_modal_coupling_schema": transverse_modal_coupling_schema,
+        "target_basis_behavior": (
+            "replace independent scalar weighting of incident/reflected/"
+            "transverse residual modes with a fixed-shape private 3x3 modal "
+            "power-coupling metric before the energy-biorthogonal projection"
+        ),
+        "admission_gate": (
+            "only consume existing owner/interface packets, face/source masks, "
+            "normal signs, and private basis vectors; fail closed on missing or "
+            "non-finite coupling terms"
+        ),
+        "implementation_surface": (
+            "bounded private projection-helper hunk; no public observable, API, "
+            "runner, result, config, or package export changes"
+        ),
+        "fixed_shape_reductions": True,
+        "jit_safe_reduction": True,
+        "cpml_non_cpml_wiring_inherited": True,
+        "no_threshold_laundering": True,
+        "fail_closed_on_shape_mismatch": True,
+        "fail_closed_on_nonfinite_coupling": True,
+    }
+    an0 = {
+        "candidate_id": "AN0_metric_shape_failure_theory_evidence_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_metric_shape_calibration_failure_theory_status": (
+            metric_shape_calibration_failure_theory_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    an1 = {
+        "candidate_id": "AN1_scalar_face_metric_extension_rejected",
+        "candidate_family": "private_scalar_face_metric_extension",
+        "accepted_candidate": False,
+        "scalar_metric_already_tested": True,
+        "score_delta_all_zero": bool(
+            metric_shape_calibration_failure_theory_metadata["score_delta_all_zero"]
+        ),
+        "not_selected_reason": (
+            "the retained scalar face metric calibration already uses masks, "
+            "weights, and normal signs but did not move any private score metric"
+        ),
+        "public_claim_allowed": False,
+    }
+    an2 = {
+        "candidate_id": "AN2_transverse_3x3_modal_coupling_metric_contract",
+        "candidate_family": "private_transverse_modal_coupling_metric_design",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_STATUS
+        ),
+        "transverse_modal_coupling_contract": transverse_modal_coupling_contract,
+        "transverse_modal_coupling_schema": transverse_modal_coupling_schema,
+        "design_contract_ready": True,
+        "fixed_shape_jit_safe_contract": True,
+        "public_claim_allowed": False,
+    }
+    an3 = {
+        "candidate_id": "AN3_time_centered_cross_coupling_contract_deferred",
+        "candidate_family": "private_time_centered_cross_coupling_design",
+        "accepted_candidate": False,
+        "time_centered_cross_coupling_deferred": True,
+        "not_selected_reason": (
+            "source/interface time alignment is already staged; first test the "
+            "spatial/modal coupling floor isolated by the scalar metric no-op"
+        ),
+        "public_claim_allowed": False,
+    }
+    an4 = {
+        "candidate_id": "AN4_transverse_modal_coupling_design_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design"
+        ),
+        "not_selected_reason": (
+            "the existing private projection-normalizer surface can express a "
+            "fixed-shape 3x3 modal-coupling metric without adding public fields"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (an0, an1, an2, an3, an4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_only"
+        ),
+        "upstream_metric_shape_calibration_failure_theory_status": (
+            metric_shape_calibration_failure_theory_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite AN0/AN1/AN2/AN3/AN4 transverse modal-coupling metric "
+            "design ladder; select only a private fixed-shape contract and "
+            "keep public readiness locked"
+        ),
+        "selected_candidate_id": "AN2_transverse_3x3_modal_coupling_metric_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "metric_shape_calibration_failure_theory_consumed": True,
+        "metric_shape_calibration_hunk_retained": True,
+        "finite_reproducible_score": bool(
+            metric_shape_calibration_failure_theory_metadata[
+                "finite_reproducible_score"
+            ]
+        ),
+        "score_uses_retained_implementation_metrics": True,
+        "score_delta_all_zero": bool(
+            metric_shape_calibration_failure_theory_metadata["score_delta_all_zero"]
+        ),
+        "projection_helper": "_project_private_modal_basis_packets",
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "basis_vectors": basis_vectors,
+        "metric_components": metric_components,
+        "transverse_modal_coupling_schema": transverse_modal_coupling_schema,
+        "transverse_modal_coupling_contract": transverse_modal_coupling_contract,
+        "transverse_modal_coupling_metric_design_ready": True,
+        "scalar_face_metric_extension_rejected": True,
+        "time_centered_cross_coupling_deferred": True,
+        "fixed_shape_jit_safe_contract": True,
+        "reuse_existing_owner_packet_shapes": True,
+        "no_new_solver_state_in_design_lane": True,
+        "face_local_sbp_mortar_metric_applied": True,
+        "metric_normalized_projection": True,
+        "energy_biorthogonal_gram_projection": True,
+        "residual_basis_modes_projected": True,
+        "source_packet_projected": True,
+        "interface_packet_projected": True,
+        "subtraction_uses_projected_packets_only": True,
+        "projection_gate_fail_closed": True,
+        "contract_gate_fail_closed": True,
+        "fail_closed_on_shape_mismatch": True,
+        "fail_closed_on_nonfinite_coupling": True,
+        "design_lane_executed": True,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "retained_metric_shape_calibration_solver_hunk": True,
+        "next_lane_requires_transverse_modal_coupling_metric_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the scalar face-local metric-shape calibration was a private no-op "
+            "against unchanged metrics, so the next bounded contract is a "
+            "fixed-shape transverse 3x3 modal-coupling metric inside the "
+            "existing private projection-normalizer path"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -23291,8 +23564,32 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_metadata = (
+        _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_metadata(
+            metric_shape_calibration_failure_theory_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_status": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -23563,6 +23860,10 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "projected target residual-basis energy-biorthogonal metric-"
                 "shape calibration failure-theory redesign lane records "
                 f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal "
+                "transverse modal-coupling metric design lane records "
+                f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -23572,7 +23873,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_next_prerequisite"
             ],
         }
 
@@ -33442,10 +33743,218 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design = (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design"
+        ]
+    )
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_status"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "terminal_outcome"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_TRANSVERSE_MODAL_COUPLING_METRIC_DESIGN_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "upstream_metric_shape_calibration_failure_theory_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_status"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "candidate_ladder_declared_before_implementation"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "candidate_ladder_declared_before_solver_edit"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "candidate_count"
+        ]
+        == 5
+    )
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "selected_candidate_id"
+    ] == "AN2_transverse_3x3_modal_coupling_metric_contract"
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "baseline_metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "baseline_metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "threshold_results"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "threshold_results"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "metric_shape_calibration_failure_theory_consumed"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "transverse_modal_coupling_metric_design_ready"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "scalar_face_metric_extension_rejected"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "time_centered_cross_coupling_deferred"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "fixed_shape_jit_safe_contract"
+        ]
+        is True
+    )
+    transverse_modal_schema = (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "transverse_modal_coupling_schema"
+        ]
+    )
+    assert transverse_modal_schema["matrix_shape"] == (3, 3)
+    assert transverse_modal_schema["requires_public_observable"] is False
+    assert transverse_modal_schema["requires_threshold_change"] is False
+    assert (
+        transverse_modal_schema["requires_new_solver_state_in_design_lane"]
+        is False
+    )
+    transverse_modal_design_contract = (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "transverse_modal_coupling_contract"
+        ]
+    )
+    assert "fixed-shape private 3x3 modal" in transverse_modal_design_contract[
+        "target_basis_behavior"
+    ]
+    assert transverse_modal_design_contract["no_threshold_laundering"] is True
+    assert transverse_modal_design_contract["fail_closed_on_shape_mismatch"] is True
+    assert (
+        transverse_modal_design_contract["fail_closed_on_nonfinite_coupling"]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "material_improvement_demonstrated"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "subgrid_vacuum_parity_passed"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "true_rt_readiness_unlocked"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "new_solver_hunk_retained"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "true_rt_public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "dft_flux_tfsf_port_sparameter_promoted"
+        ]
+        is False
+    )
+    transverse_modal_design_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in (
+            residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+                "candidate_ladder"
+            ]
+        )
+    }
+    assert (
+        transverse_modal_design_candidates[
+            "AN1_scalar_face_metric_extension_rejected"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert transverse_modal_design_candidates[
+        "AN2_transverse_3x3_modal_coupling_metric_contract"
+    ]["accepted_candidate"] is True
+    assert (
+        transverse_modal_design_candidates[
+            "AN3_time_centered_cross_coupling_contract_deferred"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        transverse_modal_design_candidates[
+            "AN4_transverse_modal_coupling_design_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "next_lane_requires_transverse_modal_coupling_metric_implementation"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "next_prerequisite"
+        ]
+        == metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -33471,7 +33980,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_next_prerequisite"
         ]
     )
     assert (
@@ -33877,6 +34386,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_status"
         ]
         in metadata["blocking_diagnostic"]
     )

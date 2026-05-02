@@ -8110,15 +8110,178 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
             "next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design = (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design"
+        ]
+    )
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_contract_design_ready"
+    )
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "terminal_outcome"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_status"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "upstream_metric_shape_calibration_failure_theory_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory_status"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "candidate_ladder_declared_before_implementation"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "candidate_ladder_declared_before_solver_edit"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "candidate_ladder_declared_before_slow_scoring"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "candidate_count"
+        ]
+        == 5
+    )
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "selected_candidate_id"
+    ] == "AN2_transverse_3x3_modal_coupling_metric_contract"
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "baseline_metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "baseline_metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "threshold_results"
+    ] == residual_basis_energy_biorthogonal_metric_shape_calibration_failure_theory[
+        "threshold_results"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "metric_shape_calibration_failure_theory_consumed"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "transverse_modal_coupling_metric_design_ready"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "scalar_face_metric_extension_rejected"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "time_centered_cross_coupling_deferred"
+    ]
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "fixed_shape_jit_safe_contract"
+    ]
+    transverse_modal_schema = (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "transverse_modal_coupling_schema"
+        ]
+    )
+    assert transverse_modal_schema["matrix_shape"] == [3, 3]
+    assert transverse_modal_schema["requires_public_observable"] is False
+    assert transverse_modal_schema["requires_threshold_change"] is False
+    assert transverse_modal_schema["requires_new_solver_state_in_design_lane"] is False
+    transverse_modal_design_contract = (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "transverse_modal_coupling_contract"
+        ]
+    )
+    assert "fixed-shape private 3x3 modal" in transverse_modal_design_contract[
+        "target_basis_behavior"
+    ]
+    assert transverse_modal_design_contract["no_threshold_laundering"] is True
+    assert transverse_modal_design_contract["fail_closed_on_shape_mismatch"] is True
+    assert transverse_modal_design_contract["fail_closed_on_nonfinite_coupling"] is True
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "material_improvement_demonstrated"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "subgrid_vacuum_parity_passed"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "true_rt_readiness_unlocked"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "new_solver_hunk_retained"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "public_observable_promoted"
+        ]
+        is False
+    )
+    transverse_modal_design_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in (
+            residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+                "candidate_ladder"
+            ]
+        )
+    }
+    assert (
+        transverse_modal_design_candidates[
+            "AN1_scalar_face_metric_extension_rejected"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert transverse_modal_design_candidates[
+        "AN2_transverse_3x3_modal_coupling_metric_contract"
+    ]["accepted_candidate"]
+    assert (
+        transverse_modal_design_candidates[
+            "AN3_time_centered_cross_coupling_contract_deferred"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        transverse_modal_design_candidates[
+            "AN4_transverse_modal_coupling_design_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+        "next_lane_requires_transverse_modal_coupling_metric_implementation"
+    ]
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_next_prerequisite"
+        ]
+        == residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design[
+            "next_prerequisite"
+        ]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal transverse modal-coupling metric design after "
-        "metric-shape calibration failure theory ready ralplan"
+        "energy-biorthogonal transverse modal-coupling metric implementation after "
+        "design contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal transverse modal-coupling metric design after "
-        "metric-shape calibration failure theory ready ralplan"
+        "energy-biorthogonal transverse modal-coupling metric implementation after "
+        "design contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -8495,6 +8658,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_design_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -8759,8 +8928,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "energy-biorthogonal transverse modal-coupling metric design after "
-        "metric-shape calibration failure theory ready ralplan"
+        "energy-biorthogonal transverse modal-coupling metric implementation after "
+        "design contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

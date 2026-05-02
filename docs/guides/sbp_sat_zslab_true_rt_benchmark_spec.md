@@ -620,6 +620,14 @@ change after normal signs, masks, and weights were already present, so the
 remaining private theory is a transverse modal basis-coupling floor rather
 than public readiness or threshold adjustment; the next safe lane is private
 transverse modal-coupling metric design.
+The projected target residual-basis energy-biorthogonal transverse modal-
+coupling metric design lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_contract_design_ready`:
+the design defines a fixed-shape private 3x3 modal power-coupling metric over
+existing owner/interface packet shapes and existing projection-normalizer
+helpers, rejects another scalar face-metric extension, keeps thresholds and
+public surfaces unchanged, and defers solver edits to a separate bounded
+implementation lane.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
