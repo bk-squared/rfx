@@ -1538,6 +1538,23 @@ _PRIVATE_PLANE_WAVE_SOURCE_POPULATED_PROPAGATION_AWARE_MODAL_RETRY_FAILURE_THEOR
     "private_plane_wave_source_populated_modal_retry_transverse_phase_floor_contract_ready",
     "private_plane_wave_source_populated_modal_retry_time_alignment_theory_contract_ready",
 )
+_PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_STATUS = (
+    "private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_NEXT_PREREQUISITE = (
+    "private plane-wave source/interface time-aligned packet staging implementation "
+    "after design contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_TERMINAL_OUTCOMES = (
+    "private_plane_wave_source_interface_time_aligned_packet_schema_contract_ready",
+    "private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready",
+    "no_private_plane_wave_source_interface_time_aligned_packet_staging_design",
+)
+_PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_PRECEDENCE = (
+    "no_private_plane_wave_source_interface_time_aligned_packet_staging_design",
+    "private_plane_wave_source_interface_time_aligned_packet_schema_contract_ready",
+    "private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -13480,6 +13497,202 @@ def _private_plane_wave_source_populated_propagation_aware_modal_retry_failure_t
     }
 
 
+def _private_plane_wave_source_interface_time_aligned_packet_staging_design_metadata(
+    *,
+    failure_theory_metadata: dict[str, object],
+    source_populated_parity_scoring_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(failure_theory_metadata["baseline_metrics"])
+    metrics = dict(failure_theory_metadata["metrics"])
+    thresholds = dict(failure_theory_metadata["thresholds"])
+    staged_packet_schema = {
+        "state_extension_target": "_PrivateInterfaceOwnerState",
+        "previous_source_packet_fields": (
+            "source_owner_reference_prev_real",
+            "source_owner_reference_prev_imag",
+        ),
+        "previous_interface_packet_fields": (
+            "face_proxy_reference_prev_real",
+            "face_proxy_reference_prev_imag",
+        ),
+        "current_source_packet_fields": (
+            "source_owner_reference_real",
+            "source_owner_reference_imag",
+        ),
+        "current_interface_packet_fields": (
+            "face_proxy_reference_real",
+            "face_proxy_reference_imag",
+        ),
+        "packet_shape_matches_existing_owner_packet": True,
+        "staged_packets_do_not_alias_current_packets": True,
+        "private_state_only": True,
+        "benchmark_dft_required": False,
+        "public_tfsf_required": False,
+        "hook_required": False,
+    }
+    initialization_contract = {
+        "cpml_initializes_staged_packets": True,
+        "non_cpml_initializes_staged_packets": True,
+        "jit_runner_initializes_staged_packets": True,
+        "staged_masks_match_owner_masks": True,
+        "staged_offsets_lengths_match_owner_packets": True,
+        "no_public_config_required": True,
+    }
+    consumer_timing_contract = {
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "population_helper": "_update_private_source_owner_state_from_scan",
+        "interface_scan_helper": "_update_private_interface_owner_state_from_scan",
+        "modal_retry_consumes_time_aligned_packet_pair": True,
+        "staging_occurs_before_modal_retry": True,
+        "interface_scan_occurs_after_modal_retry": True,
+        "requires_private_post_h_hook": False,
+        "requires_private_post_e_hook": False,
+        "requires_public_observable": False,
+    }
+    m0 = {
+        "candidate_id": "M0_time_alignment_theory_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_failure_theory_status": failure_theory_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    m1 = {
+        "candidate_id": "M1_source_interface_staged_packet_schema",
+        "candidate_family": "private_staged_packet_schema",
+        "accepted_candidate": False,
+        "staged_packet_schema": staged_packet_schema,
+        "schema_component_ready": True,
+        "superseded_by": (
+            "M3_combined_time_aligned_packet_staging_contract"
+        ),
+        "public_claim_allowed": False,
+    }
+    m2 = {
+        "candidate_id": "M2_cpml_non_cpml_jit_staging_initialization",
+        "candidate_family": "private_staging_initialization_contract",
+        "accepted_candidate": False,
+        "initialization_contract": initialization_contract,
+        "initialization_component_ready": True,
+        "superseded_by": (
+            "M3_combined_time_aligned_packet_staging_contract"
+        ),
+        "public_claim_allowed": False,
+    }
+    m3 = {
+        "candidate_id": "M3_combined_time_aligned_packet_staging_contract",
+        "candidate_family": "private_time_aligned_consumer_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_STATUS
+        ),
+        "staged_packet_schema": staged_packet_schema,
+        "initialization_contract": initialization_contract,
+        "consumer_timing_contract": consumer_timing_contract,
+        "time_aligned_packet_staging_contract_ready": True,
+        "public_claim_allowed": False,
+    }
+    m4 = {
+        "candidate_id": "M4_time_aligned_packet_staging_design_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_source_interface_time_aligned_packet_staging_design"
+        ),
+        "not_selected_reason": (
+            "fixed-shape private source/interface staged packet fields can be "
+            "specified without public surfaces"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (m0, m1, m2, m3, m4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_only"
+        ),
+        "upstream_failure_theory_status": failure_theory_metadata["terminal_outcome"],
+        "upstream_source_populated_parity_status": (
+            source_populated_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite M0/M1/M2/M3/M4 staging-design ladder; define private "
+            "fixed-shape time-aligned packet staging before any solver hunk"
+        ),
+        "selected_candidate_id": "M3_combined_time_aligned_packet_staging_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "time_alignment_theory_contract_ready": True,
+        "source_owner_incident_packet_populated": True,
+        "source_packet_consumed_by_modal_retry": True,
+        "source_populated_parity_insufficient": True,
+        "staged_packet_schema": staged_packet_schema,
+        "initialization_contract": initialization_contract,
+        "consumer_timing_contract": consumer_timing_contract,
+        "staged_packet_fields_private_only": True,
+        "staged_packets_fixed_shape": True,
+        "staged_packets_do_not_alias_current_packets": True,
+        "cpml_non_cpml_staging_initialization_contract_ready": True,
+        "jit_runner_staging_initialization_contract_ready": True,
+        "modal_retry_time_aligned_consumer_contract_ready": True,
+        "implementation_lane_executed": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "material_improvement_demonstrated": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_time_aligned_packet_staging_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private source/interface time-aligned packet staging design "
+            "defines fixed-shape staged source and interface packet slots, "
+            "CPML/non-CPML/JIT initialization, and modal-retry consumer timing "
+            "without public observables or hooks"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -16433,8 +16646,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_source_interface_time_aligned_packet_staging_design_metadata = (
+        _private_plane_wave_source_interface_time_aligned_packet_staging_design_metadata(
+            failure_theory_metadata=(
+                plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata
+            ),
+            source_populated_parity_scoring_metadata=(
+                plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_status": (
+                plane_wave_source_interface_time_aligned_packet_staging_design_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design": (
+                plane_wave_source_interface_time_aligned_packet_staging_design_metadata
+            ),
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_next_prerequisite": (
+                plane_wave_source_interface_time_aligned_packet_staging_design_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
+        "private_plane_wave_source_interface_time_aligned_packet_staging_design_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -16612,6 +16852,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave source-populated propagation-aware "
                 "modal retry failure-theory redesign lane records "
                 f"{plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_metadata['terminal_outcome']}"
+                "; the private plane-wave source/interface time-aligned "
+                "packet staging design lane records "
+                f"{plane_wave_source_interface_time_aligned_packet_staging_design_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -16621,7 +16864,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
+                "private_plane_wave_source_interface_time_aligned_packet_staging_design_next_prerequisite"
             ],
         }
 
@@ -22441,10 +22684,119 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
         ]
     )
+    time_aligned_design = metadata[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_design"
+    ]
+    assert metadata[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_design_status"
+    ] == _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_STATUS
+    assert time_aligned_design["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_DESIGN_STATUS
+    )
+    assert time_aligned_design["upstream_failure_theory_status"] == metadata[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
+    ]
+    assert time_aligned_design[
+        "candidate_ladder_declared_before_implementation"
+    ] is True
+    assert time_aligned_design["candidate_ladder_declared_before_slow_scoring"] is True
+    assert time_aligned_design["candidate_count"] == 5
+    assert time_aligned_design["selected_candidate_id"] == (
+        "M3_combined_time_aligned_packet_staging_contract"
+    )
+    assert time_aligned_design["baseline_metrics"] == (
+        source_populated_failure_theory["baseline_metrics"]
+    )
+    assert time_aligned_design["metrics"] == source_populated_failure_theory["metrics"]
+    assert time_aligned_design["thresholds"] == (
+        source_populated_failure_theory["thresholds"]
+    )
+    assert time_aligned_design["baseline_metrics_preserved"] is True
+    assert time_aligned_design["thresholds_unchanged"] is True
+    assert time_aligned_design["time_alignment_theory_contract_ready"] is True
+    assert time_aligned_design["source_owner_incident_packet_populated"] is True
+    assert time_aligned_design["source_packet_consumed_by_modal_retry"] is True
+    assert time_aligned_design["source_populated_parity_insufficient"] is True
+    staged_schema = time_aligned_design["staged_packet_schema"]
+    assert staged_schema["state_extension_target"] == "_PrivateInterfaceOwnerState"
+    assert staged_schema["packet_shape_matches_existing_owner_packet"] is True
+    assert staged_schema["staged_packets_do_not_alias_current_packets"] is True
+    assert staged_schema["private_state_only"] is True
+    initialization_contract = time_aligned_design["initialization_contract"]
+    assert initialization_contract["cpml_initializes_staged_packets"] is True
+    assert initialization_contract["non_cpml_initializes_staged_packets"] is True
+    assert initialization_contract["jit_runner_initializes_staged_packets"] is True
+    consumer_timing_contract = time_aligned_design["consumer_timing_contract"]
+    assert consumer_timing_contract["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert consumer_timing_contract["population_helper"] == (
+        "_update_private_source_owner_state_from_scan"
+    )
+    assert (
+        consumer_timing_contract["modal_retry_consumes_time_aligned_packet_pair"]
+        is True
+    )
+    assert consumer_timing_contract["requires_private_post_h_hook"] is False
+    assert consumer_timing_contract["requires_public_observable"] is False
+    assert time_aligned_design["staged_packet_fields_private_only"] is True
+    assert time_aligned_design["staged_packets_fixed_shape"] is True
+    assert time_aligned_design["staged_packets_do_not_alias_current_packets"] is True
+    assert (
+        time_aligned_design["cpml_non_cpml_staging_initialization_contract_ready"]
+        is True
+    )
+    assert (
+        time_aligned_design["jit_runner_staging_initialization_contract_ready"]
+        is True
+    )
+    assert (
+        time_aligned_design["modal_retry_time_aligned_consumer_contract_ready"]
+        is True
+    )
+    assert time_aligned_design["implementation_lane_executed"] is False
+    assert time_aligned_design["production_patch_applied"] is False
+    assert time_aligned_design["solver_behavior_changed"] is False
+    assert time_aligned_design["field_update_behavior_changed"] is False
+    assert time_aligned_design["new_solver_hunk_retained"] is False
+    assert time_aligned_design["benchmark_plane_dft_observable_imported"] is False
+    assert time_aligned_design["true_rt_readiness_unlocked"] is False
+    assert (
+        time_aligned_design[
+            "next_lane_requires_time_aligned_packet_staging_implementation"
+        ]
+        is True
+    )
+    time_aligned_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in time_aligned_design["candidate_ladder"]
+    }
+    assert time_aligned_candidates[
+        "M1_source_interface_staged_packet_schema"
+    ]["schema_component_ready"] is True
+    assert time_aligned_candidates[
+        "M2_cpml_non_cpml_jit_staging_initialization"
+    ]["initialization_component_ready"] is True
+    assert time_aligned_candidates[
+        "M3_combined_time_aligned_packet_staging_contract"
+    ]["accepted_candidate"] is True
+    assert time_aligned_candidates[
+        "M4_time_aligned_packet_staging_design_blocked"
+    ]["accepted_candidate"] is False
+    assert time_aligned_design["public_claim_allowed"] is False
+    assert time_aligned_design["public_observable_promoted"] is False
+    assert time_aligned_design["true_rt_public_observable_promoted"] is False
+    assert time_aligned_design["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        time_aligned_design["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -22470,7 +22822,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_next_prerequisite"
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_next_prerequisite"
         ]
     )
     assert (
@@ -22722,6 +23074,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_status"
         ]
         in metadata["blocking_diagnostic"]
     )

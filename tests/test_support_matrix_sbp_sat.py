@@ -4707,13 +4707,107 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == source_populated_failure_theory["next_prerequisite"]
     )
+    time_aligned_design = benchmark_gate[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_design"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_design_status"
+    ] == "private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready"
+    assert time_aligned_design["terminal_outcome"] == (
+        "private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready"
+    )
+    assert time_aligned_design["upstream_failure_theory_status"] == benchmark_gate[
+        "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
+    ]
+    assert time_aligned_design["candidate_ladder_declared_before_implementation"]
+    assert time_aligned_design["candidate_ladder_declared_before_slow_scoring"]
+    assert time_aligned_design["candidate_count"] == 5
+    assert time_aligned_design["selected_candidate_id"] == (
+        "M3_combined_time_aligned_packet_staging_contract"
+    )
+    assert time_aligned_design["baseline_metrics"] == (
+        source_populated_failure_theory["baseline_metrics"]
+    )
+    assert time_aligned_design["metrics"] == source_populated_failure_theory[
+        "metrics"
+    ]
+    assert time_aligned_design["thresholds"] == source_populated_failure_theory[
+        "thresholds"
+    ]
+    assert time_aligned_design["baseline_metrics_preserved"]
+    assert time_aligned_design["thresholds_unchanged"]
+    assert time_aligned_design["time_alignment_theory_contract_ready"]
+    assert time_aligned_design["source_owner_incident_packet_populated"]
+    assert time_aligned_design["source_packet_consumed_by_modal_retry"]
+    assert time_aligned_design["source_populated_parity_insufficient"]
+    staged_schema = time_aligned_design["staged_packet_schema"]
+    assert staged_schema["state_extension_target"] == "_PrivateInterfaceOwnerState"
+    assert staged_schema["packet_shape_matches_existing_owner_packet"]
+    assert staged_schema["staged_packets_do_not_alias_current_packets"]
+    assert staged_schema["private_state_only"]
+    initialization_contract = time_aligned_design["initialization_contract"]
+    assert initialization_contract["cpml_initializes_staged_packets"]
+    assert initialization_contract["non_cpml_initializes_staged_packets"]
+    assert initialization_contract["jit_runner_initializes_staged_packets"]
+    consumer_timing_contract = time_aligned_design["consumer_timing_contract"]
+    assert consumer_timing_contract["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert consumer_timing_contract["population_helper"] == (
+        "_update_private_source_owner_state_from_scan"
+    )
+    assert consumer_timing_contract["modal_retry_consumes_time_aligned_packet_pair"]
+    assert consumer_timing_contract["requires_private_post_h_hook"] is False
+    assert consumer_timing_contract["requires_public_observable"] is False
+    assert time_aligned_design["staged_packet_fields_private_only"]
+    assert time_aligned_design["staged_packets_fixed_shape"]
+    assert time_aligned_design["staged_packets_do_not_alias_current_packets"]
+    assert time_aligned_design["cpml_non_cpml_staging_initialization_contract_ready"]
+    assert time_aligned_design["jit_runner_staging_initialization_contract_ready"]
+    assert time_aligned_design["modal_retry_time_aligned_consumer_contract_ready"]
+    assert time_aligned_design["implementation_lane_executed"] is False
+    assert time_aligned_design["production_patch_applied"] is False
+    assert time_aligned_design["solver_behavior_changed"] is False
+    assert time_aligned_design["field_update_behavior_changed"] is False
+    assert time_aligned_design["new_solver_hunk_retained"] is False
+    assert time_aligned_design["benchmark_plane_dft_observable_imported"] is False
+    assert time_aligned_design["true_rt_readiness_unlocked"] is False
+    assert time_aligned_design[
+        "next_lane_requires_time_aligned_packet_staging_implementation"
+    ]
+    time_aligned_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in time_aligned_design["candidate_ladder"]
+    }
+    assert time_aligned_candidates[
+        "M1_source_interface_staged_packet_schema"
+    ]["schema_component_ready"]
+    assert time_aligned_candidates[
+        "M2_cpml_non_cpml_jit_staging_initialization"
+    ]["initialization_component_ready"]
+    assert time_aligned_candidates[
+        "M3_combined_time_aligned_packet_staging_contract"
+    ]["accepted_candidate"]
+    assert time_aligned_candidates[
+        "M4_time_aligned_packet_staging_design_blocked"
+    ]["accepted_candidate"] is False
+    assert time_aligned_design["public_claim_allowed"] is False
+    assert time_aligned_design["public_observable_promoted"] is False
+    assert time_aligned_design["true_rt_public_observable_promoted"] is False
+    assert time_aligned_design["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_next_prerequisite"
+        ]
+        == time_aligned_design["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source/interface time-aligned packet staging design "
-        "after source-populated modal retry theory contract ready ralplan"
+        "private plane-wave source/interface time-aligned packet staging implementation "
+        "after design contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave source/interface time-aligned packet staging design "
-        "after source-populated modal retry theory contract ready ralplan"
+        "private plane-wave source/interface time-aligned packet staging implementation "
+        "after design contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -4924,6 +5018,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_source_populated_propagation_aware_modal_retry_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_source_interface_time_aligned_packet_staging_design_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -5191,8 +5291,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave source/interface time-aligned packet staging design "
-        "after source-populated modal retry theory contract ready ralplan"
+        "private plane-wave source/interface time-aligned packet staging implementation "
+        "after design contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

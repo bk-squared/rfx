@@ -436,7 +436,12 @@ lane now records
 the next bounded private target is time-aligning the lagged interface-owner
 packet with the same-step source-owner packet before another modal retry hunk.
 The next safe lane is private source/interface time-aligned packet staging
-design after that theory contract.
+design after that theory contract. That design lane now records
+`private_plane_wave_source_interface_time_aligned_packet_staging_contract_ready`:
+private fixed-shape staged source/interface packet slots, CPML/non-CPML/JIT
+initialization, and modal-retry consumer timing are specified without hooks or
+public observables. The next safe lane is private source/interface
+time-aligned packet staging implementation after design contract ready.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
