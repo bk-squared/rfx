@@ -536,7 +536,12 @@ projected target/source-interface parity-scoring lane now records
 `private_plane_wave_modal_projection_normalizer_projected_target_basis_hunk_insufficient_fixture_quality_pending`:
 the retained shared target-basis hunk has finite private score evidence, but
 unchanged material-improvement and fixture-quality gates remain closed, so the
-next safe lane is private failure-theory redesign.
+next safe lane is private failure-theory redesign. The projected
+target/source-interface failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_redesign_contract_ready`:
+the retained hunk projects both source and interface packets, but it still uses
+one incident-normalizer basis for the full correction; the next safe lane is a
+private residual/reflected/transverse projected target-basis redesign contract.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
