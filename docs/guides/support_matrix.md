@@ -484,7 +484,12 @@ projected-basis parity-scoring lane now records
 `private_plane_wave_modal_projection_normalizer_projected_basis_hunk_insufficient_fixture_quality_pending`:
 the retained helper produces finite private evidence, but the unchanged
 material-improvement and fixture-quality gates remain closed, so the next safe
-lane is private projected-basis failure-theory redesign.
+lane is private projected-basis failure-theory redesign. The projected-basis
+failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_basis_redesign_contract_ready`:
+the retained hunk projects the source packet but leaves the interface target
+unprojected, so the next safe lane is a private projected target/source-interface
+basis implementation; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
