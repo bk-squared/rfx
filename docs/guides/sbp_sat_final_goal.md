@@ -99,12 +99,13 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave owner-backed physical phase/CV
-correction after the owner scan-wiring scorer was retained. The private owner
-state shape now propagates through CPML and non-CPML subgrid steps plus
+The immediate lane is now private plane-wave face-local modal correction
+architecture after owner-backed physical correction was blocked. The private
+owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
-owner-backed joint phase/CV scoring are retained. Physical phase/CV correction
-and true R/T readiness are still pending. The private solver-local
+owner-backed joint phase/CV scoring are retained. The physical phase/CV
+correction lane failed closed because the retained scorer is face-scalar
+diagnostic state; true R/T readiness is still pending. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
@@ -176,11 +177,14 @@ JIT-runner initialization. The follow-up owner scan-wiring/joint-scoring lane
 now records
 `private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending`:
 same-step E/H owner scan capture and owner-backed joint phase/CV scoring are
-retained. The goal gate therefore remains claims-closed until a physical
-phase/CV correction lane improves the parity metrics, and a later true R/T
-readiness lane proves the hunk improves the real solver path without breaking
-CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
-unchanged `0.02` manufactured-ledger threshold.
+retained. The follow-up physical correction lane now records
+`no_private_plane_wave_owner_backed_physical_phase_cv_correction`: no field-
+update correction is retained before a face-local modal correction architecture
+can prove paired phase/CV and vacuum-regression gates. The goal gate therefore
+remains claims-closed until a later correction/readiness lane proves the hunk
+improves the real solver path without breaking CPML/non-CPML symmetry, boundary
+guards, update/coupling bounds, or the unchanged `0.02` manufactured-ledger
+threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

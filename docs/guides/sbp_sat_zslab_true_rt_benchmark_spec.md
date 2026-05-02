@@ -364,12 +364,16 @@ and JIT-runner initialization. The follow-up owner scan-wiring/joint-scoring
 lane now records
 `private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending`:
 same-step E/H owner scan capture and owner-backed joint phase/CV scoring are
-retained, but physical phase/CV correction and true R/T readiness remain
-pending. The next safe lane is `private plane-wave owner-backed physical
-phase/CV correction after scan wiring scorer retained ralplan`. Hook experiments
-remain closed and public promotion remains closed. Until those fixture-quality
-gates pass, the private flux/DFT gate remains internal diagnostic evidence only,
-and the support matrix continues to mark true R/T as deferred.
+retained. The follow-up physical correction lane now records
+`no_private_plane_wave_owner_backed_physical_phase_cv_correction`: the retained
+owner scorer is face-scalar diagnostic state, so no field-update correction is
+retained before a face-local modal correction architecture proves paired
+phase/CV and vacuum-regression gates. The next safe lane is `private plane-wave
+face-local modal correction architecture after owner-backed physical correction
+blocked ralplan`. Hook experiments remain closed and public promotion remains
+closed. Until those fixture-quality gates pass, the private flux/DFT gate
+remains internal diagnostic evidence only, and the support matrix continues to
+mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

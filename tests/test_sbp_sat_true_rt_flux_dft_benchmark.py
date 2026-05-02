@@ -1118,6 +1118,26 @@ _PRIVATE_PLANE_WAVE_OWNER_SCAN_WIRING_JOINT_SCORING_PRECEDENCE = (
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_STATUS = (
+    "no_private_plane_wave_owner_backed_physical_phase_cv_correction"
+)
+_PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_NEXT_PREREQUISITE = (
+    "private plane-wave face-local modal correction architecture after "
+    "owner-backed physical correction blocked ralplan"
+)
+_PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_owner_phase_correction_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_owner_magnitude_correction_hunk_retained_fixture_quality_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    "no_private_plane_wave_owner_backed_physical_phase_cv_correction",
+)
+_PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_PRECEDENCE = (
+    "no_private_plane_wave_owner_backed_physical_phase_cv_correction",
+    "private_plane_wave_owner_magnitude_correction_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_owner_phase_correction_hunk_retained_fixture_quality_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -9079,6 +9099,177 @@ def _private_plane_wave_owner_scan_wiring_joint_scoring_metadata(
     }
 
 
+def _private_plane_wave_owner_backed_physical_phase_cv_correction_metadata(
+    *,
+    owner_scan_wiring_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(owner_scan_wiring_metadata["baseline_metrics"])
+    thresholds = dict(owner_scan_wiring_metadata["thresholds"])
+    r0 = {
+        "candidate_id": "R0_owner_scan_scorer_baseline_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_owner_scan_wiring_status": owner_scan_wiring_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    r1 = {
+        "candidate_id": "R1_owner_phase_reference_correction",
+        "candidate_family": "owner_backed_phase_reference_correction",
+        "accepted_candidate": False,
+        "attempted_in_this_lane": True,
+        "phase_correction_hunk_retained": False,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric_guard": "transverse_magnitude_cv",
+        "rejection_reason": (
+            "the retained owner scorer is face-scalar diagnostic state; applying "
+            "a physical phase rotation from it would change field updates without "
+            "a face-local modal correction operator or vacuum-regression proof"
+        ),
+        "requires_face_local_modal_operator": True,
+        "requires_public_api": False,
+        "requires_hook": False,
+        "public_claim_allowed": False,
+    }
+    r2 = {
+        "candidate_id": "R2_owner_magnitude_balancing_correction",
+        "candidate_family": "owner_backed_magnitude_balancing",
+        "accepted_candidate": False,
+        "attempted_in_this_lane": True,
+        "magnitude_correction_hunk_retained": False,
+        "material_improvement_demonstrated": False,
+        "dominant_metric_guard": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "rejection_reason": (
+            "face-scalar magnitude balancing cannot be admitted as a bounded "
+            "physical correction without a local modal distribution and paired "
+            "phase/vacuum regression gates"
+        ),
+        "requires_face_local_modal_operator": True,
+        "requires_public_api": False,
+        "requires_hook": False,
+        "public_claim_allowed": False,
+    }
+    r3 = {
+        "candidate_id": "R3_combined_phase_cv_private_parity_pass",
+        "candidate_family": "fixture_quality_private_parity_pass",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending"
+        ),
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "not_selected_reason": (
+            "R1/R2 cannot be retained, so no combined phase/CV correction can "
+            "honestly unlock private true-R/T readiness in this lane"
+        ),
+        "public_claim_allowed": False,
+    }
+    r4 = {
+        "candidate_id": "R4_owner_backed_physical_correction_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_STATUS
+        ),
+        "rejection_summary": (
+            "no bounded owner-backed physical phase/CV correction is retained; "
+            "the next safe lane must design a face-local modal correction "
+            "architecture from the private owner scan/scorer"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (r0, r1, r2, r3, r4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_only"
+        ),
+        "upstream_owner_scan_wiring_status": owner_scan_wiring_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite R0/R1/R2/R3/R4 correction ladder; reject any physical "
+            "field-update correction that lacks a face-local modal operator and "
+            "paired phase/CV plus vacuum-regression proof"
+        ),
+        "selected_candidate_id": "R4_owner_backed_physical_correction_blocked",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "owner_scan_wiring_hunk_retained": True,
+        "owner_joint_parity_scoring_hunk_retained": True,
+        "phase_correction_hunk_retained": False,
+        "magnitude_correction_hunk_retained": False,
+        "combined_phase_cv_correction_hunk_retained": False,
+        "face_local_modal_operator_ready": False,
+        "dominant_metric": "transverse_phase_spread_deg",
+        "paired_metric": "transverse_magnitude_cv",
+        "joint_phase_magnitude_improved": False,
+        "material_improvement_demonstrated": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "no_bounded_hunk_accepted": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_face_local_modal_correction_architecture": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private owner-backed physical phase/CV correction lane is "
+            "fail-closed: the retained owner scorer is diagnostic and face-"
+            "scalar, so no field-update correction is retained until a face-"
+            "local modal correction architecture can prove paired phase/CV and "
+            "vacuum-regression gates without public promotion"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -11473,8 +11664,31 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_owner_backed_physical_correction_metadata = (
+        _private_plane_wave_owner_backed_physical_phase_cv_correction_metadata(
+            owner_scan_wiring_metadata=(
+                plane_wave_owner_scan_wiring_joint_scoring_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_status": (
+                plane_wave_owner_backed_physical_correction_metadata["status"]
+            ),
+            "private_plane_wave_owner_backed_physical_phase_cv_correction": (
+                plane_wave_owner_backed_physical_correction_metadata
+            ),
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_next_prerequisite": (
+                plane_wave_owner_backed_physical_correction_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
+        "private_plane_wave_owner_backed_physical_phase_cv_correction_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -11589,6 +11803,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave owner scan-wiring/joint-scoring "
                 "lane records "
                 f"{plane_wave_owner_scan_wiring_joint_scoring_metadata['terminal_outcome']}"
+                "; the private plane-wave owner-backed physical phase/CV "
+                "correction lane records "
+                f"{plane_wave_owner_backed_physical_correction_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -11598,7 +11815,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
+                "private_plane_wave_owner_backed_physical_phase_cv_correction_next_prerequisite"
             ],
         }
 
@@ -15112,10 +15329,106 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
         ]
     )
+    physical_correction = metadata[
+        "private_plane_wave_owner_backed_physical_phase_cv_correction"
+    ]
+    assert metadata[
+        "private_plane_wave_owner_backed_physical_phase_cv_correction_status"
+    ] == _PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_STATUS
+    assert physical_correction["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_OWNER_BACKED_PHYSICAL_PHASE_CV_CORRECTION_STATUS
+    )
+    assert physical_correction["upstream_owner_scan_wiring_status"] == (
+        metadata["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
+    )
+    assert physical_correction["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert physical_correction["candidate_ladder_declared_before_slow_scoring"] is True
+    assert physical_correction["candidate_count"] == 5
+    assert physical_correction["selected_candidate_id"] == (
+        "R4_owner_backed_physical_correction_blocked"
+    )
+    assert physical_correction["baseline_metrics"] == owner_scan_wiring["baseline_metrics"]
+    assert physical_correction["baseline_metrics_preserved"] is True
+    assert physical_correction["thresholds_unchanged"] is True
+    assert physical_correction["owner_scan_wiring_hunk_retained"] is True
+    assert physical_correction["owner_joint_parity_scoring_hunk_retained"] is True
+    assert physical_correction["phase_correction_hunk_retained"] is False
+    assert physical_correction["magnitude_correction_hunk_retained"] is False
+    assert physical_correction["combined_phase_cv_correction_hunk_retained"] is False
+    assert physical_correction["face_local_modal_operator_ready"] is False
+    assert physical_correction["joint_phase_magnitude_improved"] is False
+    assert physical_correction["material_improvement_demonstrated"] is False
+    assert physical_correction["production_patch_applied"] is False
+    assert physical_correction["solver_behavior_changed"] is False
+    assert physical_correction["field_update_behavior_changed"] is False
+    assert physical_correction["runner_behavior_changed"] is False
+    assert physical_correction["new_solver_hunk_retained"] is False
+    assert physical_correction["no_bounded_hunk_accepted"] is True
+    assert physical_correction["subgrid_vacuum_parity_passed"] is False
+    assert physical_correction["fixture_quality_pending"] is True
+    assert physical_correction["true_rt_readiness_unlocked"] is False
+    assert (
+        physical_correction[
+            "next_lane_requires_face_local_modal_correction_architecture"
+        ]
+        is True
+    )
+    physical_correction_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in physical_correction["candidate_ladder"]
+    }
+    assert (
+        physical_correction_candidates[
+            "R1_owner_phase_reference_correction"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        physical_correction_candidates[
+            "R1_owner_phase_reference_correction"
+        ]["requires_face_local_modal_operator"]
+        is True
+    )
+    assert (
+        physical_correction_candidates[
+            "R2_owner_magnitude_balancing_correction"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        physical_correction_candidates[
+            "R2_owner_magnitude_balancing_correction"
+        ]["requires_face_local_modal_operator"]
+        is True
+    )
+    assert (
+        physical_correction_candidates[
+            "R3_combined_phase_cv_private_parity_pass"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        physical_correction_candidates[
+            "R4_owner_backed_physical_correction_blocked"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert physical_correction["public_claim_allowed"] is False
+    assert physical_correction["public_observable_promoted"] is False
+    assert physical_correction["true_rt_public_observable_promoted"] is False
+    assert physical_correction["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        physical_correction["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -15141,7 +15454,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_owner_scan_wiring_joint_scoring_next_prerequisite"
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_next_prerequisite"
         ]
     )
     assert (
@@ -15280,6 +15593,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_status"
+        ]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

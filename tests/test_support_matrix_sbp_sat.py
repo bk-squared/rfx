@@ -2515,13 +2515,102 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == owner_scan_wiring["next_prerequisite"]
     )
+    physical_correction = benchmark_gate[
+        "private_plane_wave_owner_backed_physical_phase_cv_correction"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_owner_backed_physical_phase_cv_correction_status"
+    ] == "no_private_plane_wave_owner_backed_physical_phase_cv_correction"
+    assert physical_correction["terminal_outcome"] == (
+        "no_private_plane_wave_owner_backed_physical_phase_cv_correction"
+    )
+    assert physical_correction["upstream_owner_scan_wiring_status"] == (
+        benchmark_gate["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
+    )
+    assert physical_correction["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert physical_correction["candidate_count"] == 5
+    assert physical_correction["selected_candidate_id"] == (
+        "R4_owner_backed_physical_correction_blocked"
+    )
+    assert physical_correction["baseline_metrics"] == owner_scan_wiring["baseline_metrics"]
+    assert physical_correction["baseline_metrics_preserved"] is True
+    assert physical_correction["thresholds_unchanged"] is True
+    assert physical_correction["owner_scan_wiring_hunk_retained"] is True
+    assert physical_correction["owner_joint_parity_scoring_hunk_retained"] is True
+    assert physical_correction["phase_correction_hunk_retained"] is False
+    assert physical_correction["magnitude_correction_hunk_retained"] is False
+    assert physical_correction["combined_phase_cv_correction_hunk_retained"] is False
+    assert physical_correction["face_local_modal_operator_ready"] is False
+    assert physical_correction["joint_phase_magnitude_improved"] is False
+    assert physical_correction["material_improvement_demonstrated"] is False
+    assert physical_correction["production_patch_applied"] is False
+    assert physical_correction["solver_behavior_changed"] is False
+    assert physical_correction["field_update_behavior_changed"] is False
+    assert physical_correction["runner_behavior_changed"] is False
+    assert physical_correction["new_solver_hunk_retained"] is False
+    assert physical_correction["no_bounded_hunk_accepted"] is True
+    assert physical_correction["subgrid_vacuum_parity_passed"] is False
+    assert physical_correction["fixture_quality_pending"] is True
+    assert physical_correction["true_rt_readiness_unlocked"] is False
+    assert (
+        physical_correction[
+            "next_lane_requires_face_local_modal_correction_architecture"
+        ]
+        is True
+    )
+    physical_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in physical_correction["candidate_ladder"]
+    }
+    assert (
+        physical_candidates["R1_owner_phase_reference_correction"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert (
+        physical_candidates["R1_owner_phase_reference_correction"][
+            "requires_face_local_modal_operator"
+        ]
+        is True
+    )
+    assert (
+        physical_candidates["R2_owner_magnitude_balancing_correction"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert (
+        physical_candidates["R2_owner_magnitude_balancing_correction"][
+            "requires_face_local_modal_operator"
+        ]
+        is True
+    )
+    assert (
+        physical_candidates["R4_owner_backed_physical_correction_blocked"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert physical_correction["public_claim_allowed"] is False
+    assert physical_correction["public_observable_promoted"] is False
+    assert physical_correction["true_rt_public_observable_promoted"] is False
+    assert physical_correction["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_next_prerequisite"
+        ]
+        == physical_correction["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave owner-backed physical phase/CV correction after "
-        "scan wiring scorer retained ralplan"
+        "private plane-wave face-local modal correction architecture after "
+        "owner-backed physical correction blocked ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave owner-backed physical phase/CV correction after "
-        "scan wiring scorer retained ralplan"
+        "private plane-wave face-local modal correction architecture after "
+        "owner-backed physical correction blocked ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -2611,6 +2700,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_owner_backed_physical_phase_cv_correction_status"
+        ]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -2877,8 +2972,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave owner-backed physical phase/CV correction after "
-        "scan wiring scorer retained ralplan"
+        "private plane-wave face-local modal correction architecture after "
+        "owner-backed physical correction blocked ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

@@ -316,9 +316,12 @@ and JIT-runner initialization. The follow-up owner scan-wiring/joint-scoring
 lane now records
 `private_plane_wave_owner_joint_parity_scoring_hunk_retained_fixture_quality_pending`:
 same-step E/H owner scan capture and owner-backed joint phase/CV scoring are
-retained, but physical phase/CV correction and true R/T readiness remain
-pending. The next safe lane is private plane-wave owner-backed physical phase/CV
-correction; public promotion remains closed.
+retained. The follow-up physical correction lane now records
+`no_private_plane_wave_owner_backed_physical_phase_cv_correction`: the retained
+owner scorer is face-scalar diagnostic state, so no field-update correction is
+retained before a face-local modal correction architecture proves paired
+phase/CV and vacuum-regression gates. The next safe lane is private plane-wave
+face-local modal correction architecture; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
