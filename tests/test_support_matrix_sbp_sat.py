@@ -4905,13 +4905,106 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == time_aligned_implementation["next_prerequisite"]
     )
+    time_aligned_scoring = benchmark_gate[
+        "private_plane_wave_time_aligned_modal_retry_parity_scoring"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_time_aligned_modal_retry_parity_scoring_status"
+    ] == (
+        "private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending"
+    )
+    assert time_aligned_scoring["terminal_outcome"] == (
+        "private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending"
+    )
+    assert time_aligned_scoring["upstream_staging_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_status"
+        ]
+    )
+    assert time_aligned_scoring["upstream_source_populated_parity_status"] == (
+        benchmark_gate[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_status"
+        ]
+    )
+    assert time_aligned_scoring["candidate_ladder_declared_before_solver_edit"]
+    assert time_aligned_scoring["candidate_ladder_declared_before_slow_scoring"]
+    assert time_aligned_scoring["candidate_count"] == 5
+    assert time_aligned_scoring["selected_candidate_id"] == (
+        "O1_finite_time_aligned_modal_retry_private_parity_score"
+    )
+    assert time_aligned_scoring["baseline_metrics"] == source_populated_parity[
+        "metrics"
+    ]
+    assert time_aligned_scoring["metrics"] == time_aligned_implementation["metrics"]
+    assert time_aligned_scoring["thresholds"] == time_aligned_implementation[
+        "thresholds"
+    ]
+    assert time_aligned_scoring["baseline_metrics_preserved"]
+    assert time_aligned_scoring["thresholds_unchanged"]
+    assert time_aligned_scoring["time_aligned_packet_staging_hunk_retained"]
+    assert time_aligned_scoring["staged_packet_hunk_retained"]
+    assert time_aligned_scoring["previous_source_packet_fields_retained"]
+    assert time_aligned_scoring["previous_interface_packet_fields_retained"]
+    assert time_aligned_scoring["stage_helper_retained"]
+    assert time_aligned_scoring["modal_retry_consumes_time_aligned_packet_pair"]
+    assert time_aligned_scoring["modal_retry_reads_previous_source_packet"]
+    assert time_aligned_scoring["modal_retry_reads_previous_interface_packet"]
+    assert time_aligned_scoring["parity_scoring_lane_executed"]
+    assert time_aligned_scoring["finite_reproducible_score"]
+    assert time_aligned_scoring["material_improvement_demonstrated"] is False
+    assert time_aligned_scoring["paired_passed"] is False
+    assert time_aligned_scoring["fixture_quality_ready"] is False
+    assert time_aligned_scoring["fixture_quality_pending"]
+    assert time_aligned_scoring["subgrid_vacuum_parity_scored"]
+    assert time_aligned_scoring["subgrid_vacuum_parity_passed"] is False
+    assert time_aligned_scoring["true_rt_readiness_unlocked"] is False
+    scoring_threshold_results = time_aligned_scoring["threshold_results"]
+    assert scoring_threshold_results["usable_passband"]
+    assert scoring_threshold_results["transverse_phase_spread_deg"] is False
+    assert scoring_threshold_results["transverse_magnitude_cv"] is False
+    assert scoring_threshold_results["vacuum_relative_magnitude_error"] is False
+    assert scoring_threshold_results["vacuum_phase_error_deg"] is False
+    assert time_aligned_scoring["production_patch_applied"] is False
+    assert time_aligned_scoring["solver_behavior_changed"] is False
+    assert time_aligned_scoring["field_update_behavior_changed"] is False
+    assert time_aligned_scoring["new_solver_hunk_retained"] is False
+    assert time_aligned_scoring["benchmark_plane_dft_observable_imported"] is False
+    assert time_aligned_scoring[
+        "next_lane_requires_time_aligned_modal_retry_failure_theory"
+    ]
+    time_aligned_scoring_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in time_aligned_scoring["candidate_ladder"]
+    }
+    assert time_aligned_scoring_candidates[
+        "O1_finite_time_aligned_modal_retry_private_parity_score"
+    ]["accepted_candidate"]
+    assert time_aligned_scoring_candidates[
+        "O2_paired_material_improvement_gate"
+    ]["accepted_candidate"] is False
+    assert time_aligned_scoring_candidates[
+        "O3_fixture_quality_true_rt_readiness_preflight"
+    ]["accepted_candidate"] is False
+    assert time_aligned_scoring_candidates[
+        "O4_time_aligned_modal_retry_parity_scoring_blocked"
+    ]["accepted_candidate"] is False
+    assert time_aligned_scoring["public_claim_allowed"] is False
+    assert time_aligned_scoring["public_observable_promoted"] is False
+    assert time_aligned_scoring["true_rt_public_observable_promoted"] is False
+    assert time_aligned_scoring["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
+        ]
+        == time_aligned_scoring["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave time-aligned modal retry parity scoring after staged "
-        "packet hunk retained ralplan"
+        "private plane-wave time-aligned modal retry failure-theory redesign after "
+        "parity scoring insufficient ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave time-aligned modal retry parity scoring after staged "
-        "packet hunk retained ralplan"
+        "private plane-wave time-aligned modal retry failure-theory redesign after "
+        "parity scoring insufficient ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -5134,6 +5227,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -5401,8 +5500,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave time-aligned modal retry parity scoring after staged "
-        "packet hunk retained ralplan"
+        "private plane-wave time-aligned modal retry failure-theory redesign after "
+        "parity scoring insufficient ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

@@ -99,8 +99,8 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave time-aligned modal retry parity
-scoring after the staged packet hunk was retained.
+The immediate lane is now private plane-wave time-aligned modal retry failure
+theory redesign after parity scoring remained insufficient.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -123,7 +123,11 @@ implementation lane now records
 previous source/interface packet fields are retained in private owner state, a
 staging helper snapshots the last completed pair before source overwrite, and
 propagation-aware modal retry now consumes that time-aligned pair without hooks
-or public observables. The
+or public observables. The scoring lane now records
+`private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending`:
+the retained staged-packet hunk is finite under private scoring, but unchanged
+paired material-improvement, transverse-uniformity, and vacuum-stability gates
+remain closed. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

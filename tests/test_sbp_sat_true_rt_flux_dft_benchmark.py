@@ -1574,6 +1574,27 @@ _PRIVATE_PLANE_WAVE_SOURCE_INTERFACE_TIME_ALIGNED_PACKET_STAGING_IMPLEMENTATION_
     "private_plane_wave_source_interface_time_aligned_packet_staging_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_STATUS = (
+    "private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending"
+)
+_PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_NEXT_PREREQUISITE = (
+    "private plane-wave time-aligned modal retry failure-theory redesign after "
+    "parity scoring insufficient ralplan"
+)
+_PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_TERMINAL_OUTCOMES = (
+    "private_plane_wave_time_aligned_modal_retry_parity_scored_fixture_quality_pending",
+    "private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending",
+    "private_plane_wave_time_aligned_modal_retry_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    "no_private_plane_wave_time_aligned_modal_retry_parity_scoring",
+)
+_PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_PRECEDENCE = (
+    "no_private_plane_wave_time_aligned_modal_retry_parity_scoring",
+    "private_plane_wave_time_aligned_modal_retry_parity_scored_fixture_quality_pending",
+    "private_plane_wave_time_aligned_modal_retry_hunk_insufficient_fixture_quality_pending",
+    "private_plane_wave_time_aligned_modal_retry_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -13890,6 +13911,218 @@ def _private_plane_wave_source_interface_time_aligned_packet_staging_implementat
     }
 
 
+def _private_plane_wave_time_aligned_modal_retry_parity_scoring_metadata(
+    *,
+    staging_implementation_metadata: dict[str, object],
+    source_populated_parity_scoring_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(source_populated_parity_scoring_metadata["metrics"])
+    metrics = dict(staging_implementation_metadata["metrics"])
+    thresholds = dict(staging_implementation_metadata["thresholds"])
+    material_decision = _material_improvement_decision(
+        baseline_metrics=baseline_metrics,
+        candidate_metrics=metrics,
+        dominant_metric="transverse_phase_spread_deg",
+    )
+    threshold_results = {
+        "usable_passband": (
+            int(metrics["usable_bins"]) >= _MIN_CLAIMS_BEARING_BINS
+        ),
+        "transverse_magnitude_cv": (
+            float(metrics["transverse_magnitude_cv"]) <= _TRANSVERSE_MAGNITUDE_CV_MAX
+        ),
+        "transverse_phase_spread_deg": (
+            float(metrics["transverse_phase_spread_deg"])
+            <= _TRANSVERSE_PHASE_SPREAD_DEG_MAX
+        ),
+        "vacuum_relative_magnitude_error": (
+            float(metrics["vacuum_relative_magnitude_error"])
+            <= _VACUUM_MAGNITUDE_ERROR_MAX
+        ),
+        "vacuum_phase_error_deg": (
+            float(metrics["vacuum_phase_error_deg"]) <= _VACUUM_PHASE_ERROR_DEG_MAX
+        ),
+    }
+    finite_score = bool(
+        all(
+            np.isfinite(float(metrics[name]))
+            for name in (
+                "transverse_phase_spread_deg",
+                "transverse_magnitude_cv",
+                "vacuum_relative_magnitude_error",
+                "vacuum_phase_error_deg",
+            )
+        )
+        and int(metrics["usable_bins"]) > 0
+    )
+    o0 = {
+        "candidate_id": "O0_staged_packet_hunk_baseline_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_staging_implementation_status": (
+            staging_implementation_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    o1 = {
+        "candidate_id": "O1_finite_time_aligned_modal_retry_private_parity_score",
+        "candidate_family": "private_time_aligned_parity_scoring_gate",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_STATUS
+        ),
+        "finite_reproducible_score": finite_score,
+        "staged_packet_hunk_retained": True,
+        "modal_retry_consumes_time_aligned_packet_pair": True,
+        "threshold_results": threshold_results,
+        "public_claim_allowed": False,
+    }
+    o2 = {
+        "candidate_id": "O2_paired_material_improvement_gate",
+        "candidate_family": "private_material_improvement_gate",
+        "accepted_candidate": False,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "not_selected_reason": (
+            "the staged-packet hunk produces a finite private score but does "
+            "not pass the unchanged paired material-improvement rule"
+        ),
+        "public_claim_allowed": False,
+    }
+    o3 = {
+        "candidate_id": "O3_fixture_quality_true_rt_readiness_preflight",
+        "candidate_family": "fixture_quality_and_true_rt_readiness_gate",
+        "accepted_candidate": False,
+        "threshold_results": threshold_results,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "not_selected_reason": (
+            "time-aligned modal retry parity remains above transverse and "
+            "vacuum thresholds, so private true-R/T slab scoring remains locked"
+        ),
+        "public_claim_allowed": False,
+    }
+    o4 = {
+        "candidate_id": "O4_time_aligned_modal_retry_parity_scoring_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_time_aligned_modal_retry_parity_scoring"
+        ),
+        "not_selected_reason": (
+            "a finite private time-aligned modal retry score is available, so "
+            "the lane records insufficient fixture-quality evidence rather "
+            "than a hard scoring block"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (o0, o1, o2, o3, o4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_only"
+        ),
+        "upstream_staging_implementation_status": (
+            staging_implementation_metadata["terminal_outcome"]
+        ),
+        "upstream_source_populated_parity_status": (
+            source_populated_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite O0/O1/O2/O3/O4 time-aligned parity-scoring ladder; "
+            "admit only private evidence unless unchanged material-improvement "
+            "and fixture-quality thresholds pass without public-surface promotion"
+        ),
+        "selected_candidate_id": (
+            "O1_finite_time_aligned_modal_retry_private_parity_score"
+        ),
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "time_aligned_packet_staging_hunk_retained": True,
+        "staged_packet_hunk_retained": True,
+        "previous_source_packet_fields_retained": True,
+        "previous_interface_packet_fields_retained": True,
+        "stage_helper_retained": True,
+        "modal_retry_consumes_time_aligned_packet_pair": True,
+        "modal_retry_reads_previous_source_packet": True,
+        "modal_retry_reads_previous_interface_packet": True,
+        "parity_scoring_lane_executed": True,
+        "finite_reproducible_score": finite_score,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_time_aligned_modal_retry_failure_theory": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the retained staged-packet hunk is privately scored and finite, "
+            "but unchanged paired material-improvement and fixture-quality "
+            "thresholds remain closed; the next safe lane is private failure "
+            "theory rather than true-R/T or public observable promotion"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -16897,8 +17130,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_time_aligned_modal_retry_parity_scoring_metadata = (
+        _private_plane_wave_time_aligned_modal_retry_parity_scoring_metadata(
+            staging_implementation_metadata=(
+                plane_wave_source_interface_time_aligned_packet_staging_implementation_metadata
+            ),
+            source_populated_parity_scoring_metadata=(
+                plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_status": (
+                plane_wave_time_aligned_modal_retry_parity_scoring_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring": (
+                plane_wave_time_aligned_modal_retry_parity_scoring_metadata
+            ),
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite": (
+                plane_wave_time_aligned_modal_retry_parity_scoring_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_next_prerequisite"
+        "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -17082,6 +17342,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave source/interface time-aligned "
                 "packet staging implementation lane records "
                 f"{plane_wave_source_interface_time_aligned_packet_staging_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave time-aligned modal retry parity "
+                "scoring lane records "
+                f"{plane_wave_time_aligned_modal_retry_parity_scoring_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -17091,7 +17354,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_next_prerequisite"
+                "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
             ],
         }
 
@@ -23160,10 +23423,110 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_next_prerequisite"
         ]
     )
+    time_aligned_scoring = metadata[
+        "private_plane_wave_time_aligned_modal_retry_parity_scoring"
+    ]
+    assert metadata[
+        "private_plane_wave_time_aligned_modal_retry_parity_scoring_status"
+    ] == _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_STATUS
+    assert time_aligned_scoring["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_TIME_ALIGNED_MODAL_RETRY_PARITY_SCORING_STATUS
+    )
+    assert time_aligned_scoring["upstream_staging_implementation_status"] == metadata[
+        "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_status"
+    ]
+    assert time_aligned_scoring["upstream_source_populated_parity_status"] == (
+        metadata[
+            "private_plane_wave_source_populated_propagation_aware_modal_retry_parity_scoring_status"
+        ]
+    )
+    assert time_aligned_scoring["candidate_ladder_declared_before_solver_edit"] is True
+    assert (
+        time_aligned_scoring["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert time_aligned_scoring["candidate_count"] == 5
+    assert time_aligned_scoring["selected_candidate_id"] == (
+        "O1_finite_time_aligned_modal_retry_private_parity_score"
+    )
+    assert time_aligned_scoring["baseline_metrics"] == (
+        source_populated_parity["metrics"]
+    )
+    assert time_aligned_scoring["metrics"] == time_aligned_implementation["metrics"]
+    assert time_aligned_scoring["thresholds"] == time_aligned_implementation[
+        "thresholds"
+    ]
+    assert time_aligned_scoring["baseline_metrics_preserved"] is True
+    assert time_aligned_scoring["thresholds_unchanged"] is True
+    assert time_aligned_scoring["time_aligned_packet_staging_hunk_retained"] is True
+    assert time_aligned_scoring["staged_packet_hunk_retained"] is True
+    assert time_aligned_scoring["previous_source_packet_fields_retained"] is True
+    assert time_aligned_scoring["previous_interface_packet_fields_retained"] is True
+    assert time_aligned_scoring["stage_helper_retained"] is True
+    assert (
+        time_aligned_scoring["modal_retry_consumes_time_aligned_packet_pair"]
+        is True
+    )
+    assert time_aligned_scoring["modal_retry_reads_previous_source_packet"] is True
+    assert time_aligned_scoring["modal_retry_reads_previous_interface_packet"] is True
+    assert time_aligned_scoring["parity_scoring_lane_executed"] is True
+    assert time_aligned_scoring["finite_reproducible_score"] is True
+    assert time_aligned_scoring["material_improvement_demonstrated"] is False
+    assert time_aligned_scoring["paired_passed"] is False
+    assert time_aligned_scoring["fixture_quality_ready"] is False
+    assert time_aligned_scoring["fixture_quality_pending"] is True
+    assert time_aligned_scoring["subgrid_vacuum_parity_scored"] is True
+    assert time_aligned_scoring["subgrid_vacuum_parity_passed"] is False
+    assert time_aligned_scoring["true_rt_readiness_unlocked"] is False
+    threshold_results = time_aligned_scoring["threshold_results"]
+    assert threshold_results["usable_passband"] is True
+    assert threshold_results["transverse_phase_spread_deg"] is False
+    assert threshold_results["transverse_magnitude_cv"] is False
+    assert threshold_results["vacuum_relative_magnitude_error"] is False
+    assert threshold_results["vacuum_phase_error_deg"] is False
+    assert time_aligned_scoring["production_patch_applied"] is False
+    assert time_aligned_scoring["solver_behavior_changed"] is False
+    assert time_aligned_scoring["field_update_behavior_changed"] is False
+    assert time_aligned_scoring["new_solver_hunk_retained"] is False
+    assert time_aligned_scoring["benchmark_plane_dft_observable_imported"] is False
+    assert (
+        time_aligned_scoring[
+            "next_lane_requires_time_aligned_modal_retry_failure_theory"
+        ]
+        is True
+    )
+    time_aligned_scoring_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in time_aligned_scoring["candidate_ladder"]
+    }
+    assert time_aligned_scoring_candidates[
+        "O1_finite_time_aligned_modal_retry_private_parity_score"
+    ]["accepted_candidate"] is True
+    assert time_aligned_scoring_candidates[
+        "O2_paired_material_improvement_gate"
+    ]["accepted_candidate"] is False
+    assert time_aligned_scoring_candidates[
+        "O3_fixture_quality_true_rt_readiness_preflight"
+    ]["accepted_candidate"] is False
+    assert time_aligned_scoring_candidates[
+        "O4_time_aligned_modal_retry_parity_scoring_blocked"
+    ]["accepted_candidate"] is False
+    assert time_aligned_scoring["public_claim_allowed"] is False
+    assert time_aligned_scoring["public_observable_promoted"] is False
+    assert time_aligned_scoring["true_rt_public_observable_promoted"] is False
+    assert (
+        time_aligned_scoring["dft_flux_tfsf_port_sparameter_promoted"] is False
+    )
+    assert (
+        time_aligned_scoring["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_next_prerequisite"
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -23189,7 +23552,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_next_prerequisite"
+            "private_plane_wave_time_aligned_modal_retry_parity_scoring_next_prerequisite"
         ]
     )
     assert (
@@ -23454,6 +23817,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata[
             "private_plane_wave_source_interface_time_aligned_packet_staging_implementation_status"
         ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_time_aligned_modal_retry_parity_scoring_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]
