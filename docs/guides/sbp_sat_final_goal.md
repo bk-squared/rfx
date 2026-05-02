@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave modal projection/normalizer
-projected target/source-interface basis parity scoring after the private
-implementation hunk retained the missing shared target basis.
+projected target/source-interface basis failure-theory redesign after private
+parity scoring found the retained shared target-basis hunk still insufficient.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -175,6 +175,11 @@ target/source-interface basis implementation lane now records
 `_project_private_modal_basis_packets` now projects both source and interface
 packets onto the shared incident-normalizer basis before subtraction; public
 promotion remains closed and the next safe lane is private parity scoring. The
+projected target/source-interface parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_basis_hunk_insufficient_fixture_quality_pending`:
+the retained shared target-basis hunk has finite private score evidence, but
+unchanged material-improvement and fixture-quality gates remain closed, so the
+next safe lane is private failure-theory redesign. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
