@@ -1037,7 +1037,7 @@ def _private_owner_with_source_interface_reference(config, *, source_active):
     )
 
 
-def test_project_private_modal_basis_packets_projects_source_and_interface():
+def test_project_private_modal_basis_packets_projects_residual_target_modes():
     source_real = jnp.asarray([[1.0, 1.0], [3.0, 3.0]], dtype=jnp.float32)
     source_imag = jnp.zeros_like(source_real)
     interface_real = jnp.asarray([[5.0, 7.0], [5.0, 7.0]], dtype=jnp.float32)
@@ -1063,7 +1063,12 @@ def test_project_private_modal_basis_packets_projects_source_and_interface():
     )
 
     np.testing.assert_allclose(np.asarray(projection_gate), 1.0)
-    np.testing.assert_allclose(np.asarray(target_real), 4.0)
+    np.testing.assert_allclose(
+        np.asarray(target_real),
+        np.asarray(interface_real - source_real),
+        rtol=1.0e-6,
+        atol=1.0e-6,
+    )
     np.testing.assert_allclose(np.asarray(target_imag), 0.0)
 
 

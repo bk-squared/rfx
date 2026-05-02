@@ -546,7 +546,13 @@ The projected target residual-basis design lane now records
 `private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_contract_design_ready`:
 fixed-shape incident, reflected, and transverse residual target modes are ready
 as a private implementation contract without public observables or threshold
-laundering; the next safe lane is private residual-basis implementation.
+laundering; the next safe lane is private residual-basis implementation. The
+projected target residual-basis implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_retained_fixture_quality_pending`:
+`_project_private_modal_basis_packets` now uses fixed-shape incident/reflected/
+transverse residual target modes before subtraction while remaining private and
+fail-closed; public promotion remains closed and the next safe lane is private
+residual-basis parity scoring.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
