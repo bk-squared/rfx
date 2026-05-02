@@ -99,8 +99,11 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave solver-state owner propagation
-implementation after the boundary contract became ready. The private solver-local
+The immediate lane is now private plane-wave solver-wide owner scan wiring and
+joint parity scoring after the solver-state owner propagation hunk was retained.
+The private owner state shape now propagates through CPML and non-CPML subgrid
+steps plus JIT-runner initialization, but same-step scan wiring and joint
+phase/CV parity scoring are still pending. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
@@ -165,10 +168,13 @@ boundary contract for JAX pytree shape and runner/JIT initialization before any
 bounded hunk can be retained. The follow-up boundary design lane now records
 `private_plane_wave_solver_state_owner_propagation_contract_ready`: state pytree
 shape plus runner/JIT initialization boundaries are defined before retrying the
-bounded owner implementation. The goal gate therefore remains claims-closed
-until that implementation improves the parity metrics, and a later true R/T
-readiness lane proves the hunk improves the real solver path without breaking
-CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
+bounded owner implementation. The follow-up implementation lane now records
+`private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending`:
+the private owner state shape is propagated through CPML/non-CPML steps and
+JIT-runner initialization. The goal gate therefore remains claims-closed until
+the next owner scan-wiring lane improves the parity metrics, and a later true
+R/T readiness lane proves the hunk improves the real solver path without
+breaking CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the
 unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,

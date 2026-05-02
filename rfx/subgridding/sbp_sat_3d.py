@@ -89,6 +89,14 @@ class CornerOrientation(NamedTuple):
     fixed_faces: tuple[str, str, str]
 
 
+class _PrivateInterfaceOwnerState(NamedTuple):
+    """Private per-interface owner state carried through solver internals."""
+
+    face_phase_reference: jnp.ndarray
+    face_magnitude_reference: jnp.ndarray
+    face_update_count: jnp.ndarray
+
+
 class SubgridState3D(NamedTuple):
     """Field state for the canonical Phase-1 z-slab lane."""
 
@@ -105,6 +113,7 @@ class SubgridState3D(NamedTuple):
     hy_f: jnp.ndarray
     hz_f: jnp.ndarray
     step: int
+    private_interface_owner_state: _PrivateInterfaceOwnerState | None = None
 
 
 FACE_ORIENTATIONS: dict[str, FaceOrientation] = {
@@ -354,6 +363,7 @@ def init_subgrid_3d(
         hy_f=z((nx_f, ny_f, nz_f)),
         hz_f=z((nx_f, ny_f, nz_f)),
         step=0,
+        private_interface_owner_state=_init_private_interface_owner_state(config),
     )
     return config, state
 
@@ -478,6 +488,34 @@ def _face_is_internal(config: SubgridConfig3D, face: str) -> bool:
 
 def _active_faces(config: SubgridConfig3D) -> tuple[str, ...]:
     return tuple(face for face in FACE_ORIENTATIONS if _face_is_internal(config, face))
+
+
+def _init_private_interface_owner_state(
+    config: SubgridConfig3D,
+) -> _PrivateInterfaceOwnerState:
+    face_count = len(_active_faces(config))
+    return _PrivateInterfaceOwnerState(
+        face_phase_reference=jnp.zeros((face_count,), dtype=jnp.float32),
+        face_magnitude_reference=jnp.zeros((face_count,), dtype=jnp.float32),
+        face_update_count=jnp.zeros((face_count,), dtype=jnp.int32),
+    )
+
+
+def _ensure_private_interface_owner_state(
+    state: SubgridState3D,
+    config: SubgridConfig3D,
+) -> _PrivateInterfaceOwnerState:
+    if state.private_interface_owner_state is None:
+        return _init_private_interface_owner_state(config)
+    return state.private_interface_owner_state
+
+
+def _advance_private_interface_owner_state(
+    owner_state: _PrivateInterfaceOwnerState,
+) -> _PrivateInterfaceOwnerState:
+    return owner_state._replace(
+        face_update_count=owner_state.face_update_count + jnp.asarray(1, dtype=jnp.int32)
+    )
 
 
 def _touching_outer_faces(config: SubgridConfig3D) -> frozenset[str]:
@@ -1332,6 +1370,7 @@ def step_subgrid_3d_with_cpml(
         mats_c = _make_mats(state.ex_c.shape)
     if mats_f is None:
         mats_f = _make_mats(state.ex_f.shape)
+    private_interface_owner_state = _ensure_private_interface_owner_state(state, config)
 
     coarse_h = FDTDState(
         ex=state.ex_c,
@@ -1381,9 +1420,14 @@ def step_subgrid_3d_with_cpml(
                 hy_f=hy_f,
                 hz_f=hz_f,
                 step=state.step,
+                private_interface_owner_state=private_interface_owner_state,
             )
         )
         hx_f, hy_f, hz_f = hook_state.hx_f, hook_state.hy_f, hook_state.hz_f
+        private_interface_owner_state = _ensure_private_interface_owner_state(
+            hook_state,
+            config,
+        )
     h_pre_sat_coarse = (hx_c, hy_c, hz_c)
     h_pre_sat_fine = (hx_f, hy_f, hz_f)
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = apply_sat_h_interfaces(
@@ -1447,9 +1491,14 @@ def step_subgrid_3d_with_cpml(
                 hy_f=hy_f,
                 hz_f=hz_f,
                 step=state.step,
+                private_interface_owner_state=private_interface_owner_state,
             )
         )
         ex_f, ey_f, ez_f = hook_state.ex_f, hook_state.ey_f, hook_state.ez_f
+        private_interface_owner_state = _ensure_private_interface_owner_state(
+            hook_state,
+            config,
+        )
     e_pre_sat_coarse = (ex_c, ey_c, ez_c)
     e_pre_sat_fine = (ex_f, ey_f, ez_f)
     (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = apply_sat_e_interfaces(
@@ -1505,6 +1554,9 @@ def step_subgrid_3d_with_cpml(
             hy_f=hy_f,
             hz_f=hz_f,
             step=state.step + 1,
+            private_interface_owner_state=_advance_private_interface_owner_state(
+                private_interface_owner_state
+            ),
         ),
         cpml_new,
     )
@@ -1528,6 +1580,8 @@ def step_subgrid_3d(
     private_post_e_hook=None,
 ) -> SubgridState3D:
     """Advance the current all-PEC subgrid lane by one timestep."""
+
+    private_interface_owner_state = _ensure_private_interface_owner_state(state, config)
 
     hx_c, hy_c, hz_c = _update_h_only(
         state.ex_c,
@@ -1573,9 +1627,14 @@ def step_subgrid_3d(
                 hy_f=hy_f,
                 hz_f=hz_f,
                 step=state.step,
+                private_interface_owner_state=private_interface_owner_state,
             )
         )
         hx_f, hy_f, hz_f = hook_state.hx_f, hook_state.hy_f, hook_state.hz_f
+        private_interface_owner_state = _ensure_private_interface_owner_state(
+            hook_state,
+            config,
+        )
     h_pre_sat_coarse = (hx_c, hy_c, hz_c)
     h_pre_sat_fine = (hx_f, hy_f, hz_f)
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = apply_sat_h_interfaces(
@@ -1635,9 +1694,14 @@ def step_subgrid_3d(
                 hy_f=hy_f,
                 hz_f=hz_f,
                 step=state.step,
+                private_interface_owner_state=private_interface_owner_state,
             )
         )
         ex_f, ey_f, ez_f = hook_state.ex_f, hook_state.ey_f, hook_state.ez_f
+        private_interface_owner_state = _ensure_private_interface_owner_state(
+            hook_state,
+            config,
+        )
     e_pre_sat_coarse = (ex_c, ey_c, ez_c)
     e_pre_sat_fine = (ex_f, ey_f, ez_f)
     (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = apply_sat_e_interfaces(
@@ -1692,6 +1756,9 @@ def step_subgrid_3d(
         hy_f=hy_f,
         hz_f=hz_f,
         step=state.step + 1,
+        private_interface_owner_state=_advance_private_interface_owner_state(
+            private_interface_owner_state
+        ),
     )
 
 

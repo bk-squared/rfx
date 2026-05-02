@@ -13,6 +13,7 @@ from rfx.grid import Grid
 from rfx.subgridding.sbp_sat_3d import (
     SubgridConfig3D,
     SubgridState3D,
+    _init_private_interface_owner_state,
     step_subgrid_3d,
     step_subgrid_3d_with_cpml,
     validate_subgrid_config_3d,
@@ -453,6 +454,7 @@ def run_subgridded_jit(
         hy_f=init_f.hy,
         hz_f=init_f.hz,
         step=0,
+        private_interface_owner_state=_init_private_interface_owner_state(config),
     )
     cpml_params = cpml_state_init = None
     cpml_grid_c = grid_c

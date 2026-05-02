@@ -2329,13 +2329,115 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == solver_state_owner_propagation["next_prerequisite"]
     )
+    solver_state_owner_implementation = benchmark_gate[
+        "private_plane_wave_solver_state_owner_propagation_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_solver_state_owner_propagation_implementation_status"
+    ] == (
+        "private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending"
+    )
+    assert solver_state_owner_implementation["terminal_outcome"] == (
+        "private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending"
+    )
+    assert solver_state_owner_implementation[
+        "upstream_propagation_boundary_status"
+    ] == benchmark_gate[
+        "private_plane_wave_solver_state_owner_propagation_boundary_status"
+    ]
+    assert solver_state_owner_implementation["upstream_owner_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_solver_wide_interface_state_owner_implementation_status"
+        ]
+    )
+    assert solver_state_owner_implementation["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert solver_state_owner_implementation["candidate_count"] == 5
+    assert solver_state_owner_implementation["selected_candidate_id"] == (
+        "P2_runner_jit_owner_propagation_hunk"
+    )
+    assert solver_state_owner_implementation["baseline_metrics"] == (
+        solver_state_owner_propagation["baseline_metrics"]
+    )
+    assert solver_state_owner_implementation["baseline_metrics_preserved"] is True
+    assert solver_state_owner_implementation["thresholds_unchanged"] is True
+    assert solver_state_owner_implementation["state_pytree_hunk_retained"] is True
+    assert solver_state_owner_implementation["owner_state_shape_hunk_retained"] is True
+    assert (
+        solver_state_owner_implementation[
+            "runner_jit_owner_propagation_hunk_retained"
+        ]
+        is True
+    )
+    assert solver_state_owner_implementation["scan_staging_hunk_retained"] is False
+    assert (
+        solver_state_owner_implementation["joint_score_with_owner_hunk_retained"]
+        is False
+    )
+    assert solver_state_owner_implementation["joint_phase_magnitude_improved"] is False
+    assert solver_state_owner_implementation["production_patch_applied"] is True
+    assert solver_state_owner_implementation["solver_behavior_changed"] is True
+    assert solver_state_owner_implementation["field_update_behavior_changed"] is False
+    assert solver_state_owner_implementation["runner_behavior_changed"] is True
+    assert solver_state_owner_implementation["new_solver_hunk_retained"] is True
+    assert solver_state_owner_implementation["true_rt_readiness_unlocked"] is False
+    assert solver_state_owner_implementation["fixture_quality_pending"] is True
+    assert (
+        solver_state_owner_implementation["next_lane_requires_owner_scan_wiring"]
+        is True
+    )
+    implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in solver_state_owner_implementation["candidate_ladder"]
+    }
+    assert (
+        implementation_candidates["P1_private_owner_state_shape_hunk"][
+            "production_hunk_retained"
+        ]
+        is True
+    )
+    assert (
+        implementation_candidates["P2_runner_jit_owner_propagation_hunk"][
+            "accepted_candidate"
+        ]
+        is True
+    )
+    assert (
+        implementation_candidates["P3_owner_scan_wiring_joint_parity_score"][
+            "attempted_in_this_lane"
+        ]
+        is False
+    )
+    assert (
+        implementation_candidates["P4_solver_state_owner_propagation_blocked"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert solver_state_owner_implementation["public_claim_allowed"] is False
+    assert solver_state_owner_implementation["public_observable_promoted"] is False
+    assert (
+        solver_state_owner_implementation["true_rt_public_observable_promoted"]
+        is False
+    )
+    assert (
+        solver_state_owner_implementation["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_solver_state_owner_propagation_implementation_next_prerequisite"
+        ]
+        == solver_state_owner_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave solver-state owner propagation implementation after "
-        "boundary contract ready ralplan"
+        "private plane-wave solver-wide owner scan wiring and joint parity scoring "
+        "after propagation hunk retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave solver-state owner propagation implementation after "
-        "boundary contract ready ralplan"
+        "private plane-wave solver-wide owner scan wiring and joint parity scoring "
+        "after propagation hunk retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -2414,6 +2516,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_solver_state_owner_propagation_boundary_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_solver_state_owner_propagation_implementation_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -2681,8 +2789,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave solver-state owner propagation implementation after "
-        "boundary contract ready ralplan"
+        "private plane-wave solver-wide owner scan wiring and joint parity scoring "
+        "after propagation hunk retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

@@ -18,6 +18,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _active_faces,
     _face_interior_masks,
     _get_face_ops,
+    _init_private_interface_owner_state,
     apply_sat_e_interfaces,
     apply_sat_h_interfaces,
     compute_energy_3d,
@@ -523,6 +524,88 @@ def test_time_centered_paired_face_helper_is_wired_after_e_sat():
         helper_source = source[helper_index:]
         assert "private_post_h_hook" not in helper_source
         assert "private_post_e_hook" not in helper_source
+
+
+def test_private_interface_owner_state_initializes_for_active_faces():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+
+    owner_state = state.private_interface_owner_state
+
+    assert owner_state is not None
+    assert owner_state.face_phase_reference.shape == (len(_active_faces(config)),)
+    assert owner_state.face_magnitude_reference.shape == (len(_active_faces(config)),)
+    assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
+    np.testing.assert_allclose(np.asarray(owner_state.face_phase_reference), 0.0)
+    np.testing.assert_allclose(np.asarray(owner_state.face_magnitude_reference), 0.0)
+    np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 0)
+
+
+def test_private_interface_owner_state_propagates_through_non_cpml_step():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    state = state._replace(private_interface_owner_state=None)
+
+    next_state = step_subgrid_3d(state, config)
+
+    owner_state = next_state.private_interface_owner_state
+    assert owner_state is not None
+    assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
+    np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 1)
+
+
+def test_private_interface_owner_state_propagates_through_cpml_step():
+    grid = Grid(
+        freq_max=5e9,
+        domain=(0.020, 0.020, 0.020),
+        dx=0.004,
+        cpml_layers=1,
+    )
+    config, state = init_subgrid_3d(
+        shape_c=grid.shape,
+        dx_c=grid.dx,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    cpml_params, cpml_state = init_cpml(grid)
+    state = state._replace(private_interface_owner_state=None)
+
+    next_state, _ = step_subgrid_3d_with_cpml(
+        state,
+        config,
+        cpml_params=cpml_params,
+        cpml_state=cpml_state,
+        grid_c=grid,
+        cpml_axes="xyz",
+    )
+
+    owner_state = next_state.private_interface_owner_state
+    assert owner_state is not None
+    assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
+    np.testing.assert_array_equal(np.asarray(owner_state.face_update_count), 1)
+
+
+def test_private_interface_owner_state_initializes_in_jit_runner():
+    source = inspect.getsource(jit_runner.run_subgridded_jit)
+    assert "_init_private_interface_owner_state(config)" in source
+
+    config, _ = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    owner_state = _init_private_interface_owner_state(config)
+
+    assert owner_state.face_update_count.shape == (len(_active_faces(config)),)
 
 
 def _spy_operator_projected_helper(monkeypatch):

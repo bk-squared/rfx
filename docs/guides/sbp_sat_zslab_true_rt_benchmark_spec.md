@@ -356,12 +356,17 @@ initialization before any bounded hunk can be retained, so the next safe lane is
 interface-state owner implementation blocked ralplan`. That design lane now
 records `private_plane_wave_solver_state_owner_propagation_contract_ready`:
 state pytree shape plus runner/JIT initialization boundaries are defined before
-retrying the bounded owner implementation, so the next safe lane is `private
-plane-wave solver-state owner propagation implementation after boundary contract
-ready ralplan`. Hook experiments remain closed and public promotion remains
-closed. Until those fixture-quality gates pass, the private flux/DFT gate
-remains internal diagnostic evidence only, and the support matrix continues to
-mark true R/T as deferred.
+retrying the bounded owner implementation. The follow-up implementation lane now
+records
+`private_plane_wave_runner_jit_owner_propagation_hunk_retained_fixture_quality_pending`:
+the private owner state shape is carried through CPML and non-CPML subgrid steps
+and JIT-runner initialization, but same-step owner scan wiring and joint
+phase/CV parity scoring remain pending. The next safe lane is `private
+plane-wave solver-wide owner scan wiring and joint parity scoring after
+propagation hunk retained ralplan`. Hook experiments remain closed and public
+promotion remains closed. Until those fixture-quality gates pass, the private
+flux/DFT gate remains internal diagnostic evidence only, and the support matrix
+continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
