@@ -1041,6 +1041,57 @@ def _incident_normalized_source_packet(
     return normalized_real, normalized_imag
 
 
+def _private_transverse_modal_coupling_metric(
+    *,
+    gram: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private fixed-shape modal-coupling metric and readiness gate.
+
+    The metric is intentionally local to the private projection helper.  It
+    strengthens only finite off-diagonal modal power couplings that already
+    exist in the incident/reflected/transverse Gram packet, keeps the matrix
+    shape fixed at 3x3, and returns a scalar gate so callers can fail closed
+    without adding public state, hooks, observables, or runner inputs.
+    """
+
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    identity = jnp.eye(3, dtype=jnp.complex64)
+    offdiag_mask = 1.0 - identity
+    diag = jnp.maximum(jnp.real(jnp.diag(gram)), floor)
+    diag_scale = jnp.sqrt(jnp.maximum(diag[:, None] * diag[None, :], floor))
+    magnitude = jnp.abs(gram)
+    normalized_coupling = magnitude / diag_scale
+    bounded_coupling = jnp.clip(
+        normalized_coupling,
+        jnp.asarray(0.0, dtype=diag.dtype),
+        jnp.asarray(0.35, dtype=diag.dtype),
+    )
+    phase = gram / jnp.maximum(magnitude, floor)
+    coupling = (
+        bounded_coupling.astype(jnp.complex64)
+        * diag_scale.astype(jnp.complex64)
+        * phase
+        * offdiag_mask
+        * active_outer
+    )
+    metric = gram + coupling
+    metric_finite = jnp.all(jnp.isfinite(jnp.real(metric))) & jnp.all(
+        jnp.isfinite(jnp.imag(metric))
+    )
+    metric_ready = metric_finite & (
+        jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype)
+    )
+    safe_metric = jnp.where(metric_ready, metric, identity)
+    return safe_metric, jnp.where(
+        metric_ready,
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -1215,17 +1266,30 @@ def _project_private_modal_basis_packets(
         identity = jnp.eye(3, dtype=jnp.complex64)
         regularizer = floor.astype(jnp.complex64) * identity
         inactive_diagonal = jnp.diag(1.0 - active).astype(jnp.complex64)
-        gram = gram * active_outer + inactive_diagonal + regularizer
+        gram = gram * active_outer
+        gram, coupling_ready = _private_transverse_modal_coupling_metric(
+            gram=gram,
+            active=mode_active,
+            floor=floor,
+        )
+        gram = gram + inactive_diagonal + regularizer
         rhs = (
             jnp.sum(
                 weight[None, ...] * jnp.conj(modes) * packet[None, ...],
                 axis=tuple(range(1, modes.ndim)),
             )
             * active
+            * coupling_ready.astype(jnp.complex64)
         )
         coeff = jnp.linalg.solve(gram, rhs)
         coeff_shape = (coeff.size,) + (1,) * (modes.ndim - 1)
-        projected = jnp.sum((coeff * active).reshape(coeff_shape) * modes, axis=0)
+        projected = jnp.sum(
+            (coeff * active * coupling_ready.astype(jnp.complex64)).reshape(
+                coeff_shape
+            )
+            * modes,
+            axis=0,
+        )
         return jnp.real(projected).astype(dtype), jnp.imag(projected).astype(dtype)
 
     incident_real, incident_imag, incident_active = _normalize_mode(

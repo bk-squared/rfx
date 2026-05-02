@@ -22,6 +22,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _get_face_ops,
     _init_private_interface_owner_state,
     _private_interface_owner_joint_score,
+    _private_transverse_modal_coupling_metric,
     _project_private_modal_basis_packets,
     _stage_private_time_aligned_owner_packets,
     _update_private_interface_owner_state_from_scan,
@@ -1147,6 +1148,47 @@ def test_project_private_modal_basis_packets_requires_metric_shape_contract():
     np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
     np.testing.assert_allclose(np.asarray(blocked_real), np.asarray(interface_real))
     np.testing.assert_allclose(np.asarray(blocked_imag), np.asarray(interface_imag))
+
+
+def test_private_transverse_modal_coupling_metric_is_fixed_shape_private_contract():
+    gram = jnp.asarray(
+        [
+            [4.0 + 0.0j, 1.5 + 0.5j, 0.25 - 0.25j],
+            [1.5 - 0.5j, 9.0 + 0.0j, 2.0 + 0.75j],
+            [0.25 + 0.25j, 2.0 - 0.75j, 16.0 + 0.0j],
+        ],
+        dtype=jnp.complex64,
+    )
+    active = jnp.asarray([1.0, 1.0, 1.0], dtype=jnp.float32)
+
+    metric, gate = _private_transverse_modal_coupling_metric(
+        gram=gram,
+        active=active,
+        floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+    )
+
+    assert metric.shape == (3, 3)
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.asarray(jnp.diag(metric)), np.asarray(jnp.diag(gram)))
+    assert np.abs(np.asarray(metric[0, 1])) > np.abs(np.asarray(gram[0, 1]))
+    assert np.abs(np.asarray(metric[1, 2])) > np.abs(np.asarray(gram[1, 2]))
+    assert np.all(np.isfinite(np.asarray(metric.real)))
+    assert np.all(np.isfinite(np.asarray(metric.imag)))
+
+    nonfinite_gram = gram.at[0, 1].set(jnp.asarray(jnp.nan + 0.0j, dtype=jnp.complex64))
+    blocked_metric, blocked_gate = _private_transverse_modal_coupling_metric(
+        gram=nonfinite_gram,
+        active=active,
+        floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(
+        np.asarray(blocked_metric),
+        np.eye(3, dtype=np.complex64),
+    )
+    assert np.all(np.isfinite(np.asarray(blocked_metric.real)))
+    assert np.all(np.isfinite(np.asarray(blocked_metric.imag)))
 
 
 def test_propagation_aware_modal_retry_helper_uses_source_owner_packet():

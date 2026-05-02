@@ -591,6 +591,13 @@ existing owner/interface packet shapes and existing projection-normalizer
 helpers, rejects another scalar face-metric extension, keeps thresholds and
 public surfaces unchanged, and defers solver edits to a separate bounded
 implementation lane.
+The projected target residual-basis energy-biorthogonal transverse modal-
+coupling metric implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_transverse_modal_coupling_metric_hunk_retained_fixture_quality_pending`:
+the private projection helper now applies a bounded fixed-shape 3x3 modal
+coupling matrix inside the incident/reflected/transverse Gram packet, keeps
+public surfaces and thresholds unchanged, and defers fixture-quality claims to
+a separate private parity-scoring lane.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
