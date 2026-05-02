@@ -100,7 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave modal projection/normalizer
-contract parity scoring after the implementation hunk was retained.
+contract failure-theory redesign after parity scoring found the retained hunk
+insufficient.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -139,7 +140,11 @@ for a bounded private implementation lane while public observables remain
 closed. The implementation lane now records
 `private_plane_wave_modal_projection_normalizer_contract_hunk_retained_fixture_quality_pending`:
 a fail-closed private contract gate is retained inside propagation-aware modal
-retry, and the next safe lane is private parity scoring after the hunk. The
+retry. The parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending`:
+the retained contract gate hunk is finite under private scoring, but unchanged
+material-improvement, transverse-uniformity, and vacuum-stability gates remain
+closed; the next safe lane is private failure-theory redesign. The
 private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

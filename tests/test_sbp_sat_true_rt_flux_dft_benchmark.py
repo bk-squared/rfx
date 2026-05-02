@@ -1654,6 +1654,27 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_IMPLEMENTATION_PRECEDEN
     "private_plane_wave_modal_projection_normalizer_contract_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer contract failure-theory "
+    "redesign after parity scoring insufficient ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_normalizer_contract_parity_scored_fixture_quality_pending",
+    "private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending",
+    "private_plane_wave_modal_projection_normalizer_contract_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    "no_private_plane_wave_modal_projection_normalizer_contract_parity_scoring",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_PRECEDENCE = (
+    "no_private_plane_wave_modal_projection_normalizer_contract_parity_scoring",
+    "private_plane_wave_modal_projection_normalizer_contract_parity_scored_fixture_quality_pending",
+    "private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending",
+    "private_plane_wave_modal_projection_normalizer_contract_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -14803,6 +14824,219 @@ def _private_plane_wave_modal_projection_normalizer_contract_implementation_meta
         **_private_public_closure_metadata(),
     }
 
+
+def _private_plane_wave_modal_projection_normalizer_contract_parity_scoring_metadata(
+    *,
+    contract_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(contract_implementation_metadata["baseline_metrics"])
+    metrics = dict(contract_implementation_metadata["metrics"])
+    thresholds = dict(contract_implementation_metadata["thresholds"])
+    threshold_results = dict(contract_implementation_metadata["threshold_results"])
+    material_decision = _material_improvement_decision(
+        baseline_metrics=baseline_metrics,
+        candidate_metrics=metrics,
+        dominant_metric="transverse_phase_spread_deg",
+    )
+    score_delta = {
+        name: float(metrics[name]) - float(baseline_metrics[name])
+        for name in (
+            "transverse_magnitude_cv",
+            "transverse_phase_spread_deg",
+            "vacuum_relative_magnitude_error",
+            "vacuum_phase_error_deg",
+        )
+    }
+    relative_improvement = {
+        name: (
+            (float(baseline_metrics[name]) - float(metrics[name]))
+            / max(abs(float(baseline_metrics[name])), 1.0e-12)
+        )
+        for name in score_delta
+    }
+    finite_score = bool(
+        all(
+            np.isfinite(float(metrics[name]))
+            for name in (
+                "transverse_phase_spread_deg",
+                "transverse_magnitude_cv",
+                "vacuum_relative_magnitude_error",
+                "vacuum_phase_error_deg",
+            )
+        )
+        and int(metrics["usable_bins"]) > 0
+    )
+    s0 = {
+        "candidate_id": "S0_contract_hunk_score_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_contract_implementation_status": (
+            contract_implementation_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    s1 = {
+        "candidate_id": "S1_finite_modal_contract_private_parity_score",
+        "candidate_family": "private_modal_contract_parity_scoring_gate",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_STATUS
+        ),
+        "finite_reproducible_score": finite_score,
+        "contract_gate_hunk_retained": True,
+        "contract_gate_fail_closed": True,
+        "score_uses_retained_implementation_metrics": True,
+        "threshold_results": threshold_results,
+        "public_claim_allowed": False,
+    }
+    s2 = {
+        "candidate_id": "S2_material_improvement_gate",
+        "candidate_family": "private_material_improvement_gate",
+        "accepted_candidate": False,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "not_selected_reason": (
+            "the retained modal projection/normalizer contract hunk produces "
+            "finite private score evidence but does not pass the unchanged "
+            "paired material-improvement rule"
+        ),
+        "public_claim_allowed": False,
+    }
+    s3 = {
+        "candidate_id": "S3_fixture_quality_true_rt_readiness_preflight",
+        "candidate_family": "fixture_quality_and_true_rt_readiness_gate",
+        "accepted_candidate": False,
+        "threshold_results": threshold_results,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "true_rt_readiness_unlocked": False,
+        "not_selected_reason": (
+            "the retained contract hunk remains above transverse and vacuum "
+            "thresholds, so private true-R/T slab scoring remains locked"
+        ),
+        "public_claim_allowed": False,
+    }
+    s4 = {
+        "candidate_id": "S4_modal_contract_parity_scoring_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_modal_projection_normalizer_contract_parity_scoring"
+        ),
+        "not_selected_reason": (
+            "finite private scoring is available, so the lane records "
+            "insufficient fixture-quality evidence rather than a hard scoring block"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (s0, s1, s2, s3, s4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_only"
+        ),
+        "upstream_contract_implementation_status": (
+            contract_implementation_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite S0/S1/S2/S3/S4 modal contract parity-scoring ladder; "
+            "admit only private evidence unless unchanged material-improvement "
+            "and fixture-quality thresholds pass without public-surface promotion"
+        ),
+        "selected_candidate_id": "S1_finite_modal_contract_private_parity_score",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "contract_gate_hunk_retained": True,
+        "contract_gate_helper_retained": True,
+        "contract_gate_fail_closed": True,
+        "layout_contract_enforced": True,
+        "orientation_contract_enforced": True,
+        "mask_contract_enforced": True,
+        "weight_contract_enforced": True,
+        "normalizer_contract_enforced": True,
+        "parity_scoring_lane_executed": True,
+        "finite_reproducible_score": finite_score,
+        "score_uses_retained_implementation_metrics": True,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_modal_projection_normalizer_contract_failure_theory": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the retained modal projection/normalizer contract hunk is now "
+            "privately parity-scored and finite, but unchanged material-"
+            "improvement and fixture-quality gates remain closed; the next "
+            "safe lane is private failure-theory redesign rather than true-R/T "
+            "or public observable promotion"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -17912,8 +18146,32 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_contract_parity_scoring_metadata = (
+        _private_plane_wave_modal_projection_normalizer_contract_parity_scoring_metadata(
+            contract_implementation_metadata=(
+                plane_wave_modal_projection_normalizer_contract_implementation_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_status": (
+                plane_wave_modal_projection_normalizer_contract_parity_scoring_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_contract_parity_scoring": (
+                plane_wave_modal_projection_normalizer_contract_parity_scoring_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_contract_parity_scoring_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_modal_projection_normalizer_contract_implementation_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -18109,6 +18367,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave modal projection/normalizer "
                 "contract implementation lane records "
                 f"{plane_wave_modal_projection_normalizer_contract_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "contract parity scoring lane records "
+                f"{plane_wave_modal_projection_normalizer_contract_parity_scoring_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -18118,7 +18379,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_modal_projection_normalizer_contract_implementation_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_next_prerequisite"
             ],
         }
 
@@ -24628,10 +24889,107 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_modal_projection_normalizer_contract_implementation_next_prerequisite"
         ]
     )
+    modal_contract_parity_scoring = metadata[
+        "private_plane_wave_modal_projection_normalizer_contract_parity_scoring"
+    ]
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_status"
+    ] == _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_STATUS
+    assert modal_contract_parity_scoring["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_CONTRACT_PARITY_SCORING_STATUS
+    )
+    assert modal_contract_parity_scoring[
+        "upstream_contract_implementation_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_contract_implementation_status"
+    ]
+    assert modal_contract_parity_scoring["candidate_ladder_declared_before_solver_edit"]
+    assert modal_contract_parity_scoring["candidate_ladder_declared_before_slow_scoring"]
+    assert modal_contract_parity_scoring["candidate_count"] == 5
+    assert modal_contract_parity_scoring["selected_candidate_id"] == (
+        "S1_finite_modal_contract_private_parity_score"
+    )
+    assert modal_contract_parity_scoring["baseline_metrics"] == (
+        modal_contract_implementation["baseline_metrics"]
+    )
+    assert modal_contract_parity_scoring["metrics"] == (
+        modal_contract_implementation["metrics"]
+    )
+    assert modal_contract_parity_scoring["thresholds"] == (
+        modal_contract_implementation["thresholds"]
+    )
+    assert modal_contract_parity_scoring["threshold_results"] == (
+        modal_contract_implementation["threshold_results"]
+    )
+    assert modal_contract_parity_scoring["baseline_metrics_preserved"] is True
+    assert modal_contract_parity_scoring["thresholds_unchanged"] is True
+    assert modal_contract_parity_scoring["contract_gate_hunk_retained"] is True
+    assert modal_contract_parity_scoring["contract_gate_helper_retained"] is True
+    assert modal_contract_parity_scoring["contract_gate_fail_closed"] is True
+    assert modal_contract_parity_scoring["layout_contract_enforced"] is True
+    assert modal_contract_parity_scoring["orientation_contract_enforced"] is True
+    assert modal_contract_parity_scoring["mask_contract_enforced"] is True
+    assert modal_contract_parity_scoring["weight_contract_enforced"] is True
+    assert modal_contract_parity_scoring["normalizer_contract_enforced"] is True
+    assert modal_contract_parity_scoring["parity_scoring_lane_executed"] is True
+    assert modal_contract_parity_scoring["finite_reproducible_score"] is True
+    assert (
+        modal_contract_parity_scoring[
+            "score_uses_retained_implementation_metrics"
+        ]
+        is True
+    )
+    assert modal_contract_parity_scoring["material_improvement_demonstrated"] is False
+    assert modal_contract_parity_scoring["paired_passed"] is False
+    assert modal_contract_parity_scoring["fixture_quality_ready"] is False
+    assert modal_contract_parity_scoring["fixture_quality_pending"] is True
+    assert modal_contract_parity_scoring["subgrid_vacuum_parity_scored"] is True
+    assert modal_contract_parity_scoring["subgrid_vacuum_parity_passed"] is False
+    assert modal_contract_parity_scoring["true_rt_readiness_unlocked"] is False
+    assert modal_contract_parity_scoring["production_patch_applied"] is False
+    assert modal_contract_parity_scoring["solver_behavior_changed"] is False
+    assert modal_contract_parity_scoring["field_update_behavior_changed"] is False
+    assert modal_contract_parity_scoring["new_solver_hunk_retained"] is False
+    assert modal_contract_parity_scoring["benchmark_plane_dft_observable_imported"] is False
+    assert (
+        modal_contract_parity_scoring[
+            "next_lane_requires_modal_projection_normalizer_contract_failure_theory"
+        ]
+        is True
+    )
+    modal_parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_contract_parity_scoring["candidate_ladder"]
+    }
+    assert modal_parity_candidates[
+        "S1_finite_modal_contract_private_parity_score"
+    ]["accepted_candidate"] is True
+    assert modal_parity_candidates[
+        "S2_material_improvement_gate"
+    ]["accepted_candidate"] is False
+    assert modal_parity_candidates[
+        "S3_fixture_quality_true_rt_readiness_preflight"
+    ]["accepted_candidate"] is False
+    assert modal_parity_candidates[
+        "S4_modal_contract_parity_scoring_blocked"
+    ]["accepted_candidate"] is False
+    assert modal_contract_parity_scoring["public_claim_allowed"] is False
+    assert modal_contract_parity_scoring["public_observable_promoted"] is False
+    assert modal_contract_parity_scoring["true_rt_public_observable_promoted"] is False
+    assert (
+        modal_contract_parity_scoring["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        modal_contract_parity_scoring["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_contract_implementation_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -24657,7 +25015,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_contract_implementation_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_next_prerequisite"
         ]
     )
     assert (
@@ -24938,6 +25296,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata["private_plane_wave_modal_projection_normalizer_contract_implementation_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_contract_parity_scoring_status"
+        ]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

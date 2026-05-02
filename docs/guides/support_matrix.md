@@ -459,8 +459,12 @@ for a bounded private implementation lane while public observables remain
 closed. The implementation lane now records
 `private_plane_wave_modal_projection_normalizer_contract_hunk_retained_fixture_quality_pending`:
 a fail-closed private contract gate is retained inside propagation-aware modal
-retry, and the next safe lane is private modal projection/normalizer parity
-scoring after the hunk.
+retry. The parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_contract_hunk_insufficient_fixture_quality_pending`:
+the retained contract gate hunk is finite under private scoring, but unchanged
+material-improvement, transverse-uniformity, and vacuum-stability gates remain
+closed; the next safe lane is private modal projection/normalizer
+failure-theory redesign.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
