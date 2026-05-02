@@ -414,7 +414,13 @@ the retained hunk has finite private parity evidence, but unchanged material-
 improvement and readiness gates do not pass because production source-owner
 incident packet population is still absent. The next safe lane is private
 source-owner incident packet population design; public promotion remains
-closed.
+closed. That design lane now records
+`private_plane_wave_source_owner_incident_packet_population_contract_ready`:
+source-owner reference, incident-normalizer, packet offset/orientation, and
+pre-modal-retry timing contracts are private, fixed-shape, CPML/non-CPML/JIT
+symmetric, and non-aliasing with the interface-owner packet. The next safe lane
+is private source-owner incident packet population implementation after design
+contract ready; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

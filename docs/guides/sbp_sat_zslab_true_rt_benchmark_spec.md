@@ -451,6 +451,13 @@ finite private scoring is available, but the unchanged material-improvement and
 true-R/T readiness gates remain below threshold because production source-owner
 incident packet population is not wired yet. The next safe lane is private
 source-owner incident packet population design.
+That design lane now records
+`private_plane_wave_source_owner_incident_packet_population_contract_ready`:
+source-owner reference, incident-normalizer, packet offset/orientation, and
+pre-modal-retry timing contracts can remain private, fixed-shape,
+CPML/non-CPML/JIT symmetric, and separate from interface-owner packets. The
+next safe lane is private source-owner incident packet population implementation
+after design contract ready.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

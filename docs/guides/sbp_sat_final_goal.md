@@ -100,8 +100,8 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave source-owner incident packet
-population design after source-normalized modal parity scoring remained
-fixture-quality pending. The private
+population implementation after the private population design contract became
+ready. The private
 owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
@@ -183,7 +183,13 @@ propagation-aware modal retry parity scoring. That scoring lane now records
 finite private scoring is available, but material-improvement and true-R/T
 readiness gates remain below threshold because production source-owner incident
 packet population is not wired yet. The next lane is private source-owner
-incident packet population design. The private solver-local
+incident packet population design. That design lane now records
+`private_plane_wave_source_owner_incident_packet_population_contract_ready`:
+source-owner reference, incident-normalizer, packet offset/orientation, and
+pre-modal-retry timing contracts can stay private, fixed-shape,
+CPML/non-CPML/JIT symmetric, and non-aliasing with the interface-owner packet.
+The next lane is private source-owner incident packet population implementation.
+The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
