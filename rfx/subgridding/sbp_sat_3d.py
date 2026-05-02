@@ -1041,6 +1041,67 @@ def _incident_normalized_source_packet(
     return normalized_real, normalized_imag
 
 
+def _project_private_modal_basis_packets(
+    *,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    normalizer_real: jnp.ndarray,
+    normalizer_imag: jnp.ndarray,
+    source_weight: jnp.ndarray,
+    interface_weight: jnp.ndarray,
+    source_mask: jnp.ndarray,
+    interface_mask: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Project private source packets onto a shared incident modal basis.
+
+    This helper is deliberately solver-local and fixed-shape.  It consumes the
+    existing private owner-state packets, forms one mask/weight-compatible
+    incident basis from the source normalizer, projects the private source onto
+    that basis, and subtracts only the projected incident mode from the
+    interface packet.  Missing projection energy returns a scalar zero gate so
+    callers can fail closed without branching or exposing public observables.
+    """
+
+    dtype = source_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    eps = jnp.asarray(1.0e-30, dtype=dtype)
+    packet_mask = source_mask * interface_mask
+    packet_weight = 0.5 * (source_weight + interface_weight) * packet_mask
+    normalizer_energy = (
+        normalizer_real * normalizer_real + normalizer_imag * normalizer_imag
+    )
+    source_energy = source_real * source_real + source_imag * source_imag
+    basis_power = jnp.sum(packet_weight * normalizer_energy)
+    source_power = jnp.sum(packet_weight * source_energy)
+    basis_norm = jnp.sqrt(jnp.maximum(basis_power, floor))
+    unit_real = normalizer_real / basis_norm
+    unit_imag = normalizer_imag / basis_norm
+
+    source_coeff_real = jnp.sum(
+        packet_weight * (source_real * unit_real + source_imag * unit_imag)
+    )
+    source_coeff_imag = jnp.sum(
+        packet_weight * (source_imag * unit_real - source_real * unit_imag)
+    )
+    projected_source_real = (
+        source_coeff_real * unit_real - source_coeff_imag * unit_imag
+    )
+    projected_source_imag = (
+        source_coeff_real * unit_imag + source_coeff_imag * unit_real
+    )
+    projection_ready = (basis_power > floor) & (source_power > eps)
+    projected_target_real = interface_real - projected_source_real
+    projected_target_imag = interface_imag - projected_source_imag
+    projection_gate = jnp.where(
+        projection_ready,
+        jnp.asarray(1.0, dtype=dtype),
+        jnp.asarray(0.0, dtype=dtype),
+    )
+    return projected_target_real, projected_target_imag, projection_gate
+
+
 def _private_modal_projection_normalizer_contract_gate(
     *,
     owner_state: _PrivateInterfaceOwnerState,
@@ -1200,12 +1261,24 @@ def _apply_propagation_aware_modal_retry_face_helper(
         normalizer_imag = owner_state.source_incident_normalizer_imag[
             packet_slice
         ].reshape(ops.coarse_shape)
-        normalized_source_real, normalized_source_imag = (
-            _incident_normalized_source_packet(
+        source_weight = owner_state.source_owner_weight[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        interface_weight = owner_state.face_proxy_weight[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        target_real, target_imag, projection_gate = (
+            _project_private_modal_basis_packets(
                 source_real=source_real,
                 source_imag=source_imag,
+                interface_real=interface_real,
+                interface_imag=interface_imag,
                 normalizer_real=normalizer_real,
                 normalizer_imag=normalizer_imag,
+                source_weight=source_weight,
+                interface_weight=interface_weight,
+                source_mask=source_mask,
+                interface_mask=interface_mask,
             )
         )
         contract_gate = _private_modal_projection_normalizer_contract_gate(
@@ -1229,10 +1302,12 @@ def _apply_propagation_aware_modal_retry_face_helper(
             jnp.asarray(1.0, dtype=source_real.dtype),
             jnp.asarray(0.0, dtype=source_real.dtype),
         )
-        active_scale = source_active_scale * interface_active_scale * contract_gate
-
-        target_real = interface_real - normalized_source_real
-        target_imag = interface_imag - normalized_source_imag
+        active_scale = (
+            source_active_scale
+            * interface_active_scale
+            * contract_gate
+            * projection_gate
+        )
         coarse_e = extract_tangential_e_face(e_coarse, config, face, grid="coarse")
         fine_e = extract_tangential_e_face(e_fine, config, face, grid="fine")
         coarse_h = extract_tangential_h_face(h_coarse, config, face, grid="coarse")

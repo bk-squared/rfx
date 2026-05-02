@@ -472,7 +472,14 @@ design lane now records
 `private_plane_wave_modal_projection_normalizer_projected_basis_contract_design_ready`:
 private basis vectors, power normalization, mask weighting, and fail-closed
 implementation preconditions are frozen; the next safe lane is private
-projected-basis implementation.
+projected-basis implementation. The projected-basis implementation lane now
+records
+`private_plane_wave_modal_projection_normalizer_projected_basis_hunk_retained_fixture_quality_pending`:
+a solver-local `_project_private_modal_basis_packets` helper projects private
+source packets onto the incident normalizer basis before modal retry
+subtraction, fails closed on missing projection energy or packet contract
+mismatch, and keeps public true R/T/DFT/flux/TFSF/port/S-parameter surfaces
+closed; the next safe lane is private projected-basis parity scoring.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

@@ -22,6 +22,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _get_face_ops,
     _init_private_interface_owner_state,
     _private_interface_owner_joint_score,
+    _project_private_modal_basis_packets,
     _stage_private_time_aligned_owner_packets,
     _update_private_interface_owner_state_from_scan,
     _update_private_source_owner_state_from_scan,
@@ -1034,6 +1035,59 @@ def _private_owner_with_source_interface_reference(config, *, source_active):
         source_incident_normalizer_real=2.0 * source_mask,
         source_incident_normalizer_imag=jnp.zeros_like(source_mask),
     )
+
+
+def test_project_private_modal_basis_packets_projects_source_onto_shared_basis():
+    source_real = jnp.asarray([[1.0, 1.0], [3.0, 3.0]], dtype=jnp.float32)
+    source_imag = jnp.zeros_like(source_real)
+    interface_real = 5.0 * jnp.ones_like(source_real)
+    interface_imag = jnp.zeros_like(source_real)
+    normalizer_real = jnp.ones_like(source_real)
+    normalizer_imag = jnp.zeros_like(source_real)
+    packet_weight = jnp.ones_like(source_real)
+    packet_mask = jnp.ones_like(source_real)
+
+    target_real, target_imag, projection_gate = (
+        _project_private_modal_basis_packets(
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            normalizer_real=normalizer_real,
+            normalizer_imag=normalizer_imag,
+            source_weight=packet_weight,
+            interface_weight=packet_weight,
+            source_mask=packet_mask,
+            interface_mask=packet_mask,
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(projection_gate), 1.0)
+    np.testing.assert_allclose(np.asarray(target_real), 3.0)
+    np.testing.assert_allclose(np.asarray(target_imag), 0.0)
+
+
+def test_project_private_modal_basis_packets_fails_closed_without_basis_energy():
+    packet = jnp.ones((2, 2), dtype=jnp.float32)
+
+    target_real, target_imag, projection_gate = (
+        _project_private_modal_basis_packets(
+            source_real=packet,
+            source_imag=packet,
+            interface_real=2.0 * packet,
+            interface_imag=3.0 * packet,
+            normalizer_real=jnp.zeros_like(packet),
+            normalizer_imag=jnp.zeros_like(packet),
+            source_weight=packet,
+            interface_weight=packet,
+            source_mask=packet,
+            interface_mask=packet,
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(projection_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(target_real), 2.0)
+    np.testing.assert_allclose(np.asarray(target_imag), 3.0)
 
 
 def test_propagation_aware_modal_retry_helper_uses_source_owner_packet():

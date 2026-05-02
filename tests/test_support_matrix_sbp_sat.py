@@ -5611,13 +5611,117 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == projected_basis_design["next_prerequisite"]
     )
+    projected_basis_implementation = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_basis_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_basis_implementation_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_basis_hunk_retained_fixture_quality_pending"
+    )
+    assert projected_basis_implementation["terminal_outcome"] == (
+        "private_plane_wave_modal_projection_normalizer_projected_basis_hunk_retained_fixture_quality_pending"
+    )
+    assert projected_basis_implementation[
+        "upstream_projected_basis_design_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_basis_design_status"
+    ]
+    assert projected_basis_implementation["candidate_ladder_declared_before_implementation"]
+    assert projected_basis_implementation["candidate_ladder_declared_before_solver_edit"]
+    assert projected_basis_implementation["candidate_ladder_declared_before_slow_scoring"]
+    assert projected_basis_implementation["candidate_count"] == 5
+    assert projected_basis_implementation["selected_candidate_id"] == (
+        "V3_combined_projected_basis_implementation_hunk"
+    )
+    assert projected_basis_implementation["baseline_metrics"] == (
+        projected_basis_design["baseline_metrics"]
+    )
+    assert projected_basis_implementation["metrics"] == (
+        projected_basis_design["metrics"]
+    )
+    assert projected_basis_implementation["thresholds"] == (
+        projected_basis_design["thresholds"]
+    )
+    assert projected_basis_implementation["threshold_results"] == (
+        projected_basis_design["threshold_results"]
+    )
+    assert projected_basis_implementation["baseline_metrics_preserved"]
+    assert projected_basis_implementation["thresholds_unchanged"]
+    assert projected_basis_implementation["projected_basis_design_ready"]
+    assert projected_basis_implementation["projected_basis_schema_consumed"]
+    assert projected_basis_implementation["projected_power_normalizer_consumed"]
+    assert projected_basis_implementation["mask_weighting_contract_consumed"]
+    assert projected_basis_implementation["projected_basis_packet_helper_retained"]
+    assert projected_basis_implementation["projected_basis_helper"] == (
+        "_project_private_modal_basis_packets"
+    )
+    assert projected_basis_implementation["modal_retry_consumer_wiring_retained"]
+    assert projected_basis_implementation["contract_gate_helper_retained"]
+    assert projected_basis_implementation["contract_gate_fail_closed"]
+    assert projected_basis_implementation["projection_gate_fail_closed"]
+    assert projected_basis_implementation["fail_closed_if_projection_energy_missing"]
+    assert projected_basis_implementation["fail_closed_if_packet_contract_mismatch"]
+    assert projected_basis_implementation["reuse_existing_owner_packet_shapes"]
+    assert projected_basis_implementation["fixed_shape_private_coefficients"]
+    assert projected_basis_implementation["cpml_non_cpml_wiring_inherited"]
+    assert projected_basis_implementation["jit_safe_reduction"]
+    projected_basis_implementation_contract = projected_basis_implementation[
+        "implementation_contract"
+    ]
+    assert projected_basis_implementation_contract["projected_basis_helper"] == (
+        "_project_private_modal_basis_packets"
+    )
+    assert projected_basis_implementation_contract["fixed_shape_reductions"]
+    assert projected_basis_implementation_contract[
+        "fail_closed_on_projection_energy_missing"
+    ]
+    assert projected_basis_implementation["material_improvement_demonstrated"] is False
+    assert projected_basis_implementation["paired_passed"] is False
+    assert projected_basis_implementation["fixture_quality_ready"] is False
+    assert projected_basis_implementation["fixture_quality_pending"]
+    assert projected_basis_implementation["true_rt_readiness_unlocked"] is False
+    assert projected_basis_implementation["production_patch_applied"]
+    assert projected_basis_implementation["solver_behavior_changed"]
+    assert projected_basis_implementation["field_update_behavior_changed"]
+    assert projected_basis_implementation["new_solver_hunk_retained"]
+    assert projected_basis_implementation["next_lane_requires_projected_basis_parity_scoring"]
+    projected_basis_implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in projected_basis_implementation["candidate_ladder"]
+    }
+    assert projected_basis_implementation_candidates[
+        "V1_projected_basis_packet_helper"
+    ]["projected_basis_helper_retained"]
+    assert projected_basis_implementation_candidates[
+        "V2_modal_retry_consumer_wiring"
+    ]["helper_consumed_before_modal_subtraction"]
+    assert projected_basis_implementation_candidates[
+        "V3_combined_projected_basis_implementation_hunk"
+    ]["accepted_candidate"]
+    assert projected_basis_implementation_candidates[
+        "V4_projected_basis_implementation_blocked"
+    ]["accepted_candidate"] is False
+    assert projected_basis_implementation["public_claim_allowed"] is False
+    assert projected_basis_implementation["public_observable_promoted"] is False
+    assert projected_basis_implementation["true_rt_public_observable_promoted"] is False
+    assert (
+        projected_basis_implementation["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_basis_implementation_next_prerequisite"
+        ]
+        == projected_basis_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave modal projection/normalizer projected-basis implementation "
-        "after design contract ready ralplan"
+        "private plane-wave modal projection/normalizer projected-basis parity scoring "
+        "after implementation hunk retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave modal projection/normalizer projected-basis implementation "
-        "after design contract ready ralplan"
+        "private plane-wave modal projection/normalizer projected-basis parity scoring "
+        "after implementation hunk retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -5886,6 +5990,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_basis_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -6149,8 +6259,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave modal projection/normalizer projected-basis implementation "
-        "after design contract ready ralplan"
+        "private plane-wave modal projection/normalizer projected-basis parity scoring "
+        "after implementation hunk retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
