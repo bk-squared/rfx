@@ -445,6 +445,12 @@ and lagged interface-owner packet, remains no-op without populated source
 packets, and does not import benchmark DFT/flux/TFSF/port/S-parameter or public
 observable state. The next safe lane is private propagation-aware modal retry
 parity scoring after the source-normalized hunk is retained.
+That scoring lane now records
+`private_plane_wave_propagation_aware_modal_retry_parity_scored_fixture_quality_pending`:
+finite private scoring is available, but the unchanged material-improvement and
+true-R/T readiness gates remain below threshold because production source-owner
+incident packet population is not wired yet. The next safe lane is private
+source-owner incident packet population design.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

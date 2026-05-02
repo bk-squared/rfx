@@ -408,7 +408,13 @@ small tangential-E modal correction. It is no-op until source-owner incident
 packets are populated, imports no benchmark DFT/flux/TFSF/port/S-parameter
 state, and keeps true R/T readiness pending. The next safe lane is private
 propagation-aware modal retry parity scoring after the source-normalized hunk
-is retained; public promotion remains closed.
+is retained; public promotion remains closed. That scoring lane now records
+`private_plane_wave_propagation_aware_modal_retry_parity_scored_fixture_quality_pending`:
+the retained hunk has finite private parity evidence, but unchanged material-
+improvement and readiness gates do not pass because production source-owner
+incident packet population is still absent. The next safe lane is private
+source-owner incident packet population design; public promotion remains
+closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
