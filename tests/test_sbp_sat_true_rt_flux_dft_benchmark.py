@@ -1180,6 +1180,26 @@ _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_CORRECTION_IMPLEMENTATION_PRECEDENCE = (
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_STATUS = (
+    "private_plane_wave_face_local_modal_failure_theory_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_NEXT_PREREQUISITE = (
+    "private plane-wave face-local modal correction implementation retry after "
+    "failure-theory contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_TERMINAL_OUTCOMES = (
+    "private_plane_wave_face_local_modal_owner_timing_theory_ready",
+    "private_plane_wave_face_local_modal_observable_basis_theory_ready",
+    "private_plane_wave_face_local_modal_failure_theory_contract_ready",
+    "no_private_plane_wave_face_local_modal_failure_theory_redesign",
+)
+_PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_PRECEDENCE = (
+    "no_private_plane_wave_face_local_modal_failure_theory_redesign",
+    "private_plane_wave_face_local_modal_observable_basis_theory_ready",
+    "private_plane_wave_face_local_modal_owner_timing_theory_ready",
+    "private_plane_wave_face_local_modal_failure_theory_contract_ready",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -9686,6 +9706,196 @@ def _private_plane_wave_face_local_modal_correction_implementation_metadata(
     }
 
 
+def _private_plane_wave_face_local_modal_failure_theory_metadata(
+    *,
+    implementation_metadata: dict[str, object],
+    architecture_metadata: dict[str, object],
+    owner_scan_wiring_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(implementation_metadata["baseline_metrics"])
+    thresholds = dict(implementation_metadata["thresholds"])
+    owner_timing_theory = {
+        "same_step_owner_reference_is_diagnostic": True,
+        "field_update_feedback_can_chase_post_sat_state": True,
+        "requires_lagged_or_predictor_owner_reference": True,
+        "requires_time_centered_admission_gate": True,
+        "explains_failed_phase_modal_probe": True,
+    }
+    observable_basis_theory = {
+        "owner_reference_basis": "face_scalar_characteristic_mean",
+        "benchmark_observable_basis": "transverse_plane_dft_distribution",
+        "basis_mismatch_explains_vacuum_phase_regression": True,
+        "requires_observable_aligned_tangential_modal_basis": True,
+        "requires_no_edge_corner_pollution": True,
+    }
+    retry_contract = {
+        "requires_lagged_owner_reference": True,
+        "requires_observable_aligned_modal_basis": True,
+        "requires_owner_score_precheck": True,
+        "requires_slow_plane_wave_parity_gate": True,
+        "requires_cpml_non_cpml_symmetry_tests": True,
+        "requires_vacuum_magnitude_phase_gate": True,
+        "forbids_public_promotion": True,
+    }
+    u0 = {
+        "candidate_id": "U0_failed_implementation_packet_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_implementation_status": implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_architecture_status": architecture_metadata["terminal_outcome"],
+        "upstream_owner_scan_wiring_status": owner_scan_wiring_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    u1 = {
+        "candidate_id": "U1_owner_reference_timing_mismatch_theory",
+        "candidate_family": "owner_reference_timing_mismatch",
+        "accepted_candidate": False,
+        "theory_component_ready": True,
+        "owner_timing_theory": owner_timing_theory,
+        "explains_t1_probe_rejection": True,
+        "requires_public_api": False,
+        "requires_hook": False,
+        "superseded_by": "U3_failure_theory_retry_contract",
+        "public_claim_allowed": False,
+    }
+    u2 = {
+        "candidate_id": "U2_characteristic_observable_modal_basis_theory",
+        "candidate_family": "characteristic_observable_basis_mismatch",
+        "accepted_candidate": False,
+        "theory_component_ready": True,
+        "observable_basis_theory": observable_basis_theory,
+        "explains_t2_probe_rejection": True,
+        "requires_public_api": False,
+        "requires_hook": False,
+        "superseded_by": "U3_failure_theory_retry_contract",
+        "public_claim_allowed": False,
+    }
+    u3 = {
+        "candidate_id": "U3_failure_theory_retry_contract",
+        "candidate_family": "failure_theory_retry_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_STATUS
+        ),
+        "owner_timing_theory": owner_timing_theory,
+        "observable_basis_theory": observable_basis_theory,
+        "retry_contract": retry_contract,
+        "failure_theory_contract_ready": True,
+        "bounded_follow_up_implementation_surface": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "true_rt_readiness_unlocked": False,
+        "public_claim_allowed": False,
+    }
+    u4 = {
+        "candidate_id": "U4_failure_theory_redesign_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_face_local_modal_failure_theory_redesign"
+        ),
+        "rejection_reason": (
+            "not selected because U1/U2/U3 define a private failure-theory "
+            "retry contract without public API/result, hook, or threshold "
+            "changes"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (u0, u1, u2, u3, u4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_face_local_modal_failure_theory_redesign_only"
+        ),
+        "upstream_implementation_status": implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_architecture_status": architecture_metadata["terminal_outcome"],
+        "upstream_owner_scan_wiring_status": owner_scan_wiring_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite U0/U1/U2/U3/U4 failure-theory ladder; require a timing "
+            "and observable-basis explanation before another private "
+            "face-local modal field-update hunk"
+        ),
+        "selected_candidate_id": "U3_failure_theory_retry_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "implementation_failure_packet_frozen": True,
+        "rejected_probe_recorded": True,
+        "owner_timing_theory_ready": True,
+        "observable_basis_theory_ready": True,
+        "failure_theory_contract_ready": True,
+        "bounded_follow_up_implementation_surface": True,
+        "owner_timing_theory": owner_timing_theory,
+        "observable_basis_theory": observable_basis_theory,
+        "retry_contract": retry_contract,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_implementation_retry_plan": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private face-local modal correction failure theory is ready: "
+            "the failed implementation is explained by same-step diagnostic "
+            "owner-reference feedback and characteristic-vs-observable modal "
+            "basis mismatch, so the next retry must use a lagged owner "
+            "reference and observable-aligned modal basis under paired gates"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -12156,8 +12366,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_face_local_modal_failure_theory_metadata = (
+        _private_plane_wave_face_local_modal_failure_theory_metadata(
+            implementation_metadata=(
+                plane_wave_face_local_modal_implementation_metadata
+            ),
+            architecture_metadata=plane_wave_face_local_modal_architecture_metadata,
+            owner_scan_wiring_metadata=(
+                plane_wave_owner_scan_wiring_joint_scoring_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_face_local_modal_failure_theory_status": (
+                plane_wave_face_local_modal_failure_theory_metadata["status"]
+            ),
+            "private_plane_wave_face_local_modal_failure_theory": (
+                plane_wave_face_local_modal_failure_theory_metadata
+            ),
+            "private_plane_wave_face_local_modal_failure_theory_next_prerequisite": (
+                plane_wave_face_local_modal_failure_theory_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
+        "private_plane_wave_face_local_modal_failure_theory_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -12281,6 +12518,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave face-local modal correction "
                 "implementation lane records "
                 f"{plane_wave_face_local_modal_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave face-local modal correction "
+                "failure-theory redesign lane records "
+                f"{plane_wave_face_local_modal_failure_theory_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -12290,7 +12530,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
+                "private_plane_wave_face_local_modal_failure_theory_next_prerequisite"
             ],
         }
 
@@ -16093,10 +16333,122 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
         ]
     )
+    modal_failure_theory = metadata[
+        "private_plane_wave_face_local_modal_failure_theory"
+    ]
+    assert metadata[
+        "private_plane_wave_face_local_modal_failure_theory_status"
+    ] == _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_STATUS
+    assert modal_failure_theory["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_FAILURE_THEORY_STATUS
+    )
+    assert modal_failure_theory["upstream_implementation_status"] == (
+        metadata[
+            "private_plane_wave_face_local_modal_correction_implementation_status"
+        ]
+    )
+    assert modal_failure_theory["upstream_architecture_status"] == (
+        metadata[
+            "private_plane_wave_face_local_modal_correction_architecture_status"
+        ]
+    )
+    assert modal_failure_theory["upstream_owner_scan_wiring_status"] == (
+        metadata["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
+    )
+    assert modal_failure_theory["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert modal_failure_theory["candidate_ladder_declared_before_solver_edit"] is True
+    assert modal_failure_theory["candidate_ladder_declared_before_slow_scoring"] is True
+    assert modal_failure_theory["candidate_count"] == 5
+    assert modal_failure_theory["selected_candidate_id"] == (
+        "U3_failure_theory_retry_contract"
+    )
+    assert modal_failure_theory["baseline_metrics"] == (
+        modal_implementation["baseline_metrics"]
+    )
+    assert modal_failure_theory["baseline_metrics_preserved"] is True
+    assert modal_failure_theory["thresholds_unchanged"] is True
+    assert modal_failure_theory["implementation_failure_packet_frozen"] is True
+    assert modal_failure_theory["rejected_probe_recorded"] is True
+    assert modal_failure_theory["owner_timing_theory_ready"] is True
+    assert modal_failure_theory["observable_basis_theory_ready"] is True
+    assert modal_failure_theory["failure_theory_contract_ready"] is True
+    assert modal_failure_theory["bounded_follow_up_implementation_surface"] is True
+    owner_timing_theory = modal_failure_theory["owner_timing_theory"]
+    assert owner_timing_theory["same_step_owner_reference_is_diagnostic"] is True
+    assert owner_timing_theory["field_update_feedback_can_chase_post_sat_state"] is True
+    assert owner_timing_theory["requires_lagged_or_predictor_owner_reference"] is True
+    assert owner_timing_theory["requires_time_centered_admission_gate"] is True
+    assert owner_timing_theory["explains_failed_phase_modal_probe"] is True
+    observable_basis_theory = modal_failure_theory["observable_basis_theory"]
+    assert observable_basis_theory["owner_reference_basis"] == (
+        "face_scalar_characteristic_mean"
+    )
+    assert observable_basis_theory["benchmark_observable_basis"] == (
+        "transverse_plane_dft_distribution"
+    )
+    assert (
+        observable_basis_theory["basis_mismatch_explains_vacuum_phase_regression"]
+        is True
+    )
+    assert (
+        observable_basis_theory["requires_observable_aligned_tangential_modal_basis"]
+        is True
+    )
+    retry_contract = modal_failure_theory["retry_contract"]
+    assert retry_contract["requires_lagged_owner_reference"] is True
+    assert retry_contract["requires_observable_aligned_modal_basis"] is True
+    assert retry_contract["requires_owner_score_precheck"] is True
+    assert retry_contract["requires_slow_plane_wave_parity_gate"] is True
+    assert retry_contract["requires_cpml_non_cpml_symmetry_tests"] is True
+    assert retry_contract["requires_vacuum_magnitude_phase_gate"] is True
+    assert retry_contract["forbids_public_promotion"] is True
+    assert modal_failure_theory["production_patch_applied"] is False
+    assert modal_failure_theory["solver_behavior_changed"] is False
+    assert modal_failure_theory["field_update_behavior_changed"] is False
+    assert modal_failure_theory["runner_behavior_changed"] is False
+    assert modal_failure_theory["new_solver_hunk_retained"] is False
+    assert modal_failure_theory["true_rt_readiness_unlocked"] is False
+    assert (
+        modal_failure_theory["next_lane_requires_implementation_retry_plan"] is True
+    )
+    failure_theory_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_failure_theory["candidate_ladder"]
+    }
+    assert failure_theory_candidates[
+        "U1_owner_reference_timing_mismatch_theory"
+    ]["theory_component_ready"] is True
+    assert failure_theory_candidates[
+        "U1_owner_reference_timing_mismatch_theory"
+    ]["superseded_by"] == "U3_failure_theory_retry_contract"
+    assert failure_theory_candidates[
+        "U2_characteristic_observable_modal_basis_theory"
+    ]["theory_component_ready"] is True
+    assert failure_theory_candidates[
+        "U2_characteristic_observable_modal_basis_theory"
+    ]["superseded_by"] == "U3_failure_theory_retry_contract"
+    assert failure_theory_candidates[
+        "U3_failure_theory_retry_contract"
+    ]["accepted_candidate"] is True
+    assert failure_theory_candidates[
+        "U4_failure_theory_redesign_blocked"
+    ]["accepted_candidate"] is False
+    assert modal_failure_theory["public_claim_allowed"] is False
+    assert modal_failure_theory["public_observable_promoted"] is False
+    assert modal_failure_theory["true_rt_public_observable_promoted"] is False
+    assert modal_failure_theory["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        modal_failure_theory["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_face_local_modal_failure_theory_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
+            "private_plane_wave_face_local_modal_failure_theory_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -16122,7 +16474,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_face_local_modal_correction_implementation_next_prerequisite"
+            "private_plane_wave_face_local_modal_failure_theory_next_prerequisite"
         ]
     )
     assert (
@@ -16279,6 +16631,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
         metadata[
             "private_plane_wave_face_local_modal_correction_implementation_status"
         ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_face_local_modal_failure_theory_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

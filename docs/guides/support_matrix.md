@@ -332,7 +332,12 @@ That implementation lane now records
 field-update hunk is retained because paired phase/CV and vacuum-regression
 gates were not honestly improved. The next safe lane is private plane-wave
 face-local modal correction failure-theory redesign after the bounded
-implementation failed; public promotion remains closed.
+implementation failed. That redesign lane now records
+`private_plane_wave_face_local_modal_failure_theory_contract_ready`: the failed
+implementation is explained by same-step diagnostic owner-reference feedback
+and characteristic-vs-observable modal-basis mismatch, so the next retry
+requires a lagged owner reference and observable-aligned modal basis under
+paired phase/CV and vacuum gates; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

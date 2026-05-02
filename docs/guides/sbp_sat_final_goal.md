@@ -100,7 +100,7 @@ Promotion requires synchronized updates to:
 ## Current immediate objective
 
 The immediate lane is now private plane-wave face-local modal correction
-failure-theory redesign after the bounded implementation attempt failed. The
+implementation retry after the failure-theory contract became ready. The
 private owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
@@ -112,7 +112,12 @@ contracts with paired phase/CV, vacuum-regression, and CPML/non-CPML symmetry
 guards. The follow-up implementation lane now records
 `no_private_plane_wave_face_local_modal_correction_implementation`: no bounded
 field-update hunk is retained because paired phase/CV and vacuum-regression
-gates were not honestly improved. True R/T readiness is still pending. The private solver-local
+gates were not honestly improved. The follow-up failure-theory lane now records
+`private_plane_wave_face_local_modal_failure_theory_contract_ready`: same-step
+diagnostic owner-reference feedback and characteristic-vs-observable
+modal-basis mismatch explain the failed hunk, so the next retry requires a
+lagged owner reference and observable-aligned modal basis under paired gates.
+True R/T readiness is still pending. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
@@ -189,11 +194,11 @@ retained. The follow-up physical correction lane now records
 update correction is retained before a face-local modal correction architecture
 can prove paired phase/CV and vacuum-regression gates. The architecture lane
 has now proven the private contract and the implementation lane has failed
-closed without retaining a solver hunk; the goal gate therefore remains
-claims-closed until a later failure-theory/correction/readiness lane proves the
-hunk improves the real solver path without breaking CPML/non-CPML symmetry,
-boundary guards, update/coupling bounds, or the unchanged `0.02`
-manufactured-ledger threshold.
+closed without retaining a solver hunk. The failure-theory lane has now
+defined the retry contract; the goal gate therefore remains claims-closed until
+a later implementation/readiness lane proves the hunk improves the real solver
+path without breaking CPML/non-CPML symmetry, boundary guards, update/coupling
+bounds, or the unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

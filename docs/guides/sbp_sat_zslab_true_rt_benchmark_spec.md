@@ -379,7 +379,12 @@ ralplan`. That implementation lane now records
 field-update hunk is retained because paired phase/CV and vacuum-regression
 gates were not honestly improved. The next safe lane is `private plane-wave
 face-local modal correction failure-theory redesign after bounded
-implementation failed ralplan`. Hook experiments remain closed and public
+implementation failed ralplan`. That redesign lane now records
+`private_plane_wave_face_local_modal_failure_theory_contract_ready`: the failed
+implementation is explained by same-step diagnostic owner-reference feedback
+and characteristic-vs-observable modal-basis mismatch, so the next retry
+requires a lagged owner reference and observable-aligned modal basis under
+paired phase/CV and vacuum gates. Hook experiments remain closed and public
 promotion remains closed. Until those fixture-quality gates pass, the private
 flux/DFT gate remains internal diagnostic evidence only, and the support matrix
 continues to mark true R/T as deferred.

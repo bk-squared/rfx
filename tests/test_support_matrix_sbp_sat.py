@@ -2796,13 +2796,110 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == modal_implementation["next_prerequisite"]
     )
+    modal_failure_theory = benchmark_gate[
+        "private_plane_wave_face_local_modal_failure_theory"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_face_local_modal_failure_theory_status"
+    ] == "private_plane_wave_face_local_modal_failure_theory_contract_ready"
+    assert modal_failure_theory["terminal_outcome"] == (
+        "private_plane_wave_face_local_modal_failure_theory_contract_ready"
+    )
+    assert modal_failure_theory["upstream_implementation_status"] == (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_correction_implementation_status"
+        ]
+    )
+    assert modal_failure_theory["upstream_architecture_status"] == (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_correction_architecture_status"
+        ]
+    )
+    assert modal_failure_theory["upstream_owner_scan_wiring_status"] == (
+        benchmark_gate["private_plane_wave_owner_scan_wiring_joint_scoring_status"]
+    )
+    assert modal_failure_theory["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert modal_failure_theory["candidate_ladder_declared_before_solver_edit"] is True
+    assert modal_failure_theory["candidate_ladder_declared_before_slow_scoring"] is True
+    assert modal_failure_theory["candidate_count"] == 5
+    assert modal_failure_theory["selected_candidate_id"] == (
+        "U3_failure_theory_retry_contract"
+    )
+    assert modal_failure_theory["baseline_metrics"] == (
+        modal_implementation["baseline_metrics"]
+    )
+    assert modal_failure_theory["baseline_metrics_preserved"] is True
+    assert modal_failure_theory["thresholds_unchanged"] is True
+    assert modal_failure_theory["implementation_failure_packet_frozen"] is True
+    assert modal_failure_theory["rejected_probe_recorded"] is True
+    assert modal_failure_theory["owner_timing_theory_ready"] is True
+    assert modal_failure_theory["observable_basis_theory_ready"] is True
+    assert modal_failure_theory["failure_theory_contract_ready"] is True
+    assert modal_failure_theory["bounded_follow_up_implementation_surface"] is True
+    owner_timing_theory = modal_failure_theory["owner_timing_theory"]
+    assert owner_timing_theory["same_step_owner_reference_is_diagnostic"] is True
+    assert owner_timing_theory["field_update_feedback_can_chase_post_sat_state"] is True
+    assert owner_timing_theory["requires_lagged_or_predictor_owner_reference"] is True
+    observable_basis_theory = modal_failure_theory["observable_basis_theory"]
+    assert observable_basis_theory["owner_reference_basis"] == (
+        "face_scalar_characteristic_mean"
+    )
+    assert observable_basis_theory["benchmark_observable_basis"] == (
+        "transverse_plane_dft_distribution"
+    )
+    assert (
+        observable_basis_theory["basis_mismatch_explains_vacuum_phase_regression"]
+        is True
+    )
+    retry_contract = modal_failure_theory["retry_contract"]
+    assert retry_contract["requires_lagged_owner_reference"] is True
+    assert retry_contract["requires_observable_aligned_modal_basis"] is True
+    assert retry_contract["requires_owner_score_precheck"] is True
+    assert retry_contract["requires_slow_plane_wave_parity_gate"] is True
+    assert retry_contract["requires_cpml_non_cpml_symmetry_tests"] is True
+    assert retry_contract["requires_vacuum_magnitude_phase_gate"] is True
+    assert retry_contract["forbids_public_promotion"] is True
+    assert modal_failure_theory["production_patch_applied"] is False
+    assert modal_failure_theory["solver_behavior_changed"] is False
+    assert modal_failure_theory["field_update_behavior_changed"] is False
+    assert modal_failure_theory["runner_behavior_changed"] is False
+    assert modal_failure_theory["new_solver_hunk_retained"] is False
+    assert modal_failure_theory["true_rt_readiness_unlocked"] is False
+    failure_theory_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_failure_theory["candidate_ladder"]
+    }
+    assert failure_theory_candidates[
+        "U1_owner_reference_timing_mismatch_theory"
+    ]["theory_component_ready"] is True
+    assert failure_theory_candidates[
+        "U2_characteristic_observable_modal_basis_theory"
+    ]["theory_component_ready"] is True
+    assert failure_theory_candidates[
+        "U3_failure_theory_retry_contract"
+    ]["accepted_candidate"] is True
+    assert failure_theory_candidates[
+        "U4_failure_theory_redesign_blocked"
+    ]["accepted_candidate"] is False
+    assert modal_failure_theory["public_claim_allowed"] is False
+    assert modal_failure_theory["public_observable_promoted"] is False
+    assert modal_failure_theory["true_rt_public_observable_promoted"] is False
+    assert modal_failure_theory["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_face_local_modal_failure_theory_next_prerequisite"
+        ]
+        == modal_failure_theory["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave face-local modal correction failure-theory redesign "
-        "after bounded implementation failed ralplan"
+        "private plane-wave face-local modal correction implementation retry after "
+        "failure-theory contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave face-local modal correction failure-theory redesign "
-        "after bounded implementation failed ralplan"
+        "private plane-wave face-local modal correction implementation retry after "
+        "failure-theory contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -2910,6 +3007,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate[
             "private_plane_wave_face_local_modal_correction_implementation_status"
         ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_plane_wave_face_local_modal_failure_theory_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -3176,8 +3277,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave face-local modal correction failure-theory redesign "
-        "after bounded implementation failed ralplan"
+        "private plane-wave face-local modal correction implementation retry after "
+        "failure-theory contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
