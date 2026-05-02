@@ -515,7 +515,12 @@ projected target residual-basis implementation lane now records
 `_project_private_modal_basis_packets` now uses fixed-shape incident/reflected/
 transverse residual target modes before subtraction while remaining private and
 fail-closed; public promotion remains closed and the next safe lane is private
-residual-basis parity scoring.
+residual-basis parity scoring. The projected target residual-basis parity-scoring
+lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_insufficient_fixture_quality_pending`:
+the retained residual-basis hunk has finite private score evidence, but unchanged
+material-improvement and fixture-quality gates remain closed, so the next safe
+lane is private residual-basis failure-theory redesign.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

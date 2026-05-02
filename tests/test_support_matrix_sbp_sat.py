@@ -6479,13 +6479,124 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == residual_basis_implementation["next_prerequisite"]
     )
+    residual_basis_parity_scoring = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_insufficient_fixture_quality_pending"
+    )
+    assert residual_basis_parity_scoring["terminal_outcome"] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_hunk_insufficient_fixture_quality_pending"
+    )
+    assert residual_basis_parity_scoring[
+        "upstream_residual_basis_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_implementation_status"
+    ]
+    assert residual_basis_parity_scoring["candidate_ladder_declared_before_implementation"]
+    assert residual_basis_parity_scoring["candidate_ladder_declared_before_solver_edit"]
+    assert residual_basis_parity_scoring["candidate_ladder_declared_before_slow_scoring"]
+    assert residual_basis_parity_scoring["candidate_count"] == 5
+    assert residual_basis_parity_scoring["selected_candidate_id"] == (
+        "AD1_finite_residual_basis_private_parity_score"
+    )
+    assert residual_basis_parity_scoring["baseline_metrics"] == (
+        residual_basis_implementation["baseline_metrics"]
+    )
+    assert residual_basis_parity_scoring["metrics"] == (
+        residual_basis_implementation["metrics"]
+    )
+    assert residual_basis_parity_scoring["thresholds"] == (
+        residual_basis_implementation["thresholds"]
+    )
+    assert residual_basis_parity_scoring["threshold_results"] == (
+        residual_basis_implementation["threshold_results"]
+    )
+    assert residual_basis_parity_scoring["baseline_metrics_preserved"]
+    assert residual_basis_parity_scoring["thresholds_unchanged"]
+    assert residual_basis_parity_scoring["residual_basis_hunk_retained"]
+    assert residual_basis_parity_scoring["residual_basis_helper_retained"]
+    assert residual_basis_parity_scoring["projection_helper"] == (
+        "_project_private_modal_basis_packets"
+    )
+    assert residual_basis_parity_scoring["consumer_helper"] == (
+        "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert residual_basis_parity_scoring["basis_vectors"] == [
+        "incident_normal_mode",
+        "reflected_normal_mode",
+        "transverse_residual_mode",
+    ]
+    assert residual_basis_parity_scoring["residual_basis_modes_projected"]
+    assert residual_basis_parity_scoring["source_packet_projected"]
+    assert residual_basis_parity_scoring["interface_packet_projected"]
+    assert residual_basis_parity_scoring["subtraction_uses_projected_packets_only"]
+    assert residual_basis_parity_scoring["single_incident_basis_replaced"]
+    assert residual_basis_parity_scoring["single_incident_basis_only"] is False
+    assert residual_basis_parity_scoring["projection_gate_fail_closed"]
+    assert residual_basis_parity_scoring["contract_gate_fail_closed"]
+    assert residual_basis_parity_scoring["fail_closed_if_projection_energy_missing"]
+    assert residual_basis_parity_scoring["parity_scoring_lane_executed"]
+    assert residual_basis_parity_scoring["finite_reproducible_score"]
+    assert residual_basis_parity_scoring["score_uses_retained_implementation_metrics"]
+    assert residual_basis_parity_scoring["material_improvement_demonstrated"] is False
+    assert residual_basis_parity_scoring["paired_passed"] is False
+    assert residual_basis_parity_scoring["fixture_quality_ready"] is False
+    assert residual_basis_parity_scoring["fixture_quality_pending"]
+    assert residual_basis_parity_scoring["subgrid_vacuum_parity_scored"]
+    assert residual_basis_parity_scoring["subgrid_vacuum_parity_passed"] is False
+    assert residual_basis_parity_scoring["true_rt_readiness_unlocked"] is False
+    assert residual_basis_parity_scoring["slab_rt_scored"] is False
+    assert residual_basis_parity_scoring["production_patch_applied"] is False
+    assert residual_basis_parity_scoring["solver_behavior_changed"] is False
+    assert residual_basis_parity_scoring["new_solver_hunk_retained"] is False
+    assert residual_basis_parity_scoring["retained_residual_basis_solver_hunk"]
+    assert residual_basis_parity_scoring[
+        "next_lane_requires_projected_target_residual_basis_failure_theory"
+    ]
+    residual_basis_parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_parity_scoring["candidate_ladder"]
+    }
+    assert residual_basis_parity_candidates[
+        "AD1_finite_residual_basis_private_parity_score"
+    ]["accepted_candidate"]
+    assert residual_basis_parity_candidates[
+        "AD2_residual_basis_material_improvement_gate"
+    ]["paired_passed"] is False
+    assert residual_basis_parity_candidates[
+        "AD3_residual_basis_fixture_quality_true_rt_readiness"
+    ]["true_rt_readiness_unlocked"] is False
+    assert (
+        residual_basis_parity_candidates[
+            "AD4_residual_basis_parity_scoring_insufficient"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_parity_scoring["public_claim_allowed"] is False
+    assert residual_basis_parity_scoring["public_observable_promoted"] is False
+    assert (
+        residual_basis_parity_scoring["true_rt_public_observable_promoted"] is False
+    )
+    assert (
+        residual_basis_parity_scoring["dft_flux_tfsf_port_sparameter_promoted"]
+        is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_next_prerequisite"
+        ]
+        == residual_basis_parity_scoring["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "parity scoring after implementation hunk retained ralplan"
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "parity scoring after implementation hunk retained ralplan"
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -6802,6 +6913,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_parity_scoring_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -7066,7 +7183,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
-        "parity scoring after implementation hunk retained ralplan"
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
