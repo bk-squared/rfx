@@ -36,6 +36,7 @@ from rfx.subgridding.sbp_operators import (
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 PHASE1_3D_CFL = 0.99
 _TIME_CENTERED_HELPER_RELAXATION = 0.02
+_OBSERVABLE_PROXY_MODAL_RETRY_RELAXATION = 0.02
 
 
 class SubgridConfig3D(NamedTuple):
@@ -745,6 +746,112 @@ def _update_private_interface_owner_state_from_scan(
         face_proxy_weight=jnp.concatenate(packet_weight).astype(jnp.float32),
         face_proxy_mask=jnp.concatenate(packet_mask).astype(jnp.float32),
     )
+
+
+def _apply_observable_proxy_modal_retry_face_helper(
+    current_e_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_e_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_h_coarse: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    current_h_fine: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    owner_state: _PrivateInterfaceOwnerState,
+    config: SubgridConfig3D,
+) -> tuple[
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+    tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+]:
+    """Retry a private observable-proxy modal E update from packed face state.
+
+    The retry is deliberately solver-local and lagged: it reads only the
+    private owner packet captured by previous same-step face scans, projects a
+    small bounded correction onto the current tangential E modal components,
+    and reuses the existing face scatter helpers.  It does not consume benchmark
+    DFT/flux planes, hooks, or public observables.
+    """
+
+    e_coarse = current_e_coarse
+    e_fine = current_e_fine
+    h_coarse = current_h_coarse
+    h_fine = current_h_fine
+    packet_offset = 0
+    for face_index, face in enumerate(_active_faces(config)):
+        orientation = FACE_ORIENTATIONS[face]
+        ops = _get_face_ops(config, face)
+        packet_length = int(np.prod(ops.coarse_shape))
+        packet_slice = slice(packet_offset, packet_offset + packet_length)
+        packet_offset += packet_length
+        packet_mask = owner_state.face_proxy_mask[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        target_real = owner_state.face_proxy_reference_real[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        target_imag = owner_state.face_proxy_reference_imag[packet_slice].reshape(
+            ops.coarse_shape
+        )
+        active_scale = jnp.where(
+            owner_state.face_update_count[face_index] > 0,
+            jnp.asarray(1.0, dtype=target_real.dtype),
+            jnp.asarray(0.0, dtype=target_real.dtype),
+        )
+
+        coarse_e = extract_tangential_e_face(e_coarse, config, face, grid="coarse")
+        fine_e = extract_tangential_e_face(e_fine, config, face, grid="fine")
+        coarse_h = extract_tangential_h_face(h_coarse, config, face, grid="coarse")
+        fine_h = extract_tangential_h_face(h_fine, config, face, grid="fine")
+        current_distribution = _private_owner_face_complex_distribution(
+            coarse_e=coarse_e,
+            fine_e=fine_e,
+            coarse_h=coarse_h,
+            fine_h=fine_h,
+            ops=ops,
+            normal_sign=orientation.normal_sign,
+        )
+        current_real = jnp.real(current_distribution).astype(jnp.float32)
+        current_imag = jnp.imag(current_distribution).astype(jnp.float32)
+        relaxation = jnp.asarray(
+            _OBSERVABLE_PROXY_MODAL_RETRY_RELAXATION,
+            dtype=current_real.dtype,
+        )
+        eps = jnp.asarray(1.0e-30, dtype=current_real.dtype)
+        delta_real = relaxation * (target_real - current_real)
+        delta_imag = relaxation * (target_imag - current_imag)
+        bound_real = relaxation * (jnp.abs(target_real) + jnp.abs(current_real) + eps)
+        bound_imag = relaxation * (jnp.abs(target_imag) + jnp.abs(current_imag) + eps)
+        delta_real = (
+            jnp.clip(delta_real, -bound_real, bound_real)
+            * packet_mask
+            * active_scale
+        )
+        delta_imag = (
+            jnp.clip(delta_imag, -bound_imag, bound_imag)
+            * packet_mask
+            * active_scale
+        )
+        corrected_coarse_e = (
+            coarse_e[0] + delta_real,
+            coarse_e[1] + delta_imag,
+        )
+        corrected_fine_e = (
+            fine_e[0] + prolong_face(delta_real, ops),
+            fine_e[1] + prolong_face(delta_imag, ops),
+        )
+        e_coarse = scatter_tangential_e_face(
+            e_coarse,
+            corrected_coarse_e,
+            config,
+            face,
+            grid="coarse",
+        )
+        e_fine = scatter_tangential_e_face(
+            e_fine,
+            corrected_fine_e,
+            config,
+            face,
+            grid="fine",
+        )
+    return e_coarse, e_fine, h_coarse, h_fine
 
 
 def _private_interface_owner_joint_score(
@@ -1794,6 +1901,19 @@ def step_subgrid_3d_with_cpml(
         e_post_sat_fine=e_post_sat_fine,
         config=config,
     )
+    (
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+    ) = _apply_observable_proxy_modal_retry_face_helper(
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        private_interface_owner_state,
+        config,
+    )
     private_interface_owner_state = _update_private_interface_owner_state_from_scan(
         private_interface_owner_state,
         e_post_sat_coarse=(ex_c, ey_c, ez_c),
@@ -2004,6 +2124,19 @@ def step_subgrid_3d(
         e_post_sat_coarse=e_post_sat_coarse,
         e_post_sat_fine=e_post_sat_fine,
         config=config,
+    )
+    (
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+    ) = _apply_observable_proxy_modal_retry_face_helper(
+        (ex_c, ey_c, ez_c),
+        (ex_f, ey_f, ez_f),
+        (hx_c, hy_c, hz_c),
+        (hx_f, hy_f, hz_f),
+        private_interface_owner_state,
+        config,
     )
     private_interface_owner_state = _update_private_interface_owner_state_from_scan(
         private_interface_owner_state,

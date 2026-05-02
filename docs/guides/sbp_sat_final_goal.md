@@ -99,8 +99,8 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave observable-proxy modal retry
-implementation after the face-packet state hunk was retained. The private
+The immediate lane is now private plane-wave observable-proxy modal retry parity
+scoring after the packed-state hunk was retained. The private
 owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
@@ -140,9 +140,13 @@ DFT, or public observable promotion. The implementation lane now records
 `private_plane_wave_proxy_face_packet_capture_hunk_retained_fixture_quality_pending`:
 the private owner state carries fixed-shape packed face-local proxy references,
 offsets, masks, orientation metadata, and CPML/non-CPML/JIT initialization
-symmetry. The next implementation lane must retry the private observable-proxy
-modal correction using that packed state without public observable promotion.
-True R/T readiness is still pending. The private solver-local
+symmetry. The modal retry lane now records
+`private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending`:
+a private solver-local, lagged packed-state E-modal correction hunk is retained
+with update/coupling bounds, CPML/non-CPML symmetry, and no benchmark DFT import.
+The next lane must score whether that retained hunk honestly clears the private
+plane-wave parity gates under unchanged thresholds. True R/T readiness is still
+pending. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
@@ -225,9 +229,10 @@ without retaining a lagged/observable-aligned hunk. The observable-proxy
 architecture lane has now defined the private contract, and the observable-proxy
 implementation lane has failed closed on missing packed face-packet state. The
 face-packet state-shape design lane has now defined the private contract, and
-the face-packet implementation lane has retained the packed state/capture hunk.
-The goal gate therefore remains claims-closed until a later modal retry and
-readiness lane proves the hunk improves the real solver path without breaking
+the face-packet implementation lane has retained the packed state/capture hunk,
+and the modal retry lane has retained the private packed-state E-modal correction
+hunk. The goal gate therefore remains claims-closed until a later parity-scoring
+and readiness lane proves the hunk improves the real solver path without breaking
 CPML/non-CPML symmetry, boundary guards, update/coupling bounds, or the unchanged
 `0.02` manufactured-ledger threshold.
 

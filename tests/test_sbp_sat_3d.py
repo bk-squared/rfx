@@ -10,6 +10,7 @@ from rfx.subgridding.face_ops import build_face_ops, prolong_face, restrict_face
 from rfx.subgridding import jit_runner, sbp_sat_3d
 from rfx.subgridding.sbp_sat_3d import (
     FACE_ORIENTATIONS,
+    _apply_observable_proxy_modal_retry_face_helper,
     _apply_operator_projected_skew_eh_face_helper,
     _apply_sat_pair_face,
     _apply_time_centered_paired_face_helper,
@@ -517,9 +518,10 @@ def test_time_centered_paired_face_helper_is_wired_after_e_sat():
         source = inspect.getsource(function)
         skew_index = source.index("_apply_operator_projected_skew_eh_face_helper")
         helper_index = source.index("_apply_time_centered_paired_face_helper")
+        proxy_index = source.index("_apply_observable_proxy_modal_retry_face_helper")
         h_sat_index = source.index("apply_sat_h_interfaces")
         e_sat_index = source.index("apply_sat_e_interfaces")
-        assert h_sat_index < e_sat_index < skew_index < helper_index
+        assert h_sat_index < e_sat_index < skew_index < helper_index < proxy_index
         assert "private_post_h_hook" in source
         assert "private_post_e_hook" in source
         helper_source = source[helper_index:]
@@ -664,6 +666,103 @@ def test_private_interface_owner_state_initializes_in_jit_runner():
     _assert_private_owner_packet_shape(owner_state, config)
 
 
+def _private_owner_with_packet_reference(config, *, active):
+    owner_state = _init_private_interface_owner_state(config)
+    mask = owner_state.face_proxy_mask
+    update_count = jnp.ones_like(owner_state.face_update_count)
+    if not active:
+        update_count = jnp.zeros_like(owner_state.face_update_count)
+    return owner_state._replace(
+        face_update_count=update_count,
+        face_proxy_reference_real=0.25 * mask,
+        face_proxy_reference_imag=-0.125 * mask,
+    )
+
+
+def test_observable_proxy_modal_retry_helper_uses_lagged_packet_and_bounds_update():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    owner_state = _private_owner_with_packet_reference(config, active=True)
+    e_coarse = (state.ex_c, state.ey_c, state.ez_c)
+    e_fine = (state.ex_f, state.ey_f, state.ez_f)
+    h_coarse = (state.hx_c, state.hy_c, state.hz_c)
+    h_fine = (state.hx_f, state.hy_f, state.hz_f)
+
+    out_e_c, out_e_f, out_h_c, out_h_f = (
+        _apply_observable_proxy_modal_retry_face_helper(
+            e_coarse,
+            e_fine,
+            h_coarse,
+            h_fine,
+            owner_state,
+            config,
+        )
+    )
+
+    for before, after in zip(h_coarse, out_h_c):
+        np.testing.assert_allclose(np.asarray(after), np.asarray(before), atol=0.0)
+    for before, after in zip(h_fine, out_h_f):
+        np.testing.assert_allclose(np.asarray(after), np.asarray(before), atol=0.0)
+
+    for face in _active_faces(config):
+        ops = _get_face_ops(config, face)
+        coarse_mask, fine_mask = _face_interior_masks(ops.coarse_shape, config.ratio)
+        before_c = extract_tangential_e_face(e_coarse, config, face, grid="coarse")
+        after_c = extract_tangential_e_face(out_e_c, config, face, grid="coarse")
+        before_f = extract_tangential_e_face(e_fine, config, face, grid="fine")
+        after_f = extract_tangential_e_face(out_e_f, config, face, grid="fine")
+        coarse_active = np.asarray(coarse_mask) > 0.0
+        fine_active = np.asarray(fine_mask) > 0.0
+        delta_c0 = np.asarray(after_c[0] - before_c[0])
+        delta_c1 = np.asarray(after_c[1] - before_c[1])
+        delta_f0 = np.asarray(after_f[0] - before_f[0])
+        delta_f1 = np.asarray(after_f[1] - before_f[1])
+        assert np.any(np.abs(delta_c0[coarse_active]) > 0.0)
+        assert np.any(np.abs(delta_c1[coarse_active]) > 0.0)
+        assert np.max(np.abs(delta_c0[coarse_active])) <= 0.25 * 0.02 + 1.0e-8
+        assert np.max(np.abs(delta_c1[coarse_active])) <= 0.125 * 0.02 + 1.0e-8
+        assert np.max(np.abs(delta_f0[fine_active])) <= 0.25 * 0.02 + 1.0e-8
+        assert np.max(np.abs(delta_f1[fine_active])) <= 0.125 * 0.02 + 1.0e-8
+
+
+def test_observable_proxy_modal_retry_helper_waits_for_lagged_packet():
+    config, state = init_subgrid_3d(
+        shape_c=(8, 8, 8),
+        dx_c=0.004,
+        fine_region=(2, 6, 2, 6, 2, 6),
+        ratio=2,
+    )
+    owner_state = _private_owner_with_packet_reference(config, active=False)
+    e_coarse = (state.ex_c, state.ey_c, state.ez_c)
+    e_fine = (state.ex_f, state.ey_f, state.ez_f)
+    h_coarse = (state.hx_c, state.hy_c, state.hz_c)
+    h_fine = (state.hx_f, state.hy_f, state.hz_f)
+
+    out_e_c, out_e_f, out_h_c, out_h_f = (
+        _apply_observable_proxy_modal_retry_face_helper(
+            e_coarse,
+            e_fine,
+            h_coarse,
+            h_fine,
+            owner_state,
+            config,
+        )
+    )
+
+    for before, after in zip(e_coarse, out_e_c):
+        np.testing.assert_allclose(np.asarray(after), np.asarray(before), atol=0.0)
+    for before, after in zip(e_fine, out_e_f):
+        np.testing.assert_allclose(np.asarray(after), np.asarray(before), atol=0.0)
+    for before, after in zip(h_coarse, out_h_c):
+        np.testing.assert_allclose(np.asarray(after), np.asarray(before), atol=0.0)
+    for before, after in zip(h_fine, out_h_f):
+        np.testing.assert_allclose(np.asarray(after), np.asarray(before), atol=0.0)
+
+
 def _seed_private_owner_scan_fields(state):
     return state._replace(
         ex_c=jnp.ones_like(state.ex_c),
@@ -707,8 +806,9 @@ def test_private_interface_owner_scan_wiring_is_after_same_step_eh_sat():
         h_sat_index = source.index("apply_sat_h_interfaces")
         e_sat_index = source.index("apply_sat_e_interfaces")
         helper_index = source.index("_apply_time_centered_paired_face_helper")
+        proxy_index = source.index("_apply_observable_proxy_modal_retry_face_helper")
         scan_index = source.index("_update_private_interface_owner_state_from_scan")
-        assert h_sat_index < e_sat_index < helper_index < scan_index
+        assert h_sat_index < e_sat_index < helper_index < proxy_index < scan_index
 
 
 def test_private_interface_owner_scan_wiring_records_joint_score_non_cpml():

@@ -3415,13 +3415,103 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == face_packet_implementation["next_prerequisite"]
     )
+    modal_retry_after_packet = benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_retry_after_face_packet"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_retry_after_face_packet_status"
+    ] == "private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending"
+    assert modal_retry_after_packet["terminal_outcome"] == (
+        "private_plane_wave_observable_proxy_modal_retry_hunk_retained_fixture_quality_pending"
+    )
+    assert modal_retry_after_packet[
+        "upstream_face_packet_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_observable_proxy_face_packet_state_implementation_status"
+    ]
+    assert modal_retry_after_packet["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert (
+        modal_retry_after_packet["candidate_ladder_declared_before_solver_edit"]
+        is True
+    )
+    assert (
+        modal_retry_after_packet["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert modal_retry_after_packet["candidate_count"] == 4
+    assert modal_retry_after_packet["selected_candidate_id"] == (
+        "A1_packed_state_modal_retry_hunk"
+    )
+    assert modal_retry_after_packet["thresholds"] == (
+        face_packet_implementation["thresholds"]
+    )
+    assert modal_retry_after_packet["baseline_metrics_preserved"] is True
+    assert modal_retry_after_packet["thresholds_unchanged"] is True
+    assert modal_retry_after_packet["face_packet_state_hunk_retained"] is True
+    assert modal_retry_after_packet["modal_retry_uses_packed_face_packet_state"] is True
+    assert modal_retry_after_packet["lagged_owner_packet_required"] is True
+    assert modal_retry_after_packet["packed_state_hunk_retained"] is True
+    assert modal_retry_after_packet["modal_retry_hunk_retained"] is True
+    assert modal_retry_after_packet["field_update_behavior_changed"] is True
+    assert modal_retry_after_packet["uses_private_face_samples_only"] is True
+    assert modal_retry_after_packet["benchmark_plane_dft_observable_imported"] is False
+    assert modal_retry_after_packet["solver_local_proxy_uses_plane_dft_monitor"] is (
+        False
+    )
+    assert modal_retry_after_packet["update_bound_guard_retained"] is True
+    assert modal_retry_after_packet["coupling_bound_guard_retained"] is True
+    assert modal_retry_after_packet["boundary_coexistence_guard_retained"] is True
+    assert modal_retry_after_packet["cpml_non_cpml_shape_symmetry_retained"] is True
+    assert modal_retry_after_packet["production_patch_applied"] is True
+    assert modal_retry_after_packet["solver_behavior_changed"] is True
+    assert modal_retry_after_packet["runner_behavior_changed"] is True
+    assert modal_retry_after_packet["new_solver_hunk_retained"] is True
+    assert modal_retry_after_packet["subgrid_vacuum_parity_scored"] is True
+    assert modal_retry_after_packet["subgrid_vacuum_parity_passed"] is False
+    assert modal_retry_after_packet["material_improvement_demonstrated"] is False
+    assert modal_retry_after_packet["fixture_quality_pending"] is True
+    assert modal_retry_after_packet["true_rt_readiness_unlocked"] is False
+    assert (
+        modal_retry_after_packet["next_lane_requires_modal_retry_parity_scoring"]
+        is True
+    )
+    modal_retry_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_retry_after_packet["candidate_ladder"]
+    }
+    assert modal_retry_candidates[
+        "A1_packed_state_modal_retry_hunk"
+    ]["accepted_candidate"] is True
+    assert modal_retry_candidates[
+        "A1_packed_state_modal_retry_hunk"
+    ]["modal_retry_hunk_retained"] is True
+    assert modal_retry_candidates[
+        "A2_packed_state_modal_retry_joint_parity_score"
+    ]["accepted_candidate"] is False
+    assert modal_retry_candidates[
+        "A3_modal_retry_after_face_packet_blocked"
+    ]["accepted_candidate"] is False
+    assert modal_retry_after_packet["public_claim_allowed"] is False
+    assert modal_retry_after_packet["public_observable_promoted"] is False
+    assert modal_retry_after_packet["true_rt_public_observable_promoted"] is False
+    assert (
+        modal_retry_after_packet["dft_flux_tfsf_port_sparameter_promoted"] is False
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_retry_after_face_packet_next_prerequisite"
+        ]
+        == modal_retry_after_packet["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy modal retry implementation after "
-        "face-packet state hunk retained ralplan"
+        "private plane-wave observable-proxy modal retry parity scoring after "
+        "packed-state hunk retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave observable-proxy modal retry implementation after "
-        "face-packet state hunk retained ralplan"
+        "private plane-wave observable-proxy modal retry parity scoring after "
+        "packed-state hunk retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -3560,6 +3650,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_observable_proxy_face_packet_state_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_retry_after_face_packet_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -3827,8 +3923,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy modal retry implementation after "
-        "face-packet state hunk retained ralplan"
+        "private plane-wave observable-proxy modal retry parity scoring after "
+        "packed-state hunk retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
