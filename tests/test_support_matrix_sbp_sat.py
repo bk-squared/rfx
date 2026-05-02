@@ -3114,13 +3114,98 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == proxy_architecture["next_prerequisite"]
     )
+    proxy_implementation = benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_implementation_status"
+    ] == "no_private_plane_wave_observable_proxy_modal_retry_implementation"
+    assert proxy_implementation["terminal_outcome"] == (
+        "no_private_plane_wave_observable_proxy_modal_retry_implementation"
+    )
+    assert proxy_implementation["upstream_architecture_status"] == (
+        benchmark_gate["private_plane_wave_observable_proxy_modal_architecture_status"]
+    )
+    assert proxy_implementation["upstream_retry_implementation_status"] == (
+        benchmark_gate["private_plane_wave_face_local_modal_retry_implementation_status"]
+    )
+    assert proxy_implementation["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert proxy_implementation["candidate_ladder_declared_before_solver_edit"] is True
+    assert proxy_implementation[
+        "candidate_ladder_declared_before_slow_scoring"
+    ] is True
+    assert proxy_implementation["candidate_count"] == 5
+    assert proxy_implementation["selected_candidate_id"] == (
+        "X4_observable_proxy_modal_retry_implementation_blocked"
+    )
+    assert proxy_implementation["baseline_metrics"] == (
+        proxy_architecture["baseline_metrics"]
+    )
+    assert proxy_implementation["thresholds"] == proxy_architecture["thresholds"]
+    assert proxy_implementation["baseline_metrics_preserved"] is True
+    assert proxy_implementation["thresholds_unchanged"] is True
+    assert proxy_implementation["architecture_contract_ready"] is True
+    assert proxy_implementation["implementation_lane_executed"] is True
+    assert proxy_implementation["packed_face_proxy_state_required"] is True
+    assert proxy_implementation["lagged_proxy_state_hunk_retained"] is False
+    assert proxy_implementation["observable_proxy_modal_hunk_retained"] is False
+    assert proxy_implementation["combined_proxy_retry_hunk_retained"] is False
+    assert proxy_implementation["benchmark_plane_dft_observable_imported"] is False
+    assert proxy_implementation["solver_local_proxy_uses_plane_dft_monitor"] is False
+    assert proxy_implementation["production_patch_applied"] is False
+    assert proxy_implementation["solver_behavior_changed"] is False
+    assert proxy_implementation["field_update_behavior_changed"] is False
+    assert proxy_implementation["runner_behavior_changed"] is False
+    assert proxy_implementation["new_solver_hunk_retained"] is False
+    assert proxy_implementation["no_bounded_hunk_accepted"] is True
+    assert proxy_implementation["true_rt_readiness_unlocked"] is False
+    assert (
+        proxy_implementation["next_lane_requires_face_packet_state_shape_design"]
+        is True
+    )
+    proxy_implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in proxy_implementation["candidate_ladder"]
+    }
+    assert proxy_implementation_candidates[
+        "X1_lagged_owner_proxy_state_plumbing"
+    ]["attempted_in_this_lane"] is True
+    assert proxy_implementation_candidates[
+        "X1_lagged_owner_proxy_state_plumbing"
+    ]["accepted_candidate"] is False
+    assert proxy_implementation_candidates[
+        "X1_lagged_owner_proxy_state_plumbing"
+    ]["required_owner_state_shape"] == (
+        "packed_face_local_proxy_distribution_with_face_offsets_and_masks"
+    )
+    assert proxy_implementation_candidates[
+        "X2_solver_local_observable_proxy_modal_correction"
+    ]["requires_packed_face_proxy_state"] is True
+    assert proxy_implementation_candidates[
+        "X3_combined_observable_proxy_modal_private_parity_pass"
+    ]["accepted_candidate"] is False
+    assert proxy_implementation_candidates[
+        "X4_observable_proxy_modal_retry_implementation_blocked"
+    ]["accepted_candidate"] is True
+    assert proxy_implementation["public_claim_allowed"] is False
+    assert proxy_implementation["public_observable_promoted"] is False
+    assert proxy_implementation["true_rt_public_observable_promoted"] is False
+    assert proxy_implementation["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_implementation_next_prerequisite"
+        ]
+        == proxy_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy modal retry implementation after "
-        "architecture contract ready ralplan"
+        "private plane-wave observable-proxy face-packet state-shape design after "
+        "modal retry implementation blocked ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave observable-proxy modal retry implementation after "
-        "architecture contract ready ralplan"
+        "private plane-wave observable-proxy face-packet state-shape design after "
+        "modal retry implementation blocked ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -3242,6 +3327,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_observable_proxy_modal_architecture_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_implementation_status"
+        ]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -3508,8 +3599,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy modal retry implementation after "
-        "architecture contract ready ralplan"
+        "private plane-wave observable-proxy face-packet state-shape design after "
+        "modal retry implementation blocked ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

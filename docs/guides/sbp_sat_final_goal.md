@@ -99,8 +99,8 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave observable-proxy modal retry
-implementation after the architecture contract became ready. The
+The immediate lane is now private plane-wave observable-proxy face-packet
+state-shape design after the modal retry implementation failed closed. The
 private owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
@@ -126,8 +126,13 @@ observable-proxy modal basis. The architecture lane now records
 transverse face energy/phase proxy can stand in for the benchmark plane-DFT
 distribution without importing the DFT observable into field updates, while
 lagged owner state plus paired phase/CV and vacuum guards remain required before
-implementation. The next implementation lane must prove that bounded solver
-behavior improves the real private parity scorer before any hunk is retained.
+implementation. The implementation lane now records
+`no_private_plane_wave_observable_proxy_modal_retry_implementation`: the current
+solver owner state stores scalar phase/magnitude references per active face,
+while a solver-local modal proxy requires packed face-local distributions with
+offsets and masks before any field-update hunk can be retained. The next design
+lane must define that packed face-packet state shape without public API, hook, or
+benchmark-observable coupling.
 True R/T readiness is still pending. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
@@ -208,11 +213,12 @@ has now proven the private contract and the implementation lane has failed
 closed without retaining a solver hunk. The failure-theory lane has now
 defined the retry contract, and the retry implementation lane has failed closed
 without retaining a lagged/observable-aligned hunk. The observable-proxy
-architecture lane has now defined the private contract. The goal gate therefore
-remains claims-closed until a later implementation and readiness lane proves the
-hunk improves the real solver path without breaking CPML/non-CPML symmetry,
-boundary guards, update/coupling bounds, or the unchanged `0.02`
-manufactured-ledger threshold.
+architecture lane has now defined the private contract, and the observable-proxy
+implementation lane has failed closed on missing packed face-packet state. The
+goal gate therefore remains claims-closed until a later state-shape,
+implementation, and readiness lane proves the hunk improves the real solver path
+without breaking CPML/non-CPML symmetry, boundary guards, update/coupling bounds,
+or the unchanged `0.02` manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

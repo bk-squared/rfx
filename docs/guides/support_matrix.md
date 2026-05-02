@@ -348,7 +348,13 @@ solver-local transverse face energy/phase proxy can stand in for the benchmark
 plane-DFT distribution without importing the DFT observable into field updates,
 while lagged owner state plus paired phase/CV and vacuum guards remain required
 before implementation. The next safe lane is private plane-wave
-observable-proxy modal retry implementation; public promotion remains closed.
+observable-proxy modal retry implementation. That implementation lane now
+records `no_private_plane_wave_observable_proxy_modal_retry_implementation`:
+the current solver owner state stores scalar phase/magnitude references per
+active face, while a solver-local modal proxy requires packed face-local
+distributions with offsets and masks before any field-update hunk can be
+retained. The next safe lane is private plane-wave observable-proxy face-packet
+state-shape design; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

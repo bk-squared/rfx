@@ -393,10 +393,14 @@ observable-proxy modal-basis architecture. That architecture lane now records
 transverse face energy/phase proxy can stand in for the benchmark plane-DFT
 distribution without importing the DFT observable into field updates, while
 lagged owner state plus paired phase/CV and vacuum guards remain required before
-implementation. Hook experiments remain closed and public promotion remains
-closed. Until those fixture-quality gates pass, the private flux/DFT gate
-remains internal diagnostic evidence only, and the support matrix continues to
-mark true R/T as deferred.
+implementation. That implementation lane now records
+`no_private_plane_wave_observable_proxy_modal_retry_implementation`: the current
+solver owner state stores scalar phase/magnitude references per active face,
+while a solver-local modal proxy requires packed face-local distributions with
+offsets and masks before any field-update hunk can be retained. Hook experiments
+remain closed and public promotion remains closed. Until those fixture-quality
+gates pass, the private flux/DFT gate remains internal diagnostic evidence only,
+and the support matrix continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
