@@ -273,8 +273,12 @@ any new implementation hunk. That design lane now records
 `private_plane_wave_interface_energy_form_implementation_contract_ready`: the
 energy-potential and time-centered Poynting-work form are combined into a
 future implementation contract with CPML/non-CPML, edge/corner, slow-metadata,
-and public-surface guards. The next safe lane is private implementation after
-that design contract; public promotion remains closed.
+and public-surface guards. The follow-up implementation lane now records
+`no_private_plane_wave_energy_form_implementation`: the frozen parity packet is
+preserved, no bounded F1/F2 local solver hunk is retained as material
+improvement, and the next safe lane is a private interface energy-form failure
+theory/design review before true R/T readiness; public promotion remains
+closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

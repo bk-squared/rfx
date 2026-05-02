@@ -1608,13 +1608,81 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == energy_form_design["next_prerequisite"]
     )
+    energy_form_implementation = benchmark_gate[
+        "private_plane_wave_interface_energy_form_implementation"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_interface_energy_form_implementation_status"
+    ] == "no_private_plane_wave_energy_form_implementation"
+    assert energy_form_implementation["terminal_outcome"] == (
+        "no_private_plane_wave_energy_form_implementation"
+    )
+    assert energy_form_implementation["upstream_design_status"] == (
+        benchmark_gate["private_plane_wave_interface_energy_form_design_status"]
+    )
+    assert energy_form_implementation["upstream_root_cause_status"] == (
+        benchmark_gate["private_plane_wave_root_cause_redesign_status"]
+    )
+    assert energy_form_implementation["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert (
+        energy_form_implementation["candidate_ladder_declared_before_slow_scoring"]
+        is True
+    )
+    assert energy_form_implementation["candidate_count"] == 5
+    assert energy_form_implementation["selected_candidate_id"] == (
+        "F3_energy_form_implementation_blocked"
+    )
+    assert (
+        energy_form_implementation["baseline_metrics"]
+        == energy_form_design["baseline_metrics"]
+    )
+    assert energy_form_implementation["dominant_metric"] == (
+        "transverse_phase_spread_deg"
+    )
+    assert energy_form_implementation["dominant_metric_improved"] is False
+    assert energy_form_implementation["implementation_lane_executed"] is True
+    assert energy_form_implementation["production_patch_applied"] is False
+    assert energy_form_implementation["solver_behavior_changed"] is False
+    assert energy_form_implementation["no_bounded_hunk_accepted"] is True
+    assert energy_form_implementation["true_rt_readiness_unlocked"] is False
+    energy_form_impl_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in energy_form_implementation["candidate_ladder"]
+    }
+    assert (
+        energy_form_impl_candidates[
+            "F1_centered_interface_energy_potential_update"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        energy_form_impl_candidates[
+            "F2_operator_backed_centered_work_helper"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        energy_form_impl_candidates[
+            "F3_energy_form_implementation_blocked"
+        ]["accepted_candidate"]
+        is True
+    )
+    assert energy_form_implementation["public_claim_allowed"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_interface_energy_form_implementation_next_prerequisite"
+        ]
+        == energy_form_implementation["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave interface energy-form implementation after design "
-        "contract ready ralplan"
+        "private plane-wave interface energy-form failure theory/design before "
+        "true R/T readiness ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave interface energy-form implementation after design "
-        "contract ready ralplan"
+        "private plane-wave interface energy-form failure theory/design before "
+        "true R/T readiness ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -1646,6 +1714,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     )
     assert (
         benchmark_gate["private_plane_wave_interface_energy_form_design_status"]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_interface_energy_form_implementation_status"
+        ]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -1912,8 +1986,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave interface energy-form implementation after design "
-        "contract ready ralplan"
+        "private plane-wave interface energy-form failure theory/design before "
+        "true R/T readiness ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

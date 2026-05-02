@@ -320,10 +320,14 @@ safe lane is `private plane-wave interface energy-form architecture repair
 design before implementation ralplan`. That design lane now records
 `private_plane_wave_interface_energy_form_implementation_contract_ready`, so
 the next safe lane is `private plane-wave interface energy-form implementation
-after design contract ready ralplan`. Hook experiments remain closed and public
-promotion remains closed. Until those fixture-quality gates pass, the private
-flux/DFT gate remains internal diagnostic evidence only, and the support matrix
-continues to mark true R/T as deferred.
+after design contract ready ralplan`. That implementation lane now records
+`no_private_plane_wave_energy_form_implementation`: no bounded F1/F2 local
+solver hunk is retained as material improvement over the frozen parity packet,
+so the next safe lane is `private plane-wave interface energy-form failure
+theory/design before true R/T readiness ralplan`. Hook experiments remain
+closed and public promotion remains closed. Until those fixture-quality gates
+pass, the private flux/DFT gate remains internal diagnostic evidence only, and
+the support matrix continues to mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred

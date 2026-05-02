@@ -99,8 +99,9 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave interface energy-form
-implementation after the design contract became ready. The private solver-local
+The immediate lane is now private plane-wave interface energy-form failure
+theory/design before true R/T readiness, after the bounded implementation lane
+failed closed. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
 helper-execution evidence, and the F0-F4 private
@@ -136,11 +137,15 @@ repair design before any new implementation hunk. That design lane now records
 `private_plane_wave_interface_energy_form_implementation_contract_ready`: a
 future implementation must preserve the failed baseline, improve the dominant
 parity blocker, retain paired-metric guards, run CPML/non-CPML and slow private
-metadata checks, and keep public surfaces closed. The goal gate therefore
-remains claims-closed until the follow-up implementation improves the parity
-metrics and a later true R/T readiness lane proves the hunk improves the real
-solver path without breaking CPML/non-CPML symmetry, boundary guards,
-update/coupling bounds, or the unchanged `0.02`
+metadata checks, and keep public surfaces closed. The follow-up implementation
+lane now records `no_private_plane_wave_energy_form_implementation`: the frozen
+parity packet remains the baseline, no bounded F1/F2 local solver hunk is
+retained as material improvement, and true R/T readiness is still locked. The
+goal gate therefore remains claims-closed until a deeper interface energy-form
+failure theory/design review identifies a production-safe repair path, a later
+implementation improves the parity metrics, and a later true R/T readiness lane
+proves the hunk improves the real solver path without breaking CPML/non-CPML
+symmetry, boundary guards, update/coupling bounds, or the unchanged `0.02`
 manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
