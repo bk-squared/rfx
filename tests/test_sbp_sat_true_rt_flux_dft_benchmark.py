@@ -1915,6 +1915,25 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_normalizer_weight_floor_theory_ready",
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_modal_orthogonality_floor_theory_ready",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_contract_design_ready"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal implementation after design contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_schema_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_characteristic_weighting_contract_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_contract_design_ready",
+    "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_PRECEDENCE = (
+    "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_schema_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_characteristic_weighting_contract_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_contract_design_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -17690,6 +17709,228 @@ def _private_plane_wave_modal_projection_normalizer_projected_target_residual_ba
     }
 
 
+def _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_metadata(
+    *,
+    residual_basis_failure_theory_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(residual_basis_failure_theory_metadata["baseline_metrics"])
+    metrics = dict(residual_basis_failure_theory_metadata["metrics"])
+    thresholds = dict(residual_basis_failure_theory_metadata["thresholds"])
+    threshold_results = dict(
+        residual_basis_failure_theory_metadata["threshold_results"]
+    )
+    material_decision = dict(
+        residual_basis_failure_theory_metadata["material_improvement_decision"]
+    )
+    modal_floor_contract = dict(
+        residual_basis_failure_theory_metadata["modal_floor_contract"]
+    )
+    basis_vectors = (
+        "incident_characteristic_power_mode",
+        "reflected_characteristic_power_mode",
+        "transverse_residual_power_mode",
+    )
+    energy_biorthogonal_schema = {
+        "state_owner": "_PrivateInterfaceOwnerState",
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "projection_helper": "_project_private_modal_basis_packets",
+        "basis_vectors": basis_vectors,
+        "inner_product": (
+            "private characteristic-admittance weighted tangential E/H power "
+            "form, reduced over existing fixed-shape face packets"
+        ),
+        "energy_pair_components": (
+            "source_interface_e_packet",
+            "interface_target_e_packet",
+            "characteristic_admittance_weight",
+        ),
+        "target_packet_formula": (
+            "sum(energy_biorthogonal_projected_interface_modes - "
+            "energy_biorthogonal_projected_source_modes)"
+        ),
+        "fixed_shape_reductions": True,
+        "jit_safe_reduction": True,
+        "cpml_non_cpml_wiring_inherited": True,
+        "requires_public_observable": False,
+    }
+    energy_biorthogonal_contract = {
+        "upstream_modal_floor_contract": modal_floor_contract,
+        "basis_schema": energy_biorthogonal_schema,
+        "target_packet_formula": energy_biorthogonal_schema["target_packet_formula"],
+        "target_basis_behavior": (
+            "decompose source and interface packets into energy-biorthogonal "
+            "incident, reflected, and transverse residual power modes before "
+            "target subtraction"
+        ),
+        "scalar_l2_orthogonality_replaced": True,
+        "characteristic_impedance_weighting_contract_ready": True,
+        "energy_inner_product_contract_ready": True,
+        "fail_closed_on_projection_energy_missing": True,
+        "reuse_existing_owner_packet_shapes": True,
+        "fixed_shape_reductions": True,
+        "no_threshold_laundering": True,
+    }
+    af0 = {
+        "candidate_id": "AF0_modal_floor_theory_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_residual_basis_failure_theory_status": (
+            residual_basis_failure_theory_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    af1 = {
+        "candidate_id": "AF1_energy_biorthogonal_eh_inner_product_schema",
+        "candidate_family": "private_energy_biorthogonal_basis_schema",
+        "accepted_candidate": False,
+        "energy_biorthogonal_schema_ready": True,
+        "basis_vectors": basis_vectors,
+        "fixed_shape_private_coefficients": True,
+        "superseded_by": "AF3_combined_energy_biorthogonal_design_contract",
+        "public_claim_allowed": False,
+    }
+    af2 = {
+        "candidate_id": "AF2_characteristic_impedance_normalizer_weighting_contract",
+        "candidate_family": "private_characteristic_weighting_contract",
+        "accepted_candidate": False,
+        "characteristic_impedance_weighting_contract_ready": True,
+        "energy_inner_product_contract_ready": True,
+        "target_packet_formula": energy_biorthogonal_contract["target_packet_formula"],
+        "no_threshold_laundering": True,
+        "superseded_by": "AF3_combined_energy_biorthogonal_design_contract",
+        "public_claim_allowed": False,
+    }
+    af3 = {
+        "candidate_id": "AF3_combined_energy_biorthogonal_design_contract",
+        "candidate_family": "private_energy_biorthogonal_design_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_STATUS
+        ),
+        "energy_biorthogonal_contract": energy_biorthogonal_contract,
+        "bounded_private_implementation_contract_ready": True,
+        "projection_gate_fail_closed": True,
+        "public_claim_allowed": False,
+    }
+    af4 = {
+        "candidate_id": "AF4_energy_biorthogonal_design_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design"
+        ),
+        "not_selected_reason": (
+            "the failure-theory floor gives a bounded private energy-form "
+            "contract without new public observables or threshold changes"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (af0, af1, af2, af3, af4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_only"
+        ),
+        "upstream_residual_basis_failure_theory_status": (
+            residual_basis_failure_theory_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite AF0/AF1/AF2/AF3/AF4 energy-biorthogonal design ladder; "
+            "select only a private fixed-shape implementation contract and "
+            "keep public promotion closed"
+        ),
+        "selected_candidate_id": "AF3_combined_energy_biorthogonal_design_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "failure_theory_contract_consumed": True,
+        "energy_biorthogonal_design_ready": True,
+        "energy_biorthogonal_schema_ready": True,
+        "characteristic_impedance_weighting_contract_ready": True,
+        "energy_inner_product_contract_ready": True,
+        "bounded_private_implementation_contract_ready": True,
+        "modal_floor_contract": modal_floor_contract,
+        "energy_biorthogonal_schema": energy_biorthogonal_schema,
+        "energy_biorthogonal_contract": energy_biorthogonal_contract,
+        "basis_vectors": basis_vectors,
+        "scalar_l2_orthogonality_replaced": True,
+        "residual_basis_modes_projected": True,
+        "source_packet_projected": True,
+        "interface_packet_projected": True,
+        "subtraction_uses_projected_packets_only": True,
+        "single_incident_basis_replaced": True,
+        "single_incident_basis_only": False,
+        "projection_gate_fail_closed": True,
+        "contract_gate_fail_closed": True,
+        "fail_closed_if_projection_energy_missing": True,
+        "reuse_existing_owner_packet_shapes": True,
+        "fixed_shape_private_coefficients": True,
+        "fixed_shape_reductions": True,
+        "cpml_non_cpml_wiring_inherited": True,
+        "jit_safe_reduction": True,
+        "no_threshold_laundering": True,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "paired_passed": material_decision["paired_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "next_lane_requires_energy_biorthogonal_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the design contract replaces scalar packet-L2 residual modes with "
+            "fixed-shape energy-biorthogonal characteristic power modes while "
+            "keeping the lane private and deferring any solver edit to a "
+            "separate implementation prerequisite"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -21123,8 +21364,32 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_metadata = (
+        _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_metadata(
+            residual_basis_failure_theory_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_status": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -21363,6 +21628,10 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "projected target residual-basis failure-theory redesign lane "
                 "records "
                 f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal design "
+                "lane records "
+                f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -21372,7 +21641,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_next_prerequisite"
             ],
         }
 
@@ -29470,10 +29739,266 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_design = metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design"
+    ]
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_status"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_design["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_DESIGN_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_design[
+        "upstream_residual_basis_failure_theory_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_status"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "candidate_ladder_declared_before_implementation"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "candidate_ladder_declared_before_solver_edit"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "candidate_ladder_declared_before_slow_scoring"
+        ]
+        is True
+    )
+    assert residual_basis_energy_biorthogonal_design["candidate_count"] == 5
+    assert residual_basis_energy_biorthogonal_design["selected_candidate_id"] == (
+        "AF3_combined_energy_biorthogonal_design_contract"
+    )
+    assert residual_basis_energy_biorthogonal_design["baseline_metrics"] == (
+        residual_basis_failure_theory["baseline_metrics"]
+    )
+    assert residual_basis_energy_biorthogonal_design["metrics"] == (
+        residual_basis_failure_theory["metrics"]
+    )
+    assert residual_basis_energy_biorthogonal_design["thresholds"] == (
+        residual_basis_failure_theory["thresholds"]
+    )
+    assert residual_basis_energy_biorthogonal_design["threshold_results"] == (
+        residual_basis_failure_theory["threshold_results"]
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["baseline_metrics_preserved"]
+        is True
+    )
+    assert residual_basis_energy_biorthogonal_design["thresholds_unchanged"] is True
+    assert (
+        residual_basis_energy_biorthogonal_design["failure_theory_contract_consumed"]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["energy_biorthogonal_design_ready"]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["energy_biorthogonal_schema_ready"]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "characteristic_impedance_weighting_contract_ready"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "energy_inner_product_contract_ready"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "bounded_private_implementation_contract_ready"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["modal_floor_contract"]
+        == floor_contract
+    )
+    energy_schema = residual_basis_energy_biorthogonal_design[
+        "energy_biorthogonal_schema"
+    ]
+    assert energy_schema["state_owner"] == "_PrivateInterfaceOwnerState"
+    assert (
+        energy_schema["consumer_helper"]
+        == "_apply_propagation_aware_modal_retry_face_helper"
+    )
+    assert energy_schema["projection_helper"] == "_project_private_modal_basis_packets"
+    assert energy_schema["basis_vectors"] == (
+        "incident_characteristic_power_mode",
+        "reflected_characteristic_power_mode",
+        "transverse_residual_power_mode",
+    )
+    assert "tangential E/H power form" in energy_schema["inner_product"]
+    assert energy_schema["fixed_shape_reductions"] is True
+    assert energy_schema["jit_safe_reduction"] is True
+    assert energy_schema["requires_public_observable"] is False
+    energy_contract = residual_basis_energy_biorthogonal_design[
+        "energy_biorthogonal_contract"
+    ]
+    assert energy_contract["upstream_modal_floor_contract"] == floor_contract
+    assert energy_contract["basis_schema"] == energy_schema
+    assert energy_contract["scalar_l2_orthogonality_replaced"] is True
+    assert (
+        energy_contract["characteristic_impedance_weighting_contract_ready"]
+        is True
+    )
+    assert energy_contract["energy_inner_product_contract_ready"] is True
+    assert energy_contract["fail_closed_on_projection_energy_missing"] is True
+    assert energy_contract["reuse_existing_owner_packet_shapes"] is True
+    assert energy_contract["fixed_shape_reductions"] is True
+    assert energy_contract["no_threshold_laundering"] is True
+    assert (
+        residual_basis_energy_biorthogonal_design["basis_vectors"]
+        == energy_schema["basis_vectors"]
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "scalar_l2_orthogonality_replaced"
+        ]
+        is True
+    )
+    assert residual_basis_energy_biorthogonal_design["source_packet_projected"] is True
+    assert (
+        residual_basis_energy_biorthogonal_design["interface_packet_projected"]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "subtraction_uses_projected_packets_only"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["single_incident_basis_replaced"]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["single_incident_basis_only"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["projection_gate_fail_closed"]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["contract_gate_fail_closed"]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "fail_closed_if_projection_energy_missing"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "reuse_existing_owner_packet_shapes"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["fixed_shape_private_coefficients"]
+        is True
+    )
+    assert residual_basis_energy_biorthogonal_design["fixed_shape_reductions"] is True
+    assert (
+        residual_basis_energy_biorthogonal_design["cpml_non_cpml_wiring_inherited"]
+        is True
+    )
+    assert residual_basis_energy_biorthogonal_design["jit_safe_reduction"] is True
+    assert residual_basis_energy_biorthogonal_design["no_threshold_laundering"] is True
+    assert (
+        residual_basis_energy_biorthogonal_design["material_improvement_demonstrated"]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_design["paired_passed"] is False
+    assert residual_basis_energy_biorthogonal_design["fixture_quality_ready"] is False
+    assert residual_basis_energy_biorthogonal_design["fixture_quality_pending"] is True
+    assert (
+        residual_basis_energy_biorthogonal_design["true_rt_readiness_unlocked"]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_design["slab_rt_scored"] is False
+    assert (
+        residual_basis_energy_biorthogonal_design["production_patch_applied"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["solver_behavior_changed"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["field_update_behavior_changed"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["runner_behavior_changed"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["new_solver_hunk_retained"]
+        is False
+    )
+    residual_basis_energy_design_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_energy_biorthogonal_design["candidate_ladder"]
+    }
+    assert residual_basis_energy_design_candidates[
+        "AF0_modal_floor_theory_freeze"
+    ]["accepted_candidate"] is False
+    assert residual_basis_energy_design_candidates[
+        "AF1_energy_biorthogonal_eh_inner_product_schema"
+    ]["energy_biorthogonal_schema_ready"] is True
+    assert residual_basis_energy_design_candidates[
+        "AF2_characteristic_impedance_normalizer_weighting_contract"
+    ]["characteristic_impedance_weighting_contract_ready"] is True
+    assert residual_basis_energy_design_candidates[
+        "AF3_combined_energy_biorthogonal_design_contract"
+    ]["accepted_candidate"] is True
+    assert residual_basis_energy_design_candidates[
+        "AF4_energy_biorthogonal_design_blocked"
+    ]["accepted_candidate"] is False
+    assert residual_basis_energy_biorthogonal_design["public_claim_allowed"] is False
+    assert (
+        residual_basis_energy_biorthogonal_design["public_observable_promoted"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "true_rt_public_observable_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design[
+            "dft_flux_tfsf_port_sparameter_promoted"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_design["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -29499,7 +30024,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_next_prerequisite"
         ]
     )
     assert (
@@ -29857,6 +30382,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_failure_theory_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_design_status"
         ]
         in metadata["blocking_diagnostic"]
     )

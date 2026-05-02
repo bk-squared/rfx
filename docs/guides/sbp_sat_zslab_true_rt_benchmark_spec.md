@@ -563,7 +563,14 @@ residual-basis failure-theory lane now records
 the retained hunk removed the single-incident-basis floor, but its residual modes
 are scalar weighted complex-L2 packet modes rather than an energy-biorthogonal
 characteristic E/H basis; the next safe lane is private energy-biorthogonal
-residual-basis redesign.
+residual-basis redesign. The projected target residual-basis energy-biorthogonal
+design lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_contract_design_ready`:
+the design replaces scalar packet-L2 residual modes with fixed-shape private
+incident, reflected, and transverse characteristic E/H power modes, keeps
+thresholds unchanged, reuses existing private owner packet shapes, and leaves
+all public observable/API/result/export surfaces closed; the next safe lane is
+private energy-biorthogonal implementation.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
