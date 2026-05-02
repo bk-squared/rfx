@@ -568,6 +568,13 @@ shaping with a face-local SBP/mortar power metric scale computed from
 existing owner weights, masks, and normal signs; thresholds and public
 surfaces remain unchanged, and the next safe lane is private metric-shape
 calibration parity scoring.
+The projected target residual-basis energy-biorthogonal metric-shape
+calibration parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_metric_shape_calibration_hunk_insufficient_fixture_quality_pending`:
+the retained private hunk has finite score evidence, but unchanged
+material-improvement and fixture-quality gates remain closed, so true R/T
+and public observable promotion stay locked; the next safe lane is private
+metric-shape calibration failure-theory redesign.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
