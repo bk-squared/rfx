@@ -1222,6 +1222,26 @@ _PRIVATE_PLANE_WAVE_FACE_LOCAL_MODAL_RETRY_IMPLEMENTATION_PRECEDENCE = (
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
 
+_PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_STATUS = (
+    "private_plane_wave_observable_proxy_modal_retry_contract_ready"
+)
+_PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_NEXT_PREREQUISITE = (
+    "private plane-wave observable-proxy modal retry implementation after "
+    "architecture contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_TERMINAL_OUTCOMES = (
+    "private_plane_wave_observable_proxy_modal_basis_contract_ready",
+    "private_plane_wave_lagged_owner_observable_proxy_state_contract_ready",
+    "private_plane_wave_observable_proxy_modal_retry_contract_ready",
+    "no_private_plane_wave_observable_proxy_modal_basis_architecture",
+)
+_PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_PRECEDENCE = (
+    "no_private_plane_wave_observable_proxy_modal_basis_architecture",
+    "private_plane_wave_observable_proxy_modal_basis_contract_ready",
+    "private_plane_wave_lagged_owner_observable_proxy_state_contract_ready",
+    "private_plane_wave_observable_proxy_modal_retry_contract_ready",
+)
+
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
         "candidate_id": "C0_current_helper_original_fixture",
@@ -10092,6 +10112,211 @@ def _private_plane_wave_face_local_modal_retry_implementation_metadata(
     }
 
 
+def _private_plane_wave_observable_proxy_modal_architecture_metadata(
+    *,
+    retry_implementation_metadata: dict[str, object],
+    failure_theory_metadata: dict[str, object],
+    plane_wave_parity_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(retry_implementation_metadata["baseline_metrics"])
+    thresholds = dict(retry_implementation_metadata["thresholds"])
+    proxy_basis_contract = {
+        "observable_proxy_basis": "solver_local_transverse_face_energy_phase_proxy",
+        "benchmark_observable_basis": "transverse_plane_dft_distribution",
+        "benchmark_plane_dft_observable_imported": False,
+        "private_face_samples_only": True,
+        "uses_energy_weighted_phase_proxy": True,
+        "uses_transverse_face_distribution_proxy": True,
+        "uses_plane_dft_monitor": False,
+        "requires_paired_phase_cv_guard": True,
+        "requires_vacuum_magnitude_phase_guard": True,
+        "cpml_non_cpml_symmetry_required": True,
+        "no_public_observable": True,
+    }
+    lagged_owner_state_contract = {
+        "owner_reference_timing": "previous_step_or_predictor_owner_reference",
+        "same_step_diagnostic_feedback_forbidden": True,
+        "lagged_owner_reference_required": True,
+        "jax_pytree_shape_contract_required": True,
+        "runner_jit_initialization_contract_required": True,
+        "hook_required": False,
+        "public_api_required": False,
+    }
+    implementation_contract = {
+        "requires_proxy_basis_contract": True,
+        "requires_lagged_owner_state_contract": True,
+        "requires_owner_score_precheck": True,
+        "requires_slow_plane_wave_parity_gate": True,
+        "requires_paired_phase_cv_gate": True,
+        "requires_vacuum_magnitude_phase_gate": True,
+        "requires_cpml_non_cpml_symmetry_tests": True,
+        "field_update_behavior_change_requires_slow_gate": True,
+        "forbids_benchmark_dft_observable_import": True,
+        "forbids_public_promotion": True,
+    }
+    w0 = {
+        "candidate_id": "W0_retry_fail_closed_packet_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_retry_implementation_status": retry_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_failure_theory_status": failure_theory_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    w1 = {
+        "candidate_id": "W1_solver_local_observable_proxy_modal_basis",
+        "candidate_family": "solver_local_proxy_basis_design",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "selected_terminal_outcome": (
+            "private_plane_wave_observable_proxy_modal_basis_contract_ready"
+        ),
+        "proxy_basis_contract": proxy_basis_contract,
+        "benchmark_plane_dft_observable_imported": False,
+        "superseded_by": "W3_observable_proxy_modal_retry_contract",
+        "requires_public_api": False,
+        "requires_hook": False,
+        "public_claim_allowed": False,
+    }
+    w2 = {
+        "candidate_id": "W2_lagged_owner_observable_proxy_state_shape",
+        "candidate_family": "lagged_owner_proxy_state_design",
+        "accepted_candidate": False,
+        "design_component_ready": True,
+        "selected_terminal_outcome": (
+            "private_plane_wave_lagged_owner_observable_proxy_state_contract_ready"
+        ),
+        "lagged_owner_state_contract": lagged_owner_state_contract,
+        "superseded_by": "W3_observable_proxy_modal_retry_contract",
+        "requires_public_api": False,
+        "requires_hook": False,
+        "public_claim_allowed": False,
+    }
+    w3 = {
+        "candidate_id": "W3_observable_proxy_modal_retry_contract",
+        "candidate_family": "combined_private_architecture_contract",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_STATUS
+        ),
+        "proxy_basis_contract": proxy_basis_contract,
+        "lagged_owner_state_contract": lagged_owner_state_contract,
+        "implementation_contract": implementation_contract,
+        "bounded_follow_up_implementation_surface": True,
+        "public_claim_allowed": False,
+    }
+    w4 = {
+        "candidate_id": "W4_observable_proxy_architecture_blocked",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_observable_proxy_modal_basis_architecture"
+        ),
+        "not_selected_reason": (
+            "a solver-local proxy can be specified without importing benchmark "
+            "plane-DFT observables, so the bounded implementation contract is "
+            "ready for the next private lane"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (w0, w1, w2, w3, w4)
+    return {
+        "status": _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_STATUS,
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_observable_proxy_modal_architecture_only"
+        ),
+        "upstream_retry_implementation_status": retry_implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_failure_theory_status": failure_theory_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_parity_status": plane_wave_parity_metadata["terminal_outcome"],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite W0/W1/W2/W3/W4 architecture ladder; design a private "
+            "solver-local observable proxy and lagged owner state before any "
+            "field-update retry hunk is allowed"
+        ),
+        "selected_candidate_id": "W3_observable_proxy_modal_retry_contract",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "thresholds": thresholds,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "retry_fail_closed_packet_frozen": True,
+        "solver_local_observable_proxy_basis_ready": True,
+        "lagged_owner_observable_proxy_state_contract_ready": True,
+        "observable_proxy_modal_retry_contract_ready": True,
+        "implementation_contract_ready": True,
+        "bounded_follow_up_implementation_surface": True,
+        "proxy_basis_contract": proxy_basis_contract,
+        "lagged_owner_state_contract": lagged_owner_state_contract,
+        "implementation_contract": implementation_contract,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "uses_private_face_samples": True,
+        "uses_energy_weighted_phase_proxy": True,
+        "uses_transverse_face_distribution_proxy": True,
+        "lagged_owner_reference_required": True,
+        "observable_proxy_modal_basis_required": True,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "sbp_sat_3d_repair_applied": False,
+        "new_solver_hunk_retained": False,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "next_lane_requires_observable_proxy_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private observable-proxy modal architecture contract is ready: "
+            "a solver-local transverse face energy/phase proxy can stand in for "
+            "the benchmark plane-DFT distribution without importing the DFT "
+            "observable into field updates, while lagged owner state and paired "
+            "phase/CV plus vacuum guards remain required before implementation"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -12616,8 +12841,34 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_observable_proxy_modal_architecture_metadata = (
+        _private_plane_wave_observable_proxy_modal_architecture_metadata(
+            retry_implementation_metadata=(
+                plane_wave_face_local_modal_retry_implementation_metadata
+            ),
+            failure_theory_metadata=(
+                plane_wave_face_local_modal_failure_theory_metadata
+            ),
+            plane_wave_parity_metadata=plane_wave_parity_metadata,
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_observable_proxy_modal_architecture_status": (
+                plane_wave_observable_proxy_modal_architecture_metadata["status"]
+            ),
+            "private_plane_wave_observable_proxy_modal_architecture": (
+                plane_wave_observable_proxy_modal_architecture_metadata
+            ),
+            "private_plane_wave_observable_proxy_modal_architecture_next_prerequisite": (
+                plane_wave_observable_proxy_modal_architecture_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_face_local_modal_retry_implementation_next_prerequisite"
+        "private_plane_wave_observable_proxy_modal_architecture_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -12747,6 +12998,9 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "; the private plane-wave face-local modal correction "
                 "implementation retry lane records "
                 f"{plane_wave_face_local_modal_retry_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave observable-proxy modal architecture "
+                "lane records "
+                f"{plane_wave_observable_proxy_modal_architecture_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -12756,7 +13010,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_face_local_modal_retry_implementation_next_prerequisite"
+                "private_plane_wave_observable_proxy_modal_architecture_next_prerequisite"
             ],
         }
 
@@ -16780,10 +17034,141 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_face_local_modal_retry_implementation_next_prerequisite"
         ]
     )
+    proxy_architecture = metadata[
+        "private_plane_wave_observable_proxy_modal_architecture"
+    ]
+    assert metadata[
+        "private_plane_wave_observable_proxy_modal_architecture_status"
+    ] == _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_STATUS
+    assert proxy_architecture["terminal_outcome"] == (
+        _PRIVATE_PLANE_WAVE_OBSERVABLE_PROXY_MODAL_ARCHITECTURE_STATUS
+    )
+    assert proxy_architecture["upstream_retry_implementation_status"] == (
+        metadata["private_plane_wave_face_local_modal_retry_implementation_status"]
+    )
+    assert proxy_architecture["upstream_failure_theory_status"] == (
+        metadata["private_plane_wave_face_local_modal_failure_theory_status"]
+    )
+    assert proxy_architecture["upstream_parity_status"] == (
+        metadata["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert proxy_architecture["candidate_ladder_declared_before_solver_edit"] is True
+    assert proxy_architecture[
+        "candidate_ladder_declared_before_slow_scoring"
+    ] is True
+    assert proxy_architecture["candidate_count"] == 5
+    assert proxy_architecture["selected_candidate_id"] == (
+        "W3_observable_proxy_modal_retry_contract"
+    )
+    assert proxy_architecture["baseline_metrics"] == (
+        modal_retry_implementation["baseline_metrics"]
+    )
+    assert proxy_architecture["thresholds"] == (
+        modal_retry_implementation["thresholds"]
+    )
+    assert proxy_architecture["baseline_metrics_preserved"] is True
+    assert proxy_architecture["thresholds_unchanged"] is True
+    assert proxy_architecture["retry_fail_closed_packet_frozen"] is True
+    assert proxy_architecture["solver_local_observable_proxy_basis_ready"] is True
+    assert (
+        proxy_architecture["lagged_owner_observable_proxy_state_contract_ready"]
+        is True
+    )
+    assert proxy_architecture["observable_proxy_modal_retry_contract_ready"] is True
+    assert proxy_architecture["implementation_contract_ready"] is True
+    assert proxy_architecture["bounded_follow_up_implementation_surface"] is True
+    proxy_basis_contract = proxy_architecture["proxy_basis_contract"]
+    assert proxy_basis_contract["observable_proxy_basis"] == (
+        "solver_local_transverse_face_energy_phase_proxy"
+    )
+    assert proxy_basis_contract["benchmark_observable_basis"] == (
+        "transverse_plane_dft_distribution"
+    )
+    assert proxy_basis_contract["benchmark_plane_dft_observable_imported"] is False
+    assert proxy_basis_contract["private_face_samples_only"] is True
+    assert proxy_basis_contract["uses_energy_weighted_phase_proxy"] is True
+    assert proxy_basis_contract["uses_transverse_face_distribution_proxy"] is True
+    assert proxy_basis_contract["uses_plane_dft_monitor"] is False
+    assert proxy_basis_contract["requires_paired_phase_cv_guard"] is True
+    assert proxy_basis_contract["requires_vacuum_magnitude_phase_guard"] is True
+    assert proxy_basis_contract["cpml_non_cpml_symmetry_required"] is True
+    assert proxy_basis_contract["no_public_observable"] is True
+    lagged_proxy_state = proxy_architecture["lagged_owner_state_contract"]
+    assert lagged_proxy_state["owner_reference_timing"] == (
+        "previous_step_or_predictor_owner_reference"
+    )
+    assert lagged_proxy_state["same_step_diagnostic_feedback_forbidden"] is True
+    assert lagged_proxy_state["lagged_owner_reference_required"] is True
+    assert lagged_proxy_state["jax_pytree_shape_contract_required"] is True
+    assert lagged_proxy_state["runner_jit_initialization_contract_required"] is True
+    assert lagged_proxy_state["hook_required"] is False
+    implementation_contract = proxy_architecture["implementation_contract"]
+    assert implementation_contract["requires_proxy_basis_contract"] is True
+    assert implementation_contract["requires_lagged_owner_state_contract"] is True
+    assert implementation_contract["requires_owner_score_precheck"] is True
+    assert implementation_contract["requires_slow_plane_wave_parity_gate"] is True
+    assert implementation_contract["requires_paired_phase_cv_gate"] is True
+    assert implementation_contract["requires_vacuum_magnitude_phase_gate"] is True
+    assert (
+        implementation_contract["requires_cpml_non_cpml_symmetry_tests"] is True
+    )
+    assert implementation_contract["forbids_benchmark_dft_observable_import"] is True
+    assert implementation_contract["forbids_public_promotion"] is True
+    assert proxy_architecture["benchmark_plane_dft_observable_imported"] is False
+    assert proxy_architecture["solver_local_proxy_uses_plane_dft_monitor"] is False
+    assert proxy_architecture["uses_private_face_samples"] is True
+    assert proxy_architecture["uses_energy_weighted_phase_proxy"] is True
+    assert proxy_architecture["uses_transverse_face_distribution_proxy"] is True
+    assert proxy_architecture["lagged_owner_reference_required"] is True
+    assert proxy_architecture["observable_proxy_modal_basis_required"] is True
+    assert proxy_architecture["production_patch_applied"] is False
+    assert proxy_architecture["solver_behavior_changed"] is False
+    assert proxy_architecture["field_update_behavior_changed"] is False
+    assert proxy_architecture["runner_behavior_changed"] is False
+    assert proxy_architecture["new_solver_hunk_retained"] is False
+    assert proxy_architecture["subgrid_vacuum_parity_scored"] is True
+    assert proxy_architecture["subgrid_vacuum_parity_passed"] is False
+    assert proxy_architecture["true_rt_readiness_unlocked"] is False
+    assert (
+        proxy_architecture["next_lane_requires_observable_proxy_implementation"]
+        is True
+    )
+    proxy_architecture_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in proxy_architecture["candidate_ladder"]
+    }
+    assert proxy_architecture_candidates[
+        "W1_solver_local_observable_proxy_modal_basis"
+    ]["design_component_ready"] is True
+    assert proxy_architecture_candidates[
+        "W1_solver_local_observable_proxy_modal_basis"
+    ]["superseded_by"] == "W3_observable_proxy_modal_retry_contract"
+    assert proxy_architecture_candidates[
+        "W2_lagged_owner_observable_proxy_state_shape"
+    ]["design_component_ready"] is True
+    assert proxy_architecture_candidates[
+        "W2_lagged_owner_observable_proxy_state_shape"
+    ]["superseded_by"] == "W3_observable_proxy_modal_retry_contract"
+    assert proxy_architecture_candidates[
+        "W3_observable_proxy_modal_retry_contract"
+    ]["accepted_candidate"] is True
+    assert proxy_architecture_candidates[
+        "W4_observable_proxy_architecture_blocked"
+    ]["accepted_candidate"] is False
+    assert proxy_architecture["public_claim_allowed"] is False
+    assert proxy_architecture["public_observable_promoted"] is False
+    assert proxy_architecture["true_rt_public_observable_promoted"] is False
+    assert proxy_architecture["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        proxy_architecture["next_prerequisite"]
+        == metadata[
+            "private_plane_wave_observable_proxy_modal_architecture_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_face_local_modal_retry_implementation_next_prerequisite"
+            "private_plane_wave_observable_proxy_modal_architecture_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -16809,7 +17194,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_face_local_modal_retry_implementation_next_prerequisite"
+            "private_plane_wave_observable_proxy_modal_architecture_next_prerequisite"
         ]
     )
     assert (
@@ -16974,6 +17359,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata["private_plane_wave_face_local_modal_retry_implementation_status"]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata["private_plane_wave_observable_proxy_modal_architecture_status"]
         in metadata["blocking_diagnostic"]
     )
     assert "not public TFSF" in metadata["diagnostic_basis"]

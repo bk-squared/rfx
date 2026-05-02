@@ -2997,13 +2997,130 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         == modal_retry_implementation["next_prerequisite"]
     )
+    proxy_architecture = benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_architecture"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_observable_proxy_modal_architecture_status"
+    ] == "private_plane_wave_observable_proxy_modal_retry_contract_ready"
+    assert proxy_architecture["terminal_outcome"] == (
+        "private_plane_wave_observable_proxy_modal_retry_contract_ready"
+    )
+    assert proxy_architecture["upstream_retry_implementation_status"] == (
+        benchmark_gate["private_plane_wave_face_local_modal_retry_implementation_status"]
+    )
+    assert proxy_architecture["upstream_failure_theory_status"] == (
+        benchmark_gate["private_plane_wave_face_local_modal_failure_theory_status"]
+    )
+    assert proxy_architecture["upstream_parity_status"] == (
+        benchmark_gate["private_subgrid_vacuum_plane_wave_parity_scoring_status"]
+    )
+    assert proxy_architecture["candidate_ladder_declared_before_solver_edit"] is True
+    assert proxy_architecture[
+        "candidate_ladder_declared_before_slow_scoring"
+    ] is True
+    assert proxy_architecture["candidate_count"] == 5
+    assert proxy_architecture["selected_candidate_id"] == (
+        "W3_observable_proxy_modal_retry_contract"
+    )
+    assert proxy_architecture["baseline_metrics"] == (
+        modal_retry_implementation["baseline_metrics"]
+    )
+    assert proxy_architecture["thresholds"] == (
+        modal_retry_implementation["thresholds"]
+    )
+    assert proxy_architecture["baseline_metrics_preserved"] is True
+    assert proxy_architecture["thresholds_unchanged"] is True
+    assert proxy_architecture["retry_fail_closed_packet_frozen"] is True
+    assert proxy_architecture["solver_local_observable_proxy_basis_ready"] is True
+    assert (
+        proxy_architecture["lagged_owner_observable_proxy_state_contract_ready"]
+        is True
+    )
+    assert proxy_architecture["observable_proxy_modal_retry_contract_ready"] is True
+    assert proxy_architecture["implementation_contract_ready"] is True
+    assert proxy_architecture["bounded_follow_up_implementation_surface"] is True
+    proxy_basis_contract = proxy_architecture["proxy_basis_contract"]
+    assert proxy_basis_contract["observable_proxy_basis"] == (
+        "solver_local_transverse_face_energy_phase_proxy"
+    )
+    assert proxy_basis_contract["benchmark_observable_basis"] == (
+        "transverse_plane_dft_distribution"
+    )
+    assert proxy_basis_contract["benchmark_plane_dft_observable_imported"] is False
+    assert proxy_basis_contract["private_face_samples_only"] is True
+    assert proxy_basis_contract["uses_energy_weighted_phase_proxy"] is True
+    assert proxy_basis_contract["uses_plane_dft_monitor"] is False
+    assert proxy_basis_contract["requires_paired_phase_cv_guard"] is True
+    assert proxy_basis_contract["requires_vacuum_magnitude_phase_guard"] is True
+    assert proxy_basis_contract["cpml_non_cpml_symmetry_required"] is True
+    lagged_proxy_state = proxy_architecture["lagged_owner_state_contract"]
+    assert lagged_proxy_state["owner_reference_timing"] == (
+        "previous_step_or_predictor_owner_reference"
+    )
+    assert lagged_proxy_state["same_step_diagnostic_feedback_forbidden"] is True
+    assert lagged_proxy_state["jax_pytree_shape_contract_required"] is True
+    assert lagged_proxy_state["runner_jit_initialization_contract_required"] is True
+    implementation_contract = proxy_architecture["implementation_contract"]
+    assert implementation_contract["requires_proxy_basis_contract"] is True
+    assert implementation_contract["requires_lagged_owner_state_contract"] is True
+    assert implementation_contract["requires_owner_score_precheck"] is True
+    assert implementation_contract["requires_slow_plane_wave_parity_gate"] is True
+    assert implementation_contract["requires_paired_phase_cv_gate"] is True
+    assert implementation_contract["requires_vacuum_magnitude_phase_gate"] is True
+    assert (
+        implementation_contract["requires_cpml_non_cpml_symmetry_tests"] is True
+    )
+    assert implementation_contract["forbids_benchmark_dft_observable_import"] is True
+    assert implementation_contract["forbids_public_promotion"] is True
+    assert proxy_architecture["benchmark_plane_dft_observable_imported"] is False
+    assert proxy_architecture["solver_local_proxy_uses_plane_dft_monitor"] is False
+    assert proxy_architecture["uses_private_face_samples"] is True
+    assert proxy_architecture["uses_energy_weighted_phase_proxy"] is True
+    assert proxy_architecture["uses_transverse_face_distribution_proxy"] is True
+    assert proxy_architecture["production_patch_applied"] is False
+    assert proxy_architecture["solver_behavior_changed"] is False
+    assert proxy_architecture["field_update_behavior_changed"] is False
+    assert proxy_architecture["runner_behavior_changed"] is False
+    assert proxy_architecture["new_solver_hunk_retained"] is False
+    assert proxy_architecture["true_rt_readiness_unlocked"] is False
+    assert (
+        proxy_architecture["next_lane_requires_observable_proxy_implementation"]
+        is True
+    )
+    proxy_architecture_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in proxy_architecture["candidate_ladder"]
+    }
+    assert proxy_architecture_candidates[
+        "W1_solver_local_observable_proxy_modal_basis"
+    ]["design_component_ready"] is True
+    assert proxy_architecture_candidates[
+        "W2_lagged_owner_observable_proxy_state_shape"
+    ]["design_component_ready"] is True
+    assert proxy_architecture_candidates[
+        "W3_observable_proxy_modal_retry_contract"
+    ]["accepted_candidate"] is True
+    assert proxy_architecture_candidates[
+        "W4_observable_proxy_architecture_blocked"
+    ]["accepted_candidate"] is False
+    assert proxy_architecture["public_claim_allowed"] is False
+    assert proxy_architecture["public_observable_promoted"] is False
+    assert proxy_architecture["true_rt_public_observable_promoted"] is False
+    assert proxy_architecture["dft_flux_tfsf_port_sparameter_promoted"] is False
+    assert (
+        benchmark_gate[
+            "private_plane_wave_observable_proxy_modal_architecture_next_prerequisite"
+        ]
+        == proxy_architecture["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy modal basis architecture after retry "
-        "implementation blocked ralplan"
+        "private plane-wave observable-proxy modal retry implementation after "
+        "architecture contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
-        "private plane-wave observable-proxy modal basis architecture after retry "
-        "implementation blocked ralplan"
+        "private plane-wave observable-proxy modal retry implementation after "
+        "architecture contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -3121,6 +3238,10 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate[
             "private_plane_wave_face_local_modal_retry_implementation_status"
         ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate["private_plane_wave_observable_proxy_modal_architecture_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
@@ -3387,8 +3508,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == (
-        "private plane-wave observable-proxy modal basis architecture after retry "
-        "implementation blocked ralplan"
+        "private plane-wave observable-proxy modal retry implementation after "
+        "architecture contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

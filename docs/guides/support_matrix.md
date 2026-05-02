@@ -342,8 +342,13 @@ paired phase/CV and vacuum gates. The implementation retry lane now records
 timing alone is insufficient, and the claims-bearing transverse plane-DFT
 observable cannot be imported into solver-local field updates without private
 observable-proxy modal-basis architecture. The next safe lane is private
-plane-wave observable-proxy modal-basis architecture; public promotion remains
-closed.
+plane-wave observable-proxy modal-basis architecture. That architecture lane now
+records `private_plane_wave_observable_proxy_modal_retry_contract_ready`: a
+solver-local transverse face energy/phase proxy can stand in for the benchmark
+plane-DFT distribution without importing the DFT observable into field updates,
+while lagged owner state plus paired phase/CV and vacuum guards remain required
+before implementation. The next safe lane is private plane-wave
+observable-proxy modal retry implementation; public promotion remains closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

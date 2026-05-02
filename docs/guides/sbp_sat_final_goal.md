@@ -99,8 +99,8 @@ Promotion requires synchronized updates to:
 
 ## Current immediate objective
 
-The immediate lane is now private plane-wave observable-proxy modal-basis
-architecture after the implementation retry failed closed. The
+The immediate lane is now private plane-wave observable-proxy modal retry
+implementation after the architecture contract became ready. The
 private owner state shape now propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
@@ -121,8 +121,13 @@ The implementation retry lane now records
 `no_private_plane_wave_face_local_modal_retry_implementation`: lagged owner
 timing alone is insufficient, and the claims-bearing transverse plane-DFT
 observable cannot be imported into solver-local field updates without a private
-observable-proxy modal basis. The next architecture lane must define a
-solver-local observable proxy before another bounded solver hunk is allowed.
+observable-proxy modal basis. The architecture lane now records
+`private_plane_wave_observable_proxy_modal_retry_contract_ready`: a solver-local
+transverse face energy/phase proxy can stand in for the benchmark plane-DFT
+distribution without importing the DFT observable into field updates, while
+lagged owner state plus paired phase/CV and vacuum guards remain required before
+implementation. The next implementation lane must prove that bounded solver
+behavior improves the real private parity scorer before any hunk is retained.
 True R/T readiness is still pending. The private solver-local
 skew E/H helper is retained as a bounded
 production-context hunk, the accepted boundary subset has direct
@@ -202,11 +207,12 @@ can prove paired phase/CV and vacuum-regression gates. The architecture lane
 has now proven the private contract and the implementation lane has failed
 closed without retaining a solver hunk. The failure-theory lane has now
 defined the retry contract, and the retry implementation lane has failed closed
-without retaining a lagged/observable-aligned hunk. The goal gate therefore
-remains claims-closed until a later observable-proxy architecture,
-implementation, and readiness lane proves the hunk improves the real solver path
-without breaking CPML/non-CPML symmetry, boundary guards, update/coupling bounds,
-or the unchanged `0.02` manufactured-ledger threshold.
+without retaining a lagged/observable-aligned hunk. The observable-proxy
+architecture lane has now defined the private contract. The goal gate therefore
+remains claims-closed until a later implementation and readiness lane proves the
+hunk improves the real solver path without breaking CPML/non-CPML symmetry,
+boundary guards, update/coupling bounds, or the unchanged `0.02`
+manufactured-ledger threshold.
 
 No public true R/T, DFT/flux, TFSF, port, S-parameter, API, runner, result,
 hook, env/config, default tau, or public observable promotion should be admitted

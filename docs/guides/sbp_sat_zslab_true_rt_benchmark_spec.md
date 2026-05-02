@@ -388,10 +388,15 @@ paired phase/CV and vacuum gates. The implementation retry lane now records
 `no_private_plane_wave_face_local_modal_retry_implementation`: lagged owner
 timing alone is insufficient, and the claims-bearing transverse plane-DFT
 observable cannot be imported into solver-local field updates without private
-observable-proxy modal-basis architecture. Hook experiments remain closed and
-public promotion remains closed. Until those fixture-quality gates pass, the
-private flux/DFT gate remains internal diagnostic evidence only, and the support
-matrix continues to mark true R/T as deferred.
+observable-proxy modal-basis architecture. That architecture lane now records
+`private_plane_wave_observable_proxy_modal_retry_contract_ready`: a solver-local
+transverse face energy/phase proxy can stand in for the benchmark plane-DFT
+distribution without importing the DFT observable into field updates, while
+lagged owner state plus paired phase/CV and vacuum guards remain required before
+implementation. Hook experiments remain closed and public promotion remains
+closed. Until those fixture-quality gates pass, the private flux/DFT gate
+remains internal diagnostic evidence only, and the support matrix continues to
+mark true R/T as deferred.
 In other words, the support matrix continues to mark true R/T as deferred.
 
 ## Why true R/T is deferred
