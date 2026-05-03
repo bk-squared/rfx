@@ -705,6 +705,14 @@ it consumes the finite-but-insufficient phase/magnitude balance parity evidence,
 selects a private residual modal-coupling floor inside the same fixed-shape modal
 packet contract, defers solver edits to a later private implementation lane, and
 keeps true R/T plus public observable promotion locked.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/magnitude
+balance residual modal-coupling implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_hunk_retained_fixture_quality_pending`:
+the private projection helper applies a bounded residual modal-coupling map
+inside the retained fixed-shape source/interface packet contract, keeps public
+surfaces and thresholds unchanged, and routes the next step to private parity
+scoring before any true R/T readiness claim.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

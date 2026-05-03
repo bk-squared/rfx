@@ -1366,6 +1366,85 @@ def _private_target_basis_residual_phase_magnitude_balance_source_interface_tran
     )
 
 
+def _private_target_basis_residual_modal_coupling_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private residual modal-coupling transfer map.
+
+    This bounded follow-up consumes the retained residual phase/magnitude
+    balance contract, but lets active target rows couple against active source
+    columns directly inside the same fixed 3x3 private modal packet shape.  It
+    uses no public observable, runner state, exports, hooks, or threshold
+    changes and fails closed on non-finite or degenerate modal-coupling
+    evidence.
+    """
+
+    balance_transfer, balance_ready = (
+        _private_target_basis_residual_phase_magnitude_balance_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=floor,
+        )
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    target_active = (interface_coeff - source_coeff) * active_complex
+    source_energy = jnp.sum(jnp.abs(source_active) ** 2)
+    raw_coupling = (
+        target_active[:, None]
+        * jnp.conj(source_active[None, :])
+        / jnp.maximum(source_energy, floor).astype(jnp.complex64)
+    )
+    coupling_magnitude = jnp.abs(raw_coupling)
+    bounded_coupling_magnitude = jnp.clip(
+        coupling_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    coupling_phase = raw_coupling / jnp.maximum(coupling_magnitude, floor)
+    transfer = (
+        bounded_coupling_magnitude.astype(jnp.complex64)
+        * coupling_phase
+        * active_outer
+    )
+    target_energy = jnp.sum(jnp.abs(target_active) ** 2)
+    balance_correction = balance_transfer @ source_active
+    coupling_correction = transfer @ source_active
+    balance_energy = jnp.sum(jnp.abs(balance_correction) ** 2)
+    coupling_energy = jnp.sum(jnp.abs(coupling_correction) ** 2)
+    coupling_finite = (
+        jnp.all(jnp.isfinite(jnp.real(raw_coupling)))
+        & jnp.all(jnp.isfinite(jnp.imag(raw_coupling)))
+        & jnp.all(jnp.isfinite(jnp.real(transfer)))
+        & jnp.all(jnp.isfinite(jnp.imag(transfer)))
+    )
+    coupling_ready = (
+        coupling_finite
+        & (balance_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (target_energy > floor)
+        & (balance_energy > floor)
+        & (coupling_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        coupling_ready,
+        transfer,
+        jnp.zeros((3, 3), dtype=jnp.complex64),
+    )
+    return safe_transfer, jnp.where(
+        coupling_ready,
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -1613,7 +1692,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_residual_phase_magnitude_balance_source_interface_transverse_modal_transfer_map(
+        _private_target_basis_residual_modal_coupling_source_interface_transverse_modal_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,
