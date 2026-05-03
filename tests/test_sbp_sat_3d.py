@@ -24,6 +24,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _private_interface_owner_joint_score,
     _private_source_interface_transverse_modal_transfer_map,
     _private_target_basis_oriented_source_interface_transverse_modal_transfer_map,
+    _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_source_interface_transverse_modal_transfer_map,
     _private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_interface_transverse_modal_transfer_map,
     _private_target_basis_residual_modal_coupling_source_interface_transverse_modal_transfer_map,
     _private_target_basis_residual_phase_magnitude_balance_source_interface_transverse_modal_transfer_map,
@@ -1486,6 +1487,66 @@ def test_private_target_basis_residual_modal_coupling_packet_basis_mismatch_tran
 
     blocked_map, blocked_gate = (
         _private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_interface_transverse_modal_transfer_map(
+            source_coeff=jnp.asarray([1.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j]),
+            interface_coeff=jnp.asarray([1.0 + 0.0j, 1.0 + 0.0j, 0.0 + 0.0j]),
+            active=active,
+            floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(
+        np.asarray(blocked_map),
+        np.zeros((3, 3), dtype=np.complex64),
+    )
+
+
+
+def test_private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_transfer_map_is_private_contract():
+    source_coeff = jnp.asarray(
+        [1.0 + 0.0j, 0.35 + 0.15j, 0.0 + 0.0j],
+        dtype=jnp.complex64,
+    )
+    interface_coeff = jnp.asarray(
+        [1.7 + 0.0j, -0.15 + 0.65j, 0.0 + 0.0j],
+        dtype=jnp.complex64,
+    )
+    active = jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32)
+
+    transfer_map, gate = (
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+        )
+    )
+    packet_basis_map, _ = (
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+        )
+    )
+    target = interface_coeff - source_coeff
+    owner_weighting_error = np.linalg.norm(
+        np.asarray(target[:2] - (transfer_map @ source_coeff)[:2])
+    )
+    uncorrected_error = np.linalg.norm(np.asarray(target[:2]))
+
+    assert transfer_map.shape == (3, 3)
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.asarray(transfer_map[2, :]), 0.0)
+    np.testing.assert_allclose(np.asarray(transfer_map[:, 2]), 0.0)
+    assert not np.allclose(np.asarray(transfer_map), np.asarray(packet_basis_map))
+    assert owner_weighting_error < uncorrected_error
+    assert np.all(np.abs(np.asarray(transfer_map)) <= 0.350001)
+    assert np.all(np.isfinite(np.asarray(transfer_map.real)))
+    assert np.all(np.isfinite(np.asarray(transfer_map.imag)))
+
+    blocked_map, blocked_gate = (
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_source_interface_transverse_modal_transfer_map(
             source_coeff=jnp.asarray([1.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j]),
             interface_coeff=jnp.asarray([1.0 + 0.0j, 1.0 + 0.0j, 0.0 + 0.0j]),
             active=active,

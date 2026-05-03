@@ -757,6 +757,16 @@ it consumes the finite-but-insufficient packet-basis mismatch parity evidence,
 selects a private owner-packet weighting floor inside the retained fixed-shape
 source/interface packet contract, defers solver edits to a later private
 implementation lane, and keeps true R/T plus public observable promotion locked.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/magnitude
+balance residual modal-coupling packet-basis mismatch owner-packet weighting
+implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_hunk_retained_fixture_quality_pending`:
+the private projection helper applies a bounded owner-packet weighting transfer
+after the packet-basis mismatch map inside the retained fixed-shape
+source/interface packet contract, keeps public surfaces and thresholds
+unchanged, and routes the next step to private parity scoring before any true
+R/T readiness claim.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

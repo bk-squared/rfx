@@ -1540,6 +1540,112 @@ def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_i
     )
 
 
+
+def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private owner-packet weighting transfer map.
+
+    This bounded follow-up consumes the retained packet-basis mismatch transfer
+    map, then applies one source/interface owner-packet weighting correction
+    from the residual left after the packet-basis mismatch hunk.  It keeps the
+    same fixed 3x3 modal packet shape, reuses only existing private owner
+    packets, clamps the total transfer magnitude to 0.35, and fails closed on
+    non-finite or degenerate owner-weight evidence without public state,
+    observables, runner hooks, exports, or threshold changes.
+    """
+
+    packet_basis_transfer, packet_basis_ready = (
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=floor,
+        )
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    interface_active = interface_coeff * active_complex
+    target_active = interface_active - source_active
+    packet_basis_correction = packet_basis_transfer @ source_active
+    residual_after_packet_basis = target_active - packet_basis_correction
+    source_mode_energy = jnp.abs(source_active) ** 2
+    interface_mode_energy = jnp.abs(interface_active) ** 2
+    owner_weight = jnp.sqrt(
+        jnp.maximum(interface_mode_energy, floor) / jnp.maximum(source_mode_energy, floor)
+    )
+    owner_weight = jnp.clip(
+        owner_weight,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    owner_weighted_energy = jnp.sum(source_mode_energy * owner_weight)
+    raw_weighting = (
+        residual_after_packet_basis[:, None]
+        * jnp.conj(source_active[None, :])
+        * owner_weight[None, :].astype(jnp.complex64)
+        / jnp.maximum(owner_weighted_energy, floor).astype(jnp.complex64)
+    )
+    weighting_magnitude = jnp.abs(raw_weighting)
+    bounded_weighting_magnitude = jnp.clip(
+        weighting_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    weighting_phase = raw_weighting / jnp.maximum(weighting_magnitude, floor)
+    weighting_map = (
+        bounded_weighting_magnitude.astype(jnp.complex64)
+        * weighting_phase
+        * active_outer
+    )
+    combined_map = packet_basis_transfer + weighting_map
+    combined_magnitude = jnp.abs(combined_map)
+    bounded_combined_magnitude = jnp.clip(
+        combined_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    combined_phase = combined_map / jnp.maximum(combined_magnitude, floor)
+    transfer = bounded_combined_magnitude.astype(jnp.complex64) * combined_phase
+    owner_weighting_correction = transfer @ source_active
+    source_energy = jnp.sum(source_mode_energy)
+    target_energy = jnp.sum(jnp.abs(target_active) ** 2)
+    residual_energy = jnp.sum(jnp.abs(residual_after_packet_basis) ** 2)
+    correction_energy = jnp.sum(jnp.abs(owner_weighting_correction) ** 2)
+    weighting_finite = (
+        jnp.all(jnp.isfinite(owner_weight))
+        & jnp.all(jnp.isfinite(jnp.real(raw_weighting)))
+        & jnp.all(jnp.isfinite(jnp.imag(raw_weighting)))
+        & jnp.all(jnp.isfinite(jnp.real(transfer)))
+        & jnp.all(jnp.isfinite(jnp.imag(transfer)))
+    )
+    weighting_ready = (
+        weighting_finite
+        & (packet_basis_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (target_energy > floor)
+        & (owner_weighted_energy > floor)
+        & (residual_energy > floor)
+        & (correction_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        weighting_ready,
+        transfer,
+        jnp.zeros((3, 3), dtype=jnp.complex64),
+    )
+    return safe_transfer, jnp.where(
+        weighting_ready,
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -1787,7 +1893,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_interface_transverse_modal_transfer_map(
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_source_interface_transverse_modal_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,
