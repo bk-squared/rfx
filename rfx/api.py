@@ -1099,8 +1099,8 @@ class Simulation:
         impedance: float = 50.0,
         waveform: GaussianPulse | None = None,
         excite: bool = True,
-        n_probe_offset: int = 5,
-        n_probe_spacing: int = 3,
+        n_probe_offset: int | None = None,
+        n_probe_spacing: int | None = None,
         name: str | None = None,
     ) -> "Simulation":
         """Add a microstrip-line (MSL) port spanning the full trace cross-section.
@@ -1129,10 +1129,15 @@ class Simulation:
         excite : bool
             ``True`` → resistive termination + active source; ``False``
             → passive matched termination only.
-        n_probe_offset : int
+        n_probe_offset : int, optional
             Distance (cells) from the feed plane to the first probe plane.
-        n_probe_spacing : int
-            Distance (cells) between consecutive probe planes.
+            When ``None``, computed from a fixed physical distance of 400 µm
+            (≈5 cells at dx=80 µm) so probe spacing in wavelengths stays
+            constant under mesh refinement — required to keep the 3-probe
+            extractor away from its q→1 numerical singularity.
+        n_probe_spacing : int, optional
+            Distance (cells) between consecutive probe planes. When ``None``,
+            computed from a fixed physical distance of 240 µm. Same rationale.
         name : str, optional
             Port label used in result dicts. Auto-generated when omitted.
         """
@@ -1144,6 +1149,12 @@ class Simulation:
             raise ValueError(f"height must be positive, got {height}")
         if impedance <= 0:
             raise ValueError(f"impedance must be positive, got {impedance}")
+        # Physical-distance defaults — see docstring for why cell-counted
+        # defaults caused the 3-probe extractor to diverge under mesh refinement.
+        if n_probe_offset is None:
+            n_probe_offset = max(3, int(round(400e-6 / float(self._dx or (2.998e8 / self._freq_max / 10)))))
+        if n_probe_spacing is None:
+            n_probe_spacing = max(1, int(round(240e-6 / float(self._dx or (2.998e8 / self._freq_max / 10)))))
         if n_probe_offset < 3:
             raise ValueError(
                 f"n_probe_offset must be >= 3 to avoid near-field, got {n_probe_offset}"
