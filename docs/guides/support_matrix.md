@@ -626,6 +626,13 @@ the retained private transfer-map helper has finite private parity evidence,
 but unchanged material-improvement, transverse-uniformity, and vacuum-stability
 gates remain closed, so true R/T and public observable promotion stay locked;
 the next safe lane is private failure-theory redesign.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map failure-theory redesign lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_floor_theory_ready`:
+the retained private transfer-map hunk is finite but still source-outer oriented,
+so the selected private next target is a fixed-shape target/residual-basis
+orientation for the transfer map; solver edits, threshold changes, and public
+promotion remain deferred.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 

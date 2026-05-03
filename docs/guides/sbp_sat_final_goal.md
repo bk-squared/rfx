@@ -101,8 +101,8 @@ Promotion requires synchronized updates to:
 
 The immediate lane is now private plane-wave modal projection/normalizer
 projected target residual-basis energy-biorthogonal source/interface transverse
-modal transfer-map failure-theory redesign after private parity scoring showed
-finite evidence but insufficient fixture-quality recovery.
+modal transfer-map target-basis orientation implementation after the failure-
+theory lane selected a bounded private orientation target.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -307,6 +307,13 @@ the retained private transfer-map helper has finite private parity evidence,
 but unchanged material-improvement, transverse-uniformity, and vacuum-stability
 gates remain closed, so true R/T and public observable promotion stay locked;
 the next safe lane is private failure-theory redesign.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map failure-theory redesign lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_floor_theory_ready`:
+the retained private transfer-map hunk is finite but still source-outer oriented,
+so the selected private next target is a fixed-shape target/residual-basis
+orientation for the transfer map; solver edits, threshold changes, and public
+promotion remain deferred.
 The private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

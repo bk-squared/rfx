@@ -8947,15 +8947,124 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
             "next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory = (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory"
+        ]
+    )
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_floor_theory_ready"
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "terminal_outcome"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "upstream_source_interface_transfer_map_parity_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "selected_candidate_id"
+    ] == "AT1_source_interface_transfer_target_basis_orientation_floor"
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "candidate_count"
+        ]
+        == 5
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_parity_scoring[
+        "metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_parity_scoring[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "source_interface_transfer_map_parity_scoring_consumed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "finite_parity_score_consumed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "selected_next_private_design_target"
+    ] == "source_interface_transfer_target_basis_orientation"
+    target_basis_contract = (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "target_basis_orientation_contract"
+        ]
+    )
+    assert target_basis_contract["shape_contract"] == (
+        "private fixed-shape 3x3 target-basis-oriented transfer map"
+    )
+    assert target_basis_contract["requires_public_observable"] is False
+    assert target_basis_contract["requires_threshold_change"] is False
+    assert target_basis_contract["requires_runner_state"] is False
+    assert target_basis_contract["implementation_deferred"] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "implementation_deferred"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "solver_behavior_changed"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "production_patch_applied"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "true_rt_readiness_unlocked"
+        ]
+        is False
+    )
+    transfer_map_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "candidate_ladder"
+        ]
+    }
+    assert transfer_map_failure_candidates[
+        "AT1_source_interface_transfer_target_basis_orientation_floor"
+    ]["accepted_candidate"]
+    assert (
+        transfer_map_failure_candidates[
+            "AT4_failure_theory_blocked_by_public_surface_or_threshold"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "next_lane_requires_target_basis_orientation_implementation"
+    ]
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_next_prerequisite"
+        ]
+        == residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "next_prerequisite"
+        ]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "target-basis orientation implementation after failure-theory contract "
+        "ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "target-basis orientation implementation after failure-theory contract "
+        "ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -9368,6 +9477,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -9633,7 +9748,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "target-basis orientation implementation after failure-theory contract "
+        "ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

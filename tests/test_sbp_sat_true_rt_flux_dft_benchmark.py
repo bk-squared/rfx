@@ -2195,6 +2195,26 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_floor_theory_ready"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal source-interface transverse modal transfer-map target-"
+    "basis orientation implementation after failure-theory contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_normalization_sign_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_packet_timing_ownership_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_blocked",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_PRECEDENCE = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_blocked",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_packet_timing_ownership_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_normalization_sign_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_floor_theory_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -21250,6 +21270,236 @@ def _private_plane_wave_modal_projection_normalizer_projected_target_residual_ba
 
 
 
+def _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_metadata(
+    *,
+    source_interface_transfer_map_parity_scoring_metadata: dict[str, object],
+    source_interface_transfer_map_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(
+        source_interface_transfer_map_parity_scoring_metadata["baseline_metrics"]
+    )
+    metrics = dict(source_interface_transfer_map_parity_scoring_metadata["metrics"])
+    thresholds = dict(source_interface_transfer_map_parity_scoring_metadata["thresholds"])
+    threshold_results = dict(
+        source_interface_transfer_map_parity_scoring_metadata["threshold_results"]
+    )
+    material_decision = dict(
+        source_interface_transfer_map_parity_scoring_metadata[
+            "material_improvement_decision"
+        ]
+    )
+    score_delta = dict(source_interface_transfer_map_parity_scoring_metadata["score_delta"])
+    relative_improvement = dict(
+        source_interface_transfer_map_parity_scoring_metadata["relative_improvement"]
+    )
+    transfer_contract = dict(
+        source_interface_transfer_map_parity_scoring_metadata[
+            "source_interface_transfer_map_contract"
+        ]
+    )
+    target_basis_orientation_contract = {
+        "target": "source_interface_transfer_target_basis_orientation",
+        "basis": (
+            "orient the private source/interface transfer map with the "
+            "projected residual target basis rather than only the source-owner "
+            "modal coefficient outer product"
+        ),
+        "why_not_existing_transfer_only": (
+            "the retained transfer map is finite and bounded but unchanged "
+            "phase-spread, magnitude-CV, and vacuum gates remain closed; this "
+            "points to transfer-basis orientation rather than transfer-map "
+            "shape, public observables, or threshold relaxation"
+        ),
+        "shape_contract": "private fixed-shape 3x3 target-basis-oriented transfer map",
+        "uses_existing_owner_packets": True,
+        "requires_public_observable": False,
+        "requires_threshold_change": False,
+        "requires_runner_state": False,
+        "implementation_deferred": True,
+        "fail_closed_on_nonfinite_orientation": True,
+        "fail_closed_on_shape_mismatch": True,
+    }
+    at0 = {
+        "candidate_id": "AT0_retained_source_interface_transfer_parity_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_source_interface_transfer_map_parity_status": (
+            source_interface_transfer_map_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    at1 = {
+        "candidate_id": "AT1_source_interface_transfer_target_basis_orientation_floor",
+        "candidate_family": "target_basis_orientation_floor",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_STATUS
+        ),
+        "theory": (
+            "the transfer-map hunk scored finite but remains source-outer-"
+            "oriented; the next bounded private degree of freedom is a "
+            "target/residual-basis orientation for the 3x3 transfer map"
+        ),
+        "next_private_target": "source_interface_transfer_target_basis_orientation",
+        "contract": target_basis_orientation_contract,
+        "public_claim_allowed": False,
+    }
+    at2 = {
+        "candidate_id": "AT2_modal_transfer_normalization_sign_floor",
+        "candidate_family": "normalization_sign_floor",
+        "accepted_candidate": False,
+        "not_selected_reason": (
+            "the retained transfer helper already has finite normalization and "
+            "a bounded magnitude guard; evidence points first to which basis "
+            "orients the transfer, not to another scalar normalization/sign floor"
+        ),
+        "public_claim_allowed": False,
+    }
+    at3 = {
+        "candidate_id": "AT3_packet_timing_ownership_floor",
+        "candidate_family": "packet_timing_ownership_floor",
+        "accepted_candidate": False,
+        "prior_time_alignment_and_packet_state_present": True,
+        "not_selected_reason": (
+            "time-aligned packet staging and source/interface packet ownership "
+            "already exist; the smaller next target is transfer-basis "
+            "orientation inside existing private packet coefficients"
+        ),
+        "public_claim_allowed": False,
+    }
+    at4 = {
+        "candidate_id": "AT4_failure_theory_blocked_by_public_surface_or_threshold",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "requires_threshold_change": False,
+        "requires_public_observable": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_blocked"
+        ),
+        "not_selected_reason": (
+            "a bounded private target-basis orientation lane exists, so there "
+            "is no need to relax thresholds or open public surfaces"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (at0, at1, at2, at3, at4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_only"
+        ),
+        "upstream_source_interface_transfer_map_parity_status": (
+            source_interface_transfer_map_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "upstream_source_interface_transfer_map_implementation_status": (
+            source_interface_transfer_map_implementation_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite AT0/AT1/AT2/AT3/AT4 private failure-theory ladder; select "
+            "a bounded private target-basis orientation target and defer solver "
+            "edits to a separate implementation lane"
+        ),
+        "selected_candidate_id": (
+            "AT1_source_interface_transfer_target_basis_orientation_floor"
+        ),
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "source_interface_transfer_map_parity_scoring_consumed": True,
+        "source_interface_transfer_map_hunk_retained": True,
+        "bounded_transfer_map_retained": True,
+        "finite_parity_score_consumed": bool(
+            source_interface_transfer_map_parity_scoring_metadata[
+                "finite_reproducible_score"
+            ]
+        ),
+        "source_interface_transfer_map_contract": transfer_contract,
+        "target_basis_orientation_contract": target_basis_orientation_contract,
+        "selected_next_private_design_target": (
+            "source_interface_transfer_target_basis_orientation"
+        ),
+        "projection_helper": "_project_private_modal_basis_packets",
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "transfer_map_helper": "_private_source_interface_transverse_modal_transfer_map",
+        "matrix_shape": (3, 3),
+        "fixed_shape_jit_safe_contract": True,
+        "modal_transfer_bound": 0.35,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "implementation_deferred": True,
+        "retained_source_interface_transfer_map_solver_hunk": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_target_basis_orientation_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the retained source/interface transfer-map hunk scored finite but "
+            "did not move unchanged fixture-quality gates, so the bounded next "
+            "private theory is a target/residual-basis orientation floor rather "
+            "than public promotion or threshold adjustment"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -25028,8 +25278,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_metadata = (
+        _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_metadata(
+            source_interface_transfer_map_parity_scoring_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_metadata
+            ),
+            source_interface_transfer_map_implementation_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_implementation_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_status": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -25327,6 +25604,11 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "source/interface transverse modal transfer-map parity scoring "
                 "lane records "
                 f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal "
+                "source/interface transverse modal transfer-map failure-theory "
+                "redesign lane records "
+                f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -25336,7 +25618,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_next_prerequisite"
             ],
         }
 
@@ -36173,10 +36455,111 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory = (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory"
+        ]
+    )
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_status"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "terminal_outcome"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_FAILURE_THEORY_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "upstream_source_interface_transfer_map_parity_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "selected_candidate_id"
+    ] == "AT1_source_interface_transfer_target_basis_orientation_floor"
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "candidate_count"
+    ] == 5
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_parity_scoring[
+        "metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_parity_scoring[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "source_interface_transfer_map_parity_scoring_consumed"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "finite_parity_score_consumed"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "selected_next_private_design_target"
+    ] == "source_interface_transfer_target_basis_orientation"
+    target_basis_contract = (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "target_basis_orientation_contract"
+        ]
+    )
+    assert target_basis_contract["shape_contract"] == (
+        "private fixed-shape 3x3 target-basis-oriented transfer map"
+    )
+    assert target_basis_contract["requires_public_observable"] is False
+    assert target_basis_contract["requires_threshold_change"] is False
+    assert target_basis_contract["requires_runner_state"] is False
+    assert target_basis_contract["implementation_deferred"] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "implementation_deferred"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "solver_behavior_changed"
+    ] is False
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "production_patch_applied"
+    ] is False
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "public_observable_promoted"
+    ] is False
+    transfer_map_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "candidate_ladder"
+        ]
+    }
+    assert transfer_map_failure_candidates[
+        "AT1_source_interface_transfer_target_basis_orientation_floor"
+    ]["accepted_candidate"] is True
+    assert (
+        transfer_map_failure_candidates[
+            "AT4_failure_theory_blocked_by_public_surface_or_threshold"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "next_lane_requires_target_basis_orientation_implementation"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+            "next_prerequisite"
+        ]
+        == metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -36202,7 +36585,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_next_prerequisite"
         ]
     )
     assert (
@@ -36644,6 +37027,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_parity_scoring_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_status"
         ]
         in metadata["blocking_diagnostic"]
     )
