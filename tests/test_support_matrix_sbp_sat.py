@@ -9634,17 +9634,141 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
             "next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory = (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory"
+        ]
+    )
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_phase_magnitude_imbalance_floor_theory_ready"
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "terminal_outcome"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "upstream_residual_phase_sign_parity_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_parity_scoring_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "upstream_residual_phase_sign_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "selected_candidate_id"
+    ] == "AZ1_residual_phase_magnitude_imbalance_floor"
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+            "candidate_count"
+        ]
+        == 5
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_parity_scoring[
+        "metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_parity_scoring[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "residual_phase_sign_parity_scoring_consumed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "finite_parity_score_consumed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "residual_phase_sign_hunk_retained"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "selected_floor"
+    ] == "residual_phase_magnitude_imbalance_floor"
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "selected_next_private_design_target"
+    ] == "target_basis_orientation_residual_phase_magnitude_balance"
+    phase_magnitude_balance_contract = (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+            "phase_magnitude_balance_contract"
+        ]
+    )
+    assert phase_magnitude_balance_contract["shape_contract"] == (
+        "private fixed-shape 3x3 residual phase/magnitude balance map"
+    )
+    assert phase_magnitude_balance_contract[
+        "consumes_residual_phase_sign_contract"
+    ]
+    assert phase_magnitude_balance_contract["requires_public_observable"] is False
+    assert phase_magnitude_balance_contract["requires_threshold_change"] is False
+    assert phase_magnitude_balance_contract["requires_runner_state"] is False
+    assert phase_magnitude_balance_contract["implementation_deferred"]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "failure_theory_lane_executed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "implementation_deferred"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+            "solver_behavior_changed"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+            "production_patch_applied"
+        ]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+            "true_rt_readiness_unlocked"
+        ]
+        is False
+    )
+    residual_phase_sign_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+            "candidate_ladder"
+        ]
+    }
+    assert residual_phase_sign_failure_candidates[
+        "AZ1_residual_phase_magnitude_imbalance_floor"
+    ]["accepted_candidate"]
+    assert (
+        residual_phase_sign_failure_candidates[
+            "AZ4_failure_theory_blocked_by_public_surface_or_threshold"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_implementation"
+    ]
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory_next_prerequisite"
+        ]
+        == residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory[
+            "next_prerequisite"
+        ]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "target-basis orientation residual phase/sign failure-theory redesign "
-        "after parity scoring insufficient ralplan"
+        "target-basis orientation residual phase/sign phase-magnitude balance "
+        "implementation after failure-theory contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "target-basis orientation residual phase/sign failure-theory redesign "
-        "after parity scoring insufficient ralplan"
+        "target-basis orientation residual phase/sign phase-magnitude balance "
+        "implementation after failure-theory contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -10093,6 +10217,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -10358,8 +10488,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "target-basis orientation residual phase/sign failure-theory redesign "
-        "after parity scoring insufficient ralplan"
+        "target-basis orientation residual phase/sign phase-magnitude balance "
+        "implementation after failure-theory contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
