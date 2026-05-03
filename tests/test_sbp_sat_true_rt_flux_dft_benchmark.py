@@ -2658,6 +2658,29 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_floor_theory_ready"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal source-interface transverse modal transfer-map target-"
+    "basis orientation residual phase/magnitude balance residual modal-coupling "
+    "packet-basis mismatch owner-packet weighting modal energy/impedance "
+    "transverse energy redistribution implementation after failure-theory "
+    "contract ready ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_modal_impedance_residual_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_packet_timing_phase_interaction_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_blocked",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_PRECEDENCE = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_blocked",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_modal_impedance_residual_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_packet_timing_phase_interaction_floor_theory_ready",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_floor_theory_ready",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -27236,6 +27259,269 @@ def _private_plane_wave_modal_projection_normalizer_projected_target_residual_ba
         **_private_public_closure_metadata(),
     }
 
+
+def _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_metadata(
+    *,
+    modal_energy_impedance_parity_scoring_metadata: dict[str, object],
+    modal_energy_impedance_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(
+        modal_energy_impedance_parity_scoring_metadata["baseline_metrics"]
+    )
+    metrics = dict(modal_energy_impedance_parity_scoring_metadata["metrics"])
+    thresholds = dict(modal_energy_impedance_parity_scoring_metadata["thresholds"])
+    threshold_results = dict(
+        modal_energy_impedance_parity_scoring_metadata["threshold_results"]
+    )
+    material_decision = dict(
+        modal_energy_impedance_parity_scoring_metadata[
+            "material_improvement_decision"
+        ]
+    )
+    score_delta = dict(modal_energy_impedance_parity_scoring_metadata["score_delta"])
+    relative_improvement = dict(
+        modal_energy_impedance_parity_scoring_metadata["relative_improvement"]
+    )
+    modal_energy_impedance_contract = dict(
+        modal_energy_impedance_parity_scoring_metadata[
+            "modal_energy_impedance_contract"
+        ]
+    )
+    transverse_energy_redistribution_contract = {
+        "target": (
+            "target_basis_orientation_residual_phase_magnitude_balance_"
+            "residual_modal_coupling_packet_basis_mismatch_owner_packet_"
+            "weighting_modal_energy_impedance_transverse_energy_redistribution"
+        ),
+        "basis": (
+            "finite modal energy/impedance parity evidence remains insufficient; "
+            "the dominant private blockers are transverse uniformity and vacuum "
+            "stability, so the next bounded floor redistributes residual "
+            "transverse modal energy without changing public observables"
+        ),
+        "shape_contract": (
+            "private fixed-shape transverse energy redistribution correction "
+            "inside the existing source/interface modal energy/impedance "
+            "transfer-map contract"
+        ),
+        "uses_existing_owner_packets": True,
+        "consumes_modal_energy_impedance_contract": True,
+        "consumes_modal_energy_impedance_parity_score": True,
+        "requires_public_observable": False,
+        "requires_threshold_change": False,
+        "requires_runner_state": False,
+        "implementation_deferred": True,
+        "fail_closed_on_nonfinite_transverse_energy": True,
+        "fail_closed_on_shape_mismatch": True,
+    }
+    bo0 = {
+        "candidate_id": "BO0_retained_modal_energy_impedance_parity_evidence_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_modal_energy_impedance_parity_status": (
+            modal_energy_impedance_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    bo1 = {
+        "candidate_id": "BO1_modal_impedance_residual_floor",
+        "candidate_family": "private_modal_impedance_residual_floor_theory",
+        "accepted_candidate": False,
+        "modal_impedance_residual_floor_possible": True,
+        "not_selected_reason": (
+            "the retained modal energy/impedance hunk already exercises the "
+            "direct impedance floor; finite-but-insufficient parity evidence "
+            "points instead to transverse energy redistribution across modes"
+        ),
+        "public_claim_allowed": False,
+    }
+    bo2 = {
+        "candidate_id": "BO2_transverse_energy_redistribution_floor",
+        "candidate_family": "private_transverse_energy_redistribution_floor_theory",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_STATUS
+        ),
+        "next_private_target": (
+            "target_basis_orientation_residual_phase_magnitude_balance_"
+            "residual_modal_coupling_packet_basis_mismatch_owner_packet_"
+            "weighting_modal_energy_impedance_transverse_energy_redistribution"
+        ),
+        "transverse_energy_redistribution_contract": (
+            transverse_energy_redistribution_contract
+        ),
+        "requires_public_observable": False,
+        "requires_threshold_change": False,
+        "requires_runner_state": False,
+        "public_claim_allowed": False,
+    }
+    bo3 = {
+        "candidate_id": "BO3_packet_timing_phase_interaction_floor",
+        "candidate_family": "private_packet_timing_phase_interaction_floor_theory",
+        "accepted_candidate": False,
+        "packet_timing_phase_interaction_possible": True,
+        "not_selected_reason": (
+            "source/interface timing and phase interactions are already "
+            "represented upstream; the narrower bounded next floor is residual "
+            "transverse energy redistribution before another timing hunk"
+        ),
+        "public_claim_allowed": False,
+    }
+    bo4 = {
+        "candidate_id": "BO4_failure_theory_blocked_by_public_surface_or_threshold",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_blocked"
+        ),
+        "requires_threshold_change": False,
+        "requires_public_observable": False,
+        "not_selected_reason": (
+            "the retained modal energy/impedance parity evidence provides a "
+            "bounded private transverse energy redistribution target without "
+            "public promotion or threshold changes"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (bo0, bo1, bo2, bo3, bo4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_PRECEDENCE
+        ),
+        "diagnostic_scope": "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_only",
+        "upstream_modal_energy_impedance_parity_status": (
+            modal_energy_impedance_parity_scoring_metadata["terminal_outcome"]
+        ),
+        "upstream_modal_energy_impedance_implementation_status": (
+            modal_energy_impedance_implementation_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite BO0/BO1/BO2/BO3/BO4 modal energy/impedance failure-"
+            "theory ladder; select only a bounded private transverse energy "
+            "redistribution target and keep public promotion closed"
+        ),
+        "selected_candidate_id": "BO2_transverse_energy_redistribution_floor",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "modal_energy_impedance_parity_scoring_consumed": True,
+        "finite_parity_score_consumed": True,
+        "modal_energy_impedance_implementation_retained": True,
+        "modal_energy_impedance_hunk_retained": True,
+        "modal_energy_impedance_transfer_map_retained": True,
+        "modal_energy_impedance_contract": modal_energy_impedance_contract,
+        "transverse_energy_redistribution_contract": (
+            transverse_energy_redistribution_contract
+        ),
+        "selected_floor": "transverse_energy_redistribution_floor",
+        "selected_next_private_design_target": (
+            "target_basis_orientation_residual_phase_magnitude_balance_"
+            "residual_modal_coupling_packet_basis_mismatch_owner_packet_"
+            "weighting_modal_energy_impedance_transverse_energy_redistribution"
+        ),
+        "theory_lane_executed": True,
+        "failure_theory_lane_executed": True,
+        "implementation_deferred": True,
+        "projection_helper": "_project_private_modal_basis_packets",
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "transfer_map_helper": "_private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_source_interface_transverse_modal_transfer_map",
+        "transfer_helper": "_private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_source_interface_transverse_modal_transfer_map",
+        "owner_packet_weighting_helper_retained": (
+            "_private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_source_interface_transverse_modal_transfer_map"
+        ),
+        "matrix_shape": (3, 3),
+        "fixed_shape_jit_safe_contract": True,
+        "transfer_bound": 0.35,
+        "modal_energy_impedance_bound": 0.35,
+        "transverse_energy_redistribution_bound": 0.35,
+        "metric_normalized_projection": True,
+        "energy_biorthogonal_gram_projection": True,
+        "source_packet_projected": True,
+        "interface_packet_projected": True,
+        "modal_energy_impedance_gate_fail_closed": True,
+        "transverse_energy_redistribution_gate_fail_closed": True,
+        "projection_gate_fail_closed": True,
+        "contract_gate_fail_closed": True,
+        "fail_closed_on_shape_mismatch": True,
+        "fail_closed_on_nonfinite_transverse_energy": True,
+        "finite_reproducible_score": bool(
+            modal_energy_impedance_parity_scoring_metadata[
+                "finite_reproducible_score"
+            ]
+        ),
+        "score_uses_retained_implementation_metrics": True,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "retained_modal_energy_impedance_solver_hunk": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the retained modal energy/impedance hunk is finite but still "
+            "misses unchanged fixture-quality gates; the bounded private next "
+            "lane is transverse energy redistribution inside existing "
+            "source/interface modal energy packets, not public promotion or "
+            "threshold relaxation"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -31539,8 +31825,35 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_metadata = (
+        _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_metadata(
+            modal_energy_impedance_parity_scoring_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_metadata
+            ),
+            modal_energy_impedance_implementation_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_implementation_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_status": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -31964,6 +32277,13 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "coupling packet-basis mismatch owner-packet weighting modal "
                 "energy/impedance parity-scoring lane records "
                 f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal "
+                "source/interface transverse modal transfer-map target-basis "
+                "orientation residual phase/magnitude balance residual modal-"
+                "coupling packet-basis mismatch owner-packet weighting modal "
+                "energy/impedance failure-theory redesign lane records "
+                f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -31973,7 +32293,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_next_prerequisite"
             ],
         }
 
@@ -44885,10 +45205,115 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert modal_energy_impedance_parity_scoring["next_prerequisite"] == metadata[
         "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_next_prerequisite"
     ]
+    modal_energy_impedance_failure_theory = metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory"
+    ]
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_status"
+    ] == _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_STATUS
+    assert (
+        modal_energy_impedance_failure_theory["terminal_outcome"]
+        == _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_FAILURE_THEORY_STATUS
+    )
+    assert modal_energy_impedance_failure_theory[
+        "upstream_modal_energy_impedance_parity_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_status"
+    ]
+    assert modal_energy_impedance_failure_theory[
+        "upstream_modal_energy_impedance_implementation_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_implementation_status"
+    ]
+    assert (
+        modal_energy_impedance_failure_theory["selected_candidate_id"]
+        == "BO2_transverse_energy_redistribution_floor"
+    )
+    assert modal_energy_impedance_failure_theory["candidate_count"] == 5
+    assert (
+        modal_energy_impedance_failure_theory["metrics"]
+        == modal_energy_impedance_parity_scoring["metrics"]
+    )
+    assert (
+        modal_energy_impedance_failure_theory["thresholds"]
+        == modal_energy_impedance_parity_scoring["thresholds"]
+    )
+    assert modal_energy_impedance_failure_theory[
+        "modal_energy_impedance_parity_scoring_consumed"
+    ] is True
+    assert modal_energy_impedance_failure_theory[
+        "finite_parity_score_consumed"
+    ] is True
+    assert modal_energy_impedance_failure_theory[
+        "modal_energy_impedance_hunk_retained"
+    ] is True
+    assert modal_energy_impedance_failure_theory[
+        "selected_floor"
+    ] == "transverse_energy_redistribution_floor"
+    assert modal_energy_impedance_failure_theory[
+        "selected_next_private_design_target"
+    ] == (
+        "target_basis_orientation_residual_phase_magnitude_balance_"
+        "residual_modal_coupling_packet_basis_mismatch_owner_packet_"
+        "weighting_modal_energy_impedance_transverse_energy_redistribution"
+    )
+    transverse_energy_redistribution_contract = modal_energy_impedance_failure_theory[
+        "transverse_energy_redistribution_contract"
+    ]
+    assert transverse_energy_redistribution_contract[
+        "consumes_modal_energy_impedance_contract"
+    ] is True
+    assert transverse_energy_redistribution_contract[
+        "consumes_modal_energy_impedance_parity_score"
+    ] is True
+    assert transverse_energy_redistribution_contract[
+        "requires_public_observable"
+    ] is False
+    assert transverse_energy_redistribution_contract[
+        "requires_threshold_change"
+    ] is False
+    assert transverse_energy_redistribution_contract[
+        "requires_runner_state"
+    ] is False
+    assert transverse_energy_redistribution_contract[
+        "implementation_deferred"
+    ] is True
+    assert modal_energy_impedance_failure_theory["theory_lane_executed"] is True
+    assert modal_energy_impedance_failure_theory[
+        "failure_theory_lane_executed"
+    ] is True
+    assert modal_energy_impedance_failure_theory["implementation_deferred"] is True
+    assert modal_energy_impedance_failure_theory[
+        "production_patch_applied"
+    ] is False
+    assert modal_energy_impedance_failure_theory["solver_behavior_changed"] is False
+    assert modal_energy_impedance_failure_theory["runner_behavior_changed"] is False
+    assert modal_energy_impedance_failure_theory[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert modal_energy_impedance_failure_theory[
+        "public_observable_promoted"
+    ] is False
+    modal_energy_impedance_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_energy_impedance_failure_theory["candidate_ladder"]
+    }
+    assert modal_energy_impedance_failure_candidates[
+        "BO2_transverse_energy_redistribution_floor"
+    ]["accepted_candidate"] is True
+    assert modal_energy_impedance_failure_candidates[
+        "BO4_failure_theory_blocked_by_public_surface_or_threshold"
+    ]["accepted_candidate"] is False
+    assert modal_energy_impedance_failure_theory[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_implementation"
+    ] is True
+    assert modal_energy_impedance_failure_theory["next_prerequisite"] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_next_prerequisite"
+    ]
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -44914,7 +45339,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_next_prerequisite"
         ]
     )
     assert (
@@ -44968,6 +45393,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory_status"
         ]
         in metadata["blocking_diagnostic"]
     )
