@@ -656,6 +656,13 @@ the private projection helper now applies a bounded fixed-shape 3x3
 source/interface modal transfer correction before subtracting projected packets,
 keeps public surfaces and thresholds unchanged, and defers fixture-quality
 claims to a separate private parity-scoring lane.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_hunk_insufficient_fixture_quality_pending`:
+the retained private transfer-map helper has finite private parity evidence,
+but unchanged material-improvement, transverse-uniformity, and vacuum-stability
+gates remain closed, so true R/T and public observable promotion stay locked;
+the next safe lane is private failure-theory redesign.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
