@@ -11062,19 +11062,121 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate["private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_implementation_next_prerequisite"]
         == modal_energy_impedance_implementation["next_prerequisite"]
     )
+    modal_energy_impedance_parity_scoring = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_hunk_insufficient_fixture_quality_pending"
+    )
+    assert (
+        modal_energy_impedance_parity_scoring["terminal_outcome"]
+        == benchmark_gate["private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_status"]
+    )
+    assert modal_energy_impedance_parity_scoring[
+        "upstream_modal_energy_impedance_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_implementation_status"
+    ]
+    assert (
+        modal_energy_impedance_parity_scoring["selected_candidate_id"]
+        == "BN1_finite_modal_energy_impedance_private_parity_score"
+    )
+    assert modal_energy_impedance_parity_scoring["candidate_count"] == 5
+    assert (
+        modal_energy_impedance_parity_scoring["metrics"]
+        == modal_energy_impedance_implementation["metrics"]
+    )
+    assert (
+        modal_energy_impedance_parity_scoring["thresholds"]
+        == modal_energy_impedance_implementation["thresholds"]
+    )
+    assert modal_energy_impedance_parity_scoring[
+        "modal_energy_impedance_implementation_consumed"
+    ]
+    assert modal_energy_impedance_parity_scoring[
+        "modal_energy_impedance_implementation_retained"
+    ]
+    assert modal_energy_impedance_parity_scoring[
+        "modal_energy_impedance_hunk_retained"
+    ]
+    assert modal_energy_impedance_parity_scoring[
+        "modal_energy_impedance_transfer_map_retained"
+    ]
+    assert modal_energy_impedance_parity_scoring["transfer_helper"] == (
+        "_private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_source_interface_transverse_modal_transfer_map"
+    )
+    assert modal_energy_impedance_parity_scoring[
+        "owner_packet_weighting_helper_retained"
+    ] == (
+        "_private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_source_interface_transverse_modal_transfer_map"
+    )
+    assert modal_energy_impedance_parity_scoring["matrix_shape"] == [3, 3]
+    assert modal_energy_impedance_parity_scoring[
+        "modal_energy_impedance_bound"
+    ] == 0.35
+    assert modal_energy_impedance_parity_scoring[
+        "score_uses_retained_implementation_metrics"
+    ]
+    assert modal_energy_impedance_parity_scoring["finite_reproducible_score"]
+    assert modal_energy_impedance_parity_scoring["subgrid_vacuum_parity_scored"]
+    assert (
+        modal_energy_impedance_parity_scoring["subgrid_vacuum_parity_passed"]
+        is False
+    )
+    assert (
+        modal_energy_impedance_parity_scoring["material_improvement_demonstrated"]
+        is False
+    )
+    assert modal_energy_impedance_parity_scoring["production_patch_applied"] is False
+    assert modal_energy_impedance_parity_scoring["solver_behavior_changed"] is False
+    assert modal_energy_impedance_parity_scoring["runner_behavior_changed"] is False
+    assert modal_energy_impedance_parity_scoring["new_solver_hunk_retained"] is False
+    assert modal_energy_impedance_parity_scoring[
+        "retained_modal_energy_impedance_solver_hunk"
+    ]
+    assert (
+        modal_energy_impedance_parity_scoring["true_rt_readiness_unlocked"]
+        is False
+    )
+    assert (
+        modal_energy_impedance_parity_scoring["public_observable_promoted"]
+        is False
+    )
+    modal_energy_impedance_parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in modal_energy_impedance_parity_scoring["candidate_ladder"]
+    }
+    assert modal_energy_impedance_parity_candidates[
+        "BN1_finite_modal_energy_impedance_private_parity_score"
+    ]["accepted_candidate"]
+    assert (
+        modal_energy_impedance_parity_candidates[
+            "BN4_modal_energy_impedance_parity_scoring_insufficient"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert modal_energy_impedance_parity_scoring[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_failure_theory"
+    ]
+    assert (
+        benchmark_gate["private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_next_prerequisite"]
+        == modal_energy_impedance_parity_scoring["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "packet-basis mismatch owner-packet weighting modal energy/impedance parity "
-        "scoring after implementation hunk retained ralplan"
+        "packet-basis mismatch owner-packet weighting modal energy/impedance "
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "packet-basis mismatch owner-packet weighting modal energy/impedance parity "
-        "scoring after implementation hunk retained ralplan"
+        "packet-basis mismatch owner-packet weighting modal energy/impedance "
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -11607,6 +11709,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_parity_scoring_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -11873,8 +11981,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "packet-basis mismatch owner-packet weighting modal energy/impedance parity "
-        "scoring after implementation hunk retained ralplan"
+        "packet-basis mismatch owner-packet weighting modal energy/impedance "
+        "failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
