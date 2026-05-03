@@ -282,3 +282,119 @@ def test_compute_s21_round_trip():
     alpha_pas, _ = msl_forward_amplitude(V1p, V2p, V3p)
     s21 = compute_s21(alpha_pas, alpha_drv)
     assert abs(s21[0] - 0.5) < 1e-3
+
+
+# ---------------------------------------------------------------------------
+# UT3: Schelkunoff J+M cancellation in vacuum — spec §5.3
+# ---------------------------------------------------------------------------
+
+
+def test_jm_source_fires_and_produces_forward_wave():
+    """UT3: J+M eigenmode source injects a non-trivial forward wave.
+
+    Verifies that ``make_msl_port_sources_jm`` produces non-empty E and H
+    spec lists, and that running the FDTD with those specs produces a
+    measurable field downstream of the source plane within the first few
+    steps (before any wall reflections arrive).
+
+    This is a smoke test for the source wiring (MagneticSourceSpec → scan
+    body injection), NOT a cancellation test.  Full one-sided cancellation
+    requires auxiliary 1D FDTD tables (as in the waveguide port); without
+    them the naive soft-source Schelkunoff pair reduces but does not
+    eliminate the backward wave.  The integration test
+    ``test_msl_thru_line_passive_gate`` checks the net |S11| improvement
+    in a terminated geometry.
+    """
+    import jax.numpy as jnp
+    from rfx.sources.msl_port import MSLPort, make_msl_port_sources_jm
+    from rfx.sources.msl_eigenmode import compute_msl_eigenmode_profile
+    from rfx.simulation import ProbeSpec, run
+    from rfx.grid import Grid
+
+    DX = 200e-6
+    LX, LY, LZ = 5e-3, 2e-3, 1e-3
+    F_MAX = 10e9
+
+    grid = Grid(
+        freq_max=F_MAX,
+        domain=(LX, LY, LZ),
+        dx=DX,
+        cpml_layers=0,
+    )
+
+    shape = grid.shape
+    materials = _empty_materials(grid)
+
+    x_feed = LX / 2.0
+    y_centre = LY / 2.0
+    W = LY * 0.6
+    H = LZ * 0.5
+
+    dt = grid.dt
+    t0 = 6 * dt
+    sigma_t = 3 * dt
+    def pulse(t):
+        return jnp.exp(-0.5 * ((t - t0) / sigma_t) ** 2)
+
+    # Run only 12 steps — forward wave reaches downstream probe at ~step 5,
+    # and no wall reflection reaches upstream probe until ~step 33.
+    N_STEPS = 12
+
+    mp = MSLPort(
+        feed_x=x_feed,
+        y_lo=y_centre - W / 2,
+        y_hi=y_centre + W / 2,
+        z_lo=0.0,
+        z_hi=H,
+        direction="+x",
+        impedance=50.0,
+        excitation=pulse,
+    )
+
+    freqs = np.linspace(F_MAX / 10, F_MAX, 10)
+    em = compute_msl_eigenmode_profile(grid, mp, eps_r_sub=1.0, freqs=freqs)
+
+    e_specs, h_specs = make_msl_port_sources_jm(grid, mp, materials, N_STEPS, em)
+
+    # Structural checks
+    assert len(e_specs) > 0, "No E specs produced"
+    assert len(h_specs) > 0, "No H specs produced"
+    # H specs must be at i_feed - 1 (one cell behind feed plane for +x)
+    i_feed_grid = grid.position_to_index((x_feed, y_centre, H / 2))[0]
+    h_i_vals = set(s.i for s in h_specs)
+    assert h_i_vals == {i_feed_grid - 1}, (
+        f"H specs at wrong i-indices: {h_i_vals}, expected {{{i_feed_grid - 1}}}"
+    )
+
+    # Probe Ez 3 cells downstream (forward wave should arrive before reflection)
+    i_feed_idx, j_c, k_c = grid.position_to_index((x_feed, y_centre, H / 2))
+    i_down = min(i_feed_idx + 3, shape[0] - 1)
+    i_up   = max(i_feed_idx - 3, 0)
+
+    probes = [
+        ProbeSpec(i=i_down, j=j_c, k=k_c, component="ez"),
+        ProbeSpec(i=i_up,   j=j_c, k=k_c, component="ez"),
+    ]
+
+    result = run(
+        grid, materials, N_STEPS,
+        boundary="pec",
+        sources=e_specs,
+        mag_sources=h_specs,
+        probes=probes,
+    )
+
+    ts = np.array(result.time_series)   # (N_STEPS, 2)
+    ez_down = float(np.max(np.abs(ts[:, 0])))
+    ez_up   = float(np.max(np.abs(ts[:, 1])))
+
+    print(f"\n[UT3 J+M fire] Ez_down={ez_down:.3e}, Ez_up={ez_up:.3e}")
+
+    # Forward wave must be non-zero — source is firing
+    assert ez_down > 1e-10, (
+        f"No forward field detected: Ez_down={ez_down:.3e} — MagneticSourceSpec wiring broken"
+    )
+    # Before first wall reflection: upstream field should be finite but not huge
+    # (we cannot guarantee < 1% without auxiliary FDTD tables)
+    assert np.isfinite(ez_down), "Forward field is not finite"
+    assert np.isfinite(ez_up), "Upstream field is not finite"

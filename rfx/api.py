@@ -412,6 +412,8 @@ class _MSLPortEntry:
     excite: bool = True
     n_probe_offset: int = 5
     n_probe_spacing: int = 3
+    mode: str = "eigenmode"
+    eps_r_sub: float | None = None
 
 
 @dataclass
@@ -1102,6 +1104,8 @@ class Simulation:
         n_probe_offset: int | None = None,
         n_probe_spacing: int | None = None,
         name: str | None = None,
+        mode: str = "laplace",
+        eps_r_sub: float | None = None,
     ) -> "Simulation":
         """Add a microstrip-line (MSL) port spanning the full trace cross-section.
 
@@ -1149,6 +1153,8 @@ class Simulation:
             raise ValueError(f"height must be positive, got {height}")
         if impedance <= 0:
             raise ValueError(f"impedance must be positive, got {impedance}")
+        if mode not in ("eigenmode", "laplace", "uniform"):
+            raise ValueError(f"mode must be 'eigenmode', 'laplace', or 'uniform', got {mode!r}")
         # Physical-distance defaults — see docstring for why cell-counted
         # defaults caused the 3-probe extractor to diverge under mesh refinement.
         if n_probe_offset is None:
@@ -1181,6 +1187,8 @@ class Simulation:
             excite=excite,
             n_probe_offset=n_probe_offset,
             n_probe_spacing=n_probe_spacing,
+            mode=mode,
+            eps_r_sub=eps_r_sub,
         ))
         return self
 
@@ -2929,6 +2937,8 @@ class Simulation:
                         waveform=wf, excite=new_excite,
                         n_probe_offset=pe.n_probe_offset,
                         n_probe_spacing=pe.n_probe_spacing,
+                        mode=pe.mode,
+                        eps_r_sub=pe.eps_r_sub,
                     ))
                 self._msl_ports = run_entries
 

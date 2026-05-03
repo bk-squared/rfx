@@ -40,6 +40,24 @@ class SourceSpec(NamedTuple):
     waveform: jnp.ndarray
 
 
+class MagneticSourceSpec(NamedTuple):
+    """Precomputed H-component current source (Schelkunoff M/J magnetic).
+
+    Used for the Schelkunoff J+M one-sided MSL port launch. The waveform
+    is precomputed to include the -dt/mu coefficient so injection is a
+    plain add (same pattern as SourceSpec for E fields).
+
+    component : "hx", "hy", or "hz"
+    waveform  : (n_steps,) float array — values added to the H field
+        component at (i, j, k) each timestep (after the H update).
+    """
+    i: int
+    j: int
+    k: int
+    component: str
+    waveform: jnp.ndarray
+
+
 class ProbeSpec(NamedTuple):
     """Point probe that records a field component each timestep."""
     i: int
@@ -485,6 +503,7 @@ def run(
     kerr_chi3: jnp.ndarray | None = None,
     field_dtype=None,
     return_state: bool = True,
+    mag_sources: list | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -602,6 +621,8 @@ def run(
     lumped_rlc = lumped_rlc or []
     use_lumped_rlc = len(lumped_rlc) > 0
     use_kerr = kerr_chi3 is not None
+    mag_sources = mag_sources or []
+    use_mag_sources = len(mag_sources) > 0
 
     if use_kerr:
         from rfx.materials.nonlinear import apply_kerr_ade
@@ -628,6 +649,7 @@ def run(
         and not use_conformal
         and not use_lumped_rlc
         and not use_kerr
+        and not use_mag_sources
         and aniso_eps is None
         and periodic == (False, False, False)
     )
@@ -747,6 +769,13 @@ def run(
     else:
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
 
+    # ---- magnetic source (H-field) waveform matrix ----
+    if mag_sources:
+        mag_src_waveforms = jnp.stack([s.waveform for s in mag_sources], axis=-1)
+    else:
+        mag_src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+    mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
+
     # Static source/probe metadata (captured by closure)
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
@@ -780,7 +809,7 @@ def run(
 
     # ---- scan body ----
     def step_fn(carry, xs):
-        _step_idx, src_vals = xs
+        _step_idx, src_vals, mag_src_vals = xs
         st = carry["fdtd"]
         tfsf_h_state = None
 
@@ -828,6 +857,17 @@ def run(
                     tfsf_h_state = update_tfsf_2d_h(tfsf_cfg, carry["tfsf"], dx, dt)
                 else:
                     tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], dx, dt)
+
+            # Magnetic current (Schelkunoff M / J-magnetic) injection —
+            # applied after H update so the Yee leapfrog ordering is
+            # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
+            # pre-baked into the waveform values at construction time.
+            if use_mag_sources:
+                for idx_m, (mi, mj, mk, mc) in enumerate(mag_src_meta):
+                    h_field = getattr(st, mc)
+                    h_field = h_field.at[mi, mj, mk].add(
+                        mag_src_vals[idx_m].astype(h_field.dtype))
+                    st = st._replace(**{mc: h_field})
 
             if use_upml:
                 if use_debye or use_lorentz:
@@ -1100,7 +1140,7 @@ def run(
         return new_carry, output
 
     # ---- run ----
-    xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
+    xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms, mag_src_waveforms)
 
     if checkpoint_segments is None:
         # Legacy path: optional per-step rematerialisation only. The scan
@@ -1261,6 +1301,7 @@ def run_until_decay(
     kerr_chi3: jnp.ndarray | None = None,
     field_dtype=None,
     return_state: bool = True,
+    mag_sources: list | None = None,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -1358,6 +1399,8 @@ def run_until_decay(
     lumped_rlc = lumped_rlc or []
     use_lumped_rlc = len(lumped_rlc) > 0
     use_kerr_decay = kerr_chi3 is not None
+    mag_sources = mag_sources or []
+    use_mag_sources = len(mag_sources) > 0
 
     if use_kerr_decay:
         from rfx.materials.nonlinear import apply_kerr_ade as _apply_kerr_ade_decay
@@ -1458,6 +1501,7 @@ def run_until_decay(
 
     # Static source/probe metadata
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
+    mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
     dft_meta = tuple(
         (probe.component, probe.axis, probe.index, probe.freqs)
@@ -1476,7 +1520,7 @@ def run_until_decay(
 
     # ---- JIT-compiled single step ----
     @jax.jit
-    def _single_step(carry_in, step_idx, src_vals):
+    def _single_step(carry_in, step_idx, src_vals, mag_src_vals):
         st = carry_in["fdtd"]
         tfsf_h_state = None
 
@@ -1517,6 +1561,14 @@ def run_until_decay(
                 tfsf_h_state = update_tfsf_2d_h(tfsf_cfg, carry_in["tfsf"], dx, dt)
             else:
                 tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry_in["tfsf"], dx, dt)
+
+        # Magnetic current injection — after H update (Yee leapfrog).
+        if use_mag_sources:
+            for idx_m, (mi, mj, mk, mc) in enumerate(mag_src_meta):
+                h_field = getattr(st, mc)
+                h_field = h_field.at[mi, mj, mk].add(
+                    mag_src_vals[idx_m].astype(h_field.dtype))
+                st = st._replace(**{mc: h_field})
 
         if use_upml:
             if use_debye or use_lorentz:
@@ -1783,6 +1835,14 @@ def run_until_decay(
     else:
         src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
 
+    if mag_sources:
+        mag_src_waveforms = jnp.stack(
+            [s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
+             else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
+             for s in mag_sources], axis=-1)
+    else:
+        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+
     # ---- Python loop with decay check ----
     peak_sq = 0.0
     all_probes = []
@@ -1791,7 +1851,8 @@ def run_until_decay(
     for step in range(max_steps):
         step_idx = jnp.array(step, dtype=jnp.int32)
         src_vals = src_waveforms[step]
-        carry, probe_out, monitor_val = _single_step(carry, step_idx, src_vals)
+        mag_src_vals = mag_src_waveforms[step]
+        carry, probe_out, monitor_val = _single_step(carry, step_idx, src_vals, mag_src_vals)
 
         all_probes.append(probe_out)
         actual_steps = step + 1

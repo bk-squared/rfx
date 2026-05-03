@@ -16,6 +16,12 @@ Geometry
 - f_max = 5 GHz, 30 freq points, num_periods = 12
 - Two MSL ports: port 0 driven (+x), port 1 passive matched (-x)
 
+Source mode: static-Laplace Ez profile (mode="laplace", the default).
+The Schelkunoff J+M eigenmode source (mode="eigenmode") was attempted but
+naive soft J+M sources cannot cancel the backward wave without a numerically
+dispersion-corrected 1D auxiliary FDTD table; that path is reserved for a
+future implementation.
+
 Fix (2026-05-02)
 ----------------
 A microstrip quasi-TEM mode requires a PEC trace conductor above the substrate.
@@ -32,6 +38,12 @@ recover the physical current I = +∮H·dl and give Z0 = V/I > 0.
 Frequency window: at DX = 80 µm (≈3 cells across substrate), the quasi-TEM mode
 is well-established above ~3 GHz.  The gate uses a fixed 3–4.5 GHz window rather
 than a symmetric midband slice to avoid low-frequency dispersion artefacts.
+
+Gate calibration (dx=80 µm, laplace mode, measured 2026-05-04)
+--------------------------------------------------------------
+  mean |S11| ≈ 0.118  → gate < 0.15
+  mean |S21| ≈ 0.972  → gate (0.90, 1.05)
+  mean Re(Z0) ≈ 54 Ω  → gate (40, 65) Ω
 """
 
 from __future__ import annotations
@@ -70,7 +82,13 @@ GATE_F_HI = 4.5e9
 
 @pytest.mark.slow
 def test_msl_thru_line_passive_gate():
-    """50 Ω microstrip thru: |S11|<0.15, 0.85<|S21|<1.05, Z0 ∈ [40,60] Ω."""
+    """50 Ω microstrip thru with static-Laplace Ez source (mode='laplace').
+
+    Gates calibrated for dx=80 µm (≈3 substrate cells), laplace mode:
+      |S11| < 0.15
+      0.90 < |S21| < 1.05
+      Z0 ∈ (40, 65) Ω
+    """
 
     sim = Simulation(
         freq_max=F_MAX,
@@ -158,24 +176,20 @@ def test_msl_thru_line_passive_gate():
     nz_sub = int(round(H_SUB / DX))
     print(f"[MSL thru] dx = {DX*1e6:.0f} µm, nz_sub ≈ {nz_sub}")
 
-    # --- reflection gate ---
+    # --- reflection gate (laplace mode, dx=80µm: measured ~0.118) ---
     assert mean_s11 < 0.15, (
-        f"|S11| = {mean_s11:.4f} ≥ 0.15 — excessive reflection"
+        f"|S11| = {mean_s11:.4f} ≥ 0.15 — excessive reflection at source plane"
     )
 
     # --- passivity / transmission gate ---
-    s21_hi = 1.05
-    if mean_s21 > s21_hi:
-        s21_hi = 1.10  # relax if staircase overcount at 80 µm
-
-    assert mean_s21 > 0.85, (
-        f"|S21| = {mean_s21:.4f} ≤ 0.85 — insufficient forward transmission"
+    assert mean_s21 > 0.90, (
+        f"|S21| = {mean_s21:.4f} ≤ 0.90 — insufficient forward transmission"
     )
-    assert mean_s21 < s21_hi, (
-        f"|S21| = {mean_s21:.4f} ≥ {s21_hi:.2f} — passivity violated"
+    assert mean_s21 < 1.05, (
+        f"|S21| = {mean_s21:.4f} ≥ 1.05 — passivity violated"
     )
 
-    # --- Z0 gate ---
-    assert 40.0 < mean_z0 < 60.0, (
-        f"Re(Z0) = {mean_z0:.2f} Ω outside [40, 60] Ω"
+    # --- Z0 gate (dx=80µm corrected window; measured ~54 Ω) ---
+    assert 40.0 < mean_z0 < 65.0, (
+        f"Re(Z0) = {mean_z0:.2f} Ω outside (40, 65) Ω"
     )

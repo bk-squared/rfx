@@ -163,6 +163,7 @@ def run_uniform(
 
     # Build sources and probes for the compiled runner
     sources = []
+    mag_sources = []
     probes = []
     dft_planes = []
     waveguide_ports = []
@@ -258,7 +259,9 @@ def run_uniform(
         from rfx.sources.msl_port import (
             MSLPort,
             _msl_yz_cells,
+            compute_msl_mode_profile,
             make_msl_port_sources,
+            make_msl_port_sources_jm,
             setup_msl_port,
         )
         for pe in sim._msl_ports:
@@ -273,9 +276,59 @@ def run_uniform(
                 impedance=pe.impedance,
                 excitation=pe.waveform,
             )
-            materials = setup_msl_port(grid, mp, materials)
+            mode_profile = None
+            eigenmode_data = None
+            port_mode = getattr(pe, "mode", "uniform")
+            if port_mode == "eigenmode":
+                from rfx.sources.msl_eigenmode import compute_msl_eigenmode_profile
+                # Substrate eps_r: use explicit value if provided,
+                # otherwise read from the FDTD eps_r array directly
+                # under the trace centre (most representative cell).
+                cells = _msl_yz_cells(grid, mp)
+                k_set = sorted({c[2] for c in cells})
+                j_set = sorted({c[1] for c in cells})
+                j_centre = (j_set[0] + j_set[-1]) // 2
+                k_mid = (k_set[0] + k_set[-1]) // 2
+                i_feed = cells[0][0]
+                if pe.eps_r_sub is not None:
+                    eps_r_sub = float(pe.eps_r_sub)
+                else:
+                    eps_r_sub = float(np.asarray(materials.eps_r[i_feed, j_centre, k_mid]))
+                # Build frequency array from grid for β(ω) curve
+                freqs_for_em = np.linspace(
+                    sim._freq_max / 10.0, sim._freq_max, 20)
+                eigenmode_data = compute_msl_eigenmode_profile(
+                    grid, mp, eps_r_sub, freqs_for_em)
+                # Also build the legacy mode_profile dict for setup_msl_port
+                # so σ loading matches the eigenmode footprint.
+                mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
+            elif port_mode == "laplace":
+                # Explicit static-Laplace Ez-only mode (no J+M).
+                cells = _msl_yz_cells(grid, mp)
+                k_set = sorted({c[2] for c in cells})
+                j_set = sorted({c[1] for c in cells})
+                j_centre = (j_set[0] + j_set[-1]) // 2
+                k_mid = (k_set[0] + k_set[-1]) // 2
+                i_feed = cells[0][0]
+                if pe.eps_r_sub is not None:
+                    eps_r_sub = float(pe.eps_r_sub)
+                else:
+                    eps_r_sub = float(np.asarray(materials.eps_r[i_feed, j_centre, k_mid]))
+                mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
+            materials = setup_msl_port(grid, mp, materials,
+                                       mode_profile=mode_profile)
             if pe.excite and pe.waveform is not None:
-                sources.extend(make_msl_port_sources(grid, mp, materials, n_steps))
+                if eigenmode_data is not None:
+                    # Schelkunoff J+M one-sided launch: both E and H sources
+                    e_specs, h_specs = make_msl_port_sources_jm(
+                        grid, mp, materials, n_steps, eigenmode_data)
+                    sources.extend(e_specs)
+                    mag_sources.extend(h_specs)
+                else:
+                    sources.extend(make_msl_port_sources(
+                        grid, mp, materials, n_steps,
+                        mode_profile=mode_profile,
+                    ))
             if pec_mask is not None:
                 for cell in _msl_yz_cells(grid, mp):
                     pec_mask = pec_mask.at[cell[0], cell[1], cell[2]].set(False)
@@ -491,6 +544,7 @@ def run_uniform(
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
+            mag_sources=mag_sources or None,
         )
     else:
         sim_result = _run(
@@ -518,6 +572,7 @@ def run_uniform(
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
+            mag_sources=mag_sources or None,
         )
 
     # S-parameters: use JIT-integrated DFT for wire ports (fast),
