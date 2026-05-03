@@ -726,6 +726,14 @@ the private projection helper applies a bounded residual phase/magnitude balance
 correction to the residual phase/sign transfer map, keeps public surfaces and
 thresholds unchanged, and routes the next step to private parity scoring before
 any true R/T readiness claim.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/magnitude
+balance parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_hunk_insufficient_fixture_quality_pending`:
+the retained residual phase/magnitude balance hunk has finite private parity
+evidence, but unchanged material-improvement, transverse-uniformity, and
+vacuum-stability gates remain closed, so true R/T and public observable
+promotion stay locked; the next safe lane is private failure-theory redesign.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
