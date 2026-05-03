@@ -1445,6 +1445,101 @@ def _private_target_basis_residual_modal_coupling_source_interface_transverse_mo
     )
 
 
+
+
+def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private packet-basis mismatch transfer map.
+
+    This bounded follow-up consumes the retained residual modal-coupling
+    contract, then applies one additional fixed-shape source/interface packet
+    basis mismatch correction from the residual left after the modal-coupling
+    transfer.  It uses only existing private modal coefficients, keeps the same
+    3x3 packet shape, clamps the total transfer magnitude to 0.35, and fails
+    closed on non-finite or degenerate packet-basis evidence.
+    """
+
+    coupling_transfer, coupling_ready = (
+        _private_target_basis_residual_modal_coupling_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=floor,
+        )
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    interface_active = interface_coeff * active_complex
+    target_active = interface_active - source_active
+    coupling_correction = coupling_transfer @ source_active
+    residual_after_coupling = target_active - coupling_correction
+    packet_basis_mismatch = (interface_active - source_active) * active_complex
+    mismatch_energy = jnp.sum(jnp.abs(packet_basis_mismatch) ** 2)
+    raw_mismatch = (
+        residual_after_coupling[:, None]
+        * jnp.conj(packet_basis_mismatch[None, :])
+        / jnp.maximum(mismatch_energy, floor).astype(jnp.complex64)
+    )
+    mismatch_magnitude = jnp.abs(raw_mismatch)
+    bounded_mismatch_magnitude = jnp.clip(
+        mismatch_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    mismatch_phase = raw_mismatch / jnp.maximum(mismatch_magnitude, floor)
+    mismatch_map = (
+        bounded_mismatch_magnitude.astype(jnp.complex64)
+        * mismatch_phase
+        * active_outer
+    )
+    combined_map = coupling_transfer + mismatch_map
+    combined_magnitude = jnp.abs(combined_map)
+    bounded_combined_magnitude = jnp.clip(
+        combined_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    combined_phase = combined_map / jnp.maximum(combined_magnitude, floor)
+    transfer = bounded_combined_magnitude.astype(jnp.complex64) * combined_phase
+    mismatch_correction = transfer @ source_active
+    source_energy = jnp.sum(jnp.abs(source_active) ** 2)
+    target_energy = jnp.sum(jnp.abs(target_active) ** 2)
+    residual_energy = jnp.sum(jnp.abs(residual_after_coupling) ** 2)
+    correction_energy = jnp.sum(jnp.abs(mismatch_correction) ** 2)
+    mismatch_finite = (
+        jnp.all(jnp.isfinite(jnp.real(raw_mismatch)))
+        & jnp.all(jnp.isfinite(jnp.imag(raw_mismatch)))
+        & jnp.all(jnp.isfinite(jnp.real(transfer)))
+        & jnp.all(jnp.isfinite(jnp.imag(transfer)))
+    )
+    mismatch_ready = (
+        mismatch_finite
+        & (coupling_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (target_energy > floor)
+        & (mismatch_energy > floor)
+        & (residual_energy > floor)
+        & (correction_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        mismatch_ready,
+        transfer,
+        jnp.zeros((3, 3), dtype=jnp.complex64),
+    )
+    return safe_transfer, jnp.where(
+        mismatch_ready,
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -1692,7 +1787,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_residual_modal_coupling_source_interface_transverse_modal_transfer_map(
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_interface_transverse_modal_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,
