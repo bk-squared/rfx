@@ -102,8 +102,8 @@ Promotion requires synchronized updates to:
 The immediate lane is now private plane-wave modal projection/normalizer
 projected target residual-basis energy-biorthogonal source/interface transverse
 modal transfer-map target-basis orientation residual phase/magnitude balance
-residual modal-coupling parity scoring after the bounded private implementation
-hunk was retained.
+residual modal-coupling failure-theory redesign after private parity scoring
+remained insufficient under unchanged gates.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -395,6 +395,14 @@ the private projection helper applies a bounded residual modal-coupling map
 inside the retained fixed-shape source/interface packet contract, keeps public
 surfaces and thresholds unchanged, and routes the next step to private parity
 scoring before any true R/T readiness claim.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/magnitude
+balance residual modal-coupling parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_hunk_insufficient_fixture_quality_pending`:
+the retained residual modal-coupling hunk has finite private parity evidence,
+but unchanged material-improvement, transverse-uniformity, and vacuum-stability
+gates remain closed, so true R/T and public observable promotion stay locked;
+the next safe lane is private failure-theory redesign.
 The private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
