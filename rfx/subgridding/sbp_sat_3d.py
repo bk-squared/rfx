@@ -1147,6 +1147,68 @@ def _private_source_interface_transverse_modal_transfer_map(
     )
 
 
+def _private_target_basis_oriented_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a target-basis-oriented private source/interface transfer map.
+
+    The earlier transfer helper was intentionally source-outer oriented: it used
+    the source modal packet as the right basis for a bounded minimum-norm map.
+    This private follow-up keeps the same fixed 3x3 shape and owner-packet
+    inputs, but orients the right basis with the projected residual target
+    itself.  The scalar source/target overlap denominator is fail-closed, so a
+    near-orthogonal or non-finite target basis produces a zero map without
+    public state, runner hooks, observables, or threshold changes.
+    """
+
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    target_active = (interface_coeff - source_coeff) * active_complex
+    source_energy = jnp.sum(jnp.abs(source_active) ** 2)
+    target_energy = jnp.sum(jnp.abs(target_active) ** 2)
+    overlap = jnp.sum(jnp.conj(target_active) * source_active)
+    overlap_magnitude = jnp.abs(overlap)
+    raw_transfer = (
+        target_active[:, None]
+        * jnp.conj(target_active[None, :])
+        / jnp.maximum(overlap_magnitude, floor).astype(jnp.complex64)
+        * (jnp.conj(overlap) / jnp.maximum(overlap_magnitude, floor))
+    )
+    magnitude = jnp.abs(raw_transfer)
+    bounded_magnitude = jnp.clip(
+        magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    phase = raw_transfer / jnp.maximum(magnitude, floor)
+    transfer = bounded_magnitude.astype(jnp.complex64) * phase * active_outer
+    transfer_finite = jnp.all(jnp.isfinite(jnp.real(transfer))) & jnp.all(
+        jnp.isfinite(jnp.imag(transfer))
+    )
+    orientation_ready = (
+        transfer_finite
+        & (source_energy > floor)
+        & (target_energy > floor)
+        & (overlap_magnitude > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        orientation_ready,
+        transfer,
+        jnp.zeros((3, 3), dtype=jnp.complex64),
+    )
+    return safe_transfer, jnp.where(
+        orientation_ready,
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -1393,11 +1455,13 @@ def _project_private_modal_basis_packets(
         interface_imag,
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
-    transfer_map, transfer_ready = _private_source_interface_transverse_modal_transfer_map(
-        source_coeff=source_coeff,
-        interface_coeff=interface_coeff,
-        active=mode_active,
-        floor=floor,
+    transfer_map, transfer_ready = (
+        _private_target_basis_oriented_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=mode_active,
+            floor=floor,
+        )
     )
     transferred_source_coeff = source_coeff + transfer_ready.astype(
         jnp.complex64
@@ -1417,6 +1481,7 @@ def _project_private_modal_basis_packets(
         & (metric_shape_ready > 0.0)
         & (source_coeff_ready > 0.0)
         & (interface_coeff_ready > 0.0)
+        & (transfer_ready > 0.0)
     )
     projected_target_real = jnp.where(
         projection_ready,

@@ -9054,17 +9054,127 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
             "next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation = (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_implementation"
+        ]
+    )
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_implementation_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_hunk_retained_fixture_quality_pending"
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "terminal_outcome"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_implementation_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "upstream_failure_theory_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_failure_theory_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "selected_candidate_id"
+    ] == "AU1_private_target_basis_oriented_transfer_map_helper"
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+            "candidate_count"
+        ]
+        == 5
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_failure_theory[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "failure_theory_consumed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "target_basis_orientation_contract_consumed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "target_basis_orientation_hunk_retained"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "target_basis_oriented_transfer_map_retained"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "transfer_map_helper"
+    ] == "_private_target_basis_oriented_source_interface_transverse_modal_transfer_map"
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "legacy_transfer_map_helper_retained"
+    ] == "_private_source_interface_transverse_modal_transfer_map"
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "matrix_shape"
+    ] == [3, 3]
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+            "modal_transfer_bound"
+        ]
+        == 0.35
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "target_basis_overlap_gate_fail_closed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "production_patch_applied"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "solver_behavior_changed"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "field_update_behavior_changed"
+    ]
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+            "true_rt_readiness_unlocked"
+        ]
+        is False
+    )
+    target_basis_orientation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+            "candidate_ladder"
+        ]
+    }
+    assert target_basis_orientation_candidates[
+        "AU1_private_target_basis_oriented_transfer_map_helper"
+    ]["accepted_candidate"]
+    assert (
+        target_basis_orientation_candidates[
+            "AU4_implementation_blocked_by_public_surface_or_threshold"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+        "next_lane_requires_target_basis_orientation_parity_scoring"
+    ]
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_implementation_next_prerequisite"
+        ]
+        == residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_implementation[
+            "next_prerequisite"
+        ]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "target-basis orientation implementation after failure-theory contract "
-        "ready ralplan"
+        "target-basis orientation parity scoring after implementation hunk "
+        "retained ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "target-basis orientation implementation after failure-theory contract "
-        "ready ralplan"
+        "target-basis orientation parity scoring after implementation hunk "
+        "retained ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -9483,6 +9593,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -9748,8 +9864,8 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map "
-        "target-basis orientation implementation after failure-theory contract "
-        "ready ralplan"
+        "target-basis orientation parity scoring after implementation hunk "
+        "retained ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

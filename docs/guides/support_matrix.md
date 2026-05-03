@@ -633,6 +633,14 @@ the retained private transfer-map hunk is finite but still source-outer oriented
 so the selected private next target is a fixed-shape target/residual-basis
 orientation for the transfer map; solver edits, threshold changes, and public
 promotion remain deferred.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation implementation lane now
+records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_hunk_retained_fixture_quality_pending`:
+the private projection helper now applies a bounded fixed-shape target-basis-
+oriented transfer map from existing source/interface modal packets, keeps public
+surfaces and thresholds unchanged, and routes the next step to private parity
+scoring before any true R/T readiness claim.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
