@@ -786,6 +786,12 @@ selects a bounded private modal energy/impedance weighting floor inside the
 existing source/interface owner-packet transfer-map contract, defers solver
 edits to a later private implementation lane, and keeps true R/T plus public
 observable promotion locked.
+The modal energy/impedance implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_hunk_retained_fixture_quality_pending`: a solver-local fixed-shape helper consumes the retained
+owner-packet weighting map, adds clipped residual modal-energy row weights and
+source/interface impedance column weights, retains the 3x3 private transfer-map
+contract, and keeps parity scoring, true R/T readiness, thresholds, runner state,
+and public observable promotion closed.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
