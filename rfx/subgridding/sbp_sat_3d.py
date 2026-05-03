@@ -1209,6 +1209,80 @@ def _private_target_basis_oriented_source_interface_transverse_modal_transfer_ma
     )
 
 
+
+
+def _private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private residual phase/sign-oriented transfer map.
+
+    This helper is a bounded follow-up to the target-basis-oriented map.  It
+    keeps the same private 3x3 modal packet shape, consumes no public state, and
+    applies only a row-local residual phase/sign correction when the existing
+    source, target, and target-oriented correction packets are finite and
+    non-degenerate.  Non-finite or near-zero residuals fail closed to a zero map
+    so callers can keep the solver-local projection path branch-free.
+    """
+
+    target_oriented_transfer, target_orientation_ready = (
+        _private_target_basis_oriented_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=floor,
+        )
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    target_active = (interface_coeff - source_coeff) * active_complex
+    target_oriented_correction = target_oriented_transfer @ source_active
+    target_magnitude = jnp.abs(target_active)
+    correction_magnitude = jnp.abs(target_oriented_correction)
+    target_phase = target_active / jnp.maximum(target_magnitude, floor)
+    correction_phase = target_oriented_correction / jnp.maximum(
+        correction_magnitude,
+        floor,
+    )
+    residual_phase_sign = target_phase * jnp.conj(correction_phase)
+    phase_sign_map = residual_phase_sign[:, None] * target_oriented_transfer
+    magnitude = jnp.abs(phase_sign_map)
+    bounded_magnitude = jnp.clip(
+        magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    phase = phase_sign_map / jnp.maximum(magnitude, floor)
+    transfer = bounded_magnitude.astype(jnp.complex64) * phase * active_outer
+    source_energy = jnp.sum(jnp.abs(source_active) ** 2)
+    target_energy = jnp.sum(jnp.abs(target_active) ** 2)
+    correction_energy = jnp.sum(jnp.abs(target_oriented_correction) ** 2)
+    phase_sign_finite = jnp.all(jnp.isfinite(jnp.real(transfer))) & jnp.all(
+        jnp.isfinite(jnp.imag(transfer))
+    )
+    phase_sign_ready = (
+        phase_sign_finite
+        & (target_orientation_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (target_energy > floor)
+        & (correction_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        phase_sign_ready,
+        transfer,
+        jnp.zeros((3, 3), dtype=jnp.complex64),
+    )
+    return safe_transfer, jnp.where(
+        phase_sign_ready,
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -1456,7 +1530,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_oriented_source_interface_transverse_modal_transfer_map(
+        _private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,

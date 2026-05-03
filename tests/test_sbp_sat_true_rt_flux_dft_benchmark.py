@@ -2278,6 +2278,27 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_packet_timing_ownership_floor_theory_ready",
     "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_floor_theory_ready",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_STATUS = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_hunk_retained_fixture_quality_pending"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal source-interface transverse modal transfer-map target-"
+    "basis orientation residual phase/sign parity scoring after implementation "
+    "hunk retained ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_TERMINAL_OUTCOMES = (
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_helper_preaccepted",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_material_improvement_ready_true_rt_pending",
+    "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_PRECEDENCE = (
+    "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_helper_preaccepted",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_hunk_retained_fixture_quality_pending",
+    "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_material_improvement_ready_true_rt_pending",
+)
 
 _PRIVATE_TIME_CENTERED_HELPER_FIXTURE_RECOVERY_LADDER = (
     {
@@ -22294,6 +22315,261 @@ def _private_plane_wave_modal_projection_normalizer_projected_target_residual_ba
         **_private_public_closure_metadata(),
     }
 
+
+def _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_metadata(
+    *,
+    target_basis_orientation_failure_theory_metadata: dict[str, object],
+) -> dict[str, object]:
+    baseline_metrics = dict(
+        target_basis_orientation_failure_theory_metadata["baseline_metrics"]
+    )
+    metrics = dict(target_basis_orientation_failure_theory_metadata["metrics"])
+    thresholds = dict(target_basis_orientation_failure_theory_metadata["thresholds"])
+    threshold_results = dict(
+        target_basis_orientation_failure_theory_metadata["threshold_results"]
+    )
+    material_decision = dict(
+        target_basis_orientation_failure_theory_metadata[
+            "material_improvement_decision"
+        ]
+    )
+    score_delta = dict(target_basis_orientation_failure_theory_metadata["score_delta"])
+    relative_improvement = dict(
+        target_basis_orientation_failure_theory_metadata["relative_improvement"]
+    )
+    residual_phase_sign_contract = dict(
+        target_basis_orientation_failure_theory_metadata[
+            "residual_phase_sign_contract"
+        ]
+    )
+    implemented_contract = residual_phase_sign_contract | {
+        "implementation_deferred": False,
+        "implementation_helper": (
+            "_private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map"
+        ),
+        "consumes_failure_theory_contract": True,
+    }
+    finite_score = bool(
+        all(
+            np.isfinite(float(metrics[name]))
+            for name in (
+                "transverse_phase_spread_deg",
+                "transverse_magnitude_cv",
+                "vacuum_relative_magnitude_error",
+                "vacuum_phase_error_deg",
+            )
+        )
+        and int(metrics["usable_bins"]) > 0
+    )
+    ax0 = {
+        "candidate_id": "AX0_residual_phase_sign_failure_theory_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_failure_theory_status": (
+            target_basis_orientation_failure_theory_metadata["terminal_outcome"]
+        ),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "public_closure_retained": True,
+    }
+    ax1 = {
+        "candidate_id": "AX1_private_residual_phase_sign_transfer_map_helper",
+        "candidate_family": "private_residual_phase_sign_solver_hunk",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_STATUS
+        ),
+        "solver_hunk_retained": True,
+        "projection_helper": "_project_private_modal_basis_packets",
+        "transfer_helper": (
+            "_private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map"
+        ),
+        "target_basis_orientation_helper_retained": (
+            "_private_target_basis_oriented_source_interface_transverse_modal_transfer_map"
+        ),
+        "legacy_transfer_helper_retained": (
+            "_private_source_interface_transverse_modal_transfer_map"
+        ),
+        "matrix_shape": (3, 3),
+        "fixed_shape_jit_safe_contract": True,
+        "finite_private_score_evidence": finite_score,
+        "residual_phase_sign_gate_fail_closed": True,
+        "projection_gate_fail_closed": True,
+        "public_claim_allowed": False,
+    }
+    ax2 = {
+        "candidate_id": "AX2_private_residual_phase_sign_normalization_guard",
+        "candidate_family": "private_residual_phase_sign_normalization_guard",
+        "accepted_candidate": False,
+        "normalization_guard_covered_by_hunk": True,
+        "transfer_bound": 0.35,
+        "modal_transfer_bound": 0.35,
+        "fail_closed_on_nonfinite_phase_sign": True,
+        "superseded_by": "AX1_private_residual_phase_sign_transfer_map_helper",
+        "public_claim_allowed": False,
+    }
+    ax3 = {
+        "candidate_id": "AX3_implementation_blocked_by_packet_state_expansion",
+        "candidate_family": "fail_closed_state_shape_blocker",
+        "accepted_candidate": False,
+        "requires_new_public_or_runner_state": False,
+        "not_selected_reason": (
+            "the residual phase/sign correction is expressible from existing "
+            "private source/interface modal coefficients without new owner or "
+            "runner fields"
+        ),
+        "public_claim_allowed": False,
+    }
+    ax4 = {
+        "candidate_id": "AX4_implementation_blocked_by_public_surface_or_threshold",
+        "candidate_family": "fail_closed_no_public_promotion",
+        "accepted_candidate": False,
+        "requires_threshold_change": False,
+        "requires_public_observable": False,
+        "selected_terminal_outcome": (
+            "no_private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation"
+        ),
+        "not_selected_reason": (
+            "the bounded helper does not require public promotion or threshold "
+            "changes; unchanged fixture-quality gates remain a later parity "
+            "scoring responsibility"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (ax0, ax1, ax2, ax3, ax4)
+    return {
+        "status": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_STATUS
+        ),
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_only"
+        ),
+        "upstream_failure_theory_status": (
+            target_basis_orientation_failure_theory_metadata["terminal_outcome"]
+        ),
+        "candidate_ladder_declared_before_implementation": True,
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite AX0/AX1/AX2/AX3/AX4 residual phase/sign implementation "
+            "ladder; retain only a bounded private helper hunk and require "
+            "separate parity scoring before any readiness claim"
+        ),
+        "selected_candidate_id": (
+            "AX1_private_residual_phase_sign_transfer_map_helper"
+        ),
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "failure_theory_consumed": True,
+        "residual_phase_sign_contract": implemented_contract,
+        "residual_phase_sign_contract_consumed": True,
+        "residual_phase_sign_hunk_retained": True,
+        "residual_phase_sign_transfer_map_retained": True,
+        "target_basis_orientation_hunk_retained": True,
+        "target_basis_oriented_transfer_map_retained": True,
+        "source_interface_transfer_map_hunk_retained": True,
+        "bounded_transfer_map_retained": True,
+        "projection_helper": "_project_private_modal_basis_packets",
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "transfer_map_helper": (
+            "_private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map"
+        ),
+        "transfer_helper": (
+            "_private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map"
+        ),
+        "target_basis_orientation_helper_retained": (
+            "_private_target_basis_oriented_source_interface_transverse_modal_transfer_map"
+        ),
+        "legacy_transfer_map_helper_retained": (
+            "_private_source_interface_transverse_modal_transfer_map"
+        ),
+        "coupling_helper": "_private_transverse_modal_coupling_metric",
+        "matrix_shape": (3, 3),
+        "fixed_shape_jit_safe_contract": True,
+        "transfer_bound": 0.35,
+        "modal_transfer_bound": 0.35,
+        "metric_normalized_projection": True,
+        "energy_biorthogonal_gram_projection": True,
+        "source_packet_projected": True,
+        "interface_packet_projected": True,
+        "subtraction_uses_residual_phase_sign_transfer_mapped_source_packet": True,
+        "residual_phase_sign_gate_fail_closed": True,
+        "target_basis_overlap_gate_fail_closed": True,
+        "projection_gate_fail_closed": True,
+        "contract_gate_fail_closed": True,
+        "fail_closed_on_shape_mismatch": True,
+        "fail_closed_on_nonfinite_phase_sign": True,
+        "no_new_solver_state": True,
+        "reuse_existing_owner_packet_shapes": True,
+        "finite_reproducible_score": finite_score,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": (
+            material_decision["dominant"]["relative_improvement"]
+        ),
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "subgrid_vacuum_parity_scored": False,
+        "subgrid_vacuum_parity_passed": False,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": True,
+        "solver_behavior_changed": True,
+        "field_update_behavior_changed": True,
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": True,
+        "solver_hunk_retained": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_target_basis_orientation_residual_phase_sign_parity_scoring": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": (
+            _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_NEXT_PREREQUISITE
+        ),
+        "reason": (
+            "the private projection helper now applies a bounded fixed-shape "
+            "residual phase/sign correction to the target-basis-oriented "
+            "source/interface transfer map before subtracting source modal "
+            "packets from interface packets; fixture-quality parity scoring "
+            "remains a separate private gate before any readiness claim"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -26174,8 +26450,32 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
             ),
         }
     )
+    plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_metadata = (
+        _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_metadata(
+            target_basis_orientation_failure_theory_metadata=(
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_status": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_metadata[
+                    "status"
+                ]
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_metadata
+            ),
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_next_prerequisite": (
+                plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
     base_metadata["follow_up_recommendation"] = base_metadata[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_next_prerequisite"
     ]
     if not reference_quality_ready:
         return base_metadata | {
@@ -26493,6 +26793,11 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "source/interface transverse modal transfer-map target-basis "
                 "orientation failure-theory redesign lane records "
                 f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal "
+                "source/interface transverse modal transfer-map target-basis "
+                "orientation residual phase/sign implementation lane records "
+                f"{plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -26502,7 +26807,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_next_prerequisite"
+                "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_next_prerequisite"
             ],
         }
 
@@ -37760,10 +38065,117 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_next_prerequisite"
         ]
     )
+    residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation = (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation"
+        ]
+    )
+    assert metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_status"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "terminal_outcome"
+    ] == (
+        _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_SIGN_IMPLEMENTATION_STATUS
+    )
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "upstream_failure_theory_status"
+    ] == metadata[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_status"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "selected_candidate_id"
+    ] == "AX1_private_residual_phase_sign_transfer_map_helper"
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "candidate_count"
+    ] == 5
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "metrics"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_failure_theory[
+        "metrics"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "thresholds"
+    ] == residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_failure_theory[
+        "thresholds"
+    ]
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "failure_theory_consumed"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "residual_phase_sign_contract_consumed"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "residual_phase_sign_hunk_retained"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "residual_phase_sign_transfer_map_retained"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "transfer_map_helper"
+    ] == "_private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map"
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "target_basis_orientation_helper_retained"
+    ] == "_private_target_basis_oriented_source_interface_transverse_modal_transfer_map"
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "matrix_shape"
+    ] == (3, 3)
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "modal_transfer_bound"
+    ] == 0.35
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "residual_phase_sign_gate_fail_closed"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "production_patch_applied"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "solver_behavior_changed"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "field_update_behavior_changed"
+    ] is True
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+        "public_observable_promoted"
+    ] is False
+    residual_phase_sign_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+            "candidate_ladder"
+        ]
+    }
+    assert residual_phase_sign_candidates[
+        "AX1_private_residual_phase_sign_transfer_map_helper"
+    ]["accepted_candidate"] is True
+    assert (
+        residual_phase_sign_candidates[
+            "AX4_implementation_blocked_by_public_surface_or_threshold"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+            "next_lane_requires_target_basis_orientation_residual_phase_sign_parity_scoring"
+        ]
+        is True
+    )
+    assert (
+        residual_basis_energy_biorthogonal_source_interface_transfer_map_target_basis_orientation_residual_phase_sign_implementation[
+            "next_prerequisite"
+        ]
+        == metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_next_prerequisite"
+        ]
+    )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_next_prerequisite"
         ]
     )
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
@@ -37789,7 +38201,7 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_next_prerequisite"
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_next_prerequisite"
         ]
     )
     assert (
@@ -38255,6 +38667,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_failure_theory_status"
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_implementation_status"
         ]
         in metadata["blocking_diagnostic"]
     )

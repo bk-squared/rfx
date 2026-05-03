@@ -694,6 +694,14 @@ it consumes the finite-but-insufficient target-basis orientation parity evidence
 selects a private residual phase/sign floor inside the same fixed-shape modal
 packet contract, defers solver edits to a later private implementation lane, and
 keeps true R/T plus public observable promotion locked.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/sign
+implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_sign_hunk_retained_fixture_quality_pending`:
+the private projection helper applies a bounded fixed-shape residual phase/sign
+correction to the target-basis-oriented transfer map, keeps public surfaces and
+thresholds unchanged, and routes the next step to private parity scoring before
+any true R/T readiness claim.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
