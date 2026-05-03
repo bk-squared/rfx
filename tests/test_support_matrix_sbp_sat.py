@@ -10487,17 +10487,107 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate["private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_implementation_next_prerequisite"]
         == packet_basis_mismatch_implementation["next_prerequisite"]
     )
+    packet_basis_mismatch_parity_scoring = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_parity_scoring"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_parity_scoring_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_hunk_insufficient_fixture_quality_pending"
+    )
+    assert packet_basis_mismatch_parity_scoring["terminal_outcome"] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_parity_scoring_status"
+    ]
+    assert packet_basis_mismatch_parity_scoring[
+        "upstream_packet_basis_mismatch_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_implementation_status"
+    ]
+    assert (
+        packet_basis_mismatch_parity_scoring["selected_candidate_id"]
+        == "BH1_finite_packet_basis_mismatch_private_parity_score"
+    )
+    assert packet_basis_mismatch_parity_scoring["candidate_count"] == 5
+    assert packet_basis_mismatch_parity_scoring[
+        "metrics"
+    ] == packet_basis_mismatch_implementation["metrics"]
+    assert packet_basis_mismatch_parity_scoring[
+        "thresholds"
+    ] == packet_basis_mismatch_implementation["thresholds"]
+    assert packet_basis_mismatch_parity_scoring[
+        "packet_basis_mismatch_implementation_retained"
+    ]
+    assert packet_basis_mismatch_parity_scoring[
+        "packet_basis_mismatch_hunk_retained"
+    ]
+    assert packet_basis_mismatch_parity_scoring[
+        "packet_basis_mismatch_transfer_map_retained"
+    ]
+    assert packet_basis_mismatch_parity_scoring["parity_scoring_lane_executed"]
+    assert packet_basis_mismatch_parity_scoring["finite_reproducible_score"]
+    assert packet_basis_mismatch_parity_scoring[
+        "score_uses_retained_implementation_metrics"
+    ]
+    assert packet_basis_mismatch_parity_scoring["transfer_helper"] == "_private_target_basis_residual_modal_coupling_packet_basis_mismatch_source_interface_transverse_modal_transfer_map"
+    assert packet_basis_mismatch_parity_scoring[
+        "residual_modal_coupling_helper_retained"
+    ] == (
+        "_private_target_basis_residual_modal_coupling_source_interface_transverse_modal_transfer_map"
+    )
+    assert packet_basis_mismatch_parity_scoring["matrix_shape"] == [3, 3]
+    assert packet_basis_mismatch_parity_scoring[
+        "packet_basis_mismatch_bound"
+    ] == 0.35
+    assert packet_basis_mismatch_parity_scoring["subgrid_vacuum_parity_scored"]
+    assert packet_basis_mismatch_parity_scoring[
+        "subgrid_vacuum_parity_passed"
+    ] is False
+    assert packet_basis_mismatch_parity_scoring[
+        "material_improvement_demonstrated"
+    ] is False
+    assert packet_basis_mismatch_parity_scoring[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert packet_basis_mismatch_parity_scoring["production_patch_applied"] is False
+    assert packet_basis_mismatch_parity_scoring["solver_behavior_changed"] is False
+    assert packet_basis_mismatch_parity_scoring["runner_behavior_changed"] is False
+    assert packet_basis_mismatch_parity_scoring[
+        "retained_packet_basis_mismatch_solver_hunk"
+    ]
+    assert packet_basis_mismatch_parity_scoring[
+        "public_observable_promoted"
+    ] is False
+    packet_basis_parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in packet_basis_mismatch_parity_scoring["candidate_ladder"]
+    }
+    assert packet_basis_parity_candidates[
+        "BH1_finite_packet_basis_mismatch_private_parity_score"
+    ]["accepted_candidate"]
+    assert (
+        packet_basis_parity_candidates[
+            "BH4_packet_basis_mismatch_parity_scoring_insufficient"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert packet_basis_mismatch_parity_scoring[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_failure_theory"
+    ]
+    assert (
+        benchmark_gate["private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_parity_scoring_next_prerequisite"]
+        == packet_basis_mismatch_parity_scoring["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "packet-basis mismatch parity scoring after implementation hunk retained ralplan"
+        "packet-basis mismatch failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "packet-basis mismatch parity scoring after implementation hunk retained ralplan"
+        "packet-basis mismatch failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -10994,6 +11084,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_parity_scoring_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -11260,7 +11356,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "packet-basis mismatch parity scoring after implementation hunk retained ralplan"
+        "packet-basis mismatch failure-theory redesign after parity scoring insufficient ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"
