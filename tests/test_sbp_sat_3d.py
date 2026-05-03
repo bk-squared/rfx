@@ -24,6 +24,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _private_interface_owner_joint_score,
     _private_source_interface_transverse_modal_transfer_map,
     _private_target_basis_oriented_source_interface_transverse_modal_transfer_map,
+    _private_target_basis_residual_phase_magnitude_balance_source_interface_transverse_modal_transfer_map,
     _private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map,
     _private_transverse_modal_coupling_metric,
     _project_private_modal_basis_packets,
@@ -1305,6 +1306,64 @@ def test_private_target_basis_residual_phase_sign_transfer_map_is_private_contra
 
     blocked_map, blocked_gate = (
         _private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map(
+            source_coeff=jnp.asarray([1.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j]),
+            interface_coeff=jnp.asarray([1.0 + 0.0j, 1.0 + 0.0j, 0.0 + 0.0j]),
+            active=active,
+            floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(
+        np.asarray(blocked_map),
+        np.zeros((3, 3), dtype=np.complex64),
+    )
+
+
+def test_private_target_basis_residual_phase_magnitude_balance_transfer_map_is_private_contract():
+    source_coeff = jnp.asarray(
+        [1.0 + 0.0j, 0.5 + 0.25j, 0.0 + 0.0j],
+        dtype=jnp.complex64,
+    )
+    interface_coeff = jnp.asarray(
+        [1.5 + 0.0j, -0.25 + 0.5j, 0.0 + 0.0j],
+        dtype=jnp.complex64,
+    )
+    active = jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32)
+
+    transfer_map, gate = (
+        _private_target_basis_residual_phase_magnitude_balance_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+        )
+    )
+    phase_sign_map, _ = (
+        _private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+        )
+    )
+    correction = transfer_map @ source_coeff
+    corrected_source = source_coeff + correction
+
+    assert transfer_map.shape == (3, 3)
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.asarray(transfer_map[2, :]), 0.0)
+    np.testing.assert_allclose(np.asarray(transfer_map[:, 2]), 0.0)
+    assert not np.allclose(np.asarray(transfer_map), np.asarray(phase_sign_map))
+    assert np.linalg.norm(np.asarray(interface_coeff[:2] - corrected_source[:2])) < (
+        np.linalg.norm(np.asarray(interface_coeff[:2] - source_coeff[:2]))
+    )
+    assert np.all(np.abs(np.asarray(transfer_map)) <= 0.350001)
+    assert np.all(np.isfinite(np.asarray(transfer_map.real)))
+    assert np.all(np.isfinite(np.asarray(transfer_map.imag)))
+
+    blocked_map, blocked_gate = (
+        _private_target_basis_residual_phase_magnitude_balance_source_interface_transverse_modal_transfer_map(
             source_coeff=jnp.asarray([1.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j]),
             interface_coeff=jnp.asarray([1.0 + 0.0j, 1.0 + 0.0j, 0.0 + 0.0j]),
             active=active,

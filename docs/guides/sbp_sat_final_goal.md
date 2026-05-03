@@ -101,9 +101,8 @@ Promotion requires synchronized updates to:
 
 The immediate lane is now private plane-wave modal projection/normalizer
 projected target residual-basis energy-biorthogonal source/interface transverse
-modal transfer-map target-basis orientation residual phase/sign phase-magnitude
-balance implementation after the failure-theory contract selected that private
-floor.
+modal transfer-map target-basis orientation residual phase/magnitude balance
+parity scoring after the bounded private implementation hunk was retained.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -363,6 +362,14 @@ it consumes the finite-but-insufficient residual phase/sign parity evidence,
 selects a private phase/magnitude imbalance floor inside the same fixed-shape
 modal packet contract, defers solver edits to a later private implementation
 lane, and keeps true R/T plus public observable promotion locked.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/magnitude
+balance implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_hunk_retained_fixture_quality_pending`:
+the private projection helper applies a bounded residual phase/magnitude balance
+correction to the residual phase/sign transfer map, keeps public surfaces and
+thresholds unchanged, and routes the next step to private parity scoring before
+any true R/T readiness claim.
 The private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV

@@ -1283,6 +1283,89 @@ def _private_target_basis_residual_phase_sign_source_interface_transverse_modal_
         jnp.asarray(0.0, dtype=active.dtype),
     )
 
+
+def _private_target_basis_residual_phase_magnitude_balance_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private residual phase/magnitude-balanced transfer map.
+
+    This bounded follow-up keeps the same fixed 3x3 private modal packet
+    contract as the residual phase/sign helper, but applies a row-local
+    magnitude balance before the final 0.35 transfer clamp.  It consumes only
+    existing source/interface modal coefficients and fails closed on non-finite
+    or degenerate phase/magnitude evidence, so no public observables, runner
+    state, hooks, exports, or threshold changes are needed.
+    """
+
+    phase_sign_transfer, phase_sign_ready = (
+        _private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=floor,
+        )
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    target_active = (interface_coeff - source_coeff) * active_complex
+    phase_sign_correction = phase_sign_transfer @ source_active
+    source_energy = jnp.sum(jnp.abs(source_active) ** 2)
+    residual_correction = target_active - phase_sign_correction
+    raw_balance = (
+        residual_correction[:, None]
+        * jnp.conj(source_active[None, :])
+        / jnp.maximum(source_energy, floor).astype(jnp.complex64)
+    )
+    balance_magnitude = jnp.abs(raw_balance)
+    bounded_balance_magnitude = jnp.clip(
+        balance_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    balance_phase = raw_balance / jnp.maximum(balance_magnitude, floor)
+    balance_map = bounded_balance_magnitude.astype(jnp.complex64) * balance_phase
+    balanced_map = phase_sign_transfer + balance_map * active_outer
+    magnitude = jnp.abs(balanced_map)
+    bounded_magnitude = jnp.clip(
+        magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    phase = balanced_map / jnp.maximum(magnitude, floor)
+    transfer = bounded_magnitude.astype(jnp.complex64) * phase * active_outer
+    target_energy = jnp.sum(jnp.abs(target_active) ** 2)
+    correction_energy = jnp.sum(jnp.abs(phase_sign_correction) ** 2)
+    balance_finite = (
+        jnp.all(jnp.isfinite(jnp.real(raw_balance)))
+        & jnp.all(jnp.isfinite(jnp.imag(raw_balance)))
+        & jnp.all(jnp.isfinite(jnp.real(transfer)))
+        & jnp.all(jnp.isfinite(jnp.imag(transfer)))
+    )
+    balance_ready = (
+        balance_finite
+        & (phase_sign_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (target_energy > floor)
+        & (correction_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        balance_ready,
+        transfer,
+        jnp.zeros((3, 3), dtype=jnp.complex64),
+    )
+    return safe_transfer, jnp.where(
+        balance_ready,
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -1530,7 +1613,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_residual_phase_sign_source_interface_transverse_modal_transfer_map(
+        _private_target_basis_residual_phase_magnitude_balance_source_interface_transverse_modal_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,
