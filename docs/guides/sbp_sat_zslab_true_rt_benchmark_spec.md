@@ -758,6 +758,14 @@ the retained residual modal-coupling hunk has finite private parity evidence,
 but unchanged material-improvement, transverse-uniformity, and vacuum-stability
 gates remain closed, so true R/T and public observable promotion stay locked;
 the next safe lane is private failure-theory redesign.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/magnitude
+balance residual modal-coupling failure-theory redesign lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_floor_theory_ready`:
+it consumes the finite-but-insufficient residual modal-coupling parity evidence,
+selects a private packet-basis mismatch floor inside the retained fixed-shape
+source/interface packet contract, defers solver edits to a later private
+implementation lane, and keeps true R/T plus public observable promotion locked.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

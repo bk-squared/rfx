@@ -10308,17 +10308,107 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         benchmark_gate["private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_parity_scoring_next_prerequisite"]
         == residual_modal_coupling_parity_scoring["next_prerequisite"]
     )
+    residual_modal_coupling_failure_theory = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_failure_theory"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_failure_theory_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_floor_theory_ready"
+    )
+    assert residual_modal_coupling_failure_theory["terminal_outcome"] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_failure_theory_status"
+    ]
+    assert residual_modal_coupling_failure_theory[
+        "upstream_residual_modal_coupling_parity_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_parity_scoring_status"
+    ]
+    assert residual_modal_coupling_failure_theory[
+        "upstream_residual_modal_coupling_implementation_status"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_implementation_status"
+    ]
+    assert (
+        residual_modal_coupling_failure_theory["selected_candidate_id"]
+        == "BF1_packet_basis_mismatch_floor"
+    )
+    assert residual_modal_coupling_failure_theory["candidate_count"] == 5
+    assert residual_modal_coupling_failure_theory[
+        "metrics"
+    ] == residual_modal_coupling_parity_scoring["metrics"]
+    assert residual_modal_coupling_failure_theory[
+        "thresholds"
+    ] == residual_modal_coupling_parity_scoring["thresholds"]
+    assert residual_modal_coupling_failure_theory[
+        "residual_modal_coupling_parity_scoring_consumed"
+    ]
+    assert residual_modal_coupling_failure_theory["finite_parity_score_consumed"]
+    assert residual_modal_coupling_failure_theory[
+        "retained_residual_modal_coupling_solver_hunk"
+    ]
+    assert (
+        residual_modal_coupling_failure_theory["selected_floor"]
+        == "packet_basis_mismatch_floor"
+    )
+    assert residual_modal_coupling_failure_theory[
+        "selected_next_private_design_target"
+    ] == (
+        "target_basis_orientation_residual_phase_magnitude_balance_"
+        "residual_modal_coupling_packet_basis_mismatch"
+    )
+    packet_basis_mismatch_contract = residual_modal_coupling_failure_theory[
+        "packet_basis_mismatch_contract"
+    ]
+    assert packet_basis_mismatch_contract["shape_contract"] == (
+        "private fixed-shape source/interface packet-basis mismatch "
+        "correction inside existing modal packet contract"
+    )
+    assert packet_basis_mismatch_contract[
+        "consumes_residual_modal_coupling_contract"
+    ]
+    assert packet_basis_mismatch_contract["requires_public_observable"] is False
+    assert packet_basis_mismatch_contract["requires_threshold_change"] is False
+    assert packet_basis_mismatch_contract["requires_runner_state"] is False
+    assert packet_basis_mismatch_contract["implementation_deferred"]
+    assert residual_modal_coupling_failure_theory["theory_lane_executed"]
+    assert residual_modal_coupling_failure_theory["implementation_deferred"]
+    assert residual_modal_coupling_failure_theory["production_patch_applied"] is False
+    assert (
+        residual_modal_coupling_failure_theory["true_rt_readiness_unlocked"]
+        is False
+    )
+    residual_modal_coupling_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in residual_modal_coupling_failure_theory["candidate_ladder"]
+    }
+    assert residual_modal_coupling_failure_candidates[
+        "BF1_packet_basis_mismatch_floor"
+    ]["accepted_candidate"]
+    assert (
+        residual_modal_coupling_failure_candidates[
+            "BF4_failure_theory_blocked_by_public_surface_or_threshold"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert residual_modal_coupling_failure_theory[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_implementation"
+    ]
+    assert (
+        benchmark_gate["private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_failure_theory_next_prerequisite"]
+        == residual_modal_coupling_failure_theory["next_prerequisite"]
+    )
     assert benchmark_gate["next_prerequisite"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "packet-basis mismatch implementation after failure-theory contract ready ralplan"
     )
     assert benchmark_gate["follow_up_recommendation"] == (
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "packet-basis mismatch implementation after failure-theory contract ready ralplan"
     )
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -10803,6 +10893,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
     assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_failure_theory_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
         benchmark_gate["private_plane_wave_source_adapter_implementation_status"]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -11069,7 +11165,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "private plane-wave modal projection/normalizer projected target residual-basis "
         "energy-biorthogonal source-interface transverse modal transfer-map target-"
         "basis orientation residual phase/magnitude balance residual modal-coupling "
-        "failure-theory redesign after parity scoring insufficient ralplan"
+        "packet-basis mismatch implementation after failure-theory contract ready ralplan"
     )
     assert (
         "time_centered_staging_contract_ready"

@@ -102,8 +102,8 @@ Promotion requires synchronized updates to:
 The immediate lane is now private plane-wave modal projection/normalizer
 projected target residual-basis energy-biorthogonal source/interface transverse
 modal transfer-map target-basis orientation residual phase/magnitude balance
-residual modal-coupling failure-theory redesign after private parity scoring
-remained insufficient under unchanged gates.
+residual modal-coupling packet-basis mismatch implementation after the
+failure-theory contract selected that private floor under unchanged gates.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -403,6 +403,14 @@ the retained residual modal-coupling hunk has finite private parity evidence,
 but unchanged material-improvement, transverse-uniformity, and vacuum-stability
 gates remain closed, so true R/T and public observable promotion stay locked;
 the next safe lane is private failure-theory redesign.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/magnitude
+balance residual modal-coupling failure-theory redesign lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_floor_theory_ready`:
+it consumes the finite-but-insufficient residual modal-coupling parity evidence,
+selects a private packet-basis mismatch floor inside the retained fixed-shape
+source/interface packet contract, defers solver edits to a later private
+implementation lane, and keeps true R/T plus public observable promotion locked.
 The private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
