@@ -1777,6 +1777,136 @@ def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_pa
     )
 
 
+
+def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private transverse energy redistribution transfer map.
+
+    This bounded follow-up consumes the retained modal energy/impedance helper
+    and applies one fixed-shape redistribution of the remaining transverse
+    modal residual.  It keeps the existing 3x3 source/interface packet shape,
+    clips all redistribution weights to a private finite interval, clamps the
+    total transfer magnitude to 0.35, and fails closed on non-finite or
+    degenerate transverse energy evidence without public observables, runner
+    state, exports, hooks, or threshold changes.
+    """
+
+    modal_energy_impedance_transfer, modal_energy_impedance_ready = (
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=floor,
+        )
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    interface_active = interface_coeff * active_complex
+    target_active = interface_active - source_active
+    modal_energy_impedance_correction = modal_energy_impedance_transfer @ source_active
+    residual_after_modal_energy_impedance = (
+        target_active - modal_energy_impedance_correction
+    )
+    source_mode_energy = jnp.abs(source_active) ** 2
+    target_mode_energy = jnp.abs(target_active) ** 2
+    residual_mode_energy = jnp.abs(residual_after_modal_energy_impedance) ** 2
+    active_count = jnp.maximum(
+        jnp.sum(active),
+        jnp.asarray(1.0, dtype=active.dtype),
+    )
+    residual_mean_energy = jnp.sum(residual_mode_energy) / active_count
+    transverse_row_weight = jnp.sqrt(
+        jnp.maximum(residual_mode_energy, floor)
+        / jnp.maximum(residual_mean_energy, floor)
+    )
+    transverse_row_weight = jnp.clip(
+        transverse_row_weight,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    transverse_column_weight = jnp.sqrt(
+        jnp.maximum(source_mode_energy + jnp.mean(source_mode_energy), floor)
+        / jnp.maximum(target_mode_energy + residual_mode_energy, floor)
+    )
+    transverse_column_weight = jnp.clip(
+        transverse_column_weight,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    transverse_energy = jnp.sum(source_mode_energy * transverse_column_weight)
+    raw_transverse_redistribution = (
+        residual_after_modal_energy_impedance[:, None]
+        * jnp.conj(source_active[None, :])
+        * transverse_row_weight[:, None].astype(jnp.complex64)
+        * transverse_column_weight[None, :].astype(jnp.complex64)
+        / jnp.maximum(transverse_energy, floor).astype(jnp.complex64)
+    )
+    transverse_redistribution_magnitude = jnp.abs(raw_transverse_redistribution)
+    bounded_transverse_redistribution_magnitude = jnp.clip(
+        transverse_redistribution_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    transverse_redistribution_phase = raw_transverse_redistribution / jnp.maximum(
+        transverse_redistribution_magnitude,
+        floor,
+    )
+    transverse_redistribution_map = (
+        bounded_transverse_redistribution_magnitude.astype(jnp.complex64)
+        * transverse_redistribution_phase
+        * active_outer
+    )
+    combined_map = modal_energy_impedance_transfer + transverse_redistribution_map
+    combined_magnitude = jnp.abs(combined_map)
+    bounded_combined_magnitude = jnp.clip(
+        combined_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    combined_phase = combined_map / jnp.maximum(combined_magnitude, floor)
+    transfer = bounded_combined_magnitude.astype(jnp.complex64) * combined_phase
+    transverse_correction = transfer @ source_active
+    source_energy = jnp.sum(source_mode_energy)
+    target_energy = jnp.sum(target_mode_energy)
+    residual_energy = jnp.sum(residual_mode_energy)
+    correction_energy = jnp.sum(jnp.abs(transverse_correction) ** 2)
+    transverse_redistribution_finite = (
+        jnp.all(jnp.isfinite(transverse_row_weight))
+        & jnp.all(jnp.isfinite(transverse_column_weight))
+        & jnp.all(jnp.isfinite(jnp.real(raw_transverse_redistribution)))
+        & jnp.all(jnp.isfinite(jnp.imag(raw_transverse_redistribution)))
+        & jnp.all(jnp.isfinite(jnp.real(transfer)))
+        & jnp.all(jnp.isfinite(jnp.imag(transfer)))
+    )
+    transverse_redistribution_ready = (
+        transverse_redistribution_finite
+        & (modal_energy_impedance_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (target_energy > floor)
+        & (residual_energy > floor)
+        & (residual_mean_energy > floor)
+        & (transverse_energy > floor)
+        & (correction_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        transverse_redistribution_ready,
+        transfer,
+        modal_energy_impedance_transfer,
+    )
+    return safe_transfer, jnp.where(
+        modal_energy_impedance_ready > jnp.asarray(0.0, dtype=active.dtype),
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -2024,7 +2154,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_source_interface_transverse_modal_transfer_map(
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_source_interface_transverse_modal_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,
