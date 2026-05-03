@@ -1092,6 +1092,61 @@ def _private_transverse_modal_coupling_metric(
     )
 
 
+def _private_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private fixed-shape source/interface modal transfer map.
+
+    The map is a bounded minimum-norm correction from source-owner modal
+    coefficients toward the interface residual target coefficients.  It is
+    solver-local, fixed at 3x3, uses only existing private packet coefficients,
+    and returns a scalar gate so callers can fail closed without public state,
+    hooks, observables, runner inputs, or threshold changes.
+    """
+
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    interface_active = interface_coeff * active_complex
+    delta_active = interface_active - source_active
+    source_energy = jnp.sum(jnp.abs(source_active) ** 2)
+    raw_transfer = (
+        delta_active[:, None]
+        * jnp.conj(source_active[None, :])
+        / jnp.maximum(source_energy, floor).astype(jnp.complex64)
+    )
+    magnitude = jnp.abs(raw_transfer)
+    bounded_magnitude = jnp.clip(
+        magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    phase = raw_transfer / jnp.maximum(magnitude, floor)
+    transfer = bounded_magnitude.astype(jnp.complex64) * phase * active_outer
+    transfer_finite = jnp.all(jnp.isfinite(jnp.real(transfer))) & jnp.all(
+        jnp.isfinite(jnp.imag(transfer))
+    )
+    transfer_ready = (
+        transfer_finite
+        & (source_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        transfer_ready,
+        transfer,
+        jnp.zeros((3, 3), dtype=jnp.complex64),
+    )
+    return safe_transfer, jnp.where(
+        transfer_ready,
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -1246,14 +1301,18 @@ def _project_private_modal_basis_packets(
             packet_imag - mode_active * projected_imag,
         )
 
-    def _project_packet(
-        packet_real: jnp.ndarray,
-        packet_imag: jnp.ndarray,
-    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+    def _modal_system() -> tuple[jnp.ndarray, jnp.ndarray]:
         modes_real = jnp.stack((incident_real, reflected_real, transverse_real))
         modes_imag = jnp.stack((incident_imag, reflected_imag, transverse_imag))
         mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
         modes = (modes_real + 1j * modes_imag).astype(jnp.complex64)
+        return modes, mode_active
+
+    def _project_coeff(
+        packet_real: jnp.ndarray,
+        packet_imag: jnp.ndarray,
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        modes, mode_active = _modal_system()
         packet = (packet_real + 1j * packet_imag).astype(jnp.complex64)
         weight = packet_weight.astype(jnp.complex64)
         active = mode_active.astype(jnp.complex64)
@@ -1282,14 +1341,14 @@ def _project_private_modal_basis_packets(
             * coupling_ready.astype(jnp.complex64)
         )
         coeff = jnp.linalg.solve(gram, rhs)
+        projected_coeff = coeff * active * coupling_ready.astype(jnp.complex64)
+        return projected_coeff, coupling_ready
+
+    def _packet_from_coeff(coeff: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        modes, mode_active = _modal_system()
+        active = mode_active.astype(jnp.complex64)
         coeff_shape = (coeff.size,) + (1,) * (modes.ndim - 1)
-        projected = jnp.sum(
-            (coeff * active * coupling_ready.astype(jnp.complex64)).reshape(
-                coeff_shape
-            )
-            * modes,
-            axis=0,
-        )
+        projected = jnp.sum((coeff * active).reshape(coeff_shape) * modes, axis=0)
         return jnp.real(projected).astype(dtype), jnp.imag(projected).astype(dtype)
 
     incident_real, incident_imag, incident_active = _normalize_mode(
@@ -1325,13 +1384,29 @@ def _project_private_modal_basis_packets(
         interface_residual_real,
         interface_residual_imag,
     )
-    projected_source_real, projected_source_imag = _project_packet(
+    source_coeff, source_coeff_ready = _project_coeff(
         source_real,
         source_imag,
     )
-    projected_interface_real, projected_interface_imag = _project_packet(
+    interface_coeff, interface_coeff_ready = _project_coeff(
         interface_real,
         interface_imag,
+    )
+    mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
+    transfer_map, transfer_ready = _private_source_interface_transverse_modal_transfer_map(
+        source_coeff=source_coeff,
+        interface_coeff=interface_coeff,
+        active=mode_active,
+        floor=floor,
+    )
+    transferred_source_coeff = source_coeff + transfer_ready.astype(
+        jnp.complex64
+    ) * (transfer_map @ source_coeff)
+    projected_source_real, projected_source_imag = _packet_from_coeff(
+        transferred_source_coeff
+    )
+    projected_interface_real, projected_interface_imag = _packet_from_coeff(
+        interface_coeff
     )
     basis_ready = (incident_active + reflected_active + transverse_active) > 0.0
 
@@ -1340,6 +1415,8 @@ def _project_private_modal_basis_packets(
         & (source_power > eps)
         & basis_ready
         & (metric_shape_ready > 0.0)
+        & (source_coeff_ready > 0.0)
+        & (interface_coeff_ready > 0.0)
     )
     projected_target_real = jnp.where(
         projection_ready,

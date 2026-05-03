@@ -649,6 +649,13 @@ the retained in-packet 3x3 coupling is finite but insufficient, so the selected
 private next target is a fixed-shape source/interface transverse modal transfer
 map before another solver hunk; solver edits, threshold changes, and public
 promotion remain deferred.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_hunk_retained_fixture_quality_pending`:
+the private projection helper now applies a bounded fixed-shape 3x3
+source/interface modal transfer correction before subtracting projected packets,
+keeps public surfaces and thresholds unchanged, and defers fixture-quality
+claims to a separate private parity-scoring lane.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.

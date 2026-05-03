@@ -22,6 +22,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _get_face_ops,
     _init_private_interface_owner_state,
     _private_interface_owner_joint_score,
+    _private_source_interface_transverse_modal_transfer_map,
     _private_transverse_modal_coupling_metric,
     _project_private_modal_basis_packets,
     _stage_private_time_aligned_owner_packets,
@@ -1066,9 +1067,13 @@ def test_project_private_modal_basis_packets_projects_residual_target_modes():
     np.testing.assert_allclose(np.asarray(projection_gate), 1.0)
     np.testing.assert_allclose(
         np.asarray(target_real),
-        np.asarray(interface_real - source_real),
+        np.asarray([[2.95, 3.150003], [2.75, 2.950003]], dtype=np.float32),
         rtol=1.0e-6,
         atol=1.0e-6,
+    )
+    assert not np.allclose(
+        np.asarray(target_real),
+        np.asarray(interface_real - source_real),
     )
     np.testing.assert_allclose(np.asarray(target_imag), 0.0)
 
@@ -1148,6 +1153,52 @@ def test_project_private_modal_basis_packets_requires_metric_shape_contract():
     np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
     np.testing.assert_allclose(np.asarray(blocked_real), np.asarray(interface_real))
     np.testing.assert_allclose(np.asarray(blocked_imag), np.asarray(interface_imag))
+
+
+def test_private_source_interface_transfer_map_is_fixed_shape_private_contract():
+    source_coeff = jnp.asarray(
+        [1.0 + 0.0j, 0.5 + 0.25j, 0.0 + 0.0j],
+        dtype=jnp.complex64,
+    )
+    interface_coeff = jnp.asarray(
+        [1.5 + 0.0j, -0.25 + 0.5j, 0.0 + 0.0j],
+        dtype=jnp.complex64,
+    )
+    active = jnp.asarray([1.0, 1.0, 0.0], dtype=jnp.float32)
+
+    transfer_map, gate = _private_source_interface_transverse_modal_transfer_map(
+        source_coeff=source_coeff,
+        interface_coeff=interface_coeff,
+        active=active,
+        floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+    )
+
+    correction = transfer_map @ source_coeff
+    corrected_source = source_coeff + correction
+
+    assert transfer_map.shape == (3, 3)
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.asarray(transfer_map[2, :]), 0.0)
+    np.testing.assert_allclose(np.asarray(transfer_map[:, 2]), 0.0)
+    assert np.linalg.norm(np.asarray(interface_coeff[:2] - corrected_source[:2])) < (
+        np.linalg.norm(np.asarray(interface_coeff[:2] - source_coeff[:2]))
+    )
+    assert np.all(np.abs(np.asarray(transfer_map)) <= 0.350001)
+    assert np.all(np.isfinite(np.asarray(transfer_map.real)))
+    assert np.all(np.isfinite(np.asarray(transfer_map.imag)))
+
+    blocked_map, blocked_gate = _private_source_interface_transverse_modal_transfer_map(
+        source_coeff=jnp.zeros_like(source_coeff),
+        interface_coeff=interface_coeff,
+        active=active,
+        floor=jnp.asarray(1.0e-12, dtype=jnp.float32),
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(
+        np.asarray(blocked_map),
+        np.zeros((3, 3), dtype=np.complex64),
+    )
 
 
 def test_private_transverse_modal_coupling_metric_is_fixed_shape_private_contract():
