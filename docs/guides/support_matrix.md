@@ -767,6 +767,15 @@ after the packet-basis mismatch map inside the retained fixed-shape
 source/interface packet contract, keeps public surfaces and thresholds
 unchanged, and routes the next step to private parity scoring before any true
 R/T readiness claim.
+The projected target residual-basis energy-biorthogonal source/interface
+transverse modal transfer-map target-basis orientation residual phase/magnitude
+balance residual modal-coupling packet-basis mismatch owner-packet weighting
+parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_hunk_insufficient_fixture_quality_pending`:
+the retained owner-packet weighting hunk has finite private parity evidence,
+but unchanged material-improvement, transverse-uniformity, and vacuum-stability
+gates remain closed, so true R/T and public observable promotion stay locked;
+the next safe lane is private owner-packet weighting failure-theory redesign.
 
 ### Explicit unsupported combinations in the SBP-SAT lane
 
