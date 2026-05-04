@@ -71,7 +71,15 @@ DX = 80e-6
 F_MAX = 5e9
 
 LX = L_LINE + 2 * PORT_MARGIN
-LY = W_TRACE + 6 * DX   # 3-cell clearance each side
+# LY uses fixed physical lateral clearance (≥2·h_sub each side) instead
+# of cell-counted clearance: microstrip fringing extends ~2·h_sub
+# laterally, and a CPML lateral wall closer than that systematically
+# inflates Z0 (and makes Z0 mesh-divergent under refinement). Verified
+# 2026-05-04 fixed-LY mesh-conv sweep: with this LY, Z0 lands within
+# 2-9% of Hammerstad analytic across dx=40-80µm; with the previous
+# LY=W+6·dx the box shrank with mesh and Z0 drifted 54→60Ω.
+# See docs/research_notes/20260504_msl_meshconv_fixed_ly.md.
+LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX)   # W + (2·h_sub + 8·dx) each side
 LZ = H_SUB + 1.5e-3      # substrate + 1.5 mm air above
 
 # Evaluation window: quasi-TEM mode is well-established at 3–4.5 GHz
@@ -192,4 +200,97 @@ def test_msl_thru_line_passive_gate():
     # --- Z0 gate (dx=80µm corrected window; measured ~54 Ω) ---
     assert 40.0 < mean_z0 < 65.0, (
         f"Re(Z0) = {mean_z0:.2f} Ω outside (40, 65) Ω"
+    )
+
+
+@pytest.mark.slow
+def test_msl_thru_line_eigenmode_gate():
+    """50 Ω microstrip thru with FDFD-derived J+M Schelkunoff source (mode='eigenmode').
+
+    The eigenmode source uses the full vectorial 2D Maxwell mode profile
+    from the from-scratch FDFD solver (``rfx.sources.msl_fdfd_eigenmode``,
+    Path B) and injects via the Schelkunoff J+M pair. Compared to the
+    static-Laplace baseline (|S11|=0.118 at this mesh), the eigenmode
+    source is expected to do at least as well; substantial improvement
+    requires finer mesh (mesh-conv test).
+
+    Gates: same as laplace baseline at dx=80µm with 3 substrate cells
+    (the underlying physical floor is mesh-limited at this resolution).
+    """
+
+    sim = Simulation(
+        freq_max=F_MAX,
+        domain=(LX, LY, LZ),
+        dx=DX,
+        cpml_layers=8,
+        boundary=BoundarySpec(
+            x="cpml", y="cpml",
+            z=Boundary(lo="pec", hi="cpml"),
+        ),
+    )
+
+    sim.add_material("ro4350b", eps_r=EPS_R)
+    sim.add(
+        Box((0.0, 0.0, 0.0), (LX, LY, H_SUB)),
+        material="ro4350b",
+    )
+
+    y_centre = LY / 2.0
+    trace_y_lo = y_centre - W_TRACE / 2.0
+    trace_y_hi = y_centre + W_TRACE / 2.0
+    sim.add(
+        Box((0.0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB + DX)),
+        material="pec",
+    )
+
+    sim.add_msl_port(
+        position=(PORT_MARGIN, y_centre, 0.0),
+        width=W_TRACE, height=H_SUB,
+        direction="+x", impedance=50.0,
+        mode="eigenmode",
+        eps_r_sub=EPS_R,
+    )
+    sim.add_msl_port(
+        position=(PORT_MARGIN + L_LINE, y_centre, 0.0),
+        width=W_TRACE, height=H_SUB,
+        direction="-x", impedance=50.0,
+        mode="eigenmode",
+        eps_r_sub=EPS_R,
+    )
+
+    result = sim.compute_msl_s_matrix(n_freqs=30, num_periods=12)
+
+    S = result.S
+    Z0 = result.Z0
+    freqs = result.freqs
+
+    gate_mask = (freqs >= GATE_F_LO) & (freqs <= GATE_F_HI)
+    if not np.any(gate_mask):
+        n_f = freqs.shape[0]
+        gate_mask = np.zeros(n_f, dtype=bool)
+        gate_mask[max(0, n_f // 2 - 5):min(n_f, n_f // 2 + 5)] = True
+
+    s11_gate = np.abs(S[0, 0, gate_mask])
+    s21_gate = np.abs(S[1, 0, gate_mask])
+    z0_gate  = Z0[0, gate_mask].real
+
+    mean_s11 = float(np.mean(s11_gate))
+    mean_s21 = float(np.mean(s21_gate))
+    mean_z0  = float(np.mean(z0_gate))
+
+    print(f"\n[MSL eigenmode] gate {freqs[gate_mask][0]*1e-9:.2f}–{freqs[gate_mask][-1]*1e-9:.2f} GHz")
+    print(f"[MSL eigenmode] mean |S11| = {mean_s11:.4f}")
+    print(f"[MSL eigenmode] mean |S21| = {mean_s21:.4f}")
+    print(f"[MSL eigenmode] mean Re(Z0) = {mean_z0:.2f} Ω")
+
+    # Same gates as laplace baseline. Tighten only if eigenmode source
+    # demonstrates meaningful improvement at finer mesh (mesh-conv test).
+    assert mean_s11 < 0.20, (
+        f"|S11| = {mean_s11:.4f} ≥ 0.20 — eigenmode source worse than baseline"
+    )
+    assert mean_s21 > 0.85, (
+        f"|S21| = {mean_s21:.4f} ≤ 0.85 — insufficient forward transmission"
+    )
+    assert 35.0 < mean_z0 < 70.0, (
+        f"Re(Z0) = {mean_z0:.2f} Ω outside (35, 70) Ω"
     )

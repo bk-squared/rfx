@@ -4793,6 +4793,104 @@ class Simulation:
                             break
 
         self._check_waveguide_port_evanescent()
+        self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
+
+    def _check_msl_port_geometry(
+        self,
+        dx: float,
+        cpml_thick_lo: list[float],
+        cpml_thick_hi: list[float],
+    ) -> None:
+        """MSL port setup correctness checks (issue: silent Z0 / |S11| bias).
+
+        Microstrip Z0 and |S11| are extremely sensitive to lateral box
+        size and substrate resolution. Wrong setup can give 15-30% Z0
+        bias or anti-convergent mesh-conv with no error message.
+        Catches the common mistakes here so users find them in <1 min
+        instead of after a full mesh sweep.
+
+        Three checks per MSL port:
+
+        1. **Lateral clearance** from trace edge to nearest absorbing
+           boundary (CPML/PML) or PEC sidewall must be ≥ 2·h_sub.
+           Microstrip fringing fields decay as exp(-π·d/h_sub); the
+           5%-amplitude tail sits at d ≈ 0.95·h_sub. A ≥ 2·h_sub margin
+           keeps Z0 bias under ~5% (verified by fixed-LY mesh-conv
+           sweep, 2026-05-04 — see rfx-known-issues.md).
+
+        2. **Substrate resolution** n_z_sub = h_sub/dx ≥ 4 cells.
+           Yee staircase at the dielectric interface is O(dx) (not
+           O(dx²)) for inhomogeneous ε; <4 cells gives Z0 staircase
+           error >5%.
+
+        3. **Port-to-CPML distance** in propagation direction ≥ 2·h_sub.
+           Source-side CPML reflection inflates |S11| if the port is
+           too close.
+        """
+        import warnings as _w
+        if not self._msl_ports:
+            return
+        domain = self._domain
+        for pe in self._msl_ports:
+            x_feed, y_centre, z_lo = pe.position
+            w_trace = float(pe.width)
+            h_sub = float(pe.height)
+            recommended = 2.0 * h_sub
+
+            # ---- 1. Lateral (y) clearance ----
+            trace_y_lo = y_centre - w_trace / 2.0
+            trace_y_hi = y_centre + w_trace / 2.0
+            ly = float(domain[1])
+            # Effective absorbing boundary positions on each y side
+            y_abs_lo = float(cpml_thick_lo[1])           # CPML extent from y=0
+            y_abs_hi = ly - float(cpml_thick_hi[1])      # CPML extent from y=LY
+            clearance_lo = trace_y_lo - y_abs_lo
+            clearance_hi = y_abs_hi - trace_y_hi
+            for side, c in (("−y", clearance_lo), ("+y", clearance_hi)):
+                if c < recommended:
+                    pct = max(0.0, (1.0 - c / recommended)) * 15.0
+                    _w.warn(
+                        f"MSL port '{pe.name}' (trace W={w_trace*1e6:.0f}µm, "
+                        f"h_sub={h_sub*1e6:.0f}µm): lateral clearance to "
+                        f"{side} absorbing boundary = {c*1e6:.0f}µm < "
+                        f"recommended {recommended*1e6:.0f}µm (= 2·h_sub). "
+                        f"Fringing field will be clipped → Z0 may be biased "
+                        f"HIGH by ~{pct:.0f}%, mesh-conv may diverge. "
+                        f"Increase domain y-extent OR move port further from "
+                        f"sidewall.",
+                        stacklevel=3,
+                    )
+
+            # ---- 2. Substrate cells ----
+            n_z_sub = max(1, int(round(h_sub / dx)))
+            if n_z_sub < 4:
+                _w.warn(
+                    f"MSL port '{pe.name}': only {n_z_sub} substrate cell(s) "
+                    f"in z (h_sub={h_sub*1e6:.0f}µm, dx={dx*1e6:.0f}µm). "
+                    f"Yee staircase at dielectric interface is O(dx) — "
+                    f"Z0 staircase error >5% expected. Refine to dx ≤ "
+                    f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) for "
+                    f"<5% Z0 bias.",
+                    stacklevel=3,
+                )
+
+            # ---- 3. Port-to-CPML distance in x ----
+            x_abs_lo = float(cpml_thick_lo[0])
+            x_abs_hi = float(domain[0]) - float(cpml_thick_hi[0])
+            x_clearance = (
+                x_feed - x_abs_lo if pe.direction == "+x"
+                else x_abs_hi - x_feed
+            )
+            if x_clearance < recommended:
+                _w.warn(
+                    f"MSL port '{pe.name}' at x={x_feed*1e3:.2f}mm, "
+                    f"direction={pe.direction!r}: distance to nearest "
+                    f"x-CPML = {x_clearance*1e6:.0f}µm < recommended "
+                    f"{recommended*1e6:.0f}µm (= 2·h_sub). Source-side "
+                    f"CPML reflection may inflate |S11|. Move port further "
+                    f"from boundary OR increase domain x-extent.",
+                    stacklevel=3,
+                )
 
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""

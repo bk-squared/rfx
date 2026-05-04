@@ -38,7 +38,11 @@ def _build_sim(dx: float, *, kill_port1_sigma: bool = False,
                probe_offset_um: float | None = None,
                probe_spacing_um: float | None = None) -> Simulation:
     LX = L_LINE + 2 * PORT_MARGIN
-    LY = W_TRACE + 6 * dx          # 3-cell clearance each side
+    # LY uses fixed physical lateral clearance (≥2·h_sub each side beyond
+    # CPML). Cell-counted clearance (W+6·dx) caused the lateral box to
+    # shrink with mesh and made Z0 anti-convergent (drifted 54→60Ω). See
+    # docs/research_notes/20260504_msl_meshconv_fixed_ly.md.
+    LY = W_TRACE + 2 * (2 * H_SUB + 8 * dx)
     LZ = H_SUB + 1.5e-3            # substrate + 1.5 mm air above
     sim = Simulation(
         freq_max=F_MAX,
