@@ -820,6 +820,15 @@ closed. No true R/T, DFT/flux, TFSF, port, S-parameter, threshold, runner, API,
 or public observable surface is promoted; the next safe lane is private coupled
 modal energy-balance failure-theory redesign.
 
+The coupled modal energy-balance failure-theory redesign lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_floor_theory_ready`: it consumes the finite-but-insufficient coupled modal
+energy-balance parity evidence, rejects a repeated coupled row/column metric
+floor plus public/threshold escape routes, and selects a bounded private
+target-basis packet normalization target inside the existing 3x3
+source/interface coupled-balance transfer-map contract. Solver edits, true R/T
+readiness, runner state, thresholds, and public observable promotion remain
+deferred to later approved lanes.
+
 ### Explicit unsupported combinations in the SBP-SAT lane
 
 | Combination | Status | Expected behavior |
