@@ -812,6 +812,14 @@ The transverse energy redistribution failure-theory redesign lane now records
 The coupled modal energy-balance implementation lane now records
 `private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_hunk_retained_fixture_quality_pending`: a solver-local fixed-shape helper consumes the retained transverse redistribution map, adds clipped coupled row/column modal energy-balance weights inside the existing 3x3 source/interface packet contract, and keeps true R/T readiness, thresholds, runner state, and public observable promotion closed while routing the next step to private parity scoring.
 
+The coupled modal energy-balance parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_hunk_insufficient_fixture_quality_pending`: it consumes the retained helper hunk and current private vacuum
+parity metrics, records finite private evidence, and confirms that unchanged
+material-improvement, transverse-uniformity, and vacuum-stability gates remain
+closed. No true R/T, DFT/flux, TFSF, port, S-parameter, threshold, runner, API,
+or public observable surface is promoted; the next safe lane is private coupled
+modal energy-balance failure-theory redesign.
+
 ### Explicit unsupported combinations in the SBP-SAT lane
 
 | Combination | Status | Expected behavior |
