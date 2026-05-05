@@ -2509,6 +2509,192 @@ def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_pa
     )
 
 
+def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private time-centered source/interface energy-pairing map.
+
+    This bounded helper consumes the retained phase-energy residual transfer map
+    and adds one private fixed-shape correction from the time-centered
+    source/interface packet pair. It aligns residual subtraction with the
+    midpoint packet energy and phase, preserves the existing 0.35 transfer
+    bound, and fails closed without public observables, runners, hooks,
+    exports, or threshold changes.
+    """
+
+    phase_energy_transfer, phase_energy_ready = _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_transverse_modal_transfer_map(
+        source_coeff=source_coeff,
+        interface_coeff=interface_coeff,
+        active=active,
+        floor=floor,
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    interface_active = interface_coeff * active_complex
+    time_centered_active = jnp.asarray(0.5, dtype=jnp.float32) * (
+        source_active + interface_active
+    )
+    target_active = interface_active - source_active
+    phase_energy_correction = phase_energy_transfer @ source_active
+    residual_after_phase_energy = target_active - phase_energy_correction
+    source_mode_energy = jnp.abs(source_active) ** 2
+    interface_mode_energy = jnp.abs(interface_active) ** 2
+    time_centered_mode_energy = jnp.abs(time_centered_active) ** 2
+    phase_energy_correction_energy = jnp.abs(phase_energy_correction) ** 2
+    residual_mode_energy = jnp.abs(residual_after_phase_energy) ** 2
+    active_count = jnp.maximum(
+        jnp.sum(active),
+        jnp.asarray(1.0, dtype=active.dtype),
+    )
+    source_packet_energy = jnp.sum(source_mode_energy) / active_count
+    interface_packet_energy = jnp.sum(interface_mode_energy) / active_count
+    time_centered_packet_energy = jnp.sum(time_centered_mode_energy) / active_count
+    residual_packet_energy = jnp.sum(residual_mode_energy) / active_count
+    source_phase = source_active / jnp.maximum(jnp.abs(source_active), floor)
+    interface_phase = interface_active / jnp.maximum(jnp.abs(interface_active), floor)
+    time_centered_phase = time_centered_active / jnp.maximum(
+        jnp.abs(time_centered_active),
+        floor,
+    )
+    residual_phase = residual_after_phase_energy / jnp.maximum(
+        jnp.abs(residual_after_phase_energy),
+        floor,
+    )
+    source_interface_phase_gap = jnp.abs(interface_phase - source_phase) ** 2
+    time_centered_phase_gap = jnp.abs(time_centered_phase - source_phase) ** 2
+    residual_time_centered_alignment = jnp.abs(
+        residual_phase * jnp.conj(time_centered_phase)
+    )
+    time_centered_gain = jnp.clip(
+        jnp.asarray(1.0, dtype=floor.dtype)
+        + jnp.sum(
+            (source_interface_phase_gap + time_centered_phase_gap) * active
+        )
+        / active_count,
+        jnp.asarray(1.0, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    )
+    time_centered_row_weight = jnp.sqrt(
+        jnp.maximum(
+            residual_mode_energy
+            + residual_time_centered_alignment * residual_packet_energy
+            + time_centered_mode_energy * source_interface_phase_gap,
+            floor,
+        )
+        / jnp.maximum(time_centered_packet_energy + residual_packet_energy, floor)
+    )
+    time_centered_column_weight = jnp.sqrt(
+        jnp.maximum(
+            source_mode_energy
+            + time_centered_mode_energy
+            + phase_energy_correction_energy,
+            floor,
+        )
+        / jnp.maximum(
+            source_mode_energy + phase_energy_correction_energy,
+            floor,
+        )
+    )
+    time_centered_row_weight = jnp.clip(
+        time_centered_row_weight,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    time_centered_column_weight = jnp.clip(
+        time_centered_column_weight,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    time_centered_weight = jnp.sqrt(
+        jnp.maximum(
+            time_centered_row_weight[:, None]
+            * time_centered_column_weight[None, :],
+            jnp.asarray(0.0, dtype=floor.dtype),
+        )
+    )
+    time_centered_pair_energy = jnp.sum(
+        (time_centered_mode_energy + phase_energy_correction_energy)
+        * time_centered_column_weight
+    )
+    raw_time_centered_pairing = (
+        residual_after_phase_energy[:, None]
+        * jnp.conj(source_active[None, :])
+        * time_centered_weight.astype(jnp.complex64)
+        * time_centered_gain.astype(jnp.complex64)
+        / jnp.maximum(time_centered_pair_energy, floor).astype(jnp.complex64)
+    )
+    time_centered_pairing_magnitude = jnp.abs(raw_time_centered_pairing)
+    bounded_time_centered_pairing_magnitude = jnp.clip(
+        time_centered_pairing_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    time_centered_pairing_phase = raw_time_centered_pairing / jnp.maximum(
+        time_centered_pairing_magnitude,
+        floor,
+    )
+    time_centered_pairing_map = (
+        bounded_time_centered_pairing_magnitude.astype(jnp.complex64)
+        * time_centered_pairing_phase
+        * active_outer
+    )
+    combined_map = phase_energy_transfer + time_centered_pairing_map
+    combined_magnitude = jnp.abs(combined_map)
+    bounded_combined_magnitude = jnp.clip(
+        combined_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    combined_phase = combined_map / jnp.maximum(combined_magnitude, floor)
+    transfer = bounded_combined_magnitude.astype(jnp.complex64) * combined_phase
+    time_centered_correction = transfer @ source_active
+    source_energy = jnp.sum(source_mode_energy)
+    interface_energy = jnp.sum(interface_mode_energy)
+    residual_energy = jnp.sum(residual_mode_energy)
+    correction_energy = jnp.sum(jnp.abs(time_centered_correction) ** 2)
+    time_centered_pairing_finite = (
+        jnp.all(jnp.isfinite(source_interface_phase_gap))
+        & jnp.all(jnp.isfinite(time_centered_phase_gap))
+        & jnp.all(jnp.isfinite(residual_time_centered_alignment))
+        & jnp.all(jnp.isfinite(time_centered_row_weight))
+        & jnp.all(jnp.isfinite(time_centered_column_weight))
+        & jnp.all(jnp.isfinite(time_centered_weight))
+        & jnp.all(jnp.isfinite(jnp.real(raw_time_centered_pairing)))
+        & jnp.all(jnp.isfinite(jnp.imag(raw_time_centered_pairing)))
+        & jnp.all(jnp.isfinite(jnp.real(transfer)))
+        & jnp.all(jnp.isfinite(jnp.imag(transfer)))
+    )
+    time_centered_pairing_ready = (
+        time_centered_pairing_finite
+        & (phase_energy_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (interface_energy > floor)
+        & (residual_energy > floor)
+        & (source_packet_energy > floor)
+        & (interface_packet_energy > floor)
+        & (time_centered_packet_energy > floor)
+        & (residual_packet_energy > floor)
+        & (time_centered_pair_energy > floor)
+        & (correction_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        time_centered_pairing_ready,
+        transfer,
+        phase_energy_transfer,
+    )
+    return safe_transfer, jnp.where(
+        phase_energy_ready > jnp.asarray(0.0, dtype=active.dtype),
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -2756,7 +2942,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_transverse_modal_transfer_map(
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,
