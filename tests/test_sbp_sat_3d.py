@@ -23,6 +23,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _init_private_interface_owner_state,
     _private_interface_owner_joint_score,
     _private_score_path_visibility_field_update_coupling_target,
+    _private_score_path_visibility_field_update_solver_observed_delta,
     _private_source_interface_transverse_modal_transfer_map,
     _private_target_basis_oriented_source_interface_transverse_modal_transfer_map,
     _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_source_interface_transverse_modal_transfer_map,
@@ -2188,6 +2189,71 @@ def test_private_score_path_visibility_field_update_coupling_target_is_private_c
     np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
     np.testing.assert_allclose(np.asarray(blocked_real), np.asarray(target_real))
     np.testing.assert_allclose(np.asarray(blocked_imag), np.asarray(target_imag))
+
+
+def test_private_score_path_visibility_field_update_solver_observed_delta_is_private_contract():
+    before_real = jnp.asarray([[0.4, 0.6], [0.3, 0.5]], dtype=jnp.float32)
+    before_imag = jnp.asarray([[0.1, 0.2], [0.05, 0.15]], dtype=jnp.float32)
+    delta_real = jnp.asarray([[0.02, -0.01], [0.03, -0.02]], dtype=jnp.float32)
+    delta_imag = jnp.asarray([[0.01, 0.02], [-0.01, 0.03]], dtype=jnp.float32)
+    packet_mask = jnp.ones_like(before_real)
+
+    rms_delta, relative_delta, max_delta, gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta(
+            before_real=before_real,
+            before_imag=before_imag,
+            after_real=before_real + delta_real,
+            after_imag=before_imag + delta_imag,
+            packet_mask=packet_mask,
+            projection_gate=jnp.asarray(1.0, dtype=jnp.float32),
+            contract_gate=jnp.asarray(1.0, dtype=jnp.float32),
+            field_update_coupling_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    assert float(rms_delta) > 0.0
+    assert float(relative_delta) > 0.0
+    assert float(max_delta) > 0.0
+    assert np.isfinite(np.asarray(rms_delta))
+    assert np.isfinite(np.asarray(relative_delta))
+    assert np.isfinite(np.asarray(max_delta))
+
+    blocked_rms, blocked_relative, blocked_max, blocked_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta(
+            before_real=before_real,
+            before_imag=before_imag,
+            after_real=before_real + delta_real,
+            after_imag=before_imag + delta_imag,
+            packet_mask=packet_mask,
+            projection_gate=jnp.asarray(0.0, dtype=jnp.float32),
+            contract_gate=jnp.asarray(1.0, dtype=jnp.float32),
+            field_update_coupling_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_rms), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_relative), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_max), 0.0)
+
+    nonfinite_rms, nonfinite_relative, nonfinite_max, nonfinite_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta(
+            before_real=before_real,
+            before_imag=before_imag,
+            after_real=before_real.at[0, 0].set(jnp.nan),
+            after_imag=before_imag + delta_imag,
+            packet_mask=packet_mask,
+            projection_gate=jnp.asarray(1.0, dtype=jnp.float32),
+            contract_gate=jnp.asarray(1.0, dtype=jnp.float32),
+            field_update_coupling_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(nonfinite_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_rms), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_relative), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_max), 0.0)
 
 
 def test_private_transverse_modal_coupling_metric_is_fixed_shape_private_contract():

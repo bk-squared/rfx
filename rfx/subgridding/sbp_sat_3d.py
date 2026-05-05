@@ -3176,6 +3176,81 @@ def _private_score_path_visibility_field_update_coupling_target(
     )
 
 
+def _private_score_path_visibility_field_update_solver_observed_delta(
+    *,
+    before_real: jnp.ndarray,
+    before_imag: jnp.ndarray,
+    after_real: jnp.ndarray,
+    after_imag: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    projection_gate: jnp.ndarray,
+    contract_gate: jnp.ndarray,
+    field_update_coupling_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Measure a private solver-observed field-update packet delta.
+
+    The helper is solver-local, fixed-shape, and fail-closed.  It compares the
+    packet distribution immediately before/after the private field-update
+    coupling hunk, reports scalar private diagnostics, and returns a scalar gate
+    that remains closed when the packet contract is inactive or the observed
+    delta is missing/non-finite.  It does not expose public observables,
+    thresholds, runners, hooks, exports, or benchmark state.
+    """
+
+    dtype = before_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    active = (
+        packet_mask
+        * jnp.asarray(projection_gate, dtype=dtype)
+        * jnp.asarray(contract_gate, dtype=dtype)
+        * jnp.asarray(field_update_coupling_gate, dtype=dtype)
+    )
+    delta_real = after_real - before_real
+    delta_imag = after_imag - before_imag
+    delta_energy = delta_real * delta_real + delta_imag * delta_imag
+    before_energy = before_real * before_real + before_imag * before_imag
+    active_measure = jnp.maximum(jnp.sum(active), jnp.asarray(1.0, dtype=dtype))
+    observed_delta_energy = jnp.sum(delta_energy * active)
+    observed_reference_energy = jnp.sum(before_energy * active)
+    rms_delta = jnp.sqrt(jnp.maximum(observed_delta_energy / active_measure, floor))
+    relative_delta = jnp.sqrt(
+        jnp.maximum(observed_delta_energy, floor)
+        / jnp.maximum(observed_reference_energy, floor)
+    )
+    max_delta = jnp.max(jnp.sqrt(jnp.maximum(delta_energy, floor)) * active)
+    finite = (
+        jnp.all(jnp.isfinite(before_real))
+        & jnp.all(jnp.isfinite(before_imag))
+        & jnp.all(jnp.isfinite(after_real))
+        & jnp.all(jnp.isfinite(after_imag))
+        & jnp.all(jnp.isfinite(delta_real))
+        & jnp.all(jnp.isfinite(delta_imag))
+        & jnp.all(jnp.isfinite(active))
+        & jnp.isfinite(observed_delta_energy)
+        & jnp.isfinite(observed_reference_energy)
+        & jnp.isfinite(rms_delta)
+        & jnp.isfinite(relative_delta)
+        & jnp.isfinite(max_delta)
+    )
+    delta_ready = (
+        finite
+        & (jnp.sum(active) > floor)
+        & (observed_delta_energy > floor)
+    )
+    gate = jnp.where(
+        delta_ready,
+        jnp.asarray(1.0, dtype=dtype),
+        jnp.asarray(0.0, dtype=dtype),
+    )
+    zero = jnp.asarray(0.0, dtype=dtype)
+    return (
+        jnp.where(delta_ready, rms_delta, zero),
+        jnp.where(delta_ready, relative_delta, zero),
+        jnp.where(delta_ready, max_delta, zero),
+        gate,
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -3724,6 +3799,20 @@ def _apply_propagation_aware_modal_retry_face_helper(
             * packet_mask
             * active_scale
         )
+        _, _, _, solver_observed_delta_gate = (
+            _private_score_path_visibility_field_update_solver_observed_delta(
+                before_real=current_real,
+                before_imag=current_imag,
+                after_real=current_real + delta_real,
+                after_imag=current_imag + delta_imag,
+                packet_mask=packet_mask,
+                projection_gate=projection_gate,
+                contract_gate=contract_gate,
+                field_update_coupling_gate=field_update_coupling_gate,
+            )
+        )
+        delta_real = delta_real * solver_observed_delta_gate
+        delta_imag = delta_imag * solver_observed_delta_gate
         corrected_coarse_e = (
             coarse_e[0] + delta_real,
             coarse_e[1] + delta_imag,
@@ -3747,7 +3836,6 @@ def _apply_propagation_aware_modal_retry_face_helper(
             grid="fine",
         )
     return e_coarse, e_fine, h_coarse, h_fine
-
 
 def _private_interface_owner_joint_score(
     owner_state: _PrivateInterfaceOwnerState,
