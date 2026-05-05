@@ -2882,6 +2882,193 @@ def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_pa
     )
 
 
+def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private score-path-visible packet-basis cross-coupling map.
+
+    This bounded implementation consumes the retained packet-basis phase-energy
+    cross-coupling map and adds one fixed-shape score-path visibility bridge
+    from the remaining residual.  The bridge makes the retained cross-coupled
+    packet state visible to the private modal score path while preserving the
+    existing 3x3 packet shape, 0.35 transfer bound, and fail-closed behavior.
+    It does not read public observables, runners, hooks, exports, or thresholds.
+    """
+
+    packet_basis_cross_transfer, packet_basis_cross_ready = _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_transfer_map(
+        source_coeff=source_coeff,
+        interface_coeff=interface_coeff,
+        active=active,
+        floor=floor,
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    interface_active = interface_coeff * active_complex
+    target_active = interface_active - source_active
+    packet_basis_cross_correction = packet_basis_cross_transfer @ source_active
+    residual_after_packet_basis_cross = target_active - packet_basis_cross_correction
+    source_mode_energy = jnp.abs(source_active) ** 2
+    interface_mode_energy = jnp.abs(interface_active) ** 2
+    correction_mode_energy = jnp.abs(packet_basis_cross_correction) ** 2
+    residual_mode_energy = jnp.abs(residual_after_packet_basis_cross) ** 2
+    active_count = jnp.maximum(
+        jnp.sum(active),
+        jnp.asarray(1.0, dtype=active.dtype),
+    )
+    source_packet_energy = jnp.sum(source_mode_energy) / active_count
+    interface_packet_energy = jnp.sum(interface_mode_energy) / active_count
+    correction_packet_energy = jnp.sum(correction_mode_energy) / active_count
+    residual_packet_energy = jnp.sum(residual_mode_energy) / active_count
+    source_phase = source_active / jnp.maximum(jnp.abs(source_active), floor)
+    interface_phase = interface_active / jnp.maximum(jnp.abs(interface_active), floor)
+    correction_phase = packet_basis_cross_correction / jnp.maximum(
+        jnp.abs(packet_basis_cross_correction),
+        floor,
+    )
+    residual_phase = residual_after_packet_basis_cross / jnp.maximum(
+        jnp.abs(residual_after_packet_basis_cross),
+        floor,
+    )
+    residual_visibility_alignment = jnp.abs(
+        residual_phase * jnp.conj(correction_phase)
+    )
+    source_interface_visibility_gap = jnp.abs(interface_phase - source_phase) ** 2
+    correction_visibility_gap = jnp.abs(correction_phase - source_phase) ** 2
+    score_path_visibility_gain = jnp.clip(
+        jnp.asarray(1.0, dtype=floor.dtype)
+        + jnp.sum(
+            (
+                residual_visibility_alignment
+                + source_interface_visibility_gap
+                + correction_visibility_gap
+            )
+            * active
+        )
+        / active_count,
+        jnp.asarray(1.0, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    )
+    visibility_row_weight = jnp.sqrt(
+        jnp.maximum(
+            residual_mode_energy
+            + correction_mode_energy * residual_visibility_alignment
+            + interface_mode_energy * source_interface_visibility_gap,
+            floor,
+        )
+        / jnp.maximum(
+            residual_packet_energy + correction_packet_energy + interface_packet_energy,
+            floor,
+        )
+    )
+    visibility_column_weight = jnp.sqrt(
+        jnp.maximum(
+            source_mode_energy + correction_mode_energy + source_packet_energy,
+            floor,
+        )
+        / jnp.maximum(source_mode_energy + correction_mode_energy, floor)
+    )
+    visibility_row_weight = jnp.clip(
+        visibility_row_weight,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    visibility_column_weight = jnp.clip(
+        visibility_column_weight,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    score_path_visibility_weight = jnp.sqrt(
+        jnp.maximum(
+            visibility_row_weight[:, None] * visibility_column_weight[None, :],
+            jnp.asarray(0.0, dtype=floor.dtype),
+        )
+    )
+    score_path_visibility_energy = jnp.sum(
+        (source_mode_energy + correction_mode_energy) * visibility_column_weight
+    )
+    raw_score_path_visibility = (
+        residual_after_packet_basis_cross[:, None]
+        * jnp.conj(source_active[None, :])
+        * score_path_visibility_weight.astype(jnp.complex64)
+        * score_path_visibility_gain.astype(jnp.complex64)
+        / jnp.maximum(score_path_visibility_energy, floor).astype(jnp.complex64)
+    )
+    score_path_visibility_magnitude = jnp.abs(raw_score_path_visibility)
+    bounded_score_path_visibility_magnitude = jnp.clip(
+        score_path_visibility_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    score_path_visibility_phase = raw_score_path_visibility / jnp.maximum(
+        score_path_visibility_magnitude,
+        floor,
+    )
+    score_path_visibility_map = (
+        bounded_score_path_visibility_magnitude.astype(jnp.complex64)
+        * score_path_visibility_phase
+        * active_outer
+    )
+    combined_map = packet_basis_cross_transfer + score_path_visibility_map
+    combined_magnitude = jnp.abs(combined_map)
+    bounded_combined_magnitude = jnp.clip(
+        combined_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    combined_phase = combined_map / jnp.maximum(combined_magnitude, floor)
+    transfer = bounded_combined_magnitude.astype(jnp.complex64) * combined_phase
+    score_path_visibility_correction = transfer @ source_active
+    source_energy = jnp.sum(source_mode_energy)
+    interface_energy = jnp.sum(interface_mode_energy)
+    residual_energy = jnp.sum(residual_mode_energy)
+    correction_energy = jnp.sum(correction_mode_energy)
+    score_path_visibility_correction_energy = jnp.sum(
+        jnp.abs(score_path_visibility_correction) ** 2
+    )
+    score_path_visibility_finite = (
+        jnp.all(jnp.isfinite(residual_visibility_alignment))
+        & jnp.all(jnp.isfinite(source_interface_visibility_gap))
+        & jnp.all(jnp.isfinite(correction_visibility_gap))
+        & jnp.all(jnp.isfinite(visibility_row_weight))
+        & jnp.all(jnp.isfinite(visibility_column_weight))
+        & jnp.all(jnp.isfinite(score_path_visibility_weight))
+        & jnp.all(jnp.isfinite(jnp.real(raw_score_path_visibility)))
+        & jnp.all(jnp.isfinite(jnp.imag(raw_score_path_visibility)))
+        & jnp.all(jnp.isfinite(jnp.real(transfer)))
+        & jnp.all(jnp.isfinite(jnp.imag(transfer)))
+    )
+    score_path_visibility_ready = (
+        score_path_visibility_finite
+        & (packet_basis_cross_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (interface_energy > floor)
+        & (residual_energy > floor)
+        & (correction_energy > floor)
+        & (source_packet_energy > floor)
+        & (interface_packet_energy > floor)
+        & (residual_packet_energy > floor)
+        & (correction_packet_energy > floor)
+        & (score_path_visibility_energy > floor)
+        & (score_path_visibility_correction_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        score_path_visibility_ready,
+        transfer,
+        packet_basis_cross_transfer,
+    )
+    return safe_transfer, jnp.where(
+        packet_basis_cross_ready > jnp.asarray(0.0, dtype=active.dtype),
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -3129,7 +3316,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_transfer_map(
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,
