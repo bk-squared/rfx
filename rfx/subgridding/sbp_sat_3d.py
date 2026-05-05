@@ -3251,6 +3251,97 @@ def _private_score_path_visibility_field_update_solver_observed_delta(
     )
 
 
+def _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual(
+    *,
+    before_real: jnp.ndarray,
+    before_imag: jnp.ndarray,
+    after_real: jnp.ndarray,
+    after_imag: jnp.ndarray,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    projection_gate: jnp.ndarray,
+    contract_gate: jnp.ndarray,
+    field_update_coupling_gate: jnp.ndarray,
+    solver_observed_delta_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Weight the private solver-observed delta by packet energy.
+
+    This helper stays solver-local, fixed-shape, and fail-closed.  It does not
+    expose public observables or thresholds; it only normalizes the retained
+    field-update delta against the private source/interface packet energies so
+    downstream private scoring can distinguish a real packet-energy residual
+    from a finite-but-baseline-identical raw delta.
+    """
+
+    dtype = before_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    active = (
+        packet_mask
+        * jnp.asarray(projection_gate, dtype=dtype)
+        * jnp.asarray(contract_gate, dtype=dtype)
+        * jnp.asarray(field_update_coupling_gate, dtype=dtype)
+        * jnp.asarray(solver_observed_delta_gate, dtype=dtype)
+    )
+    delta_real = after_real - before_real
+    delta_imag = after_imag - before_imag
+    delta_energy = delta_real * delta_real + delta_imag * delta_imag
+    source_energy = source_real * source_real + source_imag * source_imag
+    interface_energy = interface_real * interface_real + interface_imag * interface_imag
+    packet_energy = source_energy + interface_energy
+    active_measure = jnp.maximum(jnp.sum(active), jnp.asarray(1.0, dtype=dtype))
+    source_packet_energy = jnp.sum(source_energy * active)
+    interface_packet_energy = jnp.sum(interface_energy * active)
+    observed_delta_energy = jnp.sum(delta_energy * active)
+    packet_normalized_residual = jnp.sqrt(
+        jnp.maximum(
+            jnp.sum((delta_energy / jnp.maximum(packet_energy, floor)) * active)
+            / active_measure,
+            floor,
+        )
+    )
+    packet_energy_balance_residual = jnp.abs(
+        source_packet_energy - interface_packet_energy
+    ) / jnp.maximum(source_packet_energy + interface_packet_energy, floor)
+    finite = (
+        jnp.all(jnp.isfinite(before_real))
+        & jnp.all(jnp.isfinite(before_imag))
+        & jnp.all(jnp.isfinite(after_real))
+        & jnp.all(jnp.isfinite(after_imag))
+        & jnp.all(jnp.isfinite(source_real))
+        & jnp.all(jnp.isfinite(source_imag))
+        & jnp.all(jnp.isfinite(interface_real))
+        & jnp.all(jnp.isfinite(interface_imag))
+        & jnp.all(jnp.isfinite(active))
+        & jnp.isfinite(source_packet_energy)
+        & jnp.isfinite(interface_packet_energy)
+        & jnp.isfinite(observed_delta_energy)
+        & jnp.isfinite(packet_normalized_residual)
+        & jnp.isfinite(packet_energy_balance_residual)
+    )
+    residual_ready = (
+        finite
+        & (jnp.sum(active) > floor)
+        & (observed_delta_energy > floor)
+        & (source_packet_energy > floor)
+        & (interface_packet_energy > floor)
+    )
+    gate = jnp.where(
+        residual_ready,
+        jnp.asarray(1.0, dtype=dtype),
+        jnp.asarray(0.0, dtype=dtype),
+    )
+    zero = jnp.asarray(0.0, dtype=dtype)
+    return (
+        jnp.where(residual_ready, packet_normalized_residual, zero),
+        jnp.where(residual_ready, packet_energy_balance_residual, zero),
+        jnp.where(residual_ready, observed_delta_energy, zero),
+        gate,
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -3811,8 +3902,25 @@ def _apply_propagation_aware_modal_retry_face_helper(
                 field_update_coupling_gate=field_update_coupling_gate,
             )
         )
-        delta_real = delta_real * solver_observed_delta_gate
-        delta_imag = delta_imag * solver_observed_delta_gate
+        _, _, _, packet_normalized_residual_gate = (
+            _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual(
+                before_real=current_real,
+                before_imag=current_imag,
+                after_real=current_real + delta_real,
+                after_imag=current_imag + delta_imag,
+                source_real=source_real,
+                source_imag=source_imag,
+                interface_real=interface_real,
+                interface_imag=interface_imag,
+                packet_mask=packet_mask,
+                projection_gate=projection_gate,
+                contract_gate=contract_gate,
+                field_update_coupling_gate=field_update_coupling_gate,
+                solver_observed_delta_gate=solver_observed_delta_gate,
+            )
+        )
+        delta_real = delta_real * solver_observed_delta_gate * packet_normalized_residual_gate
+        delta_imag = delta_imag * solver_observed_delta_gate * packet_normalized_residual_gate
         corrected_coarse_e = (
             coarse_e[0] + delta_real,
             coarse_e[1] + delta_imag,
