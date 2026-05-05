@@ -884,3 +884,14 @@ Applied changes:
   material limits.
 - Added public-doc quarantine/audit deliverables for README, public guide,
   site index, guide index, support matrix, and support-boundaries docs.
+
+
+## 5. Current final-goal continuation note
+
+The Phase-1 hardening spec remains a private support-contract baseline, not a
+public support claim. In the active final-goal roadmap, the retained
+source/interface packet energy co-normalization helper has now been privately
+parity-scored as `private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_hunk_insufficient_fixture_quality_pending`. That evidence is finite but still insufficient for
+claims-bearing true R/T readiness, so the next private step is private failure-theory redesign for the source/interface packet energy co-normalization floor; no
+public API, observable, runner, hook, example, or threshold promotion is unlocked
+by this Phase-1 evidence.
