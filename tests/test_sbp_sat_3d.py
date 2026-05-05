@@ -25,6 +25,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _private_score_path_visibility_field_update_coupling_target,
     _private_score_path_visibility_field_update_solver_observed_delta,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual,
+    _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling,
     _private_source_interface_transverse_modal_transfer_map,
     _private_target_basis_oriented_source_interface_transverse_modal_transfer_map,
     _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_source_interface_transverse_modal_transfer_map,
@@ -2341,6 +2342,74 @@ def test_private_score_path_visibility_packet_normalized_residual_is_private_con
     np.testing.assert_allclose(np.asarray(zero_packet_residual), 0.0)
     np.testing.assert_allclose(np.asarray(zero_packet_balance), 0.0)
     np.testing.assert_allclose(np.asarray(zero_packet_energy), 0.0)
+
+
+def test_private_score_path_visibility_packet_normalized_residual_weighted_delta_coupling_is_bounded():
+    delta_real = jnp.asarray([[0.02, -0.01], [0.03, -0.02]], dtype=jnp.float32)
+    delta_imag = jnp.asarray([[0.01, 0.02], [-0.01, 0.03]], dtype=jnp.float32)
+    packet_mask = jnp.asarray([[1.0, 1.0], [0.0, 1.0]], dtype=jnp.float32)
+
+    weighted_real, weighted_imag, weight, gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            packet_mask=packet_mask,
+            packet_normalized_residual=jnp.asarray(0.5, dtype=jnp.float32),
+            packet_energy_balance_residual=jnp.asarray(0.2, dtype=jnp.float32),
+            observed_delta_energy=jnp.asarray(0.01, dtype=jnp.float32),
+            solver_observed_delta_gate=jnp.asarray(1.0, dtype=jnp.float32),
+            packet_normalized_residual_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.asarray(weight), 0.4, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(
+        np.asarray(weighted_real),
+        np.asarray(delta_real * packet_mask * 0.4),
+    )
+    np.testing.assert_allclose(
+        np.asarray(weighted_imag),
+        np.asarray(delta_imag * packet_mask * 0.4),
+    )
+    assert np.all(np.abs(np.asarray(weighted_real)) <= np.abs(np.asarray(delta_real)))
+    assert np.all(np.abs(np.asarray(weighted_imag)) <= np.abs(np.asarray(delta_imag)))
+
+    blocked_real, blocked_imag, blocked_weight, blocked_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            packet_mask=packet_mask,
+            packet_normalized_residual=jnp.asarray(0.5, dtype=jnp.float32),
+            packet_energy_balance_residual=jnp.asarray(0.2, dtype=jnp.float32),
+            observed_delta_energy=jnp.asarray(0.01, dtype=jnp.float32),
+            solver_observed_delta_gate=jnp.asarray(1.0, dtype=jnp.float32),
+            packet_normalized_residual_gate=jnp.asarray(0.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_weight), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_real), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_imag), 0.0)
+
+    nonfinite_real, nonfinite_imag, nonfinite_weight, nonfinite_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling(
+            delta_real=delta_real.at[0, 0].set(jnp.nan),
+            delta_imag=delta_imag,
+            packet_mask=packet_mask,
+            packet_normalized_residual=jnp.asarray(0.5, dtype=jnp.float32),
+            packet_energy_balance_residual=jnp.asarray(0.2, dtype=jnp.float32),
+            observed_delta_energy=jnp.asarray(0.01, dtype=jnp.float32),
+            solver_observed_delta_gate=jnp.asarray(1.0, dtype=jnp.float32),
+            packet_normalized_residual_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(nonfinite_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_weight), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_real), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_imag), 0.0)
 
 
 def test_private_transverse_modal_coupling_metric_is_fixed_shape_private_contract():
