@@ -13506,11 +13506,137 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] == benchmark_gate[
         "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_implementation_next_prerequisite"
     ]
+    packet_basis_cross_coupling_parity_scoring = benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_parity_scoring"
+    ]
+    assert benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_parity_scoring_status"
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_hunk_insufficient_fixture_quality_pending"
+    )
+    assert packet_basis_cross_coupling_parity_scoring[
+        "terminal_outcome"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_parity_scoring_status"
+    ]
+    assert (
+        packet_basis_cross_coupling_parity_scoring[
+            "upstream_packet_basis_phase_energy_cross_coupling_implementation_status"
+        ]
+        == benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_implementation_status"
+        ]
+    )
+    assert (
+        packet_basis_cross_coupling_parity_scoring["selected_candidate_id"]
+        == "CI1_finite_packet_basis_phase_energy_cross_coupling_private_parity_score"
+    )
+    assert packet_basis_cross_coupling_parity_scoring["candidate_count"] == 5
+    assert (
+        packet_basis_cross_coupling_parity_scoring["metrics"]
+        == packet_basis_cross_coupling_implementation["metrics"]
+    )
+    assert (
+        packet_basis_cross_coupling_parity_scoring["thresholds"]
+        == packet_basis_cross_coupling_implementation["thresholds"]
+    )
+    assert (
+        packet_basis_cross_coupling_parity_scoring["baseline_metrics"]
+        == packet_basis_cross_coupling_implementation["baseline_metrics"]
+    )
+    assert (
+        packet_basis_cross_coupling_parity_scoring["threshold_results"]
+        == packet_basis_cross_coupling_implementation["threshold_results"]
+    )
+    assert (
+        packet_basis_cross_coupling_parity_scoring["score_delta"]
+        == packet_basis_cross_coupling_implementation["score_delta"]
+    )
+    assert (
+        packet_basis_cross_coupling_parity_scoring["relative_improvement"]
+        == packet_basis_cross_coupling_implementation["relative_improvement"]
+    )
+    assert packet_basis_cross_coupling_parity_scoring[
+        "packet_basis_phase_energy_cross_coupling_implementation_consumed"
+    ]
+    assert packet_basis_cross_coupling_parity_scoring[
+        "packet_basis_phase_energy_cross_coupling_implementation_retained"
+    ]
+    assert packet_basis_cross_coupling_parity_scoring[
+        "packet_basis_phase_energy_cross_coupling_hunk_retained"
+    ]
+    assert packet_basis_cross_coupling_parity_scoring[
+        "packet_basis_phase_energy_cross_coupling_transfer_map_retained"
+    ]
+    assert packet_basis_cross_coupling_parity_scoring[
+        "packet_basis_phase_energy_cross_coupling_contract_consumed"
+    ]
+    assert (
+        packet_basis_cross_coupling_parity_scoring[
+            "packet_basis_phase_energy_cross_coupling_contract"
+        ]
+        == packet_basis_cross_coupling_implementation[
+            "packet_basis_phase_energy_cross_coupling_contract"
+        ]
+    )
+    assert packet_basis_cross_coupling_parity_scoring[
+        "finite_reproducible_score"
+    ]
+    assert packet_basis_cross_coupling_parity_scoring[
+        "subgrid_vacuum_parity_scored"
+    ]
+    assert packet_basis_cross_coupling_parity_scoring[
+        "subgrid_vacuum_parity_passed"
+    ] is False
+    assert packet_basis_cross_coupling_parity_scoring[
+        "material_improvement_demonstrated"
+    ] is False
+    assert packet_basis_cross_coupling_parity_scoring[
+        "fixture_quality_ready"
+    ] is False
+    assert packet_basis_cross_coupling_parity_scoring[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert packet_basis_cross_coupling_parity_scoring[
+        "production_patch_applied"
+    ] is False
+    assert packet_basis_cross_coupling_parity_scoring[
+        "solver_behavior_changed"
+    ] is False
+    assert packet_basis_cross_coupling_parity_scoring[
+        "new_solver_hunk_retained"
+    ] is False
+    assert packet_basis_cross_coupling_parity_scoring[
+        "retained_packet_basis_phase_energy_cross_coupling_solver_hunk"
+    ]
+    packet_basis_parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in packet_basis_cross_coupling_parity_scoring[
+            "candidate_ladder"
+        ]
+    }
+    assert packet_basis_parity_candidates[
+        "CI1_finite_packet_basis_phase_energy_cross_coupling_private_parity_score"
+    ]["accepted_candidate"]
+    assert (
+        packet_basis_parity_candidates[
+            "CI4_packet_basis_phase_energy_cross_coupling_parity_scoring_insufficient"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert packet_basis_cross_coupling_parity_scoring[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_failure_theory"
+    ]
+    assert packet_basis_cross_coupling_parity_scoring[
+        "next_prerequisite"
+    ] == benchmark_gate[
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_parity_scoring_next_prerequisite"
+    ]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_implementation_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_parity_scoring_next_prerequisite"
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_implementation_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_parity_scoring_next_prerequisite"
     ]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -13537,6 +13663,12 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert (
         benchmark_gate[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_implementation_status"
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+    assert (
+        benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_parity_scoring_status"
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
@@ -14420,7 +14552,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_implementation_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_parity_scoring_next_prerequisite"
     ]
     assert (
         "time_centered_staging_contract_ready"
