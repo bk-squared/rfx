@@ -875,6 +875,9 @@ routes, and selects private source/interface phase-energy residual implementatio
 threshold, public observable, API/export, or docs-public/examples promotion is
 unlocked by this theory lane.
 
+The source/interface phase-energy residual implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_hunk_retained_fixture_quality_pending`: a solver-local fixed-shape helper consumes the retained source/interface packet energy co-normalization helper, adds bounded phase-energy residual coupling inside the existing 3x3 source/interface transfer-map contract, and keeps true R/T readiness, thresholds, runner state, hooks, exports, public observables, docs-public/examples, and API promotion closed while routing the next step to private parity scoring.
+
 
 
 ### Explicit unsupported combinations in the SBP-SAT lane
