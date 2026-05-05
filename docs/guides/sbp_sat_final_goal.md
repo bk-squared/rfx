@@ -104,9 +104,10 @@ projected target residual-basis energy-biorthogonal source/interface transverse
 modal transfer-map target-basis orientation residual phase/magnitude balance
 residual modal-coupling packet-basis mismatch owner-packet weighting modal
 energy/impedance transverse energy redistribution coupled modal energy-balance
-target-basis packet normalization failure-theory redesign after parity scoring
-remained finite but insufficient under unchanged material-improvement,
-transverse-uniformity, and vacuum-stability gates.
+target-basis packet normalization source/interface packet energy
+co-normalization implementation after the failure-theory lane selected that
+bounded private target under unchanged material-improvement, transverse-
+uniformity, and vacuum-stability gates.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -528,6 +529,16 @@ evidence, but unchanged material-improvement, transverse-uniformity, and
 vacuum-stability gates remain below the frozen thresholds. No solver hunk,
 runner state, threshold, public observable, or true-R/T readiness claim is added
 by this scoring lane; the next safe step is a private failure-theory redesign.
+
+The target-basis packet normalization failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_floor_theory_ready`: it consumes the finite-but-insufficient retained
+packet-normalization parity evidence, rejects repeat normalization, threshold
+relaxation, and public-observable escape candidates, and selects the next
+bounded private source/interface packet energy co-normalization implementation
+target inside the existing fixed-shape 3x3 source/interface transfer-map
+contract. No solver hunk, runner state, threshold, public observable, or true-R/T
+readiness claim is added by this theory lane.
+
 The private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
