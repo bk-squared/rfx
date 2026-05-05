@@ -16,7 +16,8 @@ the technical complexity inside each group:
   single-solver reference.  Each one pins a single FDTD primitive
   (propagation, resonator, flux, multilayer R/T).
 - **B — engineering cross-solvers**: full RF-engineering geometries
-  validated against a different full-wave solver (OpenEMS).
+  validated against a different full-wave solver (OpenEMS / Meep /
+  Palace).
 - **C — inverse design**: differentiable forward + `jax.grad` loop.
 - **D — non-uniform workflows**: practical demos that exercise the NU
   mesh runner (graded dz, xy-graded variants).
@@ -26,27 +27,41 @@ complexity, not the evidence tier.
 
 ## Scripts
 
-| ID | Path                                              | Group | Reference / anchor                              |
-| -- | ------------------------------------------------- | ----- | ----------------------------------------------- |
-| A1 | `crossval/03_straight_waveguide_flux.py`          | A     | Meep Basics tutorial #1 (flux through a plane)  |
-| A2 | `crossval/01_waveguide_bend.py`                   | A     | Meep Basics tutorial (90° dielectric bend)      |
-| A3 | `crossval/02_ring_resonator.py`                   | A     | Meep Basics tutorial #3 (ring resonator modes)  |
-| A4 | `crossval/04_multilayer_fresnel.py`               | A     | Transfer-matrix R(f)/T(f) at normal incidence    |
-| B1 | `crossval/05_patch_antenna.py`                    | B     | OpenEMS + harminv; canonical 2.4 GHz patch      |
-| B2 | `crossval/06_msl_notch_filter.py`                 | B     | openEMS `MSL_NotchFilter.py` port               |
-| C1 | `crossval/07_inverse_design_demo.py`              | C     | `tests/test_optimize_convergence.py` pattern    |
-| D1 | `nonuniform_patch_demo.py`                        | D     | In-tree NU runner end-to-end                    |
+| ID  | Path                                                  | Group | Reference / anchor                                                  |
+| --- | ----------------------------------------------------- | ----- | ------------------------------------------------------------------- |
+| A1  | `crossval/03_straight_waveguide_flux.py`              | A     | Meep Basics tutorial #1 (flux through a plane)                      |
+| A2  | `crossval/01_waveguide_bend.py`                       | A     | Meep Basics tutorial (90° dielectric bend)                          |
+| A3  | `crossval/02_ring_resonator.py`                       | A     | Meep Basics tutorial #3 (ring resonator modes)                      |
+| A4  | `crossval/04_multilayer_fresnel.py`                   | A     | Transfer-matrix R(f)/T(f) at normal incidence                       |
+| B1  | `crossval/05_patch_antenna.py`                        | B     | OpenEMS + harminv; canonical 2.4 GHz patch                          |
+| B2a | `crossval/06_msl_notch_filter.py`                     | B     | openEMS `MSL_NotchFilter.py` port (wire `add_port` + non-uniform)   |
+| B2b | `crossval/06b_msl_notch_filter_uniform.py`            | B     | Same physics via `add_msl_port` (uniform); 1.63% notch-freq error   |
+| B3  | `crossval/09_half_symmetric_waveguide.py`             | B     | PMC half-symmetry vs full-domain reference                          |
+| B4  | `crossval/10_pmc_cpml_half_symmetric.py`              | B     | PMC + CPML composition on half-symmetric waveguide                  |
+| B5  | `crossval/11_waveguide_port_wr90.py`                  | B     | WR-90 vs analytic Airy + Meep + OpenEMS + Palace 4-way crossval     |
+| C1  | `inverse_design/ad_gradient_demo.py`                  | C     | rfx self-test of AD pipeline (slab εr → 1.0 in PEC cavity)          |
+| C2  | `inverse_design/progressive_demo.py`                  | C     | Progressive-mesh Adam over a small design region                    |
+| C3  | `inverse_design/multilayer_ar_coating.py`             | C     | 3-layer AR coating; compares JAX-grad-Adam to analytic TMM optimum  |
+| D1  | `nonuniform_patch_demo.py`                            | D     | In-tree NU runner end-to-end                                        |
 
 Legend: A = primitives, B = engineering crossvals, C = inverse design,
 D = NU workflow demos.
 
+## CI / runtime tier
+
+A- and B-tier crossvals are exercised end-to-end in CI (typically as
+`@pytest.mark.gpu` or via VESSL harnesses under
+`scripts/vessl_*.yaml`).  C- and D-tier scripts are demos: they run
+under `python examples/...` and gate on PASS criteria printed inline,
+but are not part of the core pytest run.
+
 ## Picking what to cite
 
-- **Public accuracy claims**: the B-group (OpenEMS crossvals) is the
-  strongest public evidence because both solvers are full-wave. A-group
-  is secondary evidence (analytic or single-solver).
+- **Public accuracy claims**: the B-group (OpenEMS / Meep / Palace
+  crossvals) is the strongest public evidence because both solvers are
+  full-wave. A-group is secondary evidence (analytic or single-solver).
 - **Practical workflow demos**: start with D1 for non-uniform meshes
-  and C1 for gradient-based optimisation.
+  and C3 for gradient-based optimisation against an analytic reference.
 - **First script a new reader should run**: A1
   (`03_straight_waveguide_flux.py`) — fastest, least setup.
 
