@@ -872,6 +872,14 @@ modal energy-balance map, adds clipped target/source packet-normalization weight
 inside the existing 3x3 source/interface packet contract, and keeps true R/T
 readiness, thresholds, runner state, and public observable promotion closed
 while routing the next step to private parity scoring.
+
+
+The target-basis packet normalization parity-scoring lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_hunk_insufficient_fixture_quality_pending`: the retained solver-local helper is privately scored with finite
+evidence, but unchanged material-improvement, transverse-uniformity, and
+vacuum-stability gates remain below the frozen thresholds. No solver hunk,
+runner state, threshold, public observable, or true-R/T readiness claim is added
+by this scoring lane; the next safe step is a private failure-theory redesign.
 Until those fixture-quality gates pass, the private flux/DFT gate remains internal
 diagnostic evidence only, and the support matrix continues to mark true R/T as
 deferred.
