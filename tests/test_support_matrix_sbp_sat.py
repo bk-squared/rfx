@@ -14028,11 +14028,155 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] == benchmark_gate[
         "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_parity_scoring_next_prerequisite"
     ]
+    score_path_visibility_failure_theory_key = (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_failure_theory"
+    )
+    score_path_visibility_failure_theory_status_key = (
+        f"{score_path_visibility_failure_theory_key}_status"
+    )
+    score_path_visibility_failure_theory_next_key = (
+        f"{score_path_visibility_failure_theory_key}_next_prerequisite"
+    )
+    packet_basis_score_path_visibility_failure_theory = benchmark_gate[
+        score_path_visibility_failure_theory_key
+    ]
+    assert benchmark_gate[score_path_visibility_failure_theory_status_key] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_floor_theory_ready"
+    )
+    assert packet_basis_score_path_visibility_failure_theory[
+        "terminal_outcome"
+    ] == benchmark_gate[score_path_visibility_failure_theory_status_key]
+    assert (
+        packet_basis_score_path_visibility_failure_theory[
+            "upstream_packet_basis_phase_energy_cross_coupling_score_path_visibility_parity_status"
+        ]
+        == benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_parity_scoring_status"
+        ]
+    )
+    assert (
+        packet_basis_score_path_visibility_failure_theory[
+            "upstream_packet_basis_phase_energy_cross_coupling_score_path_visibility_implementation_status"
+        ]
+        == benchmark_gate[
+            "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_implementation_status"
+        ]
+    )
+    assert packet_basis_score_path_visibility_failure_theory[
+        "selected_candidate_id"
+    ] == "CM2_score_path_visibility_field_update_coupling_floor"
+    assert packet_basis_score_path_visibility_failure_theory["candidate_count"] == 5
+    assert (
+        packet_basis_score_path_visibility_failure_theory["metrics"]
+        == packet_basis_score_path_visibility_parity_scoring["metrics"]
+    )
+    assert (
+        packet_basis_score_path_visibility_failure_theory["thresholds"]
+        == packet_basis_score_path_visibility_parity_scoring["thresholds"]
+    )
+    assert (
+        packet_basis_score_path_visibility_failure_theory["baseline_metrics"]
+        == packet_basis_score_path_visibility_parity_scoring["baseline_metrics"]
+    )
+    assert (
+        packet_basis_score_path_visibility_failure_theory["threshold_results"]
+        == packet_basis_score_path_visibility_parity_scoring["threshold_results"]
+    )
+    assert (
+        packet_basis_score_path_visibility_failure_theory["score_delta"]
+        == packet_basis_score_path_visibility_parity_scoring["score_delta"]
+    )
+    assert (
+        packet_basis_score_path_visibility_failure_theory["relative_improvement"]
+        == packet_basis_score_path_visibility_parity_scoring["relative_improvement"]
+    )
+    assert packet_basis_score_path_visibility_failure_theory[
+        "score_path_visibility_parity_scoring_consumed"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "score_path_visibility_implementation_consumed"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "score_path_visibility_implementation_retained"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "score_path_visibility_hunk_retained"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "score_path_visibility_transfer_map_retained"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "score_path_visibility_contract_consumed"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "finite_reproducible_score"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory["score_delta_zero"]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "metrics_remained_baseline_identical"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "selected_floor"
+    ] == "score_path_visibility_field_update_coupling_floor"
+    assert packet_basis_score_path_visibility_failure_theory[
+        "failure_theory_lane_executed"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "implementation_deferred"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "production_patch_applied"
+    ] is False
+    assert packet_basis_score_path_visibility_failure_theory[
+        "solver_behavior_changed"
+    ] is False
+    assert packet_basis_score_path_visibility_failure_theory[
+        "field_update_behavior_changed"
+    ] is False
+    assert packet_basis_score_path_visibility_failure_theory[
+        "new_solver_hunk_retained"
+    ] is False
+    assert packet_basis_score_path_visibility_failure_theory[
+        "true_rt_readiness_unlocked"
+    ] is False
+    packet_basis_score_path_visibility_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in packet_basis_score_path_visibility_failure_theory[
+            "candidate_ladder"
+        ]
+    }
+    assert packet_basis_score_path_visibility_failure_candidates[
+        "CM2_score_path_visibility_field_update_coupling_floor"
+    ]["accepted_candidate"]
+    assert (
+        packet_basis_score_path_visibility_failure_candidates[
+            "CM1_repeat_score_path_visibility_floor"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        packet_basis_score_path_visibility_failure_candidates[
+            "CM3_unbounded_solver_or_public_observable_escape"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        packet_basis_score_path_visibility_failure_candidates[
+            "CM4_failure_theory_blocked_by_public_surface_or_threshold"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert packet_basis_score_path_visibility_failure_theory[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_implementation"
+    ]
+    assert packet_basis_score_path_visibility_failure_theory[
+        "next_prerequisite"
+    ] == benchmark_gate[score_path_visibility_failure_theory_next_key]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_parity_scoring_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_failure_theory_next_prerequisite"
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_parity_scoring_next_prerequisite"
+        score_path_visibility_failure_theory_next_key
     ]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -14086,6 +14230,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
+    assert benchmark_gate[score_path_visibility_failure_theory_status_key] in benchmark_gate[
+        "blocking_diagnostic"
+    ]
     assert (
         benchmark_gate[
             "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_implementation_status"
@@ -14966,7 +15113,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_parity_scoring_next_prerequisite"
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_failure_theory_next_prerequisite"
     ]
     assert (
         "time_centered_staging_contract_ready"
