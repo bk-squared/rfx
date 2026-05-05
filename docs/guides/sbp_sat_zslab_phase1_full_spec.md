@@ -895,3 +895,8 @@ parity-scored as `private_plane_wave_modal_projection_normalizer_projected_targe
 claims-bearing true R/T readiness, so the next private step is private failure-theory redesign for the source/interface packet energy co-normalization floor; no
 public API, observable, runner, hook, example, or threshold promotion is unlocked
 by this Phase-1 evidence.
+
+
+The active final-goal roadmap subsequently records `private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_floor_theory_ready`. This remains a
+private theory result only: it selects private source/interface phase-energy residual implementation inside the retained 3x3 transfer-map contract and does not unlock public
+APIs, observables, runners, hooks, examples, support claims, or thresholds.

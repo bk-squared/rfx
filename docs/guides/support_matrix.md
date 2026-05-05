@@ -868,6 +868,13 @@ thresholds and baseline/current metrics, records finite private scoring evidence
 and keeps true R/T readiness, runners, hooks, exports, public observables, and
 threshold changes closed while routing the next step to private failure-theory redesign for the source/interface packet energy co-normalization floor.
 
+The source/interface packet energy co-normalization failure-theory lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_floor_theory_ready`: it consumes the finite-but-insufficient co-normalization parity
+evidence, rejects repeat energy-only normalization and public/threshold escape
+routes, and selects private source/interface phase-energy residual implementation inside the retained 3x3 transfer-map contract. No true R/T readiness, runner state,
+threshold, public observable, API/export, or docs-public/examples promotion is
+unlocked by this theory lane.
+
 
 
 ### Explicit unsupported combinations in the SBP-SAT lane
