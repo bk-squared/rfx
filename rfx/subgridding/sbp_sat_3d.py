@@ -2183,6 +2183,157 @@ def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_pa
     )
 
 
+def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_source_interface_transverse_modal_transfer_map(
+    *,
+    source_coeff: jnp.ndarray,
+    interface_coeff: jnp.ndarray,
+    active: jnp.ndarray,
+    floor: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return a private source/interface packet energy co-normalization map.
+
+    This bounded implementation consumes the retained target-basis packet
+    normalization helper and adds one fixed-shape source/interface packet energy
+    co-normalization correction from the remaining modal residual.  The
+    co-normalizer uses only existing source and interface packet coefficients,
+    clips packet-energy row/column weights to a private finite interval,
+    preserves the existing 0.35 map bound, and fails closed on non-finite or
+    degenerate packet energy without public observables, runners, hooks,
+    exports, or threshold changes.
+    """
+
+    target_packet_transfer, target_packet_ready = (
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_transverse_modal_transfer_map(
+            source_coeff=source_coeff,
+            interface_coeff=interface_coeff,
+            active=active,
+            floor=floor,
+        )
+    )
+    active_complex = active.astype(jnp.complex64)
+    active_outer = active_complex[:, None] * active_complex[None, :]
+    source_active = source_coeff * active_complex
+    interface_active = interface_coeff * active_complex
+    target_active = interface_active - source_active
+    target_packet_correction = target_packet_transfer @ source_active
+    residual_after_target_packet_normalization = target_active - target_packet_correction
+    source_mode_energy = jnp.abs(source_active) ** 2
+    interface_mode_energy = jnp.abs(interface_active) ** 2
+    transferred_mode_energy = jnp.abs(target_packet_correction) ** 2
+    residual_mode_energy = jnp.abs(residual_after_target_packet_normalization) ** 2
+    active_count = jnp.maximum(
+        jnp.sum(active),
+        jnp.asarray(1.0, dtype=active.dtype),
+    )
+    source_packet_energy = jnp.sum(source_mode_energy) / active_count
+    interface_packet_energy = jnp.sum(interface_mode_energy) / active_count
+    transferred_packet_energy = jnp.sum(transferred_mode_energy) / active_count
+    residual_packet_energy = jnp.sum(residual_mode_energy) / active_count
+    conormalized_packet_energy = jnp.sqrt(
+        jnp.maximum(
+            source_packet_energy * interface_packet_energy,
+            floor * floor,
+        )
+    )
+    interface_row_conormalizer = jnp.sqrt(
+        jnp.maximum(interface_mode_energy + residual_mode_energy, floor)
+        / jnp.maximum(conormalized_packet_energy + residual_packet_energy, floor)
+    )
+    source_column_conormalizer = jnp.sqrt(
+        jnp.maximum(conormalized_packet_energy + transferred_packet_energy, floor)
+        / jnp.maximum(source_mode_energy + transferred_mode_energy, floor)
+    )
+    interface_row_conormalizer = jnp.clip(
+        interface_row_conormalizer,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    source_column_conormalizer = jnp.clip(
+        source_column_conormalizer,
+        jnp.asarray(0.5, dtype=floor.dtype),
+        jnp.asarray(2.0, dtype=floor.dtype),
+    ) * active
+    source_interface_packet_weight = jnp.sqrt(
+        jnp.maximum(
+            interface_row_conormalizer[:, None]
+            * source_column_conormalizer[None, :],
+            jnp.asarray(0.0, dtype=floor.dtype),
+        )
+    )
+    source_interface_packet_energy = jnp.sum(
+        (source_mode_energy + transferred_mode_energy) * source_column_conormalizer
+    )
+    raw_source_interface_conormalization = (
+        residual_after_target_packet_normalization[:, None]
+        * jnp.conj(source_active[None, :])
+        * source_interface_packet_weight.astype(jnp.complex64)
+        / jnp.maximum(source_interface_packet_energy, floor).astype(jnp.complex64)
+    )
+    source_interface_conormalization_magnitude = jnp.abs(
+        raw_source_interface_conormalization
+    )
+    bounded_source_interface_conormalization_magnitude = jnp.clip(
+        source_interface_conormalization_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    source_interface_conormalization_phase = (
+        raw_source_interface_conormalization
+        / jnp.maximum(source_interface_conormalization_magnitude, floor)
+    )
+    source_interface_conormalization_map = (
+        bounded_source_interface_conormalization_magnitude.astype(jnp.complex64)
+        * source_interface_conormalization_phase
+        * active_outer
+    )
+    combined_map = target_packet_transfer + source_interface_conormalization_map
+    combined_magnitude = jnp.abs(combined_map)
+    bounded_combined_magnitude = jnp.clip(
+        combined_magnitude,
+        jnp.asarray(0.0, dtype=floor.dtype),
+        jnp.asarray(0.35, dtype=floor.dtype),
+    )
+    combined_phase = combined_map / jnp.maximum(combined_magnitude, floor)
+    transfer = bounded_combined_magnitude.astype(jnp.complex64) * combined_phase
+    source_interface_correction = transfer @ source_active
+    source_energy = jnp.sum(source_mode_energy)
+    interface_energy = jnp.sum(interface_mode_energy)
+    residual_energy = jnp.sum(residual_mode_energy)
+    correction_energy = jnp.sum(jnp.abs(source_interface_correction) ** 2)
+    source_interface_packet_conormalization_finite = (
+        jnp.all(jnp.isfinite(interface_row_conormalizer))
+        & jnp.all(jnp.isfinite(source_column_conormalizer))
+        & jnp.all(jnp.isfinite(source_interface_packet_weight))
+        & jnp.all(jnp.isfinite(jnp.real(raw_source_interface_conormalization)))
+        & jnp.all(jnp.isfinite(jnp.imag(raw_source_interface_conormalization)))
+        & jnp.all(jnp.isfinite(jnp.real(transfer)))
+        & jnp.all(jnp.isfinite(jnp.imag(transfer)))
+    )
+    source_interface_packet_conormalization_ready = (
+        source_interface_packet_conormalization_finite
+        & (target_packet_ready > jnp.asarray(0.0, dtype=active.dtype))
+        & (source_energy > floor)
+        & (interface_energy > floor)
+        & (residual_energy > floor)
+        & (source_packet_energy > floor)
+        & (interface_packet_energy > floor)
+        & (conormalized_packet_energy > floor)
+        & (source_interface_packet_energy > floor)
+        & (correction_energy > floor)
+        & (jnp.sum(active) > jnp.asarray(0.0, dtype=active.dtype))
+    )
+    safe_transfer = jnp.where(
+        source_interface_packet_conormalization_ready,
+        transfer,
+        target_packet_transfer,
+    )
+    return safe_transfer, jnp.where(
+        target_packet_ready > jnp.asarray(0.0, dtype=active.dtype),
+        jnp.asarray(1.0, dtype=active.dtype),
+        jnp.asarray(0.0, dtype=active.dtype),
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -2430,7 +2581,7 @@ def _project_private_modal_basis_packets(
     )
     mode_active = jnp.stack((incident_active, reflected_active, transverse_active))
     transfer_map, transfer_ready = (
-        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_transverse_modal_transfer_map(
+        _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_source_interface_transverse_modal_transfer_map(
             source_coeff=source_coeff,
             interface_coeff=interface_coeff,
             active=mode_active,
