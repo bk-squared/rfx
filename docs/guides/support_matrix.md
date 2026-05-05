@@ -829,6 +829,13 @@ source/interface coupled-balance transfer-map contract. Solver edits, true R/T
 readiness, runner state, thresholds, and public observable promotion remain
 deferred to later approved lanes.
 
+The target-basis packet normalization implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_hunk_retained_fixture_quality_pending`: a solver-local fixed-shape helper consumes the retained coupled
+modal energy-balance map, adds clipped target/source packet-normalization weights
+inside the existing 3x3 source/interface packet contract, and keeps true R/T
+readiness, thresholds, runner state, and public observable promotion closed
+while routing the next step to private parity scoring.
+
 ### Explicit unsupported combinations in the SBP-SAT lane
 
 | Combination | Status | Expected behavior |

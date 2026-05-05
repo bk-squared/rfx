@@ -104,9 +104,9 @@ projected target residual-basis energy-biorthogonal source/interface transverse
 modal transfer-map target-basis orientation residual phase/magnitude balance
 residual modal-coupling packet-basis mismatch owner-packet weighting modal
 energy/impedance transverse energy redistribution coupled modal energy-balance
-target-basis packet normalization implementation after failure-theory selected
-a bounded private normalization floor under unchanged material-improvement,
-transverse-uniformity, and vacuum-stability gates.
+target-basis packet normalization parity scoring after the implementation lane
+retained a bounded private fixed-shape helper under unchanged
+material-improvement, transverse-uniformity, and vacuum-stability gates.
 The previous implementation lane records
 `private_plane_wave_source_owner_incident_packet_population_hunk_retained_fixture_quality_pending`:
 a solver-local packetization helper now populates private source-owner incident
@@ -513,6 +513,13 @@ target-basis packet normalization target inside the existing 3x3
 source/interface coupled-balance transfer-map contract. Solver edits, true R/T
 readiness, runner state, thresholds, and public observable promotion remain
 deferred to later approved lanes.
+
+The target-basis packet normalization implementation lane now records
+`private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_hunk_retained_fixture_quality_pending`: a solver-local fixed-shape helper consumes the retained coupled
+modal energy-balance map, adds clipped target/source packet-normalization weights
+inside the existing 3x3 source/interface packet contract, and keeps true R/T
+readiness, thresholds, runner state, and public observable promotion closed
+while routing the next step to private parity scoring.
 The private owner state shape also propagates through CPML and non-CPML subgrid steps plus
 JIT-runner initialization, and same-step E/H owner scan capture plus
 owner-backed joint phase/CV scoring are retained. The physical phase/CV
