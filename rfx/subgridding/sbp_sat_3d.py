@@ -3069,6 +3069,113 @@ def _private_target_basis_residual_modal_coupling_packet_basis_mismatch_owner_pa
     )
 
 
+def _private_score_path_visibility_field_update_coupling_target(
+    *,
+    target_real: jnp.ndarray,
+    target_imag: jnp.ndarray,
+    current_real: jnp.ndarray,
+    current_imag: jnp.ndarray,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    projection_gate: jnp.ndarray,
+    contract_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Couple private score-path visibility into the field-update target.
+
+    The score-path visibility transfer map is retained in modal packet space.
+    This helper makes the same private signal visible to the solver-local field
+    update by nudging the projected target toward the bounded residual between
+    the current face distribution and the source/interface packet pair.  The
+    coupling is fixed-shape, mask-local, and fail-closed; it does not read public
+    observables, runners, hooks, exports, thresholds, or benchmark state.
+    """
+
+    dtype = target_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    active = (
+        packet_mask
+        * jnp.asarray(projection_gate, dtype=dtype)
+        * jnp.asarray(contract_gate, dtype=dtype)
+    )
+    source_delta_real = interface_real - source_real
+    source_delta_imag = interface_imag - source_imag
+    target_residual_real = target_real - current_real
+    target_residual_imag = target_imag - current_imag
+    source_residual_real = source_delta_real - current_real
+    source_residual_imag = source_delta_imag - current_imag
+
+    target_residual_energy = (
+        target_residual_real * target_residual_real
+        + target_residual_imag * target_residual_imag
+    )
+    source_residual_energy = (
+        source_residual_real * source_residual_real
+        + source_residual_imag * source_residual_imag
+    )
+    active_measure = jnp.maximum(jnp.sum(active), jnp.asarray(1.0, dtype=dtype))
+    target_mean_energy = jnp.sum(target_residual_energy * active) / active_measure
+    source_mean_energy = jnp.sum(source_residual_energy * active) / active_measure
+    residual_alignment = (
+        target_residual_real * source_residual_real
+        + target_residual_imag * source_residual_imag
+    ) / jnp.maximum(
+        jnp.sqrt(target_residual_energy * source_residual_energy),
+        floor,
+    )
+    residual_alignment = jnp.clip(
+        residual_alignment,
+        jnp.asarray(0.0, dtype=dtype),
+        jnp.asarray(1.0, dtype=dtype),
+    )
+    visibility_scale = jnp.clip(
+        jnp.sqrt(
+            jnp.maximum(source_residual_energy, floor)
+            / jnp.maximum(target_residual_energy + source_residual_energy, floor)
+        )
+        * (jnp.asarray(0.5, dtype=dtype) + jnp.asarray(0.5, dtype=dtype) * residual_alignment),
+        jnp.asarray(0.0, dtype=dtype),
+        jnp.asarray(0.35, dtype=dtype),
+    )
+    bridge_real = (source_residual_real - target_residual_real) * visibility_scale
+    bridge_imag = (source_residual_imag - target_residual_imag) * visibility_scale
+    bound_real = jnp.asarray(0.35, dtype=dtype) * (
+        jnp.abs(target_real) + jnp.abs(source_delta_real) + floor
+    )
+    bound_imag = jnp.asarray(0.35, dtype=dtype) * (
+        jnp.abs(target_imag) + jnp.abs(source_delta_imag) + floor
+    )
+    bridge_real = jnp.clip(bridge_real, -bound_real, bound_real) * active
+    bridge_imag = jnp.clip(bridge_imag, -bound_imag, bound_imag) * active
+    coupled_target_real = target_real + bridge_real
+    coupled_target_imag = target_imag + bridge_imag
+    finite = (
+        jnp.all(jnp.isfinite(visibility_scale))
+        & jnp.all(jnp.isfinite(bridge_real))
+        & jnp.all(jnp.isfinite(bridge_imag))
+        & jnp.all(jnp.isfinite(coupled_target_real))
+        & jnp.all(jnp.isfinite(coupled_target_imag))
+    )
+    coupling_ready = (
+        finite
+        & (jnp.sum(active) > floor)
+        & (target_mean_energy > floor)
+        & (source_mean_energy > floor)
+    )
+    gate = jnp.where(
+        coupling_ready,
+        jnp.asarray(1.0, dtype=dtype),
+        jnp.asarray(0.0, dtype=dtype),
+    )
+    return (
+        jnp.where(coupling_ready, coupled_target_real, target_real),
+        jnp.where(coupling_ready, coupled_target_imag, target_imag),
+        gate,
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -3583,6 +3690,22 @@ def _apply_propagation_aware_modal_retry_face_helper(
         )
         current_real = jnp.real(current_distribution).astype(jnp.float32)
         current_imag = jnp.imag(current_distribution).astype(jnp.float32)
+        target_real, target_imag, field_update_coupling_gate = (
+            _private_score_path_visibility_field_update_coupling_target(
+                target_real=target_real,
+                target_imag=target_imag,
+                current_real=current_real,
+                current_imag=current_imag,
+                source_real=source_real,
+                source_imag=source_imag,
+                interface_real=interface_real,
+                interface_imag=interface_imag,
+                packet_mask=packet_mask,
+                projection_gate=projection_gate,
+                contract_gate=contract_gate,
+            )
+        )
+        active_scale = active_scale * field_update_coupling_gate
         relaxation = jnp.asarray(
             _PROPAGATION_AWARE_MODAL_RETRY_RELAXATION,
             dtype=current_real.dtype,
