@@ -4064,6 +4064,35 @@ _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_PARITY_SCOR
     f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_material_improvement_ready_true_rt_pending",
     "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
 )
+_PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_STATUS = (
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_theory_ready"
+)
+_PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal source-interface transverse modal transfer-map target-"
+    "basis orientation residual phase/magnitude balance residual modal-coupling "
+    "packet-basis mismatch owner-packet weighting modal energy/impedance "
+    "transverse energy redistribution coupled modal energy-balance target-basis "
+    "packet normalization source/interface packet energy co-normalization "
+    "phase-energy residual source/interface time-centered energy pairing "
+    "packet-basis phase-energy cross-coupling score-path visibility field-update "
+    "coupling solver-observed delta packet-normalized residual residual-weighted "
+    "delta coupling target-packet residual projection source/interface residual "
+    "phase-rotation phase-energy closure residual-distribution gradient-balance "
+    "curvature implementation after failure-theory contract ready ralplan"
+)
+_PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_TERMINAL_OUTCOMES = (
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_repeat_scoring_rejected",
+    _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_STATUS,
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_public_threshold_escape_rejected",
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_blocked",
+)
+_PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_PRECEDENCE = (
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_blocked",
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_repeat_scoring_rejected",
+    _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_STATUS,
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_public_threshold_escape_rejected",
+)
 
 
 
@@ -40751,6 +40780,228 @@ def _private_phase_energy_closure_residual_distribution_gradient_balance_parity_
     }
 
 
+def _private_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_metadata(
+    *,
+    gradient_balance_parity_scoring_metadata: dict[str, object],
+    gradient_balance_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    failure_status = (
+        _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_STATUS
+    )
+    next_prerequisite = (
+        _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_NEXT_PREREQUISITE
+    )
+    parity_metadata = gradient_balance_parity_scoring_metadata
+    implementation_metadata = gradient_balance_implementation_metadata
+    baseline_metrics = dict(parity_metadata["baseline_metrics"])
+    metrics = dict(parity_metadata["metrics"])
+    thresholds = dict(parity_metadata["thresholds"])
+    threshold_results = dict(parity_metadata["threshold_results"])
+    score_delta = dict(parity_metadata["score_delta"])
+    relative_improvement = dict(parity_metadata["relative_improvement"])
+    material_decision = _material_improvement_decision(
+        baseline_metrics=baseline_metrics,
+        candidate_metrics=metrics,
+        dominant_metric="transverse_magnitude_cv",
+    )
+    score_delta_zero = bool(parity_metadata["score_delta_zero"])
+    finite_score = bool(parity_metadata["finite_reproducible_score"])
+    curvature_balance_contract = {
+        "requires_gradient_balance_hunk": True,
+        "requires_gradient_balance_parity_evidence": True,
+        "requires_packet_local_curvature_balance": True,
+        "requires_residual_distribution_gradient_balance": True,
+        "requires_existing_relaxation_bounds": True,
+        "bounded_by_existing_relaxation": True,
+        "fixed_shape_jit_safe_contract": True,
+        "fail_closed_on_missing_curvature_balance": True,
+        "fail_closed_on_nonfinite_curvature_balance": True,
+        "public_surface_unchanged": True,
+        "requires_public_observable": False,
+        "requires_threshold_change": False,
+        "requires_runner_state": False,
+        "requires_hook_state": False,
+        "requires_api_surface": False,
+        "implementation_deferred": True,
+    }
+    zp0 = {
+        "candidate_id": "ZP0_gradient_balance_parity_evidence_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_gradient_balance_parity_status": parity_metadata[
+            "terminal_outcome"
+        ],
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "score_delta_zero": score_delta_zero,
+        "public_closure_retained": True,
+    }
+    zp1 = {
+        "candidate_id": "ZP1_repeat_gradient_balance_score",
+        "candidate_family": "rejected_repeat_private_scoring",
+        "accepted_candidate": False,
+        "finite_reproducible_score": finite_score,
+        "score_delta_zero": score_delta_zero,
+        "not_selected_reason": (
+            "the gradient-balance parity score is finite but baseline-identical, "
+            "so another score-only pass cannot repair packet-local curvature "
+            "imbalance"
+        ),
+        "public_claim_allowed": False,
+    }
+    zp2 = {
+        "candidate_id": "ZP2_gradient_balance_curvature_floor",
+        "candidate_family": "private_gradient_balance_curvature_floor",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": failure_status,
+        "selected_next_private_design_target": (
+            "phase_energy_closure_residual_distribution_gradient_balance_curvature_coupling"
+        ),
+        "curvature_balance_contract": curvature_balance_contract,
+        "requires_public_observable": False,
+        "requires_threshold_change": False,
+        "requires_runner_state": False,
+        "requires_hook_state": False,
+        "requires_api_surface": False,
+        "public_claim_allowed": False,
+    }
+    zp3 = {
+        "candidate_id": "ZP3_helper_existence_public_threshold_escape",
+        "candidate_family": "rejected_helper_or_public_escape",
+        "accepted_candidate": False,
+        "helper_existence_not_readiness": True,
+        "requires_public_observable": True,
+        "requires_threshold_change": True,
+        "requires_runner_state": True,
+        "requires_hook_state": True,
+        "requires_api_surface": True,
+        "not_selected_reason": (
+            "gradient-balance helper existence, public observables, threshold "
+            "relaxation, runners, hooks, API surfaces, docs-public/examples, "
+            "README, and exports remain outside the private failure-theory lane"
+        ),
+        "public_claim_allowed": False,
+    }
+    zp4 = {
+        "candidate_id": "ZP4_unbounded_curvature_solver_rewrite_blocked",
+        "candidate_family": "rejected_unbounded_solver_rewrite",
+        "accepted_candidate": False,
+        "selected_terminal_outcome": (
+            f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_blocked"
+        ),
+        "not_selected_reason": (
+            "a bounded curvature-balance contract can be specified without "
+            "widening solver ownership or public surfaces"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (zp0, zp1, zp2, zp3, zp4)
+    return {
+        "status": failure_status,
+        "terminal_outcome": failure_status,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_only"
+        ),
+        "upstream_gradient_balance_parity_scoring_status": parity_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_gradient_balance_implementation_status": implementation_metadata[
+            "terminal_outcome"
+        ],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite ZP0/ZP1/ZP2/ZP3/ZP4 gradient-balance failure-theory "
+            "ladder; consume baseline-identical parity score, reject repeat "
+            "scoring/helper-existence/public escapes/unbounded rewrites, and "
+            "select bounded curvature balance"
+        ),
+        "selected_candidate_id": "ZP2_gradient_balance_curvature_floor",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "gradient_balance_parity_scoring_consumed": True,
+        "gradient_balance_implementation_consumed": True,
+        "gradient_balance_hunk_retained": True,
+        "curvature_balance_contract": curvature_balance_contract,
+        "selected_floor": "gradient_balance_curvature_floor",
+        "selected_next_private_design_target": (
+            "phase_energy_closure_residual_distribution_gradient_balance_curvature_coupling"
+        ),
+        "theory_lane_executed": True,
+        "failure_theory_lane_executed": True,
+        "implementation_deferred": True,
+        "implementation_helper": implementation_metadata["implementation_helper"],
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "diagnostic_gate_only_failure_mode_identified": True,
+        "gradient_balance_gate_only_consumed": True,
+        "curvature_balance_required": True,
+        "bounded_curvature_balance_required": True,
+        "score_delta_zero": score_delta_zero,
+        "finite_reproducible_score": finite_score,
+        "metrics_remained_baseline_identical": score_delta_zero,
+        "private_benchmark_evidence_only": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "upstream_solver_behavior_changed": bool(
+            parity_metadata["upstream_solver_behavior_changed"]
+        ),
+        "upstream_field_update_behavior_changed": bool(
+            parity_metadata["upstream_field_update_behavior_changed"]
+        ),
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "retained_gradient_balance_hunk": True,
+        "retained_residual_distribution_hunk": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_implementation": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": next_prerequisite,
+        "reason": (
+            "the gradient-balance hunk is finite but gate-only and baseline-"
+            "identical, so the next bounded private target must balance "
+            "packet-local residual curvature before readiness claims"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -46674,6 +46925,45 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_scoring_next_key
     ]
 
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_key = (
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_scoring_key.replace(
+            "_parity_scoring", "_failure_theory"
+        )
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_next_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_key}_next_prerequisite"
+    )
+    packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_metadata = (
+        _private_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_metadata(
+            gradient_balance_parity_scoring_metadata=(
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_scoring_metadata
+            ),
+            gradient_balance_implementation_metadata=(
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_implementation_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_key}_status": (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_metadata[
+                    "status"
+                ]
+            ),
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_key: (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_metadata
+            ),
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_next_key: (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
+    base_metadata["follow_up_recommendation"] = base_metadata[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_next_key
+    ]
+
     if not reference_quality_ready:
         return base_metadata | {
             "classification": "inconclusive",
@@ -47716,6 +48006,22 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "phase-rotation phase-energy closure residual-distribution "
                 "gradient-balance parity-scoring lane records "
                 f"{packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_scoring_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal source/"
+                "interface transverse modal transfer-map target-basis "
+                "orientation residual phase/magnitude balance residual modal-"
+                "coupling packet-basis mismatch owner-packet weighting modal "
+                "energy/impedance transverse energy redistribution coupled "
+                "modal energy-balance target-basis packet normalization "
+                "source/interface packet energy co-normalization phase-"
+                "energy residual source/interface time-centered energy-"
+                "pairing packet-basis phase-energy cross-coupling score-path "
+                "visibility field-update coupling solver-observed delta "
+                "packet-normalized residual residual-weighted delta coupling "
+                "target-packet residual projection source/interface residual "
+                "phase-rotation phase-energy closure residual-distribution "
+                "gradient-balance failure-theory lane records "
+                f"{packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -47725,7 +48031,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_scoring_next_key
+                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_theory_next_key
             ],
         }
 
@@ -66490,6 +66796,87 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     ] == metadata[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_next_key
     ]
+
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_key = (
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_key.replace(
+            "_parity_scoring", "_failure_theory"
+        )
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_status_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_key}_status"
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_next_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_key}_next_prerequisite"
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure = metadata[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_key
+    ]
+    assert metadata[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_status_key
+    ] == _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_GRADIENT_BALANCE_FAILURE_THEORY_STATUS
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "upstream_gradient_balance_parity_scoring_status"
+    ] == metadata[source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_status_key]
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "selected_candidate_id"
+    ] == "ZP2_gradient_balance_curvature_floor"
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "candidate_count"
+    ] == 5
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "gradient_balance_parity_scoring_consumed"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "gradient_balance_implementation_consumed"
+    ] is True
+    curvature_balance_contract = source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "curvature_balance_contract"
+    ]
+    assert curvature_balance_contract["requires_packet_local_curvature_balance"] is True
+    assert curvature_balance_contract["bounded_by_existing_relaxation"] is True
+    assert curvature_balance_contract["requires_public_observable"] is False
+    assert curvature_balance_contract["requires_threshold_change"] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "curvature_balance_required"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "bounded_curvature_balance_required"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "metrics_remained_baseline_identical"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "material_improvement_demonstrated"
+    ] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "fixture_quality_ready"
+    ] is False
+    gradient_balance_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+            "candidate_ladder"
+        ]
+    }
+    assert gradient_balance_failure_candidates[
+        "ZP2_gradient_balance_curvature_floor"
+    ]["accepted_candidate"] is True
+    assert gradient_balance_failure_candidates[
+        "ZP1_repeat_gradient_balance_score"
+    ]["accepted_candidate"] is False
+    assert gradient_balance_failure_candidates[
+        "ZP3_helper_existence_public_threshold_escape"
+    ]["accepted_candidate"] is False
+    assert gradient_balance_failure_candidates[
+        "ZP4_unbounded_curvature_solver_rewrite_blocked"
+    ]["accepted_candidate"] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_implementation"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure[
+        "next_prerequisite"
+    ] == metadata[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_next_key
+    ]
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
     )
@@ -66513,13 +66900,13 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_next_key
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_next_key
         ]
     )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_next_key
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_next_key
         ]
     )
     assert (
@@ -66641,6 +67028,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_status_key
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_failure_status_key
         ]
         in metadata["blocking_diagnostic"]
     )
