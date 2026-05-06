@@ -3567,6 +3567,94 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
     )
 
 
+
+def _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure(
+    *,
+    delta_real: jnp.ndarray,
+    delta_imag: jnp.ndarray,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    source_interface_residual_phase_rotation_scale: jnp.ndarray,
+    source_interface_residual_phase_rotation_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Privately close phase-energy residual after phase-rotation coupling.
+
+    This helper remains solver-local, fixed-shape, and bounded by the already
+    retained source/interface residual phase-rotation scale.  It compares only
+    private packet-local source/interface energy ledgers and fails closed to a
+    zero update on inactive or non-finite phase-energy residual evidence without
+    exposing public observables, thresholds, runners, hooks, exports, or API
+    surface.
+    """
+
+    dtype = delta_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    zero = jnp.asarray(0.0, dtype=dtype)
+    one = jnp.asarray(1.0, dtype=dtype)
+    source_energy = (source_real * source_real + source_imag * source_imag) * packet_mask
+    interface_energy = (
+        interface_real * interface_real + interface_imag * interface_imag
+    ) * packet_mask
+    source_total = jnp.sum(source_energy)
+    interface_total = jnp.sum(interface_energy)
+    energy_total = source_total + interface_total + floor
+    phase_energy_residual = jnp.abs(source_total - interface_total) / energy_total
+    closure_scale = one - jnp.clip(phase_energy_residual, zero, one)
+    active_scale = jnp.clip(
+        jnp.asarray(source_interface_residual_phase_rotation_scale, dtype=dtype),
+        zero,
+        one,
+    )
+    active_gate = jnp.asarray(
+        source_interface_residual_phase_rotation_gate,
+        dtype=dtype,
+    )
+    finite = (
+        jnp.all(jnp.isfinite(delta_real))
+        & jnp.all(jnp.isfinite(delta_imag))
+        & jnp.all(jnp.isfinite(source_real))
+        & jnp.all(jnp.isfinite(source_imag))
+        & jnp.all(jnp.isfinite(interface_real))
+        & jnp.all(jnp.isfinite(interface_imag))
+        & jnp.all(jnp.isfinite(packet_mask))
+        & jnp.isfinite(source_total)
+        & jnp.isfinite(interface_total)
+        & jnp.isfinite(phase_energy_residual)
+        & jnp.isfinite(closure_scale)
+        & jnp.isfinite(active_scale)
+        & jnp.isfinite(active_gate)
+    )
+    closure_ready = (
+        finite
+        & (active_gate > floor)
+        & (active_scale > floor)
+        & (closure_scale > floor)
+        & (source_total > floor)
+        & (interface_total > floor)
+    )
+    gate = jnp.where(closure_ready, one, zero)
+    safe_scale = jnp.where(closure_ready, active_scale * closure_scale, zero)
+    closed_real = jnp.where(
+        closure_ready,
+        delta_real * packet_mask * safe_scale,
+        jnp.zeros_like(delta_real),
+    )
+    closed_imag = jnp.where(
+        closure_ready,
+        delta_imag * packet_mask * safe_scale,
+        jnp.zeros_like(delta_imag),
+    )
+    return (
+        closed_real,
+        closed_imag,
+        safe_scale,
+        gate,
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -4185,7 +4273,7 @@ def _apply_propagation_aware_modal_retry_face_helper(
         (
             delta_real,
             delta_imag,
-            _,
+            source_interface_residual_phase_rotation_scale,
             source_interface_residual_phase_rotation_gate,
         ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_coupling(
             delta_real=delta_real,
@@ -4200,8 +4288,34 @@ def _apply_propagation_aware_modal_retry_face_helper(
             ),
             target_packet_residual_projection_gate=target_packet_residual_projection_gate,
         )
-        delta_real = delta_real * source_interface_residual_phase_rotation_gate
-        delta_imag = delta_imag * source_interface_residual_phase_rotation_gate
+        (
+            delta_real,
+            delta_imag,
+            _,
+            source_interface_residual_phase_rotation_phase_energy_closure_gate,
+        ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_scale=(
+                source_interface_residual_phase_rotation_scale
+            ),
+            source_interface_residual_phase_rotation_gate=(
+                source_interface_residual_phase_rotation_gate
+            ),
+        )
+        delta_real = (
+            delta_real
+            * source_interface_residual_phase_rotation_phase_energy_closure_gate
+        )
+        delta_imag = (
+            delta_imag
+            * source_interface_residual_phase_rotation_phase_energy_closure_gate
+        )
         corrected_coarse_e = (
             coarse_e[0] + delta_real,
             coarse_e[1] + delta_imag,

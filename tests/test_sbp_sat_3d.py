@@ -27,6 +27,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_coupling,
+    _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling,
     _private_source_interface_transverse_modal_transfer_map,
     _private_target_basis_oriented_source_interface_transverse_modal_transfer_map,
@@ -2548,6 +2549,110 @@ def test_private_source_interface_residual_phase_rotation_coupling_is_bounded_an
             packet_mask=packet_mask,
             target_packet_residual_projection_scale=jnp.asarray(0.75, dtype=jnp.float32),
             target_packet_residual_projection_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(nonfinite_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_scale), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_real), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_imag), 0.0)
+
+
+
+def test_private_source_interface_residual_phase_rotation_phase_energy_closure_is_bounded_and_fail_closed():
+    delta_real = jnp.asarray([[0.008, -0.004], [0.012, -0.006]], dtype=jnp.float32)
+    delta_imag = jnp.asarray([[0.004, 0.008], [-0.004, 0.012]], dtype=jnp.float32)
+    packet_mask = jnp.asarray([[1.0, 0.0], [1.0, 1.0]], dtype=jnp.float32)
+    source_real = jnp.ones_like(delta_real)
+    source_imag = jnp.zeros_like(delta_real)
+    interface_real = jnp.asarray([[0.8, 0.0], [0.8, 0.8]], dtype=jnp.float32)
+    interface_imag = jnp.zeros_like(delta_real)
+
+    closed_real, closed_imag, scale, gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_scale=jnp.asarray(
+                0.75,
+                dtype=jnp.float32,
+            ),
+            source_interface_residual_phase_rotation_gate=jnp.asarray(
+                1.0,
+                dtype=jnp.float32,
+            ),
+        )
+    )
+
+    source_total = float(np.sum(np.asarray((source_real**2 + source_imag**2) * packet_mask)))
+    interface_total = float(
+        np.sum(np.asarray((interface_real**2 + interface_imag**2) * packet_mask))
+    )
+    closure = 1.0 - abs(source_total - interface_total) / (source_total + interface_total + 1.0e-12)
+    expected_scale = 0.75 * closure
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.asarray(scale), expected_scale, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(
+        np.asarray(closed_real),
+        np.asarray(delta_real * packet_mask * expected_scale),
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        np.asarray(closed_imag),
+        np.asarray(delta_imag * packet_mask * expected_scale),
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    assert np.all(np.abs(np.asarray(closed_real)) <= np.abs(np.asarray(delta_real)))
+    assert np.all(np.abs(np.asarray(closed_imag)) <= np.abs(np.asarray(delta_imag)))
+
+    blocked_real, blocked_imag, blocked_scale, blocked_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_scale=jnp.asarray(
+                0.0,
+                dtype=jnp.float32,
+            ),
+            source_interface_residual_phase_rotation_gate=jnp.asarray(
+                1.0,
+                dtype=jnp.float32,
+            ),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_scale), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_real), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_imag), 0.0)
+
+    nonfinite_real, nonfinite_imag, nonfinite_scale, nonfinite_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real.at[0, 0].set(jnp.nan),
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_scale=jnp.asarray(
+                0.75,
+                dtype=jnp.float32,
+            ),
+            source_interface_residual_phase_rotation_gate=jnp.asarray(
+                1.0,
+                dtype=jnp.float32,
+            ),
         )
     )
 
