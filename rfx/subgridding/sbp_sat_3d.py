@@ -3860,6 +3860,126 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
     )
 
 
+def _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature(
+    *,
+    delta_real: jnp.ndarray,
+    delta_imag: jnp.ndarray,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_scale: jnp.ndarray,
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Privately balance packet-local residual-distribution curvature.
+
+    The helper is solver-local, fixed-shape, and bounded by the retained
+    gradient-balance scale.  It derives only private packet-local second
+    differences of the source/interface residual distribution, dampens cells
+    with visible residual curvature, and fails closed when curvature evidence
+    is missing or non-finite.  It does not expose public observables,
+    thresholds, runners, hooks, exports, or API surface.
+    """
+
+    dtype = delta_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    zero = jnp.asarray(0.0, dtype=dtype)
+    one = jnp.asarray(1.0, dtype=dtype)
+    source_energy = (
+        (source_real * source_real + source_imag * source_imag) * packet_mask
+    )
+    interface_energy = (
+        (interface_real * interface_real + interface_imag * interface_imag)
+        * packet_mask
+    )
+    local_total = source_energy + interface_energy + floor
+    residual_distribution = jnp.abs(source_energy - interface_energy) / local_total
+
+    axis0_curvature = (
+        jnp.abs(
+            residual_distribution[2:, :]
+            - 2.0 * residual_distribution[1:-1, :]
+            + residual_distribution[:-2, :]
+        )
+        * packet_mask[2:, :]
+        * packet_mask[1:-1, :]
+        * packet_mask[:-2, :]
+    )
+    axis1_curvature = (
+        jnp.abs(
+            residual_distribution[:, 2:]
+            - 2.0 * residual_distribution[:, 1:-1]
+            + residual_distribution[:, :-2]
+        )
+        * packet_mask[:, 2:]
+        * packet_mask[:, 1:-1]
+        * packet_mask[:, :-2]
+    )
+    curvature_balance = jnp.zeros_like(residual_distribution)
+    curvature_balance = curvature_balance.at[1:-1, :].add(axis0_curvature)
+    curvature_balance = curvature_balance.at[:, 1:-1].add(axis1_curvature)
+    curvature_scale = one / (one + jnp.clip(curvature_balance, zero, one))
+    active_scale = jnp.clip(
+        jnp.asarray(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_scale,
+            dtype=dtype,
+        ),
+        zero,
+        one,
+    )
+    active_gate = jnp.asarray(
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate,
+        dtype=dtype,
+    )
+    finite = (
+        jnp.all(jnp.isfinite(delta_real))
+        & jnp.all(jnp.isfinite(delta_imag))
+        & jnp.all(jnp.isfinite(source_real))
+        & jnp.all(jnp.isfinite(source_imag))
+        & jnp.all(jnp.isfinite(interface_real))
+        & jnp.all(jnp.isfinite(interface_imag))
+        & jnp.all(jnp.isfinite(packet_mask))
+        & jnp.all(jnp.isfinite(source_energy))
+        & jnp.all(jnp.isfinite(interface_energy))
+        & jnp.all(jnp.isfinite(residual_distribution))
+        & jnp.all(jnp.isfinite(curvature_balance))
+        & jnp.all(jnp.isfinite(curvature_scale))
+        & jnp.all(jnp.isfinite(active_scale))
+        & jnp.isfinite(active_gate)
+    )
+    curvature_ready = (
+        finite
+        & (active_gate > floor)
+        & jnp.any(active_scale > floor)
+        & jnp.any(packet_mask > floor)
+        & jnp.any((source_energy + interface_energy) > floor)
+        & jnp.any((curvature_balance * packet_mask) > floor)
+    )
+    gate = jnp.where(curvature_ready, one, zero)
+    safe_scale = jnp.where(
+        curvature_ready,
+        active_scale * curvature_scale * packet_mask,
+        jnp.zeros_like(curvature_scale),
+    )
+    curved_real = jnp.where(
+        curvature_ready,
+        delta_real * safe_scale,
+        jnp.zeros_like(delta_real),
+    )
+    curved_imag = jnp.where(
+        curvature_ready,
+        delta_imag * safe_scale,
+        jnp.zeros_like(delta_imag),
+    )
+    return (
+        curved_real,
+        curved_imag,
+        safe_scale,
+        gate,
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -4533,10 +4653,12 @@ def _apply_propagation_aware_modal_retry_face_helper(
                 source_interface_residual_phase_rotation_phase_energy_closure_gate
             ),
         )
+        pre_gradient_delta_real = delta_real
+        pre_gradient_delta_imag = delta_imag
         (
-            delta_real,
-            delta_imag,
-            _,
+            gradient_delta_real,
+            gradient_delta_imag,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_scale,
             source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate,
         ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance(
             delta_real=delta_real,
@@ -4553,17 +4675,61 @@ def _apply_propagation_aware_modal_retry_face_helper(
                 source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gate
             ),
         )
+        delta_real = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate
+            > 0.0,
+            gradient_delta_real,
+            pre_gradient_delta_real,
+        )
+        delta_imag = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate
+            > 0.0,
+            gradient_delta_imag,
+            pre_gradient_delta_imag,
+        )
+        pre_curvature_delta_real = delta_real
+        pre_curvature_delta_imag = delta_imag
+        (
+            curvature_delta_real,
+            curvature_delta_imag,
+            _,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_gate,
+        ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_scale=(
+                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_scale
+            ),
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate=(
+                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate
+            ),
+        )
+        delta_real = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_gate
+            > 0.0,
+            curvature_delta_real,
+            pre_curvature_delta_real,
+        )
+        delta_imag = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_gate
+            > 0.0,
+            curvature_delta_imag,
+            pre_curvature_delta_imag,
+        )
         delta_real = (
             delta_real
             * source_interface_residual_phase_rotation_phase_energy_closure_gate
             * source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gate
-            * source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate
         )
         delta_imag = (
             delta_imag
             * source_interface_residual_phase_rotation_phase_energy_closure_gate
             * source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gate
-            * source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate
         )
         corrected_coarse_e = (
             coarse_e[0] + delta_real,

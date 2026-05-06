@@ -30,6 +30,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance,
+    _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling,
     _private_source_interface_transverse_modal_transfer_map,
     _private_target_basis_oriented_source_interface_transverse_modal_transfer_map,
@@ -2863,6 +2864,129 @@ def test_private_source_interface_residual_phase_rotation_phase_energy_closure_r
             packet_mask=packet_mask,
             source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_scale=residual_distribution_scale,
             source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gate=jnp.asarray(
+                1.0,
+                dtype=jnp.float32,
+            ),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(nonfinite_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_scale), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_real), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_imag), 0.0)
+
+
+def test_private_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_is_bounded_and_fail_closed():
+    delta_real = jnp.asarray(
+        [[0.008, -0.004, 0.006], [0.012, -0.006, 0.004], [0.004, 0.010, -0.008]],
+        dtype=jnp.float32,
+    )
+    delta_imag = jnp.asarray(
+        [[0.004, 0.008, -0.006], [-0.004, 0.012, 0.002], [0.006, -0.002, 0.010]],
+        dtype=jnp.float32,
+    )
+    packet_mask = jnp.ones_like(delta_real)
+    source_real = jnp.ones_like(delta_real)
+    source_imag = jnp.zeros_like(delta_real)
+    interface_real = jnp.asarray(
+        [[1.0, 1.0, 1.0], [1.0, 0.5, 1.0], [1.0, 1.0, 1.0]],
+        dtype=jnp.float32,
+    )
+    interface_imag = jnp.zeros_like(delta_real)
+    gradient_balance_scale = jnp.asarray(
+        [[0.4, 0.45, 0.4], [0.45, 0.5, 0.45], [0.4, 0.45, 0.4]],
+        dtype=jnp.float32,
+    )
+
+    curved_real, curved_imag, scale, gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_scale=gradient_balance_scale,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate=jnp.asarray(
+                1.0,
+                dtype=jnp.float32,
+            ),
+        )
+    )
+
+    source_energy = np.asarray((source_real**2 + source_imag**2) * packet_mask)
+    interface_energy = np.asarray((interface_real**2 + interface_imag**2) * packet_mask)
+    residual_distribution = np.abs(source_energy - interface_energy) / (
+        source_energy + interface_energy + 1.0e-12
+    )
+    axis0_curvature = np.abs(
+        residual_distribution[2:, :]
+        - 2.0 * residual_distribution[1:-1, :]
+        + residual_distribution[:-2, :]
+    )
+    axis1_curvature = np.abs(
+        residual_distribution[:, 2:]
+        - 2.0 * residual_distribution[:, 1:-1]
+        + residual_distribution[:, :-2]
+    )
+    curvature_balance = np.zeros_like(residual_distribution)
+    curvature_balance[1:-1, :] += axis0_curvature
+    curvature_balance[:, 1:-1] += axis1_curvature
+    expected_scale = np.asarray(gradient_balance_scale) / (
+        1.0 + np.clip(curvature_balance, 0.0, 1.0)
+    )
+
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.asarray(scale), expected_scale, rtol=1e-6, atol=1e-8)
+    np.testing.assert_allclose(
+        np.asarray(curved_real),
+        np.asarray(delta_real) * expected_scale,
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        np.asarray(curved_imag),
+        np.asarray(delta_imag) * expected_scale,
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    assert np.all(np.asarray(scale) <= np.asarray(gradient_balance_scale) + 1.0e-8)
+    assert np.all(np.asarray(scale) >= 0.0)
+
+    flat_real, flat_imag, flat_scale, flat_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=jnp.ones_like(interface_real),
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_scale=gradient_balance_scale,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate=jnp.asarray(
+                1.0,
+                dtype=jnp.float32,
+            ),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(flat_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(flat_scale), 0.0)
+    np.testing.assert_allclose(np.asarray(flat_real), 0.0)
+    np.testing.assert_allclose(np.asarray(flat_imag), 0.0)
+
+    nonfinite_real, nonfinite_imag, nonfinite_scale, nonfinite_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real.at[1, 1].set(jnp.nan),
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_scale=gradient_balance_scale,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_gate=jnp.asarray(
                 1.0,
                 dtype=jnp.float32,
             ),
