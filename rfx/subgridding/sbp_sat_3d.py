@@ -4137,6 +4137,143 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         gate,
     )
 
+
+def _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux(
+    *,
+    delta_real: jnp.ndarray,
+    delta_imag: jnp.ndarray,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    normal_poynting_flux: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_scale: jnp.ndarray,
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Privately damp residual deltas with packet-local normal-Poynting flux.
+
+    This bounded solver-local helper consumes the retained cross-modal Laplacian
+    scale, derives only private face-local normal-Poynting flux and flux-
+    divergence evidence already available inside the propagation-aware helper,
+    and fails closed on missing or non-finite flux evidence.  It is fixed-shape/
+    JIT-safe and does not expose public observables, thresholds, runners, hooks,
+    exports, or API surface.
+    """
+
+    dtype = delta_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    zero = jnp.asarray(0.0, dtype=dtype)
+    one = jnp.asarray(1.0, dtype=dtype)
+    source_energy = (
+        (source_real * source_real + source_imag * source_imag) * packet_mask
+    )
+    interface_energy = (
+        (interface_real * interface_real + interface_imag * interface_imag)
+        * packet_mask
+    )
+    packet_energy = source_energy + interface_energy + floor
+    flux = jnp.asarray(normal_poynting_flux, dtype=dtype) * packet_mask
+    flux_magnitude = jnp.abs(flux)
+    expected_flux_magnitude = jnp.abs(source_energy - interface_energy)
+    flux_balance = jnp.abs(flux_magnitude - expected_flux_magnitude) / (
+        flux_magnitude + packet_energy
+    )
+    axis0_flux_divergence = (
+        jnp.abs(flux[1:, :] - flux[:-1, :])
+        / (jnp.abs(flux[1:, :]) + jnp.abs(flux[:-1, :]) + floor)
+        * packet_mask[1:, :]
+        * packet_mask[:-1, :]
+    )
+    axis1_flux_divergence = (
+        jnp.abs(flux[:, 1:] - flux[:, :-1])
+        / (jnp.abs(flux[:, 1:]) + jnp.abs(flux[:, :-1]) + floor)
+        * packet_mask[:, 1:]
+        * packet_mask[:, :-1]
+    )
+    flux_divergence_balance = jnp.zeros_like(flux_balance)
+    flux_divergence_balance = flux_divergence_balance.at[1:, :].add(
+        axis0_flux_divergence
+    )
+    flux_divergence_balance = flux_divergence_balance.at[:-1, :].add(
+        axis0_flux_divergence
+    )
+    flux_divergence_balance = flux_divergence_balance.at[:, 1:].add(
+        axis1_flux_divergence
+    )
+    flux_divergence_balance = flux_divergence_balance.at[:, :-1].add(
+        axis1_flux_divergence
+    )
+    normal_poynting_flux_balance = (
+        flux_balance + flux_divergence_balance
+    ) * packet_mask
+    normal_poynting_flux_scale = one / (
+        one + jnp.clip(normal_poynting_flux_balance, zero, one)
+    )
+    active_scale = jnp.clip(
+        jnp.asarray(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_scale,
+            dtype=dtype,
+        ),
+        zero,
+        one,
+    )
+    active_gate = jnp.asarray(
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_gate,
+        dtype=dtype,
+    )
+    finite = (
+        jnp.all(jnp.isfinite(delta_real))
+        & jnp.all(jnp.isfinite(delta_imag))
+        & jnp.all(jnp.isfinite(source_real))
+        & jnp.all(jnp.isfinite(source_imag))
+        & jnp.all(jnp.isfinite(interface_real))
+        & jnp.all(jnp.isfinite(interface_imag))
+        & jnp.all(jnp.isfinite(normal_poynting_flux))
+        & jnp.all(jnp.isfinite(packet_mask))
+        & jnp.all(jnp.isfinite(source_energy))
+        & jnp.all(jnp.isfinite(interface_energy))
+        & jnp.all(jnp.isfinite(flux))
+        & jnp.all(jnp.isfinite(flux_balance))
+        & jnp.all(jnp.isfinite(flux_divergence_balance))
+        & jnp.all(jnp.isfinite(normal_poynting_flux_balance))
+        & jnp.all(jnp.isfinite(normal_poynting_flux_scale))
+        & jnp.all(jnp.isfinite(active_scale))
+        & jnp.isfinite(active_gate)
+    )
+    normal_poynting_flux_ready = (
+        finite
+        & (active_gate > floor)
+        & jnp.any(active_scale > floor)
+        & jnp.any(packet_mask > floor)
+        & jnp.any(flux_magnitude > floor)
+        & jnp.any((source_energy + interface_energy) > floor)
+        & jnp.any((normal_poynting_flux_balance * packet_mask) > floor)
+    )
+    gate = jnp.where(normal_poynting_flux_ready, one, zero)
+    safe_scale = jnp.where(
+        normal_poynting_flux_ready,
+        active_scale * normal_poynting_flux_scale * packet_mask,
+        jnp.zeros_like(normal_poynting_flux_scale),
+    )
+    balanced_real = jnp.where(
+        normal_poynting_flux_ready,
+        delta_real * safe_scale,
+        jnp.zeros_like(delta_real),
+    )
+    balanced_imag = jnp.where(
+        normal_poynting_flux_ready,
+        delta_imag * safe_scale,
+        jnp.zeros_like(delta_imag),
+    )
+    return (
+        balanced_real,
+        balanced_imag,
+        safe_scale,
+        gate,
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -4883,7 +5020,7 @@ def _apply_propagation_aware_modal_retry_face_helper(
         (
             curvature_laplacian_delta_real,
             curvature_laplacian_delta_imag,
-            _,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_scale,
             source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_gate,
         ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian(
             delta_real=delta_real,
@@ -4911,6 +5048,59 @@ def _apply_propagation_aware_modal_retry_face_helper(
             > 0.0,
             curvature_laplacian_delta_imag,
             pre_curvature_laplacian_delta_imag,
+        )
+        pre_normal_poynting_flux_delta_real = delta_real
+        pre_normal_poynting_flux_delta_imag = delta_imag
+        fine_e_restricted = tuple(restrict_face(trace, ops) for trace in fine_e)
+        fine_h_restricted = tuple(restrict_face(trace, ops) for trace in fine_h)
+        tangent_cross_sign = jnp.where(
+            orientation.normal_axis == 1,
+            jnp.asarray(-1.0, dtype=delta_real.dtype),
+            jnp.asarray(1.0, dtype=delta_real.dtype),
+        )
+        normal_sign = jnp.asarray(orientation.normal_sign, dtype=delta_real.dtype)
+        coarse_normal_poynting_flux = normal_sign * tangent_cross_sign * (
+            coarse_e[0] * coarse_h[1] - coarse_e[1] * coarse_h[0]
+        )
+        fine_normal_poynting_flux = normal_sign * tangent_cross_sign * (
+            fine_e_restricted[0] * fine_h_restricted[1]
+            - fine_e_restricted[1] * fine_h_restricted[0]
+        )
+        normal_poynting_flux = 0.5 * (
+            coarse_normal_poynting_flux + fine_normal_poynting_flux
+        )
+        (
+            normal_poynting_flux_delta_real,
+            normal_poynting_flux_delta_imag,
+            _,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_gate,
+        ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            normal_poynting_flux=normal_poynting_flux,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_scale=(
+                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_scale
+            ),
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_gate=(
+                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_gate
+            ),
+        )
+        delta_real = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_gate
+            > 0.0,
+            normal_poynting_flux_delta_real,
+            pre_normal_poynting_flux_delta_real,
+        )
+        delta_imag = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_gate
+            > 0.0,
+            normal_poynting_flux_delta_imag,
+            pre_normal_poynting_flux_delta_imag,
         )
         delta_real = (
             delta_real
