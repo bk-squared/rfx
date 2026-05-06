@@ -16066,11 +16066,133 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert source_interface_residual_phase_rotation_parity[
         "next_prerequisite"
     ] == benchmark_gate[source_interface_residual_phase_rotation_parity_next_key]
+
+    source_interface_residual_phase_rotation_failure_key = (
+        source_interface_residual_phase_rotation_parity_key.replace(
+            "_parity_scoring", "_failure_theory"
+        )
+    )
+    source_interface_residual_phase_rotation_failure_status_key = (
+        f"{source_interface_residual_phase_rotation_failure_key}_status"
+    )
+    source_interface_residual_phase_rotation_failure_next_key = (
+        f"{source_interface_residual_phase_rotation_failure_key}_next_prerequisite"
+    )
+    source_interface_residual_phase_rotation_failure = benchmark_gate[
+        source_interface_residual_phase_rotation_failure_key
+    ]
+    assert benchmark_gate[
+        source_interface_residual_phase_rotation_failure_status_key
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_theory_ready"
+    )
+    assert source_interface_residual_phase_rotation_failure[
+        "upstream_source_interface_residual_phase_rotation_parity_scoring_status"
+    ] == benchmark_gate[source_interface_residual_phase_rotation_parity_status_key]
+    assert source_interface_residual_phase_rotation_failure[
+        "upstream_source_interface_residual_phase_rotation_implementation_status"
+    ] == benchmark_gate[source_interface_residual_phase_rotation_status_key]
+    assert source_interface_residual_phase_rotation_failure[
+        "selected_candidate_id"
+    ] == "QP2_source_interface_residual_phase_rotation_phase_energy_closure_floor"
+    assert source_interface_residual_phase_rotation_failure["candidate_count"] == 5
+    assert source_interface_residual_phase_rotation_failure[
+        "baseline_metrics"
+    ] == source_interface_residual_phase_rotation_parity["baseline_metrics"]
+    assert source_interface_residual_phase_rotation_failure[
+        "metrics"
+    ] == source_interface_residual_phase_rotation_parity["metrics"]
+    assert source_interface_residual_phase_rotation_failure[
+        "thresholds"
+    ] == source_interface_residual_phase_rotation_parity["thresholds"]
+    assert source_interface_residual_phase_rotation_failure[
+        "score_delta"
+    ] == source_interface_residual_phase_rotation_parity["score_delta"]
+    assert source_interface_residual_phase_rotation_failure[
+        "source_interface_residual_phase_rotation_parity_scoring_consumed"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "source_interface_residual_phase_rotation_implementation_consumed"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "source_interface_residual_phase_rotation_implementation_retained"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "source_interface_residual_phase_rotation_hunk_retained"
+    ] is True
+    phase_energy_closure_contract = source_interface_residual_phase_rotation_failure[
+        "phase_energy_closure_contract"
+    ]
+    assert phase_energy_closure_contract[
+        "requires_source_interface_residual_phase_rotation_coupling"
+    ] is True
+    assert phase_energy_closure_contract["requires_phase_energy_closure"] is True
+    assert phase_energy_closure_contract["bounded_by_existing_relaxation"] is True
+    assert phase_energy_closure_contract[
+        "fail_closed_on_nonfinite_phase_energy_residual"
+    ] is True
+    assert phase_energy_closure_contract["requires_public_observable"] is False
+    assert phase_energy_closure_contract["requires_threshold_change"] is False
+    assert source_interface_residual_phase_rotation_failure[
+        "diagnostic_gate_only_failure_mode_identified"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "phase_energy_closure_required"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "bounded_phase_energy_closure_required"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "finite_reproducible_score"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure["score_delta_zero"] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "metrics_remained_baseline_identical"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "material_improvement_demonstrated"
+    ] is False
+    assert source_interface_residual_phase_rotation_failure[
+        "fixture_quality_ready"
+    ] is False
+    assert source_interface_residual_phase_rotation_failure[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert source_interface_residual_phase_rotation_failure[
+        "production_patch_applied"
+    ] is False
+    assert source_interface_residual_phase_rotation_failure[
+        "solver_behavior_changed"
+    ] is False
+    phase_rotation_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_interface_residual_phase_rotation_failure[
+            "candidate_ladder"
+        ]
+    }
+    assert phase_rotation_failure_candidates[
+        "QP2_source_interface_residual_phase_rotation_phase_energy_closure_floor"
+    ]["accepted_candidate"] is True
+    assert phase_rotation_failure_candidates[
+        "QP1_repeat_source_interface_residual_phase_rotation_score"
+    ]["accepted_candidate"] is False
+    assert phase_rotation_failure_candidates[
+        "QP3_helper_existence_public_threshold_escape"
+    ]["accepted_candidate"] is False
+    assert phase_rotation_failure_candidates[
+        "QP4_unbounded_phase_energy_solver_rewrite_blocked"
+    ]["accepted_candidate"] is False
+    assert source_interface_residual_phase_rotation_failure[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_implementation"
+    ] is True
+    assert source_interface_residual_phase_rotation_failure[
+        "next_prerequisite"
+    ] == benchmark_gate[source_interface_residual_phase_rotation_failure_next_key]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        source_interface_residual_phase_rotation_parity_next_key
+        source_interface_residual_phase_rotation_failure_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        source_interface_residual_phase_rotation_parity_next_key
+        source_interface_residual_phase_rotation_failure_next_key
     ]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -16177,6 +16299,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] in benchmark_gate["blocking_diagnostic"]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_parity_status_key
+    ] in benchmark_gate["blocking_diagnostic"]
+    assert benchmark_gate[
+        source_interface_residual_phase_rotation_failure_status_key
     ] in benchmark_gate["blocking_diagnostic"]
     assert (
         benchmark_gate[
@@ -17058,7 +17183,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        source_interface_residual_phase_rotation_parity_next_key
+        source_interface_residual_phase_rotation_failure_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
