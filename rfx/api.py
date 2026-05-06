@@ -231,6 +231,15 @@ class ForwardResult(NamedTuple):
     port AD objectives (e.g. 2-port |S21| topology optimisation) read raw
     V/I from this field and compose their own wave decomposition, since
     ``extract_lumped_s11`` collapses each port to its self-reflection only.
+
+    ``dft_planes`` exposes the JIT-scan-accumulated complex DFT plane
+    probes registered via :meth:`Simulation.add_dft_plane_probe`.  Each
+    entry is a :class:`DFTPlaneProbe` whose ``accumulator`` field is a
+    JAX-traceable complex array shaped ``(n_freqs, *plane_shape)``, with
+    plane-resolved field values usable by gradient-based objectives that
+    need plane-integrated V/I (e.g. waveguide-port or microstrip-port
+    line-integrated voltage / closed-loop current).  ``None`` when no
+    plane probes were registered.
     """
     time_series: jnp.ndarray
     ntff_data: object = None
@@ -240,6 +249,7 @@ class ForwardResult(NamedTuple):
     freqs: object = None
     lumped_port_sparams: object = None
     wire_port_sparams: object = None
+    dft_planes: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -5407,6 +5417,36 @@ class Simulation:
             corner_lo, corner_hi, freqs = self._ntff
             ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
+        # DFT plane probes — mirror runners/uniform.py:340-359 so the
+        # JIT scan body actually accumulates plane-resolved DFT, then
+        # carry the result back through ForwardResult.dft_planes for
+        # plane-integrated V/I objectives (gap #4 in
+        # docs/agent-memory/rfx-known-issues.md, 2026-05-05).
+        dft_planes = []
+        if self._dft_planes:
+            from rfx.probes.probes import init_dft_plane_probe
+            _axis_to_index = {"x": 0, "y": 1, "z": 2}
+            for pe in self._dft_planes:
+                axis_idx = _axis_to_index[pe.axis]
+                plane_pos = [0.0, 0.0, 0.0]
+                plane_pos[axis_idx] = pe.coordinate
+                grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
+                freqs_arr = (
+                    pe.freqs if pe.freqs is not None
+                    else jnp.linspace(self._freq_max / 10,
+                                      self._freq_max, pe.n_freqs)
+                )
+                dft_planes.append(
+                    init_dft_plane_probe(
+                        axis=axis_idx,
+                        index=grid_index,
+                        component=pe.component,
+                        freqs=freqs_arr,
+                        grid_shape=grid.shape,
+                        dft_total_steps=n_steps,
+                    )
+                )
+
         # Waveguide ports (differentiable DFT accumulation inside scan)
         waveguide_ports = []
         if self._waveguide_ports:
@@ -5477,6 +5517,7 @@ class Simulation:
             pec_occupancy=pec_occupancy_local,
             lumped_port_sparams=lumped_port_sparam_specs or None,
             wire_port_sparams=wire_port_sparam_specs or None,
+            dft_planes=dft_planes if dft_planes else None,
             return_state=False,
         )
 
@@ -5502,6 +5543,16 @@ class Simulation:
             s_params_out = w_list[0] if len(w_list) == 1 else jnp.stack(w_list, axis=0)
             freqs_out = result.wire_port_sparams[0][0].freqs
 
+        # Convert tuple → name-keyed dict, mirroring runners/uniform.py:704
+        # so consumers can index by the same name they registered with.
+        dft_planes_out = None
+        sim_dft_planes = getattr(result, "dft_planes", None)
+        if self._dft_planes and sim_dft_planes:
+            dft_planes_out = {
+                entry.name: probe
+                for entry, probe in zip(self._dft_planes, sim_dft_planes)
+            }
+
         return ForwardResult(
             time_series=result.time_series,
             ntff_data=result.ntff_data,
@@ -5511,6 +5562,7 @@ class Simulation:
             freqs=freqs_out,
             lumped_port_sparams=result.lumped_port_sparams,
             wire_port_sparams=result.wire_port_sparams,
+            dft_planes=dft_planes_out,
         )
 
     def _forward_nonuniform_from_materials(
@@ -5559,6 +5611,7 @@ class Simulation:
             grid=result.grid,
             s_params=getattr(result, "s_params", None),
             freqs=getattr(result, "freqs", None),
+            dft_planes=getattr(result, "dft_planes", None),
         )
 
     def _forward_distributed_nonuniform_from_materials(
@@ -5940,6 +5993,8 @@ class Simulation:
             grid=grid,
             s_params=None,
             freqs=None,
+            dft_planes=result.get("dft_planes")
+                if hasattr(result, "get") else None,
         )
 
     # ---- forward (differentiable) ----
