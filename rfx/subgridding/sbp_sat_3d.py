@@ -3413,6 +3413,67 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
     )
 
 
+def _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection(
+    *,
+    delta_real: jnp.ndarray,
+    delta_imag: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    target_packet_residual: jnp.ndarray,
+    residual_weight: jnp.ndarray,
+    residual_weighted_delta_coupling_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Privately project target-packet residual evidence into a weighted delta.
+
+    This helper is deliberately solver-local, fixed-shape, and bounded by the
+    already residual-weighted update.  It consumes only private scalar packet
+    residual evidence and fails closed to a zero update on missing or non-finite
+    inputs without exposing public observables, thresholds, runners, hooks,
+    exports, or API surface.
+    """
+
+    dtype = delta_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    zero = jnp.asarray(0.0, dtype=dtype)
+    one = jnp.asarray(1.0, dtype=dtype)
+    residual = jnp.asarray(target_packet_residual, dtype=dtype)
+    residual_weight = jnp.asarray(residual_weight, dtype=dtype)
+    active_gate = jnp.asarray(residual_weighted_delta_coupling_gate, dtype=dtype)
+    projection_scale = one - jnp.clip(residual, zero, one)
+    finite = (
+        jnp.all(jnp.isfinite(delta_real))
+        & jnp.all(jnp.isfinite(delta_imag))
+        & jnp.all(jnp.isfinite(packet_mask))
+        & jnp.isfinite(residual)
+        & jnp.isfinite(residual_weight)
+        & jnp.isfinite(active_gate)
+        & jnp.isfinite(projection_scale)
+    )
+    projection_ready = (
+        finite
+        & (active_gate > floor)
+        & (residual_weight > floor)
+        & (projection_scale > floor)
+    )
+    gate = jnp.where(projection_ready, one, zero)
+    safe_projection = jnp.where(projection_ready, projection_scale, zero)
+    projected_real = jnp.where(
+        projection_ready,
+        delta_real * packet_mask * safe_projection,
+        jnp.zeros_like(delta_real),
+    )
+    projected_imag = jnp.where(
+        projection_ready,
+        delta_imag * packet_mask * safe_projection,
+        jnp.zeros_like(delta_imag),
+    )
+    return (
+        projected_real,
+        projected_imag,
+        safe_projection,
+        gate,
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -3998,7 +4059,7 @@ def _apply_propagation_aware_modal_retry_face_helper(
         (
             delta_real,
             delta_imag,
-            _,
+            residual_weighted_delta_coupling_weight,
             residual_weighted_delta_coupling_gate,
         ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling(
             delta_real=delta_real,
@@ -4010,8 +4071,26 @@ def _apply_propagation_aware_modal_retry_face_helper(
             solver_observed_delta_gate=solver_observed_delta_gate,
             packet_normalized_residual_gate=packet_normalized_residual_gate,
         )
-        delta_real = delta_real * residual_weighted_delta_coupling_gate
-        delta_imag = delta_imag * residual_weighted_delta_coupling_gate
+        target_packet_residual = jnp.abs(
+            packet_normalized_residual - packet_energy_balance_residual
+        )
+        (
+            delta_real,
+            delta_imag,
+            _,
+            target_packet_residual_projection_gate,
+        ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            packet_mask=packet_mask,
+            target_packet_residual=target_packet_residual,
+            residual_weight=residual_weighted_delta_coupling_weight,
+            residual_weighted_delta_coupling_gate=(
+                residual_weighted_delta_coupling_gate
+            ),
+        )
+        delta_real = delta_real * target_packet_residual_projection_gate
+        delta_imag = delta_imag * target_packet_residual_projection_gate
         corrected_coarse_e = (
             coarse_e[0] + delta_real,
             coarse_e[1] + delta_imag,

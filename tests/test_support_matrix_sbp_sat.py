@@ -15640,11 +15640,88 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] == benchmark_gate[
         score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_failure_next_key
     ]
+
+    target_packet_residual_projection_implementation_key = (
+        score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_key.replace(
+            "_implementation", "_target_packet_residual_projection_implementation"
+        )
+    )
+    target_packet_residual_projection_implementation_status_key = (
+        f"{target_packet_residual_projection_implementation_key}_status"
+    )
+    target_packet_residual_projection_implementation_next_key = (
+        f"{target_packet_residual_projection_implementation_key}_next_prerequisite"
+    )
+    target_packet_residual_projection_implementation = benchmark_gate[
+        target_packet_residual_projection_implementation_key
+    ]
+    assert benchmark_gate[
+        target_packet_residual_projection_implementation_status_key
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_hunk_retained_fixture_quality_pending"
+    )
+    assert target_packet_residual_projection_implementation[
+        "upstream_target_packet_residual_projection_failure_theory_status"
+    ] == benchmark_gate[
+        score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_failure_status_key
+    ]
+    assert target_packet_residual_projection_implementation[
+        "selected_candidate_id"
+    ] == "LP1_private_target_packet_residual_projection_helper_hunk"
+    assert target_packet_residual_projection_implementation["candidate_count"] == 5
+    assert target_packet_residual_projection_implementation[
+        "target_packet_residual_projection_failure_theory_consumed"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "target_packet_residual_projection_implemented"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "bounded_target_packet_residual_projection_implemented"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "fixed_shape_jit_safe_contract"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "fail_closed_on_missing_target_packet_residual"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "fail_closed_on_nonfinite_projection"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "production_patch_applied"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "solver_behavior_changed"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "true_rt_readiness_unlocked"
+    ] is False
+    impl_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in target_packet_residual_projection_implementation[
+            "candidate_ladder"
+        ]
+    }
+    assert impl_candidates[
+        "LP1_private_target_packet_residual_projection_helper_hunk"
+    ]["accepted_candidate"]
+    assert (
+        impl_candidates["LP3_public_observable_or_threshold_escape"][
+            "accepted_candidate"
+        ]
+        is False
+    )
+    assert target_packet_residual_projection_implementation[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring"
+    ]
+    assert target_packet_residual_projection_implementation[
+        "next_prerequisite"
+    ] == benchmark_gate[target_packet_residual_projection_implementation_next_key]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_failure_next_key
+        target_packet_residual_projection_implementation_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_failure_next_key
+        target_packet_residual_projection_implementation_next_key
     ]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -15736,6 +15813,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] in benchmark_gate["blocking_diagnostic"]
     assert benchmark_gate[
         score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_failure_status_key
+    ] in benchmark_gate["blocking_diagnostic"]
+    assert benchmark_gate[
+        target_packet_residual_projection_implementation_status_key
     ] in benchmark_gate["blocking_diagnostic"]
     assert (
         benchmark_gate[
@@ -16617,7 +16697,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_failure_next_key
+        target_packet_residual_projection_implementation_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"

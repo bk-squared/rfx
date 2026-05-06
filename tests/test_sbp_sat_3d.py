@@ -25,6 +25,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _private_score_path_visibility_field_update_coupling_target,
     _private_score_path_visibility_field_update_solver_observed_delta,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual,
+    _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling,
     _private_source_interface_transverse_modal_transfer_map,
     _private_target_basis_oriented_source_interface_transverse_modal_transfer_map,
@@ -2408,6 +2409,68 @@ def test_private_score_path_visibility_packet_normalized_residual_weighted_delta
 
     np.testing.assert_allclose(np.asarray(nonfinite_gate), 0.0)
     np.testing.assert_allclose(np.asarray(nonfinite_weight), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_real), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_imag), 0.0)
+
+
+def test_private_target_packet_residual_projection_is_bounded_and_fail_closed():
+    delta_real = jnp.asarray([[0.008, -0.004], [0.012, -0.006]], dtype=jnp.float32)
+    delta_imag = jnp.asarray([[0.004, 0.008], [-0.004, 0.012]], dtype=jnp.float32)
+    packet_mask = jnp.asarray([[1.0, 0.0], [1.0, 1.0]], dtype=jnp.float32)
+
+    projected_real, projected_imag, projection, gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            packet_mask=packet_mask,
+            target_packet_residual=jnp.asarray(0.25, dtype=jnp.float32),
+            residual_weight=jnp.asarray(0.4, dtype=jnp.float32),
+            residual_weighted_delta_coupling_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.asarray(projection), 0.75, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(
+        np.asarray(projected_real),
+        np.asarray(delta_real * packet_mask * 0.75),
+    )
+    np.testing.assert_allclose(
+        np.asarray(projected_imag),
+        np.asarray(delta_imag * packet_mask * 0.75),
+    )
+    assert np.all(np.abs(np.asarray(projected_real)) <= np.abs(np.asarray(delta_real)))
+    assert np.all(np.abs(np.asarray(projected_imag)) <= np.abs(np.asarray(delta_imag)))
+
+    blocked_real, blocked_imag, blocked_projection, blocked_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            packet_mask=packet_mask,
+            target_packet_residual=jnp.asarray(0.25, dtype=jnp.float32),
+            residual_weight=jnp.asarray(0.0, dtype=jnp.float32),
+            residual_weighted_delta_coupling_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(blocked_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_projection), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_real), 0.0)
+    np.testing.assert_allclose(np.asarray(blocked_imag), 0.0)
+
+    nonfinite_real, nonfinite_imag, nonfinite_projection, nonfinite_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            packet_mask=packet_mask,
+            target_packet_residual=jnp.asarray(jnp.nan, dtype=jnp.float32),
+            residual_weight=jnp.asarray(0.4, dtype=jnp.float32),
+            residual_weighted_delta_coupling_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    np.testing.assert_allclose(np.asarray(nonfinite_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_projection), 0.0)
     np.testing.assert_allclose(np.asarray(nonfinite_real), 0.0)
     np.testing.assert_allclose(np.asarray(nonfinite_imag), 0.0)
 
