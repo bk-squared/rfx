@@ -3531,6 +3531,19 @@ class Simulation:
 
             cell_sizes = [min_dx, min_dy, min_dz]
 
+            # FP1 refinement (2026-05-06): the partial-volume warning
+            # at 3-5 cells along one axis is meaningful only for actual
+            # *volumes* (≥3 cells in every axis).  A thin strip
+            # (e.g. an MSL trace at LX × W_trace × dx → many × 4.7 × 1
+            # cells) is a sheet, not a volume, and the per-axis 4.7
+            # signal must not fire.  Compute cells on every axis up
+            # front and gate the volume branch on the minimum.
+            cells_per_axis = [
+                (dim / cell) if cell > 0 else float("inf")
+                for dim, cell in zip(dims, cell_sizes)
+            ]
+            is_thin_along_some_axis = min(cells_per_axis) < 3.0
+
             for axis, (dim, cell) in enumerate(zip(dims, cell_sizes)):
                 if dim <= 0:
                     # Zero-thickness geometry
@@ -3571,7 +3584,8 @@ class Simulation:
                     axis_name = "xyz"[axis]
                     cells = dim / cell
                     if is_pec:
-                        if 3.0 <= cells < 5.0:
+                        if (3.0 <= cells < 5.0
+                                and not is_thin_along_some_axis):
                             _w.warn(
                                 f"PEC '{mat_name}' {axis_name}-extent "
                                 f"{dim*1e3:.2f}mm = {cells:.1f} cells — "
@@ -4500,8 +4514,24 @@ class Simulation:
                             if thick_lo <= 0 and thick_hi <= 0:
                                 continue
                             d = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                            lo_hit = thick_lo > 0 and c1[ax] < thick_lo * 0.3
-                            hi_hit = thick_hi > 0 and c2[ax] > d - thick_hi * 0.3
+                            # FP3 refinement (2026-05-06): a Box whose
+                            # lo/hi edge sits exactly at 0/L_domain
+                            # (within ½·dx) is an *intentional*
+                            # full-domain extension — the canonical
+                            # transmission-line / MSL-substrate
+                            # pattern.  Do not warn on those edges;
+                            # only warn on edges that drift INTO the
+                            # CPML region without explicitly reaching
+                            # the boundary (the original issue #61
+                            # leak-into-absorber footgun).
+                            intentional_lo = c1[ax] <= dx * 0.5
+                            intentional_hi = c2[ax] >= d - dx * 0.5
+                            lo_hit = (thick_lo > 0
+                                      and c1[ax] < thick_lo * 0.3
+                                      and not intentional_lo)
+                            hi_hit = (thick_hi > 0
+                                      and c2[ax] > d - thick_hi * 0.3
+                                      and not intentional_hi)
                             if lo_hit or hi_hit:
                                 _w.warn(
                                     f"Material '{entry.material_name}' extends "
@@ -4516,8 +4546,17 @@ class Simulation:
                         pass
 
         # P1.8: Port/source/probe inside PEC geometry
+        # FP4 refinement (2026-05-06): tangential H is non-zero on a
+        # PEC surface and well-defined within a thin (≤ 1.5·dx) PEC
+        # sheet — for example, an MSL diagnostic Hy probe placed at
+        # z = h_sub + 0.5·dx (the centre of a 1-cell trace) measures
+        # the trace surface current and must not warn.  Inside a thick
+        # PEC volume H still decays to zero, so the warning still
+        # fires there.
         for pe in list(self._ports) + list(self._probes):
             pos = pe.position
+            component = (getattr(pe, "component", "") or "").lower()
+            is_h_component = component in ("hx", "hy", "hz")
             for entry in self._geometry:
                 if entry.material_name != "pec":
                     continue
@@ -4526,6 +4565,12 @@ class Simulation:
                         c1, c2 = entry.shape.bounding_box()
                         inside = all(c1[ax] <= pos[ax] <= c2[ax] for ax in range(3))
                         if inside:
+                            pec_min_thickness = min(
+                                c2[i] - c1[i] for i in range(3)
+                            )
+                            is_thin_pec = pec_min_thickness <= 1.5 * dx
+                            if is_h_component and is_thin_pec:
+                                continue
                             _w.warn(
                                 f"Port/source at {pos} is inside PEC geometry "
                                 f"'{entry.material_name}'. Field will be zero. "
