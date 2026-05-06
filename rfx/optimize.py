@@ -160,7 +160,7 @@ def optimize(
         grid = sim._build_grid()
         lo_idx = list(grid.position_to_index(region.corner_lo))
         hi_idx = list(grid.position_to_index(region.corner_hi))
-        base_materials, _, _, base_pec_mask, _, _ = sim._assemble_materials(grid)
+        base_materials, _, _, base_pec_mask, _, _, _ = sim._assemble_materials(grid)
         _n_steps_auto = grid.num_timesteps(num_periods=num_periods)
 
     # Per-face clamp (v1.7.5): using the symmetric ``pad_{axis}`` would
@@ -321,7 +321,7 @@ def gradient_check(
         Contains ad_grad, fd_grad, and relative_error.
     """
     grid = sim._build_grid()
-    base_materials, _, _, _, _, _ = sim._assemble_materials(grid)
+    base_materials, _, _, _, _, _, _ = sim._assemble_materials(grid)
     base_eps = base_materials.eps_r
 
     fwd_kw = {}
