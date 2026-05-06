@@ -16708,11 +16708,81 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] == benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_next_key
     ]
+
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_key = (
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_key.replace(
+            "_failure_theory", "_gradient_balance_implementation"
+        )
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_status_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_key}_status"
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_next_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_key}_next_prerequisite"
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance = benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_key
+    ]
+    assert benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_status_key
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_hunk_retained_fixture_quality_pending"
+    )
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "upstream_residual_distribution_failure_theory_status"
+    ] == benchmark_gate[source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_status_key]
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "selected_candidate_id"
+    ] == "XP1_private_residual_distribution_gradient_balance_helper_hunk"
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "candidate_count"
+    ] == 5
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "residual_distribution_failure_theory_consumed"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "gradient_balance_implemented"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "bounded_gradient_balance_implemented"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "fail_closed_on_nonfinite_gradient_balance"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "fixture_quality_ready"
+    ] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "true_rt_readiness_unlocked"
+    ] is False
+    gradient_balance_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+            "candidate_ladder"
+        ]
+    }
+    assert gradient_balance_candidates[
+        "XP1_private_residual_distribution_gradient_balance_helper_hunk"
+    ]["accepted_candidate"] is True
+    assert gradient_balance_candidates[
+        "XP3_public_observable_or_threshold_escape"
+    ]["accepted_candidate"] is False
+    assert gradient_balance_candidates[
+        "XP4_unbounded_gradient_balance_solver_rewrite_blocked"
+    ]["accepted_candidate"] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_parity_scoring"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance[
+        "next_prerequisite"
+    ] == benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_next_key
+    ]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_next_key
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_next_key
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_next_key
     ]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -16840,6 +16910,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] in benchmark_gate["blocking_diagnostic"]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_status_key
+    ] in benchmark_gate["blocking_diagnostic"]
+    assert benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_status_key
     ] in benchmark_gate["blocking_diagnostic"]
     assert (
         benchmark_gate[
@@ -17721,7 +17794,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_next_key
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
