@@ -93,29 +93,44 @@ def test_ad_memory_estimate_reasonable():
 
 
 def test_preflight_passes_on_clean_setup():
-    """A sane patch-antenna-ish sim triggers no ERROR / NTFF warnings."""
-    freq_max = 5e9
-    dx = C / freq_max / 20.0
-    extent = 0.060
+    """A sane patch-antenna-ish sim triggers no ERROR / NTFF warnings.
+
+    The original 5 GHz / 60 mm-cube version pre-2026-05-07 was not
+    actually sane: the GP was sub-cell (2 mm at dx≈3 mm = 0.7 cells),
+    the NTFF box reached into the 24 mm-thick x-CPML, and after the
+    NTFF λ/2 near-field guardrail landed (NTFF face must be ≥ λ/2
+    from any source), the 60 mm-cube domain at 5 GHz left no room
+    for a sane NTFF box at all (λ/2 = 30 mm, full domain = 60 mm).
+    Bumped to 10 GHz / 60 mm cube so λ/2 = 15 mm and a real
+    1-cell-margin NTFF box fits clear of CPML and clear of the
+    near field on every face.
+    """
+    freq_max = 10e9
+    dx = C / freq_max / 20.0   # 1.5 mm
+    extent = 0.060             # 60 mm cube; CPML 8·dx = 12 mm, so the
+                                # CPML-free interior is [12, 48] mm.
     sim = Simulation(freq_max=freq_max, domain=(extent, extent, extent),
                      boundary="cpml", cpml_layers=8, dx=dx)
-    # Ground plane well resolved (≥5 cells PEC)
-    sim.add(Box((0.010, 0.010, 0.010), (0.050, 0.050, 0.012)),
+    # Ground plane well resolved (xy = 24 cells, z = 8 cells PEC volume).
+    sim.add(Box((0.012, 0.012, 0.012), (0.048, 0.048, 0.024)),
                      material="pec")
-    sim.add_port((0.030, 0.030, 0.020), "ez")
-    sim.add_probe((0.032, 0.030, 0.020), "ez")
-    # NTFF box with generous λ/4 margins (λ_min = 60mm at 5GHz → margin > 15mm)
+    # Source 2 cells above GP, clear of CPML on every face.
+    sim.add_port((0.030, 0.030, 0.027), "ez")
+    sim.add_probe((0.032, 0.030, 0.027), "ez")
+    # NTFF box: λ_min = 30 mm at 10 GHz → λ/2 = 15 mm.  Every face
+    # sits ≥ 17 mm from the source, well above both λ/4 and λ/2.
     sim.add_ntff_box(
-        corner_lo=(0.005, 0.005, 0.040),
-        corner_hi=(0.055, 0.055, 0.055),
+        corner_lo=(0.013, 0.013, 0.044),
+        corner_hi=(0.047, 0.047, 0.047),
         n_freqs=4,
     )
     issues = sim.preflight(strict=False)
-    # Filter to errors/NTFF/resolution issues we just added
+    # Filter to errors/NTFF/resolution issues that this test guards.
     bad = [s for s in issues
            if s.startswith("ERROR:")
            or "NTFF face" in s
-           or "λ/4" in s]
+           or "λ/4" in s
+           or "λ/2" in s]
     assert not bad, "Clean setup should not trip new checks: " + "\n".join(bad)
 
 
