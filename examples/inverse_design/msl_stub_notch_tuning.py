@@ -94,7 +94,24 @@ EPS_R = 3.66
 H_SUB = 254e-6
 W_TRACE = 600e-6
 DX = 127e-6                            # h_sub / 2 → 2 substrate cells
-L_LINE = 5.0e-3
+L_LINE = 5.0e-3                        # NOTE: see "Imperative |S11|@notch
+                                        # bias" in docs/agent-memory/
+                                        # rfx-known-issues.md.  L_LINE = 5 mm
+                                        # is *short* (≪ λ_g/2 at notch ≈
+                                        # 17 mm), so the imperative
+                                        # `compute_msl_s_matrix` 3-probe
+                                        # extractor sits in the stub
+                                        # junction's standing-wave region
+                                        # and reports |S11|@notch ≈ -7 dB
+                                        # instead of the physical 0 dB.
+                                        # Notch *frequency* is unaffected
+                                        # — that is what Adam optimises on,
+                                        # so the demo's AD pipeline is
+                                        # still meaningful.  For
+                                        # engineering-grade |S11| accuracy
+                                        # bump L_LINE to ≥ 30 mm (cv06b
+                                        # geometry) at the cost of ~6×
+                                        # longer runtime.
 PORT_MARGIN = 1.0e-3
 F_MAX = 9e9
 
