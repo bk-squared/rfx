@@ -39,6 +39,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport,
+    _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing,
     _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_weighted_delta_coupling,
     _private_source_interface_transverse_modal_transfer_map,
     _private_target_basis_oriented_source_interface_transverse_modal_transfer_map,
@@ -4260,6 +4261,149 @@ def test_private_phase_amplitude_transport_is_bounded_and_fail_closed():
         "_private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport"
     ) > source.index(
         "_private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling"
+    )
+
+
+def test_private_characteristic_energy_pairing_is_bounded_and_fail_closed():
+    delta_real = jnp.asarray(
+        [[0.003, -0.002, 0.004], [0.005, -0.003, 0.002], [0.004, 0.006, -0.005]],
+        dtype=jnp.float32,
+    )
+    delta_imag = jnp.asarray(
+        [[0.002, 0.004, -0.003], [-0.002, 0.005, 0.001], [0.004, -0.003, 0.006]],
+        dtype=jnp.float32,
+    )
+    packet_mask = jnp.ones_like(delta_real)
+    source_real = jnp.asarray(
+        [[1.0, 0.9, 1.1], [0.95, 1.05, 0.85], [1.0, 0.92, 1.08]],
+        dtype=jnp.float32,
+    )
+    source_imag = jnp.asarray(
+        [[0.02, -0.08, 0.14], [0.10, 0.18, -0.12], [0.20, -0.04, 0.12]],
+        dtype=jnp.float32,
+    )
+    interface_real = jnp.asarray(
+        [[0.72, 1.05, 0.80], [1.10, 0.70, 0.98], [0.76, 1.02, 0.78]],
+        dtype=jnp.float32,
+    )
+    interface_imag = jnp.asarray(
+        [[0.18, -0.02, 0.26], [-0.08, 0.20, 0.15], [0.27, -0.11, 0.22]],
+        dtype=jnp.float32,
+    )
+    normal_poynting_flux = jnp.asarray(
+        [[0.20, -0.14, 0.18], [-0.07, 0.25, -0.11], [0.17, -0.09, 0.21]],
+        dtype=jnp.float32,
+    )
+    phase_amplitude_transport_scale = jnp.asarray(
+        [[0.08, 0.14, 0.11], [0.12, 0.16, 0.10], [0.09, 0.13, 0.07]],
+        dtype=jnp.float32,
+    )
+
+    balanced_real, balanced_imag, scale, gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            normal_poynting_flux=normal_poynting_flux,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_scale=phase_amplitude_transport_scale,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+
+    packet_mask_np = np.asarray(packet_mask)
+    source_energy = np.asarray((source_real**2 + source_imag**2) * packet_mask)
+    interface_energy = np.asarray((interface_real**2 + interface_imag**2) * packet_mask)
+    local_energy = source_energy + interface_energy + 1.0e-12
+    signed_flux = np.asarray(normal_poynting_flux * packet_mask)
+    expected_signed_flux = (source_energy - interface_energy) * packet_mask_np
+    characteristic_e_pair = np.sqrt(
+        np.maximum(source_energy * interface_energy, 0.0)
+    ) * packet_mask_np
+    characteristic_h_pair = (
+        np.abs(signed_flux * expected_signed_flux) / local_energy
+    ) * packet_mask_np
+    time_centered_characteristic_energy = (
+        0.5 * (characteristic_e_pair + characteristic_h_pair) * packet_mask_np
+    )
+    characteristic_pair_weight = np.abs(
+        characteristic_e_pair - characteristic_h_pair
+    ) / (np.abs(characteristic_e_pair) + np.abs(characteristic_h_pair) + local_energy)
+    transfer_residual_signed = (expected_signed_flux - signed_flux) / (
+        np.abs(expected_signed_flux) + np.abs(signed_flux) + local_energy
+    )
+    source_interface_pair_residual = (source_energy - interface_energy) / local_energy
+    split = (
+        transfer_residual_signed
+        * source_interface_pair_residual
+        * characteristic_pair_weight
+        * packet_mask_np
+    )
+    centered_split = split - (np.sum(split) / (np.sum(packet_mask_np) + 1.0e-12)) * packet_mask_np
+    balance = np.abs(centered_split) * packet_mask_np
+    expected_scale = np.asarray(phase_amplitude_transport_scale) / (
+        1.0 + np.clip(balance, 0.0, 1.0)
+    )
+
+    np.testing.assert_allclose(np.asarray(gate), 1.0)
+    np.testing.assert_allclose(np.sum(centered_split), 0.0, atol=1.0e-7)
+    assert np.max(time_centered_characteristic_energy) > 0.0
+    np.testing.assert_allclose(np.asarray(scale), expected_scale, rtol=1e-6, atol=1e-8)
+    np.testing.assert_allclose(np.asarray(balanced_real), np.asarray(delta_real) * expected_scale, rtol=1e-6, atol=1e-8)
+    np.testing.assert_allclose(np.asarray(balanced_imag), np.asarray(delta_imag) * expected_scale, rtol=1e-6, atol=1e-8)
+    assert np.all(np.asarray(scale) <= np.asarray(phase_amplitude_transport_scale) + 1.0e-8)
+
+    flat_real, flat_imag, flat_scale, flat_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=jnp.ones_like(source_real),
+            source_imag=jnp.zeros_like(source_imag),
+            interface_real=jnp.ones_like(interface_real),
+            interface_imag=jnp.zeros_like(interface_imag),
+            normal_poynting_flux=jnp.zeros_like(normal_poynting_flux),
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_scale=phase_amplitude_transport_scale,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+    np.testing.assert_allclose(np.asarray(flat_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(flat_scale), 0.0)
+    np.testing.assert_allclose(np.asarray(flat_real), 0.0)
+    np.testing.assert_allclose(np.asarray(flat_imag), 0.0)
+
+    nonfinite_real, nonfinite_imag, nonfinite_scale, nonfinite_gate = (
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real.at[1, 1].set(jnp.nan),
+            interface_imag=interface_imag,
+            normal_poynting_flux=normal_poynting_flux,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_scale=phase_amplitude_transport_scale,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_gate=jnp.asarray(1.0, dtype=jnp.float32),
+        )
+    )
+    np.testing.assert_allclose(np.asarray(nonfinite_gate), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_scale), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_real), 0.0)
+    np.testing.assert_allclose(np.asarray(nonfinite_imag), 0.0)
+
+    source = inspect.getsource(_apply_propagation_aware_modal_retry_face_helper)
+    assert source.index(
+        "pre_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_delta_real"
+    ) < source.index(
+        "pre_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_delta_real"
+    )
+    assert source.index(
+        "_private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing"
+    ) > source.index(
+        "_private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport"
     )
 
 def test_private_transverse_modal_coupling_metric_is_fixed_shape_private_contract():
