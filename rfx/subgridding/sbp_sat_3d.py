@@ -4777,6 +4777,179 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         gate,
     )
 
+
+def _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling(
+    *,
+    delta_real: jnp.ndarray,
+    delta_imag: jnp.ndarray,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    normal_poynting_flux: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_scale: jnp.ndarray,
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Privately couple residual split damping to local modal phase transport.
+
+    The residual-split hunk recenters packet-local scalar transfer residuals.
+    This bounded private follow-up consumes that retained scale and modulates the
+    recentered split with local source/interface phase mismatch plus transverse
+    phase-transport variation. The coupled split is recentered again to preserve
+    zero net packet transfer, remains bounded by the residual-split scale, and
+    fails closed on missing/non-finite modal phase evidence without exposing
+    public observables, thresholds, runners, hooks, exports, or API surface.
+    """
+
+    dtype = delta_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    zero = jnp.asarray(0.0, dtype=dtype)
+    one = jnp.asarray(1.0, dtype=dtype)
+    packet_mask = jnp.asarray(packet_mask, dtype=dtype)
+    source_energy = (source_real * source_real + source_imag * source_imag) * packet_mask
+    interface_energy = (
+        interface_real * interface_real + interface_imag * interface_imag
+    ) * packet_mask
+    local_energy = source_energy + interface_energy + floor
+    signed_flux = jnp.asarray(normal_poynting_flux, dtype=dtype) * packet_mask
+    expected_signed_flux = (source_energy - interface_energy) * packet_mask
+    source_owner_weight = source_energy / local_energy
+    interface_owner_weight = interface_energy / local_energy
+    transfer_residual_signed = (expected_signed_flux - signed_flux) / (
+        jnp.abs(expected_signed_flux) + jnp.abs(signed_flux) + local_energy
+    )
+    antisymmetric_residual_split = (
+        transfer_residual_signed * (source_owner_weight - interface_owner_weight)
+    ) * packet_mask
+    packet_weight = jnp.sum(packet_mask) + floor
+    centered_residual_split = (
+        antisymmetric_residual_split
+        - (jnp.sum(antisymmetric_residual_split) / packet_weight) * packet_mask
+    )
+    phase_overlap = (
+        source_real * interface_real + source_imag * interface_imag
+    ) * packet_mask
+    phase_quadrature = (
+        source_imag * interface_real - source_real * interface_imag
+    ) * packet_mask
+    modal_phase_mismatch = jnp.abs(phase_quadrature) / (
+        jnp.abs(phase_overlap) + jnp.abs(phase_quadrature) + local_energy
+    )
+    axis0_modal_phase_transport = (
+        jnp.abs(modal_phase_mismatch[1:, :] - modal_phase_mismatch[:-1, :])
+        * packet_mask[1:, :]
+        * packet_mask[:-1, :]
+    )
+    axis1_modal_phase_transport = (
+        jnp.abs(modal_phase_mismatch[:, 1:] - modal_phase_mismatch[:, :-1])
+        * packet_mask[:, 1:]
+        * packet_mask[:, :-1]
+    )
+    modal_phase_transport = jnp.zeros_like(modal_phase_mismatch)
+    modal_phase_transport = modal_phase_transport.at[1:, :].add(
+        axis0_modal_phase_transport
+    )
+    modal_phase_transport = modal_phase_transport.at[:-1, :].add(
+        axis0_modal_phase_transport
+    )
+    modal_phase_transport = modal_phase_transport.at[:, 1:].add(
+        axis1_modal_phase_transport
+    )
+    modal_phase_transport = modal_phase_transport.at[:, :-1].add(
+        axis1_modal_phase_transport
+    )
+    modal_phase_coupling_weight = (
+        modal_phase_mismatch + modal_phase_transport
+    ) * packet_mask
+    modal_phase_coupled_split = (
+        centered_residual_split * modal_phase_coupling_weight
+    ) * packet_mask
+    centered_modal_phase_coupled_split = (
+        modal_phase_coupled_split
+        - (jnp.sum(modal_phase_coupled_split) / packet_weight) * packet_mask
+    )
+    modal_phase_coupling_balance = (
+        jnp.abs(centered_modal_phase_coupled_split) * packet_mask
+    )
+    modal_phase_coupling_scale = one / (
+        one + jnp.clip(modal_phase_coupling_balance, zero, one)
+    )
+    active_scale = jnp.clip(
+        jnp.asarray(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_scale,
+            dtype=dtype,
+        ),
+        zero,
+        one,
+    )
+    active_gate = jnp.asarray(
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_gate,
+        dtype=dtype,
+    )
+    finite = (
+        jnp.all(jnp.isfinite(delta_real))
+        & jnp.all(jnp.isfinite(delta_imag))
+        & jnp.all(jnp.isfinite(source_real))
+        & jnp.all(jnp.isfinite(source_imag))
+        & jnp.all(jnp.isfinite(interface_real))
+        & jnp.all(jnp.isfinite(interface_imag))
+        & jnp.all(jnp.isfinite(normal_poynting_flux))
+        & jnp.all(jnp.isfinite(packet_mask))
+        & jnp.all(jnp.isfinite(source_energy))
+        & jnp.all(jnp.isfinite(interface_energy))
+        & jnp.all(jnp.isfinite(signed_flux))
+        & jnp.all(jnp.isfinite(expected_signed_flux))
+        & jnp.all(jnp.isfinite(source_owner_weight))
+        & jnp.all(jnp.isfinite(interface_owner_weight))
+        & jnp.all(jnp.isfinite(transfer_residual_signed))
+        & jnp.all(jnp.isfinite(antisymmetric_residual_split))
+        & jnp.all(jnp.isfinite(centered_residual_split))
+        & jnp.all(jnp.isfinite(phase_overlap))
+        & jnp.all(jnp.isfinite(phase_quadrature))
+        & jnp.all(jnp.isfinite(modal_phase_mismatch))
+        & jnp.all(jnp.isfinite(modal_phase_transport))
+        & jnp.all(jnp.isfinite(modal_phase_coupling_weight))
+        & jnp.all(jnp.isfinite(modal_phase_coupled_split))
+        & jnp.all(jnp.isfinite(centered_modal_phase_coupled_split))
+        & jnp.all(jnp.isfinite(modal_phase_coupling_balance))
+        & jnp.all(jnp.isfinite(modal_phase_coupling_scale))
+        & jnp.all(jnp.isfinite(active_scale))
+        & jnp.isfinite(active_gate)
+    )
+    modal_phase_coupling_ready = (
+        finite
+        & (active_gate > floor)
+        & jnp.any(active_scale > floor)
+        & jnp.any(packet_mask > floor)
+        & jnp.any((source_energy + interface_energy) > floor)
+        & jnp.any(jnp.abs(signed_flux) > floor)
+        & jnp.any((modal_phase_coupling_weight * packet_mask) > floor)
+        & jnp.any((modal_phase_coupling_balance * packet_mask) > floor)
+    )
+    gate = jnp.where(modal_phase_coupling_ready, one, zero)
+    safe_scale = jnp.where(
+        modal_phase_coupling_ready,
+        active_scale * modal_phase_coupling_scale * packet_mask,
+        jnp.zeros_like(modal_phase_coupling_scale),
+    )
+    balanced_real = jnp.where(
+        modal_phase_coupling_ready,
+        delta_real * safe_scale,
+        jnp.zeros_like(delta_real),
+    )
+    balanced_imag = jnp.where(
+        modal_phase_coupling_ready,
+        delta_imag * safe_scale,
+        jnp.zeros_like(delta_imag),
+    )
+    return (
+        balanced_real,
+        balanced_imag,
+        safe_scale,
+        gate,
+    )
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -5715,7 +5888,7 @@ def _apply_propagation_aware_modal_retry_face_helper(
         (
             source_interface_transfer_residual_split_delta_real,
             source_interface_transfer_residual_split_delta_imag,
-            _,
+            source_interface_transfer_residual_split_scale,
             source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_gate,
         ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split(
             delta_real=delta_real,
@@ -5744,6 +5917,37 @@ def _apply_propagation_aware_modal_retry_face_helper(
             > 0.0,
             source_interface_transfer_residual_split_delta_imag,
             pre_source_interface_transfer_residual_split_delta_imag,
+        )
+        pre_source_interface_transfer_residual_split_modal_phase_coupling_delta_real = delta_real
+        pre_source_interface_transfer_residual_split_modal_phase_coupling_delta_imag = delta_imag
+        (
+            source_interface_transfer_residual_split_modal_phase_coupling_delta_real,
+            source_interface_transfer_residual_split_modal_phase_coupling_delta_imag,
+            _,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_gate,
+        ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            normal_poynting_flux=normal_poynting_flux,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_scale=source_interface_transfer_residual_split_scale,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_gate=source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_gate,
+        )
+        delta_real = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_gate
+            > 0.0,
+            source_interface_transfer_residual_split_modal_phase_coupling_delta_real,
+            pre_source_interface_transfer_residual_split_modal_phase_coupling_delta_real,
+        )
+        delta_imag = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_gate
+            > 0.0,
+            source_interface_transfer_residual_split_modal_phase_coupling_delta_imag,
+            pre_source_interface_transfer_residual_split_modal_phase_coupling_delta_imag,
         )
         delta_real = (
             delta_real
