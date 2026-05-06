@@ -54,10 +54,13 @@ These four points together motivate the `dft_planes` plumbing and
 this demo is the canonical reproducer of "what's missing for
 engineering-grade differentiable MSL inverse design".
 
-Geometry: shrunken cv06b (uniform dx=127 µm = h_sub/2 = 2 substrate
-cells, L_LINE=5 mm).  The full cv06b dx=80 µm geometry would give
-deeper notches but is too slow for an Adam loop — the parameterisation
-and AD pipeline are mesh-independent.
+Geometry: cv06b-class (uniform dx=127 µm = h_sub/2 = 2 substrate
+cells, L_LINE=30 mm).  Long enough for each MSL port's 3-probe
+extractor to sit outside the stub-junction standing-wave region
+(λ_g/4 reflector-clearance check, enforced by `sim.preflight()` —
+see `tests/test_msl_port_preflight.py::test_reflector_clearance_*`).
+Earlier 5 mm short-line variant gave |S11|@notch ≈ -7 dB instead
+of the physical 0 dB; that bias is closed at this geometry.
 
 Run: ``python examples/inverse_design/msl_stub_notch_tuning.py``
 """
@@ -94,25 +97,20 @@ EPS_R = 3.66
 H_SUB = 254e-6
 W_TRACE = 600e-6
 DX = 127e-6                            # h_sub / 2 → 2 substrate cells
-L_LINE = 5.0e-3                        # NOTE: see "Imperative |S11|@notch
-                                        # bias" in docs/agent-memory/
-                                        # rfx-known-issues.md.  L_LINE = 5 mm
-                                        # is *short* (≪ λ_g/2 at notch ≈
-                                        # 17 mm), so the imperative
+L_LINE = 30.0e-3                       # cv06b-class line length.  Each
+                                        # MSL port's V₃ probe must sit
+                                        # ≥ λ_g/4 from the stub PEC
+                                        # reflector for the imperative
                                         # `compute_msl_s_matrix` 3-probe
-                                        # extractor sits in the stub
-                                        # junction's standing-wave region
-                                        # and reports |S11|@notch ≈ -7 dB
-                                        # instead of the physical 0 dB.
-                                        # Notch *frequency* is unaffected
-                                        # — that is what Adam optimises on,
-                                        # so the demo's AD pipeline is
-                                        # still meaningful.  For
-                                        # engineering-grade |S11| accuracy
-                                        # bump L_LINE to ≥ 30 mm (cv06b
-                                        # geometry) at the cost of ~6×
-                                        # longer runtime.
-PORT_MARGIN = 1.0e-3
+                                        # extractor to read |S11|@notch
+                                        # cleanly; preflight enforces
+                                        # the bound (see
+                                        # `_check_msl_port_geometry`,
+                                        # `tests/test_msl_port_preflight
+                                        # .py::test_reflector_clearance_*`).
+PORT_MARGIN = 1.6e-3                   # ≥ cpml_extent (8·dx ≈ 1.02 mm)
+                                        # + 2·h_sub safety; preflight
+                                        # x-CPML clearance check.
 F_MAX = 9e9
 
 L_STUB_MAX = 14.0e-3
@@ -216,11 +214,23 @@ def main() -> int:
     NUM_PERIODS = float(os.environ.get("RFX_Y2B_PERIODS", 10.0))
     N_ITERS = int(os.environ.get("RFX_Y2B_ITERS", 4))
     LR = float(os.environ.get("RFX_Y2B_LR", 0.4))
-    N_SCAN = int(os.environ.get("RFX_Y2B_SCAN", 7))
+    N_SCAN = int(os.environ.get("RFX_Y2B_SCAN", 5))
 
     sim, y_trace, trace_y_hi, d_set, p_set = build_sim()
     grid = sim._build_grid()
     print(f"Grid {grid.shape}  ({np.prod(grid.shape):,d} cells)  dt={float(grid.dt)*1e12:.2f}ps")
+
+    # Preflight: surfaces MSL geometry warnings (lateral clearance, substrate
+    # cells, x-CPML, reflector clearance — the last is what protects the
+    # 3-probe extractor from sitting in the stub-junction standing-wave
+    # region; see `_check_msl_port_geometry` in rfx/api.py).
+    pre_msgs = sim.preflight()
+    if pre_msgs:
+        print("\nPreflight warnings:")
+        for m in pre_msgs:
+            print(f"  - {m}")
+    else:
+        print("\nPreflight: clean.")
     print(f"εr={EPS_R}, h_sub={H_SUB*1e6:.0f}µm, W={W_TRACE*1e6:.0f}µm, "
           f"dx={DX*1e6:.0f}µm  ε_eff={EPS_EFF:.3f}")
     print(f"L_stub bounds [{L_MIN*1e3:.1f}, {L_MAX*1e3:.1f}] mm   "
