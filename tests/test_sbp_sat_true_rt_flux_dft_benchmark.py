@@ -3944,6 +3944,37 @@ _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_IMPLEMENTATION_PRECEDENCE = 
     _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_IMPLEMENTATION_STATUS,
     f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_material_improvement_ready_true_rt_pending",
 )
+_PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_STATUS = (
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_hunk_insufficient_fixture_quality_pending"
+)
+_PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal source-interface transverse modal transfer-map target-"
+    "basis orientation residual phase/magnitude balance residual modal-coupling "
+    "packet-basis mismatch owner-packet weighting modal energy/impedance "
+    "transverse energy redistribution coupled modal energy-balance target-basis "
+    "packet normalization source/interface packet energy co-normalization "
+    "phase-energy residual source/interface time-centered energy pairing "
+    "packet-basis phase-energy cross-coupling score-path visibility field-update "
+    "coupling solver-observed delta packet-normalized residual residual-weighted "
+    "delta coupling target-packet residual projection source/interface residual "
+    "phase-rotation phase-energy closure residual-distribution failure-theory "
+    "redesign after parity scoring insufficient ralplan"
+)
+_PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_TERMINAL_OUTCOMES = (
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scored_fixture_quality_pending",
+    _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_STATUS,
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    f"no_{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring",
+)
+_PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_PRECEDENCE = (
+    f"no_{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring",
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scored_fixture_quality_pending",
+    _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_STATUS,
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
 
 
 
@@ -39860,6 +39891,192 @@ def _private_phase_energy_closure_residual_distribution_implementation_metadata(
     }
 
 
+def _private_phase_energy_closure_residual_distribution_parity_scoring_metadata(
+    *,
+    residual_distribution_implementation_metadata: dict[str, object],
+) -> dict[str, object]:
+    parity_status = _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_STATUS
+    next_prerequisite = (
+        _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_NEXT_PREREQUISITE
+    )
+    implementation_metadata = residual_distribution_implementation_metadata
+    baseline_metrics = dict(implementation_metadata["baseline_metrics"])
+    metrics = dict(implementation_metadata["metrics"])
+    thresholds = dict(implementation_metadata["thresholds"])
+    threshold_results = dict(implementation_metadata["threshold_results"])
+    score_delta = dict(implementation_metadata["score_delta"])
+    relative_improvement = dict(implementation_metadata["relative_improvement"])
+    material_decision = _material_improvement_decision(
+        baseline_metrics=baseline_metrics,
+        candidate_metrics=metrics,
+        dominant_metric="transverse_magnitude_cv",
+    )
+    score_delta_zero = all(abs(float(value)) <= 1.0e-12 for value in score_delta.values())
+    finite_score = all(
+        np.isfinite(float(value))
+        for mapping in (baseline_metrics, metrics, thresholds, score_delta)
+        for value in mapping.values()
+    )
+    vp0 = {
+        "candidate_id": "VP0_residual_distribution_implementation_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "upstream_residual_distribution_implementation_status": implementation_metadata[
+            "terminal_outcome"
+        ],
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "public_closure_retained": True,
+    }
+    vp1 = {
+        "candidate_id": "VP1_finite_residual_distribution_private_parity_score",
+        "candidate_family": "private_parity_scoring",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": parity_status,
+        "finite_reproducible_score": finite_score,
+        "score_delta_zero": score_delta_zero,
+        "metrics_remained_baseline_identical": score_delta_zero,
+        "material_improvement_decision": material_decision,
+        "public_claim_allowed": False,
+    }
+    vp2 = {
+        "candidate_id": "VP2_material_improvement_to_fixture_quality",
+        "candidate_family": "deferred_private_fixture_quality_recovery",
+        "accepted_candidate": False,
+        "material_improvement_demonstrated": bool(material_decision["passed"]),
+        "not_selected_reason": (
+            "residual-distribution parity score remains insufficient for "
+            "fixture-quality or true-R/T readiness"
+        ),
+        "public_claim_allowed": False,
+    }
+    vp3 = {
+        "candidate_id": "VP3_public_observable_or_threshold_escape",
+        "candidate_family": "rejected_public_or_threshold_escape",
+        "accepted_candidate": False,
+        "requires_public_observable": True,
+        "requires_threshold_change": True,
+        "requires_runner_state": True,
+        "requires_hook_state": True,
+        "requires_api_surface": True,
+        "not_selected_reason": (
+            "private residual-distribution scoring cannot promote DFT/flux/"
+            "TFSF/port/S-parameter, API/export, runner, hook, docs-public/"
+            "examples, README, package export, or threshold changes"
+        ),
+        "public_claim_allowed": False,
+    }
+    vp4 = {
+        "candidate_id": "VP4_residual_distribution_parity_scoring_insufficient",
+        "candidate_family": "private_failure_theory_followup",
+        "accepted_candidate": False,
+        "selected_next_private_design_target": (
+            "phase_energy_closure_residual_distribution_failure_theory"
+        ),
+        "not_selected_reason": (
+            "finite private scoring still does not unlock fixture-quality, "
+            "reference-quality, slab true-R/T, or public-promotion gates"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (vp0, vp1, vp2, vp3, vp4)
+    return {
+        "status": parity_status,
+        "terminal_outcome": parity_status,
+        "terminal_outcome_taxonomy": (
+            _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_TERMINAL_OUTCOMES
+        ),
+        "terminal_outcome_precedence": (
+            _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_PRECEDENCE
+        ),
+        "diagnostic_scope": (
+            "private_phase_energy_closure_residual_distribution_parity_scoring_only"
+        ),
+        "upstream_residual_distribution_implementation_status": implementation_metadata[
+            "terminal_outcome"
+        ],
+        "upstream_phase_energy_closure_failure_theory_status": implementation_metadata[
+            "upstream_phase_energy_closure_failure_theory_status"
+        ],
+        "candidate_ladder_declared_before_solver_edit": True,
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite VP0/VP1/VP2/VP3/VP4 residual-distribution parity-scoring "
+            "ladder; score privately, reject public/threshold escape, and route "
+            "to failure theory when material improvement is insufficient"
+        ),
+        "selected_candidate_id": "VP1_finite_residual_distribution_private_parity_score",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "residual_distribution_implementation_consumed": True,
+        "residual_distribution_hunk_retained": True,
+        "phase_energy_closure_failure_theory_consumed": True,
+        "finite_reproducible_score": finite_score,
+        "score_delta_zero": score_delta_zero,
+        "metrics_remained_baseline_identical": score_delta_zero,
+        "private_benchmark_evidence_only": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": material_decision["dominant"][
+            "relative_improvement"
+        ],
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "upstream_solver_behavior_changed": bool(
+            implementation_metadata["solver_behavior_changed"]
+        ),
+        "upstream_field_update_behavior_changed": bool(
+            implementation_metadata["field_update_behavior_changed"]
+        ),
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "retained_residual_distribution_hunk": True,
+        "retained_phase_energy_closure_hunk": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_theory": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": next_prerequisite,
+        "reason": (
+            "the retained residual-distribution hunk is finite but insufficient "
+            "for fixture-quality or public readiness, so the next private lane "
+            "must analyze the remaining residual-distribution floor"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -45636,6 +45853,42 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_implementation_next_key
     ]
 
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_key = (
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_implementation_key.replace(
+            "_implementation", "_parity_scoring"
+        )
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_next_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_key}_next_prerequisite"
+    )
+    packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_metadata = (
+        _private_phase_energy_closure_residual_distribution_parity_scoring_metadata(
+            residual_distribution_implementation_metadata=(
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_implementation_metadata
+            )
+        )
+    )
+    base_metadata.update(
+        {
+            f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_key}_status": (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_metadata[
+                    "status"
+                ]
+            ),
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_key: (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_metadata
+            ),
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_next_key: (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
+    base_metadata["follow_up_recommendation"] = base_metadata[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_next_key
+    ]
+
     if not reference_quality_ready:
         return base_metadata | {
             "classification": "inconclusive",
@@ -46614,6 +46867,22 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "phase-rotation phase-energy closure residual-distribution "
                 "implementation lane records "
                 f"{packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal source/"
+                "interface transverse modal transfer-map target-basis "
+                "orientation residual phase/magnitude balance residual modal-"
+                "coupling packet-basis mismatch owner-packet weighting modal "
+                "energy/impedance transverse energy redistribution coupled "
+                "modal energy-balance target-basis packet normalization "
+                "source/interface packet energy co-normalization phase-"
+                "energy residual source/interface time-centered energy-"
+                "pairing packet-basis phase-energy cross-coupling score-path "
+                "visibility field-update coupling solver-observed delta "
+                "packet-normalized residual residual-weighted delta coupling "
+                "target-packet residual projection source/interface residual "
+                "phase-rotation phase-energy closure residual-distribution "
+                "parity-scoring lane records "
+                f"{packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -46623,7 +46892,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_implementation_next_key
+                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_scoring_next_key
             ],
         }
 
@@ -65058,6 +65327,86 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     ] == metadata[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_next_key
     ]
+
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_key = (
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_key.replace(
+            "_implementation", "_parity_scoring"
+        )
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_status_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_key}_status"
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_next_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_key}_next_prerequisite"
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity = metadata[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_key
+    ]
+    assert metadata[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_status_key
+    ] == _PRIVATE_PHASE_ENERGY_CLOSURE_RESIDUAL_DISTRIBUTION_PARITY_SCORING_STATUS
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "upstream_residual_distribution_implementation_status"
+    ] == metadata[source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_status_key]
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "selected_candidate_id"
+    ] == "VP1_finite_residual_distribution_private_parity_score"
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "candidate_count"
+    ] == 5
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "residual_distribution_implementation_consumed"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "residual_distribution_hunk_retained"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "finite_reproducible_score"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "score_delta_zero"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "metrics_remained_baseline_identical"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "material_improvement_demonstrated"
+    ] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "fixture_quality_ready"
+    ] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "production_patch_applied"
+    ] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "solver_behavior_changed"
+    ] is False
+    residual_distribution_parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+            "candidate_ladder"
+        ]
+    }
+    assert residual_distribution_parity_candidates[
+        "VP1_finite_residual_distribution_private_parity_score"
+    ]["accepted_candidate"] is True
+    assert residual_distribution_parity_candidates[
+        "VP3_public_observable_or_threshold_escape"
+    ]["accepted_candidate"] is False
+    assert residual_distribution_parity_candidates[
+        "VP4_residual_distribution_parity_scoring_insufficient"
+    ]["accepted_candidate"] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_failure_theory"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity[
+        "next_prerequisite"
+    ] == metadata[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_next_key
+    ]
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
     )
@@ -65081,13 +65430,13 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_next_key
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_next_key
         ]
     )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_next_key
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_next_key
         ]
     )
     assert (
@@ -65185,6 +65534,12 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata[
             source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_status_key
+        ]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_parity_status_key
         ]
         in metadata["blocking_diagnostic"]
     )
