@@ -17262,11 +17262,112 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] == benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_parity_next_key
     ]
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_key = (
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_parity_key.replace(
+            "_parity_scoring", "_failure_theory"
+        )
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_status_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_key}_status"
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_next_key = (
+        f"{source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_key}_next_prerequisite"
+    )
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure = benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_key
+    ]
+    assert benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_status_key
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_theory_ready"
+    )
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "upstream_laplacian_parity_scoring_status"
+    ] == benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_parity_status_key
+    ]
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "upstream_laplacian_implementation_status"
+    ] == benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_status_key
+    ]
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "selected_candidate_id"
+    ] == "AFP2_laplacian_normal_poynting_flux_floor"
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "candidate_count"
+    ] == 5
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "laplacian_parity_scoring_consumed"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "laplacian_implementation_consumed"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "laplacian_hunk_retained"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "metrics_remained_baseline_identical"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "fixture_quality_ready"
+    ] is False
+    normal_poynting_flux_contract = source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "normal_poynting_flux_contract"
+    ]
+    assert normal_poynting_flux_contract["requires_laplacian_hunk"] is True
+    assert normal_poynting_flux_contract["requires_laplacian_parity_evidence"] is True
+    assert normal_poynting_flux_contract[
+        "requires_packet_local_normal_poynting_flux_balance"
+    ] is True
+    assert normal_poynting_flux_contract[
+        "requires_energy_flux_divergence_balance"
+    ] is True
+    assert normal_poynting_flux_contract[
+        "requires_source_interface_time_centered_energy_pairing"
+    ] is True
+    assert normal_poynting_flux_contract["requires_phase_energy_closure"] is True
+    assert normal_poynting_flux_contract["bounded_by_existing_relaxation"] is True
+    assert normal_poynting_flux_contract["fixed_shape_jit_safe_contract"] is True
+    assert normal_poynting_flux_contract[
+        "fail_closed_on_missing_normal_poynting_flux"
+    ] is True
+    assert normal_poynting_flux_contract[
+        "fail_closed_on_nonfinite_normal_poynting_flux"
+    ] is True
+    assert normal_poynting_flux_contract["requires_public_observable"] is False
+    assert normal_poynting_flux_contract["implementation_deferred"] is True
+    laplacian_failure_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+            "candidate_ladder"
+        ]
+    }
+    assert laplacian_failure_candidates[
+        "AFP2_laplacian_normal_poynting_flux_floor"
+    ]["accepted_candidate"] is True
+    assert laplacian_failure_candidates[
+        "AFP1_repeat_laplacian_parity_score"
+    ]["accepted_candidate"] is False
+    assert laplacian_failure_candidates[
+        "AFP3_helper_existence_public_threshold_escape"
+    ]["accepted_candidate"] is False
+    assert laplacian_failure_candidates[
+        "AFP4_unbounded_flux_solver_rewrite_blocked"
+    ]["accepted_candidate"] is False
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_implementation"
+    ] is True
+    assert source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure[
+        "next_prerequisite"
+    ] == benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_next_key
+    ]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_parity_next_key
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_parity_next_key
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
@@ -17279,6 +17380,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] in benchmark_gate["blocking_diagnostic"]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_parity_status_key
+    ] in benchmark_gate["blocking_diagnostic"]
+    assert benchmark_gate[
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_status_key
     ] in benchmark_gate["blocking_diagnostic"]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -18296,7 +18400,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_parity_next_key
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_failure_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
