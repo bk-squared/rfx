@@ -18553,11 +18553,82 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] == benchmark_gate[
         signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_next_key
     ]
+    signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_key = (
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_key.replace(
+            "_implementation", "_parity_scoring"
+        )
+    )
+    signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_status_key = (
+        f"{signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_key}_status"
+    )
+    signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_next_key = (
+        f"{signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_key}_next_prerequisite"
+    )
+    signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity = benchmark_gate[
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_key
+    ]
+    assert benchmark_gate[
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_status_key
+    ] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_hunk_insufficient_fixture_quality_pending"
+    )
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "upstream_source_interface_transfer_residual_split_modal_phase_coupling_implementation_status"
+    ] == benchmark_gate[
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_status_key
+    ]
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "selected_candidate_id"
+    ] == "ALB1_finite_modal_phase_coupling_private_parity_score"
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "candidate_count"
+    ] == 5
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "finite_reproducible_score"
+    ] is True
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "score_delta_zero"
+    ] is True
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "metrics_remained_baseline_identical"
+    ] is True
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "modal_phase_coupling_hunk_retained"
+    ] is True
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "fixture_quality_ready"
+    ] is False
+    source_interface_transfer_residual_split_modal_phase_parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+            "candidate_ladder"
+        ]
+    }
+    assert source_interface_transfer_residual_split_modal_phase_parity_candidates[
+        "ALB1_finite_modal_phase_coupling_private_parity_score"
+    ]["accepted_candidate"] is True
+    assert source_interface_transfer_residual_split_modal_phase_parity_candidates[
+        "ALB2_material_improvement_to_fixture_quality"
+    ]["accepted_candidate"] is False
+    assert source_interface_transfer_residual_split_modal_phase_parity_candidates[
+        "ALB3_public_observable_or_threshold_escape"
+    ]["accepted_candidate"] is False
+    assert source_interface_transfer_residual_split_modal_phase_parity_candidates[
+        "ALB4_modal_phase_coupling_failure_theory_required"
+    ]["accepted_candidate"] is False
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_failure_theory"
+    ] is True
+    assert signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity[
+        "next_prerequisite"
+    ] == benchmark_gate[
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_next_key
+    ]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_next_key
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_next_key
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
@@ -18621,6 +18692,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] in benchmark_gate["blocking_diagnostic"]
     assert benchmark_gate[
         signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_status_key
+    ] in benchmark_gate["blocking_diagnostic"]
+    assert benchmark_gate[
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_status_key
     ] in benchmark_gate["blocking_diagnostic"]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -19638,7 +19712,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_next_key
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_parity_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
