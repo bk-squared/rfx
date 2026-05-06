@@ -15717,11 +15717,90 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert target_packet_residual_projection_implementation[
         "next_prerequisite"
     ] == benchmark_gate[target_packet_residual_projection_implementation_next_key]
+
+    target_packet_residual_projection_parity_key = (
+        target_packet_residual_projection_implementation_key.replace(
+            "_implementation", "_parity_scoring"
+        )
+    )
+    target_packet_residual_projection_parity_status_key = (
+        f"{target_packet_residual_projection_parity_key}_status"
+    )
+    target_packet_residual_projection_parity_next_key = (
+        f"{target_packet_residual_projection_parity_key}_next_prerequisite"
+    )
+    target_packet_residual_projection_parity = benchmark_gate[
+        target_packet_residual_projection_parity_key
+    ]
+    assert benchmark_gate[target_packet_residual_projection_parity_status_key] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_hunk_insufficient_fixture_quality_pending"
+    )
+    assert target_packet_residual_projection_parity[
+        "upstream_target_packet_residual_projection_implementation_status"
+    ] == benchmark_gate[target_packet_residual_projection_implementation_status_key]
+    assert target_packet_residual_projection_parity[
+        "selected_candidate_id"
+    ] == "MP1_finite_target_packet_residual_projection_private_parity_score"
+    assert target_packet_residual_projection_parity["candidate_count"] == 5
+    assert target_packet_residual_projection_parity[
+        "baseline_metrics"
+    ] == target_packet_residual_projection_implementation["baseline_metrics"]
+    assert target_packet_residual_projection_parity[
+        "metrics"
+    ] == target_packet_residual_projection_implementation["metrics"]
+    assert target_packet_residual_projection_parity[
+        "score_delta"
+    ] == target_packet_residual_projection_implementation["score_delta"]
+    assert target_packet_residual_projection_parity[
+        "target_packet_residual_projection_implementation_consumed"
+    ]
+    assert target_packet_residual_projection_parity[
+        "target_packet_residual_projection_implementation_retained"
+    ]
+    assert target_packet_residual_projection_parity[
+        "target_packet_residual_projection_hunk_retained"
+    ]
+    assert target_packet_residual_projection_parity[
+        "target_packet_residual_projection_contract_consumed"
+    ]
+    assert target_packet_residual_projection_parity["finite_reproducible_score"]
+    assert target_packet_residual_projection_parity["score_delta_zero"]
+    assert target_packet_residual_projection_parity[
+        "metrics_remained_baseline_identical"
+    ]
+    assert target_packet_residual_projection_parity[
+        "material_improvement_demonstrated"
+    ] is False
+    assert target_packet_residual_projection_parity["fixture_quality_ready"] is False
+    assert target_packet_residual_projection_parity[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert target_packet_residual_projection_parity["production_patch_applied"] is False
+    assert target_packet_residual_projection_parity["solver_behavior_changed"] is False
+    parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in target_packet_residual_projection_parity["candidate_ladder"]
+    }
+    assert parity_candidates[
+        "MP1_finite_target_packet_residual_projection_private_parity_score"
+    ]["accepted_candidate"]
+    assert (
+        parity_candidates[
+            "MP4_target_packet_residual_projection_parity_scoring_insufficient"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert target_packet_residual_projection_parity[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_failure_theory"
+    ]
+    assert target_packet_residual_projection_parity[
+        "next_prerequisite"
+    ] == benchmark_gate[target_packet_residual_projection_parity_next_key]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        target_packet_residual_projection_implementation_next_key
+        target_packet_residual_projection_parity_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        target_packet_residual_projection_implementation_next_key
+        target_packet_residual_projection_parity_next_key
     ]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -15816,6 +15895,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] in benchmark_gate["blocking_diagnostic"]
     assert benchmark_gate[
         target_packet_residual_projection_implementation_status_key
+    ] in benchmark_gate["blocking_diagnostic"]
+    assert benchmark_gate[
+        target_packet_residual_projection_parity_status_key
     ] in benchmark_gate["blocking_diagnostic"]
     assert (
         benchmark_gate[
@@ -16697,7 +16779,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        target_packet_residual_projection_implementation_next_key
+        target_packet_residual_projection_parity_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"

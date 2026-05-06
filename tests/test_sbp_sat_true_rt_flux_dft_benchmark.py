@@ -3678,6 +3678,36 @@ _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_
     _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_IMPLEMENTATION_STATUS,
     f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_material_improvement_ready_true_rt_pending",
 )
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_STATUS = (
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_hunk_insufficient_fixture_quality_pending"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_NEXT_PREREQUISITE = (
+    "private plane-wave modal projection/normalizer projected target residual-basis "
+    "energy-biorthogonal source-interface transverse modal transfer-map target-"
+    "basis orientation residual phase/magnitude balance residual modal-coupling "
+    "packet-basis mismatch owner-packet weighting modal energy/impedance "
+    "transverse energy redistribution coupled modal energy-balance target-basis "
+    "packet normalization source/interface packet energy co-normalization "
+    "phase-energy residual source/interface time-centered energy pairing "
+    "packet-basis phase-energy cross-coupling score-path visibility field-update "
+    "coupling solver-observed delta packet-normalized residual residual-weighted "
+    "delta coupling target-packet residual projection failure-theory redesign "
+    "after parity scoring insufficient ralplan"
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_TERMINAL_OUTCOMES = (
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scored_fixture_quality_pending",
+    _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_STATUS,
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+    f"no_{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring",
+)
+_PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_PRECEDENCE = (
+    f"no_{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring",
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scored_fixture_quality_pending",
+    _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_STATUS,
+    f"{_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_PREFIX}_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_material_improvement_ready_true_rt_pending",
+    "private_subgrid_vacuum_plane_wave_parity_passed_true_rt_pending",
+)
 
 
 
@@ -37778,6 +37808,220 @@ def _private_plane_wave_modal_projection_normalizer_projected_target_residual_ba
     }
 
 
+def _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring_metadata(
+    *,
+    packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata: dict[
+        str, object
+    ],
+) -> dict[str, object]:
+    parity_status = _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_STATUS
+    next_prerequisite = _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_NEXT_PREREQUISITE
+    baseline_metrics = dict(
+        packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+            "baseline_metrics"
+        ]
+    )
+    metrics = dict(
+        packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+            "metrics"
+        ]
+    )
+    thresholds = dict(
+        packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+            "thresholds"
+        ]
+    )
+    threshold_results = dict(
+        packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+            "threshold_results"
+        ]
+    )
+    score_delta = dict(
+        packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+            "score_delta"
+        ]
+    )
+    relative_improvement = dict(
+        packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+            "relative_improvement"
+        ]
+    )
+    material_decision = _material_improvement_decision(
+        baseline_metrics=baseline_metrics,
+        candidate_metrics=metrics,
+        dominant_metric="transverse_magnitude_cv",
+    )
+    score_delta_zero = all(
+        abs(float(value)) <= _NORMALIZATION_FLOOR
+        for value in score_delta.values()
+        if isinstance(value, int | float)
+    )
+    mp0 = {
+        "candidate_id": "MP0_target_packet_residual_projection_hunk_score_freeze",
+        "candidate_family": "baseline_freeze",
+        "accepted_candidate": False,
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "public_closure_retained": True,
+    }
+    mp1 = {
+        "candidate_id": "MP1_finite_target_packet_residual_projection_private_parity_score",
+        "candidate_family": "private_target_packet_residual_projection_parity_score",
+        "accepted_candidate": True,
+        "selected_terminal_outcome": parity_status,
+        "finite_reproducible_score": True,
+        "score_delta_zero": score_delta_zero,
+        "metrics_remained_baseline_identical": score_delta_zero,
+        "upstream_target_packet_residual_projection_implementation_status": (
+            packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+                "terminal_outcome"
+            ]
+        ),
+        "public_claim_allowed": False,
+    }
+    mp2 = {
+        "candidate_id": "MP2_target_packet_residual_projection_material_improvement_ready_true_rt_pending",
+        "candidate_family": "not_ready_material_improvement",
+        "accepted_candidate": False,
+        "material_improvement_decision": material_decision,
+        "not_selected_reason": (
+            "the target-packet residual projection hunk is retained, but "
+            "frozen material-improvement gates remain closed"
+        ),
+        "public_claim_allowed": False,
+    }
+    mp3 = {
+        "candidate_id": "MP3_target_packet_residual_projection_subgrid_vacuum_parity_passed_true_rt_pending",
+        "candidate_family": "not_ready_fixture_quality",
+        "accepted_candidate": False,
+        "subgrid_vacuum_parity_passed": False,
+        "fixture_quality_ready": False,
+        "not_selected_reason": (
+            "target-packet residual projection parity evidence is retained, "
+            "but frozen transverse uniformity and vacuum stability gates are "
+            "not all met"
+        ),
+        "public_claim_allowed": False,
+    }
+    mp4 = {
+        "candidate_id": "MP4_target_packet_residual_projection_parity_scoring_insufficient",
+        "candidate_family": "route_to_failure_theory",
+        "accepted_candidate": False,
+        "next_private_lane": next_prerequisite,
+        "selected_terminal_outcome": parity_status,
+        "not_selected_reason": (
+            "the private target-packet residual projection hunk is retained "
+            "and finite, but frozen fixture-quality metrics remain baseline-"
+            "identical; route to private failure-theory instead of public "
+            "promotion"
+        ),
+        "public_claim_allowed": False,
+    }
+    candidates = (mp0, mp1, mp2, mp3, mp4)
+    return {
+        "status": parity_status,
+        "terminal_outcome": parity_status,
+        "terminal_outcome_taxonomy": _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_TERMINAL_OUTCOMES,
+        "terminal_outcome_precedence": _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_PRECEDENCE,
+        "diagnostic_scope": "private_target_packet_residual_projection_parity_scoring_only",
+        "upstream_target_packet_residual_projection_implementation_status": (
+            packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+                "terminal_outcome"
+            ]
+        ),
+        "candidate_ladder_declared_before_slow_scoring": True,
+        "candidate_count": len(candidates),
+        "candidate_policy": (
+            "finite MP0/MP1/MP2/MP3/MP4 target-packet residual projection "
+            "parity-scoring ladder; score retained private projection hunk "
+            "without public promotion or threshold changes"
+        ),
+        "selected_candidate_id": "MP1_finite_target_packet_residual_projection_private_parity_score",
+        "candidate_ladder": candidates,
+        "thresholds_checksum": _reference_quality_thresholds_checksum(),
+        "baseline_metrics": baseline_metrics,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_results": threshold_results,
+        "score_delta": score_delta,
+        "relative_improvement": relative_improvement,
+        "baseline_metrics_preserved": True,
+        "thresholds_unchanged": True,
+        "target_packet_residual_projection_implementation_consumed": True,
+        "target_packet_residual_projection_implementation_retained": True,
+        "target_packet_residual_projection_hunk_retained": True,
+        "target_packet_residual_projection_contract_consumed": True,
+        "target_packet_residual_projection_contract": dict(
+            packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+                "target_packet_residual_projection_contract"
+            ]
+        ),
+        "implementation_helper": packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+            "implementation_helper"
+        ],
+        "consumer_helper": "_apply_propagation_aware_modal_retry_face_helper",
+        "finite_reproducible_score": True,
+        "score_delta_zero": score_delta_zero,
+        "metrics_remained_baseline_identical": score_delta_zero,
+        "private_benchmark_evidence_only": True,
+        "subgrid_vacuum_parity_scored": True,
+        "subgrid_vacuum_parity_passed": False,
+        "material_improvement_decision": material_decision,
+        "material_improvement_demonstrated": False,
+        "dominant_metric": material_decision["dominant_metric"],
+        "dominant_relative_improvement": material_decision["dominant"][
+            "relative_improvement"
+        ],
+        "paired_passed": material_decision["paired_passed"],
+        "usable_bins_passed": material_decision["usable_bins_passed"],
+        "fixture_quality_ready": False,
+        "fixture_quality_pending": True,
+        "true_rt_readiness_unlocked": False,
+        "slab_rt_scored": False,
+        "production_patch_applied": False,
+        "solver_behavior_changed": False,
+        "field_update_behavior_changed": False,
+        "upstream_solver_behavior_changed": bool(
+            packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+                "solver_behavior_changed"
+            ]
+        ),
+        "upstream_field_update_behavior_changed": bool(
+            packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata[
+                "field_update_behavior_changed"
+            ]
+        ),
+        "runner_behavior_changed": False,
+        "new_solver_hunk_retained": False,
+        "retained_target_packet_residual_projection_hunk": True,
+        "retained_residual_weighted_delta_coupling_hunk": True,
+        "benchmark_plane_dft_observable_imported": False,
+        "solver_local_proxy_uses_plane_dft_monitor": False,
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_failure_theory": True,
+        "api_preflight_changes_allowed": False,
+        "rfx_api_changes_allowed": False,
+        "package_export_changed": False,
+        "readme_changed": False,
+        "docs_public_changed": False,
+        "examples_changed": False,
+        "hook_surface_changed": False,
+        "true_rt_public_observable_promoted": False,
+        "dft_flux_tfsf_port_sparameter_promoted": False,
+        "next_prerequisite": next_prerequisite,
+        "reason": (
+            "the retained target-packet residual projection hunk is privately "
+            "parity-scored and finite, but frozen material-improvement and "
+            "fixture-quality gates remain closed; route to private failure-"
+            "theory instead of true-R/T or public observable promotion"
+        ),
+        **_private_public_closure_metadata(),
+    }
+
+
 def _private_tfsf_candidate_metrics(
     *,
     plane_shift_cells: int,
@@ -43221,6 +43465,40 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
         target_packet_residual_projection_implementation_next_key
     ]
 
+    target_packet_residual_projection_parity_scoring_key = (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring"
+    )
+    target_packet_residual_projection_parity_scoring_next_key = (
+        f"{target_packet_residual_projection_parity_scoring_key}_next_prerequisite"
+    )
+    packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring_metadata = (
+        _private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring_metadata(
+            packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata=(
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata
+            ),
+        )
+    )
+    base_metadata.update(
+        {
+            f"{target_packet_residual_projection_parity_scoring_key}_status": (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring_metadata[
+                    "status"
+                ]
+            ),
+            target_packet_residual_projection_parity_scoring_key: (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring_metadata
+            ),
+            target_packet_residual_projection_parity_scoring_next_key: (
+                packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring_metadata[
+                    "next_prerequisite"
+                ]
+            ),
+        }
+    )
+    base_metadata["follow_up_recommendation"] = base_metadata[
+        target_packet_residual_projection_parity_scoring_next_key
+    ]
+
     if not reference_quality_ready:
         return base_metadata | {
             "classification": "inconclusive",
@@ -44062,6 +44340,20 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "packet-normalized residual residual-weighted delta coupling "
                 "target-packet residual projection implementation lane records "
                 f"{packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_implementation_metadata['terminal_outcome']}"
+                "; the private plane-wave modal projection/normalizer "
+                "projected target residual-basis energy-biorthogonal source/"
+                "interface transverse modal transfer-map target-basis "
+                "orientation residual phase/magnitude balance residual modal-"
+                "coupling packet-basis mismatch owner-packet weighting modal "
+                "energy/impedance transverse energy redistribution coupled "
+                "modal energy-balance target-basis packet normalization "
+                "source/interface packet energy co-normalization phase-"
+                "energy residual source/interface time-centered energy-"
+                "pairing packet-basis phase-energy cross-coupling score-path "
+                "visibility field-update coupling solver-observed delta "
+                "packet-normalized residual residual-weighted delta coupling "
+                "target-packet residual projection parity-scoring lane records "
+                f"{packet_basis_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_parity_scoring_metadata['terminal_outcome']}"
                 "; historical private design lanes remain part of the blocker "
                 "chain: discrete_eh_work_ledger_mismatch, "
                 "ledger_mismatch_detected, no_signature_compatible_bounded_repair, "
@@ -44071,7 +44363,7 @@ def _private_tfsf_incident_metadata() -> dict[str, object]:
                 "private_time_centered_paired_face_helper_implemented"
             ),
             "next_prerequisite": base_metadata[
-                target_packet_residual_projection_implementation_next_key
+                target_packet_residual_projection_parity_scoring_next_key
             ],
         }
 
@@ -61683,6 +61975,87 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert target_packet_residual_projection_implementation[
         "next_prerequisite"
     ] == metadata[target_packet_residual_projection_implementation_next_key]
+
+    target_packet_residual_projection_parity_key = (
+        target_packet_residual_projection_implementation_key.replace(
+            "_implementation", "_parity_scoring"
+        )
+    )
+    target_packet_residual_projection_parity_status_key = (
+        f"{target_packet_residual_projection_parity_key}_status"
+    )
+    target_packet_residual_projection_parity_next_key = (
+        f"{target_packet_residual_projection_parity_key}_next_prerequisite"
+    )
+    target_packet_residual_projection_parity = metadata[
+        target_packet_residual_projection_parity_key
+    ]
+    assert metadata[
+        target_packet_residual_projection_parity_status_key
+    ] == _PRIVATE_PLANE_WAVE_MODAL_PROJECTION_NORMALIZER_PROJECTED_TARGET_RESIDUAL_BASIS_ENERGY_BIORTHOGONAL_SOURCE_INTERFACE_TRANSVERSE_MODAL_TRANSFER_MAP_TARGET_BASIS_ORIENTATION_RESIDUAL_PHASE_MAGNITUDE_BALANCE_RESIDUAL_MODAL_COUPLING_PACKET_BASIS_MISMATCH_OWNER_PACKET_WEIGHTING_MODAL_ENERGY_IMPEDANCE_TRANSVERSE_ENERGY_REDISTRIBUTION_COUPLED_MODAL_ENERGY_BALANCE_TARGET_BASIS_PACKET_NORMALIZATION_SOURCE_INTERFACE_PACKET_ENERGY_CONORMALIZATION_PHASE_ENERGY_RESIDUAL_SOURCE_INTERFACE_TIME_CENTERED_ENERGY_PAIRING_PACKET_BASIS_PHASE_ENERGY_CROSS_COUPLING_SCORE_PATH_VISIBILITY_FIELD_UPDATE_COUPLING_SOLVER_OBSERVED_DELTA_PACKET_NORMALIZED_RESIDUAL_RESIDUAL_WEIGHTED_DELTA_COUPLING_TARGET_PACKET_RESIDUAL_PROJECTION_PARITY_SCORING_STATUS
+    assert target_packet_residual_projection_parity[
+        "upstream_target_packet_residual_projection_implementation_status"
+    ] == metadata[target_packet_residual_projection_implementation_status_key]
+    assert target_packet_residual_projection_parity[
+        "selected_candidate_id"
+    ] == "MP1_finite_target_packet_residual_projection_private_parity_score"
+    assert target_packet_residual_projection_parity["candidate_count"] == 5
+    assert target_packet_residual_projection_parity[
+        "baseline_metrics"
+    ] == target_packet_residual_projection_implementation["baseline_metrics"]
+    assert target_packet_residual_projection_parity[
+        "metrics"
+    ] == target_packet_residual_projection_implementation["metrics"]
+    assert target_packet_residual_projection_parity[
+        "score_delta"
+    ] == target_packet_residual_projection_implementation["score_delta"]
+    assert target_packet_residual_projection_parity[
+        "target_packet_residual_projection_implementation_consumed"
+    ] is True
+    assert target_packet_residual_projection_parity[
+        "target_packet_residual_projection_implementation_retained"
+    ] is True
+    assert target_packet_residual_projection_parity[
+        "target_packet_residual_projection_hunk_retained"
+    ] is True
+    assert target_packet_residual_projection_parity[
+        "target_packet_residual_projection_contract_consumed"
+    ] is True
+    assert target_packet_residual_projection_parity[
+        "finite_reproducible_score"
+    ] is True
+    assert target_packet_residual_projection_parity["score_delta_zero"] is True
+    assert target_packet_residual_projection_parity[
+        "metrics_remained_baseline_identical"
+    ] is True
+    assert target_packet_residual_projection_parity[
+        "material_improvement_demonstrated"
+    ] is False
+    assert target_packet_residual_projection_parity["fixture_quality_ready"] is False
+    assert target_packet_residual_projection_parity[
+        "true_rt_readiness_unlocked"
+    ] is False
+    assert target_packet_residual_projection_parity["production_patch_applied"] is False
+    assert target_packet_residual_projection_parity["solver_behavior_changed"] is False
+    assert target_packet_residual_projection_parity[
+        "upstream_solver_behavior_changed"
+    ] is True
+    target_packet_residual_projection_parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in target_packet_residual_projection_parity["candidate_ladder"]
+    }
+    assert target_packet_residual_projection_parity_candidates[
+        "MP1_finite_target_packet_residual_projection_private_parity_score"
+    ]["accepted_candidate"] is True
+    assert target_packet_residual_projection_parity_candidates[
+        "MP4_target_packet_residual_projection_parity_scoring_insufficient"
+    ]["accepted_candidate"] is False
+    assert target_packet_residual_projection_parity[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_failure_theory"
+    ] is True
+    assert target_packet_residual_projection_parity[
+        "next_prerequisite"
+    ] == metadata[target_packet_residual_projection_parity_next_key]
     assert metadata["causal_ladder_rungs"]["rung0_baseline_freeze"]["status"] == (
         "complete"
     )
@@ -61706,13 +62079,13 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     assert (
         metadata["next_prerequisite"]
         == metadata[
-            target_packet_residual_projection_implementation_next_key
+            target_packet_residual_projection_parity_next_key
         ]
     )
     assert (
         metadata["follow_up_recommendation"]
         == metadata[
-            target_packet_residual_projection_implementation_next_key
+            target_packet_residual_projection_parity_next_key
         ]
     )
     assert (
@@ -61773,6 +62146,10 @@ def test_private_plane_true_rt_no_go_metadata_is_explicit():
     )
     assert (
         metadata[target_packet_residual_projection_implementation_status_key]
+        in metadata["blocking_diagnostic"]
+    )
+    assert (
+        metadata[target_packet_residual_projection_parity_status_key]
         in metadata["blocking_diagnostic"]
     )
     assert (
