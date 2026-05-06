@@ -4892,6 +4892,107 @@ class Simulation:
                     stacklevel=3,
                 )
 
+            # ---- 4. Probe-to-reflector distance — standing-wave bias ----
+            # The 3-probe Z0 extractor in compute_msl_s_matrix assumes a
+            # CLEAN travelling-wave regime at the V1/V2/V3 probe locations.
+            # When a strong reflector (PEC stub, open termination, mismatch)
+            # sits within ≲ λ_g/4 of the probes, V_i contains substantial
+            # standing-wave content and the recovered (α, γ, Z0) get
+            # biased — typically reading |S11| ≪ 1 even when physics
+            # demands full reflection.  Catches the cv06b-vs-Y2-demo
+            # divergence (cv06b's L_LINE=30mm passes; Y2's L_LINE=5mm
+            # fails by ~7 dB on |S11|@notch — see
+            # `docs/research_notes/20260506_y2_s11_notch_bias_root_cause.md`).
+            #
+            # Conservative ε_eff_proxy = 5.0 → upper bound on β → lower
+            # bound on λ_g → most stringent (smallest) recommended
+            # clearance.  For air-only lines this is overly conservative,
+            # but the cost of a false-positive warning is low.
+            EPS_EFF_PROXY = 5.0
+            f_max = float(self._freq_max)
+            c0 = 2.998e8
+            lambda_g_min = c0 / (f_max * (EPS_EFF_PROXY ** 0.5))
+            # Recommended: probe-to-reflector ≥ λ_g/4 at f_max.  At lower
+            # frequencies λ_g is larger and the same physical clearance
+            # represents fewer cells of standing-wave-free zone — but
+            # f_max is the worst case.
+            min_probe_clear = 0.25 * lambda_g_min
+
+            # Last 3-probe x-position (V₃, deepest into the line)
+            n_off = pe.n_probe_offset if pe.n_probe_offset is not None else 5
+            n_sp = pe.n_probe_spacing if pe.n_probe_spacing is not None else 3
+            sign = 1.0 if pe.direction == "+x" else -1.0
+            x_v3 = x_feed + sign * (n_off + 2 * n_sp) * dx
+
+            # Walk geometry: find PEC Box reflectors between this port's
+            # V3 and the FAR end of the line.  Exclude the through-line
+            # trace itself — heuristic: the trace is a Box whose
+            # x-extent ≥ 80 % of the inter-port distance and whose
+            # y-extent equals the trace width.
+            x_far = (float(domain[0]) - x_abs_hi) if pe.direction == "+x" else x_abs_lo
+            inter_port_extent = abs(x_far - x_feed)
+            from rfx.geometry.csg import Box as _Box
+            nearest_d = float("inf")
+            nearest_label = None
+            for ge in getattr(self, "_geometry", []):
+                shape = getattr(ge, "shape", None)
+                mat = getattr(ge, "material_name", "")
+                if not isinstance(shape, _Box) or str(mat).lower() != "pec":
+                    continue
+                lo, hi = shape.corner_lo, shape.corner_hi
+                box_x_lo, box_x_hi = float(lo[0]), float(hi[0])
+                box_y_lo, box_y_hi = float(lo[1]), float(hi[1])
+                # Skip the through-line trace itself
+                box_x_extent = box_x_hi - box_x_lo
+                box_y_extent = box_y_hi - box_y_lo
+                if (box_x_extent >= 0.8 * inter_port_extent
+                        and abs(box_y_extent - w_trace) <= dx):
+                    continue
+                # Skip ground plane boxes (the box that spans both
+                # transversally AND below the substrate; identify by
+                # a thin z-extent below the substrate top)
+                if box_y_extent >= 0.8 * float(domain[1]):
+                    continue
+                # Distance from V3 to the nearest edge of this box,
+                # measured ALONG the propagation direction
+                if sign > 0:
+                    if box_x_lo > x_v3:
+                        d = box_x_lo - x_v3
+                    elif box_x_hi < x_v3:
+                        continue   # behind the probe
+                    else:
+                        d = 0.0
+                else:
+                    if box_x_hi < x_v3:
+                        d = x_v3 - box_x_hi
+                    elif box_x_lo > x_v3:
+                        continue
+                    else:
+                        d = 0.0
+                if d < nearest_d:
+                    nearest_d = d
+                    nearest_label = (
+                        f"PEC Box at x∈[{box_x_lo*1e3:.2f},{box_x_hi*1e3:.2f}]mm "
+                        f"y∈[{box_y_lo*1e3:.2f},{box_y_hi*1e3:.2f}]mm"
+                    )
+
+            if nearest_d < min_probe_clear and nearest_label is not None:
+                _w.warn(
+                    f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                    f"3-probe V₃ at x={x_v3*1e3:.2f}mm sits {nearest_d*1e6:.0f}µm "
+                    f"from a strong reflector ({nearest_label}); recommended "
+                    f"≥ {min_probe_clear*1e6:.0f}µm "
+                    f"(= λ_g/4 at f_max with ε_eff_proxy={EPS_EFF_PROXY:.1f}). "
+                    f"Standing-wave content at the probes will bias "
+                    f"`compute_msl_s_matrix`'s Z₀ extraction and |S11|@notch — "
+                    f"physical |S11|→1 at a quarter-wave open stub may read "
+                    f"as -5 to -10 dB instead of 0 dB.  Mitigation: "
+                    f"extend L_LINE so the line between port and reflector "
+                    f"is ≥ λ_g/2, OR bump n_probe_offset on add_msl_port to "
+                    f"push V₃ further into a clean travelling-wave region.",
+                    stacklevel=3,
+                )
+
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""
         if self._mode not in ("2d_tmz", "3d"):
