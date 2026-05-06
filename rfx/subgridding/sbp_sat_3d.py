@@ -3474,6 +3474,99 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
     )
 
 
+def _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_coupling(
+    *,
+    delta_real: jnp.ndarray,
+    delta_imag: jnp.ndarray,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    target_packet_residual_projection_scale: jnp.ndarray,
+    target_packet_residual_projection_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Privately couple source/interface residual phase rotation into a delta.
+
+    The helper is solver-local, fixed-shape, and norm-preserving before the
+    existing target-packet projection scale is applied.  It derives a private
+    source/interface unit-phase rotation from already-owned packet state and
+    fails closed on missing, inactive, or non-finite phase evidence without
+    exposing public observables, thresholds, runners, hooks, exports, or API
+    surface.
+    """
+
+    dtype = delta_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    zero = jnp.asarray(0.0, dtype=dtype)
+    one = jnp.asarray(1.0, dtype=dtype)
+    source_energy = source_real * source_real + source_imag * source_imag
+    interface_energy = interface_real * interface_real + interface_imag * interface_imag
+    source_magnitude = jnp.sqrt(jnp.maximum(source_energy, floor))
+    interface_magnitude = jnp.sqrt(jnp.maximum(interface_energy, floor))
+    source_unit_real = source_real / source_magnitude
+    source_unit_imag = source_imag / source_magnitude
+    interface_unit_real = interface_real / interface_magnitude
+    interface_unit_imag = interface_imag / interface_magnitude
+    rotation_real = interface_unit_real * source_unit_real + interface_unit_imag * source_unit_imag
+    rotation_imag = interface_unit_imag * source_unit_real - interface_unit_real * source_unit_imag
+    phase_gap = jnp.sqrt(
+        jnp.maximum(
+            (interface_unit_real - source_unit_real) ** 2
+            + (interface_unit_imag - source_unit_imag) ** 2,
+            floor,
+        )
+    )
+    active_scale = jnp.clip(
+        jnp.asarray(target_packet_residual_projection_scale, dtype=dtype),
+        zero,
+        one,
+    )
+    active_gate = jnp.asarray(target_packet_residual_projection_gate, dtype=dtype)
+    finite = (
+        jnp.all(jnp.isfinite(delta_real))
+        & jnp.all(jnp.isfinite(delta_imag))
+        & jnp.all(jnp.isfinite(source_real))
+        & jnp.all(jnp.isfinite(source_imag))
+        & jnp.all(jnp.isfinite(interface_real))
+        & jnp.all(jnp.isfinite(interface_imag))
+        & jnp.all(jnp.isfinite(packet_mask))
+        & jnp.all(jnp.isfinite(rotation_real))
+        & jnp.all(jnp.isfinite(rotation_imag))
+        & jnp.all(jnp.isfinite(phase_gap))
+        & jnp.isfinite(active_scale)
+        & jnp.isfinite(active_gate)
+    )
+    phase_ready = (
+        finite
+        & (active_gate > floor)
+        & (active_scale > floor)
+        & jnp.any((source_energy * packet_mask) > floor)
+        & jnp.any((interface_energy * packet_mask) > floor)
+        & jnp.any((phase_gap * packet_mask) > floor)
+    )
+    gate = jnp.where(phase_ready, one, zero)
+    safe_scale = jnp.where(phase_ready, active_scale, zero)
+    rotated_real = delta_real * rotation_real - delta_imag * rotation_imag
+    rotated_imag = delta_real * rotation_imag + delta_imag * rotation_real
+    coupled_real = jnp.where(
+        phase_ready,
+        rotated_real * packet_mask * safe_scale,
+        jnp.zeros_like(delta_real),
+    )
+    coupled_imag = jnp.where(
+        phase_ready,
+        rotated_imag * packet_mask * safe_scale,
+        jnp.zeros_like(delta_imag),
+    )
+    return (
+        coupled_real,
+        coupled_imag,
+        safe_scale,
+        gate,
+    )
+
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -4077,7 +4170,7 @@ def _apply_propagation_aware_modal_retry_face_helper(
         (
             delta_real,
             delta_imag,
-            _,
+            target_packet_residual_projection_scale,
             target_packet_residual_projection_gate,
         ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection(
             delta_real=delta_real,
@@ -4089,8 +4182,26 @@ def _apply_propagation_aware_modal_retry_face_helper(
                 residual_weighted_delta_coupling_gate
             ),
         )
-        delta_real = delta_real * target_packet_residual_projection_gate
-        delta_imag = delta_imag * target_packet_residual_projection_gate
+        (
+            delta_real,
+            delta_imag,
+            _,
+            source_interface_residual_phase_rotation_gate,
+        ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_coupling(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            packet_mask=packet_mask,
+            target_packet_residual_projection_scale=(
+                target_packet_residual_projection_scale
+            ),
+            target_packet_residual_projection_gate=target_packet_residual_projection_gate,
+        )
+        delta_real = delta_real * source_interface_residual_phase_rotation_gate
+        delta_imag = delta_imag * source_interface_residual_phase_rotation_gate
         corrected_coarse_e = (
             coarse_e[0] + delta_real,
             coarse_e[1] + delta_imag,

@@ -15910,11 +15910,84 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert target_packet_residual_projection_failure[
         "next_prerequisite"
     ] == benchmark_gate[target_packet_residual_projection_failure_next_key]
+
+    source_interface_residual_phase_rotation_key = (
+        target_packet_residual_projection_failure_key.replace(
+            "_failure_theory",
+            "_source_interface_residual_phase_rotation_implementation",
+        )
+    )
+    source_interface_residual_phase_rotation_status_key = (
+        f"{source_interface_residual_phase_rotation_key}_status"
+    )
+    source_interface_residual_phase_rotation_next_key = (
+        f"{source_interface_residual_phase_rotation_key}_next_prerequisite"
+    )
+    source_interface_residual_phase_rotation = benchmark_gate[
+        source_interface_residual_phase_rotation_key
+    ]
+    assert benchmark_gate[source_interface_residual_phase_rotation_status_key] == (
+        "private_plane_wave_modal_projection_normalizer_projected_target_residual_basis_energy_biorthogonal_source_interface_transverse_modal_transfer_map_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_coupling_hunk_retained_fixture_quality_pending"
+    )
+    assert source_interface_residual_phase_rotation[
+        "upstream_target_packet_residual_projection_failure_theory_status"
+    ] == benchmark_gate[target_packet_residual_projection_failure_status_key]
+    assert source_interface_residual_phase_rotation[
+        "selected_candidate_id"
+    ] == "OP1_private_source_interface_residual_phase_rotation_helper_hunk"
+    assert source_interface_residual_phase_rotation["candidate_count"] == 5
+    assert source_interface_residual_phase_rotation[
+        "target_packet_residual_projection_failure_theory_consumed"
+    ]
+    assert source_interface_residual_phase_rotation[
+        "source_interface_residual_phase_rotation_coupling_implemented"
+    ]
+    assert source_interface_residual_phase_rotation[
+        "bounded_source_interface_residual_phase_rotation_implemented"
+    ]
+    assert source_interface_residual_phase_rotation["fixed_shape_jit_safe_contract"]
+    assert source_interface_residual_phase_rotation[
+        "fail_closed_on_missing_phase_rotation"
+    ]
+    assert source_interface_residual_phase_rotation[
+        "fail_closed_on_nonfinite_phase_rotation"
+    ]
+    assert source_interface_residual_phase_rotation["production_patch_applied"]
+    assert source_interface_residual_phase_rotation["solver_behavior_changed"]
+    assert source_interface_residual_phase_rotation["field_update_behavior_changed"]
+    assert source_interface_residual_phase_rotation[
+        "true_rt_readiness_unlocked"
+    ] is False
+    source_interface_phase_impl_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in source_interface_residual_phase_rotation["candidate_ladder"]
+    }
+    assert source_interface_phase_impl_candidates[
+        "OP1_private_source_interface_residual_phase_rotation_helper_hunk"
+    ]["accepted_candidate"]
+    assert (
+        source_interface_phase_impl_candidates[
+            "OP3_public_observable_or_threshold_escape"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert (
+        source_interface_phase_impl_candidates[
+            "OP4_unbounded_phase_rotation_solver_rewrite_blocked"
+        ]["accepted_candidate"]
+        is False
+    )
+    assert source_interface_residual_phase_rotation[
+        "next_lane_requires_target_basis_orientation_residual_phase_magnitude_balance_residual_modal_coupling_packet_basis_mismatch_owner_packet_weighting_modal_energy_impedance_transverse_energy_redistribution_coupled_modal_energy_balance_target_basis_packet_normalization_source_interface_packet_energy_conormalization_phase_energy_residual_source_interface_time_centered_energy_pairing_packet_basis_phase_energy_cross_coupling_score_path_visibility_field_update_coupling_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_coupling_parity_scoring"
+    ]
+    assert source_interface_residual_phase_rotation[
+        "next_prerequisite"
+    ] == benchmark_gate[source_interface_residual_phase_rotation_next_key]
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        target_packet_residual_projection_failure_next_key
+        source_interface_residual_phase_rotation_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        target_packet_residual_projection_failure_next_key
+        source_interface_residual_phase_rotation_next_key
     ]
     assert "paired_face_coupling_design_ready" in benchmark_gate["blocking_diagnostic"]
     assert (
@@ -16015,6 +16088,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ] in benchmark_gate["blocking_diagnostic"]
     assert benchmark_gate[
         target_packet_residual_projection_failure_status_key
+    ] in benchmark_gate["blocking_diagnostic"]
+    assert benchmark_gate[
+        source_interface_residual_phase_rotation_status_key
     ] in benchmark_gate["blocking_diagnostic"]
     assert (
         benchmark_gate[
@@ -16896,7 +16972,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        target_packet_residual_projection_failure_next_key
+        source_interface_residual_phase_rotation_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
