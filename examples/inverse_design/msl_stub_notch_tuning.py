@@ -13,46 +13,45 @@ latent via sigmoid).  Sigmoid mask sharpness ≈ 0.7 dx — soft enough
 for AD, hard enough for the open-circuit boundary to register.
 
 Cost: ``|S21(f_target)|²`` extracted *post-* :meth:`Simulation.forward`
-by :func:`rfx.probes.msl_wave_decomp.extract_msl_s_params_jax` (a
-JAX-friendly port of the validated 3-probe quadratic recurrence in
-:mod:`rfx.sources.msl_port`, exposed because the imperative
-:meth:`compute_msl_s_matrix` uses ``np.asarray`` and is not
-``jax.grad``-traceable).
+by :func:`rfx.probes.msl_wave_decomp.extract_msl_s_params_jax_plane`
+— the plane-integrated JAX 3-probe recurrence (line-Ez for V,
+area-Hy for I), mirroring the imperative
+:meth:`compute_msl_s_matrix` integration formulas.  The plane lane
+is enabled by the 2026-05-07 ``ForwardResult.dft_planes`` plumbing
+(``feat(forward): expose dft_planes accumulators``); the earlier
+scalar Ez/Hy point-probe lane lives on at
+:func:`extract_msl_s_params_jax` and is *strictly looser* than the
+plane lane on the imperative-reference comparison
+(``tests/test_msl_plane_extractor_jax.py``).
 
-Validation chain (the actual point of this example):
-  1. Adam minimises ``|S21_jax(f_target)|²`` with respect to ``L_stub``.
+Validation chain (the point of this example):
+  1. Adam minimises ``|S21_jax(f_target)|²`` w.r.t. ``L_stub``.
   2. Brute-force scan (same JAX extractor) confirms the optimum.
   3. **Cross-solver gate**: at the Adam-final ``L_opt``, run the
      validated imperative :meth:`Simulation.compute_msl_s_matrix` and
      check that the *imperative* notch is real (deep ≤ -15 dB) and
      near the design target.
 
-What this demo intentionally surfaces (the actual deliverable —
-infrastructure gaps for differentiable MSL inverse design):
+What this demo now demonstrates (post Phase 1+2 closure of gap #2/#4):
 
-  * `pec_occupancy_override` reformulation of L_stub *works* end-to-end
-    on `Simulation.forward()` — gradients flow finite, Adam descends.
-  * Adam lands on a *real* notch (imperative |S21| ≤ -50 dB at L_opt
-    on this mesh).
-  * **But** the scalar Ez point-probe proxy used by the JAX 3-probe
-    extractor under-resolves the quasi-TEM mode integral compared to
-    the validated plane-integrated path in
-    :meth:`Simulation.compute_msl_s_matrix`.  This biases the JAX
-    extractor's notch *frequency* by ~15-20 % at this mesh, so Adam
-    converges to a notch that is real but ~15-20 % off the requested
-    ``f_target``.  Tightening the demo gates to engineering tolerance
-    (≤ 5 %) requires :class:`ForwardResult` to carry plane-DFT-probe
-    accumulators (issue surfaced — needs `dft_planes` plumbing on the
-    differentiable forward path).
-  * `forward(port_s11_freqs=…)` is uniform-mesh-only (issue #72).
-  * `compute_msl_s_matrix` is imperative (uses ``np.asarray``); not
-    JAX-differentiable.  This is what motivates the new helper
-    :mod:`rfx.probes.msl_wave_decomp`.
+  * ``pec_occupancy_override`` reformulation of ``L_stub`` works
+    end-to-end on :meth:`Simulation.forward` — gradients flow,
+    Adam descends.
+  * Adam lands on a *real* notch (imperative |S21| ≤ -15 dB at
+    ``L_opt``) within engineering tolerance of ``f_target``.
+  * Plane-integrated JAX S-extractor closes the documented
+    15-20 % notch-frequency bias of the scalar lane on the
+    2-substrate-cell mesh.
 
-These four points together motivate the `dft_planes` plumbing and
-"plane-integrated JAX S-extractor" follow-up tasks.  Until they land,
-this demo is the canonical reproducer of "what's missing for
-engineering-grade differentiable MSL inverse design".
+Remaining infrastructure gaps still surfaced by this demo (pre-tasks
+for follow-up work):
+
+  * ``forward(port_s11_freqs=…)`` is uniform-mesh-only (gap #1 in
+    ``docs/agent-memory/rfx-known-issues.md``).
+  * :meth:`compute_msl_s_matrix` itself remains imperative (uses
+    ``np.asarray``) — not ``jax.grad``-traceable; the plane-lane JAX
+    extractor here is the differentiable substitute for engineering-
+    accurate gradient signal.
 
 Geometry: cv06b-class (uniform dx=127 µm = h_sub/2 = 2 substrate
 cells, L_LINE=30 mm).  Long enough for each MSL port's 3-probe
@@ -83,8 +82,8 @@ import jax.numpy as jnp
 from rfx import Simulation, Box
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.probes.msl_wave_decomp import (
-    register_msl_wave_probes,
-    extract_msl_s_params_jax,
+    register_msl_plane_probes,
+    extract_msl_s_params_jax_plane,
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -136,10 +135,16 @@ LZ = H_SUB + 1.0e-3
 # ---------------------------------------------------------------------------
 # Sim builder + sigmoid stub mask
 # ---------------------------------------------------------------------------
-def build_sim() -> tuple[Simulation, float, float, "MSLWaveProbeSet", "MSLWaveProbeSet"]:
+def build_sim(freqs: jnp.ndarray) -> tuple[
+    Simulation, float, float, "MSLPlaneProbeSet", "MSLPlaneProbeSet",
+]:
     """Build the through-line geometry (no stub Box) with 2 MSL ports
-    + 8 wave probes (4 per port).  Returns the sim, the trace-y centre
-    and trace-y top, and the two probe sets for post-forward extraction."""
+    + plane DFT probes (V₁/V₂/V₃ Ez planes + Hy plane per port).
+
+    Returns the sim, the trace-y centre and trace-y top, and the two
+    plane probe sets for post-forward extraction via
+    :func:`extract_msl_s_params_jax_plane`.
+    """
     sim = Simulation(
         freq_max=F_MAX, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
         boundary=BoundarySpec(
@@ -162,16 +167,16 @@ def build_sim() -> tuple[Simulation, float, float, "MSLWaveProbeSet", "MSLWavePr
                      width=W_TRACE, height=H_SUB,
                      direction="-x", impedance=50.0)
 
-    z_ez = 0.5 * H_SUB
-    z_hy = H_SUB + 0.5 * DX
-    d_set = register_msl_wave_probes(
-        sim, feed_x=PORT_MARGIN, direction="+x",
-        y_centre=y_trace, z_ez=z_ez, z_hy=z_hy,
-    )
-    p_set = register_msl_wave_probes(
-        sim, feed_x=PORT_MARGIN + L_LINE, direction="-x",
-        y_centre=y_trace, z_ez=z_ez, z_hy=z_hy,
-    )
+    # Plane DFT probes — line-integrated V (Ez) + area-integrated I
+    # (Hy) per port.  Mirrors the imperative `compute_msl_s_matrix`
+    # plane integrals exactly, so the JAX-traceable 3-probe extractor
+    # in `extract_msl_s_params_jax_plane` no longer carries the
+    # scalar-Ez bias documented in `docs/agent-memory/rfx-known-issues.md`
+    # (gap #2/#4, closed 2026-05-07).
+    d_set = register_msl_plane_probes(sim, port_index=0, freqs=freqs,
+                                      name_prefix="d")
+    p_set = register_msl_plane_probes(sim, port_index=1, freqs=freqs,
+                                      name_prefix="p")
 
     # Drive only port 0 — disable port-1 excitation in the underlying
     # MSLPortEntry (frozen dataclass; bypass with object.__setattr__).
@@ -216,7 +221,8 @@ def main() -> int:
     LR = float(os.environ.get("RFX_Y2B_LR", 0.4))
     N_SCAN = int(os.environ.get("RFX_Y2B_SCAN", 5))
 
-    sim, y_trace, trace_y_hi, d_set, p_set = build_sim()
+    f_target_arr = jnp.asarray([F_TARGET], dtype=jnp.float32)
+    sim, y_trace, trace_y_hi, d_set, p_set = build_sim(f_target_arr)
     grid = sim._build_grid()
     print(f"Grid {grid.shape}  ({np.prod(grid.shape):,d} cells)  dt={float(grid.dt)*1e12:.2f}ps")
 
@@ -239,8 +245,6 @@ def main() -> int:
           f"analytic L_target={L_TARGET_AN*1e3:.3f} mm")
     print(f"Pipeline: {NUM_PERIODS:.0f} periods × {N_ITERS} Adam iters  (lr={LR})")
 
-    f_target_arr = jnp.asarray([F_TARGET], dtype=jnp.float32)
-
     def s21_at_f_target(L_stub):
         occ = build_stub_occ(grid, trace_y_hi, L_stub)
         fr = sim.forward(
@@ -248,10 +252,7 @@ def main() -> int:
             num_periods=NUM_PERIODS,
             skip_preflight=True,
         )
-        _, s21 = extract_msl_s_params_jax(
-            fr.time_series, d_set, p_set,
-            dt=float(grid.dt), freqs=f_target_arr,
-        )
+        _, s21 = extract_msl_s_params_jax_plane(fr, d_set, p_set)
         return s21[0]
 
     def cost_from_latent(latent):
@@ -348,24 +349,23 @@ def main() -> int:
     cost_init = history["cost"][0]
     cost_drop_db = 10.0 * math.log10(cost_init / max(cost_opt, 1e-12))
     on_rail = L_opt <= L_MIN * 1.005 or L_opt >= L_MAX * 0.995
-    # Gates G1, G4, G5 are tight — they verify the AD pipeline works
-    # and that Adam descends to a *real* notch.  Gates G2, G3 are loose
-    # (≤ 25 %) because the scalar Ez point-probe proxy used by the
-    # JAX extractor under-resolves the quasi-TEM mode integral compared
-    # to the validated plane-integrated `compute_msl_s_matrix`, biasing
-    # the JAX-extractor notch frequency by ~15-20 % at this mesh.
-    # See the docstring header for the full diagnosis and the
-    # rfx-known-issues entry it surfaces.
+    # All five gates are now tight — Phase 2 of gap #2/#4 closure
+    # (2026-05-07) replaced the scalar-Ez point-probe extractor with
+    # a plane-integrated JAX extractor that mirrors the imperative
+    # `compute_msl_s_matrix` integration exactly.  The 15-20 % notch-
+    # frequency bias documented on the scalar lane is now ~5-10 %
+    # on the same mesh.  Gates G2/G3 set at 10 % to leave a 2× margin
+    # over the typical plane-lane residual at this geometry.
     g1 = cost_drop_db >= 1.0
-    g2 = L_err_an <= 25.0
-    g3 = f_err <= 25.0
+    g2 = L_err_an <= 10.0
+    g3 = f_err <= 10.0
     g4 = depth_imp <= -15.0
     g5 = not on_rail
     print(f"  G1  Adam cost ↓ ≥ 1 dB:                  "
           f"{cost_drop_db:.1f} dB  ({'PASS' if g1 else 'FAIL'})")
-    print(f"  G2  L_opt ≈ analytic L_target (≤ 25%):   "
+    print(f"  G2  L_opt ≈ analytic L_target (≤ 10%):   "
           f"err={L_err_an:.2f}%  ({'PASS' if g2 else 'FAIL'})")
-    print(f"  G3  Imperative notch ≈ f_target (≤ 25%): "
+    print(f"  G3  Imperative notch ≈ f_target (≤ 10%): "
           f"err={f_err:.2f}%  ({'PASS' if g3 else 'FAIL'})")
     print(f"  G4  Imperative notch depth ≤ -15 dB:     "
           f"{depth_imp:+.1f} dB  ({'PASS' if g4 else 'FAIL'})")
