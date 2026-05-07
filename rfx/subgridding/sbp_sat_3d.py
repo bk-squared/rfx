@@ -5439,7 +5439,24 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
     visibility_scale_gate = (
         one - half * jnp.clip(jnp.abs(scalar_packet_residual_blend), zero, one)
     ) * packet_mask
-    work_conjugate_phase_transport_scale = visibility_scale_gate / (
+    visibility_scale_signed_direction = (
+        jnp.clip(
+            scalar_packet_residual_blend
+            * jnp.clip(source_interface_energy_ledger, -one, one),
+            -one,
+            one,
+        )
+        * packet_mask
+    )
+    visibility_scale_signed_gate = (
+        jnp.clip(
+            visibility_scale_gate - (half * half) * visibility_scale_signed_direction,
+            half,
+            one,
+        )
+        * packet_mask
+    )
+    work_conjugate_phase_transport_scale = visibility_scale_signed_gate / (
         one + work_conjugate_phase_transport_balance
     )
     active_scale = jnp.clip(
