@@ -5261,6 +5261,134 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         gate,
     )
 
+
+def _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport(
+    *,
+    delta_real: jnp.ndarray,
+    delta_imag: jnp.ndarray,
+    source_real: jnp.ndarray,
+    source_imag: jnp.ndarray,
+    interface_real: jnp.ndarray,
+    interface_imag: jnp.ndarray,
+    normal_poynting_flux: jnp.ndarray,
+    packet_mask: jnp.ndarray,
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_scale: jnp.ndarray,
+    source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_gate: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Privately transport work-conjugate characteristic phase.
+
+    This bounded solver-local hunk consumes the characteristic energy-pairing
+    scale/gate and adds a small source/interface work-conjugate phase transport
+    rotation.  The phase-transport work is zero-mean over the packet, remains
+    bounded by the retained characteristic energy-pairing scale, and fails
+    closed on missing, flat, or non-finite phase evidence.  It does not expose
+    public true R/T, DFT/flux/TFSF/port/S-parameter observables, thresholds,
+    runners, hooks, exports, or API surface.
+    """
+
+    dtype = delta_real.dtype
+    floor = jnp.asarray(1.0e-12, dtype=dtype)
+    zero = jnp.asarray(0.0, dtype=dtype)
+    one = jnp.asarray(1.0, dtype=dtype)
+    half = jnp.asarray(0.5, dtype=dtype)
+    packet_mask = jnp.asarray(packet_mask, dtype=dtype)
+    source_energy = (source_real * source_real + source_imag * source_imag) * packet_mask
+    interface_energy = (
+        interface_real * interface_real + interface_imag * interface_imag
+    ) * packet_mask
+    local_energy = source_energy + interface_energy + floor
+    characteristic_phase_norm = (
+        jnp.sqrt(jnp.maximum(source_energy * interface_energy, zero)) + floor
+    )
+    signed_flux = jnp.asarray(normal_poynting_flux, dtype=dtype) * packet_mask
+    expected_signed_flux = (source_energy - interface_energy) * packet_mask
+    flux_transport_weight = jnp.abs(signed_flux - expected_signed_flux) / (
+        jnp.abs(signed_flux) + jnp.abs(expected_signed_flux) + local_energy
+    )
+    work_conjugate_phase = (
+        (source_real * interface_imag - source_imag * interface_real)
+        * packet_mask
+        / characteristic_phase_norm
+    )
+    work_conjugate_phase_transport = (
+        work_conjugate_phase * flux_transport_weight * packet_mask
+    )
+    packet_weight = jnp.sum(packet_mask) + floor
+    centered_work_conjugate_phase_transport = (
+        work_conjugate_phase_transport
+        - (jnp.sum(work_conjugate_phase_transport) / packet_weight) * packet_mask
+    )
+    limited_work_conjugate_phase_transport = (
+        jnp.clip(centered_work_conjugate_phase_transport, -half, half) * packet_mask
+    )
+    work_conjugate_phase_transport_balance = (
+        jnp.abs(limited_work_conjugate_phase_transport) * packet_mask
+    )
+    work_conjugate_phase_transport_scale = one / (
+        one + work_conjugate_phase_transport_balance
+    )
+    active_scale = jnp.clip(
+        jnp.asarray(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_scale,
+            dtype=dtype,
+        ),
+        zero,
+        one,
+    )
+    active_gate = jnp.asarray(
+        source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_gate,
+        dtype=dtype,
+    )
+    finite = (
+        jnp.all(jnp.isfinite(delta_real))
+        & jnp.all(jnp.isfinite(delta_imag))
+        & jnp.all(jnp.isfinite(source_real))
+        & jnp.all(jnp.isfinite(source_imag))
+        & jnp.all(jnp.isfinite(interface_real))
+        & jnp.all(jnp.isfinite(interface_imag))
+        & jnp.all(jnp.isfinite(normal_poynting_flux))
+        & jnp.all(jnp.isfinite(packet_mask))
+        & jnp.all(jnp.isfinite(active_scale))
+        & jnp.isfinite(active_gate)
+    )
+    work_conjugate_phase_transport_ready = (
+        finite
+        & (active_gate > floor)
+        & jnp.any(active_scale > floor)
+        & jnp.any(packet_mask > floor)
+        & jnp.any((source_energy + interface_energy) > floor)
+        & jnp.any(jnp.abs(work_conjugate_phase) > floor)
+        & jnp.any((work_conjugate_phase_transport_balance * packet_mask) > floor)
+    )
+    gate = jnp.where(work_conjugate_phase_transport_ready, one, zero)
+    safe_scale = jnp.where(
+        work_conjugate_phase_transport_ready,
+        active_scale * work_conjugate_phase_transport_scale * packet_mask,
+        jnp.zeros_like(work_conjugate_phase_transport_scale),
+    )
+    transported_real = (
+        delta_real - delta_imag * limited_work_conjugate_phase_transport
+    )
+    transported_imag = (
+        delta_imag + delta_real * limited_work_conjugate_phase_transport
+    )
+    balanced_real = jnp.where(
+        work_conjugate_phase_transport_ready,
+        transported_real * safe_scale,
+        jnp.zeros_like(delta_real),
+    )
+    balanced_imag = jnp.where(
+        work_conjugate_phase_transport_ready,
+        transported_imag * safe_scale,
+        jnp.zeros_like(delta_imag),
+    )
+    return (
+        balanced_real,
+        balanced_imag,
+        safe_scale,
+        gate,
+    )
+
 def _project_private_modal_basis_packets(
     *,
     source_real: jnp.ndarray,
@@ -6321,6 +6449,41 @@ def _apply_propagation_aware_modal_retry_face_helper(
             > 0.0,
             source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_delta_imag,
             pre_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_delta_imag,
+        )
+        pre_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_delta_real = delta_real
+        pre_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_delta_imag = delta_imag
+        (
+            source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_delta_real,
+            source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_delta_imag,
+            _source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_scale,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_gate,
+        ) = _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport(
+            delta_real=delta_real,
+            delta_imag=delta_imag,
+            source_real=source_real,
+            source_imag=source_imag,
+            interface_real=interface_real,
+            interface_imag=interface_imag,
+            normal_poynting_flux=normal_poynting_flux,
+            packet_mask=packet_mask,
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_scale=(
+                _source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_scale
+            ),
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_gate=(
+                source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_gate
+            ),
+        )
+        delta_real = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_gate
+            > 0.0,
+            source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_delta_real,
+            pre_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_delta_real,
+        )
+        delta_imag = jnp.where(
+            source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_gate
+            > 0.0,
+            source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_delta_imag,
+            pre_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_delta_imag,
         )
         delta_real = (
             delta_real
