@@ -5372,6 +5372,7 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         )
         * packet_mask
     )
+    time_centered_face_work_ledger_transport = face_resolved_ledger_transport
     work_conjugate_phase_transport = (
         (
             work_conjugate_phase
@@ -5379,6 +5380,7 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
             + signed_admittance_phase_work_conjugacy
             + phase_work_conjugacy_ledger_coupling
             + face_resolved_ledger_transport
+            + time_centered_face_work_ledger_transport
         )
         * flux_transport_weight
         * packet_mask
