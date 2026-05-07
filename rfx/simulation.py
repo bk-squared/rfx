@@ -849,17 +849,6 @@ def run(
                     mask_hy=_xx0 & _zz0,
                     mask_hz=_xx0 & _yy0,
                 )
-            # Stage 1 H damping for relaxed `pec_occupancy` overrides
-            # (differentiable PEC density mask used by inverse design).
-            # Without this, occupancy only zeros tangential E after the
-            # E update; H propagates freely through the "PEC" cells and
-            # the override fails to enforce a real PEC boundary.  See
-            # ``rfx/boundaries/pec.py::apply_pec_occupancy_h`` and the
-            # 2026-05-07 Phase 4 diagnosis in
-            # ``docs/agent-memory/rfx-known-issues.md``.
-            if use_pec_occupancy:
-                from rfx.boundaries.pec import apply_pec_occupancy_h
-                st = apply_pec_occupancy_h(st, pec_occupancy)
             if use_pmc_faces:
                 from rfx.boundaries.pmc import apply_pmc_faces
                 st = apply_pmc_faces(st, _pmc_faces_frozen)
@@ -1564,12 +1553,6 @@ def run_until_decay(
                 mask_hy=_xx0 & _zz0,
                 mask_hz=_xx0 & _yy0,
             )
-        # Stage 1 H damping for the relaxed pec_occupancy override —
-        # mirror of the legacy-path call so the segmented checkpointing
-        # body produces bit-identical output.
-        if use_pec_occupancy:
-            from rfx.boundaries.pec import apply_pec_occupancy_h
-            st = apply_pec_occupancy_h(st, pec_occupancy)
         if use_pmc_faces:
             from rfx.boundaries.pmc import apply_pmc_faces
             st = apply_pmc_faces(st, _pmc_faces_frozen)
