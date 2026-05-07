@@ -148,9 +148,11 @@ def main():
     L_scan = np.array([4.0, 6.0, 7.0, 8.0, 10.0, 12.0]) * 1e-3
     sb = float(os.environ.get("RFX_SIGMOID_BETA_M",
                                str(max(DX * 0.7, 0.3 * H_SUB))))
-    print("Phase 4 hypothesis F test — sigmoid override vs hard PEC Box stub")
+    print("Phase 4 σ-loading fix verification — multi-mesh consistency check")
     print(f"dx={DX*1e6:.0f}µm, F_TARGET={F_TARGET/1e9:.1f}GHz, NUM_PERIODS=10")
     print(f"SIGMOID_BETA = {sb*1e6:.2f} µm  ({sb/DX:.3f} × dx)")
+    print(f"verifying σ-loading fix is real (consistent across mesh) and not")
+    print(f"a single-mesh lucky shot")
 
     def v2a_build(freqs, L_stub):
         # Sigmoid PEC mask path — current Y2 demo style
