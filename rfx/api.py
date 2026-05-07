@@ -5447,6 +5447,32 @@ class Simulation:
             for pe in self._ports:
                 probes.append(make_probe(grid, pe.position, pe.component))
 
+        # σ-loading for the relaxed `pec_occupancy_override`
+        # (Phase 4 root-cause fix, 2026-05-07).  ``apply_pec_occupancy``
+        # alone (post-update E zeroing, plus the new
+        # ``apply_pec_occupancy_h`` H damping landed in commit e31bef6)
+        # could not replicate hard-PEC behaviour for an inverse-design
+        # stub: the cells still carry no surface currents because
+        # ``materials.sigma`` is left at the substrate value, so the
+        # update_e Ca/Cb coefficients never reach the σ → ∞ critical-
+        # damped regime that hard-PEC relies on for stub-mode coupling.
+        # Folding ``occ × σ_PEC`` into ``materials.sigma`` here gives
+        # update_e the heavy-loss damping needed for stub cells to act
+        # as proper conductors with surface currents.  A binary occ=1
+        # cell now sees σ = 1e10 (matches rfx/api.py:71's "pec" material
+        # default); occ=0 stays unchanged; intermediate σ smoothly
+        # interpolates and remains JAX-traceable for AD.
+        if pec_occupancy_local is not None:
+            _occ_clipped = jnp.clip(
+                pec_occupancy_local.astype(materials.sigma.dtype),
+                0.0, 1.0,
+            )
+            materials = materials._replace(
+                sigma=materials.sigma + _occ_clipped * jnp.asarray(
+                    1.0e10, dtype=materials.sigma.dtype
+                )
+            )
+
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
         )
