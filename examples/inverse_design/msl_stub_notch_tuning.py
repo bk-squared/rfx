@@ -243,13 +243,28 @@ def main() -> int:
           f"init={L_INIT*1e3:.1f} mm")
     print(f"f_target={F_TARGET/1e9:.2f} GHz   "
           f"analytic L_target={L_TARGET_AN*1e3:.3f} mm")
-    print(f"Pipeline: {NUM_PERIODS:.0f} periods × {N_ITERS} Adam iters  (lr={LR})")
+    # Pick an n_steps that's an exact multiple of a √n_steps-class
+    # checkpoint K so the scan body can use segmented checkpointing
+    # (issue #73, see rfx/simulation.py:_suggest_checkpoint_segments).
+    # checkpoint=True alone only does per-step rematerialisation; the
+    # scan still keeps every step's carry, so peak GPU memory grows
+    # linearly with n_steps and a 954 K-cell forward + value_and_grad
+    # OOMs on a 24 GB RTX 4090.  Segmented checkpointing brings memory
+    # back to O(√n_steps · |carry|).
+    period = 1.0 / float(sim._freq_max)
+    n_steps_raw = int(math.ceil(NUM_PERIODS * period / float(grid.dt)))
+    K_segments = max(8, int(math.isqrt(n_steps_raw)))
+    n_steps_use = ((n_steps_raw + K_segments - 1) // K_segments) * K_segments
+    print(f"Steps: n_steps={n_steps_use} ({K_segments} segments × "
+          f"{n_steps_use // K_segments} steps each); "
+          f"raw={n_steps_raw} → rounded up to be divisible by K_segments")
 
     def s21_at_f_target(L_stub):
         occ = build_stub_occ(grid, trace_y_hi, L_stub)
         fr = sim.forward(
             pec_occupancy_override=occ,
-            num_periods=NUM_PERIODS,
+            n_steps=n_steps_use,
+            checkpoint_segments=K_segments,
             skip_preflight=True,
         )
         _, s21 = extract_msl_s_params_jax_plane(fr, d_set, p_set)
