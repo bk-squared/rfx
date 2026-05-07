@@ -5313,13 +5313,25 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
     flux_transport_weight = flux_transport_weight * (
         one - half * impedance_balance
     )
+    signed_flux_residual = (signed_flux - expected_signed_flux) * packet_mask
+    characteristic_admittance = jnp.asarray(np.sqrt(EPS_0 / MU_0), dtype=dtype)
+    signed_characteristic_admittance_residual = (
+        jnp.clip(
+            characteristic_admittance * signed_flux_residual / local_energy,
+            -half,
+            half,
+        )
+        * packet_mask
+    )
     work_conjugate_phase = (
         (source_real * interface_imag - source_imag * interface_real)
         * packet_mask
         / characteristic_phase_norm
     )
     work_conjugate_phase_transport = (
-        work_conjugate_phase * flux_transport_weight * packet_mask
+        (work_conjugate_phase + signed_characteristic_admittance_residual)
+        * flux_transport_weight
+        * packet_mask
     )
     packet_weight = jnp.sum(packet_mask) + floor
     centered_work_conjugate_phase_transport = (
@@ -5366,6 +5378,7 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         & jnp.any(packet_mask > floor)
         & jnp.any((source_energy + interface_energy) > floor)
         & jnp.any(jnp.abs(work_conjugate_phase) > floor)
+        & jnp.any(jnp.abs(signed_characteristic_admittance_residual) > floor)
         & jnp.any((work_conjugate_phase_transport_balance * packet_mask) > floor)
     )
     gate = jnp.where(work_conjugate_phase_transport_ready, one, zero)

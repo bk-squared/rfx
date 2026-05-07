@@ -4484,12 +4484,18 @@ def test_private_characteristic_work_conjugate_phase_transport_is_bounded_and_fa
     )
     impedance_balance = np.clip((2.0 * phase_norm) / local_energy, 0.0, 1.0)
     flux_weight = flux_weight * (1.0 - 0.5 * impedance_balance)
+    characteristic_admittance = np.sqrt(sbp_sat_3d.EPS_0 / sbp_sat_3d.MU_0)
+    signed_admittance_residual = np.clip(
+        characteristic_admittance * (signed_flux - expected_signed_flux) / local_energy,
+        -0.5,
+        0.5,
+    )
     work_phase = (
         (np.asarray(source_real) * np.asarray(interface_imag) - np.asarray(source_imag) * np.asarray(interface_real))
         * packet_mask_np
         / phase_norm
     )
-    transport = work_phase * flux_weight * packet_mask_np
+    transport = (work_phase + signed_admittance_residual) * flux_weight * packet_mask_np
     centered_transport = transport - (np.sum(transport) / (np.sum(packet_mask_np) + 1.0e-12)) * packet_mask_np
     limited_transport = np.clip(centered_transport, -0.5, 0.5) * packet_mask_np
     expected_scale = np.asarray(characteristic_scale) / (1.0 + np.abs(limited_transport))
