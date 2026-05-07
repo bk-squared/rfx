@@ -129,18 +129,27 @@ F_MAX = 9e9
 L_STUB_MAX = 14.0e-3
 L_MIN, L_MAX = 4.0e-3, 12.0e-3
 L_INIT = 6.0e-3                        # off-target on the short side
-SIGMOID_BETA = max(DX * 0.7, 0.3 * H_SUB)
+SIGMOID_BETA = max(DX * 0.25, 0.05 * H_SUB)
 # Sigmoid PEC mask sharpness for the differentiable stub-length
-# parameterisation.  Pure dx-anchored ``DX * 0.7`` produces a softer
-# transition at finer meshes, which excites a dx-dependent
-# mode-source / sigmoid-mask interaction in the plane-lane S-extractor:
-# Phase 4 hypothesis F test (commit 7db1b31, 2026-05-07) showed
-# |S21|² ≈ 1.20 across all L_stub at dx = 80 µm with the dx-anchored
-# β, while a hard-PEC Box at the same dx gave physical |S21|² ≤ 1
-# with a clean -13 dB notch at L = 7 mm.  Adding a substrate-anchored
-# floor (β ≥ 0.3·h_sub ≈ 76 µm) keeps the transition mesh-independent
-# at fine dx without changing the dx ≥ ~110 µm behaviour the demo
-# already tested clean.
+# parameterisation.  After Phase 4 σ-loading fix landed
+# (commit 8d65786) — which folds occ × σ_PEC into materials.sigma —
+# the broader ``DX * 0.7`` β value distorts the cost landscape: the
+# sigmoid edge cells get partial σ-loading (occ × 5e9 S/m at occ=0.5),
+# acting as lossy half-PEC that shifts the stub's effective
+# characteristic and produces an artefactual cost minimum near
+# L ≈ 4-5 mm at dx = 127 µm (verified by Y2 demo run #369367237536,
+# 2026-05-08: Adam descended 10.91 dB to L_opt = 4.55 mm where the
+# imperative cross-solver gate finds a -33 dB notch at 9 GHz, i.e.
+# the λ/4 of L = 4.55 mm, not the targeted 6 GHz).  Sharper β
+# (≈ ¼ dx, floored at 0.05·h_sub ≈ 13 µm) keeps the partial-σ edge
+# narrow enough that the stub physics stays close to the hard-PEC
+# Box reference: the multi-mesh σ-fix verification (run 369367237525,
+# 2026-05-08) at β = 5 µm showed the cost minimum at L = 7 mm (the
+# 6 GHz λ/4) on dx = 127 µm and at L = 6 mm on dx = 80 µm, both
+# matching the imperative-reference notch positions within 1 mm.
+# AD gradient through a sharper β remains finite because the
+# sigmoid is still smooth over the cell-center samples used by
+# pec_occupancy_override.
 
 u = W_TRACE / H_SUB
 EPS_EFF = (EPS_R + 1) / 2 + (EPS_R - 1) / 2 * (1 + 12 / u) ** -0.5
