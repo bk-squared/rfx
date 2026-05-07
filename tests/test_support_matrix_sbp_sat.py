@@ -21722,11 +21722,104 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
+    face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_key = (
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_failure_theory_key.replace(
+            "_failure_theory", "_packet_projected_residual_compile_floor_failure"
+        )
+    )
+    face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_status_key = (
+        f"{face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_key}_status"
+    )
+    face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_next_key = (
+        f"{face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_key}_next_prerequisite"
+    )
+    face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure = benchmark_gate[
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_key
+    ]
+    assert benchmark_gate[
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_status_key
+    ].endswith(
+        "_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_slow_no_go_failed_compile_floor"
+    )
+    assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[
+        "upstream_work_conjugate_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_failure_theory_status"
+    ] == benchmark_gate[
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_failure_theory_status_key
+    ]
+    assert (
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[
+            "selected_candidate_id"
+        ]
+        == "AMB2_compile_surface_reduced_packet_projected_residual_redesign"
+    )
+    assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[
+        "selected_failure_hypothesis"
+    ] == "packet_projected_residual_helper_exceeded_private_slow_no_go_compile_surface"
+    for flag in (
+        "packet_projected_residual_failure_theory_consumed",
+        "gain_ladder_parity_scoring_consumed",
+        "gain_ladder_implementation_consumed",
+        "attempted_packet_projected_residual_implementation",
+        "packet_projected_residual_compile_floor_failure_recorded",
+        "slow_no_go_failed_before_commit",
+        "jax_backend_compile_segfault_observed",
+        "solver_hunk_reverted_after_slow_no_go",
+        "direct_product_blend_slow_no_go_rejected",
+        "bounded_follow_up_implementation_surface",
+        "requires_smaller_jax_expression",
+    ):
+        assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[flag] is True
+    for flag in (
+        "slow_no_go_passed_before_commit",
+        "fixture_quality_ready",
+        "true_rt_readiness_unlocked",
+        "slab_rt_scored",
+        "production_patch_applied",
+        "solver_behavior_changed",
+        "field_update_behavior_changed",
+        "new_solver_hunk_retained",
+        "dft_flux_tfsf_port_sparameter_promoted",
+    ):
+        assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[flag] is False
+    compile_floor_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[
+            "candidate_ladder"
+        ]
+    }
+    assert compile_floor_candidates[
+        "AMB1_packet_projected_face_work_residual_transfer_hunk_rejected"
+    ]["accepted_candidate"] is False
+    assert compile_floor_candidates[
+        "AMB2_compile_surface_reduced_packet_projected_residual_redesign"
+    ]["accepted_candidate"] is True
+    assert compile_floor_candidates[
+        "AMB4_public_observable_or_threshold_escape_rejected"
+    ]["accepted_candidate"] is False
+    assert any(
+        key.startswith("next_lane_requires_")
+        and key.endswith(
+            "work_conjugate_phase_transport_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_surface_redesign"
+        )
+        and value is True
+        for key, value in face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure.items()
+    )
+    assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[
+        "next_prerequisite"
+    ] == benchmark_gate[
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_next_key
+    ]
+    assert (
+        benchmark_gate[
+            face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_status_key
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_failure_theory_next_key
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_failure_theory_next_key
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
@@ -22825,7 +22918,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_failure_theory_next_key
+        face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
