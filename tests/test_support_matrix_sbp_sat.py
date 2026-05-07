@@ -20441,11 +20441,88 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert benchmark_gate[
         signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_failure_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_flux_expression_budgeted_signed_admittance_phase_work_conjugacy_ledger_coupling_implementation_status_key
     ] in benchmark_gate["blocking_diagnostic"]
+    ledger_coupling_parity_scoring_key = (
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_failure_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_flux_expression_budgeted_signed_admittance_phase_work_conjugacy_ledger_coupling_implementation_key.replace(
+            "_implementation", "_parity_scoring"
+        )
+    )
+    ledger_coupling_parity_scoring_status_key = f"{ledger_coupling_parity_scoring_key}_status"
+    ledger_coupling_parity_scoring_next_key = (
+        f"{ledger_coupling_parity_scoring_key}_next_prerequisite"
+    )
+    ledger_coupling_parity_scoring = benchmark_gate[ledger_coupling_parity_scoring_key]
+    assert benchmark_gate[ledger_coupling_parity_scoring_status_key].endswith(
+        "_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_hunk_insufficient_fixture_quality_pending"
+    )
+    assert ledger_coupling_parity_scoring[
+        "upstream_work_conjugate_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_implementation_status"
+    ] == benchmark_gate[
+        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_failure_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_flux_expression_budgeted_signed_admittance_phase_work_conjugacy_ledger_coupling_implementation_status_key
+    ]
+    assert (
+        ledger_coupling_parity_scoring["selected_candidate_id"]
+        == "ALN1_finite_ledger_coupling_private_parity_score"
+    )
+    assert ledger_coupling_parity_scoring[
+        "ledger_coupling_implementation_consumed"
+    ] is True
+    assert ledger_coupling_parity_scoring["ledger_coupling_hunk_retained"] is True
+    assert ledger_coupling_parity_scoring[
+        "ledger_coupling_uses_source_interface_energy_ledger"
+    ] is True
+    assert ledger_coupling_parity_scoring[
+        "ledger_coupling_uses_phase_work_conjugacy"
+    ] is True
+    assert ledger_coupling_parity_scoring["finite_reproducible_score"] is True
+    assert ledger_coupling_parity_scoring["score_delta_zero"] is True
+    assert ledger_coupling_parity_scoring[
+        "metrics_remained_baseline_identical"
+    ] is True
+    assert ledger_coupling_parity_scoring[
+        "material_improvement_demonstrated"
+    ] is False
+    assert ledger_coupling_parity_scoring["fixture_quality_ready"] is False
+    assert ledger_coupling_parity_scoring["true_rt_readiness_unlocked"] is False
+    assert ledger_coupling_parity_scoring[
+        "dft_flux_tfsf_port_sparameter_promoted"
+    ] is False
+    assert ledger_coupling_parity_scoring["solver_behavior_changed"] is False
+    assert ledger_coupling_parity_scoring["field_update_behavior_changed"] is False
+    assert ledger_coupling_parity_scoring["new_solver_hunk_retained"] is False
+    assert ledger_coupling_parity_scoring["upstream_new_solver_hunk_retained"] is True
+    parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in ledger_coupling_parity_scoring["candidate_ladder"]
+    }
+    assert parity_candidates[
+        "ALN1_finite_ledger_coupling_private_parity_score"
+    ]["accepted_candidate"] is True
+    assert parity_candidates[
+        "ALN2_material_improvement_to_fixture_quality"
+    ]["accepted_candidate"] is False
+    assert parity_candidates[
+        "ALN3_public_observable_or_threshold_escape_rejected"
+    ]["accepted_candidate"] is False
+    assert any(
+        key.startswith("next_lane_requires_")
+        and key.endswith(
+            "work_conjugate_phase_transport_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_failure_theory_redesign"
+        )
+        and value is True
+        for key, value in ledger_coupling_parity_scoring.items()
+    )
+    assert ledger_coupling_parity_scoring["next_prerequisite"] == benchmark_gate[
+        ledger_coupling_parity_scoring_next_key
+    ]
+    assert (
+        benchmark_gate[ledger_coupling_parity_scoring_status_key]
+        in benchmark_gate["blocking_diagnostic"]
+    )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_failure_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_flux_expression_budgeted_signed_admittance_phase_work_conjugacy_ledger_coupling_implementation_next_key
+        ledger_coupling_parity_scoring_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_failure_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_flux_expression_budgeted_signed_admittance_phase_work_conjugacy_ledger_coupling_implementation_next_key
+        ledger_coupling_parity_scoring_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
@@ -21544,7 +21621,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_failure_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_flux_expression_budgeted_signed_admittance_phase_work_conjugacy_ledger_coupling_implementation_next_key
+        ledger_coupling_parity_scoring_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
