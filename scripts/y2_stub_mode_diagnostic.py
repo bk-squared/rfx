@@ -84,7 +84,12 @@ def build_thru_sim(freqs, *, with_hard_stub_L=None):
 
 def build_sigmoid_occ(grid, trace_y_hi, L_stub):
     LX = L_LINE + 2 * PORT_MARGIN
-    SIGMOID_BETA = max(DX * 0.7, 0.3 * H_SUB)  # see msl_stub_notch_tuning.py
+    # Allow override via env to compare β regimes (Phase 4 hypothesis F'):
+    #   default = substrate-anchored floor (≈76 µm at dx=80 µm)
+    #   small β (e.g. 5 µm) approaches a binary PEC mask
+    SIGMOID_BETA = float(os.environ.get(
+        "RFX_SIGMOID_BETA_M", str(max(DX * 0.7, 0.3 * H_SUB))
+    ))
     nx, ny, nz = grid.shape
     pad_x, pad_y, pad_z = grid.axis_pads
     stub_xc = LX / 2
@@ -141,8 +146,11 @@ def run_brute_scan(label, build_fn, freqs, L_scan):
 def main():
     freqs = jnp.asarray([F_TARGET], dtype=jnp.float32)
     L_scan = np.array([4.0, 6.0, 7.0, 8.0, 10.0, 12.0]) * 1e-3
+    sb = float(os.environ.get("RFX_SIGMOID_BETA_M",
+                               str(max(DX * 0.7, 0.3 * H_SUB))))
     print("Phase 4 hypothesis F test — sigmoid override vs hard PEC Box stub")
     print(f"dx={DX*1e6:.0f}µm, F_TARGET={F_TARGET/1e9:.1f}GHz, NUM_PERIODS=10")
+    print(f"SIGMOID_BETA = {sb*1e6:.2f} µm  ({sb/DX:.3f} × dx)")
 
     def v2a_build(freqs, L_stub):
         # Sigmoid PEC mask path — current Y2 demo style
