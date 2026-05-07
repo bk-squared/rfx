@@ -5404,6 +5404,15 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
             packet_mask=packet_mask,
         )
     )
+    scalar_packet_residual_blend = (
+        jnp.clip(
+            time_centered_face_work_ledger_transport
+            * jnp.clip(source_interface_energy_ledger, -one, one),
+            -half,
+            half,
+        )
+        * packet_mask
+    )
     work_conjugate_phase_transport = (
         (
             work_conjugate_phase
@@ -5412,6 +5421,7 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
             + phase_work_conjugacy_ledger_coupling
             + face_resolved_ledger_transport
             + time_centered_face_work_ledger_transport
+            + scalar_packet_residual_blend
         )
         * flux_transport_weight
         * packet_mask

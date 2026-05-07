@@ -4397,6 +4397,11 @@ def test_private_characteristic_energy_pairing_is_bounded_and_fail_closed():
     np.testing.assert_allclose(np.asarray(nonfinite_imag), 0.0)
 
     source = inspect.getsource(_apply_propagation_aware_modal_retry_face_helper)
+    transport_source = inspect.getsource(
+        _private_score_path_visibility_field_update_solver_observed_delta_packet_normalized_residual_residual_weighted_delta_coupling_target_packet_residual_projection_source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_cross_modal_laplacian_normal_poynting_flux_signed_flux_divergence_phase_energy_balance_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport
+    )
+    assert "scalar_packet_residual_blend" in transport_source
+    assert "jnp.sum(scalar_packet_residual_blend" not in transport_source
     assert source.index(
         "pre_source_interface_transfer_residual_split_modal_phase_coupling_phase_amplitude_transport_delta_real"
     ) < source.index(
