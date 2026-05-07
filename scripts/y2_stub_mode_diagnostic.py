@@ -34,10 +34,11 @@ from rfx.probes.msl_wave_decomp import (
 )
 
 
+import os
 EPS_R = 3.66
 H_SUB = 254e-6
 W_TRACE = 600e-6
-DX = 127e-6
+DX = float(os.environ.get("RFX_TEST_DX_UM", "127.0")) * 1e-6
 L_LINE = 30e-3
 PORT_MARGIN = 1.6e-3
 F_MAX = 9e9
