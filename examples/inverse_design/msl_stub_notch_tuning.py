@@ -95,14 +95,25 @@ C0 = 2.998e8
 EPS_R = 3.66
 H_SUB = 254e-6
 W_TRACE = 600e-6
-DX = 80e-6                             # cv06b standard — 3 substrate
-                                        # cells.  Earlier dx = h_sub/2
-                                        # (127 µm, 2 substrate cells)
-                                        # gave a Hammerstad-vs-FDTD
-                                        # ε_eff staircase mismatch of
-                                        # 8-12 % that biased the demo's
-                                        # imperative-notch gate
-                                        # (Y2 GPU runs #4-5, 2026-05-07).
+DX = 127e-6                            # h_sub / 2 — 2 substrate cells.
+                                        # ε_eff staircase against the
+                                        # Hammerstad analytic ``L_TARGET_AN``
+                                        # is ~10 % at this mesh; the
+                                        # gate set (see Acceptance
+                                        # block below) measures Adam
+                                        # against the brute-scan
+                                        # reference (mesh-internal),
+                                        # not against the analytic
+                                        # closed-form, so the staircase
+                                        # is informational rather than
+                                        # gating.  Refining to 80 µm
+                                        # (cv06b standard, 3 substrate
+                                        # cells) tightens the analytic
+                                        # match further but blew the
+                                        # 24 GB GPU budget on Y2 run
+                                        # #6 (peak ≈ 12.4 GB *single*
+                                        # XLA allocation, total need
+                                        # ≫ 24 GB).
 L_LINE = 30.0e-3                       # cv06b-class line length.  Each
                                         # MSL port's V₃ probe must sit
                                         # ≥ λ_g/4 from the stub PEC
