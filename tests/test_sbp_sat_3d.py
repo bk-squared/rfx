@@ -4495,7 +4495,12 @@ def test_private_characteristic_work_conjugate_phase_transport_is_bounded_and_fa
         * packet_mask_np
         / phase_norm
     )
-    transport = (work_phase + signed_admittance_residual) * flux_weight * packet_mask_np
+    phase_work_conjugacy = np.clip(
+        signed_admittance_residual * work_phase / (1.0 + np.abs(work_phase)),
+        -0.5,
+        0.5,
+    ) * packet_mask_np
+    transport = (work_phase + signed_admittance_residual + phase_work_conjugacy) * flux_weight * packet_mask_np
     centered_transport = transport - (np.sum(transport) / (np.sum(packet_mask_np) + 1.0e-12)) * packet_mask_np
     limited_transport = np.clip(centered_transport, -0.5, 0.5) * packet_mask_np
     expected_scale = np.asarray(characteristic_scale) / (1.0 + np.abs(limited_transport))
@@ -4508,6 +4513,7 @@ def test_private_characteristic_work_conjugate_phase_transport_is_bounded_and_fa
 
     np.testing.assert_allclose(np.asarray(gate), 1.0)
     np.testing.assert_allclose(np.sum(centered_transport), 0.0, atol=1.0e-7)
+    assert np.max(np.abs(phase_work_conjugacy)) > 0.0
     assert np.max(np.abs(limited_transport)) > 0.0
     np.testing.assert_allclose(np.asarray(scale), expected_scale, rtol=1e-6, atol=1e-8)
     np.testing.assert_allclose(np.asarray(balanced_real), expected_real, rtol=1e-6, atol=1e-8)

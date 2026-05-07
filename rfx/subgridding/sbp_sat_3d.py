@@ -5328,8 +5328,22 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         * packet_mask
         / characteristic_phase_norm
     )
+    signed_admittance_phase_work_conjugacy = (
+        jnp.clip(
+            signed_characteristic_admittance_residual
+            * work_conjugate_phase
+            / (one + jnp.abs(work_conjugate_phase)),
+            -half,
+            half,
+        )
+        * packet_mask
+    )
     work_conjugate_phase_transport = (
-        (work_conjugate_phase + signed_characteristic_admittance_residual)
+        (
+            work_conjugate_phase
+            + signed_characteristic_admittance_residual
+            + signed_admittance_phase_work_conjugacy
+        )
         * flux_transport_weight
         * packet_mask
     )
@@ -5379,6 +5393,7 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         & jnp.any((source_energy + interface_energy) > floor)
         & jnp.any(jnp.abs(work_conjugate_phase) > floor)
         & jnp.any(jnp.abs(signed_characteristic_admittance_residual) > floor)
+        & jnp.any(jnp.abs(signed_admittance_phase_work_conjugacy) > floor)
         & jnp.any((work_conjugate_phase_transport_balance * packet_mask) > floor)
     )
     gate = jnp.where(work_conjugate_phase_transport_ready, one, zero)
