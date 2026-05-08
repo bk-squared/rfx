@@ -5462,11 +5462,38 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         * residual_projection_limiter_delta_energy_weight
         * packet_mask
     )
+    residual_projection_phase_work_balance = (
+        (
+            jnp.abs(limited_work_conjugate_phase_transport)
+            + jnp.abs(phase_work_conjugacy_ledger_coupling)
+            + jnp.abs(time_centered_face_work_ledger_transport)
+            + jnp.abs(scalar_packet_residual_blend)
+        )
+        * packet_mask
+    )
+    residual_projection_phase_work_balance_normalizer = (
+        jnp.clip(
+            residual_projection_phase_work_balance
+            / (
+                floor
+                + residual_projection_phase_work_balance
+                + residual_projection_limiter_delta_energy
+            ),
+            zero,
+            one,
+        )
+        * packet_mask
+    )
+    residual_projection_visible_phase_work_balanced_direction = (
+        residual_projection_visible_delta_energy_weighted_direction
+        * residual_projection_phase_work_balance_normalizer
+        * packet_mask
+    )
     residual_projection_visible_signed_limiter = (
         jnp.clip(
             limited_work_conjugate_phase_transport
             + (half * half)
-            * residual_projection_visible_delta_energy_weighted_direction,
+            * residual_projection_visible_phase_work_balanced_direction,
             -half,
             half,
         )
