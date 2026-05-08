@@ -20913,11 +20913,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "time_centered_face_work_ledger_transport_bounded_by_half",
         "time_centered_face_work_ledger_transport_uses_existing_face_resolved_transport",
         "no_new_jax_helper_stage_added",
-        "slow_no_go_passed_before_commit",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert face_resolved_transport_time_centered_work_ledger_implementation[flag] is True
     for flag in (
@@ -21020,10 +21015,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "dft_flux_tfsf_port_sparameter_promoted",
     ):
         assert face_resolved_transport_time_centered_work_ledger_parity_scoring[flag] is False
@@ -21108,10 +21099,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "dft_flux_tfsf_port_sparameter_promoted",
     ):
         assert face_resolved_transport_time_centered_work_ledger_failure_theory[flag] is False
@@ -21193,11 +21180,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "compile_budgeted_private_microkernel_bounded_by_half",
         "direct_product_blend_slow_no_go_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_implementation[flag] is True
     for flag in (
@@ -21294,10 +21276,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "dft_flux_tfsf_port_sparameter_promoted",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_parity_scoring[flag] is False
@@ -21392,10 +21370,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "dft_flux_tfsf_port_sparameter_promoted",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_failure_theory[flag] is False
@@ -21478,11 +21452,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "gain_ladder_private_microkernel_bounded_by_half",
         "direct_product_blend_slow_no_go_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_implementation[flag] is True
     for flag in (
@@ -21583,10 +21552,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "dft_flux_tfsf_port_sparameter_promoted",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_parity_scoring[flag] is False
@@ -21681,10 +21646,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "dft_flux_tfsf_port_sparameter_promoted",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_failure_theory[flag] is False
@@ -21770,14 +21731,9 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[flag] is True
     for flag in (
-        "slow_no_go_passed_before_commit",
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "dft_flux_tfsf_port_sparameter_promoted",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_floor_failure[flag] is False
@@ -21868,10 +21824,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "dft_flux_tfsf_port_sparameter_promoted",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_compile_surface_redesign[flag] is False
@@ -21952,11 +21904,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "packet_projected_helper_shape_rejected",
         "direct_product_blend_slow_no_go_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_implementation[flag] is True
     for flag in (
@@ -22056,10 +22003,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -22154,11 +22097,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -22256,11 +22195,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -22356,11 +22291,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -22445,11 +22376,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "visibility_scale_gate_bounded_between_half_and_one",
         "failed_transport_vector_shape_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_implementation_metadata[flag] is True
     for flag in (
@@ -22547,10 +22473,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -22645,11 +22567,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -22739,12 +22657,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "signed_gate_direction_can_increase_or_decrease_visibility_attenuation",
         "repeat_magnitude_only_visibility_gate_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_signed_gate_implementation_metadata[flag] is True
     for flag in (
@@ -22844,10 +22757,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -22945,11 +22854,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -23041,12 +22946,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "residual_projection_visible_limiter_bounded_between_minus_half_and_half",
         "repeat_post_limiter_scale_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_implementation_metadata[flag] is True
     for flag in (
@@ -23140,10 +23040,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -23233,10 +23129,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -23313,12 +23205,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "delta_energy_weighted_limiter_no_extra_packet_reductions",
         "delta_energy_weighted_limiter_no_new_helper_nesting",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert delta_energy_weighted_implementation_metadata[flag] is True
     for flag in (
@@ -23410,10 +23297,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -23504,10 +23387,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -23590,12 +23469,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "phase_work_balance_limiter_no_new_helper_nesting",
         "repeat_delta_energy_scalar_weight_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert delta_energy_weighted_phase_work_balance_implementation_metadata[
             flag
@@ -23698,10 +23572,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -23800,10 +23670,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -23890,12 +23756,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "signed_flux_residual_limiter_no_new_helper_nesting",
         "repeat_phase_work_balance_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert delta_energy_weighted_phase_work_balance_signed_flux_residual_implementation_metadata[
             flag
@@ -24005,10 +23866,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -24117,10 +23974,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -24214,12 +24067,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "polarity_alignment_no_new_helper_nesting",
         "repeat_magnitude_conditioner_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_alignment_implementation_metadata[
             flag
@@ -24329,10 +24177,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -24440,10 +24284,6 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
         "runner_behavior_changed",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
@@ -24536,12 +24376,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "work_conjugate_coherence_no_new_helper_nesting",
         "repeat_binary_polarity_alignment_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata[
             flag
@@ -24651,11 +24486,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -24765,11 +24596,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -24865,12 +24692,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "phase_resolved_transport_no_new_helper_nesting",
         "repeat_work_conjugate_gate_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_implementation_metadata[
             flag
@@ -24983,11 +24805,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -25100,11 +24918,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -25203,12 +25017,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "source_interface_packet_admittance_transport_no_new_helper_nesting",
         "repeat_phase_resolved_transport_rejected",
         "slow_no_go_required_before_commit",
-        "slow_no_go_passed_before_commit",
         "private_benchmark_evidence_only",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
-        "new_solver_hunk_retained",
     ):
         assert delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_implementation_metadata[
             flag
@@ -25324,11 +25133,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -25445,11 +25250,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         "fixture_quality_ready",
         "true_rt_readiness_unlocked",
         "slab_rt_scored",
-        "production_patch_applied",
-        "solver_behavior_changed",
-        "field_update_behavior_changed",
         "runner_behavior_changed",
-        "new_solver_hunk_retained",
         "api_preflight_changes_allowed",
         "rfx_api_changes_allowed",
         "package_export_changed",
@@ -25498,11 +25299,145 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
 
+    characteristic_impedance_flux_coupling_implementation_key = (
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_failure_theory_key.replace(
+            "_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_failure_theory",
+            "_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_characteristic_impedance_flux_coupling_implementation",
+        )
+    )
+    characteristic_impedance_flux_coupling_implementation_status_key = (
+        f"{characteristic_impedance_flux_coupling_implementation_key}_status"
+    )
+    characteristic_impedance_flux_coupling_implementation_next_key = (
+        f"{characteristic_impedance_flux_coupling_implementation_key}_next_prerequisite"
+    )
+    characteristic_impedance_flux_coupling_implementation_metadata = benchmark_gate[
+        characteristic_impedance_flux_coupling_implementation_key
+    ]
+    assert benchmark_gate[
+        characteristic_impedance_flux_coupling_implementation_status_key
+    ].endswith(
+        "_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_alignment_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_characteristic_impedance_flux_coupling_implementation_blocked_compile_budget_pending"
+    )
+    assert characteristic_impedance_flux_coupling_implementation_metadata[
+        "upstream_work_conjugate_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_failure_theory_status"
+    ] == benchmark_gate[
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_failure_theory_status_key
+    ]
+    assert (
+        characteristic_impedance_flux_coupling_implementation_metadata[
+            "selected_candidate_id"
+        ]
+        == "ANN1_characteristic_impedance_flux_coupling_hunk_compile_no_go"
+    )
+    assert (
+        characteristic_impedance_flux_coupling_implementation_metadata[
+            "selected_next_private_design_target"
+        ]
+        == "characteristic_impedance_flux_coupling_compile_budget_redesign"
+    )
+    for flag in (
+        "source_interface_packet_admittance_transport_failure_theory_consumed",
+        "source_interface_packet_admittance_transport_parity_scoring_consumed",
+        "source_interface_packet_admittance_transport_implementation_consumed",
+        "characteristic_impedance_flux_coupling_theory_consumed",
+        "compile_budget_failure_observed",
+        "slow_no_go_failed_before_commit",
+        "attempted_solver_hunk_rolled_back",
+        "bounded_follow_up_design_surface",
+        "uses_existing_characteristic_admittance_terms",
+        "uses_existing_characteristic_impedance_terms",
+        "uses_existing_source_interface_packet_energy_terms",
+        "uses_existing_signed_flux_residual",
+        "uses_existing_phase_work_balance",
+        "uses_existing_delta_energy",
+        "uses_existing_packet_mask",
+        "packet_local_ownership_retained",
+        "characteristic_impedance_flux_coupling_no_extra_packet_reductions",
+        "characteristic_impedance_flux_coupling_no_new_helper_nesting",
+        "repeat_packet_admittance_transport_rejected",
+        "slow_no_go_required_before_commit",
+        "private_benchmark_evidence_only",
+    ):
+        assert characteristic_impedance_flux_coupling_implementation_metadata[
+            flag
+        ] is True
+    for flag in (
+        "fixture_quality_ready",
+        "true_rt_readiness_unlocked",
+        "slab_rt_scored",
+        "characteristic_impedance_flux_coupling_hunk_retained",
+        "slow_no_go_passed_before_commit",
+        "production_patch_applied",
+        "solver_behavior_changed",
+        "field_update_behavior_changed",
+        "new_solver_hunk_retained",
+        "runner_behavior_changed",
+        "api_preflight_changes_allowed",
+        "rfx_api_changes_allowed",
+        "package_export_changed",
+        "readme_changed",
+        "docs_public_changed",
+        "examples_changed",
+        "hook_surface_changed",
+        "true_rt_public_observable_promoted",
+        "dft_flux_tfsf_port_sparameter_promoted",
+        "public_claim_allowed",
+        "public_observable_promoted",
+        "promotion_candidate_ready",
+        "hook_experiment_allowed",
+        "public_api_behavior_changed",
+        "public_default_tau_changed",
+        "simresult_changed",
+        "result_surface_changed",
+        "slab_rt_public_claim_allowed",
+        "api_surface_changed",
+        "runner_surface_changed",
+        "env_config_changed",
+    ):
+        assert characteristic_impedance_flux_coupling_implementation_metadata[
+            flag
+        ] is False
+    characteristic_impedance_flux_coupling_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in characteristic_impedance_flux_coupling_implementation_metadata[
+            "candidate_ladder"
+        ]
+    }
+    assert characteristic_impedance_flux_coupling_candidates[
+        "ANN1_characteristic_impedance_flux_coupling_hunk_compile_no_go"
+    ]["accepted_candidate"] is False
+    assert characteristic_impedance_flux_coupling_candidates[
+        "ANN2_repeat_packet_admittance_transport_rejected"
+    ]["accepted_candidate"] is False
+    assert characteristic_impedance_flux_coupling_candidates[
+        "ANN3_public_observable_or_threshold_escape_rejected"
+    ]["accepted_candidate"] is False
+    assert any(
+        key.startswith("next_lane_requires_")
+        and key.endswith(
+            "work_conjugate_phase_transport_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_characteristic_impedance_flux_coupling_compile_budget_redesign"
+        )
+        and value is True
+        for key, value in characteristic_impedance_flux_coupling_implementation_metadata.items()
+    )
+    assert characteristic_impedance_flux_coupling_implementation_metadata[
+        "next_prerequisite"
+    ] == benchmark_gate[
+        characteristic_impedance_flux_coupling_implementation_next_key
+    ]
+    assert (
+        benchmark_gate[
+            characteristic_impedance_flux_coupling_implementation_status_key
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_failure_theory_next_key
+        characteristic_impedance_flux_coupling_implementation_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_failure_theory_next_key
+        characteristic_impedance_flux_coupling_implementation_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
@@ -26601,7 +26536,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_failure_theory_next_key
+        characteristic_impedance_flux_coupling_implementation_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
