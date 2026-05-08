@@ -25558,11 +25558,144 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
 
+    characteristic_impedance_flux_coupling_exact_slow_gate_preflight_key = (
+        characteristic_impedance_flux_coupling_compile_budget_redesign_key.replace(
+            "_characteristic_impedance_flux_coupling_compile_budget_redesign",
+            "_characteristic_impedance_flux_coupling_exact_slow_gate_preflight",
+        )
+    )
+    characteristic_impedance_flux_coupling_exact_slow_gate_preflight_status_key = (
+        f"{characteristic_impedance_flux_coupling_exact_slow_gate_preflight_key}_status"
+    )
+    characteristic_impedance_flux_coupling_exact_slow_gate_preflight_next_key = (
+        f"{characteristic_impedance_flux_coupling_exact_slow_gate_preflight_key}_next_prerequisite"
+    )
+    characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata = (
+        benchmark_gate[
+            characteristic_impedance_flux_coupling_exact_slow_gate_preflight_key
+        ]
+    )
+    assert benchmark_gate[
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_status_key
+    ].endswith(
+        "_characteristic_impedance_flux_coupling_exact_slow_gate_unavailable_baseline_compile_budget_blocked"
+    )
+    assert (
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            "upstream_characteristic_impedance_flux_coupling_compile_budget_redesign_status"
+        ]
+        == benchmark_gate[
+            characteristic_impedance_flux_coupling_compile_budget_redesign_status_key
+        ]
+    )
+    assert (
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            "selected_candidate_id"
+        ]
+        == "ANP0_exact_slow_gate_unavailable_preflight"
+    )
+    for flag in (
+        "baseline_exact_slow_probe_attempted",
+        "baseline_exact_slow_probe_terminated",
+        "baseline_exact_slow_gate_unavailable",
+        "compile_budget_redesign_contract_consumed",
+        "reduced_characteristic_flux_implementation_blocked",
+        "no_solver_edit_attempted",
+        "no_solver_hunk_retained",
+        "support_matrix_only_shortcut_rejected",
+        "requires_exact_slow_gate_repair_before_solver_hunk",
+        "private_benchmark_evidence_only",
+    ):
+        assert characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            flag
+        ] is True
+    assert (
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            "baseline_exact_slow_probe_completed"
+        ]
+        is False
+    )
+    assert (
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            "baseline_exact_slow_probe_pytest_output_observed"
+        ]
+        is False
+    )
+    assert (
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            "baseline_exact_slow_probe_peak_rss_kb_observed"
+        ]
+        >= 18_000_000
+    )
+    for flag in (
+        "fixture_quality_ready",
+        "true_rt_readiness_unlocked",
+        "slab_rt_scored",
+        "production_patch_applied",
+        "solver_behavior_changed",
+        "field_update_behavior_changed",
+        "runner_behavior_changed",
+        "new_solver_hunk_retained",
+        "api_preflight_changes_allowed",
+        "rfx_api_changes_allowed",
+        "package_export_changed",
+        "readme_changed",
+        "docs_public_changed",
+        "examples_changed",
+        "hook_surface_changed",
+        "true_rt_public_observable_promoted",
+        "dft_flux_tfsf_port_sparameter_promoted",
+        "public_claim_allowed",
+        "public_observable_promoted",
+        "promotion_candidate_ready",
+        "hook_experiment_allowed",
+        "public_api_behavior_changed",
+        "public_default_tau_changed",
+        "simresult_changed",
+        "result_surface_changed",
+        "slab_rt_public_claim_allowed",
+        "api_surface_changed",
+        "runner_surface_changed",
+        "env_config_changed",
+    ):
+        assert characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            flag
+        ] is False
+    exact_slow_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            "candidate_ladder"
+        ]
+    }
+    assert exact_slow_candidates["ANP0_exact_slow_gate_unavailable_preflight"][
+        "accepted_candidate"
+    ] is True
+    assert exact_slow_candidates[
+        "ANP1_reduced_characteristic_flux_hunk_deferred_until_gate_available"
+    ]["accepted_candidate"] is False
+    assert exact_slow_candidates["ANP2_metadata_only_slow_gate_shortcut_rejected"][
+        "accepted_candidate"
+    ] is False
+    assert (
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_metadata[
+            "next_prerequisite"
+        ]
+        == benchmark_gate[
+            characteristic_impedance_flux_coupling_exact_slow_gate_preflight_next_key
+        ]
+    )
+    assert (
+        benchmark_gate[
+            characteristic_impedance_flux_coupling_exact_slow_gate_preflight_status_key
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        characteristic_impedance_flux_coupling_compile_budget_redesign_next_key
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        characteristic_impedance_flux_coupling_compile_budget_redesign_next_key
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
