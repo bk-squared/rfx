@@ -25713,11 +25713,156 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
 
+    characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_key = (
+        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_key.replace(
+            "_characteristic_impedance_flux_coupling_exact_slow_gate_preflight",
+            "_characteristic_impedance_flux_coupling_compile_budget_reduced_implementation",
+        )
+    )
+    characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_status_key = (
+        f"{characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_key}_status"
+    )
+    characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_next_key = (
+        f"{characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_key}_next_prerequisite"
+    )
+    characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata = benchmark_gate[
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_key
+    ]
+    assert benchmark_gate[
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_status_key
+    ].endswith(
+        "_characteristic_impedance_flux_coupling_compile_budget_reduced_hunk_retained_fixture_quality_pending"
+    )
+    assert (
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata[
+            "upstream_characteristic_impedance_flux_coupling_exact_slow_gate_preflight_status"
+        ]
+        == benchmark_gate[
+            characteristic_impedance_flux_coupling_exact_slow_gate_preflight_status_key
+        ]
+    )
+    assert (
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata[
+            "upstream_characteristic_impedance_flux_coupling_compile_budget_redesign_status"
+        ]
+        == benchmark_gate[
+            characteristic_impedance_flux_coupling_compile_budget_redesign_status_key
+        ]
+    )
+    assert (
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata[
+            "selected_candidate_id"
+        ]
+        == "ANR1_static_scalar_characteristic_flux_coupling_hunk"
+    )
+    assert (
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata[
+            "selected_next_private_design_target"
+        ]
+        == "compile_budget_reduced_static_scalar_flux_coupling_parity_scoring"
+    )
+    for flag in (
+        "exact_slow_gate_repair_consumed",
+        "compile_budget_redesign_contract_consumed",
+        "ann1_compile_budget_no_go_consumed",
+        "characteristic_impedance_flux_coupling_theory_consumed",
+        "source_interface_packet_admittance_transport_failure_theory_consumed",
+        "source_interface_packet_admittance_transport_parity_scoring_consumed",
+        "source_interface_packet_admittance_transport_implementation_consumed",
+        "static_scalar_factorization_consumed",
+        "compile_budget_reduced_static_scalar_flux_coupling_hunk_retained",
+        "characteristic_impedance_flux_coupling_hunk_retained",
+        "folds_characteristic_impedance_admittance_product_into_existing_packet_admittance_transport_multiplier",
+        "uses_existing_characteristic_admittance_terms",
+        "uses_existing_characteristic_impedance_terms",
+        "uses_existing_source_interface_packet_energy_terms",
+        "uses_existing_signed_flux_residual",
+        "uses_existing_phase_work_balance",
+        "uses_existing_delta_energy",
+        "uses_existing_packet_mask",
+        "no_new_array_valued_characteristic_impedance_flux_balance",
+        "no_new_packet_reductions",
+        "no_new_helper_nesting",
+        "exact_slow_command_passed_before_commit",
+        "exact_slow_command_required_before_retained_solver_hunk",
+        "private_benchmark_evidence_only",
+        "fixture_quality_pending",
+        "production_patch_applied",
+        "solver_behavior_changed",
+        "field_update_behavior_changed",
+        "new_solver_hunk_retained",
+    ):
+        assert characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata[
+            flag
+        ] is True
+    for flag in (
+        "fixture_quality_ready",
+        "true_rt_readiness_unlocked",
+        "slab_rt_scored",
+        "runner_behavior_changed",
+        "api_preflight_changes_allowed",
+        "rfx_api_changes_allowed",
+        "package_export_changed",
+        "readme_changed",
+        "docs_public_changed",
+        "examples_changed",
+        "hook_surface_changed",
+        "true_rt_public_observable_promoted",
+        "dft_flux_tfsf_port_sparameter_promoted",
+        "public_claim_allowed",
+        "public_observable_promoted",
+        "promotion_candidate_ready",
+        "hook_experiment_allowed",
+        "public_api_behavior_changed",
+        "public_default_tau_changed",
+        "simresult_changed",
+        "result_surface_changed",
+        "slab_rt_public_claim_allowed",
+        "api_surface_changed",
+        "runner_surface_changed",
+        "env_config_changed",
+    ):
+        assert characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata[
+            flag
+        ] is False
+    compile_budget_reduced_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata[
+            "candidate_ladder"
+        ]
+    }
+    assert compile_budget_reduced_candidates[
+        "ANR0_exact_slow_gate_repair_freeze"
+    ]["accepted_candidate"] is False
+    assert compile_budget_reduced_candidates[
+        "ANR1_static_scalar_characteristic_flux_coupling_hunk"
+    ]["accepted_candidate"] is True
+    assert compile_budget_reduced_candidates[
+        "ANR2_additive_characteristic_flux_array_retry_rejected"
+    ]["accepted_candidate"] is False
+    assert compile_budget_reduced_candidates[
+        "ANR3_public_observable_or_threshold_escape_rejected"
+    ]["accepted_candidate"] is False
+    assert (
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_metadata[
+            "next_prerequisite"
+        ]
+        == benchmark_gate[
+            characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_next_key
+        ]
+    )
+    assert (
+        benchmark_gate[
+            characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_status_key
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_next_key
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        characteristic_impedance_flux_coupling_exact_slow_gate_preflight_next_key
+        characteristic_impedance_flux_coupling_compile_budget_reduced_implementation_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key

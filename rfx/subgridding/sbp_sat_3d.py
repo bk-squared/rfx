@@ -5340,6 +5340,12 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
     )
     signed_flux_residual = (signed_flux - expected_signed_flux) * packet_mask
     characteristic_admittance = jnp.asarray(np.sqrt(EPS_0 / MU_0), dtype=dtype)
+    characteristic_impedance = jnp.asarray(np.sqrt(MU_0 / EPS_0), dtype=dtype)
+    characteristic_flux_coupling_factor = jnp.clip(
+        characteristic_admittance * characteristic_impedance,
+        half,
+        one,
+    )
     signed_characteristic_admittance_residual = (
         jnp.clip(
             characteristic_admittance * signed_flux_residual / local_energy,
@@ -5563,7 +5569,8 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
             residual_projection_phase_resolved_transport
             * source_interface_packet_admittance_balance
             * residual_projection_signed_flux_residual_conditioner
-            * residual_projection_limiter_delta_energy_weight,
+            * residual_projection_limiter_delta_energy_weight
+            * characteristic_flux_coupling_factor,
             -half,
             half,
         )
