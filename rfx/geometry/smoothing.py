@@ -884,17 +884,27 @@ def kottke_inv_eps_from_occupancy(
         eps_outside_y = bg
         eps_outside_z = bg
 
-    # Three Kottke evaluations — one per axis, using the corresponding
-    # baseline eps.  Each returns the FULL tensor diagonal at that cell;
-    # we extract the matching component.
+    # Smooth-Kottke evaluation: use the finite-eps_inside path
+    # (`is_pec=False`) with eps_inside set to a large but finite
+    # PEC sentinel.  The strict PEC Kottke (``is_pec=True``) has a
+    # discontinuity at f=0 — any f > 0 forces ``inv_par = 0``, which
+    # collapses parallel-direction E for cells anywhere a sigmoid
+    # tail brings f above floating-point zero (e.g., 1e-30) — the
+    # wave then never propagates and the forward NaNs out.
+    # The smooth Kottke with eps_inside = 1e10 gives:
+    #   inv_perp = f/1e10 + (1-f)/eps_out  (continuous, vacuum at f=0)
+    #   inv_par  = 1/(f·1e10 + (1-f)·eps_out)  (continuous; ~0 at f=1)
+    # Both reduce to 1/eps_out at f=0 (no sigmoid-tail trap) and to
+    # ~0 at f=1 (effectively PEC for FDTD dt ~ 1e-13 s).
+    eps_inside_pec = jnp.asarray(1.0e10, dtype=f.dtype)
     inv_xx_c, _, _ = _kottke_inv_eps_diag(
-        f, jnp.inf, eps_outside_x, n_x, n_y, n_z, is_pec=True,
+        f, eps_inside_pec, eps_outside_x, n_x, n_y, n_z, is_pec=False,
     )
     _, inv_yy_c, _ = _kottke_inv_eps_diag(
-        f, jnp.inf, eps_outside_y, n_x, n_y, n_z, is_pec=True,
+        f, eps_inside_pec, eps_outside_y, n_x, n_y, n_z, is_pec=False,
     )
     _, _, inv_zz_c = _kottke_inv_eps_diag(
-        f, jnp.inf, eps_outside_z, n_x, n_y, n_z, is_pec=True,
+        f, eps_inside_pec, eps_outside_z, n_x, n_y, n_z, is_pec=False,
     )
 
     if aniso_inv_eps_baseline is not None:

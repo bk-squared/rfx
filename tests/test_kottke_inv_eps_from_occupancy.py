@@ -51,16 +51,23 @@ def test_pure_vacuum_gives_inverse_background():
     assert jnp.allclose(inv_zz, expected)
 
 
-def test_pure_pec_gives_zero_inv_eps():
-    """occ ≡ 1 everywhere → all inv components = 0 (true PEC)."""
+def test_pure_pec_gives_near_zero_inv_eps():
+    """occ ≡ 1 everywhere → all inv components ≤ 1e-9 (effective PEC).
+
+    Uses smooth Kottke with eps_inside = 1e10 (large but finite) to
+    avoid the f=0 discontinuity of the strict PEC limit.  At f=1, this
+    gives inv ≈ 1/1e10 = 1e-10 — small enough to act as PEC at FDTD
+    timescales (Cb scales as inv·dt; for dt~1e-13 s the field barely
+    updates) but smooth across f=0.
+    """
     grid = _grid()
     occ = jnp.ones(grid.shape, dtype=jnp.float32)
     inv_xx, inv_yy, inv_zz = kottke_inv_eps_from_occupancy(
         grid, occ, background_eps=2.0
     )
-    assert jnp.all(inv_xx == 0.0)
-    assert jnp.all(inv_yy == 0.0)
-    assert jnp.all(inv_zz == 0.0)
+    assert jnp.all(inv_xx < 1e-9)
+    assert jnp.all(inv_yy < 1e-9)
+    assert jnp.all(inv_zz < 1e-9)
 
 
 def test_half_fill_y_normal_kottke_signature():
