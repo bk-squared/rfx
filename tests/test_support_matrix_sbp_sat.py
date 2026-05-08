@@ -28249,11 +28249,132 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
 
+    phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_key = (
+        phase_energy_coupling_visibility_residual_balance_failure_theory_key.replace(
+            "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_failure_theory",
+            "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation",
+        )
+    )
+    phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_status_key = (
+        f"{phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_key}_status"
+    )
+    phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_next_key = (
+        f"{phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_key}_next_prerequisite"
+    )
+    phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_metadata = benchmark_gate[
+        phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_key
+    ]
+    assert benchmark_gate[
+        phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_status_key
+    ].endswith(
+        "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_phase_work_transport_hunk_retained_fixture_quality_pending"
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_metadata[
+            "upstream_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_failure_theory_status"
+        ]
+        == benchmark_gate[
+            phase_energy_coupling_visibility_residual_balance_failure_theory_status_key
+        ]
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_metadata[
+            "selected_candidate_id"
+        ]
+        == "AOJ1_visibility_residual_balance_phase_work_transport_hunk"
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_metadata[
+            "selected_next_private_design_target"
+        ]
+        == "relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_phase_work_transport_parity_scoring"
+    )
+    for flag in (
+        "visibility_residual_balance_phase_work_transport_theory_consumed",
+        "visibility_residual_balance_failure_theory_consumed",
+        "visibility_residual_balance_parity_scoring_consumed",
+        "visibility_residual_balance_implementation_consumed",
+        "visibility_residual_balance_phase_work_transport_hunk_retained",
+        "visibility_residual_balance_hunk_retained",
+        "uses_existing_score_path_visibility",
+        "uses_existing_visible_residual_direction",
+        "uses_existing_visibility_residual_balance",
+        "uses_existing_work_conjugate_coherence",
+        "uses_existing_phase_resolved_transport",
+        "uses_existing_relative_impedance_contrast",
+        "uses_existing_signed_flux_balance",
+        "uses_existing_phase_work_balance",
+        "uses_existing_delta_energy",
+        "uses_existing_packet_mask",
+        "visibility_residual_balance_phase_work_transport_bounded",
+        "visibility_residual_balance_phase_work_transport_feeds_private_visible_phase_work_direction",
+        "no_new_helper_nesting",
+        "no_new_packet_reductions",
+        "exact_slow_command_passed_before_commit",
+        "private_benchmark_evidence_only",
+        "fixture_quality_pending",
+        "production_patch_applied",
+        "solver_behavior_changed",
+        "field_update_behavior_changed",
+        "new_solver_hunk_retained",
+    ):
+        assert phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_metadata[flag] is True
+    for flag in (
+        "fixture_quality_ready",
+        "true_rt_readiness_unlocked",
+        "slab_rt_scored",
+        "runner_behavior_changed",
+        "api_preflight_changes_allowed",
+        "rfx_api_changes_allowed",
+        "package_export_changed",
+        "readme_changed",
+        "docs_public_changed",
+        "examples_changed",
+        "hook_surface_changed",
+        "true_rt_public_observable_promoted",
+        "dft_flux_tfsf_port_sparameter_promoted",
+        "public_claim_allowed",
+        "public_observable_promoted",
+        "promotion_candidate_ready",
+        "hook_experiment_allowed",
+        "public_api_behavior_changed",
+        "public_default_tau_changed",
+        "simresult_changed",
+        "result_surface_changed",
+        "slab_rt_public_claim_allowed",
+        "api_surface_changed",
+        "runner_surface_changed",
+        "env_config_changed",
+    ):
+        assert phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_metadata[flag] is False
+    assert any(
+        key.startswith("next_lane_requires_")
+        and key.endswith(
+            "work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_phase_work_transport_parity_scoring"
+        )
+        and value is True
+        for key, value in phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_metadata.items()
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_metadata[
+            "next_prerequisite"
+        ]
+        == benchmark_gate[
+            phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_next_key
+        ]
+    )
+    assert (
+        benchmark_gate[
+            phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_status_key
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        phase_energy_coupling_visibility_residual_balance_failure_theory_next_key
+        phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        phase_energy_coupling_visibility_residual_balance_failure_theory_next_key
+        phase_energy_coupling_visibility_residual_balance_phase_work_transport_implementation_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
