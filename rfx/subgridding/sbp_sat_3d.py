@@ -5445,10 +5445,28 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         )
         * packet_mask
     )
+    residual_projection_limiter_delta_energy = (
+        (delta_real * delta_real + delta_imag * delta_imag) * packet_mask
+    )
+    residual_projection_limiter_delta_energy_weight = (
+        jnp.clip(
+            residual_projection_limiter_delta_energy
+            / (floor + residual_projection_limiter_delta_energy),
+            zero,
+            one,
+        )
+        * packet_mask
+    )
+    residual_projection_visible_delta_energy_weighted_direction = (
+        visibility_scale_signed_direction
+        * residual_projection_limiter_delta_energy_weight
+        * packet_mask
+    )
     residual_projection_visible_signed_limiter = (
         jnp.clip(
             limited_work_conjugate_phase_transport
-            + (half * half) * visibility_scale_signed_direction,
+            + (half * half)
+            * residual_projection_visible_delta_energy_weighted_direction,
             -half,
             half,
         )
