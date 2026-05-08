@@ -27967,11 +27967,156 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         in benchmark_gate["blocking_diagnostic"]
     )
 
+    phase_energy_coupling_visibility_residual_balance_parity_scoring_key = (
+        phase_energy_coupling_visibility_residual_balance_implementation_key.replace(
+            "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_implementation",
+            "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_parity_scoring",
+        )
+    )
+    phase_energy_coupling_visibility_residual_balance_parity_scoring_status_key = (
+        f"{phase_energy_coupling_visibility_residual_balance_parity_scoring_key}_status"
+    )
+    phase_energy_coupling_visibility_residual_balance_parity_scoring_next_key = (
+        f"{phase_energy_coupling_visibility_residual_balance_parity_scoring_key}_next_prerequisite"
+    )
+    phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata = benchmark_gate[
+        phase_energy_coupling_visibility_residual_balance_parity_scoring_key
+    ]
+    assert benchmark_gate[
+        phase_energy_coupling_visibility_residual_balance_parity_scoring_status_key
+    ].endswith(
+        "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_hunk_insufficient_fixture_quality_pending"
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[
+            "upstream_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_implementation_status"
+        ]
+        == benchmark_gate[
+            phase_energy_coupling_visibility_residual_balance_implementation_status_key
+        ]
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[
+            "selected_candidate_id"
+        ]
+        == "AOH1_finite_visibility_residual_balance_private_parity_score"
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[
+            "metrics"
+        ]
+        == phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[
+            "baseline_metrics"
+        ]
+    )
+    assert all(
+        value == 0.0
+        for value in phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[
+            "score_delta"
+        ].values()
+    )
+    for flag in (
+        "visibility_residual_balance_implementation_consumed",
+        "visibility_residual_balance_hunk_retained",
+        "visibility_residual_balance_parity_scored",
+        "finite_reproducible_score",
+        "score_delta_zero",
+        "metrics_remained_baseline_identical",
+        "uses_existing_score_path_visibility",
+        "uses_existing_visible_residual_direction",
+        "uses_existing_work_conjugate_coherence",
+        "uses_existing_phase_resolved_transport",
+        "uses_existing_relative_impedance_contrast",
+        "uses_existing_signed_flux_balance",
+        "visibility_residual_balance_bounded",
+        "visibility_residual_balance_feeds_private_visible_phase_work_direction",
+        "private_benchmark_evidence_only",
+        "subgrid_vacuum_parity_scored",
+        "upstream_new_solver_hunk_retained",
+        "fixture_quality_pending",
+    ):
+        assert phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[flag] is True
+    for flag in (
+        "subgrid_vacuum_parity_passed",
+        "material_improvement_demonstrated",
+        "paired_passed",
+        "fixture_quality_ready",
+        "true_rt_readiness_unlocked",
+        "slab_rt_scored",
+        "production_patch_applied",
+        "solver_behavior_changed",
+        "field_update_behavior_changed",
+        "new_solver_hunk_retained",
+        "runner_behavior_changed",
+        "api_preflight_changes_allowed",
+        "rfx_api_changes_allowed",
+        "package_export_changed",
+        "readme_changed",
+        "docs_public_changed",
+        "examples_changed",
+        "hook_surface_changed",
+        "true_rt_public_observable_promoted",
+        "dft_flux_tfsf_port_sparameter_promoted",
+        "public_claim_allowed",
+        "public_observable_promoted",
+        "promotion_candidate_ready",
+        "hook_experiment_allowed",
+        "public_api_behavior_changed",
+        "public_default_tau_changed",
+        "simresult_changed",
+        "result_surface_changed",
+        "slab_rt_public_claim_allowed",
+        "api_surface_changed",
+        "runner_surface_changed",
+        "env_config_changed",
+    ):
+        assert phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[flag] is False
+    parity_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[
+            "candidate_ladder"
+        ]
+    }
+    assert parity_candidates[
+        "AOH0_visibility_residual_balance_implementation_freeze"
+    ]["accepted_candidate"] is False
+    assert parity_candidates[
+        "AOH1_finite_visibility_residual_balance_private_parity_score"
+    ]["accepted_candidate"] is True
+    assert parity_candidates[
+        "AOH2_material_improvement_to_fixture_quality"
+    ]["accepted_candidate"] is False
+    assert parity_candidates[
+        "AOH3_public_observable_or_threshold_escape_rejected"
+    ]["accepted_candidate"] is False
+    assert any(
+        key.startswith("next_lane_requires_")
+        and key.endswith(
+            "work_conjugate_coherence_phase_resolved_transport_source_interface_packet_admittance_transport_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_failure_theory_redesign"
+        )
+        and value is True
+        for key, value in phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata.items()
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_parity_scoring_metadata[
+            "next_prerequisite"
+        ]
+        == benchmark_gate[
+            phase_energy_coupling_visibility_residual_balance_parity_scoring_next_key
+        ]
+    )
+    assert (
+        benchmark_gate[
+            phase_energy_coupling_visibility_residual_balance_parity_scoring_status_key
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        phase_energy_coupling_visibility_residual_balance_implementation_next_key
+        phase_energy_coupling_visibility_residual_balance_parity_scoring_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        phase_energy_coupling_visibility_residual_balance_implementation_next_key
+        phase_energy_coupling_visibility_residual_balance_parity_scoring_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
