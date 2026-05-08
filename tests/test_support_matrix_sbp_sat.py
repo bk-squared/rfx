@@ -29115,11 +29115,103 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
+
+    phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_key = (
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_feasibility_ladder_key.replace(
+            "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_phase_work_transport_phase_work_coherence_residual_work_alignment_private_feasibility_ladder_implementation",
+            "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_phase_work_transport_phase_work_coherence_residual_work_alignment_private_feasibility_ladder_support_halt_decision",
+        )
+    )
+    phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_status_key = (
+        f"{phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_key}_status"
+    )
+    phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_next_key = (
+        f"{phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_key}_next_prerequisite"
+    )
+    phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_metadata = benchmark_gate[
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_key
+    ]
+    assert benchmark_gate[
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_status_key
+    ].endswith(
+        "_characteristic_impedance_flux_coupling_relative_impedance_contrast_signed_flux_balance_phase_energy_coupling_visibility_residual_balance_phase_work_transport_phase_work_coherence_residual_work_alignment_private_feasibility_ladder_support_halted_no_public_promotion"
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_metadata[
+            "selected_candidate_id"
+        ]
+        == "AOT1_private_support_halt_current_kernel_no_go"
+    )
+    for flag in (
+        "current_kernel_support_path_halted",
+        "private_goal_resolved_by_falsification",
+        "interface_energy_transfer_correctness_falsified",
+        "claims_bearing_true_rt_readiness_rejected",
+        "public_promotion_rejected",
+        "new_architecture_required_for_future_work",
+        "new_research_branch_allowed",
+        "rollback_or_archive_recommended",
+        "support_matrix_hard_fail_preserved",
+        "private_feasibility_ladder_consumed",
+        "all_required_rungs_recorded",
+    ):
+        assert phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_metadata[flag] is True
+    assert (
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_metadata[
+            "decision"
+        ]
+        == "halt_current_sbp_sat_subgridding_kernel_support_path"
+    )
+    assert (
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_metadata[
+            "terminal_classification"
+        ]
+        == "support_halted_no_public_promotion"
+    )
+    assert (
+        "continue_scalar_microkernel_ladder_on_current_kernel"
+        in phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_metadata[
+            "excluded_success_paths"
+        ]
+    )
+    for flag in (
+        "current_kernel_future_work_allowed",
+        "interface_energy_transfer_correctness_proven",
+        "fixture_quality_ready",
+        "reference_quality_ready",
+        "true_rt_readiness_unlocked",
+        "slab_rt_scored",
+        "production_patch_applied",
+        "solver_behavior_changed",
+        "field_update_behavior_changed",
+        "new_solver_hunk_retained",
+        "public_claim_allowed",
+        "public_observable_promoted",
+        "runner_behavior_changed",
+        "api_surface_changed",
+        "result_surface_changed",
+        "env_config_changed",
+    ):
+        assert phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_metadata[flag] is False
+    assert (
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_metadata[
+            "next_prerequisite"
+        ]
+        == benchmark_gate[
+            phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_next_key
+        ]
+    )
+    assert (
+        benchmark_gate[
+            phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_status_key
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_feasibility_ladder_next_key
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_feasibility_ladder_next_key
+        phase_energy_coupling_visibility_residual_balance_residual_work_alignment_support_halt_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
@@ -30481,14 +30573,45 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
     assert latest_feasibility_ladder["solver_behavior_changed"] is False
     assert latest_feasibility_ladder["public_claim_allowed"] is False
     assert latest_feasibility_ladder["public_observable_promoted"] is False
-    assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        latest_feasibility_ladder_next_key
-    ]
-    assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
+    assert latest_feasibility_ladder["next_prerequisite"] == benchmark_gate[
         latest_feasibility_ladder_next_key
     ]
     assert (
         benchmark_gate[latest_feasibility_ladder_status_key]
+        in benchmark_gate["blocking_diagnostic"]
+    )
+
+    latest_support_halt_key = latest_feasibility_ladder_key.replace(
+        "phase_energy_coupling_visibility_residual_balance_phase_work_transport_phase_work_coherence_residual_work_alignment_private_feasibility_ladder_implementation",
+        "phase_energy_coupling_visibility_residual_balance_phase_work_transport_phase_work_coherence_residual_work_alignment_private_feasibility_ladder_support_halt_decision",
+    )
+    latest_support_halt = benchmark_gate[latest_support_halt_key]
+    latest_support_halt_status_key = f"{latest_support_halt_key}_status"
+    latest_support_halt_next_key = f"{latest_support_halt_key}_next_prerequisite"
+    assert benchmark_gate[latest_support_halt_status_key].endswith(
+        "_phase_energy_coupling_visibility_residual_balance_phase_work_transport_phase_work_coherence_residual_work_alignment_private_feasibility_ladder_support_halted_no_public_promotion"
+    )
+    assert (
+        latest_support_halt["selected_candidate_id"]
+        == "AOT1_private_support_halt_current_kernel_no_go"
+    )
+    assert latest_support_halt["current_kernel_support_path_halted"] is True
+    assert latest_support_halt["private_goal_resolved_by_falsification"] is True
+    assert latest_support_halt["current_kernel_future_work_allowed"] is False
+    assert latest_support_halt["new_architecture_required_for_future_work"] is True
+    assert latest_support_halt["interface_energy_transfer_correctness_falsified"] is True
+    assert latest_support_halt["interface_energy_transfer_correctness_proven"] is False
+    assert latest_support_halt["solver_behavior_changed"] is False
+    assert latest_support_halt["public_claim_allowed"] is False
+    assert latest_support_halt["public_observable_promoted"] is False
+    assert benchmark_gate["next_prerequisite"] == benchmark_gate[
+        latest_support_halt_next_key
+    ]
+    assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
+        latest_support_halt_next_key
+    ]
+    assert (
+        benchmark_gate[latest_support_halt_status_key]
         in benchmark_gate["blocking_diagnostic"]
     )
 
