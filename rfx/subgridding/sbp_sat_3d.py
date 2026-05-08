@@ -5564,13 +5564,29 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         )
         * packet_mask
     )
+    relative_impedance_contrast = (
+        jnp.clip(
+            jnp.abs(source_packet_admittance_weight - interface_packet_admittance_weight)
+            * (half + half * residual_projection_signed_flux_residual_conditioner)
+            * (half + half * residual_projection_phase_work_balance_normalizer)
+            * (half + half * residual_projection_limiter_delta_energy_weight),
+            zero,
+            one,
+        )
+        * packet_mask
+    )
+    relative_impedance_flux_coupling_factor = (
+        characteristic_flux_coupling_factor
+        * (one + half * relative_impedance_contrast)
+        * packet_mask
+    )
     source_interface_packet_admittance_transport = (
         jnp.clip(
             residual_projection_phase_resolved_transport
             * source_interface_packet_admittance_balance
             * residual_projection_signed_flux_residual_conditioner
             * residual_projection_limiter_delta_energy_weight
-            * characteristic_flux_coupling_factor,
+            * relative_impedance_flux_coupling_factor,
             -half,
             half,
         )
