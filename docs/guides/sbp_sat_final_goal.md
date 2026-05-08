@@ -1029,3 +1029,5 @@ Private SBP-SAT note: ANE1 work-conjugate coherence parity scoring is private ev
 Private SBP-SAT note: ANF1 failure theory selects `ANG1_phase_resolved_work_conjugate_residual_transport_microkernel` because local work-conjugate coherence gating did not transport phase-resolved residual energy through source/interface packets. This is a private design target only; true R/T and public promotion remain locked.
 
 Private SBP-SAT note: `ANH1_phase_resolved_work_conjugate_residual_transport_hunk` is retained as private implementation evidence only. It must be parity-scored before any fixture/reference-quality, slab true R/T, or public support claim.
+
+Private SBP-SAT note: ANH1 phase-resolved residual transport parity scoring is private evidence only and records `ANI1_finite_phase_resolved_work_conjugate_residual_transport_private_parity_score` as finite but insufficient. The final-goal ladder therefore remains blocked before fixture/reference-quality and true R/T readiness; no public true R/T/DFT/flux/TFSF/port/S-parameter/API/result/export/threshold promotion is allowed.

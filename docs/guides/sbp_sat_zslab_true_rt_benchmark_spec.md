@@ -1293,3 +1293,5 @@ Private true-R/T gate note: ANE1 work-conjugate coherence parity scoring does no
 Private true-R/T gate note: work-conjugate coherence failure theory does not unlock fixture/reference quality. The private benchmark remains inconclusive and the next prerequisite is phase-resolved residual transport implementation, still without public true R/T/DFT/flux/TFSF/port/S-parameter promotion.
 
 Private true-R/T gate note: the phase-resolved residual transport hunk is retained but does not itself unlock fixture/reference quality. The benchmark remains inconclusive until private parity scoring proves otherwise, with public true R/T/DFT/flux/TFSF/port/S-parameter promotion still forbidden.
+
+Private true-R/T gate note: ANH1 phase-resolved residual transport parity scoring does not unlock fixture/reference quality or slab true R/T. The benchmark remains no-go/inconclusive and the next prerequisite is private phase-resolved transport failure-theory redesign, without public observable/API/export promotion.
