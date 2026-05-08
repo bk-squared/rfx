@@ -1,57 +1,61 @@
-"""Inverse design — microstrip-line open-stub notch frequency tuning
-via density-based PEC mask + JAX-traceable post-forward S-extraction.
+"""[EXPERIMENTAL — REGRESSED 2026-05-08] MSL open-stub notch tuning.
 
+⚠️ This demo is currently NOT closed end-to-end.  Moved under
+``_experimental/`` to make the regressed status visible.  Do NOT cite
+it as a working AD inverse-design example.  Use
+``examples/inverse_design/multilayer_ar_coating.py`` for a supported
+end-to-end AD inverse-design example (low-Q, dielectric-only,
+Meep-crossvalidated).
+
+Background
+----------
 Microwave-engineering inverse-design demo on a 2-port MSL filter:
 tune the open-stub length so the notch lands at a chosen design
-frequency.  Stub length is naturally a *discrete* variable (an integer
-number of Yee cells along ``y``); we reformulate it as a continuous
-sigmoid PEC density mask via :meth:`Simulation.forward(pec_occupancy_override=…)`
-and optimise the half-length scalar with Adam through ``jax.grad``.
+frequency.  Stub length is reformulated as a continuous sigmoid PEC
+density mask via :meth:`Simulation.forward(pec_occupancy_override=…)`
+and optimised with Adam through ``jax.grad``.  Cost is
+``|S21(f_target)|²`` from the plane-integrated JAX 3-probe extractor.
 
-Design variable: scalar ``L_stub ∈ [4, 12] mm`` (mapped from a real
-latent via sigmoid).  Sigmoid mask sharpness ≈ 0.7 dx — soft enough
-for AD, hard enough for the open-circuit boundary to register.
+Why it does not close
+---------------------
+``pec_occupancy_override`` is wired through ``apply_pec_occupancy``
+(``rfx/boundaries/pec.py:180-198``) — pure E-tangential damping by
+``(1 − occ_face)``.  No permittivity reweighting at fractional cells.
+When the sigmoid edge slides ~µm, individual cells go occ=0.50→0.51
+but bulk permittivity stays at vacuum — there is no Kottke-style
+effective medium.  Near the high-Q stub-notch resonance this produces
+sub-β wiggles in the cost surface (period ≈ SIGMOID_BETA, amplified
+by the resonance Q) that cause Adam's *local* gradient to point in
+the opposite direction from the *global* descent.  Brute-scan finds
+argmin at L=7mm but Adam from L=9.5mm climbs to L=11mm.
 
-Cost: ``|S21(f_target)|²`` extracted *post-* :meth:`Simulation.forward`
-by :func:`rfx.probes.msl_wave_decomp.extract_msl_s_params_jax_plane`
-— the plane-integrated JAX 3-probe recurrence (line-Ez for V,
-area-Hy for I), mirroring the imperative
-:meth:`compute_msl_s_matrix` integration formulas.  The plane lane
-is enabled by the 2026-05-07 ``ForwardResult.dft_planes`` plumbing
-(``feat(forward): expose dft_planes accumulators``); the earlier
-scalar Ez/Hy point-probe lane lives on at
-:func:`extract_msl_s_params_jax` and is *strictly looser* than the
-plane lane on the imperative-reference comparison
-(``tests/test_msl_plane_extractor_jax.py``).
+Verified 2026-05-08 by ``scripts/y2_grad_fd_delta_sweep.py`` (run #668):
+AD gradient at L=9.5 mm matches FD at δ=1µm exactly (-1.08e-24);
+FD with δ ≥ β=32µm gives the opposite sign (+9.6e-25 to +1.5e-24,
+plateau).  AD is mathematically correct; the cost surface is rough
+on the override path.
 
-Validation chain (the point of this example):
-  1. Adam minimises ``|S21_jax(f_target)|²`` w.r.t. ``L_stub``.
-  2. Brute-force scan (same JAX extractor) confirms the optimum.
-  3. **Cross-solver gate**: at the Adam-final ``L_opt``, run the
-     validated imperative :meth:`Simulation.compute_msl_s_matrix` and
-     check that the *imperative* notch is real (deep ≤ -15 dB) and
-     near the design target.
+Two further pathologies (closed independently this session):
+  * σ-loading (commit 8d65786) introduced 1mm argmin shift at dx=127.
+    REVERTED on main (commits 15a2a63, c9ab3ea).
+  * Mixed-cell singularity at h_sub/dx ∈ [3.10, 3.40] (e.g. dx=80µm)
+    caused |S21|² > 1.  Preflight warning landed (commit db2e0a9).
 
-What this demo now demonstrates (post Phase 1+2 closure of gap #2/#4):
+Standard fix from the topology-optimisation literature (Andkjær/
+Sigmund/Lazarov-Wang; Meep MaterialGrid, Tidy3D TopologyDesignRegion,
+Lumerical TopOpt all use the same recipe):
+  * Density filter (radius ≥ 2-3 cells)
+  * Heaviside projection with β-continuation (β starts broad, narrows
+    over iterations)
+  * **Subpixel-correct material averaging** (Kottke / volume-of-fluid
+    effective medium), not linear interpolation of the indicator.
+    rfx already has ``compute_inv_eps_tensor_diag`` /
+    ``_kottke_inv_eps_diag`` (``rfx/geometry/smoothing.py:595-790``)
+    for hard PEC shapes — the architectural fix is to wire the
+    override path through that, not to tune SIGMOID_BETA.
 
-  * ``pec_occupancy_override`` reformulation of ``L_stub`` works
-    end-to-end on :meth:`Simulation.forward` — gradients flow,
-    Adam descends.
-  * Adam lands on a *real* notch (imperative |S21| ≤ -15 dB at
-    ``L_opt``) within engineering tolerance of ``f_target``.
-  * Plane-integrated JAX S-extractor closes the documented
-    15-20 % notch-frequency bias of the scalar lane on the
-    2-substrate-cell mesh.
-
-Remaining infrastructure gaps still surfaced by this demo (pre-tasks
-for follow-up work):
-
-  * ``forward(port_s11_freqs=…)`` is uniform-mesh-only (gap #1 in
-    ``docs/agent-memory/rfx-known-issues.md``).
-  * :meth:`compute_msl_s_matrix` itself remains imperative (uses
-    ``np.asarray``) — not ``jax.grad``-traceable; the plane-lane JAX
-    extractor here is the differentiable substitute for engineering-
-    accurate gradient signal.
+See ``docs/agent-memory/rfx-known-issues.md`` for the full diagnosis
+and recipe.
 
 Geometry: cv06b-class (uniform dx=127 µm = h_sub/2 = 2 substrate
 cells, L_LINE=30 mm).  Long enough for each MSL port's 3-probe
