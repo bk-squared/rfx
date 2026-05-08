@@ -5502,11 +5502,33 @@ def _private_score_path_visibility_field_update_solver_observed_delta_packet_nor
         )
         * packet_mask
     )
+    residual_projection_work_conjugate_coherence_gate = (
+        jnp.clip(
+            jnp.abs(limited_work_conjugate_phase_transport)
+            / (
+                floor
+                + jnp.abs(limited_work_conjugate_phase_transport)
+                + residual_projection_phase_work_balance
+            ),
+            zero,
+            one,
+        )
+        * jnp.where(
+            jnp.abs(limited_work_conjugate_phase_transport) > floor,
+            half
+            + half
+            * jnp.sign(signed_flux_residual)
+            * jnp.sign(limited_work_conjugate_phase_transport),
+            one,
+        )
+        * packet_mask
+    )
     residual_projection_visible_phase_work_balanced_direction = (
         residual_projection_visible_delta_energy_weighted_direction
         * residual_projection_phase_work_balance_normalizer
         * residual_projection_signed_flux_residual_conditioner
         * residual_projection_signed_flux_residual_polarity_alignment
+        * residual_projection_work_conjugate_coherence_gate
         * packet_mask
     )
     residual_projection_visible_signed_limiter = (

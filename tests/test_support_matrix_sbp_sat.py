@@ -24492,11 +24492,117 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         ]
         in benchmark_gate["blocking_diagnostic"]
     )
+    delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_key = (
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_failure_theory_key.replace(
+            "_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_failure_theory",
+            "_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation",
+        )
+    )
+    delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_status_key = (
+        f"{delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_key}_status"
+    )
+    delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_next_key = (
+        f"{delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_key}_next_prerequisite"
+    )
+    delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata = benchmark_gate[
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_key
+    ]
+    assert benchmark_gate[
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_status_key
+    ].endswith(
+        "_phase_amplitude_transport_characteristic_energy_pairing_work_conjugate_phase_transport_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_alignment_work_conjugate_coherence_hunk_retained_fixture_quality_pending"
+    )
+    assert delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata[
+        "upstream_work_conjugate_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_failure_theory_status"
+    ] == benchmark_gate[
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_failure_theory_status_key
+    ]
+    assert (
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata[
+            "selected_candidate_id"
+        ]
+        == "ANE1_work_conjugate_coherence_signed_flux_polarity_limiter_hunk"
+    )
+    for flag in (
+        "polarity_aligned_failure_theory_consumed",
+        "polarity_aligned_parity_scoring_consumed",
+        "polarity_alignment_implementation_consumed",
+        "work_conjugate_coherence_limiter_hunk_retained",
+        "work_conjugate_coherence_uses_existing_limited_work_conjugate_phase_transport",
+        "work_conjugate_coherence_uses_existing_signed_flux_residual",
+        "work_conjugate_coherence_uses_existing_phase_work_balance",
+        "work_conjugate_coherence_uses_existing_delta_energy",
+        "work_conjugate_coherence_no_extra_packet_reductions",
+        "work_conjugate_coherence_no_new_helper_nesting",
+        "repeat_binary_polarity_alignment_rejected",
+        "slow_no_go_required_before_commit",
+        "slow_no_go_passed_before_commit",
+        "private_benchmark_evidence_only",
+        "production_patch_applied",
+        "solver_behavior_changed",
+        "field_update_behavior_changed",
+        "new_solver_hunk_retained",
+    ):
+        assert delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata[
+            flag
+        ] is True
+    for flag in (
+        "fixture_quality_ready",
+        "true_rt_readiness_unlocked",
+        "slab_rt_scored",
+        "runner_behavior_changed",
+        "api_preflight_changes_allowed",
+        "rfx_api_changes_allowed",
+        "package_export_changed",
+        "readme_changed",
+        "docs_public_changed",
+        "examples_changed",
+        "hook_surface_changed",
+        "true_rt_public_observable_promoted",
+        "dft_flux_tfsf_port_sparameter_promoted",
+    ):
+        assert delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata[
+            flag
+        ] is False
+    coherence_implementation_candidates = {
+        candidate["candidate_id"]: candidate
+        for candidate in delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata[
+            "candidate_ladder"
+        ]
+    }
+    assert coherence_implementation_candidates[
+        "ANE1_work_conjugate_coherence_signed_flux_polarity_limiter_hunk"
+    ]["accepted_candidate"] is True
+    assert coherence_implementation_candidates[
+        "ANE2_repeat_binary_polarity_alignment_rejected"
+    ]["accepted_candidate"] is False
+    assert coherence_implementation_candidates[
+        "ANE3_public_observable_or_threshold_escape_rejected"
+    ]["accepted_candidate"] is False
+    assert any(
+        key.startswith("next_lane_requires_")
+        and key.endswith(
+            "work_conjugate_phase_transport_impedance_balanced_energy_flux_expression_budgeted_existing_helper_signed_characteristic_admittance_phase_work_conjugacy_ledger_coupling_face_resolved_transport_time_centered_work_ledger_compile_budgeted_helper_gain_ladder_packet_projected_residual_scalar_blend_score_path_visibility_visibility_scale_signed_gate_residual_projection_visible_limiter_delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_parity_scoring"
+        )
+        and value is True
+        for key, value in delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata.items()
+    )
+    assert delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_metadata[
+        "next_prerequisite"
+    ] == benchmark_gate[
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_next_key
+    ]
+    assert (
+        benchmark_gate[
+            delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_status_key
+        ]
+        in benchmark_gate["blocking_diagnostic"]
+    )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_failure_theory_next_key
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_next_key
     ]
     assert benchmark_gate["follow_up_recommendation"] == benchmark_gate[
-        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_failure_theory_next_key
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_next_key
     ]
     assert benchmark_gate[
         source_interface_residual_phase_rotation_phase_energy_closure_residual_distribution_gradient_balance_curvature_parity_status_key
@@ -25595,7 +25701,7 @@ def test_sbp_sat_true_rt_benchmark_is_explicitly_deferred():
         == redesign["next_prerequisite"]
     )
     assert benchmark_gate["next_prerequisite"] == benchmark_gate[
-        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_failure_theory_next_key
+        delta_energy_weighted_phase_work_balance_signed_flux_residual_polarity_aligned_work_conjugate_coherence_implementation_next_key
     ]
     assert (
         "time_centered_staging_contract_ready"
