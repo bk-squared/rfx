@@ -494,6 +494,7 @@ def run(
     checkpoint_segments: int | None = None,
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
+    aniso_inv_eps_smooth: bool = False,
     pec_mask: object | None = None,
     pec_occupancy: object | None = None,
     conformal_weights: tuple | None = None,
@@ -838,8 +839,15 @@ def run(
             # un-zero H at Kottke-frozen PEC cells.  Threshold rather
             # than ``== 0.0`` so smooth-Kottke (eps_inside = 1e10)
             # cells (inv ≈ 1e-10 at f=1) are caught alongside exact-PEC
-            # cells (inv = 0 from binary `pec_shapes`); at FDTD dt the
-            # two are physically indistinguishable.
+            # cells (inv = 0 from binary `pec_shapes`).  Smooth-Kottke
+            # path uses ONLY the full-PEC mask (all three inv below
+            # threshold); the pairwise per-component masks would trigger
+            # spuriously at sigmoid-edge cells (where 2 of 3 components
+            # are frozen due to Kottke anisotropy but the cell is
+            # legitimately a partial-fill interface, not full PEC) —
+            # killing wave propagation INTO the stub region.  Binary
+            # Stage 2 path keeps the pairwise masks as before (boundary
+            # cells of binary PEC need the corner-specific H zero).
             if use_aniso_inv:
                 from rfx.boundaries.pec import apply_pec_h_mask
                 _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
@@ -847,13 +855,19 @@ def run(
                 _xx0 = (_inv_xx < _PEC_INV_THRESHOLD)
                 _yy0 = (_inv_yy < _PEC_INV_THRESHOLD)
                 _zz0 = (_inv_zz < _PEC_INV_THRESHOLD)
-                st = apply_pec_h_mask(
-                    st,
-                    pec_mask=_xx0 & _yy0 & _zz0,
-                    mask_hx=_yy0 & _zz0,
-                    mask_hy=_xx0 & _zz0,
-                    mask_hz=_xx0 & _yy0,
-                )
+                if aniso_inv_eps_smooth:
+                    st = apply_pec_h_mask(
+                        st,
+                        pec_mask=_xx0 & _yy0 & _zz0,
+                    )
+                else:
+                    st = apply_pec_h_mask(
+                        st,
+                        pec_mask=_xx0 & _yy0 & _zz0,
+                        mask_hx=_yy0 & _zz0,
+                        mask_hy=_xx0 & _zz0,
+                        mask_hz=_xx0 & _yy0,
+                    )
             if use_pmc_faces:
                 from rfx.boundaries.pmc import apply_pmc_faces
                 st = apply_pmc_faces(st, _pmc_faces_frozen)
@@ -1298,6 +1312,7 @@ def run_until_decay(
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
+    aniso_inv_eps_smooth: bool = False,
     pec_mask: object | None = None,
     pec_occupancy: object | None = None,
     conformal_weights: tuple | None = None,
@@ -1546,9 +1561,8 @@ def run_until_decay(
                 st, cpml_params, carry_in["cpml"], grid, cpml_axes,
                 materials=materials)
         # Stage 2 H damping — after CPML-H so CPML cannot un-zero H.
-        # Threshold rather than ``== 0.0`` so smooth-Kottke (eps_inside
-        # = 1e10) cells (inv ≈ 1e-10 at f=1) are caught alongside
-        # exact-PEC cells.
+        # Threshold + smooth-Kottke conditional: see twin block in
+        # the main `run` body for full rationale.
         if use_aniso_inv:
             from rfx.boundaries.pec import apply_pec_h_mask
             _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
@@ -1556,13 +1570,19 @@ def run_until_decay(
             _xx0 = (_inv_xx < _PEC_INV_THRESHOLD)
             _yy0 = (_inv_yy < _PEC_INV_THRESHOLD)
             _zz0 = (_inv_zz < _PEC_INV_THRESHOLD)
-            st = apply_pec_h_mask(
-                st,
-                pec_mask=_xx0 & _yy0 & _zz0,
-                mask_hx=_yy0 & _zz0,
-                mask_hy=_xx0 & _zz0,
-                mask_hz=_xx0 & _yy0,
-            )
+            if aniso_inv_eps_smooth:
+                st = apply_pec_h_mask(
+                    st,
+                    pec_mask=_xx0 & _yy0 & _zz0,
+                )
+            else:
+                st = apply_pec_h_mask(
+                    st,
+                    pec_mask=_xx0 & _yy0 & _zz0,
+                    mask_hx=_yy0 & _zz0,
+                    mask_hy=_xx0 & _zz0,
+                    mask_hz=_xx0 & _yy0,
+                )
         if use_pmc_faces:
             from rfx.boundaries.pmc import apply_pmc_faces
             st = apply_pmc_faces(st, _pmc_faces_frozen)

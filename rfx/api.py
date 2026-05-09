@@ -2854,6 +2854,44 @@ class Simulation:
 
         if not self._msl_ports:
             raise ValueError("No MSL ports registered. Call add_msl_port() first.")
+        if self._ports or self._waveguide_ports or self._floquet_ports:
+            raise NotImplementedError(
+                "compute_msl_s_matrix() is defined only for add_msl_port(...) "
+                "families in the current simulation. Use separate "
+                "simulations for add_port(...), add_waveguide_port(...), "
+                "or add_floquet_port(...) S-parameter workflows."
+            )
+        if self._tfsf is not None:
+            raise NotImplementedError(
+                "compute_msl_s_matrix() is not supported together with TFSF; "
+                "TFSF is a plane-wave source, not an MSL port."
+            )
+        if self._coaxial_ports:
+            raise NotImplementedError(
+                "compute_msl_s_matrix() does not include add_coaxial_port(...); "
+                "coaxial-port S-parameters need a separate validated V/I "
+                "extraction and calibration contract."
+            )
+        if (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        ):
+            raise NotImplementedError(
+                "compute_msl_s_matrix() currently supports the uniform Yee "
+                "lane only. Drop dx_profile/dy_profile/dz_profile or use a "
+                "documented diagnostic path."
+            )
+        if self._refinement is not None:
+            raise NotImplementedError(
+                "compute_msl_s_matrix() is not supported with SBP-SAT "
+                "subgridding."
+            )
+        if self._solver == "adi":
+            raise NotImplementedError(
+                "compute_msl_s_matrix() is not supported with solver='adi'; "
+                "use the uniform Yee solver."
+            )
 
         entries = list(self._msl_ports)
         n_ports = len(entries)
@@ -3441,6 +3479,160 @@ class Simulation:
                 f"{kw}={val!r} is silently ignored on the {path_name} run "
                 f"path ({reason}).",
                 UserWarning, stacklevel=3,
+            )
+
+    def _port_sparameter_entries(self) -> list:
+        """Return ``add_port`` entries that are actual impedance ports.
+
+        ``add_source`` reuses ``_PortEntry`` with ``impedance=0`` as a
+        source-only sentinel, so S-parameter request validation must not
+        count every ``self._ports`` entry as a calibrated port.
+        """
+
+        return [pe for pe in self._ports if pe.impedance > 0.0]
+
+    def _validate_run_sparameter_request(
+        self,
+        *,
+        compute_s_params: bool | None,
+        s_param_freqs,
+        s_param_n_steps: int | None,
+        devices: list | None = None,
+    ) -> None:
+        """Reject explicit ``run`` S-parameter requests outside its contract."""
+
+        requested = (
+            compute_s_params is True
+            or s_param_freqs is not None
+            or s_param_n_steps is not None
+        )
+        if not requested:
+            return
+
+        port_entries = self._port_sparameter_entries()
+        source_only_entries = [pe for pe in self._ports if pe.impedance == 0.0]
+        messages: list[str] = []
+
+        if self._msl_ports:
+            messages.append(
+                "add_msl_port(...) uses compute_msl_s_matrix(); "
+                "run(compute_s_params=True) does not include MSL ports in "
+                "Result.s_params"
+            )
+        if self._waveguide_ports:
+            messages.append(
+                "add_waveguide_port(...) uses compute_waveguide_s_matrix() "
+                "for the full S-matrix; run() may return per-port "
+                "result.waveguide_sparams but not Result.s_params"
+            )
+        if self._floquet_ports:
+            messages.append(
+                "add_floquet_port(...) is experimental and has no "
+                "claims-bearing run(compute_s_params=True) S-matrix path"
+            )
+        if self._tfsf is not None:
+            messages.append(
+                "add_tfsf_source(...) is a plane-wave source, not a port"
+            )
+        if self._coaxial_ports:
+            messages.append(
+                "add_coaxial_port(...) has no validated high-level "
+                "V/I extraction or calibration contract; use "
+                "add_port(extent=...) for current probe-feed S-parameters"
+            )
+
+        if not port_entries:
+            if source_only_entries:
+                messages.append(
+                    "add_source(...) / add_polarized_source(...) are "
+                    "source-only observables and cannot populate "
+                    "Result.s_params"
+                )
+            detail = "; ".join(messages) if messages else (
+                "register at least one add_port(...) impedance port"
+            )
+            raise ValueError(
+                "run(compute_s_params=True) computes Result.s_params only "
+                f"for add_port(...) lumped or wire ports; {detail}."
+            )
+
+        if messages:
+            raise NotImplementedError(
+                "run(compute_s_params=True) has a single result schema for "
+                "add_port(...) lumped/wire ports. Mixed or specialized port "
+                "families must use their documented calculators: "
+                + "; ".join(messages)
+                + "."
+            )
+
+        if self._solver == "adi":
+            raise NotImplementedError(
+                "run(compute_s_params=True) is not supported with "
+                "solver='adi'; use the uniform Yee solver."
+            )
+        if devices is not None and len(devices) > 1:
+            raise NotImplementedError(
+                "run(compute_s_params=True) is not supported on the "
+                "distributed multi-device path; run a single-device "
+                "uniform S-parameter calculation."
+            )
+        if self._refinement is not None:
+            raise NotImplementedError(
+                "run(compute_s_params=True) is not supported with "
+                "SBP-SAT subgridding; drop the refinement or use a "
+                "documented reference-lane port workflow."
+            )
+
+        is_nonuniform = (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        )
+        if is_nonuniform and any(pe.extent is None for pe in port_entries):
+            raise NotImplementedError(
+                "run(compute_s_params=True) on a non-uniform mesh is wired "
+                "only for add_port(..., extent=...) WirePort extraction. "
+                "Single-cell lumped-port S-parameters require the uniform "
+                "reference lane."
+            )
+
+    def _validate_forward_sparameter_request(self) -> None:
+        """Reject ``forward(port_s11_freqs=...)`` outside its narrow path."""
+
+        port_entries = self._port_sparameter_entries()
+        messages: list[str] = []
+        if self._msl_ports:
+            messages.append("MSL ports use compute_msl_s_matrix()")
+        if self._waveguide_ports:
+            messages.append("waveguide ports use compute_waveguide_s_matrix()")
+        if self._floquet_ports:
+            messages.append(
+                "Floquet ports are experimental and have no forward S11 path"
+            )
+        if self._tfsf is not None:
+            messages.append("TFSF is a plane-wave source, not a port")
+        if self._coaxial_ports:
+            messages.append(
+                "coaxial ports have no validated high-level V/I extraction"
+            )
+        if not port_entries:
+            source_only = any(pe.impedance == 0.0 for pe in self._ports)
+            if source_only:
+                messages.append("add_source(...) is not an impedance port")
+            detail = "; ".join(messages) if messages else (
+                "register add_port(...) first"
+            )
+            raise ValueError(
+                "forward(port_s11_freqs=...) computes S11 only for "
+                f"add_port(...) lumped or wire ports on the uniform "
+                f"single-device path; {detail}."
+            )
+        if messages:
+            raise NotImplementedError(
+                "forward(port_s11_freqs=...) cannot be combined with "
+                "specialized or non-port excitation families: "
+                + "; ".join(messages)
+                + "."
             )
 
     def _auto_configure_mesh(self) -> None:
@@ -5636,6 +5828,7 @@ class Simulation:
             pec_mask=pec_mask_local,
             pec_occupancy=pec_occupancy_for_run,
             aniso_inv_eps=aniso_inv_eps_run,
+            aniso_inv_eps_smooth=(aniso_inv_eps_run is not None),
             lumped_port_sparams=lumped_port_sparam_specs or None,
             wire_port_sparams=wire_port_sparam_specs or None,
             dft_planes=dft_planes if dft_planes else None,
@@ -6222,6 +6415,17 @@ class Simulation:
                 "Either set distributed=True or omit devices."
             )
 
+        if self._coaxial_ports:
+            raise NotImplementedError(
+                "add_coaxial_port() is not wired into Simulation.forward() "
+                "as a validated high-level source/port path. Use "
+                "add_port(..., extent=...) for differentiable probe-feed "
+                "S11 objectives."
+            )
+
+        if port_s11_freqs is not None:
+            self._validate_forward_sparameter_request()
+
         self._auto_preflight(skip=skip_preflight, context="forward")
 
         is_nonuniform = (
@@ -6470,6 +6674,23 @@ class Simulation:
         # override (e.g. for A/B regression diagnosis).
         if conformal_pec is None:
             conformal_pec = bool(self._boundary_spec.conformal_faces())
+
+        if self._coaxial_ports:
+            raise NotImplementedError(
+                "add_coaxial_port() is not wired into Simulation.run() as a "
+                "validated high-level source/port path. Use "
+                "add_port(..., extent=...) for current claims-bearing "
+                "probe-feed S-parameters, or the low-level "
+                "rfx.sources.coaxial_port helpers for diagnostic material/"
+                "source experiments."
+            )
+
+        self._validate_run_sparameter_request(
+            compute_s_params=compute_s_params,
+            s_param_freqs=s_param_freqs,
+            s_param_n_steps=s_param_n_steps,
+            devices=devices,
+        )
 
         # ---- P0: Pre-simulation validation ----
         self._validate_mesh_quality()
