@@ -64,8 +64,8 @@ def main():
     n_steps = ((n_steps_raw + K - 1) // K) * K
     print(f"grid {grid.shape}, n_steps={n_steps} ({K} segs)", flush=True)
 
-    # Sigmoid stub at L=7mm
-    L_stub = 7.0e-3
+    # Sigmoid stub at L=7mm  (set to 0 via env to test no-stub baseline)
+    L_stub = float(os.environ.get("RFX_TEST_L_STUB_MM", "7.0")) * 1e-3
     nx, ny, nz = grid.shape
     pad_x, pad_y, pad_z = grid.axis_pads
     stub_xc = LX / 2
