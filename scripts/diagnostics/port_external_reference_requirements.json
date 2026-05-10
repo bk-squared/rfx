@@ -151,7 +151,8 @@
       ],
       "external_comparison_artifacts": [
         ".omx/physics-gate/2026-05-10-m35-coaxial-gap-openems-generic-comparison/coaxial_gap_openems_generic_sparameter_comparison.json",
-        ".omx/physics-gate/2026-05-10-m71-coaxial-gap-openems-broad-envelope/coaxial_gap_openems_broad_envelope.json"
+        ".omx/physics-gate/2026-05-10-m71-coaxial-gap-openems-broad-envelope/coaxial_gap_openems_broad_envelope.json",
+        ".omx/physics-gate/2026-05-11-m73-coaxial-s11-calibration/coaxial_s11_calibration_envelope.json"
       ],
       "broad_e5_envelope_artifacts": [
         ".omx/physics-gate/2026-05-10-m71-coaxial-gap-openems-broad-envelope/coaxial_gap_openems_broad_envelope.json"
