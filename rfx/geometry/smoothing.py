@@ -846,6 +846,13 @@ def kottke_inv_eps_from_occupancy(
         ``update_e_aniso_inv``.
     """
     f = jnp.clip(pec_occupancy.astype(jnp.float32), 0.0, 1.0)
+    # Clamp the sigmoid tail to exactly zero so the strict-Kottke
+    # `f > 0` selector does not trip on `1e-30` etc.  AD cells in the
+    # tail (occ < 1e-3) contribute nothing to the cost — their
+    # gradient is genuinely zero at this scale — so the hard clamp
+    # is functionally smooth.  Cells above the threshold flow
+    # gradients normally.
+    f = jnp.where(f < 1e-3, jnp.zeros_like(f), f)
 
     # Central-difference gradient of the occupancy.  ``jnp.roll`` gives
     # periodic boundary semantics; on rfx's CPML/PEC domain boundaries
@@ -884,27 +891,19 @@ def kottke_inv_eps_from_occupancy(
         eps_outside_y = bg
         eps_outside_z = bg
 
-    # Smooth-Kottke evaluation: use the finite-eps_inside path
-    # (`is_pec=False`) with eps_inside set to a large but finite
-    # PEC sentinel.  The strict PEC Kottke (``is_pec=True``) has a
-    # discontinuity at f=0 — any f > 0 forces ``inv_par = 0``, which
-    # collapses parallel-direction E for cells anywhere a sigmoid
-    # tail brings f above floating-point zero (e.g., 1e-30) — the
-    # wave then never propagates and the forward NaNs out.
-    # The smooth Kottke with eps_inside = 1e10 gives:
-    #   inv_perp = f/1e10 + (1-f)/eps_out  (continuous, vacuum at f=0)
-    #   inv_par  = 1/(f·1e10 + (1-f)·eps_out)  (continuous; ~0 at f=1)
-    # Both reduce to 1/eps_out at f=0 (no sigmoid-tail trap) and to
-    # ~0 at f=1 (effectively PEC for FDTD dt ~ 1e-13 s).
-    eps_inside_pec = jnp.asarray(1.0e10, dtype=f.dtype)
+    # Strict-Kottke PEC limit (`is_pec=True`): `inv_par = 0` for any
+    # f > 0 (frozen parallel-to-interface E), `inv_perp = (1-f)/eps`.
+    # The f-tail clamp above ensures only "real" PEC cells (occ ≥
+    # 1e-3) trip the `f > 0` selector — sigmoid-floor values like
+    # 1e-30 are clamped to 0 and correctly behave as vacuum.
     inv_xx_c, _, _ = _kottke_inv_eps_diag(
-        f, eps_inside_pec, eps_outside_x, n_x, n_y, n_z, is_pec=False,
+        f, jnp.inf, eps_outside_x, n_x, n_y, n_z, is_pec=True,
     )
     _, inv_yy_c, _ = _kottke_inv_eps_diag(
-        f, eps_inside_pec, eps_outside_y, n_x, n_y, n_z, is_pec=False,
+        f, jnp.inf, eps_outside_y, n_x, n_y, n_z, is_pec=True,
     )
     _, _, inv_zz_c = _kottke_inv_eps_diag(
-        f, eps_inside_pec, eps_outside_z, n_x, n_y, n_z, is_pec=False,
+        f, jnp.inf, eps_outside_z, n_x, n_y, n_z, is_pec=True,
     )
 
     if aniso_inv_eps_baseline is not None:
