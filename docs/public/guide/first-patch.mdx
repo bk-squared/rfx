@@ -225,7 +225,7 @@ plt.show()
 !!! warning
     For patch and microstrip feeds, treat this lumped-port S11 result as a
     **diagnostic workflow**, not yet as the canonical public validation path.
-    The currently best-validated path for this tutorial is the
+    The current recommended path for this tutorial is the
     current-source + Harminv resonance workflow above.
 
 ---
@@ -244,8 +244,8 @@ plt.show()
 
 ## Full script
 
-For a **current validated reference script**, prefer
-`examples/crossval/12_patch_antenna.py`.
+For the current public patch cross-check, prefer
+`examples/crossval/05_patch_antenna.py`.
 
 That crossval is the newest committed public patch workflow in this repo and is
 the script we currently use for the OpenEMS-backed external sanity check
@@ -253,4 +253,4 @@ described in [Tutorial: Patch Antenna Design](./tutorial-patch-antenna/).
 
 Older patch example scripts can still be useful as local experiments, but they
 should not be treated as the primary public reference path unless they are
-re-qualified against the current validation contract.
+checked against the current public workflow.

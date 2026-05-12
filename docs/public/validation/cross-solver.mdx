@@ -1,58 +1,25 @@
 ---
 title: "Cross-Solver Validation"
-description: "Current cross-solver evidence, led by the newest finite-ground-plane patch crossval."
+description: "Current public cross-solver and cross-check framing for rfx."
 sidebar:
   order: 42
 ---
 
-Cross-solver validation is where rfx checks itself against an independent
-reference solver or an analytic estimate. It is useful for public confidence,
-but it is not the same claim as the benchmark table.
+Cross-solver checks are useful for confidence, but they should stay scoped to the workflow being checked.
 
-## Current public patch cross-check
+## Current public anchors
 
-`examples/crossval/12_patch_antenna.py` is the current public anchor.
-
-| Measurement | Resonance | Delta |
-|---|---:|---:|
-| Balanis transmission-line estimate | 2.4235 GHz | — |
-| rfx Harminv | 2.4621 GHz | +1.59% vs Balanis |
-| OpenEMS reference | 2.4868 GHz | +2.61% vs Balanis |
-| rfx vs OpenEMS | — | **0.99%** |
-
-### Why this check is useful
-
-- it uses a finite ground plane modeled as geometry
-- it uses Harminv on a probe ringdown for the primary frequency estimate
-- it compares against an independent solver on the same physical structure
-
-### What it is **not**
-
-- not the main solver-accuracy benchmark table
-- not a blanket promotion of the graded-z lane
-- not a reason to replace the published benchmark ladder
-
-## Broader solver checks
-
-| Evidence | Role |
+| Script | Role |
 |---|---|
-| `tests/test_meep_crossval.py` | cavity and analytic comparison against Meep |
-| `tests/test_meep_crossval_patch.py` | dielectric-loaded cavity comparison against Meep |
-| `tests/test_crossval_comprehensive.py` | compact multi-case cross-solver assertions |
-| `examples/40_accuracy_validation/run_all.py` | published benchmark suite |
+| `examples/crossval/05_patch_antenna.py` | current practical patch cross-check |
+| `examples/crossval/11_waveguide_port_wr90.py` | rectangular waveguide-port workflow |
 
-## Current promoted crossval-backed public reference
+## How to read cross-checks
 
-The currently promoted public cross-solver reference is:
+- A cross-check supports the specific geometry, mesh, source, and observable it exercises.
+- It is not a blanket guarantee for every related RF design.
+- If a result comes from an experimental lane, say so.
 
-- `examples/crossval/12_patch_antenna.py`
+## Broader checks
 
-Other crossval scripts may exist in the repo, but they should not be promoted
-into the public claims path unless they are explicitly selected and framed as
-the current trusted reference for that workflow family.
-
-## Reading rule
-
-If a cross-solver result comes from a shadow lane, say so.
-If it comes from the claims-bearing reference lane, keep the wording narrow and
-match the support matrix.
+The repo also contains tests and scripts for cavity, waveguide, material, and port behavior. Public pages should summarize the outcome at the feature level rather than exposing internal test IDs, run IDs, or diagnostic histories.

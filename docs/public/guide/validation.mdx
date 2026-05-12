@@ -1,140 +1,46 @@
 ---
 title: "Cross-Validation and Accuracy"
-description: "Published RF benchmarks, cross-solver checks, and workflow-validation guidance for rfx."
+description: "Public validation overview and current support boundaries for rfx."
 sidebar:
   order: 7
 ---
 
-rfx validation is easiest to read as a layered evidence story:
+This page gives the short public version of rfx validation status.
 
-1. **Published benchmark scripts** for the core RF cases
-2. **Cross-solver checks** against Meep and OpenEMS
-3. **Workflow validation** for advanced examples and GPU regression scripts
+## Recommended default lane
 
-Use those layers in that order when making public claims: benchmark first,
-cross-solver second, workflow validation third.
+The most mature public path is the **uniform Cartesian Yee RF/FDTD lane**:
 
-## Use the dedicated validation hub for the new structure
+- cavity and waveguide-style RF problems
+- patch-style resonance workflows
+- probes and Harminv resonance extraction
+- selected port and S-parameter workflows
+- benchmarked far-field workflows
 
-This guide page remains the short guide-side entrypoint, but the restructured
-public validation surface lives under:
+Use this lane when you want the safest starting point.
 
-- [/rfx/validation/](/rfx/validation/)
-- [/rfx/validation/reference-lane/](/rfx/validation/reference-lane/)
-- [/rfx/validation/cross-solver/](/rfx/validation/cross-solver/)
+## Under active validation
 
-Use those pages when you want the public evidence surface directly. Keep this
-page as the quick overview inside the guide navigation.
+The following features are useful, but should be treated as experimental or under active validation:
 
----
+- non-uniform mesh workflows
+- distributed execution
+- Floquet/Bloch periodic workflows
+- SBP-SAT subgridding
+- coaxial and advanced port workflows
+- inverse-design extensions
 
-## 1. Published benchmark scripts
+These features may have examples and tests, but their support boundaries are narrower than the default lane.
 
-These are the current public-facing numbers to quote first. Each row maps to a
-script under `examples/40_accuracy_validation/`.
+## Recommended public examples
 
-| Structure | Script | Reference | Error |
-|---|---|---|---|
-| Patch antenna resonance | `examples/40_accuracy_validation/01_patch_balanis.py` | Balanis Ch. 14 | **1.97%** |
-| WR-90 TE10 cutoff | `examples/40_accuracy_validation/02_waveguide_te10.py` | Analytical | **0.60%** |
-| Dielectric cavity TM110 | `examples/40_accuracy_validation/03_cavity_tm110.py` | Analytical | **0.016%** |
-| Microstrip characteristic impedance | `examples/40_accuracy_validation/04_microstrip_z0.py` | Hammerstad-Jensen | **0.47%** |
-| Coupled-line filter | `examples/40_accuracy_validation/05_coupled_filter.py` | Pozar Ch. 8 | **22.5%** (closed-form limitation) |
-
-### Interpretation
-
-- The cavity, waveguide, and microstrip numbers are the strongest numerical
-  anchors.
-- The coupled-line filter discrepancy comes from the closed-form reference, so
-  treat it as a limitation in the formula rather than evidence of solver
-  instability.
-- Patch resonance is good public evidence, but feed and port calibration still
-  deserve more context than a cavity-style benchmark.
-
----
-
-## 2. Cross-solver checks against Meep and OpenEMS
-
-The strongest independent checks live in the test suite:
-
-- `tests/test_meep_crossval.py` — PEC cavity TM110 vs analytical and Meep.
-- `tests/test_meep_crossval_patch.py` — dielectric-loaded cavity vs Meep.
-- `tests/test_crossval_comprehensive.py` — multi-case comparisons against Meep
-  and OpenEMS.
-- `examples/crossval/12_patch_antenna.py` — current-main practical patch
-  resonance cross-check vs OpenEMS.
-
-Use these comparisons when you want to justify the solver core rather than a
-single RF design workflow.
-
-| Benchmark family | Evidence | What it proves |
-|---|---|---|
-| PEC cavity resonance | `tests/test_meep_crossval.py`, `tests/test_crossval_comprehensive.py` | The solver matches the analytical cavity resonance and stays tightly aligned with Meep. |
-| Dielectric-loaded cavity resonances | `tests/test_meep_crossval_patch.py`, `tests/test_crossval_comprehensive.py` | The dielectric-loaded cases stay within the documented cross-solver tolerance. |
-| WR-90 cutoff | `tests/test_crossval_comprehensive.py` | The cutoff case is essentially exact at the documented resolution. |
-| Lumped-port sanity checks | `tests/test_crossval_comprehensive.py` | The port model preserves the expected magnitude and phase behavior. |
-| Finite-ground-plane 2.4 GHz patch resonance | `examples/crossval/12_patch_antenna.py` | The current practical patch workflow aligns with OpenEMS when both solvers use the physically correct finite-ground-plane + PML setup. Treat this as workflow evidence, not as the primary benchmark table. |
-
-The public summary in `README.md` currently quotes 0.000–0.007% agreement on
-cavities and waveguides. Keep that number paired with the exact benchmark family
-it describes.
-
-### Current-main practical patch check
-
-The latest practical patch cross-check lives in
-`examples/crossval/12_patch_antenna.py`. It is useful because it exercises a
-real thin-substrate antenna workflow rather than a cavity-like benchmark, but
-it still needs careful wording:
-
-- it uses a **finite** ground plane modelled as geometry, not
-  `pec_faces={"z_lo"}`
-- it uses **PML**, not MUR, on the OpenEMS reference side
-- it relies on **Harminv resonance extraction** as the primary comparison, with
-  lumped-port S11 used as a secondary diagnostic
-- it uses graded z-resolution, so it belongs in the **workflow-validation**
-  layer rather than the claims-bearing uniform-Yee benchmark table
-
-| Measurement | Resonance | Delta vs Balanis TL |
-|---|---:|---:|
-| Balanis transmission-line model | 2.4235 GHz | — |
-| rfx Harminv | 2.4621 GHz | +1.59% |
-| OpenEMS Harminv | 2.4868 GHz | +2.61% |
-| rfx vs OpenEMS | — | **0.99%** |
-
-That result is strong evidence that the current finite-ground-plane patch setup
-is physically coherent. It is **not** a reason to skip the published benchmark
-table above when making top-level public claims.
-
----
-
-## 3. Workflow validation
-
-The advanced examples are useful, but they are not the same as the core
-benchmark set.
-
-- `examples/50_advanced/` contains research-style workflows such as bandwidth
-  optimization, inverse design, matching, coupling, lensing, and material
-  characterization.
-- `examples/50_advanced/gpu_validation/` contains regression checks for those
-  workflows on accelerated runs.
-
-Use these examples to show that an end-to-end workflow remains stable. Do not
-use them as the primary numerical anchor for solver accuracy.
-
----
-
-## Reproducibility pointers
-
-| Script / area | Purpose |
+| Example | Role |
 |---|---|
-| `examples/40_accuracy_validation/run_all.py` | Runs the core published benchmark set |
-| `examples/crossval/12_patch_antenna.py` | Runs the current-main FR4 patch cross-check against OpenEMS |
-| `examples/50_advanced/gpu_validation/run_gpu_validation.py` | Runs the advanced workflow regression checks |
-| `tests/test_crossval_comprehensive.py` | Compact reference for the strongest cross-solver assertions |
-| `docs/public/guide/changelog.mdx` | Public summary of current headline results |
+| `examples/crossval/05_patch_antenna.py` | current patch cross-check and practical antenna reference |
+| `examples/crossval/11_waveguide_port_wr90.py` | rectangular waveguide-port reference workflow |
+| `examples/nonuniform_patch_demo.py` | quick non-uniform thin-substrate demo; experimental lane |
+| `examples/inverse_design/multilayer_ar_coating.py` | inverse-design demo with a conservative public scope |
 
 ## Practical takeaway
 
-For the strongest public messaging, lead with the **published benchmark table**,
-then cite Meep/OpenEMS agreement as independent confirmation, and finally use
-the advanced examples as workflow evidence.
+Lead public messaging with the recommended uniform Yee RF lane. Mention experimental lanes only when the user specifically needs them, and keep those descriptions scoped to current examples and limitations.

@@ -9,7 +9,7 @@ S-parameter claims are intentionally bounded: the promoted full-matrix path is
 `compute_waveguide_s_matrix(...)` under the rectangular-guide evidence envelope
 in `docs/guides/sparameter_support_matrix.md`.
 
-Current evidence level: E5-narrow for the documented WR-style rectangular-guide
+Current evidence level: Recommended for the documented WR-style rectangular-guide
 cases. The main gates are in `tests/test_waveguide_port_validation_battery.py`
 (empty-guide max `|S11| < 0.02`, passivity `< 1.02`, PEC-short
 `0.99 <= min(|S11|)` and `max(|S11|) < 1.03`) and

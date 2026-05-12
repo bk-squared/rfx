@@ -1,42 +1,21 @@
 ---
 title: "Crossval First"
-description: "Newest validated cross-solver evidence for the public rfx example surface."
+description: "Current cross-check examples for the public rfx example surface."
 sidebar:
   order: 32
 ---
 
-This page is the fastest public path to the newest validated cross-solver example.
+This page points to the current public cross-check examples without exposing internal validation details.
 
-## Current anchor
-
-The current public crossval-first anchor is:
+## Current anchors
 
 | Script | Workflow family | Public role |
 |---|---|---|
-| `examples/crossval/12_patch_antenna.py` | finite-ground-plane patch antenna | newest committed patch cross-solver reference |
-
-The patch script remains the public anchor because it is the newest committed
-cross-solver example with both a direct external-solver comparison and a clear
-validation story.
-
-### Patch details
-
-| Measurement | Resonance | Interpretation |
-|---|---:|---|
-| Balanis transmission-line estimate | 2.4235 GHz | design estimate |
-| rfx Harminv | 2.4621 GHz | primary solver resonance |
-| OpenEMS reference | 2.4868 GHz | independent comparison |
-| rfx vs OpenEMS | **0.99%** | current public agreement |
-
-## Why this page exists
-
-The public site needs one place where the newest validated example is easy to
-find without dragging older narrative examples into the claims path.
+| `examples/crossval/05_patch_antenna.py` | finite-ground-plane patch antenna | current practical patch cross-check |
+| `examples/crossval/11_waveguide_port_wr90.py` | rectangular waveguide port | current waveguide-port reference workflow |
 
 ## Reading rule
 
-- use this page for the latest validated cross-solver example
-- use [RF Workflows](./rf-workflows/) for the surrounding workflow context
-- use [Validation](../validation/) when you need to explain claim strength
-- if an older example conflicts with one of the scripts above, treat the older
-  example as legacy until it is re-qualified
+- Use these scripts when you need a current runnable reference.
+- Keep claims scoped to the workflow being exercised.
+- Treat non-uniform, distributed, Floquet/Bloch, subgridding, coaxial, and advanced inverse-design paths as experimental unless a guide says otherwise.

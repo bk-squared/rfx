@@ -11,7 +11,7 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.6.3** — 730+ tests, GPU-benchmarked (7,309 Mcells/s on RTX 4090), published RF benchmarks, opt-in multi-GPU inverse design, and clearer routing for practical nonuniform thin-substrate workflows.
+**v1.6.3** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, and ongoing validation for advanced lanes.
 
 > **Project status (April 2026):** `rfx` is still in active validation and early conceptualization. Treat the current `main` branch as an initial-stage release rather than a finalized, fully qualified simulator; the support surface, validation evidence, and higher-level workflows will continue to be tightened and expanded in upcoming iterations.
 
@@ -22,10 +22,7 @@
 
 ## At a Glance
 
-Current correctness-bearing support is centered on the **uniform Cartesian Yee
-reference lane**. Non-uniform graded-z, distributed execution, and
-Floquet/Bloch workflows should be treated according to
-`docs/guides/support_matrix.md`, not as blanket guarantees.
+The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. Non-uniform mesh, distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial/advanced ports, and inverse-design extensions are under active validation.
 
 | | |
 |---|---|
@@ -35,10 +32,10 @@ Floquet/Bloch workflows should be treated according to
 | **Conformal PEC** | Dey-Mittra method for 2nd-order accuracy on curved conductors |
 | **Multi-GPU** | Single-host multi-GPU distributed FDTD with 1D slab decomposition (experimental lane) |
 | **Waveguide modal ports** | Analytical TE/TM eigenmodes for documented rectangular-guide S-matrix envelopes |
-| **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC (experimental lane; E2/E3-modal helper evidence only) |
+| **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC (experimental lane) |
 | **Non-uniform x/y/z profiles** | Practical thin-substrate shadow lane with graded `dz` and per-cell `dx/dy` profiles |
 | **Published benchmark evidence** | 5-case benchmark against Balanis/Pozar (patch 1.97%, cavity 0.016%) |
-| **730+ tests** | CI with ruff lint + pytest; strict xfails are tracked as blocked claims, not hidden passes |
+| **Regression checks** | CI and local checks support development without replacing feature-specific validation |
 
 ## Current main highlights
 
@@ -47,7 +44,7 @@ Floquet/Bloch workflows should be treated according to
 - **Periodic × CPML correctness (v1.6.3)**: `set_periodic_axes("xy")` + `boundary="cpml"` now only allocates CPML on non-periodic faces. Required for normal-incidence absorber / FSS / RIS setups.
 - **Nonuniform is now documented as a usable shadow lane**, not as a vague half-supported footnote.
 - **Current practical anchors**: `examples/crossval/05_patch_antenna.py` for the patch cross-check and `examples/nonuniform_patch_demo.py` for a quick repo-local thin-substrate demo.
-- **Validation owns claim strength**: use the public validation pages for quantitative evidence and lane labels, then use examples pages for runnable entry points.
+- **Public docs separate lanes**: start with the uniform Yee RF lane; treat advanced features as experimental unless a guide says otherwise.
 
 ## Installation
 
@@ -116,7 +113,7 @@ Benchmarked against Balanis "Antenna Theory" and Pozar "Microwave Engineering":
 | Microstrip Z0 | Hammerstad-Jensen | 0.47% |
 | Coupled-line filter | Pozar Ch 8 | 22.5% (formula limitation) |
 
-Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavity Q-factors and guided-mode transmission (`examples/crossval/01-04, 09, 10`). WR-90 waveguide-port S-parameter evidence is now framed through the physics-first rule: empty-guide, PEC-short, Airy/reference-plane, dump-replay, and external-reference gates are documented in `tests/test_waveguide_port_validation_battery.py`, `examples/crossval/11_waveguide_port_wr90.py`, and `docs/guides/sparameter_support_matrix.md`. For the practical patch workflow on the nonuniform shadow lane, use `examples/crossval/05_patch_antenna.py` together with the validation pages rather than treating the example itself as the top-level claim source.
+For practical public examples, start with `examples/crossval/05_patch_antenna.py` for the patch workflow and `examples/crossval/11_waveguide_port_wr90.py` for rectangular waveguide ports. Treat non-uniform, distributed, Floquet/Bloch, subgridding, coaxial, and advanced inverse-design workflows as experimental unless the relevant guide says otherwise.
 
 ## Key Features
 
@@ -131,11 +128,10 @@ Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavity Q-factors and guided-mo
 ### Sources & Ports
 - GaussianPulse, ModulatedGaussian, CW, custom waveforms
 - Lumped/wire feed ports and lumped RLC (series/parallel ADE); calibrated
-  S-parameter claims are limited by `docs/guides/sparameter_support_matrix.md`
+  S-parameter workflows depend on the selected port family
 - Rectangular waveguide modal ports (analytical TE/TM eigenmodes, documented
-  narrow S-matrix validation envelope)
-- Floquet ports with Bloch periodic BC (experimental lane with M18 synthetic modal-oracle and M20 real-FDTD
-  DFT-plane replay evidence, not a promoted S-parameter calculator)
+  documented rectangular-guide workflow)
+- Floquet ports with Bloch periodic BC (experimental lane)
 - Oblique TFSF (2D TMz + TEz auxiliary grids)
 
 ### Materials
@@ -146,9 +142,7 @@ Cross-validation vs Meep/OpenEMS: 0.000-0.007% on cavity Q-factors and guided-mo
 - Library: pec, fr4, rogers4003c, copper, alumina, water_20c, ...
 
 ### Analysis & Optimization
-- S-parameter tooling with per-family claim levels: lumped/wire are
-  limited/caveated feed models, MSL and waveguide use dedicated calculators,
-  and unsupported families fail loudly per `docs/guides/sparameter_support_matrix.md`
+- S-parameter tooling with per-family calculators: lumped/wire, MSL, and waveguide workflows use different APIs, while experimental families should be checked against current docs
 - Harminv resonance extraction (MPM)
 - Far-field, RCS, radiation patterns, polarization
 - Antenna metrics: gain, efficiency, HPBW, F/B ratio, bandwidth
@@ -206,9 +200,8 @@ Gitops-side snapshot/build CI lives in the deploy repo:
 
 ### Start here
 - [Public landing page](docs/public/index.mdx)
-- [Validation hub](docs/public/validation/index.mdx) — quantitative evidence and lane labels
+- [Validation hub](docs/public/validation/index.mdx) — support overview and lane labels
 - [Examples hub](docs/public/examples/index.mdx) — current runnable entry points
-- [Examples showcase](docs/public/examples/showcase.mdx) — bounded visual tour of the example surface
 - [Non-Uniform Mesh guide](docs/public/guide/nonuniform-mesh.mdx) — practical thin-substrate shadow-lane workflows
 
 ### Tutorials
@@ -241,10 +234,3 @@ MIT License. See [LICENSE](LICENSE).
 ## Acknowledgments
 
 Developed by [Byungkwan Kim](https://remilab.cnu.ac.kr) at the **Radar & ElectroMagnetic Intelligence (REMI) Laboratory**, Chungnam National University.
-
-### AI-Assisted Development
-
-This project was developed with AI coding assistants orchestrated via [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode):
-
-- **Claude** (Anthropic) — Architecture design, physics validation, cross-validation, code review, documentation
-- **Codex** (OpenAI) — Feature implementation, test generation, review, debugging

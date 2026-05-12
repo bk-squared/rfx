@@ -189,7 +189,7 @@ automatic differentiation via `jax.grad` is the primary value proposition.
 
 rfx has first-class waveguide port support with TE/TM modal excitation and
 S-parameter extraction. Axis-aligned rectangular waveguides map cleanly to
-the Yee grid; claim strength is E5-narrow only inside the envelope documented
+the Yee grid; support is limited to the workflow documented
 in `docs/guides/sparameter_support_matrix.md`.
 
 ```python
@@ -203,10 +203,8 @@ sim.add_waveguide_port(x_position=0.075, direction="-x", mode=(1, 0), mode_type=
 
 Lumped ports with configurable impedance and Gaussian pulse excitation allow
 rapid impedance sweep studies. The S-parameter extraction gives reflection
-coefficient (S11) directly, but the current claim envelope is E2/E3-limited:
-analytic open/short/matched/RLC extractor oracles plus a narrow real raw V/I
-replay of the uniform Yee extractor and a small internal replay/passivity
-sweep. Broad calibrated-port E5 remains blocked.
+coefficient (S11) directly, but the current claim envelope is limited / under active validation:
+documented uniform-Yee lumped-port workflows. Broader calibrated-port coverage remains under active validation.
 
 ```python
 sim.add_port((0.025, 0.025, 0.001), "ez", impedance=50,
@@ -255,7 +253,7 @@ ff = compute_far_field(result.ntff_data, result.ntff_box, ...)
 Single-mode TE/TM S-parameter extraction uses modal decomposition at
 waveguide port planes, with optional calibration presets for reference-plane
 de-embedding. Use `compute_waveguide_s_matrix(...)`; branch/T-junction claims
-remain deferred until per-port reference geometry is validated.
+remain deferred until per-port reference geometry is checked.
 
 ### 2.7 Microstrip / Stripline on Planar Substrates
 
@@ -308,7 +306,7 @@ FDTD** via `jax.pmap` slab decomposition.
 Current trade-off:
 
 - good fit for larger structured 3-D problems on a multi-GPU workstation,
-- not a replacement for **multi-node MPI** production solvers,
+- not a replacement for **multi-node MPI** solvers,
 - some advanced feature combinations still need a compatibility check or a
   fallback to the single-device path.
 

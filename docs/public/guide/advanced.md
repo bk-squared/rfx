@@ -6,7 +6,7 @@ sidebar:
 
 This page collects features beyond the minimal builder workflow. The current
 advanced surface spans distributed execution, radiation-aware optimisation,
-material fitting, nonlinear materials, and a research-grade example bundle.
+material fitting, nonlinear materials, and experimental workflows.
 
 These workflows are **not** the current claims-bearing reference lane. Use this
 page as an advanced/qualification surface, and prefer the uniform Cartesian
@@ -108,7 +108,7 @@ fixtures.
 rfx includes a **Kerr nonlinear material** path via ADE and a dedicated
 **RIS unit-cell workflow** for programmable-surface experiments. These are
 advanced research features rather than beginner-path tutorials, but they are
-part of the current public capability surface.
+available as experimental public workflows.
 
 ## Non-Uniform Mesh, Lumped RLC, and Geometry Helpers
 
@@ -171,18 +171,13 @@ save_field_animation(result, "field_evolution.gif")
 For memory-constrained runs, mixed-precision field storage is also available in
 current stable releases.
 
-## Advanced Example Bundle
+## Advanced examples
 
-The repo ships a research-style example bundle under `examples/50_advanced/`:
+Current public examples live in the maintained example tree, especially:
 
-- patch bandwidth optimisation
-- waveguide filter inverse design
-- broadband matching
-- array mutual coupling
-- dielectric-lens beam shaping
-- S-parameter-based material characterisation
-- visualization showcase
+- `examples/crossval/05_patch_antenna.py`
+- `examples/crossval/11_waveguide_port_wr90.py`
+- `examples/nonuniform_patch_demo.py`
+- `examples/inverse_design/multilayer_ar_coating.py`
 
-The matching `examples/50_advanced/gpu_validation/` scripts provide a compact
-regression layer for these workflows, but they should still be treated as
-advanced-lane evidence rather than blanket support promotion.
+Treat advanced examples as workflow starting points. For non-uniform, distributed, Floquet/Bloch, subgridding, coaxial, or advanced inverse-design features, check the relevant guide and current limitations before using them for a design decision.

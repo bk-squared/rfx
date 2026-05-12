@@ -90,7 +90,7 @@ result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
 s11 = result.s_params[0, 0, :]
 ```
 
-The waveguide path is E5-narrow only within the documented
+The waveguide path is recommended only within the documented
 rectangular-guide gates. Do not treat `run(compute_s_params=True)` as a
 universal OpenEMS `CalcPort` equivalent; it is the lumped/wire `add_port(...)`
 calculator only.

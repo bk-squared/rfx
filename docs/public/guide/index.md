@@ -4,102 +4,75 @@ sidebar:
   order: -1
 ---
 
-`rfx` is a JAX-based differentiable FDTD simulator for RF and microwave
-engineering. This index tracks the **v1.5.0** release surface and highlights
-selected post-release updates already merged on `main`.
+`rfx` is a JAX-based differentiable FDTD simulator for RF and microwave engineering.
 
-## Recent highlights
+## How to read these docs
 
-- **Published RF validation**: 5-case error table against Balanis, Pozar, and analytical references.
-- **Distributed execution**: single-host **multi-GPU** FDTD for larger 3-D jobs.
-- **Modern optimization workflows**: time-domain proxy objectives and NTFF-aware far-field objectives.
-- **Preflight + port hardening**: richer setup validation plus two-port wire-port S-matrix workflows in the current stable package line.
-- **Research-grade examples**: `examples/50_advanced/` plus GPU validation scripts.
-- **Current-main patch cross-check**: `examples/crossval/12_patch_antenna.py` now documents the finite-ground-plane FR4 patch workflow against OpenEMS with a 0.99% resonance delta.
+| Lane | What to expect |
+|---|---|
+| **Recommended default** | uniform Cartesian Yee RF workflows: cavity, waveguide, patch-style resonance, probes, Harminv, selected S-parameter workflows, and benchmarked far-field workflows |
+| **Experimental / under active validation** | non-uniform mesh, distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial and advanced port workflows, and inverse-design extensions |
 
-## How this guide is organized
+Start with the recommended default lane unless you specifically need an experimental feature.
 
-The sidebar already groups pages by job-to-be-done. The table below gives the
-same structure in one place so you can jump directly to the right section.
-
-### Getting Started
+## Getting Started
 
 | Guide | Description |
 |---|---|
 | [Installation](/rfx/guide/installation/) | Python/JAX install, GPU notes, dev setup |
-| [Quick Start](/rfx/guide/quickstart/) | First simulation with the current stable high-level API |
-| [Your First Patch Antenna](/rfx/guide/first-patch/) | First end-to-end success path for a practical RF structure |
+| [Quick Start](/rfx/guide/quickstart/) | First simulation with the current high-level API |
+| [Your First Patch Antenna](/rfx/guide/first-patch/) | First end-to-end resonance workflow |
 
-### Modeling & Setup
+## Modeling & Setup
 
 | Guide | Description |
 |---|---|
 | [Simulation API](/rfx/guide/api-reference/) | `Simulation`, `Result`, materials, sources, probes, ports, and NTFF helpers |
 | [Materials & Geometry](/rfx/guide/materials-geometry/) | Material library, Debye/Lorentz models, CSG shapes, and PCB stackup basics |
-| [Sources & Ports](/rfx/guide/sources-ports/) | Soft sources, lumped/wire ports, waveguide ports, and Floquet workflows |
-| [Probes & S-Parameters](/rfx/guide/probes-sparams/) | DFT probes, S-matrix extraction, Harminv, de-embedding, and exports |
-| [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) | `dz_profile`, `auto_configure()`, thin-substrate workflow |
-| [Waveguide Ports](/rfx/guide/waveguide-ports/) | Modal waveguide excitation and E-level-bounded S-matrix extraction |
-| [Floquet Ports](/rfx/guide/floquet-ports/) | Bloch-periodic unit-cell workflows for phased and periodic structures |
+| [Sources & Ports](/rfx/guide/sources-ports/) | Soft sources, lumped/wire ports, waveguide ports, and experimental port surfaces |
+| [Probes & S-Parameters](/rfx/guide/probes-sparams/) | DFT probes, S-matrix helpers, Harminv, de-embedding, and exports |
+| [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) | Experimental thin-substrate mesh workflows |
+| [Waveguide Ports](/rfx/guide/waveguide-ports/) | Modal waveguide excitation and S-matrix extraction |
+| [Floquet Ports](/rfx/guide/floquet-ports/) | Experimental Bloch-periodic unit-cell workflows |
 
-### Analysis & Validation
+## Analysis & Validation
 
 | Guide | Description |
 |---|---|
-| [Validation](/rfx/guide/validation/) | Published RF benchmarks, cross-solver checks, and workflow-validation guidance |
-| [Convergence Study](/rfx/guide/tutorial-convergence/) | Mesh-refinement analysis and accuracy verification workflow |
+| [Validation](/rfx/guide/validation/) | Public validation overview and support status |
+| [Convergence Study](/rfx/guide/tutorial-convergence/) | Mesh-refinement workflow |
 | [Far-Field & RCS](/rfx/guide/farfield-rcs/) | NTFF radiation patterns and scattering workflows |
 | [Antenna Metrics](/rfx/guide/antenna-metrics/) | Gain, efficiency, beamwidth, bandwidth, and front-to-back ratio |
 | [Visualization & Analysis](/rfx/guide/visualization-and-analysis/) | Plots, exports, post-processing, and result interpretation |
 | [Solver Comparison](/rfx/guide/comparison/) | Feature and workflow comparison vs. Meep and OpenEMS |
 
-### Design & Optimization
+## Design & Optimization
 
 | Guide | Description |
 |---|---|
-| [Inverse Design](/rfx/guide/inverse-design/) | Gradient-based optimization, proxy objectives, and NTFF-aware advanced workflows |
+| [Inverse Design](/rfx/guide/inverse-design/) | Gradient-based optimization and advanced objectives |
 | [Topology Optimization](/rfx/guide/topology-optimisation/) | Density-based inverse design with filtering and projection |
 | [Parametric Sweeps](/rfx/guide/parametric-sweeps/) | Sequential sweeps and `jax.vmap` batch evaluation |
 | [Material Fitting](/rfx/guide/material-fitting/) | CSV import, Debye/Lorentz fitting, and differentiable fitting workflows |
-| [Patch Antenna Design](/rfx/guide/tutorial-patch-antenna/) | Full rectangular patch design workflow |
-| [Microstrip Filter Design](/rfx/guide/tutorial-microstrip-filter/) | Coupled-line filter workflow with two-port analysis |
+| [Patch Antenna Design](/rfx/guide/tutorial-patch-antenna/) | Practical rectangular patch workflow |
+| [Microstrip Filter Design](/rfx/guide/tutorial-microstrip-filter/) | Experimental coupled-line filter workflow |
 
-### Advanced & Research Methods
+## Advanced / Experimental
 
 | Guide | Description |
 |---|---|
-| [Advanced Features](/rfx/guide/advanced/) | Multi-GPU, material fitting, mixed precision, nonlinear materials, and research examples |
+| [Advanced Features](/rfx/guide/advanced/) | Distributed runs, material fitting, mixed precision, nonlinear materials, and advanced workflows |
 | [Conformal PEC](/rfx/guide/conformal-pec/) | Dey-Mittra method for curved PEC conductors |
-| [SBP-SAT Subgridding](/rfx/guide/subgridding/) | Local mesh refinement with JIT performance |
+| [SBP-SAT Subgridding](/rfx/guide/subgridding/) | Experimental local mesh refinement |
 | [Gradient Behavior](/rfx/guide/gradient-behavior/) | Where gradients are strong, weak, or noisy |
 | [Geometry & Limitations](/rfx/guide/geometry-and-limitations/) | Supported workflows, strengths, and current trade-offs |
 
-## Start Here
-
-If you're new to `rfx`, start here:
-
-1. [Installation](/rfx/guide/installation/)
-2. [Quick Start](/rfx/guide/quickstart/)
-3. [Simulation API](/rfx/guide/api-reference/)
-4. [Sources & Ports](/rfx/guide/sources-ports/)
-5. [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/)
-6. [Validation](/rfx/guide/validation/)
-7. [Advanced Features](/rfx/guide/advanced/) once you want distributed runs, proxy objectives, or research-style workflows
-
-## Project & maintainer guides
-
-| Guide | Description |
-|---|---|
-| [Migration Guide](/rfx/guide/migration/) | Mapping Meep/OpenEMS workflows into rfx |
-| [Changelog](/rfx/guide/changelog/) | Release notes and current-main capability updates |
-| [Contributing](/rfx/guide/contributing/) | Maintainer workflow, testing, linting, and coding conventions |
-
 ## Secondary hubs
 
-- [Examples](/rfx/examples/) — newest committed crossval-backed example references
-- [Validation](/rfx/validation/) — evidence hub and support-boundary surface
+- [Examples](/rfx/examples/) — recommended public runnable paths
+- [Validation](/rfx/validation/) — support and validation overview
 - [API](/rfx/api/) — curated public API contract
-- [Generated API](/rfx/api/generated/) — subordinate landing page for the generated symbol layer, with deep-reference pages published under the same route family
+- [Generated API](/rfx/api/generated/) — subordinate generated symbol reference
 
 ## Quick Links
 
@@ -107,4 +80,3 @@ If you're new to `rfx`, start here:
 - Public docs snapshot: [remilab.ai/rfx](https://remilab.ai/rfx/)
 - Top-level API exports: `rfx.__init__`
 - Package metadata: `pyproject.toml`
-- Advanced example bundle: `examples/50_advanced/`

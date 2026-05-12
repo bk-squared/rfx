@@ -1,85 +1,42 @@
 ---
 title: "Reference Lane"
-description: "Public mirror of the current claims-bearing reference lane and its support boundaries."
+description: "Public summary of the current recommended rfx lane and experimental surfaces."
 sidebar:
   order: 41
 ---
 
-This page mirrors the canonical reference-lane contract. If it disagrees
-with `docs/guides/reference_lane_contract.md` or
-`docs/guides/support_matrix.md`, those guides win.
+## Recommended default lane
 
-## Current reference lane
+Start with the **uniform Cartesian Yee RF/FDTD lane**:
 
-- uniform Cartesian Yee
-- RF / microwave workflows
 - PEC, CPML, or bounded UPML boundaries
 - point/current sources
 - lumped and wire ports
-- specialized microstrip-line ports via `compute_msl_s_matrix()`
-- waveguide ports (E5-narrow within the documented rectangular-guide envelope:
-  empty-guide, PEC-short, Airy/reference-plane, dump-replay, and external
-  reference artifacts; cv11 uses explicit reference-convention-aware gates)
-- probes, flux monitors, Harminv resonance, benchmarked NTFF/far-field, and
-  S-parameters only through the support-matrix envelopes
+- specialized microstrip-line and rectangular waveguide workflows where documented
+- probes, flux monitors, Harminv resonance extraction, selected S-parameter workflows, and benchmarked far-field workflows
 
-## Modeling rule
+This is the lane to use first for ordinary RF examples and public tutorials.
 
-The reference lane solves Maxwell curl updates on a staggered Cartesian Yee
-grid. Anything outside that lane must be treated as shadow or experimental
-until promoted explicitly.
+## Experimental / under active validation
 
-## Support surfaces
+The following surfaces are real and useful, but should be treated as narrower than the default lane:
 
-| Surface | Current status |
+| Surface | Public status |
 |---|---|
-| materials | isotropic linear, conductive, validated dispersive subsets |
-| boundaries | supported only within the matrix above |
-| sources | point/current, lumped, wire, specialized MSL, waveguide |
-| observables | probes, flux, Harminv, benchmarked NTFF, and S-parameters with explicit E-level envelopes |
-| optimization-facing outputs | only when the proxy objective has explicit validation |
+| non-uniform mesh | useful for thin-substrate experiments; not the default claim lane |
+| distributed execution | scaling lane; check feature combinations before use |
+| Floquet/Bloch | experimental periodic/unit-cell workflow |
+| SBP-SAT subgridding | research/experimental local mesh refinement |
+| coaxial and advanced port workflows | under active calibration and validation |
+| inverse-design extensions | available for selected workflows; check examples and limitations |
 
 ## S-parameter API boundaries
 
-- `run(compute_s_params=True)` is the full S-matrix API for lumped/wire
-  `add_port(...)` only.
-- `compute_msl_s_matrix()` is the MSL-port S-matrix API.
-- `compute_waveguide_s_matrix()` is the waveguide full S-matrix API.
-- `forward(port_s11_freqs=...)` exposes lumped/wire S11 vectors only on the
-  uniform single-device differentiable path.
-- Coaxial has M17 analytic TEM formula helpers only; Floquet, source, TFSF,
-  probe, and flux-monitor APIs are not promoted S-parameter calculators.
+- `run(compute_s_params=True)` is the full S-matrix API for lumped/wire `add_port(...)` workflows.
+- `compute_msl_s_matrix()` is the microstrip-line S-matrix API.
+- `compute_waveguide_s_matrix()` is the rectangular waveguide S-matrix API.
+- Coaxial and Floquet surfaces are experimental and should not be presented as the default S-parameter path.
 
-## S-parameter evidence floor
+## Practical rule
 
-Public S-parameter wording must follow
-`docs/guides/physics_validation_evidence_rule.md`:
-
-| Family | Evidence status | Artifact / gate summary |
-|---|---|---|
-| lumped `add_port(extent=None)` | E2/E3-limited | M13 analytic open/short/matched/RLC extractor oracles, M11 real raw V/I replay, and M14 internal replay/passivity sweep; no broad calibrated-port E5 envelope |
-| wire `add_port(extent=...)` | E2/E3/E4 partial | probe-fed resonance plus M12 real midpoint V/I replay and M15 internal replay/passivity sweep; absolute S-matrix calibration caveated |
-| `add_msl_port(...)` | E5-narrow / eigenmode-blocked | thru-line + cv06b notch + raw 3-probe replay + stored-openEMS smoke gates; eigenmode/nonuniform support remain blocked |
-| `add_waveguide_port(...)` | E5-narrow | `tests/test_waveguide_port_validation_battery.py` + `examples/crossval/11_waveguide_port_wr90.py`; branch/multimode/nonuniform claims remain blocked |
-| coaxial `add_coaxial_port(...)` | E2-sweep/E3/E4-gap / no-sparam | M22 analytic lossless TEM geometry sweep, M21 diagnostic coaxial-gap V/I replay, M35 narrow gap/openEMS comparison, M61 synthetic TEM reference-plane V/I oracle, M62 synthetic Cartesian plane adapter oracle, M63 blocked real-FDTD DFT-plane replay diagnostic, M64 blocked axial reference-plane sweep, M65 structural signal-path audit, and M66 annular outer-shell stamp fix/blocked post-fix sweep, and M67 distributed TEM plane-source prototype; no real-FDTD calibrated TEM reference-plane extraction, broad external coax envelope, or promoted high-level S-parameter calculator |
-| Floquet | E2/E3-modal / no-promoted-api | M18 synthetic specular-TE modal oracle plus M20 real-FDTD Ex/Hy DFT-plane dump replay; no promoted high-level modal S-parameter calculator |
-
-## Immediate evidence floor
-
-The current reference lane remains tied to concrete reproducible evidence, and
-the public docs should keep pointing to that evidence rather than to old
-example narratives.
-
-Suggested anchors:
-
-- `docs/guides/sparameter_support_matrix.md`
-- `docs/guides/sparameter_dump_replay.md`
-- `examples/crossval/11_waveguide_port_wr90.py`
-- `examples/crossval/12_patch_antenna.py`
-- `tests/test_waveguide_port_validation_battery.py`
-- `tests/test_crossval_comprehensive.py`
-
-## Shadow relationship
-
-The graded-z thin-substrate lane is preserved, but it is not claims-bearing
-until its own contract and benchmark ladder exist.
+If a feature is not in the recommended default lane, call it experimental or under active validation and point users to the current example or limitation page.

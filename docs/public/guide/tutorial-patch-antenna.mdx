@@ -1,118 +1,47 @@
 ---
 title: "Tutorial: Patch Antenna Design"
-description: "Recommended design-and-validation workflow for a rectangular microstrip patch antenna in rfx."
+description: "Recommended workflow for a rectangular microstrip patch antenna in rfx."
 sidebar:
   order: 30
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page connects the quick resonance workflow in
-[Your First Patch Antenna](../first-patch/) with the current-main external
-cross-check in `examples/crossval/12_patch_antenna.py`.
+This page connects the quick resonance workflow in [Your First Patch Antenna](../first-patch/) with the current public patch cross-check in `examples/crossval/05_patch_antenna.py`.
 
-Use it when you want to go from:
-
-- “I can excite a patch and find its resonance in rfx”
-
-to:
-
-- “I can explain why this setup is physically reasonable and verify it against
-  an independent solver.”
-
-<Aside type="note" title="How to position this page publicly">
-  The claims-bearing public benchmark table still lives in
-  [Cross-Validation and Accuracy](../validation/). This page is the recommended
-  **practical patch workflow** on current `main`, not a replacement for the
-  core benchmark ladder.
+<Aside type="note" title="Public scope">
+  Treat this as a recommended practical patch workflow. It is not a blanket claim that every antenna, feed, substrate, or mesh setting is already fully qualified.
 </Aside>
 
 ## Recommended workflow
 
 | Stage | Goal | Primary page / script |
 |---|---|---|
-| 1. Quick resonance check | Size the patch, run the simulation, and extract the dominant mode cleanly | [Your First Patch Antenna](../first-patch/) |
-| 2. External sanity check | Confirm that the same class of structure agrees with an independent solver | `examples/crossval/12_patch_antenna.py` |
-| 3. Radiation / reporting | Once resonance is stable, move to far-field and antenna metrics | [Far-Field & RCS](../farfield-rcs/), [Antenna Metrics](../antenna-metrics/) |
+| 1. Quick resonance check | Size the patch, run the simulation, and extract the dominant mode | [Your First Patch Antenna](../first-patch/) |
+| 2. Cross-check | Compare the same class of structure against the current repo reference | `examples/crossval/05_patch_antenna.py` |
+| 3. Radiation / reporting | Move to far-field and antenna metrics after the resonance setup is stable | [Far-Field & RCS](../farfield-rcs/), [Antenna Metrics](../antenna-metrics/) |
 
-That split matters. A patch antenna is easy to make look “close enough” with the
-wrong physics if you mix up the ground-plane or absorber setup.
+## Current baseline geometry
 
-## Current-main baseline geometry
-
-The current cross-check uses a rectangular 2.4 GHz probe-fed FR4 patch with a
-finite ground plane:
-
-| Parameter | Value |
-|---|---|
-| Design frequency | 2.4 GHz |
-| Substrate | FR4, εr = 4.3, h = 1.5 mm |
-| Patch size | W = 38 mm, L = 29.5 mm |
-| Ground plane | 60 mm × 55 mm |
-| Feed inset | 8 mm from the radiating-edge x-side |
-| rfx resonance path | Broadband source + Harminv ringdown |
-| Secondary diagnostic | Lumped-port S11 local dip |
-| External reference | OpenEMS port-voltage Harminv + S11 |
-
-## What the latest cross-check shows
-
-The current validated numbers for `examples/crossval/12_patch_antenna.py` are:
-
-| Measurement | Resonance | Delta vs Balanis TL |
-|---|---:|---:|
-| Balanis transmission-line model | 2.4235 GHz | — |
-| rfx Harminv | 2.4621 GHz | +1.59% |
-| OpenEMS Harminv | 2.4868 GHz | +2.61% |
-| rfx lumped-port S11 local dip | 2.4800 GHz | +2.33% |
-| rfx vs OpenEMS | — | **0.99%** |
-
-The takeaway is not “patch antennas are solved forever.” The useful claim is
-smaller and stronger:
-
-> With the physically correct finite-ground-plane setup, the current rfx patch
-> workflow and the OpenEMS reference land on essentially the same resonance.
-
-## The two setup rules that matter most
-
-1. **Model the ground plane as geometry, not as a boundary face.**
-   - Good: a finite PEC box below the substrate
-   - Bad: `pec_faces={"z_lo"}` for an antenna ground plane
-2. **Use PML for the external reference problem.**
-   - Good: `PML_8` plus generous air margin
-   - Bad: MUR with only ~λ/4 clearance on a resonant antenna problem
-
-Both mistakes were strong enough to shift the resonance by about 8% in opposite
-directions during development, so they are worth spelling out explicitly in the
-public workflow.
+The current patch workflow uses a rectangular 2.4 GHz FR4 patch with a finite ground plane. The important setup rule is simple: model the antenna ground plane as geometry, and use an absorber setup appropriate for an open radiation problem.
 
 ## How to run the practical cross-check
 
 ```bash
-python examples/crossval/12_patch_antenna.py
+python examples/crossval/05_patch_antenna.py
 ```
 
-Expected outputs:
-
-- console summary with the Balanis, rfx, and OpenEMS resonance values
-- `examples/crossval/12_patch_antenna.png`
-- cached OpenEMS port data under `examples/crossval/12_openems_tmp/`
+Expected output is a console summary and generated local artifacts from the script. If the external solver dependency is not available, treat the script as a local rfx run rather than a full cross-solver check.
 
 ## Interpretation rules
 
-- Use **Harminv resonance** as the primary frequency comparison.
-- Treat the **lumped-port S11 dip** as a secondary diagnostic for passivity and
-  local resonance shape.
-- Because this structure uses a thin-substrate graded-z workflow, treat it as
-  **workflow validation** rather than as the first public number you quote.
-- For top-level public claims, lead with the benchmark table in
-  [Cross-Validation and Accuracy](../validation/), then use this page as the
-  practical patch follow-through.
+- Use Harminv resonance as the primary frequency estimate.
+- Treat lumped-port S11 dips as secondary diagnostics.
+- Treat non-uniform mesh variants as experimental unless the page you are following says otherwise.
+- For top-level claims, keep the wording narrow: this is a recommended patch workflow, not a universal antenna guarantee.
 
 ## Where to go next
 
-- Start with [Your First Patch Antenna](../first-patch/) if you want the
-  shortest path to a usable resonance run.
-- Continue to [Far-Field & RCS](../farfield-rcs/) and
-  [Antenna Metrics](../antenna-metrics/) once the resonance setup is stable.
-- See [Cross-Validation and Accuracy](../validation/) for the broader evidence
-  hierarchy and how to phrase public accuracy claims.
+- Start with [Your First Patch Antenna](../first-patch/) for the shortest path to a resonance run.
+- Continue to [Far-Field & RCS](../farfield-rcs/) and [Antenna Metrics](../antenna-metrics/) once the resonance setup is stable.
+- See [Cross-Validation and Accuracy](../validation/) for the broader support overview.

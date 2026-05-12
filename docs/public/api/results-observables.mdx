@@ -1,13 +1,11 @@
 ---
 title: "Results and Observables"
-description: "What the public rfx run result contains, and which observables are claims-bearing."
+description: "What the public rfx run result contains, and how to choose observables."
 sidebar:
   order: 22
 ---
 
 `Result` is the object returned by `Simulation.run()`.
-It is tuple-like, but the public docs should read it as the structured output of
-the solver rather than as an implementation detail.
 
 ## Primary fields
 
@@ -16,32 +14,26 @@ the solver rather than as an implementation detail.
 | `state` | solver state / checkpoint payload | restart and debugging |
 | `time_series` | recorded probe values over time | ringdown, transient response, Harminv |
 | `s_params` | lumped/wire port S-matrix | matching, filters, de-embedding |
-| `freqs` | frequency axis for frequency-domain outputs | pair with `s_params` and DFT outputs |
-| `ntff_data` | near-to-far-field accumulation | radiation patterns when benchmarked |
-| `ntff_box` | NTFF box geometry | far-field bookkeeping |
+| `freqs` | frequency axis for frequency-domain outputs | pair with S-parameter and DFT outputs |
+| `ntff_data` | near-to-far-field accumulation | radiation patterns where documented |
 | `dft_planes` | frequency-domain plane observables | slices and field maps |
 | `flux_monitors` | plane flux accumulations | transmission / reflection analysis |
-| `waveguide_ports` | waveguide-port bookkeeping | modal workflows |
-| `waveguide_sparams` | per-port waveguide S-parameter diagnostics | waveguide validation |
+| `waveguide_sparams` | per-port waveguide diagnostics | waveguide workflows |
 | `snapshots` | saved field snapshots | visualization and post-processing |
 | `grid` | mesh metadata | reproducibility checks |
 | `dt` | timestep | time-axis conversion |
-| `freq_range` | active frequency window | reporting and validation |
 
 ## S-parameter result schemas
 
-| Calculator | Result object | S-parameter field | Evidence framing |
-|---|---|---|---|
-| `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result` | `s_params`, `freqs` | full matrix, shape `(n_ports, n_ports, n_freqs)`; lumped E2/E3-limited, wire E2/E3/E4 partial |
-| `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult` | `s_params`, `freqs` | S11 vector(s), not a full multi-port matrix; E0/E1 AD contract |
-| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` | `S`, `freqs`, `Z0`, `beta`, `port_names` | E5-narrow / eigenmode-blocked specialized microstrip-line calculator; has raw 3-probe replay; eigenmode/nonuniform support remain blocked |
-| `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | `s_params`, `freqs`, `port_names`, `port_directions`, `reference_planes` | E5-narrow within the documented rectangular-guide gates |
-| `run(...)` with a single waveguide port | `Result` | `waveguide_sparams[name]` | per-port `s11` / `s21` diagnostic output, not the full S-matrix API |
+| Calculator | Result object | Public status |
+|---|---|---|
+| `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result.s_params`, `Result.freqs` | recommended path for the matching port family |
+| `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult.s_params`, `ForwardResult.freqs` | differentiable S11 vectors, not a full multi-port matrix |
+| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` | specialized microstrip-line workflow |
+| `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | rectangular waveguide workflow |
+| `run(...)` with a single waveguide port | `Result.waveguide_sparams[name]` | diagnostic per-port output |
 
-`add_source()`, TFSF, probes, DFT plane probes, flux monitors, coaxial ports,
-and experimental Floquet ports do not populate a promoted high-level S-matrix.
-Coaxial has analytic TEM helpers/sweep plus diagnostic gap replay only, and Floquet has synthetic modal-oracle and real-FDTD DFT-plane replay
-evidence only; those helpers are not promoted S-parameter API evidence.
+Sources, TFSF, probes, DFT planes, flux monitors, coaxial ports, and Floquet ports do not automatically imply a promoted high-level S-matrix workflow.
 
 ## Observable builders that feed `Result`
 
@@ -54,78 +46,33 @@ evidence only; those helpers are not promoted S-parameter API evidence.
 
 ## Resonance extraction
 
-`Result.find_resonances()` runs Harminv-style mode extraction on a probe time
-series.
+`Result.find_resonances()` runs Harminv-style mode extraction on a probe time series.
 
 ```python
 result = sim.run(n_steps=8000)
 modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
 ```
 
-Signature:
+Use this on a clean probe signal when you want a resonance estimate that is less dependent on port calibration than S-parameters.
 
-```python
-result.find_resonances(freq_range=None, probe_idx=0, source_decay_time=None, bandpass=None)
-```
+## Port-observable helpers
 
-Use this on a clean probe signal when you want a resonance estimate that is less
-dependent on port calibration than S-parameters.
-
-## Port-observable validation helpers
-
-`rfx.validation` provides a lightweight validation layer for S-matrix-like
-port observables. It normalizes direct arrays plus the existing `Result`,
-`WaveguideSMatrixResult`, and `MSLSMatrixResult` shapes into a canonical
-`(n_ports, n_ports, n_freqs)` view and then reports schema / metadata issues
-without running another simulation.
+`rfx.validation` provides helper functions for checking S-matrix-like arrays for shape, finite values, frequency metadata, port names, and caller-selected passivity / reciprocity limits.
 
 ```python
 from rfx import validate_port_smatrix, assert_port_smatrix_valid
 
-report = validate_port_smatrix(
-    result,
-    port_names=("in", "out"),  # optional when the result already has names
-    check_passivity=True,
-    passivity_limit=1.0,
-    passivity_tol=0.02,          # caller-controlled physics envelope
-    check_reciprocity=True,
-    reciprocity_atol=1e-3,
-)
+report = validate_port_smatrix(result, check_passivity=True, passivity_tol=0.02)
 print(report.summary())
-
-# In tests, raise with the same diagnostics on failure:
-assert_port_smatrix_valid(result, passivity_tol=0.02)
 ```
 
-This is **validation infrastructure**, not a new physics claim. It checks that
-the observable is shaped, finite, frequency-aligned, port-name-consistent, and
-inside caller-selected passivity / reciprocity envelopes. The thresholds should
-come from the relevant physics or cross-validation test; do not use this helper
-to relax an existing validation gate.
-
-For independent E3 replay, use the compact V/I dump helpers:
-
-```python
-from rfx import load_port_vi_dump_npz, replay_smatrix_from_port_vi_dump
-
-dump = load_port_vi_dump_npz("port_dump.npz")
-replayed = replay_smatrix_from_port_vi_dump(dump)
-```
-
-The schema is documented in `docs/guides/sparameter_dump_replay.md`.
-Synthetic replay tests prove the harness, not a port-family physics claim.
+These helpers are useful for regression checks. They do not by themselves turn an experimental workflow into the recommended default lane.
 
 ## Claims-bearing observables
 
-The current public claim surface is narrow:
+For public docs, describe observables in simple terms:
 
-| Observable | Claim framing |
-|---|---|
-| `time_series` | transient / resonance work when paired with the relevant oracle |
-| `s_params` | lumped E2/E3-limited or wire E2/E3/E4-partial, per the support matrix |
-| `MSLSMatrixResult.S` | E5-narrow / eigenmode-blocked MSL calculator under the current uniform-Yee envelope |
-| `WaveguideSMatrixResult.s_params` | E5-narrow strongest current S-parameter family under the rectangular-guide gates |
-| `ntff_data` | only when the radiation workflow has benchmark coverage |
-
-Other fields are real and useful, but they should be treated as analysis
-surfaces until their support status is documented explicitly.
+- `time_series` and Harminv are the recommended resonance path.
+- lumped/wire, MSL, and waveguide S-parameter workflows each have their own calculator.
+- NTFF/far-field outputs should be used where the relevant guide documents the workflow.
+- Other fields are real and useful, but should be treated as analysis surfaces until their support status is explicit.

@@ -81,11 +81,11 @@ Use the calculator that matches the port family:
 
 | Primitive | Calculator | Result | Evidence framing |
 |---|---|---|---|
-| `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | E2/E3-limited |
-| `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | E2/E3/E4 partial, calibration caveated |
-| lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | S11 vectors in `ForwardResult.s_params` | E0/E1 AD contract |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | E5-narrow / eigenmode-blocked under uniform-Yee gates |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | E5-narrow under rectangular-guide gates |
+| `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | limited / under active validation |
+| `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | partial / under active validation, calibration caveated |
+| lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | S11 vectors in `ForwardResult.s_params` | differentiable workflow; check current limitations |
+| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | specialized uniform-Yee workflow; broader support under active validation |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | recommended rectangular-guide workflow within documented limits |
 
 Sources, TFSF, probes, DFT plane probes, and flux monitors are non-port
 observables. They do not define a port impedance or S-matrix reference.

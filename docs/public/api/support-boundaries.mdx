@@ -1,101 +1,59 @@
 ---
 title: "Support Boundaries"
-description: "Public mirror of the current supported, shadow, experimental, and unsupported rfx surfaces."
+description: "Current supported, experimental, and unsupported rfx surfaces."
 sidebar:
   order: 26
 ---
 
-This page is a **derived mirror**, not a parallel source of truth.
-The canonical contracts live in:
-
-- `docs/guides/support_matrix.md`
-- `docs/guides/reference_lane_contract.md`
-- `docs/guides/physics_validation_evidence_rule.md`
-- `docs/guides/sparameter_support_matrix.md`
+This page gives the public support summary without internal validation details.
 
 ## Status legend
 
 | Status | Meaning |
 |---|---|
-| **supported** | part of the current claims-bearing surface |
-| **shadow** | retained and tested, but not claims-bearing yet |
-| **experimental** | research-grade / partial / promotion pending |
+| **recommended default** | best place to start for public examples and ordinary RF workflows |
+| **experimental / under active validation** | useful, but support boundaries are narrower |
 | **unsupported** | should fail clearly rather than degrade silently |
 
-## Current claims-bearing reference lane
+## Recommended default lane
 
-| Dimension | Supported subset |
+| Dimension | Recommended subset |
 |---|---|
 | grid / runner | uniform Cartesian Yee |
 | boundaries | PEC, CPML, bounded UPML |
-| sources | point/current, lumped port, wire port, specialized microstrip-line port, waveguide port |
-| observables | probes, flux, Harminv resonance, benchmarked NTFF, and S-parameters only through the evidence envelopes below |
-| materials | isotropic linear, conductive, validated dispersive subsets |
-| workflows | cavity, waveguide, patch antenna, simple scattering, resonance, de-embedding, selected differentiable proxy objectives |
+| sources | point/current, lumped port, wire port, specialized microstrip-line port, rectangular waveguide port |
+| observables | probes, flux, Harminv resonance, selected S-parameter workflows, documented far-field workflows |
+| materials | isotropic linear, conductive, and documented dispersive subsets |
+| workflows | cavity, waveguide, patch-style resonance, simple scattering, de-embedding, selected differentiable proxy objectives |
 
 ## S-parameter calculation surfaces
 
-| Primitive | Calculation API | Result schema | Evidence / status |
-|---|---|---|---|
-| `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | E2/E3-limited on uniform Yee; M13 analytic open/short/matched/RLC extractor oracles, M11 real raw V/I replay, and M14 internal replay/passivity sweep; no broad E5 envelope |
-| `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | E2/E3/E4 partial for probe-fed resonance plus M12 midpoint V/I replay and M15 internal replay/passivity sweep; absolute S-matrix calibration caveated; nonuniform is shadow |
-| lumped/wire `add_port(...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `ForwardResult.freqs` S11 vectors | E0/E1 uniform single-device AD contract |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | E5-narrow / eigenmode-blocked; thru-line + cv06b + stored-openEMS smoke + real raw 3-probe replay evidence; eigenmode/nonuniform remain blocked |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | E5-narrow strongest current port; battery + cv11 gates only within documented rectangular-guide envelope |
-| `add_coaxial_port(...)` | none promoted | none | E2-sweep/E3-gap / no-sparam: M22 analytic TEM geometry sweep plus M21 diagnostic coaxial-gap V/I replay; unsupported for high-level S-parameters |
-| `add_floquet_port(...)` | none promoted | none promoted | E2/E3-modal / no-promoted-api: M18 synthetic modal oracle plus M20 real-FDTD DFT-plane replay; no RCWA/external crossval or promoted modal S-parameter calculator |
-| sources, TFSF, probes, flux monitors | none | field/flux/time observables | not ports; no impedance or reference plane |
-
-`run(compute_s_params=True)` is intentionally narrow: it populates
-`Result.s_params` only for lumped/wire `add_port(...)` families. Use the
-specialized calculator for MSL or waveguide ports.
-
-## Shadow lane
-
-Current shadow surface:
-
-- nonuniform graded-z thin-substrate workflows
-- selected smoke and convergence coverage
-- current-main finite-ground-plane patch crossval evidence
-
-Shadow means the code is real and may be tested, but the lane is not yet the
-public claims-bearing baseline. For S-parameters, finite arrays or successful
-pytest runs are not sufficient evidence by themselves; claims must cite an
-E-level, command/script, numeric gate, artifact path, external-reference
-status, and mesh/frequency/geometry envelope.
+| Primitive | Calculation API | Public status |
+|---|---|---|
+| lumped/wire `add_port(...)` | `run(compute_s_params=True)` | recommended for the matching port family |
+| lumped/wire `add_port(...)` | `forward(port_s11_freqs=...)` | differentiable S11 vectors on the uniform single-device path |
+| `add_msl_port(...)` | `compute_msl_s_matrix()` | specialized microstrip-line workflow |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow |
+| `add_coaxial_port(...)` | experimental | under active validation |
+| `add_floquet_port(...)` | experimental | periodic / unit-cell workflow under active validation |
+| sources, TFSF, probes, flux monitors | not port calculators | field/flux/time observables |
 
 ## Experimental lanes
 
-| Lane | Notes |
+| Lane | Public note |
 |---|---|
-| SBP-SAT / subgridding | research lane, not a claims-bearing baseline |
-| ADI | separate accuracy/stability envelope |
-| distributed | scaling lane |
-| Floquet/Bloch | M18 synthetic modal oracle and M20 real-FDTD DFT-plane replay exist; promotion pending analytic/RCWA/external benchmark ladder |
+| non-uniform mesh | useful for thin-substrate experiments; not the default lane |
+| SBP-SAT / subgridding | experimental local mesh refinement |
+| ADI | experimental accuracy/stability lane |
+| distributed execution | scaling lane; check feature combinations |
+| Floquet/Bloch | experimental periodic/unit-cell workflow |
+| coaxial and advanced ports | under active validation |
+| inverse-design extensions | available for selected workflows; check current examples |
 
 ## Unsupported combinations
 
-Unsupported combinations must hard-fail.
+Unsupported combinations should fail clearly. Common examples include mixing non-uniform mesh with Floquet, TFSF, broad DFT-plane workflows, MSL S-matrix extraction, coaxial ports, or lumped RLC unless the relevant guide explicitly says that combination is supported.
 
-| Combination | Expected behavior |
-|---|---|
-| Floquet + nonuniform | hard-fail |
-| NTFF + nonuniform | hard-fail |
-| DFT planes + nonuniform | hard-fail |
-| TFSF + nonuniform | hard-fail |
-| Waveguide ports + nonuniform | shadow / restricted: only documented `compute_waveguide_s_matrix(normalize=True)` single-mode path; otherwise hard-fail |
-| Lumped-port S-parameters + nonuniform | hard-fail |
-| `compute_msl_s_matrix()` + nonuniform | hard-fail |
-| Coaxial port + nonuniform | hard-fail |
-| Lumped RLC + nonuniform | hard-fail |
+## Practical rule
 
-## Promotion rule
-
-A lane or feature can be promoted to **supported** only when all of these are
-present:
-
-1. support-matrix entry
-2. explicit source / observable contract where relevant
-3. unit and integration tests
-4. analytic, dump-replay, external-solver, benchmark, or convergence evidence
-5. docs, examples, and API wording aligned to the promoted scope
+If the workflow is not in the recommended default lane, describe it as experimental or under active validation and link to the current example or limitation page.

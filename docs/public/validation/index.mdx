@@ -1,42 +1,26 @@
 ---
 title: "Validation"
-description: "Public validation hierarchy for rfx: benchmarks, cross-solver checks, workflow validation, and lane contracts."
+description: "Public validation and support overview for rfx."
 sidebar:
   order: 40
 ---
 
-Use this hub to decide **how strong a public claim should be**.
+Use this hub to decide how strongly to describe a feature.
 
-## Evidence hierarchy
+## Simple public rule
 
-| Layer | What it is | Best use |
-|---|---|---|
-| 1. Published benchmarks | core analytic / reference cases | strongest numerical claims |
-| 2. Cross-solver checks | comparisons against Meep, OpenEMS, or other independent references | solver sanity and workflow verification |
-| 3. Workflow validation | end-to-end examples and regression scripts | practical stability, not top-level accuracy claims |
-| 4. Reference-lane contract | support boundaries and failure rules | determine what is promoted vs shadow |
+| Lane | Public wording |
+|---|---|
+| uniform Cartesian Yee RF/FDTD workflows | recommended default path |
+| non-uniform mesh, distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial/advanced ports, inverse-design extensions | experimental or under active validation |
 
-## Current public rule
+## Current practical anchors
 
-Lead with benchmark evidence when you quote solver accuracy.
-Use cross-solver checks when you want to show the implementation still agrees
-with an independent solver.
-Use workflow validation when the point is that the example runs end-to-end.
+- `examples/crossval/05_patch_antenna.py` — practical patch antenna cross-check
+- `examples/crossval/11_waveguide_port_wr90.py` — rectangular waveguide-port workflow
+- `examples/nonuniform_patch_demo.py` — non-uniform mesh demo; experimental lane
+- `examples/inverse_design/multilayer_ar_coating.py` — conservative inverse-design demo
 
-For the current practical patch example, start with
-[Cross-Solver Validation](./cross-solver/) and then point back to the
-[Reference Lane](./reference-lane/) for scope.
+## Practical takeaway
 
-## Current practical anchor
-
-The newest public patch cross-check is the best current example of workflow
-validation:
-
-- `examples/crossval/12_patch_antenna.py`
-- rfx Harminv: 2.4621 GHz
-- OpenEMS reference: 2.4868 GHz
-- rfx vs OpenEMS: 0.99%
-
-That result is strong public evidence for the finite-ground-plane patch workflow,
-but it is still **workflow validation**, not a replacement for the published
-benchmark ladder.
+Lead with the recommended default lane. Mention experimental lanes only with the current limitations and examples that apply to the user’s workflow.

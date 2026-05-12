@@ -125,10 +125,7 @@ Supported string shortcuts: `"ex"`, `"ey"`, `"ez"`, `"circular"` / `"rhcp"`, `"l
 ## Lumped port (`add_port`)
 
 A single-cell port with a resistive load equal to `impedance`. Enables S-parameter extraction referenced to that impedance.
-Its current public physics envelope is E2/E3-limited: analytic
-open/short/matched/RLC extractor oracles plus a narrow real raw V/I replay of
-the uniform-Yee extractor and a small internal replay/passivity sweep, not a
-broad calibrated RF-port E5 claim.
+Its current public support is limited / under active validation. Use it for the documented uniform-Yee lumped-port workflows and check examples before broadening the claim.
 
 ```python
 sim.add_port(
@@ -167,7 +164,7 @@ sim.add_port(
 )
 ```
 
-The `extent` parameter turns the lumped port into a `WirePort`. S-parameters are extracted using voltage/current integrals over the wire span. The current evidence is strongest for probe-fed resonance workflows; M12 adds raw midpoint V/I replay and M15 adds an internal replay/passivity sweep of the current extractor convention, but absolute S-matrix calibration remains caveated until analytic/external gates and broader sweep envelopes define a narrower E5 claim.
+The `extent` parameter turns the lumped port into a `WirePort`. S-parameters are extracted using voltage/current integrals over the wire span. The current public support is strongest for probe-fed resonance workflows; broader absolute calibration remains under active validation.
 
 !!! warning
     `extent` must be aligned with the `component` direction. For `component="ez"`, `extent`
@@ -206,7 +203,7 @@ Z0 = msl.Z0        # (n_ports, n_freqs)
 This path uses 3-probe numerical de-embedding. It is a uniform-lane
 specialized calculator; non-uniform, subgridded, ADI, TFSF, and mixed-port
 simulations are rejected instead of silently returning `None`.
-Current evidence is E5-narrow / eigenmode-blocked: the thru-line gate, cv06b
+Current support is specialized and still being broadened: the thru-line and notch examples
 notch gate, stored-openEMS smoke comparison, and real raw 3-probe replay define
 a narrow uniform-Yee envelope, but broad claims require eigenmode and
 nonuniform support.
@@ -217,7 +214,7 @@ nonuniform support.
 
 Modal waveguide excitation for rectangular waveguide S-matrix extraction.
 Injects a specific TE/TM mode and decomposes the reflected/transmitted fields
-into the same modal basis. Current evidence is E5-narrow within the documented
+into the same modal basis. Current support is recommended within the documented
 rectangular-guide gates; branch/T-junction claims remain deferred until
 per-port reference geometry is validated.
 
@@ -288,10 +285,10 @@ sim.add_tfsf_source(
 |---|---|---|
 | `add_source()` | Resonance, visualisation | No: not a port |
 | `add_polarized_source()` | Antenna radiation, polarimetry | No: not a port |
-| `add_port(extent=None)` | Lumped-port S-params | `run(compute_s_params=True)`; E2/E3-limited |
-| `add_port(extent=...)` | Wire / probe-feed S-params | `run(compute_s_params=True)`; E2/E3/E4 partial, calibration caveated |
-| `add_msl_port()` | Full-strip microstrip-line S-matrix | `compute_msl_s_matrix()`; E5-narrow / eigenmode-blocked under uniform-Yee gates |
-| `add_waveguide_port()` | Modal waveguide S-matrix | `compute_waveguide_s_matrix()`; E5-narrow under rectangular-guide gates |
-| `add_coaxial_port()` | Diagnostic coaxial geometry/source helper | E2-sweep/E3-gap / no-sparam: analytic TEM geometry sweep plus diagnostic coaxial-gap V/I replay only; unsupported for high-level S-params |
-| `add_floquet_port()` | Experimental periodic / unit-cell excitation | E2/E3-modal / no-promoted-api: synthetic modal oracle plus real-FDTD DFT-plane replay only; no promoted S-matrix calculator |
+| `add_port(extent=None)` | Lumped-port S-params | `run(compute_s_params=True)`; limited / under active validation |
+| `add_port(extent=...)` | Wire / probe-feed S-params | `run(compute_s_params=True)`; partial / under active validation, calibration caveated |
+| `add_msl_port()` | Full-strip microstrip-line S-matrix | `compute_msl_s_matrix()`; specialized uniform-Yee workflow; broader support under active validation |
+| `add_waveguide_port()` | Modal waveguide S-matrix | `compute_waveguide_s_matrix()`; recommended rectangular-guide workflow within documented limits |
+| `add_coaxial_port()` | Diagnostic coaxial geometry/source helper | experimental; under active validation |
+| `add_floquet_port()` | Experimental periodic / unit-cell excitation | experimental periodic/unit-cell workflow |
 | `add_tfsf_source()` | RCS, scattering, plane-wave | No: not a port |
