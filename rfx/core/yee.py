@@ -208,12 +208,15 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 ) -> FDTDState:
     """H update for non-uniform Yee grid.
 
-    H uses forward differences with MEAN spacing between adjacent cells.
+    The H-curl differences two E nodes that straddle a single cell, so
+    it divides by the LOCAL cell width (CORE-C2 fix, 2026-05-16).
 
     Parameters
     ----------
     inv_dx_h, inv_dy_h, inv_dz_h : (N,) arrays
-        Pre-padded: inv_d_h[j] = 2/(d[j]+d[j+1]) for j<N-1, inv_d_h[N-1]=0.
+        H-update inverse spacing ``inv_d_h[k] = 1/d[k]`` for k<N-1,
+        ``inv_d_h[N-1] = 0``. Built by
+        ``rfx.nonuniform._profile_to_inv_arrays`` (second return value).
     """
     _fdtype = state.ex.dtype
     ex = state.ex.astype(jnp.float32)
@@ -247,11 +250,15 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 ) -> FDTDState:
     """E update for non-uniform Yee grid.
 
-    E uses backward differences with LOCAL cell spacing.
+    The E-curl differences two H cell-centres, whose separation is the
+    MEAN of the two adjacent cell widths (CORE-C2 fix, 2026-05-16).
 
     Parameters
     ----------
-    inv_dx, inv_dy, inv_dz : (N,) arrays — 1/dx[i] per cell
+    inv_dx, inv_dy, inv_dz : (N,) arrays
+        E-update inverse spacing ``inv_d_e[k] = 2/(d[k-1]+d[k])`` for
+        k>=1, ``inv_d_e[0] = 1/d[0]``. Built by
+        ``rfx.nonuniform._profile_to_inv_arrays`` (first return value).
     """
     _fdtype = state.ex.dtype
     hx = state.hx.astype(jnp.float32)
@@ -454,8 +461,8 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
                       ) -> FDTDState:
     """Non-uniform E update with per-component anisotropic permittivity.
 
-    Same backward-difference structure as :func:`update_e_nu` (per-cell
-    spacing via ``inv_dx``/``inv_dy``/``inv_dz``) but uses three separate
+    Same backward-difference structure as :func:`update_e_nu` (E-update
+    mean spacing via ``inv_dx``/``inv_dy``/``inv_dz``) but uses three separate
     permittivity arrays (Ex, Ey, Ez) so subpixel-smoothing can be applied
     on a non-uniform mesh. ``materials.sigma`` is still applied
     isotropically (matches the uniform-path :func:`update_e_aniso`).

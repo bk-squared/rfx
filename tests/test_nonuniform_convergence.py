@@ -7,12 +7,25 @@ as dz_substrate is refined. Uses a PEC cavity with thin FR4 slab.
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.gpu
+# CORE-C2 (2026-05-16): the module was marked `gpu`, which excluded it
+# from the default and `-m slow` gates — so the only non-uniform-mesh
+# physics test never ran in CI. These tests are CPU-runnable; the slow
+# resonance scan keeps a `@pytest.mark.slow` mark, the fast CFL check
+# now runs in the default gate.
 
 
 @pytest.mark.slow
 def test_nonuniform_z_convergence():
-    """Resonance should converge as substrate dz is refined."""
+    """Non-uniform z-mesh: the measured resonance must converge as the
+    substrate cells are refined.
+
+    The cavity is partially dielectric-filled and has no simple
+    closed-form resonance, so this is an oracle-free *Cauchy*
+    convergence check (successive refinements move the resonance by a
+    shrinking amount), not an accuracy check against an analytic
+    value. The precise per-stencil guard for the non-uniform Yee
+    metric is ``test_review_tier1_validation_battery.py::test_corec2_*``.
+    """
     from rfx import Simulation, Box, GaussianPulse
     from rfx.auto_config import smooth_grading
     from rfx.grid import C0
@@ -60,13 +73,21 @@ def test_nonuniform_z_convergence():
         results.append((dz_sub, f_sim))
         print(f"  dz_sub={dz_sub*1e3:.1f}mm: f={f_sim/1e9:.4f} GHz")
 
-    # Convergence: error should decrease (or stay small) as dz refines
-    errors = [abs(f - f_empty) / f_empty for _, f in results if f > 0]
-    if len(errors) >= 2:
-        assert errors[-1] <= errors[0] * 1.5, (
-            f"Non-convergent: coarsest err={errors[0]:.4f}, finest err={errors[-1]:.4f}"
-        )
-        print(f"Convergence: {errors[0]*100:.2f}% → {errors[-1]*100:.2f}%")
+    # Cauchy convergence (oracle-free): as dz_sub is refined the measured
+    # resonance must approach a limit — each refinement step must move
+    # f_sim by a shrinking amount. A non-convergent stencil (e.g. the
+    # pre-2026-05-16 CORE-C2 spacing bug) fails this.
+    freqs_sim = [f for _, f in results]
+    assert all(f > 0 for f in freqs_sim), (
+        f"resonance not found at every refinement level: {results}"
+    )
+    d01 = abs(freqs_sim[1] - freqs_sim[0])
+    d12 = abs(freqs_sim[2] - freqs_sim[1])
+    assert d12 <= d01 * 1.3, (
+        f"non-convergent: refinement step |Δf| grew "
+        f"{d01/1e6:.2f} MHz → {d12/1e6:.2f} MHz"
+    )
+    print(f"Cauchy convergence: |Δf| {d01/1e6:.2f} → {d12/1e6:.2f} MHz")
 
 
 def test_nonuniform_cfl_uses_min_dz():

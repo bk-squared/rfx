@@ -61,13 +61,15 @@ class NonUniformGrid(NamedTuple):
                            # Readers must not apply float() / .item() without
                            # an is_tracer(dt) guard or a host-boundary context.
     cpml_layers: int
-    # Pre-computed inverse spacing arrays (length N, padded)
-    inv_dx: jnp.ndarray    # (nx,) — 1/dx_arr[i]
-    inv_dy: jnp.ndarray    # (ny,) — 1/dy_arr[j]
-    inv_dz: jnp.ndarray    # (nz,) — 1/dz[k] per cell
-    inv_dx_h: jnp.ndarray  # (nx,) — 2/(dx_arr[i]+dx_arr[i+1]) padded
-    inv_dy_h: jnp.ndarray  # (ny,) — 2/(dy_arr[j]+dy_arr[j+1]) padded
-    inv_dz_h: jnp.ndarray  # (nz,) — 2/(dz[k]+dz[k+1]), padded
+    # Pre-computed inverse spacing arrays (length N, padded).
+    # CORE-C2: inv_d* feed the E update (mean spacing), inv_d*_h feed
+    # the H update (local cell width). See _profile_to_inv_arrays.
+    inv_dx: jnp.ndarray    # (nx,) — E update: 2/(dx[i-1]+dx[i]); [0]=1/dx[0]
+    inv_dy: jnp.ndarray    # (ny,) — E update: 2/(dy[j-1]+dy[j]); [0]=1/dy[0]
+    inv_dz: jnp.ndarray    # (nz,) — E update: 2/(dz[k-1]+dz[k]); [0]=1/dz[0]
+    inv_dx_h: jnp.ndarray  # (nx,) — H update: 1/dx[i]; [nx-1]=0
+    inv_dy_h: jnp.ndarray  # (ny,) — H update: 1/dy[j]; [ny-1]=0
+    inv_dz_h: jnp.ndarray  # (nz,) — H update: 1/dz[k]; [nz-1]=0
     # Per-face CPML padding (v1.7.5 PMC+CPML composition fix)
     pad_x_lo: int = 0
     pad_x_hi: int = 0
@@ -120,16 +122,43 @@ def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
 
 
 def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Return (inv_d, inv_d_h) from a padded 1-D cell-size profile.
+    """Return ``(inv_d_e, inv_d_h)`` — the E-update and H-update inverse
+    cell-spacing arrays for a padded 1-D cell-size profile ``d``.
 
-    ``inv_d[i] = 1/profile[i]`` and
-    ``inv_d_h[i] = 2/(profile[i]+profile[i+1])`` (padded with 0 at end).
+    CORE-C2 fix (2026-05-16). The non-uniform Yee stencil needs a
+    *different* metric for each update:
+
+    * **H update** — the H-curl differences two E nodes that straddle
+      one cell, so it divides by the **local cell width**::
+
+          inv_d_h[k] = 1/d[k]       (k < N-1);   inv_d_h[N-1] = 0
+
+    * **E update** — the E-curl differences two H cell-centres, whose
+      separation is the **mean** of the two adjacent cell widths::
+
+          inv_d_e[k] = 2/(d[k-1]+d[k])   (k >= 1);   inv_d_e[0] = 1/d[0]
+
+    On a uniform mesh both collapse to ``1/d`` so the uniform path is
+    bit-identical. The pre-fix code had the two swapped (H got the mean,
+    E got the local width) — a stencil inconsistency that scaled the
+    curl by ``2 d[k]/(d[k]+d[k±1])`` on every graded cell. The boundary
+    entries (``inv_d_h[N-1]=0``, ``inv_d_e[0]=1/d[0]``) reproduce the
+    prior boundary behaviour exactly, so PEC/CPML faces are untouched.
+
+    The return order ``(inv_d_e, inv_d_h)`` matches the caller's
+    ``inv_dx, inv_dx_h = _profile_to_inv_arrays(...)`` unpacking: the
+    first slot feeds the E update, the second feeds ``update_h_nu``.
     """
     arr = jnp.asarray(profile_full, dtype=jnp.float32)
-    inv_d = 1.0 / arr
-    inv_d_mean = 2.0 / (arr[:-1] + arr[1:])
-    inv_d_h = jnp.concatenate([inv_d_mean, jnp.zeros(1, dtype=jnp.float32)])
-    return inv_d, inv_d_h
+    inv_local = 1.0 / arr                          # 1/d[k]
+    inv_mean = 2.0 / (arr[:-1] + arr[1:])          # 2/(d[k]+d[k+1])
+    # H update: local cell width; trailing 0 (forward-diff has no d[N]).
+    inv_d_h = jnp.concatenate([inv_local[:-1], jnp.zeros(1, dtype=jnp.float32)])
+    # E update: mean of (d[k-1], d[k]); leading 1/d[0] (backward-diff
+    # boundary — reproduces the pre-fix value so the face cell is
+    # unchanged).
+    inv_d_e = jnp.concatenate([inv_local[:1], inv_mean])
+    return inv_d_e, inv_d_h
 
 
 def make_nonuniform_grid(
