@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import jax
 import jax.numpy as jnp
+import pytest
 
 from rfx.subgridding.disjoint_3d import (
     ALL_FACES,
@@ -330,6 +331,57 @@ def test_six_face_sat_longer_run_bounded_and_ad_finite():
 
     grad = float(jax.grad(loss)(jnp.float32(1.0)))
     assert np.isfinite(grad)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Known energy instability of the disjoint Stage-2 prototype: the "
+        "six-face SAT coupling injects energy and the closed-domain energy "
+        "diverges over a long horizon (~14x by 3000 steps). research-only "
+        "— see handover SUBGRID_HANDOVER_2026-05-16.md section 3. This "
+        "xfail(strict=True) locks the known instability: if a future change "
+        "stabilizes the prototype the test XPASSes and strict flips it to a "
+        "failure, so the change cannot land silently."
+    ),
+)
+def test_disjoint_subgrid_3d_longrun_instability():
+    """Long-run energy lock: the disjoint prototype is NOT long-time stable.
+
+    ``test_six_face_sat_longer_run_bounded_and_ad_finite`` runs only 80 steps
+    — inside the bounded-transient window. Over a long (>=3000-step) horizon
+    the closed-domain energy diverges. This test asserts long-time
+    boundedness, which fails by design; it documents the instability instead
+    of hiding it behind a short window.
+    """
+    config, base = init_disjoint_subgrid_3d(
+        shape_c=(14, 14, 14),
+        fine_region=(5, 9, 5, 9, 5, 9),
+        ratio=2,
+        sat_strength=0.02,
+    )
+    fi_lo, fi_hi, fj_lo, fj_hi, fk_lo, fk_hi = config.fine_region
+    state = base._replace(
+        hz_c=base.hz_c.at[fi_lo - 1, fj_lo:fj_hi, fk_lo:fk_hi].set(1.0 / Z0),
+        hx_c=base.hx_c.at[fi_lo:fi_hi, fj_lo - 1, fk_lo:fk_hi].set(1.0 / Z0),
+        hy_c=base.hy_c.at[fi_lo:fi_hi, fj_lo:fj_hi, fk_lo - 1].set(1.0 / Z0),
+    )
+    state = zero_coarse_hole(state, config)
+    initial_energy = float(compute_disjoint_energy_3d(state, config))
+
+    # Run the 3000-step rollout as a single compiled scan. A plain Python
+    # loop re-traces the JAX step 3000x and is impractically slow.
+    def _scan_step(carry, _):
+        stepped = step_disjoint_sat_3d(carry, config)
+        return stepped, compute_disjoint_energy_3d(stepped, config)
+
+    _, energies = jax.lax.scan(_scan_step, state, None, length=3000)
+    assert bool(jnp.all(jnp.isfinite(energies)))
+    max_energy = float(jnp.max(energies))
+
+    # A genuine SBP-SAT closure keeps closed-domain energy bounded. This
+    # prototype does not — the assertion fails by design (the xfail lock).
+    assert max_energy <= initial_energy * 1.25
 
 
 def test_z_slab_sat_handles_full_xy_fine_block_without_side_coarse_cells():
