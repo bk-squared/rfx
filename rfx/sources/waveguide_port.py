@@ -2085,7 +2085,10 @@ def extract_waveguide_s_matrix_flux(
                 index=cfg.probe_x,
                 freqs=freqs,
                 grid_shape=grid.shape,
-                dx=cfg.dx,
+                # Waveguide ports run on a cubic Grid — both tangential
+                # cell sizes equal cfg.dx (PROBE-C1: axis-aware API).
+                d1=cfg.dx,
+                d2=cfg.dx,
                 dft_total_steps=n_steps,
                 lo1=cfg.u_lo, hi1=cfg.u_hi,
                 lo2=cfg.v_lo, hi2=cfg.v_hi,

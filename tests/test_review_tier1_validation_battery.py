@@ -187,24 +187,25 @@ def test_geoc1_kerr_ade_should_use_exact_implicit_solve():
 
 
 # ===========================================================================
-# PROBE-C1 — FluxMonitor area weighting assumes a cubic cell
+# PROBE-C1 — FluxMonitor axis-aware area weighting  (FIXED 2026-05-16)
 # ===========================================================================
 #
-# FluxMonitor stores a single scalar ``dx``; flux_spectrum uses
-# dA = dx*dx for every face orientation. An x-normal face's true area
-# element is dy*dz. On a non-cubic / non-uniform grid every flux number
-# is wrong by dy*dz / dx**2.
+# The pre-fix FluxMonitor stored a single scalar ``dx`` and flux_spectrum
+# used dA = dx*dx for every face orientation — correct only for a cubic
+# cell. init_flux_monitor now takes the two tangential cell sizes
+# (d1, d2) and flux_spectrum uses the axis-aware dA = d1*d2. (Currently
+# all flux monitors run on a cubic Grid, so this was a latent bug; the
+# fix makes the path correct for non-cubic / non-uniform meshes too.)
 
-@pytest.mark.xfail(strict=True, reason=(
-    "PROBE-C1: FluxMonitor has only a scalar dx; flux_spectrum computes "
-    "dA = dx*dx. An x-normal face needs dA = dy*dz. probes.py:485,591."))
 def test_probec1_flux_area_is_axis_aware():
+    """flux_spectrum weights an x-normal face by dy*dz, not dx*dx."""
     DX, DY, DZ = 1.0e-3, 2.0e-3, 4.0e-3  # deliberately non-cubic
     grid_shape = (5, 5, 5)
     freqs = jnp.array([1.0e9])
 
+    # x-normal face (axis=0): the two tangential axes are y and z.
     mon = init_flux_monitor(axis=0, index=2, freqs=freqs,
-                            grid_shape=grid_shape, dx=DX)
+                            grid_shape=grid_shape, d1=DY, d2=DZ)
     n1, n2 = grid_shape[1], grid_shape[2]
     ones = jnp.ones((1, n1, n2), dtype=jnp.complex64)
     zeros = jnp.zeros((1, n1, n2), dtype=jnp.complex64)
@@ -213,7 +214,9 @@ def test_probec1_flux_area_is_axis_aware():
 
     flux = float(np.asarray(flux_spectrum(mon))[0])
     correct = n1 * n2 * DY * DZ  # x-normal face: area element is dy*dz
-    assert flux == pytest.approx(correct, rel=1e-6)
+    assert flux == pytest.approx(correct, rel=1e-5)
+    # ...and NOT the pre-fix cubic-cell dx*dx weighting.
+    assert flux != pytest.approx(n1 * n2 * DX * DX, rel=1e-3)
 
 
 # ===========================================================================

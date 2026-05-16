@@ -482,7 +482,10 @@ class FluxMonitor(NamedTuple):
     freqs: jnp.ndarray    # (n_freqs,) float
     axis: int             # normal axis (0=x, 1=y, 2=z)
     index: int            # grid index along normal axis
-    dx: float             # cell size for area integration
+    dA: jnp.ndarray       # area weight: scalar (1,1) or (n1,n2) — d1*d2
+                          # over the two tangential axes (PROBE-C1 fix:
+                          # axis-aware; the old scalar dx*dx assumed a
+                          # cubic cell).
     total_steps: int
     window: str
     window_alpha: float
@@ -505,7 +508,8 @@ def init_flux_monitor(
     index: int,
     freqs: jnp.ndarray,
     grid_shape: tuple[int, int, int],
-    dx: float,
+    d1,
+    d2,
     dft_total_steps: int = 0,
     dft_window: str = "rect",
     dft_window_alpha: float = 0.25,
@@ -518,6 +522,13 @@ def init_flux_monitor(
 
     ``lo1/hi1`` and ``lo2/hi2`` restrict the DFT accumulation to a
     sub-region of the tangential plane.  -1 means "full extent".
+
+    ``d1`` / ``d2`` are the cell sizes along the two tangential axes of
+    the monitor plane (axis-1 / axis-2 of ``_FLUX_COMPONENTS``). Each may
+    be a scalar (uniform mesh) or a per-cell 1-D array (non-uniform). The
+    flux area element is ``dA = d1 * d2`` — for an x-normal plane that is
+    ``dy * dz``, etc. (PROBE-C1 fix: the old API took a single scalar
+    ``dx`` and assumed a cubic cell.)
     """
     if axis == 0:
         full1, full2 = grid_shape[1], grid_shape[2]
@@ -535,11 +546,23 @@ def init_flux_monitor(
     n2 = hi2 - lo2
     nf = len(freqs)
     zeros = jnp.zeros((nf, n1, n2), dtype=jnp.complex128)
+
+    # Axis-aware area element dA = d1*d2 over the (lo,hi) sub-region.
+    # Scalars stay scalar (broadcast); per-cell arrays are sliced and
+    # outer-multiplied to (n1, n2). jnp.reshape(scalar, (-1,1)) -> (1,1).
+    w1 = jnp.asarray(d1, dtype=jnp.float32)
+    w2 = jnp.asarray(d2, dtype=jnp.float32)
+    if w1.ndim > 0:
+        w1 = w1[lo1:hi1]
+    if w2.ndim > 0:
+        w2 = w2[lo2:hi2]
+    dA = jnp.reshape(w1, (-1, 1)) * jnp.reshape(w2, (1, -1))
+
     return FluxMonitor(
         e1_dft=zeros, e2_dft=zeros,
         h1_dft=zeros, h2_dft=zeros,
         freqs=freqs, axis=axis, index=index,
-        dx=float(dx),
+        dA=dA,
         total_steps=int(dft_total_steps),
         window=dft_window,
         window_alpha=float(dft_window_alpha),
@@ -587,10 +610,10 @@ def flux_spectrum(mon: FluxMonitor) -> jnp.ndarray:
         ∫ Re(E × H*) · n̂ dA at each frequency.
         Positive = power flowing in +axis direction.
     """
-    # Poynting: S_n = E1*H2* - E2*H1* (cyclic cross product)
-    dA = mon.dx * mon.dx
+    # Poynting: S_n = E1*H2* - E2*H1* (cyclic cross product).
+    # mon.dA is the axis-aware area weight (scalar or (n1,n2)).
     integrand = mon.e1_dft * jnp.conj(mon.h2_dft) - mon.e2_dft * jnp.conj(mon.h1_dft)
-    return jnp.real(jnp.sum(integrand, axis=(-2, -1))) * dA
+    return jnp.real(jnp.sum(integrand * mon.dA, axis=(-2, -1)))
 
 
 # ---------------------------------------------------------------------------

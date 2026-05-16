@@ -400,7 +400,11 @@ def run_uniform(
                 index=grid_index,
                 freqs=freqs_arr,
                 grid_shape=grid.shape,
-                dx=grid.dx,
+                # Grid is cubic (single dx) — both tangential cell sizes
+                # equal grid.dx. If Grid ever becomes non-cubic, select
+                # the two tangential sizes by axis_idx here.
+                d1=grid.dx,
+                d2=grid.dx,
                 dft_total_steps=n_steps,
                 dft_window=getattr(pe, 'dft_window', 'rect'),
                 dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
