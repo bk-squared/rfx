@@ -11,6 +11,7 @@ the Python-loop runner for 50-100x speedup. Validates:
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 
 def _make_pec_sim(with_probe=True, with_source=True):
@@ -19,7 +20,7 @@ def _make_pec_sim(with_probe=True, with_source=True):
     sim = Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.04), boundary="pec")
     if with_source:
         sim.add_source(position=(0.02, 0.02, 0.02), component="ez")
-    sim.add_refinement(z_range=(0.015, 0.025), ratio=2)
+    sim.add_refinement(z_range=(0.015, 0.025), ratio=2, validation="research")
     if with_probe:
         sim.add_probe(position=(0.02, 0.02, 0.02), component="ez")
     return sim
@@ -30,7 +31,7 @@ def _make_cpml_sim(with_probe=True):
     from rfx import Simulation
     sim = Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.04), boundary="cpml")
     sim.add_source(position=(0.02, 0.02, 0.02), component="ez")
-    sim.add_refinement(z_range=(0.015, 0.025), ratio=2)
+    sim.add_refinement(z_range=(0.015, 0.025), ratio=2, validation="research")
     if with_probe:
         sim.add_probe(position=(0.02, 0.02, 0.02), component="ez")
     return sim
@@ -99,6 +100,17 @@ class TestJITEdgeCases:
         result = sim.run(n_steps=50)
         ts = np.array(result.time_series).ravel()
         assert np.allclose(ts, 0), "No source should produce zero fields"
+
+    def test_source_outside_fine_region_fails_loudly(self):
+        """Subgrid source/probe indices outside the fine block must not be silent."""
+        from rfx import Simulation
+
+        sim = Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.04), boundary="pec")
+        sim.add_refinement(z_range=(0.015, 0.025), ratio=2)
+        sim.add_source(position=(0.02, 0.02, 0.005), component="ez")
+
+        with pytest.raises(ValueError, match="outside the refined z slab"):
+            sim.run(n_steps=5)
 
 
 # ── 3. Energy stability ────────────────────────────────────────
@@ -294,7 +306,6 @@ class TestJITRunnerHCoupling:
         """
         from rfx.subgridding.sbp_sat_3d import (
             SubgridConfig3D, init_subgrid_3d, step_subgrid_3d,
-            compute_energy_3d,
         )
         from rfx.subgridding.jit_runner import run_subgridded_jit
         from rfx.grid import Grid
@@ -430,7 +441,7 @@ class TestSubgridMaterialTransition:
         sim.add_source(position=(0.015, 0.015, 0.015), component="ez",
                        waveform=GaussianPulse(f0=2e9, bandwidth=0.5))
         sim.add_probe(position=(0.015, 0.015, 0.015), component="ez")
-        sim.add_refinement(z_range=(0.009, 0.021), ratio=2)
+        sim.add_refinement(z_range=(0.009, 0.021), ratio=2, validation="research")
 
         result = sim.run(n_steps=200)
         ts = np.array(result.time_series[:, 0])
@@ -441,8 +452,10 @@ class TestSubgridMaterialTransition:
     def test_dielectric_changes_field_amplitude(self):
         """Dielectric material should produce different field amplitudes vs vacuum.
 
-        With eps_r=4, the wave impedance and field amplitudes change.
-        A co-located probe should see a measurably different signal.
+        With eps_r=4, the wave impedance and propagation speed change.
+        The probe is separated from the source inside the fine region so the
+        assertion measures propagation through material, not only the local
+        source-cell response.
         """
         from rfx import Simulation, Box, GaussianPulse
 
@@ -454,11 +467,11 @@ class TestSubgridMaterialTransition:
             if eps_r > 1.0:
                 sim.add_material("diel", eps_r=eps_r)
                 sim.add(Box((0, 0, 0), domain), material="diel")
-            sim.add_source((0.015, 0.015, 0.015), "ez",
+            sim.add_source((0.015, 0.015, 0.011), "ez",
                            waveform=GaussianPulse(f0=2e9, bandwidth=0.5))
-            sim.add_probe((0.015, 0.015, 0.015), "ez")
-            sim.add_refinement(z_range=(0.009, 0.021), ratio=2)
-            return sim.run(n_steps=100)
+            sim.add_probe((0.015, 0.015, 0.019), "ez")
+            sim.add_refinement(z_range=(0.009, 0.021), ratio=2, validation="research")
+            return sim.run(n_steps=150)
 
         res_vac = _run_with_eps(1.0)
         res_die = _run_with_eps(4.0)
@@ -471,6 +484,6 @@ class TestSubgridMaterialTransition:
         ref = np.max(np.abs(ts_vac)) + 1e-30
         rel_diff = diff / ref
 
-        assert rel_diff > 0.01, (
+        assert rel_diff > 0.05, (
             f"Dielectric should change signal: rel_diff={rel_diff:.4f}"
         )
