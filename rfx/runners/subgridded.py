@@ -552,31 +552,6 @@ def _run_subgridded_once(
             "material_sat_zhi_common_trace_projection",
             "dual",
         ),
-        material_sat_e_h_trace_blend=ref.get("material_sat_e_h_trace_blend", 1.0),
-        material_sat_e_h_trace_zlo_blend=ref.get(
-            "material_sat_e_h_trace_zlo_blend",
-            1.0,
-        ),
-        material_sat_e_h_trace_zhi_blend=ref.get(
-            "material_sat_e_h_trace_zhi_blend",
-            1.0,
-        ),
-        material_sat_e_h_trace_zlo_filter=ref.get(
-            "material_sat_e_h_trace_zlo_filter",
-            "full",
-        ),
-        material_sat_e_h_trace_zlo_components=ref.get(
-            "material_sat_e_h_trace_zlo_components",
-            "all",
-        ),
-        material_sat_e_h_trace_zlo_vector_mix=ref.get(
-            "material_sat_e_h_trace_zlo_vector_mix",
-            "identity",
-        ),
-        material_sat_e_h_trace_zlo_residual_limit=ref.get(
-            "material_sat_e_h_trace_zlo_residual_limit",
-            0.0,
-        ),
         material_sat_normal_e_scale=ref.get("material_sat_normal_e_scale", 0.0),
         material_sat_zhi_coarse_eps_blend=ref.get("material_sat_zhi_coarse_eps_blend", 0.0),
         defer_material_h_sat_until_after_e=ref.get(
@@ -587,13 +562,6 @@ def _run_subgridded_once(
         inject_sources_before_e_coupling=ref.get("inject_sources_before_e_coupling", False),
         use_exterior_box_interfaces=ref.get("use_exterior_box_interfaces", False),
         inject_sources_on_coarse_shadow=inject_sources_on_coarse_shadow,
-        box_shadow_sync_fields=ref.get("box_shadow_sync_fields", "all"),
-        box_shadow_sync_region=ref.get("box_shadow_sync_region", "volume"),
-        box_shadow_sync_scale=ref.get("box_shadow_sync_scale", 1.0),
-        box_shadow_sync_face_axes=ref.get("box_shadow_sync_face_axes", "all"),
-        box_shadow_sync_components=ref.get("box_shadow_sync_components", "all"),
-        box_shadow_sync_face_sides=ref.get("box_shadow_sync_face_sides", "all"),
-        box_shadow_sync_timing=ref.get("box_shadow_sync_timing", "all"),
     )
 
     s_params = None

@@ -622,43 +622,6 @@ def _blend_to_sample(coarse_values, fine_sample, sync_scale: float):
     return coarse_values + sync_scale * (fine_sample - coarse_values)
 
 
-BOX_SHADOW_SYNC_COMPONENTS = {
-    "all": frozenset({"ex", "ey", "ez", "hx", "hy", "hz"}),
-    "e_all": frozenset({"ex", "ey", "ez"}),
-    "h_all": frozenset({"hx", "hy", "hz"}),
-    "ex": frozenset({"ex"}),
-    "ey": frozenset({"ey"}),
-    "ez": frozenset({"ez"}),
-    "hx": frozenset({"hx"}),
-    "hy": frozenset({"hy"}),
-    "hz": frozenset({"hz"}),
-}
-
-
-BOX_SHADOW_SYNC_FACE_NAMES = frozenset({"xlo", "xhi", "ylo", "yhi", "zlo", "zhi"})
-BOX_SHADOW_SYNC_TIMINGS = {
-    "all",
-    "pre_only",
-    "post_h_only",
-    "post_e_only",
-    "post_h_post_e",
-    "pre_post_h",
-    "pre_post_e",
-}
-
-
-def _parse_box_shadow_face_sides(face_sides: str) -> frozenset[str]:
-    if face_sides == "all":
-        return BOX_SHADOW_SYNC_FACE_NAMES
-    parts = frozenset(part for part in face_sides.split("_") if part)
-    if not parts or not parts <= BOX_SHADOW_SYNC_FACE_NAMES:
-        raise ValueError(
-            "box_shadow_sync_face_sides must be 'all' or an underscore-joined "
-            "combination of xlo, xhi, ylo, yhi, zlo, and zhi"
-        )
-    return parts
-
-
 def _sync_z_slab_coarse_shadow_from_fine(fields_c, fields_f, config, *, sync_scale: float = 1.0):
     """Overwrite the coarse shadow slab from colocated fine-grid fields.
 
@@ -681,90 +644,6 @@ def _sync_z_slab_coarse_shadow_from_fine(fields_c, fields_f, config, *, sync_sca
                     _restrict_node_aligned_3d_sample(fine_arr, ni, nj, nk, config.ratio),
                     sync_scale,
                 )
-            )
-        )
-    return tuple(synced)
-
-
-def _sync_box_coarse_shadow_faces_from_fine(
-    fields_c,
-    fields_f,
-    config,
-    *,
-    sync_scale: float = 1.0,
-    face_axes: str = "all",
-    face_sides: str = "all",
-):
-    """Overwrite only the boundary faces of a local coarse-shadow box.
-
-    Diagnostic-only: whole-volume local-box sync improves some waveform
-    failures but destroys long-time peak behavior.  This helper isolates whether
-    syncing only the coarse shadow faces that participate in local-box transfer
-    preserves the useful coarse-shadow interior state.
-    """
-    fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
-    ni = config.fi_hi - fi
-    nj = config.fj_hi - fj
-    nk = config.fk_hi - fk
-    synced = []
-    axes = set("xyz") if face_axes == "all" else set(face_axes)
-    sides = _parse_box_shadow_face_sides(face_sides)
-    for coarse_arr, fine_arr in zip(fields_c, fields_f):
-        sample = _restrict_node_aligned_3d_sample(fine_arr, ni, nj, nk, config.ratio)
-        arr = coarse_arr
-        if ni > 0 and "x" in axes and "xlo" in sides:
-            sl = (fi, slice(fj, fj + nj), slice(fk, fk + nk))
-            arr = arr.at[sl].set(_blend_to_sample(arr[sl], sample[0, :, :], sync_scale))
-        if ni > 0 and "x" in axes and "xhi" in sides:
-            sl = (fi + ni - 1, slice(fj, fj + nj), slice(fk, fk + nk))
-            arr = arr.at[fi + ni - 1, slice(fj, fj + nj), slice(fk, fk + nk)].set(
-                _blend_to_sample(arr[sl], sample[-1, :, :], sync_scale)
-            )
-        if nj > 0 and "y" in axes and "ylo" in sides:
-            sl = (slice(fi, fi + ni), fj, slice(fk, fk + nk))
-            arr = arr.at[sl].set(_blend_to_sample(arr[sl], sample[:, 0, :], sync_scale))
-        if nj > 0 and "y" in axes and "yhi" in sides:
-            sl = (slice(fi, fi + ni), fj + nj - 1, slice(fk, fk + nk))
-            arr = arr.at[slice(fi, fi + ni), fj + nj - 1, slice(fk, fk + nk)].set(
-                _blend_to_sample(arr[sl], sample[:, -1, :], sync_scale)
-            )
-        if nk > 0 and "z" in axes and "zlo" in sides:
-            sl = (slice(fi, fi + ni), slice(fj, fj + nj), fk)
-            arr = arr.at[sl].set(_blend_to_sample(arr[sl], sample[:, :, 0], sync_scale))
-        if nk > 0 and "z" in axes and "zhi" in sides:
-            sl = (slice(fi, fi + ni), slice(fj, fj + nj), fk + nk - 1)
-            arr = arr.at[slice(fi, fi + ni), slice(fj, fj + nj), fk + nk - 1].set(
-                _blend_to_sample(arr[sl], sample[:, :, -1], sync_scale)
-            )
-        synced.append(arr)
-    return tuple(synced)
-
-
-def _sync_box_coarse_shadow_interior_from_fine(
-    fields_c,
-    fields_f,
-    config,
-    *,
-    sync_scale: float = 1.0,
-):
-    """Overwrite only the strict interior of a local coarse-shadow box."""
-    fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
-    ni = config.fi_hi - fi
-    nj = config.fj_hi - fj
-    nk = config.fk_hi - fk
-    if ni <= 2 or nj <= 2 or nk <= 2:
-        return fields_c
-    c_sl = (
-        slice(fi + 1, fi + ni - 1),
-        slice(fj + 1, fj + nj - 1),
-        slice(fk + 1, fk + nk - 1),
-    )
-    synced = []
-    for coarse_arr, fine_arr in zip(fields_c, fields_f):
-        sample = _restrict_node_aligned_3d_sample(fine_arr, ni, nj, nk, config.ratio)
-        synced.append(
-            coarse_arr.at[c_sl].set(
-                _blend_to_sample(coarse_arr[c_sl], sample[1:-1, 1:-1, 1:-1], sync_scale)
             )
         )
     return tuple(synced)
@@ -1700,13 +1579,6 @@ def run_subgridded_jit(
     material_sat_pair_b_zlo_scale: float = 1.0,
     material_sat_zlo_common_trace_projection: str = "dual",
     material_sat_zhi_common_trace_projection: str = "dual",
-    material_sat_e_h_trace_blend: float = 1.0,
-    material_sat_e_h_trace_zlo_blend: float = 1.0,
-    material_sat_e_h_trace_zhi_blend: float = 1.0,
-    material_sat_e_h_trace_zlo_filter: str = "full",
-    material_sat_e_h_trace_zlo_components: str = "all",
-    material_sat_e_h_trace_zlo_vector_mix: str = "identity",
-    material_sat_e_h_trace_zlo_residual_limit: float = 0.0,
     material_sat_normal_e_scale: float = 0.0,
     material_sat_zhi_coarse_eps_blend: float = 0.0,
     defer_material_h_sat_until_after_e: bool = False,
@@ -1714,13 +1586,6 @@ def run_subgridded_jit(
     inject_sources_before_e_coupling: bool = False,
     use_exterior_box_interfaces: bool = False,
     inject_sources_on_coarse_shadow: bool = False,
-    box_shadow_sync_fields: str = "all",
-    box_shadow_sync_region: str = "volume",
-    box_shadow_sync_scale: float = 1.0,
-    box_shadow_sync_face_axes: str = "all",
-    box_shadow_sync_components: str = "all",
-    box_shadow_sync_face_sides: str = "all",
-    box_shadow_sync_timing: str = "all",
 ) -> SubgridResult:
     """Run subgridded FDTD via jax.lax.scan.
 
@@ -1761,40 +1626,9 @@ def run_subgridded_jit(
         Diagnostic-only local x/y experiment: keep a non-full-x/y overlapping
         coarse shadow box synchronized from colocated fine fields before/after
         updates. This tests local-box transfer ownership and is not a public
-        support mode.
-    box_shadow_sync_fields : {"all", "e_only", "h_only"}
-        Diagnostic-only selector for ``sync_box_coarse_shadow_from_fine``.  It
-        isolates whether local-box transfer sensitivity lives in electric or
-        magnetic coarse-shadow state.  Production value is ``"all"`` and this
-        selector has no effect unless ``sync_box_coarse_shadow_from_fine`` is
-        enabled.
-    box_shadow_sync_region : {"volume", "faces", "interior"}
-        Diagnostic-only selector for which part of the local coarse-shadow box
-        is synchronized from fine fields.  ``"volume"`` preserves the previous
-        sync diagnostic; ``"faces"`` and ``"interior"`` isolate transfer-face
-        versus shadow-interior ownership effects.
-    box_shadow_sync_scale : float
-        Diagnostic-only blend scale for local-box coarse-shadow sync.  A value
-        of 1.0 overwrites the selected coarse-shadow state from fine samples;
-        smaller values blend partway toward fine state.
-    box_shadow_sync_face_axes : {"all", "x", "y", "z", "xy", "xz", "yz"}
-        Diagnostic-only selector used when ``box_shadow_sync_region="faces"``.
-        It restricts which pairs of local-box shadow faces are synchronized.
-    box_shadow_sync_components : {"all", "e_all", "h_all", "ex", "ey", "ez", "hx", "hy", "hz"}
-        Diagnostic-only selector for which field components are synchronized
-        by the local-box coarse-shadow sync operation.  It tests whether the
-        face-only residual is component-selective.  Production value is
-        ``"all"``.
-    box_shadow_sync_face_sides : str
-        Diagnostic-only selector used when ``box_shadow_sync_region="faces"``.
-        The production value is ``"all"``.  Diagnostic values are underscore-
-        joined subsets of ``xlo``, ``xhi``, ``ylo``, ``yhi``, ``zlo``, and
-        ``zhi``; they test whether the face-only residual is side-local.
-    box_shadow_sync_timing : {"all", "pre_only", "post_h_only", "post_e_only", "post_h_post_e", "pre_post_h", "pre_post_e"}
-        Diagnostic-only selector for when local-box coarse-shadow sync is
-        applied during a step.  The production value is ``"all"``, matching
-        the original diagnostic behavior: pre-step E/H sync plus post-H and
-        post-E sync.
+        support mode.  The sync overwrites the full coarse-shadow volume from
+        the colocated fine samples on every E/H component before and after the
+        H and E updates.
     mask_coarse_shadow_interior : bool
         Diagnostic-only experiment: zero the overlapping coarse shadow interior
         while preserving the z-interface faces. This is not a public support
@@ -1862,43 +1696,6 @@ def run_subgridded_jit(
         and probes whether material-jump phase drift comes from non-single-valued
         coarse/fine trace construction at the artificial dielectric/vacuum
         interface.  Production value is ``"dual"``.
-    material_sat_e_h_trace_blend : float
-        Diagnostic-only time-centering blend for the H traces used by material
-        E-SAT.  ``1.0`` is the production/current behavior (post-H-SAT H
-        traces); ``0.0`` uses pre-H-SAT traces; intermediate values use a
-        convex blend.  This probes whether the centered residual is an
-        E/H-staggering phase error.  Production value is 1.0.
-    material_sat_e_h_trace_zlo_blend, material_sat_e_h_trace_zhi_blend : float
-        Diagnostic-only interface-specific override for the H traces used by
-        material E-SAT.  The default value 1.0 inherits
-        ``material_sat_e_h_trace_blend``; non-default values blend only the
-        corresponding z interface between post-H-SAT (1.0) and pre-H-SAT (0.0)
-        traces.  This localizes the time-centering clue to z-lo or z-hi.
-    material_sat_e_h_trace_zlo_filter : {"full", "mean_delta", "residual_delta", "modal_linear_delta", "modal_xy_linear_delta", "modal_mixed_quadratic_delta", "modal_xy_plus_mixed_delta", "modal_low2_delta"}
-        Diagnostic-only spatial filter applied to the z-lo pre/post H-trace
-        delta before material E-SAT.  ``"full"`` preserves the current
-        side-blend behavior; ``"mean_delta"`` applies only the face-mean
-        pre/post correction; ``"residual_delta"`` applies only the spatial
-        residual after removing the face mean.  ``"modal_*"`` values apply
-        low-order x/y modal subsets of the current trace delta.  Production
-        value is ``"full"``.
-    material_sat_e_h_trace_zlo_components : {"all", "hx", "hy"}
-        Diagnostic-only component selector for the z-lo H-trace filter.  This
-        localizes whether the spatial residual clue enters the ``(E_y,-H_x)``
-        or ``(E_x,H_y)`` tangential pair.  Production value is ``"all"``.
-    material_sat_e_h_trace_zlo_vector_mix : {"identity", "swap", "rotate_cw", "rotate_ccw", "neg_identity"}
-        Diagnostic-only 2x2 mixing selector for the z-lo Hx/Hy trace residual
-        vector before material E-SAT.  It tests whether the missing transfer is
-        a coupled tangential-vector orientation rather than componentwise
-        identity residual.  Production value is ``"identity"``.
-    material_sat_e_h_trace_zlo_residual_limit : float
-        Diagnostic-only pointwise tangential-vector limiter for the z-lo
-        Hx/Hy residual used by material E-SAT.  Values ``<= 0`` disable the
-        limiter.  Positive values cap the residual vector norm relative to the
-        local pre/post H-trace energy norm before applying it to E-SAT.  This
-        probes whether the useful identity residual can be incorporated through
-        a local energy-bounded update instead of an unconstrained substitution.
-        Production value is 0.0.
     material_sat_normal_e_scale : float
         Diagnostic-only normal electric displacement continuity penalty on
         material z interfaces.  The current production material SAT couples
@@ -2007,89 +1804,12 @@ def run_subgridded_jit(
     sync_box_shadow_from_fine = (
         bool(sync_box_coarse_shadow_from_fine) and not is_full_xy_z_slab
     )
-    if box_shadow_sync_fields not in {"all", "e_only", "h_only"}:
-        raise ValueError(
-            "box_shadow_sync_fields must be one of 'all', 'e_only', or 'h_only'"
-        )
-    if box_shadow_sync_region not in {"volume", "faces", "interior"}:
-        raise ValueError(
-            "box_shadow_sync_region must be one of 'volume', 'faces', or 'interior'"
-        )
-    if box_shadow_sync_face_axes not in {"all", "x", "y", "z", "xy", "xz", "yz"}:
-        raise ValueError(
-            "box_shadow_sync_face_axes must be one of 'all', 'x', 'y', 'z', 'xy', 'xz', or 'yz'"
-        )
-    if box_shadow_sync_components not in BOX_SHADOW_SYNC_COMPONENTS:
-        raise ValueError(
-            "box_shadow_sync_components must be one of 'all', 'e_all', "
-            "'h_all', 'ex', 'ey', 'ez', 'hx', 'hy', or 'hz'"
-        )
-    if box_shadow_sync_timing not in BOX_SHADOW_SYNC_TIMINGS:
-        raise ValueError(
-            "box_shadow_sync_timing must be one of 'all', 'pre_only', "
-            "'post_h_only', 'post_e_only', 'post_h_post_e', "
-            "'pre_post_h', or 'pre_post_e'"
-        )
-    _parse_box_shadow_face_sides(box_shadow_sync_face_sides)
-    box_shadow_sync_component_set = BOX_SHADOW_SYNC_COMPONENTS[
-        box_shadow_sync_components
-    ]
-    sync_box_shadow_e_from_fine = sync_box_shadow_from_fine and box_shadow_sync_fields in {
-        "all",
-        "e_only",
-    }
-    sync_box_shadow_h_from_fine = sync_box_shadow_from_fine and box_shadow_sync_fields in {
-        "all",
-        "h_only",
-    }
-    sync_box_shadow_pre = box_shadow_sync_timing in {
-        "all",
-        "pre_only",
-        "pre_post_h",
-        "pre_post_e",
-    }
-    sync_box_shadow_post_h = box_shadow_sync_timing in {
-        "all",
-        "post_h_only",
-        "post_h_post_e",
-        "pre_post_h",
-    }
-    sync_box_shadow_post_e = box_shadow_sync_timing in {
-        "all",
-        "post_e_only",
-        "post_h_post_e",
-        "pre_post_e",
-    }
 
     def _sync_box_shadow(fields_c, fields_f, component_names):
-        if box_shadow_sync_region == "volume":
-            synced = _sync_z_slab_coarse_shadow_from_fine(
-                fields_c,
-                fields_f,
-                config,
-                sync_scale=box_shadow_sync_scale,
-            )
-        elif box_shadow_sync_region == "faces":
-            synced = _sync_box_coarse_shadow_faces_from_fine(
-                fields_c,
-                fields_f,
-                config,
-                sync_scale=box_shadow_sync_scale,
-                face_axes=box_shadow_sync_face_axes,
-                face_sides=box_shadow_sync_face_sides,
-            )
-        else:
-            synced = _sync_box_coarse_shadow_interior_from_fine(
-                fields_c,
-                fields_f,
-                config,
-                sync_scale=box_shadow_sync_scale,
-            )
-        return tuple(
-            synced[idx]
-            if component_names[idx] in box_shadow_sync_component_set
-            else fields_c[idx]
-            for idx in range(len(component_names))
+        return _sync_z_slab_coarse_shadow_from_fine(
+            fields_c,
+            fields_f,
+            config,
         )
     use_exterior_shadow_ghost = (
         ghost_exterior_coarse_shadow_from_fine
@@ -2294,13 +2014,12 @@ def run_subgridded_jit(
                 (ex_f, ey_f, ez_f, hx_f, hy_f, hz_f),
                 config,
             )
-        if sync_box_shadow_e_from_fine and sync_box_shadow_pre:
+        if sync_box_shadow_from_fine:
             ex_c, ey_c, ez_c = _sync_box_shadow(
                 (ex_c, ey_c, ez_c),
                 (ex_f, ey_f, ez_f),
                 ("ex", "ey", "ez"),
             )
-        if sync_box_shadow_h_from_fine and sync_box_shadow_pre:
             hx_c, hy_c, hz_c = _sync_box_shadow(
                 (hx_c, hy_c, hz_c),
                 (hx_f, hy_f, hz_f),
@@ -2355,8 +2074,6 @@ def run_subgridded_jit(
                          hx=hx_f, hy=hy_f, hz=hz_f,
                          step=step_idx)
         st_f = update_h(st_f, mats_f, dt, dx_f)
-        h_trace_pre_sat_c = (st_c.hx, st_c.hy, st_c.hz)
-        h_trace_pre_sat_f = (st_f.hx, st_f.hy, st_f.hz)
 
         # === SAT H-coupling (tangential H on all 6 faces) ===
         if is_full_xy_z_slab:
@@ -2441,7 +2158,7 @@ def run_subgridded_jit(
                 (hx_f_new, hy_f_new, hz_f_new),
                 config,
             )
-        if sync_box_shadow_h_from_fine and sync_box_shadow_post_h:
+        if sync_box_shadow_from_fine:
             hx_c_new, hy_c_new, hz_c_new = _sync_box_shadow(
                 (hx_c_new, hy_c_new, hz_c_new),
                 (hx_f_new, hy_f_new, hz_f_new),
@@ -2521,362 +2238,23 @@ def run_subgridded_jit(
         # === SBP-SAT coupling ===
         if is_full_xy_z_slab:
             if use_material_sat:
-                h_blend = material_sat_e_h_trace_blend
-                hx_c_for_e = (
-                    h_blend * st_c.hx + (1.0 - h_blend) * h_trace_pre_sat_c[0]
-                )
-                hy_c_for_e = (
-                    h_blend * st_c.hy + (1.0 - h_blend) * h_trace_pre_sat_c[1]
-                )
-                hz_c_for_e = (
-                    h_blend * st_c.hz + (1.0 - h_blend) * h_trace_pre_sat_c[2]
-                )
-                hx_f_for_e = (
-                    h_blend * st_f.hx + (1.0 - h_blend) * h_trace_pre_sat_f[0]
-                )
-                hy_f_for_e = (
-                    h_blend * st_f.hy + (1.0 - h_blend) * h_trace_pre_sat_f[1]
-                )
-                hz_f_for_e = (
-                    h_blend * st_f.hz + (1.0 - h_blend) * h_trace_pre_sat_f[2]
-                )
-                trace_plan = _z_slab_coupling_plan(
-                    config,
-                    use_exterior_z_interfaces=use_exterior_z_interfaces,
-                    use_boundary_terminated_exterior_z_interfaces=(
-                        use_boundary_terminated_exterior_z_interfaces
-                    ),
-                )
-
-                def _side_blend(default_blend, side_blend):
-                    return default_blend if side_blend == 1.0 else side_blend
-
-                def _filtered_trace_face(post_face, pre_face, blend, mode):
-                    delta = pre_face - post_face
-                    if mode == "full":
-                        return blend * post_face + (1.0 - blend) * pre_face
-                    if mode == "mean_delta":
-                        return post_face + (1.0 - blend) * jnp.mean(delta)
-                    if mode == "residual_delta":
-                        return post_face + (1.0 - blend) * (
-                            delta - jnp.mean(delta)
-                        )
-                    if mode in MODAL_TRACE_DELTA_FILTERS:
-                        return post_face + (1.0 - blend) * _modal_filter_face_delta(
-                            delta,
-                            mode,
-                        )
-                    raise ValueError(
-                        "Unknown material_sat_e_h_trace_zlo_filter="
-                        f"{material_sat_e_h_trace_zlo_filter!r}"
-                    )
-
-                def _filtered_trace_delta(post_face, pre_face, blend, mode):
-                    return (
-                        _filtered_trace_face(post_face, pre_face, blend, mode)
-                        - post_face
-                    )
-
-                def _mix_zlo_vector(hx_delta, hy_delta):
-                    mix = material_sat_e_h_trace_zlo_vector_mix
-                    if mix == "identity":
-                        return hx_delta, hy_delta
-                    if mix == "swap":
-                        return hy_delta, hx_delta
-                    if mix == "rotate_cw":
-                        return hy_delta, -hx_delta
-                    if mix == "rotate_ccw":
-                        return -hy_delta, hx_delta
-                    if mix == "neg_identity":
-                        return -hx_delta, -hy_delta
-                    raise ValueError(
-                        "Unknown material_sat_e_h_trace_zlo_vector_mix="
-                        f"{mix!r}"
-                    )
-
-                def _limit_zlo_vector_delta(
-                    hx_delta,
-                    hy_delta,
-                    hx_post_face,
-                    hy_post_face,
-                    hx_pre_face,
-                    hy_pre_face,
-                ):
-                    limit = material_sat_e_h_trace_zlo_residual_limit
-                    if limit <= 0.0:
-                        return hx_delta, hy_delta
-                    delta_norm = jnp.sqrt(hx_delta * hx_delta + hy_delta * hy_delta)
-                    post_norm_sq = (
-                        hx_post_face * hx_post_face + hy_post_face * hy_post_face
-                    )
-                    pre_norm_sq = hx_pre_face * hx_pre_face + hy_pre_face * hy_pre_face
-                    ref_norm = jnp.sqrt(0.5 * (post_norm_sq + pre_norm_sq))
-                    scale = jnp.minimum(1.0, (limit * ref_norm) / (delta_norm + 1e-30))
-                    return hx_delta * scale, hy_delta * scale
-
-                def _apply_c_trace_blend(arr, post_arr, pre_arr, k, blend, mode):
-                    c_sl = (
-                        slice(config.fi_lo, config.fi_hi),
-                        slice(config.fj_lo, config.fj_hi),
-                        k,
-                    )
-                    return arr.at[c_sl].set(
-                        _filtered_trace_face(post_arr[c_sl], pre_arr[c_sl], blend, mode)
-                    )
-
-                def _apply_f_trace_blend(arr, post_arr, pre_arr, k, blend, mode):
-                    f_sl = (slice(None), slice(None), k)
-                    return arr.at[f_sl].set(
-                        _filtered_trace_face(post_arr[f_sl], pre_arr[f_sl], blend, mode)
-                    )
-
-                def _apply_c_trace_vector_mix(
-                    hx_arr,
-                    hy_arr,
-                    hx_post,
-                    hy_post,
-                    hx_pre,
-                    hy_pre,
-                    k,
-                    blend,
-                    mode,
-                ):
-                    c_sl = (
-                        slice(config.fi_lo, config.fi_hi),
-                        slice(config.fj_lo, config.fj_hi),
-                        k,
-                    )
-                    hx_delta = _filtered_trace_delta(
-                        hx_post[c_sl],
-                        hx_pre[c_sl],
-                        blend,
-                        mode,
-                    )
-                    hy_delta = _filtered_trace_delta(
-                        hy_post[c_sl],
-                        hy_pre[c_sl],
-                        blend,
-                        mode,
-                    )
-                    hx_mixed, hy_mixed = _mix_zlo_vector(hx_delta, hy_delta)
-                    hx_mixed, hy_mixed = _limit_zlo_vector_delta(
-                        hx_mixed,
-                        hy_mixed,
-                        hx_post[c_sl],
-                        hy_post[c_sl],
-                        hx_pre[c_sl],
-                        hy_pre[c_sl],
-                    )
-                    return (
-                        hx_arr.at[c_sl].set(hx_post[c_sl] + hx_mixed),
-                        hy_arr.at[c_sl].set(hy_post[c_sl] + hy_mixed),
-                    )
-
-                def _apply_f_trace_vector_mix(
-                    hx_arr,
-                    hy_arr,
-                    hx_post,
-                    hy_post,
-                    hx_pre,
-                    hy_pre,
-                    k,
-                    blend,
-                    mode,
-                ):
-                    f_sl = (slice(None), slice(None), k)
-                    hx_delta = _filtered_trace_delta(
-                        hx_post[f_sl],
-                        hx_pre[f_sl],
-                        blend,
-                        mode,
-                    )
-                    hy_delta = _filtered_trace_delta(
-                        hy_post[f_sl],
-                        hy_pre[f_sl],
-                        blend,
-                        mode,
-                    )
-                    hx_mixed, hy_mixed = _mix_zlo_vector(hx_delta, hy_delta)
-                    hx_mixed, hy_mixed = _limit_zlo_vector_delta(
-                        hx_mixed,
-                        hy_mixed,
-                        hx_post[f_sl],
-                        hy_post[f_sl],
-                        hx_pre[f_sl],
-                        hy_pre[f_sl],
-                    )
-                    return (
-                        hx_arr.at[f_sl].set(hx_post[f_sl] + hx_mixed),
-                        hy_arr.at[f_sl].set(hy_post[f_sl] + hy_mixed),
-                    )
-
-                def _zlo_component_enabled(name):
-                    selector = material_sat_e_h_trace_zlo_components
-                    if selector == "all":
-                        return True
-                    if selector in ("hx", "hy"):
-                        return selector == name
-                    raise ValueError(
-                        "Unknown material_sat_e_h_trace_zlo_components="
-                        f"{selector!r}"
-                    )
-
-                if trace_plan.couple_zlo:
-                    zlo_blend = _side_blend(
-                        h_blend,
-                        material_sat_e_h_trace_zlo_blend,
-                    )
-                    use_zlo_vector_mix = (
-                        material_sat_e_h_trace_zlo_components == "all"
-                        and (
-                            material_sat_e_h_trace_zlo_vector_mix != "identity"
-                            or material_sat_e_h_trace_zlo_residual_limit > 0.0
-                        )
-                    )
-                    if use_zlo_vector_mix:
-                        hx_c_for_e, hy_c_for_e = _apply_c_trace_vector_mix(
-                            hx_c_for_e,
-                            hy_c_for_e,
-                            st_c.hx,
-                            st_c.hy,
-                            h_trace_pre_sat_c[0],
-                            h_trace_pre_sat_c[1],
-                            trace_plan.k_lo_c,
-                            zlo_blend,
-                            material_sat_e_h_trace_zlo_filter,
-                        )
-                        hx_f_for_e, hy_f_for_e = _apply_f_trace_vector_mix(
-                            hx_f_for_e,
-                            hy_f_for_e,
-                            st_f.hx,
-                            st_f.hy,
-                            h_trace_pre_sat_f[0],
-                            h_trace_pre_sat_f[1],
-                            0,
-                            zlo_blend,
-                            material_sat_e_h_trace_zlo_filter,
-                        )
-                    elif _zlo_component_enabled("hx"):
-                        hx_c_for_e = _apply_c_trace_blend(
-                            hx_c_for_e,
-                            st_c.hx,
-                            h_trace_pre_sat_c[0],
-                            trace_plan.k_lo_c,
-                            zlo_blend,
-                            material_sat_e_h_trace_zlo_filter,
-                        )
-                        hx_f_for_e = _apply_f_trace_blend(
-                            hx_f_for_e,
-                            st_f.hx,
-                            h_trace_pre_sat_f[0],
-                            0,
-                            zlo_blend,
-                            material_sat_e_h_trace_zlo_filter,
-                        )
-                    if (not use_zlo_vector_mix) and _zlo_component_enabled("hy"):
-                        hy_c_for_e = _apply_c_trace_blend(
-                            hy_c_for_e,
-                            st_c.hy,
-                            h_trace_pre_sat_c[1],
-                            trace_plan.k_lo_c,
-                            zlo_blend,
-                            material_sat_e_h_trace_zlo_filter,
-                        )
-                        hy_f_for_e = _apply_f_trace_blend(
-                            hy_f_for_e,
-                            st_f.hy,
-                            h_trace_pre_sat_f[1],
-                            0,
-                            zlo_blend,
-                            material_sat_e_h_trace_zlo_filter,
-                        )
-                    if material_sat_e_h_trace_zlo_components == "all":
-                        hz_c_for_e = _apply_c_trace_blend(
-                            hz_c_for_e,
-                            st_c.hz,
-                            h_trace_pre_sat_c[2],
-                            trace_plan.k_lo_c,
-                            zlo_blend,
-                            material_sat_e_h_trace_zlo_filter,
-                        )
-                        hz_f_for_e = _apply_f_trace_blend(
-                            hz_f_for_e,
-                            st_f.hz,
-                            h_trace_pre_sat_f[2],
-                            0,
-                            zlo_blend,
-                            material_sat_e_h_trace_zlo_filter,
-                        )
-                if trace_plan.couple_zhi:
-                    zhi_blend = _side_blend(
-                        h_blend,
-                        material_sat_e_h_trace_zhi_blend,
-                    )
-                    hx_c_for_e = _apply_c_trace_blend(
-                        hx_c_for_e,
-                        st_c.hx,
-                        h_trace_pre_sat_c[0],
-                        trace_plan.k_hi_c,
-                        zhi_blend,
-                        "full",
-                    )
-                    hy_c_for_e = _apply_c_trace_blend(
-                        hy_c_for_e,
-                        st_c.hy,
-                        h_trace_pre_sat_c[1],
-                        trace_plan.k_hi_c,
-                        zhi_blend,
-                        "full",
-                    )
-                    hz_c_for_e = _apply_c_trace_blend(
-                        hz_c_for_e,
-                        st_c.hz,
-                        h_trace_pre_sat_c[2],
-                        trace_plan.k_hi_c,
-                        zhi_blend,
-                        "full",
-                    )
-                    hx_f_for_e = _apply_f_trace_blend(
-                        hx_f_for_e,
-                        st_f.hx,
-                        h_trace_pre_sat_f[0],
-                        -1,
-                        zhi_blend,
-                        "full",
-                    )
-                    hy_f_for_e = _apply_f_trace_blend(
-                        hy_f_for_e,
-                        st_f.hy,
-                        h_trace_pre_sat_f[1],
-                        -1,
-                        zhi_blend,
-                        "full",
-                    )
-                    hz_f_for_e = _apply_f_trace_blend(
-                        hz_f_for_e,
-                        st_f.hz,
-                        h_trace_pre_sat_f[2],
-                        -1,
-                        zhi_blend,
-                        "full",
-                    )
                 (ex_c_new, ey_c_new, ez_c_new), (ex_f_new, ey_f_new, ez_f_new) = \
                     _z_slab_material_coupling_e_3d(
                         (
                             st_c.ex,
                             st_c.ey,
                             st_c.ez,
-                            hx_c_for_e,
-                            hy_c_for_e,
-                            hz_c_for_e,
+                            st_c.hx,
+                            st_c.hy,
+                            st_c.hz,
                         ),
                         (
                             st_f.ex,
                             st_f.ey,
                             st_f.ez,
-                            hx_f_for_e,
-                            hy_f_for_e,
-                            hz_f_for_e,
+                            st_f.hx,
+                            st_f.hy,
+                            st_f.hz,
                         ),
                         mats_c,
                         mats_f,
@@ -3028,7 +2406,7 @@ def run_subgridded_jit(
                 (ex_f_new, ey_f_new, ez_f_new),
                 config,
             )
-        if sync_box_shadow_e_from_fine and sync_box_shadow_post_e:
+        if sync_box_shadow_from_fine:
             ex_c_new, ey_c_new, ez_c_new = _sync_box_shadow(
                 (ex_c_new, ey_c_new, ez_c_new),
                 (ex_f_new, ey_f_new, ez_f_new),

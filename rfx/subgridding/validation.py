@@ -276,20 +276,6 @@ def _active_diagnostic_overrides(ref) -> tuple[str, ...]:
         active.append("material_sat_zlo_common_trace_projection")
     if ref.get("material_sat_zhi_common_trace_projection", "dual") != "dual":
         active.append("material_sat_zhi_common_trace_projection")
-    if float(ref.get("material_sat_e_h_trace_blend", 1.0)) != 1.0:
-        active.append("material_sat_e_h_trace_blend")
-    if float(ref.get("material_sat_e_h_trace_zlo_blend", 1.0)) != 1.0:
-        active.append("material_sat_e_h_trace_zlo_blend")
-    if float(ref.get("material_sat_e_h_trace_zhi_blend", 1.0)) != 1.0:
-        active.append("material_sat_e_h_trace_zhi_blend")
-    if ref.get("material_sat_e_h_trace_zlo_filter", "full") != "full":
-        active.append("material_sat_e_h_trace_zlo_filter")
-    if ref.get("material_sat_e_h_trace_zlo_components", "all") != "all":
-        active.append("material_sat_e_h_trace_zlo_components")
-    if ref.get("material_sat_e_h_trace_zlo_vector_mix", "identity") != "identity":
-        active.append("material_sat_e_h_trace_zlo_vector_mix")
-    if float(ref.get("material_sat_e_h_trace_zlo_residual_limit", 0.0)) != 0.0:
-        active.append("material_sat_e_h_trace_zlo_residual_limit")
     if float(ref.get("material_sat_normal_e_scale", 0.0)) != 0.0:
         active.append("material_sat_normal_e_scale")
     if float(ref.get("material_sat_zhi_coarse_eps_blend", 0.0)) != 0.0:
@@ -302,20 +288,6 @@ def _active_diagnostic_overrides(ref) -> tuple[str, ...]:
         active.append("fine_source_scale")
     if ref.get("coarse_shadow_source_projection", "physical_nearest") != "physical_nearest":
         active.append("coarse_shadow_source_projection")
-    if ref.get("box_shadow_sync_fields", "all") != "all":
-        active.append("box_shadow_sync_fields")
-    if ref.get("box_shadow_sync_region", "volume") != "volume":
-        active.append("box_shadow_sync_region")
-    if float(ref.get("box_shadow_sync_scale", 1.0)) != 1.0:
-        active.append("box_shadow_sync_scale")
-    if ref.get("box_shadow_sync_face_axes", "all") != "all":
-        active.append("box_shadow_sync_face_axes")
-    if ref.get("box_shadow_sync_components", "all") != "all":
-        active.append("box_shadow_sync_components")
-    if ref.get("box_shadow_sync_face_sides", "all") != "all":
-        active.append("box_shadow_sync_face_sides")
-    if ref.get("box_shadow_sync_timing", "all") != "all":
-        active.append("box_shadow_sync_timing")
     if ref.get("material_sat_face_projection", "node_adjoint") != "node_adjoint":
         active.append("material_sat_face_projection")
     for name in (
