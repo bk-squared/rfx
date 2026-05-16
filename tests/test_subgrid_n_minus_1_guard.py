@@ -1,9 +1,12 @@
 """N-1 guard and introspection tests for the guarded subgrid core.
 
-This branch carries ``add_refinement`` and ``validate_subgrid`` but not the
-SBP-SAT subgrid runner. ``run()`` on a refined ``Simulation`` must fail loudly
-with ``NotImplementedError`` rather than silently dropping the refinement or
-crashing on unmerged runner code.
+This branch carries ``add_refinement`` and ``validate_subgrid`` plus the
+pre-existing ``overlap_z_slab`` SBP-SAT runner inherited from main. The
+``stage2_disjoint_3d`` centered/two-interface runner is NOT in this branch,
+so ``run()`` on a refinement with ``topology="stage2_disjoint_3d"`` must fail
+loudly with ``NotImplementedError`` rather than silently dispatching to the
+wrong (overlap) runner. Refined runs on the default ``overlap_z_slab``
+topology dispatch normally and must NOT trip the guard.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ import pytest
 from rfx import GaussianPulse, Simulation
 
 
-def _refined_simulation() -> Simulation:
+def _refined_simulation(topology: str = "overlap_z_slab") -> Simulation:
     """Return a small PEC ``Simulation`` with one z-slab refinement."""
     sim = Simulation(
         freq_max=6e9,
@@ -24,7 +27,7 @@ def _refined_simulation() -> Simulation:
         cpml_layers=0,
         dx=0.002,
     )
-    sim.add_refinement((0.004, 0.012), ratio=4)
+    sim.add_refinement((0.004, 0.012), ratio=4, topology=topology)
     sim.add_source(
         (0.02, 0.02, 0.008),
         "ez",
@@ -34,11 +37,22 @@ def _refined_simulation() -> Simulation:
     return sim
 
 
-def test_run_on_refined_sim_raises_not_implemented():
-    """run() on a refined Simulation raises NotImplementedError (N-1 guard)."""
-    sim = _refined_simulation()
-    with pytest.raises(NotImplementedError, match="subgrid runner"):
+def test_run_on_disjoint_topology_raises_not_implemented():
+    """run() with topology='stage2_disjoint_3d' raises NotImplementedError."""
+    sim = _refined_simulation(topology="stage2_disjoint_3d")
+    with pytest.raises(NotImplementedError, match="stage2_disjoint_3d"):
         sim.run(n_steps=20, compute_s_params=False)
+
+
+def test_run_on_overlap_topology_does_not_trip_the_n1_guard():
+    """A refined run on the inherited overlap_z_slab runner must not trip N-1."""
+    sim = _refined_simulation(topology="overlap_z_slab")
+    try:
+        sim.run(n_steps=2, compute_s_params=False)
+    except NotImplementedError as exc:  # pragma: no cover - guard regression
+        if "stage2_disjoint_3d" in str(exc):
+            pytest.fail("N-1 guard wrongly fired for the overlap_z_slab topology")
+        raise
 
 
 def test_add_refinement_signature_matches_documented_kwargs():

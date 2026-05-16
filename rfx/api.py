@@ -7502,18 +7502,22 @@ class Simulation:
         -------
         Result
         """
-        # ---- N-1 guard: subgrid runner lands in a later branch ----
-        # ``add_refinement`` and ``validate_subgrid`` are available in this
-        # branch, but the SBP-SAT subgrid runner (jit_runner / disjoint_3d /
-        # runners.subgridded) is not yet merged. Without this guard, calling
-        # ``run()`` on a refined simulation would either silently ignore the
-        # refinement or fail with an ImportError on unmerged runner code.
-        # A later branch replaces this guard with the real subgrid dispatch.
-        if self._refinement is not None:
+        # ---- N-1 guard: the stage2_disjoint_3d runner lands in a later branch ----
+        # This branch carries the pre-existing ``overlap_z_slab`` SBP-SAT
+        # subgrid runner inherited from main, so refined runs on that topology
+        # dispatch normally. The ``stage2_disjoint_3d`` centered/two-interface
+        # runner is NOT in this branch (it lands with the disjoint runner
+        # files). Guard only that topology so a refined run on it fails clearly
+        # instead of silently dispatching to the wrong runner. A later branch
+        # replaces this guard with the real disjoint dispatch.
+        if (
+            self._refinement is not None
+            and self._refinement.get("topology") == "stage2_disjoint_3d"
+        ):
             raise NotImplementedError(
-                "subgrid runner lands in a later branch; add_refinement + "
-                "validate_subgrid are available, run() with a refinement is "
-                "not yet supported"
+                "the stage2_disjoint_3d subgrid runner lands in a later "
+                "branch; add_refinement + validate_subgrid are available, "
+                "run() with topology='stage2_disjoint_3d' is not yet supported"
             )
 
         # ---- P1: Auto mesh when dx not specified and geometry exists ----
