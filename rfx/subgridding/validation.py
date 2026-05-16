@@ -306,6 +306,16 @@ def _active_diagnostic_overrides(ref) -> tuple[str, ...]:
             active.append(name)
     if ref.get("diagnostic_lumped_sparam_freqs") is not None:
         active.append("diagnostic_lumped_sparam_freqs")
+    # Tombstones: knobs whose runner implementation was removed in the
+    # jit_runner decomposition (US-10 dead-knob strip). The implementation is
+    # gone, but a stale ``_refinement`` override of one of these prefixes must
+    # still fail closed in production rather than be silently ignored.
+    for key in ref:
+        name = str(key)
+        if name.startswith("material_sat_e_h_trace_") or name.startswith(
+            "box_shadow_sync_"
+        ):
+            active.append(name)
     return tuple(active)
 
 

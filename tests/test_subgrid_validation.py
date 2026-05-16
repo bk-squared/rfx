@@ -142,6 +142,11 @@ def test_production_subgrid_validation_accepts_guarded_boundary_vacuum_source_pr
         ("inject_sources_before_e_coupling", True),
         ("inject_sources_on_coarse_shadow", True),
         ("diagnostic_lumped_sparam_freqs", (3.0e9,)),
+        # Tombstones for dead knobs removed in the jit_runner decomposition:
+        # a stale override of these prefixes must still be rejected
+        # fail-closed in production, not silently ignored.
+        ("material_sat_e_h_trace_blend", 0.75),
+        ("box_shadow_sync_fields", "e_only"),
     ),
 )
 def test_production_subgrid_validation_rejects_diagnostic_overrides(key, value):
