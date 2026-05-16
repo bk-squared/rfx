@@ -43,7 +43,10 @@ def _run_subgridded_once(
     """
     from rfx.api import Result
     from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
-    from rfx.subgridding.jit_runner import run_subgridded_jit as _run_sg
+    from rfx.subgridding.jit_runner import (
+        SubgridRunOptions,
+        run_subgridded_jit as _run_sg,
+    )
 
     ref = sim._refinement
     ratio = ref["ratio"]
@@ -491,12 +494,7 @@ def _run_subgridded_once(
                 ),
             )
 
-    result = _run_sg(
-        grid_coarse,
-        base_materials_coarse,
-        mats_f,
-        config,
-        n_steps,
+    sg_opts = SubgridRunOptions(
         pec_mask_c=pec_mask_coarse,
         pec_mask_f=pec_mask_f if has_pec_f else None,
         sources_f=sources_f,
@@ -562,6 +560,14 @@ def _run_subgridded_once(
         inject_sources_before_e_coupling=ref.get("inject_sources_before_e_coupling", False),
         use_exterior_box_interfaces=ref.get("use_exterior_box_interfaces", False),
         inject_sources_on_coarse_shadow=inject_sources_on_coarse_shadow,
+    )
+    result = _run_sg(
+        grid_coarse,
+        base_materials_coarse,
+        mats_f,
+        config,
+        n_steps,
+        opts=sg_opts,
     )
 
     s_params = None

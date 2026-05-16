@@ -60,6 +60,65 @@ class ZSlabCouplingPlan(NamedTuple):
     couple_zhi: bool
 
 
+class SubgridRunOptions(NamedTuple):
+    """Bundled keyword inputs for :func:`run_subgridded_jit`.
+
+    Groups the optional PEC masks, sources/probes, lumped-S-parameter, NTFF,
+    interface flags, and material-SAT scale knobs into one immutable container
+    so the runner entrypoint stays within a reasonable parameter count.
+    ``run_subgridded_jit`` unpacks every field into a same-named local, so the
+    field names match the historical keyword arguments exactly.
+    """
+
+    pec_mask_c: object | None = None
+    pec_mask_f: object | None = None
+    sources_f: list | None = None
+    sources_c: list | None = None
+    probe_indices_f: list | None = None
+    probe_components: list | None = None
+    probe_indices_c: list | None = None
+    probe_components_c: list | None = None
+    lumped_sparam_indices_f: list | None = None
+    lumped_sparam_components_f: list | None = None
+    lumped_sparam_impedances_f: list | None = None
+    lumped_sparam_cell_counts_f: list | None = None
+    lumped_sparam_freqs_f: object | None = None
+    ntff_box_f: object | None = None
+    ntff_data_f: object | None = None
+    use_material_sat: bool | None = None
+    sync_coarse_interface_from_fine: bool = False
+    sync_coarse_shadow_from_fine: bool = False
+    sync_box_coarse_shadow_from_fine: bool = False
+    mask_coarse_shadow_interior: bool = False
+    use_exterior_z_interfaces: bool = False
+    use_boundary_terminated_exterior_z_interfaces: bool = False
+    ghost_exterior_coarse_shadow_from_fine: bool = False
+    material_sat_scale: float = 1.0
+    material_sat_coarse_scale: float = 1.0
+    material_sat_fine_scale: float = 1.0
+    material_sat_e_coarse_scale: float = 1.0
+    material_sat_e_fine_scale: float = 1.0
+    material_sat_h_coarse_scale: float = 1.0
+    material_sat_h_fine_scale: float = 1.0
+    material_sat_zlo_scale: float = 1.0
+    material_sat_zhi_scale: float = 1.0
+    material_sat_e_zlo_scale: float = 1.0
+    material_sat_e_zhi_scale: float = 1.0
+    material_sat_h_zlo_scale: float = 1.0
+    material_sat_h_zhi_scale: float = 1.0
+    material_sat_pair_a_zlo_scale: float = 1.0
+    material_sat_pair_b_zlo_scale: float = 1.0
+    material_sat_zlo_common_trace_projection: str = "dual"
+    material_sat_zhi_common_trace_projection: str = "dual"
+    material_sat_normal_e_scale: float = 0.0
+    material_sat_zhi_coarse_eps_blend: float = 0.0
+    defer_material_h_sat_until_after_e: bool = False
+    material_sat_face_projection: str = "node_adjoint"
+    inject_sources_before_e_coupling: bool = False
+    use_exterior_box_interfaces: bool = False
+    inject_sources_on_coarse_shadow: bool = False
+
+
 def _uses_endpoint_fine_shape(config) -> bool:
     """Return whether fine dimensions follow endpoint-node shape math."""
     ni = config.fi_hi - config.fi_lo
@@ -1539,53 +1598,7 @@ def run_subgridded_jit(
     config: SubgridConfig3D,
     n_steps: int,
     *,
-    pec_mask_c=None,
-    pec_mask_f=None,
-    sources_f: list | None = None,
-    sources_c: list | None = None,
-    probe_indices_f: list | None = None,
-    probe_components: list | None = None,
-    probe_indices_c: list | None = None,
-    probe_components_c: list | None = None,
-    lumped_sparam_indices_f: list | None = None,
-    lumped_sparam_components_f: list | None = None,
-    lumped_sparam_impedances_f: list | None = None,
-    lumped_sparam_cell_counts_f: list | None = None,
-    lumped_sparam_freqs_f=None,
-    ntff_box_f=None,
-    ntff_data_f=None,
-    use_material_sat: bool | None = None,
-    sync_coarse_interface_from_fine: bool = False,
-    sync_coarse_shadow_from_fine: bool = False,
-    sync_box_coarse_shadow_from_fine: bool = False,
-    mask_coarse_shadow_interior: bool = False,
-    use_exterior_z_interfaces: bool = False,
-    use_boundary_terminated_exterior_z_interfaces: bool = False,
-    ghost_exterior_coarse_shadow_from_fine: bool = False,
-    material_sat_scale: float = 1.0,
-    material_sat_coarse_scale: float = 1.0,
-    material_sat_fine_scale: float = 1.0,
-    material_sat_e_coarse_scale: float = 1.0,
-    material_sat_e_fine_scale: float = 1.0,
-    material_sat_h_coarse_scale: float = 1.0,
-    material_sat_h_fine_scale: float = 1.0,
-    material_sat_zlo_scale: float = 1.0,
-    material_sat_zhi_scale: float = 1.0,
-    material_sat_e_zlo_scale: float = 1.0,
-    material_sat_e_zhi_scale: float = 1.0,
-    material_sat_h_zlo_scale: float = 1.0,
-    material_sat_h_zhi_scale: float = 1.0,
-    material_sat_pair_a_zlo_scale: float = 1.0,
-    material_sat_pair_b_zlo_scale: float = 1.0,
-    material_sat_zlo_common_trace_projection: str = "dual",
-    material_sat_zhi_common_trace_projection: str = "dual",
-    material_sat_normal_e_scale: float = 0.0,
-    material_sat_zhi_coarse_eps_blend: float = 0.0,
-    defer_material_h_sat_until_after_e: bool = False,
-    material_sat_face_projection: str = "node_adjoint",
-    inject_sources_before_e_coupling: bool = False,
-    use_exterior_box_interfaces: bool = False,
-    inject_sources_on_coarse_shadow: bool = False,
+    opts: SubgridRunOptions = SubgridRunOptions(),
 ) -> SubgridResult:
     """Run subgridded FDTD via jax.lax.scan.
 
@@ -1732,6 +1745,63 @@ def run_subgridded_jit(
         Diagnostic-only experiment: also inject soft source waveforms on the
         overlapping coarse grid when sources lie inside the refined region.
     """
+    # Unpack the bundled options into same-named locals so the body below is
+    # byte-unchanged from the historical keyword-argument signature.
+    pec_mask_c = opts.pec_mask_c
+    pec_mask_f = opts.pec_mask_f
+    sources_f = opts.sources_f
+    sources_c = opts.sources_c
+    probe_indices_f = opts.probe_indices_f
+    probe_components = opts.probe_components
+    probe_indices_c = opts.probe_indices_c
+    probe_components_c = opts.probe_components_c
+    lumped_sparam_indices_f = opts.lumped_sparam_indices_f
+    lumped_sparam_components_f = opts.lumped_sparam_components_f
+    lumped_sparam_impedances_f = opts.lumped_sparam_impedances_f
+    lumped_sparam_cell_counts_f = opts.lumped_sparam_cell_counts_f
+    lumped_sparam_freqs_f = opts.lumped_sparam_freqs_f
+    ntff_box_f = opts.ntff_box_f
+    ntff_data_f = opts.ntff_data_f
+    use_material_sat = opts.use_material_sat
+    sync_coarse_interface_from_fine = opts.sync_coarse_interface_from_fine
+    sync_coarse_shadow_from_fine = opts.sync_coarse_shadow_from_fine
+    sync_box_coarse_shadow_from_fine = opts.sync_box_coarse_shadow_from_fine
+    mask_coarse_shadow_interior = opts.mask_coarse_shadow_interior
+    use_exterior_z_interfaces = opts.use_exterior_z_interfaces
+    use_boundary_terminated_exterior_z_interfaces = (
+        opts.use_boundary_terminated_exterior_z_interfaces
+    )
+    ghost_exterior_coarse_shadow_from_fine = (
+        opts.ghost_exterior_coarse_shadow_from_fine
+    )
+    material_sat_scale = opts.material_sat_scale
+    material_sat_coarse_scale = opts.material_sat_coarse_scale
+    material_sat_fine_scale = opts.material_sat_fine_scale
+    material_sat_e_coarse_scale = opts.material_sat_e_coarse_scale
+    material_sat_e_fine_scale = opts.material_sat_e_fine_scale
+    material_sat_h_coarse_scale = opts.material_sat_h_coarse_scale
+    material_sat_h_fine_scale = opts.material_sat_h_fine_scale
+    material_sat_zlo_scale = opts.material_sat_zlo_scale
+    material_sat_zhi_scale = opts.material_sat_zhi_scale
+    material_sat_e_zlo_scale = opts.material_sat_e_zlo_scale
+    material_sat_e_zhi_scale = opts.material_sat_e_zhi_scale
+    material_sat_h_zlo_scale = opts.material_sat_h_zlo_scale
+    material_sat_h_zhi_scale = opts.material_sat_h_zhi_scale
+    material_sat_pair_a_zlo_scale = opts.material_sat_pair_a_zlo_scale
+    material_sat_pair_b_zlo_scale = opts.material_sat_pair_b_zlo_scale
+    material_sat_zlo_common_trace_projection = (
+        opts.material_sat_zlo_common_trace_projection
+    )
+    material_sat_zhi_common_trace_projection = (
+        opts.material_sat_zhi_common_trace_projection
+    )
+    material_sat_normal_e_scale = opts.material_sat_normal_e_scale
+    material_sat_zhi_coarse_eps_blend = opts.material_sat_zhi_coarse_eps_blend
+    defer_material_h_sat_until_after_e = opts.defer_material_h_sat_until_after_e
+    material_sat_face_projection = opts.material_sat_face_projection
+    inject_sources_before_e_coupling = opts.inject_sources_before_e_coupling
+    use_exterior_box_interfaces = opts.use_exterior_box_interfaces
+    inject_sources_on_coarse_shadow = opts.inject_sources_on_coarse_shadow
     sources_f = sources_f or []
     sources_c = sources_c or []
     probe_indices_f = probe_indices_f or []

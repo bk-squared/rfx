@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from rfx.core.yee import EPS_0, MU_0, MaterialArrays
 from rfx.grid import Grid
-from rfx.subgridding.jit_runner import run_subgridded_jit
+from rfx.subgridding.jit_runner import SubgridRunOptions, run_subgridded_jit
 from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
 
 
@@ -66,12 +66,14 @@ def test_subgridded_jit_records_diagnostic_coarse_probes():
         mats_f,
         config,
         n_steps,
-        sources_f=[(*fine_probe, "ez", waveform)],
-        probe_indices_f=[fine_probe],
-        probe_components=["ez"],
-        probe_indices_c=[coarse_probe],
-        probe_components_c=["ez"],
-        use_material_sat=False,
+        opts=SubgridRunOptions(
+            sources_f=[(*fine_probe, "ez", waveform)],
+            probe_indices_f=[fine_probe],
+            probe_components=["ez"],
+            probe_indices_c=[coarse_probe],
+            probe_components_c=["ez"],
+            use_material_sat=False,
+        ),
     )
 
     assert result.time_series.shape == (n_steps, 1)
