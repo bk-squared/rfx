@@ -4,7 +4,10 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import MaterialArrays
-from rfx.subgridding.jit_runner import _z_slab_material_coupling_e_3d
+from rfx.subgridding.jit_runner import (
+    SubgridRunOptions,
+    _z_slab_material_coupling_e_3d,
+)
 from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
 
 
@@ -69,8 +72,10 @@ def test_material_zhi_coarse_eps_blend_affects_e_sat_trace():
         mats_c,
         mats_f,
         config,
-        use_boundary_terminated_exterior_z_interfaces=True,
-        material_sat_zhi_coarse_eps_blend=0.0,
+        opts=SubgridRunOptions(
+            use_boundary_terminated_exterior_z_interfaces=True,
+            material_sat_zhi_coarse_eps_blend=0.0,
+        ),
     )
     full_blend, _ = _z_slab_material_coupling_e_3d(
         (ex_c, ey_c, ez_c, hx_c, hy_c, hz_c),
@@ -78,8 +83,10 @@ def test_material_zhi_coarse_eps_blend_affects_e_sat_trace():
         mats_c,
         mats_f,
         config,
-        use_boundary_terminated_exterior_z_interfaces=True,
-        material_sat_zhi_coarse_eps_blend=1.0,
+        opts=SubgridRunOptions(
+            use_boundary_terminated_exterior_z_interfaces=True,
+            material_sat_zhi_coarse_eps_blend=1.0,
+        ),
     )
 
     assert not np.allclose(np.asarray(no_blend[0]), np.asarray(full_blend[0]))

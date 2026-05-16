@@ -13,6 +13,8 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
+from rfx.subgridding.jit_runner import SubgridRunOptions
+
 
 def _make_pec_sim(with_probe=True, with_source=True):
     """Small PEC cavity with 2:1 z-axis refinement."""
@@ -231,9 +233,11 @@ class TestJITRunnerDirect:
 
         result = run_subgridded_jit(
             grid_c, mats_c, mats_f, config, n_steps,
-            sources_f=sources_f,
-            probe_indices_f=probe_indices_f,
-            probe_components=probe_components,
+            opts=SubgridRunOptions(
+                sources_f=sources_f,
+                probe_indices_f=probe_indices_f,
+                probe_components=probe_components,
+            ),
         )
 
         assert result.time_series.shape == (n_steps, 1)
@@ -369,7 +373,7 @@ class TestJITRunnerHCoupling:
 
         result_jit = run_subgridded_jit(
             grid_c_custom, mats_c, mats_f, config, n_steps,
-            sources_f=sources_f,
+            opts=SubgridRunOptions(sources_f=sources_f),
         )
 
         # Compute JIT final energy (sum of squared fields)
