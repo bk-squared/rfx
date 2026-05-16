@@ -12,6 +12,7 @@ from rfx.api import (
 )
 from rfx.geometry.csg import Box, Sphere, Cylinder, PolylineWire
 from rfx.geometry.curved import CurvedPatch
+from rfx.subgridding.validation import SubgridValidationIssue, SubgridValidationReport
 from rfx.geometry.via import Via
 from rfx.sources.sources import GaussianPulse, ModulatedGaussian, CWSource, CustomWaveform
 from rfx.sources.coaxial_port import (

@@ -84,7 +84,7 @@ class TestSlabCavitySubgrid:
         sim.add_material("dielectric", eps_r=4.0)
         sim.add(Box((0, 0, 0.02), (0.06, 0.06, 0.04)), material="dielectric")
         # z_range covers source, slab, and probe
-        sim.add_refinement(z_range=(0.010, 0.050), ratio=3)
+        sim.add_refinement(z_range=(0.010, 0.050), ratio=3, validation="research")
         sim.add_source(position=(0.03, 0.03, 0.015), component="ez")
         sim.add_probe(position=(0.03, 0.03, 0.045), component="ez")
 

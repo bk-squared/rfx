@@ -1,0 +1,119 @@
+---
+title: "Memory-Reduction Path"
+description: "How to reduce rfx FDTD memory while preserving JAX autodiff and RF validation boundaries."
+sidebar:
+  order: 5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Plan first, then validate physics">
+  Memory reports and cell-savings factors are planning evidence.  They do not
+  replace a uniform-grid, analytic, or external-solver physics check for the RF
+  observable you want to claim.
+</Aside>
+
+The memory-reduction goal in `rfx` is not simply to expose a subgrid switch.  The
+supported path must keep the simulator's core advantage: **JAX-native autodiff for
+RF-grade FDTD workflows**.  Use the narrowest lane that is validated for your
+observable.
+
+## Decision ladder
+
+| Need | Preferred lane | Status |
+|---|---|---|
+| Ordinary RF reference, general S-parameters, ports, far-field claims | Uniform Cartesian Yee | Claims-bearing default |
+| Thin substrate or layered z structure that would force a tiny uniform cell everywhere | Non-uniform z mesh + segmented AD | Production-near planning/qualification lane |
+| Large inverse-design run where reverse-mode tape is the memory limit | `checkpoint_every` segmented scan on the non-uniform path | Supported where the non-uniform runner supports the physics |
+| Guarded one-sided z-slab source/probe, static-material, or single-cell lumped-port S-parameter run | `Simulation.add_refinement(..., validation="production")` | Narrow production envelope |
+| Centered/two-interface, CPML, NTFF, far-field, wire-port, material-jump, or general true-subgrid claims | Do not claim production support yet | Rejected or research-only |
+
+## Non-uniform + segmented AD workflow
+
+Start with the non-uniform lane when a small feature only needs fine cells along
+one axis, such as a thin substrate in a much larger air volume.
+
+```python
+plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=24.0)
+report = sim.mesh_intelligence_report(
+    n_steps=10_000,
+    checkpoint_every=plan.checkpoint_every,
+    available_memory_gb=24.0,
+)
+
+print(plan.recommendation)
+print(report.cell_savings_factor)
+print(report.recommendation)
+
+# Keep this with the run artifact or research note.
+plan_json = plan.to_json()
+report_json = report.to_json()
+```
+
+Use the report to check:
+
+- `cell_savings_factor`: comparison against a uniform-fine grid at the smallest configured cell size,
+- `preflight_issues`: geometry, resolution, and feature-support warnings to resolve before trusting results,
+- `ad_memory.ad_segmented_gb`: reverse-mode AD planning estimate when `checkpoint_every` is enabled,
+- `recommendation`: compact next action for the configured case.
+
+`plan_ad_memory(...)` is the budget-fitting helper: it returns `checkpoint_every=None`
+when full reverse-mode AD already fits, otherwise it recommends the smallest
+segmented-scan chunk length estimated to fit under the requested memory target.
+
+For a reusable JSON artifact without running FDTD, use:
+
+```bash
+python scripts/memory_reduction_planning_artifact.py --available-memory-gb 24.0
+```
+
+Then run the physics validation appropriate to the observable: analytic resonance,
+uniform-grid convergence, Meep/openEMS comparison, or an existing cross-validation
+script.  Do not treat a green memory report as an accuracy claim by itself.
+
+## True subgridding boundary
+
+`Simulation.add_refinement(...)` currently exposes a full-x/y z-slab refinement.
+Production validation is intentionally fail-closed:
+
+```python
+sim.add_refinement(z_range=(0.002, 0.024), ratio=2, validation="production")
+report = sim.validate_subgrid()
+report.raise_if_unsupported()
+```
+
+The production subgrid validation envelope is limited to guarded one-sided
+PEC/no-CPML z slabs with no material or PEC jumps at the remaining artificial
+interface.  Frequency evidence is externally cross-validated inside the guarded
+envelope: `zlo`/`zhi`, ratios `2`/`3`, margins `0.30`/`0.35`/`0.45`, and two
+PEC-cavity aspect ratios.  Separate broad gates now support raw source/probe
+waveforms, static nondispersive materials, and single-cell lumped-port
+`Result.s_params` inside the same guarded one-sided PEC/no-CPML envelope.
+
+Centered/two-interface slabs reject with `z_slab_requires_guarded_boundary`;
+material jumps across artificial interfaces reject with
+`material_jump_at_zlo_interface` or `material_jump_at_zhi_interface`; material
+transitions too near the remaining artificial z interface reject with
+`material_transition_near_artificial_interface`; static material outside the
+guarded envelope rejects with `material_weighted_sat_missing`.
+CPML/UPML, NTFF/far-field, wire ports, local x/y windows, and PEC interface
+geometry are claims-bearing only inside the narrow guarded lanes documented in
+the subgridding guide; the wire-port lane is currently limited to the documented
+grid-aligned S-parameter cases.  Outside those lanes, use uniform or non-uniform
+reference meshes until the relevant interface physics and observable contracts
+are promoted together.
+
+## What to archive with a memory-reduction run
+
+For a claims-bearing memory-reduction result, keep these artifacts together:
+
+1. `mesh_intelligence_report(...).to_json()` or `validate_subgrid().to_json()`,
+2. `plan_ad_memory(...).to_json()` when reverse-mode AD memory is part of the claim,
+3. the exact run command and version/commit,
+4. the physics validation artifact for the claimed observable,
+5. any unsupported-feature decisions or validation errors,
+6. gradient evidence if the result depends on `jax.grad`.
+
+This keeps the memory story separate from the physics claim: saving cells or AD
+tape is useful only when the RF observable and gradient path remain inside their
+validated support boundary.

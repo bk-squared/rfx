@@ -1,23 +1,598 @@
 ---
 title: "SBP-SAT Subgridding"
-description: "JIT-compiled local mesh refinement with provably stable coupling in rfx."
+description: "Validated z-slab subgridding support boundaries and material-validation examples in rfx."
 sidebar:
   order: 23
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Under construction">
-  This page is a placeholder. Content will be added in a future update.
+<Aside type="caution" title="Narrow production envelope">
+  Subgridding is available only inside the validation envelope described below.
+  Do not use `validation="research"` for claims-bearing material, port, or
+  far-field results.
 </Aside>
 
 ## Overview
 
-This guide will cover rfx's subgridding support:
+rfx exposes z-slab SBP-SAT refinement through `Simulation.add_refinement(...)`.
+The production API is intentionally conservative: it validates the physical
+support envelope before running and rejects cases whose interface equations have
+not been derived.
 
-- **SBP-SAT coupling** — summation-by-parts operators with simultaneous approximation terms for provable stability
-- **Local refinement** — higher resolution in regions of interest without refining the entire domain
-- **JIT compilation** — subgridding operators are compiled via JAX for GPU performance
-- **Use cases** — fine features (vias, slots, feed gaps) embedded in electrically large structures
+Supported with `validation="production"`:
 
-See [Non-Uniform Mesh](../nonuniform-mesh/) for the simpler graded-profile alternative.
+- guarded one-sided full-x/y z refinement slabs that touch exactly one physical
+  z boundary,
+- PEC/no-CPML boundary termination, plus a narrow mixed-boundary lane where the
+  slab touches a closed PEC z face and only the opposite z face is CPML/UPML,
+  with source/probe/port locations at least 0.30 slab spans away from the
+  remaining artificial z interface,
+- vacuum and static nondispersive-material source/probe diagnostics inside
+  that guarded envelope,
+- no material, PEC-geometry, or conductivity jump at artificial coarse/fine interfaces,
+- single-cell lumped or axis-aligned wire impedance ports inside that guarded
+  envelope,
+- interior NTFF boxes inside that guarded envelope, with finite public
+  `ntff_data`/far-field post-processing support,
+- a narrow static PEC-geometry lane where a PEC object may touch the remaining
+  artificial z interface inside the guarded one-sided PEC/no-CPML envelope,
+- a narrow local x/y window lane only when the boundary is PEC/no-CPML and
+  every soft source is exactly centered in the local x/y fine window.
+
+Local x/y windowed refinement (`xy_margin`) is **not** broadly supported.  The
+only production lane is the central soft-source envelope: PEC/no-CPML, at least
+one soft source, every soft source at x/y local-window fractions `(0.5, 0.5)`,
+and source/probe locations satisfying the guarded local-window margin.  The
+runner co-injects those sources on the overlapping coarse shadow grid by
+default.  Off-centre sources, CPML, ports, or broader local-x/y layouts still
+fail closed with `xy_windowed_external_crossval_blocked`.
+
+Centered/two-interface slabs remain research diagnostics.  Static material
+subgridding is limited to the guarded one-sided envelope; material jumps at an
+artificial interface and dispersive/nonlinear materials are still rejected.  A
+narrow guarded PEC/no-CPML public path now accepts static PEC geometry touching
+the remaining artificial z interface after direct uniform-reference waveform
+gating, but broader PEC-interface geometry remains outside the production
+claim.  The
+fresh Meep/openEMS external crossval covers the guarded frequency envelope
+across both z-boundary sides, refinement ratios `2` and `3`, guarded margins
+`0.30`/`0.35`/`0.45`, and two cavity aspect ratios.  Separate production
+artifacts now support broad raw source/probe waveforms, static nondispersive
+materials, lumped/wire-port `Result.s_params`, guarded interior
+NTFF/far-field public-path finite results, and a closed-face/opposite-z-CPML
+time-domain path only inside the guarded one-sided envelope.  The local x/y
+central soft-source lane has a passing RFX-uniform/openEMS/secondary-Meep
+frequency artifact, and a narrow grid-aligned guarded wire-port S11/S21
+magnitude artifact now passes against openEMS.  Broader local x/y coverage and
+broad calibrated wire-port claims remain blocked; broader wire ports and
+material jumps across artificial interfaces remain fail-closed outside the
+documented guarded lanes.  Guarded NTFF is now a
+finite public path for PEC/no-CPML and the narrow closed-face/opposite-z-CPML
+lane, with a normalized-pattern openEMS NF2FF reference artifact for the guarded
+case.  This is not broad radiation-power calibration or arbitrary open-boundary
+far-field support.  The opposite-z CPML external artifact now passes against an
+openEMS mixed PEC/PML reference; a Meep open-boundary trace remains as a
+diagnostic reference/observable mismatch, not the promotion gate.  Do not extend
+this to
+refined faces inside CPML, broad CPML/open-boundary radiation accuracy,
+centered/two-interface slabs, off-centre or port-bearing local x/y windows,
+material or PEC geometry crossing an artificial interface,
+dispersive/nonlinear materials, or general subgridding.
+
+## API
+
+```python
+from rfx import Simulation
+
+sim = Simulation(freq_max=10e9, domain=(0.04, 0.04, 0.024), boundary="pec")
+sim.add_refinement(z_range=(0.002, 0.024), ratio=2, validation="production")
+sim.add_source((0.013, 0.013, 0.012), "ez")
+sim.add_probe((0.027, 0.027, 0.014), "ez")
+
+report = sim.validate_subgrid()
+report.raise_if_unsupported()
+artifact_json = report.to_json()
+
+result = sim.run(num_periods=20)
+```
+
+`validation="research"` preserves the older experimental lane for diagnostics
+and regression tests, but it is not a production support claim.
+
+`SubgridValidationReport` is intentionally artifact-friendly:
+
+- `report.supported` is the production/research envelope decision,
+- `report.support_level` names the exact support envelope,
+- `report.errors` and `report.warnings` expose stable issue codes,
+- `report.raise_if_unsupported()` fails before JAX compile/run,
+- `report.to_dict()` and `report.to_json()` can be stored with validation
+  or cross-solver artifacts.
+
+## Support matrix
+
+| Case | `validation="production"` status | Codes |
+|---|---:|---|
+| Guarded one-sided full-x/y z slab; PEC/no-CPML outer boundary; broad source/probe observables inside the margin envelope | supported | `support_envelope` |
+| Guarded one-sided full-x/y z slab touching a PEC z face with only the opposite z face using CPML/UPML; source/probe observables inside the margin envelope | supported as a finite public-path gate, not as generalized open-boundary crossval | `support_envelope` |
+| Centered/two-interface full-x/y z slab | rejected in production | `z_slab_requires_guarded_boundary` |
+| No `add_refinement(...)` configured | rejected | `no_refinement` |
+| Unknown validation mode | rejected | `bad_validation_mode` |
+| Ratio is not an integer `>= 2` | rejected | `bad_ratio` |
+| `z_range` is unordered, non-finite, or outside the domain | rejected | `bad_z_range` |
+| `xy_margin` local x/y window with PEC/no-CPML boundary and every soft source exactly centered in the local x/y window | supported in a narrow central soft-source envelope | `support_envelope` |
+| Broader `xy_margin` local x/y windows, including off-centre sources, ports, CPML, or unvalidated source layouts | rejected in production; research-only diagnostic | `xy_windowed_external_crossval_blocked` |
+| `xy_margin` local x/y window with source/probes near artificial x/y faces | rejected | `xy_windowed_external_crossval_blocked`, `xy_windowed_margin_too_close` |
+| Fine-grid mapping is missing or empty | rejected | `no_region`, `empty_fine_grid` |
+| Refined slab face overlaps or touches CPML/UPML | rejected in production, warning in research | `subgrid_overlaps_absorber`, `boundary_terminated_requires_pec_no_cpml` |
+| `eps_r`, `sigma`, or `mu_r` jumps across the z-lo artificial interface | rejected | `material_jump_at_zlo_interface` |
+| `eps_r`, `sigma`, or `mu_r` jumps across the z-hi artificial interface | rejected | `material_jump_at_zhi_interface` |
+| Static material transition inside the validated clearance buffer around the remaining artificial z interface | rejected | `material_transition_near_artificial_interface` |
+| Static PEC geometry touching the remaining artificial z interface inside the guarded one-sided PEC/no-CPML voxel-equivalent lane | supported | `support_envelope` |
+| Unguarded PEC geometry touching an artificial interface, local x/y PEC-interface cases, or CPML PEC-interface layouts | rejected | `pec_at_zlo_interface`, `pec_at_zhi_interface` or geometry/crossval blocker |
+| Single-cell lumped or axis-aligned wire impedance port and `run(compute_s_params=True)` inside the guarded one-sided envelope | supported | `support_envelope` |
+| Missing port waveform, mixed source-only S-parameter request, or unguarded impedance-port / S-parameter observable | rejected | `impedance_port_unvalidated` or public request error |
+| Source or port outside the refined z slab | rejected | `source_or_port_outside_fine_grid` |
+| Probe outside the refined z slab | rejected | `probe_outside_fine_grid` |
+| Interior NTFF box and `compute_far_field(...)` inside the guarded one-sided envelope, including the closed-face/opposite-z-CPML finite lane | supported as a finite public-path gate, not as generalized external radiation crossval | `support_envelope` |
+| NTFF box outside the fine slab or too close to the artificial interface | rejected | `ntff_unvalidated`, `ntff_box_outside_fine_grid`, `ntff_box_margin_too_close` |
+| DFT plane, waveguide port, Floquet port, TFSF, or lumped RLC with subgrid | rejected | `dft_plane_unvalidated`, `waveguide_port_unvalidated`, `floquet_port_unvalidated`, `tfsf_unvalidated`, `rlc_unvalidated` |
+| Static nondispersive material inside the guarded one-sided envelope with no artificial-interface jump and no near-interface transition | supported | `support_envelope` |
+| Static material outside the guarded envelope | rejected | `material_weighted_sat_missing` |
+| Dispersive or nonlinear material in a production subgrid run | rejected | `dispersive_or_nonlinear_material` |
+| Internal diagnostic-only subgrid override is enabled | rejected | `diagnostic_subgrid_override_unvalidated` |
+
+If a case is rejected, the reference lane is a uniform mesh or the
+[Non-Uniform Mesh](../nonuniform-mesh/) workflow until the relevant SAT closure
+has been derived and validated.
+
+## Material example
+
+Run:
+
+```bash
+python examples/crossval/13_subgrid_material_validation.py
+```
+
+The example demonstrates:
+
+1. a guarded one-sided vacuum z-slab case that is accepted by production validation,
+2. a centered homogeneous dielectric material case that is rejected for the
+   correct fail-closed reasons (`z_slab_requires_guarded_boundary`,
+   `material_weighted_sat_missing`),
+3. a uniform-mesh dielectric cavity reference that matches the analytic TM110
+   resonance, proving the material setup is meaningful even though that
+   centered subgrid case is not promoted.
+
+For material memory reduction outside the guarded one-sided envelope, prefer
+[Non-Uniform Mesh](../nonuniform-mesh/) or a uniform fine-grid reference until
+the relevant subgrid closure is validated.
+
+## Validation artifacts
+
+The repository keeps both production gates and research diagnostics.  Use the
+production gates below as the support boundary; the older diagnostics remain
+useful for developers but do **not** expand the support matrix:
+
+```bash
+python scripts/subgrid_dielectric_cavity_convergence.py
+python scripts/subgrid_contained_material_interface_gate.py
+python scripts/subgrid_material_meep_openems_crossval.py
+python scripts/subgrid_vacuum_observable_contract.py
+python scripts/subgrid_vacuum_source_contract_sweep.py
+python scripts/subgrid_vacuum_resolution_sweep.py
+python scripts/subgrid_vacuum_time_window_diagnosis.py
+python scripts/subgrid_vacuum_source_probe_contract.py
+python scripts/subgrid_vacuum_preinterface_diagnosis.py
+python scripts/subgrid_projection_adjoint_audit.py
+python scripts/subgrid_vacuum_sat_variant_diagnosis.py
+python scripts/subgrid_vacuum_coverage_sweep.py
+python scripts/subgrid_vacuum_tau_sweep.py
+python scripts/subgrid_vacuum_coarse_baseline.py
+python scripts/subgrid_vacuum_interface_trace_diagnosis.py
+python scripts/subgrid_vacuum_interface_sync_experiment.py
+python scripts/subgrid_vacuum_shadow_sync_experiment.py
+python scripts/subgrid_vacuum_shadow_mask_experiment.py
+python scripts/subgrid_vacuum_overlap_variant_matrix.py
+python scripts/subgrid_vacuum_exterior_source_sweep.py
+python scripts/subgrid_vacuum_exterior_resolution_sweep.py
+python scripts/subgrid_vacuum_exterior_time_window_diagnosis.py
+python scripts/subgrid_vacuum_exterior_coverage_sweep.py
+python scripts/subgrid_vacuum_boundary_terminated_coverage_sweep.py
+python scripts/subgrid_vacuum_boundary_margin_contract.py
+python scripts/subgrid_boundary_margin_material_gate.py
+python scripts/subgrid_boundary_margin_sparameter_gap.py
+python scripts/subgrid_boundary_margin_material_sparameter_gate.py
+python scripts/subgrid_wire_port_sparameter_gate.py
+python scripts/subgrid_wire_port_sparameter_crossval.py
+python scripts/subgrid_ntff_farfield_gate.py
+python scripts/subgrid_ntff_farfield_crossval.py
+python scripts/subgrid_cpml_boundary_gate.py
+python scripts/subgrid_cpml_boundary_crossval.py
+python scripts/subgrid_material_interface_jump_gate.py
+python scripts/subgrid_pec_interface_geometry_gate.py
+python scripts/subgrid_pec_interface_geometry_crossval.py
+python scripts/subgrid_centered_transfer_parameter_sweep.py
+python scripts/subgrid_centered_side_norm_local_search.py
+python scripts/subgrid_centered_eh_side_norm_search.py
+python scripts/subgrid_centered_side_norm_probe_diagnosis.py
+python scripts/subgrid_centered_xy_spatial_residual_map.py
+python scripts/subgrid_centered_face_projection_search.py
+python scripts/subgrid_centered_interface_sync_search.py
+python scripts/subgrid_centered_best_transfer_time_window.py
+python scripts/subgrid_centered_best_transfer_late_spatial_map.py
+python scripts/subgrid_centered_lower_interface_scale_sweep.py
+python scripts/subgrid_centered_lower_interface_eh_scale_sweep.py
+python scripts/subgrid_centered_lower_interface_pair_scale_sweep.py
+python scripts/subgrid_centered_e_h_trace_blend_sweep.py
+python scripts/subgrid_centered_phase_pair_combo_sweep.py
+python scripts/subgrid_centered_deferred_h_sat_sweep.py
+python scripts/subgrid_centered_e_h_trace_side_blend_sweep.py
+python scripts/subgrid_centered_zlo_trace_pair_combo_sweep.py
+python scripts/subgrid_centered_zlo_trace_spatial_filter_sweep.py
+python scripts/subgrid_centered_zlo_trace_component_filter_sweep.py
+python scripts/subgrid_centered_zlo_trace_vector_mix_sweep.py
+python scripts/subgrid_centered_zlo_trace_residual_limit_sweep.py
+python scripts/subgrid_centered_zlo_common_trace_projection_sweep.py
+python scripts/subgrid_centered_common_trace_pair_combo_sweep.py
+python scripts/subgrid_centered_common_trace_side_norm_sweep.py
+python scripts/subgrid_centered_common_trace_phase_warp_diagnosis.py
+python scripts/subgrid_centered_common_trace_modal_residual_map.py
+python scripts/subgrid_centered_modal_shape_transfer_sweep.py
+python scripts/subgrid_centered_source_symmetry_sweep.py
+python scripts/subgrid_centered_source_injection_sweep.py
+python scripts/subgrid_centered_source_parity_sweep.py
+python scripts/subgrid_centered_parity_recomposition_diagnosis.py
+python scripts/subgrid_local_xy_window_research_gate.py
+python scripts/subgrid_local_xy_window_coverage_gate.py
+python scripts/subgrid_local_xy_window_margin_contract.py
+python scripts/subgrid_local_xy_window_symmetry_diagnosis.py
+python scripts/subgrid_local_xy_window_separation_diagnosis.py
+python scripts/subgrid_local_xy_window_coarse_source_candidate.py
+python scripts/subgrid_local_xy_coarse_source_candidate_coverage.py
+python scripts/subgrid_local_xy_coarse_source_weight_sweep.py
+python scripts/subgrid_local_xy_coarse_source_projection_sweep.py
+python scripts/subgrid_local_xy_source_split_sweep.py
+python scripts/subgrid_local_xy_box_shadow_sync_sweep.py
+python scripts/subgrid_local_xy_box_shadow_field_sync_sweep.py
+python scripts/subgrid_local_xy_box_shadow_region_sync_sweep.py
+python scripts/subgrid_local_xy_box_shadow_face_scale_sweep.py
+python scripts/subgrid_local_xy_box_shadow_face_axis_sweep.py
+python scripts/subgrid_local_xy_box_shadow_component_sweep.py
+python scripts/subgrid_local_xy_box_shadow_face_side_sweep.py
+python scripts/subgrid_local_xy_box_shadow_face_pair_sweep.py
+python scripts/subgrid_local_xy_box_shadow_timing_sweep.py
+python scripts/subgrid_centered_ownership_variant_sweep.py
+python scripts/subgrid_centered_coverage_margin_time_window.py
+python scripts/subgrid_centered_coverage_margin_sweep.py
+python scripts/subgrid_centered_margin_contract.py
+python scripts/subgrid_centered_two_interface_gate.py
+python scripts/subgrid_meep_openems_crossval.py
+python scripts/subgrid_guarded_coverage_crossval.py
+python scripts/subgrid_external_crossval_audit.py --json
+python scripts/subgrid_general_crossval.py --json
+python scripts/subgrid_broad_support_completion_audit.py
+python scripts/subgrid_general_support_completion_audit.py
+python scripts/subgrid_guarded_support_completion_audit.py --json
+python scripts/subgrid_guarded_coverage_completion_audit.py --json
+```
+
+Current interpretation:
+
+- guarded production frequency coverage passes against fresh Meep/openEMS
+  references for `zlo`/`zhi`, ratios `2`/`3`, margins `0.30`/`0.35`/`0.45`,
+  and square/rectangular PEC cavity aspect ratios; the coverage audit records
+  `guarded_coverage_complete_broad_support_complete` when paired with the
+  latest broad audit,
+- the production broad vacuum gate
+  `subgrid_vacuum_boundary_margin_contract.json` records
+  `boundary_margin_contract_production_supported`; guarded 0.30/0.35/0.45
+  margins pass the broad `bandwidth=0.8` raw waveform gate with best max RMS
+  about `0.0878`,
+- the production material gate
+  `subgrid_boundary_margin_material_gate.json` records
+  `boundary_margin_material_production_supported`; homogeneous dielectric and
+  contained dielectric-layer cases pass the broad raw waveform gate,
+- `scripts/subgrid_pec_interface_geometry_gate.py` records
+  `pec_interface_geometry_public_path_supported`: in the guarded one-sided
+  PEC/no-CPML envelope, a static PEC box crossing the remaining artificial
+  z-hi interface is accepted by production validation and matches a uniform-fine
+  waveform reference (`gain_lag_rms≈0.0026`); this does not promote centered,
+  local x/y, CPML, material-jump, or external PEC-interface cases,
+- `scripts/subgrid_pec_interface_geometry_crossval.py` records
+  `pec_interface_external_crossval_blocked_external_mismatch`: the guarded PEC
+  interface subgrid agrees with the RFX uniform-fine control
+  (`gain_lag_rms≈0.0050`), but the openEMS metal-loaded cavity peak differs by
+  about `6.6%`, so external PEC-interface validation remains blocked,
+- the production lumped-port S-parameter gates
+  `subgrid_boundary_margin_sparameter_gap.json` and
+  `subgrid_boundary_margin_material_sparameter_gate.json` record
+  `sparameter_subgrid_api_supported` and
+  `material_sparameter_production_supported`; public subgrid
+  `run(compute_s_params=True)` returns finite `Result.s_params` matching the
+  uniform-fine magnitude reference for the tested guarded cases,
+- `scripts/subgrid_wire_port_sparameter_gate.py` records
+  `wire_sparameter_public_path_supported`: guarded production validation accepts
+  axis-aligned wire impedance ports and public subgrid
+  `run(compute_s_params=True)` returns a finite wire-port S-matrix,
+- `scripts/subgrid_ntff_farfield_gate.py` records
+  `ntff_farfield_public_path_supported`: guarded production validation accepts
+  an interior NTFF box and public subgrid `run()` returns finite `ntff_data`
+  that post-processes through `compute_far_field(...)`; this finite public path
+  includes the closed-face/opposite-z-CPML lane but is not a generalized
+  open-boundary radiation or external crossval claim,
+- `scripts/subgrid_cpml_boundary_gate.py` records
+  `cpml_boundary_public_path_supported`: guarded production validation accepts
+  a full-x/y z slab that touches a PEC z face while the opposite z face uses
+  CPML, and public subgrid `run()` returns finite time series; this does not
+  claim refined faces inside CPML or open-boundary external crossval,
+- `scripts/subgrid_cpml_boundary_crossval.py` records
+  `cpml_boundary_external_crossval_passed`: the guarded opposite-z CPML
+  subgrid agrees with an RFX uniform-fine control and an openEMS mixed PEC/PML
+  external reference; the Meep 3D open-boundary peak remains documented as a
+  diagnostic reference/observable mismatch,
+- `scripts/subgrid_external_crossval_audit.py` reruns current guarded
+  RFX-vs-Meep and RFX-vs-openEMS frequency checks with no blockers,
+- `scripts/subgrid_broad_support_completion_audit.py` now reports
+  `broad_support_complete` for the guarded one-sided boundary envelope,
+- `scripts/subgrid_centered_two_interface_gate.py` records the first general
+  blocker: centered/two-interface slabs still fail production validation and
+  the best centered broad diagnostic variant has not passed all probes,
+- `scripts/subgrid_centered_margin_contract.py` shows that even centered
+  interior-margin probes remain blocked, so the centered blocker is not only
+  near-interface probe placement,
+- `scripts/subgrid_centered_coverage_margin_sweep.py` tests whether widening a
+  centered/two-interface slab plus interior margins creates a diagnostic pass
+  before any production validation relaxation,
+- `scripts/subgrid_centered_coverage_margin_time_window.py` localizes the
+  remaining strict-gate residual for the best centered coverage-margin case,
+- `scripts/subgrid_centered_transfer_parameter_sweep.py` tests whether that
+  residual is removable by scaling the material SAT correction, applying
+  coarse/fine side-specific material SAT scales, switching transfer family, or
+  tuning the legacy SAT penalty before any production validation relaxation,
+- `scripts/subgrid_centered_side_norm_local_search.py` performs a denser local
+  search around the most promising side-specific material SAT scales,
+- `scripts/subgrid_centered_eh_side_norm_search.py` checks whether separating
+  E/H side scales improves the centered residual beyond the shared side-norm
+  local-search result,
+- `scripts/subgrid_centered_side_norm_probe_diagnosis.py` maps which centered
+  probes and time windows still fail under the best side-norm diagnostic,
+- `scripts/subgrid_centered_xy_spatial_residual_map.py` maps a small XY grid at
+  the best centered side-norm diagnostic and shows the residual is spatially
+  localized rather than z-fraction-only,
+- `scripts/subgrid_centered_face_projection_search.py` compares node-adjoint
+  and colocated-sample z-face restriction choices for that spatial residual;
+  it improves one median case but still leaves localized strict-gate failures,
+- `scripts/subgrid_centered_interface_sync_search.py` tests a structural
+  exterior-interface sync variant against the active coarse planes; the sync
+  variants are worse and introduce kill-threshold failures,
+- `scripts/subgrid_centered_best_transfer_time_window.py` maps time windows for
+  the current best centered side-norm/node-adjoint diagnostic; early windows
+  pass, but late-window probes exceed the kill threshold, localizing the
+  centered residual to late cavity/interface dynamics,
+- `scripts/subgrid_centered_best_transfer_late_spatial_map.py` maps that
+  q4-late residual spatially; the kill-threshold failures localize to the
+  lowest sampled interior z plane and lower/mid x-y cross probes, so the next
+  centered attempt should target lower-interface late-time energy balance,
+- `scripts/subgrid_centered_lower_interface_scale_sweep.py` tests asymmetric
+  z-lo interface scaling; larger z-lo scale removes q4-late kill failures and
+  reduces q4 max RMS, but no sampled scale clears both q4-late and full-window
+  strict gates,
+- `scripts/subgrid_centered_lower_interface_eh_scale_sweep.py` splits that
+  lower-interface multiplier between E and H updates; E-only strengthening
+  preserves full-window pass count but barely improves q4, while H-side
+  strengthening improves q4 but worsens full-window fidelity, so the
+  centered blocker remains a coupled phase/energy-transfer problem,
+- `scripts/subgrid_centered_lower_interface_pair_scale_sweep.py` splits the
+  lower-interface correction by tangential Maxwell pair `Ex/Hy` versus
+  `Ey/-Hx`; pair-specific strengthening removes q4 kills and improves q4 more
+  than E-only scaling, but still trades away full-window fidelity and remains
+  below the production gate,
+- `scripts/subgrid_centered_e_h_trace_blend_sweep.py` tests whether E-SAT
+  should use pre-H-SAT, post-H-SAT, or blended H traces; pre-H-SAT traces remove
+  q4 kills without reducing full-window pass count, but q4 residual remains far
+  above the strict gate, so time-centering alone is not closure,
+- `scripts/subgrid_centered_phase_pair_combo_sweep.py` checks whether the
+  pre-H-SAT timing clue composes with tangential-pair scaling; combined cases
+  lower q4 residual further, but only by spending full-window fidelity, so the
+  production path still needs a derived two-interface operator rather than
+  stacked diagnostic knobs,
+- `scripts/subgrid_centered_deferred_h_sat_sweep.py` tests a stronger ordering
+  change that withholds H-SAT until after E-SAT; all deferred cases go
+  non-finite/kill-blocked, so the useful timing clue is limited to the trace
+  used by E-SAT, not deferring the H correction itself,
+- `scripts/subgrid_centered_e_h_trace_side_blend_sweep.py` localizes that trace
+  clue: z-lo-only pre-H-SAT traces reproduce almost all of the q4-kill removal,
+  while z-hi-only traces do not help, so the phase issue is lower-interface
+  localized,
+- `scripts/subgrid_centered_zlo_trace_pair_combo_sweep.py` combines that z-lo
+  trace localization with tangential-pair scaling; it follows the same trade-off
+  frontier as the global-pre combo and does not clear the full-window gate,
+- `scripts/subgrid_centered_zlo_trace_spatial_filter_sweep.py` splits the z-lo
+  pre-H-SAT trace delta into face-mean and spatial-residual parts; the benefit
+  lives almost entirely in the spatial residual, not the face mean,
+- `scripts/subgrid_centered_zlo_trace_component_filter_sweep.py` applies that
+  spatial residual to Hx or Hy alone; each component removes q4 kills only
+  partially, while both together are needed for the full residual improvement,
+- `scripts/subgrid_centered_zlo_trace_vector_mix_sweep.py` tests simple 2x2
+  Hx/Hy orientation mixes; swapping or rotating the residual destroys the
+  improvement, so the clue is the identity tangential residual itself,
+- `scripts/subgrid_centered_zlo_trace_residual_limit_sweep.py` caps that
+  identity residual pointwise against the local pre/post tangential H-trace
+  energy norm; it preserves q4 kill removal but does not clear the strict
+  centered full/q4 gates, so a derived two-interface closure is still needed,
+- `scripts/subgrid_centered_zlo_common_trace_projection_sweep.py` tests whether
+  the lower-interface SAT should use one projected common trace instead of
+  separate coarse/fine common traces; a coarse-face common trace improves q4
+  residuals, while an averaged coarse/fine projected trace is intermediate and
+  still does not clear the strict centered gates,
+- `scripts/subgrid_centered_common_trace_pair_combo_sweep.py` combines that
+  coarse common-trace clue with tangential-pair balancing; it confirms the same
+  trade-off frontier remains and post-trace pair strengthening can be
+  catastrophically unstable,
+- `scripts/subgrid_centered_common_trace_side_norm_sweep.py` recalibrates the
+  side coefficients inside the new coarse common-trace family; `c≈1.3, f=1.0`
+  improves q4 max while preserving the current full-window pass count, but
+  strict centered gates remain blocked,
+- `scripts/subgrid_centered_common_trace_phase_warp_diagnosis.py` post-processes
+  the best common-trace case with a small affine time warp; dispersion/phase
+  explains part of the q4 residual but full-window failures remain, so the next
+  solver change must address local modal/shape transfer as well,
+- `scripts/subgrid_centered_common_trace_modal_residual_map.py` decomposes the
+  affine-warp residual over the sampled 3x3 x/y probe grid; q4-late residuals
+  remain mixed linear/quadratic spatial modes and full-window residuals repeat
+  an `xy_linear` mode, confirming that the remaining centered blocker is
+  modal/shape transfer rather than another scalar strength or phase knob,
+- `scripts/subgrid_centered_modal_shape_transfer_sweep.py` applies low-order
+  modal subsets of the current z-lo pre/post H-trace delta to the solver-side
+  diagnostic path; none improves the baseline q4/full-window trade-off, so the
+  modal clue requires a different conservative trace/operator rather than a
+  filter of the same residual delta,
+- `scripts/subgrid_centered_source_symmetry_sweep.py` confirms the centered
+  blocker is source-position/modal rather than a total two-interface failure:
+  an x/y-centered `Ez` source passes the 27-probe centered diagnostic
+  (`max_rms≈0.0883`), while tested off-centre sources remain strict-gate
+  blocked; production validation still rejects centered slabs,
+- `scripts/subgrid_centered_source_injection_sweep.py` rules out the nearest
+  source-plumbing rescue for that off-centre blocker: coarse-shadow source
+  co-injection, source projection choices, and fine/coarse source splitting do
+  not improve the original off-centre case (`best=baseline`, max RMS≈0.1484),
+- `scripts/subgrid_centered_source_parity_sweep.py` shows the four-corner parity
+  basis passes the same 27-probe centered diagnostic (`basis_max≈0.0866`), while
+  the single off-centre modal mixture remains blocked (`15/27`, max RMS≈0.1484);
+  the next centered fix should target relative modal gain/phase transfer, not
+  more source-injection plumbing,
+- `scripts/subgrid_centered_parity_recomposition_diagnosis.py` verifies that the
+  parity basis linearly recomposes the single source, but offline scalar modal
+  gain/lag correction still does not clear the mixture (`global_modal=9/27`,
+  `per_probe_modal=12/27`), so the next fix likely needs modal-shape/operator
+  transfer rather than scalar modal calibration,
+- `scripts/subgrid_local_xy_window_research_gate.py` verifies that `xy_margin`
+  is research-wired through the endpoint-node 6-face SAT path and records
+  the first strict waveform pass, while broader x/y observables remain blocked,
+- `scripts/subgrid_local_xy_window_coverage_gate.py` broadens the local x/y
+  check across three margins and a 3x3 probe map; it remains below the kill
+  threshold but fails the strict all-probe gate,
+- `scripts/subgrid_local_xy_window_margin_contract.py` defines a narrow local
+  x/y observable diagnostic: the central 45–55% x/y band passes `27/27`
+  short-time probes with max RMS about `0.0069`, but production remains
+  blocked by `xy_windowed_external_crossval_blocked`,
+- `scripts/subgrid_general_crossval.py` adds a fresh current-production-surface
+  external audit and blocks local x/y promotion: the local x/y candidate is
+  about `40%` off the uniform-fine/openEMS long-time frequency while the
+  uniform-fine control is about `0.22%` from openEMS,
+- `scripts/subgrid_local_xy_window_symmetry_diagnosis.py` isolates a local x/y
+  long-time failure mode: center source/probe placements fail at about `40%`
+  peak-frequency error, while nearby off-center/off-center placements match the
+  uniform-fine peak in the small diagnostic matrix,
+  Its diagnostic exterior-box ownership variant does not fix those center cases
+  and degrades the passing off-center cases, so it remains research-only,
+- `scripts/subgrid_local_xy_window_separation_diagnosis.py` further shows the
+  local x/y blocker is anisotropic and near-field sensitive rather than a
+  simple minimum-distance rule,
+- `scripts/subgrid_local_xy_window_coarse_source_candidate.py` records a
+  diagnostic fix candidate: coarse-shadow source co-injection clears the sampled
+  long-time peak failures and passes the short-time central-band waveform gate,
+  and `scripts/subgrid_general_crossval.py` shows the same candidate matches
+  uniform/openEMS long-time frequency while production still rejects it as a
+  private diagnostic path,
+- `scripts/subgrid_local_xy_coarse_source_candidate_coverage.py` broadens that
+  candidate from one center source to a 3x3 source map over the central
+  45–55% local-window band and finds new kill-threshold waveform failures for
+  opposite-diagonal source/probe pairs, so coarse-shadow source co-injection is
+  not yet a promotable local x/y closure,
+- `scripts/subgrid_local_xy_coarse_source_weight_sweep.py` tests whether those
+  failures are just scalar coarse-shadow source over/under-injection; no sampled
+  scale simultaneously preserves the long-time peak fixes and clears the
+  targeted waveform failures, so the next fix must change placement/weighting
+  semantics rather than simply scale the coarse source,
+- `scripts/subgrid_local_xy_coarse_source_projection_sweep.py` then tests
+  nearest-vs-trilinear and physical-position-vs-rounded-fine-node source
+  projection modes; all sampled modes preserve the peak fixes but keep the same
+  `12/117` targeted waveform failures, so pointwise coarse-shadow source
+  projection alone is not the local x/y closure,
+- `scripts/subgrid_local_xy_source_split_sweep.py` tests fine-grid vs
+  coarse-shadow source ownership splits; no sampled split simultaneously clears
+  the targeted waveform failures and preserves the long-time peak fixes, so the
+  remaining local x/y defect is now attributed to overlap transfer/source
+  ownership semantics beyond simple duplicate-source tuning,
+- `scripts/subgrid_local_xy_box_shadow_sync_sweep.py` tests synchronizing the
+  local-box overlapping coarse shadow volume from fine fields; sync removes the
+  targeted waveform kill failures but breaks the sampled long-time peak fixes,
+  so shadow sync alone is not a promotable local x/y transfer closure,
+- `scripts/subgrid_local_xy_box_shadow_field_sync_sweep.py` splits that transfer
+  into E-only and H-only shadow sync; neither selective field sync preserves the
+  long-time peak fixes, so the next local x/y transfer attempt must be more
+  selective than whole-field E/H volume overwrite,
+- `scripts/subgrid_local_xy_box_shadow_region_sync_sweep.py` narrows the
+  transfer region; face-only all-field sync preserves the sampled long-time peak
+  fixes and removes kill-threshold waveform failures, but it still misses the
+  strict waveform gate, so it is a promising diagnostic clue rather than
+  production support,
+- `scripts/subgrid_local_xy_box_shadow_face_scale_sweep.py` checks whether
+  blending the face-only sync transfer fixes the remaining strict waveform
+  residual; no sampled scale closes the gate, and full face overwrite remains
+  the best sampled face-scale variant,
+- `scripts/subgrid_local_xy_box_shadow_face_axis_sweep.py` checks whether
+  the useful face-only transfer is isolated to x, y, z, or paired face axes;
+  no sampled axis subset closes the strict waveform gate, and all-axis face
+  sync remains the best diagnostic variant rather than production support,
+- `scripts/subgrid_local_xy_box_shadow_component_sweep.py` checks whether
+  the face-only transfer clue is isolated to one field component; no sampled
+  single-component sync closes the strict waveform gate, and all-component
+  face sync remains the best diagnostic variant,
+- `scripts/subgrid_local_xy_box_shadow_face_side_sweep.py` checks whether the
+  face-only transfer clue is isolated to one local-box side; no sampled single
+  side closes the strict waveform gate, and all-side face sync remains the best
+  diagnostic variant,
+- `scripts/subgrid_local_xy_box_shadow_face_pair_sweep.py` checks whether
+  coupled side pairs close the remaining local x/y residual; no sampled pair
+  closes the strict waveform gate, and all-side face sync remains the best
+  diagnostic variant,
+- `scripts/subgrid_local_xy_box_shadow_timing_sweep.py` checks whether moving
+  face sync within the E/H update sequence closes the residual; several
+  timings remove kill failures and preserve peaks, but none clears the strict
+  waveform gate,
+- `scripts/subgrid_centered_ownership_variant_sweep.py` replays the existing
+  overlap/ownership diagnostic knobs, including an exterior coarse-shadow ghost
+  experiment, on the current best centered coverage case,
+- `scripts/subgrid_material_boundary_topology_diagnosis.py` checks whether the
+  material-jump blocker is only an overlap-vs-boundary-terminated topology
+  issue; production-like exterior z-interface coupling is rejected and does not
+  clear the long-window material gate,
+- `scripts/subgrid_material_interface_placement_diagnosis.py` checks whether the
+  material-jump blocker is only a voxel-alignment artifact; true artificial
+  interface jumps stay blocked across fine-face and coarse-node placements,
+  while the fully continuous dielectric control passes,
+- `scripts/subgrid_material_interface_clearance_diagnosis.py` checks how close a
+  material transition may sit to the remaining artificial interface in the
+  production-like exterior topology; near-interface transitions remain blocked
+  until the material is effectively continuous to the physical boundary in the
+  checked guarded cavity,
+- `scripts/subgrid_general_support_completion_audit.py` intentionally reports
+  `general_subgridding_incomplete`: only centered/two-interface slabs and
+  material jumps at artificial interfaces remain as current general-objective
+  blockers. Guarded wire-port S-parameters, narrow local x/y, guarded PEC
+  artificial-interface geometry, guarded interior NTFF/far-field,
+  closed-face/opposite-z-CPML public finite paths, and the current generalized
+  external crossval audit now have separate passing artifacts inside their
+  documented guarded envelopes,
+- `scripts/subgrid_general_claim_boundary.py` records
+  `guarded_subset_release_ready_general_claim_blocked`: the guarded one-sided
+  broad envelope is release-ready, but full general subgridding, centered slabs,
+  and material jumps remain forbidden claims,
+- diagnostic-only override knobs still fail closed in production with
+  `diagnostic_subgrid_override_unvalidated`,
+- production validation still rejects centered/two-interface slabs with
+  `z_slab_requires_guarded_boundary`, local x/y refinement with
+  `xy_windowed_external_crossval_blocked` (and near-face local x/y observables
+  additionally with `xy_windowed_margin_too_close`), static material outside the
+  guarded envelope with `material_weighted_sat_missing`, refined faces inside
+  CPML/UPML, unguarded/out-of-slab NTFF boxes, and material jumps across
+  artificial interfaces.
+
+The production observable contract for future extensions remains raw
+time-domain waveform/reference correctness under predeclared thresholds plus a
+public validation/API contract for the requested observable.  Do not switch
+examples to `validation="research"` for claims-bearing material, S-parameter,
+port, or far-field results.

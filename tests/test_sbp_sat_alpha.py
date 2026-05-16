@@ -19,6 +19,7 @@ class TestSBPSATAlpha:
         kw = {"z_range": (0.01, 0.03), "ratio": ratio}
         if tau is not None:
             kw["tau"] = tau
+        kw["validation"] = "research"
         sim.add_refinement(**kw)
         return sim
 
@@ -31,6 +32,19 @@ class TestSBPSATAlpha:
         """Custom tau value should be stored in refinement dict."""
         sim = self._make_sim(tau=1.0)
         assert sim._refinement["tau"] == 1.0
+
+    def test_xy_margin_stored_for_research_windowed_refinement(self):
+        """xy_margin must be stored rather than silently ignored."""
+        sim = Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.04))
+
+        sim.add_refinement(
+            z_range=(0.01, 0.03),
+            ratio=2,
+            xy_margin=0.004,
+            validation="research",
+        )
+
+        assert sim._refinement["xy_margin"] == 0.004
 
     def test_custom_tau_accepted(self):
         """Simulation with custom tau should run without error."""
