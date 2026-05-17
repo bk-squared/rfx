@@ -485,8 +485,21 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     """
     import jax
     i, j, k = position_ijk
-    eps = float(materials.eps_r[i, j, k]) * EPS_0
-    sigma = float(materials.sigma[i, j, k])
+
+    # GEO-C3: on the differentiable-material path ``materials.eps_r`` /
+    # ``materials.sigma`` are tracers — ``float()`` raised
+    # TracerArrayConversionError. Stay in jnp when traced so the gradient
+    # propagates into the waveform normalisation; keep the exact ``float()``
+    # path otherwise so non-traced output stays bit-identical.
+    materials_traced = (
+        is_tracer(materials.eps_r) or is_tracer(materials.sigma)
+    )
+    if materials_traced:
+        eps = jnp.asarray(materials.eps_r[i, j, k]) * EPS_0
+        sigma = jnp.asarray(materials.sigma[i, j, k])
+    else:
+        eps = float(materials.eps_r[i, j, k]) * EPS_0
+        sigma = float(materials.sigma[i, j, k])
     loss = sigma * grid.dt / (2.0 * eps)
 
     # Cb = dt / (eps * (1 + loss))
@@ -495,10 +508,11 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     # Cell volume: dx_i * dy_j * dz_k (per-cell on each axis).
     # Stay in jnp so a tracer-valued cell-size profile (mesh-as-design
     # variable) propagates the gradient into the waveform normalisation.
-    any_traced = (
+    grid_traced = (
         is_tracer(grid.dx_arr) or is_tracer(grid.dy_arr) or is_tracer(grid.dz)
     )
-    if any_traced:
+    any_traced = materials_traced or grid_traced
+    if grid_traced:
         dx_local = jnp.asarray(grid.dx_arr)[i]
         dy_local = jnp.asarray(grid.dy_arr)[j]
         dz_local = jnp.asarray(grid.dz)[k]

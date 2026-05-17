@@ -79,38 +79,36 @@ class Box:
             # thin objects on a non-uniform axis. Using the first-cell dc
             # (as the legacy implementation did) causes a 0.25 mm PEC
             # sheet inside a 1 mm-dz region to be snapped onto two or
-            # three cells (issue #48 / deep dive), because the ±0.51·dc
-            # snap window from the coarse edge of the domain reaches
-            # through both the metal cell and its graded neighbours.
+            # three cells (issue #48 / deep dive).
             #
-            # Issue #75: the thin-sheet `< 0.51·dc` window admits BOTH
-            # adjacent cells when ``mid`` lies exactly on a cell boundary
-            # (e.g. ``Box((17,..), (18,..))`` at dx=1mm gives ``mid=17.5``
-            # with cells at 17 and 18 mm both at distance 0.5·dc < 0.51·dc).
-            # Volume path closed-closed semantics ``coords <= hi`` admits
-            # one extra cell whenever ``hi`` lands on a cell centre.
-            # Both fixed below: thin-sheet snaps to single argmin-nearest
-            # cell, volume path uses half-open ``coords < hi``.
-            coords_np = np.asarray(coords)
+            # Issue #75: thin-sheet snaps to the single argmin-nearest
+            # cell; the volume path uses half-open ``coords < hi`` so a
+            # ``hi`` landing on a cell centre does not admit an extra cell.
+            #
+            # GEO Tier-2: this stays fully JAX-traceable — ``np.asarray``
+            # on ``coords`` raised TracerArrayConversionError on the
+            # differentiable-mesh path. Both branches are computed and
+            # selected with ``jnp.where``; the output is byte-identical
+            # to the pre-refactor np-based path on concrete coordinates.
+            coords = jnp.asarray(coords)
             mid = (lo + hi) * 0.5
-            extent = float(hi - lo)
-            if coords_np.size <= 1:
+            extent = float(hi - lo)          # lo/hi are concrete Box corners
+            if coords.size <= 1:             # static (shape, not values)
                 dc_local = 1e-3
             else:
-                # Approximate local dc from the midpoint's neighbouring
-                # cell-centre spacing.
-                k_mid = int(np.clip(np.searchsorted(coords_np, mid) - 1,
-                                    0, coords_np.size - 2))
-                dc_local = float(coords_np[k_mid + 1] - coords_np[k_mid])
-            if extent <= dc_local * 1.01:
-                # Thin sheet: paint the single cell whose centre is nearest
-                # to ``mid``. Argmin guarantees exactly one cell regardless
-                # of where ``mid`` falls relative to cell boundaries.
-                nearest_idx = int(np.argmin(np.abs(coords_np - mid)))
-                out = np.zeros(coords_np.shape, dtype=bool)
-                out[nearest_idx] = True
-                return jnp.asarray(out)
-            return (coords >= lo) & (coords < hi)
+                # Local dc from the midpoint's neighbouring cell spacing.
+                k_mid = jnp.clip(
+                    jnp.searchsorted(coords, mid) - 1, 0, coords.size - 2)
+                dc_local = coords[k_mid + 1] - coords[k_mid]
+            # Thin sheet: the single cell whose centre is nearest ``mid``.
+            nearest_idx = jnp.argmin(jnp.abs(coords - mid))
+            thin_mask = jnp.zeros(coords.shape, dtype=bool).at[
+                nearest_idx].set(True)
+            # Volume: half-open [lo, hi).
+            volume_mask = (coords >= lo) & (coords < hi)
+            # Thin sheet when the extent is within one local cell.
+            is_thin = extent <= dc_local * 1.01
+            return jnp.where(is_thin, thin_mask, volume_mask)
 
         mx = _axis_mask(x, self.corner_lo[0], self.corner_hi[0])
         my = _axis_mask(y, self.corner_lo[1], self.corner_hi[1])

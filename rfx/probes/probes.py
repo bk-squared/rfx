@@ -316,7 +316,7 @@ def update_sparam_probe(
     -------
     SParamProbe with updated accumulators.
     """
-    t = float(state.step) * dt
+    t = state.step * dt  # keep traceable: float(state.step) leaked the tracer
 
     v = port_voltage(state, grid, port)
     i = port_current(state, grid, port)
@@ -740,7 +740,7 @@ def update_wire_sparam_probe(
     """
     from rfx.sources.sources import _wire_port_cells
 
-    t = float(state.step) * dt
+    t = state.step * dt  # keep traceable: float(state.step) leaked the tracer
     n_cells = max(len(_wire_port_cells(grid, port)), 1)
 
     v = wire_port_voltage(state, grid, port)
