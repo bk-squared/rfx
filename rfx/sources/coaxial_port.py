@@ -28,7 +28,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
-from rfx.core.yee import EPS_0
+from rfx.core.yee import EPS_0, MU_0
 from rfx.geometry.csg import Cylinder
 
 
@@ -40,7 +40,6 @@ SMA_PIN_RADIUS   = 0.635e-3   # m — center pin radius (1.27 mm OD)
 SMA_OUTER_RADIUS = 2.055e-3   # m — outer conductor radius (4.11 mm OD)
 PTFE_EPS_R       = 2.1        # PTFE relative permittivity
 PEC_SIGMA        = 1e10       # S/m — effective PEC conductivity
-MU_0             = 1.25663706212e-6  # H/m
 
 
 # ---------------------------------------------------------------------------

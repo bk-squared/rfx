@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
-from rfx.core.yee import _shift_fwd, _shift_bwd, EPS_0
+from rfx.core.yee import _shift_fwd, _shift_bwd, EPS_0, MU_0
 from rfx.core.jax_utils import is_tracer
 
 
@@ -128,7 +128,6 @@ def _cpml_profile(
         ``σ_max = -ln(R) * (m+1) / (2 * η * d)``
         where ``d = n_layers * dx``.  Default 1e-15 (matching Meep).
     """
-    MU_0 = 1.2566370614e-6
 
     # Stay in-trace when dt/dx are JAX tracers (mesh-as-design-variable
     # path); fall back to numpy for the standard concrete-grid case so
@@ -658,7 +657,6 @@ def apply_cpml_h(
     """
     n = grid.cpml_layers
     dt = grid.dt
-    MU_0 = 1.2566370614e-6
     if materials is not None and hasattr(materials, 'mu_r'):
         _ch_full = dt / (materials.mu_r * MU_0)  # (nx, ny, nz)
         ch_xlo = _ch_full[:n, :, :];  ch_xhi = _ch_full[-n:, :, :]

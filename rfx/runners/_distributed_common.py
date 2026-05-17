@@ -67,8 +67,10 @@ def cpml_coeff_e_vacuum(dt: float) -> float:
 def cpml_coeff_h_vacuum(dt: float) -> float:
     """Vacuum CPML H-field update coefficient ``dt / mu_0``.
 
-    Bit-identical to the pre-refactor inline literal
-    ``dt / 1.2566370614e-6`` (``MU_0`` is exactly that value).
+    Returns ``dt / MU_0`` using the canonical ``rfx.core.yee.MU_0``
+    (post-2019 SI value 1.25663706212e-6). The pre-refactor distributed
+    runners held the literal ``1.2566370614e-6`` inline; Stage 3.5b
+    consolidated every MU_0 site onto the canonical post-2019 constant.
 
     Takes ONLY ``dt`` — no ``mu_r``/``materials`` argument. The vacuum
     assumption is intentional and load-bearing: see the module docstring.

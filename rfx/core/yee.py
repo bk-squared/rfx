@@ -70,7 +70,7 @@ def init_materials(shape: tuple[int, int, int]) -> MaterialArrays:
 
 # Physical constants
 EPS_0 = 8.854187817e-12  # F/m
-MU_0 = 1.2566370614e-6   # H/m
+MU_0 = 1.25663706212e-6  # H/m — post-2019 SI / CODATA value
 
 
 def _shift_fwd(arr, axis):
