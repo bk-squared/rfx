@@ -134,20 +134,27 @@ def test_distributed_common_cpml_coeff_helpers_are_vacuum_only():
         )
 
 
-def test_distributed_common_cpml_coeff_bit_identical_to_inline_literals():
-    """Stage 1.5a de-dup guard — the shared vacuum CPML coefficients must
-    stay byte-identical to the inline literals they replaced in
-    distributed.py / distributed_v2.py / distributed_nu.py."""
+def test_distributed_common_cpml_coeff_tracks_canonical_constants():
+    """De-dup guard — the shared vacuum CPML coefficients must equal
+    ``dt / EPS_0`` and ``dt / MU_0`` for the canonical ``rfx.core.yee``
+    constants.
+
+    Stage 1.5a introduced these helpers as a byte-identical de-dup of
+    the inline literals (pre-2019 ``8.854187817e-12`` /
+    ``1.2566370614e-6``); the review-remediation Stage 3.5b then moved
+    EPS_0/MU_0 to the post-2019 SI/CODATA pair. Asserting against the
+    imported constants (not a frozen literal) keeps the helpers pinned
+    to ``dt / const`` while staying robust to future constant updates.
+    """
+    from rfx.core.yee import EPS_0, MU_0
     from rfx.runners._distributed_common import (
         cpml_coeff_e_vacuum,
         cpml_coeff_h_vacuum,
     )
 
     dt = 1.234e-12
-    # distributed.py / distributed_nu.py old literal: dt / 8.854187817e-12
-    assert cpml_coeff_e_vacuum(dt) == dt / 8.854187817e-12
-    # distributed.py / distributed_nu.py old literal: dt / 1.2566370614e-6
-    assert cpml_coeff_h_vacuum(dt) == dt / 1.2566370614e-6
+    assert cpml_coeff_e_vacuum(dt) == dt / EPS_0
+    assert cpml_coeff_h_vacuum(dt) == dt / MU_0
 
 
 def test_distributed_runners_use_shared_cpml_coeff_helpers():
