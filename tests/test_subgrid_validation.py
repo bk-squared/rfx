@@ -142,11 +142,6 @@ def test_production_subgrid_validation_accepts_guarded_boundary_vacuum_source_pr
         ("inject_sources_before_e_coupling", True),
         ("inject_sources_on_coarse_shadow", True),
         ("diagnostic_lumped_sparam_freqs", (3.0e9,)),
-        # Tombstones for dead knobs removed in the jit_runner decomposition:
-        # a stale override of these prefixes must still be rejected
-        # fail-closed in production, not silently ignored.
-        ("material_sat_e_h_trace_blend", 0.75),
-        ("box_shadow_sync_fields", "e_only"),
     ),
 )
 def test_production_subgrid_validation_rejects_diagnostic_overrides(key, value):
@@ -208,6 +203,51 @@ def test_research_subgrid_validation_allows_diagnostic_overrides():
         issue.code == "diagnostic_subgrid_override_unvalidated"
         for issue in report.errors
     )
+
+
+@pytest.mark.parametrize(
+    "key, value",
+    (
+        ("material_sat_e_h_trace_blend", 0.75),
+        ("box_shadow_sync_fields", "e_only"),
+    ),
+)
+def test_production_validation_rejects_removed_subgrid_knobs(key, value):
+    """A stale override of a removed (tombstoned) knob fails closed in production."""
+    sim = _vacuum_subgrid_sim(validation="production")
+    sim._refinement[key] = value
+
+    report = sim.validate_subgrid()
+
+    assert not report.supported
+    assert any(issue.code == "removed_subgrid_knob" for issue in report.errors)
+    assert key in report.format()
+    with pytest.raises(ValueError, match="removed_subgrid_knob"):
+        report.raise_if_unsupported()
+
+
+@pytest.mark.parametrize(
+    "key, value",
+    (
+        ("material_sat_e_h_trace_blend", 0.75),
+        ("box_shadow_sync_fields", "e_only"),
+    ),
+)
+def test_research_validation_also_flags_removed_subgrid_knobs(key, value):
+    """A removed-knob override is surfaced even in research mode.
+
+    Live diagnostic knobs are production-gated -- research mode legitimately
+    allows them.  A tombstoned knob has no implementation at all, so a stale
+    override is always a mistake and is reported in every validation mode.
+    """
+    sim = _vacuum_subgrid_sim(validation="research")
+    sim._refinement[key] = value
+
+    report = sim.validate_subgrid()
+
+    assert report.mode == "research"
+    assert any(issue.code == "removed_subgrid_knob" for issue in report.errors)
+    assert key in report.format()
 
 
 def test_production_subgrid_validation_rejects_xy_window_observables_near_xy_interface():

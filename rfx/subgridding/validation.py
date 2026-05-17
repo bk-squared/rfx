@@ -327,17 +327,30 @@ def _active_diagnostic_overrides(ref) -> tuple[str, ...]:
             active.append(name)
     if ref.get("diagnostic_lumped_sparam_freqs") is not None:
         active.append("diagnostic_lumped_sparam_freqs")
-    # Tombstones: knobs whose runner implementation was removed in the
-    # jit_runner decomposition (US-10 dead-knob strip). The implementation is
-    # gone, but a stale ``_refinement`` override of one of these prefixes must
-    # still fail closed in production rather than be silently ignored.
-    for key in ref:
-        name = str(key)
-        if name.startswith("material_sat_e_h_trace_") or name.startswith(
-            "box_shadow_sync_"
-        ):
-            active.append(name)
     return tuple(active)
+
+
+# Prefixes of subgrid knobs whose runner implementation was removed in the
+# jit_runner decomposition (US-10 dead-knob strip).
+_REMOVED_KNOB_PREFIXES = ("material_sat_e_h_trace_", "box_shadow_sync_")
+
+
+def _tombstoned_refinement_keys(ref) -> tuple[str, ...]:
+    """Return ``_refinement`` keys that override a removed (tombstoned) knob.
+
+    The implementations of these knobs are gone, so a stale override has no
+    effect.  Unlike the live diagnostic knobs above -- which research mode
+    legitimately allows -- a tombstoned key is always a mistake, so it is
+    reported in every validation mode and fails closed rather than being
+    silently ignored.
+    """
+    return tuple(
+        sorted(
+            str(key)
+            for key in ref
+            if str(key).startswith(_REMOVED_KNOB_PREFIXES)
+        )
+    )
 
 
 def _material_plane_delta(arr, a, b, region: SubgridRegion) -> float:
@@ -628,6 +641,21 @@ def validate_subgrid_setup(
                     "closures.",
                 )
             )
+
+    tombstoned = _tombstoned_refinement_keys(ref)
+    if tombstoned:
+        issues.append(
+            _issue(
+                "error",
+                "removed_subgrid_knob",
+                "the subgrid refinement sets override(s) whose runner "
+                f"implementation was removed: {', '.join(tombstoned)}. These "
+                "knobs no longer have any effect; remove them from "
+                "add_refinement(). Reported in every validation mode so a "
+                "stale override fails closed rather than being silently "
+                "ignored.",
+            )
+        )
 
     if mode == "production":
         active_overrides = _active_diagnostic_overrides(ref)
