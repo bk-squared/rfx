@@ -1368,12 +1368,20 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # stacked (n_devices, nx_local, ny, nz) -> gathered (nx, ny, nz)
     # ------------------------------------------------------------------
     def _unstack_and_gather(sharded_arr):
-        arr = np.array(sharded_arr)  # pull to host
-        # arr: (n_devices * nx_local, ny, nz)
-        total_x = arr.shape[0]
+        # Stage 1.5b: must remain traceable under jax.grad. The prior
+        # ``np.array(sharded_arr)`` host-pull raised
+        # TracerArrayConversionError whenever a caller wrapped the runner
+        # in ``jax.grad`` to drive an objective from the gathered
+        # ``final_state``. Pure JAX reshape + ``gather_array_x`` (already
+        # JAX-friendly) keeps the gather in the trace. Mirrors the
+        # already-correct ``distributed_nu.py::_unstack_and_gather``.
+        total_x = sharded_arr.shape[0]
         assert total_x == n_devices * nx_local
-        stacked = arr.reshape(n_devices, nx_local, *arr.shape[1:])
-        gathered = jnp.array(gather_array_x(jnp.array(stacked), ghost))
+        stacked = jnp.reshape(
+            sharded_arr,
+            (n_devices, nx_local) + tuple(sharded_arr.shape[1:]),
+        )
+        gathered = gather_array_x(stacked, ghost)
         # Trim padding cells if nx was padded
         if pad_x > 0:
             gathered = gathered[:nx]
