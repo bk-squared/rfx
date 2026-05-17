@@ -152,7 +152,18 @@ class SimConfig:
 
     @property
     def estimated_memory_mb(self) -> float:
-        """Estimate GPU memory (MB) for forward + reverse-mode AD gradient.
+        """Coarse auto-configuration memory heuristic in megabytes.
+
+        This property is used while choosing a draft mesh from geometry
+        before a ``Simulation`` object exists. It intentionally remains a
+        conservative planning heuristic, not the calibrated AD-memory
+        contract for production runs.
+
+        For user-facing memory reports and inverse-design sizing, prefer
+        ``Simulation.estimate_ad_memory(...)`` or
+        ``Simulation.mesh_intelligence_report(...)``. Those APIs know the
+        final grid/profiles, NTFF state, and segmented scan-of-scan
+        checkpointing semantics from issue #31.
 
         Accounts for:
         - 6 field arrays (Ex, Ey, Ez, Hx, Hy, Hz)

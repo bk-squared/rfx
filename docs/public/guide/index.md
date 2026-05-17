@@ -31,6 +31,7 @@ Start with the recommended default lane unless you specifically need an experime
 | [Materials & Geometry](/rfx/guide/materials-geometry/) | Material library, Debye/Lorentz models, CSG shapes, and PCB stackup basics |
 | [Sources & Ports](/rfx/guide/sources-ports/) | Soft sources, lumped/wire ports, waveguide ports, and experimental port surfaces |
 | [Probes & S-Parameters](/rfx/guide/probes-sparams/) | DFT probes, S-matrix helpers, Harminv, de-embedding, and exports |
+| [Memory Reduction](/rfx/guide/memory-reduction/) | How to reduce FDTD/AD memory without crossing validation boundaries |
 | [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) | Experimental thin-substrate mesh workflows |
 | [Waveguide Ports](/rfx/guide/waveguide-ports/) | Modal waveguide excitation and S-matrix extraction |
 | [Floquet Ports](/rfx/guide/floquet-ports/) | Experimental Bloch-periodic unit-cell workflows |

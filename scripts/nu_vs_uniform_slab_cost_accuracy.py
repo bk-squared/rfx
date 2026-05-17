@@ -25,11 +25,13 @@ Run:
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import time
 
 os.environ.setdefault("JAX_ENABLE_X64", "0")
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import numpy as np
 import jax.numpy as jnp
@@ -59,7 +61,6 @@ NUM_PERIODS = 50
 
 def _analytic_slab_s21(freqs):
     """Corrected-β_d Airy S21 at slab edges."""
-    eta0 = 376.730313668
     omega = 2.0 * np.pi * freqs
     k = omega / C0
     kc = 2.0 * np.pi * F_CUT / C0
@@ -80,8 +81,8 @@ def _de_embed(S21_edge, beta_v):
     return S21_edge * np.exp(+1j * beta_v * SLAB_L)
 
 
-def _run_uniform(dx, n_cpml):
-    sim = Simulation(
+def _build_uniform_sim(dx, n_cpml):
+    return Simulation(
         freq_max=float(FREQS_HZ[-1]) * 1.1,
         domain=(DOMAIN_X, A_WG, B_WG),
         boundary=BoundarySpec(
@@ -92,6 +93,9 @@ def _run_uniform(dx, n_cpml):
         cpml_layers=n_cpml,
         dx=dx,
     )
+
+
+def _add_slab_and_ports(sim):
     sim.add_material("slab", eps_r=2.0, sigma=0.0)
     sim.add(Box((SLAB_CENTER_X - 0.5 * SLAB_L, 0.0, 0.0),
                 (SLAB_CENTER_X + 0.5 * SLAB_L, A_WG, B_WG)),
@@ -109,6 +113,11 @@ def _run_uniform(dx, n_cpml):
         waveform="modulated_gaussian",
         reference_plane=REF_RIGHT, name="right",
     )
+    return sim
+
+
+def _run_uniform(dx, n_cpml):
+    sim = _add_slab_and_ports(_build_uniform_sim(dx, n_cpml))
     t0 = time.time()
     result = sim.compute_waveguide_s_matrix(
         num_periods=NUM_PERIODS, normalize=True)
@@ -119,7 +128,7 @@ def _run_uniform(dx, n_cpml):
     return dt, s21
 
 
-def _run_nu(dx_coarse, dx_fine):
+def _build_nu_sim(dx_coarse, dx_fine):
     """dx_profile: coarse outside slab, fine inside [95, 105] mm.
 
     NU-uniform y,z stay at dx_coarse (no dielectric variation off-axis
@@ -138,7 +147,7 @@ def _run_nu(dx_coarse, dx_fine):
     from rfx.auto_config import smooth_grading
     dx_profile = smooth_grading(raw, max_ratio=1.3)
 
-    sim = Simulation(
+    return Simulation(
         freq_max=float(FREQS_HZ[-1]) * 1.1,
         domain=(float(np.sum(dx_profile)), A_WG, B_WG),
         boundary=BoundarySpec(
@@ -150,23 +159,10 @@ def _run_nu(dx_coarse, dx_fine):
         dx=dx_coarse,
         dx_profile=dx_profile,
     )
-    sim.add_material("slab", eps_r=2.0, sigma=0.0)
-    sim.add(Box((SLAB_CENTER_X - 0.5 * SLAB_L, 0.0, 0.0),
-                (SLAB_CENTER_X + 0.5 * SLAB_L, A_WG, B_WG)),
-            material="slab")
-    port_freqs = jnp.asarray(FREQS_HZ)
-    sim.add_waveguide_port(
-        PORT_LEFT_X, direction="+x", mode=(1, 0), mode_type="TE",
-        freqs=port_freqs, f0=F0, bandwidth=0.5,
-        waveform="modulated_gaussian",
-        reference_plane=REF_LEFT, name="left",
-    )
-    sim.add_waveguide_port(
-        PORT_RIGHT_X, direction="-x", mode=(1, 0), mode_type="TE",
-        freqs=port_freqs, f0=F0, bandwidth=0.5,
-        waveform="modulated_gaussian",
-        reference_plane=REF_RIGHT, name="right",
-    )
+
+
+def _run_nu(dx_coarse, dx_fine):
+    sim = _add_slab_and_ports(_build_nu_sim(dx_coarse, dx_fine))
     t0 = time.time()
     result = sim.compute_waveguide_s_matrix(
         num_periods=NUM_PERIODS, normalize=True)
@@ -174,7 +170,7 @@ def _run_nu(dx_coarse, dx_fine):
     s = np.asarray(result.s_params)
     port_idx = {n: i for i, n in enumerate(result.port_names)}
     s21 = s[port_idx["right"], port_idx["left"], :]
-    return dt, s21, len(dx_profile)
+    return dt, s21, len(sim._dx_profile)
 
 
 def _rms_err(s21, ref):
@@ -185,7 +181,47 @@ def _max_err(s21, ref):
     return float(np.max(np.abs(np.abs(s21) - np.abs(ref)))) * 100.0
 
 
+def _dry_run_report() -> int:
+    """Print bounded cost/memory estimates without running FDTD solves."""
+    cases = [
+        ("uniform dx=1.0 mm", _add_slab_and_ports(_build_uniform_sim(1e-3, 20))),
+        ("uniform dx=0.5 mm", _add_slab_and_ports(_build_uniform_sim(0.5e-3, 40))),
+        ("NU coarse=1.0 fine=0.25 mm", _add_slab_and_ports(_build_nu_sim(1e-3, 0.25e-3))),
+        ("NU coarse=1.0 fine=0.10 mm", _add_slab_and_ports(_build_nu_sim(1e-3, 0.10e-3))),
+    ]
+    print("configuration                        | cells       | vs uniform-fine | segmented AD")
+    print("-" * 91)
+    for name, sim in cases:
+        report = sim.mesh_intelligence_report(
+            n_steps=10_000,
+            checkpoint_every=1000,
+            check_ntff=False,
+        )
+        seg = report.ad_memory.ad_segmented_gb if report.ad_memory else None
+        print(
+            f"{name:<36} | {report.cells:11d} | "
+            f"{report.cell_savings_factor:15.2f}x | "
+            f"{seg:10.2f} GB"
+        )
+        if report.preflight_issues:
+            print(f"  preflight issues: {len(report.preflight_issues)}")
+    return 0
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--dry-run-report",
+        action="store_true",
+        help=(
+            "Print mesh_intelligence_report cost/memory estimates without "
+            "running expensive FDTD S-parameter solves."
+        ),
+    )
+    args = parser.parse_args()
+    if args.dry_run_report:
+        return _dry_run_report()
+
     ref_edge, beta_v = _analytic_slab_s21(FREQS_HZ)
     ref = _de_embed(ref_edge, beta_v)
 

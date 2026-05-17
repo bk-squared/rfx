@@ -20,11 +20,12 @@ during reverse-mode).
 
 from __future__ import annotations
 
-import math
+import json
+
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import ADMemoryPlan, Simulation
 
 
 def _patch_like_sim():
@@ -75,3 +76,60 @@ def test_monotone_in_chunk():
         for c in [50, 100, 500, 1000]
     ]
     assert gbs == sorted(gbs, reverse=True), gbs
+
+
+def test_plan_ad_memory_returns_none_when_full_ad_fits():
+    sim = _patch_like_sim()
+
+    plan = sim.plan_ad_memory(n_steps=100, available_memory_gb=100.0)
+
+    assert isinstance(plan, ADMemoryPlan)
+    assert plan.full_ad_fits is True
+    assert plan.segmented_fits is True
+    assert plan.checkpoint_every is None
+    assert plan.selected_estimate.checkpoint_every is None
+    assert plan.selected_estimate.ad_full_gb <= plan.target_memory_gb
+
+
+def test_plan_ad_memory_recommends_checkpoint_every_for_budget():
+    sim = _patch_like_sim()
+
+    plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=1.0)
+
+    assert plan.full_ad_fits is False
+    assert plan.segmented_fits is True
+    assert plan.checkpoint_every is not None
+    assert plan.selected_estimate.checkpoint_every == plan.checkpoint_every
+    assert plan.selected_estimate.ad_segmented_gb <= plan.target_memory_gb
+    if plan.checkpoint_every > 1:
+        previous = sim.estimate_ad_memory(
+            n_steps=10_000,
+            available_memory_gb=1.0,
+            checkpoint_every=plan.checkpoint_every - 1,
+        )
+        assert previous.ad_segmented_gb > plan.target_memory_gb
+
+
+def test_plan_ad_memory_reports_unfit_budget():
+    sim = _patch_like_sim()
+
+    plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=0.001)
+
+    assert plan.full_ad_fits is False
+    assert plan.segmented_fits is False
+    assert plan.checkpoint_every == 10_000
+    assert plan.selected_estimate.ad_segmented_gb > plan.target_memory_gb
+    assert "reduce mesh size" in plan.recommendation
+
+
+def test_plan_ad_memory_serializes_artifact():
+    sim = _patch_like_sim()
+
+    plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=1.0)
+    artifact = plan.to_dict()
+    parsed = json.loads(plan.to_json())
+
+    assert artifact["checkpoint_every"] == plan.checkpoint_every
+    assert artifact["selected_estimate"]["checkpoint_every"] == plan.checkpoint_every
+    assert artifact["segmented_fits"] is True
+    assert parsed == artifact

@@ -173,6 +173,42 @@ compared to `dt ~= 0.96 ps` for a uniform 0.5 mm grid. The non-uniform grid pays
 
 ---
 
+## Mesh and AD memory planning artifact
+
+Use `Simulation.mesh_intelligence_report(...)` before running a memory-constrained
+non-uniform case.  It compares the configured grid against a uniform-fine grid at
+the smallest configured cell size, carries preflight issues, and can include the
+segmented-AD estimate used by the non-uniform scan path.
+
+```python
+plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=24.0)
+report = sim.mesh_intelligence_report(
+    n_steps=10_000,
+    checkpoint_every=plan.checkpoint_every,
+    available_memory_gb=24.0,
+)
+
+print(plan.recommendation)
+print(report.cell_savings_factor)
+print(report.recommendation)
+
+# Store this alongside validation or experiment artifacts.
+plan_json = plan.to_json()
+report_json = report.to_json()
+```
+
+The same planning artifact can be generated from the command line with:
+
+```bash
+python scripts/memory_reduction_planning_artifact.py --available-memory-gb 24.0
+```
+
+For claims-bearing work, treat the report as a planning artifact rather than a
+physics validation by itself: resolve any `preflight_issues`, then verify the
+observable against the appropriate uniform or external reference lane.
+
+---
+
 ## `make_current_source` normalisation
 
 When building sources for the non-uniform grid at the low level, use `make_current_source` to correctly normalise the current injection to the local cell volume:
