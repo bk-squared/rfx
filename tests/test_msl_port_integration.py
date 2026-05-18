@@ -92,21 +92,23 @@ GATE_F_HI = 4.5e9
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "Issue #80 Fix B: wavelength-bound probe-placement defaults "
-        "(commit on fix/issue-80-msl-sparam) moved the 3-probe extractor "
-        "OUT of its q->1 singular regime (old spacing=3 cells gave "
-        "beta*delta=0.04 rad; new spacing=24 cells gives beta*delta=0.34 "
-        "rad ~ pi/8). With a well-conditioned extractor the de-embedded "
-        "Re(Z0) for this 50 ohm line reads ~74 ohm vs analytic "
-        "Hammerstad-Jensen 47.9 ohm — exceeding the (40, 65) gate. The "
-        "old singular-regime defaults reported ~54 ohm (13% off analytic) "
-        "and passed the gate by accident. The residual ~55% Z0 deviation "
-        "is the pre-existing Z0-extraction bug documented in issue #80 "
-        "diagnostic #4 ('Z0 drifts 50->75 ohm with offset') and is the "
-        "target of Fix C (SVD/N-probe least-squares de-embedding), which "
-        "is a separate task. strict=True so this xfail self-removes once "
-        "Fix C lands and the gate passes again. |S11|=0.144 and |S21|=1.00 "
-        "still pass; only the Z0 gate fails."
+        "Issue #80, blocked on the I1 current measurement — NOT the "
+        "extractor. Fix B moved the extractor out of its q->1 singular "
+        "regime; Fix C (commit 9467ab1, N-probe least-squares "
+        "wave-decomposition) made the alpha/gamma/beta fit robust (|q|<1, "
+        "synthetic-fixture-proven). Neither closed this gate: mean Re(Z0) "
+        "still reads ~74 ohm vs analytic Hammerstad-Jensen 47.9 ohm "
+        "(~55% high). Root cause is UPSTREAM of the wave decomposition: "
+        "Z0 = (alpha-gamma)/I1 with a sound alpha,gamma fit but a "
+        "contaminated I1 — the Hy Ampere-integral current DFT probe is "
+        "~1.55x off (74.46/47.89). This is issue #80 diagnostic #4 "
+        "('non-converged Z0') / evidence-point-4 ('Re(V1/I1) "
+        "non-physical'); the N-probe extractor faithfully reports the "
+        "bad input. The next fix targets the I1/V phasor measurement in "
+        "compute_msl_s_matrix, not the extractor. strict=True so this "
+        "xfail self-removes once the I1 measurement is corrected. "
+        "|S11|=0.145 and |S21|=1.00 pass; only the Z0 gate fails. The "
+        "(40, 65) bound is left UNCHANGED."
     ),
 )
 def test_msl_thru_line_passive_gate():
@@ -117,10 +119,10 @@ def test_msl_thru_line_passive_gate():
       0.90 < |S21| < 1.05
       Z0 ∈ (40, 65) Ω
 
-    XFAIL since issue #80 Fix B — see the ``xfail`` marker reason. The
-    gate values themselves are deliberately left UNCHANGED so the Z0
-    bound is not silently weakened; the extractor must converge to the
-    analytic Z0 under Fix C for this gate to pass again.
+    XFAIL since issue #80 — see the ``xfail`` marker reason. The gate
+    values are deliberately left UNCHANGED so the Z0 bound is not
+    silently weakened; the I1 current measurement must be corrected for
+    the de-embedded Z0 to converge to analytic and this gate to pass.
     """
 
     sim = Simulation(
