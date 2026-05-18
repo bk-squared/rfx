@@ -521,6 +521,7 @@ class _SparamMixin:
         freqs: jnp.ndarray | None = None,
         n_freqs: int = 100,
         raw_3probe_dump_path: str | None = None,
+        strict_extractor: bool = False,
     ) -> "MSLSMatrixResult":
         """Compute the MSL S-matrix using 3-probe numerical de-embedding.
 
@@ -550,6 +551,15 @@ class _SparamMixin:
             ``scripts/diagnostics/replay_msl_3probe_dump.py`` can independently
             replay the de-embedding without rerunning FDTD. This is intended
             for E3 validation evidence.
+        strict_extractor : bool
+            Honesty guard for the 3-probe de-embedding (issue #80 Fix A).
+            After extraction, the per-frequency ``|q|`` and extracted ``Z0``
+            are validated against physical bounds (``|q| <= 1`` for a passive
+            line; extracted ``Z0`` within 10 % of the analytic
+            Hammerstad-Jensen value). When ``False`` (default) a violation
+            raises a loud :func:`warnings.warn`; when ``True`` it raises
+            :class:`ValueError` instead. The extracted ``|S11|`` is
+            unreliable when either bound is violated.
 
         Returns
         -------
@@ -806,6 +816,58 @@ class _SparamMixin:
                     v1p, v2p, v3p = v_per_port[j]
                     alpha_p, _ = msl_forward_amplitude(v1p, v2p, v3p)
                     S[j, driven, :] = compute_s21(alpha_p, alpha_d)
+
+            # --- Honesty guard on the 3-probe extractor (issue #80 Fix A) ---
+            # raw_q / raw_z0 are now fully populated for every driven run and
+            # every port. Validate them against physical bounds and surface a
+            # loud warning (or ValueError when strict_extractor=True) so the
+            # caller does not silently optimize an unreliable |S11|.
+            import warnings as _w
+
+            from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+
+            _Q_EPS = 1e-6
+            _Z0_TOL = 0.10
+            for driven in range(n_ports):
+                pe = entries[driven]
+                eps_r_ref = pe.eps_r_sub if pe.eps_r_sub is not None else 1.0
+                z0_hj, _ = hammerstad_jensen_z0_eps_eff(
+                    pe.width, pe.height, eps_r_ref
+                )
+                q_abs = np.abs(raw_q[driven, driven, :])
+                k_q = int(np.argmax(q_abs))
+                q_max = float(q_abs[k_q])
+                z0_dev = np.abs(raw_z0[driven, driven, :] - z0_hj) / z0_hj
+                k_z = int(np.argmax(z0_dev))
+                z0_dev_max = float(z0_dev[k_z])
+                violations: list[str] = []
+                if q_max > 1.0 + _Q_EPS:
+                    violations.append(
+                        f"|q| = {q_max:.4f} > 1 at f = "
+                        f"{freqs_arr[k_q] / 1e9:.4f} GHz (non-physical for a "
+                        f"passive line)"
+                    )
+                if z0_dev_max > _Z0_TOL:
+                    violations.append(
+                        f"extracted Z0 = "
+                        f"{raw_z0[driven, driven, k_z].real:.2f} ohm deviates "
+                        f"{z0_dev_max * 100:.1f}% from the analytic "
+                        f"Hammerstad-Jensen Z0 = {z0_hj:.2f} ohm at f = "
+                        f"{freqs_arr[k_z] / 1e9:.4f} GHz "
+                        f"(> {_Z0_TOL * 100:.0f}% tolerance)"
+                    )
+                if violations:
+                    msg = (
+                        f"compute_msl_s_matrix: 3-probe extractor is unstable "
+                        f"for MSL port {pe.name!r}: "
+                        + "; ".join(violations)
+                        + ". The extracted |S11| is UNRELIABLE — see issue "
+                        "#80. Increase n_probe_offset / n_probe_spacing, or "
+                        "use a field-based loss."
+                    )
+                    if strict_extractor:
+                        raise ValueError(msg)
+                    _w.warn(msg, stacklevel=2)
 
             if raw_3probe_dump_path is not None:
                 import json
