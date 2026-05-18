@@ -384,6 +384,13 @@ def _run_subgridded_once(
                 )
             continue
 
+        # Port conductance -> sigma. The general axis-aware form is
+        # sigma = G * d_parallel / (d_perp1 * d_perp2); the subgrid fine
+        # region is a uniform cubic Grid (dx_f = dx_c / ratio, a single
+        # scalar — SBP-SAT subgridding is defined only on uniform grids),
+        # so d_parallel / (d_perp1 * d_perp2) reduces exactly to 1 / dx_f.
+        # This is the correct cubic-cell result, not a hidden cubic
+        # assumption — there is no non-cubic subgrid path to be wrong on.
         if pe.extent is not None:
             # Wire port: compute cells manually
             cells = _wire_port_cells_f(pe)
