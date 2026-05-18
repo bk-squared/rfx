@@ -956,6 +956,7 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
         excite: bool = True,
         n_probe_offset: int | None = None,
         n_probe_spacing: int | None = None,
+        n_probes: int = 5,
         name: str | None = None,
         mode: str = "laplace",
         eps_r_sub: float | None = None,
@@ -996,8 +997,20 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
             from its q→1 numerical singularity under mesh refinement.
         n_probe_spacing : int, optional
             Distance (cells) between consecutive probe planes. When ``None``,
-            bound to the wavelength as ``round(lam_min_eff / 16 / dx)`` so
-            β·Δ ≈ π/8 — safely away from the q→1 singularity.
+            bound so the total N-probe array span stays ~``lam_min_eff/8``
+            independent of ``n_probes``:
+            ``round(lam_min_eff / 8 / (n_probes - 1) / dx)``. For
+            ``n_probes=3`` this is exactly ``lam_min_eff/16`` (issue #80
+            Fix B). Shrinking the adjacent spacing as ``n_probes`` grows
+            keeps the probe array from running off short lines.
+        n_probes : int
+            Number of equally-spaced voltage probe planes registered for
+            the N-probe least-squares wave-decomposition extractor (issue
+            #80 Fix C). Probe ``n`` sits at ``offset + n*spacing`` cells
+            from the feed plane. ``N >= 3`` is required; the default 5
+            over-determines the 2-unknown ``(alpha, gamma)`` fit, which
+            removes the 3-probe quadratic's q→1 singularity. The current
+            probe at probe 0 is always recorded for the absolute Z0.
         name : str, optional
             Port label used in result dicts. Auto-generated when omitted.
         eps_r_sub : float, optional
@@ -1060,7 +1073,16 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
                 3, int(round(0.5 * lam_min_eff / (2.0 * math.pi) / _dx))
             )
         if n_probe_spacing is None:
-            n_probe_spacing = max(2, int(round(lam_min_eff / 16.0 / _dx)))
+            # Bind the default so the TOTAL N-probe array span stays
+            # ~lam/8 (the original Fix B 3-probe span of 2*lam/16),
+            # independent of n_probes. For n_probes=3 this is exactly
+            # lam/16 — bit-identical to Fix B. As n_probes grows the
+            # adjacent spacing shrinks so the probe array does not run
+            # off short lines (issue #80 Fix C).
+            span_total = lam_min_eff / 8.0
+            n_probe_spacing = max(
+                2, int(round(span_total / (n_probes - 1) / _dx))
+            )
         if n_probe_offset < 3:
             raise ValueError(
                 f"n_probe_offset must be >= 3 to avoid near-field, got {n_probe_offset}"
@@ -1069,6 +1091,12 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
             raise ValueError(
                 f"n_probe_spacing must be >= 2 to avoid the q->1 extractor "
                 f"singularity, got {n_probe_spacing}"
+            )
+        if n_probes < 3:
+            raise ValueError(
+                f"n_probes must be >= 3 for the N-probe least-squares "
+                f"wave-decomposition extractor (issue #80 Fix C), got "
+                f"{n_probes}"
             )
 
         if waveform is None and excite:
@@ -1088,6 +1116,7 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
             excite=excite,
             n_probe_offset=n_probe_offset,
             n_probe_spacing=n_probe_spacing,
+            n_probes=n_probes,
             mode=mode,
             eps_r_sub=eps_r_sub,
         ))

@@ -475,3 +475,208 @@ def extract_msl_s_params_jax_plane(
     s11 = gamma_d / (alpha_d + eps)
     s21 = alpha_p / (alpha_d + eps)
     return s11, s21
+
+
+# ---------------------------------------------------------------------------
+# Fix C — N-probe least-squares wave decomposition (issue #80)
+# ---------------------------------------------------------------------------
+#
+# The 3-probe quadratic ``q + 1/q = (V1 + V3)/V2`` becomes singular as
+# ``β·Δ → 0`` (the q→1 degeneracy): the discriminant ``coeff² − 4 → 0`` so
+# root selection is noise-dominated and the extracted ``|q|`` drifts above
+# 1 (non-physical for a passive line) — see issue #80.
+#
+# The N-probe extractor below removes that singularity entirely.  Per
+# frequency it fits
+#
+#     V_n = α · exp(−jβ·x_n) + γ · exp(+jβ·x_n)
+#
+# over all N ≥ 3 voltage probes at known positions ``x_n``.  Two stages:
+#
+#   (a) Estimate β ROBUSTLY from the whole probe array.  β enters the
+#       model non-linearly, so we scan a small window of trial β values
+#       centred on the analytic Hammerstad-Jensen guess
+#       ``β₀ = ω·√ε_eff/c`` and, for each trial, solve the *linear*
+#       (α, γ) least-squares problem and score it by the residual.  The
+#       residual is a smooth function of β, so a quadratic-refinement
+#       step around the best grid node gives a sub-grid β.  Anchoring
+#       the scan on the analytic guess is what makes this robust — a
+#       single probe pair (the 3-probe approach) cannot do it.
+#
+#   (b) With β fixed, ``V_n = α·e^{−jβx_n} + γ·e^{+jβx_n}`` is LINEAR in
+#       ``(α, γ)``.  The over-determined N×2 system is solved by
+#       ``jnp.linalg.lstsq`` (SVD-based, JVP rule built into JAX).  No
+#       quadratic, no branch cut, no q→1 singularity.
+#
+# Differentiability: ``jnp.linalg.lstsq`` / ``jnp.linalg.svd`` carry JVP
+# rules in JAX, so ``jax.grad`` flows natively through the whole
+# extractor — no hand-written ``custom_jvp`` is needed.  The β scan uses
+# a fixed Python-int grid size (static) and ``jax.lax`` reductions, so
+# it is JIT- and grad-safe.
+
+
+def _lstsq_alpha_gamma(
+    v: jnp.ndarray, x: jnp.ndarray, beta: jnp.ndarray
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Solve ``V_n = α e^{−jβx_n} + γ e^{+jβx_n}`` for one β by SVD lstsq.
+
+    Parameters
+    ----------
+    v : (N,) complex
+        Voltage phasors at the N probe positions.
+    x : (N,) real
+        Probe positions (metres), measured along the propagation axis.
+    beta : scalar complex
+        Trial propagation constant (rad/m).  Complex β allows a small
+        imaginary (loss) part.
+
+    Returns
+    -------
+    alpha, gamma : scalar complex
+        Forward / backward wave amplitudes at ``x = 0``.
+    residual : scalar real
+        L2 norm of ``V − (α e^{−jβx} + γ e^{+jβx})`` — the fit quality.
+    """
+    x_c = x.astype(jnp.complex64)
+    col_fwd = jnp.exp(-1j * beta * x_c)
+    col_bwd = jnp.exp(+1j * beta * x_c)
+    a_mat = jnp.stack([col_fwd, col_bwd], axis=-1)        # (N, 2)
+    # SVD-based least squares; rcond=None uses the JAX default cutoff.
+    sol, _, _, _ = jnp.linalg.lstsq(a_mat, v, rcond=None)
+    alpha = sol[0]
+    gamma = sol[1]
+    pred = a_mat @ sol
+    residual = jnp.sqrt(jnp.sum(jnp.abs(v - pred) ** 2))
+    return alpha, gamma, residual
+
+
+# Module-level β-scan grid resolution.  Static (Python int) so the scan
+# stays JIT-shape-stable and grad-safe.
+_BETA_SCAN_NODES = 41
+# Scan half-width as a fraction of the analytic β₀ guess.  ±35 % brackets
+# the Hammerstad-Jensen ε_eff uncertainty (~0.5 %) plus FDTD numerical
+# dispersion and any moderate substrate-εr mismatch with wide margin.
+_BETA_SCAN_FRAC = 0.35
+
+
+def _estimate_beta(
+    v: jnp.ndarray, x: jnp.ndarray, beta0: jnp.ndarray
+) -> jnp.ndarray:
+    """Robust β estimate: residual scan around the analytic guess + refine.
+
+    Stage (a) of the N-probe extractor.  ``beta0`` is the analytic
+    Hammerstad-Jensen guess ``ω·√ε_eff/c``; the scan brackets it by
+    ``±_BETA_SCAN_FRAC`` and the minimum-residual node is refined by a
+    3-point parabolic interpolation.  Fully JAX-traceable: the grid size
+    is a static Python int and all reductions use ``jnp``.
+    """
+    beta0 = jnp.real(beta0)
+    lo = beta0 * (1.0 - _BETA_SCAN_FRAC)
+    hi = beta0 * (1.0 + _BETA_SCAN_FRAC)
+    grid = jnp.linspace(lo, hi, _BETA_SCAN_NODES)
+
+    def _resid(b):
+        _, _, r = _lstsq_alpha_gamma(v, x, b.astype(jnp.complex64))
+        return r
+
+    resids = jax.vmap(_resid)(grid)
+    k = jnp.argmin(resids)
+    # Clamp so the 3-point parabolic stencil stays in range.
+    k = jnp.clip(k, 1, _BETA_SCAN_NODES - 2)
+    b_lo, b_mid, b_hi = grid[k - 1], grid[k], grid[k + 1]
+    r_lo, r_mid, r_hi = resids[k - 1], resids[k], resids[k + 1]
+    # Parabolic vertex offset (in grid-step units), clamped to [-1, 1].
+    denom = (r_lo - 2.0 * r_mid + r_hi)
+    num = 0.5 * (r_lo - r_hi)
+    frac = jnp.where(jnp.abs(denom) > 1e-20, num / denom, 0.0)
+    frac = jnp.clip(frac, -1.0, 1.0)
+    step = b_mid - b_lo
+    return (b_mid + frac * step).astype(jnp.complex64)
+
+
+def extract_msl_nprobe(
+    v: jnp.ndarray,
+    x: jnp.ndarray,
+    i1: jnp.ndarray,
+    beta0: jnp.ndarray,
+    *,
+    z0_hj: float | jnp.ndarray | None = None,
+) -> dict:
+    """N-probe least-squares MSL wave decomposition (issue #80 Fix C).
+
+    Robust, JAX-differentiable replacement for the 3-probe quadratic
+    extractor.  Per frequency it fits ``V_n = α e^{−jβx_n} + γ e^{+jβx_n}``
+    over all ``N ≥ 3`` probes, eliminating the q→1 singularity.
+
+    Parameters
+    ----------
+    v : (n_freqs, N) complex
+        Voltage phasors at the N probe planes (probe index is the last
+        axis).  ``x[n]`` is the position of column ``n``.
+    x : (N,) real
+        Probe positions in metres along the propagation axis.  May be a
+        signed coordinate; only differences enter the model.
+    i1 : (n_freqs,) complex
+        Line current at probe 0 (used for the absolute Z0 recovery).
+    beta0 : (n_freqs,) real or complex
+        Analytic Hammerstad-Jensen propagation-constant guess per
+        frequency, ``ω·√ε_eff/c``.  Anchors the β scan (stage a).
+    z0_hj : float or (n_freqs,), optional
+        Analytic Hammerstad-Jensen Z0.  When provided it is returned in
+        the result dict for the honesty-guard sanity check; the extractor
+        itself does not depend on it.
+
+    Returns
+    -------
+    dict with keys
+        ``s11``   : (n_freqs,) complex — γ/α at the probe-0 reference plane.
+        ``z0``    : (n_freqs,) complex — (α − γ)/I1.
+        ``alpha`` : (n_freqs,) complex — forward wave amplitude at x=0.
+        ``gamma`` : (n_freqs,) complex — backward wave amplitude at x=0.
+        ``beta``  : (n_freqs,) complex — fitted propagation constant.
+        ``q``     : (n_freqs,) complex — ``exp(-jβΔ)`` for the honesty
+                     guard, Δ = x[1] − x[0].  ``|q| < 1`` when healthy.
+        ``residual`` : (n_freqs,) real — per-frequency L2 fit residual.
+        ``z0_hj`` : the passed-through analytic Z0 (or ``None``).
+
+    Notes
+    -----
+    The model is anchored at ``x = 0``.  ``x`` is shifted internally so
+    its first entry sits at the origin; ``α``/``γ``/``S11`` are therefore
+    referenced to probe 0 — identical to the 3-probe extractor's
+    convention.
+    """
+    eps = 1e-30
+    v = jnp.asarray(v, dtype=jnp.complex64)
+    if v.ndim == 1:
+        v = v[None, :]
+    x = jnp.asarray(x, dtype=jnp.float32)
+    # Reference the model at probe 0 so α/γ are probe-0 amplitudes.
+    x = x - x[0]
+    i1 = jnp.asarray(i1, dtype=jnp.complex64)
+    beta0 = jnp.asarray(beta0)
+    if beta0.ndim == 0:
+        beta0 = jnp.broadcast_to(beta0, (v.shape[0],))
+
+    def _per_freq(v_row, b0):
+        beta = _estimate_beta(v_row, x, b0)
+        alpha, gamma, residual = _lstsq_alpha_gamma(v_row, x, beta)
+        return alpha, gamma, beta, residual
+
+    alpha, gamma, beta, residual = jax.vmap(_per_freq)(v, beta0)
+
+    z0 = (alpha - gamma) / (i1 + eps)
+    s11 = gamma / (alpha + eps)
+    delta = x[1] - x[0]
+    q = jnp.exp(-1j * beta * delta.astype(jnp.complex64))
+
+    return dict(
+        s11=s11,
+        z0=z0,
+        alpha=alpha,
+        gamma=gamma,
+        beta=beta,
+        q=q,
+        residual=residual,
+        z0_hj=z0_hj,
+    )

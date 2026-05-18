@@ -824,6 +824,38 @@ def msl_probe_x_coords(
     return _x_for_index(i1), _x_for_index(i2), _x_for_index(i3)
 
 
+def msl_probe_x_coords_n(
+    grid,
+    port: MSLPort,
+    n_probes: int,
+    n_offset_cells: int = 5,
+    n_spacing_cells: int = 3,
+) -> tuple[float, ...]:
+    """Return ``n_probes`` downstream probe x-coordinates (issue #80 Fix C).
+
+    Generalises :func:`msl_probe_x_coords` to N >= 3 probes for the
+    N-probe least-squares wave-decomposition extractor. Probe ``n`` sits
+    ``n_offset_cells + n * n_spacing_cells`` cells from the feed plane,
+    along the propagation direction. Indices are clamped into the valid
+    grid range so callers always receive in-domain physical coordinates.
+    """
+    if n_probes < 3:
+        raise ValueError(f"n_probes must be >= 3, got {n_probes}")
+    i_feed, _, _ = grid.position_to_index((port.feed_x, port.y_lo, port.z_lo))
+    sign = 1 if port.direction == "+x" else -1
+    nx = grid.nx
+    pad = getattr(grid, "pad_x_lo", 0)
+
+    def _x_for_index(target_i: int) -> float:
+        clamped = max(0, min(target_i, nx - 1))
+        return float((clamped - pad) * grid.dx)
+
+    return tuple(
+        _x_for_index(i_feed + sign * (n_offset_cells + n * n_spacing_cells))
+        for n in range(n_probes)
+    )
+
+
 # ---------------------------------------------------------------------------
 # 3-probe S-parameter extraction
 # ---------------------------------------------------------------------------

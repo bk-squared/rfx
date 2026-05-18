@@ -532,6 +532,7 @@ class _MSLPortEntry:
     excite: bool = True
     n_probe_offset: int = 5
     n_probe_spacing: int = 3
+    n_probes: int = 5
     mode: str = "eigenmode"
     eps_r_sub: float | None = None
 
