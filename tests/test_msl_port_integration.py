@@ -89,28 +89,6 @@ GATE_F_HI = 4.5e9
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Issue #80, blocked on the I1 current measurement — NOT the "
-        "extractor. Fix B moved the extractor out of its q->1 singular "
-        "regime; Fix C (commit 9467ab1, N-probe least-squares "
-        "wave-decomposition) made the alpha/gamma/beta fit robust (|q|<1, "
-        "synthetic-fixture-proven). Neither closed this gate: mean Re(Z0) "
-        "still reads ~74 ohm vs analytic Hammerstad-Jensen 47.9 ohm "
-        "(~55% high). Root cause is UPSTREAM of the wave decomposition: "
-        "Z0 = (alpha-gamma)/I1 with a sound alpha,gamma fit but a "
-        "contaminated I1 — the Hy Ampere-integral current DFT probe is "
-        "~1.55x off (74.46/47.89). This is issue #80 diagnostic #4 "
-        "('non-converged Z0') / evidence-point-4 ('Re(V1/I1) "
-        "non-physical'); the N-probe extractor faithfully reports the "
-        "bad input. The next fix targets the I1/V phasor measurement in "
-        "compute_msl_s_matrix, not the extractor. strict=True so this "
-        "xfail self-removes once the I1 measurement is corrected. "
-        "|S11|=0.145 and |S21|=1.00 pass; only the Z0 gate fails. The "
-        "(40, 65) bound is left UNCHANGED."
-    ),
-)
 def test_msl_thru_line_passive_gate():
     """50 Ω microstrip thru with static-Laplace Ez source (mode='laplace').
 
@@ -119,10 +97,16 @@ def test_msl_thru_line_passive_gate():
       0.90 < |S21| < 1.05
       Z0 ∈ (40, 65) Ω
 
-    XFAIL since issue #80 — see the ``xfail`` marker reason. The gate
-    values are deliberately left UNCHANGED so the Z0 bound is not
-    silently weakened; the I1 current measurement must be corrected for
-    the de-embedded Z0 to converge to analytic and this gate to pass.
+    Issue #80 stage S1 (2026-05-19) closed the long-standing ``xfail``
+    here. The de-embedded Z0 used to read ~74 Ω because the line current
+    was an open single-leg ``∑Hy·dy`` integral that undercounted ``I`` by
+    ~1.5x. ``compute_msl_s_matrix`` now measures the closed Ampère-loop
+    current ``∮H·dl`` (``msl_loop_current``) and extracts S-parameters via
+    the OpenEMS-style V·I wave split; Z0 lands at ~57 Ω, inside the gate
+    band (the ~57-vs-48 residual is the documented Yee-staircase bias at
+    3 substrate cells). The (40, 65) bound is left UNCHANGED — it was
+    never weakened to make this pass. See
+    ``docs/agent-memory/port_sparam_review_2026-05-19.md``.
     """
 
     sim = Simulation(

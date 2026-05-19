@@ -879,6 +879,98 @@ def _integrate_i(hy_plane: np.ndarray, y_lo_idx: int, y_hi_idx: int, z_top_idx: 
     return total
 
 
+def msl_loop_current(
+    hy_plane,
+    hz_plane,
+    *,
+    j_lo: int,
+    j_hi: int,
+    k_trace_lo: int,
+    k_trace_hi: int,
+    dy_arr,
+    dz_arr,
+    direction: str,
+):
+    """Longitudinal trace current via the closed Ampere loop ``∮H·dl``.
+
+    The microstrip trace conductor occupies the grid cells
+    ``y ∈ [j_lo, j_hi]``, ``z ∈ [k_trace_lo, k_trace_hi]``.  The line
+    current ``I(f)`` is the closed contour integral of the transverse H
+    field around that conductor in the x-normal probe plane.  By the
+    discrete Ampere identity on the Yee grid this contour integral
+    equals the longitudinal current threading the trace::
+
+        I = ∮ H·dl
+          = + Σ_j  Hy[j, k_trace_lo-1]·dy     (bottom leg, below trace)
+            − Σ_j  Hy[j, k_trace_hi  ]·dy     (top leg,    above trace)
+            + Σ_k  Hz[j_hi,   k]·dz           (right leg)
+            − Σ_k  Hz[j_lo-1, k]·dz           (left leg)
+
+    with ``j`` spanning ``[j_lo, j_hi]`` on the horizontal legs and ``k``
+    spanning ``[k_trace_lo, k_trace_hi]`` on the side legs.
+
+    Yee staggering (rfx convention — ``rfx/core/yee.py``): ``Hy[i,j,k]``
+    sits at ``z=(k+½)dz``, so ``Hy[·,·,k_trace_lo-1]`` is the edge on the
+    bottom face of the trace block and ``Hy[·,·,k_trace_hi]`` the edge on
+    the top face.  ``Hz[i,j,k]`` sits at ``y=(j+½)dy``, so
+    ``Hz[·,j_hi,·]`` / ``Hz[·,j_lo-1,·]`` are the right / left side edges.
+
+    The pre-issue-#80 current (``_integrate_i`` / the inline integral in
+    ``compute_msl_s_matrix``) used the bottom leg only, undercounting
+    ``I`` by ~1.5x — it dropped the air-side return Hy and the trace-edge
+    Hz — which inflated the de-embedded Z0 to ~74 ohm vs the ~48 ohm
+    analytic Hammerstad-Jensen value.  Closing the loop restores Ampere's
+    law.  See ``docs/agent-memory/port_sparam_review_2026-05-19.md``
+    (stage S1).
+
+    Parameters
+    ----------
+    hy_plane, hz_plane : (n_freqs, ny, nz) complex
+        x-normal DFT-plane accumulators for Hy and Hz at the probe plane.
+    j_lo, j_hi : int
+        Trace-conductor y-cell span (inclusive).
+    k_trace_lo, k_trace_hi : int
+        Trace-conductor z-cell span (inclusive).
+    dy_arr, dz_arr : array
+        Per-cell sizes along y / z (uniform or non-uniform).
+    direction : "+x" or "-x"
+        Propagation direction.  The raw contour integral is negated for
+        ``+x`` ports so the returned ``I`` is positive for a forward
+        quasi-TEM wave (``Z0 = V/I > 0``), matching the legacy current
+        convention.
+
+    Returns
+    -------
+    (n_freqs,) complex line current ``I(f)``.
+    """
+    n_y = int(hy_plane.shape[1])
+    n_z = int(hy_plane.shape[2])
+    if k_trace_lo < 1 or j_lo < 1 or k_trace_hi >= n_z or j_hi >= n_y:
+        raise ValueError(
+            "msl_loop_current: the Ampere loop runs one cell outside the "
+            "trace block, so the trace needs >=1 cell of margin below it, "
+            "above it, and on each side. Got "
+            f"j=[{j_lo},{j_hi}], k_trace=[{k_trace_lo},{k_trace_hi}] "
+            f"on a ({n_y},{n_z}) y-z plane."
+        )
+    dy = np.asarray(dy_arr, dtype=float)
+    dz = np.asarray(dz_arr, dtype=float)
+    js = slice(j_lo, j_hi + 1)
+    ks = slice(k_trace_lo, k_trace_hi + 1)
+
+    # Horizontal legs — Hy integrated across the trace width.
+    bottom = (hy_plane[:, js, k_trace_lo - 1] * dy[js]).sum(axis=1)
+    top = (hy_plane[:, js, k_trace_hi] * dy[js]).sum(axis=1)
+    # Vertical legs — Hz integrated over the trace height.
+    right = (hz_plane[:, j_hi, ks] * dz[ks]).sum(axis=1)
+    left = (hz_plane[:, j_lo - 1, ks] * dz[ks]).sum(axis=1)
+
+    i_loop = bottom - top + right - left
+    if direction == "+x":
+        i_loop = -i_loop
+    return i_loop
+
+
 def extract_msl_s_params(
     v1: np.ndarray,
     v2: np.ndarray,

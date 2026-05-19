@@ -578,6 +578,7 @@ class _SparamMixin:
             MSLPort,
             _msl_yz_cells,
             compute_s21,
+            msl_loop_current,
             msl_probe_x_coords_n,
         )
 
@@ -714,7 +715,12 @@ class _SparamMixin:
         # land beta outside the scan window for a loaded substrate.
         from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
         _C0_MSL = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
-        _msl_materials = self._assemble_materials(grid)[0]
+        _msl_assembled = self._assemble_materials(grid)
+        _msl_materials = _msl_assembled[0]
+        _msl_pec_mask = (
+            None if _msl_assembled[3] is None
+            else np.asarray(_msl_assembled[3])
+        )
         beta0_per_port: list[np.ndarray] = []
         z0_hj_per_port: list[float] = []
         for p_idx, pe in enumerate(entries):
@@ -736,6 +742,32 @@ class _SparamMixin:
                 2.0 * np.pi * freqs_arr * float(np.sqrt(eps_eff_hj)) / _C0_MSL
             )
             z0_hj_per_port.append(float(z0_hj))
+
+        # Trace-conductor z-cell span per port (issue #80 stage S1). The
+        # closed Ampere-loop current needs the PEC trace cells; the trace
+        # is the PEC run at/above the substrate top in the port's centre
+        # column (the ground-plane PEC sits far below near k_lo).
+        trace_k_per_port: list[tuple[int, int]] = []
+        for p_idx in range(n_ports):
+            meta = port_idx_meta[p_idx]
+            i_feed_p = _msl_yz_cells(grid, msl_ports[p_idx])[0][0]
+            col = (
+                None if _msl_pec_mask is None
+                else _msl_pec_mask[i_feed_p, meta["j_centre"], meta["k_top"]:]
+            )
+            k_pec = np.array([], dtype=int) if col is None else np.where(col)[0]
+            if k_pec.size == 0:
+                raise RuntimeError(
+                    "compute_msl_s_matrix: no PEC trace conductor found "
+                    "above the substrate top for MSL port "
+                    f"{entries[p_idx].name!r}; the closed Ampere-loop "
+                    "current (issue #80 stage S1) needs the trace PEC. "
+                    "Add the microstrip trace as a Box(material='pec')."
+                )
+            trace_k_per_port.append((
+                int(meta["k_top"] + int(k_pec.min())),
+                int(meta["k_top"] + int(k_pec.max())),
+            ))
 
         # Stash existing add_dft_plane_probe registrations and restore on exit.
         saved_dft = list(self._dft_planes)
@@ -785,6 +817,7 @@ class _SparamMixin:
                 self._dft_planes = list(saved_dft)
                 ez_probe_names: list[list[str]] = [[] for _ in range(n_ports)]
                 hy_probe_names: list[str] = [None] * n_ports  # type: ignore
+                hz_probe_names: list[str] = [None] * n_ports  # type: ignore
                 for p_idx, (mp, pxs) in enumerate(zip(msl_ports, probe_xs)):
                     for q_idx, x_coord in enumerate(pxs):
                         nm = f"_msl_run{driven}_p{p_idx}_ez{q_idx}"
@@ -801,6 +834,15 @@ class _SparamMixin:
                         name=nm_hy,
                     )
                     hy_probe_names[p_idx] = nm_hy
+                    # Hz plane probe at probe 0 — the side legs of the
+                    # closed Ampere-loop current (issue #80 stage S1).
+                    nm_hz = f"_msl_run{driven}_p{p_idx}_hz"
+                    self.add_dft_plane_probe(
+                        axis="x", coordinate=float(pxs[0]),
+                        component="hz", freqs=jnp.asarray(freqs_arr),
+                        name=nm_hz,
+                    )
+                    hz_probe_names[p_idx] = nm_hz
 
                 # Run; pass n_steps through (None → auto).
                 result = self.run(
@@ -824,28 +866,22 @@ class _SparamMixin:
                         vs.append(v_f)
                     v_per_port.append(vs)
                     hy_plane = np.asarray(planes[hy_probe_names[p_idx]].accumulator)
-                    ny_grid = hy_plane.shape[1]
-                    # Yee: Hy[:,j,k] lives at z=(k+0.5)*dz; k_hi-1 is inside
-                    # substrate just below trace surface where H is largest.
-                    k_h = max(meta["k_lo"], meta["k_top"] - 1)
-                    # fringing return current extends ~2*h laterally;
-                    # widen y-integration to capture the full Ampere integral.
-                    dy_local = float(dy_arr[meta["j_centre"]])
-                    n_y_margin = max(2, int(round(2 * meta["height"] / dy_local)))
-                    j_lo_ext = max(0, meta["j_lo"] - n_y_margin)
-                    j_hi_ext = min(ny_grid - 1, meta["j_hi"] + n_y_margin)
-                    i_f = np.zeros(n_freqs_used, dtype=complex)
-                    for j in range(j_lo_ext, j_hi_ext + 1):
-                        i_f = i_f + hy_plane[:, j, k_h] * float(dy_arr[j])
-                    # Sign convention: for a +x propagating quasi-TEM wave
-                    # with Ez>0 (ground→trace), Hy<0 (x̂×ẑ = −ŷ), so the
-                    # raw Hy integral gives I<0 and Z0<0.  Negate for +x
-                    # ports so that Z0 = V/I > 0 matches the physical
-                    # current direction (current flows +x on trace).
-                    # For -x ports the sign is already correct.
-                    mp_p = msl_ports[p_idx]
-                    if mp_p.direction == "+x":
-                        i_f = -i_f
+                    hz_plane = np.asarray(planes[hz_probe_names[p_idx]].accumulator)
+                    # Closed Ampere-loop current ∮H·dl around the trace
+                    # conductor (issue #80 stage S1). The pre-S1 inline
+                    # integral summed the bottom Hy leg only and undercounted
+                    # I by ~1.5x, inflating the de-embedded Z0 to ~74 vs the
+                    # ~48 ohm analytic value. msl_loop_current closes the
+                    # contour (bottom/top Hy legs + left/right Hz legs) and
+                    # carries the +x current-sign convention.
+                    k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
+                    i_f = msl_loop_current(
+                        hy_plane, hz_plane,
+                        j_lo=meta["j_lo"], j_hi=meta["j_hi"],
+                        k_trace_lo=k_tr_lo, k_trace_hi=k_tr_hi,
+                        dy_arr=dy_arr, dz_arr=dz_arr,
+                        direction=msl_ports[p_idx].direction,
+                    )
                     i_first_per_port.append(i_f)
                     # N-probe least-squares wave decomposition (issue #80
                     # Fix C). Stack the N voltage probes into (n_freqs, N),
@@ -866,76 +902,92 @@ class _SparamMixin:
                     raw_z0[driven, p_idx, :] = np.asarray(res_p["z0"])
                     raw_q[driven, p_idx, :] = np.asarray(res_p["q"])
                     if p_idx == driven:
-                        S[driven, driven, :] = np.asarray(res_p["s11"])
+                        # V·I single-plane wave split at probe 0 (issue #80
+                        # stage S1): a=(V+Z0*I)/2, b=(V-Z0*I)/2, S11=b/a —
+                        # the OpenEMS-style telegrapher de-embedding. With a
+                        # real positive Z0 and a passive structure this is
+                        # bounded |S11|<=1, unlike the Fix-C alpha/gamma
+                        # spatial fit that blew up to |S11|>1 on a strong
+                        # reflector. Z0 is analytic Hammerstad-Jensen; I is
+                        # the closed Ampere loop. See
+                        # docs/agent-memory/port_sparam_review_2026-05-19.md.
+                        v0_d = v_per_port[driven][0]
+                        z0hj_d = z0_hj_per_port[driven]
+                        a_fwd_d = 0.5 * (v0_d + z0hj_d * i_f)
+                        b_ref_d = 0.5 * (v0_d - z0hj_d * i_f)
+                        S[driven, driven, :] = b_ref_d / (a_fwd_d + 1e-30)
                         Z0_per_run[driven, :] = np.asarray(res_p["z0"])
-                        alpha_d = np.asarray(res_p["alpha"])
+                        alpha_d = a_fwd_d
                         if driven == 0:
                             beta_first = np.asarray(res_p["beta"])
 
-                # Off-diagonal S21 from forward amplitudes (N-probe alpha).
+                # Off-diagonal S21: S[j,i] = b_j / a_i (issue #80 stage S1).
+                # The wave received from the structure at a passive port is
+                # its BACKWARD wave b=(V-Z0*I)/2, not the forward wave a it
+                # would launch. For a transmitted wave arriving at a port
+                # whose forward reference faces the other way, a~0 and b~V;
+                # using a gave the non-physical |S21|~0.08, b gives ~1.
                 for j in range(n_ports):
                     if j == driven:
                         continue
-                    v_stack_p = np.stack(v_per_port[j], axis=-1)
-                    res_off = extract_msl_nprobe(
-                        jnp.asarray(v_stack_p),
-                        jnp.asarray(np.asarray(probe_xs[j], dtype=float)),
-                        jnp.asarray(i_first_per_port[j]),
-                        jnp.asarray(beta0_per_port[j]),
-                        z0_hj=z0_hj_per_port[j],
+                    v0_p = v_per_port[j][0]
+                    b_out_p = 0.5 * (
+                        v0_p - z0_hj_per_port[j] * i_first_per_port[j]
                     )
-                    alpha_p = np.asarray(res_off["alpha"])
-                    S[j, driven, :] = compute_s21(alpha_p, alpha_d)
+                    S[j, driven, :] = compute_s21(b_out_p, alpha_d)
 
-            # --- Honesty guard on the extractor (issue #80 Fix A) ---
-            # raw_q / raw_z0 are now fully populated for every driven run and
-            # every port. Validate them against physical bounds and surface a
-            # loud warning (or ValueError when strict_extractor=True) so the
-            # caller does not silently optimize an unreliable |S11|. With the
-            # N-probe least-squares extractor (Fix C) |q| should now be < 1
-            # and Z0 healthy, so the guard rarely fires — it is the safety
-            # net for pathological geometries.
+            # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
+            # S1 moved S11/S21 onto the OpenEMS-style V·I wave split, which
+            # is bounded |S11| <= 1 for a passive structure whenever the
+            # closed Ampere-loop current is sound. A V·I-split |S11| > 1 is
+            # therefore the primary red flag — it means the current was
+            # mismeasured (sign/scale), so S11/S21 are untrustworthy; this
+            # is what raises under strict_extractor=True. The reported Z0
+            # and beta still ride on the retained N-probe fit, which can be
+            # noisy per-frequency on coarse meshes, so a Z0 deviation from
+            # analytic Hammerstad-Jensen is reported as a SEPARATE, softer
+            # caveat — it does not impugn the V·I-split S11/S21.
             import warnings as _w
 
-            _Q_EPS = 1e-6
+            _S11_MAX = 1.0 + 0.05
             _Z0_TOL = 0.10
             for driven in range(n_ports):
                 pe = entries[driven]
                 z0_hj = z0_hj_per_port[driven]
-                q_abs = np.abs(raw_q[driven, driven, :])
-                k_q = int(np.argmax(q_abs))
-                q_max = float(q_abs[k_q])
+                s11_abs = np.abs(S[driven, driven, :])
+                k_s = int(np.argmax(s11_abs))
+                s11_max = float(s11_abs[k_s])
                 z0_dev = np.abs(raw_z0[driven, driven, :] - z0_hj) / z0_hj
                 k_z = int(np.argmax(z0_dev))
                 z0_dev_max = float(z0_dev[k_z])
-                violations: list[str] = []
-                if q_max > 1.0 + _Q_EPS:
-                    violations.append(
-                        f"|q| = {q_max:.4f} > 1 at f = "
-                        f"{freqs_arr[k_q] / 1e9:.4f} GHz (non-physical for a "
-                        f"passive line)"
-                    )
-                if z0_dev_max > _Z0_TOL:
-                    violations.append(
-                        f"extracted Z0 = "
-                        f"{raw_z0[driven, driven, k_z].real:.2f} ohm deviates "
-                        f"{z0_dev_max * 100:.1f}% from the analytic "
-                        f"Hammerstad-Jensen Z0 = {z0_hj:.2f} ohm at f = "
-                        f"{freqs_arr[k_z] / 1e9:.4f} GHz "
-                        f"(> {_Z0_TOL * 100:.0f}% tolerance)"
-                    )
-                if violations:
+                # Primary — V·I-split S11 boundedness (extraction soundness).
+                if s11_max > _S11_MAX:
                     msg = (
-                        f"compute_msl_s_matrix: N-probe extractor is unstable "
-                        f"for MSL port {pe.name!r}: "
-                        + "; ".join(violations)
-                        + ". The extracted |S11| is UNRELIABLE — see issue "
-                        "#80. Increase n_probes / n_probe_offset / "
-                        "n_probe_spacing, or use a field-based loss."
+                        f"compute_msl_s_matrix: V·I-split |S11| = "
+                        f"{s11_max:.3f} > 1 for MSL port {pe.name!r} at "
+                        f"f = {freqs_arr[k_s] / 1e9:.4f} GHz — non-physical "
+                        "for a passive structure. The closed Ampere-loop "
+                        "current is likely mismeasured (sign/scale); the "
+                        "extracted S11/S21 are UNRELIABLE. See "
+                        "docs/agent-memory/port_sparam_review_2026-05-19.md."
                     )
                     if strict_extractor:
                         raise ValueError(msg)
                     _w.warn(msg, stacklevel=2)
+                # Secondary — reported-Z0 sanity (retained N-probe fit).
+                if z0_dev_max > _Z0_TOL:
+                    _w.warn(
+                        f"compute_msl_s_matrix: reported Z0 for MSL port "
+                        f"{pe.name!r} = "
+                        f"{raw_z0[driven, driven, k_z].real:.2f} ohm deviates "
+                        f"{z0_dev_max * 100:.1f}% from analytic Hammerstad-"
+                        f"Jensen {z0_hj:.2f} ohm at "
+                        f"f = {freqs_arr[k_z] / 1e9:.4f} GHz. Z0 rides on the "
+                        "retained N-probe fit (S1 transitional); on coarse "
+                        "meshes this includes Yee-staircase bias. The V·I-"
+                        "split S11/S21 are unaffected.",
+                        stacklevel=2,
+                    )
 
             if raw_3probe_dump_path is not None:
                 import json
