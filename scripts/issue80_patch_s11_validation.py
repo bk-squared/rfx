@@ -73,20 +73,27 @@ def main() -> int:
     i_dip = int(np.argmin(s11))
     f_dip = freqs[i_dip] / 1e9
     s11_dip_db = 20.0 * np.log10(max(float(s11[i_dip]), 1e-12))
+    s11_max = float(np.max(s11))
 
-    print("=== issue #80 acceptance criterion 1 — patch S11 resonance ===")
+    print("=== issue #80 acceptance — patch S11 (stage S1: V·I split) ===")
     print(f"ISSUE80: S11 minimum = {s11_dip_db:.1f} dB at {f_dip:.3f} GHz")
     print(f"ISSUE80: target = {TARGET_GHZ} +/- {TOL_GHZ} GHz (analytic Balanis)")
     print(f"ISSUE80: pre-fix reference = 10.11 GHz (wrong)")
-    print(f"ISSUE80: Z0[0] median Re = {np.median(z0.real):.2f} ohm "
-          f"(separate follow-up — contaminated I1, not part of S11)")
+    print(f"ISSUE80: max|S11| = {s11_max:.3f} (headline — must be <= 1 for "
+          f"a passive patch; pre-S1 Fix-C blew up to ~8.6)")
+    print(f"ISSUE80: Z0[0] median Re = {np.median(z0.real):.2f} ohm")
     # full |S11|(f) trace for the log
     for f, a in zip(freqs / 1e9, s11):
         print(f"ISSUE80-TRACE: {f:7.3f} GHz  |S11|={a:.5f}")
 
-    ok = (TARGET_GHZ - TOL_GHZ) <= f_dip <= (TARGET_GHZ + TOL_GHZ)
-    print(f"ISSUE80: ACCEPTANCE-1 {'PASS' if ok else 'FAIL'} "
+    ok_dip = (TARGET_GHZ - TOL_GHZ) <= f_dip <= (TARGET_GHZ + TOL_GHZ)
+    ok_passive = s11_max <= 1.0 + 0.05
+    ok = ok_dip and ok_passive
+    print(f"ISSUE80: ACCEPTANCE-1 (resonance) {'PASS' if ok_dip else 'FAIL'} "
           f"(dip at {f_dip:.3f} GHz)")
+    print(f"ISSUE80: ACCEPTANCE-headline (|S11|<=1) "
+          f"{'PASS' if ok_passive else 'FAIL'} (max|S11| = {s11_max:.3f})")
+    print(f"ISSUE80: OVERALL {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 
 
