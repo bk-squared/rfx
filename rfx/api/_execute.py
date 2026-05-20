@@ -700,8 +700,8 @@ class _ExecuteMixin:
         # The default _run cpml_axes="xyz" builds CPML state for axes
         # that have no padding, producing shape-broadcast errors like
         # (8,1,1) vs (nx,ny,nz) during the scan (issue #29). The run()
-        # path forwards these explicitly at api.py:2012, so does the
-        # waveguide compute path at :2077 / :2092.
+        # path forwards these explicitly (see Simulation.run in _execute.py),
+        # so does the waveguide compute path (see _sparams.py).
         cpml_axes_run = grid.cpml_axes
         pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
 
@@ -1456,7 +1456,7 @@ class _ExecuteMixin:
         if is_nonuniform:
             # Synthesise missing dz profile so the NU grid build always
             # sees all three axes (mirrors Simulation.run()'s pre-build
-            # synthesis at api.py ~4268).  Required for sims that set
+            # synthesis in Simulation.run(), see _execute.py).  Required for sims that set
             # only dx/dy_profile and leave dz uniform.
             if self._dz_profile is None:
                 nz_phys = max(1, int(round(self._domain[2] / self._dx)))
