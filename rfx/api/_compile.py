@@ -113,14 +113,15 @@ class _CompileMixin:
     def _assemble_materials(
         self,
         grid: Grid,
-    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, jnp.ndarray | None]:
+    ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, list, jnp.ndarray | None]:
         """Build material arrays plus per-pole dispersion masks.
 
         Returns
         -------
-        materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, kerr_chi3
+        materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, boundary_pec_shapes, kerr_chi3
             pec_mask is a boolean array (True at PEC cells) or None.
             pec_shapes is a list of Shape objects that are PEC.
+            boundary_pec_shapes is a list of PEC shapes from boundary conditions.
             kerr_chi3 is a float32 array of chi3 values or None.
         """
         # Start with vacuum
