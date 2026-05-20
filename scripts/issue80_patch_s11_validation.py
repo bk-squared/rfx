@@ -20,6 +20,7 @@ import sys
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx.sources import GaussianPulse
 
 EPS_R = 3.38
 H_SUB = 0.787e-3
@@ -59,10 +60,25 @@ def main() -> int:
                 (PORT_MARGIN + L_MSL + L, Y_C + W / 2,
                  4e-3 + DX + H_SUB + 2 * DX)),
             material="pec")
+    # Wider, higher-centre source than the default
+    # GaussianPulse(f0=freq_max/2=7.5GHz, bw=0.8) — that default rolls off
+    # ~exp(-6.25) ≈ 0.002 at 15 GHz, starving the upper part of the
+    # frequency sweep of signal. The previous long-window run
+    # (369367239037) had max|S11|=1.527 at 11.96 GHz — exactly the
+    # low-SNR tail. f0=8.5 GHz, bw=1.6 puts the spectral peak near
+    # ~10 GHz and gives ~14 GHz 1/e width, covering the full 1.5-15 GHz
+    # sweep with usable SNR (~77% of peak amplitude at 15 GHz vs 0.2%).
     sim.add_msl_port(
         position=(PORT_MARGIN, Y_C, 4e-3 + DX),
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
+        waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
+
+    # Preflight (user directive 2026-05-20: never ignore preflight). The
+    # patch geometry currently emits 0 warnings on this mesh; surface it
+    # anyway so any future regression is visible in the run log.
+    print("=== sim.preflight() ===", flush=True)
+    sim.preflight()
 
     # num_periods 200: long-window diagnostic for the truncation
     # hypothesis (issue #80 stage S1 post-mortem). At the patch's
