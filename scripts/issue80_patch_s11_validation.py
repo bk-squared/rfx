@@ -64,7 +64,15 @@ def main() -> int:
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
     )
 
-    res = sim.compute_msl_s_matrix(n_freqs=81, num_periods=25.0)
+    # num_periods 200: long-window diagnostic for the truncation
+    # hypothesis (issue #80 stage S1 post-mortem). At the patch's
+    # Q~30–50 around 9 GHz, 25 periods (~3.3 ns) leaves significant
+    # ring-down energy in the DFT window — V (Ez) and I (Hy/Hz) leak
+    # differently and corrupt the V·I-split denominator a=(V+Z0·I)/2.
+    # 200 periods (~27 ns) is comfortably >60 dB down. If |S11| becomes
+    # bounded and smooth with dip near 9.21 GHz, truncation was the
+    # upstream cause; if not, keep diagnosing.
+    res = sim.compute_msl_s_matrix(n_freqs=81, num_periods=200.0)
 
     freqs = np.asarray(res.freqs, dtype=float)
     s11 = np.abs(np.asarray(res.S)[0, 0, :])
