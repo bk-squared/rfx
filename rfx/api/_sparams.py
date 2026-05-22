@@ -15,6 +15,7 @@ inherits ``_SparamMixin`` so every method below remains a bound method on
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -774,19 +775,20 @@ class _SparamMixin:
         saved_msl = list(self._msl_ports)
         saved_ports = list(self._ports)
         try:
-            S = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
-            Z0_per_run = np.zeros((n_ports, n_freqs_used), dtype=complex)
-            beta_first = np.zeros(n_freqs_used, dtype=complex)
+            _complex_dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+            S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
+            beta_first = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
             # N-probe extractor (issue #80 Fix C): store all N voltage
             # probe phasors. n_probes may differ per port — store the
             # max width and zero-pad shorter ports.
             n_probes_max = max(n_probes_per_port)
-            raw_v = np.zeros(
-                (n_ports, n_ports, n_probes_max, n_freqs_used), dtype=complex
+            raw_v = jnp.zeros(
+                (n_ports, n_ports, n_probes_max, n_freqs_used), dtype=_complex_dtype
             )
-            raw_i1 = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
-            raw_z0 = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
-            raw_q = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
+            raw_i1 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
 
             for driven in range(n_ports):
                 # Re-instantiate a clean simulation by mutating in place:
@@ -858,9 +860,9 @@ class _SparamMixin:
                 for p_idx, meta in enumerate(port_idx_meta):
                     vs = []
                     for nm in ez_probe_names[p_idx]:
-                        ez_plane = np.asarray(planes[nm].accumulator)
+                        ez_plane = jnp.asarray(planes[nm].accumulator)
                         # ez_plane shape: (n_freqs, ny, nz)
-                        v_f = np.zeros(n_freqs_used, dtype=complex)
+                        v_f = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
                         for k in range(meta["k_lo"], meta["k_hi"] + 1):
                             v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
                         vs.append(v_f)
@@ -889,9 +891,9 @@ class _SparamMixin:
                     # solve the over-determined (alpha, gamma) system by
                     # SVD lstsq — this removes the 3-probe q->1 singularity.
                     n_probes_p = n_probes_per_port[p_idx]
-                    v_stack = np.stack(v_per_port[p_idx], axis=-1)  # (n_freqs, N)
-                    raw_v[driven, p_idx, :n_probes_p, :] = v_stack.T
-                    raw_i1[driven, p_idx, :] = i_f
+                    v_stack = jnp.stack(v_per_port[p_idx], axis=-1)  # (n_freqs, N)
+                    raw_v = raw_v.at[driven, p_idx, :n_probes_p, :].set(jnp.asarray(v_stack.T, dtype=_complex_dtype))
+                    raw_i1 = raw_i1.at[driven, p_idx, :].set(jnp.asarray(i_f, dtype=_complex_dtype))
                     res_p = extract_msl_nprobe(
                         jnp.asarray(v_stack),
                         jnp.asarray(np.asarray(probe_xs[p_idx], dtype=float)),
@@ -899,8 +901,8 @@ class _SparamMixin:
                         jnp.asarray(beta0_per_port[p_idx]),
                         z0_hj=z0_hj_per_port[p_idx],
                     )
-                    raw_z0[driven, p_idx, :] = np.asarray(res_p["z0"])
-                    raw_q[driven, p_idx, :] = np.asarray(res_p["q"])
+                    raw_z0 = raw_z0.at[driven, p_idx, :].set(jnp.asarray(res_p["z0"], dtype=_complex_dtype))
+                    raw_q = raw_q.at[driven, p_idx, :].set(jnp.asarray(res_p["q"], dtype=_complex_dtype))
                     if p_idx == driven:
                         # V·I single-plane wave split at probe 0 (issue #80
                         # stage S1): a=(V+Z0*I)/2, b=(V-Z0*I)/2, S11=b/a —
@@ -915,11 +917,11 @@ class _SparamMixin:
                         z0hj_d = z0_hj_per_port[driven]
                         a_fwd_d = 0.5 * (v0_d + z0hj_d * i_f)
                         b_ref_d = 0.5 * (v0_d - z0hj_d * i_f)
-                        S[driven, driven, :] = b_ref_d / (a_fwd_d + 1e-30)
-                        Z0_per_run[driven, :] = np.asarray(res_p["z0"])
+                        S = S.at[driven, driven, :].set(jnp.asarray(b_ref_d / (a_fwd_d + 1e-30), dtype=_complex_dtype))
+                        Z0_per_run = Z0_per_run.at[driven, :].set(jnp.asarray(res_p["z0"], dtype=_complex_dtype))
                         alpha_d = a_fwd_d
                         if driven == 0:
-                            beta_first = np.asarray(res_p["beta"])
+                            beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)
 
                 # Off-diagonal S21: S[j,i] = b_j / a_i (issue #80 stage S1).
                 # The wave received from the structure at a passive port is
@@ -934,7 +936,7 @@ class _SparamMixin:
                     b_out_p = 0.5 * (
                         v0_p - z0_hj_per_port[j] * i_first_per_port[j]
                     )
-                    S[j, driven, :] = compute_s21(b_out_p, alpha_d)
+                    S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
 
             # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
             # S1 moved S11/S21 onto the OpenEMS-style V·I wave split, which
@@ -954,10 +956,10 @@ class _SparamMixin:
             for driven in range(n_ports):
                 pe = entries[driven]
                 z0_hj = z0_hj_per_port[driven]
-                s11_abs = np.abs(S[driven, driven, :])
+                s11_abs = np.abs(np.asarray(jax.lax.stop_gradient(S[driven, driven, :])))
                 k_s = int(np.argmax(s11_abs))
                 s11_max = float(s11_abs[k_s])
-                z0_dev = np.abs(raw_z0[driven, driven, :] - z0_hj) / z0_hj
+                z0_dev = np.abs(np.asarray(jax.lax.stop_gradient(raw_z0[driven, driven, :])) - z0_hj) / z0_hj
                 k_z = int(np.argmax(z0_dev))
                 z0_dev_max = float(z0_dev[k_z])
                 # Primary — V·I-split S11 boundedness (extraction soundness).
@@ -979,7 +981,7 @@ class _SparamMixin:
                     _w.warn(
                         f"compute_msl_s_matrix: reported Z0 for MSL port "
                         f"{pe.name!r} = "
-                        f"{raw_z0[driven, driven, k_z].real:.2f} ohm deviates "
+                        f"{float(np.asarray(jax.lax.stop_gradient(raw_z0[driven, driven, k_z])).real):.2f} ohm deviates "
                         f"{z0_dev_max * 100:.1f}% from analytic Hammerstad-"
                         f"Jensen {z0_hj:.2f} ohm at "
                         f"f = {freqs_arr[k_z] / 1e9:.4f} GHz. Z0 rides on the "
