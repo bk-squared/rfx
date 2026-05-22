@@ -385,8 +385,8 @@ class _SparamMixin:
                 port_names_mm.append(f"{entry.name}_mode{mode_idx}_{mtype}{m_n[0]}{m_n[1]}")
                 port_directions_mm.append(entry.direction)
             return WaveguideSMatrixResult(
-                s_params=np.array(s_params),
-                freqs=np.array(freqs),
+                s_params=s_params,
+                freqs=jnp.asarray(freqs),
                 port_names=tuple(port_names_mm),
                 port_directions=tuple(port_directions_mm),
                 reference_planes=reference_planes,
@@ -506,8 +506,8 @@ class _SparamMixin:
             dtype=float,
         )
         return WaveguideSMatrixResult(
-            s_params=np.array(s_params),
-            freqs=np.array(freqs),
+            s_params=s_params,
+            freqs=jnp.asarray(freqs),
             port_names=tuple(entry.name for entry in entries),
             port_directions=tuple(entry.direction for entry in entries),
             reference_planes=reference_planes,
@@ -1480,7 +1480,8 @@ class _SparamMixin:
                 )
         n_freqs = int(port_freqs.shape[0])
 
-        s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+        # jnp-functional: collect per-drive columns; stack after loop
+        s_columns: list[list] = []  # s_columns[drive_idx] = list of (n_freqs,) jnp arrays over recv_idx
         ref_shifts: tuple[float, ...] | None = None
         reference_planes_out: np.ndarray | None = None
 
@@ -1533,13 +1534,13 @@ class _SparamMixin:
                 a_inc_ref, _ = extract_waveguide_port_waves(
                     ref_wg[drive_name], ref_shift=ref_shifts[drive_idx],
                 )
-                a_inc_ref_np = np.asarray(a_inc_ref)
-                safe_a_inc = np.where(
-                    np.abs(a_inc_ref_np) > 1e-30,
-                    a_inc_ref_np,
-                    np.ones_like(a_inc_ref_np),
+                safe_a_inc = jnp.where(
+                    jnp.abs(a_inc_ref) > 1e-30,
+                    a_inc_ref,
+                    jnp.ones_like(a_inc_ref),
                 )
 
+                recv_col: list = []
                 for recv_idx in range(n_ports):
                     recv_name = original_entries[recv_idx].name
                     _, b_ref = extract_waveguide_port_waves(
@@ -1548,27 +1549,23 @@ class _SparamMixin:
                     _, b_dev = extract_waveguide_port_waves(
                         dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
                     )
-                    b_ref_np = np.asarray(b_ref)
-                    b_dev_np = np.asarray(b_dev)
-
                     if recv_idx == drive_idx:
-                        s_matrix[recv_idx, drive_idx, :] = (
-                            b_dev_np - b_ref_np
-                        ) / safe_a_inc
+                        recv_col.append((b_dev - b_ref) / safe_a_inc)
                     else:
-                        safe_b = np.where(
-                            np.abs(b_ref_np) > 1e-30,
-                            b_ref_np,
-                            np.ones_like(b_ref_np),
+                        safe_b = jnp.where(
+                            jnp.abs(b_ref) > 1e-30,
+                            b_ref,
+                            jnp.ones_like(b_ref),
                         )
-                        s_matrix[recv_idx, drive_idx, :] = b_dev_np / safe_b
+                        recv_col.append(b_dev / safe_b)
+                s_columns.append(recv_col)
         finally:
             self._waveguide_ports = original_entries
             self._dz_profile = _dz_profile_saved
 
         return WaveguideSMatrixResult(
-            s_params=np.asarray(s_matrix),
-            freqs=np.asarray(port_freqs),
+            s_params=jnp.stack([jnp.stack(col) for col in s_columns], axis=1),
+            freqs=jnp.asarray(port_freqs),
             port_names=tuple(e.name for e in original_entries),
             port_directions=tuple(e.direction for e in original_entries),
             reference_planes=reference_planes_out
