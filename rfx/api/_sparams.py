@@ -435,6 +435,29 @@ class _SparamMixin:
             ref_shifts.append(desired_ref - planes["reference"])
 
         _pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
+        # G-WI5 guardrail: conformal=True + normalize=True/"flux" is not supported.
+        # Root cause (diagnosed 2026-05-24): the two-run normalisation extractor
+        # runs the empty-guide reference WITHOUT conformal_weights while the device
+        # run uses them (Dey-Mittra eps_correction).  At fine dx (<=2 mm for WR-90)
+        # the asymmetric boundary treatment causes the reference outgoing-wave
+        # amplitude to diverge / go unstable, producing NaN |S21|.  Use
+        # normalize=False (single-run V/I, no reference run) until the reference
+        # run is updated to carry conformal_weights.  Tracked in
+        # docs/agent-memory/rfx-known-issues.md (cv11 mesh-conv NaN xfail).
+        if conformal_weights is not None and normalize:
+            import warnings as _w
+            _w.warn(
+                "compute_waveguide_s_matrix(conformal=True, normalize=True) is not "
+                "supported: the two-run normalisation reference pass omits "
+                "conformal_weights (Dey-Mittra eps_correction), causing the "
+                "empty-guide reference outgoing wave to diverge at fine mesh "
+                "spacings (dx <= 2 mm for WR-90) and produce NaN |S21|.  "
+                "Use normalize=False for conformal=True geometries.  "
+                "Tracked in docs/agent-memory/rfx-known-issues.md.",
+                UserWarning,
+                stacklevel=3,
+            )
+
         if normalize == "flux":
             from rfx.core.yee import init_materials as _init_vacuum_materials
             ref_materials = _init_vacuum_materials(grid.shape)
