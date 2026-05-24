@@ -301,7 +301,18 @@ def _fake_run_for_theta(theta: jnp.ndarray, n_probes: int = 5):
 
 
 def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
-    """AD smoke: jax.grad through V·I assembly must produce finite non-NaN gradient."""
+    """AD smoke: jax.grad through V·I assembly must produce finite non-NaN gradient.
+
+    NOTE (M1, 2026-05-24): this test uses SYNTHETIC accumulators (``_fake_run``),
+    so the honesty-guard fires a huge-Z0 warning (e.g. ~1e26 ohm) — that is
+    EXPECTED for non-physical synthetic data and is NOT a regression. This test
+    gates only that the assembly is differentiable; it deliberately does NOT
+    assert physical S/Z0 (the data isn't physical). The real physics-sanity gate
+    (forward S in [0, ~1.2] + finite-difference cross-check) belongs on the REAL
+    end-to-end path and is a required acceptance criterion of G-AD-WIRE
+    (docs/research_notes/2026-05-24_next_goals_and_miss_audit.md). Real-path
+    passivity is already gated by test_msl_thru_line_passive_gate.
+    """
     freqs = jnp.asarray([1.0e9], dtype=jnp.float32)
 
     def objective(theta):
