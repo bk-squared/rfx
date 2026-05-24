@@ -23,7 +23,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from rfx.materials.debye import DebyePole
-from rfx.materials.lorentz import LorentzPole, lorentz_pole
+from rfx.materials.lorentz import LorentzPole
 
 
 try:
@@ -251,13 +251,16 @@ def fit_debye(
     def _unpack(x):
         idx = 0
         if fit_eps_inf:
-            ei = x[idx]; idx += 1
+            ei = x[idx]
+            idx += 1
         else:
             ei = eps_inf
         poles_list = []
         for _ in range(n_poles):
-            de = 10.0 ** x[idx]; idx += 1
-            tau = 10.0 ** x[idx]; idx += 1
+            de = 10.0 ** x[idx]
+            idx += 1
+            tau = 10.0 ** x[idx]
+            idx += 1
             poles_list.append((de, tau))
         return ei, poles_list
 
@@ -388,14 +391,18 @@ def fit_lorentz(
     def _unpack(x):
         idx = 0
         if fit_eps_inf:
-            ei = x[idx]; idx += 1
+            ei = x[idx]
+            idx += 1
         else:
             ei = eps_inf
         poles_list = []
         for _ in range(n_poles):
-            de = 10.0 ** x[idx]; idx += 1
-            w0 = 10.0 ** x[idx]; idx += 1
-            gam = 10.0 ** x[idx]; idx += 1
+            de = 10.0 ** x[idx]
+            idx += 1
+            w0 = 10.0 ** x[idx]
+            idx += 1
+            gam = 10.0 ** x[idx]
+            idx += 1
             poles_list.append((de, w0, gam))
         return ei, poles_list
 

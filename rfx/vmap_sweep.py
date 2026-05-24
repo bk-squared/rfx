@@ -25,25 +25,17 @@ Limitations
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Callable
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import FDTDState, MaterialArrays, init_state, update_e, update_h, EPS_0
+from rfx.core.yee import MaterialArrays, init_state, update_e, update_h, EPS_0
 from rfx.simulation import (
-    run as _run_sim,
     SourceSpec,
     ProbeSpec,
-    SimResult,
-    SnapshotSpec,
     make_source,
-    make_j_source,
     make_probe,
-    make_port_source,
-    make_wire_port_sources,
-    _update_e_with_optional_dispersion,
 )
 from rfx.boundaries.pec import apply_pec
 

@@ -601,7 +601,6 @@ class _SparamMixin:
         from rfx.sources.msl_port import (
             MSLPort,
             _msl_yz_cells,
-            compute_s21,
             msl_loop_current,
             msl_probe_x_coords_n,
         )
@@ -1503,7 +1502,6 @@ class _SparamMixin:
                 raise ValueError(
                     "waveguide S-matrix requires matching frequency grids on all ports"
                 )
-        n_freqs = int(port_freqs.shape[0])
 
         # jnp-functional: collect per-drive columns; stack after loop
         s_columns: list[list] = []  # s_columns[drive_idx] = list of (n_freqs,) jnp arrays over recv_idx

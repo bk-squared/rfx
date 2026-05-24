@@ -522,7 +522,7 @@ def topology_optimize(
         beta = _get_beta(it, beta_schedule)
         beta_history.append(beta)
 
-        loss, grad = jax.value_and_grad(lambda l: forward(l, beta))(logit)
+        loss, grad = jax.value_and_grad(lambda logit_: forward(logit_, beta))(logit)
         loss_val = float(loss)
         history.append(loss_val)
 

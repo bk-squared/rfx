@@ -434,7 +434,7 @@ def _estimate_beta(
     k = jnp.argmin(resids)
     # Clamp so the 3-point parabolic stencil stays in range.
     k = jnp.clip(k, 1, _BETA_SCAN_NODES - 2)
-    b_lo, b_mid, b_hi = grid[k - 1], grid[k], grid[k + 1]
+    b_lo, b_mid, _ = grid[k - 1], grid[k], grid[k + 1]
     r_lo, r_mid, r_hi = resids[k - 1], resids[k], resids[k + 1]
     # Parabolic vertex offset (in grid-step units), clamped to [-1, 1].
     denom = (r_lo - 2.0 * r_mid + r_hi)

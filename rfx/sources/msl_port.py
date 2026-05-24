@@ -305,7 +305,6 @@ def compute_msl_mode_profile(
     j_trace_lo = j_set[0]
     j_trace_hi = j_set[-1]
     k_sub_lo = k_set[0]
-    k_sub_hi = k_set[-1]
     i_feed = cells[0][0]
 
     n_y_trace = len(j_set)
@@ -337,9 +336,7 @@ def compute_msl_mode_profile(
     j_grid_lo = max(0, j_trace_lo - pad_y_cells)
     j_grid_hi = min(grid.shape[1] - 1, j_trace_hi + pad_y_cells)
     k_grid_lo = k_sub_lo  # ground at bottom of substrate
-    k_grid_hi = min(grid.shape[2] - 1, k_sub_hi + pad_z_cells)
     n_y_grid = j_grid_hi - j_grid_lo + 1
-    n_z_grid = k_grid_hi - k_grid_lo + 1
 
     # Laplace solve box can extend BEYOND the FDTD grid (free-space
     # Neumann decoupled from CPML/PEC) so static Z0 captures fringing

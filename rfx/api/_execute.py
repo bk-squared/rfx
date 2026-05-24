@@ -922,8 +922,6 @@ class _ExecuteMixin:
             shard_pec_occupancy_x_slab,
         )
         from rfx.core.yee import MaterialArrays
-        from rfx.materials.debye import init_debye
-        from rfx.materials.lorentz import init_lorentz
         from rfx.nonuniform import (
             position_to_index as _nu_pos_to_idx,
             make_current_source as _nu_make_current_source,

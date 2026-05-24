@@ -187,7 +187,9 @@ def _build_laplacian_2d_neumann(ny: int, nz: int, dy: float, dz: float,
                 else:
                     eps_face = 1.0
                 w = eps_face / (dy * dy)
-                rows.append(k); cols.append(idx(i - 1, j)); vals.append(-w)
+                rows.append(k)
+                cols.append(idx(i - 1, j))
+                vals.append(-w)
                 diag_val += w
             # else: Neumann BC — no flux, no off-diag entry, no diag contribution
 
@@ -197,7 +199,9 @@ def _build_laplacian_2d_neumann(ny: int, nz: int, dy: float, dz: float,
                 else:
                     eps_face = 1.0
                 w = eps_face / (dy * dy)
-                rows.append(k); cols.append(idx(i + 1, j)); vals.append(-w)
+                rows.append(k)
+                cols.append(idx(i + 1, j))
+                vals.append(-w)
                 diag_val += w
 
             # z-direction neighbors
@@ -207,7 +211,9 @@ def _build_laplacian_2d_neumann(ny: int, nz: int, dy: float, dz: float,
                 else:
                     eps_face = 1.0
                 w = eps_face / (dz * dz)
-                rows.append(k); cols.append(idx(i, j - 1)); vals.append(-w)
+                rows.append(k)
+                cols.append(idx(i, j - 1))
+                vals.append(-w)
                 diag_val += w
 
             if j < nz - 1:
@@ -216,10 +222,14 @@ def _build_laplacian_2d_neumann(ny: int, nz: int, dy: float, dz: float,
                 else:
                     eps_face = 1.0
                 w = eps_face / (dz * dz)
-                rows.append(k); cols.append(idx(i, j + 1)); vals.append(-w)
+                rows.append(k)
+                cols.append(idx(i, j + 1))
+                vals.append(-w)
                 diag_val += w
 
-            rows.append(k); cols.append(k); vals.append(diag_val)
+            rows.append(k)
+            cols.append(k)
+            vals.append(diag_val)
 
     return sparse.csr_matrix((vals, (rows, cols)), shape=(N, N))
 
@@ -258,7 +268,9 @@ def _build_laplacian_2d_dirichlet(ny: int, nz: int, dy: float, dz: float,
                 else:
                     eps_face = 1.0
                 w = eps_face / (dy * dy)
-                rows.append(k); cols.append(idx(i - 1, j)); vals.append(-w)
+                rows.append(k)
+                cols.append(idx(i - 1, j))
+                vals.append(-w)
                 diag_val += w
             else:
                 # Dirichlet: neighbor is zero, contributes to diagonal
@@ -275,7 +287,9 @@ def _build_laplacian_2d_dirichlet(ny: int, nz: int, dy: float, dz: float,
                 else:
                     eps_face = 1.0
                 w = eps_face / (dy * dy)
-                rows.append(k); cols.append(idx(i + 1, j)); vals.append(-w)
+                rows.append(k)
+                cols.append(idx(i + 1, j))
+                vals.append(-w)
                 diag_val += w
             else:
                 if eps is not None:
@@ -291,7 +305,9 @@ def _build_laplacian_2d_dirichlet(ny: int, nz: int, dy: float, dz: float,
                 else:
                     eps_face = 1.0
                 w = eps_face / (dz * dz)
-                rows.append(k); cols.append(idx(i, j - 1)); vals.append(-w)
+                rows.append(k)
+                cols.append(idx(i, j - 1))
+                vals.append(-w)
                 diag_val += w
             else:
                 if eps is not None:
@@ -306,7 +322,9 @@ def _build_laplacian_2d_dirichlet(ny: int, nz: int, dy: float, dz: float,
                 else:
                     eps_face = 1.0
                 w = eps_face / (dz * dz)
-                rows.append(k); cols.append(idx(i, j + 1)); vals.append(-w)
+                rows.append(k)
+                cols.append(idx(i, j + 1))
+                vals.append(-w)
                 diag_val += w
             else:
                 if eps is not None:
@@ -315,7 +333,9 @@ def _build_laplacian_2d_dirichlet(ny: int, nz: int, dy: float, dz: float,
                     eps_face = 1.0
                 diag_val += eps_face / (dz * dz)
 
-            rows.append(k); cols.append(k); vals.append(diag_val)
+            rows.append(k)
+            cols.append(k)
+            vals.append(diag_val)
 
     return sparse.csr_matrix((vals, (rows, cols)), shape=(N, N))
 

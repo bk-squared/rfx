@@ -158,7 +158,8 @@ def init_ntff_data(box: NTFFBox) -> NTFFData:
     ni = box.i_hi - box.i_lo
     nj = box.j_hi - box.j_lo
     nk = box.k_hi - box.k_lo
-    _z = lambda shape: jnp.zeros(shape, dtype=_cdtype)
+    def _z(shape):
+        return jnp.zeros(shape, dtype=_cdtype)
     return NTFFData(
         x_lo=_z((nf, nj, nk, 4)), x_hi=_z((nf, nj, nk, 4)),
         y_lo=_z((nf, ni, nk, 4)), y_hi=_z((nf, ni, nk, 4)),

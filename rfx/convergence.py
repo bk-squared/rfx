@@ -395,7 +395,6 @@ def quick_convergence(
         dx_factors = [2.0, 1.5, 1.0, 0.75]
 
     # Resolve the base dx from the simulation
-    from rfx.auto_config import auto_configure
     base_dx = getattr(sim, "_dx", None)
     if base_dx is None:
         # Auto-compute the default dx the same way Simulation would

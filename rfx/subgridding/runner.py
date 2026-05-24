@@ -79,7 +79,8 @@ def run_subgridded(
     shape_c = (subgrid_config.nx_c, subgrid_config.ny_c, subgrid_config.nz_c)
     shape_f = (subgrid_config.nx_f, subgrid_config.ny_f, subgrid_config.nz_f)
 
-    z = lambda s: jnp.zeros(s, dtype=jnp.float32)
+    def z(s):
+        return jnp.zeros(s, dtype=jnp.float32)
     # Coarse fields
     ex_c, ey_c, ez_c = z(shape_c), z(shape_c), z(shape_c)
     hx_c, hy_c, hz_c = z(shape_c), z(shape_c), z(shape_c)

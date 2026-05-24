@@ -11,8 +11,7 @@ import numpy as np
 
 try:
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Circle, Arc
-    from matplotlib.lines import Line2D
+    from matplotlib.patches import Circle
     HAS_MPL = True
 except ImportError:
     HAS_MPL = False

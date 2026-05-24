@@ -128,7 +128,8 @@ def init_subgrid_3d(
         dt=float(dt), ratio=ratio, tau=tau,
     )
 
-    z = lambda s: jnp.zeros(s, dtype=jnp.float32)
+    def z(s):
+        return jnp.zeros(s, dtype=jnp.float32)
     state = SubgridState3D(
         ex_c=z(shape_c), ey_c=z(shape_c), ez_c=z(shape_c),
         hx_c=z(shape_c), hy_c=z(shape_c), hz_c=z(shape_c),
@@ -425,12 +426,6 @@ def step_subgrid_3d(
         Boolean PEC masks for coarse/fine grids.
     """
     dt = config.dt
-    fi, fj, fk = config.fi_lo, config.fj_lo, config.fk_lo
-    ni = config.fi_hi - fi
-    nj = config.fj_hi - fj
-    nk = config.fk_hi - fk
-    _fr = (slice(fi, fi+ni), slice(fj, fj+nj), slice(fk, fk+nk))
-    ratio = config.ratio
 
     # === Step 1: H update (Faraday) on both grids ===
     hx_c, hy_c, hz_c = _update_h_only(

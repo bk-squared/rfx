@@ -322,7 +322,6 @@ def differentiable_material_fit(
     -------
     MaterialFitResult
     """
-    from rfx.core.yee import MaterialArrays
     from rfx.simulation import run as sim_run, make_port_source, make_probe
     from rfx.sources.sources import LumpedPort, setup_lumped_port
 

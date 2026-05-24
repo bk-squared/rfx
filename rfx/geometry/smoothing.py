@@ -128,13 +128,9 @@ def _normal_box(x, y, z, shape):
 
     # The nearest face corresponds to the axis with the largest
     # (least-negative inside, or least-positive outside) component.
-    ax = jnp.abs(rx)
-    ay = jnp.abs(ry)
-    az = jnp.abs(rz)
 
     # For interior points: nearest face = axis with *max* signed dist
     # For exterior points: same logic (largest component dominates SDF)
-    max_r = jnp.maximum(jnp.maximum(rx, ry), rz)
 
     # Use soft selection: pick the axis closest to the surface.
     # For box interior, max_r < 0 and we want the axis where r is
@@ -274,9 +270,6 @@ def _kottke_tensor_eps(
     nxnx = nx * nx
     nyny = ny * ny
     nznz = nz * nz
-    nxny = nx * ny
-    nxnz = nx * nz
-    nynz = ny * nz
 
     # (ε_eff)⁻¹ diagonal elements:
     #   inv_xx = nxnx * inv_perp + (1 - nxnx) * inv_par
