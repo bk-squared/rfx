@@ -29,7 +29,7 @@ tune the open-stub length so the notch lands at a chosen design
 frequency.  Stub length is reformulated as a continuous sigmoid PEC
 density mask via :meth:`Simulation.forward(pec_occupancy_override=…)`
 and optimised with Adam through ``jax.grad``.  Cost is
-``|S21(f_target)|²`` from the plane-integrated JAX 3-probe extractor.
+``|S21(f_target)|²`` from the plane-integrated JAX N-probe extractor.
 
 The architectural fix routes ``pec_occupancy_override`` through the
 Stage 2 Kottke machinery (``compute_inv_eps_tensor_diag`` /
@@ -110,7 +110,9 @@ from rfx import Simulation, Box
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.probes.msl_wave_decomp import (
     register_msl_plane_probes,
-    extract_msl_s_params_jax_plane,
+    _v_from_plane,
+    _i_from_plane,
+    extract_msl_nprobe,
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -215,7 +217,7 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
 
     Returns the sim, the trace-y centre and trace-y top, and the two
     plane probe sets for post-forward extraction via
-    :func:`extract_msl_s_params_jax_plane`.
+    :func:`extract_msl_nprobe`.
     """
     sim = Simulation(
         freq_max=F_MAX, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
@@ -241,8 +243,8 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
 
     # Plane DFT probes — line-integrated V (Ez) + area-integrated I
     # (Hy) per port.  Mirrors the imperative `compute_msl_s_matrix`
-    # plane integrals exactly, so the JAX-traceable 3-probe extractor
-    # in `extract_msl_s_params_jax_plane` no longer carries the
+    # plane integrals exactly, so the JAX-traceable N-probe extractor
+    # in `extract_msl_nprobe` no longer carries the
     # scalar-Ez bias documented in `docs/agent-memory/rfx-known-issues.md`
     # (gap #2/#4, closed 2026-05-07).
     d_set = register_msl_plane_probes(sim, port_index=0, freqs=freqs,
@@ -300,7 +302,7 @@ def main() -> int:
 
     # Preflight: surfaces MSL geometry warnings (lateral clearance, substrate
     # cells, x-CPML, reflector clearance — the last is what protects the
-    # 3-probe extractor from sitting in the stub-junction standing-wave
+    # N-probe extractor from sitting in the stub-junction standing-wave
     # region; see `_check_msl_port_geometry` in rfx/api.py).
     pre_msgs = sim.preflight()
     if pre_msgs:
@@ -339,7 +341,28 @@ def main() -> int:
             checkpoint_segments=K_segments,
             skip_preflight=True,
         )
-        _, s21 = extract_msl_s_params_jax_plane(fr, d_set, p_set)
+        # Assemble plane-integrated V phasors and I phasor for each port,
+        # then call the canonical N-probe least-squares extractor (WI-3).
+        freqs_arr = f_target_arr
+        beta0 = (2.0 * jnp.pi * freqs_arr * jnp.sqrt(jnp.asarray(EPS_EFF, dtype=jnp.float32))
+                 / jnp.asarray(C0, dtype=jnp.float32))
+        x_probes = jnp.array([0.0, d_set.delta, 2.0 * d_set.delta], dtype=jnp.float32)
+        v_d = jnp.stack([
+            _v_from_plane(fr, d_set.ez1_name, d_set),
+            _v_from_plane(fr, d_set.ez2_name, d_set),
+            _v_from_plane(fr, d_set.ez3_name, d_set),
+        ], axis=-1)  # (n_freqs, 3)
+        i1_d = _i_from_plane(fr, d_set.hy_name, d_set)
+        v_p = jnp.stack([
+            _v_from_plane(fr, p_set.ez1_name, p_set),
+            _v_from_plane(fr, p_set.ez2_name, p_set),
+            _v_from_plane(fr, p_set.ez3_name, p_set),
+        ], axis=-1)  # (n_freqs, 3)
+        i1_p = _i_from_plane(fr, p_set.hy_name, p_set)
+        res_d = extract_msl_nprobe(v_d, x_probes, i1_d, beta0)
+        res_p = extract_msl_nprobe(v_p, x_probes, i1_p, beta0)
+        # S21 = alpha_passive / alpha_driven (forward wave amplitude ratio)
+        s21 = res_p["alpha"] / (res_d["alpha"] + 1e-30)
         return s21[0]
 
     def cost_from_latent(latent):
@@ -519,7 +542,7 @@ def main() -> int:
     ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
 
     fig.suptitle(
-        f"MSL stub notch tuning — density-PEC reformulation + JAX 3-probe extractor\n"
+        f"MSL stub notch tuning — density-PEC reformulation + JAX N-probe extractor\n"
         f"L_opt={L_opt*1e3:.2f}mm vs L_target_an={L_TARGET_AN*1e3:.2f}mm   "
         f"imperative notch @ {f_notch_imp/1e9:.2f}GHz ({depth_imp:+.1f}dB) — "
         f"{'PASS' if all_ok else 'FAIL'}",

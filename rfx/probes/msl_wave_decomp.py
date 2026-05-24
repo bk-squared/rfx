@@ -1,36 +1,10 @@
-"""JAX-traceable post-forward 3-probe wave decomposition for MSL S-params.
+"""JAX-traceable post-forward N-probe wave decomposition for MSL S-params.
 
-The validated extractor in :mod:`rfx.sources.msl_port`
-(:func:`extract_msl_s_params`, :func:`msl_forward_amplitude`) lives in
-:func:`Simulation.compute_msl_s_matrix` — an *imperative* orchestrator
-that uses ``np.asarray`` and runs FDTD per port, blocking ``jax.grad``.
-This module re-implements the same 3-probe quadratic recurrence in
-``jax.numpy`` so it can run *post-* :meth:`Simulation.forward` on the
-returned ``ForwardResult.time_series`` / ``ForwardResult.dft_planes``
-(JAX-traceable arrays / dict of JAX-traceable accumulators).
+The canonical extractor is :func:`extract_msl_nprobe` — an N-probe
+least-squares wave decomposition (issue #80 Fix C) that removes the
+3-probe ``q→1`` singularity and is fully JAX-traceable.
 
-Four pieces, paired into a scalar (point-probe) lane and a plane
-(plane-probe) lane.  The plane lane is the higher-fidelity follow-up
-landed 2026-05-07 (gap #2/#4 in
-``docs/agent-memory/rfx-known-issues.md``).
-
-Scalar lane (legacy, single-Ez / single-Hy point probes):
-
-  * :func:`register_msl_wave_probes` — adds 4 point probes per port
-    (Ez at probe 1/2/3 for V-proxy, Hy at probe 1 for I-proxy).
-  * :func:`extract_msl_s_params_jax` — Hann-windowed single-bin DFT
-    over the time-series columns, then the 3-probe quadratic
-    recurrence ``q² − ((V₁+V₃)/V₂)·q + 1 = 0``.
-
-  Bias note (the reason the plane lane exists): the scalar Ez probe
-  at substrate-mid is a *single-cell sample* of the quasi-TEM mode,
-  which under-resolves the modal voltage integral compared to the
-  plane-line integral used by ``compute_msl_s_matrix``.  The Y2 demo
-  (``examples/inverse_design/msl_stub_notch_tuning.py``) measures a
-  ~15-20 % notch-frequency bias at dx = h_sub/2 (2 substrate cells)
-  on the scalar lane that disappears on the plane lane.
-
-Plane lane (recommended for engineering accuracy):
+Plane-probe registration helpers:
 
   * :func:`register_msl_plane_probes` — adds 4 plane DFT probes per
     port (Ez planes at x=x₁/x₂/x₃ for V-proxy, Hy plane at x=x₁ for
@@ -39,25 +13,15 @@ Plane lane (recommended for engineering accuracy):
     j_lo_ext/j_hi_ext, dy_arr / dz_arr slices) needed to mirror
     ``compute_msl_s_matrix``'s plane integrals.
 
-  * :func:`extract_msl_s_params_jax_plane` — pulls the plane DFT
-    accumulators from ``ForwardResult.dft_planes`` (populated since
-    2026-05-07 Phase 1; see `feat(forward): expose dft_planes
-    accumulators`), line-integrates Ez over the substrate column at
-    the trace centerline for V, area-integrates Hy over a fringing-y-
-    extended slab below the trace surface for I, and feeds the result
-    into the same 3-probe recurrence as the scalar lane.
+Point-probe registration helper:
 
-  After 2026-05-07 Phase 3 (commit 1c50dff) brought the differentiable
-  forward path's MSL-port construction into ``mode='laplace'`` parity
-  with the imperative ``compute_msl_s_matrix``, the plane lane is
-  **bit-identical** to that imperative reference at FP32 noise on the
-  cv06b-class thru-line (|S11| max diff 0.0000, RMS 0.0000; |S21| max
-  diff 0.0009, RMS 0.0002 — see ``tests/test_msl_plane_extractor_jax.py``).
+  * :func:`register_msl_wave_probes` — adds 4 point probes per port
+    (Ez at probe 1/2/3 for V-proxy, Hy at probe 1 for I-proxy).
 
-Both lanes return dimensionless ``S11`` and ``S21``.  Absolute ``Z0``
-is intentionally omitted (use :meth:`compute_msl_s_matrix` for Z0 —
-its sign convention requires the I integral; the scalar lane omits I
-entirely, the plane lane carries it for the future Z0 add-on).
+Both return probe sets consumed by :func:`extract_msl_nprobe`.
+:func:`extract_msl_nprobe` returns dimensionless ``S11`` and ``S21``.
+Absolute ``Z0`` is intentionally omitted (use
+:meth:`compute_msl_s_matrix` for Z0).
 """
 from __future__ import annotations
 
@@ -183,71 +147,6 @@ def _solve_q_jvp(primals, tangents):
     dc = (dv1 + dv3) * inv_v2 - (v1 + v3) * dv2 * inv_v2 ** 2
     dq_dc = q * q / (q * q - 1.0 + _Q_EPS)
     return q, dq_dc * dc
-
-
-def _solve_3probe_jax(v1: jnp.ndarray, v2: jnp.ndarray, v3: jnp.ndarray,
-                      i1: jnp.ndarray | None, eps: float = 1e-30
-                      ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """JAX port of :func:`rfx.sources.msl_port._solve_3probe`.
-
-    Returns ``(alpha, gamma, q)`` — forward and backward amplitudes at
-    probe 1, and the per-Δ phasor.  Uses ``_solve_q`` (custom_jvp,
-    branch-cut safe) for the root selection.  ``i1`` is unused here
-    (the impedance Z0 is computed elsewhere when needed).
-    """
-    q = _solve_q(v1, v2, v3)
-    denom = (q * q - 1.0) + eps
-    alpha = (q * v2 - v1) / denom
-    gamma = q * (v1 * q - v2) / denom
-    return alpha, gamma, q
-
-
-def extract_msl_s_params_jax(
-    time_series: jnp.ndarray,
-    driven: MSLWaveProbeSet,
-    passive: MSLWaveProbeSet,
-    *,
-    dt: float,
-    freqs: jnp.ndarray,
-) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """JAX-traceable S11 + S21 from the 3-probe wave decomposition.
-
-    Both S-parameters are dimensionless ratios — independent of the
-    Ez↔V and Hy↔I proxy normalisations — so this helper does not
-    require the substrate height / trace width metadata that the
-    imperative :func:`extract_msl_s_params` uses for the absolute Z0.
-
-    Parameters
-    ----------
-    time_series : (n_steps, n_probes) jnp.ndarray
-        From ``Simulation.forward(...).time_series``.
-    driven, passive : MSLWaveProbeSet
-        From :func:`register_msl_wave_probes`.  ``driven`` is the port
-        carrying the source; ``passive`` is the matched-terminated port.
-    dt : float
-        Yee timestep (``grid.dt``).
-    freqs : (n_freqs,) jnp.ndarray
-        Target frequencies for S-parameter evaluation.
-
-    Returns
-    -------
-    s11, s21 : (n_freqs,) jnp.ndarray, complex64
-        ``s11`` at the driven port; ``s21`` from driven → passive.
-    """
-    v1d = _windowed_dft(time_series[:, driven.ez1_col], dt, freqs)
-    v2d = _windowed_dft(time_series[:, driven.ez2_col], dt, freqs)
-    v3d = _windowed_dft(time_series[:, driven.ez3_col], dt, freqs)
-    v1p = _windowed_dft(time_series[:, passive.ez1_col], dt, freqs)
-    v2p = _windowed_dft(time_series[:, passive.ez2_col], dt, freqs)
-    v3p = _windowed_dft(time_series[:, passive.ez3_col], dt, freqs)
-
-    alpha_d, gamma_d, _ = _solve_3probe_jax(v1d, v2d, v3d, None)
-    alpha_p, _, _ = _solve_3probe_jax(v1p, v2p, v3p, None)
-
-    eps = 1e-30
-    s11 = gamma_d / (alpha_d + eps)
-    s21 = alpha_p / (alpha_d + eps)
-    return s11, s21
 
 
 # ---------------------------------------------------------------------------
@@ -427,54 +326,6 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     raw = jnp.sum(slab * p.dy_slice[None, :], axis=-1)
     return p.direction_sign * raw
 
-
-def extract_msl_s_params_jax_plane(
-    fr,
-    driven: MSLPlaneProbeSet,
-    passive: MSLPlaneProbeSet,
-) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """JAX-traceable plane-integrated 2-port S11/S21 from MSL plane probes.
-
-    Mirrors ``compute_msl_s_matrix``'s plane V/I integrals (line-Ez for
-    V, area-Hy for I) and runs the same 3-probe quadratic recurrence
-    used by the scalar lane :func:`extract_msl_s_params_jax`.  The plane
-    integrals match the validated imperative path bit-for-bit at the
-    integration level, so the residual 15-20 % notch-frequency bias on
-    the scalar lane disappears.
-
-    Parameters
-    ----------
-    fr : ForwardResult
-        From ``Simulation.forward(...)``.  Must carry
-        ``dft_planes`` (populated since 2026-05-07 via the
-        ``_forward_from_materials`` plumbing — gap #4 fix).
-    driven, passive : MSLPlaneProbeSet
-        From :func:`register_msl_plane_probes`.
-
-    Returns
-    -------
-    s11, s21 : (n_freqs,) jnp.complex64
-    """
-    if fr.dft_planes is None:
-        raise ValueError(
-            "ForwardResult.dft_planes is None.  Did you register plane "
-            "probes via register_msl_plane_probes BEFORE calling forward()?"
-        )
-
-    v1d = _v_from_plane(fr, driven.ez1_name, driven)
-    v2d = _v_from_plane(fr, driven.ez2_name, driven)
-    v3d = _v_from_plane(fr, driven.ez3_name, driven)
-    v1p = _v_from_plane(fr, passive.ez1_name, passive)
-    v2p = _v_from_plane(fr, passive.ez2_name, passive)
-    v3p = _v_from_plane(fr, passive.ez3_name, passive)
-
-    alpha_d, gamma_d, _ = _solve_3probe_jax(v1d, v2d, v3d, None)
-    alpha_p, _, _ = _solve_3probe_jax(v1p, v2p, v3p, None)
-
-    eps = 1e-30
-    s11 = gamma_d / (alpha_d + eps)
-    s21 = alpha_p / (alpha_d + eps)
-    return s11, s21
 
 
 # ---------------------------------------------------------------------------

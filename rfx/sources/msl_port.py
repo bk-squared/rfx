@@ -971,45 +971,9 @@ def msl_loop_current(
     return i_loop
 
 
-def extract_msl_s_params(
-    v1: np.ndarray,
-    v2: np.ndarray,
-    v3: np.ndarray,
-    i1: np.ndarray,
-    *,
-    eps: float = 1e-30,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """3-probe de-embedding for V/I on a transmission line.
-
-    Given V at three equally-spaced probe planes (separation Δ) and I at
-    the first plane, recover the reflection coefficient ``S11`` at probe 1,
-    the characteristic impedance ``Z0``, and the per-step phasor
-    ``q = exp(-jβΔ)`` (positive root with ``|q| ≤ 1``).
-
-    Parameters
-    ----------
-    v1, v2, v3 : (n_freqs,) complex
-        DFT'd voltage at three probe planes spaced by Δ along the line.
-    i1 : (n_freqs,) complex
-        DFT'd current at probe plane 1.
-
-    Returns
-    -------
-    s11, z0, q : (n_freqs,) complex
-        ``s11`` is the reflection coefficient at probe 1; ``z0`` the
-        extracted characteristic impedance; ``q`` the per-Δ phasor.
-    """
-    v1 = np.asarray(v1, dtype=complex)
-    v2 = np.asarray(v2, dtype=complex)
-    v3 = np.asarray(v3, dtype=complex)
-    i1 = np.asarray(i1, dtype=complex)
-
-    s11, z0, q = _solve_3probe(v1, v2, v3, i1, eps)
-    return s11, z0, q
-
 
 def _solve_3probe(v1, v2, v3, i1, eps):
-    """Closed-form 3-probe solver shared by extract_msl_s_params/forward."""
+    """Closed-form 3-probe solver used by msl_forward_amplitude."""
     # q + 1/q = (V1 + V3) / V2  →  q² − coeff·q + 1 = 0
     coeff = (v1 + v3) / (v2 + eps)
     disc = coeff**2 - 4.0 + 0j
