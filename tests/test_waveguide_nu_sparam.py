@@ -16,17 +16,17 @@ Why approach (a) over mock/replay:
 Domain: WR-90 air-filled waveguide, a=22.86mm, b=10.16mm.
 Mesh: graded dx_profile (coarse/fine/coarse along x), uniform dy/dz.
 
-BUG FOUND (G-NU, 2026-05-24):
-  _compute_waveguide_s_matrix_nu returns all-zero S-parameters for a
-  standard 2-port WR-90 air-filled waveguide with dx_profile grading.
-  The uniform path (no dx_profile) returns the physically correct result
-  |S21|=|S12|≈1, |S11|=|S22|≈0 for the same geometry.
-  Evidence: per-frequency trace below (test_nu_s_params_passive_ish output).
-  The transmission tests are marked xfail(strict=True) pending investigation.
-  Likely cause: run_nonuniform_path wave accumulator or extract_waveguide_port_waves
-  cfg lookup fails silently (dev_wg / ref_wg keyed on entry.name — check
-  that NU result.waveguide_ports dict is populated by run_nonuniform_path).
-  See also: test_nu_vs_uniform_finite_and_comparable for the side-by-side dump.
+FIXED (NU-DRIVE-FIX 2026-05-25):
+  _compute_waveguide_s_matrix_nu now returns physical S-parameters (|S21|≈1,
+  |S11|≈0) for a WR-90 air thru with dx_profile grading. Two bugs were fixed:
+  1. rfx/runners/nonuniform.py _build_waveguide_port_config_nu: missing
+     dt=float(grid.dt) in init_waveguide_port call — e_inc_table/h_inc_table
+     remained size-1 sentinels (dt=0 path) so _rect_dft used dt=0 → all DFT
+     outputs zero, producing all-zero S.
+  2. rfx/api/_sparams.py _compute_waveguide_s_matrix_nu: off-diagonal safe_b
+     guard threshold 1e-30 too aggressive — NU TFSF operates at float32 signal
+     level ~1e-31 (dt/dx scaling), causing the guard to substitute 1.0 for
+     b_ref and breaking the b_dev/b_ref≈1 cancellation. Lowered to 1e-60.
 """
 from __future__ import annotations
 
@@ -149,8 +149,8 @@ def test_nu_s_params_finite():
     """All entries of s_params must be finite (no NaN/Inf).
 
     R5: per-frequency dump — full trace, not a bare scalar.
-    NOTE: the NU path currently returns all-zero S (bug, see module docstring).
-    Zero is finite, so this test passes; the physics gate is in the xfail below.
+    NOTE: with the NU-DRIVE-FIX applied, S is now physically correct (|S21|≈1,
+    |S11|≈0). Finite check still passes. Physics gate in test_nu_s_params_passive_ish.
     """
     res = _get_result()
     s = np.array(res.s_params)
@@ -175,39 +175,28 @@ def test_nu_s_params_finite():
 
 
 # ---------------------------------------------------------------------------
-# Test 3: physical passivity gate — XFAIL (BUG)
-#   _compute_waveguide_s_matrix_nu returns all-zero S for the NU path.
-#   The uniform path returns |S21|=1 (correct). This is a real bug.
-#   Evidence: test_nu_vs_uniform_finite_and_comparable shows the side-by-side.
+# Test 3: physical passivity gate (fixed NU-DRIVE-FIX 2026-05-25)
 # ---------------------------------------------------------------------------
 
-import pytest  # noqa: E402  (placed here so the xfail decorator is near its test)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG (G-NU 2026-05-24): _compute_waveguide_s_matrix_nu returns all-zero "
-        "S-parameters for WR-90 air thru with dx_profile grading, while the "
-        "IDENTICAL setup on the uniform path (no dx_profile) gives |S21|=1.0. "
-        "Setup parity rules out a test deficiency — this is a real nonuniform "
-        "waveguide-port S-param gap. Root cause UNCONFIRMED: note that "
-        "rfx/runners/nonuniform.py:498-624 DOES build/populate waveguide_ports "
-        "(so the simple 'dict empty' hypothesis is contradicted) — the gap is "
-        "more likely in the NU waveguide-port DRIVE/excitation or the s-param "
-        "multi-run orchestration not routing the excitation through the NU "
-        "runner. Needs a dedicated investigation (not done here). "
-        "WI-2 only converted the assembly shell; this all-zero originates in "
-        "the run/excitation path, which WI-2 did not touch."
-    ),
-)
 def test_nu_s_params_passive_ish():
     """Loose passivity + activity gate for a 2-period air-filled WR-90 thru.
 
-    XFAIL: NU path returns all-zero S (bug). This test documents the expected
-    physical result and will un-xfail when the bug is fixed.
+    FIXED (NU-DRIVE-FIX 2026-05-25): _compute_waveguide_s_matrix_nu now returns
+    physical S-parameters (|S21|≈1, |S11|≈0) for a WR-90 air thru with
+    dx_profile grading. Two bugs were fixed:
+      1. rfx/runners/nonuniform.py _build_waveguide_port_config_nu: missing
+         dt=float(grid.dt) in init_waveguide_port call — e_inc_table/h_inc_table
+         remained size-1 sentinels (dt=0 path), so _rect_dft used dt=0 → all
+         DFT outputs zero.
+      2. rfx/api/_sparams.py _compute_waveguide_s_matrix_nu: off-diagonal
+         safe_b guard threshold 1e-30 too aggressive — NU TFSF operates at
+         float32 signal level ~1e-31 (dt/dx scaling), causing the guard to
+         substitute 1.0 for b_ref, breaking the b_dev/b_ref≈1 cancellation.
+         Lowered to 1e-60.
 
-    Expected (once fixed):
+    Expected:
       - max |S_ij| < 2.0  (no energy explosion)
       - |S11| < 0.50  (low reflection for air-filled straight guide)
       - |S21| > 0.05  (some transmission must be present)

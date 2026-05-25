@@ -1575,8 +1575,19 @@ class _SparamMixin:
                     if recv_idx == drive_idx:
                         recv_col.append((b_dev - b_ref) / safe_a_inc)
                     else:
+                        # Use a tighter guard than the diagonal safe_a_inc
+                        # (1e-30): the NU path operates at lower float32
+                        # signal levels (~1e-31) because the TFSF table
+                        # injection scales with dt/dx. The reference
+                        # outgoing wave b_ref at non-driven ports is
+                        # proportional to the driven-port incident wave and
+                        # can fall to ~1e-31 in float32. A 1e-30 guard
+                        # fires falsely and replaces b_ref with 1.0, giving
+                        # S21 = b_dev * 1e-31 instead of b_dev/b_ref ≈ 1.
+                        # 1e-60 is safely below float32 underflow (~1e-38)
+                        # so it only fires when b_ref is genuinely zero.
                         safe_b = jnp.where(
-                            jnp.abs(b_ref) > 1e-30,
+                            jnp.abs(b_ref) > 1e-60,
                             b_ref,
                             jnp.ones_like(b_ref),
                         )
