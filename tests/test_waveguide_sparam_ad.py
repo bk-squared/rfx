@@ -30,8 +30,22 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import warnings
+from jax.experimental import enable_x64 as _enable_x64
 
-jax.config.update("jax_enable_x64", True)
+
+@pytest.fixture(autouse=True)
+def _scoped_x64():
+    """Enable x64 PER-TEST via the context manager, NOT module-level.
+
+    A module-level ``jax.config.update("jax_enable_x64", True)`` permanently
+    flips x64 ON for the whole pytest process and leaks into downstream
+    same-process tests (test_wire_*/test_verification then fail with lax.scan
+    carry-dtype TypeErrors mid-suite). The context manager restores the prior
+    setting on exit, so x64 stays scoped to this file. See
+    tests/test_msl_sparam_ad.py for the same pattern.
+    """
+    with _enable_x64(True):
+        yield
 
 # ---------------------------------------------------------------------------
 # Fixtures directory (relative to this file)

@@ -36,7 +36,13 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-jax.config.update("jax_enable_x64", True)
+# NOTE: do NOT set module-level jax.config.update("jax_enable_x64", True) here —
+# it permanently flips x64 ON for the whole pytest process and leaks into
+# downstream same-process tests (test_wire_*/test_verification then fail with
+# lax.scan carry-dtype TypeErrors). These NU tests need only float32 (they check
+# finite/shape/xfail, no f64-precision assertion). If a future test here needs
+# x64, scope it with `with jax.experimental.enable_x64(True):` like
+# tests/test_msl_sparam_ad.py — never module-level.
 
 # ---------------------------------------------------------------------------
 # WR-90 dimensions
