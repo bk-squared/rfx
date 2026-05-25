@@ -161,6 +161,19 @@ _GATE_ABS_S21 = 0.005
 _GATE_ABS_S11 = 0.001
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Issue #80 stage S1 (2026-05-19) moved compute_msl_s_matrix — the "
+        "imperative lane — onto the OpenEMS V·I wave split + closed "
+        "Ampère-loop current. The plane lane extract_msl_s_params_jax_plane "
+        "still runs the legacy 3-probe quadratic, so the two lanes "
+        "legitimately diverge until the S2 consolidation brings the plane "
+        "lane to the same V·I split. strict=True so this self-removes when "
+        "S2 re-unifies the lanes. See "
+        "docs/agent-memory/port_sparam_review_2026-05-19.md."
+    ),
+)
 def test_plane_lane_s21_matches_imperative(
     imperative_reference, plane_lane_result,
 ):
@@ -177,6 +190,19 @@ def test_plane_lane_s21_matches_imperative(
     )
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Issue #80 stage S1 (2026-05-19) moved compute_msl_s_matrix — the "
+        "imperative lane — onto the OpenEMS V·I wave split + closed "
+        "Ampère-loop current. The plane lane extract_msl_s_params_jax_plane "
+        "still runs the legacy 3-probe quadratic, so the two lanes "
+        "legitimately diverge until the S2 consolidation brings the plane "
+        "lane to the same V·I split. strict=True so this self-removes when "
+        "S2 re-unifies the lanes. See "
+        "docs/agent-memory/port_sparam_review_2026-05-19.md."
+    ),
+)
 def test_plane_lane_s11_matches_imperative(
     imperative_reference, plane_lane_result,
 ):

@@ -188,11 +188,21 @@ def _build_sim_with_stub(*, dx: float, l_line_mm: float, l_stub_mm: float = 8.63
 
 
 def test_reflector_clearance_warning_fires_on_short_l_line():
-    """L_LINE=5mm with stub at LX/2 — V₃ sits ~1.3mm from the stub
+    """L_LINE=9mm with stub at LX/2 — V₃ sits ~0.6–0.9mm from the stub
     PEC reflector, well under λ_g/4 ≈ 3.7mm at f_max=9GHz with
-    ε_eff_proxy=5.  Expect the new reflector-clearance warning to
-    fire on BOTH ports (the stub is between them)."""
-    sim = _build_sim_with_stub(dx=80e-6, l_line_mm=5.0)
+    ε_eff_proxy=5.  Expect the reflector-clearance warning to
+    fire on BOTH ports (the stub is between them).
+
+    NOTE (issue #80 Fix B): the L_LINE was 5mm prior to the
+    wavelength-bound probe-placement defaults. Fix B grew the default
+    3-probe span from ~0.9mm to ~3.6mm (offset 17 + 2·spacing 14 cells
+    at dx=80µm, eps_r_sub≈3.66, f_max=9GHz), so at L_LINE=5mm V₃
+    overshot the LX/2 stub entirely and the warning no longer fired.
+    L_LINE=9mm keeps V₃ before the stub yet within λ_g/4, restoring the
+    intended scenario. The λ_g/4 threshold and the fire-on-both-ports
+    assertion are unchanged — only the geometry is re-tuned to the new
+    defaults."""
+    sim = _build_sim_with_stub(dx=80e-6, l_line_mm=9.0)
     msgs = _msl_warnings(sim)
     refl = [m for m in msgs if "reflector" in m]
     assert len(refl) == 2, (

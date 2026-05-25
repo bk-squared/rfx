@@ -19,6 +19,7 @@ from rfx.sources.msl_port import (
     compute_s21,
     extract_msl_s_params,
     msl_forward_amplitude,
+    msl_loop_current,
     msl_probe_x_coords,
     setup_msl_port,
 )
@@ -182,6 +183,64 @@ def test_3probe_deembedding_with_reflection():
     assert err_mag < 1e-3, f"|S11| error {err_mag}"
     assert err_phase < 1e-3, f"phase error {err_phase}"
     assert abs(z0[0].real - Z0) / Z0 < 1e-3
+
+
+# ---------------------------------------------------------------------------
+# Test 4b: closed Ampere-loop current (issue #80 stage S1)
+# ---------------------------------------------------------------------------
+
+
+def test_msl_loop_current_closed_ampere_bookkeeping():
+    """``msl_loop_current`` sums the four ∮H·dl legs with correct signs.
+
+    Plant a field where each leg carries a known constant; the closed
+    contour integral must equal ``bottom - top + right - left`` (the
+    ``-x`` raw convention), and ``+x`` must negate it.  This locks the
+    leg selection, the dy/dz weighting, and every sign — the bookkeeping
+    that the open single-leg integral got wrong.
+    """
+    n_freqs, ny, nz = 3, 12, 10
+    hy = np.zeros((n_freqs, ny, nz), dtype=complex)
+    hz = np.zeros((n_freqs, ny, nz), dtype=complex)
+    dy = np.full(ny, 2.0)
+    dz = np.full(nz, 5.0)
+
+    j_lo, j_hi = 4, 7          # trace width: 4 cells -> Sigma dy = 8.0
+    k_lo, k_hi = 5, 6          # trace height: 2 cells -> Sigma dz = 10.0
+
+    hy[:, j_lo:j_hi + 1, k_lo - 1] = 1.0    # bottom leg
+    hy[:, j_lo:j_hi + 1, k_hi] = 0.5        # top leg
+    hz[:, j_hi, k_lo:k_hi + 1] = 2.0        # right leg
+    hz[:, j_lo - 1, k_lo:k_hi + 1] = 3.0    # left leg
+
+    width, height = 4 * 2.0, 2 * 5.0
+    expect_raw = 1.0 * width - 0.5 * width + 2.0 * height - 3.0 * height
+    assert expect_raw == 8.0 - 4.0 + 20.0 - 30.0  # == -6.0
+
+    i_minus = msl_loop_current(
+        hy, hz, j_lo=j_lo, j_hi=j_hi, k_trace_lo=k_lo, k_trace_hi=k_hi,
+        dy_arr=dy, dz_arr=dz, direction="-x",
+    )
+    np.testing.assert_allclose(i_minus, expect_raw)
+
+    i_plus = msl_loop_current(
+        hy, hz, j_lo=j_lo, j_hi=j_hi, k_trace_lo=k_lo, k_trace_hi=k_hi,
+        dy_arr=dy, dz_arr=dz, direction="+x",
+    )
+    np.testing.assert_allclose(i_plus, -expect_raw)
+
+
+def test_msl_loop_current_rejects_edge_trace():
+    """The loop runs one cell outside the trace, so an edge trace raises."""
+    hy = np.zeros((2, 8, 8), dtype=complex)
+    hz = np.zeros((2, 8, 8), dtype=complex)
+    dy = np.ones(8)
+    dz = np.ones(8)
+    with pytest.raises(ValueError, match="margin"):
+        msl_loop_current(
+            hy, hz, j_lo=2, j_hi=4, k_trace_lo=0, k_trace_hi=2,
+            dy_arr=dy, dz_arr=dz, direction="+x",
+        )
 
 
 # ---------------------------------------------------------------------------

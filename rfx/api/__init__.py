@@ -956,6 +956,7 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
         excite: bool = True,
         n_probe_offset: int | None = None,
         n_probe_spacing: int | None = None,
+        n_probes: int = 5,
         name: str | None = None,
         mode: str = "laplace",
         eps_r_sub: float | None = None,
@@ -988,15 +989,39 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
             → passive matched termination only.
         n_probe_offset : int, optional
             Distance (cells) from the feed plane to the first probe plane.
-            When ``None``, computed from a fixed physical distance of 400 µm
-            (≈5 cells at dx=80 µm) so probe spacing in wavelengths stays
-            constant under mesh refinement — required to keep the 3-probe
-            extractor away from its q→1 numerical singularity.
+            When ``None``, bound to the wavelength (issue #80 Fix B):
+            ``round(0.5 * lam_min_eff / (2*pi) / dx)`` with
+            ``lam_min_eff = c / freq_max / sqrt(eps_r_sub_estimate)``. This
+            places probe 1 at ~λ/(4π) at the highest design frequency, well
+            into the source far-field, and keeps the 3-probe extractor away
+            from its q→1 numerical singularity under mesh refinement.
         n_probe_spacing : int, optional
             Distance (cells) between consecutive probe planes. When ``None``,
-            computed from a fixed physical distance of 240 µm. Same rationale.
+            bound so the total N-probe array span stays ~``lam_min_eff/8``
+            independent of ``n_probes``:
+            ``round(lam_min_eff / 8 / (n_probes - 1) / dx)``. For
+            ``n_probes=3`` this is exactly ``lam_min_eff/16`` (issue #80
+            Fix B). Shrinking the adjacent spacing as ``n_probes`` grows
+            keeps the probe array from running off short lines.
+        n_probes : int
+            Number of equally-spaced voltage probe planes registered for
+            the N-probe least-squares wave-decomposition extractor (issue
+            #80 Fix C). Probe ``n`` sits at ``offset + n*spacing`` cells
+            from the feed plane. ``N >= 3`` is required; the default 5
+            over-determines the 2-unknown ``(alpha, gamma)`` fit, which
+            removes the 3-probe quadratic's q→1 singularity. The current
+            probe at probe 0 is always recorded for the absolute Z0.
         name : str, optional
             Port label used in result dicts. Auto-generated when omitted.
+        eps_r_sub : float, optional
+            Substrate relative permittivity. Used both for the eigenmode
+            source and as ``eps_r_sub_estimate`` for the wavelength-bound
+            probe-placement defaults (issue #80 Fix B). When ``None`` the
+            estimate is resolved from the dielectric geometry already
+            registered under the port (a shape whose bounding box contains
+            the substrate mid-point and whose material has ``eps_r > 1``);
+            if no such dielectric is found it falls back to 1.0, which is
+            conservative (largest ``lam_min_eff`` → largest offset).
         """
         if direction not in ("+x", "-x"):
             raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
@@ -1008,19 +1033,70 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
             raise ValueError(f"impedance must be positive, got {impedance}")
         if mode not in ("eigenmode", "laplace", "uniform"):
             raise ValueError(f"mode must be 'eigenmode', 'laplace', or 'uniform', got {mode!r}")
-        # Physical-distance defaults — see docstring for why cell-counted
-        # defaults caused the 3-probe extractor to diverge under mesh refinement.
+        # Wavelength-bound probe-placement defaults (issue #80 Fix B).
+        # Cell-counted and fixed-µm defaults both placed probe 1 inside the
+        # source reactive zone and the 3-probe quadratic at the q→1
+        # singularity. Bind the defaults to the shortest in-substrate
+        # wavelength so β·Δ stays ≈ π/8 and probe 1 sits in the far-field.
+        # An explicit user-supplied value is always honoured.
+        _dx = float(self._dx or (C0 / self._freq_max / 10))
+        # Resolve the substrate permittivity for the wavelength estimate.
+        # Precedence: explicit eps_r_sub kwarg > the dielectric registered
+        # under the port (a shape containing the substrate mid-point whose
+        # material has eps_r > 1) > conservative 1.0 fallback (largest
+        # lam_min_eff, hence largest offset — safe but coarse).
+        if eps_r_sub is not None:
+            eps_r_sub_estimate = float(eps_r_sub)
+        else:
+            eps_r_sub_estimate = 1.0
+            x_feed, y_centre, z_lo = position
+            probe_pt = (x_feed, y_centre, z_lo + height / 2.0)
+            for ge in self._geometry:
+                try:
+                    (lo0, lo1, lo2), (hi0, hi1, hi2) = ge.shape.bounding_box()
+                except Exception:
+                    # Shape without a bounding_box() (or a degenerate one):
+                    # skip it for the estimate rather than fail port setup.
+                    continue
+                if not (
+                    lo0 <= probe_pt[0] <= hi0
+                    and lo1 <= probe_pt[1] <= hi1
+                    and lo2 <= probe_pt[2] <= hi2
+                ):
+                    continue
+                mat_eps = float(self._resolve_material(ge.material_name).eps_r)
+                if mat_eps > 1.0:
+                    eps_r_sub_estimate = max(eps_r_sub_estimate, mat_eps)
+        lam_min_eff = C0 / self._freq_max / math.sqrt(eps_r_sub_estimate)
         if n_probe_offset is None:
-            n_probe_offset = max(3, int(round(400e-6 / float(self._dx or (2.998e8 / self._freq_max / 10)))))
+            n_probe_offset = max(
+                3, int(round(0.5 * lam_min_eff / (2.0 * math.pi) / _dx))
+            )
         if n_probe_spacing is None:
-            n_probe_spacing = max(1, int(round(240e-6 / float(self._dx or (2.998e8 / self._freq_max / 10)))))
+            # Bind the default so the TOTAL N-probe array span stays
+            # ~lam/8 (the original Fix B 3-probe span of 2*lam/16),
+            # independent of n_probes. For n_probes=3 this is exactly
+            # lam/16 — bit-identical to Fix B. As n_probes grows the
+            # adjacent spacing shrinks so the probe array does not run
+            # off short lines (issue #80 Fix C).
+            span_total = lam_min_eff / 8.0
+            n_probe_spacing = max(
+                2, int(round(span_total / (n_probes - 1) / _dx))
+            )
         if n_probe_offset < 3:
             raise ValueError(
                 f"n_probe_offset must be >= 3 to avoid near-field, got {n_probe_offset}"
             )
-        if n_probe_spacing < 1:
+        if n_probe_spacing < 2:
             raise ValueError(
-                f"n_probe_spacing must be >= 1, got {n_probe_spacing}"
+                f"n_probe_spacing must be >= 2 to avoid the q->1 extractor "
+                f"singularity, got {n_probe_spacing}"
+            )
+        if n_probes < 3:
+            raise ValueError(
+                f"n_probes must be >= 3 for the N-probe least-squares "
+                f"wave-decomposition extractor (issue #80 Fix C), got "
+                f"{n_probes}"
             )
 
         if waveform is None and excite:
@@ -1040,6 +1116,7 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
             excite=excite,
             n_probe_offset=n_probe_offset,
             n_probe_spacing=n_probe_spacing,
+            n_probes=n_probes,
             mode=mode,
             eps_r_sub=eps_r_sub,
         ))

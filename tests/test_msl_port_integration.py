@@ -96,6 +96,17 @@ def test_msl_thru_line_passive_gate():
       |S11| < 0.15
       0.90 < |S21| < 1.05
       Z0 ∈ (40, 65) Ω
+
+    Issue #80 stage S1 (2026-05-19) closed the long-standing ``xfail``
+    here. The de-embedded Z0 used to read ~74 Ω because the line current
+    was an open single-leg ``∑Hy·dy`` integral that undercounted ``I`` by
+    ~1.5x. ``compute_msl_s_matrix`` now measures the closed Ampère-loop
+    current ``∮H·dl`` (``msl_loop_current``) and extracts S-parameters via
+    the OpenEMS-style V·I wave split; Z0 lands at ~57 Ω, inside the gate
+    band (the ~57-vs-48 residual is the documented Yee-staircase bias at
+    3 substrate cells). The (40, 65) bound is left UNCHANGED — it was
+    never weakened to make this pass. See
+    ``docs/agent-memory/port_sparam_review_2026-05-19.md``.
     """
 
     sim = Simulation(
