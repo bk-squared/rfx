@@ -48,6 +48,8 @@ class _SparamMixin:
         num_periods: float = 20.0,
         normalize: bool | str = False,
         subpixel_smoothing: bool | str = False,
+        eps_override: "jnp.ndarray | None" = None,
+        sigma_override: "jnp.ndarray | None" = None,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
@@ -168,6 +170,13 @@ class _SparamMixin:
             base_materials = base_materials._replace(
                 sigma=jnp.where(pec_mask_wg, 1e10, base_materials.sigma))
         materials = base_materials
+        # G-AD-WIRE-WG2: public eps_override / sigma_override channel.
+        # Mirror the MSL pattern: replace eps_r / sigma on the assembled
+        # materials *after* the PEC fold so PEC boundaries are untouched.
+        if eps_override is not None:
+            materials = materials._replace(eps_r=eps_override)
+        if sigma_override is not None:
+            materials = materials._replace(sigma=sigma_override)
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
         _, debye, lorentz = self._init_dispersion(materials, grid.dt, debye_spec, lorentz_spec)

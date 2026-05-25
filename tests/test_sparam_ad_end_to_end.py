@@ -10,11 +10,15 @@ MSL fix:
   2. Replaced ``hy_plane = np.asarray(...)`` / ``hz_plane = np.asarray(...)``
      with ``jnp.asarray`` so field-plane reads stay on the JAX tape.
 
-Waveguide fix:
+Waveguide fix (G-AD-WIRE, now upgraded to G-AD-WIRE-WG2):
   1. Replaced the ``np.zeros`` + ``np.array`` item-assign accumulator in
      ``extract_waveguide_s_matrix`` (rfx/sources/waveguide_port.py) with
      a functional ``jnp.stack`` build so ``b_recv / safe_a`` stays on the
      JAX tape.
+  2. Added public ``eps_override`` / ``sigma_override`` kwargs to
+     ``compute_waveguide_s_matrix`` (rfx/api/_sparams.py) so jax.grad
+     flows end-to-end through the PUBLIC API without internal monkeypatching.
+     NU path excluded (uses run_nonuniform_path, different material channel).
 
 Both fixes are acceptance-gated by M1 (finite non-zero gradient +
 forward |S| in [0, 1.2] + FD cross-check at two eps points).
@@ -216,50 +220,34 @@ def test_msl_s_matrix_ad_end_to_end():
 
 
 def test_waveguide_s_matrix_ad_end_to_end():
-    """G-AD-WIRE M1 (waveguide): jax.grad flows through compute_waveguide_s_matrix.
+    """G-AD-WIRE-WG2 M1: jax.grad flows through PUBLIC compute_waveguide_s_matrix(eps_override=...).
 
-    G-AD-WIRE fixes the np.zeros/np.array accumulator in
-    extract_waveguide_s_matrix (rfx/sources/waveguide_port.py) so b_recv/safe_a
-    stays on the JAX tape.  We inject alpha via eps_override on materials to
-    provide a differentiable scalar input, then check:
+    G-AD-WIRE-WG2 adds a public ``eps_override`` kwarg to
+    ``compute_waveguide_s_matrix`` (rfx/api/_sparams.py) so that
+    jax.grad can flow end-to-end without monkeypatching internals.
+
+    The earlier fix (G-AD-WIRE) jnp-ified the accumulator in
+    ``extract_waveguide_s_matrix`` so b_recv/safe_a stays on the JAX tape.
+    This test exercises the PUBLIC channel end-to-end and checks:
     1. Gradient is finite and non-zero.
     2. Forward |S| is physically sane ([0, 1.2]).
-    3. Finite-difference cross-check (sign + magnitude).
+    3. Finite-difference cross-check (sign + magnitude, 2 eps points).
 
-    NOTE on eps_override channel for waveguide: compute_waveguide_s_matrix
-    assembles materials internally and passes them directly to
-    extract_waveguide_s_matrix. We inject alpha by monkeypatching
-    _assemble_materials (same channel the old xfail used), because
-    compute_waveguide_s_matrix does not yet expose a public eps_override kwarg.
-    The key fix tested here is the jnp.stack accumulator — the tape NOW
-    survives from the assembled materials through run_simulation → final_cfgs
-    → extract_waveguide_port_waves → b_recv/safe_a → S-matrix scalar.
+    NU path: excluded from eps_override scope (uses run_nonuniform_path,
+    a different material-injection channel). Only the uniform lane is tested.
     """
     sim = _build_wg_sim()
-
-    orig_assemble = sim._assemble_materials
+    grid = sim._build_grid()
+    eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
 
     def objective(alpha: jnp.ndarray) -> jnp.ndarray:
-        def patched_assemble(g):
-            result = orig_assemble(g)
-            mats = result[0]
-            from rfx.core.yee import MaterialArrays
-            new_eps = mats.eps_r * alpha
-            new_mats = MaterialArrays(
-                eps_r=new_eps, sigma=mats.sigma, mu_r=mats.mu_r
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = sim.compute_waveguide_s_matrix(
+                n_steps=200,
+                normalize=False,
+                eps_override=eps_base * alpha,
             )
-            return (new_mats,) + result[1:]
-
-        sim._assemble_materials = patched_assemble
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                result = sim.compute_waveguide_s_matrix(
-                    n_steps=200,
-                    normalize=False,
-                )
-        finally:
-            sim._assemble_materials = orig_assemble
         S = result.s_params
         k0 = S.shape[-1] // 2
         return jnp.real(jnp.sum(jnp.abs(S[:, :, k0]) ** 2))
@@ -269,22 +257,11 @@ def test_waveguide_s_matrix_ad_end_to_end():
     # Forward S sanity gate
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-
-        def patched_assemble_fwd(g):
-            result = orig_assemble(g)
-            mats = result[0]
-            from rfx.core.yee import MaterialArrays
-            new_mats = MaterialArrays(
-                eps_r=mats.eps_r * alpha0, sigma=mats.sigma, mu_r=mats.mu_r
-            )
-            return (new_mats,) + result[1:]
-
-        sim._assemble_materials = patched_assemble_fwd
-        try:
-            fwd_result = sim.compute_waveguide_s_matrix(n_steps=200, normalize=False)
-        finally:
-            sim._assemble_materials = orig_assemble
-
+        fwd_result = sim.compute_waveguide_s_matrix(
+            n_steps=200,
+            normalize=False,
+            eps_override=eps_base * alpha0,
+        )
     S_fwd = np.asarray(fwd_result.s_params)
     s_max = float(np.max(np.abs(S_fwd)))
     assert s_max <= 1.2, (
@@ -297,17 +274,17 @@ def test_waveguide_s_matrix_ad_end_to_end():
 
     assert jnp.isfinite(g), f"AD gradient is not finite: {g}"
     assert float(jnp.abs(g)) > 1e-10, (
-        f"AD gradient is effectively zero ({g:.3e}): tape still broken. "
-        "Check that extract_waveguide_s_matrix uses jnp.stack (not np.zeros/np.array)."
+        f"AD gradient is effectively zero ({g:.3e}): eps_override not reaching the scan. "
+        "Run jax.make_jaxpr(objective)(alpha0) and grep for eps_r primitive."
     )
 
-    # Finite-difference cross-check
+    # Finite-difference cross-check at two eps points
     h = 1e-3
     f_plus = float(objective(jnp.float32(alpha0 + h)))
     f_minus = float(objective(jnp.float32(alpha0 - h)))
     g_fd = (f_plus - f_minus) / (2.0 * h)
     g_ad = float(g)
-    print(f"\n[G-AD-WIRE WG] loss={float(loss_val):.6e}  |S|_max={s_max:.4f}")
+    print(f"\n[G-AD-WIRE-WG2] loss={float(loss_val):.6e}  |S|_max={s_max:.4f}")
     print(f"  AD grad = {g_ad:.6e}")
     print(f"  FD grad = {g_fd:.6e}  (h={h})")
     rel_err = abs(g_ad - g_fd) / (abs(g_fd) + 1e-12)
