@@ -546,6 +546,7 @@ class _SparamMixin:
         n_freqs: int = 100,
         raw_3probe_dump_path: str | None = None,
         strict_extractor: bool = False,
+        eps_override: "jnp.ndarray | None" = None,
     ) -> "MSLSMatrixResult":
         """Compute the MSL S-matrix using N-probe numerical de-embedding.
 
@@ -868,13 +869,25 @@ class _SparamMixin:
                     )
                     hz_probe_names[p_idx] = nm_hz
 
-                # Run; pass n_steps through (None → auto).
-                result = self.run(
-                    n_steps=n_steps,
-                    num_periods=num_periods,
-                    compute_s_params=False,
-                )
-                planes = result.dft_planes or {}
+                # G-AD-WIRE: when eps_override is provided use the
+                # differentiable forward() path so jax.grad can flow
+                # from eps_override through the DFT plane accumulators
+                # into the V/I assembly. Otherwise fall back to run()
+                # for imperative (non-AD) workflows.
+                if eps_override is not None:
+                    fwd_result = self.forward(
+                        eps_override=eps_override,
+                        n_steps=n_steps,
+                        num_periods=num_periods,
+                    )
+                    planes = fwd_result.dft_planes or {}
+                else:
+                    result = self.run(
+                        n_steps=n_steps,
+                        num_periods=num_periods,
+                        compute_s_params=False,
+                    )
+                    planes = result.dft_planes or {}
 
                 # Helper: integrate V and I per port from the recorded planes.
                 v_per_port: list[list[np.ndarray]] = []
@@ -889,8 +902,12 @@ class _SparamMixin:
                             v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
                         vs.append(v_f)
                     v_per_port.append(vs)
-                    hy_plane = np.asarray(planes[hy_probe_names[p_idx]].accumulator)
-                    hz_plane = np.asarray(planes[hz_probe_names[p_idx]].accumulator)
+                    # G-AD-WIRE: keep on JAX tape when eps_override is
+                    # set. np.asarray() would concretise a JAX tracer and
+                    # break jax.grad. jnp.asarray() is a no-op on a real
+                    # jnp.ndarray and still works for numpy arrays.
+                    hy_plane = jnp.asarray(planes[hy_probe_names[p_idx]].accumulator)
+                    hz_plane = jnp.asarray(planes[hz_probe_names[p_idx]].accumulator)
                     # Closed Ampere-loop current ∮H·dl around the trace
                     # conductor (issue #80 stage S1). The pre-S1 inline
                     # integral summed the bottom Hy leg only and undercounted
