@@ -556,6 +556,8 @@ class _SparamMixin:
         raw_3probe_dump_path: str | None = None,
         strict_extractor: bool = False,
         eps_override: "jnp.ndarray | None" = None,
+        checkpoint_every: int | None = None,
+        checkpoint_segments: int | None = None,
     ) -> "MSLSMatrixResult":
         """Compute the MSL S-matrix using N-probe numerical de-embedding.
 
@@ -601,6 +603,21 @@ class _SparamMixin:
             :class:`ValueError` instead. With the N-probe extractor (Fix C)
             ``|q|`` and ``Z0`` should be healthy so this rarely fires — it
             is the safety net for pathological geometries.
+        checkpoint_segments : int or None
+            Gradient-checkpointing segment count for the reverse-mode AD tape on
+            the **uniform** mesh (the standard MSL path), forwarded to
+            :meth:`forward` (only active on the differentiable ``eps_override``
+            channel). Must DIVIDE the auto-computed ``n_steps`` exactly — padding
+            is rejected because it would shift the DFT accumulator windows.
+            Choose the divisor nearest ``sqrt(n_steps)`` so backward memory scales
+            ~``sqrt(n_steps)*carry`` instead of ``n_steps*carry`` — required for
+            converged ``num_periods>=20`` AD that otherwise OOMs (G-AD-CHECKPOINT).
+            Default ``None`` leaves forward-only runs and small-period AD unchanged.
+        checkpoint_every : int or None
+            Non-uniform-mesh counterpart of ``checkpoint_segments`` (chunk size,
+            not segment count; issue #73). Forwarded to :meth:`forward`; raises
+            ``NotImplementedError`` on the uniform path — use
+            ``checkpoint_segments`` there.
 
         Returns
         -------
@@ -888,6 +905,8 @@ class _SparamMixin:
                         eps_override=eps_override,
                         n_steps=n_steps,
                         num_periods=num_periods,
+                        checkpoint_every=checkpoint_every,
+                        checkpoint_segments=checkpoint_segments,
                     )
                     planes = fwd_result.dft_planes or {}
                 else:
