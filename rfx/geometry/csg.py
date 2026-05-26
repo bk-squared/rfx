@@ -218,7 +218,6 @@ class PolylineWire:
     def mask_on_coords(self, x, y, z):
         r2_thresh = self.radius ** 2
         pts = np.array(self.points, dtype=np.float64)
-        n_seg = len(pts) - 1
 
         # Filter out degenerate (zero-length) segments
         A = pts[:-1]  # (n_seg, 3)

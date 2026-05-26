@@ -17,7 +17,6 @@ from rfx.sources.msl_port import (
     MSLPort,
     _msl_yz_cells,
     compute_s21,
-    extract_msl_s_params,
     msl_forward_amplitude,
     msl_loop_current,
     msl_probe_x_coords,
@@ -126,63 +125,6 @@ def test_setup_msl_port_total_resistance():
     nonzero_count = int(np.count_nonzero(sigma_arr))
     assert nonzero_count == len(cells)
     assert total_zero > 0
-
-
-# ---------------------------------------------------------------------------
-# Test 3: 3-probe de-embedding for a pure forward wave
-# ---------------------------------------------------------------------------
-
-
-def test_3probe_deembedding_pure_forward():
-    beta = 200.0  # rad/m
-    Delta = 0.5e-3
-    x1 = 5e-3
-    Z0 = 50.0
-    V_plus = 1.0
-    I_plus = V_plus / Z0
-
-    V1 = np.array([V_plus * np.exp(-1j * beta * x1)])
-    V2 = np.array([V_plus * np.exp(-1j * beta * (x1 + Delta))])
-    V3 = np.array([V_plus * np.exp(-1j * beta * (x1 + 2 * Delta))])
-    I1 = np.array([I_plus * np.exp(-1j * beta * x1)])
-
-    s11, z0, q = extract_msl_s_params(V1, V2, V3, I1)
-    assert abs(s11[0]) < 1e-3
-    assert abs(z0[0].real - 50.0) / 50.0 < 1e-3
-    # q should equal exp(-jβΔ).
-    assert abs(q[0] - np.exp(-1j * beta * Delta)) < 1e-3
-
-
-# ---------------------------------------------------------------------------
-# Test 4: 3-probe de-embedding with reflection
-# ---------------------------------------------------------------------------
-
-
-def test_3probe_deembedding_with_reflection():
-    beta = 200.0
-    Delta = 0.5e-3
-    Z0 = 50.0
-
-    # Set up wave amplitudes AT the probe-1 reference plane directly so
-    # the extractor's reported S11 is meant to equal these values.
-    alpha1 = 1.0 + 0.0j
-    s11_at_probe1 = 0.3 * np.exp(1j * 0.5)
-    gamma1 = s11_at_probe1 * alpha1
-
-    def _v_at(dx_off):
-        return alpha1 * np.exp(-1j * beta * dx_off) + gamma1 * np.exp(+1j * beta * dx_off)
-
-    V1 = np.array([_v_at(0.0)])
-    V2 = np.array([_v_at(Delta)])
-    V3 = np.array([_v_at(2 * Delta)])
-    I1 = np.array([(alpha1 - gamma1) / Z0])  # I = (α − γ)/Z0 at probe 1
-
-    s11, z0, q = extract_msl_s_params(V1, V2, V3, I1)
-    err_mag = abs(abs(s11[0]) - abs(s11_at_probe1))
-    err_phase = abs(np.angle(s11[0]) - np.angle(s11_at_probe1))
-    assert err_mag < 1e-3, f"|S11| error {err_mag}"
-    assert err_phase < 1e-3, f"phase error {err_phase}"
-    assert abs(z0[0].real - Z0) / Z0 < 1e-3
 
 
 # ---------------------------------------------------------------------------

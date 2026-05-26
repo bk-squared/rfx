@@ -23,7 +23,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.geometry.smoothing import _sdf_sphere, _sdf_box, _sdf_cylinder, _get_sdf_fn, _yee_coords
+from rfx.geometry.smoothing import _get_sdf_fn, _yee_coords
 
 
 def _signed_distance_sphere(x, y, z, center, radius):

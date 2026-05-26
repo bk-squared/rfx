@@ -15,7 +15,6 @@ a 1-frequency NTFF box.
 
 from __future__ import annotations
 
-from typing import Any
 import numpy as np
 
 from rfx.farfield import NTFFData

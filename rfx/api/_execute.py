@@ -578,8 +578,19 @@ class _ExecuteMixin:
                     if pe.eps_r_sub is not None:
                         eps_r_sub = float(pe.eps_r_sub)
                     else:
+                        # G-AD-WIRE: materials.eps_r may be a JAX tracer
+                        # when forward(eps_override=...) is active.
+                        # The mode profile is a STATIC geometry quantity;
+                        # use stop_gradient so np.asarray() never sees a
+                        # tracer.  This does NOT break the AD tape for
+                        # the DFT accumulators — the source distribution
+                        # shape is fixed; only the FDTD field values
+                        # (and hence the DFT plane accumulators) carry
+                        # the gradient w.r.t. eps_override.
                         eps_r_sub = float(np.asarray(
-                            materials.eps_r[i_feed, j_centre, k_mid]
+                            jax.lax.stop_gradient(
+                                materials.eps_r[i_feed, j_centre, k_mid]
+                            )
                         ))
                     mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
                 elif port_mode == "eigenmode":
@@ -922,8 +933,6 @@ class _ExecuteMixin:
             shard_pec_occupancy_x_slab,
         )
         from rfx.core.yee import MaterialArrays
-        from rfx.materials.debye import init_debye
-        from rfx.materials.lorentz import init_lorentz
         from rfx.nonuniform import (
             position_to_index as _nu_pos_to_idx,
             make_current_source as _nu_make_current_source,

@@ -656,3 +656,46 @@ def test_mesh_convergence_s21_with_conformal_pec():
         f"Fine-mesh |S21| change too large with conformal=True: "
         f"{fine_delta:.4f} (gate 0.10)"
     )
+
+
+# -----------------------------------------------------------------------------
+# G-WI5 guardrail: conformal=True + normalize=True must emit UserWarning
+# -----------------------------------------------------------------------------
+
+
+def test_guardrail_conformal_normalize_emits_warning():
+    """G-WI5 guardrail: compute_waveguide_s_matrix(conformal=True,
+    normalize=True) must emit a UserWarning naming the known NaN
+    instability.
+
+    Root cause (diagnosed 2026-05-24): the two-run normalization
+    extractor runs the empty-guide reference without conformal_weights
+    (Dey-Mittra eps_correction) while the device run uses them.  At
+    fine dx the asymmetric boundary treatment makes the reference
+    outgoing wave diverge / go NaN.  The guardrail fires before the
+    reference run so users get an actionable message instead of a
+    silent NaN.
+
+    The test uses dx=3 mm (the coarsest mesh, finite at this
+    resolution) so the run completes quickly; the warning is the
+    observable under test.
+    """
+    import warnings as _warnings
+
+    sim = _wr90_meshconv_sim(dx=0.003, conformal=True, cpml_layers=8)
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
+
+    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+    guardrail_warnings = [
+        w for w in user_warnings
+        if "conformal" in str(w.message).lower()
+        and "normalize" in str(w.message).lower()
+    ]
+    assert guardrail_warnings, (
+        "Expected a UserWarning mentioning 'conformal' and 'normalize' "
+        "when calling compute_waveguide_s_matrix(conformal=True, "
+        "normalize=True), but no such warning was emitted.  "
+        f"All UserWarnings: {[str(w.message) for w in user_warnings]}"
+    )

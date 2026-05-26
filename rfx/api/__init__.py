@@ -25,25 +25,25 @@ from numbers import Integral
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.grid import Grid, C0
+from rfx.grid import Grid, C0  # noqa: F401
 from rfx.core.jax_utils import is_tracer
-from rfx.geometry.csg import Box, Shape
-from rfx.nonuniform import NonUniformGrid
+from rfx.geometry.csg import Box, Shape  # noqa: F401
+from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 from rfx.lumped import LumpedRLCSpec
-from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
+from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor  # noqa: F401
 from rfx.sources.waveguide_port import (
-    WaveguidePort,
-    extract_waveguide_s_matrix,
-    extract_waveguide_s_matrix_flux,
-    extract_waveguide_s_params_normalized,
-    init_waveguide_port,
-    init_multimode_waveguide_port,
-    extract_multimode_s_matrix,
-    waveguide_plane_positions,
+    WaveguidePort,  # noqa: F401
+    extract_waveguide_s_matrix,  # noqa: F401
+    extract_waveguide_s_matrix_flux,  # noqa: F401
+    extract_waveguide_s_params_normalized,  # noqa: F401
+    init_waveguide_port,  # noqa: F401
+    init_multimode_waveguide_port,  # noqa: F401
+    extract_multimode_s_matrix,  # noqa: F401
+    waveguide_plane_positions,  # noqa: F401
 )
 from rfx.boundaries.spec import BoundarySpec
 

@@ -31,7 +31,6 @@ import math
 from dataclasses import dataclass
 from typing import NamedTuple
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 

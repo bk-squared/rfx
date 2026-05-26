@@ -15,6 +15,7 @@ inherits ``_SparamMixin`` so every method below remains a bound method on
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -47,6 +48,8 @@ class _SparamMixin:
         num_periods: float = 20.0,
         normalize: bool | str = False,
         subpixel_smoothing: bool | str = False,
+        eps_override: "jnp.ndarray | None" = None,
+        sigma_override: "jnp.ndarray | None" = None,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
@@ -167,6 +170,13 @@ class _SparamMixin:
             base_materials = base_materials._replace(
                 sigma=jnp.where(pec_mask_wg, 1e10, base_materials.sigma))
         materials = base_materials
+        # G-AD-WIRE-WG2: public eps_override / sigma_override channel.
+        # Mirror the MSL pattern: replace eps_r / sigma on the assembled
+        # materials *after* the PEC fold so PEC boundaries are untouched.
+        if eps_override is not None:
+            materials = materials._replace(eps_r=eps_override)
+        if sigma_override is not None:
+            materials = materials._replace(sigma=sigma_override)
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
         _, debye, lorentz = self._init_dispersion(materials, grid.dt, debye_spec, lorentz_spec)
@@ -385,8 +395,8 @@ class _SparamMixin:
                 port_names_mm.append(f"{entry.name}_mode{mode_idx}_{mtype}{m_n[0]}{m_n[1]}")
                 port_directions_mm.append(entry.direction)
             return WaveguideSMatrixResult(
-                s_params=np.array(s_params),
-                freqs=np.array(freqs),
+                s_params=s_params,
+                freqs=jnp.asarray(freqs),
                 port_names=tuple(port_names_mm),
                 port_directions=tuple(port_directions_mm),
                 reference_planes=reference_planes,
@@ -434,6 +444,29 @@ class _SparamMixin:
             ref_shifts.append(desired_ref - planes["reference"])
 
         _pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
+        # G-WI5 guardrail: conformal=True + normalize=True/"flux" is not supported.
+        # Root cause (diagnosed 2026-05-24): the two-run normalisation extractor
+        # runs the empty-guide reference WITHOUT conformal_weights while the device
+        # run uses them (Dey-Mittra eps_correction).  At fine dx (<=2 mm for WR-90)
+        # the asymmetric boundary treatment causes the reference outgoing-wave
+        # amplitude to diverge / go unstable, producing NaN |S21|.  Use
+        # normalize=False (single-run V/I, no reference run) until the reference
+        # run is updated to carry conformal_weights.  Tracked in
+        # docs/agent-memory/rfx-known-issues.md (cv11 mesh-conv NaN xfail).
+        if conformal_weights is not None and normalize:
+            import warnings as _w
+            _w.warn(
+                "compute_waveguide_s_matrix(conformal=True, normalize=True) is not "
+                "supported: the two-run normalisation reference pass omits "
+                "conformal_weights (Dey-Mittra eps_correction), causing the "
+                "empty-guide reference outgoing wave to diverge at fine mesh "
+                "spacings (dx <= 2 mm for WR-90) and produce NaN |S21|.  "
+                "Use normalize=False for conformal=True geometries.  "
+                "Tracked in docs/agent-memory/rfx-known-issues.md.",
+                UserWarning,
+                stacklevel=3,
+            )
+
         if normalize == "flux":
             from rfx.core.yee import init_materials as _init_vacuum_materials
             ref_materials = _init_vacuum_materials(grid.shape)
@@ -506,8 +539,8 @@ class _SparamMixin:
             dtype=float,
         )
         return WaveguideSMatrixResult(
-            s_params=np.array(s_params),
-            freqs=np.array(freqs),
+            s_params=s_params,
+            freqs=jnp.asarray(freqs),
             port_names=tuple(entry.name for entry in entries),
             port_directions=tuple(entry.direction for entry in entries),
             reference_planes=reference_planes,
@@ -522,6 +555,7 @@ class _SparamMixin:
         n_freqs: int = 100,
         raw_3probe_dump_path: str | None = None,
         strict_extractor: bool = False,
+        eps_override: "jnp.ndarray | None" = None,
     ) -> "MSLSMatrixResult":
         """Compute the MSL S-matrix using N-probe numerical de-embedding.
 
@@ -577,7 +611,6 @@ class _SparamMixin:
         from rfx.sources.msl_port import (
             MSLPort,
             _msl_yz_cells,
-            compute_s21,
             msl_loop_current,
             msl_probe_x_coords_n,
         )
@@ -774,19 +807,20 @@ class _SparamMixin:
         saved_msl = list(self._msl_ports)
         saved_ports = list(self._ports)
         try:
-            S = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
-            Z0_per_run = np.zeros((n_ports, n_freqs_used), dtype=complex)
-            beta_first = np.zeros(n_freqs_used, dtype=complex)
+            _complex_dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+            S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
+            beta_first = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
             # N-probe extractor (issue #80 Fix C): store all N voltage
             # probe phasors. n_probes may differ per port — store the
             # max width and zero-pad shorter ports.
             n_probes_max = max(n_probes_per_port)
-            raw_v = np.zeros(
-                (n_ports, n_ports, n_probes_max, n_freqs_used), dtype=complex
+            raw_v = jnp.zeros(
+                (n_ports, n_ports, n_probes_max, n_freqs_used), dtype=_complex_dtype
             )
-            raw_i1 = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
-            raw_z0 = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
-            raw_q = np.zeros((n_ports, n_ports, n_freqs_used), dtype=complex)
+            raw_i1 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
 
             for driven in range(n_ports):
                 # Re-instantiate a clean simulation by mutating in place:
@@ -844,13 +878,25 @@ class _SparamMixin:
                     )
                     hz_probe_names[p_idx] = nm_hz
 
-                # Run; pass n_steps through (None → auto).
-                result = self.run(
-                    n_steps=n_steps,
-                    num_periods=num_periods,
-                    compute_s_params=False,
-                )
-                planes = result.dft_planes or {}
+                # G-AD-WIRE: when eps_override is provided use the
+                # differentiable forward() path so jax.grad can flow
+                # from eps_override through the DFT plane accumulators
+                # into the V/I assembly. Otherwise fall back to run()
+                # for imperative (non-AD) workflows.
+                if eps_override is not None:
+                    fwd_result = self.forward(
+                        eps_override=eps_override,
+                        n_steps=n_steps,
+                        num_periods=num_periods,
+                    )
+                    planes = fwd_result.dft_planes or {}
+                else:
+                    result = self.run(
+                        n_steps=n_steps,
+                        num_periods=num_periods,
+                        compute_s_params=False,
+                    )
+                    planes = result.dft_planes or {}
 
                 # Helper: integrate V and I per port from the recorded planes.
                 v_per_port: list[list[np.ndarray]] = []
@@ -858,15 +904,19 @@ class _SparamMixin:
                 for p_idx, meta in enumerate(port_idx_meta):
                     vs = []
                     for nm in ez_probe_names[p_idx]:
-                        ez_plane = np.asarray(planes[nm].accumulator)
+                        ez_plane = jnp.asarray(planes[nm].accumulator)
                         # ez_plane shape: (n_freqs, ny, nz)
-                        v_f = np.zeros(n_freqs_used, dtype=complex)
+                        v_f = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
                         for k in range(meta["k_lo"], meta["k_hi"] + 1):
                             v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
                         vs.append(v_f)
                     v_per_port.append(vs)
-                    hy_plane = np.asarray(planes[hy_probe_names[p_idx]].accumulator)
-                    hz_plane = np.asarray(planes[hz_probe_names[p_idx]].accumulator)
+                    # G-AD-WIRE: keep on JAX tape when eps_override is
+                    # set. np.asarray() would concretise a JAX tracer and
+                    # break jax.grad. jnp.asarray() is a no-op on a real
+                    # jnp.ndarray and still works for numpy arrays.
+                    hy_plane = jnp.asarray(planes[hy_probe_names[p_idx]].accumulator)
+                    hz_plane = jnp.asarray(planes[hz_probe_names[p_idx]].accumulator)
                     # Closed Ampere-loop current ∮H·dl around the trace
                     # conductor (issue #80 stage S1). The pre-S1 inline
                     # integral summed the bottom Hy leg only and undercounted
@@ -889,9 +939,9 @@ class _SparamMixin:
                     # solve the over-determined (alpha, gamma) system by
                     # SVD lstsq — this removes the 3-probe q->1 singularity.
                     n_probes_p = n_probes_per_port[p_idx]
-                    v_stack = np.stack(v_per_port[p_idx], axis=-1)  # (n_freqs, N)
-                    raw_v[driven, p_idx, :n_probes_p, :] = v_stack.T
-                    raw_i1[driven, p_idx, :] = i_f
+                    v_stack = jnp.stack(v_per_port[p_idx], axis=-1)  # (n_freqs, N)
+                    raw_v = raw_v.at[driven, p_idx, :n_probes_p, :].set(jnp.asarray(v_stack.T, dtype=_complex_dtype))
+                    raw_i1 = raw_i1.at[driven, p_idx, :].set(jnp.asarray(i_f, dtype=_complex_dtype))
                     res_p = extract_msl_nprobe(
                         jnp.asarray(v_stack),
                         jnp.asarray(np.asarray(probe_xs[p_idx], dtype=float)),
@@ -899,8 +949,8 @@ class _SparamMixin:
                         jnp.asarray(beta0_per_port[p_idx]),
                         z0_hj=z0_hj_per_port[p_idx],
                     )
-                    raw_z0[driven, p_idx, :] = np.asarray(res_p["z0"])
-                    raw_q[driven, p_idx, :] = np.asarray(res_p["q"])
+                    raw_z0 = raw_z0.at[driven, p_idx, :].set(jnp.asarray(res_p["z0"], dtype=_complex_dtype))
+                    raw_q = raw_q.at[driven, p_idx, :].set(jnp.asarray(res_p["q"], dtype=_complex_dtype))
                     if p_idx == driven:
                         # V·I single-plane wave split at probe 0 (issue #80
                         # stage S1): a=(V+Z0*I)/2, b=(V-Z0*I)/2, S11=b/a —
@@ -915,11 +965,11 @@ class _SparamMixin:
                         z0hj_d = z0_hj_per_port[driven]
                         a_fwd_d = 0.5 * (v0_d + z0hj_d * i_f)
                         b_ref_d = 0.5 * (v0_d - z0hj_d * i_f)
-                        S[driven, driven, :] = b_ref_d / (a_fwd_d + 1e-30)
-                        Z0_per_run[driven, :] = np.asarray(res_p["z0"])
+                        S = S.at[driven, driven, :].set(jnp.asarray(b_ref_d / (a_fwd_d + 1e-30), dtype=_complex_dtype))
+                        Z0_per_run = Z0_per_run.at[driven, :].set(jnp.asarray(res_p["z0"], dtype=_complex_dtype))
                         alpha_d = a_fwd_d
                         if driven == 0:
-                            beta_first = np.asarray(res_p["beta"])
+                            beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)
 
                 # Off-diagonal S21: S[j,i] = b_j / a_i (issue #80 stage S1).
                 # The wave received from the structure at a passive port is
@@ -934,7 +984,7 @@ class _SparamMixin:
                     b_out_p = 0.5 * (
                         v0_p - z0_hj_per_port[j] * i_first_per_port[j]
                     )
-                    S[j, driven, :] = compute_s21(b_out_p, alpha_d)
+                    S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
 
             # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
             # S1 moved S11/S21 onto the OpenEMS-style V·I wave split, which
@@ -954,10 +1004,10 @@ class _SparamMixin:
             for driven in range(n_ports):
                 pe = entries[driven]
                 z0_hj = z0_hj_per_port[driven]
-                s11_abs = np.abs(S[driven, driven, :])
+                s11_abs = np.abs(np.asarray(jax.lax.stop_gradient(S[driven, driven, :])))
                 k_s = int(np.argmax(s11_abs))
                 s11_max = float(s11_abs[k_s])
-                z0_dev = np.abs(raw_z0[driven, driven, :] - z0_hj) / z0_hj
+                z0_dev = np.abs(np.asarray(jax.lax.stop_gradient(raw_z0[driven, driven, :])) - z0_hj) / z0_hj
                 k_z = int(np.argmax(z0_dev))
                 z0_dev_max = float(z0_dev[k_z])
                 # Primary — V·I-split S11 boundedness (extraction soundness).
@@ -979,7 +1029,7 @@ class _SparamMixin:
                     _w.warn(
                         f"compute_msl_s_matrix: reported Z0 for MSL port "
                         f"{pe.name!r} = "
-                        f"{raw_z0[driven, driven, k_z].real:.2f} ohm deviates "
+                        f"{float(np.asarray(jax.lax.stop_gradient(raw_z0[driven, driven, k_z])).real):.2f} ohm deviates "
                         f"{z0_dev_max * 100:.1f}% from analytic Hammerstad-"
                         f"Jensen {z0_hj:.2f} ohm at "
                         f"f = {freqs_arr[k_z] / 1e9:.4f} GHz. Z0 rides on the "
@@ -1478,9 +1528,9 @@ class _SparamMixin:
                 raise ValueError(
                     "waveguide S-matrix requires matching frequency grids on all ports"
                 )
-        n_freqs = int(port_freqs.shape[0])
 
-        s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+        # jnp-functional: collect per-drive columns; stack after loop
+        s_columns: list[list] = []  # s_columns[drive_idx] = list of (n_freqs,) jnp arrays over recv_idx
         ref_shifts: tuple[float, ...] | None = None
         reference_planes_out: np.ndarray | None = None
 
@@ -1533,13 +1583,13 @@ class _SparamMixin:
                 a_inc_ref, _ = extract_waveguide_port_waves(
                     ref_wg[drive_name], ref_shift=ref_shifts[drive_idx],
                 )
-                a_inc_ref_np = np.asarray(a_inc_ref)
-                safe_a_inc = np.where(
-                    np.abs(a_inc_ref_np) > 1e-30,
-                    a_inc_ref_np,
-                    np.ones_like(a_inc_ref_np),
+                safe_a_inc = jnp.where(
+                    jnp.abs(a_inc_ref) > 1e-30,
+                    a_inc_ref,
+                    jnp.ones_like(a_inc_ref),
                 )
 
+                recv_col: list = []
                 for recv_idx in range(n_ports):
                     recv_name = original_entries[recv_idx].name
                     _, b_ref = extract_waveguide_port_waves(
@@ -1548,27 +1598,34 @@ class _SparamMixin:
                     _, b_dev = extract_waveguide_port_waves(
                         dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
                     )
-                    b_ref_np = np.asarray(b_ref)
-                    b_dev_np = np.asarray(b_dev)
-
                     if recv_idx == drive_idx:
-                        s_matrix[recv_idx, drive_idx, :] = (
-                            b_dev_np - b_ref_np
-                        ) / safe_a_inc
+                        recv_col.append((b_dev - b_ref) / safe_a_inc)
                     else:
-                        safe_b = np.where(
-                            np.abs(b_ref_np) > 1e-30,
-                            b_ref_np,
-                            np.ones_like(b_ref_np),
+                        # Use a tighter guard than the diagonal safe_a_inc
+                        # (1e-30): the NU path operates at lower float32
+                        # signal levels (~1e-31) because the TFSF table
+                        # injection scales with dt/dx. The reference
+                        # outgoing wave b_ref at non-driven ports is
+                        # proportional to the driven-port incident wave and
+                        # can fall to ~1e-31 in float32. A 1e-30 guard
+                        # fires falsely and replaces b_ref with 1.0, giving
+                        # S21 = b_dev * 1e-31 instead of b_dev/b_ref ≈ 1.
+                        # 1e-60 is safely below float32 underflow (~1e-38)
+                        # so it only fires when b_ref is genuinely zero.
+                        safe_b = jnp.where(
+                            jnp.abs(b_ref) > 1e-60,
+                            b_ref,
+                            jnp.ones_like(b_ref),
                         )
-                        s_matrix[recv_idx, drive_idx, :] = b_dev_np / safe_b
+                        recv_col.append(b_dev / safe_b)
+                s_columns.append(recv_col)
         finally:
             self._waveguide_ports = original_entries
             self._dz_profile = _dz_profile_saved
 
         return WaveguideSMatrixResult(
-            s_params=np.asarray(s_matrix),
-            freqs=np.asarray(port_freqs),
+            s_params=jnp.stack([jnp.stack(col) for col in s_columns], axis=1),
+            freqs=jnp.asarray(port_freqs),
             port_names=tuple(e.name for e in original_entries),
             port_directions=tuple(e.direction for e in original_entries),
             reference_planes=reference_planes_out

@@ -17,7 +17,6 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.grid import Grid
 from rfx.core.yee import _shift_fwd, _shift_bwd, EPS_0, MU_0
 from rfx.core.jax_utils import is_tracer
 
@@ -413,9 +412,12 @@ def apply_cpml_e(
     if materials is not None:
         _ce_full = dt / (materials.eps_r * EPS_0)  # (nx, ny, nz)
         # Pre-slice to each PML face region for broadcasting with psi arrays
-        ce_xlo = _ce_full[:n, :, :];  ce_xhi = _ce_full[-n:, :, :]
-        ce_ylo = _ce_full[:, :n, :];  ce_yhi = _ce_full[:, -n:, :]
-        ce_zlo = _ce_full[:, :, :n];  ce_zhi = _ce_full[:, :, -n:]
+        ce_xlo = _ce_full[:n, :, :]
+        ce_xhi = _ce_full[-n:, :, :]
+        ce_ylo = _ce_full[:, :n, :]
+        ce_yhi = _ce_full[:, -n:, :]
+        ce_zlo = _ce_full[:, :, :n]
+        ce_zhi = _ce_full[:, :, -n:]
     else:
         ce_xlo = ce_xhi = ce_ylo = ce_yhi = ce_zlo = ce_zhi = dt / EPS_0
 
@@ -435,14 +437,26 @@ def apply_cpml_e(
         dx_x_lo = dx_x_hi = dx_y_lo = dx_y_hi = dz_lo = dz_hi = float(grid.dx)
 
     # X-axis profiles (hi-face pre-flipped at init time — no jnp.flip here).
-    b_x_lo = px_lo.b[:, None, None]; c_x_lo = px_lo.c[:, None, None]; k_x_lo = px_lo.kappa[:, None, None]
-    b_x_hi = px_hi.b[:, None, None]; c_x_hi = px_hi.c[:, None, None]; k_x_hi = px_hi.kappa[:, None, None]
+    b_x_lo = px_lo.b[:, None, None]
+    c_x_lo = px_lo.c[:, None, None]
+    k_x_lo = px_lo.kappa[:, None, None]
+    b_x_hi = px_hi.b[:, None, None]
+    c_x_hi = px_hi.c[:, None, None]
+    k_x_hi = px_hi.kappa[:, None, None]
     # Y-axis profiles
-    b_y_lo = py_lo.b[:, None, None]; c_y_lo = py_lo.c[:, None, None]; k_y_lo = py_lo.kappa[:, None, None]
-    b_y_hi = py_hi.b[:, None, None]; c_y_hi = py_hi.c[:, None, None]; k_y_hi = py_hi.kappa[:, None, None]
+    b_y_lo = py_lo.b[:, None, None]
+    c_y_lo = py_lo.c[:, None, None]
+    k_y_lo = py_lo.kappa[:, None, None]
+    b_y_hi = py_hi.b[:, None, None]
+    c_y_hi = py_hi.c[:, None, None]
+    k_y_hi = py_hi.kappa[:, None, None]
     # Z-axis profiles (lo and hi independent by design)
-    b_zl = pz_lo.b[:, None, None]; c_zl = pz_lo.c[:, None, None]; k_zl = pz_lo.kappa[:, None, None]
-    b_zh = pz_hi.b[:, None, None]; c_zh = pz_hi.c[:, None, None]; k_zh = pz_hi.kappa[:, None, None]
+    b_zl = pz_lo.b[:, None, None]
+    c_zl = pz_lo.c[:, None, None]
+    k_zl = pz_lo.kappa[:, None, None]
+    b_zh = pz_hi.b[:, None, None]
+    c_zh = pz_hi.c[:, None, None]
+    k_zh = pz_hi.kappa[:, None, None]
 
     ex = state.ex
     ey = state.ey
@@ -659,9 +673,12 @@ def apply_cpml_h(
     dt = grid.dt
     if materials is not None and hasattr(materials, 'mu_r'):
         _ch_full = dt / (materials.mu_r * MU_0)  # (nx, ny, nz)
-        ch_xlo = _ch_full[:n, :, :];  ch_xhi = _ch_full[-n:, :, :]
-        ch_ylo = _ch_full[:, :n, :];  ch_yhi = _ch_full[:, -n:, :]
-        ch_zlo = _ch_full[:, :, :n];  ch_zhi = _ch_full[:, :, -n:]
+        ch_xlo = _ch_full[:n, :, :]
+        ch_xhi = _ch_full[-n:, :, :]
+        ch_ylo = _ch_full[:, :n, :]
+        ch_yhi = _ch_full[:, -n:, :]
+        ch_zlo = _ch_full[:, :, :n]
+        ch_zhi = _ch_full[:, :, -n:]
     else:
         ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = dt / MU_0
 
@@ -679,14 +696,26 @@ def apply_cpml_h(
         dx_x_lo = dx_x_hi = dx_y_lo = dx_y_hi = dz_lo = dz_hi = float(grid.dx)
 
     # X-axis profiles (hi-face pre-flipped at init time).
-    b_x_lo = px_lo.b[:, None, None]; c_x_lo = px_lo.c[:, None, None]; k_x_lo = px_lo.kappa[:, None, None]
-    b_x_hi = px_hi.b[:, None, None]; c_x_hi = px_hi.c[:, None, None]; k_x_hi = px_hi.kappa[:, None, None]
+    b_x_lo = px_lo.b[:, None, None]
+    c_x_lo = px_lo.c[:, None, None]
+    k_x_lo = px_lo.kappa[:, None, None]
+    b_x_hi = px_hi.b[:, None, None]
+    c_x_hi = px_hi.c[:, None, None]
+    k_x_hi = px_hi.kappa[:, None, None]
     # Y-axis profiles
-    b_y_lo = py_lo.b[:, None, None]; c_y_lo = py_lo.c[:, None, None]; k_y_lo = py_lo.kappa[:, None, None]
-    b_y_hi = py_hi.b[:, None, None]; c_y_hi = py_hi.c[:, None, None]; k_y_hi = py_hi.kappa[:, None, None]
+    b_y_lo = py_lo.b[:, None, None]
+    c_y_lo = py_lo.c[:, None, None]
+    k_y_lo = py_lo.kappa[:, None, None]
+    b_y_hi = py_hi.b[:, None, None]
+    c_y_hi = py_hi.c[:, None, None]
+    k_y_hi = py_hi.kappa[:, None, None]
     # Z-axis profiles
-    b_zl = pz_lo.b[:, None, None]; c_zl = pz_lo.c[:, None, None]; k_zl = pz_lo.kappa[:, None, None]
-    b_zh = pz_hi.b[:, None, None]; c_zh = pz_hi.c[:, None, None]; k_zh = pz_hi.kappa[:, None, None]
+    b_zl = pz_lo.b[:, None, None]
+    c_zl = pz_lo.c[:, None, None]
+    k_zl = pz_lo.kappa[:, None, None]
+    b_zh = pz_hi.b[:, None, None]
+    c_zh = pz_hi.c[:, None, None]
+    k_zh = pz_hi.kappa[:, None, None]
 
     hx = state.hx
     hy = state.hy

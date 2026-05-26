@@ -364,7 +364,6 @@ def display_time_series(time_series: np.ndarray, dt: float) -> None:
 
 def export_touchstone(s_params: np.ndarray, freqs: np.ndarray) -> bytes:
     """Generate Touchstone file content as bytes for download."""
-    import io
     import tempfile
     from pathlib import Path
 

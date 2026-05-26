@@ -213,9 +213,12 @@ def make_nonuniform_grid(
             return 0
         return int(cpml_layers)
 
-    pad_x_lo = _face_pad("x", "lo"); pad_x_hi = _face_pad("x", "hi")
-    pad_y_lo = _face_pad("y", "lo"); pad_y_hi = _face_pad("y", "hi")
-    pad_z_lo = _face_pad("z", "lo"); pad_z_hi = _face_pad("z", "hi")
+    pad_x_lo = _face_pad("x", "lo")
+    pad_x_hi = _face_pad("x", "hi")
+    pad_y_lo = _face_pad("y", "lo")
+    pad_y_hi = _face_pad("y", "hi")
+    pad_z_lo = _face_pad("z", "lo")
+    pad_z_hi = _face_pad("z", "hi")
     # --- x profile (uniform or provided) ---
     if dx_profile is None:
         nx_interior = int(round(domain_xy[0] / dx))

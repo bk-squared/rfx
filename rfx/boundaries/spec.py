@@ -16,7 +16,7 @@ and PMC runtime (T7-E) layer onto this foundation in later stories.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Union
 
 BOUNDARY_TOKENS = ("cpml", "upml", "pec", "pmc", "periodic")

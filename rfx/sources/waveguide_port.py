@@ -1948,8 +1948,13 @@ def extract_waveguide_s_matrix(
 
     template_cfgs = tuple(port_cfgs)
     n_ports = len(template_cfgs)
-    n_freqs = len(template_cfgs[0].freqs)
-    s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+    # G-AD-WIRE: use a list-of-columns accumulator so the final jnp.stack
+    # keeps all b_recv/safe_a values on the JAX tape.  The old np.zeros +
+    # np.array item-assign pattern concretised every JAX array and broke
+    # jax.grad.  Shape: s_cols[drive_idx] = list of (n_freqs,) jnp arrays
+    # in recv order; stacked to (n_ports, n_freqs) then assembled to
+    # (n_ports, n_ports, n_freqs) via jnp.stack(axis=1).
+    s_cols: list[jnp.ndarray] = []
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t)
@@ -1992,14 +1997,20 @@ def extract_waveguide_s_matrix(
             ref_shift=ref_shifts[drive_idx],
         )
         safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
+        col_slices: list[jnp.ndarray] = []
         for recv_idx, cfg in enumerate(final_cfgs):
             _a_recv, b_recv = extract_waveguide_port_waves(
                 cfg,
                 ref_shift=ref_shifts[recv_idx],
             )
-            s_matrix[recv_idx, drive_idx, :] = np.array(b_recv / safe_a)
+            # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
+            col_slices.append(b_recv / safe_a)
+        # Stack recv slices into column (n_ports, n_freqs).
+        s_cols.append(jnp.stack(col_slices, axis=0))
 
-    return jnp.asarray(s_matrix)
+    # Assemble full S-matrix: stack drive columns along axis=1 →
+    # (n_ports, n_ports, n_freqs).
+    return jnp.stack(s_cols, axis=1)
 
 
 def extract_waveguide_s_matrix_flux(

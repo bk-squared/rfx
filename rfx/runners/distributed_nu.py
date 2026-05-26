@@ -193,7 +193,7 @@ def _update_e_local_nu(state, materials, dt,
 # Sharded NU grid metadata — Phase 2A
 # ---------------------------------------------------------------------------
 
-from typing import NamedTuple as _NamedTuple
+from typing import NamedTuple as _NamedTuple  # noqa: E402
 
 
 class ShardedNUGrid(_NamedTuple):
@@ -1188,8 +1188,6 @@ def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
     from rfx.runners.distributed import _split_debye_coeffs
 
     n_devices = sharded_grid.n_devices
-    nx_per = sharded_grid.nx_per_rank
-    nx_local = sharded_grid.nx_local
     ghost = sharded_grid.ghost_width
     pad_x = sharded_grid.pad_x
 
@@ -1256,8 +1254,6 @@ def shard_debye_state_x_slab(debye_state, sharded_grid: ShardedNUGrid,
     from rfx.runners.distributed import _split_debye_state
 
     n_devices = sharded_grid.n_devices
-    nx_per = sharded_grid.nx_per_rank
-    nx_local = sharded_grid.nx_local
     ghost = sharded_grid.ghost_width
     pad_x = sharded_grid.pad_x
 
@@ -1306,8 +1302,6 @@ def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
     from rfx.runners.distributed import _split_lorentz_coeffs
 
     n_devices = sharded_grid.n_devices
-    nx_per = sharded_grid.nx_per_rank
-    nx_local = sharded_grid.nx_local
     ghost = sharded_grid.ghost_width
     pad_x = sharded_grid.pad_x
 
@@ -1373,8 +1367,6 @@ def shard_lorentz_state_x_slab(lorentz_state, sharded_grid: ShardedNUGrid,
     from rfx.runners.distributed import _split_lorentz_state
 
     n_devices = sharded_grid.n_devices
-    nx_per = sharded_grid.nx_per_rank
-    nx_local = sharded_grid.nx_local
     ghost = sharded_grid.ghost_width
     pad_x = sharded_grid.pad_x
 
@@ -1477,15 +1469,21 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
         dx_x = dx_y = dz_lo = dz_hi = float(cpml_params.b.shape[0])  # placeholder
 
     # Profile coefficients (broadcast on x-axis index 0).
-    b_x = px.b[:, None, None]; c_x = px.c[:, None, None]; k_x = px.kappa[:, None, None]
+    b_x = px.b[:, None, None]
+    c_x = px.c[:, None, None]
+    k_x = px.kappa[:, None, None]
     b_xr = jnp.flip(px.b)[:, None, None]
     c_xr = jnp.flip(px.c)[:, None, None]
     k_xr = jnp.flip(px.kappa)[:, None, None]
-    b_y = py.b[:, None, None]; c_y = py.c[:, None, None]; k_y = py.kappa[:, None, None]
+    b_y = py.b[:, None, None]
+    c_y = py.c[:, None, None]
+    k_y = py.kappa[:, None, None]
     b_yr = jnp.flip(py.b)[:, None, None]
     c_yr = jnp.flip(py.c)[:, None, None]
     k_yr = jnp.flip(py.kappa)[:, None, None]
-    b_zl = pz_lo.b[:, None, None]; c_zl = pz_lo.c[:, None, None]; k_zl = pz_lo.kappa[:, None, None]
+    b_zl = pz_lo.b[:, None, None]
+    c_zl = pz_lo.c[:, None, None]
+    k_zl = pz_lo.kappa[:, None, None]
     b_zh = pz_hi.b[:, None, None]
     c_zh = pz_hi.c[:, None, None]
     k_zh = pz_hi.kappa[:, None, None]
@@ -1697,15 +1695,21 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
         px = py = pz_lo = pz_hi = cpml_params
         dx_x = dx_y = dz_lo = dz_hi = 1.0
 
-    b_x = px.b[:, None, None]; c_x = px.c[:, None, None]; k_x = px.kappa[:, None, None]
+    b_x = px.b[:, None, None]
+    c_x = px.c[:, None, None]
+    k_x = px.kappa[:, None, None]
     b_xr = jnp.flip(px.b)[:, None, None]
     c_xr = jnp.flip(px.c)[:, None, None]
     k_xr = jnp.flip(px.kappa)[:, None, None]
-    b_y = py.b[:, None, None]; c_y = py.c[:, None, None]; k_y = py.kappa[:, None, None]
+    b_y = py.b[:, None, None]
+    c_y = py.c[:, None, None]
+    k_y = py.kappa[:, None, None]
     b_yr = jnp.flip(py.b)[:, None, None]
     c_yr = jnp.flip(py.c)[:, None, None]
     k_yr = jnp.flip(py.kappa)[:, None, None]
-    b_zl = pz_lo.b[:, None, None]; c_zl = pz_lo.c[:, None, None]; k_zl = pz_lo.kappa[:, None, None]
+    b_zl = pz_lo.b[:, None, None]
+    c_zl = pz_lo.c[:, None, None]
+    k_zl = pz_lo.kappa[:, None, None]
     b_zh = pz_hi.b[:, None, None]
     c_zh = pz_hi.c[:, None, None]
     k_zh = pz_hi.kappa[:, None, None]
@@ -2355,34 +2359,58 @@ def run_nonuniform_distributed_pec(
             def _e_disp(*args):
                 # Unpack base inputs
                 idx = 0
-                ex = args[idx]; idx += 1
-                ey = args[idx]; idx += 1
-                ez = args[idx]; idx += 1
-                hx = args[idx]; idx += 1
-                hy = args[idx]; idx += 1
-                hz = args[idx]; idx += 1
-                step = args[idx]; idx += 1
-                eps_r = args[idx]; idx += 1
-                sigma = args[idx]; idx += 1
-                mu_r = args[idx]; idx += 1
-                invdx = args[idx]; idx += 1
-                invdy = args[idx]; idx += 1
-                invdz = args[idx]; idx += 1
-                ex_old_local = args[idx]; idx += 1
-                ey_old_local = args[idx]; idx += 1
-                ez_old_local = args[idx]; idx += 1
+                ex = args[idx]
+                idx += 1
+                ey = args[idx]
+                idx += 1
+                ez = args[idx]
+                idx += 1
+                hx = args[idx]
+                idx += 1
+                hy = args[idx]
+                idx += 1
+                hz = args[idx]
+                idx += 1
+                step = args[idx]
+                idx += 1
+                eps_r = args[idx]
+                idx += 1
+                sigma = args[idx]
+                idx += 1
+                mu_r = args[idx]
+                idx += 1
+                invdx = args[idx]
+                idx += 1
+                invdy = args[idx]
+                idx += 1
+                invdz = args[idx]
+                idx += 1
+                ex_old_local = args[idx]
+                idx += 1
+                ey_old_local = args[idx]
+                idx += 1
+                ez_old_local = args[idx]
+                idx += 1
 
                 # Debye
                 if _has_db:
                     from rfx.materials.debye import DebyeCoeffs, DebyeState
-                    d_ca = args[idx]; idx += 1
-                    d_cb = args[idx]; idx += 1
-                    d_cc = args[idx]; idx += 1
-                    d_alpha = args[idx]; idx += 1
-                    d_beta = args[idx]; idx += 1
-                    d_px = args[idx]; idx += 1
-                    d_py = args[idx]; idx += 1
-                    d_pz = args[idx]; idx += 1
+                    d_ca = args[idx]
+                    idx += 1
+                    d_cb = args[idx]
+                    idx += 1
+                    d_cc = args[idx]
+                    idx += 1
+                    d_alpha = args[idx]
+                    idx += 1
+                    d_beta = args[idx]
+                    idx += 1
+                    d_px = args[idx]
+                    idx += 1
+                    d_py = args[idx]
+                    idx += 1
+                    d_pz = args[idx]
+                    idx += 1
                     db_local = (
                         DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc,
                                     alpha=d_alpha, beta=d_beta),
@@ -2395,18 +2423,30 @@ def run_nonuniform_distributed_pec(
                     from rfx.materials.lorentz import (
                         LorentzCoeffs, LorentzState,
                     )
-                    l_ca = args[idx]; idx += 1
-                    l_cb = args[idx]; idx += 1
-                    l_cc = args[idx]; idx += 1
-                    l_a = args[idx]; idx += 1
-                    l_b = args[idx]; idx += 1
-                    l_c = args[idx]; idx += 1
-                    l_px = args[idx]; idx += 1
-                    l_py = args[idx]; idx += 1
-                    l_pz = args[idx]; idx += 1
-                    l_pxp = args[idx]; idx += 1
-                    l_pyp = args[idx]; idx += 1
-                    l_pzp = args[idx]; idx += 1
+                    l_ca = args[idx]
+                    idx += 1
+                    l_cb = args[idx]
+                    idx += 1
+                    l_cc = args[idx]
+                    idx += 1
+                    l_a = args[idx]
+                    idx += 1
+                    l_b = args[idx]
+                    idx += 1
+                    l_c = args[idx]
+                    idx += 1
+                    l_px = args[idx]
+                    idx += 1
+                    l_py = args[idx]
+                    idx += 1
+                    l_pz = args[idx]
+                    idx += 1
+                    l_pxp = args[idx]
+                    idx += 1
+                    l_pyp = args[idx]
+                    idx += 1
+                    l_pzp = args[idx]
+                    idx += 1
                     lr_local = (
                         LorentzCoeffs(ca=l_ca, cb=l_cb, cc=l_cc,
                                       a=l_a, b=l_b, c=l_c),
@@ -2463,10 +2503,14 @@ def run_nonuniform_distributed_pec(
             results = _e_disp(*call_args)
 
             ridx = 0
-            new_ex = results[ridx]; ridx += 1
-            new_ey = results[ridx]; ridx += 1
-            new_ez = results[ridx]; ridx += 1
-            new_step = results[ridx]; ridx += 1
+            new_ex = results[ridx]
+            ridx += 1
+            new_ey = results[ridx]
+            ridx += 1
+            new_ez = results[ridx]
+            ridx += 1
+            new_step = results[ridx]
+            ridx += 1
 
             new_db_st = None
             new_lr_st = None
