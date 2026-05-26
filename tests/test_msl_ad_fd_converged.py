@@ -121,9 +121,9 @@ def _closest_divisor(n: int, target: int) -> int:
 def test_msl_ad_fd_converged_tight():
     """MSL-FD-TIGHT: converged (num_periods=20) AD gradient matches FD to <=10%.
 
-    SKIPPED: num_periods=20 reverse-AD OOMs without gradient checkpointing (see
-    skip reason). Kept as the spec + a ready harness for when checkpointed AD lands.
-
+    G-AD-CHECKPOINT (un-skipped 2026-05-26): the num_periods=20 reverse-AD tape
+    is now segmented via checkpoint_segments → forward(), so it runs within
+    memory budget instead of being OOM-killed. Marked gpu+slow (VESSL-owned).
 
     R5 instrumentation: prints g_ad, g_fd, rel_err, and forward |S| range.
     If forward |S| is outside [0, 1.2], the test fails explicitly rather than
@@ -145,6 +145,13 @@ def test_msl_ad_fd_converged_tight():
     # memory scales ~sqrt(n_steps)*carry instead of n_steps*carry (the OOM cause).
     n_steps = int(grid.num_timesteps(num_periods=_NUM_PERIODS))
     checkpoint_segments = _closest_divisor(n_steps, int(np.sqrt(n_steps)))
+    # compute_msl_s_matrix passes n_steps=None, so forward() re-derives the SAME
+    # grid.num_timesteps(num_periods) value used here; the segment count must
+    # divide it exactly or the segmented scan hard-errors (simulation.py). Assert
+    # the invariant locally so a future Courant/n_steps change fails loudly here.
+    assert n_steps % checkpoint_segments == 0, (
+        f"checkpoint_segments={checkpoint_segments} does not divide n_steps={n_steps}"
+    )
     print(f"\n[MSL-FD-TIGHT] n_steps={n_steps}, "
           f"checkpoint_segments={checkpoint_segments} (~sqrt={np.sqrt(n_steps):.1f})")
 
