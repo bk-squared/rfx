@@ -128,7 +128,12 @@ def _run_assembly_with_replay(acc_data: dict, freqs_replay: np.ndarray, *,
     The real FDTD is never called.  Only the post-run assembly (V/I
     integration and de-embedding) runs under the requested x64 setting.
     """
-    from jax.experimental import enable_x64
+    try:
+        # Modern JAX promoted the scoped x64 context manager to top-level;
+        # jax.experimental.enable_x64 was removed in v0.8.0.
+        from jax import enable_x64
+    except ImportError:  # older JAX (< ~0.4.31)
+        from jax.experimental import enable_x64
 
     sim = _build_thru_line_sim()
     freqs_jnp = jnp.asarray(freqs_replay, dtype=jnp.float32)
