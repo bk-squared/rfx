@@ -105,16 +105,22 @@
         "multi-mode normalize=True envelope",
         "broad nonuniform waveguide-port S-parameters"
       ],
-      "notes": "Existing M4 evidence is E5-narrow for the rectangular-guide envelope with external MEEP/OpenEMS/Palace references.",
+      "notes": "Existing M4 evidence is E5-narrow for the rectangular-guide envelope with external MEEP/OpenEMS/Palace references. 2026-05-26 multi-band flux extension: five broad-E5 envelopes (WR-28 Ka, WR-62 Ku, WR-15 V, WR-340 S, WR-10 W) pass vs analytic Airy using compute_waveguide_s_matrix(normalize='flux') — power-flux extraction (extract_waveguide_s_matrix_flux) that resolves both the normalize=False noise floor (~0.06) and the normalize=True path-length-mismatch unitarity violation. Per-band max |S11| diff: WR-28 0.025, WR-62 0.011, WR-15 0.041, WR-340 0.008, WR-10 0.010 (all 4/4 cases, unitarity within +/-0.05 %p). Recipe in docs/guides/sparameter_support_matrix.md; trail in docs/research_notes/20260526_waveguide_flux_silver_bullet.md. Computed on VESSL gpu-rtx4090 (run 369367239898 + WR-28 L=1mm rerun 369367239918).",
       "existing_vessl_yamls": [
-        "scripts/physics_gate_port_external_waveguide_broad.yaml"
+        "scripts/physics_gate_port_external_waveguide_broad.yaml",
+        "scripts/vessl_waveguide_band_broad_e5_flux.yaml"
       ],
       "external_comparison_artifacts": [
         ".omx/physics-gate/2026-05-09-m30-waveguide-wr90-generic-comparison/wr90_external_generic_sparameter_comparison.json",
         ".omx/physics-gate/2026-05-10-m69-waveguide-wr90-broad-envelope/waveguide_wr90_openems_broad_envelope.json"
       ],
       "broad_e5_envelope_artifacts": [
-        ".omx/physics-gate/2026-05-10-m69-waveguide-wr90-broad-envelope/waveguide_wr90_openems_broad_envelope.json"
+        ".omx/physics-gate/2026-05-10-m69-waveguide-wr90-broad-envelope/waveguide_wr90_openems_broad_envelope.json",
+        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr28_kaband-flux/waveguide_wr28_kaband_broad_e5_envelope.json",
+        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr62_kuband-flux/waveguide_wr62_kuband_broad_e5_envelope.json",
+        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr15_vband-flux/waveguide_wr15_vband_broad_e5_envelope.json",
+        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr340_sband-flux/waveguide_wr340_sband_broad_e5_envelope.json",
+        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr10_wband-flux/waveguide_wr10_wband_broad_e5_envelope.json"
       ]
     },
     {

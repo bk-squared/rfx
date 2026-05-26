@@ -136,6 +136,50 @@ Hz.
 - **Known limits:** full S-matrix extraction requires at least two waveguide
   ports; nonuniform extraction is restricted to `normalize=True` and
   single-mode ports; `normalize=True` is not implemented for multi-mode.
+- **Recommended extraction mode: `normalize="flux"`.** Power-flux
+  (`extract_waveguide_s_matrix_flux`, exposed via
+  `compute_waveguide_s_matrix(normalize="flux")`) combines a reference run's
+  Poynting flux and the device run's modal V/I phase, eliminating both
+  the Z_TE impedance-mismatch error of `normalize=False` (~3 % at
+  `dx/λ=0.07`) and the round-trip dispersion error in the
+  `normalize=True` diagonal formula (±10–20 % |S11| swings). 2026-05-26
+  cross-band verification on WR-28 Ka / WR-62 Ku / WR-15 V / WR-340 S /
+  WR-10 W slabs (εr=2 + εr=4, dx tuned per recipe below):
+
+  | Band | εr | `|S11|` diff (False) | `|S11|` diff (flux) | flux unitarity |
+  |------|----|----------------------|---------------------|-----------------|
+  | WR-28 Ka  | 2 | 0.048 | 0.040 | 1.000 – 1.005 |
+  | WR-28 Ka  | 4 | 0.047 | 0.012 | 0.999 – 1.000 |
+  | WR-62 Ku  | 2 | 0.044 | 0.011 | 1.000 – 1.000 |
+  | WR-62 Ku  | 4 | 0.024 | 0.008 | 1.000 – 1.000 |
+  | WR-15 V   | 2 | 0.049 | 0.017 | 1.000 – 1.000 |
+  | WR-15 V   | 4 | 0.046 | 0.041 | 1.000 – 1.000 |
+  | WR-340 S  | 2 | 0.043 | 0.006 | 1.000 – 1.001 |
+  | WR-340 S  | 4 | 0.027 | 0.005 | 1.000 – 1.001 |
+  | WR-10 W   | 2 | 0.034 | 0.010 | 1.000 – 1.000 |
+  | WR-10 W   | 4 | 0.037 | 0.009 | 1.000 – 1.000 |
+
+  flux mode brings `|S11|` to 0.005–0.041 (1/2 to 1/10 of the 0.05
+  broad-E5 threshold) and unitarity to ±0.05 %p (lossless slab Yee
+  residual only). Cost: 2 × N_ports FDTD runs (same as `normalize=True`).
+- **Setup recipe for broad-E5 across rectangular WR bands.** Pair the
+  `normalize="flux"` extraction with the following geometry/mesh choices:
+  - `CPML_LAYERS >= 20` for clean grading polynomial (cv11 cell-count
+    threshold). Layer count drives noise floor monotonically:
+    `12 -> 0.118, 24 -> 0.056, 36 -> 0.039, 48 -> 0.031` (empty-guide
+    `|S11|` with `normalize=False`, WR-28).
+  - `cells/lambda_min >= 60` at the highest validation frequency, and
+    `cells/lambda_d_min >= 60` in-dielectric for εr-loaded geometries.
+  - port-to-discontinuity distance `>= 1 lambda_g_max` for evanescent
+    higher-order mode decay.
+  - **slab L chosen so Airy `|S11|` stays above 0.1 across the band**
+    (`2 β_d L < π`, no first Fabry-Perot null inside). Pre-compute Airy
+    `|S11|` range before launching the sweep; e.g. WR-28 passes with
+    L=4 mm but WR-62 with L=10 mm has |S11| min 0.03 (below noise
+    floor) — shorten to L=3 mm to keep |S11| > 0.4.
+  - dx values that divide L into integer cells (staircase rasterization
+    quantization amplified by `sqrt(eps_r)` in the Fabry-Perot phase).
+  Investigation trail: `docs/research_notes/20260526_waveguide_flux_silver_bullet.md`.
 
 ### Coaxial and Floquet ports
 
