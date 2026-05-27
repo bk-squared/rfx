@@ -358,6 +358,75 @@ def _second_diff_1d(widths: np.ndarray, *, bc: str) -> np.ndarray:
     return D
 
 
+def _galerkin_stiffness_mass_1d(
+    widths: np.ndarray, *, bc: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """Symmetric finite-volume stiffness K and diagonal mass m for -d²/du².
+
+    Galerkin / mixed-FV form of the 1-D operator on a cell-centred,
+    possibly non-uniform mesh. Unlike ``_second_diff_1d`` (which builds the
+    strong-form ``D = M⁻¹K`` and is ASYMMETRIC on a graded mesh, silently
+    corrupting ``eigh``), this returns the SYMMETRIC stiffness ``K`` and the
+    diagonal mass ``m = w`` separately so the generalized eigenproblem
+    ``K φ = kc² M φ`` can be symmetrized exactly:
+
+        K[j, j±1] = -1/d_face   (d_face = ½(w[j]+w[j±1]))     -- symmetric
+        K[j, j]   = Σ 1/d_face  (+ Dirichlet wall terms)
+        m[j]      = w[j]
+
+    bc="neumann"   : ∂φ/∂n = 0 at the walls (no wall flux; TE Hx).
+    bc="dirichlet" : φ = 0 at the wall faces (ghost = -cell; TM Ez / Ex).
+    """
+    n = len(widths)
+    w = np.asarray(widths, dtype=np.float64)
+    K = np.zeros((n, n), dtype=np.float64)
+    for j in range(n):
+        if j > 0:
+            d_left = 0.5 * (w[j - 1] + w[j])
+            c = 1.0 / d_left
+            K[j, j] += c
+            K[j, j - 1] -= c
+        elif bc == "dirichlet":
+            # Wall at the outer face; ghost = -cell[0], face spacing w[0].
+            K[j, j] += 2.0 / w[0]
+        if j < n - 1:
+            d_right = 0.5 * (w[j] + w[j + 1])
+            c = 1.0 / d_right
+            K[j, j] += c
+            K[j, j + 1] -= c
+        elif bc == "dirichlet":
+            K[j, j] += 2.0 / w[-1]
+    return K, w
+
+
+def _galerkin_eigh_separable_laplacian_2d(
+    Ku: np.ndarray, mu: np.ndarray,
+    Kv: np.ndarray, mv: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Symmetric eigensolve of the separable 2-D transverse Laplacian.
+
+    Solves ``(Ku⊗Mv + Mu⊗Kv) φ = kc² (Mu⊗Mv) φ`` (the Galerkin form of
+    ``-∇_t² φ = kc² φ``) by symmetrizing with ``S = (Mu⊗Mv)^{-1/2}``:
+
+        A = S (Ku⊗Mv + Mu⊗Kv) S ,   A ψ = kc² ψ ,   φ = S ψ
+
+    ``A`` is symmetric by construction, so ``np.linalg.eigh`` is exact on a
+    graded mesh (no silent lower-triangle symmetrization of an asymmetric
+    strong-form operator). Returns ``(evals, evecs)`` with evecs as columns
+    in the ORIGINAL φ basis (unit-mass-normalized), ascending eigenvalue.
+    """
+    nu = len(mu); nv = len(mv)
+    Mv = np.diag(mv); Mu = np.diag(mu)
+    big = np.kron(Ku, Mv) + np.kron(Mu, Kv)        # (nu*nv, nu*nv) symmetric
+    m_diag = np.kron(mu, mv)                         # diagonal of (Mu⊗Mv)
+    s = 1.0 / np.sqrt(m_diag)
+    A = (s[:, None] * big) * s[None, :]             # S A S, symmetric
+    A = 0.5 * (A + A.T)                              # clean tiny asymmetry
+    evals, psi = np.linalg.eigh(A)
+    evecs = psi * s[:, None]                         # φ = S ψ
+    return evals, evecs
+
+
 def _cell_centred_gradient(field: np.ndarray, widths: np.ndarray,
                             axis: int, *, bc: str) -> np.ndarray:
     """∂field/∂u at cell centres for cell-centred values with PEC-like BC.
@@ -567,16 +636,15 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
     """
     nu = len(u_widths)
     nv = len(v_widths)
-    D_uu = _second_diff_1d(u_widths, bc="neumann")
-    D_vv = _second_diff_1d(v_widths, bc="neumann")
-    lap = np.kron(D_uu, np.eye(nv)) + np.kron(np.eye(nu), D_vv)
+    Ku, mu = _galerkin_stiffness_mass_1d(u_widths, bc="neumann")
+    Kv, mv = _galerkin_stiffness_mass_1d(v_widths, bc="neumann")
 
     dA = _aperture_area(u_widths, v_widths, aperture_dA)
     # Keep the physical Yee eigenfunctions/cutoffs on the full cell-centred
     # operator, then normalize and orthogonalize the stored profiles under the
     # extractor aperture. A reduced zero-dA subspace imposes an unintended
     # Dirichlet-like wall at the dropped row/column and breaks source matching.
-    evals, evecs = np.linalg.eigh(-lap)
+    evals, evecs = _galerkin_eigh_separable_laplacian_2d(Ku, mu, Kv, mv)
 
     # Pick eigenvector by overlap with analytic Hx = cos(mπy/a)·cos(nπz/b).
     # Rank picking fails when discrete kc² ordering swaps nearly-degenerate
@@ -675,12 +743,11 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
         raise ValueError(f"TM modes require m >= 1 and n >= 1, got ({m}, {n})")
     nu = len(u_widths)
     nv = len(v_widths)
-    D_uu = _second_diff_1d(u_widths, bc="dirichlet")
-    D_vv = _second_diff_1d(v_widths, bc="dirichlet")
-    lap = np.kron(D_uu, np.eye(nv)) + np.kron(np.eye(nu), D_vv)
+    Ku, mu = _galerkin_stiffness_mass_1d(u_widths, bc="dirichlet")
+    Kv, mv = _galerkin_stiffness_mass_1d(v_widths, bc="dirichlet")
 
     dA = _aperture_area(u_widths, v_widths, aperture_dA)
-    evals, evecs = np.linalg.eigh(-lap)
+    evals, evecs = _galerkin_eigh_separable_laplacian_2d(Ku, mu, Kv, mv)
 
     # Overlap-pick eigenvector against analytic Ex = sin(mπy/a)·sin(nπz/b).
     u_c = np.cumsum(u_widths) - 0.5 * np.asarray(u_widths)
