@@ -411,11 +411,13 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
             execution. ``"research"`` preserves the experimental legacy lane
             for internal diagnostics. ``"off"`` is reserved for low-level
             debugging and should not be used for claims-bearing results.
-        topology : {"overlap_z_slab", "stage2_disjoint_3d"}
+        topology : {"overlap_z_slab", "stage2_disjoint_3d", "sbp_sat_nonsplit"}
             Internal topology selector. ``"overlap_z_slab"`` is the current
             public runner. ``"stage2_disjoint_3d"`` records the selected
             centered/two-interface integration lane but remains a research-only
             contract until its public runner wiring and waveform gates pass.
+            ``"sbp_sat_nonsplit"`` selects the mathematically stable non-split SBP-SAT
+            2D TM solver.
         """
         if self._refinement is not None:
             raise ValueError("Only one refinement region is supported")
@@ -423,10 +425,10 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
             raise ValueError(
                 "validation must be one of 'production', 'research', or 'off'"
             )
-        if topology not in {"overlap_z_slab", "stage2_disjoint_3d"}:
+        if topology not in {"overlap_z_slab", "stage2_disjoint_3d", "sbp_sat_nonsplit"}:
             raise ValueError(
-                "topology must be one of 'overlap_z_slab' or "
-                "'stage2_disjoint_3d'"
+                "topology must be one of 'overlap_z_slab', "
+                "'stage2_disjoint_3d', or 'sbp_sat_nonsplit'"
             )
         # Warn if subgrid overlaps PML region.
         # PML operates on the coarse grid only; the fine grid has no PML.
