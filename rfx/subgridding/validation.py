@@ -151,7 +151,7 @@ def build_subgrid_region(sim, grid) -> SubgridRegion | None:
     if ref is None:
         return None
     topology = ref.get("topology", "overlap_z_slab")
-    if topology in {"stage2_disjoint_3d", "sbp_sat_nonsplit"}:
+    if topology in {"stage2_disjoint_3d", "sbp_sat_nonsplit", "sbp_sat_nonsplit_3d"}:
         return build_stage2_disjoint_region(sim, grid)
     ratio = int(ref["ratio"])
     z_lo, z_hi = ref["z_range"]
@@ -575,7 +575,7 @@ def validate_subgrid_setup(
         issues.append(_issue("error", "bad_validation_mode", f"unknown mode {mode!r}"))
 
     topology = ref.get("topology", "overlap_z_slab")
-    if topology not in {"overlap_z_slab", "stage2_disjoint_3d", "sbp_sat_nonsplit"}:
+    if topology not in {"overlap_z_slab", "stage2_disjoint_3d", "sbp_sat_nonsplit", "sbp_sat_nonsplit_3d"}:
         issues.append(
             _issue(
                 "error",
