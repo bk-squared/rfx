@@ -98,24 +98,32 @@ _FD_H = 1e-3
 _REL_ERR_THRESHOLD = 0.10
 
 
-@pytest.mark.skip(
-    reason=(
-        "num_periods=20 reverse-mode AD is OOM-killed (SIGKILL/EXIT 137, ~503GB) — "
-        "the jax.grad tape stores the entire 20-period FDTD trajectory. End-to-end "
-        "MSL AD IS validated at low periods (test_sparam_ad_end_to_end, num_periods=3: "
-        "grad flows, FD sign+magnitude agree). The tight converged FD-validation needs "
-        "GRADIENT CHECKPOINTING (the repo's checkpoint_every) wired into the "
-        "eps_override -> forward path so the tape doesn't hold every timestep. "
-        "Follow-up: G-AD-CHECKPOINT. Un-skip once checkpointed AD is available."
-    )
-)
+def _closest_divisor(n: int, target: int) -> int:
+    """Divisor of ``n`` nearest ``target`` (for checkpoint_segments, which must
+    divide n_steps exactly — see forward(checkpoint_segments=) issue #73)."""
+    best = 1
+    for d in range(1, int(n ** 0.5) + 1):
+        if n % d == 0:
+            for cand in (d, n // d):
+                if abs(cand - target) < abs(best - target):
+                    best = cand
+    return best
+
+
+# G-AD-CHECKPOINT (2026-05-26): un-skipped. compute_msl_s_matrix now forwards
+# checkpoint_every into forward(), so the reverse-mode AD tape is segmented
+# (scan-of-scan remat) instead of storing the entire num_periods=20 trajectory.
+# Memory scales ~sqrt(n_steps); the OOM (EXIT 137) that forced the prior skip is
+# removed. Marked gpu+slow: still a heavy converged run, owned by the VESSL
+# physics harness, excluded from the default CPU suite.
+@pytest.mark.gpu
 @pytest.mark.slow
 def test_msl_ad_fd_converged_tight():
     """MSL-FD-TIGHT: converged (num_periods=20) AD gradient matches FD to <=10%.
 
-    SKIPPED: num_periods=20 reverse-AD OOMs without gradient checkpointing (see
-    skip reason). Kept as the spec + a ready harness for when checkpointed AD lands.
-
+    G-AD-CHECKPOINT (un-skipped 2026-05-26): the num_periods=20 reverse-AD tape
+    is now segmented via checkpoint_segments → forward(), so it runs within
+    memory budget instead of being OOM-killed. Marked gpu+slow (VESSL-owned).
 
     R5 instrumentation: prints g_ad, g_fd, rel_err, and forward |S| range.
     If forward |S| is outside [0, 1.2], the test fails explicitly rather than
@@ -130,6 +138,23 @@ def test_msl_ad_fd_converged_tight():
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
 
+    # G-AD-CHECKPOINT: the uniform forward path uses checkpoint_segments
+    # (issue #73; checkpoint_every is NU-only). The segment count must DIVIDE
+    # n_steps exactly — padding is rejected because it would shift the DFT
+    # accumulator windows. Pick the divisor nearest sqrt(n_steps) so backward
+    # memory scales ~sqrt(n_steps)*carry instead of n_steps*carry (the OOM cause).
+    n_steps = int(grid.num_timesteps(num_periods=_NUM_PERIODS))
+    checkpoint_segments = _closest_divisor(n_steps, int(np.sqrt(n_steps)))
+    # compute_msl_s_matrix passes n_steps=None, so forward() re-derives the SAME
+    # grid.num_timesteps(num_periods) value used here; the segment count must
+    # divide it exactly or the segmented scan hard-errors (simulation.py). Assert
+    # the invariant locally so a future Courant/n_steps change fails loudly here.
+    assert n_steps % checkpoint_segments == 0, (
+        f"checkpoint_segments={checkpoint_segments} does not divide n_steps={n_steps}"
+    )
+    print(f"\n[MSL-FD-TIGHT] n_steps={n_steps}, "
+          f"checkpoint_segments={checkpoint_segments} (~sqrt={np.sqrt(n_steps):.1f})")
+
     def objective(alpha: jnp.ndarray) -> jnp.ndarray:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -137,6 +162,7 @@ def test_msl_ad_fd_converged_tight():
                 n_freqs=_N_FREQS,
                 num_periods=_NUM_PERIODS,
                 eps_override=eps_base * alpha,
+                checkpoint_segments=checkpoint_segments,
             )
         S = result.S
         # Sum of |S|^2 over all matrix entries and all frequency bins —
@@ -152,6 +178,7 @@ def test_msl_ad_fd_converged_tight():
             n_freqs=_N_FREQS,
             num_periods=_NUM_PERIODS,
             eps_override=eps_base * alpha0,
+            checkpoint_segments=checkpoint_segments,
         )
     S_fwd = np.asarray(fwd_result.S)
     s_vals = np.abs(S_fwd)
