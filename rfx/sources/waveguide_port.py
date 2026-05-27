@@ -2940,6 +2940,199 @@ def extract_multimode_s_params_normalized(
     return jnp.asarray(s_matrix), mode_map
 
 
+def _modal_net_power(cfg: WaveguidePortConfig) -> np.ndarray:
+    """Per-mode net real power through the reference plane.
+
+    P_m(f) = 0.5 · Re(V_m(f) · conj(I_m(f)))
+
+    where V_m, I_m are the recorded modal voltage/current at the reference
+    plane (rect full-record DFT). Because V_m and I_m are independent
+    field measurements (E-line integral and H-loop), their product is the
+    physical modal power flux — no modal-impedance (Z_TE) assumption,
+    which is exactly the discretization bias that corrupts the
+    wave-decomposition ``normalize=False`` reflection and the two-run
+    ``normalize=True`` cross-mode normalization. Sign follows the port's
+    recorded V/I convention; callers use magnitudes / signed differences.
+    """
+    v_dft = np.array(_rect_dft(cfg.v_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
+    i_dft = np.array(_rect_dft(cfg.i_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
+    return 0.5 * np.real(v_dft * np.conj(i_dft))
+
+
+def extract_multimode_s_matrix_flux(
+    grid,
+    materials,
+    ref_materials,
+    port_mode_cfgs: list[list[WaveguidePortConfig]],
+    n_steps: int,
+    *,
+    boundary: str = "cpml",
+    cpml_axes: str = "x",
+    pec_axes: str = "yz",
+    periodic: tuple[bool, bool, bool] | None = None,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    ref_debye: tuple | None = None,
+    ref_lorentz: tuple | None = None,
+    ref_shifts: list[float] | tuple[float, ...] | None = None,
+    aniso_eps: tuple | None = None,
+    conformal_weights: tuple | None = None,
+    ref_aniso_eps: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
+    ref_aniso_inv_eps: tuple | None = None,
+) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
+    """Power-flux multi-mode waveguide S-matrix.
+
+    Multi-mode analogue of :func:`extract_waveguide_s_matrix_flux`. For
+    each driven modal channel ``(p, m)``:
+
+      1. Reference run (empty guide, channel ``(p,m)`` driven) → incident
+         modal net power ``P_inc`` at the driven channel and the per-channel
+         net modal power ``F_ref``.
+      2. Device run (channel ``(p,m)`` driven) → per-channel net modal
+         power ``F_dev``.
+
+    Magnitudes use per-mode power ratios::
+
+        |S_{qn,pm}|² = |F_ref[qn] − F_dev[qn]| / |P_inc|   (q==p, n==m: reflection)
+        |S_{qn,pm}|² = |F_dev[qn]|             / |P_inc|   (otherwise: transmission / mode conversion)
+
+    All ratios are referenced to the (always-nonzero) incident modal power,
+    so cross-mode channels do not hit the 0/0 blow-up of the two-run
+    ``extract_multimode_s_params_normalized`` (``b_dev/b_ref`` with
+    ``b_ref ≈ 0`` for an uncoupled empty-guide channel). Phase is taken
+    from the modal V/I wave decomposition of the device run.
+
+    Per-mode net power ``F`` comes from :func:`_modal_net_power`
+    (``0.5·Re(V·I*)``), avoiding the modal-impedance discretization bias.
+
+    Parameters mirror :func:`extract_multimode_s_params_normalized`.
+
+    Returns
+    -------
+    s_matrix : jnp.ndarray, shape (N, N, n_freqs)
+    mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
+    """
+    from rfx.simulation import run as run_simulation
+
+    flat_cfgs: list[WaveguidePortConfig] = []
+    mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
+    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
+        for mode_within, cfg in enumerate(mode_cfgs):
+            flat_cfgs.append(cfg)
+            mode_map.append((
+                port_idx,
+                mode_within,
+                cfg.mode_type,
+                _mode_indices_from_config(cfg),
+            ))
+
+    if len(flat_cfgs) < 2:
+        raise ValueError(
+            "extract_multimode_s_matrix_flux requires at least two modal channels"
+        )
+
+    n_total = len(flat_cfgs)
+    n_freqs = len(flat_cfgs[0].freqs)
+    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=np.complex64)
+
+    n_ports = len(port_mode_cfgs)
+    if ref_shifts is None:
+        ref_shifts = tuple(0.0 for _ in range(n_ports))
+    if len(ref_shifts) != n_ports:
+        raise ValueError("ref_shifts must have one entry per physical port")
+    flat_ref_shifts: list[float] = []
+    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
+        flat_ref_shifts.extend([float(ref_shifts[port_idx])] * len(mode_cfgs))
+
+    def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
+        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        return cfg._replace(
+            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            v_probe_t=zeros_t,
+            v_ref_t=zeros_t,
+            i_probe_t=zeros_t,
+            i_ref_t=zeros_t,
+            v_inc_t=zeros_t,
+            n_steps_recorded=jnp.zeros((), dtype=jnp.int32),
+        )
+
+    common_run_kw = dict(
+        boundary=boundary,
+        cpml_axes=cpml_axes,
+        pec_axes=pec_axes,
+        periodic=periodic,
+    )
+    orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+
+    for drive_flat_idx in range(n_total):
+        # --- Reference run (empty guide, channel drive_flat_idx driven) ---
+        ref_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+            for idx, cfg in enumerate(flat_cfgs)
+        ]
+        ref_cfgs[drive_flat_idx] = ref_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
+        ref_result = run_simulation(
+            grid, ref_materials, n_steps,
+            debye=ref_debye, lorentz=ref_lorentz,
+            waveguide_ports=ref_cfgs,
+            aniso_eps=ref_aniso_eps,
+            aniso_inv_eps=ref_aniso_inv_eps,
+            **common_run_kw,
+        )
+        ref_final_cfgs = ref_result.waveguide_ports or ()
+        if len(ref_final_cfgs) != n_total:
+            raise RuntimeError("multimode flux extraction expected one final config per channel")
+
+        F_ref = [_modal_net_power(cfg) for cfg in ref_final_cfgs]
+        P_inc = np.abs(F_ref[drive_flat_idx])
+        safe_P_inc = np.where(P_inc > 1e-60, P_inc, np.ones_like(P_inc))
+        a_inc_ref, _ = extract_waveguide_port_waves(
+            ref_final_cfgs[drive_flat_idx],
+            ref_shift=flat_ref_shifts[drive_flat_idx],
+        )
+        a_inc_ref = np.array(a_inc_ref)
+        safe_a_inc = np.where(np.abs(a_inc_ref) > 1e-60, a_inc_ref, np.ones_like(a_inc_ref))
+
+        # --- Device run (channel drive_flat_idx driven) ---
+        dev_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+            for idx, cfg in enumerate(flat_cfgs)
+        ]
+        dev_cfgs[drive_flat_idx] = dev_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
+        dev_result = run_simulation(
+            grid, materials, n_steps,
+            debye=debye, lorentz=lorentz,
+            waveguide_ports=dev_cfgs,
+            aniso_eps=aniso_eps,
+            conformal_weights=conformal_weights,
+            aniso_inv_eps=aniso_inv_eps,
+            **common_run_kw,
+        )
+        dev_final_cfgs = dev_result.waveguide_ports or ()
+        if len(dev_final_cfgs) != n_total:
+            raise RuntimeError("multimode flux extraction expected one final config per channel")
+
+        F_dev = [_modal_net_power(cfg) for cfg in dev_final_cfgs]
+
+        for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
+            _, b_recv_dev = extract_waveguide_port_waves(
+                dev_cfg, ref_shift=flat_ref_shifts[recv_idx]
+            )
+            phase = np.angle(np.array(b_recv_dev) / safe_a_inc)
+
+            if recv_idx == drive_flat_idx:
+                P_refl = np.abs(F_ref[recv_idx] - F_dev[recv_idx])
+                mag = np.sqrt(P_refl / safe_P_inc)
+            else:
+                P_out = np.abs(F_dev[recv_idx])
+                mag = np.sqrt(P_out / safe_P_inc)
+
+            s_matrix[recv_idx, drive_flat_idx, :] = mag * np.exp(1j * phase)
+
+    return jnp.asarray(s_matrix), mode_map
+
+
 def _mode_indices_from_config(cfg: WaveguidePortConfig) -> tuple[int, int]:
     """Best-effort extraction of (m, n) mode indices from a config.
 

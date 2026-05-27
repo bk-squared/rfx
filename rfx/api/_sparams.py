@@ -26,6 +26,7 @@ from rfx.sources.waveguide_port import (
     extract_waveguide_s_matrix_flux,
     extract_waveguide_s_params_normalized,
     extract_multimode_s_matrix,
+    extract_multimode_s_matrix_flux,
     waveguide_plane_positions,
 )
 
@@ -365,27 +366,58 @@ class _SparamMixin:
                 )
                 ref_shifts_mm.append(desired_ref - planes["reference"])
 
-            if normalize:
-                raise ValueError(
-                    "compute_waveguide_s_matrix(normalize=True) is not yet "
-                    "supported with n_modes > 1"
+            mm_pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
+            if normalize == "flux":
+                from rfx.core.yee import init_materials as _init_vacuum_materials
+                ref_materials = _init_vacuum_materials(grid.shape)
+                s_params, mode_map = extract_multimode_s_matrix_flux(
+                    grid,
+                    materials,
+                    ref_materials,
+                    port_mode_cfgs,
+                    n_steps,
+                    boundary="cpml",
+                    cpml_axes=grid.cpml_axes,
+                    pec_axes=mm_pec_axes,
+                    debye=debye,
+                    lorentz=lorentz,
+                    ref_shifts=ref_shifts_mm,
+                    aniso_eps=aniso_eps,
+                    conformal_weights=conformal_weights,
+                    aniso_inv_eps=aniso_inv_eps,
                 )
-
-            s_params, mode_map = extract_multimode_s_matrix(
-                grid,
-                materials,
-                port_mode_cfgs,
-                n_steps,
-                boundary="cpml",
-                cpml_axes=grid.cpml_axes,
-                pec_axes="".join(axis for axis in "xyz" if axis not in grid.cpml_axes),
-                debye=debye,
-                lorentz=lorentz,
-                ref_shifts=ref_shifts_mm,
-                aniso_eps=aniso_eps,
-                conformal_weights=conformal_weights,
-                aniso_inv_eps=aniso_inv_eps,
-            )
+            elif normalize:
+                # The two-run normalized extractor divides each receiving
+                # channel by its own empty-guide outgoing wave
+                # (b_dev/b_ref). For cross-mode channels the empty-guide
+                # reference is ~0 (orthogonal modes do not couple in a
+                # uniform guide), so the ratio blows up (measured
+                # cross-mode |S| ~ 4.7 on an over-moded WR-90 slab).
+                # Use normalize="flux" instead — power ratios referenced
+                # to the always-nonzero incident modal power avoid the
+                # 0/0 and also fix the reflection noise floor.
+                raise ValueError(
+                    "compute_waveguide_s_matrix(normalize=True) is not "
+                    "supported with n_modes > 1 (cross-mode channels hit a "
+                    "0/0 in the two-run normalization). Use "
+                    "normalize='flux' for multi-mode S-matrices."
+                )
+            else:
+                s_params, mode_map = extract_multimode_s_matrix(
+                    grid,
+                    materials,
+                    port_mode_cfgs,
+                    n_steps,
+                    boundary="cpml",
+                    cpml_axes=grid.cpml_axes,
+                    pec_axes=mm_pec_axes,
+                    debye=debye,
+                    lorentz=lorentz,
+                    ref_shifts=ref_shifts_mm,
+                    aniso_eps=aniso_eps,
+                    conformal_weights=conformal_weights,
+                    aniso_inv_eps=aniso_inv_eps,
+                )
             reference_planes = np.array(ref_shifts_mm, dtype=float)
             # Build port names including mode indices
             port_names_mm = []
