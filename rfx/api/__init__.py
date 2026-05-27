@@ -102,6 +102,7 @@ from rfx.api._compile import _CompileMixin  # noqa: E402
 # ---------------------------------------------------------------------------
 
 from rfx.api._execute import _ExecuteMixin  # noqa: E402
+from rfx.api._artifacts import _ArtifactsMixin  # noqa: E402
 
 
 _DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
@@ -112,7 +113,13 @@ _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 # Simulation builder
 # ---------------------------------------------------------------------------
 
-class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
+class Simulation(
+    _PreflightMixin,
+    _SparamMixin,
+    _CompileMixin,
+    _ExecuteMixin,
+    _ArtifactsMixin,
+):
     """Declarative FDTD simulation builder.
 
     Parameters

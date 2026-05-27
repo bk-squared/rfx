@@ -32,6 +32,12 @@ def test_rfx_api_module_imports():
         WaveguideSMatrixResult,
         WaveguideSParamResult,
     )
+    from rfx import (  # noqa: F401
+        ArtifactBundle,
+        build_runtime_report,
+        export_artifact_bundle,
+    )
+    from rfx.artifacts import validate_artifact_report  # noqa: F401
 
 
 def test_build_grid_private_method():
@@ -86,3 +92,12 @@ def test_build_nonuniform_grid_private_method():
     assert len(grid.shape) == 3
     # nz includes CPML padding, so it is >= the supplied profile length.
     assert grid.nz >= len(dz)
+
+
+def test_simulation_artifact_methods_present():
+    """Artifact export is a first-class Simulation surface."""
+    from rfx.api import Simulation
+
+    for name in ("export_scene", "artifact_report", "export_artifact_bundle"):
+        assert hasattr(Simulation, name)
+        assert callable(getattr(Simulation, name))
