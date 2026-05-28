@@ -77,7 +77,10 @@ BANDS = {
 }
 
 GEOMETRIES = ("thru", "open_stub")
-DX_RESOLUTIONS = ("dx30", "dx40")  # cells / lambda_g_min
+# Mesh resolution as cells per substrate height (Yee staircase bias control).
+# 4 is the rfx-warned minimum; 6 gives a finer cross-mesh consistency check.
+# Both values still meet the wavelength criterion in every case below.
+DX_RESOLUTIONS = ("sub4", "sub6")
 
 
 def _hammerstad_jensen_width(z0_target: float, eps_r: float, h: float) -> float:
@@ -122,8 +125,8 @@ class CaseSpec:
     dx_resolution: str
 
     @property
-    def cells_per_lambda(self) -> int:
-        return {"dx30": 30, "dx40": 40}[self.dx_resolution]
+    def cells_per_h_sub(self) -> int:
+        return {"sub4": 4, "sub6": 6}[self.dx_resolution]
 
 
 def enumerate_cases() -> list[CaseSpec]:
@@ -139,13 +142,27 @@ def enumerate_cases() -> list[CaseSpec]:
 
 
 def case_geometry_params(case: CaseSpec) -> dict:
-    """Resolve all derived geometry/mesh params for a case."""
+    """Resolve all derived geometry/mesh params for a case.
+
+    dx is set to ``h_sub / cells_per_h_sub`` so the substrate-air
+    interface lands cleanly on a Yee face (avoids ``compute_msl_s_matrix``'s
+    mixed-cell danger zone in [0.10, 0.40] fractional part of h_sub/dx).
+    A sanity check then verifies dx also satisfies the wavelength
+    criterion ``dx <= lambda_g_min / 20`` over the band.
+    """
     sub = SUBSTRATES[case.substrate_key]
     band = BANDS[case.band_key]
     w_m = _hammerstad_jensen_width(sub.z0_target_ohm, sub.eps_r, sub.h_sub_m)
     eps_eff = _eps_eff_quasitem(w_m, sub.h_sub_m, sub.eps_r)
     lg_min = _lambda_g_min_m(eps_eff, band.freq_hi_hz)
-    dx = lg_min / case.cells_per_lambda
+
+    dx = sub.h_sub_m / float(case.cells_per_h_sub)
+    if dx > lg_min / 20.0:
+        raise RuntimeError(
+            f"{case.case_id}: h_sub/{case.cells_per_h_sub} dx={dx*1e6:.0f}um "
+            f"violates dx <= lambda_g_min/20 = {lg_min/20*1e6:.0f}um. "
+            "Reduce band or increase cells_per_h_sub."
+        )
 
     # Trace length: thru-line = 4 λ_g_min; open-stub: feed + λ/4 branch + extra.
     if case.geometry == "thru":
