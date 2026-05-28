@@ -173,7 +173,16 @@ def case_geometry_params(case: CaseSpec) -> dict:
     air_top_m = 6.0 * sub.h_sub_m
     cpml_layers = 8
 
-    domain_x_m = trace_len_m + 2.0 * (cpml_layers + 4) * dx
+    # Port margin: must clear CPML pad AND give ≥ 2·h_sub buffer between
+    # port and CPML inner face (rfx warning, strict ``<``). Add a 1.1×
+    # safety factor on the h_sub buffer so we don't sit exactly on the
+    # warning threshold.
+    port_margin = max(
+        (cpml_layers + 4) * dx,
+        cpml_layers * dx + 2.2 * sub.h_sub_m,
+    )
+
+    domain_x_m = trace_len_m + 2.0 * port_margin
     domain_y_m = 12.0 * w_m + 2.0 * (cpml_layers + 4) * dx
     domain_z_m = sub.h_sub_m + air_top_m + 2.0 * (cpml_layers + 4) * dx
     return dict(
@@ -188,6 +197,7 @@ def case_geometry_params(case: CaseSpec) -> dict:
         domain_y_m=domain_y_m,
         domain_z_m=domain_z_m,
         cpml_layers=cpml_layers,
+        port_margin=port_margin,
     )
 
 
@@ -247,8 +257,9 @@ def build_simulation(case: CaseSpec, geo: dict) -> Simulation:
             material="pec",
         )
 
-    # MSL ports at each end of the main trace.
-    port_margin = (geo["cpml_layers"] + 4) * geo["dx"]
+    # MSL ports at each end of the main trace (margin precomputed in
+    # case_geometry_params so domain sizing matches).
+    port_margin = geo["port_margin"]
     sim.add_msl_port(
         position=(port_margin, y_centre, z_ground),
         width=w,
