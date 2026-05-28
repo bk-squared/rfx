@@ -460,6 +460,9 @@ class _ExecuteMixin:
         else:
             _s11_freqs_arr = None
 
+        # Collect all port cell indices for Kottke dilation guard (issue #82).
+        _port_cleared_cells: list[tuple[int, int, int]] = []
+
         for pe in self._ports:
             if pe.impedance == 0.0:
                 from rfx.simulation import make_j_source
@@ -490,6 +493,7 @@ class _ExecuteMixin:
                         pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
                     if pec_occupancy_local is not None:
                         pec_occupancy_local = pec_occupancy_local.at[cell[0], cell[1], cell[2]].set(0.0)
+                    _port_cleared_cells.append((int(cell[0]), int(cell[1]), int(cell[2])))
                 # Register a JIT-integrated S-param accumulator for this
                 # WirePort when forward(port_s11_freqs=...) was requested
                 # (issue #79 follow-up to PR #72). Mirrors the lumped
@@ -522,6 +526,7 @@ class _ExecuteMixin:
                 pec_mask_local = pec_mask_local.at[idx[0], idx[1], idx[2]].set(False)
             if pec_occupancy_local is not None:
                 pec_occupancy_local = pec_occupancy_local.at[idx[0], idx[1], idx[2]].set(0.0)
+            _port_cleared_cells.append((int(idx[0]), int(idx[1]), int(idx[2])))
             # Register a JIT-integrated S-param accumulator for this
             # lumped port when the user requested forward(port_s11_freqs=...)
             # (issue #72). Skipping passive ports keeps S11 indexing
@@ -618,6 +623,7 @@ class _ExecuteMixin:
                         pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
                     if pec_occupancy_local is not None:
                         pec_occupancy_local = pec_occupancy_local.at[cell[0], cell[1], cell[2]].set(0.0)
+                    _port_cleared_cells.append((int(cell[0]), int(cell[1]), int(cell[2])))
 
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -711,13 +717,28 @@ class _ExecuteMixin:
         # The default _run cpml_axes="xyz" builds CPML state for axes
         # that have no padding, producing shape-broadcast errors like
         # (8,1,1) vs (nx,ny,nz) during the scan (issue #29). The run()
-        # path forwards these explicitly at api.py:2012, so does the
-        # waveguide compute path at :2077 / :2092.
+        # path forwards these explicitly (see Simulation.run in _execute.py),
+        # so does the waveguide compute path (see _sparams.py).
         cpml_axes_run = grid.cpml_axes
         pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
 
         # Stage 2 Kottke for AD-traceable PEC density (opt-in via env
         # ``RFX_PEC_OCC_KOTTKE=1``).  When enabled and
+        # ── Port-aware Kottke dilation guard (issue #82) ──────────
+        # Kottke's ``occ_dilated = max(f, roll(f,±1,...))`` picks up
+        # non-zero occupancy from cells adjacent to each port cell.
+        # For a probe-fed patch (port 1 cell below the PEC sheet),
+        # the z+1 neighbor carries the patch occupancy into the port's
+        # inv_eps, causing 60x–223% AD gradient mismatch.  Fix: also
+        # zero the 6 face-neighbors of every port cell before Kottke.
+        if pec_occupancy_local is not None and _port_cleared_cells:
+            for ci, cj, ck in _port_cleared_cells:
+                for di, dj, dk in ((1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)):
+                    ni = min(max(ci + di, 0), grid.nx - 1)
+                    nj = min(max(cj + dj, 0), grid.ny - 1)
+                    nk = min(max(ck + dk, 0), grid.nz - 1)
+                    pec_occupancy_local = pec_occupancy_local.at[ni, nj, nk].set(0.0)
+
         # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
         # tensor via Kottke's PEC limit ((1−f)/ε perpendicular, 0
         # parallel) using the gradient of the occupancy as the
@@ -1465,7 +1486,7 @@ class _ExecuteMixin:
         if is_nonuniform:
             # Synthesise missing dz profile so the NU grid build always
             # sees all three axes (mirrors Simulation.run()'s pre-build
-            # synthesis at api.py ~4268).  Required for sims that set
+            # synthesis in Simulation.run(), see _execute.py).  Required for sims that set
             # only dx/dy_profile and leave dz uniform.
             if self._dz_profile is None:
                 nz_phys = max(1, int(round(self._domain[2] / self._dx)))
