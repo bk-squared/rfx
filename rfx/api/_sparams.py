@@ -134,15 +134,15 @@ class _SparamMixin:
         # raise so the user is not given silently-wrong numbers.
         if self._dx_profile is not None or self._dy_profile is not None:
             unsupported = []
-            if normalize is not True:
-                unsupported.append("normalize=True is required")
+            if normalize is not True and normalize != "flux":
+                unsupported.append("normalize=True or normalize='flux' is required")
             if any(entry.n_modes > 1 for entry in entries):
                 unsupported.append("multi-mode ports (n_modes>1) are not supported")
             if unsupported:
                 raise NotImplementedError(
                     "compute_waveguide_s_matrix() on a non-uniform mesh "
-                    "(dx_profile / dy_profile) supports normalize=True "
-                    "and single-mode ports. "
+                    "(dx_profile / dy_profile) supports normalize=True or "
+                    "normalize='flux' and single-mode ports. "
                     + "; ".join(unsupported)
                     + ". Drop the dx/dy profile to use the uniform lane."
                 )
@@ -1491,11 +1491,16 @@ class _SparamMixin:
             waveguide_plane_positions,
         )
 
+        # ``normalize`` may be True (lumped V/I ratio) or "flux" (Poynting
+        # power-ratio magnitude + modal phase). normalize=False is not
+        # supported on the NU path.
+        _flux_mode = (normalize == "flux")
         if not normalize:
             raise NotImplementedError(
                 "compute_waveguide_s_matrix(normalize=False) is not yet "
-                "supported on the non-uniform mesh path; use normalize=True "
-                "or drop dx/dy_profile to stay on the uniform lane."
+                "supported on the non-uniform mesh path; use normalize=True, "
+                "normalize='flux', or drop dx/dy_profile to stay on the "
+                "uniform lane."
             )
 
         entries = list(self._waveguide_ports)
@@ -1596,12 +1601,16 @@ class _SparamMixin:
                     for idx, e in enumerate(original_entries)
                 ]
 
-                dev_result = run_nonuniform_path(self, n_steps=n_steps)
+                dev_result = run_nonuniform_path(
+                    self, n_steps=n_steps,
+                    attach_waveguide_flux=_flux_mode,
+                )
                 ref_result = run_nonuniform_path(
                     self,
                     n_steps=n_steps,
                     eps_override=vacuum_eps,
                     sigma_override=vacuum_sigma,
+                    attach_waveguide_flux=_flux_mode,
                 )
 
                 dev_wg = dev_result.waveguide_ports or {}
@@ -1639,6 +1648,45 @@ class _SparamMixin:
                     a_inc_ref,
                     jnp.ones_like(a_inc_ref),
                 )
+
+                if _flux_mode:
+                    # Power-flux magnitude + modal phase (mirrors the
+                    # uniform extract_waveguide_s_matrix_flux). Immune to
+                    # the band-edge a_inc_ref denominator collapse that
+                    # makes the normalize=True diagonal blow up (issue #88):
+                    # P_inc = |F_ref[drive]| is large and well-conditioned
+                    # across the whole band, not source-spectrum-weighted.
+                    F_ref = ref_result.waveguide_port_flux
+                    F_dev = dev_result.waveguide_port_flux
+                    if F_ref is None or F_dev is None:
+                        raise RuntimeError(
+                            "normalize='flux' on the NU path requires "
+                            "per-port flux spectra; run_nonuniform_path did "
+                            "not return waveguide_port_flux."
+                        )
+                    P_inc = np.abs(np.asarray(F_ref[drive_idx]))
+                    safe_P_inc = np.where(P_inc > 1e-60, P_inc, 1.0)
+                    recv_col = []
+                    for recv_idx in range(n_ports):
+                        recv_name = original_entries[recv_idx].name
+                        _, b_recv_dev = extract_waveguide_port_waves(
+                            dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
+                        )
+                        phase = np.angle(
+                            np.asarray(b_recv_dev) / np.asarray(safe_a_inc)
+                        )
+                        if recv_idx == drive_idx:
+                            P_refl = np.abs(
+                                np.asarray(F_ref[drive_idx])
+                                - np.asarray(F_dev[drive_idx])
+                            )
+                            mag = np.sqrt(P_refl / safe_P_inc)
+                        else:
+                            P_trans = np.abs(np.asarray(F_dev[recv_idx]))
+                            mag = np.sqrt(P_trans / safe_P_inc)
+                        recv_col.append(jnp.asarray(mag * np.exp(1j * phase)))
+                    s_columns.append(recv_col)
+                    continue
 
                 recv_col: list = []
                 for recv_idx in range(n_ports):
