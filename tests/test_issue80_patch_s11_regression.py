@@ -85,11 +85,18 @@ def _build_patch_sim() -> Simulation:
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "issue #80 patch S11: V·I-split extractor gives non-passive |S11|~1.44 "
-        "(>1) with resonance dip ~10.275 GHz vs analytic 9.21 GHz — mismeasured "
-        "closed Ampere-loop current on the reflecting resonant load. Architectural "
-        "fix needed (lumped-port feed / re-derived current path). XPASS => fixed; "
-        "remove this xfail and promote to a green gate. See 2026-05-26 STOP note."
+        "issue #80 patch S11. The extractor was fixed (PR #99: S now assembled "
+        "from the voltage-only spatial fit, not the Z0-mismatch-corrupted V·I "
+        "split), which lowers the patch |S11| from ~1.44 to ~1.166 (GPU run "
+        "369367240214) — but it is still >1.05, so this stays xfail. The residual "
+        "non-passivity is a SEPARATE, coupled cause: on this resonant patch the "
+        "probes sit in the source reactive near-field (offset < lambda/2pi), so a "
+        "spurious component enters the measured FIELD that no extractor can remove "
+        "(the spatial-fit 2-wave model is ill-conditioned there — see the runtime "
+        "honesty-guard warning). The remaining fix is issue #80 'Fix B': far-field "
+        "probe placement (offset > lambda/2pi). XPASS => both fixes landed; remove "
+        "this xfail and promote to a green gate. Do NOT loosen the assertions. "
+        "See docs/research_notes/20260529_msl_broad_e5_extractor_blocker.md."
     ),
 )
 def test_issue80_patch_s11_passive_and_resonant():
