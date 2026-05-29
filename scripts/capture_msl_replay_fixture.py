@@ -8,7 +8,7 @@ Outputs:
     tests/fixtures/msl_replay_accumulators.npz  — complex64 DFT-plane arrays
     tests/fixtures/msl_replay_golden_f64.npy    — complex128 S-matrix from
                                                    numpy assembly on same data
-                                                   (mirrors S1 V·I split logic)
+                                                   (mirrors the spatial-fit S assembly)
 """
 from __future__ import annotations
 
@@ -136,7 +136,13 @@ def main():
     size_acc = ACCUMULATORS_PATH.stat().st_size / 1024
     print(f"\nSaved accumulators: {ACCUMULATORS_PATH} ({size_acc:.1f} KB)")
 
-    print("\nComputing numpy-f64 golden from captured accumulators (S1 V·I split)...")
+    # Accumulators were captured from a float32 production run above; the
+    # golden must be a true f64 reference. extract_msl_nprobe is x64-aware
+    # (issue #80 fix), so enable x64 now so the golden is assembled in
+    # complex128 — matching how test_replay_float64_equivalence runs the
+    # jnp assembly under x64.
+    jax.config.update("jax_enable_x64", True)
+    print("\nComputing numpy-f64 golden from captured accumulators (spatial-fit assembly, x64)...")
     golden_S = _compute_numpy_f64_golden_s1(accumulator_store, FREQS_REPLAY, sim)
     np.save(GOLDEN_F64_PATH, golden_S)
     size_gold = GOLDEN_F64_PATH.stat().st_size / 1024
@@ -153,15 +159,17 @@ def _compute_numpy_f64_golden_s1(
     freqs: np.ndarray,
     sim_ref: Simulation,
 ) -> np.ndarray:
-    """Reproduce the S1 V·I assembly in numpy-f64 from captured complex64 accumulators.
+    """Reproduce the spatial-fit S assembly in numpy-f64 from captured accumulators.
 
-    Mirrors compute_msl_s_matrix's S1 logic:
-      - voltage V = integral Ez dz at probe-0 plane, upcast to complex128
-      - current I = msl_loop_current (closed Ampere ∮H·dl), upcast to complex128
-      - S11 = b/a = (V - Z0*I/2) / (V + Z0*I/2)   [V·I wave split]
-      - S21 = b_passive / a_driven
-    This is identical to the jnp assembly except all arithmetic is numpy float64,
-    so the two results agree to near-machine-epsilon (~1e-13).
+    Mirrors compute_msl_s_matrix's voltage-only spatial-fit logic (issue #80 fix):
+      - integrate all N probe voltages V_n = integral Ez dz at each probe plane
+      - run extract_msl_nprobe (fits V_n = alpha e^{-jbx_n} + gamma e^{+jbx_n})
+      - direction-keyed assembly: leaving=(alpha if "+x" else gamma),
+        arriving=(gamma if "+x" else alpha); S_ji = arriving_j/leaving_i with
+        feed-plane de-embed rot=exp(+jb*d0).
+    The closed Ampere-loop current is kept only for the diagnostic Z0. This is
+    identical to the jnp assembly except all arithmetic is numpy float64, so the
+    two results agree to the documented float32 deployment delta (~3.5e-5).
     """
     from rfx.sources.msl_port import (
         MSLPort,
@@ -233,6 +241,7 @@ def _compute_numpy_f64_golden_s1(
         else np.asarray(_msl_assembled[3])
     )
     z0_hj_per_port: list[float] = []
+    eps_eff_per_port: list[float] = []
     trace_k_per_port: list[tuple[int, int]] = []
     for p_idx, pe in enumerate(entries):
         meta = port_idx_meta[p_idx]
@@ -244,8 +253,9 @@ def _compute_numpy_f64_golden_s1(
             eps_r_ref = float(
                 np.asarray(_msl_materials.eps_r[i_feed_p, meta["j_centre"], k_mid])
             )
-        z0_hj, _ = hammerstad_jensen_z0_eps_eff(pe.width, pe.height, eps_r_ref)
+        z0_hj, eps_eff = hammerstad_jensen_z0_eps_eff(pe.width, pe.height, eps_r_ref)
         z0_hj_per_port.append(float(z0_hj))
+        eps_eff_per_port.append(float(eps_eff))
 
         # Trace k span (same as compute_msl_s_matrix).
         i_feed_p = _msl_yz_cells(grid, msl_ports[p_idx])[0][0]
@@ -278,19 +288,26 @@ def _compute_numpy_f64_golden_s1(
             hy_probe_names[p_idx] = f"_msl_run{driven}_p{p_idx}_hy"
             hz_probe_names[p_idx] = f"_msl_run{driven}_p{p_idx}_hz"
 
-        # Integrate V (Ez) and I (∮H·dl) for each port.
-        v0_per_port: list[np.ndarray] = []  # voltage at probe 0
-        i_per_port: list[np.ndarray] = []
+        # Integrate the N probe voltages + loop current per port, then run
+        # the voltage-only spatial fit (issue #80 fix). Mirrors the
+        # production direction-keyed assembly in numpy-f64.
+        from rfx.probes.msl_wave_decomp import extract_msl_nprobe as _extract
+
+        alpha_per_port: list[np.ndarray] = []
+        gamma_per_port: list[np.ndarray] = []
+        beta_per_port: list[np.ndarray] = []
 
         for p_idx, meta in enumerate(port_idx_meta):
-            # Voltage at probe 0: integral Ez dz in centre column.
-            ez_plane = _get(ez_probe_names[p_idx][0])  # (n_freqs, ny, nz), c128
-            v_f = np.zeros(n_freqs, dtype=np.complex128)
-            for k in range(meta["k_lo"], meta["k_hi"] + 1):
-                v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
-            v0_per_port.append(v_f)
+            # All N probe voltages: integral Ez dz in centre column.
+            v_stack = np.zeros((n_freqs, len(ez_probe_names[p_idx])), dtype=np.complex128)
+            for q_idx, nm in enumerate(ez_probe_names[p_idx]):
+                ez_plane = _get(nm)  # (n_freqs, ny, nz), c128
+                v_f = np.zeros(n_freqs, dtype=np.complex128)
+                for k in range(meta["k_lo"], meta["k_hi"] + 1):
+                    v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
+                v_stack[:, q_idx] = v_f
 
-            # Closed Ampere-loop current (S1 msl_loop_current, upcast to c128).
+            # Closed Ampere-loop current (used only for the diagnostic Z0).
             hy_plane = _get(hy_probe_names[p_idx])
             hz_plane = _get(hz_probe_names[p_idx])
             k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
@@ -301,24 +318,36 @@ def _compute_numpy_f64_golden_s1(
                 dy_arr=dy_arr, dz_arr=dz_arr,
                 direction=msl_ports[p_idx].direction,
             )
-            i_per_port.append(np.asarray(i_f, dtype=np.complex128))
+            beta0 = 2.0 * np.pi * np.asarray(freqs) * np.sqrt(eps_eff_per_port[p_idx]) / _C0
+            res_p = _extract(
+                v_stack,
+                np.asarray(probe_xs[p_idx], dtype=float),
+                np.asarray(i_f, dtype=np.complex128),
+                beta0.astype(np.complex128),
+                z0_hj=z0_hj_per_port[p_idx],
+            )
+            alpha_per_port.append(np.asarray(res_p["alpha"], dtype=np.complex128))
+            gamma_per_port.append(np.asarray(res_p["gamma"], dtype=np.complex128))
+            beta_per_port.append(np.asarray(res_p["beta"], dtype=np.complex128))
 
-        # V·I wave split — identical formula to S1 assembly.
-        v0_d = v0_per_port[driven]
-        i_d = i_per_port[driven]
-        z0hj_d = z0_hj_per_port[driven]
-        a_fwd_d = 0.5 * (v0_d + z0hj_d * i_d)
-        b_ref_d = 0.5 * (v0_d - z0hj_d * i_d)
-        S[driven, driven, :] = b_ref_d / (a_fwd_d + 1e-30)
+        # Direction-keyed spatial-fit assembly (mirror of production).
+        def _leaving(a, g, direction):
+            return a if direction == "+x" else g
 
+        def _arriving(a, g, direction):
+            return g if direction == "+x" else a
+
+        dir_d = msl_ports[driven].direction
+        d0_d = float(entries[driven].n_probe_offset) * dx
+        rot_d = np.exp(1j * beta_per_port[driven] * d0_d)
+        a_drv = _leaving(alpha_per_port[driven], gamma_per_port[driven], dir_d) * rot_d
+        safe_a_drv = np.where(np.abs(a_drv) > 1e-30, a_drv, 1.0 + 0.0j)
         for j in range(n_ports):
-            if j == driven:
-                continue
-            v0_p = v0_per_port[j]
-            i_p = i_per_port[j]
-            z0hj_p = z0_hj_per_port[j]
-            b_out_p = 0.5 * (v0_p - z0hj_p * i_p)
-            S[j, driven, :] = b_out_p / (a_fwd_d + 1e-30)
+            dir_j = msl_ports[j].direction
+            d0_j = float(entries[j].n_probe_offset) * dx
+            rot_j = np.exp(1j * beta_per_port[j] * d0_j)
+            arriving_j = _arriving(alpha_per_port[j], gamma_per_port[j], dir_j) * rot_j
+            S[j, driven, :] = arriving_j / safe_a_drv
 
     return S
 

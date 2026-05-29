@@ -31,6 +31,23 @@ import jax
 import jax.numpy as jnp
 
 
+def _cx_dtype():
+    """Complex working dtype: complex128 under jax x64, else complex64.
+
+    The extractor pins complex64 by default (production runs float32), but
+    when x64 is enabled (AD / inverse-design / the f64 structural-equivalence
+    replay test) it must compute in complex128 so the f64 path is genuinely
+    f64 — otherwise S assembled from this fit carries f32 rounding even under
+    x64 (issue #80 fix: the spatial fit now feeds the production S-matrix).
+    """
+    return jnp.complex128 if jax.config.jax_enable_x64 else jnp.complex64
+
+
+def _re_dtype():
+    """Real working dtype paired with :func:`_cx_dtype`."""
+    return jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
+
+
 @dataclass(frozen=True)
 class MSLWaveProbeSet:
     """Indices into ``ForwardResult.time_series`` for a single port's
@@ -388,7 +405,7 @@ def _lstsq_alpha_gamma(
     residual : scalar real
         L2 norm of ``V − (α e^{−jβx} + γ e^{+jβx})`` — the fit quality.
     """
-    x_c = x.astype(jnp.complex64)
+    x_c = x.astype(_cx_dtype())
     col_fwd = jnp.exp(-1j * beta * x_c)
     col_bwd = jnp.exp(+1j * beta * x_c)
     a_mat = jnp.stack([col_fwd, col_bwd], axis=-1)        # (N, 2)
@@ -427,7 +444,7 @@ def _estimate_beta(
     grid = jnp.linspace(lo, hi, _BETA_SCAN_NODES)
 
     def _resid(b):
-        _, _, r = _lstsq_alpha_gamma(v, x, b.astype(jnp.complex64))
+        _, _, r = _lstsq_alpha_gamma(v, x, b.astype(_cx_dtype()))
         return r
 
     resids = jax.vmap(_resid)(grid)
@@ -442,7 +459,7 @@ def _estimate_beta(
     frac = jnp.where(jnp.abs(denom) > 1e-20, num / denom, 0.0)
     frac = jnp.clip(frac, -1.0, 1.0)
     step = b_mid - b_lo
-    return (b_mid + frac * step).astype(jnp.complex64)
+    return (b_mid + frac * step).astype(_cx_dtype())
 
 
 def extract_msl_nprobe(
@@ -498,13 +515,13 @@ def extract_msl_nprobe(
     convention.
     """
     eps = 1e-30
-    v = jnp.asarray(v, dtype=jnp.complex64)
+    v = jnp.asarray(v, dtype=_cx_dtype())
     if v.ndim == 1:
         v = v[None, :]
-    x = jnp.asarray(x, dtype=jnp.float32)
+    x = jnp.asarray(x, dtype=_re_dtype())
     # Reference the model at probe 0 so α/γ are probe-0 amplitudes.
     x = x - x[0]
-    i1 = jnp.asarray(i1, dtype=jnp.complex64)
+    i1 = jnp.asarray(i1, dtype=_cx_dtype())
     beta0 = jnp.asarray(beta0)
     if beta0.ndim == 0:
         beta0 = jnp.broadcast_to(beta0, (v.shape[0],))
@@ -519,7 +536,7 @@ def extract_msl_nprobe(
     z0 = (alpha - gamma) / (i1 + eps)
     s11 = gamma / (alpha + eps)
     delta = x[1] - x[0]
-    q = jnp.exp(-1j * beta * delta.astype(jnp.complex64))
+    q = jnp.exp(-1j * beta * delta.astype(_cx_dtype()))
 
     return dict(
         s11=s11,
