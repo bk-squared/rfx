@@ -112,7 +112,7 @@ def test_thin_conductor_api_integration():
 
     # Should build without error
     grid = sim._build_grid()
-    materials, debye, lorentz, pec_mask, pec_shapes, kerr = sim._assemble_materials(grid)
+    materials, debye, lorentz, pec_mask, pec_shapes, *_ = sim._assemble_materials(grid)
 
     # Copper thin conductor is PEC-level → check pec_mask, not sigma
     tc_box = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
