@@ -225,19 +225,19 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     """
     from rfx.api import Result
 
-    # Flux monitors are accumulated in the uniform scan body only (see
-    # rfx/simulation.py::_run_sim and rfx/runners/uniform.py). The NU scan
-    # body does not plumb them, so silently dropping them would lose the
-    # user's observable without warning. Fail fast — direct the caller to
-    # the uniform lane or NTFF-box alternative.
-    if getattr(sim, "_flux_monitors", None):
-        raise NotImplementedError(
-            "add_flux_monitor() is not supported on the non-uniform mesh "
-            "path; the NU scan body does not accumulate flux DFTs. Drop "
-            "the dx/dy/dz profile to use the uniform lane for R/T "
-            "measurements, or use add_ntff_box() for far-field observables "
-            "on NU meshes."
-        )
+    # Flux monitors: the NU scan body now accumulates Poynting-flux DFTs
+    # (parity with the uniform path). Full-plane monitors are supported;
+    # finite-region (``size=``) monitors still need NU cumulative-edge
+    # index conversion and are rejected below until that lands.
+    for _fm in getattr(sim, "_flux_monitors", None) or []:
+        if getattr(_fm, "size", None) is not None:
+            raise NotImplementedError(
+                "add_flux_monitor(size=...) finite-region monitors are not "
+                "yet supported on the non-uniform mesh path; the tangential "
+                "sub-region index conversion against the graded cumulative "
+                "edges is not implemented. Use a full-plane flux monitor "
+                "(omit size=) or the uniform lane."
+            )
 
     grid = build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
@@ -477,6 +477,44 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 )
             )
 
+    # Flux monitors — full-plane only (finite-region rejected above).
+    # Tangential cell sizes are passed as per-cell arrays so a graded
+    # tangential axis is integrated correctly by FluxMonitor.dA.
+    flux_monitor_objs = []
+    if getattr(sim, "_flux_monitors", None):
+        from rfx.probes.probes import init_flux_monitor
+        axis_to_index = {"x": 0, "y": 1, "z": 2}
+        # Per-axis tangential cell-size arrays for dA.
+        _d_arr = {
+            0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
+            1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
+            2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
+        }
+        for pe in sim._flux_monitors:
+            axis_idx = axis_to_index[pe.axis]
+            plane_pos = [0.0, 0.0, 0.0]
+            plane_pos[axis_idx] = pe.coordinate
+            grid_index = pos_to_nu_index(grid, tuple(plane_pos))[axis_idx]
+            freqs_arr = (
+                pe.freqs
+                if pe.freqs is not None
+                else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
+            )
+            d1_arr, d2_arr = _d_arr[axis_idx]
+            flux_monitor_objs.append(
+                init_flux_monitor(
+                    axis=axis_idx,
+                    index=grid_index,
+                    freqs=freqs_arr,
+                    grid_shape=(grid.nx, grid.ny, grid.nz),
+                    d1=d1_arr,
+                    d2=d2_arr,
+                    dft_total_steps=n_steps,
+                    dft_window=getattr(pe, "dft_window", "rect"),
+                    dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
+                )
+            )
+
     sp_freqs = None
     if wire_port_specs and (compute_s_params is None or compute_s_params):
         sp_freqs = s_param_freqs
@@ -592,6 +630,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         pec_faces=getattr(sim, '_pec_faces', None),
         pmc_faces=sim._boundary_spec.pmc_faces() if getattr(sim, '_boundary_spec', None) is not None else None,
         dft_planes=dft_plane_probes if dft_plane_probes else None,
+        flux_monitors=flux_monitor_objs if flux_monitor_objs else None,
         rlc_metas=rlc_metas,
         rlc_states=rlc_states_init,
         ntff_box=ntff_box,
@@ -674,6 +713,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             for entry, probe in zip(sim._dft_planes, r["dft_planes"])
         }
 
+    # Repack flux monitors into {name: FluxMonitor} dict (uniform schema).
+    flux_monitors_dict = None
+    if getattr(sim, "_flux_monitors", None) and "flux_monitors" in r:
+        flux_monitors_dict = {
+            entry.name: mon
+            for entry, mon in zip(sim._flux_monitors, r["flux_monitors"])
+        }
+
     return Result(
         state=r["state"],
         time_series=r["time_series"],
@@ -682,6 +729,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_data=r.get("ntff_data"),
         ntff_box=ntff_box,
         dft_planes=dft_planes_dict,
+        flux_monitors=flux_monitors_dict,
         waveguide_ports=waveguide_ports_result,
         waveguide_sparams=waveguide_sparams_result,
         grid=grid,

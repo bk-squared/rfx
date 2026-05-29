@@ -723,6 +723,7 @@ def run_nonuniform(
     ntff_data=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
+    flux_monitors: list | None = None,
     checkpoint: bool = False,
     emit_time_series: bool = True,
     checkpoint_every: int | None = None,
@@ -751,11 +752,13 @@ def run_nonuniform(
     wire_ports = wire_ports or []
     dft_planes = dft_planes or []
     waveguide_ports = waveguide_ports or []
+    flux_monitors = flux_monitors or []
     dt = grid.dt
     use_wire_ports = len(wire_ports) > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None
     use_dft_planes = len(dft_planes) > 0
+    use_flux_monitors = len(flux_monitors) > 0
     use_lumped_rlc = len(rlc_metas) > 0
     use_ntff = ntff_box is not None and ntff_data is not None
     use_waveguide_ports = len(waveguide_ports) > 0
@@ -872,6 +875,25 @@ def run_nonuniform(
         )
     else:
         dft_meta = ()
+
+    # Flux monitor carry + static metadata (mirrors the uniform scan body
+    # in rfx/simulation.py). The NU dt is scalar, so the DFT kernels need
+    # no per-axis time weighting; the axis-aware area element dA already
+    # lives on each FluxMonitor (handles graded tangential cells).
+    if use_flux_monitors:
+        from rfx.probes.probes import _FLUX_COMPONENTS as _FC
+        flux_meta = tuple(
+            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
+             fm.lo1, fm.hi1, fm.lo2, fm.hi2,
+             fm.total_steps, fm.window, fm.window_alpha)
+            for fm in flux_monitors
+        )
+        carry_init["flux_monitors"] = tuple(
+            (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft)
+            for fm in flux_monitors
+        )
+    else:
+        flux_meta = ()
 
     # Lumped RLC ADE state (one per element) — metas are Python-static
     if use_lumped_rlc:
@@ -1083,6 +1105,51 @@ def run_nonuniform(
                     acc + plane[None, :, :] * phase[:, None, None] * dt
                 )
 
+        # Flux monitor accumulation (mirrors uniform scan body in
+        # rfx/simulation.py). H is offset +dx/2 along the normal axis on
+        # the Yee grid; average H at idx-1 and idx to co-locate with E at
+        # idx for a correct Poynting cross-product. E is sampled at
+        # t=step*dt, H at t-dt/2.
+        new_flux_monitors = None
+        if use_flux_monitors:
+            from rfx.core.dft_utils import dft_window_weight as _dft_w
+            t_flux = step_idx.astype(jnp.float32) * dt
+            new_flux_monitors = []
+            for (e1_acc, e2_acc, h1_acc, h2_acc), (
+                ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2,
+                _tot_steps, _win_name, _win_alpha,
+            ) in zip(carry["flux_monitors"], flux_meta):
+                e1n, e2n, h1n, h2n = comp_names
+                idx_m1 = max(idx - 1, 0)
+                if ax == 0:
+                    e1 = getattr(st, e1n)[idx, _lo1:_hi1, _lo2:_hi2]
+                    e2 = getattr(st, e2n)[idx, _lo1:_hi1, _lo2:_hi2]
+                    h1 = (getattr(st, h1n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h1n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
+                    h2 = (getattr(st, h2n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h2n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
+                elif ax == 1:
+                    e1 = getattr(st, e1n)[_lo1:_hi1, idx, _lo2:_hi2]
+                    e2 = getattr(st, e2n)[_lo1:_hi1, idx, _lo2:_hi2]
+                    h1 = (getattr(st, h1n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h1n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
+                    h2 = (getattr(st, h2n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h2n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
+                else:
+                    e1 = getattr(st, e1n)[_lo1:_hi1, _lo2:_hi2, idx]
+                    e2 = getattr(st, e2n)[_lo1:_hi1, _lo2:_hi2, idx]
+                    h1 = (getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
+                    h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
+                t_f64 = t_flux.astype(jnp.float64)
+                fqs64 = fqs.astype(jnp.float64)
+                _w = _dft_w(step_idx, _tot_steps, _win_name, _win_alpha).astype(jnp.float64)
+                phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
+                phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
+                kernel_e = (phase_e[:, None, None] * dt * _w).astype(jnp.complex128)
+                kernel_h = (phase_h[:, None, None] * dt * _w).astype(jnp.complex128)
+                new_flux_monitors.append((
+                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
+                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
+                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
+                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
+                ))
+
         # NTFF: accumulate tangential E/H DFT on 6 box faces
         new_ntff = None
         if use_ntff:
@@ -1131,6 +1198,8 @@ def run_nonuniform(
             new_carry["wire_sparams"] = tuple(new_wire_sp)
         if use_dft_planes and new_dft_planes is not None:
             new_carry["dft_planes"] = tuple(new_dft_planes)
+        if use_flux_monitors and new_flux_monitors is not None:
+            new_carry["flux_monitors"] = tuple(new_flux_monitors)
         if use_lumped_rlc and new_rlc_states is not None:
             new_carry["rlc_states"] = tuple(new_rlc_states)
         if use_ntff and new_ntff is not None:
@@ -1233,6 +1302,16 @@ def run_nonuniform(
         result["dft_planes"] = tuple(
             probe._replace(accumulator=acc)
             for probe, acc in zip(dft_planes, final["dft_planes"])
+        )
+
+    # Repack flux monitors with their final E/H DFT accumulators so the
+    # caller can call flux_spectrum() on them (same schema as uniform).
+    if use_flux_monitors:
+        result["flux_monitors"] = tuple(
+            mon._replace(e1_dft=e1, e2_dft=e2, h1_dft=h1, h2_dft=h2)
+            for mon, (e1, e2, h1, h2) in zip(
+                flux_monitors, final["flux_monitors"]
+            )
         )
 
     # Surface final NTFF DFT accumulators
