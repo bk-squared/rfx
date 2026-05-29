@@ -358,6 +358,75 @@ def _second_diff_1d(widths: np.ndarray, *, bc: str) -> np.ndarray:
     return D
 
 
+def _galerkin_stiffness_mass_1d(
+    widths: np.ndarray, *, bc: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """Symmetric finite-volume stiffness K and diagonal mass m for -d²/du².
+
+    Galerkin / mixed-FV form of the 1-D operator on a cell-centred,
+    possibly non-uniform mesh. Unlike ``_second_diff_1d`` (which builds the
+    strong-form ``D = M⁻¹K`` and is ASYMMETRIC on a graded mesh, silently
+    corrupting ``eigh``), this returns the SYMMETRIC stiffness ``K`` and the
+    diagonal mass ``m = w`` separately so the generalized eigenproblem
+    ``K φ = kc² M φ`` can be symmetrized exactly:
+
+        K[j, j±1] = -1/d_face   (d_face = ½(w[j]+w[j±1]))     -- symmetric
+        K[j, j]   = Σ 1/d_face  (+ Dirichlet wall terms)
+        m[j]      = w[j]
+
+    bc="neumann"   : ∂φ/∂n = 0 at the walls (no wall flux; TE Hx).
+    bc="dirichlet" : φ = 0 at the wall faces (ghost = -cell; TM Ez / Ex).
+    """
+    n = len(widths)
+    w = np.asarray(widths, dtype=np.float64)
+    K = np.zeros((n, n), dtype=np.float64)
+    for j in range(n):
+        if j > 0:
+            d_left = 0.5 * (w[j - 1] + w[j])
+            c = 1.0 / d_left
+            K[j, j] += c
+            K[j, j - 1] -= c
+        elif bc == "dirichlet":
+            # Wall at the outer face; ghost = -cell[0], face spacing w[0].
+            K[j, j] += 2.0 / w[0]
+        if j < n - 1:
+            d_right = 0.5 * (w[j] + w[j + 1])
+            c = 1.0 / d_right
+            K[j, j] += c
+            K[j, j + 1] -= c
+        elif bc == "dirichlet":
+            K[j, j] += 2.0 / w[-1]
+    return K, w
+
+
+def _galerkin_eigh_separable_laplacian_2d(
+    Ku: np.ndarray, mu: np.ndarray,
+    Kv: np.ndarray, mv: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Symmetric eigensolve of the separable 2-D transverse Laplacian.
+
+    Solves ``(Ku⊗Mv + Mu⊗Kv) φ = kc² (Mu⊗Mv) φ`` (the Galerkin form of
+    ``-∇_t² φ = kc² φ``) by symmetrizing with ``S = (Mu⊗Mv)^{-1/2}``:
+
+        A = S (Ku⊗Mv + Mu⊗Kv) S ,   A ψ = kc² ψ ,   φ = S ψ
+
+    ``A`` is symmetric by construction, so ``np.linalg.eigh`` is exact on a
+    graded mesh (no silent lower-triangle symmetrization of an asymmetric
+    strong-form operator). Returns ``(evals, evecs)`` with evecs as columns
+    in the ORIGINAL φ basis (unit-mass-normalized), ascending eigenvalue.
+    """
+    nu = len(mu); nv = len(mv)
+    Mv = np.diag(mv); Mu = np.diag(mu)
+    big = np.kron(Ku, Mv) + np.kron(Mu, Kv)        # (nu*nv, nu*nv) symmetric
+    m_diag = np.kron(mu, mv)                         # diagonal of (Mu⊗Mv)
+    s = 1.0 / np.sqrt(m_diag)
+    A = (s[:, None] * big) * s[None, :]             # S A S, symmetric
+    A = 0.5 * (A + A.T)                              # clean tiny asymmetry
+    evals, psi = np.linalg.eigh(A)
+    evecs = psi * s[:, None]                         # φ = S ψ
+    return evals, evecs
+
+
 def _cell_centred_gradient(field: np.ndarray, widths: np.ndarray,
                             axis: int, *, bc: str) -> np.ndarray:
     """∂field/∂u at cell centres for cell-centred values with PEC-like BC.
@@ -464,7 +533,21 @@ def _shift_profile_to_dual(
     profile: np.ndarray,
     h_offset: tuple[float, float],
 ) -> np.ndarray:
-    """Linearly shift a transverse template by supported half-cell offsets."""
+    """Co-locate a transverse template to the E plane by a SYMMETRIC
+    half-cell average.
+
+    The Yee H sits a half cell from E. The legacy one-sided average
+    ``0.5*(f + roll(f, -1))`` introduces a non-symmetric O(dx) bias that
+    breaks the parity orthogonality between modes: the discrete modal
+    cross-overlap ``∫(e_m × h_n)·n̂ dA`` becomes O(dx) and asymmetric
+    (``O_12 != O_21``), leaking ~2 % power between TE10 and TE20 in an
+    over-moded guide. The symmetric centered stencil
+    ``0.25*(roll(+1) + 2f + roll(-1))`` keeps the field co-located,
+    restores parity, and drives the cross-overlap to exactly zero for
+    symmetric mode pairs (verified numerically: 0.029 -> 0 at dx=250 um).
+    Edges are clamped (reflect), not wrapped, so PEC/Neumann walls do not
+    leak.
+    """
     out = np.asarray(profile, dtype=np.float64).copy()
     for axis, offset in enumerate(h_offset):
         if offset == 0.0:
@@ -474,8 +557,16 @@ def _shift_profile_to_dual(
                 "h_offset currently supports only 0.0 or 0.5 per axis, "
                 f"got {h_offset!r}"
             )
-        rolled = np.roll(out, -1, axis=axis)
-        out = 0.5 * (out + rolled)
+        # Edge-clamped neighbours (no wraparound at the aperture walls).
+        plus = np.concatenate(
+            [np.take(out, [0], axis=axis), np.take(out, range(out.shape[axis] - 1), axis=axis)],
+            axis=axis,
+        )
+        minus = np.concatenate(
+            [np.take(out, range(1, out.shape[axis]), axis=axis), np.take(out, [-1], axis=axis)],
+            axis=axis,
+        )
+        out = 0.25 * (plus + 2.0 * out + minus)
     return out
 
 
@@ -545,16 +636,15 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
     """
     nu = len(u_widths)
     nv = len(v_widths)
-    D_uu = _second_diff_1d(u_widths, bc="neumann")
-    D_vv = _second_diff_1d(v_widths, bc="neumann")
-    lap = np.kron(D_uu, np.eye(nv)) + np.kron(np.eye(nu), D_vv)
+    Ku, mu = _galerkin_stiffness_mass_1d(u_widths, bc="neumann")
+    Kv, mv = _galerkin_stiffness_mass_1d(v_widths, bc="neumann")
 
     dA = _aperture_area(u_widths, v_widths, aperture_dA)
     # Keep the physical Yee eigenfunctions/cutoffs on the full cell-centred
     # operator, then normalize and orthogonalize the stored profiles under the
     # extractor aperture. A reduced zero-dA subspace imposes an unintended
     # Dirichlet-like wall at the dropped row/column and breaks source matching.
-    evals, evecs = np.linalg.eigh(-lap)
+    evals, evecs = _galerkin_eigh_separable_laplacian_2d(Ku, mu, Kv, mv)
 
     # Pick eigenvector by overlap with analytic Hx = cos(mπy/a)·cos(nπz/b).
     # Rank picking fails when discrete kc² ordering swaps nearly-degenerate
@@ -653,12 +743,11 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
         raise ValueError(f"TM modes require m >= 1 and n >= 1, got ({m}, {n})")
     nu = len(u_widths)
     nv = len(v_widths)
-    D_uu = _second_diff_1d(u_widths, bc="dirichlet")
-    D_vv = _second_diff_1d(v_widths, bc="dirichlet")
-    lap = np.kron(D_uu, np.eye(nv)) + np.kron(np.eye(nu), D_vv)
+    Ku, mu = _galerkin_stiffness_mass_1d(u_widths, bc="dirichlet")
+    Kv, mv = _galerkin_stiffness_mass_1d(v_widths, bc="dirichlet")
 
     dA = _aperture_area(u_widths, v_widths, aperture_dA)
-    evals, evecs = np.linalg.eigh(-lap)
+    evals, evecs = _galerkin_eigh_separable_laplacian_2d(Ku, mu, Kv, mv)
 
     # Overlap-pick eigenvector against analytic Ex = sin(mπy/a)·sin(nπz/b).
     u_c = np.cumsum(u_widths) - 0.5 * np.asarray(u_widths)
@@ -1229,7 +1318,22 @@ def _plane_h_field_at_dual(
                 "h_offset currently supports only 0.0 or 0.5 per axis, "
                 f"got {h_offset!r}"
             )
-        out = 0.5 * (out + jnp.roll(out, -1, axis=axis))
+        # Symmetric centered co-location average (matches the stored-profile
+        # _shift_profile_to_dual stencil in lockstep). Edge-clamped, NOT
+        # wrapped: simulated tangential H is nonzero at PEC walls, so a
+        # wraparound would leak. See _shift_profile_to_dual docstring.
+        n = out.shape[axis]
+        plus = jnp.concatenate(
+            [jnp.take(out, jnp.array([0]), axis=axis),
+             jnp.take(out, jnp.arange(n - 1), axis=axis)],
+            axis=axis,
+        )
+        minus = jnp.concatenate(
+            [jnp.take(out, jnp.arange(1, n), axis=axis),
+             jnp.take(out, jnp.array([n - 1]), axis=axis)],
+            axis=axis,
+        )
+        out = 0.25 * (plus + 2.0 * out + minus)
     return out
 
 
@@ -2936,6 +3040,199 @@ def extract_multimode_s_params_normalized(
                         through_norm,
                         conversion_norm,
                     )
+
+    return jnp.asarray(s_matrix), mode_map
+
+
+def _modal_net_power(cfg: WaveguidePortConfig) -> np.ndarray:
+    """Per-mode net real power through the reference plane.
+
+    P_m(f) = 0.5 · Re(V_m(f) · conj(I_m(f)))
+
+    where V_m, I_m are the recorded modal voltage/current at the reference
+    plane (rect full-record DFT). Because V_m and I_m are independent
+    field measurements (E-line integral and H-loop), their product is the
+    physical modal power flux — no modal-impedance (Z_TE) assumption,
+    which is exactly the discretization bias that corrupts the
+    wave-decomposition ``normalize=False`` reflection and the two-run
+    ``normalize=True`` cross-mode normalization. Sign follows the port's
+    recorded V/I convention; callers use magnitudes / signed differences.
+    """
+    v_dft = np.array(_rect_dft(cfg.v_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
+    i_dft = np.array(_rect_dft(cfg.i_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
+    return 0.5 * np.real(v_dft * np.conj(i_dft))
+
+
+def extract_multimode_s_matrix_flux(
+    grid,
+    materials,
+    ref_materials,
+    port_mode_cfgs: list[list[WaveguidePortConfig]],
+    n_steps: int,
+    *,
+    boundary: str = "cpml",
+    cpml_axes: str = "x",
+    pec_axes: str = "yz",
+    periodic: tuple[bool, bool, bool] | None = None,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    ref_debye: tuple | None = None,
+    ref_lorentz: tuple | None = None,
+    ref_shifts: list[float] | tuple[float, ...] | None = None,
+    aniso_eps: tuple | None = None,
+    conformal_weights: tuple | None = None,
+    ref_aniso_eps: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
+    ref_aniso_inv_eps: tuple | None = None,
+) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
+    """Power-flux multi-mode waveguide S-matrix.
+
+    Multi-mode analogue of :func:`extract_waveguide_s_matrix_flux`. For
+    each driven modal channel ``(p, m)``:
+
+      1. Reference run (empty guide, channel ``(p,m)`` driven) → incident
+         modal net power ``P_inc`` at the driven channel and the per-channel
+         net modal power ``F_ref``.
+      2. Device run (channel ``(p,m)`` driven) → per-channel net modal
+         power ``F_dev``.
+
+    Magnitudes use per-mode power ratios::
+
+        |S_{qn,pm}|² = |F_ref[qn] − F_dev[qn]| / |P_inc|   (q==p, n==m: reflection)
+        |S_{qn,pm}|² = |F_dev[qn]|             / |P_inc|   (otherwise: transmission / mode conversion)
+
+    All ratios are referenced to the (always-nonzero) incident modal power,
+    so cross-mode channels do not hit the 0/0 blow-up of the two-run
+    ``extract_multimode_s_params_normalized`` (``b_dev/b_ref`` with
+    ``b_ref ≈ 0`` for an uncoupled empty-guide channel). Phase is taken
+    from the modal V/I wave decomposition of the device run.
+
+    Per-mode net power ``F`` comes from :func:`_modal_net_power`
+    (``0.5·Re(V·I*)``), avoiding the modal-impedance discretization bias.
+
+    Parameters mirror :func:`extract_multimode_s_params_normalized`.
+
+    Returns
+    -------
+    s_matrix : jnp.ndarray, shape (N, N, n_freqs)
+    mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
+    """
+    from rfx.simulation import run as run_simulation
+
+    flat_cfgs: list[WaveguidePortConfig] = []
+    mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
+    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
+        for mode_within, cfg in enumerate(mode_cfgs):
+            flat_cfgs.append(cfg)
+            mode_map.append((
+                port_idx,
+                mode_within,
+                cfg.mode_type,
+                _mode_indices_from_config(cfg),
+            ))
+
+    if len(flat_cfgs) < 2:
+        raise ValueError(
+            "extract_multimode_s_matrix_flux requires at least two modal channels"
+        )
+
+    n_total = len(flat_cfgs)
+    n_freqs = len(flat_cfgs[0].freqs)
+    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=np.complex64)
+
+    n_ports = len(port_mode_cfgs)
+    if ref_shifts is None:
+        ref_shifts = tuple(0.0 for _ in range(n_ports))
+    if len(ref_shifts) != n_ports:
+        raise ValueError("ref_shifts must have one entry per physical port")
+    flat_ref_shifts: list[float] = []
+    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
+        flat_ref_shifts.extend([float(ref_shifts[port_idx])] * len(mode_cfgs))
+
+    def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
+        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        return cfg._replace(
+            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            v_probe_t=zeros_t,
+            v_ref_t=zeros_t,
+            i_probe_t=zeros_t,
+            i_ref_t=zeros_t,
+            v_inc_t=zeros_t,
+            n_steps_recorded=jnp.zeros((), dtype=jnp.int32),
+        )
+
+    common_run_kw = dict(
+        boundary=boundary,
+        cpml_axes=cpml_axes,
+        pec_axes=pec_axes,
+        periodic=periodic,
+    )
+    orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+
+    for drive_flat_idx in range(n_total):
+        # --- Reference run (empty guide, channel drive_flat_idx driven) ---
+        ref_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+            for idx, cfg in enumerate(flat_cfgs)
+        ]
+        ref_cfgs[drive_flat_idx] = ref_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
+        ref_result = run_simulation(
+            grid, ref_materials, n_steps,
+            debye=ref_debye, lorentz=ref_lorentz,
+            waveguide_ports=ref_cfgs,
+            aniso_eps=ref_aniso_eps,
+            aniso_inv_eps=ref_aniso_inv_eps,
+            **common_run_kw,
+        )
+        ref_final_cfgs = ref_result.waveguide_ports or ()
+        if len(ref_final_cfgs) != n_total:
+            raise RuntimeError("multimode flux extraction expected one final config per channel")
+
+        F_ref = [_modal_net_power(cfg) for cfg in ref_final_cfgs]
+        P_inc = np.abs(F_ref[drive_flat_idx])
+        safe_P_inc = np.where(P_inc > 1e-60, P_inc, np.ones_like(P_inc))
+        a_inc_ref, _ = extract_waveguide_port_waves(
+            ref_final_cfgs[drive_flat_idx],
+            ref_shift=flat_ref_shifts[drive_flat_idx],
+        )
+        a_inc_ref = np.array(a_inc_ref)
+        safe_a_inc = np.where(np.abs(a_inc_ref) > 1e-60, a_inc_ref, np.ones_like(a_inc_ref))
+
+        # --- Device run (channel drive_flat_idx driven) ---
+        dev_cfgs = [
+            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+            for idx, cfg in enumerate(flat_cfgs)
+        ]
+        dev_cfgs[drive_flat_idx] = dev_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
+        dev_result = run_simulation(
+            grid, materials, n_steps,
+            debye=debye, lorentz=lorentz,
+            waveguide_ports=dev_cfgs,
+            aniso_eps=aniso_eps,
+            conformal_weights=conformal_weights,
+            aniso_inv_eps=aniso_inv_eps,
+            **common_run_kw,
+        )
+        dev_final_cfgs = dev_result.waveguide_ports or ()
+        if len(dev_final_cfgs) != n_total:
+            raise RuntimeError("multimode flux extraction expected one final config per channel")
+
+        F_dev = [_modal_net_power(cfg) for cfg in dev_final_cfgs]
+
+        for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
+            _, b_recv_dev = extract_waveguide_port_waves(
+                dev_cfg, ref_shift=flat_ref_shifts[recv_idx]
+            )
+            phase = np.angle(np.array(b_recv_dev) / safe_a_inc)
+
+            if recv_idx == drive_flat_idx:
+                P_refl = np.abs(F_ref[recv_idx] - F_dev[recv_idx])
+                mag = np.sqrt(P_refl / safe_P_inc)
+            else:
+                P_out = np.abs(F_dev[recv_idx])
+                mag = np.sqrt(P_out / safe_P_inc)
+
+            s_matrix[recv_idx, drive_flat_idx, :] = mag * np.exp(1j * phase)
 
     return jnp.asarray(s_matrix), mode_map
 
