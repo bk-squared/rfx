@@ -83,7 +83,7 @@
         "nonuniform MSL S-parameter validation",
         "broader substrate/mesh/frequency envelope"
       ],
-      "notes": "Existing openEMS evidence supports the narrow laplace/quasi-TEM lane only.",
+      "notes": "Existing openEMS evidence supports the narrow laplace/quasi-TEM lane only. 2026-05-29 broad-E5 envelope attempt BLOCKED on the extractor (not mesh): a CPU sanity gate on a uniform 50-ohm thru-line shows compute_msl_s_matrix returns non-physical S (passivity |S11|^2+|S21|^2 = 1.30 at h_sub/4, 1.45 at h_sub/6 with |S21|>1, and a spurious |S11|=0.57 on a matched line). The N-probe Z0 IS mesh-convergent (58%->27%->4% as cells/h_sub rises 4->6), but the passivity violation is NOT mesh-convergent and the error is trace-length-dependent (passivity 1.30 at 8mm vs 4.74 at 37mm, same mesh) - a thru-line must be length-invariant, so this is a structural V/I single-plane wave-split bug (rfx/api/_sparams.py:1006-1038), the same extraction family as issue #80. The 16-case VESSL envelope was deliberately NOT submitted; it would overclaim around a known-broken extractor. Fix issue #80 (assemble S from the multi-plane extract_msl_nprobe a/b fit, gate on thru-line length-invariance) before building the envelope. Trail: docs/research_notes/20260529_msl_broad_e5_extractor_blocker.md.",
       "external_comparison_artifacts": [
         ".omx/physics-gate/2026-05-09-m29-msl-openems-generic-comparison/msl_openems_generic_sparameter_comparison.json"
       ],
