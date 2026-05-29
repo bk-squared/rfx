@@ -31,6 +31,34 @@ NOT VALIDATED (NU-DRIVE-FIX reopened):
   - |S21_nu - S21_uni| >= 0.15 (wildly disagrees with uniform path)
   → test is marked xfail(strict=True) with the magnitude evidence.
 
+== Why num_periods does NOT fix this (issue #88, 2026-05-29) ==
+
+DO NOT try to flip this xfail by raising ``num_periods``. A scan over
+{8, 16, 24, 40} shows there is no settled sweet spot:
+
+    num_periods   |S11_nu|max   passivity max   verdict
+        8           0.045          0.69          undersettled (b_dev≈b_ref)
+       16           6.32          40.5           band-edge blow-up
+       24           0.886          2.01          fail
+       40           0.940          1.18          fail
+
+Two compounding ``normalize=True`` mechanisms, NOT undersettling alone:
+  1. Band-edge normalization-denominator collapse. The Gaussian source
+     spectrum delivers ~30x less incident power at the band edges
+     (8.2 / 12.4 GHz) than at center, so ``a_inc_ref`` drops to ~1e-11
+     while it is ~4.5e-10 mid-band. ``S11 = (b_dev - b_ref) / a_inc_ref``
+     then divides by a near-noise denominator and blows up.
+  2. ``b_dev`` exceeds ``a_inc_ref`` near the WR-90 cutoff (6.56 GHz),
+     where the CPML absorbs poorly and round-trip end-to-end reflections
+     accumulate over the longer window.
+
+The real fix is wiring ``extract_waveguide_s_matrix_flux`` (the uniform
+broad-E5 silver bullet, PR #92) into ``_compute_waveguide_s_matrix_nu``:
+the spatial Poynting-flux integral does not divide by the
+source-spectrum-weighted ``a_inc_ref`` and is immune to mechanism (1).
+Tracked as a follow-up; the NU path currently raises NotImplementedError
+for ``normalize != True``.
+
 R5 mandate: per-frequency |S11|/|S21| table for BOTH paths and raw
 b_dev/a_inc magnitudes for the NU run are printed unconditionally so the
 verdict is traceable.
