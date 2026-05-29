@@ -227,6 +227,7 @@ class Result(NamedTuple):
     flux_monitors: dict | None = None
     waveguide_ports: dict | None = None
     waveguide_sparams: dict | None = None
+    waveguide_port_flux: tuple | None = None
     snapshots: dict | None = None
     grid: object = None
     dt: float | None = None

@@ -201,7 +201,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         checkpoint=False,
                         emit_time_series=True, checkpoint_every=None,
                         n_warmup=0, design_mask=None,
-                        subpixel_smoothing: bool = False):
+                        subpixel_smoothing: bool = False,
+                        attach_waveguide_flux: bool = False):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -552,6 +553,37 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 )
             )
 
+    # Optional per-waveguide-port Poynting flux monitors at each port's
+    # probe plane (issue #88 flux-extractor path). Built from the same
+    # cfg geometry the uniform ``extract_waveguide_s_matrix_flux`` uses,
+    # but with per-cell tangential cell-size arrays so a graded tangential
+    # axis integrates correctly via FluxMonitor.dA.
+    wg_flux_monitors = []
+    if attach_waveguide_flux and waveguide_port_cfgs:
+        from rfx.probes.probes import init_flux_monitor
+        _axis_idx = {"x": 0, "y": 1, "z": 2}
+        _tang_arrs = {
+            0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
+            1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
+            2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
+        }
+        for cfg in waveguide_port_cfgs:
+            ax = _axis_idx[cfg.normal_axis]
+            d1a, d2a = _tang_arrs[ax]
+            wg_flux_monitors.append(
+                init_flux_monitor(
+                    axis=ax,
+                    index=cfg.probe_x,
+                    freqs=cfg.freqs,
+                    grid_shape=(grid.nx, grid.ny, grid.nz),
+                    d1=d1a,
+                    d2=d2a,
+                    dft_total_steps=n_steps,
+                    lo1=cfg.u_lo, hi1=cfg.u_hi,
+                    lo2=cfg.v_lo, hi2=cfg.v_hi,
+                )
+            )
+
     # TFSF plane-wave source. Scope: axis-aligned +x / -x incidence with
     # angle_deg=0 so the 1D auxiliary grid runs along the uniform x axis
     # with scalar cell size grid.dx. Oblique angles (2D auxiliary grid)
@@ -630,7 +662,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         pec_faces=getattr(sim, '_pec_faces', None),
         pmc_faces=sim._boundary_spec.pmc_faces() if getattr(sim, '_boundary_spec', None) is not None else None,
         dft_planes=dft_plane_probes if dft_plane_probes else None,
-        flux_monitors=flux_monitor_objs if flux_monitor_objs else None,
+        flux_monitors=(
+            (flux_monitor_objs + wg_flux_monitors)
+            if (flux_monitor_objs or wg_flux_monitors) else None
+        ),
         rlc_metas=rlc_metas,
         rlc_states=rlc_states_init,
         ntff_box=ntff_box,
@@ -714,12 +749,24 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         }
 
     # Repack flux monitors into {name: FluxMonitor} dict (uniform schema).
+    # The accumulated list is sim._flux_monitors (front) + per-waveguide-port
+    # flux monitors (back, only when attach_waveguide_flux=True).
     flux_monitors_dict = None
     if getattr(sim, "_flux_monitors", None) and "flux_monitors" in r:
         flux_monitors_dict = {
             entry.name: mon
             for entry, mon in zip(sim._flux_monitors, r["flux_monitors"])
         }
+
+    # Extract per-waveguide-port Poynting flux spectra (issue #88 flux path).
+    waveguide_port_flux_result = None
+    if attach_waveguide_flux and wg_flux_monitors and "flux_monitors" in r:
+        from rfx.probes.probes import flux_spectrum
+        n_sim_flux = len(flux_monitor_objs)
+        wg_final = r["flux_monitors"][n_sim_flux:]
+        waveguide_port_flux_result = tuple(
+            np.array(flux_spectrum(m)) for m in wg_final
+        )
 
     return Result(
         state=r["state"],
@@ -732,6 +779,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         flux_monitors=flux_monitors_dict,
         waveguide_ports=waveguide_ports_result,
         waveguide_sparams=waveguide_sparams_result,
+        waveguide_port_flux=waveguide_port_flux_result,
         grid=grid,
         dt=grid.dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
