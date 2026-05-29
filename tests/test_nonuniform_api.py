@@ -583,8 +583,10 @@ class TestNonUniformDispersive:
 
 
 class TestFluxMonitorOnNonUniform:
-    """``add_flux_monitor`` is uniform-path-only; the NU runner must fail
-    fast rather than silently drop the observable (T5 polish)."""
+    """``add_flux_monitor`` is now supported on the NU path for full-plane
+    monitors (issue #88 flux-extractor prerequisite). Finite-region
+    (``size=``) monitors still raise until the cumulative-edge index
+    conversion lands."""
 
     def _make_nu_sim(self):
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 8, dtype=np.float64)
@@ -599,17 +601,24 @@ class TestFluxMonitorOnNonUniform:
         sim.add_probe((0.005, 0.005, 0.003), "ez")
         return sim
 
-    def test_flux_monitor_on_nu_run_raises(self):
+    def test_full_plane_flux_monitor_on_nu_run_works(self):
+        """Full-plane NU flux monitor accumulates and surfaces finite,
+        physical flux (no NotImplementedError)."""
+        from rfx.probes.probes import flux_spectrum
         sim = self._make_nu_sim()
         sim.add_flux_monitor(axis="z", coordinate=0.002)
-        with pytest.raises(NotImplementedError, match="flux_monitor"):
-            sim.run(n_steps=20)
+        result = sim.run(n_steps=60)
+        assert result.flux_monitors is not None
+        mon = next(iter(result.flux_monitors.values()))
+        flux = np.asarray(flux_spectrum(mon))
+        assert np.all(np.isfinite(flux))
 
-    def test_flux_monitor_on_nu_forward_raises(self):
+    def test_finite_region_flux_monitor_on_nu_run_raises(self):
+        """Finite-region (size=) monitors are still rejected on NU."""
         sim = self._make_nu_sim()
-        sim.add_flux_monitor(axis="z", coordinate=0.002)
-        with pytest.raises(NotImplementedError, match="flux_monitor"):
-            sim.forward(n_steps=20, skip_preflight=True)
+        sim.add_flux_monitor(axis="z", coordinate=0.002, size=(0.004, 0.004))
+        with pytest.raises(NotImplementedError, match="finite-region"):
+            sim.run(n_steps=20)
 
     def test_no_flux_monitor_nu_runs_fine(self):
         """Sanity: without a flux monitor the NU path stays green."""
