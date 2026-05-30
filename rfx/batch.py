@@ -279,6 +279,7 @@ def run_batch_with_manifest(
         [Path, dict[str, Any], Any], dict[str, str | Path] | None
     ] | None = None,
     resume: bool = True,
+    continue_on_error: bool = False,
     manifest_name: str = "manifest.json",
     run_fingerprint: str | None = None,
 ) -> list[BatchCaseResult]:
@@ -294,7 +295,8 @@ def run_batch_with_manifest(
     inputs changed but ``run_kwargs`` did not.  When ``resume=True``, a case is
     skipped only if the manifest record is completed, has the expected run
     fingerprint, contains at least one metric, and all declared artifact paths
-    still exist.
+    still exist.  With ``continue_on_error=True``, failed cases are recorded and
+    later cases continue; the default preserves the fail-fast behavior.
     """
     if run_kwargs is None:
         run_kwargs = {}
@@ -412,7 +414,8 @@ def run_batch_with_manifest(
                 result=None,
                 error=record["error"],
             ))
-            raise
+            if not continue_on_error:
+                raise
 
     return returned
 

@@ -75,6 +75,8 @@ physics paths.
 - Record a run fingerprint derived from run settings, with a user-supplied
   override for factory/metric/external-input changes, so reused output
   directories do not silently return stale cases.
+- Support `continue_on_error=True` when a sweep should record failed cases and
+  continue through later parameter points instead of failing fast.
 - Add a tiny physical sweep gate that proves resume does not corrupt metrics or
   silently rerun completed cases.
 

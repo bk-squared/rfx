@@ -393,6 +393,43 @@ def test_failed_manifest_record_is_not_resumed_as_completed(tmp_path: Path):
     assert calls == ["failed"]
 
 
+def test_continue_on_error_records_failure_and_runs_remaining_cases(tmp_path: Path):
+    calls: list[float] = []
+    sweep = ParameterSweep(width=[1.0, 2.0, 3.0])
+
+    class _MaybeFailingSimulation:
+        def __init__(self, width: float):
+            self.width = width
+
+        def run(self, **kwargs):
+            calls.append(self.width)
+            if self.width == 2.0:
+                raise RuntimeError("boom")
+            return type("R", (), {"value": self.width})()
+
+    def factory(width):
+        return _MaybeFailingSimulation(width)
+
+    results = run_batch_with_manifest(
+        factory,
+        sweep,
+        tmp_path,
+        metric_fn=lambda r: {"value": float(r.value)},
+        artifact_fn=_write_metric_artifact,
+        continue_on_error=True,
+    )
+
+    assert calls == [1.0, 2.0, 3.0]
+    assert [r.status for r in results] == ["completed", "failed", "completed"]
+    assert "RuntimeError" in results[1].error
+
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    assert sum(
+        1 for record in manifest["cases"].values()
+        if record["status"] == "failed"
+    ) == 1
+
+
 def test_manifest_without_metric_fn_still_records_resume_metric(tmp_path: Path):
     calls: list[float] = []
     sweep = ParameterSweep(width=[1.0])
