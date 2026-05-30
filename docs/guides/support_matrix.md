@@ -89,6 +89,17 @@ Current policy:
 | Coaxial port + nonuniform | unsupported | hard-fail |
 | Lumped RLC + nonuniform | unsupported | hard-fail |
 
+
+## Reporting and export artifact rule
+
+Export helpers such as Touchstone writers, plots, HDF5 snapshots, CSV sweep
+summaries, and JSON manifests are reproducibility aids. They preserve data and
+make reviews easier, but they do **not** change the support status of the
+underlying feature. A public report should include the originating workflow,
+source/port family, support status, command, git SHA, and pass/fail metric, and
+then cite the applicable support/evidence matrix before making a physics claim.
+
+
 ## Promotion rule
 
 A lane or feature can be promoted to **supported** only when all of the following exist:

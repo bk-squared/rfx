@@ -11,7 +11,8 @@ sidebar:
 | Lane | What to expect |
 |---|---|
 | **Recommended default** | uniform Cartesian Yee RF workflows: cavity, waveguide, patch-style resonance, probes, Harminv, selected S-parameter workflows, and benchmarked far-field workflows |
-| **Experimental / under active validation** | non-uniform mesh, distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial and advanced port workflows, and inverse-design extensions |
+| **Shadow** | non-uniform mesh thin-substrate workflows |
+| **Experimental / under active validation** | distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial and advanced port workflows, and inverse-design extensions |
 
 Start with the recommended default lane unless you specifically need an experimental feature.
 
@@ -32,7 +33,7 @@ Start with the recommended default lane unless you specifically need an experime
 | [Sources & Ports](/rfx/guide/sources-ports/) | Soft sources, lumped/wire ports, waveguide ports, and experimental port surfaces |
 | [Probes & S-Parameters](/rfx/guide/probes-sparams/) | DFT probes, S-matrix helpers, Harminv, de-embedding, and exports |
 | [Memory Reduction](/rfx/guide/memory-reduction/) | How to reduce FDTD/AD memory without crossing validation boundaries |
-| [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) | Experimental thin-substrate mesh workflows |
+| [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) | Shadow thin-substrate mesh workflows |
 | [Waveguide Ports](/rfx/guide/waveguide-ports/) | Modal waveguide excitation and S-matrix extraction |
 | [Floquet Ports](/rfx/guide/floquet-ports/) | Experimental Bloch-periodic unit-cell workflows |
 
@@ -74,6 +75,7 @@ Start with the recommended default lane unless you specifically need an experime
 - [Validation](/rfx/validation/) — support and validation overview
 - [API](/rfx/api/) — curated public API contract
 - [Generated API](/rfx/api/generated/) — subordinate generated symbol reference
+- [AI Agent Guide](/rfx/agent/overview/) — safe agent prompts, auto-configuration, and review workflow
 
 ## Quick Links
 

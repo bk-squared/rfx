@@ -1,0 +1,44 @@
+---
+title: "Agent Prompt Templates"
+description: "Reusable prompts for safe rfx simulation, validation, documentation, and review work."
+sidebar:
+  order: 3
+---
+
+Use these templates when delegating rfx work to an AI agent.
+
+## Build a small supported-lane simulation
+
+```text
+Create a minimal rfx uniform Cartesian Yee RF/FDTD example for <device>. Use the
+closest public example first. Run a short smoke test, save generated artifacts
+outside git, and report support status, command output, and known limitations.
+```
+
+## Review a physics claim
+
+```text
+Review this rfx result as a physics claim. Check docs/guides/support_matrix.md,
+docs/guides/sparameter_support_matrix.md, and
+physics_validation_evidence_rule.md. Classify the claim as supported, shadow,
+experimental, blocked, or unsupported, and list the missing evidence if it is not
+supported.
+```
+
+## Update public docs
+
+```text
+Update the rfx public docs for <feature>. Verify every API name against current
+code, run scripts/check_public_docs_manifest.py, run the public docs sync check,
+and avoid broad production wording unless the support matrix explicitly allows
+it.
+```
+
+## Prepare artifacts for a report
+
+```text
+Generate a reproducible rfx report bundle for <workflow>. Include command lines,
+input parameters, output paths, support status, and exact metrics. Keep plots,
+Touchstone files, and HDF5 snapshots out of git unless they are intentionally
+curated docs assets.
+```

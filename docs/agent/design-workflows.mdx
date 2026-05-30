@@ -1,0 +1,45 @@
+---
+title: "Agent Design Workflows"
+description: "How agents should approach rfx design, sweep, optimization, and reporting workflows."
+sidebar:
+  order: 4
+---
+
+Agent-driven design should move from small, inspectable RF runs to larger sweeps
+or optimization only after the selected lane is understood.
+
+## Workflow ladder
+
+1. **Smoke geometry:** build the smallest geometry that exercises the intended
+   source/port/observable.
+2. **Single-run metric:** extract one metric such as resonance frequency,
+   `|S11|`, return loss, transmitted power, or a probe amplitude.
+3. **Sweep:** vary one or two physical parameters with `ParameterSweep` or a
+   small Python loop.
+4. **Report:** export plots, tables, Touchstone files, or JSON summaries with the
+   exact support status.
+5. **Optimize:** only optimize a metric whose differentiability and physics
+   support boundaries are documented for the selected lane.
+
+## Sweep skeleton
+
+```python
+from rfx.batch import ParameterSweep, run_batch
+
+sweep = ParameterSweep(width=[0.028, 0.030, 0.032], eps_r=[3.8, 4.2])
+
+results = run_batch(make_simulation, sweep, run_kwargs={"n_steps": 500})
+for params, result in results:
+    print(params, result.time_series.shape)
+```
+
+## Reporting checklist
+
+- Which public guide or example did the agent start from?
+- Which feature lane was used: supported, shadow, experimental, blocked, or
+  unsupported?
+- What exact command ran?
+- Where are generated files stored?
+- Which metric decided pass/fail?
+- Does the result require an external solver, analytic oracle, or dump replay
+  before it becomes a claims-bearing validation result?

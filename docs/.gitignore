@@ -18,3 +18,7 @@
 /research_notes/
 /researchnote*/
 /superpowers/
+
+# Public AI-agent docs are deployed to /rfx/agent/* and must remain trackable.
+!/agent/
+!/agent/**

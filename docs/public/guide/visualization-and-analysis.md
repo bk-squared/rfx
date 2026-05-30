@@ -145,7 +145,7 @@ integrate with the actual cell-volume weights instead of `grid.dx**3`.
 ```python
 from rfx import save_state, save_snapshots, write_touchstone
 
-# Touchstone for ADS/CST/HFSS
+# Touchstone for ADS/CST/HFSS. Shape is (n_ports, n_ports, n_freqs).
 write_touchstone("device.s2p", result.s_params, result.freqs, z0=50.0)
 
 # HDF5 for the final field state
@@ -165,3 +165,8 @@ used to judge the result.
 
 When you write public notes or reports, describe the exact metric you used
 instead of saying only that a design "looks good".
+
+
+For reports, keep a small machine-readable manifest next to exported plots or
+Touchstone files. Include the command, git SHA, support status, and metric used
+to make the figure so the artifact can be reproduced.

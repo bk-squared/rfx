@@ -12,15 +12,26 @@ Use this hub to decide how strongly to describe a feature.
 | Lane | Public wording |
 |---|---|
 | uniform Cartesian Yee RF/FDTD workflows | recommended default path |
-| non-uniform mesh, distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial/advanced ports, inverse-design extensions | experimental or under active validation |
+| non-uniform mesh | shadow thin-substrate lane; retained but not the default claims-bearing path |
+| distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial/advanced ports, inverse-design extensions | experimental or under active validation |
 
 ## Current practical anchors
 
 - `examples/crossval/05_patch_antenna.py` — practical patch antenna cross-check
 - `examples/crossval/11_waveguide_port_wr90.py` — rectangular waveguide-port workflow
-- `examples/nonuniform_patch_demo.py` — non-uniform mesh demo; experimental lane
+- `examples/nonuniform_patch_demo.py` — non-uniform mesh demo; shadow lane
 - `examples/inverse_design/multilayer_ar_coating.py` — conservative inverse-design demo
 
 ## Practical takeaway
 
 Lead with the recommended default lane. Mention experimental lanes only with the current limitations and examples that apply to the user’s workflow.
+
+
+## Evidence, artifacts, and reports
+
+Generated plots, Touchstone files, HDF5 snapshots, CSV tables, and report bundles
+are useful review artifacts. They become validation evidence only when they are
+paired with a documented analytic oracle, dump replay, external-solver
+comparison, convergence study, or benchmark envelope. See
+`docs/guides/physics_validation_evidence_rule.md` before using artifacts as
+claims-bearing evidence.

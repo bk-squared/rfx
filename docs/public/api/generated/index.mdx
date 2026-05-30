@@ -21,11 +21,12 @@ the route that should eventually carry it.
 ## Current status
 
 This landing page is the curated entrypoint to the generated layer.
-The subordinate generated symbol pages are published as static deep-reference
-assets under the same route family, for example:
+When generated assets are present in `docs/api/`, they are published as static
+deep-reference assets under the same route family, for example:
 
 - `/rfx/api/generated/rfx.html`
 - `/rfx/api/generated/rfx/api.html`
 
-Treat those pages as useful lookup surfaces, not as the primary public API
+Some source checkouts may only carry this curated landing page. Treat generated
+pages, when present, as useful lookup surfaces rather than the primary public API
 contract.

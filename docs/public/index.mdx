@@ -11,13 +11,14 @@ rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator buil
 
 ## Current public status
 
-Use rfx with two simple lanes in mind:
+Use rfx with explicit support lanes in mind:
 
 | Lane | Use it for | Status |
 |---|---|---|
 | **Recommended default: uniform Cartesian Yee RF workflows** | cavity and waveguide studies, patch-style resonance workflows, probes, Harminv, selected port/S-parameter workflows, and benchmarked far-field workflows | best place to start |
 | **Narrow guarded subgrid envelope** | one-sided PEC/no-CPML z-slab source/probe, static-material, and single-cell lumped-port S-parameter runs | supported only inside the subgridding guide boundary |
-| **Experimental / under active validation** | non-uniform meshes, distributed execution, Floquet/Bloch workflows, general SBP-SAT subgridding, coaxial and advanced port workflows, and inverse-design extensions | useful for experiments; check current limitations |
+| **Shadow** | non-uniform thin-substrate workflows | retained and tested, but not the claims-bearing default |
+| **Experimental / under active validation** | distributed execution, Floquet/Bloch workflows, general SBP-SAT subgridding, coaxial and advanced port workflows, and inverse-design extensions | useful for experiments; check current limitations |
 
 The docs keep advanced features visible, but they should not be read as blanket guarantees.
 
@@ -31,7 +32,7 @@ The docs keep advanced features visible, but they should not be read as blanket 
 | **Differentiable simulation** | `jax.grad` through time-domain workflows for inverse design |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field utilities |
 | **Recommended examples** | current runnable scripts under `examples/crossval/` and `examples/inverse_design/` |
-| **Experimental lanes** | non-uniform mesh, distributed runs, Floquet/Bloch, general SBP-SAT subgridding, coaxial/advanced ports |
+| **Shadow / experimental lanes** | non-uniform mesh is shadow; distributed runs, Floquet/Bloch, general SBP-SAT subgridding, and coaxial/advanced ports are experimental |
 
 ---
 
@@ -84,7 +85,7 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
 - [Sources & Ports](guide/sources-ports/) — point sources, lumped/wire ports, waveguide ports, experimental Floquet/coaxial surfaces
 - [Probes & S-Parameters](guide/probes-sparams/) — DFT probes, S-matrix helpers, Harminv, de-embedding, exports
 - [Memory Reduction](guide/memory-reduction/) — reduce FDTD/AD memory while preserving validation boundaries
-- [Non-Uniform Mesh](guide/nonuniform-mesh/) — experimental thin-substrate workflows
+- [Non-Uniform Mesh](guide/nonuniform-mesh/) — shadow thin-substrate workflows
 - [Waveguide Ports](guide/waveguide-ports/) — rectangular waveguide modal workflows
 - [Floquet Ports](guide/floquet-ports/) — experimental Bloch-periodic unit-cell workflows
 
@@ -120,3 +121,4 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
 - [Validation](/rfx/validation/) — public support and validation overview
 - [API](/rfx/api/) — curated public API contract
 - [Generated API](/rfx/api/generated/) — subordinate generated symbol reference
+- [AI Agent Guide](/rfx/agent/overview/) — safe agent prompts, auto-configuration, and review workflow
