@@ -250,11 +250,15 @@ plot_field_slice(result, "ez", axis="z", index=30)  # 2-D Ez cross-section
 Touchstone export uses rfx's canonical S-matrix shape `(n_ports, n_ports, n_freqs)`. Reading returns `(s_params, freqs, z0)`.
 
 ```python
-from rfx import write_touchstone, read_touchstone
+from rfx import write_touchstone, read_touchstone, read_touchstone_full
 
 # Write 2-port S-params to a .s2p file
 write_touchstone("patch_antenna.s2p", result.s_params, result.freqs, z0=50.0)
 
-# Read back
+# Read back (legacy tuple API)
 s_matrix, freqs, z0 = read_touchstone("patch_antenna.s2p")
+
+# Metadata-aware Touchstone 2.0 read path preserves per-port references
+network = read_touchstone_full("device_v2.s4p")
+print(network.reference)
 ```

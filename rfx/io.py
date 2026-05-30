@@ -1,27 +1,60 @@
 """Touchstone (.sNp) S-parameter file I/O.
 
-Reads and writes industry-standard Touchstone v1 format for interoperability
-with ADS, CST, HFSS, and other RF tools.
+Reads and writes the legacy rfx Touchstone v1-compatible format plus a bounded
+metadata-aware Touchstone 2.0 S-parameter subset for interoperability with ADS,
+CST, HFSS, scikit-rf-style workflows, and other RF tools.
 
 Supports:
-- .s1p (1-port), .s2p (2-port), .s4p (4-port), .snp (N-port)
+- .s1p (1-port), .s2p (2-port), .s4p (4-port), .sNp (N-port by extension)
 - Data formats: RI (real/imaginary), MA (magnitude/angle), DB (dB/angle)
 - Frequency units: Hz, kHz, MHz, GHz
+- Touchstone 2.0 metadata subset: [Version], [Number of Ports],
+  [Number of Frequencies], [Reference], [Matrix Format] Full,
+  [Two-Port Data Order], [Network Data], [End]
 
-Multi-port layout (Touchstone v1):
+Legacy rfx multi-port layout:
 - 1-port and 2-port: all S-parameter data on one line per frequency
 - 3+ ports: max 4 S-parameter pairs per line; first line starts with
   frequency, continuation lines are indented without a frequency column.
   Column-major order: S11, S21, ..., SN1, S12, ..., SNN.
+
+Standard Touchstone layout is available with ``layout="standard"`` or
+``version="2.0"`` and uses row-wise 3+ port full matrices.
 """
 
 from __future__ import annotations
 
-import numpy as np
+from dataclasses import dataclass
 from pathlib import Path
+
+import numpy as np
 
 # Maximum number of S-parameter pairs per line for N>=3 ports (Touchstone v1).
 _MAX_PAIRS_PER_LINE = 4
+
+
+@dataclass(frozen=True)
+class TouchstoneData:
+    """Metadata-aware Touchstone read result.
+
+    The legacy :func:`read_touchstone` API intentionally returns only
+    ``(s_params, freqs, z0)``.  Use this dataclass through
+    :func:`read_touchstone_full` when Touchstone 2.0 metadata such as per-port
+    reference impedances or explicit matrix layout matters.
+    """
+
+    s_params: np.ndarray
+    freqs: np.ndarray
+    z0: float | np.ndarray
+    reference: np.ndarray
+    version: str
+    parameter: str
+    fmt: str
+    freq_unit: str
+    layout: str
+    matrix_format: str
+    two_port_order: str
+    comments: tuple[str, ...] = ()
 
 
 def _format_pair(s: complex, fmt: str) -> tuple[str, str]:
@@ -50,6 +83,87 @@ def _parse_pair(v1: float, v2: float, fmt: str) -> complex:
         raise ValueError(f"Unknown format: {fmt!r}")
 
 
+def _reference_vector(z0: float | np.ndarray, port_z0: np.ndarray | None,
+                      n_ports: int) -> np.ndarray:
+    """Return one reference impedance per port."""
+    if port_z0 is None:
+        refs = np.full(n_ports, float(z0), dtype=float)
+    else:
+        refs = np.asarray(port_z0, dtype=float).reshape(-1)
+        if refs.shape != (n_ports,):
+            raise ValueError(
+                f"port_z0 must contain one value per port "
+                f"(expected {n_ports}, got {refs.size})"
+            )
+    if not np.all(np.isfinite(refs)):
+        raise ValueError("reference impedances must be finite")
+    return refs
+
+
+def _uniform_reference_or_none(reference: np.ndarray) -> float | None:
+    """Return scalar reference if all ports share one value."""
+    refs = np.asarray(reference, dtype=float).reshape(-1)
+    if refs.size == 0:
+        return None
+    if np.allclose(refs, refs[0], rtol=0.0, atol=0.0):
+        return float(refs[0])
+    return None
+
+
+def _pair_indices(n_ports: int, *, layout: str,
+                  two_port_order: str) -> list[tuple[int, int]]:
+    """Return ``(receiver, driven)`` order for one frequency block."""
+    layout = layout.lower()
+    order = two_port_order.upper()
+
+    if n_ports == 1:
+        return [(0, 0)]
+
+    if n_ports == 2:
+        if order in ("21_12", "S21_S12"):
+            return [(0, 0), (1, 0), (0, 1), (1, 1)]
+        if order in ("12_21", "S12_S21"):
+            return [(0, 0), (0, 1), (1, 0), (1, 1)]
+        raise ValueError(
+            "two_port_order must be '21_12' or '12_21' for 2-port data"
+        )
+
+    if layout in ("legacy-rfx", "legacy", "column-major"):
+        # Historical rfx layout: S11, S21, ..., SN1, S12, ...
+        return [(i, j) for j in range(n_ports) for i in range(n_ports)]
+    if layout in ("standard", "touchstone", "row-major"):
+        # Touchstone 2.0 full matrix layout for 3+ ports: rows of S.
+        return [(i, j) for i in range(n_ports) for j in range(n_ports)]
+    raise ValueError("layout must be 'legacy-rfx' or 'standard'")
+
+
+def _format_frequency_block(
+    s_params: np.ndarray,
+    fi: int,
+    fmt: str,
+    *,
+    layout: str,
+    two_port_order: str,
+) -> list[tuple[str, str]]:
+    n_ports = s_params.shape[0]
+    return [
+        _format_pair(s_params[i, j, fi], fmt)
+        for i, j in _pair_indices(
+            n_ports, layout=layout, two_port_order=two_port_order
+        )
+    ]
+
+
+def _infer_touchstone_port_count(filepath: str | Path) -> int | None:
+    """Infer numeric port count from a Touchstone suffix."""
+    ext = Path(filepath).suffix.lower()
+    if not (ext.startswith(".s") and ext.endswith("p")):
+        raise ValueError(f"Cannot determine port count from extension: {ext}")
+    token = ext[2:-1]
+    return int(token) if token.isdigit() else None
+
+
+
 def write_touchstone(
     filepath: str | Path,
     s_params: np.ndarray,
@@ -58,8 +172,14 @@ def write_touchstone(
     freq_unit: str = "GHz",
     fmt: str = "RI",
     comments: list[str] | None = None,
+    *,
+    version: str = "1.0",
+    layout: str | None = None,
+    port_z0: np.ndarray | None = None,
+    matrix_format: str = "Full",
+    two_port_order: str = "21_12",
 ) -> None:
-    """Write S-parameters to a Touchstone v1 file.
+    """Write S-parameters to a Touchstone file.
 
     Parameters
     ----------
@@ -71,13 +191,70 @@ def write_touchstone(
     freq_unit : "Hz", "kHz", "MHz", or "GHz"
     fmt : "RI" (real/imag), "MA" (mag/angle), or "DB" (dB/angle)
     comments : optional comment lines
+    version : "1.0" or "2.0"
+        ``"1.0"`` preserves the historical rfx writer shape.  ``"2.0"``
+        writes Touchstone 2.0 metadata keywords for the supported S-parameter
+        subset.
+    layout : "legacy-rfx", "standard", or None
+        Multi-port order.  ``None`` means historical legacy layout for
+        Touchstone 1.0 output and standard layout for Touchstone 2.0 output.
+        The legacy rfx layout is column-major for all port counts.  The
+        standard layout is row-major for 3+ ports.  Two-port standard order is
+        controlled by ``two_port_order``.
+    port_z0 : array-like or None
+        Optional per-port reference impedances.  Requires ``version="2.0"``
+        when non-uniform.
+    matrix_format : str
+        Touchstone 2.0 matrix format.  Only ``"Full"`` is supported.
+    two_port_order : "21_12" or "12_21"
+        Explicit 2-port data order for standard Touchstone 2.0 files.
     """
     s_params = np.asarray(s_params)
     freqs = np.asarray(freqs)
+    if s_params.ndim != 3 or s_params.shape[0] != s_params.shape[1]:
+        raise ValueError("s_params must have shape (n_ports, n_ports, n_freqs)")
     n_ports = s_params.shape[0]
     n_freqs = s_params.shape[2]
+    if freqs.shape != (n_freqs,):
+        raise ValueError("freqs must have shape (n_freqs,)")
+    if not np.all(np.isfinite(s_params)):
+        raise ValueError("s_params must contain only finite values")
+    if not np.all(np.isfinite(freqs)):
+        raise ValueError("freqs must contain only finite values")
 
-    scale = {"Hz": 1.0, "kHz": 1e3, "MHz": 1e6, "GHz": 1e9}[freq_unit]
+    version = str(version)
+    if version not in ("1.0", "2.0"):
+        raise ValueError("version must be '1.0' or '2.0'")
+    ext_n_ports = _infer_touchstone_port_count(filepath)
+    if ext_n_ports is not None and ext_n_ports != n_ports:
+        raise ValueError(
+            f"file extension declares {ext_n_ports} ports, "
+            f"but s_params has {n_ports}"
+        )
+    if ext_n_ports is None and version != "2.0":
+        raise ValueError(
+            "non-numeric .sNp extensions require version='2.0' "
+            "with [Number of Ports] metadata"
+        )
+    if layout is None:
+        layout = "standard" if version == "2.0" else "legacy-rfx"
+    layout = layout.lower()
+    fmt = fmt.upper()
+    matrix_format = matrix_format.capitalize()
+    two_port_order = two_port_order.upper()
+    if matrix_format != "Full":
+        raise ValueError("Only Touchstone matrix_format='Full' is supported")
+
+    refs = _reference_vector(z0, port_z0, n_ports)
+    uniform_z0 = _uniform_reference_or_none(refs)
+    if version != "2.0" and uniform_z0 is None:
+        raise ValueError("non-uniform port_z0 requires version='2.0'")
+
+    try:
+        scale = {"Hz": 1.0, "kHz": 1e3, "MHz": 1e6, "GHz": 1e9}[freq_unit]
+    except KeyError as exc:
+        raise ValueError("freq_unit must be 'Hz', 'kHz', 'MHz', or 'GHz'") from exc
+    option_z0 = uniform_z0 if uniform_z0 is not None else float(refs[0])
 
     with open(filepath, "w") as f:
         # Comments
@@ -87,19 +264,32 @@ def write_touchstone(
             for c in comments:
                 f.write(f"! {c}\n")
 
+        if version == "2.0":
+            f.write("[Version] 2.0\n")
+
         # Option line
-        f.write(f"# {freq_unit} S {fmt} R {z0:.1f}\n")
+        f.write(f"# {freq_unit} S {fmt} R {option_z0:.12g}\n")
+
+        if version == "2.0":
+            f.write(f"[Number of Ports] {n_ports}\n")
+            f.write(f"[Number of Frequencies] {n_freqs}\n")
+            f.write("[Reference] " + " ".join(f"{v:.12g}" for v in refs) + "\n")
+            f.write(f"[Matrix Format] {matrix_format}\n")
+            if n_ports == 2:
+                f.write(f"[Two-Port Data Order] {two_port_order}\n")
+            f.write("[Network Data]\n")
 
         # Data — layout depends on port count
         for fi in range(n_freqs):
             freq_scaled = freqs[fi] / scale
 
-            # Collect all S-parameter pairs in column-major order:
-            # S11, S21, ..., SN1, S12, S22, ..., SN2, ...
-            pairs: list[tuple[str, str]] = []
-            for j in range(n_ports):
-                for i in range(n_ports):
-                    pairs.append(_format_pair(s_params[i, j, fi], fmt))
+            pairs = _format_frequency_block(
+                s_params,
+                fi,
+                fmt,
+                layout=layout,
+                two_port_order=two_port_order,
+            )
 
             if n_ports <= 2:
                 # 1-port and 2-port: everything on one line
@@ -129,12 +319,16 @@ def write_touchstone(
                     # Indent continuation lines to distinguish from freq lines
                     f.write("  " + " ".join(cont_tokens) + "\n")
 
+        if version == "2.0":
+            f.write("[End]\n")
+
 
 def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float]:
-    """Read S-parameters from a Touchstone v1 file.
+    """Read S-parameters from a Touchstone file.
 
-    Handles both single-line (1- and 2-port) and multi-line (3+ port) data
-    blocks.  Inline comments (``! ...``) after data values are stripped.
+    This legacy compatibility API returns a scalar reference impedance.  If a
+    Touchstone 2.0 file carries non-uniform per-port references, use
+    :func:`read_touchstone_full` instead.
 
     Parameters
     ----------
@@ -146,34 +340,164 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
     freqs : (n_freqs,) float in Hz
     z0 : float reference impedance
     """
+    data = read_touchstone_full(filepath)
+    scalar_z0 = _uniform_reference_or_none(data.reference)
+    if scalar_z0 is None:
+        raise ValueError(
+            "Touchstone file has non-uniform per-port [Reference] values; "
+            "use read_touchstone_full() to preserve reference metadata"
+        )
+    return data.s_params, data.freqs, scalar_z0
+
+
+def read_touchstone_full(filepath: str | Path, *,
+                         layout: str = "auto") -> TouchstoneData:
+    """Read S-parameters and Touchstone metadata.
+
+    Supported subset:
+    - S-parameters only
+    - RI, MA, and DB numeric formats
+    - Touchstone 1-style data blocks
+    - Touchstone 2.0 metadata keywords used by rfx interop
+    - Full matrix data only
+
+    For backwards compatibility, Touchstone 1-style files default to the
+    historical rfx multi-port layout.  Touchstone 2.0 files default to the
+    standard full-matrix row-wise layout for 3+ ports.
+    """
     filepath = Path(filepath)
 
     # Infer port count from extension
-    ext = filepath.suffix.lower()
-    if ext.startswith(".s") and ext.endswith("p"):
-        n_ports = int(ext[2:-1])
-    else:
-        raise ValueError(f"Cannot determine port count from extension: {ext}")
+    ext_n_ports = _infer_touchstone_port_count(filepath)
+    n_ports = ext_n_ports
 
+    freq_unit = "GHz"
     freq_scale = 1e9  # default GHz
+    # Preserve old no-option-line rfx behavior as RI, but Touchstone option
+    # lines default to MA when the format token is omitted.
     fmt = "RI"
     z0 = 50.0
+    version = "1.0"
+    parameter = "S"
+    matrix_format = "Full"
+    two_port_order = "21_12"
+    reference_values: list[float] | None = None
+    declared_n_freqs: int | None = None
+    comments: list[str] = []
+    has_v2_keywords = False
 
     raw_data_lines: list[str] = []
+    in_network_data = False
+    in_reference = False
 
     with open(filepath) as f:
         for line in f:
-            line = line.strip()
-            if not line or line.startswith("!"):
+            stripped = line.strip()
+            if not stripped:
                 continue
+            if stripped.startswith("!"):
+                comments.append(stripped[1:].strip())
+                continue
+            if stripped.startswith("["):
+                has_v2_keywords = True
+                end = stripped.find("]")
+                if end < 0:
+                    raise ValueError(f"Malformed Touchstone keyword: {stripped}")
+                key = stripped[1:end].strip().lower()
+                rest = stripped[end + 1:].strip()
+                if "!" in rest:
+                    rest = rest[:rest.index("!")].strip()
+
+                in_network_data = False
+                in_reference = False
+
+                if key == "version":
+                    version = (rest.split()[0] if rest else version)
+                    if version not in ("1.0", "2.0"):
+                        raise ValueError(
+                            f"Unsupported Touchstone [Version] {version!r}; "
+                            "only 1.0/2.0 S-parameter files are supported"
+                        )
+                elif key == "number of ports":
+                    if rest:
+                        declared_n_ports = int(rest.split()[0])
+                        if ext_n_ports is not None and declared_n_ports != ext_n_ports:
+                            raise ValueError(
+                                "[Number of Ports] does not match file extension "
+                                f"({declared_n_ports} != {ext_n_ports})"
+                            )
+                        n_ports = declared_n_ports
+                elif key == "number of frequencies":
+                    if rest:
+                        declared_n_freqs = int(rest.split()[0])
+                elif key == "reference":
+                    if n_ports is None:
+                        raise ValueError(
+                            "[Number of Ports] is required before [Reference] "
+                            "when the extension does not encode the port count"
+                        )
+                    vals = [float(x) for x in rest.split()] if rest else []
+                    reference_values = vals
+                    in_reference = rest == ""
+                elif key == "matrix format":
+                    matrix_format = (rest.split()[0] if rest else "Full").capitalize()
+                    if matrix_format != "Full":
+                        raise ValueError("Only Touchstone [Matrix Format] Full is supported")
+                elif key == "two-port data order":
+                    two_port_order = rest.upper() if rest else two_port_order
+                elif key == "network data":
+                    if n_ports is None:
+                        raise ValueError(
+                            "Cannot determine port count; use an .sNp extension "
+                            "with N digits or provide [Number of Ports] before "
+                            "[Network Data]"
+                        )
+                    in_network_data = True
+                elif key == "end":
+                    break
+                else:
+                    raise ValueError(f"Unsupported Touchstone keyword [{key}]")
+                continue
+
+            # Strip inline comments: "1.0 0.5 0.3 ! my comment"
+            line = stripped
+            if "!" in line:
+                line = line[:line.index("!")]
+            line = line.strip()
+            if not line:
+                continue
+
+            if in_reference:
+                vals = [float(x) for x in line.split()]
+                reference_values = (reference_values or []) + vals
+                if n_ports is None:
+                    raise ValueError(
+                        "[Number of Ports] is required before multi-line [Reference]"
+                    )
+                if len(reference_values) >= n_ports:
+                    in_reference = False
+                continue
+
             if line.startswith("#"):
-                # Parse option line
+                # Parse option line.  Touchstone option-line defaults are:
+                # GHz, S, MA, R 50.  Existing no-option-line files keep the
+                # historical RI fallback initialized above.
+                freq_unit = "GHz"
+                freq_scale = 1e9
+                parameter = "S"
+                fmt = "MA"
+                z0 = 50.0
                 tokens = line[1:].split()
                 i = 0
                 while i < len(tokens):
                     t = tokens[i].upper()
                     if t in ("HZ", "KHZ", "MHZ", "GHZ"):
+                        freq_unit = {"HZ": "Hz", "KHZ": "kHz", "MHZ": "MHz", "GHZ": "GHz"}[t]
                         freq_scale = {"HZ": 1.0, "KHZ": 1e3, "MHZ": 1e6, "GHZ": 1e9}[t]
+                    elif t in ("S", "Y", "Z", "G", "H"):
+                        parameter = t
+                        if parameter != "S":
+                            raise ValueError("Only Touchstone S-parameter files are supported")
                     elif t in ("RI", "MA", "DB"):
                         fmt = t
                     elif t == "R" and i + 1 < len(tokens):
@@ -182,12 +506,14 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
                     i += 1
                 continue
 
-            # Strip inline comments: "1.0 0.5 0.3 ! my comment"
-            if "!" in line:
-                line = line[:line.index("!")]
-            line = line.strip()
-            if line:
+            if in_network_data or not has_v2_keywords:
                 raw_data_lines.append(line)
+
+    if n_ports is None:
+        raise ValueError(
+            "Cannot determine port count; use an .sNp extension with N digits "
+            "or provide [Number of Ports] metadata"
+        )
 
     # Number of value pairs expected per frequency point
     n_pairs = n_ports * n_ports  # one complex pair per S-parameter
@@ -211,6 +537,11 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
         )
 
     n_freqs = len(all_values) // n_values_expected
+    if declared_n_freqs is not None and n_freqs != declared_n_freqs:
+        raise ValueError(
+            "[Number of Frequencies] declares "
+            f"{declared_n_freqs} points, but parsed {n_freqs}"
+        )
 
     # Parse into structured arrays
     freqs_list: list[float] = []
@@ -232,17 +563,48 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
 
     freqs = np.array(freqs_list)
 
-    # Touchstone stores network data column-major:
-    # S11, S21, ..., SN1, S12, S22, ..., SN2, ...
-    s_params = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
-    for fi in range(n_freqs):
-        idx = 0
-        for j in range(n_ports):
-            for i in range(n_ports):
-                s_params[i, j, fi] = s_data[fi][idx]
-                idx += 1
+    if layout == "auto":
+        resolved_layout = "standard" if has_v2_keywords else "legacy-rfx"
+    else:
+        resolved_layout = layout.lower()
 
-    return s_params, freqs, z0
+    if reference_values is None:
+        reference = np.full(n_ports, z0, dtype=float)
+    else:
+        reference = np.asarray(reference_values, dtype=float).reshape(-1)
+        if reference.shape != (n_ports,):
+            raise ValueError(
+                f"[Reference] must contain {n_ports} values, got {reference.size}"
+            )
+
+    scalar_z0 = _uniform_reference_or_none(reference)
+    z0_out: float | np.ndarray = scalar_z0 if scalar_z0 is not None else reference.copy()
+
+    s_params = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+    indices = _pair_indices(
+        n_ports,
+        layout=resolved_layout,
+        two_port_order=two_port_order,
+    )
+    for fi in range(n_freqs):
+        for idx, (i, j) in enumerate(indices):
+            s_params[i, j, fi] = s_data[fi][idx]
+
+    return TouchstoneData(
+        s_params=s_params,
+        freqs=freqs,
+        z0=z0_out,
+        reference=reference,
+        version=version,
+        parameter=parameter,
+        fmt=fmt,
+        freq_unit=freq_unit,
+        layout=resolved_layout,
+        matrix_format=matrix_format,
+        two_port_order=two_port_order,
+        comments=tuple(comments),
+    )
+
 
 
 # =========================================================================
