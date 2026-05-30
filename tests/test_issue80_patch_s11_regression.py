@@ -9,20 +9,23 @@ the patch resonance issue #80 is about, so a regression that reintroduces
 
 This test pins the patch case as a committed gate. It encodes the *physical*
 acceptance criteria (passive patch ``|S11| <= 1`` and resonance dip near the
-analytic Balanis 9.21 GHz) and is marked ``xfail(strict=True)`` because the
-current V·I-split extractor genuinely FAILS them:
+analytic Balanis 9.21 GHz) and is marked ``xfail(strict=True)``.
 
-    max|S11| ~ 1.44 (> 1, non-physical), resonance dip stuck at ~10.275 GHz
+HISTORY (2026-05-26): the original V·I-split extractor gave max|S11| ~ 1.44
+(> 1, non-physical), then attributed to a mismeasured closed Ampere-loop current.
+UPDATE (2026-05-29, PR #99): the extractor was rewritten to assemble S from the
+voltage-only spatial fit (S = gamma/alpha, current-FREE), lowering the patch
+|S11| to ~1.166 — better, but still > 1.05, so this stays xfail.
+UPDATE (2026-05-30): the residual was then mis-attributed to source near-field
+probe placement ("Fix B"). That is now FALSIFIED (see the ``xfail`` reason below
+and ``docs/research_notes/20260530_issue80_nearfield_falsified.md``): the
+spatial-fit extractor is robust on any clean single-mode line at any SWR, so the
+patch |S11|>1 is single-mode model mismatch at the non-TEM patch-junction feed
+field — confirm via a GPU raw-probe dump on the patch geometry.
 
-— a mismeasured closed Ampere-loop current on the strongly-reflecting resonant
-load (the runtime warning says so directly; three VESSL runs 8.94 -> 1.53 -> 1.44
-never closed — the R2/R4 loop). The fix is ARCHITECTURAL, not a parameter tweak
-(lumped-port feed topology, or a re-derived N-probe current path) — see
-``docs/research_notes/2026-05-26_issue80_patch_gate_STOP_and_gad_checkpoint.md``.
-
-When that fix lands this test will XPASS; ``strict=True`` turns the unexpected
-pass into a failure that forces removing the xfail and promoting it to a real
-green gate. DO NOT loosen the assertions to force a pass (R5).
+When the real fix lands this test will XPASS; ``strict=True`` turns the
+unexpected pass into a failure that forces removing the xfail and promoting it to
+a real green gate. DO NOT loosen the assertions to force a pass (R5).
 
 Marked ``gpu`` + ``slow``: the geometry is a full patch antenna at dx=0.197 mm
 over a ~30x18x13 mm domain with num_periods=200 — GPU-scale, run by the VESSL
@@ -88,15 +91,28 @@ def _build_patch_sim() -> Simulation:
         "issue #80 patch S11. The extractor was fixed (PR #99: S now assembled "
         "from the voltage-only spatial fit, not the Z0-mismatch-corrupted V·I "
         "split), which lowers the patch |S11| from ~1.44 to ~1.166 (GPU run "
-        "369367240214) — but it is still >1.05, so this stays xfail. The residual "
-        "non-passivity is a SEPARATE, coupled cause: on this resonant patch the "
-        "probes sit in the source reactive near-field (offset < lambda/2pi), so a "
-        "spurious component enters the measured FIELD that no extractor can remove "
-        "(the spatial-fit 2-wave model is ill-conditioned there — see the runtime "
-        "honesty-guard warning). The remaining fix is issue #80 'Fix B': far-field "
-        "probe placement (offset > lambda/2pi). XPASS => both fixes landed; remove "
-        "this xfail and promote to a green gate. Do NOT loosen the assertions. "
-        "See docs/research_notes/20260529_msl_broad_e5_extractor_blocker.md."
+        "369367240214) — but it is still >1.05, so this stays xfail. "
+        "NOTE (2026-05-30): an earlier version of this reason blamed the residual "
+        "on source reactive near-field probe placement and proposed 'Fix B' "
+        "(increase n_probe_offset). That diagnosis is FALSIFIED by three CPU "
+        "experiments (docs/research_notes/20260530_issue80_nearfield_falsified.md, "
+        "scripts/diagnostics/issue80_{nearfield_offset_sweep,span_conditioning,"
+        "highswr_span}.py): on a matched line |S11| is FLAT vs offset (past "
+        "lambda/2pi), and on a CLEAN high-SWR open stub (|Gamma|~1) the extractor "
+        "returns |S11|=1.000-1.002 at every span and offset — even at the worst "
+        "3-probe conditioning (cond~32). So the residual is NEITHER near-field NOR "
+        "generic fit conditioning; the spatial-fit extractor is robust on any "
+        "clean single-mode line at any SWR. The patch's |S11|>1 is best explained "
+        "by SINGLE-MODE MODEL MISMATCH at the short patch feed: the reference "
+        "plane sits in the patch-junction's non-TEM higher-order/fringing field, "
+        "which V = alpha*e^{-jbx} + gamma*e^{+jbx} cannot represent, so lstsq "
+        "returns the non-physical |gamma|>|alpha|. (num_periods=200 settling of "
+        "the high-Q resonance is a secondary, not-yet-excluded alternative.) "
+        "Confirming this needs a GPU raw-probe dump on the actual patch; CPU "
+        "proxies are clean single-mode lines and cannot reproduce it. The honest "
+        "resolution is to FLAG (this strict xfail + the runtime honesty guard), "
+        "not to manufacture a <=1 number. XPASS => the real fix landed; remove "
+        "this xfail and promote to a green gate. Do NOT loosen the assertions."
     ),
 )
 def test_issue80_patch_s11_passive_and_resonant():
