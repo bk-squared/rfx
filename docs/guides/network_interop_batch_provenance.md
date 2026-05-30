@@ -40,6 +40,9 @@ physics paths.
   frequency count, matrix format, two-port order, and per-port `[Reference]` for
   S-parameters. Legacy tuple reads must raise on nonuniform references instead
   of silently collapsing them.
+- Preserve bounded `[Begin Information]` / `[End Information]` metadata blocks
+  as raw lines so external tool provenance can survive rfx import/export.
+- Accept Fortran-style `D` exponent numeric tokens emitted by some RF tools.
 - Validate writer inputs against the file suffix and finite numeric data so rfx
   does not emit self-inconsistent `.sNp` files.
 - Add physical/interop gates based on passive/reciprocal known networks, not only

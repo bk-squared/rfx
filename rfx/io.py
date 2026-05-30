@@ -10,7 +10,8 @@ Supports:
 - Frequency units: Hz, kHz, MHz, GHz
 - Touchstone 2.0 metadata subset: [Version], [Number of Ports],
   [Number of Frequencies], [Reference], [Matrix Format] Full,
-  [Two-Port Data Order], [Network Data], [End]
+  [Two-Port Data Order], [Begin Information]/[End Information],
+  [Network Data], [End]
 
 Legacy rfx multi-port layout:
 - 1-port and 2-port: all S-parameter data on one line per frequency
@@ -55,6 +56,26 @@ class TouchstoneData:
     matrix_format: str
     two_port_order: str
     comments: tuple[str, ...] = ()
+    information: tuple[str, ...] = ()
+
+
+def _parse_touchstone_float(token: str) -> float:
+    """Parse a Touchstone numeric token.
+
+    Some RF tools emit Fortran-style ``D`` exponents (for example
+    ``1.0D+09``).  Python's ``float`` does not accept those, but Touchstone
+    numeric data should be tolerant of both ``E`` and ``D`` exponent markers.
+    """
+    return float(token.replace("D", "E").replace("d", "e"))
+
+
+def _parse_touchstone_int(token: str) -> int:
+    """Parse an integer keyword value, accepting exponent notation."""
+    value = _parse_touchstone_float(token)
+    integer = int(value)
+    if integer != value:
+        raise ValueError(f"Expected integer Touchstone value, got {token!r}")
+    return integer
 
 
 def _format_pair(s: complex, fmt: str) -> tuple[str, str]:
@@ -163,6 +184,19 @@ def _infer_touchstone_port_count(filepath: str | Path) -> int | None:
     return int(token) if token.isdigit() else None
 
 
+def _information_lines(
+    information: dict[str, object] | list[str] | tuple[str, ...] | None,
+) -> list[str]:
+    """Normalize optional Touchstone 2.0 information-block content."""
+    if information is None:
+        return []
+    if isinstance(information, dict):
+        return [
+            f"{key} {information[key]}"
+            for key in sorted(information)
+        ]
+    return [str(line) for line in information]
+
 
 def write_touchstone(
     filepath: str | Path,
@@ -178,6 +212,7 @@ def write_touchstone(
     port_z0: np.ndarray | None = None,
     matrix_format: str = "Full",
     two_port_order: str = "21_12",
+    information: dict[str, object] | list[str] | tuple[str, ...] | None = None,
 ) -> None:
     """Write S-parameters to a Touchstone file.
 
@@ -208,6 +243,9 @@ def write_touchstone(
         Touchstone 2.0 matrix format.  Only ``"Full"`` is supported.
     two_port_order : "21_12" or "12_21"
         Explicit 2-port data order for standard Touchstone 2.0 files.
+    information : dict, list, tuple, or None
+        Optional Touchstone 2.0 information block.  Dicts are written as
+        sorted ``"key value"`` lines; sequences are written verbatim.
     """
     s_params = np.asarray(s_params)
     freqs = np.asarray(freqs)
@@ -244,6 +282,9 @@ def write_touchstone(
     two_port_order = two_port_order.upper()
     if matrix_format != "Full":
         raise ValueError("Only Touchstone matrix_format='Full' is supported")
+    info_lines = _information_lines(information)
+    if info_lines and version != "2.0":
+        raise ValueError("Touchstone information blocks require version='2.0'")
 
     refs = _reference_vector(z0, port_z0, n_ports)
     uniform_z0 = _uniform_reference_or_none(refs)
@@ -277,6 +318,11 @@ def write_touchstone(
             f.write(f"[Matrix Format] {matrix_format}\n")
             if n_ports == 2:
                 f.write(f"[Two-Port Data Order] {two_port_order}\n")
+            if info_lines:
+                f.write("[Begin Information]\n")
+                for line in info_lines:
+                    f.write(f"{line}\n")
+                f.write("[End Information]\n")
             f.write("[Network Data]\n")
 
         # Data — layout depends on port count
@@ -359,6 +405,7 @@ def read_touchstone_full(filepath: str | Path, *,
     - RI, MA, and DB numeric formats
     - Touchstone 1-style data blocks
     - Touchstone 2.0 metadata keywords used by rfx interop
+    - Touchstone 2.0 information blocks preserved as raw lines
     - Full matrix data only
 
     For backwards compatibility, Touchstone 1-style files default to the
@@ -384,16 +431,24 @@ def read_touchstone_full(filepath: str | Path, *,
     reference_values: list[float] | None = None
     declared_n_freqs: int | None = None
     comments: list[str] = []
+    information: list[str] = []
     has_v2_keywords = False
 
     raw_data_lines: list[str] = []
     in_network_data = False
     in_reference = False
+    in_information = False
 
     with open(filepath) as f:
         for line in f:
             stripped = line.strip()
             if not stripped:
+                continue
+            if in_information:
+                if stripped.lower().startswith("[end information]"):
+                    in_information = False
+                else:
+                    information.append(stripped)
                 continue
             if stripped.startswith("!"):
                 comments.append(stripped[1:].strip())
@@ -420,7 +475,7 @@ def read_touchstone_full(filepath: str | Path, *,
                         )
                 elif key == "number of ports":
                     if rest:
-                        declared_n_ports = int(rest.split()[0])
+                        declared_n_ports = _parse_touchstone_int(rest.split()[0])
                         if ext_n_ports is not None and declared_n_ports != ext_n_ports:
                             raise ValueError(
                                 "[Number of Ports] does not match file extension "
@@ -429,14 +484,14 @@ def read_touchstone_full(filepath: str | Path, *,
                         n_ports = declared_n_ports
                 elif key == "number of frequencies":
                     if rest:
-                        declared_n_freqs = int(rest.split()[0])
+                        declared_n_freqs = _parse_touchstone_int(rest.split()[0])
                 elif key == "reference":
                     if n_ports is None:
                         raise ValueError(
                             "[Number of Ports] is required before [Reference] "
                             "when the extension does not encode the port count"
                         )
-                    vals = [float(x) for x in rest.split()] if rest else []
+                    vals = [_parse_touchstone_float(x) for x in rest.split()] if rest else []
                     reference_values = vals
                     in_reference = rest == ""
                 elif key == "matrix format":
@@ -445,6 +500,10 @@ def read_touchstone_full(filepath: str | Path, *,
                         raise ValueError("Only Touchstone [Matrix Format] Full is supported")
                 elif key == "two-port data order":
                     two_port_order = rest.upper() if rest else two_port_order
+                elif key == "begin information":
+                    in_information = True
+                elif key == "end information":
+                    raise ValueError("[End Information] without [Begin Information]")
                 elif key == "network data":
                     if n_ports is None:
                         raise ValueError(
@@ -468,7 +527,7 @@ def read_touchstone_full(filepath: str | Path, *,
                 continue
 
             if in_reference:
-                vals = [float(x) for x in line.split()]
+                vals = [_parse_touchstone_float(x) for x in line.split()]
                 reference_values = (reference_values or []) + vals
                 if n_ports is None:
                     raise ValueError(
@@ -501,7 +560,7 @@ def read_touchstone_full(filepath: str | Path, *,
                     elif t in ("RI", "MA", "DB"):
                         fmt = t
                     elif t == "R" and i + 1 < len(tokens):
-                        z0 = float(tokens[i + 1])
+                        z0 = _parse_touchstone_float(tokens[i + 1])
                         i += 1
                     i += 1
                 continue
@@ -525,7 +584,7 @@ def read_touchstone_full(filepath: str | Path, *,
     # and must be merged with the preceding frequency line.
     all_values: list[float] = []
     for line in raw_data_lines:
-        vals = [float(x) for x in line.split()]
+        vals = [_parse_touchstone_float(x) for x in line.split()]
         all_values.extend(vals)
 
     # Each frequency point contributes exactly n_values_expected floats
@@ -603,6 +662,7 @@ def read_touchstone_full(filepath: str | Path, *,
         matrix_format=matrix_format,
         two_port_order=two_port_order,
         comments=tuple(comments),
+        information=tuple(information),
     )
 
 
