@@ -16,12 +16,19 @@ HISTORY (2026-05-26): the original V·I-split extractor gave max|S11| ~ 1.44
 UPDATE (2026-05-29, PR #99): the extractor was rewritten to assemble S from the
 voltage-only spatial fit (S = gamma/alpha, current-FREE), lowering the patch
 |S11| to ~1.166 — better, but still > 1.05, so this stays xfail.
-UPDATE (2026-05-30): the residual was then mis-attributed to source near-field
-probe placement ("Fix B"). That is now FALSIFIED (see the ``xfail`` reason below
-and ``docs/research_notes/20260530_issue80_nearfield_falsified.md``): the
-spatial-fit extractor is robust on any clean single-mode line at any SWR, so the
-patch |S11|>1 is single-mode model mismatch at the non-TEM patch-junction feed
-field — confirm via a GPU raw-probe dump on the patch geometry.
+UPDATE (2026-05-30, GPU raw-dump run 369367240331): the cause is now PROVEN and
+decomposed into two separable parts (see the ``xfail`` reason below and
+``docs/research_notes/20260530_issue80_nearfield_falsified.md``): (1) SOURCE
+near-field — the fit residual is 18-23% within ~9 cells of the MSL source and
+<0.3% past ~13 cells, and the patch DEFAULT n_probe_offset is only 4 cells
+(inside that transient), corrupting near-source probes; clean-region probes are
+passive. (2) low-freq SETTLING (np200=1.29 -> np400=1.01). With clean probes +
+np400, max|S11|~1.01 <= 1.05 (passivity would pass). A SEPARATE issue remains:
+the simulated dip is at 10.78 GHz, not the analytic 9.21 GHz (full-wave-vs-
+analytic + staircase) — so the dip assertion fails independently of the extractor.
+(An intermediate CPU-only pass wrongly "falsified" near-field; the matched line's
+larger default offset had already cleared its transient — that does not
+generalise to the patch's 4-cell default.)
 
 When the real fix lands this test will XPASS; ``strict=True`` turns the
 unexpected pass into a failure that forces removing the xfail and promoting it to
@@ -92,27 +99,31 @@ def _build_patch_sim() -> Simulation:
         "from the voltage-only spatial fit, not the Z0-mismatch-corrupted V·I "
         "split), which lowers the patch |S11| from ~1.44 to ~1.166 (GPU run "
         "369367240214) — but it is still >1.05, so this stays xfail. "
-        "NOTE (2026-05-30): an earlier version of this reason blamed the residual "
-        "on source reactive near-field probe placement and proposed 'Fix B' "
-        "(increase n_probe_offset). That diagnosis is FALSIFIED by three CPU "
-        "experiments (docs/research_notes/20260530_issue80_nearfield_falsified.md, "
-        "scripts/diagnostics/issue80_{nearfield_offset_sweep,span_conditioning,"
-        "highswr_span}.py): on a matched line |S11| is FLAT vs offset (past "
-        "lambda/2pi), and on a CLEAN high-SWR open stub (|Gamma|~1) the extractor "
-        "returns |S11|=1.000-1.002 at every span and offset — even at the worst "
-        "3-probe conditioning (cond~32). So the residual is NEITHER near-field NOR "
-        "generic fit conditioning; the spatial-fit extractor is robust on any "
-        "clean single-mode line at any SWR. The patch's |S11|>1 is best explained "
-        "by SINGLE-MODE MODEL MISMATCH at the short patch feed: the reference "
-        "plane sits in the patch-junction's non-TEM higher-order/fringing field, "
-        "which V = alpha*e^{-jbx} + gamma*e^{+jbx} cannot represent, so lstsq "
-        "returns the non-physical |gamma|>|alpha|. (num_periods=200 settling of "
-        "the high-Q resonance is a secondary, not-yet-excluded alternative.) "
-        "Confirming this needs a GPU raw-probe dump on the actual patch; CPU "
-        "proxies are clean single-mode lines and cannot reproduce it. The honest "
-        "resolution is to FLAG (this strict xfail + the runtime honesty guard), "
-        "not to manufacture a <=1 number. XPASS => the real fix landed; remove "
-        "this xfail and promote to a green gate. Do NOT loosen the assertions."
+        "ROOT CAUSE (2026-05-30, GPU raw-dump run 369367240331; "
+        "docs/research_notes/20260530_issue80_nearfield_falsified.md): TWO "
+        "separable, proven causes. (1) SOURCE near-field: the single-mode fit "
+        "residual is 18-23% for probes within ~9 cells of the MSL source and "
+        "<0.3% past ~13 cells; the patch DEFAULT n_probe_offset is only 4 cells "
+        "(= 0.5*lambda/2pi/dx at f_max=15GHz) — INSIDE that source transient — so "
+        "near-source probes corrupt the fit and drive |S11| to ~5 (full 18-probe) "
+        "or ~1.166 (3-probe default). Dropping near-source probes removes the "
+        "spike; clean-region probes (x>=8mm) are passive. The transient scales "
+        "with h_sub/w, NOT lambda/2pi, so the default offset under-provisions at "
+        "fine mesh. (2) LOW-FREQ SETTLING: after cleaning probes the only residual "
+        ">1 is at 1.5-1.84GHz and is settling-bound (np200=1.29 -> np400=1.01). "
+        "With clean probes + np400, max|S11| ~ 1.01 <= 1.05 => PASSIVITY would "
+        "PASS. (An earlier CPU-only pass wrongly 'falsified' near-field: the "
+        "matched line's default offset (31 cells) already cleared its transient, "
+        "so offset showed no effect there — it does not generalise to the patch's "
+        "4-cell default.) "
+        "SEPARATE, STILL-FAILING (not extractor): the simulated resonance dip is "
+        "at 10.78GHz (np200==np400), not analytic Balanis 9.21+-0.2GHz — full-wave"
+        "-vs-analytic + Yee staircase on the patch dimensions; the 9.21 target is "
+        "itself suspect for this meshed geometry. So even the probe/settling fix "
+        "leaves the dip-location assertion failing until the resonance target is "
+        "re-derived. XPASS => both the offset/settling fix AND the resonance "
+        "target are resolved; remove this xfail and promote to a green gate. Do "
+        "NOT loosen the assertions."
     ),
 )
 def test_issue80_patch_s11_passive_and_resonant():
