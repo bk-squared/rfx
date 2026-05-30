@@ -76,6 +76,11 @@ from rfx.io import (
     export_geometry_json, save_experiment_report,
     save_simulation_dataset, save_optimization_trajectory,
 )
+from rfx.batch import (
+    BATCH_MANIFEST_SCHEMA, BatchCaseResult, ParameterSweep,
+    case_id_from_params, run_batch, run_batch_with_manifest,
+    summarize_batch_manifest,
+)
 from rfx.deembed import deembed_port_extension, deembed_thru
 from rfx.validation import (
     PortDumpMetadata, PortReplayComparison, PortSMatrixObservable,

@@ -40,8 +40,13 @@ physics paths.
   frequency count, matrix format, two-port order, and per-port `[Reference]` for
   S-parameters. Legacy tuple reads must raise on nonuniform references instead
   of silently collapsing them.
+- Preserve bounded `[Begin Information]` / `[End Information]` metadata blocks
+  as raw lines so external tool provenance can survive rfx import/export.
+- Accept Fortran-style `D` exponent numeric tokens emitted by some RF tools.
 - Validate writer inputs against the file suffix and finite numeric data so rfx
   does not emit self-inconsistent `.sNp` files.
+- Provide `network_quality_metrics()` for host-side passivity, reciprocity,
+  finite-data, and magnitude diagnostics that can be recorded in reports.
 - Add physical/interop gates based on passive/reciprocal known networks, not only
   random numeric round-trips.
 
@@ -75,6 +80,8 @@ physics paths.
 - Record a run fingerprint derived from run settings, with a user-supplied
   override for factory/metric/external-input changes, so reused output
   directories do not silently return stale cases.
+- Record manifest summary and lightweight host environment metadata for quick
+  auditability, and expose `summarize_batch_manifest()` for report generation.
 - Add a tiny physical sweep gate that proves resume does not corrupt metrics or
   silently rerun completed cases.
 

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+from importlib import metadata as importlib_metadata
 import itertools
 import json
+import platform
 from pathlib import Path
+import sys
 import time
 from typing import Callable, Any
 
@@ -109,6 +112,85 @@ def _utc_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _environment_metadata() -> dict[str, Any]:
+    """Return lightweight host metadata for manifest provenance."""
+    try:
+        rfx_version = importlib_metadata.version("rfx-fdtd")
+    except importlib_metadata.PackageNotFoundError:
+        rfx_version = None
+    return {
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform(),
+        "numpy_version": np.__version__,
+        "rfx_version": rfx_version,
+    }
+
+
+def _status_counts_from_records(cases: dict[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in cases.values():
+        if not isinstance(record, dict):
+            status = "unknown"
+        else:
+            status = str(record.get("status", "unknown"))
+        counts[status] = counts.get(status, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _status_counts_from_results(results: list[BatchCaseResult]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in results:
+        counts[result.status] = counts.get(result.status, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _refresh_manifest_summary(manifest: dict[str, Any]) -> None:
+    """Update top-level manifest summary counts in-place."""
+    cases = manifest.setdefault("cases", {})
+    status_counts = _status_counts_from_records(cases)
+    expected_total = manifest.get("sweep", {}).get("total")
+    completed = status_counts.get("completed", 0)
+    failed = status_counts.get("failed", 0)
+    running = status_counts.get("running", 0)
+    manifest["summary"] = {
+        "case_count": len(cases),
+        "expected_total": expected_total,
+        "status_counts": status_counts,
+        "completed_case_count": completed,
+        "failed_case_count": failed,
+        "running_case_count": running,
+        "failed_case_ids": sorted(
+            case_id
+            for case_id, record in cases.items()
+            if isinstance(record, dict) and record.get("status") == "failed"
+        ),
+        "all_cases_completed": (
+            expected_total is not None
+            and len(cases) == expected_total
+            and completed == expected_total
+        ),
+    }
+
+
+def summarize_batch_manifest(
+    manifest_or_path: dict[str, Any] | str | Path,
+) -> dict[str, Any]:
+    """Return an inspectable status summary for a batch manifest.
+
+    ``manifest_or_path`` may be a manifest dictionary or a path to a manifest
+    JSON file.  The returned summary is detached from the input so callers can
+    use it for reports without mutating the manifest.
+    """
+    if isinstance(manifest_or_path, (str, Path)):
+        with open(manifest_or_path) as f:
+            manifest = json.load(f)
+    else:
+        manifest = dict(manifest_or_path)
+        manifest["cases"] = dict(manifest_or_path.get("cases", {}))
+    _refresh_manifest_summary(manifest)
+    return dict(manifest["summary"])
+
+
 def _read_manifest(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {
@@ -117,6 +199,7 @@ def _read_manifest(path: Path) -> dict[str, Any]:
             "updated_at": None,
             "sweep": {},
             "cases": {},
+            "summary": {},
         }
     with open(path) as f:
         manifest = json.load(f)
@@ -130,6 +213,7 @@ def _read_manifest(path: Path) -> dict[str, Any]:
 
 def _write_manifest_atomic(path: Path, manifest: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    _refresh_manifest_summary(manifest)
     manifest["updated_at"] = _utc_now()
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w") as f:
@@ -281,6 +365,7 @@ def run_batch_with_manifest(
     resume: bool = True,
     manifest_name: str = "manifest.json",
     run_fingerprint: str | None = None,
+    include_environment: bool = True,
 ) -> list[BatchCaseResult]:
     """Run a sequential sweep with durable per-case provenance.
 
@@ -309,6 +394,16 @@ def run_batch_with_manifest(
         "run_kwargs": run_kwargs_json,
         "user_fingerprint": run_fingerprint,
         "run_fingerprint": expected_run_fingerprint,
+    }
+    if include_environment:
+        manifest["environment"] = _environment_metadata()
+    manifest["last_run"] = {
+        "started_at": _utc_now(),
+        "completed_at": None,
+        "status": "running",
+        "resume": bool(resume),
+        "run_fingerprint": expected_run_fingerprint,
+        "result_status_counts": {},
     }
 
     returned: list[BatchCaseResult] = []
@@ -412,8 +507,20 @@ def run_batch_with_manifest(
                 result=None,
                 error=record["error"],
             ))
+            manifest["last_run"].update({
+                "completed_at": _utc_now(),
+                "status": "failed",
+                "result_status_counts": _status_counts_from_results(returned),
+            })
+            _write_manifest_atomic(manifest_path, manifest)
             raise
 
+    manifest["last_run"].update({
+        "completed_at": _utc_now(),
+        "status": "completed",
+        "result_status_counts": _status_counts_from_results(returned),
+    })
+    _write_manifest_atomic(manifest_path, manifest)
     return returned
 
 

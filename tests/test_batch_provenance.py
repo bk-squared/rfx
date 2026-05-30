@@ -12,6 +12,7 @@ from rfx.batch import (
     ParameterSweep,
     case_id_from_params,
     run_batch_with_manifest,
+    summarize_batch_manifest,
 )
 
 
@@ -74,6 +75,12 @@ def test_run_batch_with_manifest_records_and_resumes_completed_cases(tmp_path: P
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     assert manifest["schema_version"] == BATCH_MANIFEST_SCHEMA
     assert manifest["sweep"] == {"keys": ["width"], "total": 2}
+    assert manifest["summary"]["all_cases_completed"] is True
+    assert manifest["summary"]["status_counts"] == {"completed": 2}
+    assert "environment" in manifest
+    assert manifest["environment"]["python_version"]
+    assert manifest["last_run"]["status"] == "completed"
+    assert manifest["last_run"]["result_status_counts"] == {"completed": 2}
     assert len(manifest["cases"]) == 2
     assert all(record["status"] == "completed" for record in manifest["cases"].values())
 
@@ -97,6 +104,10 @@ def test_run_batch_with_manifest_records_and_resumes_completed_cases(tmp_path: P
         "sha256" in record["artifact_metadata"]["metrics"]
         for record in manifest["cases"].values()
     )
+    manifest_after_resume = json.loads((tmp_path / "manifest.json").read_text())
+    assert manifest_after_resume["last_run"]["status"] == "completed"
+    assert manifest_after_resume["last_run"]["result_status_counts"] == {"skipped": 2}
+    assert summarize_batch_manifest(tmp_path / "manifest.json")["all_cases_completed"] is True
 
 
 def test_resume_does_not_skip_completed_record_with_missing_artifact(tmp_path: Path):
@@ -391,6 +402,27 @@ def test_failed_manifest_record_is_not_resumed_as_completed(tmp_path: Path):
     second = run_batch_with_manifest(factory, sweep, tmp_path, resume=True)
     assert second[0].status == "completed"
     assert calls == ["failed"]
+
+
+def test_summarize_batch_manifest_accepts_dict_or_path(tmp_path: Path):
+    calls: list[float] = []
+    sweep = ParameterSweep(width=[1.0])
+
+    def factory(width):
+        return _FakeSimulation(width, calls)
+
+    run_batch_with_manifest(
+        factory,
+        sweep,
+        tmp_path,
+        metric_fn=lambda r: {"value": float(r.value)},
+        artifact_fn=_write_metric_artifact,
+    )
+
+    manifest_path = tmp_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    assert summarize_batch_manifest(manifest_path) == summarize_batch_manifest(manifest)
+    assert summarize_batch_manifest(manifest)["status_counts"] == {"completed": 1}
 
 
 def test_manifest_without_metric_fn_still_records_resume_metric(tmp_path: Path):
