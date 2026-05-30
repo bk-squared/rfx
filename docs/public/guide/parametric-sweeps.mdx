@@ -160,6 +160,7 @@ It writes `manifest.json` under the output directory with:
 - stable case IDs derived from parameter values
 - per-case status, timing, metrics, parameter digest, and artifact paths
 - artifact file size/hash metadata for resume integrity
+- summary counts, last-run status, and lightweight Python/platform metadata
 - resume-safe completed-case records
 
 ```python
@@ -167,7 +168,11 @@ import json
 from pathlib import Path
 import numpy as np
 
-from rfx.batch import ParameterSweep, run_batch_with_manifest
+from rfx.batch import (
+    ParameterSweep,
+    run_batch_with_manifest,
+    summarize_batch_manifest,
+)
 
 sweep = ParameterSweep(amplitude=[0.5, 1.0, 2.0])
 
@@ -193,6 +198,9 @@ records = run_batch_with_manifest(
     artifact_fn=artifact_fn,
     resume=True,
 )
+
+summary = summarize_batch_manifest("runs/amplitude-sweep/manifest.json")
+print(summary["status_counts"])
 ```
 
 `resume=True` skips only records that are marked `completed`, match the current
