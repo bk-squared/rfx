@@ -42,6 +42,8 @@ physics paths.
   of silently collapsing them.
 - Validate writer inputs against the file suffix and finite numeric data so rfx
   does not emit self-inconsistent `.sNp` files.
+- Provide `network_quality_metrics()` for host-side passivity, reciprocity,
+  finite-data, and magnitude diagnostics that can be recorded in reports.
 - Add physical/interop gates based on passive/reciprocal known networks, not only
   random numeric round-trips.
 

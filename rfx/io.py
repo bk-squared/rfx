@@ -606,6 +606,62 @@ def read_touchstone_full(filepath: str | Path, *,
     )
 
 
+def network_quality_metrics(
+    s_params: np.ndarray,
+    *,
+    reciprocity_tol: float = 1e-12,
+    passivity_tol: float = 1e-12,
+) -> dict[str, object]:
+    """Return common RF network quality metrics for an S-matrix cube.
+
+    The input must have shape ``(n_ports, n_ports, n_freqs)``.  Metrics are
+    host-side diagnostics for reports and interop gates; they do not alter any
+    solver path.
+    """
+    s = np.asarray(s_params)
+    if s.ndim != 3 or s.shape[0] != s.shape[1]:
+        raise ValueError("s_params must have shape (n_ports, n_ports, n_freqs)")
+
+    n_ports, _, n_freqs = s.shape
+    finite = bool(np.all(np.isfinite(s)))
+    if not finite:
+        return {
+            "n_ports": int(n_ports),
+            "n_freqs": int(n_freqs),
+            "finite": False,
+            "max_abs_s": float("nan"),
+            "max_column_power": float("nan"),
+            "max_singular_value": float("nan"),
+            "passivity_excess": float("nan"),
+            "reciprocity_error": float("nan"),
+            "is_passive": False,
+            "is_reciprocal": False,
+        }
+
+    max_column_power = 0.0
+    max_singular_value = 0.0
+    for fi in range(n_freqs):
+        mat = s[:, :, fi]
+        column_power = float(np.max(np.sum(np.abs(mat) ** 2, axis=0)))
+        max_column_power = max(max_column_power, column_power)
+        eig_max = float(np.linalg.eigvalsh(mat.conj().T @ mat).max())
+        max_singular_value = max(max_singular_value, float(np.sqrt(max(eig_max, 0.0))))
+
+    passivity_excess = max(0.0, max_singular_value**2 - 1.0)
+    reciprocity_error = float(np.max(np.abs(s - np.swapaxes(s, 0, 1))))
+    return {
+        "n_ports": int(n_ports),
+        "n_freqs": int(n_freqs),
+        "finite": True,
+        "max_abs_s": float(np.max(np.abs(s))) if s.size else 0.0,
+        "max_column_power": float(max_column_power),
+        "max_singular_value": float(max_singular_value),
+        "passivity_excess": float(passivity_excess),
+        "reciprocity_error": reciprocity_error,
+        "is_passive": bool(passivity_excess <= passivity_tol),
+        "is_reciprocal": bool(reciprocity_error <= reciprocity_tol),
+    }
+
 
 # =========================================================================
 # Result export (HDF5)
