@@ -1069,9 +1069,25 @@ class Simulation(_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin):
                     eps_r_sub_estimate = max(eps_r_sub_estimate, mat_eps)
         lam_min_eff = C0 / self._freq_max / math.sqrt(eps_r_sub_estimate)
         if n_probe_offset is None:
-            n_probe_offset = max(
-                3, int(round(0.5 * lam_min_eff / (2.0 * math.pi) / _dx))
-            )
+            # Probe 0 must clear the MSL source's spurious content, which has
+            # TWO scales and we take the max:
+            #  (a) lambda-based (original Fix B): keep beta*Delta small so the
+            #      source's RADIATING near-field has decayed.
+            #  (b) geometry-based (issue #80, 2026-05-30): the source also
+            #      injects EVANESCENT higher-order-mode content whose decay
+            #      length scales with the microstrip transverse size (~h_sub),
+            #      NOT lambda. At fine mesh / high f_max the lambda term
+            #      collapses to a few cells (e.g. 4 cells for the issue #80
+            #      patch at dx=0.197mm, f_max=15GHz) and lands probe 0 INSIDE
+            #      that transient, corrupting the single-mode V-fit (GPU run
+            #      369367240331: 18-23% fit residual within ~9 cells of the
+            #      source, <0.3% past ~13 cells ~ 4*h_sub, |S11| pushed >1).
+            #      Floor at 5*h_sub. On thin-substrate / lower-f_max lines the
+            #      lambda term already dominates so this changes nothing
+            #      (e.g. the RO4350B thru-line stays at its 31-cell offset).
+            off_lambda = int(round(0.5 * lam_min_eff / (2.0 * math.pi) / _dx))
+            off_hsub = int(math.ceil(5.0 * height / _dx))
+            n_probe_offset = max(3, off_lambda, off_hsub)
         if n_probe_spacing is None:
             # Bind the default so the TOTAL N-probe array span stays
             # ~lam/8 (the original Fix B 3-probe span of 2*lam/16),
