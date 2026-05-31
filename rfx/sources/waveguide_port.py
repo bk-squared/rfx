@@ -2095,6 +2095,9 @@ def extract_waveguide_s_matrix(
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+        # NB: run() stamps grid.dt onto every returned waveguide cfg, so the
+        # post-scan rect-DFT extractor below uses the correct Δt even when the
+        # cfgs were built via init_waveguide_port without dt=.
 
         a_drive, b_drive = extract_waveguide_port_waves(
             final_cfgs[drive_idx],
