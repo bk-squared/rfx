@@ -75,6 +75,7 @@ from rfx.api._spec import (  # noqa: E402
     _MSLPortEntry,
     MSLSMatrixResult,
 )
+from rfx.mesh_planner import MeshPlan, plan_simulation_mesh  # noqa: E402,F401
 
 # ---------------------------------------------------------------------------
 # Preflight / validation methods — moved to rfx/api/_preflight.py
@@ -2213,6 +2214,43 @@ class Simulation(
             preflight_issues=preflight_issues,
             ad_memory=ad_memory,
             recommendation="; ".join(recommendation_parts) + ".",
+        )
+    def _mesh_planner_state(self) -> dict[str, object]:
+        """Return a narrow internal snapshot consumed by ``rfx.mesh_planner``.
+
+        This keeps the planner from scattering direct ``Simulation`` private
+        attribute reads while avoiding a larger public accessor surface.
+        """
+        grid = self._build_grid()
+        return {
+            "freq_max": float(self._freq_max),
+            "domain": tuple(float(v) for v in self._domain),
+            "boundary": str(self._boundary),
+            "cpml_layers": int(self._cpml_layers),
+            "pec_faces": tuple(sorted(getattr(self, "_pec_faces", set()))),
+            "dx": None if self._dx is None else float(self._dx),
+            "dx_profile": self._dx_profile,
+            "dy_profile": self._dy_profile,
+            "dz_profile": self._dz_profile,
+            "dt": float(grid.dt),
+        }
+    def plan_mesh(
+        self,
+        *,
+        n_steps: int | None = None,
+        checkpoint_every: int | None = None,
+        available_memory_gb: float | None = None,
+        sparameter_calculator: str | None = None,
+        artifact_root: str | None = None,
+    ) -> MeshPlan:
+        """Return an advisory mesh plan for this configured simulation."""
+        return plan_simulation_mesh(
+            self,
+            n_steps=n_steps,
+            checkpoint_every=checkpoint_every,
+            available_memory_gb=available_memory_gb,
+            sparameter_calculator=sparameter_calculator,
+            artifact_root=artifact_root,
         )
 
     def __repr__(self) -> str:

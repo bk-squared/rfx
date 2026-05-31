@@ -52,6 +52,8 @@ Key constructor arguments:
 | `add_probe(...)` | record a point observable | feeds `Result.find_resonances()` |
 | `add_ntff_box(...)` | accumulate far-field data | use only when the radiation workflow is benchmarked |
 | `preflight(strict=False)` | validate setup before a long run | use this when you want deterministic warnings/errors on unsupported combinations |
+| `mesh_intelligence_report(...)` | summarize configured grid, preflight issues, and AD memory estimates | useful for non-uniform and memory-constrained planning |
+| `plan_mesh(...)` | return a serializable `MeshPlan` for this configured simulation | wraps `mesh_intelligence_report()`, `preflight()`, and optional S-parameter preflight checks |
 | `run(...)` | advance the simulation | returns a `Result` object |
 
 ## Run loop
@@ -76,6 +78,23 @@ sim = Simulation.auto(freq_range=(1.5e9, 3.5e9), accuracy="standard")
 Use `Simulation.auto()` when you want a quick starting point.
 Use the lower-level constructor when you need to inspect or override the
 derived setup.
+
+Configured simulations can also produce the same planning artifact:
+
+```python
+mesh_plan = sim.plan_mesh(
+    n_steps=10_000,
+    available_memory_gb=24.0,
+    sparameter_calculator="waveguide",
+)
+```
+
+`MeshPlan` is advisory: it records support checks and declaration-only artifact
+paths, but it does not claim solver replay or physics validation by itself.
+Passing `artifact_root` only fills intended paths; it does not write files.
+Configured-simulation plans use `plan_source="configured_simulation"`,
+`freq_range[0] = null`, and `accuracy = null` because no auto-configure
+accuracy preset or lower-band edge is implied by an existing `Simulation`.
 
 ## Current public boundary
 
