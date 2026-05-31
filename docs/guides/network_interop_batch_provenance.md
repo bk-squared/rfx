@@ -82,6 +82,8 @@ physics paths.
   directories do not silently return stale cases.
 - Support `continue_on_error=True` when a sweep should record failed cases and
   continue through later parameter points instead of failing fast.
+- Record manifest summary and lightweight host environment metadata for quick
+  auditability, and expose `summarize_batch_manifest()` for report generation.
 - Add a tiny physical sweep gate that proves resume does not corrupt metrics or
   silently rerun completed cases.
 
