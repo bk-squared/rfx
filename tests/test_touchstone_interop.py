@@ -7,6 +7,7 @@ import pytest
 
 from rfx import (
     TouchstoneData,
+    network_quality_metrics,
     read_touchstone,
     read_touchstone_full,
     write_touchstone,
@@ -348,3 +349,25 @@ def test_passive_reciprocal_fixture_survives_standard_v2_roundtrip(tmp_path: Pat
     np.testing.assert_allclose(data.reference, np.full(n_ports, 50.0))
     assert _passivity_excess(data.s_params) <= 1e-12
     assert _reciprocity_error(data.s_params) <= 1e-12
+
+    quality = network_quality_metrics(data.s_params)
+    assert quality["finite"] is True
+    assert quality["is_passive"] is True
+    assert quality["is_reciprocal"] is True
+    assert quality["passivity_excess"] <= 1e-12
+    assert quality["reciprocity_error"] <= 1e-12
+
+
+def test_network_quality_metrics_detects_nonreciprocal_or_active_network():
+    passive_nonreciprocal = np.zeros((2, 2, 1), dtype=np.complex128)
+    passive_nonreciprocal[1, 0, 0] = 0.2
+    active = np.eye(2, dtype=np.complex128)[:, :, None] * 1.1
+
+    passive_quality = network_quality_metrics(passive_nonreciprocal)
+    assert passive_quality["is_passive"] is True
+    assert passive_quality["is_reciprocal"] is False
+    assert passive_quality["reciprocity_error"] == pytest.approx(0.2)
+
+    active_quality = network_quality_metrics(active)
+    assert active_quality["is_passive"] is False
+    assert active_quality["passivity_excess"] == pytest.approx(0.21)

@@ -71,6 +71,7 @@ from rfx.topology import (
 )
 from rfx.io import (
     TouchstoneData, read_touchstone, read_touchstone_full, write_touchstone,
+    network_quality_metrics,
     save_optimization_result, load_optimization_result,
     save_far_field, export_radiation_pattern,
     export_geometry_json, save_experiment_report,
