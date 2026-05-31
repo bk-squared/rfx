@@ -207,6 +207,10 @@ rerun instead of returning stale cases. If the simulation factory, metric
 definition, mesh source, or any external input changes while `run_kwargs` stay
 the same, pass a new `run_fingerprint="..."` value to invalidate old cases.
 
+By default the manifest-backed runner is fail-fast. For exploratory grids where
+later cases are still useful after one case fails, pass
+`continue_on_error=True`; failed cases are recorded with `status="failed"`.
+
 ## Checklist before scaling up
 
 - Did a single case run and produce physically plausible fields/probes?
