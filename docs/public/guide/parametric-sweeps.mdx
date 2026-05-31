@@ -150,6 +150,63 @@ eps_eff = jnp.array([3.0, 3.2, 3.4])
 freqs = jax.vmap(quarter_wave_freq)(lengths, eps_eff)
 ```
 
+## Manifest-backed sweeps
+
+For claim-bearing or long-running sweeps, prefer `run_batch_with_manifest()`.
+It writes `manifest.json` under the output directory with:
+
+- schema version
+- sweep keys and total case count
+- stable case IDs derived from parameter values
+- per-case status, timing, metrics, parameter digest, and artifact paths
+- artifact file size/hash metadata for resume integrity
+- resume-safe completed-case records
+
+```python
+import json
+from pathlib import Path
+import numpy as np
+
+from rfx.batch import ParameterSweep, run_batch_with_manifest
+
+sweep = ParameterSweep(amplitude=[0.5, 1.0, 2.0])
+
+
+def metric_fn(result):
+    state = result.state
+    peak_ez = float(np.max(np.abs(np.asarray(state.ez))))
+    return {"peak_ez": peak_ez}
+
+
+def artifact_fn(case_dir: Path, params, result):
+    path = case_dir / "metric.json"
+    path.write_text(json.dumps(metric_fn(result), sort_keys=True))
+    # Case-local paths are normalized into output-root-relative manifest paths.
+    return {"metric": "metric.json"}
+
+records = run_batch_with_manifest(
+    make_simulation,
+    sweep,
+    "runs/amplitude-sweep",
+    run_kwargs={"n_steps": 200},
+    metric_fn=metric_fn,
+    artifact_fn=artifact_fn,
+    resume=True,
+)
+```
+
+`resume=True` skips only records that are marked `completed`, match the current
+case parameters, include at least one metric, and still have all declared
+artifact files on disk with matching size/hash metadata. Missing or modified
+artifacts, empty metrics, interrupted `running` cases, and previous failures are
+not silently treated as valid completed runs.
+
+`run_kwargs` are fingerprinted into each case record. Reusing the same output
+directory with a different run budget, such as a changed `n_steps`, forces a
+rerun instead of returning stale cases. If the simulation factory, metric
+definition, mesh source, or any external input changes while `run_kwargs` stay
+the same, pass a new `run_fingerprint="..."` value to invalidate old cases.
+
 ## Checklist before scaling up
 
 - Did a single case run and produce physically plausible fields/probes?
