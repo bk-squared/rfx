@@ -603,7 +603,13 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
 
     grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
     materials = init_materials(grid.shape)
-    freqs = jnp.linspace(4.5e9, 8e9, 12)
+    # Single-mode band only: for a=40mm, TE10 cutoff = c/(2a) = 3.75 GHz and
+    # TE20 cutoff = c/a = 7.5 GHz. The non-flux V·I extractor is valid only for a
+    # single propagating mode away from cutoff — near 3.75 GHz (small beta) and
+    # at/above 7.5 GHz (TE20 onset) the single-mode |S11| is non-physical. This
+    # test validates the S-matrix ASSEMBLY/reciprocity, so it runs in the clean
+    # single-mode band; broad-band/multimode is the normalize='flux' path (#88).
+    freqs = jnp.linspace(5.0e9, 7.0e9, 12)
     n_steps = grid.num_timesteps(num_periods=30)
 
     port0 = WaveguidePort(
@@ -674,7 +680,10 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
             sigma=jnp.where(mask, 1e10, materials.sigma),
         )
 
-    freqs = jnp.linspace(4.5e9, 8.0e9, 10)
+    # Single-mode band (a=40mm: TE10 cutoff 3.75 GHz, TE20 cutoff 7.5 GHz). The
+    # non-flux V·I extractor is single-mode-only; this reciprocity check runs
+    # away from both cutoffs (broad-band/multimode is the flux path — #88).
+    freqs = jnp.linspace(5.0e9, 7.0e9, 10)
     n_steps = grid.num_timesteps(num_periods=30)
     padx, pady, padz = grid.axis_pads
     xslice = (padx + int(round(0.04 / dx)), padx + int(round(0.08 / dx)) + 1)
