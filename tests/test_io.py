@@ -12,6 +12,7 @@ Validates:
 """
 
 import tempfile
+import json
 import numpy as np
 from pathlib import Path
 
@@ -372,3 +373,44 @@ def test_inline_comments_ignored():
 
     assert s_read.shape == (2, 2, 1)
     np.testing.assert_allclose(s_read[0, 0, 0], 0.5 + 0.1j, atol=1e-9)
+
+
+def test_export_geometry_json_legacy_shape_still_present(tmp_path):
+    from rfx.api import Simulation
+    from rfx.geometry.csg import Box
+    from rfx.io import export_geometry_json
+
+    sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.005), boundary="pec", dx=0.001)
+    sim.add_material("substrate", eps_r=4.4, sigma=0.02)
+    sim.add(Box((0.001, 0.001, 0.0), (0.004, 0.004, 0.001)), material="substrate")
+    sim.add_probe((0.006, 0.006, 0.001), "ez")
+
+    path = tmp_path / "geometry.json"
+    export_geometry_json(path, sim)
+    data = json.loads(path.read_text())
+
+    for key in ("freq_max", "domain", "boundary", "dx", "mode", "cpml_layers", "materials", "geometry", "sources", "probes"):
+        assert key in data
+    assert data["materials"]["substrate"]["eps_r"] == 4.4
+    assert data["geometry"][0]["type"] == "Box"
+
+
+def test_save_experiment_report_legacy_shape_still_present(tmp_path):
+    from types import SimpleNamespace
+
+    from rfx.api import Simulation
+    from rfx.io import save_experiment_report
+
+    sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.005), boundary="pec", dx=0.001)
+    grid = sim._build_grid()
+    result = SimpleNamespace(grid=grid, time_series=np.array([[0.0, 1.0]], dtype=np.float32))
+
+    path = tmp_path / "experiment.json"
+    save_experiment_report(path, sim, result, extra={"note": "legacy"})
+    data = json.loads(path.read_text())
+
+    assert "timestamp" in data
+    assert {"freq_max", "domain", "boundary", "dx", "mode", "solver"} <= set(data["simulation"])
+    assert data["grid"]["shape"] == list(grid.shape)
+    assert data["result_type"] == "SimpleNamespace"
+    assert data["extra"] == {"note": "legacy"}
