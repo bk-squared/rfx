@@ -15,11 +15,14 @@ Use these examples as starting points, not as exhaustive coverage of every featu
 | [RF Workflows](./rf-workflows/) | practical workflow framing |
 | `examples/crossval/05_patch_antenna.py` | current patch antenna cross-check |
 | `examples/crossval/11_waveguide_port_wr90.py` | rectangular waveguide-port workflow |
-| `examples/nonuniform_patch_demo.py` | non-uniform mesh demo; experimental lane |
+| `examples/nonuniform_patch_demo.py` | non-uniform mesh demo; shadow lane |
 | `examples/inverse_design/multilayer_ar_coating.py` | conservative inverse-design demo |
 
 ## How to read the example surface
 
 - Start with uniform Yee RF examples when you want the safest path.
-- Treat non-uniform, distributed, Floquet/Bloch, general subgridding, coaxial, and advanced inverse-design examples as experimental unless a guide says otherwise.  The subgridding guide documents the narrow guarded one-sided production envelope.
+- Treat non-uniform examples as shadow unless a guide says otherwise; treat
+  distributed, Floquet/Bloch, general subgridding, coaxial, and advanced
+  inverse-design examples as experimental unless a guide says otherwise. The
+  subgridding guide documents the narrow guarded one-sided production envelope.
 - Prefer current scripts in `examples/crossval/` over older narrative snippets.

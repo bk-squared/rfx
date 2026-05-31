@@ -1,0 +1,54 @@
+---
+title: "Agent Auto-Configuration"
+description: "A conservative workflow for agents using rfx auto-configuration and preflight checks."
+sidebar:
+  order: 2
+---
+
+Agents should use auto-configuration as a starting point, not as a substitute
+for RF judgement or support-matrix checks.
+
+## Recommended sequence
+
+1. Define the geometry, material, source/port family, and target frequency band.
+2. Use `auto_configure(...)` or the high-level `Simulation(...)` builder to get
+   a first mesh and time-step proposal.
+3. Inspect preflight warnings and support-boundary status before running long
+   jobs.
+4. Run a short smoke simulation first.
+5. Promote to a longer run only after the smoke output has sane field/probe
+   amplitudes and the selected feature lane is documented.
+
+## Python sketch
+
+```python
+from rfx import Simulation, Box, GaussianPulse, auto_configure
+
+geometry = [(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0016)), "fr4")]
+materials = {"fr4": {"eps_r": 4.4, "sigma": 0.025}}
+
+config = auto_configure(
+    geometry=geometry,
+    materials=materials,
+    freq_range=(1e9, 4e9),
+    accuracy="standard",
+)
+
+sim = Simulation(**config.to_sim_kwargs())
+sim.add_material("fr4", eps_r=4.4, sigma=0.025)
+for shape, material in geometry:
+    sim.add(shape, material=material)
+sim.add_source((0.029, 0.03, 0.0008), "ez", waveform=GaussianPulse(2.4e9, 0.8))
+sim.add_probe((0.029, 0.03, 0.0008), "ez")
+
+result = sim.run(n_steps=min(config.n_steps, 200))  # smoke first; increase only after inspection
+```
+
+## What agents must report
+
+- mesh/domain/frequency assumptions
+- selected source or port family
+- support status for each advanced feature
+- smoke command and result artifact location
+- whether any generated report, plot, or Touchstone file is derived from a
+  supported, shadow, or experimental lane

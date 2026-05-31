@@ -16,11 +16,25 @@ public `remilab.ai/rfx/` documentation surface.
 | `docs/public/api/` | curated public API pages deployed to `/rfx/api/*` | yes |
 | `docs/agent/` | public AI-agent pages deployed to `/rfx/agent/*` | yes |
 | `docs/guide/` | legacy redirect entrypoint kept for backwards navigation | no |
-| `docs/api/` | generated API docs published as subordinate deep reference under `/rfx/api/generated/*` | generated only |
+| `docs/api/` | optional generated API assets published under `/rfx/api/generated/*` when present | generated only |
 | `docs/research_notes/` | planning, handoffs, chronology | internal only |
 
 `infra/remilab-sites-gitops/.../seed-pages/rfx` is the **deploy snapshot**.
 It should be regenerated from this repo, not used as a parallel authoring home.
+
+## First-class deploy target
+
+The public site `remilab.ai/rfx` is part of the documentation deliverable, not a
+separate afterthought. A docs change is source-complete when the repo checks pass;
+it is deployment-complete only after the gitops snapshot is exported or a concrete
+missing-checkout blocker is recorded.
+
+Expected local deploy root:
+
+```text
+/root/workspace/infra/remilab-sites-gitops/deploy/obsidian-stack/astro-starlight-presets/public/seed-pages/rfx
+```
+
 
 ## Current public hierarchy
 
@@ -57,9 +71,10 @@ inventory should originate from `docs/public/` and `docs/agent/` in this repo.
 ## Maintenance workflow
 
 1. Author or edit the public pages in `docs/public/` and `docs/agent/`.
-2. Run the source drift check:
+2. Run the manifest and source drift checks:
 
    ```bash
+   python scripts/check_public_docs_manifest.py
    python scripts/check_public_docs_sync.py --format text
    ```
 
@@ -99,5 +114,6 @@ in the deploy repo.
   sources**.
 - `docs/guide/` is intentionally reduced to a single redirect-style entrypoint
   and should not receive new content.
-- `docs/api/` remains generated-only and should be exported as a subordinate
-  deep-reference surface, not treated as the primary authored API contract.
+- `docs/api/` remains generated-only and optional; when present it should be
+  exported as a subordinate deep-reference surface, not treated as the primary
+  authored API contract.

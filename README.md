@@ -113,7 +113,12 @@ Benchmarked against Balanis "Antenna Theory" and Pozar "Microwave Engineering":
 | Microstrip Z0 | Hammerstad-Jensen | 0.47% |
 | Coupled-line filter | Pozar Ch 8 | 22.5% (formula limitation) |
 
-For practical public examples, start with `examples/crossval/05_patch_antenna.py` for the patch workflow and `examples/crossval/11_waveguide_port_wr90.py` for rectangular waveguide ports. Treat non-uniform, distributed, Floquet/Bloch, subgridding, coaxial, and advanced inverse-design workflows as experimental unless the relevant guide says otherwise.
+For practical public examples, start with `examples/crossval/05_patch_antenna.py`
+for the patch workflow and `examples/crossval/11_waveguide_port_wr90.py` for
+rectangular waveguide ports. Treat non-uniform workflows as shadow unless the
+relevant guide says otherwise; treat distributed, Floquet/Bloch, subgridding,
+coaxial, and advanced inverse-design workflows as experimental unless the
+relevant guide says otherwise.
 
 ## Key Features
 
@@ -176,6 +181,7 @@ Canonical public-doc sources in this repo:
 - `docs/public/validation/` — quantitative evidence and lane-label hubs
 - `docs/agent/` — public AI-agent pages
 - `docs/guides/public_docs_architecture.md` — ownership, sync, and deploy rules
+- `docs/guides/public_docs_maintenance.md` — release/docs-sync checklist, stale-doc policy, and support-matrix cadence
 
 ### Public docs maintenance workflow
 

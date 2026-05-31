@@ -17,13 +17,13 @@ Start with the **uniform Cartesian Yee RF/FDTD lane**:
 
 This is the lane to use first for ordinary RF examples and public tutorials.
 
-## Experimental / under active validation
+## Non-default lanes
 
 The following surfaces are real and useful, but should be treated as narrower than the default lane:
 
 | Surface | Public status |
 |---|---|
-| non-uniform mesh | useful for thin-substrate experiments; not the default claim lane |
+| non-uniform mesh | shadow thin-substrate lane; retained but not the default claim lane |
 | distributed execution | scaling lane; check feature combinations before use |
 | Floquet/Bloch | experimental periodic/unit-cell workflow |
 | SBP-SAT subgridding | research/experimental local mesh refinement |
@@ -39,4 +39,6 @@ The following surfaces are real and useful, but should be treated as narrower th
 
 ## Practical rule
 
-If a feature is not in the recommended default lane, call it experimental or under active validation and point users to the current example or limitation page.
+If a feature is not in the recommended default lane, call it shadow,
+experimental, or under active validation as appropriate and point users to the
+current example or limitation page.

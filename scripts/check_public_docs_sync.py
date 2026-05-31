@@ -209,6 +209,7 @@ def make_report(repo_root: Path, deploy_root: Path) -> AuditReport:
     public_root = repo_root / "docs" / "public"
     public_subtrees = discover_public_subtrees(public_root)
     generated_api_source = repo_root / "docs" / "api"
+    generated_api_deploy = deploy_root / "api" / "generated"
 
     sections = [
         compare_section("top-level", public_root, deploy_root, recursive=False),
@@ -219,12 +220,16 @@ def make_report(repo_root: Path, deploy_root: Path) -> AuditReport:
         compare_section("agent", repo_root / "docs" / "agent", deploy_root / "agent"),
     ]
 
-    if generated_api_source.exists() or (deploy_root / "api" / "generated").exists():
+    deploy_has_generated_assets = generated_api_deploy.exists() and any(
+        iter_files(generated_api_deploy, recursive=True, include=is_generated_api_asset)
+    )
+
+    if generated_api_source.exists() or deploy_has_generated_assets:
         sections.append(
             compare_section(
                 "api-generated-assets",
                 generated_api_source,
-                deploy_root / "api" / "generated",
+                generated_api_deploy,
                 include_source=is_generated_api_asset,
                 include_deploy=is_generated_api_asset,
             )

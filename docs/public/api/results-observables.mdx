@@ -27,7 +27,7 @@ sidebar:
 
 | Calculator | Result object | Public status |
 |---|---|---|
-| `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result.s_params`, `Result.freqs` | recommended path for the matching port family |
+| `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result.s_params`, `Result.freqs` | documented path for the matching port family; claim strength follows the support envelope |
 | `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult.s_params`, `ForwardResult.freqs` | differentiable S11 vectors, not a full multi-port matrix |
 | `compute_msl_s_matrix(...)` | `MSLSMatrixResult` | specialized microstrip-line workflow |
 | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | rectangular waveguide workflow |

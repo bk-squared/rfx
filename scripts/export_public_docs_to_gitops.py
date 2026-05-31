@@ -94,6 +94,7 @@ def main() -> int:
     public_subtrees = discover_public_subtrees(public_root)
     src_agent = repo_root / "docs" / "agent"
     src_generated_api = repo_root / "docs" / "api"
+    has_generated_api = src_generated_api.exists()
 
     dst_root = (
         gitops_root
@@ -109,11 +110,12 @@ def main() -> int:
     required = [
         public_root,
         src_agent,
-        src_generated_api,
         gitops_root,
         *source_root_docs,
         *public_subtrees,
     ]
+    if has_generated_api:
+        required.append(src_generated_api)
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         raise SystemExit("missing required paths:\n" + "\n".join(missing))
@@ -124,7 +126,10 @@ def main() -> int:
         print(f"root_docs: {[path.name for path in source_root_docs]}")
         print(f"public_subtrees: {[path.name for path in public_subtrees]}")
         print(f"agent: {src_agent}")
-        print(f"generated_api: {src_generated_api}")
+        if has_generated_api:
+            print(f"generated_api: {src_generated_api}")
+        else:
+            print("generated_api: absent (skipped)")
         print(f"gitops: {gitops_root}")
         return 0
 
@@ -145,13 +150,17 @@ def main() -> int:
         copy_tree(subtree, dst_root / subtree.name)
 
     copy_tree(src_agent, dst_root / "agent")
-    sync_generated_api_assets(src_generated_api, dst_generated_api)
+    if has_generated_api:
+        sync_generated_api_assets(src_generated_api, dst_generated_api)
 
     print("exported public docs to gitops snapshot")
     print(f"target: {dst_root}")
     print(f"root_docs: {[path.name for path in source_root_docs]}")
     print(f"public_subtrees: {[path.name for path in public_subtrees]}")
-    print("generated_api_target: api/generated")
+    if has_generated_api:
+        print("generated_api_target: api/generated")
+    else:
+        print("generated_api_target: skipped (docs/api absent)")
     return 0
 
 

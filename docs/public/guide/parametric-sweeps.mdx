@@ -1,23 +1,160 @@
 ---
 title: "Parametric Sweeps"
-description: "Sequential sweep and jax.vmap batch evaluation for design-space exploration in rfx."
+description: "Sequential sweeps, batch result collection, and vmap-oriented design-space exploration in rfx."
 sidebar:
   order: 26
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Under construction">
-  This page is a placeholder. Content will be added in a future update.
+Parametric sweeps are the safest way to explore a small RF design space before
+committing to a long optimization run. Start with a sequential sweep that you can
+inspect, then move to vectorized or accelerator-heavy evaluation only after the
+metric is stable.
+
+<Aside type="caution" title="Support boundary">
+  A sweep multiplies the assumptions of the underlying simulation. If a single
+  run uses a shadow or experimental lane, the sweep results stay shadow or
+  experimental until the relevant support/evidence matrix promotes that lane.
 </Aside>
 
-## Overview
+## 1. Define the parameter grid
 
-This guide will cover how to run parametric sweeps in rfx:
+`rfx.batch.ParameterSweep` stores a Cartesian product of scalar parameter
+values. It is intentionally small and explicit so every case can be inspected.
 
-- **Sequential sweep** — loop over parameter values with standard Python iteration
-- **`jax.vmap` batch evaluation** — vectorised parallel simulation for independent parameter points
-- **Result aggregation** — collecting S-parameters, resonances, and metrics across sweep dimensions
-- **Use cases** — substrate thickness sweeps, feed-point optimisation, frequency scaling studies
+```python
+from rfx.batch import ParameterSweep
 
-See [Simulation API](../api-reference/) for the `Simulation` builder interface.
+sweep = ParameterSweep(
+    patch_width=[0.028, 0.030, 0.032],
+    eps_r=[3.8, 4.2],
+)
+
+print(sweep.keys)   # ['patch_width', 'eps_r']
+print(sweep.total)  # 6
+
+for params in sweep.combinations():
+    print(params)
+```
+
+## 2. Build a simulation factory
+
+Keep the factory pure: all parameters needed to construct the case should come
+from the `params` dictionary. Store generated plots, Touchstone files, and HDF5
+snapshots outside git unless they are curated docs assets.
+
+```python
+from rfx import Simulation, Box, GaussianPulse
+
+
+def make_patch_sim(patch_width: float, eps_r: float) -> Simulation:
+    sim = Simulation(freq_max=4e9, domain=(0.08, 0.06, 0.025), boundary="cpml")
+    sim.add_material("substrate", eps_r=eps_r)
+    sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0016)), material="substrate")
+    sim.add(Box((0.024, 0.015, 0.0016), (0.052, 0.015 + patch_width, 0.0016)), material="pec")
+    sim.add_source((0.029, 0.030, 0.0008), "ez", waveform=GaussianPulse(2.4e9, 0.8))
+    sim.add_probe((0.029, 0.030, 0.0008), "ez")
+    return sim
+```
+
+## 3. Run a sequential batch
+
+`run_batch(...)` calls `sim_factory(**params)` for each parameter combination and
+returns a list of `(params, result)` tuples.
+
+```python
+from rfx.batch import run_batch
+
+results = run_batch(
+    make_patch_sim,
+    sweep,
+    run_kwargs={"n_steps": 500},  # use a short smoke first
+)
+
+for params, result in results:
+    print(params, result.time_series.shape)
+```
+
+For long runs, include a case identifier in your output path and write a manifest
+with the input parameters, command line, git SHA, support status, and metric used
+to rank the case. That manifest is what lets reviewers reproduce a plotted sweep.
+
+## 4. Aggregate metrics into a dataset
+
+`SimulationDataset.from_results(...)` converts batch outputs into rectangular
+arrays. The `output_fn` should return a one-dimensional numeric feature vector.
+
+```python
+import numpy as np
+from rfx.batch import SimulationDataset
+
+
+def output_fn(result):
+    # Example diagnostic metric: peak absolute probe signal.
+    probe = np.asarray(result.time_series[:, 0])
+    return np.array([np.max(np.abs(probe))])
+
+
+dataset = SimulationDataset.from_results(
+    results,
+    input_keys=["patch_width", "eps_r"],
+    output_fn=output_fn,
+)
+
+X, y = dataset.to_numpy()
+dataset.to_csv("sweep_metrics.csv")
+```
+
+## 5. S-parameter and Touchstone sweeps
+
+If the sweep uses a promoted S-parameter calculator, keep the port family and
+support envelope with the output files.
+
+```python
+from pathlib import Path
+from rfx import write_touchstone
+
+out_dir = Path("outputs/sweep")
+out_dir.mkdir(parents=True, exist_ok=True)
+
+for i, (params, result) in enumerate(results):
+    if result.s_params is None:
+        continue
+    path = out_dir / f"case_{i:03d}.s2p"
+    write_touchstone(path, result.s_params, result.freqs, z0=50.0)
+```
+
+Touchstone export is an interoperability format, not validation by itself. Link
+any S-parameter claims to the current port-family evidence in
+`docs/guides/sparameter_support_matrix.md`.
+
+## 6. When to use `jax.vmap`
+
+Use `jax.vmap` when the computation is already a pure array function, such as a
+surrogate model, a closed-form RF approximation, or a differentiable objective
+that has been written without Python-side side effects. Most full `Simulation`
+object construction is easier to inspect and debug with explicit Python loops.
+
+```python
+import jax
+import jax.numpy as jnp
+
+
+def quarter_wave_freq(length_m, eps_eff):
+    c0 = 299_792_458.0
+    return c0 / (4.0 * length_m * jnp.sqrt(eps_eff))
+
+lengths = jnp.array([0.026, 0.028, 0.030])
+eps_eff = jnp.array([3.0, 3.2, 3.4])
+freqs = jax.vmap(quarter_wave_freq)(lengths, eps_eff)
+```
+
+## Checklist before scaling up
+
+- Did a single case run and produce physically plausible fields/probes?
+- Is the selected source/port family documented for the claimed metric?
+- Are generated files outside git or intentionally curated docs assets?
+- Does every case record parameters, git SHA, command, support status, and metric?
+- If results are public-facing, do they cite the support matrix rather than only
+  saying that tests passed?
