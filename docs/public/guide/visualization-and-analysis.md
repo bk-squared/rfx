@@ -143,7 +143,12 @@ integrate with the actual cell-volume weights instead of `grid.dx**3`.
 ### Export for External Tools
 
 ```python
-from rfx import save_state, save_snapshots, write_touchstone, read_touchstone_full
+from rfx import (
+    read_touchstone_full,
+    save_snapshots,
+    save_state,
+    write_touchstone,
+)
 
 # Legacy-compatible Touchstone for ADS/CST/HFSS. Shape is (n_ports, n_ports, n_freqs).
 write_touchstone("device.s2p", result.s_params, result.freqs, z0=50.0)
@@ -156,6 +161,7 @@ write_touchstone(
     version="2.0",
     layout="standard",
     port_z0=[50.0, 50.0, 50.0, 50.0],
+    information={"Project": "demo", "Tool": "rfx"},
 )
 network = read_touchstone_full("device_v2.s4p")
 

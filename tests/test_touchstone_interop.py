@@ -5,7 +5,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from rfx import TouchstoneData, read_touchstone, read_touchstone_full, write_touchstone
+from rfx import (
+    TouchstoneData,
+    read_touchstone,
+    read_touchstone_full,
+    write_touchstone,
+)
 
 
 def test_read_touchstone_full_parses_v2_s4p_standard_row_wise(tmp_path: Path):
@@ -161,6 +166,71 @@ def test_writer_rejects_extension_port_mismatch_and_nonfinite_data(
             tmp_path / "bad_freq.s2p",
             np.zeros((2, 2, 1), dtype=np.complex128),
             np.array([np.inf]),
+        )
+
+
+def test_reader_accepts_fortran_d_exponents_and_information_block(
+    tmp_path: Path,
+):
+    path = tmp_path / "fortran_info.s2p"
+    path.write_text("\n".join([
+        "[Version] 2.0",
+        "# GHZ S RI R 5.0D+01",
+        "[Number of Ports] 2",
+        "[Number of Frequencies] 1",
+        "[Reference]",
+        "5.0D+01 7.5D+01",
+        "[Begin Information]",
+        "CreatedBy external-rf-tool",
+        "Project d-exponent-smoke",
+        "[End Information]",
+        "[Network Data]",
+        "1.0D+00  1.1D+01 0.0D+00 2.1D+01 0.0D+00 1.2D+01 0.0D+00 2.2D+01 0.0D+00",
+        "[End]",
+    ]))
+
+    data = read_touchstone_full(path)
+
+    np.testing.assert_allclose(data.freqs, [1e9])
+    np.testing.assert_allclose(data.reference, [50.0, 75.0])
+    assert data.information == (
+        "CreatedBy external-rf-tool",
+        "Project d-exponent-smoke",
+    )
+    assert data.s_params[0, 0, 0] == 11 + 0j
+    assert data.s_params[1, 0, 0] == 21 + 0j
+    assert data.s_params[0, 1, 0] == 12 + 0j
+    assert data.s_params[1, 1, 0] == 22 + 0j
+
+
+def test_v2_writer_roundtrips_information_block(tmp_path: Path):
+    s_params = np.eye(2, dtype=np.complex128)[:, :, None] * 0.1
+    freqs = np.array([1e9])
+    path = tmp_path / "info_writer.s2p"
+
+    write_touchstone(
+        path,
+        s_params,
+        freqs,
+        version="2.0",
+        information={"Project": "interop", "Tool": "rfx"},
+    )
+
+    text = path.read_text()
+    assert "[Begin Information]" in text
+    assert "[End Information]" in text
+    data = read_touchstone_full(path)
+    assert data.information == ("Project interop", "Tool rfx")
+    np.testing.assert_allclose(data.s_params, s_params)
+
+
+def test_v1_writer_rejects_information_block(tmp_path: Path):
+    with pytest.raises(ValueError, match="information blocks"):
+        write_touchstone(
+            tmp_path / "bad_info.s1p",
+            np.zeros((1, 1, 1), dtype=np.complex128),
+            np.array([1e9]),
+            information=["Tool rfx"],
         )
 
 
