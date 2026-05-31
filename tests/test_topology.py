@@ -458,7 +458,7 @@ def test_pec_foreground_gradient_is_finite_and_nonzero():
     hi_idx = grid.position_to_index(region.corner_hi)
     design_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
 
-    base_materials, debye_spec, lorentz_spec, base_pec_mask, _, _ = sim._assemble_materials(grid)
+    base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(grid)
 
     def loss_fn(logit):
         rho = jax.nn.sigmoid(logit)

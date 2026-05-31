@@ -271,7 +271,7 @@ def coaxial_tem_reference_plane_vi(
     if h_phi.shape[-1] < 1:
         raise ValueError("h_phi_samples must have at least one azimuthal sample")
 
-    trapezoid = getattr(np, "trapezoid", np.trapz)
+    trapezoid = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
     voltage = float(voltage_sign) * trapezoid(
         e_radial,
         radial_positions,
