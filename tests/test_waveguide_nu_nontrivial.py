@@ -4,6 +4,22 @@ Settles the open question after NU-DRIVE-FIX: does
 ``_compute_waveguide_s_matrix_nu`` return correct S-parameters for a
 *non-trivial* device (real reflection, |S11|>0, |S21|<1)?
 
+== RESOLVED (2026-05-29, issue #88) via normalize="flux" ==
+
+The ``normalize=True`` verdict below stays a strict-xfail because the
+normalize=True diagonal genuinely remains fragile on a graded mesh
+(band-edge denominator collapse — see the num_periods scan in this file's
+docstring). It was NOT fixed; it is kept as a regression witness.
+
+The issue itself is closed by the ``normalize="flux"`` branch
+(PR #94 scan-body flux accumulation + PR #95 NU flux extractor): the flux
+path is passive at a settled num_periods and matches the analytic Airy
+reference within the broad-E5 0.05 tolerance, even for the eps_r=4 strong
+reflector that normalize=True floors at ~0.077. See
+``tests/test_waveguide_nu_flux.py`` (CPU sanity + Airy accuracy) and the
+GPU-validated WR-90 NU flux broad-E5 envelope (16/16 cases, VESSL run
+369367240154). Trail: docs/research_notes/20260529_flux_nu_wiring_design.md.
+
 The air-thru test (tests/test_waveguide_nu_sparam.py) only validates the
 trivial device==reference cancellation case.  A real device requires the
 normalization path to correctly de-embed a non-zero reflected wave.
