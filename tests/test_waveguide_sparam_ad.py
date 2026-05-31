@@ -105,10 +105,17 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
 
     # Verify sha256 integrity
     sha = hashlib.sha256(golden.tobytes()).hexdigest()
+    # Re-pinned 2026-05-31 after PR #92 (48a2ce6) introduced the symmetric E/H
+    # stencil, which intentionally shifts the absolute reflection terms (S00/S11
+    # for normalize=False by ~1.4e-2; flux by ~5.7e-4). The ratio-normalized
+    # normalize=True is stencil-bias-invariant — its golden is bit-IDENTICAL to
+    # the pre-#92 snapshot (SHA unchanged below), which corroborates that this is
+    # a fixture refresh to validated behaviour, NOT a masked regression.
+    # Regenerate with scripts/diagnostics/regen_waveguide_smatrix_goldens.py.
     _EXPECTED_SHA = {
-        "false": "fcf514d5791689b75d0329de8d781df6d14914c1a858c89456c0fbb8c4eaa135",
+        "false": "4d39bbe1331f533195757e0172e840e051315d48089f136039effd9a9628614e",
         "true":  "82ec3bb49a51332d25dae8c772130b3c9253e6949c8010bbad112175606bca2e",
-        "flux":  "f853c126385630f84244fc22d53c1583615a64be7058853a017d2926689e97b8",
+        "flux":  "4299dd94b866f0d81393bb8d32a35f97267db29f498141e45233de6a61b4c0bb",
     }
     assert sha == _EXPECTED_SHA[mode_name], (
         f"Golden fixture sha256 mismatch for normalize={normalize}: "
