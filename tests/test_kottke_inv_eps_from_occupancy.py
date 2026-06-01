@@ -77,8 +77,8 @@ def test_half_fill_y_normal_kottke_signature():
     """Step in occupancy along ŷ:
     - cells with occ=1 → all inv components = 0 (PEC)
     - cells with occ=0 → 1/ε_bg (vacuum)
-    - boundary cell (occ=0.5, normal = ŷ) →
-        inv_yy (perpendicular) = (1−0.5)/ε_bg = 0.5/ε_bg
+    - boundary cell (occ=0.5, adjacent to PEC) → PEC-dilated (60939e0) →
+        inv_yy (perpendicular) ≈ 0  (hard PEC mirror)
         inv_xx, inv_zz (parallel) = 0  (any f > 0 zeros parallel)"""
     grid = _grid()
     nx, ny, nz = grid.shape
@@ -116,13 +116,19 @@ def test_half_fill_y_normal_kottke_signature():
     assert jnp.allclose(bnd_zz, 0.0, atol=1e-2), (
         f"boundary inv_zz (parallel) should be 0; got max {float(jnp.max(jnp.abs(bnd_zz))):.3e}"
     )
-    # With soft Heaviside projection (smooth_width=0.05), the cell at
-    # occ=0.5 has interior_mask = sigmoid(0) = 0.5, so the Kottke
-    # output is multiplied by (1 - 0.5) = 0.5: inv_yy = 0.5·(1-0.5)/eps
-    # = 0.25.  This is the intended behavior — the projection biases
-    # boundary cells toward "more PEC" so the wave reflects cleanly.
-    assert jnp.allclose(bnd_yy, 0.25, atol=5e-2), (
-        f"boundary inv_yy (perp) should be 0.25 (with Heaviside proj); "
+    # POST-DILATION contract (commit 60939e0 "1-cell PEC dilation via
+    # neighbor-max"): the occ=0.5 boundary cell adjacent to a PEC cell
+    # (occ=1) is neighbor-max-dilated, so interior_mask = sigmoid((1−0.5)/
+    # smooth_width) ≈ 1 and the Kottke output is ×(1−1) = 0 → inv_yy → 0
+    # (hard PEC mirror).  This is the AD-smooth analogue of the binary
+    # apply_pec_mask `pec_mask & (roll | roll)` rule that the production
+    # compute_msl_s_matrix path uses for Box(material="pec"); it is
+    # VESSL-validated by witness |s21| 0.27 → 0.77 (the wave now reflects
+    # cleanly off the open-stub end instead of leaking).  The pre-dilation
+    # 0.25 expectation (from ancestor commit ef6f570, authored ~6 min before
+    # 60939e0) is stale — see docs rfx-known-issues "Kottke occupancy dilation".
+    assert jnp.allclose(bnd_yy, 0.0, atol=1e-2), (
+        f"boundary inv_yy (perp) should be ~0 (post-60939e0 PEC dilation); "
         f"got mean {float(jnp.mean(bnd_yy)):.4f}"
     )
 
@@ -146,8 +152,13 @@ def test_baseline_min_preserves_dielectric_outside():
         grid, occ_jax, aniso_inv_eps_baseline=baseline,
     )
     # Vacuum side (occ=0): baseline is preserved (PEC contribution = 0.25 at occ=0,
-    # min(0.25, 0.25) = 0.25)
-    assert jnp.allclose(inv_xx[:, 0:ny // 2 - 2, :], 0.25, atol=1e-3)
+    # min(0.25, 0.25) = 0.25).  Start at j=1: j=0 is the PERIODIC-WRAP edge — the
+    # 60939e0 neighbor-max PEC dilation wraps (jnp.roll), so j=0's −ŷ neighbor is the
+    # PEC cell j=ny-1, dilating j=0 to PEC (inv→0).  That wrap never fires in production
+    # (microstrip PEC is interior, far from the domain edges); it is a test-setup
+    # artifact of filling PEC to the grid boundary.  Same stale-test cause as
+    # test_half_fill_y_normal (see docs rfx-known-issues "Kottke occupancy dilation").
+    assert jnp.allclose(inv_xx[:, 1:ny // 2 - 2, :], 0.25, atol=1e-3)
     # PEC side (occ=1): all components 0
     assert jnp.allclose(inv_xx[:, ny // 2 + 1:, :], 0.0, atol=1e-3)
 
