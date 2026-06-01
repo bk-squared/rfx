@@ -85,11 +85,18 @@ def _build_patch_sim() -> Simulation:
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "issue #80 patch S11: V·I-split extractor gives non-passive |S11|~1.44 "
-        "(>1) with resonance dip ~10.275 GHz vs analytic 9.21 GHz — mismeasured "
-        "closed Ampere-loop current on the reflecting resonant load. Architectural "
-        "fix needed (lumped-port feed / re-derived current path). XPASS => fixed; "
-        "remove this xfail and promote to a green gate. See 2026-05-26 STOP note."
+        "issue #80 patch S11 — PASSIVITY now FIXED (2026-06-01): the V·I-split "
+        "extractor was sound all along; the non-passive |S11|~1.44/8.94 came from "
+        "probe 0 sitting INSIDE the source fringing transient (default offset ~5 "
+        "cells; the transient extends ~5·h_sub). The n_probe_offset floor clears it "
+        "→ passive |S11|~0.99 (CPU-verified at this geometry). The REMAINING xfail "
+        "is the DIP LOCATION: at this coarse dx=0.197mm the patch FDTD-resonates-"
+        "high (~10.4 GHz — the Yee staircase / 1-cell-PEC mesh effect, NOT the "
+        "extractor; ring-down on the SAME fields gives 9.32), converging to analytic "
+        "9.21 only at finer mesh. At dx=0.197 the dip cannot reach 9.21±0.20, so the "
+        "dip assert fails (expected). To promote to GREEN: run at finer mesh (dip→9.2) "
+        "OR split into a passivity gate (green now) + a mesh-convergence dip test. "
+        "DO NOT loosen TOL_GHZ to force it (R5). See 2026-06-01 verify note."
     ),
 )
 def test_issue80_patch_s11_passive_and_resonant():

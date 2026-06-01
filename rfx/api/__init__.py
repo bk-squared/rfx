@@ -997,12 +997,18 @@ class Simulation(
             → passive matched termination only.
         n_probe_offset : int, optional
             Distance (cells) from the feed plane to the first probe plane.
-            When ``None``, bound to the wavelength (issue #80 Fix B):
+            When ``None``, bound to the LARGER of two near-field clearances:
+            (a) the wavelength reactive far-field (issue #80 Fix B),
             ``round(0.5 * lam_min_eff / (2*pi) / dx)`` with
-            ``lam_min_eff = c / freq_max / sqrt(eps_r_sub_estimate)``. This
-            places probe 1 at ~λ/(4π) at the highest design frequency, well
-            into the source far-field, and keeps the 3-probe extractor away
-            from its q→1 numerical singularity under mesh refinement.
+            ``lam_min_eff = c / freq_max / sqrt(eps_r_sub_estimate)``; and
+            (b) the source FRINGING transient ``round(5 * h_sub / dx)``,
+            which decays over a few substrate thicknesses (``h_sub`` = the
+            port ``height``), NOT over λ. For a thin high-εr substrate (b)
+            dominates: clearing only (a) leaves probe 0 inside the fringing
+            transient and corrupts the V·I-split S11 of a high-Q resonant
+            load (issue #80 patch: |S11|=8.94/1.11 → passive ~0.99 once
+            cleared). Pass an explicit value to override; ``< 5*h_sub/dx``
+            triggers a preflight near-field warning.
         n_probe_spacing : int, optional
             Distance (cells) between consecutive probe planes. When ``None``,
             bound so the total N-probe array span stays ~``lam_min_eff/8``
@@ -1076,10 +1082,20 @@ class Simulation(
                 if mat_eps > 1.0:
                     eps_r_sub_estimate = max(eps_r_sub_estimate, mat_eps)
         lam_min_eff = C0 / self._freq_max / math.sqrt(eps_r_sub_estimate)
+        # Probe 0 must clear BOTH near-field scales of the MSL launch:
+        #  (a) λ/(2π) reactive far-field of the quasi-TEM mode, and
+        #  (b) the SOURCE FRINGING transient, which decays over a few
+        #      substrate thicknesses (~5·h_sub), NOT over λ.  For a thin
+        #      high-εr substrate (b) dominates; clearing only (a) leaves
+        #      probe 0 inside the fringing transient and corrupts the
+        #      V·I-split S11 of a high-Q resonant load — the issue #80
+        #      edge-fed patch read |S11|=8.94/1.11 at the (a)-only offset
+        #      (~5 cells) and a passive ~0.99 once cleared to ~5·h_sub.
+        #      ``height`` is the port cross-section height = substrate h_sub.
+        _lam_cells = int(round(0.5 * lam_min_eff / (2.0 * math.pi) / _dx))
+        _hsub_cells = int(round(5.0 * height / _dx))
         if n_probe_offset is None:
-            n_probe_offset = max(
-                3, int(round(0.5 * lam_min_eff / (2.0 * math.pi) / _dx))
-            )
+            n_probe_offset = max(3, _lam_cells, _hsub_cells)
         if n_probe_spacing is None:
             # Bind the default so the TOTAL N-probe array span stays
             # ~lam/8 (the original Fix B 3-probe span of 2*lam/16),

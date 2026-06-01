@@ -179,6 +179,23 @@ class _PreflightMixin:
         messages: list[str] = []
         if self._msl_ports:
             messages.append("MSL ports use compute_msl_s_matrix()")
+            # Near-field guard (issue #80): probe 0 must clear the source
+            # FRINGING transient (~5·h_sub), which decays over a few substrate
+            # thicknesses, not over λ. Inside it the V·I-split S11 of a high-Q
+            # resonant load is corrupted (the issue-#80 edge-fed patch read
+            # |S11|=8.94/1.11 at offset~5; passive ~0.99 once cleared). The
+            # default n_probe_offset already floors to max(λ-clearance,
+            # 5·h_sub/dx); this warns when an EXPLICIT value under-provisions it.
+            for pe in self._msl_ports:
+                if self._dx and pe.n_probe_offset < 5.0 * pe.height / self._dx:
+                    messages.append(
+                        f"MSL port {pe.name!r}: n_probe_offset="
+                        f"{pe.n_probe_offset} sits within the source fringing "
+                        f"transient (~{5.0 * pe.height / self._dx:.0f} cells = "
+                        f"5·h_sub/dx); probe 0 may corrupt the V·I-split S11 of "
+                        f"a high-Q resonant load (issue #80) — increase "
+                        f"n_probe_offset or leave it None for the safe default."
+                    )
         if self._waveguide_ports:
             messages.append("waveguide ports use compute_waveguide_s_matrix()")
         if self._floquet_ports:
