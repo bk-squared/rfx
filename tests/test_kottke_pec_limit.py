@@ -334,14 +334,20 @@ def test_two_non_overlapping_pec_walls_per_component_min_correct():
 
     # z_hi perpendicular boundary at Ez(j=5, k=10).
     # Ez is at (i, j, k+0.5) → (·, 5mm, 10.5mm). The z-wall is closer
-    # (0.34mm from Ez, vs 17.86mm to y-wall). Expected:
-    #   pec_z: sdf=−0.34 (inside), f=0.84, inv_perp=(1−0.84)/1=0.16,
-    #          n_z=±1 → inv_zz = 1·0.16 + 0·0 = 0.16.
-    #   pec_y: sdf=+17.86 ≫ dx/2 → f=0 → inv_zz = 1 (vacuum).
-    #   min(0.16, 1) = 0.16 ✓
-    assert inv_zz_np[i_mid, 5, 10] == pytest.approx(0.16, abs=0.05), (
-        f"z_hi perpendicular boundary cell expected 0.16, got "
-        f"{inv_zz_np[i_mid, 5, 10]:.4f}"
+    # (0.34mm from Ez, vs 17.86mm to y-wall). This Ez cell is ~84% inside the
+    # PEC (sdf=−0.34, f=0.84 > 0.5). POST-60939e0 ("1-cell PEC dilation via
+    # neighbor-max" + Heaviside projection): a cell whose own occupancy exceeds
+    # 0.5 is projected to FULL PEC → inv_zz = 0 (hard mirror), not the
+    # pre-projection subpixel (1−0.84)=0.16. This matches the binary
+    # apply_pec_mask reference the dilation is the AD-smooth analogue of, and is
+    # VESSL-validated by |s21| 0.27→0.77. The y_hi cell above (only ~14% PEC,
+    # < 0.5) stays subpixel (0.86). The 0.16 was stale — same root cause as the
+    # test_kottke_inv_eps_from_occupancy re-bless (PR #115); see docs
+    # rfx-known-issues "Kottke occupancy dilation". (Was sharding-masked on CI
+    # until #115 fixed the sibling and this shard surfaced.)
+    assert inv_zz_np[i_mid, 5, 10] == pytest.approx(0.0, abs=1e-2), (
+        f"z_hi boundary cell (~84% PEC) expected ~0 (post-60939e0 Heaviside); "
+        f"got {inv_zz_np[i_mid, 5, 10]:.4f}"
     )
 
     # Tangential at Ex(j=23, k=5): inside y-wall, far from z-wall.
