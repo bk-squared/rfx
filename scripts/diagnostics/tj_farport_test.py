@@ -20,8 +20,8 @@ from rfx.sources.waveguide_port import (
     WaveguidePort, init_waveguide_port, extract_waveguide_s_matrix_flux)
 
 ap = argparse.ArgumentParser(); ap.add_argument("--dx_mm", type=float, required=True)
-ap.add_argument("--nf", type=int, default=11); a = ap.parse_args()
-dx = a.dx_mm * 1e-3; nc = 10
+ap.add_argument("--nf", type=int, default=11); ap.add_argument("--nc", type=int, default=10); a = ap.parse_args()
+dx = a.dx_mm * 1e-3; nc = a.nc
 BAND = np.linspace(5.0e9, 7.0e9, a.nf)   # full band incl. the old 7GHz spike zone
 LX, LY, LZ = 0.30, 0.24, 0.02
 grid = Grid(freq_max=10e9, domain=(LX, LY, LZ), dx=dx, cpml_layers=nc, cpml_axes="xy")
@@ -53,7 +53,7 @@ print(f"[dx={a.dx_mm}mm] domain {LX}x{LY}, n_steps={n_steps}, probe ~{0.04+0.03:
       f"junction-clearance left~{(0.13-(0.04+0.03))*1000:.0f}mm top~{((0.21-0.03)-0.14)*1000:.0f}mm", flush=True)
 S = np.abs(np.asarray(extract_waveguide_s_matrix_flux(grid, dev, init_materials(grid.shape), cfgs, n_steps,
     boundary="cpml", cpml_axes="xy", pec_axes="z", ref_materials_per_port=[mat_h, mat_h, mat_v])))
-out = f"/tmp/rfx-tj/scripts/diagnostics/_artifacts/tj_farport_dx{a.dx_mm:.1f}.npz"
+out = f"/tmp/rfx-tj/scripts/diagnostics/_artifacts/tj_farport_dx{a.dx_mm:.1f}_nc{nc}.npz"
 np.savez(out, S=S, band=BAND, dx_mm=a.dx_mm)
 cps = np.sum(S**2, axis=0)
 print(f"[FARPORT dx={a.dx_mm}mm] passivity_max={cps.max():.3f} band-mean-colsum={np.mean(cps):.3f} "
