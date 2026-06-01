@@ -197,6 +197,20 @@ plan_json = plan.to_json()
 report_json = report.to_json()
 ```
 
+Use `plan_mesh(...)` when deriving a mesh from geometry, or
+`Simulation.plan_mesh(...)` before running an already configured
+memory-constrained non-uniform case. The returned `MeshPlan` carries the
+non-uniform profile audit (`nominal_dx`, `dx_min`/`dx_max`,
+`dy_min`/`dy_max`, `dz_min`/`dz_max`, and `profiles_present`), the configured
+memory summary, optional S-parameter support checks, and declaration-only
+artifact paths. Supplying `artifact_root` names intended mesh-plan/report
+outputs but does not create directories or write files; scene and replay remain
+unclaimed until dedicated exporters exist.
+
+`MeshPlan` is still a planning artifact rather than physics validation. Resolve
+any support checks, then verify the observable against the appropriate uniform
+or external reference lane.
+
 The same planning artifact can be generated from the command line with:
 
 ```bash

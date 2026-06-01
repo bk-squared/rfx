@@ -12,17 +12,27 @@ without hand-deriving every simulation parameter.
 
 | Helper | Signature | What it does |
 |---|---|---|
+| `plan_mesh` | `plan_mesh(geometry, freq_range, materials=None, accuracy="standard", boundary="cpml", ...)` | returns a serializable `MeshPlan` with mesh, CFL, absorber, memory, support-check, and artifact declarations |
 | `auto_configure` | `auto_configure(geometry, freq_range, materials=None, accuracy="standard", boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None)` | derives mesh, margin, and run budget from geometry + frequency range |
 | `Simulation.auto` | `Simulation.auto(freq_range, accuracy="standard", **kwargs)` | convenience constructor for a full simulation |
 | `smooth_grading` | mesh-profile smoothing helper | used by current crossval workflows for graded z-profiles |
 | `apply_thirds_rule` | feature-aware mesh helper | used when derived meshes need conservative refinement |
 
 ```python
-from rfx import Simulation, auto_configure
+from rfx import Simulation, plan_mesh
 
-cfg = auto_configure(geometry, freq_range=(1.5e9, 3.5e9), accuracy="standard")
-sim = Simulation(**cfg.to_sim_kwargs())
+plan = plan_mesh(geometry, freq_range=(1.5e9, 3.5e9), accuracy="standard")
+sim = Simulation(**plan.to_sim_kwargs())
 ```
+
+`plan_mesh(...)` is the inspectable planning layer. It reuses `auto_configure(...)`
+rather than forking mesh math. Its artifact declarations are read-only intended
+paths; passing `artifact_root` does not create directories or write files.
+
+`MeshPlan` v1 includes `plan_source`, nullable unknowns, and a stable
+`cell_sizes` block (`nominal_dx`, per-axis min/max values, and
+`profiles_present`). Geometry-derived plans use `plan_source="auto_configure"`
+and carry the requested `accuracy`; they have not run `Simulation.preflight()`.
 
 ## When to use automation
 

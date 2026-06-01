@@ -137,6 +137,7 @@ except ImportError:
 from rfx.lumped import LumpedRLCSpec, RLCState, RLCCellMeta
 from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source
 from rfx.auto_config import auto_configure, SimConfig, analyze_features, smooth_grading, apply_thirds_rule
+from rfx.mesh_planner import MeshPlan, plan_mesh, plan_simulation_mesh
 from rfx.harminv import harminv, harminv_from_probe, HarminvMode
 from rfx.probes.probes import (
     wire_port_voltage, wire_port_current,
