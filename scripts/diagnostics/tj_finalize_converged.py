@@ -1,7 +1,7 @@
 """Finalize the CONVERGED, proper-setup T-junction broad-E5 artifacts for formal
 promotion. Mesh-convergence axis = two converged meshes at FIXED 48mm CPML:
 dx=1.0mm(nc=48) vs dx=0.667mm(nc=72). External cross-FDTD = matched far-port MEEP
-(res=1000, self-converged at 7.0GHz). Full single-mode TE10 band 5.0-7.0 GHz. Supersedes the nc=10 narrow/
+(res=2000; res 500->1000->2000 self-converges toward rfx at the 7.0GHz edge). Full single-mode TE10 band 5.0-7.0 GHz. Supersedes the nc=10 narrow/
 near-port artifacts. No tolerance loosening — metrics computed and reported as-is.
 """
 import os, json
@@ -15,7 +15,7 @@ S_coarse = np.load(f"{A}/tj_farport_dx1.0_nc48.npz")["S"]    # dx=1.0mm, 48mm CP
 S_fine   = np.load(f"{A}/tj_farport_dx0.7_nc72.npz")["S"]    # dx=0.667mm, 48mm CPML
 M = np.zeros((3, 3, len(band)))
 for d in range(3):
-    z = np.load(f"{A}/meep_tjunction_farport_r1000_drive{d}.npz")
+    z = np.load(f"{A}/meep_tjunction_farport_r2000_drive{d}.npz")
     fm, col = z["freqs_hz"], np.abs(z["col"])
     for j in range(3): M[j, d] = np.interp(band, fm, col[j])
 
@@ -60,7 +60,7 @@ cmp = dict(schema="rfx.waveguide_tjunction_meep_external_comparison", schema_ver
            f"both passive (rfx<={passiv(S_fine):.3f}, meep<={passiv(M):.3f}) and reciprocal. rfx also matches the "
            f"bare H-plane T handbook reference (|S11|~0.26,|S21|~0.84,|S31|~0.43,|S33|~0.72)."),
     claim_scope=(f"broad external cross-FDTD comparison of rfx rectangular_waveguide_port H-plane T-junction |S| "
-           f"vs an independent matched far-port MEEP flux reference (res=1000, self-converged) over the single-mode TE10 band ({fghz}); "
+           f"vs an independent matched far-port MEEP flux reference (res=2000, self-converged) over the single-mode TE10 band ({fghz}); "
            f"documented cross-FDTD tolerance {XFDTD_TOL} (two discretized FDTD solvers, no closed-form junction truth)."),
     cross_fdtd_tol=XFDTD_TOL, rfx_vs_meep_max_abs_dev=xdev, rfx_vs_meep_bandmean_max_abs_dev=xdev_bm,
     rfx_passivity_max=passiv(S_fine), rfx_reciprocity=recip(S_fine),
