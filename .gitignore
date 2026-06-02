@@ -43,3 +43,4 @@ examples/*.json
 
 # VESSL cluster log mirrors (operational; not physics evidence)
 docs/vessl-logs/
+scripts/diagnostics/_artifacts/*.npz
