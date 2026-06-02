@@ -2141,8 +2141,19 @@ def extract_waveguide_s_matrix_flux(
     ref_aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
+    ref_materials_per_port: "list | None" = None,
 ) -> jnp.ndarray:
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
+
+    ``ref_materials_per_port`` (optional): a per-driven-port list of reference
+    materials. For a STRAIGHT guide the device PEC walls also bound the vacuum
+    reference (walls come from ``pec_axes``), so a single vacuum ``ref_materials``
+    yields the correct guided incident power P_inc. For a JUNCTION (T/branch,
+    walls in ``materials`` with ``cpml_axes`` open), a vacuum reference radiates
+    into free space and P_inc is mis-powered (all |S| inflate, non-passive). Pass
+    ``ref_materials_per_port[i]`` = a matched STRAIGHT guide for driven arm ``i``
+    (its walls extended through, no junction) so P_inc is the true single-mode
+    guided incident power and the extracted S is passive-by-construction.
 
     For each driven port ``i``:
 
@@ -2227,8 +2238,13 @@ def extract_waveguide_s_matrix_flux(
             _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
             for idx, cfg in enumerate(template_cfgs)
         ]
+        # Per-port matched-straight-guide reference for junctions (else vacuum).
+        ref_mat_drive = (
+            ref_materials_per_port[drive_idx]
+            if ref_materials_per_port is not None else ref_materials
+        )
         ref_result = run_simulation(
-            grid, ref_materials, n_steps,
+            grid, ref_mat_drive, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
             waveguide_ports=ref_cfgs,
             flux_monitors=_make_flux_monitors(),
