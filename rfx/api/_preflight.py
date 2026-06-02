@@ -1460,8 +1460,27 @@ class _PreflightMixin:
                             # CPML region without explicitly reaching
                             # the boundary (the original issue #61
                             # leak-into-absorber footgun).
-                            intentional_lo = c1[ax] <= dx * 0.5
-                            intentional_hi = c2[ax] >= d - dx * 0.5
+                            # 2026-06 fix: "touches the edge" alone is not
+                            # enough — a thin slab buried ENTIRELY inside the
+                            # absorber also starts at the edge. An edge-touching
+                            # box is an intentional full-domain extension only if
+                            # it reaches PAST the CPML into the physical interior
+                            # (c2 > thick_lo); a slab contained within the CPML is
+                            # the issue-#61 footgun and must warn (regression:
+                            # test_preflight_still_warns_on_non_periodic_z_axis).
+                            # BUT when the CPML spans (nearly) the whole axis there
+                            # is no interior to reach and no footgun to flag — the
+                            # warning is meaningless, so the edge touch stays
+                            # intentional (degenerate full-CPML axis, e.g. the
+                            # thin-substrate false-positive test where
+                            # layers·dx ≈ L_axis).
+                            has_interior = (thick_lo + thick_hi) < d - dx * 0.5
+                            intentional_lo = c1[ax] <= dx * 0.5 and (
+                                c2[ax] > thick_lo or not has_interior
+                            )
+                            intentional_hi = c2[ax] >= d - dx * 0.5 and (
+                                c1[ax] < d - thick_hi or not has_interior
+                            )
                             lo_hit = (thick_lo > 0
                                       and c1[ax] < thick_lo * 0.3
                                       and not intentional_lo)

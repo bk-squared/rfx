@@ -92,7 +92,20 @@ def test_higher_sigma_faster_decay():
               np.sin(np.pi * y[None, :, None] / Ly) * \
               np.ones((1, 1, shape[2]))
 
-    decay_ratios = []
+    # Two measurements are needed from one run because the test checks two
+    # different things that peak at different times:
+    #   * EARLY snapshot (step 30) for the σ-ordering — by ~step 100 BOTH lossy
+    #     cases have decayed to the ~9e-4 round-off floor and become equal, so a
+    #     late snapshot cannot tell σ=0.1 from σ=0.5 (this latent bug was masked
+    #     before: the lossless assert below short-circuited the run at step 500).
+    #   * TAIL average (last full period) for the lossless conservation — the
+    #     same-time ½εE²+½μH² energy oscillates at 2ω (leapfrog samples E and H a
+    #     half-step apart), so a single end-of-loop snapshot lands on the ~±6%
+    #     trough (0.89 at step 500) even though the envelope is flat (energy IS
+    #     conserved). Averaging the tail recovers the conserved quantity.
+    _EARLY_STEP = 30
+    early_ratios = []
+    tail_ratios = []
     for sigma_val in [0.0, 0.1, 0.5]:
         materials = init_materials(shape)
         if sigma_val > 0:
@@ -103,27 +116,34 @@ def test_higher_sigma_faster_decay():
         state = state._replace(ez=jnp.array(ez_init, dtype=jnp.float32))
         initial_energy = _total_energy(state, dx)
 
+        early_energy = None
+        tail_energies = []
         for step in range(500):
             state = update_h(state, materials, dt, dx)
             state = update_e(state, materials, dt, dx)
             state = apply_pec(state)
+            if step + 1 == _EARLY_STEP:
+                early_energy = _total_energy(state, dx)
+            if step >= 450:
+                tail_energies.append(_total_energy(state, dx))
 
-        final_energy = _total_energy(state, dx)
-        ratio = final_energy / initial_energy if initial_energy > 0 else 0
-        decay_ratios.append(ratio)
+        early_ratios.append(early_energy / initial_energy if initial_energy > 0 else 0)
+        tail_ratios.append(
+            float(np.mean(tail_energies)) / initial_energy if initial_energy > 0 else 0
+        )
 
-    print("\nLossy comparison (final/initial energy ratio):")
-    for s, r in zip([0.0, 0.1, 0.5], decay_ratios):
-        print(f"  σ={s:.2f} S/m: ratio = {r:.6f}")
+    print("\nLossy comparison (energy ratios):")
+    for s, e, t in zip([0.0, 0.1, 0.5], early_ratios, tail_ratios):
+        print(f"  σ={s:.2f} S/m: early(step{_EARLY_STEP})={e:.6f}  tail-avg={t:.6f}")
 
-    # Lossless: energy should be conserved (ratio ~ 1)
-    assert decay_ratios[0] > 0.9, \
-        f"Lossless energy not conserved: ratio={decay_ratios[0]:.4f}"
-    # Higher σ → less energy remaining
-    assert decay_ratios[1] < decay_ratios[0] * 0.5, \
-        f"σ=0.1 ratio {decay_ratios[1]:.4f} not < 50% of lossless {decay_ratios[0]:.4f}"
-    assert decay_ratios[2] < decay_ratios[1] * 0.5, \
-        f"σ=0.5 ratio {decay_ratios[2]:.4f} not < 50% of σ=0.1 {decay_ratios[1]:.4f}"
+    # Lossless: energy conserved (tail-averaged to remove the 2ω leapfrog ripple).
+    assert tail_ratios[0] > 0.9, \
+        f"Lossless energy not conserved: tail-avg ratio={tail_ratios[0]:.4f}"
+    # Higher σ → faster decay, measured early while the cases are still resolvable.
+    assert early_ratios[1] < early_ratios[0] * 0.5, \
+        f"σ=0.1 early ratio {early_ratios[1]:.4f} not < 50% of lossless {early_ratios[0]:.4f}"
+    assert early_ratios[2] < early_ratios[1] * 0.5, \
+        f"σ=0.5 early ratio {early_ratios[2]:.4f} not < 50% of σ=0.1 {early_ratios[1]:.4f}"
 
 
 def test_set_material_region():
