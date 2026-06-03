@@ -655,8 +655,14 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["missing_passed_comparison_artifact_count"] == 7
     assert audit["passed_comparison_artifact_count"] == 0
     assert audit["passed_broad_e4_comparison_artifact_count"] == 0
-    assert audit["missing_broad_e4_comparison_artifact_count"] == 0
-    assert audit["missing_broad_e5_envelope_artifact_count"] == 0
+    # rectangular_waveguide_port gained broad-E4 + broad-E5 requirements (the
+    # T-junction work, PR #114) whose comparison/envelope artifacts are VESSL
+    # outputs under the gitignored .omx/ tree — absent on a clean checkout, so
+    # exactly one family is "missing" each. (Same clean-checkout contract as the
+    # broad-E5/schema assertions above; not a defect.)
+    assert audit["missing_broad_e4_comparison_artifact_count"] == 1
+    assert audit["missing_broad_e4_comparison_artifact_families"] == ["rectangular_waveguide_port"]
+    assert audit["missing_broad_e5_envelope_artifact_count"] == 1
     assert audit["passed_broad_e5_envelope_artifact_count"] == 0
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}
