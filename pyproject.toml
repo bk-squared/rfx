@@ -35,7 +35,7 @@ dependencies = [
 optimization = ["optax>=0.1.7"]
 visualization = ["matplotlib>=3.7", "pillow"]
 dashboard = ["streamlit>=1.30"]
-dev = ["pytest>=7.0", "pytest-xdist", "ruff"]
+dev = ["pytest>=7.0", "pytest-xdist", "pytest-split", "ruff"]
 all = ["rfx[optimization,visualization,dashboard,dev]"]
 
 [tool.setuptools.packages.find]

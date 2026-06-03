@@ -33,6 +33,7 @@ import warnings
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -147,6 +148,7 @@ def _build_wg_sim() -> Simulation:
 # Tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.gpu  # reverse-mode AD tape = ~3934 steps x 145k cells x 6 x 4B ~ 14 GB; OOMs the 7 GB CPU-CI runner. Runs on the GPU/VESSL harness.
 def test_msl_s_matrix_ad_end_to_end():
     """G-AD-WIRE M1: jax.grad flows end-to-end through compute_msl_s_matrix.
 
@@ -304,6 +306,7 @@ def test_waveguide_s_matrix_ad_end_to_end():
 # (mirrors tests/test_waveguide_forward.py — here for completeness)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.gpu  # same ~14 GB MSL reverse-mode AD tape as the M1 test; OOMs the 7 GB CPU-CI runner.
 def test_forward_eps_override_is_differentiable_msl():
     """Positive control: jax.grad through forward(eps_override=) + probe loss.
 
