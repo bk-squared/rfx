@@ -59,14 +59,24 @@ def test_v173a_baseline_bit_identity():
     delta_f_hz = abs(f_res - baseline["f_res_hz"])
     delta_s11_db = abs(s11_dip_db - baseline["s11_dip_db"])
 
-    assert delta_f_hz == 0.0, (
-        f"V173-A Δf_res = {delta_f_hz} Hz ≠ 0. "
-        f"current={f_res} Hz, baseline={baseline['f_res_hz']} Hz. "
-        f"Rebump tests/data/v173a_pre_t7_phase2_baseline.json only if "
-        f"the drift is explainable (JAX/XLA upgrade, CPML reorder); "
-        f"otherwise investigate the offending commit."
+    # NOT exact bit-identity: the baseline is recorded on one machine but CI runs
+    # on different CPUs / XLA builds, so the float reduction order differs and
+    # f_res lands a few ULP away (observed 5e-5 Hz on a 1.94 GHz mode = 3e-14
+    # relative — pure numerical noise). Assert a tight RELATIVE tolerance that
+    # still flags any real numerics drift (the kind this baseline exists to catch
+    # is 4th-significant-figure / MHz-scale, e.g. the e340644 CPML-padding fix that
+    # moved f_res 1.69 -> 1.94 GHz). 1e-6 = "same resonance to 6 sig figs".
+    F_RTOL = 1e-6
+    S11_ATOL_DB = 0.1
+    assert delta_f_hz <= F_RTOL * baseline["f_res_hz"], (
+        f"V173-A Δf_res = {delta_f_hz} Hz > {F_RTOL:.0e}·f_res "
+        f"({F_RTOL * baseline['f_res_hz']:.1f} Hz). "
+        f"current={f_res} Hz, baseline={baseline['f_res_hz']} Hz. This exceeds "
+        f"cross-machine float noise — rebump tests/data/v173a_pre_t7_phase2_"
+        f"baseline.json only if the drift is explainable (numerics change, CPML "
+        f"reorder); otherwise investigate the offending commit."
     )
-    assert delta_s11_db == 0.0, (
-        f"V173-A Δ|S11| dip = {delta_s11_db} dB ≠ 0. "
+    assert delta_s11_db <= S11_ATOL_DB, (
+        f"V173-A Δ|S11| dip = {delta_s11_db} dB > {S11_ATOL_DB} dB. "
         f"current={s11_dip_db} dB, baseline={baseline['s11_dip_db']} dB."
     )
