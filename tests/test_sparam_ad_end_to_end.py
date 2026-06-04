@@ -148,7 +148,10 @@ def _build_wg_sim() -> Simulation:
 # Tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.gpu  # MSL AD over ~3934 steps: the un-checkpointed reverse tape OOMs even a 48 GB A6000 (VESSL run 369367241162). checkpoint_segments=64 (~sqrt of the step count) caps the peak to a few GB; kept gpu so it runs on the VESSL harness (CPU restoration tracked in #123).
+# MSL AD over ~3934 steps: the un-checkpointed reverse tape OOMs even a 48 GB A6000
+# (VESSL run 369367241162). checkpoint_segments=14 (below) caps the peak to a few GB,
+# so this runs on the CPU CI again (was @pytest.mark.gpu in #119 before checkpointing;
+# #123). ~4 min on the shard.
 def test_msl_s_matrix_ad_end_to_end():
     """G-AD-WIRE M1: jax.grad flows end-to-end through compute_msl_s_matrix.
 
@@ -307,7 +310,6 @@ def test_waveguide_s_matrix_ad_end_to_end():
 # (mirrors tests/test_waveguide_forward.py — here for completeness)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.gpu  # same ~14 GB MSL reverse-mode AD tape as the M1 test; OOMs the 7 GB CPU-CI runner.
 def test_forward_eps_override_is_differentiable_msl():
     """Positive control: jax.grad through forward(eps_override=) + probe loss.
 

@@ -1006,5 +1006,7 @@
   "tests/test_simulation.py::test_extract_waveguide_s_matrix_two_port_reciprocity": 1.898948575835675,
   "tests/test_simulation.py::test_init_tfsf_rejects_impossible_geometry": 0.0006363547872751951,
   "tests/test_simulation.py::test_low_level_run_supports_upml_boundary": 0.5568517807405442,
-  "tests/test_simulation.py::test_run_until_decay_supports_upml_boundary": 0.3713054219260812
+  "tests/test_simulation.py::test_run_until_decay_supports_upml_boundary": 0.3713054219260812,
+  "tests/test_sparam_ad_end_to_end.py::test_msl_s_matrix_ad_end_to_end": 225.0,
+  "tests/test_sparam_ad_end_to_end.py::test_forward_eps_override_is_differentiable_msl": 5.0
 }
