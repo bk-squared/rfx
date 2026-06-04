@@ -136,6 +136,18 @@ def test_higher_sigma_faster_decay():
     for s, e, t in zip([0.0, 0.1, 0.5], early_ratios, tail_ratios):
         print(f"  σ={s:.2f} S/m: early(step{_EARLY_STEP})={e:.6f}  tail-avg={t:.6f}")
 
+    # Window-validity guard: _EARLY_STEP must sample while the σ-ordering is still
+    # resolvable. tail_ratios[2] is σ=0.5 fully decayed → the round-off floor. If a
+    # future dt/dx/σ change shifts the decay so the early snapshot lands after the
+    # lossy cases reach that floor, σ=0.1 and σ=0.5 become equal and the ordering
+    # asserts below go degenerate — fail LOUDLY here with a fix hint instead.
+    _floor = tail_ratios[2]
+    assert early_ratios[2] > 5 * _floor, (
+        f"_EARLY_STEP={_EARLY_STEP} samples after σ=0.5 hit the round-off floor "
+        f"(early ratio {early_ratios[2]:.2e} ≤ 5×{_floor:.2e}); the σ-ordering is no "
+        f"longer resolvable — lower _EARLY_STEP into the pre-floor window."
+    )
+
     # Lossless: energy conserved (tail-averaged to remove the 2ω leapfrog ripple).
     assert tail_ratios[0] > 0.9, \
         f"Lossless energy not conserved: tail-avg ratio={tail_ratios[0]:.4f}"
