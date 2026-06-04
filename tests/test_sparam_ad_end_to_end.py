@@ -148,7 +148,7 @@ def _build_wg_sim() -> Simulation:
 # Tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.gpu  # reverse-mode AD tape = ~3934 steps x 145k cells x 6 x 4B ~ 14 GB; OOMs the 7 GB CPU-CI runner. Runs on the GPU/VESSL harness.
+@pytest.mark.gpu  # MSL AD over ~3934 steps: the un-checkpointed reverse tape OOMs even a 48 GB A6000 (VESSL run 369367241162). checkpoint_segments=64 (~sqrt of the step count) caps the peak to a few GB; kept gpu so it runs on the VESSL harness (CPU restoration tracked in #123).
 def test_msl_s_matrix_ad_end_to_end():
     """G-AD-WIRE M1: jax.grad flows end-to-end through compute_msl_s_matrix.
 
@@ -171,6 +171,7 @@ def test_msl_s_matrix_ad_end_to_end():
                 n_freqs=8,
                 num_periods=3,
                 eps_override=eps_base * alpha,
+                checkpoint_segments=14,  # cap the reverse-AD tape peak (else OOM, even on 48 GB); 14 | n_steps=3934 (= 2·7·281), ≈ √n_steps memory
             )
         S = result.S
         k0 = S.shape[-1] // 2
