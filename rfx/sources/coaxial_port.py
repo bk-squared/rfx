@@ -1433,3 +1433,290 @@ def extract_coaxial_plane_vi_from_dft(
         eps_r=float(eps_r),
         current_sign=current_sign,
     )
+
+
+# ===========================================================================
+# Coaxial transmission-line S-parameter extraction (broad-E5 redesign)
+#
+# Rationale (verified 2026-06-05..07): the single-plane V/I power-wave path in
+# ``compute_coaxial_s_matrix`` reported non-physical |S11|>1 for a lossless
+# short. Root cause was NOT the V/I extractor (its math is exact for a clean
+# lossless TEM field) but the measurement TOPOLOGY: a ~5mm coax stub in a
+# hardcoded closed PEC box has no transmission line for a clean reflection.
+#
+# The validated method below builds a real coax line terminated in a matched
+# resistive feed (conductors must NOT run into a PML — that is unstable) and
+# extracts the reflection from the modal voltage V(z)=∫E_r dr sampled at >=3
+# equally spaced reference planes, using a matrix-pencil estimate of the
+# complex propagation constant. It is Z0-free and self-measures beta, so it is
+# immune to the coarse-mesh |V/I| magnitude bias. The recurrence residual is a
+# built-in single-TEM-mode validity gate. Resolution recipe: >=~4 cells across
+# the (outer-inner) annulus (dx <~ 0.38 mm for SMA); below that the coax mode
+# is under-resolved and the high-frequency reflection degrades.
+# ===========================================================================
+
+
+class CoaxialLineReflection(NamedTuple):
+    """Reflection at a coaxial reference plane from a multi-plane line scan.
+
+    ``gamma`` is the matrix-pencil estimate of the complex propagation constant
+    (rad/m, with a positive imaginary part = phase constant beta). ``reflection``
+    is the complex reflection coefficient Gamma at ``reference_plane_m``.
+    ``recurrence_residual`` is the single-TEM-mode cleanliness gate (0 = a clean
+    two-wave field; >~0.1 flags multi-mode/under-resolved contamination).
+    ``fit_residual`` is the relative two-wave least-squares residual.
+    """
+
+    gamma: complex
+    reflection: complex
+    recurrence_residual: float
+    fit_residual: float
+    forward_amp: complex
+    backward_amp: complex
+
+
+def coaxial_line_plane_voltage(
+    grid: Grid,
+    ex_dft,
+    ey_dft,
+    *,
+    center_xy: tuple[float, float],
+    pin_radius: float = SMA_PIN_RADIUS,
+    outer_radius: float = SMA_OUTER_RADIUS,
+    eps_r: float = PTFE_EPS_R,
+):
+    """Modal TEM voltage ``V = ∫ E_r dr`` at a z-plane from Ex/Ey DFT planes.
+
+    Reuses the radial line-integral of
+    :func:`coaxial_tem_reference_plane_vi_from_cartesian_plane`; only the voltage
+    is returned (the line method does not need the azimuthal current). Leading
+    axes of ``ex_dft``/``ey_dft`` (for example frequency) are preserved.
+    """
+
+    u = (np.arange(grid.nx, dtype=np.float64) - grid.pad_x_lo) * grid.dx
+    v = (np.arange(grid.ny, dtype=np.float64) - grid.pad_y_lo) * grid.dx
+    ex = np.asarray(ex_dft, dtype=np.complex128)
+    ey = np.asarray(ey_dft, dtype=np.complex128)
+    res = coaxial_tem_reference_plane_vi_from_cartesian_plane(
+        u, v, ex, ey, ex, ey,  # H args unused for the voltage line-integral
+        center_u_m=float(center_xy[0]),
+        center_v_m=float(center_xy[1]),
+        inner_radius=float(pin_radius),
+        outer_radius=float(outer_radius),
+        eps_r=float(eps_r),
+    )
+    return np.asarray(res.vi.voltage, dtype=np.complex128)
+
+
+def coaxial_line_reflection_from_plane_voltages(
+    plane_positions_m,
+    plane_voltages,
+    *,
+    reference_plane_m: float,
+    spacing_rtol: float = 1e-6,
+) -> CoaxialLineReflection:
+    """Reflection coefficient from modal voltages at >=3 equally spaced planes.
+
+    For a single TEM mode the modal voltage is a two-wave sum
+    ``V(z) = A e^{+γz} + B e^{-γz}``. Equally spaced samples obey the recurrence
+    ``V(z-Δ) + V(z+Δ) = 2 cosh(γΔ) V(z)``; a least-squares estimate of
+    ``2 cosh(γΔ)`` over all interior planes gives the complex propagation
+    constant ``γ`` directly from the field (β self-measured, no analytic input,
+    Z0-free). ``A``/``B`` follow by least squares, and ``Γ`` is evaluated at
+    ``reference_plane_m`` with the incident wave defined as the one travelling
+    from the probe region toward the reference plane.
+
+    Parameters
+    ----------
+    plane_positions_m : (N,) strictly increasing, EQUALLY spaced (N>=3).
+    plane_voltages : (N,) complex modal voltages at those planes (one frequency).
+    reference_plane_m : axial position at which Γ is reported (the load plane);
+        may lie outside the probe span (the two-wave model is extrapolated).
+    """
+
+    z = np.asarray(plane_positions_m, dtype=np.float64)
+    V = np.asarray(plane_voltages, dtype=np.complex128)
+    if z.ndim != 1 or z.size < 3:
+        raise ValueError("plane_positions_m must be 1-D with at least 3 planes")
+    if V.shape != z.shape:
+        raise ValueError(f"plane_voltages shape {V.shape} must match positions {z.shape}")
+    d = np.diff(z)
+    if np.any(d <= 0.0):
+        raise ValueError("plane_positions_m must be strictly increasing")
+    D = float(d.mean())
+    if np.any(np.abs(d - D) > spacing_rtol * D):
+        raise ValueError("plane_positions_m must be equally spaced for the matrix pencil")
+
+    # Matrix-pencil estimate of p = 2 cosh(γΔ) (LS over interior planes).
+    Vm, Vc, Vp = V[:-2], V[1:-1], V[2:]
+    den = float(np.sum(np.abs(Vc) ** 2))
+    if den <= 0.0:
+        raise ValueError("plane_voltages are all zero; cannot estimate gamma")
+    p = np.sum((Vm + Vp) * np.conj(Vc)) / den
+    # cosh is even, so p is invariant under gamma -> -gamma. We resolve the
+    # two-fold branch by forcing beta = Im(gamma) > 0 (a forward-propagating
+    # phase). This implies the line is PASSIVE (driven from the feed, field
+    # decaying away from the load): alpha = Re(gamma) is reported as a magnitude;
+    # a genuinely growing wave would be (correctly) unsupported here.
+    gamma = np.arccosh(p / 2.0 + 0j) / D
+    if np.imag(gamma) < 0.0:           # enforce beta = Im(gamma) > 0
+        gamma = np.conj(gamma)
+    rec_resid = float(
+        np.sqrt(np.sum(np.abs((Vm + Vp) - p * Vc) ** 2) / (np.abs(p) ** 2 * den + 1e-300))
+    )
+
+    # Two-wave least squares for A, B (centred for conditioning).
+    z0 = float(z.mean())
+    Phi = np.stack([np.exp(+gamma * (z - z0)), np.exp(-gamma * (z - z0))], axis=1)
+    AB, *_ = np.linalg.lstsq(Phi, V, rcond=None)
+    A, B = complex(AB[0]), complex(AB[1])
+    fit_resid = float(np.linalg.norm(Phi @ AB - V) / (np.linalg.norm(V) + 1e-300))
+
+    # The reference (load) plane lies OUTSIDE the probe span for a one-port
+    # measurement (the probes sit between the source and the load). The incident
+    # wave travels from the probe region toward the load, selected by which side
+    # of the probe centroid the load is on. ``<=`` keeps the centroid-tie case
+    # (load exactly at the probe mean — not a valid one-port geometry) on the
+    # load-below branch deterministically rather than silently inverting it.
+    zr = float(reference_plane_m) - z0
+    a_wave = A * np.exp(+gamma * zr)    # travels -z
+    b_wave = B * np.exp(-gamma * zr)    # travels +z
+    if reference_plane_m <= z0:         # load below the probes: incident is -z (a_wave)
+        v_inc, v_ref = a_wave, b_wave
+    else:                               # load above the probes: incident is +z (b_wave)
+        v_inc, v_ref = b_wave, a_wave
+    reflection = v_ref / v_inc if abs(v_inc) > 0.0 else complex(np.nan, np.nan)
+    return CoaxialLineReflection(
+        gamma=complex(gamma),
+        reflection=complex(reflection),
+        recurrence_residual=rec_resid,
+        fit_residual=fit_resid,
+        forward_amp=complex(v_inc),
+        backward_amp=complex(v_ref),
+    )
+
+
+def stamp_coaxial_line(
+    grid: Grid,
+    materials,
+    *,
+    center_xy: tuple[float, float],
+    z_lo_index: int,
+    z_hi_index: int,
+    pin_radius: float = SMA_PIN_RADIUS,
+    outer_radius: float = SMA_OUTER_RADIUS,
+    eps_r: float = PTFE_EPS_R,
+):
+    """Stamp a coextensive PEC-pin / dielectric / PEC-shell coax line (z-axis).
+
+    Fills the axial index range ``[z_lo_index, z_hi_index]`` with a one-cell PEC
+    outer shell, a dielectric annulus (``eps_r``) and a solid PEC centre pin.
+
+    IMPORTANT: the conductors must NOT extend into a CPML region. Running PEC
+    into the PML is numerically unstable (verified: max|E| diverges to NaN). Stop
+    the line at least ~2 cells short of the absorbing boundary and terminate the
+    feed with :func:`stamp_coaxial_annular_resistor`.
+
+    Returns ``(materials, shell_inner_radius)``.
+    """
+
+    dz = float(grid.dx)
+    z_lo = (int(z_lo_index) - grid.pad_z_lo) * dz
+    z_hi = (int(z_hi_index) - grid.pad_z_lo) * dz
+    zc = 0.5 * (z_lo + z_hi)
+    height = (z_hi - z_lo) + 2.0 * dz
+    center = (float(center_xy[0]), float(center_xy[1]), zc)
+
+    shell_thickness = min(dz, 0.5 * (float(outer_radius) - float(pin_radius)))
+    shell_inner_radius = float(outer_radius) - shell_thickness
+    outer_mask = Cylinder(center=center, radius=outer_radius, height=height, axis="z").mask(grid)
+    shell_inner_mask = Cylinder(center=center, radius=shell_inner_radius, height=height, axis="z").mask(grid)
+    pin_mask = Cylinder(center=center, radius=pin_radius, height=height, axis="z").mask(grid)
+
+    eps = np.array(materials.eps_r)
+    sig = np.array(materials.sigma)
+    shell = outer_mask & ~shell_inner_mask
+    eps = np.where(shell, 1.0, eps)
+    sig = np.where(shell, PEC_SIGMA, sig)
+    ptfe = shell_inner_mask & ~pin_mask
+    eps = np.where(ptfe, float(eps_r), eps)
+    sig = np.where(ptfe, 0.0, sig)
+    eps = np.where(pin_mask, 1.0, eps)
+    sig = np.where(pin_mask, PEC_SIGMA, sig)
+    materials = materials._replace(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sig))
+    return materials, shell_inner_radius
+
+
+def stamp_coaxial_short_plane(
+    grid: Grid,
+    materials,
+    *,
+    center_xy: tuple[float, float],
+    z_index: int,
+    outer_radius: float = SMA_OUTER_RADIUS,
+):
+    """Short the centre pin to the outer shell with a PEC disk at one z-plane.
+
+    This is the calibration short (``Γ = -1``). Returns updated materials.
+    """
+
+    eps = np.array(materials.eps_r)
+    sig = np.array(materials.sigma)
+    cx, cy = float(center_xy[0]), float(center_xy[1])
+    z = int(z_index)
+    for i in range(grid.nx):
+        x = (i - grid.pad_x_lo) * grid.dx
+        for j in range(grid.ny):
+            y = (j - grid.pad_y_lo) * grid.dx
+            if np.hypot(x - cx, y - cy) <= float(outer_radius):
+                sig[i, j, z] = PEC_SIGMA
+                eps[i, j, z] = 1.0
+    return materials._replace(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sig))
+
+
+def stamp_coaxial_annular_resistor(
+    grid: Grid,
+    materials,
+    *,
+    center_xy: tuple[float, float],
+    z_index: int,
+    pin_radius: float = SMA_PIN_RADIUS,
+    outer_radius: float = SMA_OUTER_RADIUS,
+    target_impedance: float,
+    shell_inner_radius: float | None = None,
+):
+    """Stamp a radial annular resistor (``Γ → 0`` match) at one z-plane.
+
+    The PTFE annulus between the pin and the shell is filled with conductivity
+    ``σ = log(b'/a) / (2π·dz·Z)`` so the radial pin-to-shell resistance matches
+    ``target_impedance``. Used both for the matched feed termination and for a
+    matched DUT. PEC cells already stamped by :func:`stamp_coaxial_line` are
+    skipped. Returns updated materials.
+    """
+
+    if not np.isfinite(target_impedance) or target_impedance <= 0.0:
+        raise ValueError(f"target_impedance must be positive finite, got {target_impedance}")
+    dz = float(grid.dx)
+    if shell_inner_radius is None:
+        shell_thickness = min(dz, 0.5 * (float(outer_radius) - float(pin_radius)))
+        shell_inner_radius = float(outer_radius) - shell_thickness
+    sigma_load = float(np.log(shell_inner_radius / float(pin_radius))) / (
+        2.0 * np.pi * dz * float(target_impedance)
+    )
+    eps = np.array(materials.eps_r)
+    sig = np.array(materials.sigma)
+    cx, cy = float(center_xy[0]), float(center_xy[1])
+    z = int(z_index)
+    stamped = 0
+    for i in range(grid.nx):
+        x = (i - grid.pad_x_lo) * grid.dx
+        for j in range(grid.ny):
+            y = (j - grid.pad_y_lo) * grid.dx
+            r = float(np.hypot(x - cx, y - cy))
+            if float(pin_radius) <= r <= shell_inner_radius and sig[i, j, z] < 0.5 * PEC_SIGMA:
+                sig[i, j, z] = sigma_load
+                eps[i, j, z] = 1.0
+                stamped += 1
+    if stamped == 0:
+        raise ValueError("stamp_coaxial_annular_resistor stamped 0 cells; check geometry/resolution")
+    return materials._replace(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sig))
