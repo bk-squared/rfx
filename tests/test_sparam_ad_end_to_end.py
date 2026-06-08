@@ -33,6 +33,7 @@ import warnings
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -147,6 +148,10 @@ def _build_wg_sim() -> Simulation:
 # Tests
 # ---------------------------------------------------------------------------
 
+# MSL AD over ~3934 steps: the un-checkpointed reverse tape OOMs even a 48 GB A6000
+# (VESSL run 369367241162). checkpoint_segments=14 (below) caps the peak to a few GB,
+# so this runs on the CPU CI again (was @pytest.mark.gpu in #119 before checkpointing;
+# #123). ~4 min on the shard.
 def test_msl_s_matrix_ad_end_to_end():
     """G-AD-WIRE M1: jax.grad flows end-to-end through compute_msl_s_matrix.
 
@@ -169,6 +174,7 @@ def test_msl_s_matrix_ad_end_to_end():
                 n_freqs=8,
                 num_periods=3,
                 eps_override=eps_base * alpha,
+                checkpoint_segments=14,  # cap the reverse-AD tape peak (else OOM, even on 48 GB); 14 | n_steps=3934 (= 2·7·281), ≈ √n_steps memory
             )
         S = result.S
         k0 = S.shape[-1] // 2
