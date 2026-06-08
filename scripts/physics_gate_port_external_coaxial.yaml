@@ -56,6 +56,19 @@ run: |-
   else
     echo "narrow coaxial-gap/openEMS comparison failed or timed out; broad-E5 shard remains blocked"
   fi
+  echo "=== broad coaxial-LINE rfx/openEMS comparison (E4-broad, promoted line API) ==="
+  set +e
+  timeout "${RFX_COAXIAL_LINE_OPENEMS_TIMEOUT:-3600}" \
+    python scripts/diagnostics/build_coaxial_line_openems_broad_comparison.py \
+      --output-dir "$out/coaxial_line_openems_broad_comparison"
+  broad_rc=$?
+  set -e
+  echo "coaxial_line_openems_broad_comparison_rc=$broad_rc"
+  if [ "$broad_rc" -eq 0 ]; then
+    cat "$out/coaxial_line_openems_broad_comparison/coaxial_line_openems_broad_comparison.json"
+  else
+    echo "broad coaxial-line/openEMS comparison failed or timed out; broad-E5 shard remains blocked"
+  fi
   echo "=== broad-E5 readiness report ==="
   set +e
   python scripts/diagnostics/report_port_external_reference_shard.py \

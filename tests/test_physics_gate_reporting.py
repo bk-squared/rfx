@@ -655,14 +655,19 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["missing_passed_comparison_artifact_count"] == 7
     assert audit["passed_comparison_artifact_count"] == 0
     assert audit["passed_broad_e4_comparison_artifact_count"] == 0
-    # rectangular_waveguide_port gained broad-E4 + broad-E5 requirements (the
-    # T-junction work, PR #114) whose comparison/envelope artifacts are VESSL
-    # outputs under the gitignored .omx/ tree — absent on a clean checkout, so
-    # exactly one family is "missing" each. (Same clean-checkout contract as the
+    # Two families are current_status=broad_e5_passed and so REQUIRE a broad-E4
+    # comparison + broad-E5 envelope artifact: rectangular_waveguide_port
+    # (T-junction, PR #114) and coaxial_port (MEEP broad-E4 + analytic broad-E5,
+    # PR #130). Both sets of artifacts are VESSL/MEEP outputs under the gitignored
+    # .omx/ tree — absent on a clean checkout — so each family is counted "missing"
+    # one broad-E4 and one broad-E5 artifact. (Same clean-checkout contract as the
     # broad-E5/schema assertions above; not a defect.)
-    assert audit["missing_broad_e4_comparison_artifact_count"] == 1
-    assert audit["missing_broad_e4_comparison_artifact_families"] == ["rectangular_waveguide_port"]
-    assert audit["missing_broad_e5_envelope_artifact_count"] == 1
+    assert audit["missing_broad_e4_comparison_artifact_count"] == 2
+    assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == [
+        "coaxial_port",
+        "rectangular_waveguide_port",
+    ]
+    assert audit["missing_broad_e5_envelope_artifact_count"] == 2
     assert audit["passed_broad_e5_envelope_artifact_count"] == 0
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}
@@ -1038,36 +1043,35 @@ def test_port_external_reference_shard_requires_comparison_and_envelope(
 def test_port_external_reference_shard_report_blocks_incomplete_family(
     tmp_path: Path,
 ):
+    # lumped_port is the genuinely-incomplete example (switched from coaxial_port,
+    # which PR #130 promoted to broad_e5_passed). lumped_port is still
+    # narrow_external_reference_broad_blocked — a clean "incomplete family blocks"
+    # case independent of the clean-checkout .omx contract.
     payload = port_external_reference_shard.build_family_reference_shard(
-        "coaxial_port",
+        "lumped_port",
         REPO_ROOT / "scripts" / "diagnostics" / "port_external_reference_requirements.json",
         REPO_ROOT / "docs" / "guides" / "sparameter_support_matrix.json",
     )
 
-    assert payload["family"] == "coaxial_port"
+    assert payload["family"] == "lumped_port"
     assert payload["status"] == "blocked"
-    # coaxial_port advanced from narrow_gap_external_reference_broad_blocked to
-    # pec_short_calibrated_external_reference_pending when the M72 plane-source
-    # prototype was promoted into the public compute_coaxial_s_matrix API
-    # (committed in 261f2e7; PEC-short calibration unblocked by ae32a0e). The
-    # family is still broad-E5 blocked, so status stays "blocked".
-    assert payload["current_status"] == "pec_short_calibrated_external_reference_pending"
+    assert payload["current_status"] == "narrow_external_reference_broad_blocked"
     assert "broad E5" in payload["completion_decision"]
 
     rc = port_external_reference_shard.main(
         [
             "--family",
-            "coaxial_port",
+            "lumped_port",
             "--output-dir",
-            str(tmp_path / "coaxial"),
+            str(tmp_path / "lumped"),
             "--require-complete",
         ]
     )
     assert rc == 2
     assert (
         tmp_path
-        / "coaxial"
-        / "coaxial_port_external_reference_shard.json"
+        / "lumped"
+        / "lumped_port_external_reference_shard.json"
     ).exists()
 
 

@@ -33,6 +33,7 @@ from rfx.sources.waveguide_port import (
 from rfx.api._spec import (
     WaveguideSMatrixResult,
     CoaxialSMatrixResult,
+    CoaxialLineReflectionResult,
     MSLSMatrixResult,
     _WaveguidePortEntry,
     _MSLPortEntry,
@@ -1184,6 +1185,16 @@ class _SparamMixin:
     ) -> "CoaxialSMatrixResult":
         """Experimental coaxial S-matrix via distributed TEM plane sources.
 
+        .. deprecated::
+            This single-plane V/I path measures inside a closed PEC box around a
+            short coaxial stub, which has no transmission line for a clean
+            reflection — it reports non-physical ``|S11|>1`` for a lossless
+            short (verified). Use :meth:`compute_coaxial_line_reflection`, which
+            builds a real coax line with a matched CPML feed and extracts the
+            reflection from a multi-plane matrix-pencil decomposition (validated
+            short→Γ=-1, open→|Γ|=1, matched→0 across the band). This method is
+            retained only for backward compatibility.
+
         For each registered ``add_coaxial_port(...)`` port, runs one FDTD
         simulation with that port driven and all other coaxial ports passive.
         A distributed transverse E/M plane source is injected on the port's
@@ -1228,6 +1239,15 @@ class _SparamMixin:
         -------
         CoaxialSMatrixResult
         """
+
+        import warnings
+        warnings.warn(
+            "compute_coaxial_s_matrix() (single-plane V/I in a closed PEC box) is "
+            "deprecated and reports non-physical |S11|>1 for a lossless short; use "
+            "compute_coaxial_line_reflection() (validated coax-line method).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         from rfx.probes.probes import init_dft_plane_probe
         from rfx.simulation import run as _run
@@ -1370,7 +1390,10 @@ class _SparamMixin:
                 grid,
                 materials,
                 int(n_steps),
-                boundary="pec",
+                # Honour the simulation boundary (was hardcoded "pec", the closed
+                # box that is the documented root cause); self._boundary is always
+                # a str ("pec"/"cpml"/"upml"), even for the BoundarySpec path.
+                boundary=self._boundary,
                 sources=list(spec.electric_sources),
                 mag_sources=list(spec.magnetic_sources),
                 dft_planes=dft_planes,
@@ -1450,6 +1473,226 @@ class _SparamMixin:
             z_tem_ohm=z_tem_arr,
             voltages=v_dump,
             currents=i_dump,
+            status=status,
+        )
+
+    def compute_coaxial_line_reflection(
+        self,
+        *,
+        termination: str = "short",
+        n_steps: int = 6000,
+        freqs: jnp.ndarray | None = None,
+        n_freqs: int = 11,
+        field_scale: float = 1.0e4,
+        cpml_axes: str = "z",
+        dut_offset_cells: int = 4,
+        probe_count: int = 12,
+        probe_start_cells: int = 8,
+        probe_spacing_cells: int = 4,
+        feed_impedance: float | None = None,
+        dut_impedance: float | None = None,
+    ) -> "CoaxialLineReflectionResult":
+        """One-port coaxial reflection on a real transmission line (broad-E5).
+
+        Builds a coextensive coax line (face='top', pin along -z) terminated in a
+        matched resistive feed near the +z boundary, drives a TEM TFSF source one
+        cell below the feed, and reflects off a calibration ``termination`` at the
+        -z end: ``"short"`` (Γ=-1), ``"open"`` (Γ=+1), or ``"matched"`` (Γ→0).
+        With ``termination="matched"`` and ``dut_impedance=R`` the DUT is instead a
+        known resistive load (analytic ``Γ=(R-Z0)/(R+Z0)``) — used by the broad-E5
+        envelope to test non-trivial reflection magnitudes against exact truth.
+        The reflection is read from the modal voltage ``V(z)=∫E_r dr`` sampled at
+        ``probe_count`` equally spaced planes and a matrix-pencil estimate of the
+        complex propagation constant (β self-measured, Z0-free).
+
+        Unlike ``compute_coaxial_s_matrix`` (single-plane V/I in a hardcoded
+        closed PEC box — non-physical |S11|>1), this uses an absorbing CPML feed
+        so a real line exists. **Resolution recipe**: keep ≥~4 cells across the
+        (outer-inner) annulus (raise ``freq_max`` to shrink ``dx``); the result
+        ``status`` reports ``"under_resolved"`` below ~3.5 cells.
+
+        The conductors deliberately stop ~2 cells short of the +z PML — running
+        PEC into CPML is numerically unstable.
+        """
+
+        from rfx.probes.probes import init_dft_plane_probe
+        from rfx.simulation import run as _run
+        from rfx.sources.coaxial_port import (
+            CoaxialPort as _CoaxPort,
+            build_coaxial_tem_plane_source_specs,
+            coaxial_line_plane_voltage,
+            coaxial_line_reflection_from_plane_voltages,
+            coaxial_tem_characteristic_impedance,
+            stamp_coaxial_line,
+            stamp_coaxial_short_plane,
+            stamp_coaxial_annular_resistor,
+        )
+
+        if termination not in ("short", "open", "matched"):
+            raise ValueError(
+                f"termination must be 'short', 'open' or 'matched', got {termination!r}"
+            )
+        if len(self._coaxial_ports) != 1:
+            raise ValueError(
+                "compute_coaxial_line_reflection() is a one-port method; register "
+                "exactly one add_coaxial_port()."
+            )
+        if (
+            self._ports or self._waveguide_ports or self._floquet_ports or self._msl_ports
+        ):
+            raise NotImplementedError(
+                "compute_coaxial_line_reflection() is defined only for a single "
+                "add_coaxial_port(...) family."
+            )
+        port = self._coaxial_ports[0]
+        if port.face != "top":
+            raise NotImplementedError(
+                "compute_coaxial_line_reflection() currently supports face='top' "
+                "(pin along -z, DUT at the -z end); face='bottom' is symmetric and "
+                "not yet wired."
+            )
+
+        grid = self._build_grid()
+        nz = grid.shape[2]
+        dz = float(grid.dx)
+        center_xy = (float(port.position[0]), float(port.position[1]))
+        a, b = float(port.pin_radius), float(port.outer_radius)
+
+        # Axial layout: DUT just above the -z PML; coax runs up to ~2 cells short
+        # of the +z PML; matched feed one cell below the coax top; source below it.
+        # The +z offset uses pad_z_hi (not pad_z_lo) so an asymmetric BoundarySpec
+        # cannot run the conductors into the +z PML (verified unstable).
+        z_dut = int(grid.pad_z_lo) + int(dut_offset_cells)
+        z_hi_coax = nz - int(grid.pad_z_hi) - 2
+        z_feed = z_hi_coax - 1
+        z_src = z_hi_coax - 3
+        if not (z_dut + probe_start_cells + 2 * probe_spacing_cells < z_src):
+            raise ValueError(
+                "domain too short for the requested line layout; increase the z "
+                "domain or reduce probe_start_cells/probe_count."
+            )
+        probes_z = [
+            z_dut + int(probe_start_cells) + int(probe_spacing_cells) * k
+            for k in range(int(probe_count))
+        ]
+        probes_z = [z for z in probes_z if z < z_src - 4]
+        if len(probes_z) < 3:
+            raise ValueError(
+                "fewer than 3 usable probe planes; reduce probe_spacing_cells or "
+                "lengthen the z domain."
+            )
+
+        z_tem = coaxial_tem_characteristic_impedance(a, b)
+        R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
+        # For termination='matched', the DUT load resistance defaults to the feed
+        # (Γ→0); override with dut_impedance to place a known mismatch
+        # (Γ = (R-Z0)/(R+Z0)) — used by the broad-E5 envelope's non-trivial loads.
+        R_dut = float(dut_impedance) if dut_impedance is not None else R_feed
+
+        materials, _, _ = self._build_materials(grid)
+        materials, shell_inner = stamp_coaxial_line(
+            grid, materials, center_xy=center_xy, z_lo_index=z_dut,
+            z_hi_index=z_hi_coax, pin_radius=a, outer_radius=b,
+        )
+        materials = stamp_coaxial_annular_resistor(
+            grid, materials, center_xy=center_xy, z_index=z_feed, pin_radius=a,
+            outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+        )
+        if termination == "short":
+            materials = stamp_coaxial_short_plane(
+                grid, materials, center_xy=center_xy, z_index=z_dut, outer_radius=b,
+            )
+        elif termination == "matched":
+            materials = stamp_coaxial_annular_resistor(
+                grid, materials, center_xy=center_xy, z_index=z_dut, pin_radius=a,
+                outer_radius=b, target_impedance=R_dut, shell_inner_radius=shell_inner,
+            )
+        # "open": conductors simply end at z_dut (open circuit) — no extra stamp.
+
+        if freqs is None:
+            freqs = jnp.linspace(
+                0.1 * self._freq_max, 0.6 * self._freq_max, int(n_freqs), dtype=jnp.float32
+            )
+        else:
+            freqs = jnp.asarray(freqs, dtype=jnp.float32)
+
+        # TEM TFSF source at z_src (internal descriptor places pin_center there).
+        src_port = _CoaxPort(
+            position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
+            face="top", pin_length=dz, pin_radius=a, outer_radius=b,
+            impedance=port.impedance, excitation=port.excitation,
+        )
+        spec = build_coaxial_tem_plane_source_specs(
+            grid=grid, port=src_port, n_steps=int(n_steps), field_scale=float(field_scale),
+            magnetic_ratio=1.0,
+        )
+
+        planes = []
+        for z in probes_z:
+            for comp in ("ex", "ey"):
+                planes.append(
+                    init_dft_plane_probe(
+                        axis=2, index=int(z), component=comp, freqs=freqs,
+                        grid_shape=grid.shape, dft_total_steps=int(n_steps),
+                    )
+                )
+        result = _run(
+            grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
+            sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
+            dft_planes=planes, return_state=False,
+        )
+        if result.dft_planes is None:
+            raise RuntimeError("compute_coaxial_line_reflection(): runner returned no DFT planes")
+
+        # Modal voltage V(z) at every probe plane, per frequency.
+        n_f = int(freqs.shape[0])
+        v_by_plane = []
+        for pi in range(len(probes_z)):
+            ex = result.dft_planes[pi * 2 + 0].accumulator
+            ey = result.dft_planes[pi * 2 + 1].accumulator
+            v_by_plane.append(
+                coaxial_line_plane_voltage(
+                    grid, ex, ey, center_xy=center_xy, pin_radius=a, outer_radius=b,
+                )
+            )
+        V = np.stack(v_by_plane, axis=0)          # (n_planes, n_freqs)
+        z_planes_m = np.array([(z - grid.pad_z_lo) * dz for z in probes_z], dtype=np.float64)
+        ref_m = (z_dut - grid.pad_z_lo) * dz
+
+        s11 = np.zeros(n_f, dtype=np.complex128)
+        gamma = np.zeros(n_f, dtype=np.complex128)
+        rec_resid = np.zeros(n_f, dtype=np.float64)
+        fit_resid = np.zeros(n_f, dtype=np.float64)
+        z0_num = np.full(n_f, np.nan + 1j * np.nan, dtype=np.complex128)
+        for fi in range(n_f):
+            out = coaxial_line_reflection_from_plane_voltages(
+                z_planes_m, V[:, fi], reference_plane_m=ref_m,
+            )
+            s11[fi] = out.reflection
+            gamma[fi] = out.gamma
+            rec_resid[fi] = out.recurrence_residual
+            fit_resid[fi] = out.fit_residual
+            if termination == "matched":
+                G = out.reflection
+                z0_num[fi] = R_dut * (1.0 - G) / (1.0 + G)
+
+        annulus_cells = float((b - a) / dz)
+        if annulus_cells < 3.5:
+            status = "under_resolved"
+        elif float(np.max(rec_resid)) > 0.1:
+            status = "contaminated"
+        else:
+            status = "passed"
+
+        return CoaxialLineReflectionResult(
+            s11=s11,
+            freqs=np.asarray(freqs, dtype=float),
+            gamma=gamma,
+            recurrence_residual=rec_resid,
+            fit_residual=fit_resid,
+            annulus_cells=annulus_cells,
+            z0_numerical_ohm=z0_num,
+            termination=termination,
             status=status,
         )
 

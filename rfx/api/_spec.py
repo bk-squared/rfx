@@ -515,6 +515,34 @@ class CoaxialSMatrixResult(NamedTuple):
     status: str
 
 
+class CoaxialLineReflectionResult(NamedTuple):
+    """One-port reflection from the validated coaxial transmission-line method.
+
+    The reflection is extracted from the modal voltage ``V(z)=∫E_r dr`` sampled
+    at several equally spaced reference planes on a real coax line terminated in
+    a matched resistive feed (see ``compute_coaxial_line_reflection``). The
+    complex propagation constant ``gamma`` is self-measured (matrix pencil), so
+    the result is Z0-free and immune to the coarse-mesh ``|V/I|`` bias.
+
+    ``recurrence_residual`` is the per-frequency single-TEM-mode validity gate
+    (0 = a clean two-wave field). ``annulus_cells`` is the resolution metric
+    ``(outer-inner)/dx``; below ~3.5 cells the mode is under-resolved and the
+    high-frequency reflection degrades. ``status`` is ``"passed"``,
+    ``"under_resolved"`` (annulus too coarse), or ``"contaminated"`` (recurrence
+    residual exceeded the gate at one or more frequencies).
+    """
+
+    s11: np.ndarray
+    freqs: np.ndarray
+    gamma: np.ndarray
+    recurrence_residual: np.ndarray
+    fit_residual: np.ndarray
+    annulus_cells: float
+    z0_numerical_ohm: np.ndarray
+    termination: str
+    status: str
+
+
 @dataclass(frozen=True)
 class _MSLPortEntry:
     """Internal bookkeeping for a microstrip line port.
@@ -581,6 +609,7 @@ __all__ = [
     "WaveguideSParamResult",
     "WaveguideSMatrixResult",
     "CoaxialSMatrixResult",
+    "CoaxialLineReflectionResult",
     "_MSLPortEntry",
     "MSLSMatrixResult",
 ]
