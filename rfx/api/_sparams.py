@@ -1490,6 +1490,7 @@ class _SparamMixin:
         probe_start_cells: int = 8,
         probe_spacing_cells: int = 4,
         feed_impedance: float | None = None,
+        dut_impedance: float | None = None,
     ) -> "CoaxialLineReflectionResult":
         """One-port coaxial reflection on a real transmission line (broad-E5).
 
@@ -1497,6 +1498,9 @@ class _SparamMixin:
         matched resistive feed near the +z boundary, drives a TEM TFSF source one
         cell below the feed, and reflects off a calibration ``termination`` at the
         -z end: ``"short"`` (Γ=-1), ``"open"`` (Γ=+1), or ``"matched"`` (Γ→0).
+        With ``termination="matched"`` and ``dut_impedance=R`` the DUT is instead a
+        known resistive load (analytic ``Γ=(R-Z0)/(R+Z0)``) — used by the broad-E5
+        envelope to test non-trivial reflection magnitudes against exact truth.
         The reflection is read from the modal voltage ``V(z)=∫E_r dr`` sampled at
         ``probe_count`` equally spaced planes and a matrix-pencil estimate of the
         complex propagation constant (β self-measured, Z0-free).
@@ -1580,6 +1584,10 @@ class _SparamMixin:
 
         z_tem = coaxial_tem_characteristic_impedance(a, b)
         R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
+        # For termination='matched', the DUT load resistance defaults to the feed
+        # (Γ→0); override with dut_impedance to place a known mismatch
+        # (Γ = (R-Z0)/(R+Z0)) — used by the broad-E5 envelope's non-trivial loads.
+        R_dut = float(dut_impedance) if dut_impedance is not None else R_feed
 
         materials, _, _ = self._build_materials(grid)
         materials, shell_inner = stamp_coaxial_line(
@@ -1597,7 +1605,7 @@ class _SparamMixin:
         elif termination == "matched":
             materials = stamp_coaxial_annular_resistor(
                 grid, materials, center_xy=center_xy, z_index=z_dut, pin_radius=a,
-                outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+                outer_radius=b, target_impedance=R_dut, shell_inner_radius=shell_inner,
             )
         # "open": conductors simply end at z_dut (open circuit) — no extra stamp.
 
@@ -1666,7 +1674,7 @@ class _SparamMixin:
             fit_resid[fi] = out.fit_residual
             if termination == "matched":
                 G = out.reflection
-                z0_num[fi] = R_feed * (1.0 - G) / (1.0 + G)
+                z0_num[fi] = R_dut * (1.0 - G) / (1.0 + G)
 
         annulus_cells = float((b - a) / dz)
         if annulus_cells < 3.5:

@@ -71,6 +71,21 @@ def test_matched_reflects_near_zero_and_recovers_z0():
 
 
 @pytest.mark.slow_physics
+def test_resistive_load_reflection_magnitude():
+    # known mismatch R=25 ohm on the 48.6 ohm SMA line:
+    # |Gamma| = |(25 - 48.6)/(25 + 48.6)| = 0.321 (exact analytic, non-trivial).
+    sim = Simulation(domain=(0.008, 0.008, 0.040), freq_max=40.0e9, boundary="cpml")
+    sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
+                         waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
+    res = sim.compute_coaxial_line_reflection(
+        termination="matched", dut_impedance=25.0, n_steps=5000, freqs=BAND)
+    assert res.status == "passed"
+    z0 = coaxial_tem_characteristic_impedance(SMA_PIN_RADIUS, SMA_OUTER_RADIUS)
+    g_an = abs((25.0 - z0) / (25.0 + z0))
+    assert np.all(np.abs(np.abs(res.s11) - g_an) < 0.05), (np.abs(res.s11), g_an)
+
+
+@pytest.mark.slow_physics
 def test_under_resolved_annulus_is_flagged():
     # freq_max=20 GHz -> dx~0.75 mm -> ~1.9-cell annulus (below the >=4 recipe).
     res = _run("short", freq_max=20.0e9, n_steps=1500)
