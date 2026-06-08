@@ -2037,8 +2037,16 @@ def extract_waveguide_s_matrix(
     aniso_eps: tuple | None = None,
     conformal_weights: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
+    checkpoint_segments: int | None = None,
 ) -> jnp.ndarray:
-    """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs."""
+    """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
+
+    checkpoint_segments : int or None
+        When set, enables segmented gradient checkpointing on each per-port
+        FDTD run (forwarded to ``rfx.simulation.run`` as
+        ``checkpoint=True, checkpoint_segments=K``).  See
+        :meth:`Simulation.compute_waveguide_s_matrix` for full semantics.
+    """
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix requires at least two waveguide ports"
@@ -2077,6 +2085,7 @@ def extract_waveguide_s_matrix(
             _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
             for idx, cfg in enumerate(template_cfgs)
         ]
+        _wg_checkpoint = checkpoint_segments is not None
         result = run_simulation(
             grid,
             materials,
@@ -2091,6 +2100,8 @@ def extract_waveguide_s_matrix(
             aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
+            checkpoint=_wg_checkpoint,
+            checkpoint_segments=checkpoint_segments,
         )
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_ports:
@@ -2142,6 +2153,7 @@ def extract_waveguide_s_matrix_flux(
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
     ref_materials_per_port: "list | None" = None,
+    checkpoint_segments: int | None = None,
 ) -> jnp.ndarray:
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
 
@@ -2243,6 +2255,7 @@ def extract_waveguide_s_matrix_flux(
             ref_materials_per_port[drive_idx]
             if ref_materials_per_port is not None else ref_materials
         )
+        _flux_checkpoint = checkpoint_segments is not None
         ref_result = run_simulation(
             grid, ref_mat_drive, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
@@ -2250,6 +2263,8 @@ def extract_waveguide_s_matrix_flux(
             flux_monitors=_make_flux_monitors(),
             aniso_eps=ref_aniso_eps,
             aniso_inv_eps=ref_aniso_inv_eps,
+            checkpoint=_flux_checkpoint,
+            checkpoint_segments=checkpoint_segments,
             **common_run_kw,
         )
         ref_final_cfgs = ref_result.waveguide_ports or ()
@@ -2281,6 +2296,8 @@ def extract_waveguide_s_matrix_flux(
             aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
+            checkpoint=_flux_checkpoint,
+            checkpoint_segments=checkpoint_segments,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()
@@ -2334,6 +2351,7 @@ def extract_waveguide_s_params_normalized(
     ref_aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
+    checkpoint_segments: int | None = None,
 ) -> jnp.ndarray:
     """Two-run normalized waveguide S-matrix.
 
@@ -2439,11 +2457,14 @@ def extract_waveguide_s_params_normalized(
             _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
             for idx, cfg in enumerate(template_cfgs)
         ]
+        _norm_checkpoint = checkpoint_segments is not None
         ref_result = run_simulation(
             grid, ref_materials, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
             waveguide_ports=ref_cfgs,
             aniso_inv_eps=ref_aniso_inv_eps,
+            checkpoint=_norm_checkpoint,
+            checkpoint_segments=checkpoint_segments,
             **common_run_kw,
         )
         ref_final_cfgs = ref_result.waveguide_ports or ()
@@ -2484,6 +2505,8 @@ def extract_waveguide_s_params_normalized(
             waveguide_ports=dev_cfgs, aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
+            checkpoint=_norm_checkpoint,
+            checkpoint_segments=checkpoint_segments,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()
