@@ -52,6 +52,7 @@ class _SparamMixin:
         subpixel_smoothing: bool | str = False,
         eps_override: "jnp.ndarray | None" = None,
         sigma_override: "jnp.ndarray | None" = None,
+        checkpoint_segments: int | None = None,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
@@ -92,6 +93,21 @@ class _SparamMixin:
             in S11 and the round-trip dispersion error in the
             ``normalize=True`` diagonal formula.  Costs 2 × N_ports
             FDTD runs (same as ``normalize=True``).
+        checkpoint_segments : int or None
+            Segmented gradient checkpointing for the **uniform** waveguide
+            AD path (issue #73 / PR #125).  Splits the ``n_steps`` scan
+            into ``K`` segments that are rematerialised via
+            ``jax.checkpoint`` during the backward pass, reducing peak
+            reverse-mode memory from O(n_steps·|carry|) to
+            O((K + n_steps/K)·|carry|) (≈ O(√n_steps·|carry|) at the
+            optimal K ≈ √n_steps, at ≈ 2× backward compute cost).
+            ``K`` is forwarded to ``rfx.simulation.run`` with
+            ``checkpoint=True``; ``K`` MUST exactly divide the
+            auto-computed ``n_steps`` (the runner rejects non-divisors —
+            choose the nearest divisor of √n_steps; padding is rejected
+            because it would shift the V/I DFT windows).  Default
+            ``None`` is byte-identical to the pre-checkpoint scan; NU
+            mesh raises ``NotImplementedError``.
         """
         if not normalize:
             import warnings
@@ -134,6 +150,14 @@ class _SparamMixin:
         # is met (``normalize=True``, single-mode ports); otherwise
         # raise so the user is not given silently-wrong numbers.
         if self._dx_profile is not None or self._dy_profile is not None:
+            if checkpoint_segments is not None:
+                raise NotImplementedError(
+                    "compute_waveguide_s_matrix(checkpoint_segments=...) is "
+                    "currently wired only on the uniform single-device path "
+                    "(issue #73 / PR #125). Drop checkpoint_segments or run "
+                    "on a uniform mesh (no dx_profile / dy_profile). NU "
+                    "support is tracked as a follow-up."
+                )
             unsupported = []
             if normalize is not True and normalize != "flux":
                 unsupported.append("normalize=True or normalize='flux' is required")
@@ -522,6 +546,7 @@ class _SparamMixin:
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 ref_aniso_inv_eps=ref_aniso_inv_eps,
+                checkpoint_segments=checkpoint_segments,
             )
         elif normalize:
             from rfx.core.yee import init_materials as _init_vacuum_materials
@@ -545,6 +570,7 @@ class _SparamMixin:
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 ref_aniso_inv_eps=ref_aniso_inv_eps,
+                checkpoint_segments=checkpoint_segments,
             )
         else:
             s_params = extract_waveguide_s_matrix(
@@ -561,6 +587,7 @@ class _SparamMixin:
                 aniso_eps=aniso_eps,
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
+                checkpoint_segments=checkpoint_segments,
             )
         reference_planes = np.array(
             [
