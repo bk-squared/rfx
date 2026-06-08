@@ -287,6 +287,8 @@ def maximize_directivity(
     *,
     n_theta: int = 37,
     n_phi: int = 73,
+    log_ratio: bool = False,
+    eps: float = 1e-37,
 ) -> Callable:
     """Maximize directivity in a target direction (ratio-based, scale-invariant).
 
@@ -316,13 +318,41 @@ def maximize_directivity(
     -------
     callable(Result) -> scalar (JAX-differentiable)
 
+    Parameters (continued)
+    ----------------------
+    log_ratio : bool, optional
+        If True, optimize ``-(log U - log P)`` (full, sign-correct quotient
+        gradient ``U'/U - P'/P``) instead of the legacy ``-U/stop_gradient(P)``.
+        Default False (legacy, back-compat). USE ``log_ratio=True`` (or the
+        ``maximize_directivity_logratio`` factory) for any DoF that changes
+        total radiated power — see the warning below.
+    eps : float, optional
+        Floor for the ``log_ratio`` log arguments (default 1e-37). It only
+        guards ``log(0)``; the log-ratio gradient ``U'/U`` is scale-invariant, so
+        eps must be BELOW the working U/P magnitude (rfx spectral NTFF U,P are
+        ~1e-27 in full antenna runs, ~1e-32 in small/early sims). A floor at or
+        above U/P (e.g. the old 1e-30 on a 1e-32 sim) clamps the log argument and
+        zeros the gradient — keep eps well below min(U, P). (The legacy path's
+        denominator floor is hardcoded 1e-30 and is unaffected by this.)
+
     Notes
     -----
-    ``stop_gradient`` is applied to the P_rad denominator: since the
-    ratio is scale-invariant, any shape-preserving scaling leaves the
-    directivity unchanged; letting the denominator carry gradient would
-    only introduce noise and NaN risk when P_rad is near zero early in
-    optimization.
+    In the default (``log_ratio=False``) mode, ``stop_gradient`` is applied to
+    the P_rad denominator: the ratio is scale-invariant, so a shape-preserving
+    scaling leaves the directivity unchanged, and letting the denominator carry
+    gradient would add noise + NaN risk when P_rad is near zero.
+
+    WARNING (GitHub #129): that legacy mode drops the ``-U*P'/P^2`` quotient-rule
+    term, so it yields WRONG-SIGN gradients for any DoF that changes total
+    radiated power — conductors / PEC topology (``topology_optimize(material_fg=
+    "pec")``, Yagi director/reflector offsets+lengths, parasitics), lossy/sigma
+    DoFs, and (magnitude-only) dielectric reshaping. It is correct ONLY for pure
+    shape-preserving DoFs (the original #32 target, ``P_rad ~ const``). For
+    power-changing DoFs pass ``log_ratio=True``: the full quotient
+    ``grad = U'/U - P'/P`` is sign-correct, still scale-invariant (preserving the
+    #32 property), monotone in the directivity (same optimum), and NaN-safe via
+    independent ``eps`` floors (each log argument is O(1), avoiding the
+    1e-27/1e-30 backward blow-up of a naive full quotient).
     """
     theta_arr = np.array([theta_target])
     phi_arr = np.array([phi_target])
@@ -364,6 +394,20 @@ def maximize_directivity(
         p_rad_phi = jnp.trapezoid(integrand, theta_hemi, axis=1)
         p_rad = jnp.trapezoid(p_rad_phi, phi_hemi, axis=1)  # (n_freqs,)
 
+        if log_ratio:
+            # Full, NaN-safe quotient: grad = U'/U - P'/P (== true dD/dθ up to
+            # the positive factor 1/D, so sign-correct + monotone). Floors are
+            # applied INDEPENDENTLY so each log argument is O(1) — a single
+            # shared 1e-30 floor on U/P (the ~1e-27 spectral NTFF scale) makes
+            # the backward pass NaN. No stop_gradient -> correct sign for
+            # power-changing DoFs (GitHub #129).
+            log_dir = (jnp.log(jnp.maximum(u_target, eps))
+                       - jnp.log(jnp.maximum(p_rad, eps)))
+            return -jnp.mean(log_dir)
+        # Legacy scale-invariant ratio. CORRECT ONLY for shape-preserving DoFs;
+        # WRONG-SIGN for power-changing DoFs (see #129 warning above). The 1e-30
+        # denominator floor is hardcoded here for exact back-compat (the `eps`
+        # param tunes the log_ratio floor only).
         directivity = u_target / (jax.lax.stop_gradient(p_rad) + 1e-30)
         # Minimizing -D = maximizing directivity; average across freqs
         return -jnp.mean(directivity)
@@ -375,6 +419,29 @@ def maximize_directivity(
 # the ratio-based formulation, so `maximize_directivity_ratio` is simply
 # the new default under an explicit name.
 maximize_directivity_ratio = maximize_directivity
+
+
+def maximize_directivity_logratio(
+    theta_target: float,
+    phi_target: float,
+    *,
+    n_theta: int = 37,
+    n_phi: int = 73,
+    eps: float = 1e-37,
+) -> Callable:
+    """Directivity objective with the full, sign-correct quotient gradient.
+
+    Equivalent to ``maximize_directivity(..., log_ratio=True)``: optimizes
+    ``-(log U - log P)`` so the gradient ``U'/U - P'/P`` carries the
+    ``-U*P'/P^2`` term the legacy ``stop_gradient`` mode drops. PREFER this for
+    any power-changing DoF (PEC / topology / lossy / dielectric reshaping); the
+    legacy default gives wrong-sign gradients for those (GitHub #129). See
+    :func:`maximize_directivity` for the full warning and parameters.
+    """
+    return maximize_directivity(
+        theta_target, phi_target,
+        n_theta=n_theta, n_phi=n_phi, log_ratio=True, eps=eps,
+    )
 
 
 # ---------------------------------------------------------------------------
