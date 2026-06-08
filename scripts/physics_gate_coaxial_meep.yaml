@@ -1,0 +1,48 @@
+name: rfx-physics-gate-coaxial-meep
+description: "MEEP-only producer: power-flux coax |S11| reference (short/open, |Gamma|=1) for rfx crossval (LINEAGE A conda-forge pymeep). Low-res canary fails fast, then RES=3200. rfx compare runs separately/locally."
+tags: [rfx, physics-gate, port-external, coaxial, meep, sparameter-validation]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvidia/cuda:12.1.0-devel-ubuntu22.04
+env:
+  PYTHONUNBUFFERED: "1"
+  DEBIAN_FRONTEND: noninteractive
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  OMPI_ALLOW_RUN_AS_ROOT: "1"
+  OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: "1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== rfx MEEP coax power-flux reference (LINEAGE A conda-forge pymeep) ==="
+  echo "=== install miniconda + pymeep (conda-forge MIT MEEP, NOT PyPI 'meep') ==="
+  apt-get update && apt-get install -y --no-install-recommends python3 python3-pip libopenmpi3 openmpi-bin curl
+  curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+  bash /tmp/miniconda.sh -b -p /opt/conda
+  export PATH=/opt/conda/bin:$PATH
+  conda install -y --override-channels -c conda-forge pymeep numpy matplotlib scipy h5py
+  echo "MEEP version: $(python3 -c 'import meep; print(meep.__version__)')"
+  out=".omx/physics-gate/coaxial-meep-reference"
+  mkdir -p "$out"
+  echo "=== CANARY: short @ res=2000 (pin >=2 cells; validate couples + reflects + stable, no sub-cell-PEC NaN) ==="
+  python3 scripts/diagnostics/meep_coax_line_reference.py \
+    --termination short --resolution 2000 --output-dir "$out/_canary"
+  python3 -c "import numpy as np; d=np.load('$out/_canary/meep_coax_short.npz'); pi=d['p_inc']; s=float(np.mean(d['s11_mag'])); pim=float(np.mean(pi)) if pi.size else 0.0; print('CANARY short: P_inc band-mean=%.3e  |S11| band-mean=%.4f'%(pim,s)); assert pi.size and abs(pim)>1e-30, 'CANARY FAIL: P_inc ~0 (TEM source did not couple)'; assert s>0.5, 'CANARY FAIL: short |S11| band-mean<=0.5 (not reflecting -> geometry/decay/PML bug)'; print('CANARY PASS')"
+  echo "=== FULL: short + open @ RES=3200 (>=4 cells/annulus) ==="
+  for T in short open; do
+    echo "--- termination=$T ---"
+    python3 scripts/diagnostics/meep_coax_line_reference.py \
+      --termination "$T" \
+      --output-dir "$out"
+  done
+  echo "=== MEEP coax .npz summaries ==="
+  for T in short open; do
+    echo "--- meep_coax_$T.npz ---"
+    python3 -c "import numpy as np, sys; d=np.load('$out/meep_coax_$T.npz'); print('termination=', str(d['termination']), 'stub=', bool(d['stub']), 'resolution=', int(d['resolution'])); print('freqs_GHz=', np.round(d['freqs_hz']/1e9, 4)); print('|S11|(f)=', np.round(d['s11_mag'], 4)); print('|S11| band-mean=', round(float(np.mean(d['s11_mag'])), 4)); print('P_inc(f)=', np.round(d['p_inc'],6) if d['p_inc'].size else 'NA'); print('P_dut(f)=', np.round(d['p_dut'],6) if d['p_dut'].size else 'NA')"
+  done
+  echo "=== MEEP-only producer done; run the rfx compare separately/locally: ==="
+  echo "    python scripts/diagnostics/build_coaxial_line_meep_broad_comparison.py --meep-artifact-dir $out"

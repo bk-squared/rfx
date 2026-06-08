@@ -17,8 +17,9 @@ NOTE: this is the rfx-internal-vs-analytic ENVELOPE (E5). The independent
 full-wave external comparison (E4: openEMS/HFSS/MEEP) is a separate artifact
 and is NOT produced here (no full-wave solver available locally).
 """
-import sys; sys.path.insert(0, "/tmp/rfx-tj")
-import os, json
+# rfx is imported via PYTHONPATH=<repo root>; no temp-checkout path needed.
+import os
+import json
 import numpy as np
 import jax.numpy as jnp
 from rfx.api import Simulation
@@ -113,7 +114,7 @@ conv_mag_max, conv_resid_max = method_mag_max, method_resid_max
 
 OUT = ".omx/physics-gate/2026-06-07-coaxial-line-broad-e5-envelope"
 os.makedirs(OUT, exist_ok=True)
-commit = os.popen("git -C /tmp/rfx-tj rev-parse --short HEAD").read().strip()
+commit = os.popen("git rev-parse --short HEAD").read().strip()
 art = dict(
     schema="rfx.coaxial_line_broad_e5_envelope", schema_version=1,
     status="passed" if env_pass else "failed",
