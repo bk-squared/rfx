@@ -1270,6 +1270,16 @@ class _PreflightMixin:
         min_cell = min(cells) if cells else dx
         if min_cell <= 2.0e-3:
             import warnings as _w
+            # WARNING severity (NOT error/forbid): the conformal-fine-dx NaN is
+            # a KNOWN, actively-worked bug, and convergence/development tests
+            # must still be able to RUN this config — a hard-fail would block
+            # the very work fixing it. Agents gate on the code (conformal_nan),
+            # not on a hard-stop.
+            # MAINTENANCE: delete this guard when the BCK/USC contour-FIT
+            # redesign lands. The strict-xfail tracker
+            # tests/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec
+            # will hard-fail (XPASS) to force this removal. See
+            # docs/agent-memory/rfx-known-issues.md (conformal-PEC item).
             _w.warn(
                 f"conformal PEC is enabled on faces {sorted(cf)} with a min "
                 f"cell size {min_cell * 1e3:.3f} mm <= 2 mm — this is a KNOWN "
@@ -1278,7 +1288,7 @@ class _PreflightMixin:
                 f"normalize=False is NOT a safe workaround at fine dx. Use "
                 f"conformal=False (staircase PEC) or a coarser mesh "
                 f"(dx > 2 mm) until the contour-FIT redesign lands.",
-                PreflightErrorWarning, stacklevel=2,
+                stacklevel=2,
             )
 
     def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:

@@ -255,12 +255,28 @@ class _ExecuteMixin:
         if not issues:
             return
         import warnings
-        body = "\n  - ".join(issues)
-        warnings.warn(
-            f"[{context}] preflight found {len(issues)} issue(s) - "
-            f"pass skip_preflight=True to suppress:\n  - {body}",
-            UserWarning, stacklevel=3,
-        )
+        errors = [i for i in issues if getattr(i, "severity", "warning") == "error"]
+        warns = [i for i in issues if getattr(i, "severity", "warning") != "error"]
+        if warns:
+            body = "\n  - ".join(warns)
+            warnings.warn(
+                f"[{context}] preflight found {len(warns)} advisory issue(s) - "
+                f"pass skip_preflight=True to suppress:\n  - {body}",
+                UserWarning, stacklevel=3,
+            )
+        if errors:
+            # Error-severity findings are structurally-impossible configs
+            # (e.g. upml+refinement, Floquet+non-uniform-z) whose validators
+            # raise ValueError. run()/forward() used to call those validators
+            # directly so the error PROPAGATED; routing through preflight must
+            # preserve that hard-fail, else a known-invalid run silently
+            # proceeds. Re-raise (aligns with Tidy3D/Meep raise-on-setup-error).
+            # skip_preflight=True remains the explicit escape hatch.
+            detail = "\n  - ".join(errors)
+            raise ValueError(
+                f"[{context}] preflight found {len(errors)} blocking error(s) "
+                f"(pass skip_preflight=True to bypass):\n  - {detail}"
+            )
 
     def _run_adi_from_materials(
         self,

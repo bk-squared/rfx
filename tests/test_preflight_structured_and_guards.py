@@ -69,9 +69,12 @@ def _fake_conformal(dx, dy=None, dz=None, faces=("z_lo", "z_hi")):
     return SimpleNamespace(_boundary_spec=spec, _dx=dx, _dy=dy, _dz=dz)
 
 
-def test_conformal_fine_dx_warns_error_severity():
+def test_conformal_fine_dx_warns():
+    # WARNING severity (not error/forbid): conformal-fine-dx is a known,
+    # development-coupled bug; convergence tests must still RUN it, so it must
+    # not hard-fail. Agents gate on the code, not a hard-stop.
     fake = _fake_conformal(1e-3)
-    with pytest.warns(PreflightErrorWarning, match="KNOWN"):
+    with pytest.warns(UserWarning, match="KNOWN"):
         _PreflightMixin._validate_cfg_conformal_fine_dx(fake, 1e-3)
 
 
