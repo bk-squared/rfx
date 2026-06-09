@@ -338,27 +338,30 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
 
 
 # ---------------------------------------------------------------------------
-# Test D: slow end-to-end vs genuine pre-change S1 golden
+# Test D: slow end-to-end production-stability vs the re-baselined golden
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
 def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
-    """End-to-end: full FDTD + new jnp assembly vs GENUINE pre-change S1 golden.
+    """End-to-end production-stability: full FDTD + jnp assembly vs golden.
 
-    The golden (tests/fixtures/msl_s_matrix_golden.npy) is the verified,
-    pre-change S1 numpy output captured BEFORE the assembly was converted to
-    jnp.  It must NOT be regenerated from post-change code.
+    RE-BASELINED 2026-05-29 (issue #80 fix). The previous golden pinned the
+    S1 V·I single-plane wave-split assembly, which was the issue-#80 bug: it
+    divided by the analytic-Z0-vs-actual-mesh-Z0 mismatch and produced
+    non-physical S (|S11|>0 and |S11|^2+|S21|^2>1 even on a matched line).
+    S is now assembled from the voltage-only spatial fit (S_ii = gamma/alpha
+    via extract_msl_nprobe + direction-keyed leaving/arriving), so the golden
+    was re-captured from the new validated assembly. This is documented
+    re-baselining after a deliberate algorithm fix — NOT loosening to force a
+    pass (the strong-reflector patch acceptance, test_issue80_patch_s11_regression,
+    keeps its strict assertions). Regenerate with /tmp/regen_goldens.py or by
+    rerunning compute_msl_s_matrix on _build_thru_line_sim().
 
-    The new production path runs in float32 while the pre-change numpy ran in
-    float64 (np.zeros(dtype=complex) is complex128), so the end-to-end deviation
-    is PURE float32 rounding: the structural check
-    (test_replay_float64_equivalence) proves jnp-f64 == numpy-f64 to ~1e-8, so
-    any end-to-end gap is precision-only, not a logic divergence.  The S1 V·I
-    de-embedding (closed-loop ∮H·dl current + 3-probe split, ill-conditioned
-    near resonance) amplifies f32 rounding to ~1.2e-3 on real FDTD data — larger
-    than the simpler pre-S1 code, but still ~0.1 % of |S|, far below the >5 %
-    MSL Z0 staircase physics floor at DX=80µm.  Tolerance is therefore the
-    measured f32 production delta (rtol=5e-3, atol=2e-3), NOT machine epsilon;
+    The production path runs float32 while the golden is captured complex128,
+    so the end-to-end deviation is f32 rounding only: the structural check
+    (test_replay_float64_equivalence) proves jnp-f64 == numpy-f64, so any
+    end-to-end gap is precision, not logic. Tolerance is the measured f32
+    production delta (rtol=5e-3, atol=2e-3), NOT machine epsilon;
     AD/inverse-design uses the proven-correct f64 path.
     """
     golden = np.load(E2E_GOLDEN_PATH)

@@ -953,6 +953,13 @@ class _SparamMixin:
                 # Helper: integrate V and I per port from the recorded planes.
                 v_per_port: list[list[np.ndarray]] = []
                 i_first_per_port: list[np.ndarray] = []
+                # issue #80 fix: S is assembled from the voltage-only spatial
+                # fit (alpha/gamma) per port, not the V·I single-plane split.
+                # Collect the fitted forward/backward amplitudes + beta + the
+                # per-port geometry needed for the direction-keyed assembly.
+                alpha_per_port: list[np.ndarray] = []
+                gamma_per_port: list[np.ndarray] = []
+                beta_per_port: list[np.ndarray] = []
                 for p_idx, meta in enumerate(port_idx_meta):
                     vs = []
                     for nm in ez_probe_names[p_idx]:
@@ -1003,52 +1010,71 @@ class _SparamMixin:
                     )
                     raw_z0 = raw_z0.at[driven, p_idx, :].set(jnp.asarray(res_p["z0"], dtype=_complex_dtype))
                     raw_q = raw_q.at[driven, p_idx, :].set(jnp.asarray(res_p["q"], dtype=_complex_dtype))
+                    # Collect the spatial-fit amplitudes for the post-loop
+                    # direction-keyed S assembly (issue #80 fix). The probe
+                    # x-coords passed to extract_msl_nprobe are SIGNED per
+                    # port (msl_probe_x_coords_n uses sign=+1 for "+x",
+                    # sign=-1 for "-x"), so alpha is always the global +x
+                    # wave and gamma the global -x wave on EVERY port.
+                    alpha_per_port.append(jnp.asarray(res_p["alpha"], dtype=_complex_dtype))
+                    gamma_per_port.append(jnp.asarray(res_p["gamma"], dtype=_complex_dtype))
+                    beta_per_port.append(jnp.asarray(res_p["beta"], dtype=_complex_dtype))
                     if p_idx == driven:
-                        # V·I single-plane wave split at probe 0 (issue #80
-                        # stage S1): a=(V+Z0*I)/2, b=(V-Z0*I)/2, S11=b/a —
-                        # the OpenEMS-style telegrapher de-embedding. With a
-                        # real positive Z0 and a passive structure this is
-                        # bounded |S11|<=1, unlike the Fix-C alpha/gamma
-                        # spatial fit that blew up to |S11|>1 on a strong
-                        # reflector. Z0 is analytic Hammerstad-Jensen; I is
-                        # the closed Ampere loop. See
-                        # docs/agent-memory/port_sparam_review_2026-05-19.md.
-                        v0_d = v_per_port[driven][0]
-                        z0hj_d = z0_hj_per_port[driven]
-                        a_fwd_d = 0.5 * (v0_d + z0hj_d * i_f)
-                        b_ref_d = 0.5 * (v0_d - z0hj_d * i_f)
-                        S = S.at[driven, driven, :].set(jnp.asarray(b_ref_d / (a_fwd_d + 1e-30), dtype=_complex_dtype))
                         Z0_per_run = Z0_per_run.at[driven, :].set(jnp.asarray(res_p["z0"], dtype=_complex_dtype))
-                        alpha_d = a_fwd_d
                         if driven == 0:
                             beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)
 
-                # Off-diagonal S21: S[j,i] = b_j / a_i (issue #80 stage S1).
-                # The wave received from the structure at a passive port is
-                # its BACKWARD wave b=(V-Z0*I)/2, not the forward wave a it
-                # would launch. For a transmitted wave arriving at a port
-                # whose forward reference faces the other way, a~0 and b~V;
-                # using a gave the non-physical |S21|~0.08, b gives ~1.
-                for j in range(n_ports):
-                    if j == driven:
-                        continue
-                    v0_p = v_per_port[j][0]
-                    b_out_p = 0.5 * (
-                        v0_p - z0_hj_per_port[j] * i_first_per_port[j]
-                    )
-                    S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
+                # --- Direction-keyed spatial-fit S assembly (issue #80 fix) ---
+                # Replaces the V·I single-plane split (a=(V+Z0*I)/2, b=(V-Z0*I)/2,
+                # S=b/a), which was corrupted by the analytic-Z0-vs-actual-mesh-Z0
+                # mismatch (a pure forward wave got a spurious b => |S11|>0 and
+                # |S11|^2+|S21|^2>1 even on a matched line). The voltage-only
+                # spatial fit reads reflection purely from the standing-wave
+                # shape (S=gamma/alpha), independent of Z0 and the Ampere-loop
+                # current, and is passive by construction when the fit is sound.
+                #
+                # With signed per-port probe x, alpha = global +x wave, gamma =
+                # global -x wave on every port. The wave LEAVING a feed into the
+                # structure travels in that port's own direction; the wave
+                # ARRIVING from the structure travels opposite:
+                #   leaving  = alpha if direction=="+x" else gamma
+                #   arriving = gamma if direction=="+x" else alpha
+                # S_ii = arriving_i/leaving_i ; S_ji = arriving_j/leaving_i.
+                # Each amplitude is de-embedded from its probe-0 anchor to the
+                # feed plane by rot=exp(+j*beta*d0) (d0 = n_probe_offset*dx along
+                # the line). The rotation cancels in S_ii (magnitude+phase exact)
+                # and corrects the cross-term phase; magnitudes are unaffected.
+                def _leaving(a, g, direction):
+                    return a if direction == "+x" else g
 
-            # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
-            # S1 moved S11/S21 onto the OpenEMS-style V·I wave split, which
-            # is bounded |S11| <= 1 for a passive structure whenever the
-            # closed Ampere-loop current is sound. A V·I-split |S11| > 1 is
-            # therefore the primary red flag — it means the current was
-            # mismeasured (sign/scale), so S11/S21 are untrustworthy; this
-            # is what raises under strict_extractor=True. The reported Z0
-            # and beta still ride on the retained N-probe fit, which can be
-            # noisy per-frequency on coarse meshes, so a Z0 deviation from
-            # analytic Hammerstad-Jensen is reported as a SEPARATE, softer
-            # caveat — it does not impugn the V·I-split S11/S21.
+                def _arriving(a, g, direction):
+                    return g if direction == "+x" else a
+
+                dir_d = msl_ports[driven].direction
+                d0_d = float(entries[driven].n_probe_offset) * float(grid.dx)
+                rot_d = jnp.exp(1j * beta_per_port[driven] * d0_d)
+                a_drv = _leaving(alpha_per_port[driven], gamma_per_port[driven], dir_d) * rot_d
+                safe_a_drv = jnp.where(jnp.abs(a_drv) > 1e-30, a_drv, jnp.ones_like(a_drv))
+                for j in range(n_ports):
+                    dir_j = msl_ports[j].direction
+                    d0_j = float(entries[j].n_probe_offset) * float(grid.dx)
+                    rot_j = jnp.exp(1j * beta_per_port[j] * d0_j)
+                    arriving_j = _arriving(alpha_per_port[j], gamma_per_port[j], dir_j) * rot_j
+                    S = S.at[j, driven, :].set(jnp.asarray(arriving_j / safe_a_drv, dtype=_complex_dtype))
+
+            # --- Honesty guard (issue #80 Fix A, retargeted to the fix) ---
+            # S is now assembled from the voltage-only spatial fit
+            # (S_ii = gamma/alpha at the reference plane), which is bounded
+            # |S11| <= 1 for a passive structure whenever the 2-wave fit is
+            # well-conditioned. An |S11| > 1 is therefore the primary red
+            # flag — it means the spatial fit is ill-conditioned (probes
+            # inside the source reactive near-field, or a degenerate beta
+            # estimate), so S11/S21 are untrustworthy; this is what raises
+            # under strict_extractor=True. The reported Z0 and beta ride on
+            # the same N-probe fit, which can be noisy per-frequency on
+            # coarse meshes, so a Z0 deviation from analytic Hammerstad-
+            # Jensen is reported as a SEPARATE, softer caveat — it does not
+            # impugn the spatial-fit S11/S21 magnitude.
             import warnings as _w
 
             _S11_MAX = 1.0 + 0.05
@@ -1062,16 +1088,18 @@ class _SparamMixin:
                 z0_dev = np.abs(np.asarray(jax.lax.stop_gradient(raw_z0[driven, driven, :])) - z0_hj) / z0_hj
                 k_z = int(np.argmax(z0_dev))
                 z0_dev_max = float(z0_dev[k_z])
-                # Primary — V·I-split S11 boundedness (extraction soundness).
+                # Primary — spatial-fit S11 boundedness (extraction soundness).
                 if s11_max > _S11_MAX:
                     msg = (
-                        f"compute_msl_s_matrix: V·I-split |S11| = "
+                        f"compute_msl_s_matrix: spatial-fit |S11| = "
                         f"{s11_max:.3f} > 1 for MSL port {pe.name!r} at "
                         f"f = {freqs_arr[k_s] / 1e9:.4f} GHz — non-physical "
-                        "for a passive structure. The closed Ampere-loop "
-                        "current is likely mismeasured (sign/scale); the "
-                        "extracted S11/S21 are UNRELIABLE. See "
-                        "docs/agent-memory/port_sparam_review_2026-05-19.md."
+                        "for a passive structure. The voltage 2-wave fit is "
+                        "likely ill-conditioned (probes inside the source "
+                        "reactive near-field, or a degenerate beta); the "
+                        "extracted S11/S21 are UNRELIABLE. Increase "
+                        "n_probe_offset (move probes into the far field) "
+                        "and/or the probe span."
                     )
                     if strict_extractor:
                         raise ValueError(msg)
@@ -1086,8 +1114,8 @@ class _SparamMixin:
                         f"Jensen {z0_hj:.2f} ohm at "
                         f"f = {freqs_arr[k_z] / 1e9:.4f} GHz. Z0 rides on the "
                         "retained N-probe fit (S1 transitional); on coarse "
-                        "meshes this includes Yee-staircase bias. The V·I-"
-                        "split S11/S21 are unaffected.",
+                        "meshes this includes Yee-staircase bias. The spatial-"
+                        "fit S11/S21 (assembled from gamma/alpha) are unaffected.",
                         stacklevel=2,
                     )
 
