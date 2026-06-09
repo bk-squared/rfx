@@ -29,7 +29,12 @@ from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in m
 from rfx.adi import ADIState2D, run_adi_2d
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
-from rfx.api._spec import ForwardResult, Result, MATERIAL_LIBRARY
+from rfx.api._spec import (
+    ForwardResult,
+    Result,
+    MATERIAL_LIBRARY,
+    _warn_if_nonfinite_result,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1543,7 +1548,7 @@ class _ExecuteMixin:
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
 
-        return self._forward_from_materials(
+        _res = self._forward_from_materials(
             grid,
             materials,
             debye_spec,
@@ -1555,6 +1560,8 @@ class _ExecuteMixin:
             pec_occupancy=pec_occupancy_override,
             port_s11_freqs=port_s11_freqs,
         )
+        _warn_if_nonfinite_result(_res, context="forward")
+        return _res
 
     # ---- run ----
 
@@ -1579,6 +1586,7 @@ class _ExecuteMixin:
         conformal_min_weight: float = 0.1,
         devices: list | None = None,
         exchange_interval: int = 1,
+        skip_preflight: bool = False,
     ) -> Result:
         """Run the simulation.
 
@@ -1663,8 +1671,16 @@ class _ExecuteMixin:
         )
 
         # ---- P0: Pre-simulation validation ----
-        self._validate_mesh_quality()
-        self._validate_simulation_config()
+        # Run the SAME consolidated, skippable preflight that forward() gets
+        # (issue #66 parity): _auto_preflight wraps preflight() — mesh quality,
+        # simulation config AND the NTFF/inverse-design check — into one
+        # UserWarning, and is robust under tracing (it try/except-wraps
+        # preflight). Previously run() called only the mesh + config validators
+        # directly, as scattered raw warnings with no skip_preflight control,
+        # so the documented lumped/wire S-parameter path via
+        # run(compute_s_params=True) silently missed part of the best
+        # proactive error surface in the codebase.
+        self._auto_preflight(skip=skip_preflight, context="run")
 
         if self._solver == "adi" and devices is not None and len(devices) > 1:
             raise ValueError("solver='adi' does not support distributed execution")
@@ -1746,10 +1762,12 @@ class _ExecuteMixin:
                     grid = self._build_grid()
                     n_steps = grid.num_timesteps(num_periods=num_periods)
             from rfx.runners.distributed_v2 import run_distributed
-            return run_distributed(
+            _res = run_distributed(
                 self, n_steps=n_steps, devices=devices,
                 exchange_interval=exchange_interval,
             )
+            _warn_if_nonfinite_result(_res, context="run")
+            return _res
 
         # ---- Non-uniform mesh path ----
         if (self._dz_profile is not None
@@ -1770,13 +1788,15 @@ class _ExecuteMixin:
             if n_steps is None:
                 n_steps = int(np.ceil(
                     num_periods / (self._freq_max * nu_grid.dt)))
-            return self._run_nonuniform(
+            _res = self._run_nonuniform(
                 n_steps=n_steps,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
                 subpixel_smoothing=subpixel_smoothing,
                 checkpoint=checkpoint,
             )
+            _warn_if_nonfinite_result(_res, context="run")
+            return _res
 
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(grid)
@@ -1788,7 +1808,7 @@ class _ExecuteMixin:
                 raise ValueError("solver='adi' does not support snapshots yet")
             if n_steps is None:
                 n_steps = grid.num_timesteps(num_periods=num_periods)
-            return self._run_adi_from_materials(
+            _res = self._run_adi_from_materials(
                 grid,
                 base_materials,
                 debye_spec,
@@ -1797,6 +1817,8 @@ class _ExecuteMixin:
                 pec_mask=pec_mask,
                 return_state=True,
             )
+            _warn_if_nonfinite_result(_res, context="run")
+            return _res
 
         # ---- Subgridded path ----
         if self._refinement is not None:
@@ -1819,13 +1841,15 @@ class _ExecuteMixin:
                 subgrid_n_steps = grid.num_timesteps(num_periods=num_periods) * int(
                     self._refinement["ratio"]
                 )
-            return self._run_subgridded(
+            _res = self._run_subgridded(
                 grid, base_materials, pec_mask,
                 n_steps=subgrid_n_steps,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
                 s_param_n_steps=s_param_n_steps,
             )
+            _warn_if_nonfinite_result(_res, context="run")
+            return _res
 
         # ---- Uniform path ----
         if n_steps is None:
@@ -1833,7 +1857,7 @@ class _ExecuteMixin:
 
         from rfx.runners.uniform import run_uniform
         _field_dtype = jnp.float16 if self._precision == "mixed" else None
-        return run_uniform(
+        _res = run_uniform(
             self,
             n_steps=n_steps,
             until_decay=until_decay,
@@ -1859,3 +1883,5 @@ class _ExecuteMixin:
             kerr_chi3=kerr_chi3,
             field_dtype=_field_dtype,
         )
+        _warn_if_nonfinite_result(_res, context="run")
+        return _res

@@ -105,7 +105,6 @@ def _make_stub_case_npz(
     n = 41
     f = np.linspace(f_lo, f_hi, n)
     # Background ~ 1, dip = 10**(-25/20) at f_dip with Gaussian width.
-    bg_db = 0.0
     dip_amp = 10 ** (dip_db / 20.0)
     s21 = 1.0 + (dip_amp - 1.0) * np.exp(-((f - f_dip) / bandwidth) ** 2)
     s = np.zeros((2, 2, n), dtype=complex)

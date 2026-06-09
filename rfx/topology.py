@@ -523,6 +523,24 @@ def topology_optimize(
         beta_history.append(beta)
 
         loss, grad = jax.value_and_grad(lambda logit_: forward(logit_, beta))(logit)
+
+        # NaN/Inf gradient guard (see optimize() for rationale): a non-finite
+        # gradient would silently poison ``logit`` via the optax update and
+        # every later iteration. Stop fast with a cause hint, preserving the
+        # last finite design.
+        if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
+            import warnings as _w
+            _w.warn(
+                f"topology_optimize: non-finite loss/gradient (NaN or Inf) at "
+                f"iteration {it} — the FDTD forward almost certainly diverged "
+                f"(dt above CFL, conformal=True at fine dx, PEC inside CPML, or "
+                f"a sub-cell PEC feature; see docs/agent-memory/"
+                f"rfx-known-issues.md). Stopping early; the returned design is "
+                f"the last finite one (before iteration {it}).",
+                stacklevel=2,
+            )
+            break
+
         loss_val = float(loss)
         history.append(loss_val)
 

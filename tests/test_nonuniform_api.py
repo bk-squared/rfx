@@ -345,7 +345,7 @@ class TestSimulationNonUniform:
         try:
             res_nu = sim_nu.run(n_steps=n_steps, compute_s_params=False)
             res_ref = sim_ref.run(n_steps=n_steps, compute_s_params=False)
-        except ValueError as exc:
+        except ValueError:
             # Aperture-on-NU edge cases that don't relate to the integral
             # math should be flagged but not silently passed. Re-raise.
             raise

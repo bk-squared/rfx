@@ -149,7 +149,6 @@ def _jsonable(value: Any, *, array_values: bool = False, max_array_values: int =
     if isinstance(value, (list, tuple, set, frozenset)):
         return [_jsonable(v, array_values=array_values, max_array_values=max_array_values) for v in value]
     if _is_array_like(value):
-        shape = tuple(int(x) for x in getattr(value, "shape", ()))
         size = int(getattr(value, "size", 0) or 0)
         if array_values and size <= max_array_values:
             try:

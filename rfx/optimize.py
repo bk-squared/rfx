@@ -237,6 +237,26 @@ def optimize(
 
     for it in range(n_iters):
         loss, grad = grad_fn(latent)
+
+        # NaN/Inf gradient guard. A non-finite gradient does not crash an
+        # inverse-design loop — the Adam update below would silently poison
+        # ``latent`` (and every later iteration), so the optimizer "succeeds"
+        # while wandering on garbage. Stop fast with a cause hint and preserve
+        # the last finite design instead of returning a NaN one.
+        if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
+            import warnings as _w
+            _w.warn(
+                f"optimize: non-finite loss/gradient (NaN or Inf) at iteration "
+                f"{it} — the FDTD forward almost certainly diverged. Common "
+                f"causes: dt above CFL, conformal=True at fine dx (a known NaN, "
+                f"see docs/agent-memory/rfx-known-issues.md), PEC inside the "
+                f"CPML region, or a sub-cell PEC feature. Stopping early; the "
+                f"returned design is the last finite one (before iteration "
+                f"{it}).",
+                stacklevel=2,
+            )
+            break
+
         it_count[0] = it + 1
         loss_val = float(loss)
         loss_history.append(loss_val)

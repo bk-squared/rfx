@@ -25,6 +25,75 @@ from rfx.core.yee import MaterialArrays
 from rfx.core.jax_utils import is_tracer
 
 
+class PreflightErrorWarning(UserWarning):
+    """A preflight finding that is error-severity but emitted as a warning.
+
+    Emitting (rather than raising) keeps the rest of the preflight suite
+    running so the user sees ALL issues at once, while ``preflight()`` still
+    tags the resulting :class:`PreflightIssue` with ``severity="error"`` so an
+    automation agent can gate on it. Use for known-bad configurations (e.g.
+    the conformal-PEC fine-mesh NaN) that should stop a claims-bearing run.
+    """
+
+
+class PreflightIssue(str):
+    """One preflight finding.
+
+    Subclasses ``str`` so it is 100% back-compatible with the plain
+    ``list[str]`` that ``preflight()`` has always returned — it prints, joins,
+    compares, and regex-matches exactly like its message — while also carrying
+    machine-readable fields so an automation agent can gate deterministically::
+
+        report = sim.preflight()
+        errors = [i for i in report if i.severity == "error"]
+        if errors:
+            ...  # stop before spending GPU minutes on a doomed run
+
+    ``severity`` is ``"error"`` for hard contradictions / known-bad configs and
+    ``"warning"`` for advisories. ``code`` is a coarse best-effort category slug
+    (e.g. ``"conformal_nan"``, ``"resolution"``, ``"absorber"``) for filtering.
+    """
+
+    severity: str
+    code: str
+
+    def __new__(cls, message, *, severity: str = "warning", code: str = "general"):
+        obj = super().__new__(cls, str(message))
+        obj.severity = severity
+        obj.code = code
+        return obj
+
+
+def _preflight_code_for(message: str) -> str:
+    """Best-effort coarse category slug for a preflight message (for agent
+    filtering; not load-bearing). Kept deliberately simple."""
+    m = message.lower()
+    table = (
+        ("conformal", "conformal_nan"),
+        ("artificial q", "lossless_q"),
+        ("lossless", "lossless_q"),
+        ("cells per", "resolution"),
+        ("cells/λ", "resolution"),
+        ("resolution", "resolution"),
+        ("ntff", "ntff"),
+        ("far-field", "ntff"),
+        ("cpml", "absorber"),
+        ("upml", "absorber"),
+        ("absorber", "absorber"),
+        ("pmc", "symmetry"),
+        ("waveguide", "port"),
+        ("msl", "port"),
+        ("port", "port"),
+        ("pec", "pec"),
+        ("memory", "ad_memory"),
+        ("vram", "ad_memory"),
+    )
+    for key, code in table:
+        if key in m:
+            return code
+    return "general"
+
+
 class _PreflightMixin:
     """Preflight / validation methods mixed into :class:`Simulation`."""
 
@@ -686,13 +755,23 @@ class _PreflightMixin:
             except ValueError as e:
                 if strict:
                     raise
-                issues.append(f"ERROR: {e}")
+                issues.append(PreflightIssue(
+                    f"ERROR: {e}",
+                    severity="error",
+                    code=_preflight_code_for(str(e)),
+                ))
 
         for w in caught:
             msg = str(w.message)
             if strict:
                 raise ValueError(msg)
-            issues.append(msg)
+            severity = (
+                "error" if issubclass(w.category, PreflightErrorWarning)
+                else "warning"
+            )
+            issues.append(PreflightIssue(
+                msg, severity=severity, code=_preflight_code_for(msg)
+            ))
 
         if check_ad_memory:
             if n_steps_for_memory is None:
@@ -705,7 +784,9 @@ class _PreflightMixin:
                 msg = est.warning
                 if strict:
                     raise ValueError(msg)
-                issues.append(msg)
+                issues.append(PreflightIssue(
+                    msg, severity="warning", code="ad_memory"
+                ))
 
         if issues:
             for iss in issues:
@@ -1147,12 +1228,119 @@ class _PreflightMixin:
         self._validate_cfg_no_sources(_w)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
         self._validate_cfg_subgrid_limitations(_w)
+        self._validate_cfg_conformal_fine_dx(dx)
+        self._validate_cfg_lossless_resonator_in_absorber(_w)
         self._validate_cfg_waveguide_reference_plane(
             _w, cpml_thick_lo, cpml_thick_hi
         )
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
+
+    def _validate_cfg_conformal_fine_dx(self, dx: float) -> None:
+        """Flag the KNOWN conformal-PEC fine-mesh NaN before it wastes a run.
+
+        ``Boundary(conformal=True)`` / conformal faces at a min cell size
+        <= ~2 mm drives the field to NaN. Root cause is a discrete-adjointness
+        break (the E-update-only ``eps_eff=eps/w`` makes the update operator
+        non-SPSD), NOT a CFL issue — reducing dt does not cure it, and four fix
+        methods are falsified (see docs/agent-memory/rfx-known-issues.md, the
+        conformal-PEC item). ``normalize=False`` is NOT a safe workaround.
+        Surfacing this at preflight converts a silent-NaN GPU run into an
+        instant redirect. Emitted as :class:`PreflightErrorWarning` (error
+        severity) so an agent can gate on it without it masking other checks.
+        """
+        spec = getattr(self, "_boundary_spec", None)
+        if spec is None or not hasattr(spec, "conformal_faces"):
+            return
+        try:
+            cf = spec.conformal_faces()
+        except Exception:
+            return
+        if not cf:
+            return
+        cells = [
+            c for c in (
+                self._dx,
+                getattr(self, "_dy", None),
+                getattr(self, "_dz", None),
+            )
+            if c
+        ]
+        min_cell = min(cells) if cells else dx
+        if min_cell <= 2.0e-3:
+            import warnings as _w
+            _w.warn(
+                f"conformal PEC is enabled on faces {sorted(cf)} with a min "
+                f"cell size {min_cell * 1e3:.3f} mm <= 2 mm — this is a KNOWN "
+                f"NaN (discrete-adjointness break, not CFL; 4 fix methods "
+                f"falsified — see docs/agent-memory/rfx-known-issues.md). "
+                f"normalize=False is NOT a safe workaround at fine dx. Use "
+                f"conformal=False (staircase PEC) or a coarser mesh "
+                f"(dx > 2 mm) until the contour-FIT redesign lands.",
+                PreflightErrorWarning, stacklevel=2,
+            )
+
+    def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:
+        """Warn when EVERY dielectric is perfectly lossless in an open (CPML/
+        UPML) domain — design-guide Anti-Pattern #1: a lossless substrate in an
+        open boundary yields an artificially infinite Q that reads as a
+        plausible-but-wrong resonance (an R5 surface-metric trap detectable
+        purely from setup). Deliberately narrow + single-shot to avoid noise:
+        it fires only when no dielectric carries any loss, and is hedged
+        because it is harmless if you are not measuring Q.
+        """
+        if self._boundary not in ("cpml", "upml"):
+            return
+        try:
+            from rfx.api._spec import MATERIAL_LIBRARY
+        except Exception:
+            MATERIAL_LIBRARY = {}
+
+        def _resolve(name):
+            mspec = self._materials.get(name) if self._materials else None
+            if mspec is not None:
+                return (
+                    float(getattr(mspec, "eps_r", 1.0)),
+                    float(getattr(mspec, "sigma", 0.0)),
+                    bool(getattr(mspec, "debye_poles", None)
+                         or getattr(mspec, "lorentz_poles", None)),
+                )
+            lib = MATERIAL_LIBRARY.get(name)
+            if isinstance(lib, dict):
+                return (
+                    float(lib.get("eps_r", 1.0)),
+                    float(lib.get("sigma", 0.0)),
+                    bool(lib.get("debye_poles") or lib.get("lorentz_poles")),
+                )
+            return None
+
+        lossless_names: list[str] = []
+        any_lossy_dielectric = False
+        for entry in self._geometry:
+            resolved = _resolve(entry.material_name)
+            if resolved is None:
+                continue
+            eps_r, sigma, has_poles = resolved
+            # Dielectric (not vacuum/air, not a conductor/PEC).
+            if not (eps_r > 1.05 and sigma < 1.0):
+                continue
+            if sigma <= 0.0 and not has_poles:
+                lossless_names.append(entry.material_name)
+            else:
+                any_lossy_dielectric = True
+
+        if lossless_names and not any_lossy_dielectric:
+            uniq = sorted(set(lossless_names))
+            _w.warn(
+                f"all dielectric(s) {uniq} are perfectly lossless in an open "
+                f"({self._boundary.upper()}) domain. If you are measuring "
+                f"Q / resonance, this gives an ARTIFICIALLY infinite Q "
+                f"(design-guide Anti-Pattern #1, an R5 surface-metric trap) — "
+                f"add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. "
+                f"(Harmless if you are not measuring Q.)",
+                stacklevel=2,
+            )
 
     def _validate_cfg_compute_cpml_thickness(
         self, cpml_thickness: float

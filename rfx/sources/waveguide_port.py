@@ -415,7 +415,6 @@ def _galerkin_eigh_separable_laplacian_2d(
     strong-form operator). Returns ``(evals, evecs)`` with evecs as columns
     in the ORIGINAL φ basis (unit-mass-normalized), ascending eigenvalue.
     """
-    nu = len(mu); nv = len(mv)
     Mv = np.diag(mv); Mu = np.diag(mu)
     big = np.kron(Ku, Mv) + np.kron(Mu, Kv)        # (nu*nv, nu*nv) symmetric
     m_diag = np.kron(mu, mv)                         # diagonal of (Mu⊗Mv)
