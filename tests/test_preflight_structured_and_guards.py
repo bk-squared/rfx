@@ -18,7 +18,8 @@ from rfx.api._preflight import (
     _PreflightMixin,
     PreflightErrorWarning,
     PreflightIssue,
-    _preflight_code_for,
+    PreflightReport,
+    PreflightWarning,
 )
 from rfx.geometry.csg import Box
 
@@ -44,10 +45,42 @@ def test_preflight_issue_is_a_real_string():
     assert pi == "ERROR: x" and pi.startswith("ERROR") and pi.severity == "error"
 
 
-def test_code_inference():
-    assert _preflight_code_for("probe near CPML region") == "absorber"
-    assert _preflight_code_for("conformal PEC NaN") == "conformal_nan"
-    assert _preflight_code_for("4.1 cells per lambda") == "resolution"
+def test_preflight_report_is_a_list_with_canonical_api():
+    """PreflightReport IS a list (back-compat) AND mirrors the in-repo report
+    idiom (.issues/.errors/.warnings/.ok/.format()/.to_dict()/.to_json())."""
+    sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
+    sim.add_source((0.01, 0.01, 0.018), component="ez")   # near CPML => issue
+    sim.add_probe((0.01, 0.01, 0.019), component="ez")
+    report = sim.preflight()
+    assert isinstance(report, PreflightReport) and isinstance(report, list)
+    # list[str] ops the 65 legacy call sites rely on
+    assert isinstance("\n".join(report), str)
+    assert len(report) == len(list(report)) and bool(report)
+    # canonical report API
+    assert report.issues == list(report)
+    assert report.ok == (not report.errors)
+    assert set(report.warnings) | set(report.errors) == set(report)
+    assert "preflight:" in report.format()
+
+
+def test_codes_set_at_check_site():
+    """Codes come from the checks themselves (PreflightWarning instance /
+    PreflightConfigError), NOT from text inference of the message.
+
+    Confirms the deleted ``_preflight_code_for`` is not relied on: a probe in
+    CPML carries the absorber_overlap slug set in
+    ``_validate_cfg_absorber_placement`` and the source object identifies the
+    emitting check.
+    """
+    sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
+    sim.add_source((0.01, 0.01, 0.018), component="ez")
+    sim.add_probe((0.01, 0.01, 0.019), component="ez")
+    report = sim.preflight()
+    absorber = report.by_code("absorber_overlap")
+    assert absorber, f"expected absorber_overlap code, got {[i.code for i in report]}"
+    for issue in absorber:
+        assert issue.code == "absorber_overlap"
+        assert issue.source == "_validate_cfg_absorber_placement"
 
 
 def test_error_severity_mapping_end_to_end():
@@ -116,3 +149,105 @@ def test_lossless_dielectric_in_cpml_warns():
 def test_lossy_dielectric_silent():
     # fr4: sigma 0.025 => not the artificial-Q trap, no false positive.
     assert len(_lossless_warnings(_box_sim("fr4"))) == 0
+
+
+# ------------------------------------------------ (d) Phase A meta-coverage
+def _bad_sim_probe_in_cpml():
+    sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
+    sim.add_source((0.01, 0.01, 0.018), component="ez")   # absorber_overlap
+    sim.add_probe((0.01, 0.01, 0.019), component="ez")
+    return sim
+
+
+def _bad_sim_no_sources():
+    # no_sources advisory
+    return Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="pec")
+
+
+def _bad_sim_lossless_q():
+    sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
+    sim.add(Box((0.005,) * 3, (0.015,) * 3), material="alumina")  # lossless_q
+    sim.add_source((0.01, 0.01, 0.01), component="ez")
+    sim.add_probe((0.01, 0.01, 0.012), component="ez")
+    return sim
+
+
+def _bad_sim_under_resolved_dielectric():
+    # mesh_resolution: a fat high-eps slab under-resolved at coarse dx.
+    sim = Simulation(domain=(0.04, 0.04, 0.04), freq_max=20e9, dx=2e-3,
+                     boundary="pec")
+    sim.add_material("hi", eps_r=12.0)
+    sim.add(Box((0.005, 0.005, 0.005), (0.035, 0.035, 0.035)), material="hi")
+    sim.add_source((0.02, 0.02, 0.02), component="ez")
+    sim.add_probe((0.025, 0.025, 0.025), component="ez")
+    return sim
+
+
+def _bad_sim_upml_refinement():
+    # upml_refinement: structurally-impossible config (error severity).
+    from rfx import GaussianPulse
+    sim = Simulation(freq_max=6e9, domain=(0.04, 0.04, 0.02),
+                     boundary="upml", cpml_layers=6, dx=0.002)
+    sim.add_refinement((0.004, 0.008), ratio=2)
+    sim.add_source((0.01, 0.02, 0.01), "ez",
+                   waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
+    sim.add_probe((0.026, 0.02, 0.01), "ez")
+    return sim
+
+
+def _all_emitted_issues(report):
+    return list(report)
+
+
+def test_every_emitted_issue_carries_a_check_site_code():
+    """Phase A meta-test: across a battery of deliberately-bad sims, EVERY
+    emitted preflight issue must carry a non-empty code != 'uncoded' (codes are
+    set at the check site, not inferred)."""
+    builders = (
+        _bad_sim_probe_in_cpml,
+        _bad_sim_no_sources,
+        _bad_sim_lossless_q,
+        _bad_sim_under_resolved_dielectric,
+        _bad_sim_upml_refinement,
+    )
+    total = 0
+    for build in builders:
+        report = build().preflight()
+        for issue in _all_emitted_issues(report):
+            total += 1
+            assert isinstance(issue, PreflightIssue)
+            assert issue.code and issue.code != "uncoded", (
+                f"{build.__name__}: uncoded issue {str(issue)!r}"
+            )
+            assert issue.severity in ("warning", "error")
+    assert total > 0, "battery emitted no issues — meta-test is vacuous"
+
+
+def test_error_severity_config_issue_is_coded():
+    """The structurally-impossible upml+refinement raise surfaces as an
+    error-severity issue with its check-site slug (not 'uncoded')."""
+    report = _bad_sim_upml_refinement().preflight()
+    errs = report.errors
+    assert errs, "expected an error-severity issue for upml+refinement"
+    assert any(i.code == "upml_refinement" for i in errs), (
+        f"codes: {[i.code for i in errs]}"
+    )
+    assert not report.ok
+
+
+def test_to_dict_and_to_json_roundtrip_carry_code_and_severity():
+    """Real serialization: to_dict()/to_json() carry code + severity per issue
+    (the str subclass alone is NOT json-dumpable with its attrs)."""
+    import json
+
+    report = _bad_sim_probe_in_cpml().preflight()
+    assert report, "expected at least one issue to serialize"
+    d = report.to_dict()
+    assert d["n_issues"] == len(report)
+    for src, rec in zip(report, d["issues"]):
+        assert rec["code"] == src.code
+        assert rec["severity"] == src.severity
+        assert rec["message"] == str(src)
+    back = json.loads(report.to_json())
+    assert back["issues"][0]["code"] == report[0].code
+    assert back["issues"][0]["severity"] == report[0].severity

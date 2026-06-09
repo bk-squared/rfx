@@ -15,6 +15,7 @@ indentation, decorators, signatures, and logic. ``Simulation`` inherits
 
 from __future__ import annotations
 
+import json
 import math
 
 import jax.numpy as jnp
@@ -25,15 +26,91 @@ from rfx.core.yee import MaterialArrays
 from rfx.core.jax_utils import is_tracer
 
 
-class PreflightErrorWarning(UserWarning):
-    """A preflight finding that is error-severity but emitted as a warning.
+class PreflightWarning(UserWarning):
+    """Base for structured preflight findings carried on the warning instance.
 
-    Emitting (rather than raising) keeps the rest of the preflight suite
-    running so the user sees ALL issues at once, while ``preflight()`` still
-    tags the resulting :class:`PreflightIssue` with ``severity="error"`` so an
-    automation agent can gate on it. Use for known-bad configurations (e.g.
-    the conformal-PEC fine-mesh NaN) that should stop a claims-bearing run.
+    Mirrors the in-repo report idioms (:class:`SubgridValidationIssue`,
+    :class:`PortValidationIssue`): the check site sets a stable lowercase-slug
+    ``code`` and a ``severity`` on the warning instance, plus optional ``loc``
+    (where in the setup the finding applies) and ``source`` (the check method
+    name). ``preflight()`` reads these fields off ``w.message`` so the issue
+    record is coded at the check site rather than inferred from text.
+
+    Emit with ``warnings.warn(PreflightWarning(msg, code="...", source="..."))``.
     """
+
+    def __init__(
+        self,
+        message,
+        *,
+        code: str = "uncoded",
+        severity: str = "warning",
+        loc: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = str(message)
+        self.code = code
+        self.severity = severity
+        self.loc = loc
+        self.source = source
+
+    def __str__(self) -> str:  # back-compat: warning prints as its message
+        return self.message
+
+
+class PreflightErrorWarning(PreflightWarning):
+    """An error-severity preflight finding emitted as a warning.
+
+    Re-parented under :class:`PreflightWarning` (Phase A). Emitting (rather than
+    raising) keeps the rest of the preflight suite running so the user sees ALL
+    issues at once, while ``preflight()`` still tags the resulting
+    :class:`PreflightIssue` with ``severity="error"`` so an automation agent can
+    gate on it. Use for known-bad configurations that should stop a run.
+
+    ``severity`` defaults to ``"error"``; the legacy
+    ``warnings.warn("msg", PreflightErrorWarning)`` form (category, no instance
+    attrs) still surfaces as error-severity via ``preflight()``'s
+    ``issubclass(w.category, PreflightErrorWarning)`` derivation.
+    """
+
+    def __init__(
+        self,
+        message,
+        *,
+        code: str = "uncoded",
+        severity: str = "error",
+        loc: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        super().__init__(
+            message, code=code, severity=severity, loc=loc, source=source
+        )
+
+
+class PreflightConfigError(ValueError):
+    """A structurally-impossible-config raise carrying a check-site ``code``.
+
+    The structurally-impossible config validators (``upml``+refinement,
+    Floquet+non-uniform-z, ...) raise this so ``preflight()`` can record the
+    error-severity :class:`PreflightIssue` with the slug set at the check site
+    instead of inferring it from the message. It subclasses ``ValueError`` so
+    every existing ``except ValueError`` / ``pytest.raises(ValueError)`` site
+    (including the run() regression locks) is unaffected.
+    """
+
+    def __init__(
+        self,
+        message,
+        *,
+        code: str = "uncoded",
+        loc: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.loc = loc
+        self.source = source
 
 
 class PreflightIssue(str):
@@ -50,48 +127,136 @@ class PreflightIssue(str):
             ...  # stop before spending GPU minutes on a doomed run
 
     ``severity`` is ``"error"`` for hard contradictions / known-bad configs and
-    ``"warning"`` for advisories. ``code`` is a coarse best-effort category slug
-    (e.g. ``"conformal_nan"``, ``"resolution"``, ``"absorber"``) for filtering.
+    ``"warning"`` for advisories. ``code`` is the lowercase-slug category set at
+    the check site (e.g. ``"conformal_nan"``, ``"mesh_resolution"``,
+    ``"absorber_overlap"``). ``loc`` and ``source`` are optional provenance.
+
+    The str subclass silently drops these attrs under ``json.dumps`` — never
+    serialize a :class:`PreflightIssue` directly; use :meth:`to_dict` or the
+    owning :class:`PreflightReport`'s :meth:`PreflightReport.to_dict` /
+    :meth:`PreflightReport.to_json`.
     """
 
     severity: str
     code: str
+    loc: str | None
+    source: str | None
 
-    def __new__(cls, message, *, severity: str = "warning", code: str = "general"):
+    def __new__(
+        cls,
+        message,
+        *,
+        severity: str = "warning",
+        code: str = "uncoded",
+        loc: str | None = None,
+        source: str | None = None,
+    ):
         obj = super().__new__(cls, str(message))
         obj.severity = severity
         obj.code = code
+        obj.loc = loc
+        obj.source = source
         return obj
 
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable, JSON-serializable record of this finding."""
+        return {
+            "message": str(self),
+            "code": self.code,
+            "severity": self.severity,
+            "loc": self.loc,
+            "source": self.source,
+        }
 
-def _preflight_code_for(message: str) -> str:
-    """Best-effort coarse category slug for a preflight message (for agent
-    filtering; not load-bearing). Kept deliberately simple."""
-    m = message.lower()
-    table = (
-        ("conformal", "conformal_nan"),
-        ("artificial q", "lossless_q"),
-        ("lossless", "lossless_q"),
-        ("cells per", "resolution"),
-        ("cells/λ", "resolution"),
-        ("resolution", "resolution"),
-        ("ntff", "ntff"),
-        ("far-field", "ntff"),
-        ("cpml", "absorber"),
-        ("upml", "absorber"),
-        ("absorber", "absorber"),
-        ("pmc", "symmetry"),
-        ("waveguide", "port"),
-        ("msl", "port"),
-        ("port", "port"),
-        ("pec", "pec"),
-        ("memory", "ad_memory"),
-        ("vram", "ad_memory"),
-    )
-    for key, code in table:
-        if key in m:
-            return code
-    return "general"
+
+class PreflightReport(list):
+    """Structured result of :meth:`Simulation.preflight`.
+
+    A ``list`` subclass holding :class:`PreflightIssue` items, so it IS a list
+    and every legacy ``list[str]`` call site (iterate / ``"\\n".join`` / ``len``
+    / truthiness) keeps working unchanged. It also exposes the canonical report
+    API shared with :class:`rfx.validation.PortValidationReport` and
+    :class:`rfx.subgridding.validation.SubgridValidationReport`.
+    """
+
+    @property
+    def issues(self) -> list:
+        """All findings as a plain list (mirrors the other report classes)."""
+        return list(self)
+
+    @property
+    def errors(self) -> list:
+        """Error-severity findings only."""
+        return [i for i in self if getattr(i, "severity", "warning") == "error"]
+
+    @property
+    def warnings(self) -> list:
+        """Non-error (advisory) findings only."""
+        return [i for i in self if getattr(i, "severity", "warning") != "error"]
+
+    @property
+    def ok(self) -> bool:
+        """Whether the report contains no error-severity finding."""
+        return not self.errors
+
+    def by_code(self, code: str) -> list:
+        """Return all findings with diagnostic ``code``."""
+        return [i for i in self if getattr(i, "code", None) == code]
+
+    def format(self) -> str:
+        """Return a compact human-readable multiline summary."""
+        status = "PASS" if self.ok else "FAIL"
+        if not self:
+            return f"preflight: {status} (no issues)"
+        lines = [f"preflight: {status} ({len(self)} issue(s))"]
+        for issue in self:
+            sev = getattr(issue, "severity", "warning")
+            code = getattr(issue, "code", "uncoded")
+            lines.append(f"- {sev.upper()} [{code}] {issue}")
+        return "\n".join(lines)
+
+    def raise_for_failure(self) -> "PreflightReport":
+        """Raise ``ValueError`` listing every error-severity finding.
+
+        Returns ``self`` on success so callers can use it as both a fail-fast
+        gate and an artifact (the R3 pre-VESSL gate). No-op when :attr:`ok`.
+        """
+        errors = self.errors
+        if errors:
+            detail = "\n  - ".join(str(e) for e in errors)
+            raise ValueError(
+                f"preflight found {len(errors)} blocking error(s):\n  - {detail}"
+            )
+        return self
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable, JSON-serializable validation artifact.
+
+        Real serialization (unlike ``json.dumps`` of a bare
+        :class:`PreflightIssue`, which drops the code/severity attrs).
+        """
+        return {
+            "ok": self.ok,
+            "n_issues": len(self),
+            "n_errors": len(self.errors),
+            "issues": [
+                i.to_dict() if isinstance(i, PreflightIssue)
+                else {
+                    "message": str(i),
+                    "code": getattr(i, "code", "uncoded"),
+                    "severity": getattr(i, "severity", "warning"),
+                    "loc": getattr(i, "loc", None),
+                    "source": getattr(i, "source", None),
+                }
+                for i in self
+            ],
+        }
+
+    def to_json(self, **kwargs: object) -> str:
+        """Serialize the report for research-note artifacts."""
+        options = {"indent": 2, "sort_keys": True}
+        options.update(kwargs)
+        return json.dumps(self.to_dict(), **options)
 
 
 class _PreflightMixin:
@@ -365,10 +530,14 @@ class _PreflightMixin:
                     # Zero-thickness geometry
                     axis_name = "xyz"[axis]
                     _w.warn(
-                        f"Zero-thickness geometry '{mat_name}' along "
-                        f"{axis_name}-axis. On non-uniform mesh this may "
-                        f"produce empty rasterization. Consider giving it "
-                        f"at least one cell of thickness ({cell*1e3:.2f}mm).",
+                        PreflightWarning(
+                            f"Zero-thickness geometry '{mat_name}' along "
+                            f"{axis_name}-axis. On non-uniform mesh this may "
+                            f"produce empty rasterization. Consider giving it "
+                            f"at least one cell of thickness ({cell*1e3:.2f}mm).",
+                            code="mesh_resolution",
+                            source="_validate_mesh_quality",
+                        ),
                         stacklevel=3,
                     )
                 elif dim < cell:
@@ -383,9 +552,13 @@ class _PreflightMixin:
                         " Use non-uniform mesh or reduce dx."
                     )
                     _w.warn(
-                        f"'{mat_name}' {axis_name}-extent {dim*1e3:.2f}mm = "
-                        f"{cells_count:.1f} cells — below 1 cell resolution."
-                        + hint,
+                        PreflightWarning(
+                            f"'{mat_name}' {axis_name}-extent {dim*1e3:.2f}mm = "
+                            f"{cells_count:.1f} cells — below 1 cell resolution."
+                            + hint,
+                            code="mesh_resolution",
+                            source="_validate_mesh_quality",
+                        ),
                         stacklevel=3,
                     )
                 else:
@@ -403,10 +576,14 @@ class _PreflightMixin:
                         if (3.0 <= cells < 5.0
                                 and not is_thin_along_some_axis):
                             _w.warn(
-                                f"PEC '{mat_name}' {axis_name}-extent "
-                                f"{dim*1e3:.2f}mm = {cells:.1f} cells — "
-                                "volume under-resolved (PEC volume needs "
-                                "≥5 cells; thin sheets <3 cells are fine).",
+                                PreflightWarning(
+                                    f"PEC '{mat_name}' {axis_name}-extent "
+                                    f"{dim*1e3:.2f}mm = {cells:.1f} cells — "
+                                    "volume under-resolved (PEC volume needs "
+                                    "≥5 cells; thin sheets <3 cells are fine).",
+                                    code="mesh_resolution",
+                                    source="_validate_mesh_quality",
+                                ),
                                 stacklevel=3,
                             )
                     else:
@@ -447,14 +624,18 @@ class _PreflightMixin:
                                 "1st-order convergence at ε interfaces."
                             )
                             _w.warn(
-                                f"dielectric '{mat_name}' on {axis_name}: "
-                                f"{cells_per_lam:.1f} cells per λ_eff "
-                                f"(eps_r={eps_r:.2f}, freq_max="
-                                f"{self._freq_max/1e9:.2f}GHz, "
-                                f"dx={cell*1e3:.3f}mm). Need ≥"
-                                f"{threshold:.0f} cells/λ_eff for "
-                                f"phase-accurate propagation."
-                                f"{suffix}",
+                                PreflightWarning(
+                                    f"dielectric '{mat_name}' on {axis_name}: "
+                                    f"{cells_per_lam:.1f} cells per λ_eff "
+                                    f"(eps_r={eps_r:.2f}, freq_max="
+                                    f"{self._freq_max/1e9:.2f}GHz, "
+                                    f"dx={cell*1e3:.3f}mm). Need ≥"
+                                    f"{threshold:.0f} cells/λ_eff for "
+                                    f"phase-accurate propagation."
+                                    f"{suffix}",
+                                    code="mesh_resolution",
+                                    source="_validate_mesh_quality",
+                                ),
                                 stacklevel=3,
                             )
 
@@ -472,10 +653,14 @@ class _PreflightMixin:
                             cell = [dx, dx, min_dz][ax]
                             if 0 < gap < 3 * cell:
                                 _w.warn(
-                                    f"Gap between PEC structures: "
-                                    f"{gap*1e3:.2f}mm = {gap/cell:.1f} cells "
-                                    f"along {'xyz'[ax]} — coupling may be "
-                                    f"under-resolved.",
+                                    PreflightWarning(
+                                        f"Gap between PEC structures: "
+                                        f"{gap*1e3:.2f}mm = {gap/cell:.1f} cells "
+                                        f"along {'xyz'[ax]} — coupling may be "
+                                        f"under-resolved.",
+                                        code="mesh_resolution",
+                                        source="_validate_mesh_quality",
+                                    ),
                                     stacklevel=3,
                                 )
                     except (NotImplementedError, TypeError, AttributeError):
@@ -544,12 +729,16 @@ class _PreflightMixin:
             )
             worst = max(errors, key=errors.get)
             _w.warn(
-                f"FDTD numerical dispersion at freq_max="
-                f"{self._freq_max/1e9:.2f}GHz exceeds 2%: {parts}. "
-                f"Worst axis: {worst} (cell {d['xyz'.index(worst)]*1e3:.3f}mm). "
-                f"Phase velocity error causes resonance frequency bias. "
-                f"Refine the coarse axis or co-refine all axes together "
-                f"(Taflove Ch. 4).",
+                PreflightWarning(
+                    f"FDTD numerical dispersion at freq_max="
+                    f"{self._freq_max/1e9:.2f}GHz exceeds 2%: {parts}. "
+                    f"Worst axis: {worst} (cell {d['xyz'.index(worst)]*1e3:.3f}mm). "
+                    f"Phase velocity error causes resonance frequency bias. "
+                    f"Refine the coarse axis or co-refine all axes together "
+                    f"(Taflove Ch. 4).",
+                    code="numerical_dispersion",
+                    source="_check_numerical_dispersion",
+                ),
                 stacklevel=4,
             )
 
@@ -609,15 +798,19 @@ class _PreflightMixin:
                 ratio_below = _ratio(dz_below, dz_here)
                 if max(ratio_above, ratio_below) > 1.5:
                     _w.warn(
-                        f"Thin PEC '{entry.material_name}' on axis "
-                        f"{axis_name} sits in a cell of dz={dz_here*1e3:.3f}"
-                        f"mm with asymmetric neighbours "
-                        f"(below {dz_below*1e3:.3f}, above "
-                        f"{dz_above*1e3:.3f} mm). Meep/OpenEMS require "
-                        f"equal cell sizes across a metal plane; "
-                        f"radiation pattern may be corrupted (issue #48). "
-                        f"Put the metal on a preserved-region boundary "
-                        f"or refine the neighbouring cell.",
+                        PreflightWarning(
+                            f"Thin PEC '{entry.material_name}' on axis "
+                            f"{axis_name} sits in a cell of dz={dz_here*1e3:.3f}"
+                            f"mm with asymmetric neighbours "
+                            f"(below {dz_below*1e3:.3f}, above "
+                            f"{dz_above*1e3:.3f} mm). Meep/OpenEMS require "
+                            f"equal cell sizes across a metal plane; "
+                            f"radiation pattern may be corrupted (issue #48). "
+                            f"Put the metal on a preserved-region boundary "
+                            f"or refine the neighbouring cell.",
+                            code="thin_metal_nu_mesh",
+                            source="_validate_thin_metal_on_nu_mesh",
+                        ),
                         stacklevel=4,
                     )
 
@@ -692,15 +885,19 @@ class _PreflightMixin:
                 next_label = (f"TE{mn_next[0]}{mn_next[1]}"
                               if mn_next[0] is not None else "next")
                 _w.warn(
-                    f"Waveguide port '{entry.name}': max measurement frequency "
-                    f"{f_check / 1e9:.3f} GHz exceeds 0.90 × fc_next="
-                    f"{threshold / 1e9:.3f} GHz "
-                    f"(fc_{entry.mode_type}{m0}{n0}={fc_excited / 1e9:.3f} GHz, "
-                    f"fc_{next_label}={fc_next / 1e9:.3f} GHz). "
-                    f"Evanescent {next_label} contamination may exceed 1 % and "
-                    f"registers as |S11| < 1 in a lossless structure. "
-                    f"Restrict measurement freqs below {threshold / 1e9:.3f} GHz "
-                    f"or increase port-to-obstacle distance.",
+                    PreflightWarning(
+                        f"Waveguide port '{entry.name}': max measurement frequency "
+                        f"{f_check / 1e9:.3f} GHz exceeds 0.90 × fc_next="
+                        f"{threshold / 1e9:.3f} GHz "
+                        f"(fc_{entry.mode_type}{m0}{n0}={fc_excited / 1e9:.3f} GHz, "
+                        f"fc_{next_label}={fc_next / 1e9:.3f} GHz). "
+                        f"Evanescent {next_label} contamination may exceed 1 % and "
+                        f"registers as |S11| < 1 in a lossless structure. "
+                        f"Restrict measurement freqs below {threshold / 1e9:.3f} GHz "
+                        f"or increase port-to-obstacle distance.",
+                        code="port_evanescent",
+                        source="_check_waveguide_port_evanescent",
+                    ),
                     stacklevel=4,
                 )
 
@@ -713,7 +910,7 @@ class _PreflightMixin:
         check_ad_memory: bool = False,
         n_steps_for_memory: int | None = None,
         available_memory_gb: float | None = None,
-    ) -> list[str]:
+    ) -> "PreflightReport":
         """Run all pre-simulation checks and return warnings.
 
         Parameters
@@ -738,11 +935,13 @@ class _PreflightMixin:
 
         Returns
         -------
-        list of str
-            Warning messages. Empty if no issues found.
+        PreflightReport
+            A ``list`` subclass of :class:`PreflightIssue` (each a ``str``
+            subclass), back-compatible with the legacy ``list[str]`` return.
+            Empty if no issues found.
         """
         import warnings
-        issues = []
+        issues = PreflightReport()
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -755,22 +954,41 @@ class _PreflightMixin:
             except ValueError as e:
                 if strict:
                     raise
+                # Structurally-impossible configs raise PreflightConfigError
+                # with the slug set at the check site; any other ValueError is
+                # error-severity but uncoded.
                 issues.append(PreflightIssue(
                     f"ERROR: {e}",
                     severity="error",
-                    code=_preflight_code_for(str(e)),
+                    code=getattr(e, "code", "uncoded"),
+                    loc=getattr(e, "loc", None),
+                    source=getattr(e, "source", None),
                 ))
 
         for w in caught:
             msg = str(w.message)
             if strict:
                 raise ValueError(msg)
-            severity = (
-                "error" if issubclass(w.category, PreflightErrorWarning)
-                else "warning"
-            )
+            # Prefer the structured fields carried on the warning INSTANCE
+            # (PreflightWarning); fall back to the category-derived severity for
+            # the legacy ``warnings.warn(msg, PreflightErrorWarning)`` form, and
+            # to severity="warning"/code="uncoded" for any plain UserWarning.
+            inst = w.message
+            if isinstance(inst, PreflightWarning):
+                severity = inst.severity
+                code = inst.code
+                loc = inst.loc
+                source = inst.source
+            else:
+                severity = (
+                    "error" if issubclass(w.category, PreflightErrorWarning)
+                    else "warning"
+                )
+                code = "uncoded"
+                loc = None
+                source = None
             issues.append(PreflightIssue(
-                msg, severity=severity, code=_preflight_code_for(msg)
+                msg, severity=severity, code=code, loc=loc, source=source
             ))
 
         if check_ad_memory:
@@ -1086,11 +1304,13 @@ class _PreflightMixin:
                         overlap = False
                         break
                 if overlap:
-                    raise ValueError(
+                    raise PreflightConfigError(
                         f"NTFF face {'xyz'[axis]}_{side} at {coord*1e3:.2f}mm "
                         f"intersects PEC geometry '{entry.material_name}' "
                         f"(bbox {c1}–{c2}). NTFF box must enclose all radiators "
-                        f"with no PEC crossing any face. Shrink or move the NTFF box."
+                        f"with no PEC crossing any face. Shrink or move the NTFF box.",
+                        code="ntff_pec_overlap",
+                        source="_validate_ntff_inverse_design",
                     )
 
         # CHECK 3: λ/2 (Huygens) and λ/4 (reactive-near-field) gaps to any
@@ -1162,21 +1382,29 @@ class _PreflightMixin:
 
             if culprit is not None and min_gap < gap_thresh:
                 _w.warn(
-                    f"NTFF face {'xyz'[axis]}_{side} is {min_gap*1e3:.2f}mm "
-                    f"from {culprit} — below λ/4 = {gap_thresh*1e3:.2f}mm at "
-                    f"f_max={f_max/1e9:.2f}GHz. NTFF will integrate reactive "
-                    f"near-field; directivity / pattern likely corrupted. "
-                    f"Move NTFF box ≥ λ/2 from any radiating/scattering "
-                    f"structure (Huygens-equivalence rule).",
+                    PreflightWarning(
+                        f"NTFF face {'xyz'[axis]}_{side} is {min_gap*1e3:.2f}mm "
+                        f"from {culprit} — below λ/4 = {gap_thresh*1e3:.2f}mm at "
+                        f"f_max={f_max/1e9:.2f}GHz. NTFF will integrate reactive "
+                        f"near-field; directivity / pattern likely corrupted. "
+                        f"Move NTFF box ≥ λ/2 from any radiating/scattering "
+                        f"structure (Huygens-equivalence rule).",
+                        code="ntff_near_field",
+                        source="_validate_ntff_inverse_design",
+                    ),
                     stacklevel=3,
                 )
             elif culprit is not None and min_gap < huygens_thresh:
                 _w.warn(
-                    f"NTFF face {'xyz'[axis]}_{side} is {min_gap*1e3:.2f}mm "
-                    f"from {culprit} — below λ/2 = {huygens_thresh*1e3:.2f}mm "
-                    f"at f_max={f_max/1e9:.2f}GHz. Close to reactive near-"
-                    f"field; far-field pattern accuracy may degrade. Move "
-                    f"NTFF box ≥ λ/2 from radiating/scattering structures.",
+                    PreflightWarning(
+                        f"NTFF face {'xyz'[axis]}_{side} is {min_gap*1e3:.2f}mm "
+                        f"from {culprit} — below λ/2 = {huygens_thresh*1e3:.2f}mm "
+                        f"at f_max={f_max/1e9:.2f}GHz. Close to reactive near-"
+                        f"field; far-field pattern accuracy may degrade. Move "
+                        f"NTFF box ≥ λ/2 from radiating/scattering structures.",
+                        code="ntff_near_field",
+                        source="_validate_ntff_inverse_design",
+                    ),
                     stacklevel=3,
                 )
 
@@ -1281,13 +1509,18 @@ class _PreflightMixin:
             # will hard-fail (XPASS) to force this removal. See
             # docs/agent-memory/rfx-known-issues.md (conformal-PEC item).
             _w.warn(
-                f"conformal PEC is enabled on faces {sorted(cf)} with a min "
-                f"cell size {min_cell * 1e3:.3f} mm <= 2 mm — this is a KNOWN "
-                f"NaN (discrete-adjointness break, not CFL; 4 fix methods "
-                f"falsified — see docs/agent-memory/rfx-known-issues.md). "
-                f"normalize=False is NOT a safe workaround at fine dx. Use "
-                f"conformal=False (staircase PEC) or a coarser mesh "
-                f"(dx > 2 mm) until the contour-FIT redesign lands.",
+                PreflightWarning(
+                    f"conformal PEC is enabled on faces {sorted(cf)} with a min "
+                    f"cell size {min_cell * 1e3:.3f} mm <= 2 mm — this is a KNOWN "
+                    f"NaN (discrete-adjointness break, not CFL; 4 fix methods "
+                    f"falsified — see docs/agent-memory/rfx-known-issues.md). "
+                    f"normalize=False is NOT a safe workaround at fine dx. Use "
+                    f"conformal=False (staircase PEC) or a coarser mesh "
+                    f"(dx > 2 mm) until the contour-FIT redesign lands.",
+                    code="conformal_nan",
+                    severity="warning",
+                    source="_validate_cfg_conformal_fine_dx",
+                ),
                 stacklevel=2,
             )
 
@@ -1343,12 +1576,16 @@ class _PreflightMixin:
         if lossless_names and not any_lossy_dielectric:
             uniq = sorted(set(lossless_names))
             _w.warn(
-                f"all dielectric(s) {uniq} are perfectly lossless in an open "
-                f"({self._boundary.upper()}) domain. If you are measuring "
-                f"Q / resonance, this gives an ARTIFICIALLY infinite Q "
-                f"(design-guide Anti-Pattern #1, an R5 surface-metric trap) — "
-                f"add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. "
-                f"(Harmless if you are not measuring Q.)",
+                PreflightWarning(
+                    f"all dielectric(s) {uniq} are perfectly lossless in an open "
+                    f"({self._boundary.upper()}) domain. If you are measuring "
+                    f"Q / resonance, this gives an ARTIFICIALLY infinite Q "
+                    f"(design-guide Anti-Pattern #1, an R5 surface-metric trap) — "
+                    f"add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. "
+                    f"(Harmless if you are not measuring Q.)",
+                    code="lossless_q",
+                    source="_validate_cfg_lossless_resonator_in_absorber",
+                ),
                 stacklevel=2,
             )
 
@@ -1406,27 +1643,37 @@ class _PreflightMixin:
             if has_finite_pec:
                 pec_face_list = ", ".join(sorted(self._pec_faces))
                 _w.warn(
-                    f"pec_faces={{{pec_face_list}}} creates an INFINITE PEC "
-                    f"boundary AND the geometry contains finite PEC objects. "
-                    f"For antennas or finite-GP structures, the pec_faces "
-                    f"boundary makes the ground plane cover the entire domain "
-                    f"face, which changes the physics (cavity vs radiating "
-                    f"antenna). If you need a finite ground plane, remove "
-                    f"pec_faces and use an explicit PEC Box instead.",
+                    PreflightWarning(
+                        f"pec_faces={{{pec_face_list}}} creates an INFINITE PEC "
+                        f"boundary AND the geometry contains finite PEC objects. "
+                        f"For antennas or finite-GP structures, the pec_faces "
+                        f"boundary makes the ground plane cover the entire domain "
+                        f"face, which changes the physics (cavity vs radiating "
+                        f"antenna). If you need a finite ground plane, remove "
+                        f"pec_faces and use an explicit PEC Box instead.",
+                        code="pec_faces_finite_pec",
+                        source="_validate_cfg_pec_faces_with_finite_pec",
+                    ),
                     stacklevel=3,
                 )
 
     def _validate_cfg_upml_refinement(self) -> None:
         """UPML boundary does not support subgridding/refinement."""
         if self._boundary == "upml" and self._refinement is not None:
-            raise ValueError("boundary='upml' does not support subgridding/refinement")
+            raise PreflightConfigError(
+                "boundary='upml' does not support subgridding/refinement",
+                code="upml_refinement",
+                source="_validate_cfg_upml_refinement",
+            )
 
     def _validate_cfg_floquet_nonuniform(self) -> None:
         """P1.1: Floquet + non-uniform mesh — no silent fallback allowed."""
         if self._floquet_ports and self._dz_profile is not None:
-            raise ValueError(
+            raise PreflightConfigError(
                 "Floquet ports do not support non-uniform z mesh (dz_profile). "
-                "Use the uniform reference lane and set dx explicitly."
+                "Use the uniform reference lane and set dx explicitly.",
+                code="floquet_nonuniform",
+                source="_validate_cfg_floquet_nonuniform",
             )
 
     def _validate_cfg_absorber_placement(
@@ -1448,10 +1695,14 @@ class _PreflightMixin:
                     ct_hi = cpml_thick_hi[ax_i]
                     if coord < ct_lo * 0.5 or coord > domain_extent - ct_hi * 0.5:
                         _w.warn(
-                            f"Probe at {pos} is near/inside {absorber_label} region "
-                            f"({absorber_label} {'xyz'[ax]}-thickness: "
-                            f"lo={ct_lo*1e3:.1f}mm, hi={ct_hi*1e3:.1f}mm). "
-                            f"Signal will be attenuated. Move probe to interior.",
+                            PreflightWarning(
+                                f"Probe at {pos} is near/inside {absorber_label} region "
+                                f"({absorber_label} {'xyz'[ax]}-thickness: "
+                                f"lo={ct_lo*1e3:.1f}mm, hi={ct_hi*1e3:.1f}mm). "
+                                f"Signal will be attenuated. Move probe to interior.",
+                                code="absorber_overlap",
+                                source="_validate_cfg_absorber_placement",
+                            ),
                             stacklevel=3,
                         )
                         break
@@ -1465,10 +1716,14 @@ class _PreflightMixin:
                     ct_hi = cpml_thick_hi[ax_i]
                     if coord < ct_lo * 0.5 or coord > domain_extent - ct_hi * 0.5:
                         _w.warn(
-                            f"Source/port at {pos} is near/inside {absorber_label} region "
-                            f"({absorber_label} {'xyz'[ax]}-thickness: "
-                            f"lo={ct_lo*1e3:.1f}mm, hi={ct_hi*1e3:.1f}mm). "
-                            f"Energy will be absorbed. Move source to interior.",
+                            PreflightWarning(
+                                f"Source/port at {pos} is near/inside {absorber_label} region "
+                                f"({absorber_label} {'xyz'[ax]}-thickness: "
+                                f"lo={ct_lo*1e3:.1f}mm, hi={ct_hi*1e3:.1f}mm). "
+                                f"Energy will be absorbed. Move source to interior.",
+                                code="absorber_overlap",
+                                source="_validate_cfg_absorber_placement",
+                            ),
                             stacklevel=3,
                         )
                         break
@@ -1578,7 +1833,14 @@ class _PreflightMixin:
                         else:
                             msg = None      # tangential H or normal E on PEC is legit
                     if msg is not None:
-                        _w.warn(msg, stacklevel=3)
+                        _w.warn(
+                            PreflightWarning(
+                                msg,
+                                code="source_decoupled",
+                                source="_validate_cfg_source_on_reflector_plane",
+                            ),
+                            stacklevel=3,
+                        )
 
     def _validate_cfg_ntff_absorber_overlap(
         self,
@@ -1598,9 +1860,13 @@ class _PreflightMixin:
                 ct_hi = cpml_thick_hi[ax_i]
                 if corner_lo[ax] < ct_lo or corner_hi[ax] > domain_ext - ct_hi:
                     _w.warn(
-                        f"NTFF box extends into {absorber_label} region along "
-                        f"{'xyz'[ax]}-axis. Far-field results will be "
-                        f"corrupted. Shrink NTFF box to interior.",
+                        PreflightWarning(
+                            f"NTFF box extends into {absorber_label} region along "
+                            f"{'xyz'[ax]}-axis. Far-field results will be "
+                            f"corrupted. Shrink NTFF box to interior.",
+                            code="absorber_overlap",
+                            source="_validate_cfg_ntff_absorber_overlap",
+                        ),
                         stacklevel=3,
                     )
                     break
@@ -1687,11 +1953,15 @@ class _PreflightMixin:
                                       and not intentional_hi)
                             if lo_hit or hi_hit:
                                 _w.warn(
-                                    f"Material '{entry.material_name}' extends "
-                                    f"into CPML region along {'xyz'[ax]}-axis. "
-                                    f"{absorber_label} modifies field updates — "
-                                    f"geometry inside the absorber is physically "
-                                    f"meaningless (issue #61).",
+                                    PreflightWarning(
+                                        f"Material '{entry.material_name}' extends "
+                                        f"into CPML region along {'xyz'[ax]}-axis. "
+                                        f"{absorber_label} modifies field updates — "
+                                        f"geometry inside the absorber is physically "
+                                        f"meaningless (issue #61).",
+                                        code="geometry_in_absorber",
+                                        source="_validate_cfg_geometry_in_cpml",
+                                    ),
                                     stacklevel=3,
                                 )
                                 break
@@ -1728,9 +1998,13 @@ class _PreflightMixin:
                             if is_h_component and is_thin_pec:
                                 continue
                             _w.warn(
-                                f"Port/source at {pos} is inside PEC geometry "
-                                f"'{entry.material_name}'. Field will be zero. "
-                                f"Move source outside PEC.",
+                                PreflightWarning(
+                                    f"Port/source at {pos} is inside PEC geometry "
+                                    f"'{entry.material_name}'. Field will be zero. "
+                                    f"Move source outside PEC.",
+                                    code="port_in_pec",
+                                    source="_validate_cfg_port_inside_pec",
+                                ),
                                 stacklevel=3,
                             )
                     except (NotImplementedError, TypeError):
@@ -1810,13 +2084,17 @@ class _PreflightMixin:
             if has_adjacent_pec:
                 continue
             _w.warn(
-                f"Single-cell port at {pos} ({pe.component}) sits inside "
-                f"dielectric '{enclosing_name}' (eps_r={enclosing_eps_r:.2f}) "
-                f"with no adjacent PEC along the {pe.component[1]}-axis. A "
-                f"floating single-cell port inside substrate does not "
-                f"couple to patch-antenna TM modes. Pass "
-                f"extent=<substrate_height> to create a WirePort spanning "
-                f"ground → patch plane (issue #71).",
+                PreflightWarning(
+                    f"Single-cell port at {pos} ({pe.component}) sits inside "
+                    f"dielectric '{enclosing_name}' (eps_r={enclosing_eps_r:.2f}) "
+                    f"with no adjacent PEC along the {pe.component[1]}-axis. A "
+                    f"floating single-cell port inside substrate does not "
+                    f"couple to patch-antenna TM modes. Pass "
+                    f"extent=<substrate_height> to create a WirePort spanning "
+                    f"ground → patch plane (issue #71).",
+                    code="floating_port",
+                    source="_validate_cfg_floating_single_cell_port",
+                ),
                 stacklevel=3,
             )
 
@@ -1824,9 +2102,13 @@ class _PreflightMixin:
         """P0.4: PEC boundary on likely open structure."""
         if self._boundary == "pec" and self._ntff is not None:
             _w.warn(
-                "PEC boundary with NTFF far-field: PEC reflects all energy "
-                "back into domain. Use boundary='cpml' or boundary='upml' for open structures "
-                "(antennas, scatterers).",
+                PreflightWarning(
+                    "PEC boundary with NTFF far-field: PEC reflects all energy "
+                    "back into domain. Use boundary='cpml' or boundary='upml' for open structures "
+                    "(antennas, scatterers).",
+                    code="pec_boundary_open",
+                    source="_validate_cfg_pec_boundary_open_structure",
+                ),
                 stacklevel=3,
             )
 
@@ -1840,8 +2122,12 @@ class _PreflightMixin:
             and not self._msl_ports
         ):
             _w.warn(
-                "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. "
-                "Simulation will produce zero fields.",
+                PreflightWarning(
+                    "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. "
+                    "Simulation will produce zero fields.",
+                    code="no_sources",
+                    source="_validate_cfg_no_sources",
+                ),
                 stacklevel=3,
             )
 
@@ -1857,15 +2143,19 @@ class _PreflightMixin:
             # aux (resp. nonuniform 2D aux) and are deferred.
             if self._tfsf is not None:
                 if self._tfsf.direction in ("+z", "-z"):
-                    raise ValueError(
+                    raise PreflightConfigError(
                         "TFSF z-directed incidence is not yet supported on "
                         "nonuniform z mesh. Axis-aligned incidence along x "
-                        "(direction='+x' or '-x') is supported."
+                        "(direction='+x' or '-x') is supported.",
+                        code="nonuniform_tfsf",
+                        source="_validate_cfg_nonuniform_limitations",
                     )
                 if abs(self._tfsf.angle_deg) > 0.01:
-                    raise ValueError(
+                    raise PreflightConfigError(
                         "TFSF oblique incidence is not yet supported on "
-                        "nonuniform z mesh. Use angle_deg=0."
+                        "nonuniform z mesh. Use angle_deg=0.",
+                        code="nonuniform_tfsf",
+                        source="_validate_cfg_nonuniform_limitations",
                     )
 
             # P2.6: CPML z-thickness on non-uniform mesh.
@@ -1876,11 +2166,15 @@ class _PreflightMixin:
                 cpml_z_thick = sum(float(d) for d in self._dz_profile[:self._cpml_layers])
                 if cpml_z_thick < cpml_thickness * 0.3:
                     _w.warn(
-                        f"CPML z-thickness is {cpml_z_thick*1e3:.1f}mm "
-                        f"({self._cpml_layers} cells), much thinner than "
-                        f"xy-thickness {cpml_thickness*1e3:.1f}mm. "
-                        f"Absorbing performance may be asymmetric. "
-                        f"Consider more z cells or fewer CPML layers.",
+                        PreflightWarning(
+                            f"CPML z-thickness is {cpml_z_thick*1e3:.1f}mm "
+                            f"({self._cpml_layers} cells), much thinner than "
+                            f"xy-thickness {cpml_thickness*1e3:.1f}mm. "
+                            f"Absorbing performance may be asymmetric. "
+                            f"Consider more z cells or fewer CPML layers.",
+                            code="nonuniform_cpml_thin",
+                            source="_validate_cfg_nonuniform_limitations",
+                        ),
                         stacklevel=3,
                     )
 
@@ -1894,30 +2188,50 @@ class _PreflightMixin:
         if self._refinement is not None:
             if self._dft_planes:
                 _w.warn(
-                    "DFT plane probes are not supported with SBP-SAT "
-                    "subgridding.",
+                    PreflightWarning(
+                        "DFT plane probes are not supported with SBP-SAT "
+                        "subgridding.",
+                        code="subgrid_unsupported_feature",
+                        source="_validate_cfg_subgrid_limitations",
+                    ),
                     stacklevel=3,
                 )
             if self._waveguide_ports:
                 _w.warn(
-                    "Waveguide ports are not supported with SBP-SAT "
-                    "subgridding.",
+                    PreflightWarning(
+                        "Waveguide ports are not supported with SBP-SAT "
+                        "subgridding.",
+                        code="subgrid_unsupported_feature",
+                        source="_validate_cfg_subgrid_limitations",
+                    ),
                     stacklevel=3,
                 )
             if self._floquet_ports:
                 _w.warn(
-                    "Floquet ports are not supported with SBP-SAT subgridding.",
+                    PreflightWarning(
+                        "Floquet ports are not supported with SBP-SAT subgridding.",
+                        code="subgrid_unsupported_feature",
+                        source="_validate_cfg_subgrid_limitations",
+                    ),
                     stacklevel=3,
                 )
             if self._tfsf is not None:
                 _w.warn(
-                    "TFSF source is not supported with SBP-SAT subgridding.",
+                    PreflightWarning(
+                        "TFSF source is not supported with SBP-SAT subgridding.",
+                        code="subgrid_unsupported_feature",
+                        source="_validate_cfg_subgrid_limitations",
+                    ),
                     stacklevel=3,
                 )
             if self._lumped_rlc:
                 _w.warn(
-                    "Lumped RLC elements are not supported with SBP-SAT "
-                    "subgridding.",
+                    PreflightWarning(
+                        "Lumped RLC elements are not supported with SBP-SAT "
+                        "subgridding.",
+                        code="subgrid_unsupported_feature",
+                        source="_validate_cfg_subgrid_limitations",
+                    ),
                     stacklevel=3,
                 )
 
@@ -1959,21 +2273,27 @@ class _PreflightMixin:
                 effective = (entry.reference_plane if entry.reference_plane is not None
                              else entry.x_position)
                 if effective < 0 or effective > domain_ext:
-                    raise ValueError(
+                    raise PreflightConfigError(
                         f"waveguide_port reference plane = {effective:.4g} m is "
                         f"outside the {direction[-1]}-domain [0, {domain_ext:.4g}] m. "
-                        f"Check x_position / reference_plane."
+                        f"Check x_position / reference_plane.",
+                        code="waveguide_reference_plane",
+                        source="_validate_cfg_waveguide_reference_plane",
                     )
                 if effective < ct_lo or effective > domain_ext - ct_hi:
                     _w.warn(
-                        f"waveguide_port reference plane = {effective*1e3:.3g} mm is "
-                        f"inside the CPML absorbing region along the "
-                        f"{direction[-1]}-axis (CPML extent: "
-                        f"[0, {ct_lo*1e3:.3g}] and "
-                        f"[{(domain_ext - ct_hi)*1e3:.3g}, {domain_ext*1e3:.3g}] mm). "
-                        f"S-matrix phase will be distorted by CPML stretching. "
-                        f"Move x_position / reference_plane to the interior or "
-                        f"reduce cpml_layers.",
+                        PreflightWarning(
+                            f"waveguide_port reference plane = {effective*1e3:.3g} mm is "
+                            f"inside the CPML absorbing region along the "
+                            f"{direction[-1]}-axis (CPML extent: "
+                            f"[0, {ct_lo*1e3:.3g}] and "
+                            f"[{(domain_ext - ct_hi)*1e3:.3g}, {domain_ext*1e3:.3g}] mm). "
+                            f"S-matrix phase will be distorted by CPML stretching. "
+                            f"Move x_position / reference_plane to the interior or "
+                            f"reduce cpml_layers.",
+                            code="waveguide_reference_plane",
+                            source="_validate_cfg_waveguide_reference_plane",
+                        ),
                         stacklevel=3,
                     )
                 # Device overlap warning: check if any geometry box spans
@@ -1986,14 +2306,18 @@ class _PreflightMixin:
                             continue
                         if lo[ax_i] <= effective <= hi[ax_i]:
                             _w.warn(
-                                f"waveguide_port reference plane at "
-                                f"{effective*1e3:.3g} mm intersects geometry "
-                                f"'{getattr(g, 'material', '?')}' "
-                                f"(bounds {lo[ax_i]*1e3:.3g}–{hi[ax_i]*1e3:.3g} mm "
-                                f"on {direction[-1]}). Modal decomposition "
-                                f"assumes a uniform cross-section at the port "
-                                f"plane; reported S-params will mix modes. Move "
-                                f"the reference plane into the empty-guide region.",
+                                PreflightWarning(
+                                    f"waveguide_port reference plane at "
+                                    f"{effective*1e3:.3g} mm intersects geometry "
+                                    f"'{getattr(g, 'material', '?')}' "
+                                    f"(bounds {lo[ax_i]*1e3:.3g}–{hi[ax_i]*1e3:.3g} mm "
+                                    f"on {direction[-1]}). Modal decomposition "
+                                    f"assumes a uniform cross-section at the port "
+                                    f"plane; reported S-params will mix modes. Move "
+                                    f"the reference plane into the empty-guide region.",
+                                    code="waveguide_reference_plane",
+                                    source="_validate_cfg_waveguide_reference_plane",
+                                ),
                                 stacklevel=3,
                             )
                             break
@@ -2053,14 +2377,18 @@ class _PreflightMixin:
                 if c < recommended:
                     pct = max(0.0, (1.0 - c / recommended)) * 15.0
                     _w.warn(
-                        f"MSL port '{pe.name}' (trace W={w_trace*1e6:.0f}µm, "
-                        f"h_sub={h_sub*1e6:.0f}µm): lateral clearance to "
-                        f"{side} absorbing boundary = {c*1e6:.0f}µm < "
-                        f"recommended {recommended*1e6:.0f}µm (= 2·h_sub). "
-                        f"Fringing field will be clipped → Z0 may be biased "
-                        f"HIGH by ~{pct:.0f}%, mesh-conv may diverge. "
-                        f"Increase domain y-extent OR move port further from "
-                        f"sidewall.",
+                        PreflightWarning(
+                            f"MSL port '{pe.name}' (trace W={w_trace*1e6:.0f}µm, "
+                            f"h_sub={h_sub*1e6:.0f}µm): lateral clearance to "
+                            f"{side} absorbing boundary = {c*1e6:.0f}µm < "
+                            f"recommended {recommended*1e6:.0f}µm (= 2·h_sub). "
+                            f"Fringing field will be clipped → Z0 may be biased "
+                            f"HIGH by ~{pct:.0f}%, mesh-conv may diverge. "
+                            f"Increase domain y-extent OR move port further from "
+                            f"sidewall.",
+                            code="msl_port_geometry",
+                            source="_check_msl_port_geometry",
+                        ),
                         stacklevel=3,
                     )
 
@@ -2068,12 +2396,16 @@ class _PreflightMixin:
             n_z_sub = max(1, int(round(h_sub / dx)))
             if n_z_sub < 4:
                 _w.warn(
-                    f"MSL port '{pe.name}': only {n_z_sub} substrate cell(s) "
-                    f"in z (h_sub={h_sub*1e6:.0f}µm, dx={dx*1e6:.0f}µm). "
-                    f"Yee staircase at dielectric interface is O(dx) — "
-                    f"Z0 staircase error >5% expected. Refine to dx ≤ "
-                    f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) for "
-                    f"<5% Z0 bias.",
+                    PreflightWarning(
+                        f"MSL port '{pe.name}': only {n_z_sub} substrate cell(s) "
+                        f"in z (h_sub={h_sub*1e6:.0f}µm, dx={dx*1e6:.0f}µm). "
+                        f"Yee staircase at dielectric interface is O(dx) — "
+                        f"Z0 staircase error >5% expected. Refine to dx ≤ "
+                        f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) for "
+                        f"<5% Z0 bias.",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
                     stacklevel=3,
                 )
 
@@ -2098,17 +2430,21 @@ class _PreflightMixin:
                 dx_low = h_sub / n_above   # frac=0
                 dx_high = h_sub / n_below  # frac=0
                 _w.warn(
-                    f"MSL port '{pe.name}': h_sub/dx = "
-                    f"{h_sub/dx:.3f} (fractional part {frac:.3f}) lands "
-                    f"in the [0.10, 0.40] mixed-cell danger zone. The "
-                    f"substrate-air interface bisects the same Yee cell "
-                    f"that holds the trace; AD-traceable "
-                    f"``pec_occupancy_override`` zeros the whole cell "
-                    f"and produces unphysical |S21|² > 1 in this regime. "
-                    f"Hard ``Box(material='pec')`` is unaffected. To "
-                    f"snap onto a safe alignment, set dx = "
-                    f"{dx_low*1e6:.1f}µm (= h_sub/{n_above}) or "
-                    f"{dx_high*1e6:.1f}µm (= h_sub/{n_below}).",
+                    PreflightWarning(
+                        f"MSL port '{pe.name}': h_sub/dx = "
+                        f"{h_sub/dx:.3f} (fractional part {frac:.3f}) lands "
+                        f"in the [0.10, 0.40] mixed-cell danger zone. The "
+                        f"substrate-air interface bisects the same Yee cell "
+                        f"that holds the trace; AD-traceable "
+                        f"``pec_occupancy_override`` zeros the whole cell "
+                        f"and produces unphysical |S21|² > 1 in this regime. "
+                        f"Hard ``Box(material='pec')`` is unaffected. To "
+                        f"snap onto a safe alignment, set dx = "
+                        f"{dx_low*1e6:.1f}µm (= h_sub/{n_above}) or "
+                        f"{dx_high*1e6:.1f}µm (= h_sub/{n_below}).",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
                     stacklevel=3,
                 )
 
@@ -2121,12 +2457,16 @@ class _PreflightMixin:
             )
             if x_clearance < recommended:
                 _w.warn(
-                    f"MSL port '{pe.name}' at x={x_feed*1e3:.2f}mm, "
-                    f"direction={pe.direction!r}: distance to nearest "
-                    f"x-CPML = {x_clearance*1e6:.0f}µm < recommended "
-                    f"{recommended*1e6:.0f}µm (= 2·h_sub). Source-side "
-                    f"CPML reflection may inflate |S11|. Move port further "
-                    f"from boundary OR increase domain x-extent.",
+                    PreflightWarning(
+                        f"MSL port '{pe.name}' at x={x_feed*1e3:.2f}mm, "
+                        f"direction={pe.direction!r}: distance to nearest "
+                        f"x-CPML = {x_clearance*1e6:.0f}µm < recommended "
+                        f"{recommended*1e6:.0f}µm (= 2·h_sub). Source-side "
+                        f"CPML reflection may inflate |S11|. Move port further "
+                        f"from boundary OR increase domain x-extent.",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
                     stacklevel=3,
                 )
 
@@ -2216,18 +2556,22 @@ class _PreflightMixin:
 
             if nearest_d < min_probe_clear and nearest_label is not None:
                 _w.warn(
-                    f"MSL port '{pe.name}' (direction={pe.direction!r}): "
-                    f"3-probe V₃ at x={x_v3*1e3:.2f}mm sits {nearest_d*1e6:.0f}µm "
-                    f"from a strong reflector ({nearest_label}); recommended "
-                    f"≥ {min_probe_clear*1e6:.0f}µm "
-                    f"(= λ_g/4 at f_max with ε_eff_proxy={EPS_EFF_PROXY:.1f}). "
-                    f"Standing-wave content at the probes will bias "
-                    f"`compute_msl_s_matrix`'s Z₀ extraction and |S11|@notch — "
-                    f"physical |S11|→1 at a quarter-wave open stub may read "
-                    f"as -5 to -10 dB instead of 0 dB.  Mitigation: "
-                    f"extend L_LINE so the line between port and reflector "
-                    f"is ≥ λ_g/2, OR bump n_probe_offset on add_msl_port to "
-                    f"push V₃ further into a clean travelling-wave region.",
+                    PreflightWarning(
+                        f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                        f"3-probe V₃ at x={x_v3*1e3:.2f}mm sits {nearest_d*1e6:.0f}µm "
+                        f"from a strong reflector ({nearest_label}); recommended "
+                        f"≥ {min_probe_clear*1e6:.0f}µm "
+                        f"(= λ_g/4 at f_max with ε_eff_proxy={EPS_EFF_PROXY:.1f}). "
+                        f"Standing-wave content at the probes will bias "
+                        f"`compute_msl_s_matrix`'s Z₀ extraction and |S11|@notch — "
+                        f"physical |S11|→1 at a quarter-wave open stub may read "
+                        f"as -5 to -10 dB instead of 0 dB.  Mitigation: "
+                        f"extend L_LINE so the line between port and reflector "
+                        f"is ≥ λ_g/2, OR bump n_probe_offset on add_msl_port to "
+                        f"push V₃ further into a clean travelling-wave region.",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
                     stacklevel=3,
                 )
 
