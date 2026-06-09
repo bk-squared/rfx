@@ -251,3 +251,46 @@ def test_to_dict_and_to_json_roundtrip_carry_code_and_severity():
     back = json.loads(report.to_json())
     assert back["issues"][0]["code"] == report[0].code
     assert back["issues"][0]["severity"] == report[0].severity
+
+
+# ------------------------------------------------ Phase C-full: aggregate strict
+def test_strict_aggregates_all_issues_in_one_raise():
+    """strict=True escalates EVERY finding in ONE ValueError (aggregate-then-
+    raise), not fail-on-first — preserving the historical 'strict escalates any
+    issue' contract while reporting all problems at once."""
+    sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
+    sim.add_source((0.01, 0.01, 0.018), component="ez")   # near CPML
+    sim.add_probe((0.01, 0.01, 0.019), component="ez")     # near CPML
+    # strict=False shows >= 2 findings...
+    report = sim.preflight()
+    assert len(report) >= 2, f"need a multi-issue config; got {list(report)}"
+    # ...and strict raises ONCE listing all of them.
+    with pytest.raises(ValueError) as exc:
+        sim.preflight(strict=True)
+    text = str(exc.value)
+    assert text.count("\n  - ") >= 2, f"expected aggregated list, got: {text}"
+
+
+def test_raise_for_failure_is_errors_only_gate():
+    """report.raise_for_failure() is the SOFTER pre-launch gate: it raises only
+    on error-severity, letting advisory warnings through (unlike strict=True)."""
+    report = _bad_sim_probe_in_cpml().preflight()   # warnings only, no errors
+    assert report and report.ok          # ok == no error-severity issues
+    report.raise_for_failure()           # must NOT raise on warning-only report
+
+
+# ------------------------------------------------ Phase D: validator crash is loud
+def test_validator_crash_propagates_not_swallowed():
+    """A validator raising a NON-ValueError is a bug, not a finding — it must
+    propagate (loud), not degrade to a soft advisory that hides it."""
+    sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
+    sim.add_source((0.01, 0.01, 0.01), component="ez")
+    sim.add_probe((0.01, 0.01, 0.012), component="ez")
+
+    def _boom():
+        raise RuntimeError("validator bug")
+    sim._validate_ntff_inverse_design = _boom
+
+    # Via the auto-preflight path (run) the bug must surface, not be swallowed.
+    with pytest.raises(RuntimeError, match="validator bug"):
+        sim.run(n_steps=5)

@@ -242,16 +242,11 @@ class _ExecuteMixin:
         """
         if skip:
             return
-        try:
-            issues = self.preflight(strict=False)
-        except Exception as exc:
-            import warnings
-            warnings.warn(
-                f"[{context}] auto-preflight raised {type(exc).__name__}: "
-                f"{exc}. Call sim.preflight() manually to investigate.",
-                UserWarning, stacklevel=3,
-            )
-            return
+        # preflight(strict=False) COLLECTS findings as issues; it only raises if
+        # a validator itself crashes (a bug, e.g. a non-ValueError). Let that
+        # propagate loudly (Phase D) — do NOT degrade a validator bug to a soft
+        # warning that hides it and lets a broken run proceed.
+        issues = self.preflight(strict=False)
         if not issues:
             return
         import warnings

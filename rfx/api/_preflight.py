@@ -952,8 +952,8 @@ class _PreflightMixin:
                 if check_ntff:
                     self._validate_ntff_inverse_design()
             except ValueError as e:
-                if strict:
-                    raise
+                # Collect (do NOT fail-on-first): the aggregated raise at the
+                # end escalates every finding at once under strict.
                 # Structurally-impossible configs raise PreflightConfigError
                 # with the slug set at the check site; any other ValueError is
                 # error-severity but uncoded.
@@ -967,8 +967,7 @@ class _PreflightMixin:
 
         for w in caught:
             msg = str(w.message)
-            if strict:
-                raise ValueError(msg)
+            # Collect (do NOT fail-on-first): aggregated raise at the end.
             # Prefer the structured fields carried on the warning INSTANCE
             # (PreflightWarning); fall back to the category-derived severity for
             # the legacy ``warnings.warn(msg, PreflightErrorWarning)`` form, and
@@ -999,12 +998,21 @@ class _PreflightMixin:
                 available_memory_gb=available_memory_gb,
             )
             if est.warning:
-                msg = est.warning
-                if strict:
-                    raise ValueError(msg)
                 issues.append(PreflightIssue(
-                    msg, severity="warning", code="ad_memory"
+                    est.warning, severity="warning", code="ad_memory"
                 ))
+
+        if strict and issues:
+            # Aggregate-then-raise: escalate ALL findings at once. Preserves the
+            # historical "strict escalates any issue to ValueError" contract,
+            # but reports every problem in one pass instead of fail-on-first
+            # (pydantic / Tidy3D pattern). For an errors-only gate that lets
+            # advisories through, call ``report.raise_for_failure()`` on a
+            # ``strict=False`` report instead.
+            raise ValueError(
+                f"preflight (strict) found {len(issues)} issue(s):\n  - "
+                + "\n  - ".join(issues)
+            )
 
         if issues:
             for iss in issues:
