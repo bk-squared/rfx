@@ -1029,7 +1029,7 @@ class _PreflightMixin:
         strict: bool = False,
         normalize: bool | str | None = None,
         include_general: bool = False,
-    ) -> list[str]:
+    ) -> "PreflightReport":
         """Preflight the selected S-parameter calculator without running FDTD.
 
         This is a routing/contract check for the port-family-specific
@@ -1088,7 +1088,7 @@ class _PreflightMixin:
                 f"Choose one of: {allowed}."
             )
 
-        issues: list[str] = []
+        issues = PreflightReport()
 
         try:
             if key == "run":
@@ -1121,12 +1121,26 @@ class _PreflightMixin:
             elif key == "coaxial":
                 self._validate_coaxial_sparameter_request_for_preflight()
         except (ValueError, NotImplementedError) as exc:
-            if strict:
-                raise
-            issues.append(f"{type(exc).__name__}: {exc}")
+            # Collect as a coded error-severity issue (aggregated raise below
+            # under strict) — consistent with preflight()'s PreflightIssue
+            # contract instead of the old bare f-string.
+            issues.append(PreflightIssue(
+                f"{type(exc).__name__}: {exc}",
+                severity="error",
+                code=getattr(exc, "code", f"sparam_routing_{key}"),
+                source="preflight_sparameters",
+            ))
 
         if include_general:
-            issues.extend(self.preflight(strict=strict))
+            # strict=False here: collect the general findings, then aggregate
+            # everything in one raise below (don't fail-on-first).
+            issues.extend(self.preflight(strict=False))
+
+        if strict and issues:
+            raise ValueError(
+                f"preflight_sparameters (strict) found {len(issues)} issue(s):"
+                "\n  - " + "\n  - ".join(issues)
+            )
 
         if issues:
             for issue in issues:
