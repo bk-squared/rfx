@@ -235,14 +235,17 @@ def optimize(
 
     grad_fn = jax.value_and_grad(forward)
 
+    last_good = latent  # last design with a confirmed-finite forward+gradient
     for it in range(n_iters):
         loss, grad = grad_fn(latent)
 
         # NaN/Inf gradient guard. A non-finite gradient does not crash an
         # inverse-design loop — the Adam update below would silently poison
         # ``latent`` (and every later iteration), so the optimizer "succeeds"
-        # while wandering on garbage. Stop fast with a cause hint and preserve
-        # the last finite design instead of returning a NaN one.
+        # while wandering on garbage. Stop fast with a cause hint and RESTORE
+        # the last design whose forward was finite (the CURRENT ``latent`` is
+        # the one that just diverged, so returning it would hand back a
+        # divergence-causing design).
         if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
             import warnings as _w
             _w.warn(
@@ -250,13 +253,15 @@ def optimize(
                 f"{it} — the FDTD forward almost certainly diverged. Common "
                 f"causes: dt above CFL, conformal=True at fine dx (a known NaN, "
                 f"see docs/agent-memory/rfx-known-issues.md), PEC inside the "
-                f"CPML region, or a sub-cell PEC feature. Stopping early; the "
-                f"returned design is the last finite one (before iteration "
+                f"CPML region, or a sub-cell PEC feature. Stopping early and "
+                f"returning the last finite design (from before iteration "
                 f"{it}).",
                 stacklevel=2,
             )
+            latent = last_good
             break
 
+        last_good = latent  # this design produced a finite forward+gradient
         it_count[0] = it + 1
         loss_val = float(loss)
         loss_history.append(loss_val)

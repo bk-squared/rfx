@@ -105,3 +105,30 @@ def test_guard_is_tracer_safe_under_jax_grad():
 
     g = jax.grad(f)(jnp.full((4,), 5.0))  # 5.0 => |S11|=5 > 1, but traced
     assert bool(jnp.all(jnp.isfinite(g)))
+
+
+def test_normalize_aware_tol_tolerates_documented_overshoot():
+    """compute_waveguide_s_matrix(normalize=False) has documented Yee-dispersion
+    + band-edge |S11| overshoot (validated paths reach ~1.4); the loose tol used
+    on that path must stay SILENT on a column-power ~2.0 (|S11|~1.41) result,
+    while the tight tol used on normalize=True/"flux" still flags it. Gross
+    extractor bugs (|S11|>>1) are caught under either tol."""
+    s = np.zeros((1, 1, 3), dtype=complex)
+    s[0, 0, :] = np.sqrt(2.0)  # column power 2.0  (|S11| = 1.414)
+    # loose tol (the normalize=False path) -> silent
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
+        )
+    # tight tol (the normalize=True/"flux" path) -> warns
+    with pytest.warns(UserWarning, match="passivity"):
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=0.10
+        )
+    # a gross bug is caught even under the loose tol
+    s[0, 0, :] = 8.94
+    with pytest.warns(UserWarning, match="passivity"):
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
+        )

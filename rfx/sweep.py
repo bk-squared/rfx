@@ -132,10 +132,16 @@ def parametric_sweep(
     if until_decay is not None:
         kw["until_decay"] = until_decay
 
+    # Preflight only the FIRST sim (sweeps re-run a structurally-identical
+    # setup, so per-iteration preflight just floods the loop with repeated
+    # warnings + [PREFLIGHT] prints). A user-supplied skip_preflight in
+    # run_kwargs is honored as-is.
+    _sp_explicit = "skip_preflight" in kw
     results = []
-    for val in param_values:
+    for _i, val in enumerate(param_values):
         sim = sim_factory(float(val))
-        result = sim.run(**kw)
+        _kw = kw if _sp_explicit else {**kw, "skip_preflight": _i > 0}
+        result = sim.run(**_kw)
         results.append(result)
 
     return SweepResult(

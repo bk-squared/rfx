@@ -1049,8 +1049,12 @@ class _PreflightMixin:
             One of ``"run"``, ``"forward"``, ``"msl"``, or ``"waveguide"``
             (the corresponding method names are accepted as aliases).
         strict:
-            If True, raise the underlying ``ValueError`` /
-            ``NotImplementedError`` instead of returning it as an issue string.
+            If True, escalate findings to a raise: collect every issue, then
+            raise a single ``ValueError`` listing them all (aggregate-then-raise,
+            matching ``preflight(strict=True)``). The underlying
+            ``NotImplementedError`` is recorded as an error-severity issue and
+            re-surfaced as part of that aggregated ``ValueError`` (its exact type
+            is not preserved).
         normalize:
             Waveguide non-uniform preflight uses this to mirror
             ``compute_waveguide_s_matrix(normalize=...)``.  ``None`` means the
@@ -1061,9 +1065,11 @@ class _PreflightMixin:
 
         Returns
         -------
-        list of str
-            Empty when the selected calculator is valid for the registered
-            port families.  Otherwise contains actionable issue messages.
+        PreflightReport
+            A ``list`` subclass of :class:`PreflightIssue` (back-compatible with
+            the historical ``list[str]``). Empty when the selected calculator is
+            valid for the registered port families.  Otherwise contains
+            actionable, coded issues.
         """
 
         aliases = {
@@ -1497,8 +1503,10 @@ class _PreflightMixin:
         methods are falsified (see docs/agent-memory/rfx-known-issues.md, the
         conformal-PEC item). ``normalize=False`` is NOT a safe workaround.
         Surfacing this at preflight converts a silent-NaN GPU run into an
-        instant redirect. Emitted as :class:`PreflightErrorWarning` (error
-        severity) so an agent can gate on it without it masking other checks.
+        instant redirect. Emitted as a WARNING-severity ``PreflightWarning``
+        (code ``conformal_nan``), NOT error — conformal is actively-worked and
+        convergence/development tests must still RUN this config, so it must not
+        hard-fail; agents gate on the code, not a hard-stop.
         """
         spec = getattr(self, "_boundary_spec", None)
         if spec is None or not hasattr(spec, "conformal_faces"):

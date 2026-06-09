@@ -289,8 +289,51 @@ def test_validator_crash_propagates_not_swallowed():
 
     def _boom():
         raise RuntimeError("validator bug")
-    sim._validate_ntff_inverse_design = _boom
+    # Target a validator run() actually invokes (run() uses check_ntff=False, so
+    # the NTFF inverse-design check is NOT on its path).
+    sim._validate_simulation_config = _boom
 
     # Via the auto-preflight path (run) the bug must surface, not be swallowed.
     with pytest.raises(RuntimeError, match="validator bug"):
         sim.run(n_steps=5)
+
+
+# ----------------------------------------- run() error-severity + NTFF surface
+def test_run_skips_ntff_inverse_design_check_but_forward_runs_it():
+    """run() must NOT hard-fail on the inverse-design NTFF check (it historically
+    never ran it — run() uses check_ntff=False), while forward()/optimize (the
+    inverse-design entry points) still do. Regression lock for the NTFF/PEC
+    behavior change flagged in cold review."""
+    def _sim():
+        s = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
+        s.add_source((0.01, 0.01, 0.01), component="ez")
+        s.add_probe((0.01, 0.01, 0.012), component="ez")
+        # Stand in for an NTFF-box-crosses-PEC error-severity finding.
+        s._validate_ntff_inverse_design = lambda: (_ for _ in ()).throw(
+            ValueError("NTFF box face crosses PEC")
+        )
+        return s
+
+    # run(): check_ntff=False -> the NTFF validator is not invoked -> no hard-fail
+    _sim().run(n_steps=5)
+    # forward(): check_ntff=True -> invoked -> error-severity -> re-raised
+    with pytest.raises(ValueError, match="NTFF box face crosses PEC"):
+        _sim().forward(n_steps=5)
+
+
+def test_run_hard_fails_on_error_severity_and_skip_bypasses():
+    """run() re-raises on a structurally-impossible (error-severity) config, and
+    skip_preflight=True is the documented escape hatch."""
+    sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
+    sim.add_source((0.01, 0.01, 0.01), component="ez")
+    sim.add_probe((0.01, 0.01, 0.012), component="ez")
+    sim._validate_simulation_config = lambda: (_ for _ in ()).throw(
+        ValueError("structurally impossible config")
+    )
+    with pytest.raises(ValueError, match="structurally impossible config"):
+        sim.run(n_steps=5)
+    # escape hatch: skip_preflight bypasses the preflight (and its re-raise)
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("error")  # no preflight warning/raise should fire
+        sim.run(n_steps=5, skip_preflight=True)

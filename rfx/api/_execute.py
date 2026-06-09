@@ -231,7 +231,10 @@ class _ExecuteMixin:
         for w in config.warnings:
             _w.warn(w, stacklevel=3)
 
-    def _auto_preflight(self, *, skip: bool = False, context: str = "forward") -> None:
+    def _auto_preflight(
+        self, *, skip: bool = False, context: str = "forward",
+        check_ntff: bool = True,
+    ) -> None:
         """Emit a UserWarning if preflight finds issues (issue #66).
 
         Called automatically at the start of ``forward()``, ``optimize()``,
@@ -239,6 +242,12 @@ class _ExecuteMixin:
         (under-resolved mesh, geometry in CPML, probe in PEC, ...) before
         spending minutes of GPU compute. Pass ``skip_preflight=True`` at
         the call site to opt out (tests, already-validated configs).
+
+        ``check_ntff`` gates the inverse-design NTFF checks (PEC-overlap hard
+        error + λ/4 near-field gap warning). ``run()`` passes ``check_ntff=
+        False`` because those are inverse-design concerns that ``run()``
+        historically never ran — only ``forward(port_s11_freqs=...)`` /
+        ``optimize`` (the inverse-design entry points) should hard-fail on them.
         """
         if skip:
             return
@@ -246,7 +255,7 @@ class _ExecuteMixin:
         # a validator itself crashes (a bug, e.g. a non-ValueError). Let that
         # propagate loudly (Phase D) — do NOT degrade a validator bug to a soft
         # warning that hides it and lets a broken run proceed.
-        issues = self.preflight(strict=False)
+        issues = self.preflight(strict=False, check_ntff=check_ntff)
         if not issues:
             return
         import warnings
@@ -1691,7 +1700,11 @@ class _ExecuteMixin:
         # so the documented lumped/wire S-parameter path via
         # run(compute_s_params=True) silently missed part of the best
         # proactive error surface in the codebase.
-        self._auto_preflight(skip=skip_preflight, context="run")
+        # check_ntff=False: run() historically never ran the inverse-design
+        # NTFF PEC-overlap check; keep that surface (it belongs to
+        # forward(port_s11_freqs=...)/optimize). Avoids hard-failing run() on
+        # an NTFF-box-crosses-PEC config that completed before this change.
+        self._auto_preflight(skip=skip_preflight, context="run", check_ntff=False)
 
         if self._solver == "adi" and devices is not None and len(devices) > 1:
             raise ValueError("solver='adi' does not support distributed execution")

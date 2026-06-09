@@ -82,3 +82,30 @@ def test_assert_finite_is_tracer_safe_under_jax_grad():
 
     g = jax.grad(f)(jnp.full((4,), 3.0))
     assert bool(jnp.all(jnp.isfinite(g)))
+
+
+def test_optimize_nan_gradient_warns_and_returns_last_good():
+    """The optimizer NaN/Inf-gradient guard must (1) warn, (2) stop early, and
+    (3) return the last FINITE design — not the divergence-causing one. Here a
+    NaN objective makes the gradient NaN at iteration 0, so the loop breaks
+    before any update and the returned design is the (finite) initial latent."""
+    from rfx.api import Simulation
+    from rfx.optimize import optimize, DesignRegion, OptimizeResult
+
+    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim.add_port((0.005, 0.0075, 0.0075), "ez")
+    sim.add_probe((0.01, 0.0075, 0.0075), "ez")
+    region = DesignRegion(
+        corner_lo=(0.006, 0.006, 0.006),
+        corner_hi=(0.009, 0.009, 0.009),
+        eps_range=(1.0, 4.4),
+    )
+    with pytest.warns(UserWarning, match="non-finite"):
+        result = optimize(
+            sim, region,
+            lambda r: jnp.nan * jnp.sum(r.time_series),  # NaN loss => NaN grad
+            n_iters=3, lr=0.01, verbose=False,
+        )
+    assert isinstance(result, OptimizeResult)
+    assert len(result.loss_history) == 0          # broke at iteration 0
+    assert np.all(np.isfinite(np.asarray(result.eps_design)))  # last-good is finite
