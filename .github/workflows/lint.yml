@@ -31,3 +31,23 @@ jobs:
 
       - name: Lint rfx/ and tests/
         run: ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
+
+  agent-docs-hygiene:
+    # docs/agent/ pages are sanitized public exports of internal (gitignored)
+    # agent guidance. A public clone does not contain docs/agent-memory/,
+    # docs/research_notes/, CLAUDE.md, or .claude/ — so tracked agent-facing
+    # pages must never point readers at them.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Forbid gitignored-path references in docs/agent/
+        run: |
+          hits=$(grep -rn 'research_notes\|agent-memory\|CLAUDE\.md\|\.claude/' docs/agent/ || true)
+          if [ -n "$hits" ]; then
+            echo "docs/agent/ must not reference gitignored internal paths:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "docs/agent/ clean"

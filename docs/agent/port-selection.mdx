@@ -1,0 +1,58 @@
+---
+title: "Port & Source Selection"
+description: "Decision guide for choosing the right rfx port, source, and S-parameter extraction primitive for each device class."
+sidebar:
+  order: 6
+---
+
+Use this page as the decision layer before choosing a primitive. The full primitive reference lives in the [sources and ports guide](/rfx/guide/sources-ports/); this page adds the device-class decision layer on top of it.
+
+For evidence status and hard envelopes, see [docs/guides/sparameter_support_matrix.md](../guides/sparameter_support_matrix.md) and the [agent repo map](./repo-map).
+
+## Selection Table
+
+| Device class | Primitive | Compute path | Status | Hard limit / envelope |
+|---|---|---|---|---|
+| Rectangular waveguide | `add_waveguide_port` | `compute_waveguide_s_matrix` | E5-narrow (current port) | Multi-port S-matrix; requires at least two waveguide ports. Single-mode; validated empty-guide, PEC-short, slab analytic + external references including Meep/OpenEMS/Palace. |
+| Microstrip / MSL | `add_msl_port` | `compute_msl_s_matrix` | E5-narrow / eigenmode-blocked | Thru-line `\|S21\|` / `Z0` gate; notch error 1.63% and depth −34.3 dB (cv06b). Eigenmode and nonuniform paths remain blocked. |
+| Coaxial (promoted path) | `add_coaxial_port` | `compute_coaxial_line_reflection` | E5-broad (`broad_e5_passed`) | One-port transmission-line reflection envelope. Validated over short/open/matched and resistive loads (25 Ω / 100 Ω), two characteristic impedances, and mesh-axis annulus resolution (`max \|Γ\|` deviation 0.037 ≤ 0.05). Independent Meep broad-E4 cross-check 4–12 GHz. |
+| Coaxial (deprecated path) | `add_coaxial_port` | `compute_coaxial_s_matrix` (**deprecated / experimental**) | E2/E3 development path only | Older single-plane V/I path retained for compatibility. Can report non-physical `\|S11\| > 1` for lossless shorts. **Do not use as the claims surface for coaxial S-parameters.** |
+| Lumped / RLC excitation | `add_lumped_rlc` / `add_port` | `Simulation.run(compute_s_params=True, ...)` or `Simulation.forward(port_s11_freqs=...)` | E2/E3 partial (lumped), E0/E1 (forward S11) | Lumped-port envelope for V/I extraction. Nonuniform lumped-port S-parameter extraction is not within the current validated envelope. `compute_s_params` path is only for `add_port` simulations. |
+| Free-space scattering | `add_tfsf_source` | Field, flux, or NTFF observables (where separately supported) | Not a port | Plane-wave total-field/scattered-field drive. Not a port calibration path; no promoted S-parameter compute path. |
+| Periodic surfaces | `add_floquet_port` | No promoted API | E2/E3-modal/slab-analytic; no promoted S-matrix API | Experimental Floquet/Bloch excitation. Modal oracle and analytic slab checks pass; no RCWA or external crossval. No promoted multi-port S-matrix compute path. Use only within the documented analytic-slab envelope. |
+| Antennas / radiation | `add_source` / `add_polarized_source` + `add_ntff_box` | Near-to-far-field post-processing | Supported (NTFF separately validated) | Use source primitives for drive; use `add_ntff_box` for radiation observables (directivity, RCS, far-field patterns). Do not route radiation results into port S-parameters without a supported extraction row. |
+
+## Decision Tree
+
+1. **Rectangular waveguide** → `add_waveguide_port` + `compute_waveguide_s_matrix`. Needs two or more ports for a full S-matrix.
+2. **Microstrip / MSL guided line** → `add_msl_port` + `compute_msl_s_matrix`. Eigenmode and nonuniform paths blocked.
+3. **Coaxial** → `add_coaxial_port` + `compute_coaxial_line_reflection`. This is the only promoted coaxial claims surface. Do **not** use `compute_coaxial_s_matrix`.
+4. **Lumped component or discrete terminal** → `add_lumped_rlc` or `add_port`. Keep results within the lumped-port interpretation; this is not a waveguide or coaxial S-matrix path.
+5. **Free-space incident field** → `add_tfsf_source`. No port calibration applies.
+6. **Periodic structure requiring modal excitation** → `add_floquet_port` only within the E2/E3 analytic-slab envelope. No promoted S-matrix API.
+7. **Antenna or radiation observable** → `add_source` or `add_polarized_source` plus `add_ntff_box`.
+
+## Coaxial Compute Path Caveat
+
+`compute_coaxial_line_reflection` is the promoted path (`broad_e5_passed`). The older `compute_coaxial_s_matrix` is deprecated/experimental; it can produce non-physical `|S11| > 1` for lossless shorts and must not be used as a validated coaxial S-parameter result. The [support matrix](../guides/sparameter_support_matrix.md) coaxial rows document both paths in detail.
+
+## Compute-Path/Port Pairing Rules
+
+Keep these pairings exact. Most mispairings raise a `ValueError`; treat any combination that does not raise as undefined rather than validated.
+
+- `compute_waveguide_s_matrix` → only for `add_waveguide_port` simulations
+- `compute_msl_s_matrix` → only for `add_msl_port` simulations
+- `compute_coaxial_line_reflection` → only for the documented one-port coaxial envelope
+- `run(compute_s_params=True, ...)` → only for `add_port` lumped/wire ports
+- `forward(port_s11_freqs=...)` → only for `add_port` lumped/wire ports
+
+## When No Port Family Fits
+
+Stop before improvising. If no row in the [S-parameter support matrix](../guides/sparameter_support_matrix.md) covers the geometry, boundary conditions, source normalization, and observable you need:
+
+1. Check the full [support matrix](../guides/sparameter_support_matrix.md) and [support matrix JSON](../guides/sparameter_support_matrix.json) for any partial or experimental row that covers part of the envelope.
+2. Check [docs/guides/](../guides/) for evidence rules and methodology notes.
+3. Do not invent a new extraction scheme and label it validated. Add an explicit evidence row first.
+4. If the structure is close to a supported family (e.g., a variant waveguide geometry), confirm it is within the documented envelope before claiming the family's status.
+
+An unverified extraction that reports plausible-looking numbers is not a validated result.
