@@ -5,7 +5,7 @@ mixed-boundary setups rather than asserting a "correct" answer. When a
 setup turns out to be ambiguous or dangerous, the test fails loudly so
 future sessions pick up the tracking item.
 
-Per the v1.7.4 open-questions log (.omc/plans/open-questions.md §OQ7/8),
+Per the T8/2026-04 open-questions log (.omc/plans/open-questions.md §OQ7/8),
 these are T10 candidates tracked for visibility, not blockers.
 
 OQ7 — TFSF + PMC scan-body ordering:

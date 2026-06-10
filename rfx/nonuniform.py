@@ -46,7 +46,7 @@ class NonUniformGrid(NamedTuple):
     a face whose token is ``pmc``/``pec``/``periodic`` gets 0 cells on
     that side even when the axis as a whole uses CPML. For back-compat
     the six fields default to ``cpml_layers`` on every face (the
-    pre-v1.7.5 symmetric layout).
+    pre-per-face-allocation symmetric layout).
     """
     nx: int
     ny: int
@@ -70,7 +70,7 @@ class NonUniformGrid(NamedTuple):
     inv_dx_h: jnp.ndarray  # (nx,) — H update: 1/dx[i]; [nx-1]=0
     inv_dy_h: jnp.ndarray  # (ny,) — H update: 1/dy[j]; [ny-1]=0
     inv_dz_h: jnp.ndarray  # (nz,) — H update: 1/dz[k]; [nz-1]=0
-    # Per-face CPML padding (v1.7.5 PMC+CPML composition fix)
+    # Per-face CPML padding (PMC+CPML composition fix, 2026-04)
     pad_x_lo: int = 0
     pad_x_hi: int = 0
     pad_y_lo: int = 0
@@ -95,10 +95,10 @@ class NonUniformGrid(NamedTuple):
 def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
     """Pad a 1-D cell-size profile with CPML cells on each end.
 
-    ``pad_lo`` and ``pad_hi`` may differ (v1.7.5 per-face allocation —
+    ``pad_lo`` and ``pad_hi`` may differ (per-face allocation, 2026-04 —
     a PMC/PEC face gets 0 cells on that side while the opposing CPML
     face keeps its allocation). If ``pad_hi`` is omitted the symmetric
-    ``pad_lo`` count is used on both ends (pre-v1.7.5 behaviour).
+    ``pad_lo`` count is used on both ends (pre-per-face-allocation behaviour).
 
     CPML uses constant spacing matching the boundary cell size, so the
     ``pad_lo`` cells on the leading side carry ``profile[0]`` and the
@@ -195,7 +195,7 @@ def make_nonuniform_grid(
         Face labels (``x_lo``, ``x_hi``, ``y_lo``, ``y_hi``, ``z_lo``,
         ``z_hi``) where the boundary is PEC / PMC. Per-face pad count
         is forced to 0 on these faces so the reflector plane aligns
-        with the user domain edge. Added in v1.7.5 to close the
+        with the user domain edge. Added 2026-04 to close the
         PMC+CPML composition gap on the non-uniform mesh path.
     cpml_axes : str
         Axes that participate in CPML allocation (default ``"xyz"``).
@@ -318,7 +318,7 @@ def _interior_line_positions(
     """Return cell-edge positions (0 at first interior face) for a padded
     cell-size array. Length = n_interior + 1.
 
-    ``pad_lo`` and ``pad_hi`` may differ (v1.7.5 per-face allocation).
+    ``pad_lo`` and ``pad_hi`` may differ (per-face allocation, 2026-04).
     Back-compat: a single-argument call treats the value as symmetric.
     """
     if pad_hi is None:
@@ -337,7 +337,7 @@ def _nominal_edges_or_actual(
 
     ``total_pad`` is ``pad_lo + pad_hi`` — the cells removed when
     slicing to the interior. ``pad_lo`` (defaulting to ``total_pad/2``
-    for the symmetric pre-v1.7.5 case) is needed by the tracer path
+    for the legacy symmetric case) is needed by the tracer path
     to reconstruct ``n_interior`` and by the concrete path to pick
     the right interior slice.
 
@@ -799,7 +799,7 @@ def run_nonuniform(
             if (lo + hi) > 0
         )
 
-    # PMC enforcement (v1.7.5). The NU scan body previously never
+    # PMC enforcement (2026-04). The NU scan body previously never
     # zeroed H_tan on PMC faces, so a half-symmetric configuration
     # that relied on the mirror plane was running with an effectively
     # free boundary. Frozen set gives JIT cache a stable hash; empty

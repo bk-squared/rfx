@@ -1,4 +1,4 @@
-"""T7 Phase 2 — asymmetric CPML analytic oracle (v1.7.2).
+"""T7 Phase 2 — asymmetric CPML analytic oracle (2026-04).
 
 Closes critic blocker #2: the asymmetric-CPML claim must be backed by
 a QUANTITATIVE σ_max oracle that catches the "computed with wrong n"

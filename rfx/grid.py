@@ -98,7 +98,7 @@ class Grid:
         if self.is_2d:
             self.cpml_axes = self.cpml_axes.replace("z", "")
 
-        # Per-face CPML allocation (v1.7.5). A face whose BoundarySpec
+        # Per-face CPML allocation (2026-04). A face whose BoundarySpec
         # token is ``pec``/``pmc``/``periodic`` gets ``pad=0`` on that
         # side even when the axis as a whole participates in CPML —
         # this is the Meep / OpenEMS / Tidy3D convention and the
@@ -134,7 +134,7 @@ class Grid:
         # ``axis_pads`` carries the LEADING (``lo``) pad per axis, i.e.
         # the same number that callers subtract from array indices to
         # recover user-domain coordinates (``(idx - axis_pads[ax]) * dx``).
-        # In the pre-v1.7.5 symmetric layout this happened to equal
+        # In the legacy symmetric layout this happened to equal
         # ``pad_{axis}``; under per-face allocation the two are different
         # whenever one face is PMC/PEC/periodic. Existing callers that
         # treated ``axis_pads`` as a coordinate offset continue to work

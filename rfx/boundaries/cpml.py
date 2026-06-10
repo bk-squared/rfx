@@ -38,7 +38,7 @@ class CPMLParams(NamedTuple):
 class CPMLAxisParams(NamedTuple):
     """Per-face CPML profiles (6 faces) for anisotropic grids.
 
-    T7 Phase 2 PR1 refactor (v1.7.1): promoted the ``x`` / ``y`` axis-level
+    T7 Phase 2 PR1 refactor (2026-04): promoted the ``x`` / ``y`` axis-level
     profiles to explicit ``x_lo`` / ``x_hi`` / ``y_lo`` / ``y_hi`` fields.
     The hi-face profile arrays are pre-flipped so the scan body no longer
     calls ``jnp.flip`` at every step.
@@ -289,7 +289,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         ``"x_lo"``, ``"x_hi"``, ``"y_lo"``, ``"y_hi"``,
         ``"z_lo"``, ``"z_hi"``.  Default: None (CPML on all faces).
     pmc_faces : set of str or None
-        Faces carrying a PMC reflector (v1.7.5 per-face padding puts
+        Faces carrying a PMC reflector (per-face padding, 2026-04 — puts
         ``pad=0`` cells on that side of the axis). Like ``pec_faces``
         these faces receive a no-op CPML profile — otherwise the
         ``apply_cpml_e/h`` slices ``[:, :n, :]`` etc. would apply

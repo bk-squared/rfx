@@ -1,4 +1,4 @@
-"""v1.7.4 T8 — sharded PMC runtime smoke tests.
+"""T8 (2026-04) — sharded PMC runtime smoke tests.
 
 Covers the three sharded runners:
   - ``rfx/runners/distributed_nu.py``   — NU path, reached via direct
@@ -15,7 +15,7 @@ Covers the three sharded runners:
                                           reached via a direct call to
                                           ``run_distributed`` — this is
                                           the only code path that exercises
-                                          the v1.7.4 T8 ``_apply_pmc_local``
+                                          the T8 (2026-04) ``_apply_pmc_local``
                                           hook inside its pmap scan body.
 
 Case 2 includes a NEGATIVE assertion that non-owning ranks' x-face

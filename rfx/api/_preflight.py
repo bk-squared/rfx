@@ -1622,7 +1622,7 @@ class _PreflightMixin:
     def _validate_cfg_compute_cpml_thickness(
         self, cpml_thickness: float
     ) -> tuple[list[float], list[float], set]:
-        """Per-face CPML thickness (v1.7.5). Mirrors Grid._face_pad:
+        """Per-face CPML thickness (2026-04). Mirrors Grid._face_pad:
         pec_faces / pmc_faces / periodic-axis faces consume 0 cells;
         remaining faces get the axis CPML thickness (non-uniform z
         aggregates the leading dz_profile entries). Under asymmetric
@@ -2284,7 +2284,7 @@ class _PreflightMixin:
 
         P2.7 (obsolete): PMC / PEC + CPML on the same axis used to emit
         a warning for the architectural offset between the reflector
-        plane and the user domain edge. v1.7.5 closed that gap on both
+        plane and the user domain edge. The per-face allocation (2026-04) closed that gap on both
         the uniform (rfx/grid.py) and non-uniform (rfx/nonuniform.py)
         paths via per-face ``pad_{axis}_{lo,hi}`` allocation. The
         warning is retained as a no-op anchor so external references

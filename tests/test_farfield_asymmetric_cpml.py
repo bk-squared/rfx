@@ -1,6 +1,6 @@
 """Bundle C.2 — NTFFBox.from_grid and per-face CPML origin asymmetry.
 
-These tests pin the v1.7.4 refactor: per-face CPML thickness now threads
+These tests pin the 2026-04 per-face refactor: per-face CPML thickness now threads
 through NTFF box construction so NTFF integration surfaces sit outside the
 CPML-active region on each face independently, not behind a scalar
 cpml_layers origin.

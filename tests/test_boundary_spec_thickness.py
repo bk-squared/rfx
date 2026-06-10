@@ -1,8 +1,8 @@
 """T7-C spec + runtime tests.
 
-Phase 1 (v1.7.0) introduced ``Boundary.lo_thickness`` /
+Phase 1 (2026-04) introduced ``Boundary.lo_thickness`` /
 ``hi_thickness`` as spec-level fields with a runtime guard that
-rejected asymmetric thickness. Phase 2 PR2 (v1.7.1) replaced the
+rejected asymmetric thickness. Phase 2 PR2 (2026-04) replaced the
 guard with the padded-profile runtime, so these tests now assert
 that asymmetric thickness builds and runs end-to-end.
 """

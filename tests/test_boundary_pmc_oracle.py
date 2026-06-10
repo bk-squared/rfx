@@ -1,4 +1,4 @@
-"""T7-E Phase 2 — PMC λ/4 cavity mode-ladder oracle (v1.7.2).
+"""T7-E Phase 2 — PMC λ/4 cavity mode-ladder oracle (T7 Phase 2, 2026-04).
 
 Closes critic blocker #5: the shipped PMC tests (tangential-H=0,
 dual-boundary Hx sample) prove the PMC hook fires and is a distinct

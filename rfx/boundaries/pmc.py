@@ -37,7 +37,7 @@ def apply_pmc_faces(state, faces: set[str]) -> object:
     side is the ghost half-cell 0.5·dx OUTSIDE the wall, which does
     not participate in the interior E-curl stencil and was previously
     zeroed with no effect — causing ``_hi`` PMC to be a silent no-op
-    that let the wall behave as PEC. Fixed in v1.7.5 (see
+    that let the wall behave as PEC. Fixed 2026-04 (see
     tests/test_boundary_pmc_hi_faces.py for the regression lock).
     """
     if not faces:
