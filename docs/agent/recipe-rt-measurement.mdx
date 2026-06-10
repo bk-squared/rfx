@@ -1,0 +1,194 @@
+---
+title: "Recipe: Broadband R(f)/T(f) of a Slab or Scatterer"
+description: "How to measure broadband reflection and transmission spectra of a dielectric slab, multilayer stack, or dispersive scatterer using rfx flux monitors and two-run reference subtraction."
+sidebar:
+  order: 8
+---
+
+Use this recipe when you need broadband complex R(f) / T(f) spectra of a slab,
+thin-film stack, periodic surface, or other scatterer. For guided-mode
+S-parameters in a bounded waveguide, see [recipe-waveguide-sparams](./recipe-waveguide-sparams)
+instead.
+
+## When to use
+
+- Broadband reflectance and transmittance vs frequency for free-space or
+  periodic-boundary geometries.
+- Dispersive materials (Lorentz resonances, Drude metals) where frequency
+  dependence is essential.
+- Any case where the analytic transfer-matrix or Fresnel stack result is
+  the benchmark.
+
+**Not for**: guided modes, coaxial lines, microstrip — those have dedicated port
+primitives and compute paths.
+
+## Right primitives
+
+### `add_flux_monitor`
+
+On-the-fly DFT accumulation of the Poynting flux on a plane. Each frequency
+component is integrated continuously throughout the run, so no time-series
+storage is needed and no post-run FFT is required.
+
+```python
+sim.add_flux_monitor(axis="x", coordinate=refl_x, freqs=freqs_rt, name="refl")
+sim.add_flux_monitor(axis="x", coordinate=trans_x, freqs=freqs_rt, name="trans")
+```
+
+### `run(until_decay=...)`
+
+Decay-adaptive termination (`rfx/api/_execute.py`, line 1593). Runs until the
+field at a chosen monitor position decays to `until_decay * peak`. This kwarg
+is load-bearing for accuracy: a fixed `n_steps` truncates the signal and aliases
+residual energy into the spectrum. `decay_monitor_component` and
+`decay_monitor_position` control which field and where to sample the decay.
+
+### Two-run reference subtraction
+
+Run once without the scatterer (reference run) and once with it (sample run).
+Subtract the DFT accumulators at the field level before computing the power flux.
+
+## Canonical two-run pattern
+
+```python
+import numpy as np
+from rfx import Simulation, Box
+from rfx.probes.probes import flux_spectrum
+
+def build_sim(with_slab: bool) -> Simulation:
+    sim = Simulation(
+        freq_max=freq_max, domain=(dom_x, dom_y, dx), dx=dx,
+        boundary="cpml", cpml_layers=20, mode="2d_tmz",
+    )
+    if with_slab:
+        sim.add_material("slab", eps_r=eps_inf, lorentz_poles=[pole])
+        # Box must span full y/z extent including CPML padding —
+        # with TFSF, transverse axes are periodic, and any cell
+        # outside the material mask breaks the plane-wave assumption.
+        sim.add(Box((slab_x_lo, -1, -1), (slab_x_hi, 1, 1)), material="slab")
+    sim.add_tfsf_source(f0=f0, bandwidth=bw, polarization="ez", direction="+x")
+    sim.add_flux_monitor(axis="x", coordinate=refl_x, freqs=freqs_rt, name="refl")
+    sim.add_flux_monitor(axis="x", coordinate=trans_x, freqs=freqs_rt, name="trans")
+    return sim
+
+# Run 1 — reference (no scatterer)
+sim_ref = build_sim(with_slab=False)
+res_ref = sim_ref.run(
+    n_steps=12000,
+    until_decay=1e-5,
+    decay_monitor_component="ez",
+    decay_monitor_position=(trans_x, y_center, 0),
+)
+ref_refl_fm = res_ref.flux_monitors["refl"]
+ref_trans_flux = np.asarray(flux_spectrum(res_ref.flux_monitors["trans"]))
+
+# Run 2 — sample (with scatterer)
+sim_slab = build_sim(with_slab=True)
+res_slab = sim_slab.run(
+    n_steps=12000,
+    until_decay=1e-5,
+    decay_monitor_component="ez",
+    decay_monitor_position=(trans_x, y_center, 0),
+)
+slab_refl_fm = res_slab.flux_monitors["refl"]
+slab_trans_flux = np.asarray(flux_spectrum(res_slab.flux_monitors["trans"]))
+
+# Field-level subtraction for reflection
+# (FluxMonitor is a NamedTuple; field names: e1_dft, e2_dft, h1_dft, h2_dft)
+scat_refl_fm = slab_refl_fm._replace(
+    e1_dft=slab_refl_fm.e1_dft - ref_refl_fm.e1_dft,
+    e2_dft=slab_refl_fm.e2_dft - ref_refl_fm.e2_dft,
+    h1_dft=slab_refl_fm.h1_dft - ref_refl_fm.h1_dft,
+    h2_dft=slab_refl_fm.h2_dft - ref_refl_fm.h2_dft,
+)
+scat_refl_flux = np.asarray(flux_spectrum(scat_refl_fm))
+
+# Reflection and transmission coefficients
+T = slab_trans_flux / ref_trans_flux      # transmittance
+R = -scat_refl_flux / ref_trans_flux      # reflectance (sign: reflection is −x)
+```
+
+## Critical details
+
+### (a) Field-level subtraction is required
+
+Poynting flux is bilinear in E and H. If you subtract the pre-computed flux
+values (`F_slab - F_ref`), the cross terms do not cancel, and the result is
+wrong for all scatterers. Subtracting the E and H DFT accumulators first, then
+calling `flux_spectrum`, is exact because Maxwell's equations are linear.
+
+### (b) `until_decay` is load-bearing
+
+A fixed `n_steps` makes the DFT aliasing depend on where the signal happens to
+be truncated. For dispersive or high-Q scatterers, use `until_decay=1e-5` or
+tighter. For simple lossless slabs `1e-3` is often sufficient.
+
+`until_decay` is not supported with `solver='adi'`; a `ValueError` is raised if
+you try.
+
+### (c) TFSF transverse-periodicity gotcha
+
+`add_tfsf_source` forces the transverse axes (y, z) to be periodic. The
+material `Box` must span the full y/z extent including the CPML padding. Any
+cell outside the material mask breaks the plane-wave assumption. Use oversized
+corners: `Box((x_lo, -1, -1), (x_hi, 1, 1))`.
+
+### (d) Cell-alignment nudge for slab thickness
+
+`Box` uses inclusive bounds (`coords >= lo and coords <= hi`), so a physically
+`d`-thick slab can map to `d + dx` cells. Nudge the upper x-corner down by
+`dx/2` to hit the last interior cell: `slab_x_hi = center + d/2 - dx/2`.
+
+## Do NOT use
+
+**`add_probe` (time-series) + `np.fft.rfft`** for dispersive media.
+
+A chirped pulse transmitted through a dispersive slab has frequencies arriving
+at different times. Any time-gate window (Hann, Tukey, rectangular) introduces
+a frequency-dependent bias because the chirped transmitted pulse and the
+incident reference pulse have different effective envelopes under the same
+window. This bias is independent of grid resolution — halving `dx` does not
+reduce it.
+
+`add_flux_monitor` sidesteps this entirely: each frequency is integrated
+continuously, and `until_decay` ensures the signal has truly ended before the
+DFT is read.
+
+For dispersionless media there is no group-velocity chirp, so the raw
+time-series approach does not produce this artifact — but `add_flux_monitor`
+is still preferred for its cleaner interface and decay-adaptive stopping.
+
+## Known accuracy
+
+`examples/crossval/04_multilayer_fresnel.py` gates rfx against the analytic
+Fresnel / transfer-matrix result with a mean-error threshold of 0.05 (5%) for
+both T(f) and R(f), as well as energy conservation R+T within 5%. In practice
+rfx passes this gate with substantially lower error for well-resolved, lossless
+slabs.
+
+For dispersive media there is currently **no tracked R(f)/T(f) accuracy oracle**
+in this repository — treat dispersive R/T results as unvalidated against
+analytic references until such a gate exists. Two source-verifiable facts to
+keep in mind when comparing against other solvers: rfx discretizes
+Lorentz/Debye poles with a second-order central-difference ADE
+(`rfx/materials/lorentz.py`), while some other FDTD solvers use
+recursive-convolution D-field updates; both are O(Δt²) but produce slightly
+different effective ε(f) near stiff resonances, so a small residual between
+solvers at a sharp Lorentz peak is a discretization-level difference, not
+necessarily a usage error in either tool.
+
+## Canonical examples
+
+- `examples/crossval/04_multilayer_fresnel.py` — dispersionless Fresnel slab,
+  analytic comparison. Note: this script uses a raw Yee loop (`update_e` /
+  `update_h`) rather than the `Simulation` API. The raw-loop approach works for
+  dispersionless media because there is no group-velocity chirp; for dispersive
+  media use `add_flux_monitor` via the `Simulation` API.
+
+## Companion primitives
+
+- `add_dft_plane_probe` — full complex E/H snapshot on a 2D plane; useful for
+  mode patterns and near-field maps.
+- `add_ntff_box` — near-to-far-field transform for 3D scatterers.
+- `compute_waveguide_s_matrix` — S-parameters in bounded waveguides (not
+  plane-wave); see [recipe-waveguide-sparams](./recipe-waveguide-sparams).
