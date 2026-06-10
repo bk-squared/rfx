@@ -12,7 +12,10 @@ requires-python = ">=3.10"
 authors = [{name = "REMI Lab", email = "byungkwan.kim@cnu.ac.kr"}]
 keywords = ["fdtd", "electromagnetics", "jax", "rf", "simulation"]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    # Beta matches the README status language: reference (uniform Yee RF)
+    # lane validated; advanced lanes promoted only inside documented
+    # evidence envelopes.
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -38,8 +41,17 @@ dashboard = ["streamlit>=1.30"]
 dev = ["pytest>=7.0", "pytest-xdist", "pytest-split", "ruff"]
 all = ["rfx[optimization,visualization,dashboard,dev]"]
 
+[project.urls]
+Homepage = "https://remilab.ai/rfx/"
+Repository = "https://github.com/bk-squared/rfx"
+Documentation = "https://remilab.ai/rfx/"
+Changelog = "https://github.com/bk-squared/rfx/blob/main/CHANGELOG.md"
+
 [tool.setuptools.packages.find]
 include = ["rfx*"]
+
+[tool.setuptools.package-data]
+rfx = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

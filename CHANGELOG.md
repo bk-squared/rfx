@@ -214,3 +214,138 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   reflection and has led multiple sessions in a circle.  Use an
   early-time-windowed envelope; the regression-locked version lives
   in `test_source_directionality_early_time`.
+
+---
+
+## [1.6.3] - 2026-04-17
+
+(reconstructed from commit log)
+
+### Fixed
+
+- **Periodic boundary + CPML allocation** (`#68`): `set_periodic_axes` was
+  not honoured during CPML layer allocation, causing CPML to be placed on
+  periodic faces.  Preflight now detects and rejects this configuration.
+  (`fix(boundary): #68 honor set_periodic_axes in CPML allocation + preflight`)
+
+### Added
+
+- **`distributed=True` threaded through `optimize()` and
+  `progressive_optimize()`** (`#69`): the `distributed` keyword introduced
+  in v1.6.2 for `forward()` is now propagated to the higher-level
+  optimisation entry points.
+  (`feat(optimize): #69 thread distributed=True through optimize + progressive_optimize`)
+
+---
+
+## [1.6.2] - 2026-04-17
+
+(reconstructed from commit log)
+
+### Added
+
+- **`Simulation.forward(distributed=True)` public API** (`#44`, Phase 3):
+  opt-in multi-device execution via `distributed=True`.  Covers the full
+  non-uniform runner: sharded grid metadata, ghost exchange, CPML on
+  x-slabs, Debye/Lorentz ADE ordering contract, soft-PEC occupancy
+  sharding, segmented remat + warmup + `design_mask` + `emit_ts`.
+- **`progressive_optimize` multi-resolution orchestrator** (`#42`):
+  `Simulation.progressive_optimize(...)` chains resolution levels with
+  geometry transfer.  API demo added as crossval 08.
+- **`design_mask` stop-gradient on non-design cells** (`#41`): cells
+  outside the design region are hard-stopped so gradients cannot escape
+  the design volume.
+- **Non-uniform sentinel hardening** (`#45`): tracer-safe `dz_profile`,
+  soft-PEC occupancy, and bit-identical CPML path verified against the
+  uniform runner.
+
+### Fixed
+
+- **Multi-device grad NaN at rank-0 corners** (`#44` Phase 4): corner
+  cells at rank-0 were not receiving a ghost exchange contribution,
+  producing NaN gradients in distributed training runs.
+- **`Simulation.__init__` host-coercion** (`#44`): closes NU sentinel #2 —
+  non-uniform grid parameters are coerced to host arrays at construction
+  time, preventing JIT-time shape errors.
+
+---
+
+## [1.6.1] - 2026-04-16
+
+(reconstructed from commit log)
+
+### Added
+
+- **Preflight auto-run before `forward()` / `optimize()` /
+  `topology_optimize()`** (`#66`): preflight is now invoked automatically
+  by all three execution entry points; pass `skip_preflight=True` to
+  suppress for benchmarking.
+- **`optimize()` routed through `sim.forward()`** (`#64`): optimizer now
+  uses the single differentiable forward path, removing a separate
+  code branch and unifying the differentiable-path surface.
+- **Simulation-time breakdown utility** (`#58`): `Simulation.profile()`
+  returns a per-phase timing breakdown (CPML init, Yee loop, probe
+  accumulation, post-processing).
+- **Patch antenna ground-plane size sweep** (`#59`): parametric test
+  verifying that ground-plane size does not affect resonance frequency
+  within the validated range.
+
+### Fixed
+
+- **Preflight: PEC inside CPML region** (`#61`): raises `ValueError` when
+  any PEC geometry box overlaps the CPML absorbing region.
+- **Preflight: Taflove dispersion check** replaces the earlier ratio
+  heuristic with the exact Yee dispersion criterion from Taflove &
+  Hagness Ch. 4.
+- **Preflight: probe-in-PEC check**; aspect-ratio threshold tightened to
+  2.0:1.
+- **Preflight: Courant asymmetry warning** for non-uniform grids with
+  per-axis `ν` values.
+- **Preflight: NU cell aspect-ratio warning** at > 2.5:1.
+- **Decimated Harminv** fixes F3 post-processing OOM on fine-mesh
+  convergence runs.
+
+---
+
+## [1.6.0] - 2026-04-16
+
+(reconstructed from commit log)
+
+### Added
+
+- **Memory-efficient inverse design on non-uniform mesh** (`#35`, `#36`):
+  segmented scan + remat path; `estimate_ad_memory()` gains
+  `ad_segmented_gb` field (`#39`).
+- **Non-uniform runner feature parity + inverse-design unblock** (`#34`):
+  NU runner now supports all source/boundary types available in the
+  uniform runner relevant to inverse design.
+- **Per-cell `dx`/`dy` profile support** for non-uniform grids.
+- **`n_warmup` stop-gradient split** (`#40`, `#56`): warmup steps are
+  detached from the AD tape, preventing spurious gradients from the
+  initial transient.
+- **Streaming multi-frequency NTFF sweep** (`#43`, `#55`): a single
+  forward pass accumulates DFT data at multiple frequencies without
+  storing full time-series.
+- **3D structure + far-field visualisation API** (`#38`, `#54`):
+  `Simulation.visualize_structure()` and `visualize_far_field()`.
+- **`minimize_s11_at_freq` objective** (`#50`, `#52`): single-frequency
+  S11 proxy usable directly inside `forward()`.
+- **2-port wire-port S-matrix with passive loads and direction** (`#34`
+  area): `add_wire_port` supports two-port extraction with explicit
+  termination impedance and `+`/`-` direction.
+
+### Fixed
+
+- **Physics-based resolution thresholds in preflight** (`#37`, `#53`):
+  replaces heuristic cell-count thresholds with wavelength/skin-depth
+  criteria.
+- **Thin-PEC on non-uniform mesh** (`#48`, `#51`): rasterisation fix +
+  preflight warning + mesh-aligned patch visualisation.
+- **`excite=False` guards + `forward()` profile check + preflight**:
+  sources with `excite=False` no longer contribute to the excitation
+  sum used by normalisation.
+- **`NameError` `base_materials` in differentiable forward path**.
+
+---
+
+Earlier releases (v1.0.0–v1.3.0) predate this changelog's version sections; see git tags.

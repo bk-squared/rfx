@@ -16,7 +16,7 @@
 > **Project status (June 2026):** `rfx` remains an actively validated research/product simulator. Use the uniform Cartesian Yee RF lane first; advanced lanes are promoted only inside explicitly documented evidence envelopes rather than as blanket simulator guarantees.
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://github.com/bk-squared/rfx/actions/workflows/test.yml/badge.svg)](https://github.com/bk-squared/rfx/actions)
+[![Tests](https://github.com/bk-squared/rfx/actions/workflows/pr-tests.yml/badge.svg)](https://github.com/bk-squared/rfx/actions)
 [![PyPI](https://img.shields.io/pypi/v/rfx-fdtd)](https://pypi.org/project/rfx-fdtd/)
 [![Docs](https://img.shields.io/badge/docs-remilab.ai%2Frfx-blue)](https://remilab.ai/rfx/)
 
@@ -29,7 +29,7 @@ The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. No
 | **GPU-accelerated** | 7,309 Mcells/s on RTX 4090, 5,249 on A6000 via `jax.lax.scan` JIT |
 | **Differentiable** | `jax.grad` through full time-stepping for inverse design |
 | **Topology optimization** | Density-based with filtering, projection, and beta continuation |
-| **Conformal PEC** | Dey-Mittra method for 2nd-order accuracy on curved conductors |
+| **Conformal PEC** | Dey-Mittra weights — experimental; known NaN at fine mesh (dx <= 2 mm); 2nd-order convergence on curved conductors not validated (staircase is the supported PEC floor) |
 | **Multi-GPU** | Single-host multi-GPU distributed FDTD with 1D slab decomposition (experimental lane) |
 | **Waveguide modal ports** | Analytical TE/TM eigenmodes for documented rectangular-guide S-matrix envelopes |
 | **Coaxial line reflection** | One-port coaxial transmission-line reflection envelope via `compute_coaxial_line_reflection(...)` |
@@ -125,8 +125,8 @@ method only inside its documented coax transmission-line envelope.
 ## Key Features
 
 ### Core Simulator
-- 3D/2D Yee FDTD with CFS-CPML (kappa=5.0, < -40 dB reflectivity)
-- Conformal PEC via Dey-Mittra (2nd-order on curved surfaces)
+- 3D/2D Yee FDTD with CFS-CPML (kappa_max=1.0 default — measured sweep showed kappa_max>1 degrades guided-mode absorption)
+- Conformal PEC via Dey-Mittra (experimental — known NaN at fine mesh; staircased PEC is the supported floor)
 - Non-uniform z-mesh for thin substrates (shadow qualification lane)
 - Multi-GPU via jax.pmap (experimental distributed lane)
 - Mixed precision (float16 fields, 2x memory reduction)
