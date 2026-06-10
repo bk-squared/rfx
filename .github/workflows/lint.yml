@@ -1,0 +1,33 @@
+name: lint
+
+# Re-enables the ruff lint gate that previously sat dormant in
+# .github/workflows/disabled/test.yml. The full CPU/GPU test suite runs on the
+# sharded `scientific-validation` workflow (and on VESSL); this workflow is the
+# cheap, fast gate that catches undefined names, unused variables, and other
+# pyflakes/pycodestyle issues on every push and pull request, so regressions
+# don't reach main unreviewed. Selector + ignore list are carried over verbatim
+# from the disabled job; production rfx/ and tests/ are clean under it today.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint rfx/ and tests/
+        run: ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402

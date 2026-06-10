@@ -32,7 +32,6 @@ def _build_pec_cavity_with_dielectric():
     # Closed PEC cavity walls via geometry (not just simulation boundary).
     # The interior shell rasterises into pec_mask — exactly the path
     # that would silently get dropped without the fix.
-    wall = 0.0  # shell at corner_lo and corner_hi inferred from boundary="pec"
     # 1-cell PEC wall on z=0 face (a "ground plane")
     sim.add(Box((0.0, 0.0, 0.0), (a, a, 2e-3)), material="pec")
     # ε=4 filler everywhere above

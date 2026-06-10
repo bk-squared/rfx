@@ -29,7 +29,12 @@ from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in m
 from rfx.adi import ADIState2D, run_adi_2d
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
-from rfx.api._spec import ForwardResult, Result, MATERIAL_LIBRARY
+from rfx.api._spec import (
+    ForwardResult,
+    Result,
+    MATERIAL_LIBRARY,
+    _warn_if_nonfinite_result,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +231,10 @@ class _ExecuteMixin:
         for w in config.warnings:
             _w.warn(w, stacklevel=3)
 
-    def _auto_preflight(self, *, skip: bool = False, context: str = "forward") -> None:
+    def _auto_preflight(
+        self, *, skip: bool = False, context: str = "forward",
+        check_ntff: bool = True,
+    ) -> None:
         """Emit a UserWarning if preflight finds issues (issue #66).
 
         Called automatically at the start of ``forward()``, ``optimize()``,
@@ -234,28 +242,45 @@ class _ExecuteMixin:
         (under-resolved mesh, geometry in CPML, probe in PEC, ...) before
         spending minutes of GPU compute. Pass ``skip_preflight=True`` at
         the call site to opt out (tests, already-validated configs).
+
+        ``check_ntff`` gates the inverse-design NTFF checks (PEC-overlap hard
+        error + λ/4 near-field gap warning). ``run()`` passes ``check_ntff=
+        False`` because those are inverse-design concerns that ``run()``
+        historically never ran — only ``forward(port_s11_freqs=...)`` /
+        ``optimize`` (the inverse-design entry points) should hard-fail on them.
         """
         if skip:
             return
-        try:
-            issues = self.preflight(strict=False)
-        except Exception as exc:
-            import warnings
-            warnings.warn(
-                f"[{context}] auto-preflight raised {type(exc).__name__}: "
-                f"{exc}. Call sim.preflight() manually to investigate.",
-                UserWarning, stacklevel=3,
-            )
-            return
+        # preflight(strict=False) COLLECTS findings as issues; it only raises if
+        # a validator itself crashes (a bug, e.g. a non-ValueError). Let that
+        # propagate loudly (Phase D) — do NOT degrade a validator bug to a soft
+        # warning that hides it and lets a broken run proceed.
+        issues = self.preflight(strict=False, check_ntff=check_ntff)
         if not issues:
             return
         import warnings
-        body = "\n  - ".join(issues)
-        warnings.warn(
-            f"[{context}] preflight found {len(issues)} issue(s) - "
-            f"pass skip_preflight=True to suppress:\n  - {body}",
-            UserWarning, stacklevel=3,
-        )
+        errors = [i for i in issues if getattr(i, "severity", "warning") == "error"]
+        warns = [i for i in issues if getattr(i, "severity", "warning") != "error"]
+        if warns:
+            body = "\n  - ".join(warns)
+            warnings.warn(
+                f"[{context}] preflight found {len(warns)} advisory issue(s) - "
+                f"pass skip_preflight=True to suppress:\n  - {body}",
+                UserWarning, stacklevel=3,
+            )
+        if errors:
+            # Error-severity findings are structurally-impossible configs
+            # (e.g. upml+refinement, Floquet+non-uniform-z) whose validators
+            # raise ValueError. run()/forward() used to call those validators
+            # directly so the error PROPAGATED; routing through preflight must
+            # preserve that hard-fail, else a known-invalid run silently
+            # proceeds. Re-raise (aligns with Tidy3D/Meep raise-on-setup-error).
+            # skip_preflight=True remains the explicit escape hatch.
+            detail = "\n  - ".join(errors)
+            raise ValueError(
+                f"[{context}] preflight found {len(errors)} blocking error(s) "
+                f"(pass skip_preflight=True to bypass):\n  - {detail}"
+            )
 
     def _run_adi_from_materials(
         self,
@@ -1543,7 +1568,7 @@ class _ExecuteMixin:
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
 
-        return self._forward_from_materials(
+        _res = self._forward_from_materials(
             grid,
             materials,
             debye_spec,
@@ -1555,6 +1580,8 @@ class _ExecuteMixin:
             pec_occupancy=pec_occupancy_override,
             port_s11_freqs=port_s11_freqs,
         )
+        _warn_if_nonfinite_result(_res, context="forward")
+        return _res
 
     # ---- run ----
 
@@ -1579,6 +1606,7 @@ class _ExecuteMixin:
         conformal_min_weight: float = 0.1,
         devices: list | None = None,
         exchange_interval: int = 1,
+        skip_preflight: bool = False,
     ) -> Result:
         """Run the simulation.
 
@@ -1663,8 +1691,20 @@ class _ExecuteMixin:
         )
 
         # ---- P0: Pre-simulation validation ----
-        self._validate_mesh_quality()
-        self._validate_simulation_config()
+        # Run the SAME consolidated, skippable preflight that forward() gets
+        # (issue #66 parity): _auto_preflight wraps preflight() — mesh quality,
+        # simulation config AND the NTFF/inverse-design check — into one
+        # UserWarning, and is robust under tracing (it try/except-wraps
+        # preflight). Previously run() called only the mesh + config validators
+        # directly, as scattered raw warnings with no skip_preflight control,
+        # so the documented lumped/wire S-parameter path via
+        # run(compute_s_params=True) silently missed part of the best
+        # proactive error surface in the codebase.
+        # check_ntff=False: run() historically never ran the inverse-design
+        # NTFF PEC-overlap check; keep that surface (it belongs to
+        # forward(port_s11_freqs=...)/optimize). Avoids hard-failing run() on
+        # an NTFF-box-crosses-PEC config that completed before this change.
+        self._auto_preflight(skip=skip_preflight, context="run", check_ntff=False)
 
         if self._solver == "adi" and devices is not None and len(devices) > 1:
             raise ValueError("solver='adi' does not support distributed execution")
@@ -1746,10 +1786,12 @@ class _ExecuteMixin:
                     grid = self._build_grid()
                     n_steps = grid.num_timesteps(num_periods=num_periods)
             from rfx.runners.distributed_v2 import run_distributed
-            return run_distributed(
+            _res = run_distributed(
                 self, n_steps=n_steps, devices=devices,
                 exchange_interval=exchange_interval,
             )
+            _warn_if_nonfinite_result(_res, context="run")
+            return _res
 
         # ---- Non-uniform mesh path ----
         if (self._dz_profile is not None
@@ -1770,13 +1812,15 @@ class _ExecuteMixin:
             if n_steps is None:
                 n_steps = int(np.ceil(
                     num_periods / (self._freq_max * nu_grid.dt)))
-            return self._run_nonuniform(
+            _res = self._run_nonuniform(
                 n_steps=n_steps,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
                 subpixel_smoothing=subpixel_smoothing,
                 checkpoint=checkpoint,
             )
+            _warn_if_nonfinite_result(_res, context="run")
+            return _res
 
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(grid)
@@ -1788,7 +1832,7 @@ class _ExecuteMixin:
                 raise ValueError("solver='adi' does not support snapshots yet")
             if n_steps is None:
                 n_steps = grid.num_timesteps(num_periods=num_periods)
-            return self._run_adi_from_materials(
+            _res = self._run_adi_from_materials(
                 grid,
                 base_materials,
                 debye_spec,
@@ -1797,6 +1841,8 @@ class _ExecuteMixin:
                 pec_mask=pec_mask,
                 return_state=True,
             )
+            _warn_if_nonfinite_result(_res, context="run")
+            return _res
 
         # ---- Subgridded path ----
         if self._refinement is not None:
@@ -1819,13 +1865,15 @@ class _ExecuteMixin:
                 subgrid_n_steps = grid.num_timesteps(num_periods=num_periods) * int(
                     self._refinement["ratio"]
                 )
-            return self._run_subgridded(
+            _res = self._run_subgridded(
                 grid, base_materials, pec_mask,
                 n_steps=subgrid_n_steps,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
                 s_param_n_steps=s_param_n_steps,
             )
+            _warn_if_nonfinite_result(_res, context="run")
+            return _res
 
         # ---- Uniform path ----
         if n_steps is None:
@@ -1833,7 +1881,7 @@ class _ExecuteMixin:
 
         from rfx.runners.uniform import run_uniform
         _field_dtype = jnp.float16 if self._precision == "mixed" else None
-        return run_uniform(
+        _res = run_uniform(
             self,
             n_steps=n_steps,
             until_decay=until_decay,
@@ -1859,3 +1907,5 @@ class _ExecuteMixin:
             kerr_chi3=kerr_chi3,
             field_dtype=_field_dtype,
         )
+        _warn_if_nonfinite_result(_res, context="run")
+        return _res

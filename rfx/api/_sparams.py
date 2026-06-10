@@ -40,6 +40,83 @@ from rfx.api._spec import (
 )
 
 
+def _warn_if_nonpassive_smatrix(
+    result,
+    *,
+    extractor: str,
+    strict: bool = False,
+    passivity_tol: float = 0.10,
+) -> None:
+    """Auto-run the passivity/finiteness self-check on a freshly-extracted
+    S-matrix and surface a non-physical result as a warning (or raise when
+    ``strict``).
+
+    This operationalizes the R5 "no surface-metric verdict" discipline
+    (CLAUDE.md): a passive structure cannot scatter more power than it
+    receives, so a per-column power > 1 (e.g. ``|S11| > 1`` on a one-port)
+    means the *extractor* is wrong — mismeasured current sign/scale or a
+    bad reference plane — and the S-parameters are untrustworthy, NOT that
+    the device is exotic. Waveguide and coaxial extractors previously had
+    no such self-check; only ``compute_msl_s_matrix`` did. Wiring the
+    existing :func:`rfx.validation.validate_port_smatrix` in here is the
+    guard that would have short-circuited the multi-session WR-90 ``|S11|``
+    chase recorded in durable memory.
+
+    Tracer-safe: under ``jax.grad`` / ``jax.jit`` tracing ``result.s_params``
+    is an abstract tracer with no concrete value, so the numpy-based check is
+    skipped entirely. The diagnostic is for the eager forward call (the
+    common research-tool usage); it deliberately does not fire per optimizer
+    iteration.
+    """
+    s = getattr(result, "s_params", None)
+    if s is None:
+        return
+    try:
+        if isinstance(s, jax.core.Tracer):
+            return
+    except Exception:
+        pass
+    try:
+        s_np = np.asarray(s)
+        f_np = np.asarray(result.freqs)
+    except Exception:
+        # Traced / non-materializable — never let a diagnostic break the
+        # numeric return path.
+        return
+
+    from rfx.validation import validate_port_smatrix
+
+    report = validate_port_smatrix(
+        s_params=s_np,
+        freqs=f_np,
+        port_names=tuple(result.port_names),
+        source=extractor,
+        check_passivity=True,
+        passivity_limit=1.0,
+        passivity_tol=float(passivity_tol),
+    )
+    bad = [
+        i for i in report.issues
+        if i.code in ("passivity_violation", "nonfinite_sparams")
+    ]
+    if not bad:
+        return
+    detail = "; ".join(f"{i.code}: {i.message}" for i in bad)
+    msg = (
+        f"{extractor}: extracted S-matrix failed a passivity/finiteness "
+        f"self-check — {detail}. A passive structure cannot have column "
+        f"power > 1; this almost always means the extractor (current "
+        f"sign/scale or reference plane) is wrong and the S-parameters are "
+        f"UNRELIABLE. Inspect the V/I dump via "
+        f"rfx.validation.validate_port_smatrix / replay_smatrix_from_vi_dump "
+        f"before trusting or optimizing against these numbers."
+    )
+    if strict:
+        raise ValueError(msg)
+    import warnings as _w
+    _w.warn(msg, stacklevel=3)
+
+
 class _SparamMixin:
     """S-parameter extraction methods mixed into :class:`Simulation`."""
 
@@ -53,6 +130,7 @@ class _SparamMixin:
         eps_override: "jnp.ndarray | None" = None,
         sigma_override: "jnp.ndarray | None" = None,
         checkpoint_segments: int | None = None,
+        strict_passivity: bool = False,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
@@ -171,11 +249,22 @@ class _SparamMixin:
                     + "; ".join(unsupported)
                     + ". Drop the dx/dy profile to use the uniform lane."
                 )
-            return self._compute_waveguide_s_matrix_nu(
+            _res_nu = self._compute_waveguide_s_matrix_nu(
                 n_steps=n_steps,
                 num_periods=num_periods,
                 normalize=normalize,
             )
+            _warn_if_nonpassive_smatrix(
+                _res_nu,
+                extractor="compute_waveguide_s_matrix",
+                strict=strict_passivity,
+                # normalize=False carries documented Yee-dispersion + band-edge
+                # |S11| overshoot (validated paths reach ~1.4-1.7), so use a
+                # loose bound there that still catches gross extractor bugs
+                # (|S11|>>1); normalize=True/"flux" correct dispersion -> tight.
+                passivity_tol=2.0 if normalize is False else 0.10,
+            )
+            return _res_nu
 
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = self._assemble_materials(grid)
@@ -451,13 +540,20 @@ class _SparamMixin:
                 entry = entries[port_idx]
                 port_names_mm.append(f"{entry.name}_mode{mode_idx}_{mtype}{m_n[0]}{m_n[1]}")
                 port_directions_mm.append(entry.direction)
-            return WaveguideSMatrixResult(
+            _res_mm = WaveguideSMatrixResult(
                 s_params=s_params,
                 freqs=jnp.asarray(freqs),
                 port_names=tuple(port_names_mm),
                 port_directions=tuple(port_directions_mm),
                 reference_planes=reference_planes,
             )
+            _warn_if_nonpassive_smatrix(
+                _res_mm,
+                extractor="compute_waveguide_s_matrix",
+                strict=strict_passivity,
+                passivity_tol=2.0 if normalize is False else 0.10,
+            )
+            return _res_mm
 
         # Single-mode path (original behavior)
         cfgs = raw_cfgs
@@ -598,13 +694,20 @@ class _SparamMixin:
             ],
             dtype=float,
         )
-        return WaveguideSMatrixResult(
+        _res_sm = WaveguideSMatrixResult(
             s_params=s_params,
             freqs=jnp.asarray(freqs),
             port_names=tuple(entry.name for entry in entries),
             port_directions=tuple(entry.direction for entry in entries),
             reference_planes=reference_planes,
         )
+        _warn_if_nonpassive_smatrix(
+            _res_sm,
+            extractor="compute_waveguide_s_matrix",
+            strict=strict_passivity,
+            passivity_tol=2.0 if normalize is False else 0.10,
+        )
+        return _res_sm
 
     def compute_msl_s_matrix(
         self,
@@ -1209,6 +1312,7 @@ class _SparamMixin:
         magnetic_ratio: float = 1.0,
         signal_floor: float = 1.0e-12,
         reference_plane_axial_index_offset: int = 0,
+        strict_passivity: bool = False,
     ) -> "CoaxialSMatrixResult":
         """Experimental coaxial S-matrix via distributed TEM plane sources.
 
@@ -1491,7 +1595,7 @@ class _SparamMixin:
             dtype=float,
         )
 
-        return CoaxialSMatrixResult(
+        _res_coax = CoaxialSMatrixResult(
             s_params=s,
             freqs=np.asarray(freqs, dtype=float),
             port_names=tuple(f"coax_{i}" for i in range(n_ports)),
@@ -1502,6 +1606,12 @@ class _SparamMixin:
             currents=i_dump,
             status=status,
         )
+        _warn_if_nonpassive_smatrix(
+            _res_coax,
+            extractor="compute_coaxial_s_matrix",
+            strict=strict_passivity,
+        )
+        return _res_coax
 
     def compute_coaxial_line_reflection(
         self,

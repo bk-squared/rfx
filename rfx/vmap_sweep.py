@@ -615,7 +615,7 @@ def _sequential_fallback(
     mat_name, field = _parse_param_name(param_name)
 
     all_ts = []
-    for val in param_values:
+    for _i, val in enumerate(param_values):
         # Clone the simulation and modify the material
         import copy
         sim_copy = copy.deepcopy(sim)
@@ -635,7 +635,10 @@ def _sequential_fallback(
                 sim_copy._materials[name] = replace(
                     mat, **{field: float(val)})
 
-        result = sim_copy.run(n_steps=n_steps)
+        # Preflight only the first sim (this sequential fallback re-runs a
+        # structurally-identical setup); skip thereafter to avoid per-iteration
+        # preflight noise.
+        result = sim_copy.run(n_steps=n_steps, skip_preflight=_i > 0)
         all_ts.append(np.asarray(result.time_series))
 
     # Stack into (n_batch, n_steps, n_probes)

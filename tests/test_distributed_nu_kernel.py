@@ -479,7 +479,6 @@ def _phase2b_gauss_waveform(t, t0=8e-12, tau=2.5e-12):
 def _phase2b_shard_mat(materials, sharded_grid):
     """Shard a full-domain MaterialArrays for Phase 2B's runner."""
     n_devices = sharded_grid.n_devices
-    nx_local = sharded_grid.nx_local
     ghost = sharded_grid.ghost_width
     pad_x = sharded_grid.pad_x
 
@@ -734,7 +733,6 @@ def test_distributed_h_ghost_exchange_recovers_global_field():
     """
     devices = jax.devices()[:2]
     n_devices = 2
-    n_steps = 20
 
     grid = _phase2b_build_test_grid(nx_physical=16, ny=8, nz=8, ratio=1.0)
     materials = _phase2b_make_materials(grid)
@@ -1380,7 +1378,6 @@ def test_distributed_mixed_dispersion_grad_no_corner_nan():
     from rfx import Simulation, Box
 
     devices = jax.devices()[:2]
-    n_devices = 2
     n_steps = 30
 
     # Minimum-scale repro that keeps CI cost low but still exercises the
@@ -2175,7 +2172,7 @@ def test_distributed_emit_time_series_false_skips_probe():
     n_steps = 16
 
     grid = _phase2b_build_test_grid(nx_physical=16, ny=8, nz=8, ratio=1.2)
-    nx, ny, nz = grid.nx, grid.ny, grid.nz
+    _nx, _ny, _nz = grid.nx, grid.ny, grid.nz
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
                                          exchange_interval=1)
 
@@ -2243,7 +2240,6 @@ def test_distributed_emit_time_series_false_skips_probe():
     # The objective is the rank-0 slab's |E|^2 sum on the SHARDED final
     # state (rank-0 slab is sliced by axis-0 indexing, which composes
     # well with the sharded backward).
-    nx_local = sharded_grid.nx_local
     base_wf = jnp.asarray(src_wf)
 
     def loss(amp):

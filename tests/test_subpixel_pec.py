@@ -620,9 +620,14 @@ def test_mesh_convergence_s21_with_conformal_pec_baseline():
         "Diagnosed 2026-05-02 — root cause not yet identified; conformal "
         "path is verified functional on the PEC-short single-run "
         "normalize=False gate (test_pec_short_s11_with_conformal_face_pec). "
-        "Tracks the Stage 1 follow-up listed in rfx-known-issues.md."
+        "Tracks the Stage 1 follow-up listed in rfx-known-issues.md. "
+        "STRICT TRIPWIRE: when the BCK/USC contour-FIT redesign lands and the "
+        "NaN is gone, this XPASSes and strict=True HARD-FAILS the suite — which "
+        "is the signal to DELETE the _validate_cfg_conformal_fine_dx preflight "
+        "guard (it would then be a false positive). Self-detecting stale-check "
+        "(mypy --warn-unused-ignores / rustc expect pattern)."
     ),
-    strict=False,
+    strict=True,
 )
 def test_mesh_convergence_s21_with_conformal_pec():
     """``Boundary(conformal=True)`` must keep mesh refinement on the S21
@@ -642,6 +647,14 @@ def test_mesh_convergence_s21_with_conformal_pec():
         s21 = float(np.abs(s[port_idx["right"], port_idx["left"], 0]))
         s21_values.append(s21)
         print(f"[meshconv-conformal] dx={dx*1e3:.1f}mm cpml={layers} |S21|={s21:.4f}")
+
+    # PRIMARY signal (hardened): the actual failure mode is NaN |S21| at fine
+    # dx, not a tolerance miss. Assert finiteness explicitly so XPASS means
+    # "the NaN is gone" (clean tripwire), not "the tolerance happened to pass".
+    assert np.all(np.isfinite(s21_values)), (
+        f"conformal=True produced non-finite |S21| at fine dx: {s21_values} — "
+        "the known conformal-fine-dx NaN (see rfx-known-issues.md)."
+    )
 
     coarse_delta = abs(s21_values[0] - s21_values[1])
     fine_delta = abs(s21_values[1] - s21_values[2])

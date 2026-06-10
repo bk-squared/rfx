@@ -188,6 +188,60 @@ class MeshIntelligenceReport(NamedTuple):
         return json.dumps(self.to_dict(), **options)
 
 
+def _nonfinite_fields(result) -> list[tuple[str, int]]:
+    """Return ``[(field_name, nonfinite_count), ...]`` for the numeric array
+    observables on a ``Result`` / ``ForwardResult``.
+
+    Tracer-safe: a value under ``jax.grad`` / ``jax.jit`` tracing is an
+    abstract tracer with no concrete data, so it is skipped (returns ``[]``
+    rather than raising). Never raises — a divergence diagnostic must not
+    itself break the return path.
+    """
+    import jax
+
+    bad: list[tuple[str, int]] = []
+    for name in ("time_series", "s_params"):
+        arr = getattr(result, name, None)
+        if arr is None:
+            continue
+        try:
+            if isinstance(arr, jax.core.Tracer):
+                continue
+            a = np.asarray(arr)
+        except Exception:
+            continue
+        if a.size == 0 or not np.issubdtype(a.dtype, np.number):
+            continue
+        n_bad = int(a.size - np.count_nonzero(np.isfinite(a)))
+        if n_bad:
+            bad.append((name, n_bad))
+    return bad
+
+
+_NONFINITE_CAUSE_HINT = (
+    "the FDTD likely diverged. Common causes: dt above CFL, conformal=True "
+    "at fine dx (a known NaN — see docs/agent-memory/rfx-known-issues.md), "
+    "PEC inside the CPML region, or a sub-cell PEC feature."
+)
+
+
+def _warn_if_nonfinite_result(result, *, context: str) -> None:
+    """Emit a UserWarning (tracer-safe, never raising) when a freshly-computed
+    result carries NaN/Inf observables, so an eager forward/run surfaces a
+    divergence with a cause hint instead of returning silent garbage."""
+    bad = _nonfinite_fields(result)
+    if not bad:
+        return
+    detail = ", ".join(f"{n} ({c} value(s))" for n, c in bad)
+    import warnings as _w
+
+    _w.warn(
+        f"[{context}] result contains non-finite values in {detail} — "
+        f"{_NONFINITE_CAUSE_HINT}",
+        stacklevel=3,
+    )
+
+
 class Result(NamedTuple):
     """Structured simulation result.
 
@@ -302,6 +356,36 @@ class Result(NamedTuple):
                                         source_decay_time=source_decay_time)
 
         return modes
+
+    def assert_finite(self, *, raise_on_nonfinite: bool = False) -> bool:
+        """Check that the result's observables contain no NaN/Inf.
+
+        A non-finite ``time_series`` or ``s_params`` almost always means the
+        FDTD diverged rather than that the device is exotic. Returns ``True``
+        when finite. With ``raise_on_nonfinite=True`` raises ``ValueError``
+        instead of warning, so an automation loop can fail fast with a cause
+        hint right after ``run()`` instead of propagating silent garbage into
+        a downstream metric. Tracer-safe — a no-op under jax.grad/jit.
+
+        Returns
+        -------
+        bool
+            ``True`` if all inspected observables are finite (or unavailable
+            for inspection, e.g. under tracing), ``False`` otherwise.
+        """
+        bad = _nonfinite_fields(self)
+        if not bad:
+            return True
+        detail = ", ".join(f"{n} ({c} value(s))" for n, c in bad)
+        msg = (
+            f"Result contains non-finite values in {detail} — "
+            f"{_NONFINITE_CAUSE_HINT}"
+        )
+        if raise_on_nonfinite:
+            raise ValueError(msg)
+        import warnings as _w
+        _w.warn(msg, stacklevel=2)
+        return False
 
 
 class ForwardResult(NamedTuple):

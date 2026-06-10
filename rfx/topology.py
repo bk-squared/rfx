@@ -518,11 +518,33 @@ def topology_optimize(
             return objective(result, ntff_box=result.ntff_box)
         return objective(result)
 
+    last_good = logit  # last design with a confirmed-finite forward+gradient
     for it in range(n_iterations):
         beta = _get_beta(it, beta_schedule)
         beta_history.append(beta)
 
         loss, grad = jax.value_and_grad(lambda logit_: forward(logit_, beta))(logit)
+
+        # NaN/Inf gradient guard (see optimize() for rationale): a non-finite
+        # gradient would silently poison ``logit`` via the optax update and
+        # every later iteration. Stop fast with a cause hint and RESTORE the
+        # last design whose forward was finite (the current ``logit`` is the
+        # one that just diverged).
+        if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
+            import warnings as _w
+            _w.warn(
+                f"topology_optimize: non-finite loss/gradient (NaN or Inf) at "
+                f"iteration {it} — the FDTD forward almost certainly diverged "
+                f"(dt above CFL, conformal=True at fine dx, PEC inside CPML, or "
+                f"a sub-cell PEC feature; see docs/agent-memory/"
+                f"rfx-known-issues.md). Stopping early and returning the last "
+                f"finite design (from before iteration {it}).",
+                stacklevel=2,
+            )
+            logit = last_good
+            break
+
+        last_good = logit  # this design produced a finite forward+gradient
         loss_val = float(loss)
         history.append(loss_val)
 

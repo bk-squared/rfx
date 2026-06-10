@@ -1,0 +1,50 @@
+name: pr-tests
+
+# Fast, BOUNDED pytest gate so the agent-automation guards, the preflight
+# redesign, the regression locks, and the conformal stale-check tripwire
+# actually run on every PR and push-to-main. The full "not gpu" suite remains
+# on validation.yml (weekly, sharded) — that run OOM'd unsharded on the 7 GB
+# runner, so this job is deliberately scoped to the affected surface to stay
+# fast and memory-safe. Mark this job a REQUIRED check in branch protection so
+# the tripwire/regression-locks gate merges.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  guards-and-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install package with dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Guard + preflight suite (incl. upml/Floquet regression locks)
+        run: |
+          python -m pytest -q -p no:cacheprovider \
+            tests/test_sparam_passivity_guard.py \
+            tests/test_result_finite_guard.py \
+            tests/test_run_preflight_parity.py \
+            tests/test_preflight_structured_and_guards.py \
+            tests/test_auto_preflight.py \
+            tests/test_preflight_false_positives.py \
+            tests/test_preflight_physics_thresholds.py \
+            tests/test_port_preflight.py \
+            tests/test_msl_port_preflight.py \
+            tests/test_inverse_design_preflight.py \
+            tests/test_api.py
+
+      - name: Conformal stale-check tripwire (slow-marked; xfails today, HARD-FAILS when the NaN is fixed)
+        run: |
+          python -m pytest -q -p no:cacheprovider -o addopts="" \
+            "tests/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec"

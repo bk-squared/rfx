@@ -42,7 +42,6 @@ def test_simulation_run_with_aniso_inv_eps_runs_finite():
         dx=0.001,
         cpml_layers=4,
     )
-    state0 = init_state(grid.shape)
     materials = init_materials(grid.shape)
 
     inv_xx = jnp.ones(grid.shape, dtype=jnp.float32)
