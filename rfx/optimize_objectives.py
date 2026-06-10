@@ -520,7 +520,8 @@ def minimize_s11_at_freq(
     bandwidth to compress the pulse, or prefer a wave-decomposition
     (V/I) probe which is exact.
 
-    Prior to v1.7.6 this objective returned ``|X_tot/X_inc|² = |1+S11|²``
+    Previously this objective returned ``|X_tot/X_inc|² = |1+S11|²``
+    (fixed 2026-04, commit 1923db2)
     (see regression test ``tests/test_minimize_s11_at_freq_physical.py``),
     which minimises toward ``S11 = −1`` (perfect short) rather than
     ``S11 = 0`` (matched load). Fixed on branch

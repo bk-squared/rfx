@@ -1,4 +1,4 @@
-"""Regression lock: PMC enforcement on every ``_hi`` face (v1.7.5 fix).
+"""Regression lock: PMC enforcement on every ``_hi`` face (fix 2026-04).
 
 Background — discovered 2026-04-19 while building
 ``examples/crossval/09_half_symmetric_waveguide.py``:
@@ -108,7 +108,7 @@ def _dominant_mode_freq(axis: str, side: str) -> float:
 def test_pmc_quarter_wave_on_every_face(axis: str, side: str):
     """PMC-PEC cavity mirrored onto each of the six faces must land
     within 10 % of the quarter-wave analytic ``c/(4L)``. Before the
-    v1.7.5 fix, ``_hi`` faces landed at ``c/(2L)`` (twice f_0,
+    Before the 2026-04 fix, ``_hi`` faces landed at ``c/(2L)`` (twice f_0,
     PEC-PEC behaviour) because PMC was a silent no-op on hi-side
     faces.
     """
@@ -120,5 +120,5 @@ def test_pmc_quarter_wave_on_every_face(axis: str, side: str):
         f"analytic quarter-wave {_F0_QW/1e9:.3f} GHz "
         f"(rel err {rel_err_qw:.3%}). rel err to PEC-PEC half-wave "
         f"{2.0*_F0_QW/1e9:.3f} GHz: {rel_err_hw:.3%}. The hi-face "
-        f"silent-drop bug (pre-v1.7.5) gives PEC-PEC behaviour here."
+        f"silent-drop bug (pre-2026-04 fix) gives PEC-PEC behaviour here."
     )

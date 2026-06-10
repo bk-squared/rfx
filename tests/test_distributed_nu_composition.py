@@ -135,7 +135,7 @@ def _make_nu_sim_small(
 # jax 0.6.x, but Phase 2F shipped a `custom_vjp` workaround that is the
 # production segmented-remat path; the minimal-reproducer xfail sentinel
 # is no longer needed.  If JAX upstream fixes the composition, the
-# custom_vjp path can be removed in a v1.7.0 simplification pass, but
+# custom_vjp path can be removed in a future simplification pass, but
 # that is a refactor opportunity, not a correctness gate.)
 #
 # ---------------------------------------------------------------------------
@@ -931,7 +931,7 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
 
 
 # ---------------------------------------------------------------------------
-# v1.7.4 Bundle C.1 — distributed-CPML preflight error text names per-face
+# Bundle C.1 (2026-04) — distributed-CPML preflight error text names per-face
 # thickness alternative. Users hitting `cpml_layers*2 >= nx_local` may now
 # mitigate via `Boundary(lo_thickness=..., hi_thickness=...)` on the axis,
 # not only by reducing the global `cpml_layers` scalar or growing nx.

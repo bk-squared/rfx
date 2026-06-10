@@ -425,7 +425,7 @@ def topology_optimize(
     # Clamp indices to the interior region (exclude CPML padding).
     # Without this, a design region at the domain edge can overlap
     # with CPML cells, causing shape mismatches and incorrect gradients.
-    # Per-face pads (v1.7.5): a PMC/PEC/periodic face has pad=0 on its
+    # Per-face pads (2026-04): a PMC/PEC/periodic face has pad=0 on its
     # side, so the design can touch that reflector.
     pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
     pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)

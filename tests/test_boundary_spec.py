@@ -2,7 +2,7 @@
 
 Covers the type surface, construction-time validation, and
 serialisation round-trips for the per-axis, per-face boundary
-specification introduced in v1.7.0.
+specification introduced in T7-A (2026-04).
 """
 
 from __future__ import annotations

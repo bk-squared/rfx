@@ -275,14 +275,16 @@ sim.add(Box((0, 0, -0.0001), (0.04, 0.02, 0.0)), material="pec")   # ground
 ### 3.1 Curved Surfaces and Conformal Accuracy
 
 rfx still uses a Cartesian Yee grid, so it is **not** a body-fitted CAD or
-curvilinear-mesh solver. However, it now includes **conformal PEC** support
-(Dey-Mittra) for curved conductors, which significantly reduces the classic
-staircase error on PEC structures.
+curvilinear-mesh solver. An experimental **conformal PEC** option
+(Dey-Mittra) exists for curved conductors, but it can produce NaN at fine
+mesh resolution (dx <= 2 mm) and a validated accuracy improvement over
+staircased PEC has not been demonstrated — staircased PEC is the supported
+floor.
 
 Important nuance:
 
 - **dielectric interfaces** benefit from subpixel smoothing,
-- **curved PEC** benefits from conformal PEC,
+- **curved PEC** currently relies on staircasing (conformal PEC is experimental and unvalidated),
 - but very fine curvature, imported CAD geometry, or manufacturing-grade
   meshing workflows still favor solvers with full conformal / body-fitted mesh
   support.

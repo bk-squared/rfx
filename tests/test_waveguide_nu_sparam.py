@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import warnings
 
+import pytest
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -343,3 +345,32 @@ def test_nu_assembly_ad_traceable():
     assert float(grad) >= 0.0, (
         f"AD grad = {float(grad):.6e} < 0; |sum(|S|^2)| gradient must be non-negative."
     )
+
+
+# ---------------------------------------------------------------------------
+# W1.1 (roadmap 2026-06-10): the NU dispatch must REJECT kwargs it cannot
+# forward. eps_override/sigma_override are the documented differentiable
+# channels (G-AD-WIRE-WG2); silently dropping them produced silently-wrong
+# gradients on graded meshes.
+# ---------------------------------------------------------------------------
+
+def test_nu_dispatch_rejects_eps_override():
+    sim = _make_wr90_nu_sim()
+    with pytest.raises(NotImplementedError, match="eps_override"):
+        sim.compute_waveguide_s_matrix(
+            normalize=True, eps_override=jnp.ones((2, 2, 2)),
+        )
+
+
+def test_nu_dispatch_rejects_sigma_override():
+    sim = _make_wr90_nu_sim()
+    with pytest.raises(NotImplementedError, match="sigma_override"):
+        sim.compute_waveguide_s_matrix(
+            normalize=True, sigma_override=jnp.zeros((2, 2, 2)),
+        )
+
+
+def test_nu_dispatch_rejects_subpixel_smoothing():
+    sim = _make_wr90_nu_sim()
+    with pytest.raises(NotImplementedError, match="subpixel_smoothing"):
+        sim.compute_waveguide_s_matrix(normalize=True, subpixel_smoothing=True)

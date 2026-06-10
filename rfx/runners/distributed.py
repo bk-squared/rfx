@@ -1262,7 +1262,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         devices = jax.devices()
     n_devices = len(devices)
 
-    # Resolve PMC faces (v1.7.4 T8). ``BoundarySpec.pmc_faces()`` returns
+    # Resolve PMC faces (T8, 2026-04). ``BoundarySpec.pmc_faces()`` returns
     # a set; freeze it so it is safely closed-over by the pmap scan
     # bodies defined below. Empty frozenset == no-op inside the helper.
     _pmc_faces_frozen = frozenset(
@@ -1450,7 +1450,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                     st,
                 )
 
-                # 3b. PMC face (H-tangential = 0) — v1.7.4 T8. H-half
+                # 3b. PMC face (H-tangential = 0) — T8, 2026-04. H-half
                 #     hook per OQ9: after H ghost exchange, before E
                 #     update. PMC must fire before the next E-update
                 #     reads H via curl.
@@ -1538,7 +1538,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                     st,
                 )
 
-                # 2b. PMC face (H-tangential = 0) — v1.7.4 T8. H-half
+                # 2b. PMC face (H-tangential = 0) — T8, 2026-04. H-half
                 #     hook per OQ9: after H ghost exchange, before E
                 #     update.
                 st = _apply_pmc_local(

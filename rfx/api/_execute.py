@@ -114,8 +114,8 @@ class _ExecuteMixin:
         """Emit ``UserWarning`` for any Simulation.run kwarg that a given
         dispatch path drops. Only non-default values are surfaced.
 
-        Pre-v1.7.5 the distributed / non-uniform / subgridded paths
-        silently dropped most of the ``run`` kwargs; this helper makes
+        Previously the distributed / non-uniform / subgridded paths
+        silently dropped most of the ``run`` kwargs (fixed 2026-04); this helper makes
         the drop explicit at the API boundary so users can tell their
         request was not honoured. See GitHub tracking issue for the
         feature-request backlog to actually propagate these kwargs.
@@ -1476,18 +1476,14 @@ class _ExecuteMixin:
                     "forward path; remove waveguide ports or omit "
                     "distributed=True."
                 )
-            # v1.7.4 T8: PMC is now wired across all three sharded
+            # T8 (2026-04): PMC is now wired across all three sharded
             # runners (distributed_nu, distributed_v2, distributed).
             # The reject guard that used to live here (introduced in
             # f3cab7c) has been removed. The single-device PMC runtime
             # hook lives in rfx/simulation.py:703-705 and the sharded
             # PMC helpers live in each runner next to their PEC analog.
-            # Synthesise missing dz profile so the NU grid build always
-            # sees all three axes (mirrors Simulation.run() and the
-            # single-device NU forward path).
-            if self._dz_profile is None:
-                nz_phys = max(1, int(round(self._domain[2] / self._dx)))
-                self._dz_profile = np.full(nz_phys, float(self._dx))
+            # dz-profile synthesis happens locally inside
+            # _build_nonuniform_grid() — no sim-state mutation here.
             if n_steps is None:
                 grid_probe = self._build_nonuniform_grid()
                 period = 1.0 / float(self._freq_max)
@@ -1509,13 +1505,8 @@ class _ExecuteMixin:
             )
 
         if is_nonuniform:
-            # Synthesise missing dz profile so the NU grid build always
-            # sees all three axes (mirrors Simulation.run()'s pre-build
-            # synthesis in Simulation.run(), see _execute.py).  Required for sims that set
-            # only dx/dy_profile and leave dz uniform.
-            if self._dz_profile is None:
-                nz_phys = max(1, int(round(self._domain[2] / self._dx)))
-                self._dz_profile = np.full(nz_phys, float(self._dx))
+            # dz-profile synthesis happens locally inside
+            # _build_nonuniform_grid() — no sim-state mutation here.
             # Let the NU runner build grid/materials so it can apply the
             # NU-aware pec_mask and port/source setup against per-axis widths.
             if n_steps is None:
@@ -1772,13 +1763,8 @@ class _ExecuteMixin:
             })
             if n_steps is None:
                 if _nu_profile:
-                    # Synthesise missing dz profile so _build_nonuniform_grid
-                    # has all three axes available.
-                    if self._dz_profile is None:
-                        nz_phys = max(
-                            1, int(round(self._domain[2] / self._dx)))
-                        self._dz_profile = np.full(
-                            nz_phys, float(self._dx))
+                    # dz-profile synthesis happens locally inside
+                    # _build_nonuniform_grid() — no sim-state mutation here.
                     _ngrid = self._build_nonuniform_grid()
                     n_steps = int(np.ceil(
                         num_periods / (self._freq_max * _ngrid.dt)))
@@ -1802,12 +1788,8 @@ class _ExecuteMixin:
                 "until_decay": until_decay,
                 "conformal_pec": conformal_pec,
             })
-            # Synthesize a uniform dz profile from the scalar domain_z
-            # when only dx/dy are non-uniform, so the shared non-uniform
-            # runner has all three axes available.
-            if self._dz_profile is None:
-                nz_phys = max(1, int(round(self._domain[2] / self._dx)))
-                self._dz_profile = np.full(nz_phys, float(self._dx))
+            # dz-profile synthesis happens locally inside
+            # _build_nonuniform_grid() — no sim-state mutation here.
             nu_grid = self._build_nonuniform_grid()
             if n_steps is None:
                 n_steps = int(np.ceil(

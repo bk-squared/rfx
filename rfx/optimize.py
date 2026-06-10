@@ -163,7 +163,7 @@ def optimize(
         base_materials, _, _, base_pec_mask, _, _, _ = sim._assemble_materials(grid)
         _n_steps_auto = grid.num_timesteps(num_periods=num_periods)
 
-    # Per-face clamp (v1.7.5): using the symmetric ``pad_{axis}`` would
+    # Per-face clamp (2026-04): using the symmetric ``pad_{axis}`` would
     # over-clamp a design region against a PMC/PEC reflector face whose
     # ``pad_lo`` or ``pad_hi`` is 0. Clamp each side to its own pad.
     pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)

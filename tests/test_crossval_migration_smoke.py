@@ -1,4 +1,4 @@
-"""v1.7.4 T9 — crossval BoundarySpec migration smoke tests.
+"""T9 (2026-04) — crossval BoundarySpec migration smoke tests.
 
 Per-script rfx-only smoke for the 6 migrated crossval scripts. Pins
 that the BoundarySpec-migrated scripts still build a valid Simulation

@@ -1,6 +1,6 @@
-"""Regression locks for the silent-drop class bug (v1.7.5).
+"""Regression locks for the silent-drop class bug (fixed 2026-04).
 
-Pre-v1.7.5 the distributed, non-uniform, and subgridded dispatch paths
+Previously the distributed, non-uniform, and subgridded dispatch paths
 in ``Simulation.run`` silently dropped most of the run-time kwargs
 (``checkpoint``, ``snapshot``, ``until_decay``, ``decay_*``,
 ``conformal_pec``, ``conformal_min_weight``). ``subpixel_smoothing`` on
@@ -77,7 +77,7 @@ def test_warn_helper_fires_on_non_defaults():
 
 
 # --------------------------------------------------------------------
-# NU-path dispatch: warn for the kwargs that stay dropped after 1.7.5.
+# NU-path dispatch: warn for the kwargs that stay dropped after the 2026-04 fix.
 # --------------------------------------------------------------------
 
 def _make_nu_sim():
@@ -134,7 +134,7 @@ def test_nu_path_warns_on_dropped_kwargs(kw, val):
 
 
 def test_nu_path_checkpoint_does_not_warn():
-    """checkpoint is propagated through _run_nonuniform as of v1.7.5."""
+    """checkpoint is propagated through _run_nonuniform (wired 2026-04)."""
     sim = _make_nu_sim()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -166,8 +166,8 @@ def test_nu_path_subpixel_does_not_warn():
 # --------------------------------------------------------------------
 
 def test_preflight_silent_on_pmc_plus_cpml_uniform_path():
-    """Uniform mesh with PMC+CPML composition: after v1.7.5 per-face
-    grid allocation the reflector wall aligns with the user domain
+    """Uniform mesh with PMC+CPML composition: after the per-face
+    grid allocation (2026-04) the reflector wall aligns with the user domain
     edge (pad=0 on the PMC side), so P2.7 does NOT fire."""
     spec = BoundarySpec(
         x="periodic",
@@ -185,13 +185,13 @@ def test_preflight_silent_on_pmc_plus_cpml_uniform_path():
     sim.add_probe((2e-3, 6e-3, 2e-3), "ex")
     issues = sim.preflight()
     assert not any("P2.7" in s for s in issues), (
-        f"P2.7 must not fire on uniform path (v1.7.5 per-face padding "
+        f"P2.7 must not fire on uniform path (per-face padding 2026-04 "
         f"closes the gap). Got: {issues}"
     )
 
 
 def test_preflight_silent_on_pmc_plus_cpml_nu_path():
-    """NU path: v1.7.5 extended per-face allocation to NonUniformGrid,
+    """NU path: per-face allocation (2026-04) extended to NonUniformGrid,
     so P2.7 is silent on NU too (gap closed on both paths)."""
     spec = BoundarySpec(
         x="periodic",
@@ -210,7 +210,7 @@ def test_preflight_silent_on_pmc_plus_cpml_nu_path():
     sim.add_probe((2e-3, 6e-3, 2e-3), "ex")
     issues = sim.preflight()
     assert not any("P2.7" in s for s in issues), (
-        f"P2.7 must not fire on NU path after v1.7.5. Got: {issues}"
+        f"P2.7 must not fire on NU path after per-face fix. Got: {issues}"
     )
 
 

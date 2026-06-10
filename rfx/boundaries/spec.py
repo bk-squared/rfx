@@ -1,4 +1,4 @@
-"""Per-axis, per-face boundary specification (T7, v1.7.0).
+"""Per-axis, per-face boundary specification (T7, 2026-04).
 
 The ``BoundarySpec`` / ``Boundary`` types replace the asymmetric
 ``boundary=<scalar> + pec_faces + set_periodic_axes()`` triad with a

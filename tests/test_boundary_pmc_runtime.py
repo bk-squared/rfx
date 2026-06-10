@@ -18,7 +18,7 @@ Mechanism pins:
    CPML share an axis.
 4. **Dual-boundary Hx sample** — PMC zeros Hx at the face cell while
    PEC leaves it free, confirming the two code paths are engaged.
-5. **Distributed-PMC acceptance** (v1.7.4 T8) — the sharded NU forward
+5. **Distributed-PMC acceptance** (T8, 2026-04) — the sharded NU forward
    path now wires ``apply_pmc_faces`` via ``_apply_pmc_face_nu_shmap``
    (and dually in ``distributed_v2.py`` / ``distributed.py``).
    ``forward(distributed=True)`` with any PMC face must NOT raise
@@ -27,7 +27,7 @@ Mechanism pins:
 
 Additional quantitative oracles beyond the λ/4 ladder (closed-box
 energy conservation, analytic impedance matching) are tracked as a
-v1.7.3 follow-up harness — they need a source-calibrated long run.
+follow-up harness — they need a source-calibrated long run.
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def test_mixed_pmc_cpml_seam_is_finite():
 
 
 def test_pmc_plus_distributed_forward_accepts():
-    """v1.7.4 T8: PMC is now wired into the sharded NU forward path.
+    """T8 (2026-04): PMC is now wired into the sharded NU forward path.
 
     The reject guard that used to live at ``rfx/api.py:4264-4274`` was
     removed in T8 once ``_apply_pmc_face_nu_shmap`` landed in the

@@ -1,14 +1,17 @@
 ---
 title: "Conformal PEC"
-description: "Dey-Mittra method for second-order accuracy on curved PEC conductors in rfx."
+description: "Experimental Dey-Mittra conformal PEC: known NaN at fine mesh; second-order convergence on curved conductors is not validated."
 sidebar:
   order: 22
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Under construction">
-  This page is a placeholder. Content will be added in a future update.
+<Aside type="caution" title="Experimental — not validated">
+  Conformal PEC (`conformal=True`) is experimental. Known limitation: it can
+  produce NaN at fine mesh resolution (dx &le; 2 mm). A validated accuracy
+  improvement over staircased PEC has not been demonstrated; staircased PEC
+  is the supported floor for curved conductors. This page is a placeholder.
 </Aside>
 
 ## Overview

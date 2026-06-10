@@ -1,7 +1,7 @@
-"""T7-E runtime tests (v1.7.1-alpha).
+"""T7-E runtime tests (T7 Phase 2, 2026-04).
 
-Phase 1 (v1.7.0) rejected ``'pmc'`` tokens at Simulation construction
-via ``_check_pmc_phase1``. Phase 2 PR3 (v1.7.1) ships
+Phase 1 (T7-C/D/E) rejected ``'pmc'`` tokens at Simulation construction
+via ``_check_pmc_phase1``. Phase 2 PR3 ships
 ``rfx/boundaries/pmc.py::apply_pmc_faces`` wired into the uniform scan
 body; the guard is removed. These tests now assert the runtime
 accepts PMC faces and produces finite output (the module-level

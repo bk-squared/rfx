@@ -1562,7 +1562,7 @@ class Simulation(
     def set_periodic_axes(self, axes: str = "xyz") -> "Simulation":
         """Set periodic boundary axes for high-level runs.
 
-        .. deprecated:: 1.7.0
+        .. deprecated:: 1.6.3
             Encode periodic axes directly in :class:`BoundarySpec`:
             ``boundary=BoundarySpec(x='periodic', y='cpml', z='cpml')``.
             This method will be removed in v2.0.

@@ -44,7 +44,7 @@ class NTFFBox(NamedTuple):
     freqs: jnp.ndarray  # (n_freqs,) Hz
     # Per-face CPML thickness (T7 Phase 2 — asymmetric-friendly NTFF offsets).
     # Default to 0 so legacy callers constructing NTFFBox without from_grid()
-    # still get the pre-v1.7.4 scalar-cpml behaviour via the fallbacks below.
+    # still get the pre-per-face-CPML scalar behaviour via the fallbacks below.
     cpml_lo_x: int = 0
     cpml_hi_x: int = 0
     cpml_lo_y: int = 0
@@ -310,7 +310,7 @@ def _face_positions(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z
         Per-axis low-face CPML thicknesses; used as the physical-origin
         offset on each axis so that physical coord 0 sits at the inner
         edge of the lo-face CPML. Under symmetric face_layers these all
-        equal ``grid.cpml_layers`` (the pre-v1.7.4 scalar behavior).
+        equal ``grid.cpml_layers`` (the legacy scalar behavior).
     dy : float or None
         Y cell size. If None, uses dx (cubic cells).
     z_edges : (nz+1,) array or None
