@@ -1,0 +1,185 @@
+---
+title: "Recipe: Waveguide S-Parameters"
+description: "How to measure bounded rectangular waveguide multi-port S-parameters in rfx using waveguide ports."
+sidebar:
+  order: 7
+---
+
+Use this recipe for bounded rectangular waveguide problems where the quantity
+of interest is a multi-port scattering matrix between guided modes. Typical
+targets include straight waveguide transmission, bends, discontinuities,
+tapers, dielectric-loaded sections, and iris filters.
+
+For plane-wave slab reflection/transmission in open space, use
+[R/T Measurement](./recipe-rt-measurement) instead.
+
+## Primitives
+
+The canonical workflow uses two waveguide ports and then computes the
+scattering matrix:
+
+- **`Simulation.add_waveguide_port(x_position, direction, mode, ...)`** — each
+  port acts as both source and receiver. rfx launches the selected mode,
+  records reflected and transmitted modal coefficients, and uses PEC walls on
+  the transverse axes.
+- **`Simulation.compute_waveguide_s_matrix(normalize=True, num_periods=...)`**
+  — runs the simulation once per driven port plus a vacuum reference run and
+  returns an N×N×n_freqs complex S-matrix.
+
+Implementation lives in `rfx/api/_sparams.py`.
+
+## Canonical code block
+
+```python
+import numpy as np
+import jax.numpy as jnp
+from rfx import Simulation, Box
+
+C0 = 299_792_458.0
+
+a_wg = 0.02286   # WR-90 broad face (m)
+b_wg = 0.01016   # WR-90 narrow face (m)
+length = 0.10    # total guide length (m)
+dx = 0.5e-3      # cell size (m)
+
+f_c = C0 / (2 * a_wg)          # TE10 cutoff
+fcen = 1.5 * f_c               # band centre
+bw = 0.4                       # fractional bandwidth
+freqs = jnp.linspace(f_c * 1.3, f_c * 1.9, 50)
+
+sim = Simulation(
+    domain=(length, a_wg, b_wg),
+    dx=dx,
+    boundary="cpml",
+    cpml_layers=10,
+)
+
+# Optional: add a dielectric plug
+# plug_lo, plug_hi = 0.04, 0.06
+# sim.add_material("plug", eps_r=2.0)
+# sim.add(Box((plug_lo, 0, 0), (plug_hi, a_wg, b_wg)), material="plug")
+
+sim.add_waveguide_port(
+    x_position=0.003,
+    direction="+x",
+    mode=(1, 0),
+    mode_type="TE",
+    freqs=freqs,
+    f0=fcen,
+    bandwidth=bw,
+    probe_offset=10,
+    ref_offset=3,
+    name="port1",
+)
+sim.add_waveguide_port(
+    x_position=length - 0.003,
+    direction="-x",
+    mode=(1, 0),
+    mode_type="TE",
+    freqs=freqs,
+    f0=fcen,
+    bandwidth=bw,
+    probe_offset=10,
+    ref_offset=3,
+    name="port2",
+)
+
+result = sim.compute_waveguide_s_matrix(num_periods=30.0, normalize=True)
+S = np.asarray(result.s_params)   # shape: (n_ports, n_ports, n_freqs)
+S11 = S[0, 0, :]
+S21 = S[1, 0, :]
+```
+
+## Critical parameters
+
+| Parameter | Guidance |
+|-----------|----------|
+| `normalize` | Use `normalize=True` for transmission measurements — cancels one-way Yee numerical-dispersion bias in |S21|. Use `normalize=False` for |S11| of strong reflectors (PEC short, high-Q resonators) where the round-trip dispersion error in the two-run path exceeds the impedance-mismatch error of the single-run path. Use `normalize="flux"` for simultaneous accuracy in both reflection and transmission. |
+| `num_periods` | Must be long enough for the source pulse and port monitor response to settle. A range of 20–40 periods covers most practical cases. |
+| `f0`, `bandwidth` | Set explicitly to match your target band: `f0 = (f_min + f_max) / 2` and `bandwidth = (f_max - f_min) / f0`. The defaults (`freq_max/2`, `bw=0.5`) may not cover your measurement band. |
+| `probe_offset` | Distance in Yee cells from the port plane to the probe plane. Must be far enough from any obstacle to avoid source-plane artifacts. Typical value: 10 cells. |
+| `ref_offset` | Distance in cells from the port plane to the reference plane. Must be consistent across compared ports. Typical value: 3 cells. |
+| Band edges | Keep `f_min > 1.3 · f_cutoff` (TE10 cutoff is `c / (2a)`) to stay away from evanescent-mode contamination. Keep `f_max` below the TE20 cutoff (`c / a`) for single-mode operation. |
+
+## Baseline accuracy
+
+The `normalize=True` extraction is tracked by
+`tests/test_normalization.py::test_normalized_s21_straight_waveguide`, which
+asserts `mean |S21| > 0.95` for an empty straight waveguide (25 frequency
+points from 1.3·f_c to 9 GHz, `num_periods=25.0`). This corresponds to a
+worst-case mean deviation from unity of up to 5 %. For individual S-parameter
+comparisons against analytic or external references, use a 15 % pass limit
+rather than 5 %.
+
+For |S11| of strong reflectors, use `normalize=False`. For simultaneous
+reflection and transmission accuracy, use `normalize="flux"`.
+
+Current evidence status for `add_waveguide_port` / `compute_waveguide_s_matrix`
+is **E5-narrow** (single-mode rectangular waveguide, validated against analytic
+Airy, Meep, OpenEMS, and Palace references). See
+[docs/guides/sparameter_support_matrix.md](../guides/sparameter_support_matrix.md)
+for the full artifact and envelope table.
+
+## Analytic reference
+
+For a dielectric slab in a rectangular waveguide, compare against the
+guided-wave Airy formula using the guided propagation constants and TE
+impedances:
+
+```python
+import numpy as np
+
+C0 = 299_792_458.0
+
+
+def guided_beta(f: float, eps_r: complex, a: float) -> complex:
+    k0 = 2 * np.pi * f / C0
+    kc = np.pi / a
+    return np.sqrt(eps_r * k0**2 - kc**2 + 0j)
+
+
+def guided_Z_TE(f: float, eps_r: complex, a: float) -> complex:
+    fc = C0 / (2 * a * np.sqrt(np.real(eps_r)))
+    eta = 377.0 / np.sqrt(eps_r)
+    return eta / np.sqrt(1 - (fc / f) ** 2 + 0j)
+
+
+def waveguide_slab_rt(
+    freqs: np.ndarray,
+    eps_r_slab: complex,
+    d_plug: float,
+    a_wg: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Airy multi-reflection S11, S21 for a dielectric plug in a rectangular waveguide."""
+    S11 = np.zeros(len(freqs), dtype=complex)
+    S21 = np.zeros(len(freqs), dtype=complex)
+    for i, f in enumerate(freqs):
+        Z_vac = guided_Z_TE(f, 1.0, a_wg)
+        Z_d = guided_Z_TE(f, eps_r_slab, a_wg)
+        beta_d = guided_beta(f, eps_r_slab, a_wg)
+        r12 = (Z_d - Z_vac) / (Z_d + Z_vac)
+        delta = beta_d * d_plug
+        e_2id = np.exp(2j * delta)
+        denom = 1.0 - r12**2 * e_2id
+        S11[i] = r12 * (1 - e_2id) / denom
+        S21[i] = (1 - r12**2) * np.exp(1j * delta) / denom
+    return S11, S21
+```
+
+## Canonical example
+
+`examples/crossval/11_waveguide_port_wr90.py` — WR-90 waveguide with three
+canonical geometries (empty guide, PEC short, dielectric slab), compared
+against analytic Airy and Meep references. The script documents band-edge
+artifacts and analytic phase-convention caveats. Authoritative regression
+gates live in `tests/test_waveguide_port_validation_battery.py` and
+`tests/test_waveguide_twoport_contract_v1.py`.
+
+## References
+
+- Pozar, *Microwave Engineering* Ch. 4 — transmission-line S-parameters
+- rfx source: `rfx/api/_sparams.py::compute_waveguide_s_matrix`,
+  `rfx/sources/` waveguide port implementations
+- rfx tests: `tests/test_normalization.py` (baseline accuracy),
+  `tests/test_conservation_laws.py` (reciprocity, unitarity)
+- Evidence and envelope: `docs/guides/sparameter_support_matrix.md`

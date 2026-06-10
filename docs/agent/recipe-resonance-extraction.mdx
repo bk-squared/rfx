@@ -1,0 +1,131 @@
+---
+title: "Resonance Extraction"
+description: "Extract resonant frequencies, decay rates, and Q factors from free-ringdown probe signals using Harminv."
+sidebar:
+  order: 9
+---
+
+Use this recipe when the target quantity is a resonant mode of a cavity, ring resonator, resonant defect, photonic crystal, or similar structure. The usual outputs are modal frequency, decay rate, complex amplitude, and quality factor (Q).
+
+This is not the right primitive for source-driven steady-state amplitude or transmission. Use `add_flux_monitor` for R(f)/T(f) measurements instead — see the [R/T measurement recipe](./recipe-rt-measurement).
+
+## The primitive
+
+```python
+from rfx.harminv import harminv
+```
+
+`harminv` implements the Matrix Pencil Method to extract resonant modes from a scalar time trace. It requires the trace to contain free ringing — the source must be off before the analysis window starts.
+
+**Signature:**
+
+```python
+modes = harminv(signal, dt, f_min, f_max)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `signal` | 1D array | Time-domain field trace (real or complex) |
+| `dt` | float | Timestep in seconds |
+| `f_min` | float | Lower bound of frequency search range (Hz) |
+| `f_max` | float | Upper bound of frequency search range (Hz) |
+
+Each returned `HarminvMode` has:
+
+| Attribute | Description |
+|-----------|-------------|
+| `.freq` | Mode frequency (Hz) |
+| `.decay` | Decay rate (1/s), positive = decaying |
+| `.Q` | Quality factor |
+| `.amplitude` | Amplitude magnitude |
+| `.phase` | Phase in radians |
+| `.error` | Relative error estimate |
+
+## Canonical pattern
+
+```python
+import math
+import numpy as np
+
+from rfx import Simulation
+from rfx.boundaries.spec import BoundarySpec
+from rfx.harminv import harminv
+from rfx.sources.sources import ModulatedGaussian
+
+# --- Parameters ---
+C0 = 3e8
+fcen_hz = 200e9           # target resonance (Hz)
+bandwidth = 0.5           # fractional bandwidth of excitation
+expected_q = 500          # rough estimate for sizing the run length
+domain_m = 20e-3          # domain size (m)
+dx = 0.5e-3               # cell size (m)
+
+# --- Build simulation ---
+sim = Simulation(
+    freq_max=fcen_hz * 2,
+    domain=(domain_m, domain_m, dx),
+    dx=dx,
+    boundary=BoundarySpec.uniform("upml"),
+    mode="2d_tmz",
+)
+
+waveform = ModulatedGaussian(f0=fcen_hz, bandwidth=bandwidth, cutoff=5.0)
+sim.add_source(position=(0.0, 0.0, 0.0), component="ez", waveform=waveform)
+sim.add_probe(position=(0.0, 0.0, 0.0), component="ez")
+
+# --- Run long enough for source to decay + sufficient ringdown ---
+# Ringdown time ~ Q / (pi * f); aim for ~10 Q-cycles
+ringdown_s = 10.0 * expected_q / (math.pi * fcen_hz)
+source_off_s = waveform.t0 + 3.0 * waveform.tau   # source effectively off after ~3 tau past peak
+total_s = source_off_s + ringdown_s
+dt_est = dx / (C0 * math.sqrt(2)) * 0.99
+n_steps = int(total_s / dt_est)
+
+result = sim.run(n_steps=n_steps)
+
+# --- Extract harminv from the ringdown portion only ---
+ts = np.asarray(result.time_series).ravel()
+dt = float(result.dt)
+
+# Skip the source-active prefix; use only free-ringing tail
+source_off_index = int(math.ceil(source_off_s / dt))
+ringdown = ts[source_off_index:]
+
+fmin_hz = fcen_hz * 0.7
+fmax_hz = fcen_hz * 1.3
+
+modes = harminv(ringdown, dt, fmin_hz, fmax_hz)
+
+for m in modes:
+    print(f"f={m.freq:.4e} Hz  Q={m.Q:.0f}  amp={m.amplitude:.3e}")
+```
+
+### Convenience method
+
+`Result` also exposes a `find_resonances` helper that handles the ringdown slice automatically:
+
+```python
+modes = result.find_resonances(
+    freq_range=(fmin_hz, fmax_hz),
+    probe_idx=0,
+    source_decay_time=source_off_s,
+)
+```
+
+## Pitfalls
+
+**Skip the source-active prefix.** Harminv assumes pure free ringing. Including the source-on portion adds driven content that is not exponentially decaying and will corrupt the mode fit. Always slice to start after the source has turned off.
+
+**Size the ringdown for the expected Q.** A practical minimum is 5 Q-cycles; 10 Q-cycles gives reliable fits. The ringdown time in seconds is approximately `Q / (pi * f)`. Under-running produces broad, unreliable modes.
+
+**`ModulatedGaussian` cutoff default is 5.0.** This controls how many `tau` before the envelope peak the source starts. The default (`cutoff=5.0`) matches Meep convention: source peaks at `t = cutoff * tau`. Reducing `cutoff` gives a faster onset but a non-zero amplitude at `t=0`. The bandwidth of the excitation is set by `bandwidth`; changing `cutoff` shifts the source-on duration without changing which frequencies are excited.
+
+**`result.dt` must be available.** Call `sim.run(n_steps=...)` normally; `result.dt` is populated automatically. If you see a `ValueError` about `dt not available`, you are using a non-standard run path.
+
+## Canonical example
+
+`examples/crossval/02_ring_resonator.py` is the project-level ring resonator validation that uses `harminv` directly against Meep. It shows the full pattern: broadband `ModulatedGaussian` excitation, time-series extraction from `result.time_series` and `result.dt`, and the skip-fraction used to isolate the ringdown.
+
+## Background
+
+The underlying algorithm is filter diagonalization / Matrix Pencil. See Sarkar and Pereira, "Using the Matrix Pencil Method to Estimate the Parameters of a Sum of Complex Exponentials", IEEE AP Magazine, February 1995. The method is substantially more accurate than FFT for short time series and extracting high-Q modes.
