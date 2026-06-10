@@ -18,7 +18,7 @@ sim = Simulation(
     freq_max=4e9,
     domain=(0.08, 0.06, 0.025),
     boundary="cpml",
-    cpml_layers=8,
+    cpml_layers=16,
     dx=1e-3,
     mode="3d",
 )
@@ -31,7 +31,7 @@ Key constructor arguments:
 | `freq_max` | highest frequency of interest | drives mesh and timestep selection |
 | `domain` | `(x, y, z)` domain size in metres | required unless derived by automation |
 | `boundary` | boundary type | the public docs currently center on `cpml` |
-| `cpml_layers` | absorber thickness | default is 8 |
+| `cpml_layers` | absorber thickness | high-level `Simulation` default is 16 |
 | `pec_faces` | face-based PEC truncation | use for boundaries, not for a finite antenna ground plane |
 | `dx` | base lateral cell size | may be inferred by automation |
 | `dz_profile` / `dx_profile` / `dy_profile` | non-uniform cell profiles | workflow helper for thin-substrate or graded meshes |
@@ -51,7 +51,7 @@ Key constructor arguments:
 | `add_port(...)` | add a lumped or wire port | use for impedance-normalized S-parameters within the lumped/wire evidence envelope |
 | `add_probe(...)` | record a point observable | feeds `Result.find_resonances()` |
 | `add_ntff_box(...)` | accumulate far-field data | use only when the radiation workflow is benchmarked |
-| `preflight(strict=False)` | validate setup before a long run | use this when you want deterministic warnings/errors on unsupported combinations |
+| `preflight(strict=False)` | validate setup before a long run | returns a coded `PreflightReport`; use `.errors`, `.warnings`, `.by_code(...)`, or `.raise_for_failure()` for automation gates |
 | `mesh_intelligence_report(...)` | summarize configured grid, preflight issues, and AD memory estimates | useful for non-uniform and memory-constrained planning |
 | `plan_mesh(...)` | return a serializable `MeshPlan` for this configured simulation | wraps `mesh_intelligence_report()`, `preflight()`, and optional S-parameter preflight checks |
 | `run(...)` | advance the simulation | returns a `Result` object |
@@ -63,9 +63,11 @@ result = sim.run(n_steps=8000, compute_s_params=True)
 ```
 
 `run()` returns a tuple-like `Result` object with fields such as
-`time_series`, `s_params`, `freqs`, `ntff_data`, and `grid`. For S-parameter
-claims, use the port-family evidence levels in the support matrix rather than
-the presence of `s_params` alone.
+`time_series`, `s_params`, `freqs`, `ntff_data`, and `grid`. Current `main` also
+warns on non-finite run/forward outputs instead of letting silent NaNs pass
+through ordinary workflows. For S-parameter claims, use the port-family
+evidence levels in the support matrix rather than the presence of `s_params`
+alone.
 
 ## Automation entry points
 

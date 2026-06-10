@@ -106,3 +106,9 @@ sim.add_waveguide_port(0.01, calibration_preset="source_to_probe")
 # Explicit reporting planes with de-embedding
 sim.add_waveguide_port(0.01, reference_plane=0.012, probe_plane=0.034)
 ```
+
+For reverse-mode AD or memory-heavy waveguide runs on the uniform Yee path,
+`compute_waveguide_s_matrix(checkpoint_segments=K)` reuses the segmented
+checkpointing machinery from the core runner. `K` must divide the timestep
+count exactly; non-uniform waveguide extraction rejects this knob rather than
+silently falling back to the linear-memory scan.

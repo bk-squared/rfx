@@ -59,7 +59,8 @@
         "rfx/agent/overview",
         "rfx/agent/auto-config",
         "rfx/agent/prompt-templates",
-        "rfx/agent/design-workflows"
+        "rfx/agent/design-workflows",
+        "rfx/agent/repo-map"
       ]
     },
     {

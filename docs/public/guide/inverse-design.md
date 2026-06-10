@@ -78,6 +78,11 @@ obj_transmit = maximize_transmitted_energy(output_probe_idx=-1)
 These are the recommended defaults for reflection-minimisation and
 throughput-maximisation tasks.
 
+For NTFF/directivity optimisation, prefer
+`maximize_directivity(..., log_ratio=True)` when the design variable can change
+total radiated power; this keeps the directivity-gradient sign consistent with
+the full ratio objective.
+
 ## Design-region API
 
 ```python

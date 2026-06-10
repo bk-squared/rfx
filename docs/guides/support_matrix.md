@@ -13,7 +13,8 @@ Status legend:
 ### Scope
 - boundaries: `pec`, `cpml`, `upml`
 - sources: point/current sources, lumped/wire ports, specialized
-  microstrip-line ports, waveguide ports
+  microstrip-line ports, waveguide ports, and coaxial line-reflection setups
+  only inside the documented coax transmission-line envelope
 - observables: time-series probes, flux monitors, Harminv resonances,
   NTFF/far-field where benchmarked, and S-parameters only through the
   port-family envelopes in `docs/guides/sparameter_support_matrix.md`
@@ -30,6 +31,7 @@ Status legend:
 | ADI | experimental | research lane | separate accuracy/stability envelope |
 | Distributed | experimental | scaling lane | not part of correctness-bearing baseline |
 | Floquet/Bloch | experimental | periodic/phased-array lane | M18 synthetic modal oracle and M20 real-FDTD DFT-plane replay exist; promotion still pending analytic/RCWA/external benchmark ladder |
+| Coaxial line reflection | supported envelope | one-port transmission-line reflection lane | `compute_coaxial_line_reflection(...)` has analytic broad-E5 + MEEP broad-E4 evidence; older `compute_coaxial_s_matrix(...)` remains deprecated / experimental |
 
 ## Reference-lane support table
 
@@ -38,7 +40,7 @@ Status legend:
 | grid / runner | uniform Cartesian Yee |
 | materials | isotropic linear, conductive, validated Debye/Lorentz/Drude subsets |
 | absorbers | PEC, CPML, bounded UPML |
-| sources | point/current, lumped port, wire port, specialized microstrip-line port, waveguide port |
+| sources | point/current, lumped port, wire port, specialized microstrip-line port, waveguide port, coaxial line-reflection setups inside the documented envelope |
 | observables | probes, flux, Harminv resonance, benchmarked NTFF, and port-family S-parameters with the E-levels / artifacts in `sparameter_support_matrix.md` |
 | optimization-facing observables | validated proxy objectives only until explicitly promoted |
 
@@ -59,8 +61,11 @@ Canonical API rule:
 - `add_msl_port(...)` uses `compute_msl_s_matrix()`.
 - `add_waveguide_port(...)` uses `compute_waveguide_s_matrix()` for full
   multi-port matrices; `run()` exposes only per-port `waveguide_sparams`.
-- `add_coaxial_port(...)`, `add_floquet_port(...)`, sources, TFSF, probes, and
-  flux monitors do not have a promoted high-level S-parameter calculator.
+- `add_coaxial_port(...)` uses `compute_coaxial_line_reflection(...)` for the
+  promoted one-port coaxial transmission-line reflection envelope; the older
+  `compute_coaxial_s_matrix(...)` path is deprecated / experimental.
+- `add_floquet_port(...)`, sources, TFSF, probes, and flux monitors do not have
+  a promoted high-level S-parameter calculator.
 
 ## Nonuniform graded-z shadow lane
 

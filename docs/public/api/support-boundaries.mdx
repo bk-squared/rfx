@@ -34,8 +34,8 @@ This page gives the public support summary without internal validation details.
 | lumped/wire `add_port(...)` | `run(compute_s_params=True)` | documented calculator for the matching port family; claim strength follows the support envelope |
 | lumped/wire `add_port(...)` | `forward(port_s11_freqs=...)` | differentiable S11 vectors on the uniform single-device path |
 | `add_msl_port(...)` | `compute_msl_s_matrix()` | specialized microstrip-line workflow |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow |
-| `add_coaxial_port(...)` | experimental | under active validation |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow; use `normalize="flux"` where the guide recommends it |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | validated one-port coaxial transmission-line reflection envelope; the older `compute_coaxial_s_matrix(...)` path is deprecated/experimental |
 | `add_floquet_port(...)` | experimental | periodic / unit-cell workflow under active validation |
 | sources, TFSF, probes, flux monitors | not port calculators | field/flux/time observables |
 
@@ -48,7 +48,8 @@ This page gives the public support summary without internal validation details.
 | ADI | experimental accuracy/stability lane |
 | distributed execution | scaling lane; check feature combinations |
 | Floquet/Bloch | experimental periodic/unit-cell workflow |
-| coaxial and advanced ports | under active validation |
+| coaxial line reflection | validated only inside the documented transmission-line reflection envelope |
+| generalized planar / other advanced ports | planned or under active validation |
 | inverse-design extensions | available for selected workflows; check current examples |
 
 ## Unsupported combinations

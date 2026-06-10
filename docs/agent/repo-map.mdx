@@ -1,0 +1,80 @@
+---
+title: "Repo Map & Feature Discovery"
+description: "How rfx is organized and how to discover existing API primitives before writing low-level FDTD code."
+sidebar:
+  order: 5
+---
+
+This page orients AI agents working from a fresh public clone of rfx. Read it
+before writing any new simulation code.
+
+## How this repo is organized
+
+| Path | Contents |
+|------|----------|
+| `rfx/api/__init__.py` | `Simulation` class and all `add_*` builder methods |
+| `rfx/api/_spec.py` | Module-level data structures: `Result`, `MaterialSpec`, `*SMatrixResult`, `MATERIAL_LIBRARY`, internal `_*Entry` bookkeeping classes |
+| `rfx/sources/` | Source and port implementations (waveguide, TFSF, MSL, coaxial, lumped, Floquet) |
+| `rfx/probes/` | Probe and monitor implementations (point probes, DFT-plane, flux monitors, NTFF) |
+| `rfx/materials/` | Material helpers including Debye, Lorentz, and nonlinear dispersion models |
+| `rfx/boundaries/` | Boundary condition implementations (CPML, UPML, PEC, PMC, Floquet/Bloch) |
+| `rfx/ports/` | S-parameter extraction and port post-processing utilities |
+| `tests/` | Canonical usage examples for every API surface — start here |
+| `examples/crossval/` | Validated external-reference cross-validation scripts (Meep, OpenEMS, analytic) |
+
+## Hard rule for AI agents
+
+Before writing a raw Yee loop (`update_h` / `update_e`) or an
+FFT-of-probe-time-series analysis, run:
+
+```bash
+grep "def add_" rfx/api/__init__.py
+```
+
+and ask: **why can't the `Simulation` API do this?**
+
+All `add_*` builder methods live in `rfx/api/__init__.py`. Module-level data
+structures live in `rfx/api/_spec.py`. Grep `rfx/api/` recursively to cover
+both. If the existing API handles your task, use it — do not re-implement at the
+Yee-field level.
+
+## Feature discovery grep map
+
+Run these commands from the repo root before writing new code in each area. Each
+command is verified to return at least one hit on the current tree.
+
+| Task area | Grep command | Source dirs |
+|-----------|-------------|-------------|
+| Sources / ports (lumped, wire, coax, TFSF, waveguide, MSL, Floquet) | `grep "def add_source\|def add_polarized_source\|def add_tfsf_source\|def add_waveguide_port\|def add_floquet_port\|def add_coaxial_port\|def add_port\|def add_msl_port\|def add_lumped_rlc" rfx/api/__init__.py` | `rfx/sources/`, `rfx/lumped.py` |
+| Probes / measurements | `grep "def add_probe\|def add_vector_probe\|def add_dft_plane_probe\|def add_flux_monitor\|def add_ntff_box" rfx/api/__init__.py` | `rfx/probes/` |
+| Materials / dispersion | `grep "def add_material" rfx/api/__init__.py` | `rfx/materials/` |
+| Boundaries | `grep -rl "cpml\|upml\|pec\|floquet" rfx/boundaries/` | `rfx/boundaries/` |
+| Post-processing (flux, Harminv) | `grep "def flux_spectrum\|def harminv" rfx/probes/probes.py rfx/harminv.py` | `rfx/probes/probes.py`, `rfx/harminv.py` |
+| S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection" rfx/api/` | `rfx/api/_sparams.py`, `rfx/ports/` |
+| S-parameter low-level helpers | `grep "extract_waveguide_s_matrix\|extract_s_matrix\|extract_s11" rfx/api/__init__.py rfx/probes/probes.py` | `rfx/ports/` |
+
+## Current port-family caveat
+
+For coaxial workflows, use `Simulation.compute_coaxial_line_reflection(...)`
+inside its documented one-port transmission-line envelope. The older
+`Simulation.compute_coaxial_s_matrix(...)` path remains deprecated/experimental
+and must not be presented as the promoted coaxial claims surface.
+
+## What NOT to do
+
+**Never** use time-series + FFT of probe data to compute `R(f)` or `T(f)` for
+dispersive slabs. Time-window truncation produces artifacts that make the result
+unreliable.
+
+Use `add_flux_monitor` + two-run reference subtraction instead. The canonical
+demonstration is `examples/crossval/03_straight_waveguide_flux.py`, which shows
+the two-monitor flux pattern explicitly. For the reference-subtraction contract,
+see the `add_flux_monitor` docstring in `rfx/api/__init__.py`.
+
+## Related references
+
+- [Support Boundaries](/rfx/api/support-boundaries/)
+- `docs/guides/support_matrix.md`
+- `docs/guides/sparameter_support_matrix.md`
+- `tests/` — canonical usage for every `add_*` method
+- `examples/crossval/` — validated external cross-validation scripts

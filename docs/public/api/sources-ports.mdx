@@ -35,7 +35,7 @@ Use `add_source()` for ringdown and Harminv work when you do **not** want a load
 | `add_port(...)` | recommended lumped/wire port path for many RF examples |
 | `add_waveguide_port(...)` | rectangular waveguide modal workflows |
 | `add_msl_port(...)` | specialized microstrip-line S-matrix workflow |
-| `add_coaxial_port(...)` | experimental coaxial workflow; under active validation |
+| `add_coaxial_port(...)` | coaxial transmission-line reflection workflow via `compute_coaxial_line_reflection(...)`; older single-plane S-matrix path is deprecated/experimental |
 | `add_floquet_port(...)` | experimental periodic / phased-array workflow |
 | `add_lumped_rlc(...)` | lumped network element at a cell |
 
@@ -56,8 +56,9 @@ Use the calculator that matches the port family:
 | lumped/wire `add_port(...)` in differentiable objectives | `forward(port_s11_freqs=...)` |
 | `add_msl_port(...)` | `compute_msl_s_matrix()` |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` for validated one-port line reflection; `compute_coaxial_s_matrix(...)` is deprecated/experimental |
 
-`run(compute_s_params=True)` is **not** a universal port dispatcher. MSL and waveguide ports use specialized calculators. Coaxial and Floquet S-parameter workflows are experimental and should not be presented as the default path.
+`run(compute_s_params=True)` is **not** a universal port dispatcher. MSL, waveguide, and coaxial-line workflows use specialized calculators. Floquet workflows and the older coaxial single-plane S-matrix path are experimental and should not be presented as the default path.
 
 Before launching a long run, call the S-parameter preflight for the calculator you intend to use:
 
@@ -73,6 +74,7 @@ sim.preflight_sparameters(calculator="forward")
 - Use sources for clean transient or resonance extraction.
 - Use ports when you need impedance-normalized outputs.
 - Treat non-uniform workflows as shadow unless the relevant guide says
-  otherwise; treat coaxial, Floquet/Bloch, subgridding, and mixed
-  advanced-port workflows as experimental unless a guide says otherwise.
+  otherwise; use coaxial line reflection only inside its documented envelope;
+  treat Floquet/Bloch, subgridding, generalized planar, and mixed advanced-port
+  workflows as experimental unless a guide says otherwise.
 - Keep public wording scoped to the current example or workflow being used.

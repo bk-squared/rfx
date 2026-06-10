@@ -12,9 +12,10 @@ sidebar:
 |---|---|
 | **Recommended default** | uniform Cartesian Yee RF workflows: cavity, waveguide, patch-style resonance, probes, Harminv, selected S-parameter workflows, and benchmarked far-field workflows |
 | **Shadow** | non-uniform mesh thin-substrate workflows |
-| **Experimental / under active validation** | distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial and advanced port workflows, and inverse-design extensions |
+| **Port-family evidence envelopes** | rectangular waveguide S-matrices and coaxial transmission-line reflection where the support matrix states an envelope |
+| **Experimental / under active validation** | distributed execution, Floquet/Bloch, SBP-SAT subgridding, generalized planar ports, and inverse-design extensions |
 
-Start with the recommended default lane unless you specifically need an experimental feature.
+Start with the recommended default lane unless you specifically need an advanced feature and can stay inside its support envelope.
 
 ## Getting Started
 
@@ -30,7 +31,7 @@ Start with the recommended default lane unless you specifically need an experime
 |---|---|
 | [Simulation API](/rfx/guide/api-reference/) | `Simulation`, `Result`, materials, sources, probes, ports, and NTFF helpers |
 | [Materials & Geometry](/rfx/guide/materials-geometry/) | Material library, Debye/Lorentz models, CSG shapes, and PCB stackup basics |
-| [Sources & Ports](/rfx/guide/sources-ports/) | Soft sources, lumped/wire ports, waveguide ports, and experimental port surfaces |
+| [Sources & Ports](/rfx/guide/sources-ports/) | Soft sources, lumped/wire ports, waveguide ports, coaxial-line reflection, and experimental port surfaces |
 | [Probes & S-Parameters](/rfx/guide/probes-sparams/) | DFT probes, S-matrix helpers, Harminv, de-embedding, and exports |
 | [Memory Reduction](/rfx/guide/memory-reduction/) | How to reduce FDTD/AD memory without crossing validation boundaries |
 | [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) | Shadow thin-substrate mesh workflows |

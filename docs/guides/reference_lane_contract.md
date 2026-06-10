@@ -75,9 +75,11 @@ The detailed port-family contract is versioned in
   single-device differentiable path only.
 - `compute_msl_s_matrix()` owns specialized microstrip-line ports.
 - `compute_waveguide_s_matrix()` owns rectangular waveguide full S-matrices.
-- Coaxial has analytic TEM helpers/sweep plus M21 diagnostic gap replay only,
-  and Floquet has M18/M20 modal helper/replay evidence only; coaxial,
-  Floquet, source,
+- Coaxial line reflection is promoted only through
+  `compute_coaxial_line_reflection(...)` and only inside its documented
+  one-port transmission-line envelope; the older `compute_coaxial_s_matrix(...)`
+  single-plane path remains deprecated / experimental.
+- Floquet has modal helper/replay and analytic slab diagnostics only; source,
   TFSF, probe, and flux-monitor surfaces are not implied S-parameter
   calculators.
 

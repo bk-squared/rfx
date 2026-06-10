@@ -102,9 +102,9 @@ copy:
 - `docs/public/validation/**`
 
 Any public copy that discusses S-parameters, ports, non-uniform mesh,
-subgridding, distributed execution, Floquet/Bloch, or coaxial ports must defer
-to those documents and avoid broad production wording unless the support matrix
-says so.
+subgridding, distributed execution, Floquet/Bloch, coaxial line reflection, or
+generalized/advanced ports must defer to those documents and avoid broad
+production wording unless the support matrix says so.
 
 ## Prioritized work plan
 

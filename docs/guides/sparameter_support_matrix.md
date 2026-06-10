@@ -28,9 +28,10 @@ Hz.
 | `add_port(..., extent=...)` wire port | `Simulation.run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | E2/E3/E4 partial + broad-E4-enabling envelope | `examples/crossval/05_patch_antenna.py` for probe-fed patch resonance, M32 generic patch/OpenEMS magnitude comparator (`max_mag_abs_diff 0.05318`, `mean_mag_abs_diff 0.02750` over 1.5--3.4 GHz), M12 real midpoint V/I replay (`max_abs_diff 7.82e-8 <= 9.80e-7`), M15 three-case replay/passivity/reciprocity sweep (`max_column_power 0.979`, reciprocity diff `1.24e-6`), and **M68 broad mesh/length openEMS envelope** (3 cases over `dx in [1, 2] mm`, wire length `[4, 8] mm`, `0.8--1.8 GHz`, `max_mag_abs_diff_across_cases 0.05212`); absolute S-matrix calibration convention still caveated |
 | `add_port(..., extent=...)` wire port | `Simulation.forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `ForwardResult.freqs` (S11 vectors only) | E0/E1 | `tests/test_wire_port_sparams_forward.py`; uniform single-device AD path; nonuniform is shadow only |
 | `add_msl_port(...)` | `Simulation.compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names` | E5-narrow / eigenmode-blocked | M10 envelope report: thru-line `|S21|` / `Z0` slow gate, cv06b notch error `1.63%` and depth `-34.3 dB`, stored-openEMS smoke S11/S21 mean abs diffs `0.02502` / `0.02661`, M29 generic comparator artifact (`max_mag_abs_diff 0.05225`, `mean_mag_abs_diff 0.02664`, magnitude mode), and real raw 3-probe replay `max_abs_diff=0`; eigenmode/nonuniform remain blocked |
-| `add_waveguide_port(...)` | `Simulation.compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | E5-narrow current port + broad-E4 geometry envelope | M4 envelope report: `waveguide_ports` gate `37 passed`, cv11 WR-90 empty/PEC-short/slab analytic + external references, M30 generic WR90/Palace magnitude comparator (`max_mag_abs_diff 0.0709`, `mean_mag_abs_diff 0.0440`), and **M69 broad geometry envelope vs MEEP_r4** (3 geometries: empty/pec_short/slab over `8.2--12.4 GHz`, `max_mag_abs_diff_across_geometries 0.1986`, all 3/3 passed; OpenEMS_r4 + Palace_r_h2 recorded as cross-check columns); restricted to single-mesh uniform-Yee rectangular-guide envelope, branch/T/multimode broad-E5 still pending |
+| `add_waveguide_port(...)` | `Simulation.compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | E5-narrow current port + broad-E5 flux-era envelopes, with clean-checkout artifact audit still tracking missing files | M4 envelope report: `waveguide_ports` gate `37 passed`; cv11 WR-90 empty/PEC-short/slab analytic + external references; M30 generic WR90/Palace magnitude comparator (`max_mag_abs_diff 0.0709`, `mean_mag_abs_diff 0.0440`); M69 broad geometry envelope vs MEEP_r4; later flux-normalized broad-E5 envelopes cover multiple WR bands, multimode, nonuniform WR90, and a T-junction lineage in the manifest. Current source-tree audit still reports missing clean-checkout artifacts for rectangular waveguide, so public claims must cite the exact present artifact or stay at the documented envelope level. |
 | `add_waveguide_port(...)` | `Simulation.run(...)` | `Result.waveguide_sparams[name]` (`WaveguideSParamResult`) | E2 diagnostic | single-port diagnostic/calibrated per-port output, not the full multi-port S-matrix API |
-| `add_coaxial_port(...)` | `Simulation.compute_coaxial_s_matrix(...)` (experimental) | `CoaxialSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_faces`, `.reference_planes`, `.z_tem_ohm`, `.voltages`, `.currents`, `.status` | E2-sweep/E3/E4-gap + broad-E4 gap envelope + experimental TEM-plane S-matrix API / not-calibrated-S-matrix-API | M22 analytic TEM geometry sweep (4 cases, max `Z0` diff `1.94e-8`), M21 real-FDTD coaxial gap V/I replay (`max S diff 1.00e-7 <= 9.70e-7`), M35 narrow coaxial-gap/openEMS magnitude comparator (`max_mag_abs_diff 0.03310`, `mean_mag_abs_diff 0.02526`), M71 broad freq-band/DFT openEMS envelope (3 cases over 1--7 GHz, `n_steps in [200, 500]`, `max_mag_abs_diff_across_cases 0.0165`, all 3/3 passed; DFT convergence visible), and **M72 distributed TEM plane-source S-matrix API** (M67 prototype promoted to `compute_coaxial_s_matrix(...)`; 9-test suite green; `z_tem` matches closed form; per-frequency `|S11|` not yet calibrated against analytic PEC-cavity reflection), M61 synthetic TEM reference-plane V/I extraction oracle (`max_s11_abs_diff 1.04e-8`), M62 synthetic Cartesian plane adapter oracle (`max_s11_abs_diff 8.29e-6`), M63 real-FDTD DFT-plane replay diagnostic (`blocked`: transverse TEM `V/I` below signal floor, plane/gap `S11` diff `4.996`), M64 axial plane sweep (`11/11` planes blocked; best plane/gap `S11` diff `0.628`), M65 structural audit (axial source component `ez` is normal to the TEM plane; outer shell PEC cells `0/32` before fix), M66 outer-shell fix audit (shell PEC cells `12/32`, axial source still blocked; post-fix sweep `0/11` planes passed), and M67 distributed TEM plane-source prototype (`max |S11| 0.168`, prototype-only); no real-FDTD calibrated TEM reference-plane extraction or broad external coax envelope |
+| `add_coaxial_port(...)` | `Simulation.compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, `.gamma`, `.status`, `.annulus_cells`, residual diagnostics | E5-broad coaxial transmission-line reflection + E4-broad external short/open cross-check | M74 current status `broad_e5_passed`: analytic broad-E5 envelope over short/open/matched plus resistive 25/100 Ω loads, two characteristic impedances (48.6/63 Ω), and mesh-axis annulus resolution (`max |Γ|` deviation `0.037 <= 0.05`); independent MEEP broad-E4 power-flux short/open comparison over 4--12 GHz (`max |S11|` diff `0.063`, mid-band 5--11 GHz `<= 0.035`). OpenEMS coax line attempt is retained as superseded because the available openEMS version lacks `AddCoaxialPort`. |
+| `add_coaxial_port(...)` | `Simulation.compute_coaxial_s_matrix(...)` (deprecated / experimental) | `CoaxialSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_faces`, `.reference_planes`, `.z_tem_ohm`, `.voltages`, `.currents`, `.status` | E2/E3 development path only | Older single-plane V/I closed-box path retained for compatibility. It can report non-physical `|S11| > 1` for lossless shorts and must not be used as the promoted coaxial claims surface. Route public coaxial reflection claims to `compute_coaxial_line_reflection(...)`. |
 | `add_floquet_port(...)` | none promoted | none promoted | E2/E3-modal/slab-analytic / no-promoted-api | M18 synthetic specular-TE modal oracle, M20 real-FDTD Ex/Hy DFT-plane dump replay (`max S diff 2.23e-7`), M38 empty-space analytic-null comparison (`max_abs_diff 0.06067`, `mean_abs_diff 0.05306`), M44 homogeneous-slab analytic oracle (`8` cases x `3` frequencies, max power-balance error `4.44e-16`), and M49 rfx-FDTD slab/analytic magnitude comparison (`max_mag_abs_diff 0.06212`, `mean_mag_abs_diff 0.03209`); no RCWA/external crossval or promoted S-matrix API |
 | `add_source(...)`, `add_polarized_source(...)` | none | `Result.time_series`, Harminv and field observables | not a port | field/resonance evidence is separate from impedance-defined S-parameters |
 | `add_tfsf_source(...)` | none | field, flux, NTFF/RCS observables where supported | not a port | plane-wave observables, not port calibration |
@@ -183,45 +184,17 @@ Hz.
 
 ### Coaxial and Floquet ports
 
-- `add_coaxial_port(...)` now exposes an experimental high-level S-matrix
-  API via `Simulation.compute_coaxial_s_matrix(...)` (M72): the M67 distributed
-  transverse E/M plane-source prototype was promoted into a public method that
-  returns a :class:`CoaxialSMatrixResult` with `.s_params`, `.freqs`,
-  `.z_tem_ohm`, `.voltages`, and `.currents`. The plane source is built by
-  `build_coaxial_tem_plane_source_specs` and the V/I extraction reuses
-  `coaxial_tem_reference_plane_vi_from_cartesian_plane`. The 9-test suite in
-  `tests/test_coaxial_s_matrix.py` covers schema, family-routing rejection,
-  closed-form `Z_TEM` consistency, and amplitude-scale invariance. Per-frequency
-  `|S11|` is **not yet calibrated** against analytic PEC-cavity reflection or
-  external openEMS matched/short/open/load fixtures, so claims must stay at the
-  M71 broad gap-envelope level until a calibrated fixture lands. The original
-  low-level helper coverage is unchanged:
-  M17/M22 analytic lossless TEM reference helpers for `Z0`, `beta`, `L'/C'`,
-  matched/short/open/load reflection, and a small geometry/eps_r sweep. M21
-  adds one real-FDTD coaxial gap V/I replay, M35 adds a narrow
-  coaxial-gap/openEMS S11 magnitude comparison (`max_mag_abs_diff 0.03310`,
-  `mean_mag_abs_diff 0.02526`), M61 adds a synthetic TEM reference-plane
-  V/I extraction oracle (`max_s11_abs_diff 1.04e-8`), M62 adds a
-  synthetic Cartesian field-plane adapter oracle (`max_s11_abs_diff 8.29e-6`),
-  M63 wires that adapter to real FDTD DFT planes but remains blocked by
-  near-zero transverse TEM `V/I` at the sampled reference plane (`max_abs_voltage
-  4.05e-15`, `max_abs_current 5.98e-17`, plane/gap `S11` diff `4.996`),
-  M64 confirms this is not a single-plane selection issue (`11/11` axial
-  planes blocked; best plane/gap `S11` diff `0.628`), M65 identified two
-  structural blockers: the helper injected an axial/normal `ez` source for a
-  z-normal TEM plane, and the sampled default stamp had no PEC annular outer
-  shell cells near the nominal outer radius (`0/32`). M66 fixes the annular
-  outer-shell stamp (`12/32` shell-band cells now PEC), but the axial-source
-  blocker remains and the post-fix axial sweep still has `0/11` passing planes
-  (best plane/gap `S11` diff `0.996`). M67 demonstrates a distributed
-  transverse E/M plane-source prototype can produce nonzero TEM-plane V/I in
-  the replay path (`max |S11| 0.168`), but it is an internal prototype rather
-  than the public `add_coaxial_port(...)` API or an external reference.
-  These are still not calibrated real-FDTD TEM reference-plane extraction or a broad external coax
-  envelope. It still has no promoted high-level FDTD V/I extraction +
-  calibration contract. Do not present it as S-parameter
-  capable. Use `add_port(..., extent=...)` for the current probe-feed
-  S-parameter workflow, with the calibration caveats above.
+- `add_coaxial_port(...)` has two public-facing calculation paths.  Use
+  `Simulation.compute_coaxial_line_reflection(...)` for the promoted one-port
+  coaxial transmission-line reflection envelope.  The current M74 evidence
+  combines analytic broad-E5 line-reflection gates (short/open/matched and
+  resistive loads across characteristic impedance and mesh-resolution cases)
+  with an independent MEEP broad-E4 short/open comparison over 4--12 GHz.  Keep
+  claims inside that one-port coaxial-line envelope.
+- `Simulation.compute_coaxial_s_matrix(...)` is retained for backward
+  compatibility but is deprecated as the older single-plane V/I path.  Its
+  closed-box setup can report non-physical `|S11| > 1` for a lossless short,
+  so it is not the promoted coaxial S-parameter claims surface.
 - `add_floquet_port(...)` is an experimental Floquet/Bloch excitation surface.
   M18 adds a synthetic specular-TE modal bookkeeping oracle, and M20 adds
   one small broadside real-FDTD Ex/Hy DFT-plane dump replay. M38 compares that
@@ -322,11 +295,13 @@ errors. In particular:
 - `run(compute_s_params=True)` is only for `add_port(...)` lumped/wire ports.
 - `compute_msl_s_matrix(...)` is only for `add_msl_port(...)` simulations.
 - `compute_waveguide_s_matrix(...)` is only for waveguide-port simulations.
+- `compute_coaxial_line_reflection(...)` is only for the documented one-port
+  coaxial transmission-line reflection envelope.
 - `forward(port_s11_freqs=...)` is only for `add_port(...)` lumped/wire ports
   on the uniform single-device differentiable path.
-- Coaxial, Floquet, sources, TFSF, probes, and flux monitors must not return
-  `None` as if S-parameters were optional output after the user explicitly
-  requested S-parameters.
+- Deprecated `compute_coaxial_s_matrix(...)`, Floquet, sources, TFSF, probes,
+  and flux monitors must not return `None` as if S-parameters were optional
+  output after the user explicitly requested S-parameters.
 
 Before an expensive run, use the port-family routing preflight:
 

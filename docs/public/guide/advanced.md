@@ -180,4 +180,8 @@ Current public examples live in the maintained example tree, especially:
 - `examples/nonuniform_patch_demo.py`
 - `examples/inverse_design/multilayer_ar_coating.py`
 
-Treat advanced examples as workflow starting points. For non-uniform, distributed, Floquet/Bloch, subgridding, coaxial, or advanced inverse-design features, check the relevant guide and current limitations before using them for a design decision.
+Treat advanced examples as workflow starting points. For non-uniform,
+distributed, Floquet/Bloch, subgridding, generalized planar ports, or advanced
+inverse-design features, check the relevant guide and current limitations
+before using them for a design decision. Coaxial line-reflection claims are
+narrower: use only the documented one-port transmission-line envelope.

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated": "2026-05-09",
+  "updated": "2026-06-10",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -247,72 +247,53 @@
       "primitive": "add_coaxial_port(...)",
       "family": "coaxial_port",
       "is_port": true,
-      "calculation_api": [],
-      "result_type": [],
-      "supported_lanes": [],
-      "validation_status": "geometry/source helper coverage, M17/M22 analytic lossless coax TEM formula/reference helpers with a small geometry/eps_r sweep, M21 real-FDTD coaxial gap V/I dump replay, M35 narrow coaxial-gap/openEMS magnitude comparison, M61 synthetic TEM reference-plane V/I extraction oracle, M62 synthetic Cartesian field-plane adapter oracle, M63 blocked real-FDTD DFT-plane replay diagnostic, M64 blocked axial reference-plane sweep, M65 structural signal-path audit, M66 annular outer-shell stamp fix with blocked post-fix sweep, and M67 distributed TEM plane-source prototype; no real-FDTD calibrated TEM reference-plane extraction for the public add_coaxial_port API, high-level S-parameter API, or broad external TEM reference-plane envelope",
-      "known_limits": [
-        "Simulation.run() and Simulation.forward() reject this high-level primitive",
-        "use add_port(extent=...) for current validated probe-feed S-parameter workflows"
+      "calculation_api": [
+        "Simulation.compute_coaxial_line_reflection(...)",
+        "Simulation.compute_coaxial_s_matrix(...) (deprecated / experimental)"
       ],
-      "evidence_level": "E2-sweep/E3/E4-gap/no-sparam",
+      "result_type": [
+        "CoaxialLineReflectionResult",
+        "CoaxialSMatrixResult (deprecated / experimental path)"
+      ],
+      "supported_lanes": [
+        "uniform_yee_rf_coaxial_line_reflection_envelope"
+      ],
+      "validation_status": "Current promoted path is compute_coaxial_line_reflection(...): M74 broad-E5 analytic coaxial transmission-line reflection envelope plus independent MEEP broad-E4 short/open comparison. compute_coaxial_s_matrix(...) is retained for compatibility but deprecated as the older single-plane V/I path and must not be used for promoted coaxial claims.",
+      "known_limits": [
+        "compute_coaxial_line_reflection(...) is a one-port coaxial transmission-line reflection envelope, not a general multi-port coaxial network solver",
+        "compute_coaxial_s_matrix(...) is deprecated / experimental and can report non-physical |S11| > 1 for lossless shorts",
+        "nonuniform, Floquet, TFSF, SBP-SAT, and mixed-port combinations remain unsupported unless a guide explicitly states otherwise",
+        "Simulation.run() and Simulation.forward() still reject high-level coaxial S-parameter requests"
+      ],
+      "evidence_level": "E5-broad line-reflection envelope + E4-broad MEEP short/open cross-check",
       "promotion_requirements": [
-        "real-FDTD calibrated TEM coax V/I extraction at a reference plane using the M61 synthetic extractor convention",
-        "matched/short/open/load FDTD gates against the analytic TEM reference",
-        "external full-wave coax reference before public S-parameter promotion",
-        "mesh/frequency/geometry envelope report before E5 claims"
+        "stay inside the one-port coaxial transmission-line reflection envelope for public claims",
+        "add separate external/reference evidence before claiming general multi-port coaxial S-matrices",
+        "add separate nonuniform or mixed-port evidence before broadening lane support"
       ],
       "evidence_artifacts": [
-        "rfx/sources/coaxial_port.py helper coverage",
-        "tests/test_sparameter_support_contract.py rejection gate",
-        "scripts/diagnostics/report_coaxial_tem_oracles.py",
-        ".omx/physics-gate/2026-05-09-m17-coaxial-tem-oracles/coaxial_tem_oracle_report.json",
-        "tests/test_coaxial_port.py::test_coaxial_tem_analytic_helpers_match_closed_form_identities",
-        "tests/test_coaxial_port.py::test_coaxial_tem_phase_and_load_reflection_oracles",
-        "scripts/diagnostics/generate_coaxial_gap_vi_dump.py",
-        ".omx/physics-gate/2026-05-09-m21-coaxial-gap-vi-dump/coaxial_gap_vi_dump.npz",
-        ".omx/physics-gate/2026-05-09-m21-coaxial-gap-vi-dump/coaxial_gap_vi_replay.json",
-        ".omx/physics-gate/2026-05-09-m22-coaxial-tem-geometry-sweep/coaxial_tem_oracle_report.json",
-        "tests/test_physics_gate_reporting.py::test_coaxial_tem_oracle_report_covers_geometry_sweep",
-        "scripts/diagnostics/build_coaxial_gap_openems_sparameter_comparison.py",
-        ".omx/physics-gate/2026-05-10-m35-coaxial-gap-openems-generic-comparison/coaxial_gap_openems_generic_sparameter_comparison.json",
-        ".omx/physics-gate/2026-05-10-m61-coaxial-tem-reference-plane-oracle/coaxial_tem_oracle_report.json",
-        ".omx/physics-gate/2026-05-10-m62-coaxial-cartesian-plane-adapter-oracle/coaxial_tem_oracle_report.json",
-        ".omx/physics-gate/2026-05-10-m63-coaxial-real-dft-plane-replay/coaxial_reference_plane_dft_replay.json",
-        ".omx/physics-gate/2026-05-10-m63-coaxial-real-dft-plane-replay/coaxial_reference_plane_dft_dump.npz",
-        ".omx/physics-gate/2026-05-10-m64-coaxial-reference-plane-sweep/coaxial_reference_plane_dft_sweep.json",
-        ".omx/physics-gate/2026-05-10-m65-coaxial-tem-signal-path-audit/coaxial_tem_signal_path_audit.json",
-        ".omx/physics-gate/2026-05-10-m66-coaxial-outer-shell-fix/coaxial_tem_signal_path_audit.json",
-        ".omx/physics-gate/2026-05-10-m66-coaxial-outer-shell-fix/coaxial_reference_plane_dft_sweep.json",
-        ".omx/physics-gate/2026-05-10-m67-coaxial-tem-plane-source-prototype/coaxial_tem_plane_source_prototype.json",
-        ".omx/physics-gate/2026-05-10-m67-coaxial-tem-plane-source-prototype/coaxial_tem_plane_source_prototype_dump.npz"
+        "rfx/api/_sparams.py::Simulation.compute_coaxial_line_reflection",
+        "rfx/api/_spec.py::CoaxialLineReflectionResult",
+        "tests/test_coaxial_line_calibration.py",
+        "tests/test_coaxial_line_extraction.py",
+        "scripts/diagnostics/coax_line_broad_e5_envelope.py",
+        "scripts/diagnostics/build_coaxial_line_meep_broad_comparison.py",
+        "scripts/diagnostics/meep_coax_line_reference.py",
+        ".omx/physics-gate/2026-06-07-coaxial-line-broad-e5-envelope/coaxial_line_broad_e5_envelope.json",
+        ".omx/physics-gate/2026-06-08-coaxial-line-meep-broad/coaxial_line_meep_broad_comparison.json",
+        "scripts/diagnostics/port_external_reference_requirements.json::coaxial_port"
       ],
       "numeric_metrics": [
-        "M35 coaxial-gap/openEMS magnitude comparator passed at 3/5/7 GHz: max_mag_abs_diff 0.03310 <= 0.05, mean_mag_abs_diff 0.02526 <= 0.03; not calibrated TEM reference-plane evidence",
-        "M22 analytic TEM geometry sweep passed: 4 cases, max Z0 closed-form diff 1.94e-8, max beta relative error 1.85e-16",
-        "M21 real-FDTD coaxial gap V/I replay passed: max S diff 1.00e-7 <= 9.70e-7",
-        "no promoted high-level coaxial S-parameter metric",
-        "M61 synthetic TEM reference-plane V/I extraction oracle passed: max_s11_abs_diff 1.04e-8, max_voltage_rel_error 1.91e-8, max_current_rel_error 2.14e-16; not real-FDTD calibrated reference-plane evidence",
-        "M62 synthetic Cartesian field-plane adapter oracle passed: max_s11_abs_diff 8.29e-6, max_voltage_rel_error 1.48e-5, max_current_rel_error 4.04e-7; not real-FDTD calibrated reference-plane evidence",
-        "M63 real-FDTD DFT-plane replay diagnostic blocked: max_abs_voltage 4.05e-15 <= 1e-12, max_abs_current 5.98e-17 <= 1e-12, plane/gap S11 max_abs_diff 4.996 > 0.5; this identifies the current coax TEM signal-path blocker",
-        "M64 real-FDTD axial reference-plane sweep blocked: 11/11 planes blocked, passed_plane_count 0, best plane/gap S11 max_abs_diff 0.628 > 0.5, best signal score 1.25e-16; not a single-plane selection issue",
-        "M65 structural signal-path audit blocked: current source component ez is axial/normal to the z-normal TEM plane, and sampled default stamp has 0/32 PEC cells in the nominal outer-conductor shell band",
-        "M66 annular outer-shell stamp fix audit: shell PEC cells improved to 12/32 and dielectric annulus remains present, but axial source component ez is still normal to the TEM plane; post-fix sweep remains blocked with 0/11 passing planes and best plane/gap S11 max_abs_diff 0.996 > 0.5",
-        "M67 distributed TEM plane-source prototype passed internal replay smoke: max |S11| 0.168 <= 0.5, max_abs_voltage 1.83e-7, max_abs_current 5.26e-9; prototype-only, not public add_coaxial_port API or external evidence"
+        "M74 analytic broad-E5 envelope: short/open/matched plus resistive 25/100 ohm loads, Z0 48.6/63 ohm, annulus-resolution sweep; max |Gamma| deviation 0.037 <= 0.05",
+        "M74 MEEP broad-E4 short/open comparison over 4-12 GHz: max |S11| diff 0.063, mid-band 5-11 GHz <= 0.035",
+        "tests/test_coaxial_line_calibration.py locks short/open/matched/resistive calibration and under-resolved status behaviour",
+        "tests/test_coaxial_line_extraction.py locks the matrix-pencil extraction helpers without FDTD"
       ],
-      "claim_envelope": "analytic lossless TEM formula/reference helper over a small coaxial geometry/eps_r sweep plus one diagnostic low-level coaxial gap V/I replay, one narrow openEMS gap comparison, synthetic and prototype TEM reference-plane replay helpers, blocked real-FDTD DFT-plane replay diagnostics, a structural signal-path audit, and an annular outer-shell stamp fix; geometry/source helper only for FDTD; no real-FDTD calibrated TEM reference-plane coaxial S-parameter extraction for the public add_coaxial_port API",
+      "claim_envelope": "One-port coaxial transmission-line reflection through compute_coaxial_line_reflection(...), covering the stated short/open/matched/resistive loads, frequency range, characteristic impedance cases, and mesh-resolution envelope. General multi-port coaxial S-matrices remain outside the promoted claim.",
       "caveats": [
-        "M35 is external E4-enabling evidence for the single-cell coaxial gap diagnostic, not broad coaxial TEM reference-plane E5",
-        "analytic TEM formulas and gap V/I replay are reference infrastructure, not validation of promoted add_coaxial_port() S-parameters",
-        "M21 measures the coaxial gap cell; M61 validates a synthetic TEM reference-plane extractor but not real FDTD field sampling",
-        "M62 maps Cartesian plane E/H samples to the TEM extractor, but the current evidence still uses synthetic fields rather than real FDTD DFT planes",
-        "M63 captures real FDTD Cartesian DFT planes but shows the current coax geometry/source path does not produce a usable transverse TEM reference-plane signal",
-        "M64 sweeps the current coax pin-tip-to-gap z-planes and confirms no sampled plane currently yields a usable TEM V/I replay",
-        "M66 fixes the sampled annular outer-shell stamp, but coax TEM promotion remains blocked by the probe-style axial source/excitation semantics",
-        "M67 is a distributed transverse E/M source prototype that proves a possible source direction, but it is not wired as the public coaxial port/feed contract and is not external evidence",
-        "Simulation.run() and Simulation.forward() still reject high-level coaxial S-parameter requests",
-        "requires real-FDTD calibrated TEM reference-plane V/I extraction before physics-validated coaxial S-parameter claims",
-        "requires matched/open/short/load external full-wave coax reference and mesh/frequency/geometry envelope before E5 promotion"
+        "Do not cite compute_coaxial_s_matrix(...) as the promoted coaxial evidence path; it is deprecated / experimental",
+        "Do not generalize the one-port line-reflection envelope to arbitrary coax launches, multi-port networks, nonuniform meshes, or mixed port families",
+        "The openEMS coax-line path is superseded because the available openEMS v0.0.35 lacks AddCoaxialPort; MEEP is the retained broad-E4 external comparison"
       ]
     },
     {

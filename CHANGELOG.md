@@ -6,6 +6,71 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Current main status (2026-06-10)
+
+- **Recommended public lane remains uniform Cartesian Yee RF/FDTD.**
+  Non-uniform mesh, distributed execution, Floquet/Bloch, guarded
+  subgridding, and broad inverse-design workflows remain lane-scoped and must
+  be described through their support/evidence envelopes.
+- **All-port broad-E5 is still incomplete.**  The external-reference audit is
+  intentionally blocked until lumped, wire, MSL, Floquet, generalized planar,
+  and clean-checkout waveguide artifact tracking satisfy the manifest.  Do not
+  turn one port-family promotion into a blanket S-parameter claim.
+
+### Added — preflight, finite-result, and automation guards (2026-06-10)
+
+- `Simulation.preflight()` and `preflight_sparameters()` now return coded
+  `PreflightReport` / `PreflightIssue` records while preserving legacy
+  list-of-string behaviour.  Automation can gate on `.errors`,
+  `.warnings`, `.by_code(...)`, `.raise_for_failure()`, `.to_dict()`, and
+  `.to_json()` instead of scraping warning text.
+- `run()` now uses the consolidated preflight path with `skip_preflight=...`,
+  while preserving hard failures for structurally impossible configurations
+  such as UPML + refinement and Floquet + non-uniform z.
+- `Result.assert_finite()`, run/forward non-finite warnings, S-matrix
+  passivity guards, and optimizer NaN-gradient recovery now surface bad
+  states before they silently contaminate inverse-design loops.  Sweeps run
+  preflight once and avoid repeated per-case warning floods.
+- Added PR/CI guard coverage for the preflight/guard suites and re-enabled the
+  tree-wide ruff lint gate.
+
+### Added — coaxial line reflection evidence envelope (2026-06-08)
+
+- `Simulation.compute_coaxial_line_reflection(...)` is the current validated
+  coaxial transmission-line reflection method.  The broad-E5 analytic envelope
+  covers short/open/matched plus resistive 25/100 Ω loads across two
+  characteristic impedances and mesh resolution cases; the broad-E4 external
+  MEEP power-flux comparison covers short/open cases over 4–12 GHz.
+- `Simulation.compute_coaxial_s_matrix(...)` remains available for backward
+  compatibility but is deprecated as the older single-plane V/I path; it is
+  not the promoted coaxial claims surface.
+- The coaxial family is the only family currently passing the
+  clean-checkout port external-reference audit; other families remain blocked
+  as noted above.
+
+### Added — waveguide S-matrix memory control (2026-06-09)
+
+- `Simulation.compute_waveguide_s_matrix(checkpoint_segments=...)` now
+  threads segmented checkpointing through the uniform waveguide extractors.
+  Regression tests pin bit-identical forward S-matrices for
+  `normalize=False`, `normalize=True`, and `normalize="flux"`, finite
+  gradients through `eps_override`, rejection for non-divisor segment counts,
+  and a loud `NotImplementedError` on non-uniform meshes.
+
+### Fixed — public analysis and objective correctness (2026-06-08 to 2026-06-10)
+
+- Finite-size `FluxMonitor` bookkeeping is regression-locked as
+  machine-precision equivalent to summing the same full-plane integrand window
+  in standing-wave-heavy fields.  The older "finite-size flux is less stable"
+  caveat is superseded by a coverage distinction: finite monitors intentionally
+  exclude cells outside their requested window.
+- `maximize_directivity(..., log_ratio=True)` / the log-ratio directivity
+  objective fixes the wrong-sign gradient for power-changing design variables
+  by differentiating the full `log(U_target) - log(P_rad)` ratio instead of a
+  partially stopped absolute-power proxy.
+- The MSL S-parameter AD tests are restored to CPU CI, with checkpointed tape
+  usage so the lane remains covered without requiring GPU-only memory budgets.
+
 ### Fixed — waveguide port extractor correctness (2026-04-22)
 
 - **`_co_located_current_spectrum` sign flip.**  The H-derived DFT

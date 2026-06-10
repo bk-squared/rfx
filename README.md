@@ -11,9 +11,9 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.6.3** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, and ongoing validation for advanced lanes.
+**v1.6.3 package; current `main` after v1.6.3** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, structured setup guards, and port-family validation envelopes.
 
-> **Project status (April 2026):** `rfx` is still in active validation and early conceptualization. Treat the current `main` branch as an initial-stage release rather than a finalized, fully qualified simulator; the support surface, validation evidence, and higher-level workflows will continue to be tightened and expanded in upcoming iterations.
+> **Project status (June 2026):** `rfx` remains an actively validated research/product simulator. Use the uniform Cartesian Yee RF lane first; advanced lanes are promoted only inside explicitly documented evidence envelopes rather than as blanket simulator guarantees.
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://github.com/bk-squared/rfx/actions/workflows/test.yml/badge.svg)](https://github.com/bk-squared/rfx/actions)
@@ -22,7 +22,7 @@
 
 ## At a Glance
 
-The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. Non-uniform mesh, distributed execution, Floquet/Bloch, SBP-SAT subgridding, coaxial/advanced ports, and inverse-design extensions are under active validation.
+The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. Non-uniform mesh, distributed execution, Floquet/Bloch, SBP-SAT subgridding, generalized planar ports, and inverse-design extensions remain lane-scoped; coaxial line reflection and rectangular-waveguide S-matrices now have stronger port-family evidence envelopes documented below.
 
 | | |
 |---|---|
@@ -32,19 +32,20 @@ The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. No
 | **Conformal PEC** | Dey-Mittra method for 2nd-order accuracy on curved conductors |
 | **Multi-GPU** | Single-host multi-GPU distributed FDTD with 1D slab decomposition (experimental lane) |
 | **Waveguide modal ports** | Analytical TE/TM eigenmodes for documented rectangular-guide S-matrix envelopes |
-| **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC (experimental lane) |
+| **Coaxial line reflection** | One-port coaxial transmission-line reflection envelope via `compute_coaxial_line_reflection(...)` |
+| **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC (experimental lane; analytic/external promotion still pending) |
 | **Non-uniform x/y/z profiles** | Practical thin-substrate shadow lane with graded `dz` and per-cell `dx/dy` profiles |
 | **Published benchmark evidence** | 5-case benchmark against Balanis/Pozar (patch 1.97%, cavity 0.016%) |
 | **Regression checks** | CI and local checks support development without replacing feature-specific validation |
 
 ## Current main highlights
 
-- **Opt-in multi-GPU inverse design (v1.6.2+)**: `Simulation.forward(distributed=True)` and `optimize(..., distributed=True)` / `progressive_optimize(..., distributed=True)` on non-uniform meshes. Bit-perfect forward parity vs single-device and NaN-free gradients (Class A/B kernel tests). NU-only in this line; uniform-mesh distributed path uses the legacy `run(..., devices=...)`.
-- **Mesh-as-design-variable gradient (v1.6.2+)**: `jax.grad` w.r.t. `dz_profile` flows end-to-end through `Simulation.__init__.forward`, enabling joint `(eps, dz)` inverse design.
-- **Periodic × CPML correctness (v1.6.3)**: `set_periodic_axes("xy")` + `boundary="cpml"` now only allocates CPML on non-periodic faces. Required for normal-incidence absorber / FSS / RIS setups.
-- **Nonuniform is now documented as a usable shadow lane**, not as a vague half-supported footnote.
+- **Structured preflight and runtime guards (current `main`)**: `preflight()` and `preflight_sparameters()` return coded `PreflightReport` issues while remaining list/string compatible; `run()`, `forward()`, S-matrix calculators, sweeps, and optimizers now surface NaN/passivity/setup problems earlier.
+- **Coaxial line reflection envelope (current `main`)**: `compute_coaxial_line_reflection(...)` is the validated coaxial transmission-line reflection path, with analytic broad-E5 and independent MEEP broad-E4 short/open evidence; the older single-plane `compute_coaxial_s_matrix(...)` path is deprecated/experimental.
+- **Waveguide S-matrix memory control (current `main`)**: `compute_waveguide_s_matrix(checkpoint_segments=...)` threads segmented checkpointing through uniform waveguide extractors for AD-heavy runs with bit-identical forward results in regression tests.
+- **Periodic × CPML correctness (v1.6.3)**: `set_periodic_axes("xy")` + `boundary="cpml"` only allocates CPML on non-periodic faces. Required for normal-incidence absorber / FSS / RIS setups.
 - **Current practical anchors**: `examples/crossval/05_patch_antenna.py` for the patch cross-check and `examples/nonuniform_patch_demo.py` for a quick repo-local thin-substrate demo.
-- **Public docs separate lanes**: start with the uniform Yee RF lane; treat advanced features as experimental unless a guide says otherwise.
+- **Public docs separate lanes**: start with the uniform Yee RF lane; treat advanced features as experimental unless a guide or support matrix gives a narrower claims-bearing envelope.
 
 ## Installation
 
@@ -117,8 +118,9 @@ For practical public examples, start with `examples/crossval/05_patch_antenna.py
 for the patch workflow and `examples/crossval/11_waveguide_port_wr90.py` for
 rectangular waveguide ports. Treat non-uniform workflows as shadow unless the
 relevant guide says otherwise; treat distributed, Floquet/Bloch, subgridding,
-coaxial, and advanced inverse-design workflows as experimental unless the
-relevant guide says otherwise.
+generalized planar ports, and advanced inverse-design workflows as experimental
+unless the relevant guide says otherwise. Use the coaxial line reflection
+method only inside its documented coax transmission-line envelope.
 
 ## Key Features
 
@@ -135,7 +137,9 @@ relevant guide says otherwise.
 - Lumped/wire feed ports and lumped RLC (series/parallel ADE); calibrated
   S-parameter workflows depend on the selected port family
 - Rectangular waveguide modal ports (analytical TE/TM eigenmodes, documented
-  documented rectangular-guide workflow)
+  rectangular-guide workflow)
+- Coaxial transmission-line reflection through the documented
+  `compute_coaxial_line_reflection(...)` envelope
 - Floquet ports with Bloch periodic BC (experimental lane)
 - Oblique TFSF (2D TMz + TEz auxiliary grids)
 
@@ -147,7 +151,7 @@ relevant guide says otherwise.
 - Library: pec, fr4, rogers4003c, copper, alumina, water_20c, ...
 
 ### Analysis & Optimization
-- S-parameter tooling with per-family calculators: lumped/wire, MSL, and waveguide workflows use different APIs, while experimental families should be checked against current docs
+- S-parameter tooling with per-family calculators: lumped/wire, MSL, waveguide, and coaxial-line workflows use different APIs and evidence envelopes
 - Harminv resonance extraction (MPM)
 - Far-field, RCS, radiation patterns, polarization
 - Antenna metrics: gain, efficiency, HPBW, F/B ratio, bandwidth
@@ -228,7 +232,7 @@ Gitops-side snapshot/build CI lives in the deploy repo:
   title        = {rfx: JAX-based differentiable 3D FDTD simulator for RF engineering},
   institution  = {REMI Lab, Chungnam National University},
   year         = {2026},
-  version      = {1.5.0},
+  version      = {1.6.3},
   url          = {https://github.com/bk-squared/rfx}
 }
 ```

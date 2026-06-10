@@ -5,7 +5,7 @@ sidebar:
   order: 8
 ---
 
-This page is the **guide-side API entrypoint** for the stable v1.5.0 surface. Use it to decide which API
+This page is the **guide-side API entrypoint** for the current public surface. Use it to decide which API
 surface you need, then jump into the dedicated `/rfx/api/` pages.
 
 ## How to use the API docs
@@ -47,8 +47,9 @@ it exposes.
 - The current claims-bearing reference lane is the **uniform Cartesian Yee RF
   workflow**.
 - S-parameter APIs are port-family-specific: lumped/wire ports use
-  `run(compute_s_params=True)`, MSL ports use `compute_msl_s_matrix()`, and
-  waveguide ports use `compute_waveguide_s_matrix()`.
+  `run(compute_s_params=True)`, MSL ports use `compute_msl_s_matrix()`,
+  waveguide ports use `compute_waveguide_s_matrix()`, and coaxial line
+  reflection uses `compute_coaxial_line_reflection(...)`.
 - Non-uniform graded-z, distributed, Floquet/Bloch, ADI, and subgridding paths
   need to be read through the support-boundary lens, not as blanket guarantees.
 - Prefer the newest current recommended workflow pages when choosing a

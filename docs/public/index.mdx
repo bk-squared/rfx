@@ -18,7 +18,8 @@ Use rfx with explicit support lanes in mind:
 | **Recommended default: uniform Cartesian Yee RF workflows** | cavity and waveguide studies, patch-style resonance workflows, probes, Harminv, selected port/S-parameter workflows, and benchmarked far-field workflows | best place to start |
 | **Narrow guarded subgrid envelope** | one-sided PEC/no-CPML z-slab source/probe, static-material, and single-cell lumped-port S-parameter runs | supported only inside the subgridding guide boundary |
 | **Shadow** | non-uniform thin-substrate workflows | retained and tested, but not the claims-bearing default |
-| **Experimental / under active validation** | distributed execution, Floquet/Bloch workflows, general SBP-SAT subgridding, coaxial and advanced port workflows, and inverse-design extensions | useful for experiments; check current limitations |
+| **Port-family evidence envelopes** | rectangular-waveguide S-matrices and coaxial transmission-line reflection via the documented calculators | claims-bearing only inside the support-matrix envelope; not a universal port guarantee |
+| **Experimental / under active validation** | distributed execution, Floquet/Bloch workflows, general SBP-SAT subgridding, generalized planar/advanced ports, and inverse-design extensions | useful for experiments; check current limitations |
 
 The docs keep advanced features visible, but they should not be read as blanket guarantees.
 
@@ -32,7 +33,7 @@ The docs keep advanced features visible, but they should not be read as blanket 
 | **Differentiable simulation** | `jax.grad` through time-domain workflows for inverse design |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field utilities |
 | **Recommended examples** | current runnable scripts under `examples/crossval/` and `examples/inverse_design/` |
-| **Shadow / experimental lanes** | non-uniform mesh is shadow; distributed runs, Floquet/Bloch, general SBP-SAT subgridding, and coaxial/advanced ports are experimental |
+| **Shadow / experimental lanes** | non-uniform mesh is shadow; distributed runs, Floquet/Bloch, general SBP-SAT subgridding, generalized planar ports, and broad inverse-design extensions remain lane-scoped |
 
 ---
 
@@ -82,7 +83,7 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
 
 - [Simulation API](guide/api-reference/) — `Simulation`, `Result`, `auto_configure`, ports, NTFF, and design helpers
 - [Materials & Geometry](guide/materials-geometry/) — library materials, Debye/Lorentz, CSG shapes, PCB stackup
-- [Sources & Ports](guide/sources-ports/) — point sources, lumped/wire ports, waveguide ports, experimental Floquet/coaxial surfaces
+- [Sources & Ports](guide/sources-ports/) — point sources, lumped/wire ports, waveguide ports, coaxial-line reflection, and experimental Floquet surfaces
 - [Probes & S-Parameters](guide/probes-sparams/) — DFT probes, S-matrix helpers, Harminv, de-embedding, exports
 - [Memory Reduction](guide/memory-reduction/) — reduce FDTD/AD memory while preserving validation boundaries
 - [Non-Uniform Mesh](guide/nonuniform-mesh/) — shadow thin-substrate workflows

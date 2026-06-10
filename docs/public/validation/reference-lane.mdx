@@ -27,7 +27,8 @@ The following surfaces are real and useful, but should be treated as narrower th
 | distributed execution | scaling lane; check feature combinations before use |
 | Floquet/Bloch | experimental periodic/unit-cell workflow |
 | SBP-SAT subgridding | research/experimental local mesh refinement |
-| coaxial and advanced port workflows | under active calibration and validation |
+| coaxial transmission-line reflection | validated only through `compute_coaxial_line_reflection(...)` inside the coax-line envelope; older `compute_coaxial_s_matrix(...)` is deprecated/experimental |
+| generalized planar and other advanced port workflows | planned or under active calibration and validation |
 | inverse-design extensions | available for selected workflows; check examples and limitations |
 
 ## S-parameter API boundaries
@@ -35,7 +36,8 @@ The following surfaces are real and useful, but should be treated as narrower th
 - `run(compute_s_params=True)` is the full S-matrix API for lumped/wire `add_port(...)` workflows.
 - `compute_msl_s_matrix()` is the microstrip-line S-matrix API.
 - `compute_waveguide_s_matrix()` is the rectangular waveguide S-matrix API.
-- Coaxial and Floquet surfaces are experimental and should not be presented as the default S-parameter path.
+- `compute_coaxial_line_reflection(...)` is the current validated coaxial line-reflection method inside its documented envelope; `compute_coaxial_s_matrix(...)` remains deprecated/experimental.
+- Floquet surfaces are experimental and should not be presented as a default S-parameter path.
 
 ## Practical rule
 

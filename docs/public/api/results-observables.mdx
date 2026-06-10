@@ -31,9 +31,11 @@ sidebar:
 | `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult.s_params`, `ForwardResult.freqs` | differentiable S11 vectors, not a full multi-port matrix |
 | `compute_msl_s_matrix(...)` | `MSLSMatrixResult` | specialized microstrip-line workflow |
 | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | rectangular waveguide workflow |
+| `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | validated one-port coaxial transmission-line reflection envelope |
+| `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | deprecated/experimental single-plane V/I path |
 | `run(...)` with a single waveguide port | `Result.waveguide_sparams[name]` | diagnostic per-port output |
 
-Sources, TFSF, probes, DFT planes, flux monitors, coaxial ports, and Floquet ports do not automatically imply a promoted high-level S-matrix workflow.
+Sources, TFSF, probes, DFT planes, flux monitors, and Floquet ports do not automatically imply a promoted high-level S-matrix workflow; coaxial claims should route through the documented line-reflection method.
 
 ## Observable builders that feed `Result`
 
@@ -43,6 +45,12 @@ Sources, TFSF, probes, DFT planes, flux monitors, coaxial ports, and Floquet por
 | `add_dft_plane_probe(...)` | `dft_planes` | frequency-domain field slices |
 | `add_flux_monitor(...)` | `flux_monitors` | reflection / transmission bookkeeping |
 | `add_ntff_box(...)` | `ntff_data`, `ntff_box` | far-field accumulation |
+
+Finite-size flux monitors use the same per-cell Poynting integrand as the
+legacy full-plane path and now have regression coverage showing
+machine-precision agreement when both are summed over the same index window.
+Differences from `size=None` full-plane monitors are coverage choices, not a
+separate stability model.
 
 ## Resonance extraction
 
@@ -73,6 +81,6 @@ These helpers are useful for regression checks. They do not by themselves turn a
 For public docs, describe observables in simple terms:
 
 - `time_series` and Harminv are the recommended resonance path.
-- lumped/wire, MSL, and waveguide S-parameter workflows each have their own calculator.
+- lumped/wire, MSL, waveguide, and coaxial-line S-parameter/reflection workflows each have their own calculator and envelope.
 - NTFF/far-field outputs should be used where the relevant guide documents the workflow.
 - Other fields are real and useful, but should be treated as analysis surfaces until their support status is explicit.

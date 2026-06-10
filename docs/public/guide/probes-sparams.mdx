@@ -86,6 +86,7 @@ Use the calculator that matches the port family:
 | lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | S11 vectors in `ForwardResult.s_params` | differentiable workflow; check current limitations |
 | `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | specialized uniform-Yee workflow; broader support under active validation |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | recommended rectangular-guide workflow within documented limits |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, diagnostics | validated one-port coaxial line-reflection envelope; older `compute_coaxial_s_matrix(...)` is deprecated/experimental |
 
 Sources, TFSF, probes, DFT plane probes, and flux monitors are non-port
 observables. They do not define a port impedance or S-matrix reference.
@@ -165,6 +166,10 @@ wg = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
 S = wg.s_params      # (n_ports, n_ports, n_freqs)
 freqs = wg.freqs
 ```
+
+For memory-heavy uniform waveguide AD runs, pass
+`checkpoint_segments=K` to segment the reverse-mode tape. `K` must divide the
+timestep count; non-uniform waveguide extraction rejects the knob explicitly.
 
 `run(...)` can also expose per-port waveguide diagnostics:
 

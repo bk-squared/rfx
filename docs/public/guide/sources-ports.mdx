@@ -289,6 +289,6 @@ sim.add_tfsf_source(
 | `add_port(extent=...)` | Wire / probe-feed S-params | `run(compute_s_params=True)`; partial / under active validation, calibration caveated |
 | `add_msl_port()` | Full-strip microstrip-line S-matrix | `compute_msl_s_matrix()`; specialized uniform-Yee workflow; broader support under active validation |
 | `add_waveguide_port()` | Modal waveguide S-matrix | `compute_waveguide_s_matrix()`; recommended rectangular-guide workflow within documented limits |
-| `add_coaxial_port()` | Diagnostic coaxial geometry/source helper | experimental; under active validation |
+| `add_coaxial_port()` | Coaxial transmission-line reflection | `compute_coaxial_line_reflection()` inside the documented one-port line envelope; older `compute_coaxial_s_matrix()` is deprecated/experimental |
 | `add_floquet_port()` | Experimental periodic / unit-cell excitation | experimental periodic/unit-cell workflow |
 | `add_tfsf_source()` | RCS, scattering, plane-wave | No: not a port |

@@ -42,6 +42,10 @@ D = directivity(ff)  # (n_freqs,) in dBi
 print(f"Directivity: {D[0]:.1f} dBi")
 ```
 
+For inverse-design objectives that change total radiated power, use
+`maximize_directivity(..., log_ratio=True)` so the gradient follows the full
+directivity ratio instead of a stopped-power proxy.
+
 ## Radar Cross Section (RCS)
 
 RCS measures the electromagnetic scattering from a target illuminated by a plane wave.
