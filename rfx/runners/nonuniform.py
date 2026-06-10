@@ -30,10 +30,18 @@ def build_nonuniform_grid(
     ``dx_profile`` / ``dy_profile`` are optional; when omitted the
     corresponding axis is uniform with spacing ``dx`` across
     ``domain``. ``pec_faces`` / ``pmc_faces`` force per-face pad=0 on
-    the listed faces (v1.7.5 PMC+CPML composition fix on the NU path).
+    the listed faces (PMC+CPML composition fix on the NU path, 2026-04).
     """
     if dx is None:
         dx = C0 / freq_max / 20.0
+    if dz_profile is None:
+        # Synthesise the uniform dz profile LOCALLY (pure) when only
+        # dx/dy are non-uniform. This used to be done at every
+        # forward()/run()/runner call site via
+        # ``sim._dz_profile = np.full(...)``, permanently mutating sim
+        # state as a side effect of execution (roadmap W1.3).
+        nz_phys = max(1, int(round(domain[2] / dx)))
+        dz_profile = np.full(nz_phys, float(dx))
     domain_xy = (domain[0], domain[1])
     return make_nonuniform_grid(
         domain_xy, dz_profile, dx, cpml_layers,
@@ -101,7 +109,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     pos_vec[axis_idx] = entry.x_position
     x_index = pos_to_nu_index(grid, tuple(pos_vec))[axis_idx]
 
-    # v1.7.5 per-face NU allocation: pass (pad_lo, pad_hi) for each axis.
+    # Per-face NU allocation (2026-04): pass (pad_lo, pad_hi) for each axis.
     pads_lo_hi = {
         "x": (grid.pad_x_lo, grid.pad_x_hi),
         "y": (grid.pad_y_lo, grid.pad_y_hi),

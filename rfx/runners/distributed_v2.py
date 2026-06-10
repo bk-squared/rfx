@@ -570,7 +570,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         devices = jax.devices()
     n_devices = len(devices)
 
-    # Resolve PMC faces (v1.7.4 T8). ``BoundarySpec.pmc_faces()`` returns
+    # Resolve PMC faces (T8, 2026-04). ``BoundarySpec.pmc_faces()`` returns
     # a set; freeze it so it is safely closed-over by the traced scan
     # bodies below.
     _pmc_faces_frozen = frozenset(
@@ -599,11 +599,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         or getattr(sim, "_dy_profile", None) is not None
     )
     if is_nu:
-        # Synthesize a uniform dz profile when only dx/dy are non-uniform
-        # (same shim the single-device NU path uses in api.py).
-        if sim._dz_profile is None:
-            nz_phys = max(1, int(round(sim._domain[2] / sim._dx)))
-            sim._dz_profile = np.full(nz_phys, float(sim._dx))
+        # dz-profile synthesis happens locally inside
+        # _build_nonuniform_grid() — no sim-state mutation here.
         grid = sim._build_nonuniform_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask = (
             sim._assemble_materials_nu(grid)
@@ -1249,7 +1246,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             st,
         )
 
-        # 3b. PMC face (H-tangential = 0) — v1.7.4 T8. H-half hook per
+        # 3b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
         #     OQ9: after H ghost exchange, before E update. PMC must
         #     fire before the next E-update reads H via curl.
         st = _apply_pmc_shmap(
@@ -1302,7 +1299,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             st,
         )
 
-        # 2b. PMC face (H-tangential = 0) — v1.7.4 T8. H-half hook per
+        # 2b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
         #     OQ9: after H ghost exchange, before E update.
         st = _apply_pmc_shmap(
             st, mesh, n_devices, nx_local, _pmc_faces_frozen)

@@ -297,6 +297,30 @@ def _build_full_scan_fn(
     has_waveguide = len(sim._waveguide_ports) > 0
     has_dispersion = debye_spec is not None or lorentz_spec is not None
 
+    # Allowlist guard: the vmap scan bodies implement ONLY pec/periodic
+    # walls and CPML. Anything below must take the sequential fallback
+    # (return None) or it would be SILENTLY DROPPED from the swept runs:
+    #   - boundary='upml': neither scan body applies a UPML step, so the
+    #     fast path would run with no absorber at all;
+    #   - lumped RLC elements: not wired into either scan body;
+    #   - flux monitors / DFT planes / NTFF: frequency-domain accumulators
+    #     exist only in the canonical Simulation.run() loop;
+    #   - non-uniform mesh profiles: scan bodies assume a uniform grid.
+    if boundary == "upml":
+        return None
+    if getattr(sim, "_lumped_rlc", None):
+        return None
+    if getattr(sim, "_flux_monitors", None) or getattr(sim, "_dft_planes", None):
+        return None
+    if getattr(sim, "_ntff", None) is not None:
+        return None
+    if (
+        getattr(sim, "_dx_profile", None) is not None
+        or getattr(sim, "_dy_profile", None) is not None
+        or getattr(sim, "_dz_profile", None) is not None
+    ):
+        return None
+
     # Build sources and probes from the simulation.
     # For CPML J-sources the Cb coefficient depends on material properties
     # at the source cell, so we store *raw* (un-normalized) waveforms and

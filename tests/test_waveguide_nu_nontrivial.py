@@ -386,49 +386,52 @@ def test_nu_nontrivial_slab_verdict():
     print(f"\n[NU-VALIDATE] NU passivity (|S11|²+|S21|²): "
           f"{np.array2string(passivity_nu, precision=4)}  max={passivity_nu.max():.4f}")
 
-    # --- Verdict logic ---
-    injection_is_real = a_inc_mag.mean() > 1e-25
-    reflection_is_real = s11_nu.max() > 0.02
-    s21_agrees = np.abs(s21_nu - s21_uni).max() < 0.15
-    passivity_ok = passivity_nu.max() <= 1.10
+    # --- Verdict logic (roadmap W1.5 split) ---
+    # These two gates HOLD on main today and must HARD-FAIL on regression.
+    # The previous runtime ``pytest.xfail(...)`` here was always non-strict,
+    # so ANY regression (including in these passing gates) reported as
+    # green-"xfailed" forever.
+    assert a_inc_mag.mean() > 1e-25, (
+        f"NU injection at noise floor: mean|a_inc|={a_inc_mag.mean():.3e} "
+        "<= 1e-25. NU-DRIVE-FIX has REGRESSED for non-trivial devices."
+    )
+    assert passivity_nu.max() <= 1.10, (
+        f"Passivity violation: max(|S11|²+|S21|²)={passivity_nu.max():.4f} > 1.10."
+    )
 
-    verdict_pass = injection_is_real and reflection_is_real and s21_agrees and passivity_ok
+    # The genuinely-unvalidated claims (NU reflection magnitude and
+    # NU-vs-uniform S21 agreement) live in
+    # test_nu_nontrivial_matches_uniform below under a decorator-level
+    # STRICT xfail, so the day the NU lane is fixed they XPASS-fail and
+    # force promotion to hard gates.
 
-    if not verdict_pass:
-        fail_parts = []
-        if not injection_is_real:
-            fail_parts.append(
-                f"NU injection at noise floor: mean|a_inc|={a_inc_mag.mean():.3e} <= 1e-25. "
-                "NU-DRIVE-FIX is NOT complete for non-trivial devices."
-            )
-        if not reflection_is_real:
-            fail_parts.append(
-                f"|S11_nu| max={s11_nu.max():.4f} <= 0.02 — no reflection registered; "
-                "NU S11 is at noise, not physical slab reflection."
-            )
-        if not s21_agrees:
-            fail_parts.append(
-                f"|S21_nu - S21_uni| max={np.abs(s21_nu - s21_uni).max():.4f} >= 0.15 — "
-                "NU disagrees with uniform path by more than tolerance."
-            )
-        if not passivity_ok:
-            fail_parts.append(
-                f"Passivity violation: max(|S11|²+|S21|²)={passivity_nu.max():.4f} > 1.10."
-            )
-        pytest.xfail(
-            "NU-VALIDATE: NU NOT validated for non-trivial devices — "
-            "NU-DRIVE-FIX REOPENED. Evidence: " + "; ".join(fail_parts)
-        )
 
-    # Asserts only reached when verdict_pass=True
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "NU S-matrix is at noise level for non-trivial devices "
+        "(|S11_nu|~1e-4, ~50x below uniform; device-run b cancels against "
+        "reference-run b; root cause OPEN — see rfx-known-issues item 'NU "
+        "non-trivial device'). XPASS = the NU lane was fixed: promote these "
+        "asserts into test_nu_nontrivial_slab_verdict and update the "
+        "known-issues entry."
+    ),
+)
+def test_nu_nontrivial_matches_uniform():
+    """Strict-xfail tripwire for the unvalidated NU claims (W1.5)."""
+    res_nu = _get_nu_result()
+    res_uni = _get_uni_result()
+    s_nu = np.array(res_nu.s_params)
+    s_uni = np.array(res_uni.s_params)
+    s11_nu = np.abs(s_nu[0, 0, :])
+    s21_nu = np.abs(s_nu[1, 0, :])
+    s21_uni = np.abs(s_uni[1, 0, :])
+
     assert s11_nu.max() > 0.02, (
         f"|S11_nu| max={s11_nu.max():.4f} — slab should produce measurable reflection"
     )
     assert np.abs(s21_nu - s21_uni).max() < 0.15, (
         f"|S21_nu - S21_uni| max={np.abs(s21_nu - s21_uni).max():.4f} >= 0.15"
-    )
-    assert passivity_nu.max() <= 1.10, (
-        f"Passivity violation: max(|S11|²+|S21|²)={passivity_nu.max():.4f}"
     )
 
 

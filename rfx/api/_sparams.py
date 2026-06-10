@@ -241,6 +241,19 @@ class _SparamMixin:
                 unsupported.append("normalize=True or normalize='flux' is required")
             if any(entry.n_modes > 1 for entry in entries):
                 unsupported.append("multi-mode ports (n_modes>1) are not supported")
+            # The NU extractor has no eps/sigma/subpixel inputs; accepting
+            # these kwargs and forwarding nothing would silently break the
+            # documented differentiable channel (G-AD-WIRE-WG2).
+            if eps_override is not None:
+                unsupported.append(
+                    "eps_override (differentiable AD channel) is not wired on the NU path"
+                )
+            if sigma_override is not None:
+                unsupported.append(
+                    "sigma_override (differentiable AD channel) is not wired on the NU path"
+                )
+            if subpixel_smoothing:
+                unsupported.append("subpixel_smoothing is not supported")
             if unsupported:
                 raise NotImplementedError(
                     "compute_waveguide_s_matrix() on a non-uniform mesh "

@@ -174,7 +174,7 @@ class _CompileMixin:
         # (equivalent to UPML).  Each CPML face copies the interior-edge
         # slice outward, as if the geometry continued beyond the domain.
         if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
-            # v1.7.5: per-face allocation (pad_{axis}_lo / _hi). Reflector /
+            # Per-face allocation (2026-04): (pad_{axis}_lo / _hi). Reflector /
             # periodic faces have pad=0 on that side and the corresponding
             # replicate step is skipped so the interior cells are not
             # overwritten. The replicate depth matches the actual
@@ -448,6 +448,8 @@ class _CompileMixin:
         synthesised from the scalar ``dx`` when the profile is not set.
         """
         from rfx.runners.nonuniform import build_nonuniform_grid
+        # dz=None is synthesised locally inside build_nonuniform_grid()
+        # (pure — sim state is never mutated by a grid build).
         return build_nonuniform_grid(
             self._freq_max, self._domain, self._dx, self._cpml_layers,
             self._dz_profile,
