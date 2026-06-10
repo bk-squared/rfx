@@ -34,7 +34,7 @@ The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. No
 | **Waveguide modal ports** | Analytical TE/TM eigenmodes for documented rectangular-guide S-matrix envelopes |
 | **Coaxial line reflection** | One-port coaxial transmission-line reflection envelope via `compute_coaxial_line_reflection(...)` |
 | **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC (experimental lane; analytic/external promotion still pending) |
-| **Non-uniform x/y/z profiles** | Practical thin-substrate shadow lane with graded `dz` and per-cell `dx/dy` profiles |
+| **Non-uniform x/y/z profiles** | Thin-substrate shadow lane (graded `dz`, per-cell `dx/dy`); forward fields validated — NU **S-matrix extraction of non-trivial devices is an open issue** (strict-xfail tracked) and rejects the differentiable overrides rather than silently dropping them |
 | **Published benchmark evidence** | 5-case benchmark against Balanis/Pozar (patch 1.97%, cavity 0.016%) |
 | **Regression checks** | CI and local checks support development without replacing feature-specific validation |
 
@@ -84,6 +84,51 @@ result = sim.run(n_steps=8000)
 modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
 print(f"Resonance: {modes[0].freq/1e9:.4f} GHz  Q={modes[0].Q:.0f}")
 ```
+
+## Differentiable S-Parameters
+
+`jax.grad` flows end-to-end through the **public S-parameter API** — the
+gradient of a measured S-parameter with respect to material design variables
+in one call, no adjoint plumbing:
+
+```python
+import jax
+
+def objective(eps_plug):
+    eps = base_eps.at[plug_region].set(eps_plug)   # design variable
+    res = sim.compute_waveguide_s_matrix(normalize=True, eps_override=eps)
+    s11 = res.s_params[0, 0, target_freq_idx]
+    return jnp.abs(s11) ** 2
+
+grad_fn = jax.grad(objective)        # that's the whole adjoint setup
+g = grad_fn(2.0)
+```
+
+The runnable version with a finite-difference cross-check is
+[`examples/inverse_design/differentiable_s11_design.py`](examples/inverse_design/differentiable_s11_design.py)
+(measured: FD↔AD relative error 4.5e-4, ~15 s on CPU). The CI-gated
+correctness lock is `tests/test_sparam_ad_end_to_end.py`. Memory-bounded
+reverse mode for long runs is available via `checkpoint_segments`.
+
+## For AI Agents
+
+rfx ships agent-facing operating docs designed for autonomous use from a
+fresh clone:
+
+- [Agent overview & operating rules](docs/agent/overview.mdx) — safe-lane
+  defaults and a prompt skeleton
+- [Repo map & feature discovery](docs/agent/repo-map.mdx) — grep the API
+  surface before writing low-level code
+- [Port & source selection](docs/agent/port-selection.mdx) — device class →
+  primitive → validated compute path
+- Task recipes: [waveguide S-parameters](docs/agent/recipe-waveguide-sparams.mdx),
+  [R/T measurement](docs/agent/recipe-rt-measurement.mdx),
+  [resonance extraction](docs/agent/recipe-resonance-extraction.mdx)
+- Machine-readable support contracts:
+  [`docs/guides/support_matrix.json`](docs/guides/support_matrix.json),
+  [`docs/guides/sparameter_support_matrix.json`](docs/guides/sparameter_support_matrix.json)
+- Every `run()`/`forward()`/`optimize()` auto-runs a structured preflight
+  (machine-readable codes); S-matrix extractors auto-run a passivity guard.
 
 ## GPU Performance (Measured)
 
