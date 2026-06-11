@@ -32,11 +32,15 @@ run: |-
   # tests — distributed coverage lives in regular test files that set their
   # own XLA --xla_force_host_platform_device_count sentinel and run in the
   # fast suite. Re-add a '-m distributed' step here if the marker gains tests.
+  # POSIX-safe rc capture (the VESSL runner shell is busybox-ash:
+  # ${PIPESTATUS[0]} is a bashism and died with 'bad substitution' on
+  # proof run 369367242339 — pytest itself completed fine).
   set +e
   timeout 13800 python -m pytest -m gpu -q -ra -p no:cacheprovider \
-    2>&1 | tee "$out/gpu_suite.log"
-  rc=${PIPESTATUS[0]}
+    > "$out/gpu_suite.log" 2>&1
+  rc=$?
   set -e
+  tail -n 60 "$out/gpu_suite.log"
   echo "$rc" > "$out/gpu_suite.rc"
   echo "=== summary ==="
   tail -n 30 "$out/gpu_suite.log" | grep -E "passed|failed|error|skipped" || true
