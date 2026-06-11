@@ -41,3 +41,109 @@ jobs:
           --ignore=tests/test_meep_crossval_patch.py
           --ignore=tests/test_openems_crossval.py
           --ignore=tests/test_crossval_comprehensive.py
+
+  # ---------------------------------------------------------------------------
+  # Scheduled / manual external-reference crossval lane (roadmap W2.5b).
+  #
+  # Runs the Meep/analytic crossval scripts against a REAL conda-forge Meep so
+  # the rfx-vs-Meep cross-checks are actually exercised (the slow-tests job
+  # above deliberately --ignores every Meep crossval test because the CI image
+  # has no Meep). This is a SCHEDULED + MANUAL lane only — never a PR gate.
+  #
+  # NOTE / correction to the roadmap text: the roadmap said "pip-installed
+  # Meep", but Meep ships only via conda-forge (pymeep); there is no working
+  # pip wheel. This job uses the conda-forge path (setup-miniconda + mamba
+  # install -c conda-forge pymeep) instead.
+  #
+  # Exit-code convention (per script, see examples/crossval/*.py docstrings):
+  #   0 -> full PASS incl. external reference        => table row PASS
+  #   1 -> rfx self-check failed (real physics/infra) => table row FAIL, job RED
+  #   2 -> self-check OK but reference missing        => table row SKIP, job green
+  # The job fails (red) iff any script exits 1. exit 2 is surfaced as a visible
+  # SKIP in the step summary but never silently turns the lane green.
+  crossval-external:
+    # Existing slow-tests stays on the workflow's Monday cron untouched; this
+    # lane shares the same schedule + manual dispatch and is gated so adding it
+    # does not change any other job's behaviour.
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 6 * * 1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # cv02 ring resonator with real Meep can be slow
+    defaults:
+      run:
+        shell: bash -el {0}  # login shell so the conda env is active per step
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up conda (miniforge + mamba)
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.11"
+          miniforge-version: latest
+          use-mamba: true
+          activate-environment: rfx-crossval
+
+      - name: Install Meep from conda-forge
+        run: mamba install -y -c conda-forge pymeep "numpy>=1.26,<2"
+
+      - name: Install rfx package
+        run: pip install -e ".[dev]"
+
+      - name: Run external-reference crossval scripts (per-script exit codes)
+        run: |
+          set -uo pipefail
+          mkdir -p crossval_logs
+          export PYTHONPATH="$PWD"
+          export MPLBACKEND=Agg
+          export JAX_ENABLE_X64=1
+
+          # Six scripts under the W2.5 retrofit. cv09/cv10 are pure analytic /
+          # internal references (no external dep) — included so the lane also
+          # exercises them end to end.
+          scripts=(
+            01_waveguide_bend
+            02_ring_resonator
+            03_straight_waveguide_flux
+            04_multilayer_fresnel
+            09_half_symmetric_waveguide
+            10_pmc_cpml_half_symmetric
+          )
+
+          echo "## rfx external-reference crossval lane" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| script | exit | verdict |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|------|---------|" >> "$GITHUB_STEP_SUMMARY"
+
+          fail=0
+          for s in "${scripts[@]}"; do
+            log="crossval_logs/${s}.log"
+            echo ">>> running ${s} ..."
+            # Per-script generous timeout (cv02 with real Meep is the slowest).
+            timeout 5400 python "examples/crossval/${s}.py" > "$log" 2>&1
+            code=$?
+            case $code in
+              0) verdict="PASS (full crossval incl. reference)";;
+              2) verdict="SKIP (reference missing — inconclusive)";;
+              124) verdict="TIMEOUT"; fail=1;;
+              *) verdict="FAIL (rfx self-check / numeric gate)"; fail=1;;
+            esac
+            echo "    -> exit=${code}  ${verdict}"
+            echo "| ${s} | ${code} | ${verdict} |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$fail" -ne 0 ]; then
+            echo "**Lane result: FAIL** — at least one script exited 1 (or timed out)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Lane result: green** (any SKIP rows are inconclusive, not pass)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$fail"
+
+      - name: Upload per-script crossval logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crossval-external-logs
+          path: crossval_logs/
+          retention-days: 30
