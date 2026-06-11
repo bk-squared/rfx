@@ -1,0 +1,106 @@
+---
+title: "Recipe: End-to-End Design Loop"
+description: "From device class to a gradient-optimized design with a validation verdict: port selection, AD-safe compute path, objective, optimizer, and final checks — with the currently-blocked lanes stated honestly."
+sidebar:
+  order: 12
+---
+
+Use this recipe to run a complete gradient-based design loop. It chains the
+pages that each cover one decision: device class → port family → AD-safe
+compute path → objective → optimizer → validation verdict. The
+[prompt templates](./prompt-templates) stop before optimization; this page
+goes to the end — including which lanes are *not* ready for closed-loop
+design today.
+
+## The chain
+
+1. **Device class → port family.** Use the
+   [port selection page](./port-selection). The port family determines the
+   compute path and therefore which design lane (below) applies.
+2. **Check the compute path is AD-safe.** The
+   [support matrix](../guides/sparameter_support_matrix.json) carries an
+   `ad_traceable` column per family with the evidence test named in
+   `ad_evidence`. Two verified nuances:
+   - Coaxial is `no` — `compute_coaxial_line_reflection` breaks the tape
+     by construction (numpy matrix-pencil).
+   - Waveguide `yes` covers the default extraction (`normalize=False`);
+     `normalize='flux'` breaks the tape
+     ([#148](https://github.com/bk-squared/rfx/issues/148)).
+3. **Pick the design lane.**
+4. **Validate the final design — never ship the loss number alone.**
+
+## Lane A — `optimize()` / `forward(port_s11_freqs=...)` (SUPPORTED)
+
+For lumped and wire-port devices, this is the supported end-to-end loop,
+and it is CI-gated: `tests/test_minimize_s11_at_freq_physical.py` runs a
+physical S11 design objective through `forward()` on every PR.
+
+- Objectives come from `rfx.optimize_objectives` (`minimize_s11`,
+  `maximize_s21`, `target_impedance`, `minimize_reflected_energy`,
+  `minimize_s11_at_freq_wave_decomp`, …).
+- Drive it via `optimize(sim, region, objective, ...)` with a
+  `DesignRegion`, or hand-roll `jax.value_and_grad` over
+  `sim.forward(port_s11_freqs=...)`.
+- Memory sizing: `n_steps` / `num_periods` control the AD tape; for large
+  step counts pass `checkpoint_segments` (≈2× compute for ≈√n_steps
+  memory; uniform single-device path only — non-uniform and
+  `distributed=True` raise).
+- Pass `port_s11_freqs=...` whenever the objective reads port S11.
+
+## Lane B — direct `jax.grad` through the S-matrix API (GRADIENT-VERIFIED, design-blocked)
+
+`jax.grad` flows end-to-end through `sim.compute_waveguide_s_matrix(...,
+eps_override=eps(theta))` and `compute_msl_s_matrix` — the gradient itself
+is accurate (AD↔FD relative error ~4.5e-4;
+`examples/inverse_design/differentiable_s11_design.py`, gated by
+`tests/test_sparam_ad_end_to_end.py`). The objective callables from
+`rfx.optimize_objectives` compose here too — they accept any result
+exposing `.s_params` / `.freqs`.
+
+**However, closed-loop waveguide design on this lane is currently
+blocked**, verified 2026-06-11: on a preflight-clean dielectric two-slab
+toy, the extracted |S11| grows non-passive with run length under both
+`normalize=False` and `normalize='flux'`
+([#150](https://github.com/bk-squared/rfx/issues/150)) — an optimizer fed
+those numbers chases an extraction artifact, and `validate_port_smatrix`
+on the final design fails passivity. Until #150 is resolved, use Lane B
+for gradient/sensitivity studies, not for trusting the optimized |S11|
+value. MSL Lane B does not have an equivalent verified toy yet.
+
+## Validation step (both lanes)
+
+- `rfx.validate_port_smatrix(result)` — passivity/shape verdict. A
+  `passivity_violation` issue means the *extraction* is not trustworthy
+  at that configuration; stop and triage, don't re-tune the design.
+- Re-run the final design with preflight visible (`sim.preflight()`) and
+  quote every warning — the loops above usually suppress warnings inside
+  `jax.grad`.
+- Check run-length invariance: re-measure the final design at 2× n_steps.
+  If the S-parameters move materially, the measurement was not converged
+  and the "optimum" is suspect.
+- Check the full |S11(f)| curve, not just the objective bin.
+
+## Verified pitfalls (each cost a real debugging round)
+
+- **Below-cutoff port frequencies NaN the gradient.** Every waveguide-port
+  frequency must be above the guide cutoff (WR-90 TE10: ~6.56 GHz). The
+  forward |S| stays finite; only the gradient NaNs — a silent trap. Pass
+  explicit `freqs=` to `add_waveguide_port`.
+- **Ports inside the CPML.** `cpml_layers=8` at dx=2mm is a 16mm absorber
+  per side — easy to park a port inside it. `sim.preflight()` flags this
+  exactly; never optimize with warnings suppressed before reading them
+  once ([#149](https://github.com/bk-squared/rfx/issues/149)).
+- **`compute_waveguide_s_matrix` takes no `freqs` argument** — the result
+  carries its own grid (`res.freqs`); select bins from it.
+- **An improving loss is not an improving design.** In the blocked-lane
+  toy, the optimizer "improved" the loss 100× by saturating the design
+  variable — the underlying extraction was the thing moving. The
+  validation step above is what catches this.
+
+## Related
+
+- [Design workflows](./design-workflows) — broader optimization context.
+- [Parameter sweeps](./recipe-parameter-sweeps) — scanning instead of
+  optimizing.
+- [Failed-gate triage](./recipe-failed-gate-triage) — when the validation
+  verdict fails.
