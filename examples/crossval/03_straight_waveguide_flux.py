@@ -28,14 +28,23 @@ Meep tutorial parameters:
 
 Pass criteria (each must hold):
   - rfx self-transmission T_rfx(f_peak) ∈ [0.95, 1.05]
-  - Meep self-transmission T_meep(f_peak) ∈ [0.95, 1.05]
-  - |T_rfx(f_peak) − T_meep(f_peak)| < 0.05
+  - Meep self-transmission T_meep(f_peak) ∈ [0.95, 1.05]   (only when Meep ran)
+  - |T_rfx(f_peak) − T_meep(f_peak)| < 0.05                 (only when Meep ran)
+
+Exit codes (rfx crossval convention):
+  0 = all PASS including the Meep cross-check
+  1 = rfx self-check failed (broken physics / infra)
+  2 = rfx self-check OK but Meep reference is unavailable — inconclusive
+      crossval, NOT a pass. CI must not treat this as green.
 
 Run:
   JAX_ENABLE_X64=1 python examples/crossval/03_straight_waveguide_flux.py
 """
 
-import os, sys, math, time
+import os
+import sys
+import math
+import time
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import matplotlib; matplotlib.use("Agg")
@@ -100,48 +109,70 @@ print("=" * 70)
 print("PART 1: Meep — two flux monitors, T = flux_out / flux_in")
 print("=" * 70)
 
-import meep as mp
+try:
+    import meep as mp
+except Exception as _e:
+    # Catch ImportError AND any exception during import (a Meep wheel built
+    # against NumPy 1.x crashes under NumPy 2.x with "numpy.core.multiarray
+    # failed to import"). Treat as reference-missing — the rfx self-check
+    # (PART 2) still runs below and the script exits 2, not 0.
+    HAVE_MEEP = False
+    print(f"[SKIP] external reference unavailable (Meep: {type(_e).__name__}: "
+          f"{_e}) — exit 2")
+    print("       rfx self-transmission self-check still runs; "
+          "NOT a crossval PASS.")
+    # rfx still needs a frequency grid + a peak index. Build a Meep-style
+    # frequency band around the carrier and pick the peak from rfx flux_in.
+    meep_freqs = np.linspace(fcen - df / 2, fcen + df / 2, n_freqs)
+    meep_total_t = 400.0  # ~Meep stop_when_fields_decayed wall in time units
+    f_peak_meep = float(fcen)
+    T_meep_peak = float("nan")
+    T_meep = None
+    peak_idx = None  # resolved from rfx flux_in below when Meep is absent
+else:
+    HAVE_MEEP = True
 
-cell_meep = mp.Vector3(sx + 2 * dpml, sy)
-pml_meep = [mp.PML(dpml, direction=mp.X)]
-geo_meep = [mp.Block(size=mp.Vector3(mp.inf, wg_width, mp.inf),
-                     center=mp.Vector3(),
-                     material=mp.Medium(epsilon=eps_wg))]
-src_meep = [mp.Source(mp.GaussianSource(fcen, fwidth=df),
-                      component=mp.Ez,
-                      center=mp.Vector3(src_x_meep, 0),
-                      size=mp.Vector3(0, wg_width))]
+if HAVE_MEEP:
+    cell_meep = mp.Vector3(sx + 2 * dpml, sy)
+    pml_meep = [mp.PML(dpml, direction=mp.X)]
+    geo_meep = [mp.Block(size=mp.Vector3(mp.inf, wg_width, mp.inf),
+                         center=mp.Vector3(),
+                         material=mp.Medium(epsilon=eps_wg))]
+    src_meep = [mp.Source(mp.GaussianSource(fcen, fwidth=df),
+                          component=mp.Ez,
+                          center=mp.Vector3(src_x_meep, 0),
+                          size=mp.Vector3(0, wg_width))]
 
-sim_meep = mp.Simulation(cell_size=cell_meep, boundary_layers=pml_meep,
-                         geometry=geo_meep, sources=src_meep,
-                         resolution=resolution)
+    sim_meep = mp.Simulation(cell_size=cell_meep, boundary_layers=pml_meep,
+                             geometry=geo_meep, sources=src_meep,
+                             resolution=resolution)
 
-flux_in_mon_m = sim_meep.add_flux(fcen, df, n_freqs,
-    mp.FluxRegion(center=mp.Vector3(flux_in_meep, 0),
-                  size=mp.Vector3(0, 2 * wg_width)))
-flux_out_mon_m = sim_meep.add_flux(fcen, df, n_freqs,
-    mp.FluxRegion(center=mp.Vector3(flux_out_meep, 0),
-                  size=mp.Vector3(0, 2 * wg_width)))
+    flux_in_mon_m = sim_meep.add_flux(fcen, df, n_freqs,
+        mp.FluxRegion(center=mp.Vector3(flux_in_meep, 0),
+                      size=mp.Vector3(0, 2 * wg_width)))
+    flux_out_mon_m = sim_meep.add_flux(fcen, df, n_freqs,
+        mp.FluxRegion(center=mp.Vector3(flux_out_meep, 0),
+                      size=mp.Vector3(0, 2 * wg_width)))
 
-sim_meep.run(until_after_sources=mp.stop_when_fields_decayed(
-    50, mp.Ez, mp.Vector3(flux_out_meep, 0), 1e-3))
+    sim_meep.run(until_after_sources=mp.stop_when_fields_decayed(
+        50, mp.Ez, mp.Vector3(flux_out_meep, 0), 1e-3))
 
-meep_flux_in  = np.array(mp.get_fluxes(flux_in_mon_m))
-meep_flux_out = np.array(mp.get_fluxes(flux_out_mon_m))
-meep_freqs = np.array(mp.get_flux_freqs(flux_in_mon_m))
-meep_total_t = sim_meep.meep_time()
+    meep_flux_in  = np.array(mp.get_fluxes(flux_in_mon_m))
+    meep_flux_out = np.array(mp.get_fluxes(flux_out_mon_m))
+    meep_freqs = np.array(mp.get_flux_freqs(flux_in_mon_m))
+    meep_total_t = sim_meep.meep_time()
 
-# Guard against numerical flux-in ≈ 0 near band edges
-eps_flux = float(np.max(np.abs(meep_flux_in))) * 1e-6
-T_meep = meep_flux_out / np.where(np.abs(meep_flux_in) > eps_flux,
-                                   meep_flux_in, eps_flux)
+    # Guard against numerical flux-in ≈ 0 near band edges
+    eps_flux = float(np.max(np.abs(meep_flux_in))) * 1e-6
+    T_meep = meep_flux_out / np.where(np.abs(meep_flux_in) > eps_flux,
+                                       meep_flux_in, eps_flux)
 
-peak_idx = int(np.argmax(np.abs(meep_flux_in)))
-f_peak_meep = float(meep_freqs[peak_idx])
-T_meep_peak = float(T_meep[peak_idx])
-print(f"  Meep: ran {meep_total_t:.0f} time units")
-print(f"  peak frequency (by flux_in magnitude): {f_peak_meep:.4f}")
-print(f"  T_meep(f_peak) = {T_meep_peak:.4f}")
+    peak_idx = int(np.argmax(np.abs(meep_flux_in)))
+    f_peak_meep = float(meep_freqs[peak_idx])
+    T_meep_peak = float(T_meep[peak_idx])
+    print(f"  Meep: ran {meep_total_t:.0f} time units")
+    print(f"  peak frequency (by flux_in magnitude): {f_peak_meep:.4f}")
+    print(f"  T_meep(f_peak) = {T_meep_peak:.4f}")
 
 # =============================================================================
 # PART 2: rfx — same two-monitor measurement
@@ -197,6 +228,10 @@ flux_out_rfx_arr = np.asarray(flux_spectrum(res_rfx.flux_monitors["flux_out"]))
 eps_flux_r = float(np.max(np.abs(flux_in_rfx_arr))) * 1e-6
 T_rfx = flux_out_rfx_arr / np.where(np.abs(flux_in_rfx_arr) > eps_flux_r,
                                      flux_in_rfx_arr, eps_flux_r)
+if peak_idx is None:
+    # Meep absent: pick the peak frequency from rfx's own flux_in magnitude.
+    peak_idx = int(np.argmax(np.abs(flux_in_rfx_arr)))
+    f_peak_meep = float(meep_freqs[peak_idx])
 T_rfx_peak = float(T_rfx[peak_idx])
 print(f"  T_rfx(f_peak) = {T_rfx_peak:.4f}")
 
@@ -210,8 +245,9 @@ print("=" * 70)
 fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
 
 ax = axes[0]
-ax.plot(meep_freqs, meep_flux_in,  "b-",  lw=2, label="Meep flux_in")
-ax.plot(meep_freqs, meep_flux_out, "b--", lw=2, label="Meep flux_out")
+if HAVE_MEEP:
+    ax.plot(meep_freqs, meep_flux_in,  "b-",  lw=2, label="Meep flux_in")
+    ax.plot(meep_freqs, meep_flux_out, "b--", lw=2, label="Meep flux_out")
 ax.plot(meep_freqs, flux_in_rfx_arr,  "r-",  lw=1.3, label="rfx flux_in")
 ax.plot(meep_freqs, flux_out_rfx_arr, "r--", lw=1.3, label="rfx flux_out")
 ax.axvline(f_peak_meep, color="k", ls=":", alpha=0.5, label=f"f_peak={f_peak_meep:.3f}")
@@ -221,7 +257,8 @@ ax.set_title("Absolute flux spectra")
 ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
 
 ax = axes[1]
-ax.plot(meep_freqs, T_meep, "b-", lw=2, label=f"Meep  T(f_peak)={T_meep_peak:.3f}")
+if HAVE_MEEP:
+    ax.plot(meep_freqs, T_meep, "b-", lw=2, label=f"Meep  T(f_peak)={T_meep_peak:.3f}")
 ax.plot(meep_freqs, T_rfx,  "r--", lw=1.5, label=f"rfx   T(f_peak)={T_rfx_peak:.3f}")
 ax.axhline(1.0, color="k", ls=":", alpha=0.5)
 ax.axvline(f_peak_meep, color="k", ls=":", alpha=0.5)
@@ -250,15 +287,33 @@ def _in_range(x, lo, hi): return lo <= x <= hi
 tol_self  = 0.05        # each sim's own T(f_peak) must be within [0.95, 1.05]
 tol_cross = 0.05        # |T_rfx − T_meep| at peak must be < 0.05
 
-pass_self_rfx  = _in_range(T_rfx_peak,  1.0 - tol_self, 1.0 + tol_self)
-pass_self_meep = _in_range(T_meep_peak, 1.0 - tol_self, 1.0 + tol_self)
-delta_cross    = abs(T_rfx_peak - T_meep_peak)
-pass_cross     = delta_cross < tol_cross
+# rfx self-check (does NOT depend on Meep).
+pass_self_rfx = _in_range(T_rfx_peak, 1.0 - tol_self, 1.0 + tol_self)
+print(f"  rfx self-T  @ f_peak: {T_rfx_peak:.4f}   "
+      f"{'PASS' if pass_self_rfx else 'FAIL'} (gate 1.0 ± {tol_self})")
 
-print(f"  rfx self-T  @ f_peak: {T_rfx_peak:.4f}   {'PASS' if pass_self_rfx  else 'FAIL'} (gate 1.0 ± {tol_self})")
-print(f"  meep self-T @ f_peak: {T_meep_peak:.4f}   {'PASS' if pass_self_meep else 'FAIL'} (gate 1.0 ± {tol_self})")
-print(f"  |T_rfx − T_meep| @ f_peak: {delta_cross:.4f}  {'PASS' if pass_cross     else 'FAIL'} (gate < {tol_cross})")
+if HAVE_MEEP:
+    pass_self_meep = _in_range(T_meep_peak, 1.0 - tol_self, 1.0 + tol_self)
+    delta_cross    = abs(T_rfx_peak - T_meep_peak)
+    pass_cross     = delta_cross < tol_cross
+    print(f"  meep self-T @ f_peak: {T_meep_peak:.4f}   "
+          f"{'PASS' if pass_self_meep else 'FAIL'} (gate 1.0 ± {tol_self})")
+    print(f"  |T_rfx − T_meep| @ f_peak: {delta_cross:.4f}  "
+          f"{'PASS' if pass_cross else 'FAIL'} (gate < {tol_cross})")
+else:
+    print("  meep self-T @ f_peak: SKIP  (Meep reference unavailable)")
+    print("  |T_rfx − T_meep| @ f_peak: SKIP  (Meep reference unavailable)")
 
+# =============================================================================
+# Exit code (rfx crossval convention)
+# =============================================================================
+if not pass_self_rfx:
+    print("\nSOME CHECKS FAILED — rfx self-check failed (exit 1)")
+    sys.exit(1)
+if not HAVE_MEEP:
+    print("\nrfx SELF-CHECK PASSED")
+    print("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)")
+    sys.exit(2)
 PASS = pass_self_rfx and pass_self_meep and pass_cross
 print("\n" + ("ALL CHECKS PASSED" if PASS else "SOME CHECKS FAILED"))
 sys.exit(0 if PASS else 1)

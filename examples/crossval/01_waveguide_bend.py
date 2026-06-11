@@ -35,10 +35,17 @@ PASS criteria:
 
 Reference: https://meep.readthedocs.io/en/latest/Python_Tutorials/Basics/
 
+Exit codes (rfx crossval convention):
+  0 = all PASS including the Meep cross-check
+  1 = rfx self-check failed (broken physics / infra)
+  2 = rfx self-check OK but Meep reference is unavailable — inconclusive
+      crossval, NOT a pass. CI must not treat this as green.
+
 Save: examples/crossval/01_waveguide_bend.png
 """
 
 import os
+import sys
 import time
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
@@ -207,8 +214,14 @@ try:
     above_r = (f_ref > f_cutoff + 0.005) & (f_ref < 0.20)
     meep_mean = float(np.mean(uniform_filter1d(T_meep, size=20)[above_r]))
     print(f"  Meep T = {meep_mean:.4f}")
-except ImportError:
-    print("\nMeep not available — skipping reference comparison")
+except Exception as _e:
+    # Catch ImportError AND any exception raised while importing/running Meep
+    # (e.g. a Meep wheel compiled against NumPy 1.x crashing under NumPy 2.x
+    # raises ImportError "numpy.core.multiarray failed to import"). The rfx
+    # self-checks above have already run; this only disables the reference.
+    print(f"\n[SKIP] external reference unavailable (Meep: {type(_e).__name__}: "
+          f"{_e}) — exit 2")
+    print("       rfx self-checks still run; this is NOT a crossval PASS.")
 
 # =============================================================================
 # Validation
@@ -301,7 +314,22 @@ plt.savefig(out_path, dpi=150)
 plt.close()
 print(f"\nPlot saved: {out_path}")
 
+# =============================================================================
+# Exit code (rfx crossval convention)
+# =============================================================================
+# `PASS` tracks the rfx self-checks AND, when Meep ran, the |rfx − Meep| gate.
+# Separate the two so a missing reference exits 2 (inconclusive) rather than 0.
+if meep_mean is None:
+    # rfx self-check ran but the Meep reference was unavailable.
+    if PASS:
+        print("\nrfx SELF-CHECKS PASSED")
+        print("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)")
+        sys.exit(2)
+    print("\nSOME CHECKS FAILED")
+    sys.exit(1)
+
 if PASS:
     print("\nALL CHECKS PASSED")
-else:
-    print("\nSOME CHECKS FAILED")
+    sys.exit(0)
+print("\nSOME CHECKS FAILED")
+sys.exit(1)
