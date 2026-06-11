@@ -195,33 +195,65 @@ def _build_batched_materials(
 # ---------------------------------------------------------------------------
 # Core: vmapped FDTD scan
 # ---------------------------------------------------------------------------
+#
+# W6.6: ``run()`` material sweeps need two FDTD loops — a PEC/periodic-walls
+# loop and a CPML loop — that were previously two ~50-line near-identical scan
+# bodies.  ``_build_vmap_scan_fn`` is the single parameterized builder; the two
+# callers differ ONLY in:
+#   * ``use_cpml`` — carry the per-step CPML psi-state and apply the CPML
+#     H/E sub-steps (PEC/periodic carries just the field state);
+#   * the J-source Cb-scaling pre-pass — CPML J-sources need their waveforms
+#     scaled by the material-dependent Cb at the source cell, computed inside
+#     ``run_one`` from the actual (batch-element) material arrays.
+# Everything else — Yee H/E update, PEC walls, pec-mask, non-J soft sources,
+# probe sampling, dtypes, sub-step ordering — is identical and shared.  This is
+# pure code motion; numerics are unchanged (see W6.6 bit-identity gate).
 
-def _build_scan_fn(
+
+def _build_vmap_scan_fn(
     grid,
     n_steps: int,
     *,
-    boundary: str = "pec",
+    use_cpml: bool = False,
     sources: list[SourceSpec] | None = None,
+    j_source_raw_info: list[tuple] | None = None,
     probes: list[ProbeSpec] | None = None,
     periodic: tuple[bool, bool, bool] = (False, False, False),
+    cpml_axes: str = "xyz",
     pec_axes: str = "xyz",
     pec_mask=None,
 ):
     """Build a pure function ``f(materials) -> time_series`` suitable for vmap.
 
-    This constructs a minimal FDTD loop (H update -> E update -> PEC ->
-    sources -> probes) without CPML, dispersion, TFSF, DFT planes, or
-    waveguide ports.  For the common material-sweep use case (PEC cavity
-    or simple probe measurement), this covers the needed physics.
+    Constructs a minimal FDTD loop (H update -> [CPML H] -> E update ->
+    [CPML E] -> PEC -> sources -> probes) without dispersion, TFSF, DFT
+    planes, or waveguide ports.  For the common material-sweep use case
+    (PEC cavity, CPML absorber, or simple probe measurement) this covers the
+    needed physics.
+
+    Parameters
+    ----------
+    use_cpml : bool
+        If True, the scan carry additionally holds the CPML psi-state and the
+        CPML H/E sub-steps are applied; J-source waveforms are Cb-normalized
+        per batch element from the actual material arrays.
+    j_source_raw_info : list of (i, j, k, component, raw_waveform)
+        Only used when ``use_cpml``.  Raw (un-Cb-normalized) J-source
+        waveforms + cell indices so Cb can be computed dynamically inside the
+        vmapped function from the actual material arrays.
     """
     dt = grid.dt
     dx = grid.dx
     sources = sources or []
+    j_source_raw_info = j_source_raw_info or []
     probes = probes or []
 
     use_pec_mask = pec_mask is not None
 
-    # Precompute source waveform matrix
+    if use_cpml:
+        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
+
+    # Precompute source waveform matrix (these don't depend on materials)
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
     else:
@@ -230,6 +262,20 @@ def _build_scan_fn(
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
 
+    # J-source metadata: cell indices + component + raw (un-Cb-normalized)
+    # waveforms.  Only populated on the CPML path.
+    j_src_meta = [(i, j, k, comp) for i, j, k, comp, _ in j_source_raw_info]
+    if j_source_raw_info:
+        j_src_raw_waveforms = jnp.stack(
+            [raw_wf for _, _, _, _, raw_wf in j_source_raw_info], axis=-1
+        )  # (n_steps, n_j_sources)
+    else:
+        j_src_raw_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+
+    # Initialize CPML once (shared across batch)
+    if use_cpml:
+        cpml_params, cpml_state_init = init_cpml(grid)
+
     def run_one(materials: MaterialArrays) -> jnp.ndarray:
         """Run a single FDTD simulation with the given materials.
 
@@ -237,15 +283,41 @@ def _build_scan_fn(
         """
         fdtd = init_state(grid.shape)
 
+        # Compute Cb-normalized J-source waveforms from the actual materials.
+        # Cb = (dt / eps) / (1 + loss) where eps = eps_r * EPS_0,
+        # loss = sigma * dt / (2 * eps)
+        if j_source_raw_info:
+            j_cb_scales = []
+            for si, sj, sk, sc in j_src_meta:
+                eps = materials.eps_r[si, sj, sk] * EPS_0
+                sigma_val = materials.sigma[si, sj, sk]
+                loss = sigma_val * dt / (2.0 * eps)
+                cb = (dt / eps) / (1.0 + loss)
+                j_cb_scales.append(cb)
+            j_cb_arr = jnp.stack(j_cb_scales)  # (n_j_sources,)
+            # Scale raw waveforms: (n_steps, n_j_sources) * (n_j_sources,)
+            j_src_waveforms = j_src_raw_waveforms * j_cb_arr[None, :]
+        else:
+            j_src_waveforms = j_src_raw_waveforms
+
         def step_fn(carry, xs):
-            _step_idx, src_vals = xs
-            st = carry
+            _step_idx, src_vals, j_src_vals = xs
+            if use_cpml:
+                st, cpml_st = carry
+            else:
+                st = carry
 
             # H update
             st = update_h(st, materials, dt, dx, periodic=periodic)
+            if use_cpml:
+                st, cpml_st = apply_cpml_h(
+                    st, cpml_params, cpml_st, grid, cpml_axes)
 
             # E update
             st = update_e(st, materials, dt, dx, periodic=periodic)
+            if use_cpml:
+                st, cpml_st = apply_cpml_e(
+                    st, cpml_params, cpml_st, grid, cpml_axes)
 
             # PEC boundaries
             if pec_axes:
@@ -255,10 +327,16 @@ def _build_scan_fn(
                 from rfx.boundaries.pec import apply_pec_mask
                 st = apply_pec_mask(st, pec_mask)
 
-            # Soft sources
+            # Non-J soft sources (raw field add, no Cb dependence)
             for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
                 field = getattr(st, sc)
                 field = field.at[si, sj, sk].add(src_vals[idx_s])
+                st = st._replace(**{sc: field})
+
+            # J-sources (Cb-normalized, material-dependent); CPML path only
+            for idx_j, (si, sj, sk, sc) in enumerate(j_src_meta):
+                field = getattr(st, sc)
+                field = field.at[si, sj, sk].add(j_src_vals[idx_j])
                 st = st._replace(**{sc: field})
 
             # Probe samples
@@ -266,10 +344,20 @@ def _build_scan_fn(
                        for pi, pj, pk, pc in prb_meta]
             probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
 
+            if use_cpml:
+                return (st, cpml_st), probe_out
             return st, probe_out
 
-        xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
-        _, time_series = jax.lax.scan(step_fn, fdtd, xs)
+        xs = (
+            jnp.arange(n_steps, dtype=jnp.int32),
+            src_waveforms,
+            j_src_waveforms,
+        )
+        if use_cpml:
+            init_carry = (fdtd, cpml_state_init)
+        else:
+            init_carry = fdtd
+        _, time_series = jax.lax.scan(step_fn, init_carry, xs)
         return time_series
 
     return run_one
@@ -371,8 +459,9 @@ def _build_full_scan_fn(
         if boundary == "cpml":
             # CPML requires its own state management.  For the vmapped path,
             # we build a scan function that includes CPML handling.
-            return _build_cpml_scan_fn(
+            return _build_vmap_scan_fn(
                 grid, n_steps,
+                use_cpml=True,
                 sources=sources,
                 j_source_raw_info=j_source_raw_info,
                 probes=probes,
@@ -382,9 +471,9 @@ def _build_full_scan_fn(
                 pec_mask=pec_mask,
             )
         else:
-            return _build_scan_fn(
+            return _build_vmap_scan_fn(
                 grid, n_steps,
-                boundary=boundary,
+                use_cpml=False,
                 sources=sources,
                 probes=probes,
                 periodic=periodic,
@@ -394,125 +483,6 @@ def _build_full_scan_fn(
 
     # Fallback: for complex sims, run sequentially (not vmapped)
     return None
-
-
-def _build_cpml_scan_fn(
-    grid,
-    n_steps: int,
-    *,
-    sources: list[SourceSpec] | None = None,
-    j_source_raw_info: list[tuple] | None = None,
-    probes: list[ProbeSpec] | None = None,
-    periodic: tuple[bool, bool, bool] = (False, False, False),
-    cpml_axes: str = "xyz",
-    pec_axes: str = "xyz",
-    pec_mask=None,
-):
-    """Build a vmappable FDTD scan function with CPML boundaries.
-
-    J-sources (Cb-normalized) are computed dynamically from the actual
-    material arrays so that the Cb coefficient is correct for each
-    batch element in the vmap sweep.
-    """
-    from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
-
-    dt = grid.dt
-    dx = grid.dx
-    sources = sources or []
-    j_source_raw_info = j_source_raw_info or []
-    probes = probes or []
-
-    use_pec_mask = pec_mask is not None
-
-    # Precompute non-J source waveform matrix (these don't depend on materials)
-    if sources:
-        src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
-
-    src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
-    prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
-
-    # J-source metadata: cell indices + component + raw (un-Cb-normalized) waveforms
-    j_src_meta = [(i, j, k, comp) for i, j, k, comp, _ in j_source_raw_info]
-    if j_source_raw_info:
-        j_src_raw_waveforms = jnp.stack(
-            [raw_wf for _, _, _, _, raw_wf in j_source_raw_info], axis=-1
-        )  # (n_steps, n_j_sources)
-    else:
-        j_src_raw_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
-
-    # Initialize CPML once (shared across batch)
-    cpml_params, cpml_state_init = init_cpml(grid)
-
-    def run_one(materials: MaterialArrays) -> jnp.ndarray:
-        fdtd = init_state(grid.shape)
-        cpml_state = cpml_state_init
-
-        # Compute Cb-normalized J-source waveforms from the actual materials.
-        # Cb = (dt / eps) / (1 + loss) where eps = eps_r * EPS_0, loss = sigma * dt / (2 * eps)
-        if j_source_raw_info:
-            j_cb_scales = []
-            for si, sj, sk, sc in j_src_meta:
-                eps = materials.eps_r[si, sj, sk] * EPS_0
-                sigma_val = materials.sigma[si, sj, sk]
-                loss = sigma_val * dt / (2.0 * eps)
-                cb = (dt / eps) / (1.0 + loss)
-                j_cb_scales.append(cb)
-            j_cb_arr = jnp.stack(j_cb_scales)  # (n_j_sources,)
-            # Scale raw waveforms: (n_steps, n_j_sources) * (n_j_sources,)
-            j_src_waveforms = j_src_raw_waveforms * j_cb_arr[None, :]
-        else:
-            j_src_waveforms = j_src_raw_waveforms
-
-        def step_fn(carry, xs):
-            _step_idx, src_vals, j_src_vals = xs
-            st, cpml_st = carry
-
-            # H update
-            st = update_h(st, materials, dt, dx, periodic=periodic)
-            st, cpml_new = apply_cpml_h(st, cpml_params, cpml_st, grid, cpml_axes)
-
-            # E update
-            st = update_e(st, materials, dt, dx, periodic=periodic)
-            st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new, grid, cpml_axes)
-
-            # PEC boundaries
-            if pec_axes:
-                st = apply_pec(st, axes=pec_axes)
-
-            if use_pec_mask:
-                from rfx.boundaries.pec import apply_pec_mask
-                st = apply_pec_mask(st, pec_mask)
-
-            # Non-J soft sources (raw field add, no Cb dependence)
-            for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
-                field = getattr(st, sc)
-                field = field.at[si, sj, sk].add(src_vals[idx_s])
-                st = st._replace(**{sc: field})
-
-            # J-sources (Cb-normalized, material-dependent)
-            for idx_j, (si, sj, sk, sc) in enumerate(j_src_meta):
-                field = getattr(st, sc)
-                field = field.at[si, sj, sk].add(j_src_vals[idx_j])
-                st = st._replace(**{sc: field})
-
-            # Probe samples
-            samples = [getattr(st, pc)[pi, pj, pk]
-                       for pi, pj, pk, pc in prb_meta]
-            probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
-
-            return (st, cpml_new), probe_out
-
-        xs = (
-            jnp.arange(n_steps, dtype=jnp.int32),
-            src_waveforms,
-            j_src_waveforms,
-        )
-        _, time_series = jax.lax.scan(step_fn, (fdtd, cpml_state), xs)
-        return time_series
-
-    return run_one
 
 
 # ---------------------------------------------------------------------------
