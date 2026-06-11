@@ -66,7 +66,9 @@ class VmapSweepResult:
 
     def peak_field(self) -> np.ndarray:
         """Return peak |probe value| per batch element."""
-        return np.max(np.abs(self.time_series), axis=(1, 2))
+        from rfx.sweep import peak_abs_field
+
+        return peak_abs_field(self.time_series, axis=(1, 2))
 
 
 # ---------------------------------------------------------------------------

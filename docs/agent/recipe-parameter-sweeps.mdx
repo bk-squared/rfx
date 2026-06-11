@@ -1,0 +1,60 @@
+---
+title: "Recipe: Parameter Sweeps"
+description: "Choosing between parametric_sweep, vmap_material_sweep, and ntff_sweep — what each lane supports and where each one is the wrong tool."
+sidebar:
+  order: 11
+---
+
+rfx has three sweep entry points. Pick by **what varies** between sweep
+points, not by what is convenient to write.
+
+## Decision tree
+
+1. **Geometry or structure changes per point** (patch length, slot gap,
+   port position, …) → `parametric_sweep(sim_factory, param_name,
+   param_values)`. Runs one full simulation per value, so it works with
+   everything — ports, S-parameters, NTFF. Returns a `SweepResult` with
+   `.s11_min_db()` / `.peak_field()` extractors and `plot_sweep` for
+   visualization.
+2. **Only a material parameter changes** (`"eps_r"`, `"sigma"`, `"mu_r"`,
+   or scoped to one material as `"substrate.eps_r"`) →
+   `vmap_material_sweep`. The entire FDTD time loop is `jax.vmap`-ed into
+   a single fused kernel — typically the fastest option on GPU, with
+   memory scaling as `n_batch × grid_size`.
+   - The vmap fast path supports **only**: PEC/periodic walls, CPML
+     absorbing boundaries, soft sources, and point probes.
+   - Simulations using UPML, lumped RLC elements, TFSF, material
+     dispersion, waveguide ports, DFT planes, flux monitors, NTFF, or a
+     non-uniform mesh take a **sequential fallback** — same results,
+     without the fused-kernel speedup. The fallback carries the full
+     material specification (including Kerr χ³).
+3. **Far-field over many frequencies** where the NTFF accumulator
+   dominates memory → `ntff_sweep(sim, freqs, batch_size=…)`. Requires
+   `add_ntff_box(...)` on the simulation; accumulates in memory-bounded
+   frequency batches and returns the merged NTFF data.
+
+## Where each lane is the wrong tool
+
+- A hand-rolled Python loop over `sim.run()` for a material-only sweep
+  gives up the fused-kernel speedup that lane 2 exists for.
+- `vmap_material_sweep` cannot sweep geometry — only material fields are
+  batchable; geometry changes the stamped arrays themselves.
+- If you want to *optimize* a parameter with gradients rather than scan
+  it, none of these lanes apply — use `forward()` / `optimize()` (see the
+  [design workflows page](./design-workflows)).
+
+## Result containers
+
+Both result classes share one metric kernel (`rfx.sweep.peak_abs_field`):
+
+- `SweepResult.peak_field()` — one value per sweep point (NaN where a
+  result has no probe time series).
+- `VmapSweepResult.peak_field()` — vectorized over the stacked
+  `(n_batch, n_steps, n_probes)` array.
+
+## Related
+
+- [Port & source selection](./port-selection) — choose the primitive
+  before sweeping it.
+- [Failed-gate triage](./recipe-failed-gate-triage) — if a sweep surfaces
+  a gate failure.
