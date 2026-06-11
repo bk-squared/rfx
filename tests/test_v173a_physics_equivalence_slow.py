@@ -29,7 +29,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = REPO_ROOT / "tests" / "data" / "v173a_pre_t7_phase2_baseline.json"
-SCRIPTS_DIR = REPO_ROOT / "scripts"
+SCRIPTS_DIR = REPO_ROOT / "scripts" / "harnesses"
 
 
 @pytest.mark.slow_physics

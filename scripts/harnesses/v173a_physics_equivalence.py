@@ -8,8 +8,8 @@ Runs a downsized FR4 patch antenna in rfx, extracts (f_res via Harminv,
 
 Intended run pattern:
 
-    git checkout bebdd57 && python scripts/v173a_physics_equivalence.py > v173a_pre.json
-    git checkout main    && python scripts/v173a_physics_equivalence.py > v173a_post.json
+    git checkout bebdd57 && python scripts/harnesses/v173a_physics_equivalence.py > v173a_pre.json
+    git checkout main    && python scripts/harnesses/v173a_physics_equivalence.py > v173a_post.json
     python -c "import json; pre=json.loads(open('v173a_pre.json').read()); post=json.loads(open('v173a_post.json').read()); df = abs(pre['f_res_hz']-post['f_res_hz'])/pre['f_res_hz']*100; ds = abs(pre['s11_dip_db']-post['s11_dip_db']); print(f'df={df:.3f}%, ds={ds:.3f} dB')"
 
 Acceptance thresholds (T7 Phase 2 refactor target):
@@ -27,8 +27,17 @@ from __future__ import annotations
 import json
 import sys
 import subprocess
+from pathlib import Path
 
 import numpy as np
+
+# Promoted from scripts/ to scripts/harnesses/ (W6.7): this file now lives two
+# levels below the repo root, so put the repo root on sys.path to keep
+# ``from rfx import ...`` working when run directly (``python
+# scripts/harnesses/v173a_physics_equivalence.py``) without an editable install.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from rfx import Simulation, Box
 from rfx.harminv import harminv
