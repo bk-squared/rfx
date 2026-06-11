@@ -1,0 +1,117 @@
+---
+title: "Benchmark Table"
+description: "Each A/B cross-validation case mapped to its named upstream reference, with metric, accept envelope, reproduce command, and last-touched commit."
+sidebar:
+  order: 8
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page is the per-case companion to [Cross-Validation and Accuracy](../validation/).
+It lists every cross-validation script in `examples/crossval/` that has reached
+**A/B (validated)** status, maps it to its **named upstream reference**, and gives
+the exact **reproduce command** plus the accept **envelope** taken from the
+script's own gate code. For the high-level lane guidance and support boundaries,
+read [Cross-Validation and Accuracy](../validation/) first; for a feature-level
+solver comparison see [Solver Comparison](../comparison/).
+
+<Aside type="note" title="Numbers come from the scripts">
+  Every metric and tolerance below is copied from the named script's own
+  docstring and `assert` / gate block. The accept envelope is what the script
+  enforces; it is not a separate marketing claim. Where a script is a
+  *diagnostic reporter* rather than a regression lock, this page says so.
+</Aside>
+
+## Exit-code convention
+
+Each crossval script returns a standard exit code, which the
+[CPU runner](#reproduce-on-cpu) uses to classify outcomes:
+
+| Exit | Meaning |
+|------|---------|
+| `0` | All checks passed, including any external-reference cross-check. |
+| `1` | A self-check / numeric accept gate failed (broken physics or infra). |
+| `2` | Self-check OK, but an external reference or optional dependency (e.g. OpenEMS) is missing — an **inconclusive** crossval, *not* a pass. |
+
+Two scripts (`01`, `04`) print a `PASS` / `FAIL` summary but exit `0`
+regardless; the runner additionally scans their output for the failure line.
+
+## A/B cross-validation cases
+
+`L` is the last-touched commit of the script (`git log -1 --format=%h -- <script>`);
+treat it as "when the gate was last changed", not a re-run timestamp.
+
+| Case | What it validates | Upstream reference | Headline metric → accept envelope | Reproduce | L |
+|------|-------------------|--------------------|-----------------------------------|-----------|---|
+| `01_waveguide_bend` | 90° dielectric waveguide-bend transmittance | **Meep** "Basics" tutorial (bend) | smoothed mean `T ∈ [0.3, 1.0]`; straight self-`T ∈ [0.95, 1.05]`; `\|rfx − Meep\| < 0.10` | `python examples/crossval/01_waveguide_bend.py` | `4da9415` |
+| `02_ring_resonator` | Ring-resonator resonant-mode frequencies | **Meep** "Basics" tutorial #3 (ring modes) + Harminv | mean mode-freq error `< 5%`; ≥ 2 modes matched rfx↔Meep | `python examples/crossval/02_ring_resonator.py` | `4da9415` |
+| `03_straight_waveguide_flux` | Straight-waveguide transmission (energy conservation) | **Meep** "Basics" tutorial #1 | rfx & Meep self-`T(f_peak) ∈ [0.95, 1.05]`; `\|T_rfx − T_meep\| < 0.05` | `python examples/crossval/03_straight_waveguide_flux.py` | `d9de380` |
+| `04_multilayer_fresnel` | Normal-incidence slab `R(f)`, `T(f)` | **Analytic** transfer-matrix / Fresnel (Taflove Ch. 5) | `T` mean err, `R` mean err, `R+T` energy dev each `< 0.05` | `python examples/crossval/04_multilayer_fresnel.py` | `4da9415` |
+| `05_patch_antenna` | 2.4 GHz rectangular patch resonance on FR4 | **OpenEMS** "Simple Patch Antenna" tutorial; **Balanis** TL analytic | rfx vs OpenEMS Harminv `< 20%`; rfx vs Balanis TL `< 10%`; rfx self-consistency `< 5%`; `\|S11\| ≤ 1` | `python examples/crossval/05_patch_antenna.py` | `c7071d7` |
+| `06_msl_notch_filter` | MSL open-stub notch-filter (non-uniform wire-port lane) | **OpenEMS** `MSL_NotchFilter.py` tutorial (`thliebig/openEMS`) | notch freq vs analytic `< 15%`; vs OpenEMS `< 15%`; `\|S11\| < 1.5`; `\|S21\| > 1e-3` | `python examples/crossval/06_msl_notch_filter.py` | `c7071d7` |
+| `06b_msl_notch_filter_uniform` | Same notch physics via distributed `add_msl_port` (uniform mesh) | **Analytic** quarter-wave stub notch | notch freq vs analytic `< 15%`; notch depth `< −10 dB`; `Z₀ median ∈ (40, 65) Ω` | `python examples/crossval/06b_msl_notch_filter_uniform.py` | `c7071d7` |
+| `09_half_symmetric_waveguide` | PMC symmetry-plane vs full PEC cavity (TE₁₀₁) | **Analytic** rectangular-cavity (Pozar Ch. 6) | `f_full`, `f_half` each within `10%` of analytic; `\|f_full − f_half\|/f_full < 5%` | `python examples/crossval/09_half_symmetric_waveguide.py` | `4da9415` |
+| `10_pmc_cpml_half_symmetric` | PMC+CPML per-face composition (regression lock) | **Internal** physical expectation (no external solver) | peak spread `(max−min)/max < 0.02` per path; no NaN/Inf; both uniform + NU paths | `python examples/crossval/10_pmc_cpml_half_symmetric.py` | `18edbcd` |
+| `11_waveguide_port_wr90` | WR-90 waveguide-port S-parameters (3 geometries) | **Analytic** Airy + **Meep**/**Palace** reference JSON when present | empty-guide `max\|S11\| < 0.02`, `min\|S21\| > 0.97`; PEC-short mean `\|S11\| ∈ [0.97, 1.03]`; slab Airy `\|S\|` mean diffs + 60° phase / 0.30 complex-S envelope | `python examples/crossval/11_waveguide_port_wr90.py` | `c7071d7` |
+
+### Per-case notes (read these — the headline metric is not the whole story)
+
+- **`05_patch_antenna`** — the OpenEMS comparison requires CSXCAD + openEMS to be
+  installed. Without them the script exits `2` (SELF-CHECK-ONLY): it runs the rfx
+  Harminv and lumped-port `\|S11\|` self-checks but does *not* perform the OpenEMS
+  cross-check. The single-cell lumped port has a known parasitic reactance, so the
+  resonance shows as a shallow local `\|S11\|` dip; use the Harminv frequency as the
+  clean resonance and the dip only as a passivity / local-dip confirmation.
+- **`06_msl_notch_filter`** — uses the non-uniform wire-port shadow lane and is a
+  crossval **reporter**, not the source of a broad MSL-port S-parameter envelope.
+  It needs the OpenEMS reference `.npz`; without it the script exits `2`. The
+  dominant `\|S21\|` dip in this lane is a Fabry–Pérot null of the single-cell wire
+  port, not the stub resonance — see the script's own STATUS / KNOWN-LIMIT banner.
+- **`06b_msl_notch_filter_uniform`** — uses the distributed `add_msl_port` on a
+  uniform mesh; gates are physics-demo loose tolerances against the analytic
+  quarter-wave notch. The authoritative MSL-port correctness gates live in the
+  `tests/test_msl_port*.py` unit/integration tests, not in this demo.
+- **`11_waveguide_port_wr90`** — this script is explicitly a **diagnostic reporter**,
+  not a regression lock. The empty-guide and PEC-short magnitude gates pass
+  Meep-class; the single-slab gate passes under a *reference-convention-aware*
+  envelope (the 60° phase tolerance and 0.30 complex-S envelope exist because the
+  analytic Airy reference plane differs from the rfx/Meep monitor plane). The
+  authoritative correctness gates live in
+  `tests/test_waveguide_port_validation_battery.py`. When no external reference
+  JSON is present the script still runs the analytic gates.
+- **`10_pmc_cpml_half_symmetric`** — a regression lock with no external solver: it
+  asserts that absorber thickness on a far face does not change the interior peak
+  (the pre-fix bug decayed the peak 10 000× as CPML grew).
+
+### Not on this table
+
+- `12_subgrid_disjoint_prototype.py`, `13_subgrid_material_validation.py` —
+  subgrid **prototypes**, **not validated**. Excluded from the validated set and
+  from the CPU runner.
+
+## Reproduce on CPU
+
+A single runner executes the CPU-feasible subset and prints a per-case
+status table:
+
+```bash
+PYTHONPATH=. python scripts/run_crossval_cpu.py
+```
+
+It runs each script in a fresh subprocess with a per-script timeout and
+classifies each outcome as `PASS`, `SELF-CHECK-ONLY` (exit `2`), `FAIL`
+(exit `1`, real numeric-gate failure), `ENV-SKIP` (an optional reference solver
+such as Meep is installed but unimportable — an environment/packaging issue, not
+an rfx result), or `TIMEOUT`. The runner exits `0` iff no script ended in `FAIL`.
+
+**Excluded from the CPU subset (run on GPU):**
+
+- `06_msl_notch_filter` — exceeds ~10 min on CPU (non-uniform fine mesh +
+  graded-σ absorber) and also needs the OpenEMS reference `.npz`.
+- `06b_msl_notch_filter_uniform` — exceeds ~10 min on CPU (uniform fine mesh +
+  distributed MSL-port de-embedding).
+
+The Meep-referenced cases (`01`–`04`) require a Meep build matching the host's
+NumPy ABI. On a host where Meep is unimportable, the runner classifies them as
+`ENV-SKIP` rather than `FAIL`, and `01`/`04` still complete their rfx-side
+self-checks.
