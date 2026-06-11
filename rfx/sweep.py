@@ -35,6 +35,21 @@ def _require_mpl():
 
 
 # ---------------------------------------------------------------------------
+# Shared metric kernels (used by SweepResult here and VmapSweepResult in
+# rfx/vmap_sweep.py — keep ONE definition of each sweep metric)
+# ---------------------------------------------------------------------------
+
+def peak_abs_field(time_series, axis=None):
+    """Peak |field| of a probe time series.
+
+    ``axis=None`` reduces over everything (one sweep point → scalar);
+    a tuple reduces only those axes (batched time series → per-batch array).
+    """
+    a = np.abs(np.asarray(time_series))
+    return np.max(a) if axis is None else np.max(a, axis=axis)
+
+
+# ---------------------------------------------------------------------------
 # Result container
 # ---------------------------------------------------------------------------
 
@@ -80,7 +95,7 @@ class SweepResult:
         for r in self.results:
             ts = getattr(r, "time_series", None)
             if ts is not None:
-                vals.append(float(np.max(np.abs(np.asarray(ts)))))
+                vals.append(float(peak_abs_field(ts)))
             else:
                 vals.append(np.nan)
         return np.asarray(vals)
