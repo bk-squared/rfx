@@ -17,6 +17,21 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   and clean-checkout waveguide artifact tracking satisfy the manifest.  Do not
   turn one port-family promotion into a blanket S-parameter claim.
 
+### Removed — dead multimode waveguide extractor (2026-06-11)
+
+- Deleted the internal helper
+  `rfx.sources.waveguide_port.extract_multimode_s_params_normalized`.  It
+  was the would-be `normalize=True` multi-mode waveguide S-matrix extractor
+  but was never wired into the public API: `compute_waveguide_s_matrix`
+  raises for `normalize=True` with `n_modes > 1` (cross-mode channels hit a
+  0/0 in the two-run normalization) and routes multi-mode work to
+  `extract_multimode_s_matrix` or `extract_multimode_s_matrix_flux` instead.
+  Verified zero callers across `rfx/ tests/ examples/ scripts/ docs/`
+  (only its own definition plus two docstring cross-references, now
+  repointed at `extract_waveguide_s_params_normalized`).  The function was
+  not exported (no `__all__` entry, absent from `rfx/api/_sparams.py`
+  imports), so the public surface is unchanged.
+
 ### Added — preflight, finite-result, and automation guards (2026-06-10)
 
 - `Simulation.preflight()` and `preflight_sparameters()` now return coded

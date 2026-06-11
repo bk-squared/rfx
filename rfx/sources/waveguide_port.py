@@ -22,6 +22,42 @@ S21 is extracted using V/I forward-wave decomposition at two probe planes:
     S21(f)   = a_fwd_probe(f) / a_fwd_ref(f)
 This removes the worst standing-wave inflation of voltage-only ratios, though
 individual points can still deviate under finite-window/CPML error.
+
+S-matrix extractor decision table
+---------------------------------
+Which extractor runs is chosen by ``Simulation.compute_waveguide_s_matrix``
+(see ``rfx/api/_sparams.py``) from the ``normalize=`` argument, the number of
+modes per port, and the mesh path.  This module exports the extractors; the
+``compute_waveguide_s_matrix`` dispatch wires them as follows:
+
+    n_modes  mesh        normalize=    extractor called
+    -------  ----------  ------------  --------------------------------------
+    1        uniform     False         extract_waveguide_s_matrix
+    1        uniform     True          extract_waveguide_s_params_normalized
+    1        uniform     "flux"        extract_waveguide_s_matrix_flux
+    >1       uniform     False         extract_multimode_s_matrix
+    >1       uniform     True          (unsupported — raises ValueError)
+    >1       uniform     "flux"        extract_multimode_s_matrix_flux
+    1        non-uniform True/"flux"   inline flux/normalized logic in
+                                       compute_waveguide_s_matrix (mirrors the
+                                       uniform extractors; normalize=False and
+                                       multi-mode are unsupported on NU)
+
+``normalize=`` semantics:
+  - ``False`` — single-run V/I wave decomposition, no reference run.  Carries
+    documented Yee-dispersion + band-edge error (|S11| can exceed 1); cheapest.
+  - ``True``  — two-run reference normalization (``b_dev / b_ref`` off-diagonal,
+    ``(b_dev − b_ref) / a_inc`` diagonal).  Cancels one-way Yee dispersion for
+    transmission; AD-traceable.  Unsupported for multi-mode ports because the
+    empty-guide cross-mode reference ``b_ref ≈ 0`` produces a 0/0.
+  - ``"flux"`` — two-run power-flux magnitude (Poynting-flux ratio for the
+    single-mode path, ``0.5·Re(V·I*)`` modal-power ratio for the multi-mode
+    path) combined with modal-V/I phase.  Most robust at band edges; NOT
+    AD-traceable (drops to NumPy internally — issue #148).
+
+Open issue: waveguide flux extraction is not strictly passive at all run
+lengths (residual magnitude can drift slightly above unity — issue #150);
+this is a known, unfixed limitation, not addressed here.
 """
 
 from __future__ import annotations
@@ -2923,168 +2959,6 @@ def extract_multimode_s_matrix(
     return jnp.asarray(s_matrix), mode_map
 
 
-def extract_multimode_s_params_normalized(
-    grid,
-    materials,
-    ref_materials,
-    port_mode_cfgs: list[list[WaveguidePortConfig]],
-    n_steps: int,
-    *,
-    boundary: str = "cpml",
-    cpml_axes: str = "x",
-    pec_axes: str = "yz",
-    periodic: tuple[bool, bool, bool] | None = None,
-    debye: tuple | None = None,
-    lorentz: tuple | None = None,
-    ref_debye: tuple | None = None,
-    ref_lorentz: tuple | None = None,
-    ref_shifts: list[float] | tuple[float, ...] | None = None,
-    aniso_eps: tuple | None = None,
-) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
-    """Two-run normalized S-matrix for multi-mode waveguide ports.
-
-    The row/column ordering matches :func:`extract_multimode_s_matrix`.
-    Each drive mode gets its own empty-guide reference run. Channels with a
-    nonzero empty-guide through response are normalized by that reference
-    outgoing wave; reflection and mode-conversion channels subtract the
-    reference outgoing wave and normalize by the driven incident wave.
-    """
-    from rfx.simulation import run as run_simulation
-
-    flat_cfgs: list[WaveguidePortConfig] = []
-    mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
-    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
-        for mode_within, cfg in enumerate(mode_cfgs):
-            flat_cfgs.append(cfg)
-            mode_map.append((
-                port_idx,
-                mode_within,
-                cfg.mode_type,
-                _mode_indices_from_config(cfg),
-            ))
-
-    if len(flat_cfgs) < 2:
-        raise ValueError(
-            "extract_multimode_s_params_normalized requires at least two modal channels"
-        )
-
-    n_total = len(flat_cfgs)
-    n_freqs = len(flat_cfgs[0].freqs)
-    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=np.complex64)
-
-    n_ports = len(port_mode_cfgs)
-    if ref_shifts is None:
-        ref_shifts = tuple(0.0 for _ in range(n_ports))
-    if len(ref_shifts) != n_ports:
-        raise ValueError("ref_shifts must have one entry per physical port")
-    flat_ref_shifts: list[float] = []
-    for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
-        flat_ref_shifts.extend([float(ref_shifts[port_idx])] * len(mode_cfgs))
-
-    def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
-        zeros_t = jnp.zeros_like(cfg.v_probe_t)
-        return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
-            v_probe_t=zeros_t,
-            v_ref_t=zeros_t,
-            i_probe_t=zeros_t,
-            i_ref_t=zeros_t,
-            v_inc_t=zeros_t,
-            n_steps_recorded=jnp.zeros((), dtype=jnp.int32),
-        )
-
-    common_run_kw = dict(
-        boundary=boundary,
-        cpml_axes=cpml_axes,
-        pec_axes=pec_axes,
-        periodic=periodic,
-    )
-    orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
-
-    for drive_flat_idx in range(n_total):
-        ref_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
-            for idx, cfg in enumerate(flat_cfgs)
-        ]
-        ref_cfgs[drive_flat_idx] = ref_cfgs[drive_flat_idx]._replace(
-            src_amp=orig_amp,
-        )
-        ref_result = run_simulation(
-            grid, ref_materials, n_steps,
-            debye=ref_debye, lorentz=ref_lorentz,
-            waveguide_ports=ref_cfgs, **common_run_kw,
-        )
-        ref_final_cfgs = ref_result.waveguide_ports or ()
-        if len(ref_final_cfgs) != n_total:
-            raise RuntimeError(
-                f"Expected {n_total} reference waveguide configs, got {len(ref_final_cfgs)}"
-            )
-
-        a_inc_ref, _ = extract_waveguide_port_waves(
-            ref_final_cfgs[drive_flat_idx],
-            ref_shift=flat_ref_shifts[drive_flat_idx],
-        )
-        a_inc_ref_np = np.array(a_inc_ref)
-        safe_a_inc = np.where(
-            np.abs(a_inc_ref_np) > 1e-30,
-            a_inc_ref_np,
-            np.ones_like(a_inc_ref_np),
-        )
-
-        b_out_ref = []
-        for recv_idx, cfg in enumerate(ref_final_cfgs):
-            _, b_ref_i = extract_waveguide_port_waves(
-                cfg,
-                ref_shift=flat_ref_shifts[recv_idx],
-            )
-            b_out_ref.append(np.array(b_ref_i))
-
-        dev_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
-            for idx, cfg in enumerate(flat_cfgs)
-        ]
-        dev_cfgs[drive_flat_idx] = dev_cfgs[drive_flat_idx]._replace(
-            src_amp=orig_amp,
-        )
-        dev_result = run_simulation(
-            grid, materials, n_steps,
-            debye=debye, lorentz=lorentz,
-            waveguide_ports=dev_cfgs, aniso_eps=aniso_eps,
-            **common_run_kw,
-        )
-        dev_final_cfgs = dev_result.waveguide_ports or ()
-        if len(dev_final_cfgs) != n_total:
-            raise RuntimeError(
-                f"Expected {n_total} device waveguide configs, got {len(dev_final_cfgs)}"
-            )
-
-        for recv_idx, cfg in enumerate(dev_final_cfgs):
-            _, b_recv_dev = extract_waveguide_port_waves(
-                cfg,
-                ref_shift=flat_ref_shifts[recv_idx],
-            )
-            b_recv_dev_np = np.array(b_recv_dev)
-            b_ref_np = b_out_ref[recv_idx]
-            ref_nonzero = np.abs(b_ref_np) > 1e-30
-            safe_b_ref = np.where(ref_nonzero, b_ref_np, np.ones_like(b_ref_np))
-
-            with np.errstate(divide="ignore", invalid="ignore"):
-                if recv_idx == drive_flat_idx:
-                    s_matrix[recv_idx, drive_flat_idx, :] = (
-                        b_recv_dev_np - b_ref_np
-                    ) / safe_a_inc
-                else:
-                    through_norm = b_recv_dev_np / safe_b_ref
-                    conversion_norm = (b_recv_dev_np - b_ref_np) / safe_a_inc
-                    s_matrix[recv_idx, drive_flat_idx, :] = np.where(
-                        ref_nonzero,
-                        through_norm,
-                        conversion_norm,
-                    )
-
-    return jnp.asarray(s_matrix), mode_map
-
-
 def _modal_net_power(cfg: WaveguidePortConfig) -> np.ndarray:
     """Per-mode net real power through the reference plane.
 
@@ -3144,14 +3018,16 @@ def extract_multimode_s_matrix_flux(
 
     All ratios are referenced to the (always-nonzero) incident modal power,
     so cross-mode channels do not hit the 0/0 blow-up of the two-run
-    ``extract_multimode_s_params_normalized`` (``b_dev/b_ref`` with
-    ``b_ref ≈ 0`` for an uncoupled empty-guide channel). Phase is taken
+    normalized scheme (the single-mode
+    :func:`extract_waveguide_s_params_normalized` ``b_dev/b_ref`` with
+    ``b_ref ≈ 0`` for an uncoupled empty-guide channel — its multi-mode
+    generalization is unsupported for exactly this reason). Phase is taken
     from the modal V/I wave decomposition of the device run.
 
     Per-mode net power ``F`` comes from :func:`_modal_net_power`
     (``0.5·Re(V·I*)``), avoiding the modal-impedance discretization bias.
 
-    Parameters mirror :func:`extract_multimode_s_params_normalized`.
+    Parameters mirror :func:`extract_waveguide_s_params_normalized`.
 
     Returns
     -------
