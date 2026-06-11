@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated": "2026-06-10",
+  "updated": "2026-06-11",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -79,7 +79,9 @@
         "broad E5 still needs external references plus a larger mesh/frequency/geometry envelope",
         "M47 sweep is still a narrow PEC-box external comparison and does not replace matched/open/short/load broad lumped-port E5 evidence",
         "M50 adds a VESSL parallelization plan and per-case aggregation path for the M47 lumped/openEMS slow sweep; it is orchestration-only and not additional E4/E5 physics evidence until jobs run and aggregate artifacts pass"
-      ]
+      ],
+      "ad_traceable": "yes",
+      "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/test_s11_at_freq.py, tests/test_minimize_s11_at_freq_physical.py"
     },
     {
       "primitive": "add_port(extent=...)",
@@ -141,7 +143,9 @@
         "M15 sweep is an internal uniform-Yee sweep and does not replace external solver evidence",
         "wire off-diagonal replay mirrors the current per-cell impedance convention; do not cite it as a generalized modal port calibration",
         "nonuniform finite/AD coverage is not physics validation"
-      ]
+      ],
+      "ad_traceable": "yes",
+      "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/test_wire_port_sparams_forward.py"
     },
     {
       "primitive": "add_msl_port(...)",
@@ -191,7 +195,9 @@
         "mode=\"eigenmode\" is strict-xfailed / unsupported until Path-B/FDFD eigenmode validation lands",
         "nonuniform MSL S-parameters remain unsupported",
         "current |S11| floor around 0.10 is acceptable only for narrow/demo wording"
-      ]
+      ],
+      "ad_traceable": "yes",
+      "ad_evidence": "tests/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient, tests/test_sparam_ad_end_to_end.py::test_msl_s_matrix_ad_end_to_end"
     },
     {
       "primitive": "add_waveguide_port(...)",
@@ -241,7 +247,9 @@
         "branch/T-junction S-parameters deferred until per-port reference geometry exists",
         "multi-mode normalize=True unsupported",
         "broad nonuniform waveguide S-parameters remain shadow/blocked"
-      ]
+      ],
+      "ad_traceable": "yes",
+      "ad_evidence": "tests/test_sparam_ad_end_to_end.py::test_waveguide_s_matrix_ad_end_to_end, tests/test_waveguide_sparam_ad.py::test_wg_smatrix_assembly_ad_traceable"
     },
     {
       "primitive": "add_coaxial_port(...)",
@@ -294,7 +302,9 @@
         "Do not cite compute_coaxial_s_matrix(...) as the promoted coaxial evidence path; it is deprecated / experimental",
         "Do not generalize the one-port line-reflection envelope to arbitrary coax launches, multi-port networks, nonuniform meshes, or mixed port families",
         "The openEMS coax-line path is superseded because the available openEMS v0.0.35 lacks AddCoaxialPort; MEEP is the retained broad-E4 external comparison"
-      ]
+      ],
+      "ad_traceable": "no",
+      "ad_evidence": "empirically verified TracerArrayConversionError through coaxial_line_reflection_from_plane_voltages (numpy matrix-pencil): tests/test_ad_surface_contract.py::test_coaxial_reflection_extraction_breaks_tape"
     },
     {
       "primitive": "add_floquet_port(...)",
@@ -355,7 +365,9 @@
         "Simulation.run() and Simulation.forward() still reject high-level Floquet S-parameter requests",
         "requires RCWA/external periodic-cell references before promotion",
         "requires mesh/frequency/scan-angle/polarization envelope before E5 promotion"
-      ]
+      ],
+      "ad_traceable": "untested",
+      "ad_evidence": "no pytest caller of compute_floquet_s_params; jnp-pure by static inspection, AD unverified either way — https://github.com/bk-squared/rfx/issues/141"
     },
     {
       "primitive": "add_source(...) / add_polarized_source(...)",
@@ -384,7 +396,8 @@
       "claim_envelope": "field excitation, not impedance-defined port calibration",
       "caveats": [
         "do not document as a substitute for ports"
-      ]
+      ],
+      "ad_traceable": "not_applicable"
     },
     {
       "primitive": "add_tfsf_source(...)",
@@ -415,7 +428,8 @@
       "claim_envelope": "plane-wave field/flux workflow",
       "caveats": [
         "does not define a port impedance/reference plane"
-      ]
+      ],
+      "ad_traceable": "not_applicable"
     },
     {
       "primitive": "add_probe(...) / add_dft_plane_probe(...) / add_flux_monitor(...)",
@@ -444,7 +458,8 @@
       "claim_envelope": "field/flux/time observable only",
       "caveats": [
         "does not define a port impedance or S-matrix reference"
-      ]
+      ],
+      "ad_traceable": "not_applicable"
     }
   ],
   "physics_evidence_rule": "docs/guides/physics_validation_evidence_rule.md",
