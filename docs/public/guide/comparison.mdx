@@ -17,9 +17,9 @@ This page will provide a structured comparison of rfx against other open-source 
 
 | Feature | rfx | Meep | OpenEMS |
 |---|---|---|---|
-| Autodiff | Native JAX | — | — |
+| Autodiff | Native JAX — `jax.grad` composes end-to-end through the public S-parameter compute API (uniform and non-uniform mesh) | Adjoint-solver module (forward + adjoint run) with autograd/JAX wrappers; supports mode-coefficient (S-parameter), DFT-field, LDOS, and far-field objectives | — |
 | GPU acceleration | JAX JIT | — | OpenCL (limited) |
 | Non-uniform mesh | Graded z | Subpixel | Graded multi-axis |
-| Topology optimisation | Built-in | External | — |
+| Topology optimisation | Built-in | Built-in (adjoint module) | — |
 
 See [Cross-Validation](../validation/) for quantitative accuracy benchmarks and [Migration Guide](../migration/) for workflow translation.
