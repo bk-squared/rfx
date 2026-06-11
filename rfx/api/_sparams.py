@@ -117,6 +117,40 @@ def _warn_if_nonpassive_smatrix(
     _w.warn(msg, stacklevel=3)
 
 
+def _finalize_sparam_result(
+    result,
+    *,
+    extractor: str,
+    strict: bool,
+    passivity_tol: float = 0.10,
+):
+    """Shared two-run-S-param epilogue: run the passivity/finiteness guard on a
+    freshly-assembled S-matrix result, then return it unchanged.
+
+    This is the one genuinely-common piece of the per-family two-run S-param
+    flow at the orchestration layer (W6.4): both
+    :meth:`_SparamMixin.compute_waveguide_s_matrix` (NU, multi-mode, and
+    single-mode return paths) and :meth:`_SparamMixin.compute_coaxial_s_matrix`
+    assemble a family-specific ``*SMatrixResult`` and then invoke
+    :func:`_warn_if_nonpassive_smatrix` immediately before returning. The
+    per-port drive loop, vacuum-reference override, and rectangular-DFT
+    windowing live behind the family-specific extractors (waveguide:
+    ``rfx.sources.waveguide_port``; coax: the inline single-run plane-source
+    path) and are deliberately *not* unified here — they share no code at this
+    layer, so a wider scaffold would be a leaky abstraction.
+
+    ``passivity_tol`` defaults to the tight 0.10 bound (matching the coax call
+    site). The waveguide path passes a ``normalize``-aware tolerance.
+    """
+    _warn_if_nonpassive_smatrix(
+        result,
+        extractor=extractor,
+        strict=strict,
+        passivity_tol=passivity_tol,
+    )
+    return result
+
+
 class _SparamMixin:
     """S-parameter extraction methods mixed into :class:`Simulation`."""
 
@@ -267,7 +301,7 @@ class _SparamMixin:
                 num_periods=num_periods,
                 normalize=normalize,
             )
-            _warn_if_nonpassive_smatrix(
+            return _finalize_sparam_result(
                 _res_nu,
                 extractor="compute_waveguide_s_matrix",
                 strict=strict_passivity,
@@ -277,7 +311,6 @@ class _SparamMixin:
                 # (|S11|>>1); normalize=True/"flux" correct dispersion -> tight.
                 passivity_tol=2.0 if normalize is False else 0.10,
             )
-            return _res_nu
 
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = self._assemble_materials(grid)
@@ -560,13 +593,12 @@ class _SparamMixin:
                 port_directions=tuple(port_directions_mm),
                 reference_planes=reference_planes,
             )
-            _warn_if_nonpassive_smatrix(
+            return _finalize_sparam_result(
                 _res_mm,
                 extractor="compute_waveguide_s_matrix",
                 strict=strict_passivity,
                 passivity_tol=2.0 if normalize is False else 0.10,
             )
-            return _res_mm
 
         # Single-mode path (original behavior)
         cfgs = raw_cfgs
@@ -714,13 +746,12 @@ class _SparamMixin:
             port_directions=tuple(entry.direction for entry in entries),
             reference_planes=reference_planes,
         )
-        _warn_if_nonpassive_smatrix(
+        return _finalize_sparam_result(
             _res_sm,
             extractor="compute_waveguide_s_matrix",
             strict=strict_passivity,
             passivity_tol=2.0 if normalize is False else 0.10,
         )
-        return _res_sm
 
     def compute_msl_s_matrix(
         self,
@@ -1619,12 +1650,11 @@ class _SparamMixin:
             currents=i_dump,
             status=status,
         )
-        _warn_if_nonpassive_smatrix(
+        return _finalize_sparam_result(
             _res_coax,
             extractor="compute_coaxial_s_matrix",
             strict=strict_passivity,
         )
-        return _res_coax
 
     def compute_coaxial_line_reflection(
         self,
