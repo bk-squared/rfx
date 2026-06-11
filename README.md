@@ -45,6 +45,8 @@ The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. No
 - **Waveguide S-matrix memory control (current `main`)**: `compute_waveguide_s_matrix(checkpoint_segments=...)` threads segmented checkpointing through uniform waveguide extractors for AD-heavy runs with bit-identical forward results in regression tests.
 - **Periodic × CPML correctness (v1.6.3)**: `set_periodic_axes("xy")` + `boundary="cpml"` only allocates CPML on non-periodic faces. Required for normal-incidence absorber / FSS / RIS setups.
 - **Current practical anchors**: `examples/crossval/05_patch_antenna.py` for the patch cross-check and `examples/nonuniform_patch_demo.py` for a quick repo-local thin-substrate demo.
+- **Curated star-import surface (current `main`)**: `rfx.__all__` exposes the supported public API (176 names); per-step kernels and internal bookkeeping stay importable for back-compat but are no longer part of the star-import surface.
+- **Maintained validation lanes (current `main`)**: a full-suite PR gate (4-shard fast suite + API-reference drift gate + agent-docs hygiene), a maintained GPU suite harness (`scripts/vessl_gpu_suite.yaml`), a weekly external-crossval CI lane with real Meep, and a monthly source-built-OpenEMS lane — all using the honest exit-code convention (reference-missing is a visible SKIP, never a silent pass).
 - **Public docs separate lanes**: start with the uniform Yee RF lane; treat advanced features as experimental unless a guide or support matrix gives a narrower claims-bearing envelope.
 
 ## Installation
@@ -123,10 +125,20 @@ fresh clone:
   primitive → validated compute path
 - Task recipes: [waveguide S-parameters](docs/agent/recipe-waveguide-sparams.mdx),
   [R/T measurement](docs/agent/recipe-rt-measurement.mdx),
-  [resonance extraction](docs/agent/recipe-resonance-extraction.mdx)
+  [resonance extraction](docs/agent/recipe-resonance-extraction.mdx),
+  [parameter sweeps](docs/agent/recipe-parameter-sweeps.mdx),
+  [end-to-end design loop](docs/agent/recipe-design-loop.mdx)
+- [Failed-gate triage](docs/agent/recipe-failed-gate-triage.mdx) — decision
+  tree for failed gates whose terminal nodes are this project's
+  implemented-and-falsified dead ends (do not re-attempt them)
 - Machine-readable support contracts:
   [`docs/guides/support_matrix.json`](docs/guides/support_matrix.json),
   [`docs/guides/sparameter_support_matrix.json`](docs/guides/sparameter_support_matrix.json)
+  — the S-parameter matrix carries a per-family `ad_traceable` column, locked
+  by a contract test that fails when a new compute entry point ships without
+  an autodiff classification
+- The public API surface is pinned: a symbol/signature inventory gate
+  regenerates the pdoc reference in CI and fails on undocumented API drift
 - Every `run()`/`forward()`/`optimize()` auto-runs a structured preflight
   (machine-readable codes); S-matrix extractors auto-run a passivity guard.
 
@@ -159,13 +171,22 @@ Benchmarked against Balanis "Antenna Theory" and Pozar "Microwave Engineering":
 | Microstrip Z0 | Hammerstad-Jensen | 0.47% |
 | Coupled-line filter | Pozar Ch 8 | 22.5% (formula limitation) |
 
+The full cross-validation suite (Meep / OpenEMS / Palace / analytic
+references, one reproduce command per case) is tabulated on the
+[benchmarks page](docs/public/guide/benchmarks.mdx); the CPU-feasible subset
+runs locally via `python scripts/run_crossval_cpu.py` using the repo-wide
+exit-code convention (0 = full pass with external reference, 1 = self-check
+failure, 2 = reference unavailable — visibly skipped, never silently green).
+
 For practical public examples, start with `examples/crossval/05_patch_antenna.py`
 for the patch workflow and `examples/crossval/11_waveguide_port_wr90.py` for
 rectangular waveguide ports. Treat non-uniform workflows as shadow unless the
 relevant guide says otherwise; treat distributed, Floquet/Bloch, subgridding,
 generalized planar ports, and advanced inverse-design workflows as experimental
 unless the relevant guide says otherwise. Use the coaxial line reflection
-method only inside its documented coax transmission-line envelope.
+method only inside its documented coax transmission-line envelope. Known open
+accuracy items are tracked honestly as GitHub issues rather than hidden
+(see the issue tracker; the failed-gate triage recipe routes them).
 
 ## Key Features
 
