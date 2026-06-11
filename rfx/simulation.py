@@ -9,7 +9,8 @@ the needed code paths.
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from dataclasses import dataclass
+from typing import Any, Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -471,6 +472,526 @@ def _suggest_checkpoint_segments(n_steps: int) -> int:
     return _nearest_divisor(n_steps, max(1, int(math.isqrt(n_steps))))
 
 
+# ---------------------------------------------------------------------------
+# Shared Yee scan body (W6.1)
+# ---------------------------------------------------------------------------
+#
+# ``run()`` (jax.lax.scan) and ``run_until_decay()`` (Python loop + jax.jit)
+# ran two ~85%-identical copies of the per-step Yee kernel.  ``make_core_step``
+# is the single source of truth.  Both call sites build a ``_StepContext`` from
+# their own setup code, then:
+#   * ``run()``           wraps ``core`` in a scan body that unpacks ``xs`` and
+#                         assembles the scan output tuple (probe + snapshot).
+#   * ``run_until_decay`` calls ``core`` directly inside its Python loop and
+#                         reads ``extras["monitor_val"]`` for the decay check.
+#
+# Every free variable of the old closures is passed explicitly via the context
+# (no capture of caller locals) so the builder is unit-testable.  Numerics,
+# Yee sub-step ordering, and dtype casts are unchanged — this is pure code
+# motion.  The two documented behavioural differences are parameterised:
+#   * ``use_fast_he`` / ``fast_coeffs`` — GPU baked-PEC path (run() only today).
+#   * ``use_flux_window`` + 11-field ``flux_meta`` — streaming DFT window for
+#     flux monitors.  ``run_until_decay`` passes ``use_flux_window=False`` and
+#     an 8-field ``flux_meta`` to keep its historical rect-window (no weight)
+#     behaviour bit-identical.  Unifying the decay path onto windows is a
+#     deliberate follow-up, not part of this refactor.
+
+
+@dataclass(frozen=True)
+class _StepContext:
+    """Static + array context for the shared Yee step kernel (W6.1).
+
+    Holds every free variable the per-step kernel needs: physical constants,
+    the resolved ``use_*`` subsystem flags, pre-extracted metadata tuples, and
+    the boundary/dispersion helper callables that each caller imports during
+    setup.  Lazily-imported helpers (waveguide-port, PMC, conformal, pec-mask,
+    NTFF accumulate, RLC update) are re-imported inside the kernel body exactly
+    as the original closures did and are therefore NOT stored here.
+    """
+
+    # ---- physical constants / grid ----
+    grid: Any
+    materials: Any
+    dt: Any
+    dx: Any
+    periodic: tuple
+    pec_axes: str
+
+    # ---- subsystem flags ----
+    use_fast_he: bool
+    use_upml: bool
+    use_cpml: bool
+    use_tfsf: bool
+    use_debye: bool
+    use_lorentz: bool
+    use_ntff: bool
+    use_dft_planes: bool
+    use_flux_monitors: bool
+    use_waveguide_ports: bool
+    use_pec_faces: bool
+    use_pmc_faces: bool
+    use_aniso_inv: bool
+    aniso_inv_eps_smooth: bool
+    use_pec_mask: bool
+    use_pec_occupancy: bool
+    use_conformal: bool
+    use_wire_sparams: bool
+    use_lumped_sparams: bool
+    use_lumped_rlc: bool
+    use_kerr: bool
+    use_mag_sources: bool
+
+    # ---- output behaviour ----
+    use_snapshot: bool
+    use_monitor: bool
+    use_flux_window: bool
+
+    # ---- arrays / coeffs / configs ----
+    fast_coeffs: Any = None
+    cpml_params: Any = None
+    cpml_axes: str = ""
+    upml_coeffs: Any = None
+    tfsf_cfg: Any = None
+    tfsf_is_2d: bool = False
+    debye_coeffs: Any = None
+    lorentz_coeffs: Any = None
+    aniso_eps: Any = None
+    aniso_inv_eps: Any = None
+    pec_mask: Any = None
+    pec_occupancy: Any = None
+    conformal_weights: Any = None
+    kerr_chi3: Any = None
+    ntff: Any = None
+    pec_faces_frozen: Any = frozenset()
+    pmc_faces_frozen: Any = frozenset()
+
+    # ---- pre-extracted metadata ----
+    src_meta: tuple = ()
+    mag_src_meta: tuple = ()
+    prb_meta: tuple = ()
+    dft_meta: tuple = ()
+    flux_meta: tuple = ()
+    waveguide_meta: tuple = ()
+    wire_sparam_meta: tuple = ()
+    lumped_sparam_meta: tuple = ()
+    rlc_meta: tuple = ()
+
+    # ---- output extractors ----
+    monitor_component: str = "ez"
+    mon_idx: Any = None
+    snapshot_extractor: Callable | None = None
+
+    # ---- caller-imported helper callables ----
+    apply_cpml_h: Callable | None = None
+    apply_cpml_e: Callable | None = None
+    apply_upml_h: Callable | None = None
+    apply_upml_e: Callable | None = None
+    apply_tfsf_h: Callable | None = None
+    apply_tfsf_e: Callable | None = None
+    update_tfsf_1d_h: Callable | None = None
+    update_tfsf_1d_e: Callable | None = None
+    update_tfsf_2d_h: Callable | None = None
+    update_tfsf_2d_e: Callable | None = None
+    init_ntff_data: Callable | None = None
+    accumulate_ntff: Callable | None = None
+    apply_kerr_ade: Callable | None = None
+    update_rlc_element: Callable | None = None
+
+
+def make_core_step(ctx: _StepContext):
+    """Build the shared per-step Yee kernel from an explicit context.
+
+    Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` ->
+    ``(new_carry, probe_out, extras)`` where ``extras`` is a dict carrying the
+    optional per-step outputs each caller needs:
+      * ``extras["snap_fields"]`` — snapshot field list (``use_snapshot``).
+      * ``extras["monitor_val"]`` — monitored scalar (``use_monitor``).
+    """
+    materials = ctx.materials
+    dt = ctx.dt
+    dx = ctx.dx
+    periodic = ctx.periodic
+    grid = ctx.grid
+    pec_axes = ctx.pec_axes
+    aniso_eps = ctx.aniso_eps
+    aniso_inv_eps = ctx.aniso_inv_eps
+
+    def core_step(carry, step_idx, src_vals, mag_src_vals):
+        st = carry["fdtd"]
+        tfsf_h_state = None
+
+        if ctx.use_fast_he:
+            # Fast path: combined H+E update with PEC baked into
+            # pre-computed coefficients — eliminates separate apply_pec(),
+            # coefficient recomputation, and reduces XLA scatter ops.
+            st = update_he_fast(st, ctx.fast_coeffs)
+        else:
+            # H update
+            if ctx.use_upml:
+                st = ctx.apply_upml_h(st, ctx.upml_coeffs, periodic=periodic)
+            else:
+                st = update_h(st, materials, dt, dx, periodic=periodic)
+            if ctx.use_tfsf:
+                st = ctx.apply_tfsf_h(st, ctx.tfsf_cfg, carry["tfsf"], dx, dt)
+            if ctx.use_waveguide_ports:
+                from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h
+                for cfg_meta in ctx.waveguide_meta:
+                    st = _apply_wg_h(st, cfg_meta, step_idx, dt, dx)
+            if ctx.use_cpml:
+                st, cpml_new = ctx.apply_cpml_h(
+                    st, ctx.cpml_params, carry["cpml"], grid, ctx.cpml_axes,
+                    materials=materials)
+            # Stage 2 H damping — applied AFTER CPML-H so CPML cannot
+            # un-zero H at Kottke-frozen PEC cells.  Threshold rather
+            # than ``== 0.0`` so smooth-Kottke (eps_inside = 1e10)
+            # cells (inv ≈ 1e-10 at f=1) are caught alongside exact-PEC
+            # cells (inv = 0 from binary `pec_shapes`).  Smooth-Kottke
+            # path uses ONLY the full-PEC mask (all three inv below
+            # threshold); the pairwise per-component masks would trigger
+            # spuriously at sigmoid-edge cells (where 2 of 3 components
+            # are frozen due to Kottke anisotropy but the cell is
+            # legitimately a partial-fill interface, not full PEC) —
+            # killing wave propagation INTO the stub region.  Binary
+            # Stage 2 path keeps the pairwise masks as before (boundary
+            # cells of binary PEC need the corner-specific H zero).
+            if ctx.use_aniso_inv:
+                from rfx.boundaries.pec import apply_pec_h_mask
+                _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
+                _PEC_INV_THRESHOLD = 1e-9
+                _xx0 = (_inv_xx < _PEC_INV_THRESHOLD)
+                _yy0 = (_inv_yy < _PEC_INV_THRESHOLD)
+                _zz0 = (_inv_zz < _PEC_INV_THRESHOLD)
+                if ctx.aniso_inv_eps_smooth:
+                    st = apply_pec_h_mask(
+                        st,
+                        pec_mask=_xx0 & _yy0 & _zz0,
+                    )
+                else:
+                    st = apply_pec_h_mask(
+                        st,
+                        pec_mask=_xx0 & _yy0 & _zz0,
+                        mask_hx=_yy0 & _zz0,
+                        mask_hy=_xx0 & _zz0,
+                        mask_hz=_xx0 & _yy0,
+                    )
+            if ctx.use_pmc_faces:
+                from rfx.boundaries.pmc import apply_pmc_faces
+                st = apply_pmc_faces(st, ctx.pmc_faces_frozen)
+            if ctx.use_tfsf:
+                if ctx.tfsf_is_2d:
+                    tfsf_h_state = ctx.update_tfsf_2d_h(ctx.tfsf_cfg, carry["tfsf"], dx, dt)
+                else:
+                    tfsf_h_state = ctx.update_tfsf_1d_h(ctx.tfsf_cfg, carry["tfsf"], dx, dt)
+
+            # Magnetic current (Schelkunoff M / J-magnetic) injection —
+            # applied after H update so the Yee leapfrog ordering is
+            # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
+            # pre-baked into the waveform values at construction time.
+            if ctx.use_mag_sources:
+                for idx_m, (mi, mj, mk, mc) in enumerate(ctx.mag_src_meta):
+                    h_field = getattr(st, mc)
+                    h_field = h_field.at[mi, mj, mk].add(
+                        mag_src_vals[idx_m].astype(h_field.dtype))
+                    st = st._replace(**{mc: h_field})
+
+            if ctx.use_upml:
+                if ctx.use_debye or ctx.use_lorentz:
+                    raise ValueError("boundary='upml' does not yet support dispersion")
+                st = ctx.apply_upml_e(st, ctx.upml_coeffs, periodic=periodic)
+                debye_new = None
+                lorentz_new = None
+            else:
+                st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
+                    st,
+                    materials,
+                    dt,
+                    dx,
+                    debye=(ctx.debye_coeffs, carry["debye"]) if ctx.use_debye else None,
+                    lorentz=(ctx.lorentz_coeffs, carry["lorentz"]) if ctx.use_lorentz else None,
+                    periodic=periodic,
+                    aniso_eps=aniso_eps,
+                    aniso_inv_eps=aniso_inv_eps,
+                )
+
+            # Kerr nonlinear ADE correction (after linear E-update)
+            if ctx.use_kerr:
+                st = ctx.apply_kerr_ade(st, ctx.kerr_chi3, dt)
+
+            if ctx.use_tfsf:
+                st = ctx.apply_tfsf_e(st, ctx.tfsf_cfg, tfsf_h_state, dx, dt)
+            if ctx.use_waveguide_ports:
+                from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e
+                for cfg_meta in ctx.waveguide_meta:
+                    st = _apply_wg_e(st, cfg_meta, step_idx, dt, dx)
+            if ctx.use_cpml:
+                st, cpml_new = ctx.apply_cpml_e(
+                    st, ctx.cpml_params, cpml_new, grid, ctx.cpml_axes,
+                    materials=materials)
+            # Re-enforce Kottke-frozen E cells after CPML-E correction.
+            # CPML adds a psi-driven correction that can thaw cells
+            # where inv_eps==0; re-zero them here so the frozen
+            # boundary condition is not violated.
+            if ctx.use_aniso_inv:
+                _inv_xx_r, _inv_yy_r, _inv_zz_r = aniso_inv_eps
+                _PEC_INV_THRESHOLD = 1e-9
+                st = st._replace(
+                    ex=jnp.where(_inv_xx_r < _PEC_INV_THRESHOLD, 0.0, st.ex),
+                    ey=jnp.where(_inv_yy_r < _PEC_INV_THRESHOLD, 0.0, st.ey),
+                    ez=jnp.where(_inv_zz_r < _PEC_INV_THRESHOLD, 0.0, st.ez),
+                )
+
+            if pec_axes:
+                st = apply_pec(st, axes=pec_axes)
+            if ctx.use_pec_faces:
+                st = apply_pec_faces(st, ctx.pec_faces_frozen)
+
+            if ctx.use_conformal and not ctx.use_aniso_inv:
+                # Stage 1 path. Stage 2 (use_aniso_inv) skips this —
+                # the inv-eps tensor encodes the fully-PEC-cell zero
+                # already, so this would be redundant double-zeroing.
+                from rfx.geometry.conformal import apply_conformal_pec
+                st = apply_conformal_pec(st, ctx.conformal_weights[0], ctx.conformal_weights[1], ctx.conformal_weights[2])
+            elif ctx.use_pec_mask:
+                from rfx.boundaries.pec import apply_pec_mask
+                st = apply_pec_mask(st, ctx.pec_mask)
+
+            if ctx.use_pec_occupancy:
+                st = apply_pec_occupancy(st, ctx.pec_occupancy)
+
+        # Lumped RLC ADE update (after E update + boundaries, before sources)
+        if ctx.use_lumped_rlc:
+            new_rlc_states = []
+            for rlc_st, meta in zip(carry["rlc_states"], ctx.rlc_meta):
+                st, rlc_st_new = ctx.update_rlc_element(st, rlc_st, meta)
+                new_rlc_states.append(rlc_st_new)
+
+        # Compute step time first; wire/lumped S-param DFT blocks below
+        # need `t` and must accumulate BEFORE source injection per the
+        # rfx/probes/probes.py update_sparam_probe docstring contract
+        # ("sample after E-update/apply_pec but before apply_lumped_port
+        # so V reflects only the cavity/load response, not the driving
+        # waveform"). The JIT scan path violated it via PR #72 ordering,
+        # producing 5–10 dB train/eval |S11| disagreement on near-matched
+        # antennas where source-injection contamination is large relative
+        # to V (issue #72).
+        t = step_idx.astype(jnp.float32) * dt
+
+        # Wire port S-param DFT accumulation BEFORE source injection so
+        # that sampled V/I reflects only the load/cavity response.
+        if ctx.use_wire_sparams:
+            new_wire_accs = []
+            for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
+                v_dft, i_dft, vinc_dft = accs
+                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
+                v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
+                if wp_meta.component == "ez":
+                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
+                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dx
+                elif wp_meta.component == "ex":
+                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
+                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dx
+                else:
+                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
+                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dx
+                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
+                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                new_wire_accs.append((
+                    v_dft + v * phase,
+                    i_dft + i_val * phase,
+                    vinc_dft,
+                ))
+
+        # Lumped port S-param DFT accumulation BEFORE source injection
+        # (issue #72).  Same wave-decomposition pattern as the wire-port
+        # path but for single-cell lumped ports.
+        if ctx.use_lumped_sparams:
+            new_lumped_accs = []
+            for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
+                v_dft_l, i_dft_l = accs
+                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
+                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
+                if lp_meta.component == "ez":
+                    i_val_l = (st.hy[li,lj,lk] - st.hy[li-1,lj,lk]
+                               - st.hx[li,lj,lk] + st.hx[li,lj-1,lk]) * dx
+                elif lp_meta.component == "ex":
+                    i_val_l = (st.hz[li,lj,lk] - st.hz[li,lj-1,lk]
+                               - st.hy[li,lj,lk] + st.hy[li,lj,lk-1]) * dx
+                else:
+                    i_val_l = (st.hx[li,lj,lk] - st.hx[li,lj,lk-1]
+                               - st.hz[li,lj,lk] + st.hz[li-1,lj,lk]) * dx
+                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
+                phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                new_lumped_accs.append((
+                    v_dft_l + v_l * phase_l,
+                    i_dft_l + i_val_l * phase_l,
+                ))
+
+        # Soft sources — cast source value to field dtype to avoid
+        # mixed-precision scatter warnings (float32 -> float16).
+        for idx_s, (si, sj, sk, sc) in enumerate(ctx.src_meta):
+            field = getattr(st, sc)
+            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
+            st = st._replace(**{sc: field})
+
+        if ctx.use_tfsf:
+            if ctx.tfsf_is_2d:
+                tfsf_new = ctx.update_tfsf_2d_e(ctx.tfsf_cfg, tfsf_h_state, dx, dt, t)
+            else:
+                tfsf_new = ctx.update_tfsf_1d_e(ctx.tfsf_cfg, tfsf_h_state, dx, dt, t)
+
+        if ctx.use_waveguide_ports:
+            from rfx.sources.waveguide_port import (
+                update_waveguide_port_probe,
+            )
+
+            new_waveguide_port_accs = []
+            for accs, cfg_meta in zip(carry["waveguide_port_accs"], ctx.waveguide_meta):
+                cfg = cfg_meta._replace(
+                    v_probe_t=accs[0],
+                    v_ref_t=accs[1],
+                    i_probe_t=accs[2],
+                    i_ref_t=accs[3],
+                    v_inc_t=accs[4],
+                    n_steps_recorded=accs[5],
+                )
+                # TFSF-style H and E corrections are applied earlier in
+                # their respective Yee sub-steps (canonical TFSF slots).
+                # NOTE: this samples `st` AFTER source injection above.
+                # The same docstring-contract concern as wire/lumped
+                # applies here, but waveguide-port is out of scope for
+                # this fix (issue #29 OPEN tracks waveguide-port issues).
+                cfg_updated = update_waveguide_port_probe(cfg, st, dt, dx)
+                new_waveguide_port_accs.append(
+                    (
+                        cfg_updated.v_probe_t,
+                        cfg_updated.v_ref_t,
+                        cfg_updated.i_probe_t,
+                        cfg_updated.i_ref_t,
+                        cfg_updated.v_inc_t,
+                        cfg_updated.n_steps_recorded,
+                    )
+                )
+
+        # Probe samples
+        samples = [getattr(st, pc)[pi, pj, pk]
+                   for pi, pj, pk, pc in ctx.prb_meta]
+        probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
+
+        # NTFF accumulation
+        if ctx.use_ntff:
+            ntff_new = ctx.accumulate_ntff(
+                carry["ntff"], st, ctx.ntff, dt, step_idx)
+
+        if ctx.use_dft_planes:
+            t_plane = st.step * dt
+            new_dft_planes = []
+            for acc, (component, axis, index, freqs) in zip(carry["dft_planes"], ctx.dft_meta):
+                field = getattr(st, component)
+                if axis == 0:
+                    plane = field[index, :, :]
+                elif axis == 1:
+                    plane = field[:, index, :]
+                else:
+                    plane = field[:, :, index]
+                phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
+                new_dft_planes.append(
+                    acc + plane[None, :, :] * phase[:, None, None] * dt
+                )
+
+        # Flux monitor DFT accumulation (co-located E/H, finite-size region).
+        if ctx.use_flux_monitors:
+            t_flux = st.step * dt
+            new_flux_accs = []
+            if ctx.use_flux_window:
+                from rfx.core.dft_utils import dft_window_weight as _dft_w
+            for (e1_acc, e2_acc, h1_acc, h2_acc), fmeta in zip(
+                carry["flux_monitors"], ctx.flux_meta
+            ):
+                if ctx.use_flux_window:
+                    (ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2,
+                     _tot_steps, _win_name, _win_alpha) = fmeta
+                else:
+                    (ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2) = fmeta
+                e1n, e2n, h1n, h2n = comp_names
+                # H-fields are offset by +dx/2 along the normal axis on
+                # the Yee grid.  Average H at idx-1 and idx to co-locate
+                # with E at idx, giving a correct Poynting cross-product.
+                # Slice to the finite-size region [lo1:hi1, lo2:hi2].
+                idx_m1 = max(idx - 1, 0)
+                if ax == 0:
+                    e1 = getattr(st, e1n)[idx, _lo1:_hi1, _lo2:_hi2]
+                    e2 = getattr(st, e2n)[idx, _lo1:_hi1, _lo2:_hi2]
+                    h1 = (getattr(st, h1n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h1n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
+                    h2 = (getattr(st, h2n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h2n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
+                elif ax == 1:
+                    e1 = getattr(st, e1n)[_lo1:_hi1, idx, _lo2:_hi2]
+                    e2 = getattr(st, e2n)[_lo1:_hi1, idx, _lo2:_hi2]
+                    h1 = (getattr(st, h1n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h1n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
+                    h2 = (getattr(st, h2n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h2n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
+                else:
+                    e1 = getattr(st, e1n)[_lo1:_hi1, _lo2:_hi2, idx]
+                    e2 = getattr(st, e2n)[_lo1:_hi1, _lo2:_hi2, idx]
+                    h1 = (getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
+                    h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
+                t_f64 = t_flux.astype(jnp.float64) if hasattr(t_flux, 'astype') else jnp.float64(t_flux)
+                fqs64 = fqs.astype(jnp.float64)
+                # E is at time t_flux = step*dt; H is at t_flux - dt/2
+                phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
+                phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
+                if ctx.use_flux_window:
+                    # Streaming DFT window weight (rect=1.0 default; Tukey/Hann
+                    # suppress late-time contributions from CPML reflections).
+                    _w = _dft_w(st.step, _tot_steps, _win_name, _win_alpha).astype(jnp.float64)
+                    kernel_e = (phase_e[:, None, None] * dt * _w).astype(jnp.complex128)
+                    kernel_h = (phase_h[:, None, None] * dt * _w).astype(jnp.complex128)
+                else:
+                    kernel_e = (phase_e[:, None, None] * dt).astype(jnp.complex128)
+                    kernel_h = (phase_h[:, None, None] * dt).astype(jnp.complex128)
+                new_flux_accs.append((
+                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
+                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
+                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
+                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
+                ))
+
+        # ---- per-step extras (caller-specific outputs) ----
+        extras: dict = {}
+        if ctx.use_snapshot:
+            extras["snap_fields"] = ctx.snapshot_extractor(st)
+        if ctx.use_monitor:
+            extras["monitor_val"] = getattr(st, ctx.monitor_component)[
+                ctx.mon_idx[0], ctx.mon_idx[1], ctx.mon_idx[2]]
+
+        # Rebuild carry
+        new_carry: dict = {"fdtd": st}
+        if ctx.use_cpml:
+            new_carry["cpml"] = cpml_new
+        if ctx.use_debye:
+            new_carry["debye"] = debye_new
+        if ctx.use_lorentz:
+            new_carry["lorentz"] = lorentz_new
+        if ctx.use_tfsf:
+            new_carry["tfsf"] = tfsf_new
+        if ctx.use_ntff:
+            new_carry["ntff"] = ntff_new
+        if ctx.use_dft_planes:
+            new_carry["dft_planes"] = tuple(new_dft_planes)
+        if ctx.use_flux_monitors:
+            new_carry["flux_monitors"] = tuple(new_flux_accs)
+        if ctx.use_waveguide_ports:
+            new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
+        if ctx.use_wire_sparams:
+            new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
+        if ctx.use_lumped_sparams:
+            new_carry["lumped_sparam_accs"] = tuple(new_lumped_accs)
+        if ctx.use_lumped_rlc:
+            new_carry["rlc_states"] = tuple(new_rlc_states)
+
+        return new_carry, probe_out, extras
+
+    return core_step
+
+
 def run(
     grid: Grid,
     materials: MaterialArrays,
@@ -808,355 +1329,93 @@ def run(
             snaps.append(field)
         return snaps
 
-    # ---- scan body ----
+    # ---- scan body (shared kernel; W6.1) ----
+    _step_ctx = _StepContext(
+        grid=grid,
+        materials=materials,
+        dt=dt,
+        dx=dx,
+        periodic=periodic,
+        pec_axes=pec_axes,
+        use_fast_he=use_fast_he,
+        use_upml=use_upml,
+        use_cpml=use_cpml,
+        use_tfsf=use_tfsf,
+        use_debye=use_debye,
+        use_lorentz=use_lorentz,
+        use_ntff=use_ntff,
+        use_dft_planes=use_dft_planes,
+        use_flux_monitors=use_flux_monitors,
+        use_waveguide_ports=use_waveguide_ports,
+        use_pec_faces=use_pec_faces,
+        use_pmc_faces=use_pmc_faces,
+        use_aniso_inv=use_aniso_inv,
+        aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        use_pec_mask=use_pec_mask,
+        use_pec_occupancy=use_pec_occupancy,
+        use_conformal=use_conformal,
+        use_wire_sparams=use_wire_sparams,
+        use_lumped_sparams=use_lumped_sparams,
+        use_lumped_rlc=use_lumped_rlc,
+        use_kerr=use_kerr,
+        use_mag_sources=use_mag_sources,
+        use_snapshot=use_snapshot,
+        use_monitor=False,
+        use_flux_window=True,
+        fast_coeffs=_fast_coeffs if use_fast_he else None,
+        cpml_params=cpml_params if use_cpml else None,
+        cpml_axes=cpml_axes,
+        upml_coeffs=upml_coeffs if use_upml else None,
+        tfsf_cfg=tfsf_cfg if use_tfsf else None,
+        tfsf_is_2d=_tfsf_is_2d if use_tfsf else False,
+        debye_coeffs=debye_coeffs if use_debye else None,
+        lorentz_coeffs=lorentz_coeffs if use_lorentz else None,
+        aniso_eps=aniso_eps,
+        aniso_inv_eps=aniso_inv_eps,
+        pec_mask=pec_mask,
+        pec_occupancy=pec_occupancy,
+        conformal_weights=conformal_weights,
+        kerr_chi3=kerr_chi3,
+        ntff=ntff,
+        pec_faces_frozen=_pec_faces_frozen,
+        pmc_faces_frozen=_pmc_faces_frozen,
+        src_meta=tuple(src_meta),
+        mag_src_meta=tuple(mag_src_meta),
+        prb_meta=tuple(prb_meta),
+        dft_meta=dft_meta,
+        flux_meta=flux_meta if use_flux_monitors else (),
+        waveguide_meta=waveguide_meta,
+        wire_sparam_meta=wire_sparam_meta if use_wire_sparams else (),
+        lumped_sparam_meta=lumped_sparam_meta if use_lumped_sparams else (),
+        rlc_meta=rlc_meta if use_lumped_rlc else (),
+        monitor_component="ez",
+        mon_idx=None,
+        snapshot_extractor=_take_snapshot if use_snapshot else None,
+        apply_cpml_h=apply_cpml_h if use_cpml else None,
+        apply_cpml_e=apply_cpml_e if use_cpml else None,
+        apply_upml_h=apply_upml_h if use_upml else None,
+        apply_upml_e=apply_upml_e if use_upml else None,
+        apply_tfsf_h=apply_tfsf_h if use_tfsf else None,
+        apply_tfsf_e=apply_tfsf_e if use_tfsf else None,
+        update_tfsf_1d_h=update_tfsf_1d_h if use_tfsf else None,
+        update_tfsf_1d_e=update_tfsf_1d_e if use_tfsf else None,
+        update_tfsf_2d_h=update_tfsf_2d_h if (use_tfsf and _tfsf_is_2d) else None,
+        update_tfsf_2d_e=update_tfsf_2d_e if (use_tfsf and _tfsf_is_2d) else None,
+        init_ntff_data=init_ntff_data if use_ntff else None,
+        accumulate_ntff=accumulate_ntff if use_ntff else None,
+        apply_kerr_ade=apply_kerr_ade if use_kerr else None,
+        update_rlc_element=update_rlc_element if use_lumped_rlc else None,
+    )
+    _core_step = make_core_step(_step_ctx)
+
     def step_fn(carry, xs):
         _step_idx, src_vals, mag_src_vals = xs
-        st = carry["fdtd"]
-        tfsf_h_state = None
-
-        if use_fast_he:
-            # Fast path: combined H+E update with PEC baked into
-            # pre-computed coefficients — eliminates separate apply_pec(),
-            # coefficient recomputation, and reduces XLA scatter ops.
-            st = update_he_fast(st, _fast_coeffs)
-        else:
-            # H update
-            if use_upml:
-                st = apply_upml_h(st, upml_coeffs, periodic=periodic)
-            else:
-                st = update_h(st, materials, dt, dx, periodic=periodic)
-            if use_tfsf:
-                st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], dx, dt)
-            if use_waveguide_ports:
-                from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h_early
-                for cfg_meta in waveguide_meta:
-                    st = _apply_wg_h_early(st, cfg_meta, _step_idx, dt, dx)
-            if use_cpml:
-                st, cpml_new = apply_cpml_h(
-                    st, cpml_params, carry["cpml"], grid, cpml_axes,
-                    materials=materials)
-            # Stage 2 H damping — applied AFTER CPML-H so CPML cannot
-            # un-zero H at Kottke-frozen PEC cells.  Threshold rather
-            # than ``== 0.0`` so smooth-Kottke (eps_inside = 1e10)
-            # cells (inv ≈ 1e-10 at f=1) are caught alongside exact-PEC
-            # cells (inv = 0 from binary `pec_shapes`).  Smooth-Kottke
-            # path uses ONLY the full-PEC mask (all three inv below
-            # threshold); the pairwise per-component masks would trigger
-            # spuriously at sigmoid-edge cells (where 2 of 3 components
-            # are frozen due to Kottke anisotropy but the cell is
-            # legitimately a partial-fill interface, not full PEC) —
-            # killing wave propagation INTO the stub region.  Binary
-            # Stage 2 path keeps the pairwise masks as before (boundary
-            # cells of binary PEC need the corner-specific H zero).
-            if use_aniso_inv:
-                from rfx.boundaries.pec import apply_pec_h_mask
-                _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
-                _PEC_INV_THRESHOLD = 1e-9
-                _xx0 = (_inv_xx < _PEC_INV_THRESHOLD)
-                _yy0 = (_inv_yy < _PEC_INV_THRESHOLD)
-                _zz0 = (_inv_zz < _PEC_INV_THRESHOLD)
-                if aniso_inv_eps_smooth:
-                    st = apply_pec_h_mask(
-                        st,
-                        pec_mask=_xx0 & _yy0 & _zz0,
-                    )
-                else:
-                    st = apply_pec_h_mask(
-                        st,
-                        pec_mask=_xx0 & _yy0 & _zz0,
-                        mask_hx=_yy0 & _zz0,
-                        mask_hy=_xx0 & _zz0,
-                        mask_hz=_xx0 & _yy0,
-                    )
-            if use_pmc_faces:
-                from rfx.boundaries.pmc import apply_pmc_faces
-                st = apply_pmc_faces(st, _pmc_faces_frozen)
-            if use_tfsf:
-                if _tfsf_is_2d:
-                    tfsf_h_state = update_tfsf_2d_h(tfsf_cfg, carry["tfsf"], dx, dt)
-                else:
-                    tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], dx, dt)
-
-            # Magnetic current (Schelkunoff M / J-magnetic) injection —
-            # applied after H update so the Yee leapfrog ordering is
-            # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
-            # pre-baked into the waveform values at construction time.
-            if use_mag_sources:
-                for idx_m, (mi, mj, mk, mc) in enumerate(mag_src_meta):
-                    h_field = getattr(st, mc)
-                    h_field = h_field.at[mi, mj, mk].add(
-                        mag_src_vals[idx_m].astype(h_field.dtype))
-                    st = st._replace(**{mc: h_field})
-
-            if use_upml:
-                if use_debye or use_lorentz:
-                    raise ValueError("boundary='upml' does not yet support dispersion")
-                st = apply_upml_e(st, upml_coeffs, periodic=periodic)
-                debye_new = None
-                lorentz_new = None
-            else:
-                st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
-                    st,
-                    materials,
-                    dt,
-                    dx,
-                    debye=(debye_coeffs, carry["debye"]) if use_debye else None,
-                    lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
-                    periodic=periodic,
-                    aniso_eps=aniso_eps,
-                    aniso_inv_eps=aniso_inv_eps,
-                )
-
-            # Kerr nonlinear ADE correction (after linear E-update)
-            if use_kerr:
-                st = apply_kerr_ade(st, kerr_chi3, dt)
-
-            if use_tfsf:
-                st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, dx, dt)
-            if use_waveguide_ports:
-                from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e_early
-                for cfg_meta in waveguide_meta:
-                    st = _apply_wg_e_early(st, cfg_meta, _step_idx, dt, dx)
-            if use_cpml:
-                st, cpml_new = apply_cpml_e(
-                    st, cpml_params, cpml_new, grid, cpml_axes,
-                    materials=materials)
-            # Re-enforce Kottke-frozen E cells after CPML-E correction.
-            # CPML adds a psi-driven correction that can thaw cells
-            # where inv_eps==0; re-zero them here so the frozen
-            # boundary condition is not violated.
-            if use_aniso_inv:
-                _inv_xx_r, _inv_yy_r, _inv_zz_r = aniso_inv_eps
-                _PEC_INV_THRESHOLD = 1e-9
-                st = st._replace(
-                    ex=jnp.where(_inv_xx_r < _PEC_INV_THRESHOLD, 0.0, st.ex),
-                    ey=jnp.where(_inv_yy_r < _PEC_INV_THRESHOLD, 0.0, st.ey),
-                    ez=jnp.where(_inv_zz_r < _PEC_INV_THRESHOLD, 0.0, st.ez),
-                )
-
-            if pec_axes:
-                st = apply_pec(st, axes=pec_axes)
-            if use_pec_faces:
-                st = apply_pec_faces(st, _pec_faces_frozen)
-
-            if use_conformal and not use_aniso_inv:
-                # Stage 1 path. Stage 2 (use_aniso_inv) skips this —
-                # the inv-eps tensor encodes the fully-PEC-cell zero
-                # already, so this would be redundant double-zeroing.
-                from rfx.geometry.conformal import apply_conformal_pec
-                st = apply_conformal_pec(st, conformal_weights[0], conformal_weights[1], conformal_weights[2])
-            elif use_pec_mask:
-                from rfx.boundaries.pec import apply_pec_mask
-                st = apply_pec_mask(st, pec_mask)
-
-            if use_pec_occupancy:
-                st = apply_pec_occupancy(st, pec_occupancy)
-
-        # Lumped RLC ADE update (after E update + boundaries, before sources)
-        if use_lumped_rlc:
-            new_rlc_states = []
-            for rlc_st, meta in zip(carry["rlc_states"], rlc_meta):
-                st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
-                new_rlc_states.append(rlc_st_new)
-
-        t = _step_idx.astype(jnp.float32) * dt
-
-        # Wire port S-param DFT accumulation BEFORE source injection so
-        # that sampled V/I reflects only the load/cavity response.
-        if use_wire_sparams:
-            new_wire_accs = []
-            for accs, wp_meta in zip(carry["wire_sparam_accs"], wire_sparam_meta):
-                v_dft, i_dft, vinc_dft = accs
-                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
-                v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
-                if wp_meta.component == "ez":
-                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
-                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dx
-                elif wp_meta.component == "ex":
-                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
-                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dx
-                else:
-                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
-                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_wire_accs.append((
-                    v_dft + v * phase,
-                    i_dft + i_val * phase,
-                    vinc_dft,
-                ))
-
-        # Lumped port S-param DFT accumulation BEFORE source injection
-        # (issue #72).  Same wave-decomposition pattern as the wire-port
-        # path but for single-cell lumped ports.
-        if use_lumped_sparams:
-            new_lumped_accs = []
-            for accs, lp_meta in zip(carry["lumped_sparam_accs"], lumped_sparam_meta):
-                v_dft_l, i_dft_l = accs
-                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                if lp_meta.component == "ez":
-                    i_val_l = (st.hy[li,lj,lk] - st.hy[li-1,lj,lk]
-                               - st.hx[li,lj,lk] + st.hx[li,lj-1,lk]) * dx
-                elif lp_meta.component == "ex":
-                    i_val_l = (st.hz[li,lj,lk] - st.hz[li,lj-1,lk]
-                               - st.hy[li,lj,lk] + st.hy[li,lj,lk-1]) * dx
-                else:
-                    i_val_l = (st.hx[li,lj,lk] - st.hx[li,lj,lk-1]
-                               - st.hz[li,lj,lk] + st.hz[li-1,lj,lk]) * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_lumped_accs.append((
-                    v_dft_l + v_l * phase_l,
-                    i_dft_l + i_val_l * phase_l,
-                ))
-
-        # Soft sources — cast source value to field dtype to avoid
-        # mixed-precision scatter warnings (float32 -> float16).
-        for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
-            st = st._replace(**{sc: field})
-
-        if use_tfsf:
-            if _tfsf_is_2d:
-                tfsf_new = update_tfsf_2d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
-            else:
-                tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
-
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
-                update_waveguide_port_probe,
-            )
-
-            new_waveguide_port_accs = []
-            for accs, cfg_meta in zip(carry["waveguide_port_accs"], waveguide_meta):
-                cfg = cfg_meta._replace(
-                    v_probe_t=accs[0],
-                    v_ref_t=accs[1],
-                    i_probe_t=accs[2],
-                    i_ref_t=accs[3],
-                    v_inc_t=accs[4],
-                    n_steps_recorded=accs[5],
-                )
-                # TFSF-style H and E corrections are applied earlier in
-                # their respective Yee sub-steps (canonical TFSF slots).
-                cfg_updated = update_waveguide_port_probe(cfg, st, dt, dx)
-                new_waveguide_port_accs.append(
-                    (
-                        cfg_updated.v_probe_t,
-                        cfg_updated.v_ref_t,
-                        cfg_updated.i_probe_t,
-                        cfg_updated.i_ref_t,
-                        cfg_updated.v_inc_t,
-                        cfg_updated.n_steps_recorded,
-                    )
-                )
-
-        # Probe samples
-        samples = [getattr(st, pc)[pi, pj, pk]
-                   for pi, pj, pk, pc in prb_meta]
-        probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
-
-        # NTFF accumulation
-        if use_ntff:
-            ntff_new = accumulate_ntff(
-                carry["ntff"], st, ntff, dt, _step_idx)
-
-        if use_dft_planes:
-            t_plane = st.step * dt
-            new_dft_planes = []
-            for acc, (component, axis, index, freqs) in zip(carry["dft_planes"], dft_meta):
-                field = getattr(st, component)
-                if axis == 0:
-                    plane = field[index, :, :]
-                elif axis == 1:
-                    plane = field[:, index, :]
-                else:
-                    plane = field[:, :, index]
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
-                new_dft_planes.append(
-                    acc + plane[None, :, :] * phase[:, None, None] * dt
-                )
-
-        if use_flux_monitors:
-            from rfx.core.dft_utils import dft_window_weight as _dft_w
-            t_flux = st.step * dt
-            new_flux_accs = []
-            for (e1_acc, e2_acc, h1_acc, h2_acc), (
-                ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2,
-                _tot_steps, _win_name, _win_alpha,
-            ) in zip(carry["flux_monitors"], flux_meta):
-                e1n, e2n, h1n, h2n = comp_names
-                # H-fields are offset by +dx/2 along the normal axis on
-                # the Yee grid.  Average H at idx-1 and idx to co-locate
-                # with E at idx, giving a correct Poynting cross-product.
-                # Slice to the finite-size region [lo1:hi1, lo2:hi2].
-                idx_m1 = max(idx - 1, 0)
-                if ax == 0:
-                    e1 = getattr(st, e1n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h1n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h2n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                elif ax == 1:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h1n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h2n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                else:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                t_f64 = t_flux.astype(jnp.float64) if hasattr(t_flux, 'astype') else jnp.float64(t_flux)
-                fqs64 = fqs.astype(jnp.float64)
-                # Streaming DFT window weight (rect=1.0 default; Tukey/Hann
-                # suppress late-time contributions from CPML reflections).
-                _w = _dft_w(st.step, _tot_steps, _win_name, _win_alpha).astype(jnp.float64)
-                # E is at time t_flux = step*dt; H is at t_flux - dt/2
-                phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
-                phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
-                kernel_e = (phase_e[:, None, None] * dt * _w).astype(jnp.complex128)
-                kernel_h = (phase_h[:, None, None] * dt * _w).astype(jnp.complex128)
-                new_flux_accs.append((
-                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
-                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
-                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
-                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
-                ))
-
-        # Snapshot output
+        new_carry, probe_out, extras = _core_step(
+            carry, _step_idx, src_vals, mag_src_vals)
         if use_snapshot:
-            snap_fields = _take_snapshot(st)
-            output = (probe_out, snap_fields)
+            output = (probe_out, extras["snap_fields"])
         else:
             output = (probe_out,)
-
-        # Rebuild carry
-        new_carry: dict = {"fdtd": st}
-        if use_cpml:
-            new_carry["cpml"] = cpml_new
-        if use_debye:
-            new_carry["debye"] = debye_new
-        if use_lorentz:
-            new_carry["lorentz"] = lorentz_new
-        if use_tfsf:
-            new_carry["tfsf"] = tfsf_new
-        if use_ntff:
-            new_carry["ntff"] = ntff_new
-        if use_dft_planes:
-            new_carry["dft_planes"] = tuple(new_dft_planes)
-        if use_flux_monitors:
-            new_carry["flux_monitors"] = tuple(new_flux_accs)
-        if use_waveguide_ports:
-            new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
-        if use_wire_sparams:
-            new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
-        if use_lumped_sparams:
-            new_carry["lumped_sparam_accs"] = tuple(new_lumped_accs)
-        if use_lumped_rlc:
-            new_carry["rlc_states"] = tuple(new_rlc_states)
-
         return new_carry, output
 
     # ---- run ----
@@ -1548,325 +1807,95 @@ def run_until_decay(
         monitor_position = (cx, cy, cz)
     mon_idx = grid.position_to_index(monitor_position)
 
-    # ---- JIT-compiled single step ----
+    # ---- JIT-compiled single step (shared kernel; W6.1) ----
+    # run_until_decay does NOT build the GPU fast-HE coeffs and uses the
+    # historical rect (no-window) flux DFT: use_flux_window=False keeps the
+    # 8-field flux_meta and skips the streaming window weight so decay-path
+    # flux values stay bit-identical to the pre-refactor body. Unifying the
+    # decay path onto windows is a deliberate follow-up.
+    _step_ctx = _StepContext(
+        grid=grid,
+        materials=materials,
+        dt=dt,
+        dx=dx,
+        periodic=periodic,
+        pec_axes=pec_axes,
+        use_fast_he=False,
+        use_upml=use_upml,
+        use_cpml=use_cpml,
+        use_tfsf=use_tfsf,
+        use_debye=use_debye,
+        use_lorentz=use_lorentz,
+        use_ntff=use_ntff,
+        use_dft_planes=use_dft_planes,
+        use_flux_monitors=use_flux_monitors,
+        use_waveguide_ports=use_waveguide_ports,
+        use_pec_faces=use_pec_faces,
+        use_pmc_faces=use_pmc_faces,
+        use_aniso_inv=use_aniso_inv,
+        aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        use_pec_mask=use_pec_mask,
+        use_pec_occupancy=use_pec_occupancy,
+        use_conformal=use_conformal,
+        use_wire_sparams=use_wire_sparams,
+        use_lumped_sparams=use_lumped_sparams,
+        use_lumped_rlc=use_lumped_rlc,
+        use_kerr=use_kerr_decay,
+        use_mag_sources=use_mag_sources,
+        use_snapshot=False,
+        use_monitor=True,
+        use_flux_window=False,
+        fast_coeffs=None,
+        cpml_params=cpml_params if use_cpml else None,
+        cpml_axes=cpml_axes,
+        upml_coeffs=upml_coeffs if use_upml else None,
+        tfsf_cfg=tfsf_cfg if use_tfsf else None,
+        tfsf_is_2d=_tfsf_is_2d if use_tfsf else False,
+        debye_coeffs=debye_coeffs if use_debye else None,
+        lorentz_coeffs=lorentz_coeffs if use_lorentz else None,
+        aniso_eps=aniso_eps,
+        aniso_inv_eps=aniso_inv_eps,
+        pec_mask=pec_mask,
+        pec_occupancy=pec_occupancy,
+        conformal_weights=conformal_weights,
+        kerr_chi3=kerr_chi3,
+        ntff=ntff,
+        pec_faces_frozen=_pec_faces_frozen,
+        pmc_faces_frozen=_pmc_faces_frozen,
+        src_meta=tuple(src_meta),
+        mag_src_meta=tuple(mag_src_meta),
+        prb_meta=tuple(prb_meta),
+        dft_meta=dft_meta,
+        flux_meta=flux_meta_decay if use_flux_monitors else (),
+        waveguide_meta=waveguide_meta,
+        wire_sparam_meta=wire_sparam_meta if use_wire_sparams else (),
+        lumped_sparam_meta=lumped_sparam_meta if use_lumped_sparams else (),
+        rlc_meta=rlc_meta if use_lumped_rlc else (),
+        monitor_component=monitor_component,
+        mon_idx=mon_idx,
+        snapshot_extractor=None,
+        apply_cpml_h=apply_cpml_h if use_cpml else None,
+        apply_cpml_e=apply_cpml_e if use_cpml else None,
+        apply_upml_h=apply_upml_h if use_upml else None,
+        apply_upml_e=apply_upml_e if use_upml else None,
+        apply_tfsf_h=apply_tfsf_h if use_tfsf else None,
+        apply_tfsf_e=apply_tfsf_e if use_tfsf else None,
+        update_tfsf_1d_h=update_tfsf_1d_h if use_tfsf else None,
+        update_tfsf_1d_e=update_tfsf_1d_e if use_tfsf else None,
+        update_tfsf_2d_h=update_tfsf_2d_h if (use_tfsf and _tfsf_is_2d) else None,
+        update_tfsf_2d_e=update_tfsf_2d_e if (use_tfsf and _tfsf_is_2d) else None,
+        init_ntff_data=init_ntff_data if use_ntff else None,
+        accumulate_ntff=accumulate_ntff if use_ntff else None,
+        apply_kerr_ade=_apply_kerr_ade_decay if use_kerr_decay else None,
+        update_rlc_element=update_rlc_element if use_lumped_rlc else None,
+    )
+    _core_step = make_core_step(_step_ctx)
+
     @jax.jit
     def _single_step(carry_in, step_idx, src_vals, mag_src_vals):
-        st = carry_in["fdtd"]
-        tfsf_h_state = None
-
-        # H update
-        if use_upml:
-            st = apply_upml_h(st, upml_coeffs, periodic=periodic)
-        else:
-            st = update_h(st, materials, dt, dx, periodic=periodic)
-        if use_tfsf:
-            st = apply_tfsf_h(st, tfsf_cfg, carry_in["tfsf"], dx, dt)
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h_slow
-            for cfg_meta in waveguide_meta:
-                st = _apply_wg_h_slow(st, cfg_meta, step_idx, dt, dx)
-        if use_cpml:
-            st, cpml_new = apply_cpml_h(
-                st, cpml_params, carry_in["cpml"], grid, cpml_axes,
-                materials=materials)
-        # Stage 2 H damping — after CPML-H so CPML cannot un-zero H.
-        # Threshold + smooth-Kottke conditional: see twin block in
-        # the main `run` body for full rationale.
-        if use_aniso_inv:
-            from rfx.boundaries.pec import apply_pec_h_mask
-            _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
-            _PEC_INV_THRESHOLD = 1e-9
-            _xx0 = (_inv_xx < _PEC_INV_THRESHOLD)
-            _yy0 = (_inv_yy < _PEC_INV_THRESHOLD)
-            _zz0 = (_inv_zz < _PEC_INV_THRESHOLD)
-            if aniso_inv_eps_smooth:
-                st = apply_pec_h_mask(
-                    st,
-                    pec_mask=_xx0 & _yy0 & _zz0,
-                )
-            else:
-                st = apply_pec_h_mask(
-                    st,
-                    pec_mask=_xx0 & _yy0 & _zz0,
-                    mask_hx=_yy0 & _zz0,
-                    mask_hy=_xx0 & _zz0,
-                    mask_hz=_xx0 & _yy0,
-                )
-        if use_pmc_faces:
-            from rfx.boundaries.pmc import apply_pmc_faces
-            st = apply_pmc_faces(st, _pmc_faces_frozen)
-        if use_tfsf:
-            if _tfsf_is_2d:
-                tfsf_h_state = update_tfsf_2d_h(tfsf_cfg, carry_in["tfsf"], dx, dt)
-            else:
-                tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry_in["tfsf"], dx, dt)
-
-        # Magnetic current injection — after H update (Yee leapfrog).
-        if use_mag_sources:
-            for idx_m, (mi, mj, mk, mc) in enumerate(mag_src_meta):
-                h_field = getattr(st, mc)
-                h_field = h_field.at[mi, mj, mk].add(
-                    mag_src_vals[idx_m].astype(h_field.dtype))
-                st = st._replace(**{mc: h_field})
-
-        if use_upml:
-            if use_debye or use_lorentz:
-                raise ValueError("boundary='upml' does not yet support dispersion")
-            st = apply_upml_e(st, upml_coeffs, periodic=periodic)
-            debye_new = None
-            lorentz_new = None
-        else:
-            st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
-                st, materials, dt, dx,
-                debye=(debye_coeffs, carry_in["debye"]) if use_debye else None,
-                lorentz=(lorentz_coeffs, carry_in["lorentz"]) if use_lorentz else None,
-                periodic=periodic,
-                aniso_eps=aniso_eps,
-                aniso_inv_eps=aniso_inv_eps,
-            )
-
-        # Kerr nonlinear ADE correction (after linear E-update)
-        if use_kerr_decay:
-            st = _apply_kerr_ade_decay(st, kerr_chi3, dt)
-
-        if use_tfsf:
-            st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, dx, dt)
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e_slow
-            for cfg_meta in waveguide_meta:
-                st = _apply_wg_e_slow(st, cfg_meta, step_idx, dt, dx)
-        if use_cpml:
-            st, cpml_new = apply_cpml_e(
-                st, cpml_params, cpml_new, grid, cpml_axes,
-                materials=materials)
-        # Re-enforce Kottke-frozen E cells after CPML-E correction.
-        # Threshold to catch smooth-Kottke cells (see twin block earlier).
-        if use_aniso_inv:
-            _inv_xx_r, _inv_yy_r, _inv_zz_r = aniso_inv_eps
-            _PEC_INV_THRESHOLD = 1e-9
-            st = st._replace(
-                ex=jnp.where(_inv_xx_r < _PEC_INV_THRESHOLD, 0.0, st.ex),
-                ey=jnp.where(_inv_yy_r < _PEC_INV_THRESHOLD, 0.0, st.ey),
-                ez=jnp.where(_inv_zz_r < _PEC_INV_THRESHOLD, 0.0, st.ez),
-            )
-
-        if pec_axes:
-            st = apply_pec(st, axes=pec_axes)
-        if use_pec_faces:
-            st = apply_pec_faces(st, _pec_faces_frozen)
-
-        if use_conformal and not use_aniso_inv:
-            # Stage 1 path; Stage 2 (use_aniso_inv) skips this — see
-            # parallel block in run() above for explanation.
-            from rfx.geometry.conformal import apply_conformal_pec
-            st = apply_conformal_pec(st, conformal_weights[0], conformal_weights[1], conformal_weights[2])
-        elif use_pec_mask:
-            from rfx.boundaries.pec import apply_pec_mask
-            st = apply_pec_mask(st, pec_mask)
-
-        if use_pec_occupancy:
-            st = apply_pec_occupancy(st, pec_occupancy)
-
-        # Lumped RLC ADE update (after E update + boundaries, before sources)
-        if use_lumped_rlc:
-            new_rlc_states = []
-            for rlc_st, meta in zip(carry_in["rlc_states"], rlc_meta):
-                st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
-                new_rlc_states.append(rlc_st_new)
-
-        # Compute step time first; wire/lumped S-param DFT blocks below
-        # need `t` and must accumulate BEFORE source injection per the
-        # rfx/probes/probes.py update_sparam_probe docstring contract
-        # ("sample after E-update/apply_pec but before apply_lumped_port
-        # so V reflects only the cavity/load response, not the driving
-        # waveform"). The Python-loop scan path (this file, around the
-        # forward() Python-loop body) already enforces this. The JIT
-        # scan path violated it via PR #72 ordering, producing 5–10 dB
-        # train/eval |S11| disagreement on near-matched antennas where
-        # source-injection contamination is large relative to V.
-        t = step_idx.astype(jnp.float32) * dt
-
-        # Wire port S-param DFT accumulation BEFORE source injection so
-        # that sampled V/I reflects only the load/cavity response.
-        if use_wire_sparams:
-            new_wire_accs = []
-            for accs, wp_meta in zip(carry_in["wire_sparam_accs"], wire_sparam_meta):
-                v_dft, i_dft, vinc_dft = accs
-                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
-                v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
-                if wp_meta.component == "ez":
-                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
-                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dx
-                elif wp_meta.component == "ex":
-                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
-                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dx
-                else:
-                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
-                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_wire_accs.append((
-                    v_dft + v * phase,
-                    i_dft + i_val * phase,
-                    vinc_dft,
-                ))
-
-        # Lumped port S-param DFT accumulation BEFORE source injection
-        # (issue #72). Same wave-decomposition pattern as the wire-port
-        # path; mirrors the Python-loop scan body ordering.
-        if use_lumped_sparams:
-            new_lumped_accs = []
-            for accs, lp_meta in zip(carry_in["lumped_sparam_accs"], lumped_sparam_meta):
-                v_dft_l, i_dft_l = accs
-                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                if lp_meta.component == "ez":
-                    i_val_l = (st.hy[li,lj,lk] - st.hy[li-1,lj,lk]
-                               - st.hx[li,lj,lk] + st.hx[li,lj-1,lk]) * dx
-                elif lp_meta.component == "ex":
-                    i_val_l = (st.hz[li,lj,lk] - st.hz[li,lj-1,lk]
-                               - st.hy[li,lj,lk] + st.hy[li,lj,lk-1]) * dx
-                else:
-                    i_val_l = (st.hx[li,lj,lk] - st.hx[li,lj,lk-1]
-                               - st.hz[li,lj,lk] + st.hz[li-1,lj,lk]) * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_lumped_accs.append((
-                    v_dft_l + v_l * phase_l,
-                    i_dft_l + i_val_l * phase_l,
-                ))
-
-        # Soft sources — cast source value to field dtype to avoid
-        # mixed-precision scatter warnings (float32 -> float16).
-        for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
-            st = st._replace(**{sc: field})
-
-        if use_tfsf:
-            if _tfsf_is_2d:
-                tfsf_new = update_tfsf_2d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
-            else:
-                tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, dx, dt, t)
-
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
-                update_waveguide_port_probe,
-            )
-            new_waveguide_port_accs = []
-            for accs, cfg_meta in zip(carry_in["waveguide_port_accs"], waveguide_meta):
-                cfg = cfg_meta._replace(
-                    v_probe_t=accs[0], v_ref_t=accs[1],
-                    i_probe_t=accs[2], i_ref_t=accs[3],
-                    v_inc_t=accs[4],
-                    n_steps_recorded=accs[5],
-                )
-                # TFSF-style H/E corrections applied earlier in canonical
-                # Yee sub-steps (see L1247-L1288 region).
-                # NOTE: this samples `st` AFTER source injection above.
-                # The same docstring-contract concern as wire/lumped
-                # applies here, but waveguide-port is out of scope for
-                # this fix (issue #29 OPEN tracks waveguide-port issues).
-                cfg_updated = update_waveguide_port_probe(cfg, st, dt, dx)
-                new_waveguide_port_accs.append((
-                    cfg_updated.v_probe_t, cfg_updated.v_ref_t,
-                    cfg_updated.i_probe_t, cfg_updated.i_ref_t,
-                    cfg_updated.v_inc_t,
-                    cfg_updated.n_steps_recorded,
-                ))
-
-        # Probe samples
-        samples = [getattr(st, pc)[pi, pj, pk]
-                   for pi, pj, pk, pc in prb_meta]
-        probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
-
-        # NTFF accumulation
-        if use_ntff:
-            ntff_new = accumulate_ntff(
-                carry_in["ntff"], st, ntff, dt, step_idx)
-
-        if use_dft_planes:
-            t_plane = st.step * dt
-            new_dft_planes = []
-            for acc, (component, axis, index, freqs) in zip(carry_in["dft_planes"], dft_meta):
-                field = getattr(st, component)
-                if axis == 0:
-                    plane = field[index, :, :]
-                elif axis == 1:
-                    plane = field[:, index, :]
-                else:
-                    plane = field[:, :, index]
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
-                new_dft_planes.append(
-                    acc + plane[None, :, :] * phase[:, None, None] * dt
-                )
-
-        # Flux monitor DFT accumulation (co-located E/H, finite-size region)
-        if use_flux_monitors:
-            t_flux = st.step * dt
-            new_flux_accs = []
-            for (e1_acc, e2_acc, h1_acc, h2_acc), (ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2) in zip(
-                carry_in["flux_monitors"], flux_meta_decay
-            ):
-                e1n, e2n, h1n, h2n = comp_names
-                idx_m1 = max(idx - 1, 0)
-                if ax == 0:
-                    e1 = getattr(st, e1n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h1n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h2n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                elif ax == 1:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h1n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h2n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                else:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                t_f64 = t_flux.astype(jnp.float64) if hasattr(t_flux, 'astype') else jnp.float64(t_flux)
-                fqs64 = fqs.astype(jnp.float64)
-                phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
-                phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
-                kernel_e = (phase_e[:, None, None] * dt).astype(jnp.complex128)
-                kernel_h = (phase_h[:, None, None] * dt).astype(jnp.complex128)
-                new_flux_accs.append((
-                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
-                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
-                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
-                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
-                ))
-
-        # Monitor field value
-        monitor_val = getattr(st, monitor_component)[mon_idx[0], mon_idx[1], mon_idx[2]]
-
-        # Rebuild carry
-        new_carry: dict = {"fdtd": st}
-        if use_cpml:
-            new_carry["cpml"] = cpml_new
-        if use_debye:
-            new_carry["debye"] = debye_new
-        if use_lorentz:
-            new_carry["lorentz"] = lorentz_new
-        if use_tfsf:
-            new_carry["tfsf"] = tfsf_new
-        if use_ntff:
-            new_carry["ntff"] = ntff_new
-        if use_dft_planes:
-            new_carry["dft_planes"] = tuple(new_dft_planes)
-        if use_flux_monitors:
-            new_carry["flux_monitors"] = tuple(new_flux_accs)
-        if use_waveguide_ports:
-            new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
-        if use_wire_sparams:
-            new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
-        if use_lumped_sparams:
-            new_carry["lumped_sparam_accs"] = tuple(new_lumped_accs)
-        if use_lumped_rlc:
-            new_carry["rlc_states"] = tuple(new_rlc_states)
-
-        return new_carry, probe_out, monitor_val
+        new_carry, probe_out, extras = _core_step(
+            carry_in, step_idx, src_vals, mag_src_vals)
+        return new_carry, probe_out, extras["monitor_val"]
 
     # ---- precompute source waveforms up to max_steps ----
     if sources:
