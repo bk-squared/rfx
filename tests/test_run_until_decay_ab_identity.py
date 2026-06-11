@@ -1,4 +1,5 @@
-"""A/B identity gate for the W6.1 shared Yee step kernel.
+"""A/B identity gate for the W6.1 shared Yee step kernel, and W6.2 explicit
+checkpoint_segments guard for run_until_decay.
 
 ``run`` (jax.lax.scan) and ``run_until_decay`` (Python loop + jax.jit) now
 share ONE per-step kernel via ``make_core_step``.  This test pins that the
@@ -32,6 +33,7 @@ measured 6e-11) rather than ``np.array_equal``.  The gate is deliberately
 NOT loosened beyond the measured pre-refactor envelope.
 """
 
+import pytest
 import numpy as np
 
 from rfx.grid import Grid
@@ -96,4 +98,26 @@ def test_run_until_decay_ab_identity():
         assert np.allclose(a, b, rtol=_RTOL, atol=_ATOL), (
             f"final {comp} differs beyond pre-existing envelope; "
             f"max abs diff = {np.max(np.abs(a - b)):.3e}"
+        )
+
+
+def test_checkpoint_segments_raises():
+    """W6.2: checkpoint_segments is explicitly unsupported on the decay path.
+
+    run_until_decay uses a Python loop, not jax.lax.scan, so scan-level
+    gradient checkpointing does not apply.  Passing checkpoint_segments=N
+    must raise NotImplementedError with a descriptive message rather than
+    silently accepting the parameter and doing nothing.
+    """
+    grid, materials, _n, sources, probes = _build()
+    with pytest.raises(NotImplementedError, match="checkpoint_segments"):
+        run_until_decay(
+            grid, materials,
+            decay_by=0.0,
+            min_steps=1,
+            max_steps=1,
+            check_interval=2,
+            sources=sources,
+            probes=probes,
+            checkpoint_segments=4,
         )

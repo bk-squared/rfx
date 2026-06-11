@@ -473,6 +473,386 @@ def _suggest_checkpoint_segments(n_steps: int) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Shared setup helper (W6.2)
+# ---------------------------------------------------------------------------
+#
+# ``run()`` and ``run_until_decay()`` share ~73% of their setup code: boundary
+# resolution, subsystem flags, carry_init assembly, metadata extraction, and
+# the _StepContext field population.  ``_build_step_setup`` centralises that
+# shared work and returns a ``_SimSetup`` NamedTuple.  Each driver then
+# applies its handful of driver-specific overrides before constructing the
+# final ``_StepContext``.
+#
+# Intentional behavioural differences preserved:
+#   * ``flux_meta_11`` (11-field, with window name/alpha) used by ``run()``;
+#     ``flux_meta_8`` (8-field, no window) used by ``run_until_decay()``
+#     (use_flux_window=False).  Unifying decay onto windowed DFT is a
+#     deliberate future task.
+#   * ``use_fast_he`` / ``fast_coeffs`` — ``run()`` only; decay path is a
+#     Python loop and the GPU fast-path is not applicable.
+
+class _SimSetup(NamedTuple):
+    """Shared setup artefacts returned by ``_build_step_setup``.
+
+    ``ctx_kwargs`` is a dict of ``_StepContext`` fields that are identical
+    between the two drivers.  Each driver extends / overrides it with its
+    own fields before passing to ``_StepContext(**ctx_kwargs, **overrides)``.
+    """
+    carry_init: dict
+    ctx_kwargs: dict
+    # metadata kept separate for carry-assembly post-loop in run_until_decay
+    src_meta: list
+    mag_src_meta: list
+    prb_meta: list
+    dft_meta: tuple
+    waveguide_meta: tuple
+    wire_sparam_meta: tuple
+    lumped_sparam_meta: tuple
+    rlc_meta: tuple
+    # 8-field tuple: (axis, index, freqs, comp_names, lo1, hi1, lo2, hi2)
+    flux_meta_8: tuple
+    # 11-field tuple adds: total_steps, window, window_alpha
+    flux_meta_11: tuple
+    # resolved physical constants (both drivers need these for waveform setup)
+    dt: float
+    dx: float
+    periodic: tuple
+    pec_axes: str
+
+
+def _build_step_setup(
+    grid: "Grid",
+    materials: "MaterialArrays",
+    *,
+    boundary: str,
+    cpml_axes: str,
+    pec_axes: "str | None",
+    periodic: "tuple | None",
+    debye: "tuple | None",
+    lorentz: "tuple | None",
+    tfsf: "tuple | None",
+    sources: list,
+    probes: list,
+    dft_planes: list,
+    flux_monitors: list,
+    waveguide_ports: list,
+    ntff: object,
+    aniso_eps: "tuple | None",
+    aniso_inv_eps: "tuple | None",
+    aniso_inv_eps_smooth: bool,
+    pec_mask: object,
+    pec_occupancy: object,
+    conformal_weights: "tuple | None",
+    wire_port_sparams: list,
+    lumped_port_sparams: list,
+    lumped_rlc: list,
+    kerr_chi3: "object | None",
+    field_dtype: object,
+    mag_sources: list,
+) -> "_SimSetup":
+    """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
+
+    Returns a ``_SimSetup`` NamedTuple. Each driver extends ``ctx_kwargs``
+    with its own driver-specific ``_StepContext`` fields before constructing
+    the context.
+    """
+    dt = grid.dt
+    dx = grid.dx
+
+    # ---- boundary configuration ----
+    if periodic is None:
+        periodic = (False, False, False)
+    else:
+        if len(periodic) != 3:
+            raise ValueError(f"periodic must have length 3, got {periodic!r}")
+        periodic = tuple(bool(v) for v in periodic)
+
+    if grid.is_2d:
+        periodic = (periodic[0], periodic[1], True)
+
+    # Skip CPML / PEC on periodic axes.
+    axis_names = ("x", "y", "z")
+    for axis_name, is_periodic in zip(axis_names, periodic):
+        if is_periodic:
+            cpml_axes = cpml_axes.replace(axis_name, "")
+    default_pec_axes = "".join(
+        axis_name for axis_name, is_periodic in zip(axis_names, periodic)
+        if not is_periodic
+    )
+    if pec_axes is None:
+        pec_axes = default_pec_axes
+    else:
+        pec_axes = "".join(axis for axis in pec_axes if axis in default_pec_axes)
+
+    # ---- per-face PEC from grid.pec_faces ----
+    _pec_faces = getattr(grid, "pec_faces", None) or set()
+    use_pec_faces = bool(_pec_faces)
+    _pec_faces_frozen = frozenset(_pec_faces) if use_pec_faces else frozenset()
+
+    # ---- per-face PMC from grid.pmc_faces (T7 Phase 2 PR3) ----
+    _pmc_faces = getattr(grid, "pmc_faces", None) or set()
+    use_pmc_faces = bool(_pmc_faces)
+    _pmc_faces_frozen = frozenset(_pmc_faces) if use_pmc_faces else frozenset()
+
+    # ---- subsystem flags (resolved at Python trace time) ----
+    use_cpml = boundary == "cpml" and grid.cpml_layers > 0
+    use_upml = boundary == "upml" and grid.cpml_layers > 0
+    use_debye = debye is not None
+    use_lorentz = lorentz is not None
+    use_tfsf = tfsf is not None
+    use_ntff = ntff is not None
+    use_dft_planes = len(dft_planes) > 0
+    use_flux_monitors = len(flux_monitors) > 0
+    use_waveguide_ports = len(waveguide_ports) > 0
+    use_pec_mask = pec_mask is not None
+    use_pec_occupancy = pec_occupancy is not None
+    use_conformal = conformal_weights is not None
+    # Stage 2: when aniso_inv_eps is set, the inverse-permittivity tensor
+    # encodes both PEC behaviour and dielectric subpixel smoothing —
+    # apply_conformal_pec is redundant and SKIPPED to avoid double-zeroing.
+    use_aniso_inv = aniso_inv_eps is not None
+    use_wire_sparams = len(wire_port_sparams) > 0
+    use_lumped_sparams = len(lumped_port_sparams) > 0
+    use_lumped_rlc = len(lumped_rlc) > 0
+    use_kerr = kerr_chi3 is not None
+    use_mag_sources = len(mag_sources) > 0
+
+    # Lazily-imported helper callables (imported now so they can be passed
+    # into _StepContext and survive JIT reuse across calls).
+    apply_cpml_h = apply_cpml_e = None
+    apply_upml_h = apply_upml_e = None
+    cpml_params = None
+    upml_coeffs = None
+    apply_tfsf_h = apply_tfsf_e = None
+    update_tfsf_1d_h = update_tfsf_1d_e = None
+    update_tfsf_2d_h = update_tfsf_2d_e = None
+    _tfsf_is_2d = False
+    tfsf_cfg = None
+    init_ntff_data_fn = accumulate_ntff_fn = None
+    apply_kerr_ade = None
+    update_rlc_element = None
+    debye_coeffs = lorentz_coeffs = None
+
+    # ---- initialise states ----
+    _field_dtype = field_dtype if field_dtype is not None else jnp.float32
+    fdtd = init_state(grid.shape, field_dtype=_field_dtype)
+    carry_init: dict = {"fdtd": fdtd}
+
+    if use_cpml:
+        from rfx.boundaries.cpml import init_cpml
+        from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h
+        cpml_params, cpml_state = init_cpml(grid)
+        carry_init["cpml"] = cpml_state
+    elif use_upml:
+        from rfx.boundaries.upml import init_upml
+        from rfx.boundaries.upml import apply_upml_e, apply_upml_h
+        upml_coeffs = init_upml(grid, materials, axes=cpml_axes,
+                                aniso_eps=aniso_eps)
+
+    if use_debye:
+        debye_coeffs, debye_state = debye
+        carry_init["debye"] = debye_state
+
+    if use_lorentz:
+        lorentz_coeffs, lorentz_state = lorentz
+        carry_init["lorentz"] = lorentz_state
+
+    if use_tfsf:
+        from rfx.sources.tfsf import (
+            update_tfsf_1d_e,
+            update_tfsf_1d_h,
+            apply_tfsf_e,
+            apply_tfsf_h,
+            is_tfsf_2d,
+        )
+        tfsf_cfg, tfsf_state = tfsf
+        carry_init["tfsf"] = tfsf_state
+        _tfsf_is_2d = is_tfsf_2d(tfsf_cfg)
+        if _tfsf_is_2d:
+            from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
+
+    if use_ntff:
+        from rfx.farfield import init_ntff_data as _init_ntff_data
+        from rfx.farfield import accumulate_ntff as _accumulate_ntff
+        init_ntff_data_fn = _init_ntff_data
+        accumulate_ntff_fn = _accumulate_ntff
+        carry_init["ntff"] = _init_ntff_data(ntff)
+
+    if use_dft_planes:
+        carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
+
+    if use_waveguide_ports:
+        carry_init["waveguide_port_accs"] = tuple(
+            (
+                cfg.v_probe_t,
+                cfg.v_ref_t,
+                cfg.i_probe_t,
+                cfg.i_ref_t,
+                cfg.v_inc_t,
+                cfg.n_steps_recorded,
+            )
+            for cfg in waveguide_ports
+        )
+
+    wire_sparam_meta: tuple = ()
+    if use_wire_sparams:
+        # Initialize V, I, V_inc DFT accumulators per wire port.
+        carry_init["wire_sparam_accs"] = tuple(
+            (
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_dft
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # i_dft
+                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_inc_dft
+            )
+            for wp in wire_port_sparams
+        )
+        wire_sparam_meta = tuple(wire_port_sparams)
+
+    lumped_sparam_meta: tuple = ()
+    if use_lumped_sparams:
+        # Initialize V, I DFT accumulators per lumped port (issue #72).
+        # No V_inc accumulator needed: the wave decomposition
+        # ``a = (-V + Z0·I)/(2√Z0)`` is exact regardless of source pulse shape.
+        carry_init["lumped_sparam_accs"] = tuple(
+            (
+                jnp.zeros(len(lp.freqs), dtype=jnp.complex64),  # v_dft
+                jnp.zeros(len(lp.freqs), dtype=jnp.complex64),  # i_dft
+            )
+            for lp in lumped_port_sparams
+        )
+        lumped_sparam_meta = tuple(lumped_port_sparams)
+
+    # Flux monitor carry + both meta flavours (8-field for decay, 11 for run).
+    flux_meta_8: tuple = ()
+    flux_meta_11: tuple = ()
+    if use_flux_monitors:
+        from rfx.probes.probes import _FLUX_COMPONENTS as _FC
+        flux_meta_8 = tuple(
+            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
+             fm.lo1, fm.hi1, fm.lo2, fm.hi2)
+            for fm in flux_monitors
+        )
+        flux_meta_11 = tuple(
+            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
+             fm.lo1, fm.hi1, fm.lo2, fm.hi2,
+             fm.total_steps, fm.window, fm.window_alpha)
+            for fm in flux_monitors
+        )
+        carry_init["flux_monitors"] = tuple(
+            (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft) for fm in flux_monitors
+        )
+
+    rlc_meta: tuple = ()
+    if use_lumped_rlc:
+        from rfx.lumped import init_rlc_state
+        from rfx.lumped import update_rlc_element
+        carry_init["rlc_states"] = tuple(init_rlc_state() for _ in lumped_rlc)
+        rlc_meta = tuple(lumped_rlc)
+
+    if use_kerr:
+        from rfx.materials.nonlinear import apply_kerr_ade
+
+    # ---- metadata tuples ----
+    src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
+    mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
+    prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
+    dft_meta = tuple(
+        (probe.component, probe.axis, probe.index, probe.freqs)
+        for probe in dft_planes
+    )
+    waveguide_meta = tuple(waveguide_ports)
+
+    # ---- shared _StepContext keyword arguments ----
+    # These are identical for both drivers.  Each driver extends this dict
+    # with its own overrides before calling _StepContext(**ctx_kwargs).
+    ctx_kwargs: dict = dict(
+        grid=grid,
+        materials=materials,
+        dt=dt,
+        dx=dx,
+        periodic=periodic,
+        pec_axes=pec_axes,
+        use_upml=use_upml,
+        use_cpml=use_cpml,
+        use_tfsf=use_tfsf,
+        use_debye=use_debye,
+        use_lorentz=use_lorentz,
+        use_ntff=use_ntff,
+        use_dft_planes=use_dft_planes,
+        use_flux_monitors=use_flux_monitors,
+        use_waveguide_ports=use_waveguide_ports,
+        use_pec_faces=use_pec_faces,
+        use_pmc_faces=use_pmc_faces,
+        use_aniso_inv=use_aniso_inv,
+        aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        use_pec_mask=use_pec_mask,
+        use_pec_occupancy=use_pec_occupancy,
+        use_conformal=use_conformal,
+        use_wire_sparams=use_wire_sparams,
+        use_lumped_sparams=use_lumped_sparams,
+        use_lumped_rlc=use_lumped_rlc,
+        use_kerr=use_kerr,
+        use_mag_sources=use_mag_sources,
+        cpml_params=cpml_params,
+        cpml_axes=cpml_axes,
+        upml_coeffs=upml_coeffs,
+        tfsf_cfg=tfsf_cfg,
+        tfsf_is_2d=_tfsf_is_2d,
+        debye_coeffs=debye_coeffs,
+        lorentz_coeffs=lorentz_coeffs,
+        aniso_eps=aniso_eps,
+        aniso_inv_eps=aniso_inv_eps,
+        pec_mask=pec_mask,
+        pec_occupancy=pec_occupancy,
+        conformal_weights=conformal_weights,
+        kerr_chi3=kerr_chi3,
+        ntff=ntff,
+        pec_faces_frozen=_pec_faces_frozen,
+        pmc_faces_frozen=_pmc_faces_frozen,
+        src_meta=tuple(src_meta),
+        mag_src_meta=tuple(mag_src_meta),
+        prb_meta=tuple(prb_meta),
+        dft_meta=dft_meta,
+        waveguide_meta=waveguide_meta,
+        wire_sparam_meta=wire_sparam_meta,
+        lumped_sparam_meta=lumped_sparam_meta,
+        rlc_meta=rlc_meta,
+        apply_cpml_h=apply_cpml_h,
+        apply_cpml_e=apply_cpml_e,
+        apply_upml_h=apply_upml_h,
+        apply_upml_e=apply_upml_e,
+        apply_tfsf_h=apply_tfsf_h,
+        apply_tfsf_e=apply_tfsf_e,
+        update_tfsf_1d_h=update_tfsf_1d_h,
+        update_tfsf_1d_e=update_tfsf_1d_e,
+        update_tfsf_2d_h=update_tfsf_2d_h if _tfsf_is_2d else None,
+        update_tfsf_2d_e=update_tfsf_2d_e if _tfsf_is_2d else None,
+        init_ntff_data=init_ntff_data_fn,
+        accumulate_ntff=accumulate_ntff_fn,
+        apply_kerr_ade=apply_kerr_ade if use_kerr else None,
+        update_rlc_element=update_rlc_element if use_lumped_rlc else None,
+    )
+
+    return _SimSetup(
+        carry_init=carry_init,
+        ctx_kwargs=ctx_kwargs,
+        src_meta=src_meta,
+        mag_src_meta=mag_src_meta,
+        prb_meta=prb_meta,
+        dft_meta=dft_meta,
+        waveguide_meta=waveguide_meta,
+        wire_sparam_meta=wire_sparam_meta,
+        lumped_sparam_meta=lumped_sparam_meta,
+        rlc_meta=rlc_meta,
+        flux_meta_8=flux_meta_8,
+        flux_meta_11=flux_meta_11,
+        dt=dt,
+        dx=dx,
+        periodic=periodic,
+        pec_axes=pec_axes,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Shared Yee scan body (W6.1)
 # ---------------------------------------------------------------------------
 #
@@ -1076,80 +1456,57 @@ def run(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
-
-    dt = grid.dt
-    dx = grid.dx
-
-    # ---- boundary configuration ----
-    if periodic is None:
-        periodic = (False, False, False)
-    else:
-        if len(periodic) != 3:
-            raise ValueError(f"periodic must have length 3, got {periodic!r}")
-        periodic = tuple(bool(v) for v in periodic)
-
-    if grid.is_2d:
-        periodic = (periodic[0], periodic[1], True)
-
-    # Skip CPML / PEC on periodic axes.
-    axis_names = ("x", "y", "z")
-    for axis_name, is_periodic in zip(axis_names, periodic):
-        if is_periodic:
-            cpml_axes = cpml_axes.replace(axis_name, "")
-    default_pec_axes = "".join(
-        axis_name for axis_name, is_periodic in zip(axis_names, periodic)
-        if not is_periodic
-    )
-    if pec_axes is None:
-        pec_axes = default_pec_axes
-    else:
-        pec_axes = "".join(axis for axis in pec_axes if axis in default_pec_axes)
-
-    # ---- per-face PEC from grid.pec_faces ----
-    _pec_faces = getattr(grid, "pec_faces", None) or set()
-    use_pec_faces = bool(_pec_faces)
-    # Freeze the set into a tuple for use inside the JIT-traced body
-    _pec_faces_frozen = frozenset(_pec_faces) if use_pec_faces else frozenset()
-
-    # ---- per-face PMC from grid.pmc_faces (T7 Phase 2 PR3) ----
-    _pmc_faces = getattr(grid, "pmc_faces", None) or set()
-    use_pmc_faces = bool(_pmc_faces)
-    _pmc_faces_frozen = frozenset(_pmc_faces) if use_pmc_faces else frozenset()
-
-    # ---- subsystem flags (resolved at trace time) ----
-    use_cpml = boundary == "cpml" and grid.cpml_layers > 0
-    use_upml = boundary == "upml" and grid.cpml_layers > 0
-    use_debye = debye is not None
-    use_lorentz = lorentz is not None
-    use_tfsf = tfsf is not None
-    use_ntff = ntff is not None
-    use_dft_planes = len(dft_planes) > 0
-    use_flux_monitors = len(flux_monitors) > 0
-    use_waveguide_ports = len(waveguide_ports) > 0
-    use_snapshot = snapshot is not None
-    use_pec_mask = pec_mask is not None
-    use_pec_occupancy = pec_occupancy is not None
-    use_conformal = conformal_weights is not None
-    # Stage 2: when aniso_inv_eps is set, the inverse-permittivity
-    # tensor encodes both PEC behaviour (inv=0 freezes the field) and
-    # dielectric subpixel smoothing in a single pass — apply_conformal_pec
-    # is redundant and SKIPPED to avoid the double-zeroing antipattern
-    # of the 2026-04-29 first attempt.
-    use_aniso_inv = aniso_inv_eps is not None
     wire_port_sparams = wire_port_sparams or []
-    use_wire_sparams = len(wire_port_sparams) > 0
     lumped_port_sparams = lumped_port_sparams or []
-    use_lumped_sparams = len(lumped_port_sparams) > 0
     lumped_rlc = lumped_rlc or []
-    use_lumped_rlc = len(lumped_rlc) > 0
-    use_kerr = kerr_chi3 is not None
     mag_sources = mag_sources or []
-    use_mag_sources = len(mag_sources) > 0
 
-    if use_kerr:
-        from rfx.materials.nonlinear import apply_kerr_ade
+    # ---- shared setup (W6.2) ----
+    _setup = _build_step_setup(
+        grid=grid,
+        materials=materials,
+        boundary=boundary,
+        cpml_axes=cpml_axes,
+        pec_axes=pec_axes,
+        periodic=periodic,
+        debye=debye,
+        lorentz=lorentz,
+        tfsf=tfsf,
+        sources=sources,
+        probes=probes,
+        dft_planes=dft_planes,
+        flux_monitors=flux_monitors,
+        waveguide_ports=waveguide_ports,
+        ntff=ntff,
+        aniso_eps=aniso_eps,
+        aniso_inv_eps=aniso_inv_eps,
+        aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        pec_mask=pec_mask,
+        pec_occupancy=pec_occupancy,
+        conformal_weights=conformal_weights,
+        wire_port_sparams=wire_port_sparams,
+        lumped_port_sparams=lumped_port_sparams,
+        lumped_rlc=lumped_rlc,
+        kerr_chi3=kerr_chi3,
+        field_dtype=field_dtype,
+        mag_sources=mag_sources,
+    )
+    carry_init = _setup.carry_init
+    dt = _setup.dt
+    dx = _setup.dx
+    periodic = _setup.periodic
+    waveguide_meta = _setup.waveguide_meta
+    wire_sparam_meta = _setup.wire_sparam_meta
+    lumped_sparam_meta = _setup.lumped_sparam_meta
+    flux_meta = _setup.flux_meta_11   # 11-field: run() uses streaming DFT window
+    use_snapshot = snapshot is not None
+    use_flux_monitors = len(flux_monitors) > 0
+    use_wire_sparams = len(wire_port_sparams) > 0
+    use_lumped_sparams = len(lumped_port_sparams) > 0
+    use_dft_planes = len(dft_planes) > 0
+    use_waveguide_ports = len(waveguide_ports) > 0
 
-    # ---- fast-path: pre-baked coefficients with PEC folded in ----
+    # ---- run()-specific: fast-path pre-baked coefficients ----
     # Eligible when the scan body only needs H update + E update + PEC —
     # no CPML, no TFSF, no dispersion, no anisotropic eps, no PEC mask,
     # no conformal, no lumped RLC, no Kerr, and no periodic axes.
@@ -1160,18 +1517,19 @@ def run(
     # (scatter ops launch separate kernels) and beneficial on CPU for
     # grids above ~500K cells where the scatter ops cause cache eviction.
     _on_gpu = jax.default_backend() != "cpu"
+    _ctx = _setup.ctx_kwargs
     _fast_eligible = (
-        not use_cpml
-        and not use_upml
-        and not use_tfsf
-        and not use_debye
-        and not use_lorentz
-        and not use_pec_mask
-        and not use_pec_occupancy
-        and not use_conformal
-        and not use_lumped_rlc
-        and not use_kerr
-        and not use_mag_sources
+        not _ctx["use_cpml"]
+        and not _ctx["use_upml"]
+        and not _ctx["use_tfsf"]
+        and not _ctx["use_debye"]
+        and not _ctx["use_lorentz"]
+        and not _ctx["use_pec_mask"]
+        and not _ctx["use_pec_occupancy"]
+        and not _ctx["use_conformal"]
+        and not _ctx["use_lumped_rlc"]
+        and not _ctx["use_kerr"]
+        and not _ctx["use_mag_sources"]
         and aniso_eps is None
         and periodic == (False, False, False)
     )
@@ -1180,134 +1538,12 @@ def run(
     # ops efficiently so the extra coefficient arrays hurt at small-to-
     # medium grids; enable only when explicitly requested via GPU backend.
     use_fast_he = _fast_eligible and _on_gpu
-    if use_fast_he:
-        _fast_coeffs = precompute_coeffs(materials, dt, dx, pec_axes=pec_axes)
-
-    # ---- initialise states ----
-    _field_dtype = field_dtype if field_dtype is not None else jnp.float32
-    fdtd = init_state(grid.shape, field_dtype=_field_dtype)
-
-    carry_init: dict = {"fdtd": fdtd}
-
-    if use_cpml:
-        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
-        cpml_params, cpml_state = init_cpml(grid)
-        carry_init["cpml"] = cpml_state
-    elif use_upml:
-        from rfx.boundaries.upml import init_upml, apply_upml_e, apply_upml_h
-        upml_coeffs = init_upml(grid, materials, axes=cpml_axes,
-                                aniso_eps=aniso_eps)
-
-    if use_debye:
-        debye_coeffs, debye_state = debye
-        carry_init["debye"] = debye_state
-
-    if use_lorentz:
-        lorentz_coeffs, lorentz_state = lorentz
-        carry_init["lorentz"] = lorentz_state
-
-    if use_tfsf:
-        from rfx.sources.tfsf import (
-            update_tfsf_1d_e,
-            update_tfsf_1d_h,
-            apply_tfsf_e,
-            apply_tfsf_h,
-            is_tfsf_2d,
-        )
-
-        tfsf_cfg, tfsf_state = tfsf
-        carry_init["tfsf"] = tfsf_state
-
-        # Detect 2D auxiliary grid (oblique incidence)
-        _tfsf_is_2d = is_tfsf_2d(tfsf_cfg)
-        if _tfsf_is_2d:
-            from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
-
-    if use_ntff:
-        from rfx.farfield import init_ntff_data, accumulate_ntff
-        carry_init["ntff"] = init_ntff_data(ntff)
-
-    if use_dft_planes:
-        carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
-    if use_flux_monitors:
-        from rfx.probes.probes import _FLUX_COMPONENTS as _FC
-        # Pre-extract metadata for the scan body (avoids closure issues)
-        # Tuple: (axis, index, freqs, comp_names, lo1, hi1, lo2, hi2,
-        #         total_steps, window, window_alpha)
-        flux_meta = tuple(
-            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2,
-             fm.total_steps, fm.window, fm.window_alpha) for fm in flux_monitors
-        )
-        carry_init["flux_monitors"] = tuple(
-            (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft) for fm in flux_monitors
-        )
-    if use_waveguide_ports:
-        carry_init["waveguide_port_accs"] = tuple(
-            (
-                cfg.v_probe_t,
-                cfg.v_ref_t,
-                cfg.i_probe_t,
-                cfg.i_ref_t,
-                cfg.v_inc_t,
-                cfg.n_steps_recorded,
-            )
-            for cfg in waveguide_ports
-        )
-    if use_wire_sparams:
-        # Initialize V, I, V_inc DFT accumulators per wire port
-        carry_init["wire_sparam_accs"] = tuple(
-            (
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_dft
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # i_dft
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_inc_dft
-            )
-            for wp in wire_port_sparams
-        )
-        wire_sparam_meta = tuple(wire_port_sparams)
-
-    if use_lumped_sparams:
-        # Initialize V, I DFT accumulators per lumped port (issue #72).
-        # No V_inc accumulator is needed: the wave decomposition
-        # ``a = (-V + Z0·I)/(2√Z0)`` is exact regardless of source pulse
-        # shape (this is the whole point — no time-gating heuristic).
-        carry_init["lumped_sparam_accs"] = tuple(
-            (
-                jnp.zeros(len(lp.freqs), dtype=jnp.complex64),  # v_dft
-                jnp.zeros(len(lp.freqs), dtype=jnp.complex64),  # i_dft
-            )
-            for lp in lumped_port_sparams
-        )
-        lumped_sparam_meta = tuple(lumped_port_sparams)
-
-    if use_lumped_rlc:
-        from rfx.lumped import init_rlc_state, update_rlc_element
-        carry_init["rlc_states"] = tuple(init_rlc_state() for _ in lumped_rlc)
-        rlc_meta = tuple(lumped_rlc)  # list of RLCCellMeta
-
-    # ---- precompute source waveform matrix (n_steps, n_sources) ----
-    if sources:
-        src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
-
-    # ---- magnetic source (H-field) waveform matrix ----
-    if mag_sources:
-        mag_src_waveforms = jnp.stack([s.waveform for s in mag_sources], axis=-1)
-    else:
-        mag_src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
-    mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
-
-    # Static source/probe metadata (captured by closure)
-    src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
-    prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
-    dft_meta = tuple(
-        (probe.component, probe.axis, probe.index, probe.freqs)
-        for probe in dft_planes
+    _fast_coeffs = (
+        precompute_coeffs(materials, dt, dx, pec_axes=_setup.pec_axes)
+        if use_fast_he else None
     )
-    waveguide_meta = tuple(waveguide_ports)
 
-    # ---- snapshot setup ----
+    # ---- run()-specific: snapshot setup ----
     if use_snapshot:
         snap_components = snapshot.components
         snap_slice_axis = snapshot.slice_axis
@@ -1329,82 +1565,31 @@ def run(
             snaps.append(field)
         return snaps
 
-    # ---- scan body (shared kernel; W6.1) ----
+    # ---- precompute source waveform matrix (n_steps, n_sources) ----
+    if sources:
+        src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
+    else:
+        src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+
+    # ---- magnetic source (H-field) waveform matrix ----
+    if mag_sources:
+        mag_src_waveforms = jnp.stack([s.waveform for s in mag_sources], axis=-1)
+    else:
+        mag_src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+
+    # ---- scan body (shared kernel; W6.1 kernel + W6.2 setup) ----
     _step_ctx = _StepContext(
-        grid=grid,
-        materials=materials,
-        dt=dt,
-        dx=dx,
-        periodic=periodic,
-        pec_axes=pec_axes,
+        **_setup.ctx_kwargs,
+        # run()-specific overrides
         use_fast_he=use_fast_he,
-        use_upml=use_upml,
-        use_cpml=use_cpml,
-        use_tfsf=use_tfsf,
-        use_debye=use_debye,
-        use_lorentz=use_lorentz,
-        use_ntff=use_ntff,
-        use_dft_planes=use_dft_planes,
-        use_flux_monitors=use_flux_monitors,
-        use_waveguide_ports=use_waveguide_ports,
-        use_pec_faces=use_pec_faces,
-        use_pmc_faces=use_pmc_faces,
-        use_aniso_inv=use_aniso_inv,
-        aniso_inv_eps_smooth=aniso_inv_eps_smooth,
-        use_pec_mask=use_pec_mask,
-        use_pec_occupancy=use_pec_occupancy,
-        use_conformal=use_conformal,
-        use_wire_sparams=use_wire_sparams,
-        use_lumped_sparams=use_lumped_sparams,
-        use_lumped_rlc=use_lumped_rlc,
-        use_kerr=use_kerr,
-        use_mag_sources=use_mag_sources,
         use_snapshot=use_snapshot,
         use_monitor=False,
         use_flux_window=True,
-        fast_coeffs=_fast_coeffs if use_fast_he else None,
-        cpml_params=cpml_params if use_cpml else None,
-        cpml_axes=cpml_axes,
-        upml_coeffs=upml_coeffs if use_upml else None,
-        tfsf_cfg=tfsf_cfg if use_tfsf else None,
-        tfsf_is_2d=_tfsf_is_2d if use_tfsf else False,
-        debye_coeffs=debye_coeffs if use_debye else None,
-        lorentz_coeffs=lorentz_coeffs if use_lorentz else None,
-        aniso_eps=aniso_eps,
-        aniso_inv_eps=aniso_inv_eps,
-        pec_mask=pec_mask,
-        pec_occupancy=pec_occupancy,
-        conformal_weights=conformal_weights,
-        kerr_chi3=kerr_chi3,
-        ntff=ntff,
-        pec_faces_frozen=_pec_faces_frozen,
-        pmc_faces_frozen=_pmc_faces_frozen,
-        src_meta=tuple(src_meta),
-        mag_src_meta=tuple(mag_src_meta),
-        prb_meta=tuple(prb_meta),
-        dft_meta=dft_meta,
+        fast_coeffs=_fast_coeffs,
         flux_meta=flux_meta if use_flux_monitors else (),
-        waveguide_meta=waveguide_meta,
-        wire_sparam_meta=wire_sparam_meta if use_wire_sparams else (),
-        lumped_sparam_meta=lumped_sparam_meta if use_lumped_sparams else (),
-        rlc_meta=rlc_meta if use_lumped_rlc else (),
         monitor_component="ez",
         mon_idx=None,
         snapshot_extractor=_take_snapshot if use_snapshot else None,
-        apply_cpml_h=apply_cpml_h if use_cpml else None,
-        apply_cpml_e=apply_cpml_e if use_cpml else None,
-        apply_upml_h=apply_upml_h if use_upml else None,
-        apply_upml_e=apply_upml_e if use_upml else None,
-        apply_tfsf_h=apply_tfsf_h if use_tfsf else None,
-        apply_tfsf_e=apply_tfsf_e if use_tfsf else None,
-        update_tfsf_1d_h=update_tfsf_1d_h if use_tfsf else None,
-        update_tfsf_1d_e=update_tfsf_1d_e if use_tfsf else None,
-        update_tfsf_2d_h=update_tfsf_2d_h if (use_tfsf and _tfsf_is_2d) else None,
-        update_tfsf_2d_e=update_tfsf_2d_e if (use_tfsf and _tfsf_is_2d) else None,
-        init_ntff_data=init_ntff_data if use_ntff else None,
-        accumulate_ntff=accumulate_ntff if use_ntff else None,
-        apply_kerr_ade=apply_kerr_ade if use_kerr else None,
-        update_rlc_element=update_rlc_element if use_lumped_rlc else None,
     )
     _core_step = make_core_step(_step_ctx)
 
@@ -1591,6 +1776,7 @@ def run_until_decay(
     field_dtype=None,
     return_state: bool = True,
     mag_sources: list | None = None,
+    checkpoint_segments: int | None = None,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -1612,191 +1798,91 @@ def run_until_decay(
     monitor_position : tuple or None
         Physical position (x, y, z) to monitor. If None, use center of
         the domain.
+    checkpoint_segments : int or None
+        **Not supported** on the decay path.  ``run_until_decay`` uses a
+        Python loop (not ``jax.lax.scan``), so scan-level gradient
+        checkpointing does not apply.  Passing a non-None value raises
+        ``NotImplementedError``.
 
-    All other parameters are identical to :func:`run`.
+    Notes
+    -----
+    **Differences from** :func:`run`:
+
+    * ``checkpoint_segments`` is not supported (raises ``NotImplementedError``
+      when not ``None``).
+    * ``snapshot`` is accepted for API symmetry but **silently ignored** —
+      the Python loop does not accumulate per-step field snapshots.
+    * ``checkpoint`` (``jax.checkpoint`` gradient tape) is accepted but
+      **silently ignored** — gradient checkpointing has no effect on the
+      Python-loop path.
+    * Flux-monitor DFT accumulation uses a rectangular (no-window) weight
+      instead of the streaming Hann window used by :func:`run`.  Flux values
+      from the two paths are therefore not numerically identical even for
+      the same step count.
 
     Returns
     -------
     SimResult
     """
+    if checkpoint_segments is not None:
+        raise NotImplementedError(
+            "checkpoint_segments is not supported by run_until_decay: "
+            "this function uses a Python loop, not jax.lax.scan, so "
+            "scan-level gradient checkpointing does not apply. "
+            "Use run() with checkpoint_segments if you need scan-level "
+            "checkpointing."
+        )
     sources = sources or []
     probes = probes or []
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
-
-    dt = grid.dt
-    dx = grid.dx
-
-    # ---- boundary configuration (same logic as run()) ----
-    if periodic is None:
-        periodic = (False, False, False)
-    else:
-        if len(periodic) != 3:
-            raise ValueError(f"periodic must have length 3, got {periodic!r}")
-        periodic = tuple(bool(v) for v in periodic)
-
-    if grid.is_2d:
-        periodic = (periodic[0], periodic[1], True)
-
-    axis_names = ("x", "y", "z")
-    for axis_name, is_periodic in zip(axis_names, periodic):
-        if is_periodic:
-            cpml_axes = cpml_axes.replace(axis_name, "")
-    default_pec_axes = "".join(
-        axis_name for axis_name, is_periodic in zip(axis_names, periodic)
-        if not is_periodic
-    )
-    if pec_axes is None:
-        pec_axes = default_pec_axes
-    else:
-        pec_axes = "".join(axis for axis in pec_axes if axis in default_pec_axes)
-
-    # ---- subsystem flags ----
-    use_cpml = boundary == "cpml" and grid.cpml_layers > 0
-    use_upml = boundary == "upml" and grid.cpml_layers > 0
-    use_debye = debye is not None
-    use_lorentz = lorentz is not None
-    use_tfsf = tfsf is not None
-    # ---- per-face PEC from grid.pec_faces ----
-    _pec_faces_decay = getattr(grid, "pec_faces", None) or set()
-    use_pec_faces = bool(_pec_faces_decay)
-    _pec_faces_frozen = frozenset(_pec_faces_decay) if use_pec_faces else frozenset()
-
-    # ---- per-face PMC from grid.pmc_faces (T7 Phase 2 PR3) ----
-    _pmc_faces_decay = getattr(grid, "pmc_faces", None) or set()
-    use_pmc_faces = bool(_pmc_faces_decay)
-    _pmc_faces_frozen = frozenset(_pmc_faces_decay) if use_pmc_faces else frozenset()
-
-    use_ntff = ntff is not None
-    use_dft_planes = len(dft_planes) > 0
-    use_flux_monitors = len(flux_monitors) > 0
-    use_waveguide_ports = len(waveguide_ports) > 0
-    use_pec_mask = pec_mask is not None
-    use_pec_occupancy = pec_occupancy is not None
-    use_conformal = conformal_weights is not None
-    # Stage 2: when aniso_inv_eps is set, the inverse-permittivity
-    # tensor encodes both PEC behaviour (inv=0 freezes the field) and
-    # dielectric subpixel smoothing in a single pass — apply_conformal_pec
-    # is redundant and SKIPPED to avoid the double-zeroing antipattern
-    # of the 2026-04-29 first attempt.
-    use_aniso_inv = aniso_inv_eps is not None
     wire_port_sparams = wire_port_sparams or []
-    use_wire_sparams = len(wire_port_sparams) > 0
     lumped_port_sparams = lumped_port_sparams or []
-    use_lumped_sparams = len(lumped_port_sparams) > 0
     lumped_rlc = lumped_rlc or []
-    use_lumped_rlc = len(lumped_rlc) > 0
-    use_kerr_decay = kerr_chi3 is not None
     mag_sources = mag_sources or []
-    use_mag_sources = len(mag_sources) > 0
 
-    if use_kerr_decay:
-        from rfx.materials.nonlinear import apply_kerr_ade as _apply_kerr_ade_decay
-
-    # ---- initialise states ----
-    _field_dtype = field_dtype if field_dtype is not None else jnp.float32
-    fdtd = init_state(grid.shape, field_dtype=_field_dtype)
-    carry: dict = {"fdtd": fdtd}
-
-    if use_cpml:
-        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
-        cpml_params, cpml_state = init_cpml(grid)
-        carry["cpml"] = cpml_state
-    elif use_upml:
-        from rfx.boundaries.upml import init_upml, apply_upml_e, apply_upml_h
-        upml_coeffs = init_upml(grid, materials, axes=cpml_axes,
-                                aniso_eps=aniso_eps)
-
-    if use_debye:
-        debye_coeffs, debye_state = debye
-        carry["debye"] = debye_state
-
-    if use_lorentz:
-        lorentz_coeffs, lorentz_state = lorentz
-        carry["lorentz"] = lorentz_state
-
-    if use_tfsf:
-        from rfx.sources.tfsf import (
-            update_tfsf_1d_e,
-            update_tfsf_1d_h,
-            apply_tfsf_e,
-            apply_tfsf_h,
-            is_tfsf_2d,
-        )
-        tfsf_cfg, tfsf_state = tfsf
-        carry["tfsf"] = tfsf_state
-
-        # Detect 2D auxiliary grid (oblique incidence)
-        _tfsf_is_2d = is_tfsf_2d(tfsf_cfg)
-        if _tfsf_is_2d:
-            from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
-
-    if use_ntff:
-        from rfx.farfield import init_ntff_data, accumulate_ntff
-        carry["ntff"] = init_ntff_data(ntff)
-
-    if use_dft_planes:
-        carry["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
-    if use_waveguide_ports:
-        carry["waveguide_port_accs"] = tuple(
-            (
-                cfg.v_probe_t,
-                cfg.v_ref_t,
-                cfg.i_probe_t,
-                cfg.i_ref_t,
-                cfg.v_inc_t,
-                cfg.n_steps_recorded,
-            )
-            for cfg in waveguide_ports
-        )
-    if use_wire_sparams:
-        # Initialize V, I, V_inc DFT accumulators per wire port
-        carry["wire_sparam_accs"] = tuple(
-            (
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_dft
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # i_dft
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_inc_dft
-            )
-            for wp in wire_port_sparams
-        )
-        wire_sparam_meta = tuple(wire_port_sparams)
-
-    if use_lumped_sparams:
-        # Initialize V, I DFT accumulators per lumped port (issue #72).
-        carry["lumped_sparam_accs"] = tuple(
-            (
-                jnp.zeros(len(lp.freqs), dtype=jnp.complex64),  # v_dft
-                jnp.zeros(len(lp.freqs), dtype=jnp.complex64),  # i_dft
-            )
-            for lp in lumped_port_sparams
-        )
-        lumped_sparam_meta = tuple(lumped_port_sparams)
-
-    if use_flux_monitors:
-        from rfx.probes.probes import _FLUX_COMPONENTS as _FC_decay
-        flux_meta_decay = tuple(
-            (fm.axis, fm.index, fm.freqs, _FC_decay[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2) for fm in flux_monitors
-        )
-        carry["flux_monitors"] = tuple(
-            (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft) for fm in flux_monitors
-        )
-
-    if use_lumped_rlc:
-        from rfx.lumped import init_rlc_state, update_rlc_element
-        carry["rlc_states"] = tuple(init_rlc_state() for _ in lumped_rlc)
-        rlc_meta = tuple(lumped_rlc)  # list of RLCCellMeta
-
-    # Static source/probe metadata
-    src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
-    mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
-    prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
-    dft_meta = tuple(
-        (probe.component, probe.axis, probe.index, probe.freqs)
-        for probe in dft_planes
+    # ---- shared setup (W6.2) ----
+    _setup = _build_step_setup(
+        grid=grid,
+        materials=materials,
+        boundary=boundary,
+        cpml_axes=cpml_axes,
+        pec_axes=pec_axes,
+        periodic=periodic,
+        debye=debye,
+        lorentz=lorentz,
+        tfsf=tfsf,
+        sources=sources,
+        probes=probes,
+        dft_planes=dft_planes,
+        flux_monitors=flux_monitors,
+        waveguide_ports=waveguide_ports,
+        ntff=ntff,
+        aniso_eps=aniso_eps,
+        aniso_inv_eps=aniso_inv_eps,
+        aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        pec_mask=pec_mask,
+        pec_occupancy=pec_occupancy,
+        conformal_weights=conformal_weights,
+        wire_port_sparams=wire_port_sparams,
+        lumped_port_sparams=lumped_port_sparams,
+        lumped_rlc=lumped_rlc,
+        kerr_chi3=kerr_chi3,
+        field_dtype=field_dtype,
+        mag_sources=mag_sources,
     )
-    waveguide_meta = tuple(waveguide_ports)
+    carry = _setup.carry_init
+    dx = _setup.dx
+    waveguide_meta = _setup.waveguide_meta
+    wire_sparam_meta = _setup.wire_sparam_meta
+    lumped_sparam_meta = _setup.lumped_sparam_meta
+    flux_meta_decay = _setup.flux_meta_8   # 8-field: no streaming DFT window
+    use_flux_monitors = len(flux_monitors) > 0
+    use_wire_sparams = len(wire_port_sparams) > 0
+    use_lumped_sparams = len(lumped_port_sparams) > 0
+    use_dft_planes = len(dft_planes) > 0
+    use_waveguide_ports = len(waveguide_ports) > 0
 
     # ---- monitor position ----
     if monitor_position is None:
@@ -1807,87 +1893,24 @@ def run_until_decay(
         monitor_position = (cx, cy, cz)
     mon_idx = grid.position_to_index(monitor_position)
 
-    # ---- JIT-compiled single step (shared kernel; W6.1) ----
+    # ---- JIT-compiled single step (shared kernel; W6.1 + W6.2 setup) ----
     # run_until_decay does NOT build the GPU fast-HE coeffs and uses the
     # historical rect (no-window) flux DFT: use_flux_window=False keeps the
     # 8-field flux_meta and skips the streaming window weight so decay-path
     # flux values stay bit-identical to the pre-refactor body. Unifying the
     # decay path onto windows is a deliberate follow-up.
     _step_ctx = _StepContext(
-        grid=grid,
-        materials=materials,
-        dt=dt,
-        dx=dx,
-        periodic=periodic,
-        pec_axes=pec_axes,
+        **_setup.ctx_kwargs,
+        # decay-path-specific overrides
         use_fast_he=False,
-        use_upml=use_upml,
-        use_cpml=use_cpml,
-        use_tfsf=use_tfsf,
-        use_debye=use_debye,
-        use_lorentz=use_lorentz,
-        use_ntff=use_ntff,
-        use_dft_planes=use_dft_planes,
-        use_flux_monitors=use_flux_monitors,
-        use_waveguide_ports=use_waveguide_ports,
-        use_pec_faces=use_pec_faces,
-        use_pmc_faces=use_pmc_faces,
-        use_aniso_inv=use_aniso_inv,
-        aniso_inv_eps_smooth=aniso_inv_eps_smooth,
-        use_pec_mask=use_pec_mask,
-        use_pec_occupancy=use_pec_occupancy,
-        use_conformal=use_conformal,
-        use_wire_sparams=use_wire_sparams,
-        use_lumped_sparams=use_lumped_sparams,
-        use_lumped_rlc=use_lumped_rlc,
-        use_kerr=use_kerr_decay,
-        use_mag_sources=use_mag_sources,
         use_snapshot=False,
         use_monitor=True,
         use_flux_window=False,
         fast_coeffs=None,
-        cpml_params=cpml_params if use_cpml else None,
-        cpml_axes=cpml_axes,
-        upml_coeffs=upml_coeffs if use_upml else None,
-        tfsf_cfg=tfsf_cfg if use_tfsf else None,
-        tfsf_is_2d=_tfsf_is_2d if use_tfsf else False,
-        debye_coeffs=debye_coeffs if use_debye else None,
-        lorentz_coeffs=lorentz_coeffs if use_lorentz else None,
-        aniso_eps=aniso_eps,
-        aniso_inv_eps=aniso_inv_eps,
-        pec_mask=pec_mask,
-        pec_occupancy=pec_occupancy,
-        conformal_weights=conformal_weights,
-        kerr_chi3=kerr_chi3,
-        ntff=ntff,
-        pec_faces_frozen=_pec_faces_frozen,
-        pmc_faces_frozen=_pmc_faces_frozen,
-        src_meta=tuple(src_meta),
-        mag_src_meta=tuple(mag_src_meta),
-        prb_meta=tuple(prb_meta),
-        dft_meta=dft_meta,
         flux_meta=flux_meta_decay if use_flux_monitors else (),
-        waveguide_meta=waveguide_meta,
-        wire_sparam_meta=wire_sparam_meta if use_wire_sparams else (),
-        lumped_sparam_meta=lumped_sparam_meta if use_lumped_sparams else (),
-        rlc_meta=rlc_meta if use_lumped_rlc else (),
         monitor_component=monitor_component,
         mon_idx=mon_idx,
         snapshot_extractor=None,
-        apply_cpml_h=apply_cpml_h if use_cpml else None,
-        apply_cpml_e=apply_cpml_e if use_cpml else None,
-        apply_upml_h=apply_upml_h if use_upml else None,
-        apply_upml_e=apply_upml_e if use_upml else None,
-        apply_tfsf_h=apply_tfsf_h if use_tfsf else None,
-        apply_tfsf_e=apply_tfsf_e if use_tfsf else None,
-        update_tfsf_1d_h=update_tfsf_1d_h if use_tfsf else None,
-        update_tfsf_1d_e=update_tfsf_1d_e if use_tfsf else None,
-        update_tfsf_2d_h=update_tfsf_2d_h if (use_tfsf and _tfsf_is_2d) else None,
-        update_tfsf_2d_e=update_tfsf_2d_e if (use_tfsf and _tfsf_is_2d) else None,
-        init_ntff_data=init_ntff_data if use_ntff else None,
-        accumulate_ntff=accumulate_ntff if use_ntff else None,
-        apply_kerr_ade=_apply_kerr_ade_decay if use_kerr_decay else None,
-        update_rlc_element=update_rlc_element if use_lumped_rlc else None,
     )
     _core_step = make_core_step(_step_ctx)
 
