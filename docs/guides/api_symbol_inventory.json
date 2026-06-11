@@ -1,0 +1,2317 @@
+{
+  "_comment": "Public API surface pinned by scripts/check_api_reference.py. Regenerate with: python scripts/check_api_reference.py --write (and rebuild docs/api with pdoc: python -m pdoc -o docs/api rfx '!rfx.dashboard').",
+  "rfx_exports": {
+    "ADIState2D": {
+      "kind": "class"
+    },
+    "ADIState3D": {
+      "kind": "class"
+    },
+    "ADMemoryPlan": {
+      "kind": "class"
+    },
+    "AD_MemoryEstimate": {
+      "kind": "class"
+    },
+    "ArtifactBundle": {
+      "kind": "class"
+    },
+    "BATCH_MANIFEST_SCHEMA": {
+      "kind": "object"
+    },
+    "BandwidthResult": {
+      "kind": "class"
+    },
+    "BatchCaseResult": {
+      "kind": "class"
+    },
+    "Box": {
+      "kind": "class"
+    },
+    "CWSource": {
+      "kind": "class"
+    },
+    "CoaxialPlaneSourceSpec": {
+      "kind": "class"
+    },
+    "CoaxialPort": {
+      "kind": "class"
+    },
+    "CoaxialSMatrixResult": {
+      "kind": "class"
+    },
+    "CoaxialTEMCartesianPlaneVI": {
+      "kind": "class"
+    },
+    "CoaxialTEMReferencePlaneVI": {
+      "kind": "class"
+    },
+    "ConvergenceResult": {
+      "kind": "class"
+    },
+    "CurvedPatch": {
+      "kind": "class"
+    },
+    "CustomWaveform": {
+      "kind": "class"
+    },
+    "Cylinder": {
+      "kind": "class"
+    },
+    "DebyeFitResult": {
+      "kind": "class"
+    },
+    "DebyePole": {
+      "kind": "class"
+    },
+    "DesignRegion": {
+      "kind": "class"
+    },
+    "FarFieldResult": {
+      "kind": "class"
+    },
+    "FloquetDFTAccumulator": {
+      "kind": "class"
+    },
+    "FloquetPort": {
+      "kind": "class"
+    },
+    "FluxMonitor": {
+      "kind": "class"
+    },
+    "GaussianPulse": {
+      "kind": "class"
+    },
+    "GradientCheckResult": {
+      "kind": "class"
+    },
+    "Grid": {
+      "kind": "class"
+    },
+    "HarminvMode": {
+      "kind": "class"
+    },
+    "LorentzFitResult": {
+      "kind": "class"
+    },
+    "LorentzPole": {
+      "kind": "class"
+    },
+    "LumpedRLCSpec": {
+      "kind": "class"
+    },
+    "MATERIAL_LIBRARY": {
+      "kind": "object"
+    },
+    "MSLSMatrixResult": {
+      "kind": "class"
+    },
+    "MaterialFitResult": {
+      "kind": "class"
+    },
+    "MeshIntelligenceReport": {
+      "kind": "class"
+    },
+    "MeshPlan": {
+      "kind": "class"
+    },
+    "ModulatedGaussian": {
+      "kind": "class"
+    },
+    "NTFFBox": {
+      "kind": "class"
+    },
+    "NTFFData": {
+      "kind": "class"
+    },
+    "NonUniformGrid": {
+      "kind": "class"
+    },
+    "OptimizeResult": {
+      "kind": "class"
+    },
+    "PCBLayer": {
+      "kind": "class"
+    },
+    "ParameterSweep": {
+      "kind": "class"
+    },
+    "PolylineWire": {
+      "kind": "class"
+    },
+    "PortDumpMetadata": {
+      "kind": "class"
+    },
+    "PortReplayComparison": {
+      "kind": "class"
+    },
+    "PortSMatrixObservable": {
+      "kind": "class"
+    },
+    "PortVIDump": {
+      "kind": "class"
+    },
+    "PortValidationIssue": {
+      "kind": "class"
+    },
+    "PortValidationReport": {
+      "kind": "class"
+    },
+    "ProgressiveOptimizeResult": {
+      "kind": "class"
+    },
+    "ProgressiveStage": {
+      "kind": "class"
+    },
+    "RCSResult": {
+      "kind": "class"
+    },
+    "RISSweepResult": {
+      "kind": "class"
+    },
+    "RISUnitCell": {
+      "kind": "class"
+    },
+    "RLCCellMeta": {
+      "kind": "class"
+    },
+    "RLCState": {
+      "kind": "class"
+    },
+    "Result": {
+      "kind": "class"
+    },
+    "SimConfig": {
+      "kind": "class"
+    },
+    "SimResult": {
+      "kind": "class"
+    },
+    "Simulation": {
+      "kind": "class"
+    },
+    "SnapshotSpec": {
+      "kind": "class"
+    },
+    "Sphere": {
+      "kind": "class"
+    },
+    "Stackup": {
+      "kind": "class"
+    },
+    "SubgridValidationIssue": {
+      "kind": "class"
+    },
+    "SubgridValidationReport": {
+      "kind": "class"
+    },
+    "SweepResult": {
+      "kind": "class"
+    },
+    "ThinConductor": {
+      "kind": "class"
+    },
+    "TopologyDesignRegion": {
+      "kind": "class"
+    },
+    "TopologyResult": {
+      "kind": "class"
+    },
+    "TouchstoneData": {
+      "kind": "class"
+    },
+    "Via": {
+      "kind": "class"
+    },
+    "VmapSweepResult": {
+      "kind": "class"
+    },
+    "WaveguideMode": {
+      "kind": "class"
+    },
+    "WaveguidePort": {
+      "kind": "class"
+    },
+    "WaveguidePortConfig": {
+      "kind": "class"
+    },
+    "WaveguideSMatrixResult": {
+      "kind": "class"
+    },
+    "WaveguideSParamResult": {
+      "kind": "class"
+    },
+    "adi_step_2d": {
+      "kind": "function",
+      "params": [
+        "ez",
+        "hx",
+        "hy",
+        "eps_r",
+        "sigma",
+        "dt",
+        "dx",
+        "dy",
+        "pec_mask"
+      ]
+    },
+    "adi_step_3d": {
+      "kind": "function",
+      "params": [
+        "ex",
+        "ey",
+        "ez",
+        "hx",
+        "hy",
+        "hz",
+        "eps_r",
+        "sigma",
+        "dt",
+        "dx",
+        "dy",
+        "dz",
+        "pec_mask"
+      ]
+    },
+    "analyze_features": {
+      "kind": "function",
+      "params": [
+        "geometry",
+        "materials",
+        "pec_threshold"
+      ]
+    },
+    "antenna_bandwidth": {
+      "kind": "function",
+      "params": [
+        "s11",
+        "freqs",
+        "threshold_db"
+      ]
+    },
+    "antenna_efficiency": {
+      "kind": "function",
+      "params": [
+        "ff",
+        "input_power"
+      ]
+    },
+    "antenna_gain": {
+      "kind": "function",
+      "params": [
+        "ff",
+        "input_power"
+      ]
+    },
+    "antenna_gain_dB": {
+      "kind": "function",
+      "params": [
+        "ff",
+        "input_power"
+      ]
+    },
+    "apply_density_filter": {
+      "kind": "function",
+      "params": [
+        "rho",
+        "radius_cells"
+      ]
+    },
+    "apply_projection": {
+      "kind": "function",
+      "params": [
+        "rho",
+        "beta",
+        "eta"
+      ]
+    },
+    "apply_thin_conductor": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "conductor",
+        "materials",
+        "pec_mask"
+      ]
+    },
+    "apply_thirds_rule": {
+      "kind": "function",
+      "params": [
+        "cells",
+        "boundary_indices"
+      ]
+    },
+    "apply_waveguide_port_e": {
+      "kind": "function",
+      "params": [
+        "state",
+        "cfg",
+        "step",
+        "dt",
+        "dx"
+      ]
+    },
+    "apply_waveguide_port_h": {
+      "kind": "function",
+      "params": [
+        "state",
+        "cfg",
+        "step",
+        "dt",
+        "dx"
+      ]
+    },
+    "assert_port_smatrix_valid": {
+      "kind": "function",
+      "params": [
+        "args",
+        "kwargs"
+      ]
+    },
+    "auto_configure": {
+      "kind": "function",
+      "params": [
+        "geometry",
+        "freq_range",
+        "materials",
+        "accuracy",
+        "boundary",
+        "dx_override",
+        "margin_override",
+        "n_steps_override",
+        "max_memory_mb"
+      ]
+    },
+    "auto_refine": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "result",
+        "threshold",
+        "component",
+        "min_region_size",
+        "ratio"
+      ]
+    },
+    "axial_ratio": {
+      "kind": "function",
+      "params": [
+        "ff"
+      ]
+    },
+    "axial_ratio_dB": {
+      "kind": "function",
+      "params": [
+        "ff"
+      ]
+    },
+    "benchmark": {
+      "kind": "function",
+      "params": [
+        "grid_sizes",
+        "n_steps"
+      ]
+    },
+    "build_coaxial_tem_plane_source_specs": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "port",
+        "n_steps",
+        "field_scale",
+        "magnetic_ratio",
+        "reference_plane_axial_index_offset",
+        "eps_r"
+      ]
+    },
+    "build_runtime_report": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "result",
+        "extra",
+        "n_steps",
+        "available_memory_gb"
+      ]
+    },
+    "build_scene_artifact": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "include_private"
+      ]
+    },
+    "case_id_from_params": {
+      "kind": "function",
+      "params": [
+        "params",
+        "prefix"
+      ]
+    },
+    "coaxial_load_reflection": {
+      "kind": "function",
+      "params": [
+        "load_impedance",
+        "reference_impedance"
+      ]
+    },
+    "coaxial_tem_capacitance_per_m": {
+      "kind": "function",
+      "params": [
+        "inner_radius",
+        "outer_radius",
+        "eps_r"
+      ]
+    },
+    "coaxial_tem_characteristic_impedance": {
+      "kind": "function",
+      "params": [
+        "inner_radius",
+        "outer_radius",
+        "eps_r",
+        "mu_r"
+      ]
+    },
+    "coaxial_tem_inductance_per_m": {
+      "kind": "function",
+      "params": [
+        "inner_radius",
+        "outer_radius",
+        "mu_r"
+      ]
+    },
+    "coaxial_tem_phase_constant": {
+      "kind": "function",
+      "params": [
+        "freqs_hz",
+        "eps_r",
+        "mu_r"
+      ]
+    },
+    "coaxial_tem_reference_plane_s11": {
+      "kind": "function",
+      "params": [
+        "voltage",
+        "current",
+        "reference_impedance"
+      ]
+    },
+    "coaxial_tem_reference_plane_vi": {
+      "kind": "function",
+      "params": [
+        "radial_positions_m",
+        "e_radial_samples",
+        "h_phi_samples",
+        "h_sample_radius_m",
+        "inner_radius",
+        "outer_radius",
+        "eps_r",
+        "voltage_sign",
+        "current_sign"
+      ]
+    },
+    "coaxial_tem_reference_plane_vi_from_cartesian_plane": {
+      "kind": "function",
+      "params": [
+        "u_coords_m",
+        "v_coords_m",
+        "e_u_samples",
+        "e_v_samples",
+        "h_u_samples",
+        "h_v_samples",
+        "center_u_m",
+        "center_v_m",
+        "inner_radius",
+        "outer_radius",
+        "eps_r",
+        "radial_positions_m",
+        "h_sample_radius_m",
+        "azimuthal_angles_rad",
+        "voltage_sign",
+        "current_sign"
+      ]
+    },
+    "compare_replayed_smatrix": {
+      "kind": "function",
+      "params": [
+        "replayed",
+        "production",
+        "atol",
+        "rtol"
+      ]
+    },
+    "compute_error_indicator": {
+      "kind": "function",
+      "params": [
+        "result",
+        "component"
+      ]
+    },
+    "compute_far_field": {
+      "kind": "function",
+      "params": [
+        "ntff_data",
+        "box",
+        "grid",
+        "theta",
+        "phi"
+      ]
+    },
+    "compute_far_field_jax": {
+      "kind": "function",
+      "params": [
+        "ntff_data",
+        "box",
+        "grid",
+        "theta",
+        "phi"
+      ]
+    },
+    "compute_floquet_s_params": {
+      "kind": "function",
+      "params": [
+        "acc_inc",
+        "acc_ref",
+        "acc_trans",
+        "dx",
+        "Lx",
+        "Ly",
+        "freqs",
+        "theta_deg",
+        "phi_deg"
+      ]
+    },
+    "compute_rcs": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "materials",
+        "n_steps",
+        "f0",
+        "bandwidth",
+        "theta_inc",
+        "phi_inc",
+        "polarization",
+        "theta_obs",
+        "phi_obs",
+        "freqs",
+        "boundary",
+        "cpml_layers",
+        "tfsf_margin",
+        "ntff_offset"
+      ]
+    },
+    "convergence_study": {
+      "kind": "function",
+      "params": [
+        "sim_factory",
+        "dx_values",
+        "metric_fn",
+        "n_steps",
+        "until_decay",
+        "run_kwargs",
+        "expected_order"
+      ]
+    },
+    "deembed_port_extension": {
+      "kind": "function",
+      "params": [
+        "s_matrix",
+        "freqs",
+        "port_lengths",
+        "z0",
+        "eps_eff"
+      ]
+    },
+    "deembed_thru": {
+      "kind": "function",
+      "params": [
+        "s_measured",
+        "s_thru"
+      ]
+    },
+    "density_to_eps": {
+      "kind": "function",
+      "params": [
+        "rho",
+        "eps_bg",
+        "eps_fg",
+        "filter_radius_cells",
+        "beta",
+        "sigma_bg",
+        "sigma_fg"
+      ]
+    },
+    "device_info": {
+      "kind": "function",
+      "params": []
+    },
+    "differentiable_material_fit": {
+      "kind": "function",
+      "params": [
+        "sim_factory",
+        "s_measured",
+        "freqs",
+        "n_debye_poles",
+        "n_lorentz_poles",
+        "n_iterations",
+        "learning_rate",
+        "initial_guess",
+        "weight_mag",
+        "weight_phase",
+        "checkpoint",
+        "verbose"
+      ]
+    },
+    "directivity": {
+      "kind": "function",
+      "params": [
+        "ff"
+      ]
+    },
+    "drude_pole": {
+      "kind": "function",
+      "params": [
+        "omega_p",
+        "gamma"
+      ]
+    },
+    "eval_debye": {
+      "kind": "function",
+      "params": [
+        "freqs",
+        "eps_inf",
+        "poles"
+      ]
+    },
+    "eval_lorentz": {
+      "kind": "function",
+      "params": [
+        "freqs",
+        "eps_inf",
+        "poles"
+      ]
+    },
+    "export_artifact_bundle": {
+      "kind": "function",
+      "params": [
+        "path",
+        "sim",
+        "result",
+        "include_markdown",
+        "include_scene",
+        "include_geometry_json",
+        "include_field_vtk",
+        "field_state",
+        "field_grid",
+        "extra"
+      ]
+    },
+    "export_geometry_json": {
+      "kind": "function",
+      "params": [
+        "path",
+        "sim"
+      ]
+    },
+    "export_geometry_sdf": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "resolution"
+      ]
+    },
+    "export_radiation_pattern": {
+      "kind": "function",
+      "params": [
+        "path",
+        "ff_result",
+        "freq_idx"
+      ]
+    },
+    "export_training_data": {
+      "kind": "function",
+      "params": [
+        "sweep_result",
+        "output_path",
+        "format"
+      ]
+    },
+    "extract_coaxial_plane_vi_from_dft": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "port",
+        "plane_axial_index",
+        "ex_dft",
+        "ey_dft",
+        "hx_dft",
+        "hy_dft",
+        "eps_r"
+      ]
+    },
+    "extract_floquet_modes": {
+      "kind": "function",
+      "params": [
+        "acc",
+        "dx",
+        "Lx",
+        "Ly",
+        "freqs",
+        "theta_deg",
+        "phi_deg",
+        "n_modes"
+      ]
+    },
+    "extract_multimode_s_matrix": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "materials",
+        "port_mode_cfgs",
+        "n_steps",
+        "boundary",
+        "cpml_axes",
+        "pec_axes",
+        "periodic",
+        "debye",
+        "lorentz",
+        "ref_shifts",
+        "aniso_eps",
+        "conformal_weights",
+        "aniso_inv_eps"
+      ]
+    },
+    "extract_s_matrix_wire": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "materials",
+        "ports",
+        "freqs",
+        "n_steps",
+        "boundary",
+        "cpml_axes",
+        "debye_spec",
+        "lorentz_spec",
+        "pec_mask",
+        "return_vi_dump"
+      ]
+    },
+    "extract_waveguide_port_waves": {
+      "kind": "function",
+      "params": [
+        "cfg",
+        "ref_shift"
+      ]
+    },
+    "extract_waveguide_s11": {
+      "kind": "function",
+      "params": [
+        "cfg",
+        "ref_shift"
+      ]
+    },
+    "extract_waveguide_s21": {
+      "kind": "function",
+      "params": [
+        "cfg",
+        "dt",
+        "ref_shift",
+        "probe_shift"
+      ]
+    },
+    "extract_waveguide_s_matrix": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "materials",
+        "port_cfgs",
+        "n_steps",
+        "boundary",
+        "cpml_axes",
+        "pec_axes",
+        "periodic",
+        "debye",
+        "lorentz",
+        "ref_shifts",
+        "aniso_eps",
+        "conformal_weights",
+        "aniso_inv_eps",
+        "checkpoint_segments"
+      ]
+    },
+    "extract_waveguide_sparams": {
+      "kind": "function",
+      "params": [
+        "cfg",
+        "ref_shift",
+        "probe_shift",
+        "v_ref_dft",
+        "i_ref_dft",
+        "v_probe_dft",
+        "i_probe_dft"
+      ]
+    },
+    "fit_debye": {
+      "kind": "function",
+      "params": [
+        "freqs",
+        "eps_measured",
+        "n_poles",
+        "eps_inf"
+      ]
+    },
+    "fit_lorentz": {
+      "kind": "function",
+      "params": [
+        "freqs",
+        "eps_measured",
+        "n_poles",
+        "eps_inf"
+      ]
+    },
+    "floquet_phase_shift": {
+      "kind": "function",
+      "params": [
+        "Lx",
+        "Ly",
+        "freq",
+        "theta_deg",
+        "phi_deg"
+      ]
+    },
+    "floquet_wave_vector": {
+      "kind": "function",
+      "params": [
+        "freq",
+        "theta_deg",
+        "phi_deg"
+      ]
+    },
+    "flux_spectrum": {
+      "kind": "function",
+      "params": [
+        "mon"
+      ]
+    },
+    "front_to_back_ratio": {
+      "kind": "function",
+      "params": [
+        "ff",
+        "freq_idx"
+      ]
+    },
+    "gradient_check": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "design_params",
+        "objective_fn",
+        "eps",
+        "n_steps",
+        "num_periods"
+      ]
+    },
+    "half_power_beamwidth": {
+      "kind": "function",
+      "params": [
+        "ff",
+        "plane",
+        "freq_idx"
+      ]
+    },
+    "harminv": {
+      "kind": "function",
+      "params": [
+        "signal",
+        "dt",
+        "f_min",
+        "f_max",
+        "pencil_parameter",
+        "min_Q",
+        "max_modes",
+        "sv_threshold"
+      ]
+    },
+    "harminv_from_probe": {
+      "kind": "function",
+      "params": [
+        "time_series",
+        "dt",
+        "freq_range",
+        "source_decay_time",
+        "kwargs"
+      ]
+    },
+    "init_floquet_dft": {
+      "kind": "function",
+      "params": [
+        "n_freqs",
+        "plane_shape"
+      ]
+    },
+    "init_flux_monitor": {
+      "kind": "function",
+      "params": [
+        "axis",
+        "index",
+        "freqs",
+        "grid_shape",
+        "d1",
+        "d2",
+        "dft_total_steps",
+        "dft_window",
+        "dft_window_alpha",
+        "lo1",
+        "hi1",
+        "lo2",
+        "hi2"
+      ]
+    },
+    "init_multimode_waveguide_port": {
+      "kind": "function",
+      "params": [
+        "port",
+        "dx",
+        "freqs",
+        "n_modes",
+        "f0",
+        "bandwidth",
+        "amplitude",
+        "probe_offset",
+        "ref_offset",
+        "dft_total_steps",
+        "dt",
+        "waveform",
+        "mode_profile",
+        "grid",
+        "h_offset"
+      ]
+    },
+    "init_waveguide_port": {
+      "kind": "function",
+      "params": [
+        "port",
+        "dx",
+        "freqs",
+        "f0",
+        "bandwidth",
+        "amplitude",
+        "probe_offset",
+        "ref_offset",
+        "dft_total_steps",
+        "dt",
+        "waveform",
+        "mode_profile",
+        "grid",
+        "h_offset"
+      ]
+    },
+    "init_wire_sparam_probe": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "port",
+        "freqs",
+        "dft_total_steps",
+        "dft_window",
+        "dft_window_alpha"
+      ]
+    },
+    "inject_floquet_source": {
+      "kind": "function",
+      "params": [
+        "state",
+        "port_index",
+        "axis",
+        "dt",
+        "dx",
+        "step",
+        "f0",
+        "bandwidth",
+        "amplitude",
+        "polarization",
+        "theta_deg",
+        "phi_deg",
+        "Lx",
+        "Ly"
+      ]
+    },
+    "inject_waveguide_port": {
+      "kind": "function",
+      "params": [
+        "state",
+        "cfg",
+        "t",
+        "dt",
+        "dx"
+      ]
+    },
+    "load_material_csv": {
+      "kind": "function",
+      "params": [
+        "path",
+        "freq_col",
+        "eps_real_col",
+        "eps_imag_col",
+        "tan_delta_col"
+      ]
+    },
+    "load_materials": {
+      "kind": "function",
+      "params": [
+        "path"
+      ]
+    },
+    "load_optimization_result": {
+      "kind": "function",
+      "params": [
+        "path"
+      ]
+    },
+    "load_port_vi_dump_npz": {
+      "kind": "function",
+      "params": [
+        "path"
+      ]
+    },
+    "load_snapshots": {
+      "kind": "function",
+      "params": [
+        "path"
+      ]
+    },
+    "load_state": {
+      "kind": "function",
+      "params": [
+        "path"
+      ]
+    },
+    "lorentz_pole": {
+      "kind": "function",
+      "params": [
+        "delta_eps",
+        "omega_0",
+        "delta"
+      ]
+    },
+    "make_current_source": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "position_ijk",
+        "component",
+        "waveform_fn",
+        "n_steps",
+        "materials"
+      ]
+    },
+    "make_nonuniform_grid": {
+      "kind": "function",
+      "params": [
+        "domain_xy",
+        "dz_profile",
+        "dx",
+        "cpml_layers",
+        "dx_profile",
+        "dy_profile",
+        "pec_faces",
+        "pmc_faces",
+        "cpml_axes"
+      ]
+    },
+    "make_ntff_box": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "corner_lo",
+        "corner_hi",
+        "freqs"
+      ]
+    },
+    "make_port_source": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "port",
+        "materials",
+        "n_steps"
+      ]
+    },
+    "make_probe": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "position",
+        "component"
+      ]
+    },
+    "make_source": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "position",
+        "component",
+        "waveform_fn",
+        "n_steps"
+      ]
+    },
+    "maximize_bandwidth": {
+      "kind": "function",
+      "params": [
+        "f_center",
+        "f_bw",
+        "s11_threshold"
+      ]
+    },
+    "maximize_directivity": {
+      "kind": "function",
+      "params": [
+        "theta_target",
+        "phi_target",
+        "n_theta",
+        "n_phi",
+        "log_ratio",
+        "eps"
+      ]
+    },
+    "maximize_s21": {
+      "kind": "function",
+      "params": [
+        "freqs"
+      ]
+    },
+    "maximize_transmitted_energy": {
+      "kind": "function",
+      "params": [
+        "output_probe_idx"
+      ]
+    },
+    "minimize_reflected_energy": {
+      "kind": "function",
+      "params": [
+        "port_probe_idx",
+        "late_fraction"
+      ]
+    },
+    "minimize_s11": {
+      "kind": "function",
+      "params": [
+        "freqs",
+        "target_db"
+      ]
+    },
+    "network_quality_metrics": {
+      "kind": "function",
+      "params": [
+        "s_params",
+        "reciprocity_tol",
+        "passivity_tol"
+      ]
+    },
+    "normalize_port_smatrix": {
+      "kind": "function",
+      "params": [
+        "obj",
+        "s_params",
+        "freqs",
+        "port_names",
+        "source"
+      ]
+    },
+    "optimize": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "region",
+        "objective",
+        "n_iters",
+        "lr",
+        "init_latent",
+        "n_steps",
+        "num_periods",
+        "verbose",
+        "skip_preflight",
+        "checkpoint_every",
+        "emit_time_series",
+        "n_warmup",
+        "design_mask",
+        "distributed",
+        "port_s11_freqs",
+        "checkpoint_segments"
+      ]
+    },
+    "parametric_sweep": {
+      "kind": "function",
+      "params": [
+        "sim_factory",
+        "param_name",
+        "param_values",
+        "n_steps",
+        "until_decay",
+        "run_kwargs"
+      ]
+    },
+    "plan_mesh": {
+      "kind": "function",
+      "params": [
+        "geometry",
+        "freq_range",
+        "materials",
+        "accuracy",
+        "boundary",
+        "dx_override",
+        "margin_override",
+        "n_steps_override",
+        "max_memory_mb",
+        "artifact_root"
+      ]
+    },
+    "plan_simulation_mesh": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "n_steps",
+        "checkpoint_every",
+        "available_memory_gb",
+        "sparameter_calculator",
+        "artifact_root"
+      ]
+    },
+    "plot_antenna_summary": {
+      "kind": "function",
+      "params": [
+        "ff",
+        "s11",
+        "freqs",
+        "freq_idx",
+        "input_power"
+      ]
+    },
+    "plot_field_3d": {
+      "kind": "function",
+      "params": [
+        "state",
+        "grid",
+        "component",
+        "threshold",
+        "title",
+        "figsize",
+        "cmap",
+        "scale",
+        "scale_label",
+        "backend"
+      ]
+    },
+    "plot_field_slice": {
+      "kind": "function",
+      "params": [
+        "state",
+        "grid",
+        "component",
+        "axis",
+        "index",
+        "title",
+        "cmap",
+        "vmax"
+      ]
+    },
+    "plot_geometry_3d": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "show_domain",
+        "show_ports",
+        "title",
+        "figsize",
+        "scale",
+        "scale_label",
+        "backend"
+      ]
+    },
+    "plot_material_fit": {
+      "kind": "function",
+      "params": [
+        "freqs",
+        "eps_measured",
+        "eps_fitted",
+        "ax"
+      ]
+    },
+    "plot_radiation_pattern": {
+      "kind": "function",
+      "params": [
+        "ff",
+        "freq_idx",
+        "phi_idx",
+        "db",
+        "title"
+      ]
+    },
+    "plot_rcs": {
+      "kind": "function",
+      "params": [
+        "rcs_result",
+        "freq_idx",
+        "phi_idx",
+        "polar",
+        "title"
+      ]
+    },
+    "plot_s_params": {
+      "kind": "function",
+      "params": [
+        "s_params",
+        "freqs",
+        "db",
+        "title"
+      ]
+    },
+    "plot_smith": {
+      "kind": "function",
+      "params": [
+        "s11",
+        "freqs",
+        "z0",
+        "ax",
+        "show_vswr",
+        "markers",
+        "title"
+      ]
+    },
+    "plot_sweep": {
+      "kind": "function",
+      "params": [
+        "sweep_result",
+        "metric",
+        "title",
+        "ylabel",
+        "marker"
+      ]
+    },
+    "plot_time_series": {
+      "kind": "function",
+      "params": [
+        "time_series",
+        "dt",
+        "labels",
+        "title"
+      ]
+    },
+    "polarization_sense": {
+      "kind": "function",
+      "params": [
+        "ff"
+      ]
+    },
+    "polarization_tilt": {
+      "kind": "function",
+      "params": [
+        "ff"
+      ]
+    },
+    "progressive_optimize": {
+      "kind": "function",
+      "params": [
+        "sim_factory",
+        "region",
+        "objective",
+        "schedule",
+        "init_latent",
+        "interp_method",
+        "verbose",
+        "skip_preflight",
+        "checkpoint_every",
+        "emit_time_series",
+        "n_warmup",
+        "distributed"
+      ]
+    },
+    "quick_convergence": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "metric",
+        "dx_factors",
+        "n_steps",
+        "until_decay",
+        "run_kwargs"
+      ]
+    },
+    "radiation_pattern": {
+      "kind": "function",
+      "params": [
+        "ff"
+      ]
+    },
+    "read_touchstone": {
+      "kind": "function",
+      "params": [
+        "filepath"
+      ]
+    },
+    "read_touchstone_full": {
+      "kind": "function",
+      "params": [
+        "filepath",
+        "layout"
+      ]
+    },
+    "render_artifact_markdown": {
+      "kind": "function",
+      "params": [
+        "report"
+      ]
+    },
+    "replay_smatrix_from_port_vi_dump": {
+      "kind": "function",
+      "params": [
+        "dump"
+      ]
+    },
+    "replay_smatrix_from_vi_dump": {
+      "kind": "function",
+      "params": [
+        "voltages",
+        "currents",
+        "freqs",
+        "port_impedances",
+        "port_names",
+        "driven_port_indices",
+        "current_convention",
+        "reference_plane_offsets_m",
+        "propagation_constants",
+        "source"
+      ]
+    },
+    "richardson_extrapolation": {
+      "kind": "function",
+      "params": [
+        "values",
+        "dx_values",
+        "expected_order"
+      ]
+    },
+    "run": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "materials",
+        "n_steps",
+        "boundary",
+        "cpml_axes",
+        "pec_axes",
+        "periodic",
+        "debye",
+        "lorentz",
+        "tfsf",
+        "sources",
+        "probes",
+        "dft_planes",
+        "flux_monitors",
+        "waveguide_ports",
+        "ntff",
+        "snapshot",
+        "checkpoint",
+        "checkpoint_segments",
+        "aniso_eps",
+        "aniso_inv_eps",
+        "aniso_inv_eps_smooth",
+        "pec_mask",
+        "pec_occupancy",
+        "conformal_weights",
+        "wire_port_sparams",
+        "lumped_port_sparams",
+        "lumped_rlc",
+        "kerr_chi3",
+        "field_dtype",
+        "return_state",
+        "mag_sources"
+      ]
+    },
+    "run_adi_2d": {
+      "kind": "function",
+      "params": [
+        "ez",
+        "hx",
+        "hy",
+        "eps_r",
+        "sigma",
+        "dt",
+        "dx",
+        "dy",
+        "n_steps",
+        "sources",
+        "probes",
+        "pec_mask",
+        "cpml_params",
+        "cpml_state"
+      ]
+    },
+    "run_adi_3d": {
+      "kind": "function",
+      "params": [
+        "ex",
+        "ey",
+        "ez",
+        "hx",
+        "hy",
+        "hz",
+        "eps_r",
+        "sigma",
+        "dt",
+        "dx",
+        "dy",
+        "dz",
+        "n_steps",
+        "sources",
+        "probes",
+        "pec_mask"
+      ]
+    },
+    "run_batch": {
+      "kind": "function",
+      "params": [
+        "sim_factory",
+        "sweep",
+        "run_kwargs"
+      ]
+    },
+    "run_batch_with_manifest": {
+      "kind": "function",
+      "params": [
+        "sim_factory",
+        "sweep",
+        "output_dir",
+        "run_kwargs",
+        "metric_fn",
+        "artifact_fn",
+        "resume",
+        "continue_on_error",
+        "manifest_name",
+        "run_fingerprint",
+        "include_environment"
+      ]
+    },
+    "run_nonuniform": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "materials",
+        "n_steps",
+        "pec_mask",
+        "pec_occupancy",
+        "sources",
+        "probes",
+        "wire_ports",
+        "s_param_freqs",
+        "debye",
+        "lorentz",
+        "pec_faces",
+        "pmc_faces",
+        "dft_planes",
+        "rlc_metas",
+        "rlc_states",
+        "ntff_box",
+        "ntff_data",
+        "waveguide_ports",
+        "tfsf",
+        "flux_monitors",
+        "checkpoint",
+        "emit_time_series",
+        "checkpoint_every",
+        "n_warmup",
+        "design_mask",
+        "aniso_eps"
+      ]
+    },
+    "run_until_decay": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "materials",
+        "decay_by",
+        "check_interval",
+        "min_steps",
+        "max_steps",
+        "monitor_component",
+        "monitor_position",
+        "boundary",
+        "cpml_axes",
+        "pec_axes",
+        "periodic",
+        "debye",
+        "lorentz",
+        "tfsf",
+        "sources",
+        "probes",
+        "dft_planes",
+        "flux_monitors",
+        "waveguide_ports",
+        "ntff",
+        "snapshot",
+        "checkpoint",
+        "aniso_eps",
+        "aniso_inv_eps",
+        "aniso_inv_eps_smooth",
+        "pec_mask",
+        "pec_occupancy",
+        "conformal_weights",
+        "wire_port_sparams",
+        "lumped_port_sparams",
+        "lumped_rlc",
+        "kerr_chi3",
+        "field_dtype",
+        "return_state",
+        "mag_sources"
+      ]
+    },
+    "save_experiment_report": {
+      "kind": "function",
+      "params": [
+        "path",
+        "sim",
+        "result",
+        "extra"
+      ]
+    },
+    "save_far_field": {
+      "kind": "function",
+      "params": [
+        "path",
+        "ff_result",
+        "metadata"
+      ]
+    },
+    "save_field_animation": {
+      "kind": "function",
+      "params": [
+        "result",
+        "filename",
+        "component",
+        "slice_axis",
+        "slice_index",
+        "fps",
+        "colormap",
+        "vmin",
+        "vmax",
+        "dpi",
+        "figsize",
+        "interval"
+      ]
+    },
+    "save_field_vtk": {
+      "kind": "function",
+      "params": [
+        "state",
+        "grid",
+        "filename",
+        "components",
+        "scale"
+      ]
+    },
+    "save_materials": {
+      "kind": "function",
+      "params": [
+        "path",
+        "materials"
+      ]
+    },
+    "save_optimization_result": {
+      "kind": "function",
+      "params": [
+        "path",
+        "result",
+        "metadata",
+        "include_latent",
+        "include_density",
+        "include_history"
+      ]
+    },
+    "save_optimization_trajectory": {
+      "kind": "function",
+      "params": [
+        "path",
+        "history_callback_data"
+      ]
+    },
+    "save_port_vi_dump_npz": {
+      "kind": "function",
+      "params": [
+        "path",
+        "voltages",
+        "currents",
+        "freqs",
+        "port_impedances",
+        "metadata",
+        "port_names",
+        "driven_port_indices",
+        "production_smatrix",
+        "reference_plane_offsets_m",
+        "propagation_constants"
+      ]
+    },
+    "save_screenshot": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "state",
+        "filename",
+        "component",
+        "dpi",
+        "figsize",
+        "scale"
+      ]
+    },
+    "save_simulation_dataset": {
+      "kind": "function",
+      "params": [
+        "path",
+        "sim",
+        "result",
+        "include_fields",
+        "include_time_series",
+        "include_s_params",
+        "include_config"
+      ]
+    },
+    "save_snapshots": {
+      "kind": "function",
+      "params": [
+        "path",
+        "snapshots",
+        "grid",
+        "dt"
+      ]
+    },
+    "save_state": {
+      "kind": "function",
+      "params": [
+        "path",
+        "state",
+        "grid"
+      ]
+    },
+    "smooth_grading": {
+      "kind": "function",
+      "params": [
+        "cells",
+        "max_ratio",
+        "preserve_regions"
+      ]
+    },
+    "solve_rectangular_modes": {
+      "kind": "function",
+      "params": [
+        "a",
+        "b",
+        "freq_max",
+        "n_modes"
+      ]
+    },
+    "solve_waveguide_modes": {
+      "kind": "function",
+      "params": [
+        "a",
+        "b",
+        "dx",
+        "freqs",
+        "n_modes",
+        "eps_cross",
+        "mu_cross"
+      ]
+    },
+    "sparam_loss": {
+      "kind": "function",
+      "params": [
+        "s_sim",
+        "s_meas",
+        "weight_mag",
+        "weight_phase"
+      ]
+    },
+    "steer_probe_array": {
+      "kind": "function",
+      "params": [
+        "target_probe_idx",
+        "suppress_probe_idx",
+        "late_fraction"
+      ]
+    },
+    "suggest_refinement_regions": {
+      "kind": "function",
+      "params": [
+        "error_map",
+        "grid",
+        "threshold",
+        "min_region_size"
+      ]
+    },
+    "summarize_batch_manifest": {
+      "kind": "function",
+      "params": [
+        "manifest_or_path"
+      ]
+    },
+    "target_impedance": {
+      "kind": "function",
+      "params": [
+        "freq",
+        "z_target"
+      ]
+    },
+    "thomas_solve": {
+      "kind": "function",
+      "params": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ]
+    },
+    "topology_optimize": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "design_region",
+        "objective",
+        "n_iterations",
+        "learning_rate",
+        "beta_schedule",
+        "init_density",
+        "verbose",
+        "skip_preflight"
+      ]
+    },
+    "update_floquet_dft": {
+      "kind": "function",
+      "params": [
+        "acc",
+        "state",
+        "port_index",
+        "axis",
+        "freqs",
+        "dt",
+        "step"
+      ]
+    },
+    "update_flux_monitor": {
+      "kind": "function",
+      "params": [
+        "mon",
+        "state",
+        "dt"
+      ]
+    },
+    "update_waveguide_port_probe": {
+      "kind": "function",
+      "params": [
+        "cfg",
+        "state",
+        "dt",
+        "dx"
+      ]
+    },
+    "update_wire_sparam_probe": {
+      "kind": "function",
+      "params": [
+        "probe",
+        "state",
+        "grid",
+        "port",
+        "dt"
+      ]
+    },
+    "validate_artifact_report": {
+      "kind": "function",
+      "params": [
+        "report",
+        "bundle_root"
+      ]
+    },
+    "validate_port_smatrix": {
+      "kind": "function",
+      "params": [
+        "obj",
+        "s_params",
+        "freqs",
+        "port_names",
+        "source",
+        "check_passivity",
+        "passivity_limit",
+        "passivity_tol",
+        "check_reciprocity",
+        "reciprocity_atol",
+        "reciprocity_rtol",
+        "require_positive_freqs",
+        "require_strictly_increasing_freqs"
+      ]
+    },
+    "vmap_material_sweep": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "param_name",
+        "param_values",
+        "n_steps",
+        "num_periods",
+        "return_fields"
+      ]
+    },
+    "waveguide_plane_positions": {
+      "kind": "function",
+      "params": [
+        "cfg"
+      ]
+    },
+    "wire_port_current": {
+      "kind": "function",
+      "params": [
+        "state",
+        "grid",
+        "port"
+      ]
+    },
+    "wire_port_voltage": {
+      "kind": "function",
+      "params": [
+        "state",
+        "grid",
+        "port"
+      ]
+    },
+    "write_touchstone": {
+      "kind": "function",
+      "params": [
+        "filepath",
+        "s_params",
+        "freqs",
+        "z0",
+        "freq_unit",
+        "fmt",
+        "comments",
+        "version",
+        "layout",
+        "port_z0",
+        "matrix_format",
+        "two_port_order",
+        "information"
+      ]
+    }
+  },
+  "simulation_methods": {
+    "add": [
+      "shape",
+      "material"
+    ],
+    "add_coaxial_matched_load": [
+      "port_index",
+      "target_impedance",
+      "axial_offset_cells"
+    ],
+    "add_coaxial_open_termination": [
+      "port_index",
+      "pin_retract_cells"
+    ],
+    "add_coaxial_pec_end_cap": [
+      "port_index",
+      "axial_offset_cells"
+    ],
+    "add_coaxial_port": [
+      "position",
+      "face",
+      "pin_length",
+      "pin_radius",
+      "outer_radius",
+      "impedance",
+      "waveform"
+    ],
+    "add_dft_plane_probe": [
+      "axis",
+      "coordinate",
+      "component",
+      "freqs",
+      "n_freqs",
+      "name"
+    ],
+    "add_floquet_port": [
+      "position",
+      "axis",
+      "scan_theta",
+      "scan_phi",
+      "polarization",
+      "n_modes",
+      "freqs",
+      "n_freqs",
+      "f0",
+      "bandwidth",
+      "amplitude",
+      "name"
+    ],
+    "add_flux_monitor": [
+      "axis",
+      "coordinate",
+      "freqs",
+      "n_freqs",
+      "size",
+      "center",
+      "name",
+      "dft_window",
+      "dft_window_alpha"
+    ],
+    "add_lumped_rlc": [
+      "position",
+      "component",
+      "R",
+      "L",
+      "C",
+      "topology"
+    ],
+    "add_material": [
+      "name",
+      "eps_r",
+      "sigma",
+      "mu_r",
+      "debye_poles",
+      "lorentz_poles",
+      "chi3"
+    ],
+    "add_msl_port": [
+      "position",
+      "width",
+      "height",
+      "direction",
+      "impedance",
+      "waveform",
+      "excite",
+      "n_probe_offset",
+      "n_probe_spacing",
+      "n_probes",
+      "name",
+      "mode",
+      "eps_r_sub"
+    ],
+    "add_ntff_box": [
+      "corner_lo",
+      "corner_hi",
+      "freqs",
+      "n_freqs"
+    ],
+    "add_polarized_source": [
+      "position",
+      "polarization",
+      "waveform"
+    ],
+    "add_port": [
+      "position",
+      "component",
+      "impedance",
+      "waveform",
+      "extent",
+      "excite",
+      "direction"
+    ],
+    "add_probe": [
+      "position",
+      "component"
+    ],
+    "add_refinement": [
+      "z_range",
+      "ratio",
+      "xy_margin",
+      "tau",
+      "validation",
+      "topology"
+    ],
+    "add_source": [
+      "position",
+      "component",
+      "waveform"
+    ],
+    "add_tfsf_source": [
+      "f0",
+      "bandwidth",
+      "amplitude",
+      "margin",
+      "polarization",
+      "direction",
+      "angle_deg",
+      "waveform"
+    ],
+    "add_thin_conductor": [
+      "shape",
+      "sigma_bulk",
+      "thickness",
+      "eps_r"
+    ],
+    "add_vector_probe": [
+      "position"
+    ],
+    "add_waveguide_port": [
+      "x_position",
+      "x_range",
+      "y_range",
+      "z_range",
+      "mode",
+      "mode_type",
+      "direction",
+      "freqs",
+      "n_freqs",
+      "f0",
+      "bandwidth",
+      "amplitude",
+      "probe_offset",
+      "ref_offset",
+      "calibration_preset",
+      "reference_plane",
+      "probe_plane",
+      "name",
+      "n_modes",
+      "waveform",
+      "mode_profile"
+    ],
+    "artifact_report": [
+      "result",
+      "kwargs"
+    ],
+    "compute_coaxial_line_reflection": [
+      "termination",
+      "n_steps",
+      "freqs",
+      "n_freqs",
+      "field_scale",
+      "cpml_axes",
+      "dut_offset_cells",
+      "probe_count",
+      "probe_start_cells",
+      "probe_spacing_cells",
+      "feed_impedance",
+      "dut_impedance"
+    ],
+    "compute_coaxial_s_matrix": [
+      "n_steps",
+      "freqs",
+      "n_freqs",
+      "field_scale",
+      "magnetic_ratio",
+      "signal_floor",
+      "reference_plane_axial_index_offset",
+      "strict_passivity"
+    ],
+    "compute_msl_s_matrix": [
+      "n_steps",
+      "num_periods",
+      "freqs",
+      "n_freqs",
+      "raw_3probe_dump_path",
+      "strict_extractor",
+      "eps_override",
+      "checkpoint_every",
+      "checkpoint_segments"
+    ],
+    "compute_waveguide_s_matrix": [
+      "n_steps",
+      "num_periods",
+      "normalize",
+      "subpixel_smoothing",
+      "eps_override",
+      "sigma_override",
+      "checkpoint_segments",
+      "strict_passivity"
+    ],
+    "estimate_ad_memory": [
+      "n_steps",
+      "available_memory_gb",
+      "checkpoint_every"
+    ],
+    "export_artifact_bundle": [
+      "path",
+      "result",
+      "kwargs"
+    ],
+    "export_scene": [
+      "path",
+      "kwargs"
+    ],
+    "forward": [
+      "eps_override",
+      "sigma_override",
+      "pec_mask_override",
+      "pec_occupancy_override",
+      "n_steps",
+      "num_periods",
+      "checkpoint",
+      "checkpoint_segments",
+      "emit_time_series",
+      "checkpoint_every",
+      "n_warmup",
+      "skip_preflight",
+      "design_mask",
+      "distributed",
+      "devices",
+      "exchange_interval",
+      "port_s11_freqs"
+    ],
+    "mesh_intelligence_report": [
+      "n_steps",
+      "checkpoint_every",
+      "available_memory_gb",
+      "check_ntff",
+      "check_resolution"
+    ],
+    "plan_ad_memory": [
+      "n_steps",
+      "available_memory_gb",
+      "target_fraction"
+    ],
+    "plan_mesh": [
+      "n_steps",
+      "checkpoint_every",
+      "available_memory_gb",
+      "sparameter_calculator",
+      "artifact_root"
+    ],
+    "preflight": [
+      "strict",
+      "check_ntff",
+      "check_resolution",
+      "check_ad_memory",
+      "n_steps_for_memory",
+      "available_memory_gb"
+    ],
+    "preflight_sparameters": [
+      "calculator",
+      "strict",
+      "normalize",
+      "include_general"
+    ],
+    "run": [
+      "n_steps",
+      "num_periods",
+      "until_decay",
+      "decay_check_interval",
+      "decay_min_steps",
+      "decay_max_steps",
+      "decay_monitor_component",
+      "decay_monitor_position",
+      "checkpoint",
+      "compute_s_params",
+      "s_param_freqs",
+      "s_param_n_steps",
+      "snapshot",
+      "subpixel_smoothing",
+      "conformal_pec",
+      "conformal_min_weight",
+      "devices",
+      "exchange_interval",
+      "skip_preflight"
+    ],
+    "set_periodic_axes": [
+      "axes"
+    ],
+    "validate_subgrid": [
+      "mode"
+    ]
+  }
+}
