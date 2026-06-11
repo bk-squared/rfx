@@ -1,0 +1,118 @@
+---
+title: "Recipe: Failed-Gate Triage"
+description: "Decision tree for diagnosing a failed S-parameter or physics gate in rfx, with closed dead-end paths marked so agents do not re-attempt falsified fixes."
+sidebar:
+  order: 10
+---
+
+Use this recipe when a validation gate fails — non-passive `|S11| > 1`, a
+resonance that looks wrong, an R/T mismatch, or a mesh-convergence miss.
+Walk the tree before designing a fix. Terminal **STOP** nodes are paths that
+were implemented and falsified in this project's history; re-attempting one
+without new evidence wastes a session. The historical score in this repo:
+every "physics bug" of this kind so far turned out to be a comparator or
+extractor bug, not an FDTD solver residual.
+
+## Step 0 — never triage from the headline metric
+
+Dump the full per-frequency curve and at least one independent witness
+(signs, magnitudes vs an analytic expectation, a sibling run) before
+believing a scalar pass/fail.
+
+Canonical trap ([issue #118](https://github.com/bk-squared/rfx/issues/118)):
+the `|S11|` magnitude dip of a directly edge-fed patch was read as "the
+resonance". It is not — for a high-impedance edge-fed patch the dip is the
+off-resonance match point. The true resonance comes from a ring-down probe
+(`Result.find_resonances()`, see the
+[resonance extraction recipe](./recipe-resonance-extraction)) and agreed
+with the analytic value all along. The gate was re-specified, not the
+solver fixed.
+
+## Step 1 — validate the metric, not the physics
+
+1. Run `rfx.validate_port_smatrix(result)` — passivity, reciprocity, and
+   shape sanity on any port result.
+2. If raw V/I dumps exist, replay them through the production assembly with
+   `rfx.replay_smatrix_from_vi_dump(...)`. If the replay disagrees with the
+   production number, the bug is in a diagnostic or comparator, not in the
+   solver.
+3. Quote every preflight warning verbatim before reporting numbers —
+   `sim.preflight()` surfaces real setup mistakes.
+
+## Step 2 — branch by symptom
+
+### A. Microstrip `|S11| > 1` (non-passive)
+
+Check probe placement first: the default probe offset is floored to clear
+the source fringing transient
+([#116](https://github.com/bk-squared/rfx/pull/116)); with the floor the
+reference patch device is passive at every tested mesh.
+
+**STOP — swapping in a voltage-only spatial-fit (γ/α) extractor.** Tried
+twice ([PR #99](https://github.com/bk-squared/rfx/pull/99),
+[PR #134](https://github.com/bk-squared/rfx/pull/134)), closed twice: the
+fit is ill-conditioned at high-SWR resonant loads — the forward-wave
+amplitude collapses at resonance and the extracted `|S11|` blows up
+non-passively, getting *worse* with mesh refinement. The full analysis is
+in the PR #134 closing comment. The open, separate question about the
+matched-line regime is tracked in
+[issue #140](https://github.com/bk-squared/rfx/issues/140).
+
+### B. Resonance / dip location looks wrong
+
+Measure the resonance with a ring-down probe first (Step 0). Then:
+
+**STOP — refining the mesh to move the microstrip patch dip.** The dip
+location decelerates toward an asymptote outside the expected band; pushing
+it in-band needs a cell count far beyond practical GPU budgets, and the dip
+is the wrong observable anyway (match point, not resonance — see
+[issue #118](https://github.com/bk-squared/rfx/issues/118)).
+
+**STOP — Zin-rotation de-embedding** (rotating V/I to the device edge via
+`tan(βd)`). The rotation amplifies the feed-line propagation-constant
+error and yields incoherent device impedances across `+βd`/`−βd`. Use the
+de-embedding built into the production extractors instead.
+
+### C. Waveguide per-frequency `|S11|` oscillation or magnitude deficit
+
+**STOP — redesigning the waveguide port extractor for this symptom.** The
+historical WR-90 PEC-short oscillation was a missing Yee leapfrog half-step
+correction in a *diagnostic script*, not in production;
+`compute_waveguide_s_matrix` was accurate throughout. The remaining
+magnitude floor is Yee grid dispersion, which no extractor change removes.
+Cross-solver *phase* disagreements at single frequencies are usually
+solver-convention mismatches — Meep, OpenEMS, and Palace can disagree with
+each other by 100°+ on the same slab (see
+`examples/crossval/11_waveguide_port_wr90.py` and its gate definitions).
+
+### D. Curved-PEC / staircase accuracy miss
+
+**STOP — implementing a conformal-PEC scheme.** Four standard methods
+(Dey–Mittra, Kottke tensor, and two contour-FIT variants) were implemented
+and falsified under the production PEC + CPML configuration — none was both
+stable and better than staircase. **Staircase is the supported floor**; see
+the [conformal PEC guide](/rfx/guide/conformal-pec/) for the honest
+envelope. Use a finer mesh or `NonUniformGrid` instead.
+
+### E. "We need subgridding"
+
+**STOP — SBP-SAT subgridding.** Closed after a six-mode failure analysis
+([PR #90](https://github.com/bk-squared/rfx/pull/90)): the boundary stencil
+loses closure under FDTD leapfrog and is incompatible with CPML. The
+supported alternative is `NonUniformGrid` (see the
+[non-uniform mesh guide](/rfx/guide/nonuniform-mesh/)).
+
+## Step 3 — none of the branches match
+
+You may have a genuinely new failure. Open an issue with the full
+per-frequency dump, the `validate_port_smatrix` output, every preflight
+warning, and the independent witness from Step 0 attached. Budget one fix
+attempt; if it does not close the gap, stop and redesign rather than
+iterating parameter tweaks.
+
+## Related
+
+- [Port & source selection](./port-selection) — choose the right primitive
+  before debugging the wrong one.
+- [Support matrix](../guides/sparameter_support_matrix.md) — per-family
+  validation envelopes and AD-traceability.
