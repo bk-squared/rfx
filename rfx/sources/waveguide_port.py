@@ -22,6 +22,42 @@ S21 is extracted using V/I forward-wave decomposition at two probe planes:
     S21(f)   = a_fwd_probe(f) / a_fwd_ref(f)
 This removes the worst standing-wave inflation of voltage-only ratios, though
 individual points can still deviate under finite-window/CPML error.
+
+S-matrix extractor decision table
+---------------------------------
+Which extractor runs is chosen by ``Simulation.compute_waveguide_s_matrix``
+(see ``rfx/api/_sparams.py``) from the ``normalize=`` argument, the number of
+modes per port, and the mesh path.  This module exports the extractors; the
+``compute_waveguide_s_matrix`` dispatch wires them as follows:
+
+    n_modes  mesh        normalize=    extractor called
+    -------  ----------  ------------  --------------------------------------
+    1        uniform     False         extract_waveguide_s_matrix
+    1        uniform     True          extract_waveguide_s_params_normalized
+    1        uniform     "flux"        extract_waveguide_s_matrix_flux
+    >1       uniform     False         extract_multimode_s_matrix
+    >1       uniform     True          (unsupported — raises ValueError)
+    >1       uniform     "flux"        extract_multimode_s_matrix_flux
+    1        non-uniform True/"flux"   inline flux/normalized logic in
+                                       compute_waveguide_s_matrix (mirrors the
+                                       uniform extractors; normalize=False and
+                                       multi-mode are unsupported on NU)
+
+``normalize=`` semantics:
+  - ``False`` — single-run V/I wave decomposition, no reference run.  Carries
+    documented Yee-dispersion + band-edge error (|S11| can exceed 1); cheapest.
+  - ``True``  — two-run reference normalization (``b_dev / b_ref`` off-diagonal,
+    ``(b_dev − b_ref) / a_inc`` diagonal).  Cancels one-way Yee dispersion for
+    transmission; AD-traceable.  Unsupported for multi-mode ports because the
+    empty-guide cross-mode reference ``b_ref ≈ 0`` produces a 0/0.
+  - ``"flux"`` — two-run power-flux magnitude (Poynting-flux ratio for the
+    single-mode path, ``0.5·Re(V·I*)`` modal-power ratio for the multi-mode
+    path) combined with modal-V/I phase.  Most robust at band edges; NOT
+    AD-traceable (drops to NumPy internally — issue #148).
+
+Open issue: waveguide flux extraction is not strictly passive at all run
+lengths (residual magnitude can drift slightly above unity — issue #150);
+this is a known, unfixed limitation, not addressed here.
 """
 
 from __future__ import annotations
