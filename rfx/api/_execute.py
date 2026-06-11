@@ -910,6 +910,40 @@ class _ExecuteMixin:
             dft_planes=dft_planes_out,
         )
 
+    @staticmethod
+    def _pack_nu_forward_result(
+        *,
+        time_series,
+        grid,
+        ntff_data=None,
+        ntff_box=None,
+        s_params=None,
+        freqs=None,
+        dft_planes=None,
+    ) -> ForwardResult:
+        """Assemble the minimal ``ForwardResult`` for both NU forward lanes.
+
+        The single-device (:meth:`_forward_nonuniform_from_materials`) and
+        distributed (:meth:`_forward_distributed_nonuniform_from_materials`)
+        lanes are a hand-maintained mirror pair whose only shared concern is
+        this final ``ForwardResult`` assembly. Each lane extracts its own
+        per-lane field values (the single-device lane reads a ``Result``
+        object; the distributed lane reads a runner dict and forces the
+        unsupported observables to ``None``) and passes them here as explicit
+        parameters — there is no closure capture of caller locals, matching
+        the W6.1 ``_StepContext`` / W6.6 builder precedents. Centralising the
+        constructor keeps the two lanes' output schema from drifting apart.
+        """
+        return ForwardResult(
+            time_series=time_series,
+            ntff_data=ntff_data,
+            ntff_box=ntff_box,
+            grid=grid,
+            s_params=s_params,
+            freqs=freqs,
+            dft_planes=dft_planes,
+        )
+
     def _forward_nonuniform_from_materials(
         self,
         *,
@@ -928,7 +962,8 @@ class _ExecuteMixin:
 
         Routes through ``run_nonuniform_path`` with optimisation overrides
         applied after material assembly, then repackages the returned
-        ``Result`` into the minimal ``ForwardResult`` schema.
+        ``Result`` into the minimal ``ForwardResult`` schema via the shared
+        :meth:`_pack_nu_forward_result` lane helper.
 
         When ``checkpoint`` is True (the default), the NU scan body is
         wrapped in ``jax.checkpoint`` so reverse-mode AD memory scales
@@ -949,7 +984,7 @@ class _ExecuteMixin:
             n_warmup=n_warmup,
             design_mask=design_mask,
         )
-        return ForwardResult(
+        return self._pack_nu_forward_result(
             time_series=result.time_series,
             ntff_data=result.ntff_data,
             ntff_box=result.ntff_box,
@@ -979,10 +1014,14 @@ class _ExecuteMixin:
         """Phase 3 (issue #44): differentiable forward on the **distributed**
         non-uniform mesh path.
 
-        Mirrors :meth:`_forward_nonuniform_from_materials` but routes
-        through the sharded NU runner
-        (``rfx.runners.distributed_nu.run_nonuniform_distributed_pec``)
-        with x-axis 1-D slab decomposition across ``devices``.  Performs
+        The single-device sibling :meth:`_forward_nonuniform_from_materials`
+        delegates the whole pipeline to ``run_nonuniform_path``; this lane
+        instead inlines material assembly + sharding because the sharded
+        runner (``rfx.runners.distributed_nu.run_nonuniform_distributed_pec``)
+        takes pre-sharded inputs. The two lanes share only the final
+        ``ForwardResult`` assembly, factored into
+        :meth:`_pack_nu_forward_result`. This lane uses x-axis 1-D slab
+        decomposition across ``devices``.  Performs
         the V3 §M4 distributed-specific preflight (5 checks) before any
         trace build, then assembles materials, builds the
         :class:`ShardedNUGrid`, shards every input array, and calls the
@@ -1323,17 +1362,18 @@ class _ExecuteMixin:
             pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
         )
 
-        # ---- Repackage into ForwardResult.
+        # ---- Repackage into ForwardResult via the shared lane helper.
         # Both the distributed runner and the single-device NU runner
         # return time_series with layout ``(n_steps, n_probes)``; we
         # surface that schema unchanged so vmap_sweep / decay_convergence
-        # / lumped_rlc / etc. continue to work.
+        # / lumped_rlc / etc. continue to work. The distributed lane has no
+        # NTFF / S-param / freq observables, so those stay ``None``.
         ts = result.get("time_series")
-        return ForwardResult(
+        return self._pack_nu_forward_result(
             time_series=ts,
+            grid=grid,
             ntff_data=None,
             ntff_box=None,
-            grid=grid,
             s_params=None,
             freqs=None,
             dft_planes=result.get("dft_planes")
