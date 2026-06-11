@@ -1,0 +1,45 @@
+name: rfx-gpu-suite
+description: "W2.4 maintained GPU harness: full gpu-marked pytest suite on current main (run per release tag + after GPU-touching merges)"
+tags: [rfx, gpu-suite, ci-trust, w24]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== rfx GPU suite (W2.4 maintained harness) ==="
+  echo "=== provenance ==="
+  git rev-parse HEAD || true
+  git status --short || true
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  out=".omx/gpu-suite/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  mkdir -p "$out"
+  echo "=== gpu-marked suite (249 tests at authoring time) ==="
+  # NOTE: the 'distributed' pytest marker is declared but currently has ZERO
+  # tests — distributed coverage lives in regular test files that set their
+  # own XLA --xla_force_host_platform_device_count sentinel and run in the
+  # fast suite. Re-add a '-m distributed' step here if the marker gains tests.
+  set +e
+  timeout 13800 python -m pytest -m gpu -q -ra -p no:cacheprovider \
+    2>&1 | tee "$out/gpu_suite.log"
+  rc=${PIPESTATUS[0]}
+  set -e
+  echo "$rc" > "$out/gpu_suite.rc"
+  echo "=== summary ==="
+  tail -n 30 "$out/gpu_suite.log" | grep -E "passed|failed|error|skipped" || true
+  echo "gpu_suite_rc=$rc"
+  echo "artifacts: $out"
+  exit "$rc"
