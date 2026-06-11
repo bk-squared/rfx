@@ -524,6 +524,11 @@ def compute_floquet_s_params(
 ) -> dict:
     """Compute Floquet S-parameters from DFT accumulators.
 
+    .. warning:: **Experimental / untested.** This pipeline has no pytest
+        caller and no end-to-end S-parameter or autodiff validation; its only
+        caller is a diagnostics script. Do not build accuracy claims on it.
+        Tracking: https://github.com/bk-squared/rfx/issues/141
+
     Uses incident, reflected, and (optionally) transmitted plane
     DFT data to compute S11 (reflection) and S21 (transmission).
 
