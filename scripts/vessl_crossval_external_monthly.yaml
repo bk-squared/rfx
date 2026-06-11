@@ -1,0 +1,85 @@
+name: rfx-crossval-external-monthly
+description: "W2.5(c) monthly external-crossval lane: cv05 vs a real openEMS source build + cv11 vs committed Meep/Palace references (CPU node)"
+tags: [rfx, crossval-external, ci-trust, w25]
+resources:
+  cluster: remilab-c0
+  cpu: 32
+  memory: 48Gi
+image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  # pytorch runtime image: dash shell (no bashisms) and git via apt below.
+  echo "=== rfx monthly external crossval (W2.5c) ==="
+  date
+
+  # -- openEMS source build: the PROVEN microwave-energy recipe --
+  # (research/microwave-energy/openems_simulation/jobs/wr90_pec_short_field_dump_20260428.yaml)
+  apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git \
+    libhdf5-dev libtinyxml-dev \
+    libboost-thread-dev libboost-system-dev libboost-date-time-dev \
+    libboost-serialization-dev \
+    libcgal-dev libvtk7-dev \
+    python3-dev python3-numpy python3-scipy python3-matplotlib \
+    python3-setuptools python3-h5py 2>&1 | tail -3
+  cd /tmp
+  git clone --recursive https://github.com/thliebig/openEMS-Project.git
+  cd openEMS-Project
+  cd fparser && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install && cd ../..
+  cd CSXCAD && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE && make -j"$(nproc)" && make install && cd ../..
+  cd openEMS && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF && make -j"$(nproc)" && make install && cd ../..
+  ldconfig
+  export CSXCAD_INSTALL_PATH=/usr/local
+  export OPENEMS_INSTALL_PATH=/usr/local
+  cd CSXCAD/python && /usr/bin/python3 setup.py install 2>&1 | tail -2 && cd ../..
+  cd openEMS/python && /usr/bin/python3 setup.py install 2>&1 | tail -2 && cd ../..
+  /usr/bin/python3 -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+
+  # -- rfx runtime deps (CPU jax) --
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  git rev-parse HEAD || true
+  /usr/bin/python3 -m pip install -q "jax[cpu]==0.4.35" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT=/root/workspace/byungkwan-workspace/research/rfx
+  export PYTHONPATH="$RFX_REPO_ROOT"
+  /usr/bin/python3 -c "import jax, rfx; print('probe ok', jax.__version__)"
+
+  out=".omx/crossval-external/$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$out"
+
+  # -- cv05: patch antenna vs openEMS (exit 0 full pass / 1 fail / 2 ref-missing) --
+  set +e
+  timeout 7200 /usr/bin/python3 examples/crossval/05_patch_antenna.py \
+    > "$out/cv05.log" 2>&1
+  cv05_rc=$?
+  set -e
+  echo "$cv05_rc" > "$out/cv05.rc"
+  tail -n 15 "$out/cv05.log" || true
+  echo "cv05_rc=$cv05_rc"
+
+  # -- cv11: WR-90 vs committed Meep/Palace references --
+  set +e
+  timeout 3600 /usr/bin/python3 examples/crossval/11_waveguide_port_wr90.py \
+    > "$out/cv11.log" 2>&1
+  cv11_rc=$?
+  set -e
+  echo "$cv11_rc" > "$out/cv11.rc"
+  tail -n 15 "$out/cv11.log" || true
+  echo "cv11_rc=$cv11_rc"
+
+  echo "=== verdict (exit-code convention: 0 pass / 1 FAIL / 2 ref-missing) ==="
+  echo "cv05_rc=$cv05_rc cv11_rc=$cv11_rc"
+  # Red iff any script reports a REAL failure (1); ref-missing (2) is visible, not green.
+  fail=0
+  [ "$cv05_rc" = "1" ] && fail=1
+  [ "$cv11_rc" = "1" ] && fail=1
+  [ "$cv05_rc" = "2" ] && echo "WARNING: cv05 reference missing despite source build — investigate"
+  exit "$fail"
