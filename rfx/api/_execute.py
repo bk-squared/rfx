@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import os
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -46,6 +47,39 @@ from rfx.api._spec import (
 # module; the ``global`` statement binds to this module's namespace.
 # ---------------------------------------------------------------------------
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
+
+
+class _DispatchPlan(NamedTuple):
+    """Resolved execution lane for a single ``run()`` / ``forward()`` call.
+
+    Produced by :meth:`_ExecuteMixin._dispatch_plan`, the one place that
+    selects an execution lane and rejects unsupported config combinations
+    (W6.3). Both callers consume the same plan, so the lane decision and
+    every ``NotImplementedError`` / ``ValueError`` lane guard live together
+    instead of being duplicated across ``run()`` and ``forward()``.
+
+    Fields
+    ------
+    lane:
+        Lane token (see ``_dispatch_plan`` for the closed set per mode).
+    n_steps:
+        Resolved timestep count for lanes whose step count is derived from
+        a *throwaway* grid build (the non-uniform / distributed lanes). For
+        lanes that build-and-reuse a grid (uniform / adi / subgridded), this
+        is ``None`` and the caller resolves ``n_steps`` from the grid it
+        already holds — avoiding a duplicate grid build.
+
+    Note
+    ----
+    The original roadmap sketch had a third ``resolved_dz_profile`` field.
+    W1.3 (commit 7a02607) moved dz-profile synthesis into
+    ``_build_nonuniform_grid()`` (pure, no sim-state mutation), so there is
+    no longer any dz profile to resolve at the dispatch layer; the field is
+    intentionally omitted.
+    """
+
+    lane: str
+    n_steps: int | None
 
 
 class _ExecuteMixin:
@@ -1306,6 +1340,237 @@ class _ExecuteMixin:
                 if hasattr(result, "get") else None,
         )
 
+    # ---- unified lane dispatch (W6.3) ----
+
+    def _nu_n_steps(self, num_periods: float) -> int:
+        """Resolve the timestep count for a non-uniform / distributed-NU
+        lane from a throwaway NU grid build.
+
+        Pure: ``_build_nonuniform_grid()`` synthesises any missing dz/dx/dy
+        profile internally without mutating sim state (W1.3). The single
+        formula here replaces the four byte-identical
+        ``int(np.ceil(num_periods / (freq_max * grid.dt)))`` snippets that
+        used to live at each NU/distributed dispatch site.
+        """
+        grid = self._build_nonuniform_grid()
+        return int(np.ceil(num_periods / (self._freq_max * grid.dt)))
+
+    def _dispatch_plan(
+        self,
+        *,
+        mode: str,
+        n_steps: int | None,
+        num_periods: float,
+        # forward-only inputs
+        distributed: bool = False,
+        port_s11_freqs: object | None = None,
+        checkpoint_segments: int | None = None,
+        emit_time_series: bool = True,
+        checkpoint_every: int | None = None,
+        design_mask: object | None = None,
+        # run-only inputs
+        devices: list | None = None,
+        exchange_interval: int = 1,
+    ) -> _DispatchPlan:
+        """Select the execution lane and reject unsupported config combos.
+
+        The single decision-and-rejection point consumed by both
+        :meth:`run` and :meth:`forward` (W6.3). All lane-rejection guards
+        (``NotImplementedError`` for unsupported combinations,
+        distributed-lane ``ValueError`` guardrails) live here so there is
+        exactly one place that decides a lane and refuses an impossible one.
+
+        ``mode`` is ``"forward"`` or ``"run"``. The two modes share the
+        ``is_nonuniform`` boolean and the NU ``n_steps`` formula but have
+        disjoint lane-token sets:
+
+        - forward: ``fwd_distributed_nu`` / ``fwd_nonuniform`` / ``fwd_uniform``
+        - run: ``run_distributed`` / ``run_nonuniform`` / ``run_adi`` /
+          ``run_subgridded`` / ``run_uniform``
+
+        ``n_steps`` is returned resolved for the NU/distributed lanes (whose
+        step count comes from a throwaway grid) and ``None`` for lanes that
+        build-and-reuse a grid (the caller resolves it there).
+        """
+        is_nonuniform = (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        )
+
+        if mode == "forward":
+            def _fwd_nu_n_steps() -> int:
+                # Throwaway NU grid build for the step count; mirrors the
+                # original forward() inline form (period = 1/freq_max).
+                grid_probe = self._build_nonuniform_grid()
+                period = 1.0 / float(self._freq_max)
+                return int(np.ceil(
+                    num_periods * period / float(grid_probe.dt)))
+
+            # Issue #72: forward(port_s11_freqs=...) is currently wired only on
+            # the uniform single-device path. Reject loudly elsewhere so users
+            # don't get a silent s_params=None.
+            if port_s11_freqs is not None and (distributed or is_nonuniform):
+                raise NotImplementedError(
+                    "forward(port_s11_freqs=...) is currently wired only on the "
+                    "uniform single-device forward path (issue #72). Drop "
+                    "port_s11_freqs or run on a uniform mesh without "
+                    "distributed=True."
+                )
+
+            # Issue #73: forward(checkpoint_segments=...) is currently wired only
+            # on the uniform single-device path. Reject loudly elsewhere — both
+            # for distributed=True and for non-uniform meshes — so users don't
+            # get a silent fall-back to the linear-memory scan that this kwarg
+            # was meant to fix. NU follow-up will mirror the pattern in
+            # run_nonuniform; track on issue #73.
+            if checkpoint_segments is not None and (distributed or is_nonuniform):
+                raise NotImplementedError(
+                    "forward(checkpoint_segments=...) is currently wired only "
+                    "on the uniform single-device forward path (issue #73). "
+                    "Drop checkpoint_segments or run on a uniform mesh without "
+                    "distributed=True. NU support is tracked as a follow-up."
+                )
+
+            # Phase 3: distributed dispatch (V3 lines 842-847).
+            if distributed:
+                # NU-only in v1.6.2 (DP3 locked decision).
+                if not is_nonuniform:
+                    raise NotImplementedError(
+                        "distributed=True on forward() is currently implemented "
+                        "only for non-uniform meshes; use run(..., devices=...) "
+                        "for the uniform distributed path."
+                    )
+                # Reject TFSF / waveguide ports up front (V3 §3 unsupported).
+                if self._tfsf is not None:
+                    raise NotImplementedError(
+                        "TFSF sources are not supported on the distributed "
+                        "forward path; remove the TFSF source or omit "
+                        "distributed=True."
+                    )
+                if self._waveguide_ports:
+                    raise NotImplementedError(
+                        "Waveguide ports are not supported on the distributed "
+                        "forward path; remove waveguide ports or omit "
+                        "distributed=True."
+                    )
+                # T8 (2026-04): PMC is now wired across all three sharded
+                # runners (distributed_nu, distributed_v2, distributed).
+                # The reject guard that used to live here (introduced in
+                # f3cab7c) has been removed. The single-device PMC runtime
+                # hook lives in rfx/simulation.py:703-705 and the sharded
+                # PMC helpers live in each runner next to their PEC analog.
+                _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
+                return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)
+
+            if is_nonuniform:
+                # Let the NU runner build grid/materials so it can apply the
+                # NU-aware pec_mask and port/source setup against per-axis widths.
+                _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
+                return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
+
+            # Uniform forward lane: the remaining kwargs are NU-only.
+            if not emit_time_series:
+                raise NotImplementedError(
+                    "emit_time_series=False is currently only supported on the "
+                    "non-uniform forward path. Frequency-domain objectives "
+                    "(NTFF, S-params) on uniform meshes still emit time series."
+                )
+            if checkpoint_every is not None:
+                raise NotImplementedError(
+                    "checkpoint_every (segmented remat) is currently only "
+                    "supported on the non-uniform forward path. For the "
+                    "uniform path, use checkpoint_segments instead (issue #73)."
+                )
+            if design_mask is not None:
+                raise NotImplementedError(
+                    "design_mask (issue #41) is currently only supported on the "
+                    "non-uniform forward path. Ping #41 if you need it on the "
+                    "uniform path — the same step_fn stop_gradient pattern applies."
+                )
+            # n_steps for the uniform forward lane is resolved by the caller
+            # from the grid it builds and reuses for material assembly.
+            return _DispatchPlan(lane="fwd_uniform", n_steps=n_steps)
+
+        # mode == "run"
+        distributed_run = devices is not None and len(devices) > 1
+        if self._solver == "adi" and distributed_run:
+            raise ValueError("solver='adi' does not support distributed execution")
+        if self._boundary == "upml" and distributed_run:
+            raise ValueError("boundary='upml' does not support distributed execution")
+
+        # ---- Distributed + nonuniform (Phase B guardrail).
+        # Phase B permits the combination for PEC boundary with grading
+        # ratio <= 5 and no TFSF. The distributed_v2 runner dispatches to
+        # the NU kernels in distributed_nu.py; dispersion and CPML on the
+        # distributed NU path are Phase C items and still raise below.
+        if distributed_run and is_nonuniform:
+            import warnings as _wmod
+            # Grading ratio check (shared single dt) across provided profiles.
+            _max_ratio = 1.0
+            for _prof in (
+                self._dx_profile, self._dy_profile, self._dz_profile
+            ):
+                if _prof is not None and len(_prof) > 0:
+                    _pa = np.asarray(_prof, dtype=np.float64)
+                    if float(_pa.min()) > 0.0:
+                        _max_ratio = max(
+                            _max_ratio,
+                            float(_pa.max()) / float(_pa.min()),
+                        )
+            if _max_ratio > 5.0:
+                raise ValueError(
+                    "Distributed + non-uniform requires grading ratio "
+                    "<= 5:1 for shared-dt stability; got "
+                    f"{_max_ratio:.2f}:1."
+                )
+            if self._tfsf is not None:
+                raise ValueError(
+                    "Distributed + non-uniform does not support TFSF "
+                    "plane-wave sources (Phase B scope)."
+                )
+            if self._solver == "adi":
+                raise ValueError(
+                    "Distributed + non-uniform does not support solver='adi'."
+                )
+            if _max_ratio > 3.0:
+                _wmod.warn(
+                    f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
+                    ":1 exceeds the 3:1 stability caution threshold. "
+                    "Monitor for numerical dispersion / late-time drift.",
+                    stacklevel=2,
+                )
+
+        # ---- Distributed multi-device lane ----
+        if distributed_run:
+            _n = n_steps
+            if _n is None:
+                if is_nonuniform:
+                    _n = self._nu_n_steps(num_periods)
+                else:
+                    grid = self._build_grid()
+                    _n = grid.num_timesteps(num_periods=num_periods)
+            return _DispatchPlan(lane="run_distributed", n_steps=_n)
+
+        # ---- Non-uniform mesh lane ----
+        if is_nonuniform:
+            _n = n_steps
+            if _n is None:
+                _n = self._nu_n_steps(num_periods)
+            return _DispatchPlan(lane="run_nonuniform", n_steps=_n)
+
+        # ---- ADI lane (n_steps resolved by caller from the reused grid) ----
+        if self._solver == "adi":
+            return _DispatchPlan(lane="run_adi", n_steps=n_steps)
+
+        # ---- Subgridded lane (n_steps resolved by caller — refinement ratio
+        # scaling needs the reused grid) ----
+        if self._refinement is not None:
+            return _DispatchPlan(lane="run_subgridded", n_steps=n_steps)
+
+        # ---- Uniform lane (n_steps resolved by caller from the reused grid) ----
+        return _DispatchPlan(lane="run_uniform", n_steps=n_steps)
+
     # ---- forward (differentiable) ----
 
     def forward(
@@ -1423,77 +1688,26 @@ class _ExecuteMixin:
 
         self._auto_preflight(skip=skip_preflight, context="forward")
 
-        is_nonuniform = (
-            self._dz_profile is not None
-            or self._dx_profile is not None
-            or self._dy_profile is not None
+        # ---- W6.3 unified lane dispatch: one place decides + rejects ----
+        plan = self._dispatch_plan(
+            mode="forward",
+            n_steps=n_steps,
+            num_periods=num_periods,
+            distributed=distributed,
+            port_s11_freqs=port_s11_freqs,
+            checkpoint_segments=checkpoint_segments,
+            emit_time_series=emit_time_series,
+            checkpoint_every=checkpoint_every,
+            design_mask=design_mask,
         )
 
-        # Issue #72: forward(port_s11_freqs=...) is currently wired only on
-        # the uniform single-device path. Reject loudly elsewhere so users
-        # don't get a silent s_params=None.
-        if port_s11_freqs is not None and (distributed or is_nonuniform):
-            raise NotImplementedError(
-                "forward(port_s11_freqs=...) is currently wired only on the "
-                "uniform single-device forward path (issue #72). Drop "
-                "port_s11_freqs or run on a uniform mesh without "
-                "distributed=True."
-            )
-
-        # Issue #73: forward(checkpoint_segments=...) is currently wired only
-        # on the uniform single-device path. Reject loudly elsewhere — both
-        # for distributed=True and for non-uniform meshes — so users don't
-        # get a silent fall-back to the linear-memory scan that this kwarg
-        # was meant to fix. NU follow-up will mirror the pattern in
-        # run_nonuniform; track on issue #73.
-        if checkpoint_segments is not None and (distributed or is_nonuniform):
-            raise NotImplementedError(
-                "forward(checkpoint_segments=...) is currently wired only "
-                "on the uniform single-device forward path (issue #73). "
-                "Drop checkpoint_segments or run on a uniform mesh without "
-                "distributed=True. NU support is tracked as a follow-up."
-            )
-
-        # Phase 3: distributed dispatch (V3 lines 842-847).
-        if distributed:
-            # NU-only in v1.6.2 (DP3 locked decision).
-            if not is_nonuniform:
-                raise NotImplementedError(
-                    "distributed=True on forward() is currently implemented "
-                    "only for non-uniform meshes; use run(..., devices=...) "
-                    "for the uniform distributed path."
-                )
-            # Reject TFSF / waveguide ports up front (V3 §3 unsupported).
-            if self._tfsf is not None:
-                raise NotImplementedError(
-                    "TFSF sources are not supported on the distributed "
-                    "forward path; remove the TFSF source or omit "
-                    "distributed=True."
-                )
-            if self._waveguide_ports:
-                raise NotImplementedError(
-                    "Waveguide ports are not supported on the distributed "
-                    "forward path; remove waveguide ports or omit "
-                    "distributed=True."
-                )
-            # T8 (2026-04): PMC is now wired across all three sharded
-            # runners (distributed_nu, distributed_v2, distributed).
-            # The reject guard that used to live here (introduced in
-            # f3cab7c) has been removed. The single-device PMC runtime
-            # hook lives in rfx/simulation.py:703-705 and the sharded
-            # PMC helpers live in each runner next to their PEC analog.
-            # dz-profile synthesis happens locally inside
-            # _build_nonuniform_grid() — no sim-state mutation here.
-            if n_steps is None:
-                grid_probe = self._build_nonuniform_grid()
-                period = 1.0 / float(self._freq_max)
-                n_steps = int(np.ceil(num_periods * period / float(grid_probe.dt)))
+        if plan.lane == "fwd_distributed_nu":
             return self._forward_distributed_nonuniform_from_materials(
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
                 pec_occupancy_override=pec_occupancy_override,
-                n_steps=n_steps,
+                n_steps=plan.n_steps,
                 checkpoint=checkpoint,
                 emit_time_series=emit_time_series,
                 checkpoint_every=checkpoint_every,
@@ -1504,45 +1718,22 @@ class _ExecuteMixin:
                 skip_preflight=skip_preflight,
             )
 
-        if is_nonuniform:
-            # dz-profile synthesis happens locally inside
-            # _build_nonuniform_grid() — no sim-state mutation here.
-            # Let the NU runner build grid/materials so it can apply the
-            # NU-aware pec_mask and port/source setup against per-axis widths.
-            if n_steps is None:
-                grid_probe = self._build_nonuniform_grid()
-                period = 1.0 / float(self._freq_max)
-                n_steps = int(np.ceil(num_periods * period / float(grid_probe.dt)))
+        if plan.lane == "fwd_nonuniform":
             return self._forward_nonuniform_from_materials(
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
                 pec_occupancy_override=pec_occupancy_override,
-                n_steps=n_steps,
+                n_steps=plan.n_steps,
                 checkpoint=checkpoint,
                 emit_time_series=emit_time_series,
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
                 design_mask=design_mask,
             )
-        if not emit_time_series:
-            raise NotImplementedError(
-                "emit_time_series=False is currently only supported on the "
-                "non-uniform forward path. Frequency-domain objectives "
-                "(NTFF, S-params) on uniform meshes still emit time series."
-            )
-        if checkpoint_every is not None:
-            raise NotImplementedError(
-                "checkpoint_every (segmented remat) is currently only "
-                "supported on the non-uniform forward path. For the "
-                "uniform path, use checkpoint_segments instead (issue #73)."
-            )
-        if design_mask is not None:
-            raise NotImplementedError(
-                "design_mask (issue #41) is currently only supported on the "
-                "non-uniform forward path. Ping #41 if you need it on the "
-                "uniform path — the same step_fn stop_gradient pattern applies."
-            )
+
+        # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----
+        n_steps = plan.n_steps
         grid = self._build_grid()
         materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = self._assemble_materials(grid)
 
@@ -1697,60 +1888,23 @@ class _ExecuteMixin:
         # an NTFF-box-crosses-PEC config that completed before this change.
         self._auto_preflight(skip=skip_preflight, context="run", check_ntff=False)
 
-        if self._solver == "adi" and devices is not None and len(devices) > 1:
-            raise ValueError("solver='adi' does not support distributed execution")
-        if self._boundary == "upml" and devices is not None and len(devices) > 1:
-            raise ValueError("boundary='upml' does not support distributed execution")
-
-        # ---- Distributed + nonuniform (Phase B guardrail).
-        # Phase B permits the combination for PEC boundary with grading
-        # ratio <= 5 and no TFSF. The distributed_v2 runner dispatches to
-        # the NU kernels in distributed_nu.py; dispersion and CPML on the
-        # distributed NU path are Phase C items and still raise below.
-        _nu_profile = (
-            self._dz_profile is not None
-            or self._dx_profile is not None
-            or self._dy_profile is not None
+        # ---- W6.3 unified lane dispatch: one place decides + rejects ----
+        # _dispatch_plan computes the is_nonuniform/_nu_profile boolean, runs
+        # the distributed adi/upml ValueErrors + the distributed+NU grading
+        # guardrail, selects the lane, and resolves n_steps for the
+        # NU/distributed lanes (the uniform/adi/subgridded lanes resolve it
+        # below from the grid they build and reuse).
+        plan = self._dispatch_plan(
+            mode="run",
+            n_steps=n_steps,
+            num_periods=num_periods,
+            devices=devices,
+            exchange_interval=exchange_interval,
         )
-        if (devices is not None and len(devices) > 1 and _nu_profile):
-            import warnings as _wmod
-            # Grading ratio check (shared single dt) across provided profiles.
-            _max_ratio = 1.0
-            for _prof in (
-                self._dx_profile, self._dy_profile, self._dz_profile
-            ):
-                if _prof is not None and len(_prof) > 0:
-                    _pa = np.asarray(_prof, dtype=np.float64)
-                    if float(_pa.min()) > 0.0:
-                        _max_ratio = max(
-                            _max_ratio,
-                            float(_pa.max()) / float(_pa.min()),
-                        )
-            if _max_ratio > 5.0:
-                raise ValueError(
-                    "Distributed + non-uniform requires grading ratio "
-                    "<= 5:1 for shared-dt stability; got "
-                    f"{_max_ratio:.2f}:1."
-                )
-            if self._tfsf is not None:
-                raise ValueError(
-                    "Distributed + non-uniform does not support TFSF "
-                    "plane-wave sources (Phase B scope)."
-                )
-            if self._solver == "adi":
-                raise ValueError(
-                    "Distributed + non-uniform does not support solver='adi'."
-                )
-            if _max_ratio > 3.0:
-                _wmod.warn(
-                    f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
-                    ":1 exceeds the 3:1 stability caution threshold. "
-                    "Monitor for numerical dispersion / late-time drift.",
-                    stacklevel=2,
-                )
+        n_steps = plan.n_steps
 
-        # ---- Distributed multi-device path ----
-        if devices is not None and len(devices) > 1:
+        # ---- Distributed multi-device lane ----
+        if plan.lane == "run_distributed":
             self._warn_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
@@ -1761,16 +1915,6 @@ class _ExecuteMixin:
                 "s_param_freqs": s_param_freqs,
                 "s_param_n_steps": s_param_n_steps,
             })
-            if n_steps is None:
-                if _nu_profile:
-                    # dz-profile synthesis happens locally inside
-                    # _build_nonuniform_grid() — no sim-state mutation here.
-                    _ngrid = self._build_nonuniform_grid()
-                    n_steps = int(np.ceil(
-                        num_periods / (self._freq_max * _ngrid.dt)))
-                else:
-                    grid = self._build_grid()
-                    n_steps = grid.num_timesteps(num_periods=num_periods)
             from rfx.runners.distributed_v2 import run_distributed
             _res = run_distributed(
                 self, n_steps=n_steps, devices=devices,
@@ -1779,21 +1923,13 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             return _res
 
-        # ---- Non-uniform mesh path ----
-        if (self._dz_profile is not None
-                or self._dx_profile is not None
-                or self._dy_profile is not None):
+        # ---- Non-uniform mesh lane ----
+        if plan.lane == "run_nonuniform":
             self._warn_unsupported_run_kwargs("non-uniform mesh", {
                 "snapshot": snapshot,
                 "until_decay": until_decay,
                 "conformal_pec": conformal_pec,
             })
-            # dz-profile synthesis happens locally inside
-            # _build_nonuniform_grid() — no sim-state mutation here.
-            nu_grid = self._build_nonuniform_grid()
-            if n_steps is None:
-                n_steps = int(np.ceil(
-                    num_periods / (self._freq_max * nu_grid.dt)))
             _res = self._run_nonuniform(
                 n_steps=n_steps,
                 compute_s_params=compute_s_params,
@@ -1807,7 +1943,7 @@ class _ExecuteMixin:
         grid = self._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(grid)
 
-        if self._solver == "adi":
+        if plan.lane == "run_adi":
             if until_decay is not None:
                 raise ValueError("solver='adi' does not support until_decay yet")
             if snapshot is not None:
@@ -1826,8 +1962,8 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             return _res
 
-        # ---- Subgridded path ----
-        if self._refinement is not None:
+        # ---- Subgridded lane ----
+        if plan.lane == "run_subgridded":
             self._warn_unsupported_run_kwargs("subgridded (SBP-SAT)", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
