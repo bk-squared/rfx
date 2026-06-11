@@ -1664,7 +1664,8 @@
         "kerr_chi3",
         "field_dtype",
         "return_state",
-        "mag_sources"
+        "mag_sources",
+        "checkpoint_segments"
       ]
     },
     "save_experiment_report": {
