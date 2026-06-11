@@ -174,3 +174,114 @@ from rfx.convergence import (
     convergence_study, ConvergenceResult, richardson_extrapolation,
     quick_convergence,
 )
+
+# ---------------------------------------------------------------------------
+# Curated public surface (W5.5).
+#
+# ``__all__`` is the *front door*: ``from rfx import *`` and rendered API
+# references use it. It is intentionally a strict subset of the ~245 flat
+# symbols imported above — every back-compat import is KEPT (so existing
+# ``import rfx; rfx.<name>`` keeps working), but per-step kernel internals,
+# low-level bookkeeping/state classes, and dump/replay round-trip helpers are
+# omitted from the star-import surface.
+#
+# Excluded categories (still importable by explicit attribute access):
+#   - per-step Yee/port kernels: init_*/update_*/inject_*/apply_waveguide_port_*,
+#     adi_step_2d/3d, thomas_solve
+#   - low-level state/bookkeeping classes: ADIState2D/3D, RLCState, RLCCellMeta,
+#     Coaxial*PlaneVI, CoaxialPlaneSourceSpec, FloquetDFTAccumulator,
+#     PortVIDump/PortDumpMetadata/PortSMatrixObservable/PortReplayComparison,
+#     SubgridValidationIssue/Report, BATCH_MANIFEST_SCHEMA
+#   - low-level coaxial/floquet/waveguide plane helpers and modal builders
+#     (coaxial_tem_*, *_plane_vi*, extract_floquet_modes, extract_multimode_*,
+#     init_multimode_waveguide_port, solve_rectangular_modes,
+#     waveguide_plane_positions, floquet_phase_shift/wave_vector)
+#   - dump/replay round-trip + secondary IO: save_*/load_*_npz,
+#     save_snapshots/load_snapshots, save_materials/load_materials,
+#     replay_smatrix_from_port_vi_dump, save_optimization_trajectory,
+#     render_artifact_markdown, validate_artifact_report, build_*_report/artifact
+__all__ = [
+    # grid / core simulation entry points
+    "Grid", "NonUniformGrid", "make_nonuniform_grid",
+    "Simulation", "run", "run_until_decay", "run_nonuniform",
+    "make_source", "make_probe", "make_port_source", "make_current_source",
+    "SimResult", "SnapshotSpec",
+    # result + S-matrix types
+    "Result", "WaveguideSParamResult", "WaveguideSMatrixResult",
+    "MSLSMatrixResult", "CoaxialSMatrixResult",
+    "AD_MemoryEstimate", "ADMemoryPlan", "MeshIntelligenceReport",
+    # geometry
+    "Box", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
+    "PCBLayer", "Stackup",
+    # sources / waveforms / ports (builder classes; not per-step kernels)
+    "GaussianPulse", "ModulatedGaussian", "CWSource", "CustomWaveform",
+    "WaveguidePort", "WaveguidePortConfig", "CoaxialPort",
+    "FloquetPort", "RISUnitCell", "RISSweepResult",
+    # high-level S-parameter / port extractors (AD-contract-classified surface)
+    "extract_waveguide_s_matrix", "extract_waveguide_sparams",
+    "extract_waveguide_s11", "extract_waveguide_s21",
+    "extract_s_matrix_wire", "compute_floquet_s_params",
+    "compute_rcs", "RCSResult",
+    # materials / dispersion / fitting
+    "DebyePole", "LorentzPole", "drude_pole", "lorentz_pole",
+    "ThinConductor", "MATERIAL_LIBRARY",
+    "load_material_csv", "fit_debye", "fit_lorentz", "eval_debye", "eval_lorentz",
+    "plot_material_fit", "DebyeFitResult", "LorentzFitResult",
+    "differentiable_material_fit", "MaterialFitResult", "sparam_loss",
+    # far-field / antenna
+    "NTFFBox", "NTFFData", "FarFieldResult", "make_ntff_box",
+    "compute_far_field", "compute_far_field_jax", "radiation_pattern", "directivity",
+    "axial_ratio", "axial_ratio_dB", "polarization_tilt", "polarization_sense",
+    "antenna_gain", "antenna_gain_dB", "antenna_efficiency",
+    "half_power_beamwidth", "front_to_back_ratio",
+    "antenna_bandwidth", "BandwidthResult", "plot_antenna_summary",
+    # optimization / inverse design + objectives
+    "DesignRegion", "OptimizeResult", "optimize",
+    "GradientCheckResult", "gradient_check",
+    "ProgressiveStage", "ProgressiveOptimizeResult", "progressive_optimize",
+    "TopologyDesignRegion", "TopologyResult", "topology_optimize", "density_to_eps",
+    "minimize_s11", "maximize_s21", "target_impedance", "maximize_bandwidth",
+    "maximize_directivity", "minimize_reflected_energy",
+    "maximize_transmitted_energy", "steer_probe_array",
+    # sweeps / batch
+    "parametric_sweep", "SweepResult", "plot_sweep",
+    "vmap_material_sweep", "VmapSweepResult",
+    "ParameterSweep", "BatchCaseResult", "run_batch", "run_batch_with_manifest",
+    "summarize_batch_manifest",
+    # probes / measurements / spectral
+    "wire_port_voltage", "wire_port_current",
+    "FluxMonitor", "flux_spectrum",
+    "harminv", "harminv_from_probe", "HarminvMode",
+    # eigenmode (optional scipy)
+    "WaveguideMode", "solve_waveguide_modes",
+    # lumped
+    "LumpedRLCSpec",
+    # auto config / mesh planning / convergence / amr
+    "auto_configure", "SimConfig", "analyze_features",
+    "MeshPlan", "plan_mesh", "plan_simulation_mesh",
+    "convergence_study", "ConvergenceResult", "richardson_extrapolation",
+    "quick_convergence",
+    "compute_error_indicator", "suggest_refinement_regions", "auto_refine",
+    # de-embedding
+    "deembed_port_extension", "deembed_thru",
+    # validation entry points
+    "PortValidationIssue", "PortValidationReport",
+    "validate_port_smatrix", "assert_port_smatrix_valid",
+    "normalize_port_smatrix", "compare_replayed_smatrix",
+    "replay_smatrix_from_vi_dump",
+    # io / touchstone / artifacts / checkpoint
+    "TouchstoneData", "read_touchstone", "read_touchstone_full", "write_touchstone",
+    "network_quality_metrics",
+    "save_optimization_result", "load_optimization_result",
+    "save_far_field", "export_radiation_pattern", "export_geometry_json",
+    "save_experiment_report", "save_simulation_dataset",
+    "ArtifactBundle", "export_artifact_bundle",
+    "save_state", "load_state",
+    # visualization
+    "plot_field_slice", "plot_s_params", "plot_radiation_pattern",
+    "plot_time_series", "plot_rcs", "plot_smith",
+    "plot_geometry_3d", "plot_field_3d", "save_field_vtk", "save_field_animation",
+    # gpu / surrogate
+    "device_info", "benchmark",
+    "export_training_data", "export_geometry_sdf",
+]

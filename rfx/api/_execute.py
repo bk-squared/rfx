@@ -1617,6 +1617,52 @@ class _ExecuteMixin:
             Number of periods at freq_max for auto step count.
         checkpoint : bool
             Enable gradient checkpointing (default True).
+        checkpoint_segments : int or None
+            If set, route the uniform single-device forward through the
+            segmented-checkpoint path (issue #73), which trades ≈2x compute
+            for ≈sqrt(n_steps) reverse-mode memory.  Must divide *n_steps*
+            exactly (padding is rejected so DFT accumulator windows do not
+            shift).  ``None`` (default) keeps the legacy per-step
+            ``jax.checkpoint`` behaviour.  Currently wired only on the
+            uniform single-device path; non-uniform meshes and
+            ``distributed=True`` raise ``NotImplementedError`` (use
+            *checkpoint_every* on the non-uniform path instead).
+        emit_time_series : bool
+            Emit the probe time series in the returned ``ForwardResult``
+            (default True).  ``emit_time_series=False`` skips the time-series
+            buffers and is currently only supported on the non-uniform
+            forward path; on the uniform path it raises
+            ``NotImplementedError`` (frequency-domain objectives such as NTFF
+            and S-params still emit the series there).
+        checkpoint_every : int or None
+            Non-uniform-mesh counterpart of *checkpoint_segments* (a chunk
+            size, not a segment count; issue #73).  When set to a positive
+            integer ``K``, the non-uniform scan is run as a scan-of-scan that
+            remats every ``K`` steps for ≈sqrt(n_steps) memory.  Currently
+            only supported on the non-uniform forward path; on the uniform
+            path it raises ``NotImplementedError`` (use *checkpoint_segments*
+            there).  ``None`` (default) leaves forward-only runs unchanged.
+        n_warmup : int
+            Number of leading timesteps to run with the carry
+            ``stop_gradient``'d so reverse-mode AD builds no tape for the
+            initial transient (issue #40).  Only the trailing
+            ``n_steps - n_warmup`` steps participate in autodiff.  Must
+            satisfy ``n_warmup < n_steps``.  Default ``0`` (all steps
+            differentiated).
+        skip_preflight : bool
+            Skip the consolidated :meth:`preflight` validation suite that
+            normally runs before the forward simulation (default False).
+            Use only when preflight has already been run by the caller
+            (e.g. :func:`rfx.optimize` runs it once at entry) or to bypass a
+            known-spurious warning on a deliberate configuration.
+        design_mask : jnp.ndarray or None
+            Boolean array with shape ``grid.shape`` selecting the
+            differentiable design region (issue #41).  Cells where the mask
+            is ``True`` keep their gradient; cells where it is ``False`` have
+            ``stop_gradient`` applied each step, so AD memory tracks only the
+            design subvolume while forward physics is bit-identical.
+            Currently only supported on the non-uniform forward path; on the
+            uniform path it raises ``NotImplementedError``.
         distributed : bool, optional
             **Opt-in, unstable, pending GPU evidence (issue #44).**  When
             ``True`` and a non-uniform mesh is configured, route the
@@ -1642,6 +1688,15 @@ class _ExecuteMixin:
             ``run_nonuniform_distributed_pec``; other values are
             forward-compatible reservations and will raise inside the
             runner.
+        port_s11_freqs : array-like or None
+            Frequencies (Hz) at which to accumulate per-port V/I DFTs inside
+            the JIT scan body so that ``ForwardResult.s_params`` is populated
+            with wave-decomposition |S11| values for lumped/wire ports
+            (issue #72) — the AD-traceable counterpart of
+            ``run(compute_s_params=True)``.  Required by the
+            :func:`minimize_s11_at_freq_wave_decomp` objective.  Currently
+            wired only on the uniform single-device path; non-uniform meshes
+            and ``distributed=True`` raise ``NotImplementedError``.
 
         Returns
         -------
@@ -1657,9 +1712,10 @@ class _ExecuteMixin:
             import warnings as _w
             _w.warn(
                 "Simulation.forward(distributed=True) is opt-in and pending "
-                "GPU evidence (see issue #44). Set distributed=True only "
-                "after reading "
-                "docs/research_notes/2026-04-16_issue44_v3_plan.md.",
+                "GPU evidence (see issue #44). The distributed lane is "
+                "'experimental / scaling' and not part of the "
+                "correctness-bearing baseline; see the Distributed row of "
+                "docs/guides/support_matrix.md before relying on it.",
                 UserWarning,
                 stacklevel=2,
             )
