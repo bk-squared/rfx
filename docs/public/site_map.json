@@ -25,6 +25,7 @@
       "label": "Analysis & Validation",
       "items": [
         "rfx/guide/validation",
+        "rfx/guide/benchmarks",
         "rfx/guide/tutorial-convergence",
         "rfx/guide/farfield-rcs",
         "rfx/guide/antenna-metrics",
