@@ -125,6 +125,10 @@ if HAVE_MEEP:
 
     print("\n  Meep Harminv results:")
     print(f"  {'freq':>10} {'Q':>10} {'amp':>12}")
+    # NOTE: the [] init must live on THIS branch too — it used to exist only
+    # in the Meep-missing except branch, so the first lane run with a real
+    # conda-forge Meep died here with NameError (2026-06-12, run 27392475256).
+    meep_modes = []
     for m in h.modes:
         meep_modes.append(m)
         print(f"  {m.freq:>10.6f} {m.Q:>10.1f} {abs(m.amp):>12.6f}")

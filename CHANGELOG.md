@@ -21,6 +21,27 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   resolution-10 T(f_peak) = 0.977 at 3x run length. Gate unchanged.
   Falsifier matrix: `scripts/diagnostics/cv03_flux/sweep_t_deficit.py`.
 
+### Fixed — preflight 2D false positive + unit-adaptive warning text (issue #166, 2026-06-12)
+
+- **`absorber_overlap` no longer false-trips on the collapsed z axis in 2D
+  modes.** The preflight thickness mirror assumed an absorber on every
+  non-PEC/PMC/periodic axis, but 2D grids collapse z to a single cell with
+  no absorber at all (`Grid` sets `pad_z = 0` and strips z from
+  `cpml_axes`) — so every 2D source/probe, necessarily at z=0, warned
+  "near/inside UPML region" (cv03: one line per line-source point, 20 lines
+  of spam per preflight). Real x/y overlap in 2D and all 3D behaviour are
+  regression-locked unchanged.
+- **Scale-sensitive preflight messages now pick units adaptively**
+  (`_fmt_len` / `_fmt_freq`): the mesh-resolution and absorber-placement
+  warnings printed fixed mm/GHz, rendering optical-scale setups as
+  `dx=0.000mm`, `lo=0.0mm`, and `freq_max=74950.00GHz` — values that read
+  like bugs while being correct (cv03: 100nm, 2µm, 74.95THz). Remaining
+  RF-lane messages (NTFF, MSL, ports) keep mm/GHz, which is correct at
+  their scale, and can migrate incrementally.
+- New gates in `tests/test_preflight_structured_and_guards.py` (2D-z no
+  false positive, 2D-x/y still fires, formatter units, optical-scale
+  mesh-warning text).
+
 ### Fixed — waveguide-port default source spectrum (issue #150, 2026-06-12)
 
 - **`f0=None` now defaults to the center of the requested DFT band** instead
