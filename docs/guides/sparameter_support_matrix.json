@@ -249,7 +249,7 @@
         "broad nonuniform waveguide S-parameters remain shadow/blocked"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "tests/test_sparam_ad_end_to_end.py::test_waveguide_s_matrix_ad_end_to_end, tests/test_waveguide_sparam_ad.py::test_wg_smatrix_assembly_ad_traceable"
+      "ad_evidence": "tests/test_sparam_ad_end_to_end.py::test_waveguide_s_matrix_ad_end_to_end, tests/test_waveguide_sparam_ad.py::test_wg_smatrix_assembly_ad_traceable (normalize=False V/I path); tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent (normalize='flux' power-flux path, issue #148 — previously raised TracerArrayConversionError)"
     },
     {
       "primitive": "add_coaxial_port(...)",

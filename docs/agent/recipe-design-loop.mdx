@@ -23,9 +23,12 @@ design today.
    `ad_evidence`. Two verified nuances:
    - Coaxial is `no` — `compute_coaxial_line_reflection` breaks the tape
      by construction (numpy matrix-pencil).
-   - Waveguide `yes` covers the default extraction (`normalize=False`);
-     `normalize='flux'` breaks the tape
-     ([#148](https://github.com/bk-squared/rfx/issues/148)).
+   - Waveguide `yes` covers BOTH the default extraction
+     (`normalize=False`) and, since the
+     [#148](https://github.com/bk-squared/rfx/issues/148) fix, the
+     power-flux extraction (`normalize='flux'`) — you can now optimize
+     directly through the production-recommended flux path
+     (evidence: `tests/test_waveguide_flux_ad.py`).
 3. **Pick the design lane.**
 4. **Validate the final design — never ship the loss number alone.**
 
