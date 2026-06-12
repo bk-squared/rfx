@@ -6,6 +6,21 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — cv03 flux-region congruence (issue #160, 2026-06-12)
+
+- `examples/crossval/03_straight_waveguide_flux.py`: the rfx flux monitors
+  are now bounded to the same `2*wg_width` region the Meep `FluxRegion`
+  measures, instead of the full y-plane (UPML padding included). The
+  full-plane `flux_in` additionally integrated the line source's radiation
+  cone — power that physically exits through the transverse absorber before
+  `flux_out` — so the self-transmission read 0.913 against the [0.95, 1.05]
+  gate with **no flux-normalization bug present**. Measured matrix
+  (resolution 10/15/20): full-plane 0.913 / 0.986 / 0.958 (non-monotonic,
+  not a convergence curve); bounded 0.974 / 1.011 / 0.997 — passing at every
+  resolution including the recipe mesh. Truncation witness: bounded
+  resolution-10 T(f_peak) = 0.977 at 3x run length. Gate unchanged.
+  Falsifier matrix: `scripts/diagnostics/cv03_flux/sweep_t_deficit.py`.
+
 ### Fixed — waveguide-port default source spectrum (issue #150, 2026-06-12)
 
 - **`f0=None` now defaults to the center of the requested DFT band** instead

@@ -20,6 +20,14 @@ probe as a "flux proxy" and then scaled the result to match the
 Meep peak; that pattern is explicitly forbidden (shape correlation
 of scaled Gaussians always passes) and has been removed.
 
+**Flux-region congruence (issue #160):** the rfx monitors are bounded to
+the same 2*wg_width region the Meep ``FluxRegion`` measures. The earlier
+full-plane monitors also integrated the line source's radiation cone at
+flux_in (radiation that exits transversally before flux_out), reading
+T = 0.913 at resolution 10 with no flux-normalization bug present —
+see scripts/diagnostics/cv03_flux/sweep_t_deficit.py for the
+resolution x monitor-extent falsifier matrix.
+
 Meep tutorial parameters:
   eps = 12, width = 1a, pad = 4, dpml = 2, resolution = 10
   cell = 16 x 8 (plus 2*dpml each side)
@@ -206,10 +214,24 @@ for i in range(int(wg_width * resolution)):
 # Sample the rfx flux on the SAME Meep-normalised frequency grid so the
 # peak-frequency comparison is bin-aligned (no interpolation ambiguity).
 freqs_rfx = jnp.asarray(meep_freqs * C0 / a)
+
+# Flux region bounded to 2*wg_width on the guide axis — the SAME region the
+# Meep part measures (FluxRegion size=(0, 2*wg_width)). A full-plane monitor
+# (the pre-#160 behaviour) additionally integrates the line source's
+# radiation cone at flux_in; that radiation exits through the transverse
+# UPML before flux_out, so T = out/in reads low (0.913 at resolution 10)
+# without any flux-normalization bug. Issue #160 mesh x monitor-extent
+# matrix: bounded T(f_peak) = 0.974 / 1.011 / 0.997 at resolution 10/15/20.
+# The z size is oversized and clamps to the full (degenerate) z extent in
+# 2D mode.
+flux_size = (2 * wg_width * a, 10 * dx)
+flux_center = (OFFSET_Y * a, dx / 2)
 sim_rfx.add_flux_monitor(axis="x", coordinate=flux_in_rfx,
-                          freqs=freqs_rfx, name="flux_in")
+                          freqs=freqs_rfx, name="flux_in",
+                          size=flux_size, center=flux_center)
 sim_rfx.add_flux_monitor(axis="x", coordinate=flux_out_rfx,
-                          freqs=freqs_rfx, name="flux_out")
+                          freqs=freqs_rfx, name="flux_out",
+                          size=flux_size, center=flux_center)
 
 sim_rfx.preflight(strict=False)
 
