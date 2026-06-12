@@ -2238,9 +2238,11 @@ def extract_waveguide_s_matrix_flux(
 
     template_cfgs = tuple(port_cfgs)
     n_ports = len(template_cfgs)
-    n_freqs = len(template_cfgs[0].freqs)
     freqs = template_cfgs[0].freqs
-    s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+    # jnp-native assembly (issue #148): columns are collected per drive
+    # port and stacked at the end — no in-place np mutation, so traced
+    # values flow through to the returned S-matrix.
+    s_columns: list = []
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t)
@@ -2309,9 +2311,12 @@ def extract_waveguide_s_matrix_flux(
 
         # Incident power: signed flux at driven port in the reference guide.
         # |F_ref| = P_inc regardless of port direction (+x vs −x).
-        F_ref_drive = np.array(flux_spectrum(ref_final_mons[drive_idx]))  # (n_freqs,)
-        P_inc = np.abs(F_ref_drive)
-        safe_P_inc = np.where(P_inc > 1e-60, P_inc, np.ones_like(P_inc))
+        # jnp-native (issue #148): no np.array() concretization — keeps
+        # the whole flux extraction on the AD tape for
+        # eps_override-traced gradients.
+        F_ref_drive = flux_spectrum(ref_final_mons[drive_idx])  # (n_freqs,)
+        P_inc = jnp.abs(F_ref_drive)
+        safe_P_inc = jnp.where(P_inc > 1e-60, P_inc, jnp.ones_like(P_inc))
 
         # Modal incident wave (reference run) — used to determine phase reference
         a_inc_ref, _ = extract_waveguide_port_waves(
@@ -2340,29 +2345,45 @@ def extract_waveguide_s_matrix_flux(
         if len(dev_final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
 
-        F_dev_drive = np.array(flux_spectrum(dev_final_mons[drive_idx]))
+        F_dev_drive = flux_spectrum(dev_final_mons[drive_idx])
 
+        col_entries = []
         for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
             # Phase from modal V/I decomposition of device run
             _, b_recv_dev = extract_waveguide_port_waves(
                 dev_cfg, ref_shift=ref_shifts[recv_idx]
             )
             safe_a = jnp.where(jnp.abs(a_inc_ref) > 1e-60, a_inc_ref, jnp.ones_like(a_inc_ref))
-            phase = np.angle(np.array(b_recv_dev / safe_a))
+            # AD-safe angle (double-where): angle() has an undefined
+            # gradient at 0; angle(1)=0 matches np.angle(0)=0 so the
+            # primal is unchanged.
+            ratio = b_recv_dev / safe_a
+            ratio_ok = jnp.abs(ratio) > 0.0
+            phase = jnp.angle(jnp.where(ratio_ok, ratio, jnp.ones_like(ratio)))
 
             if recv_idx == drive_idx:
                 # Reflection: ref_flux − dev_flux = power that turned around
-                P_refl = np.abs(F_ref_drive - F_dev_drive)
-                mag = np.sqrt(P_refl / safe_P_inc)
+                P_num = jnp.abs(F_ref_drive - F_dev_drive)
             else:
                 # Transmission: net flux through receiving port's probe plane
-                F_dev_recv = np.array(flux_spectrum(dev_final_mons[recv_idx]))
-                P_trans = np.abs(F_dev_recv)
-                mag = np.sqrt(P_trans / safe_P_inc)
+                P_num = jnp.abs(flux_spectrum(dev_final_mons[recv_idx]))
+            # AD-safe sqrt (double-where): a perfect match/null makes the
+            # power ratio exactly 0, where d(sqrt)/dx = inf would leak
+            # 0*inf=nan through the backward pass; primal stays exactly
+            # sqrt(x) for x>0 and exactly 0 at x=0.
+            p_ratio = P_num / safe_P_inc
+            p_ok = p_ratio > 0.0
+            mag = jnp.where(
+                p_ok, jnp.sqrt(jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))), 0.0
+            )
 
-            s_matrix[recv_idx, drive_idx, :] = mag * np.exp(1j * phase)
+            col_entries.append((mag * jnp.exp(1j * phase)).astype(jnp.complex64))
 
-    return jnp.asarray(s_matrix)
+        # (n_ports, n_freqs) column for this drive port
+        s_columns.append(jnp.stack(col_entries, axis=0))
+
+    # Stack drive columns on axis 1 -> (recv, drive, n_freqs)
+    return jnp.stack(s_columns, axis=1)
 
 
 def extract_waveguide_s_params_normalized(

@@ -6,6 +6,25 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — normalize='flux' waveguide S-matrix joins the AD tape (issue #148, 2026-06-12)
+
+- `extract_waveguide_s_matrix_flux` is now jnp-native end to end: the
+  `np.array(flux_spectrum(...))` concretizations and the in-place numpy
+  S-matrix assembly are gone, so
+  `compute_waveguide_s_matrix(normalize='flux', eps_override=<traced>)`
+  works under `jax.grad` (previously: `TracerArrayConversionError`) —
+  design loops can optimize directly through the production-recommended
+  power-flux extraction instead of the normalize=False-then-validate
+  workaround.
+- The rewrite adds double-where guards at the two genuine gradient
+  singularities (sqrt of a zero power ratio at a perfect match/null,
+  angle of a zero modal ratio); primal values are preserved exactly.
+- Forward regression: S-matrix unchanged vs the numpy path within the
+  float-reassociation envelope (measured max|diff| 1.1e-7 on the WR-90
+  fixture). New CI gates in `tests/test_waveguide_flux_ad.py`
+  (composition-level grad finite + central-FD agreement ≤5% + forward
+  no-op-override equivalence); support matrix `ad_evidence` updated.
+
 ### Fixed — MSL N-probe extractor NaN gradient at tiny field scales (2026-06-12)
 
 - `extract_msl_nprobe`'s β-refinement (`_estimate_beta`) produced `nan`
