@@ -426,8 +426,20 @@ def _estimate_beta(
     hi = beta0 * (1.0 + _BETA_SCAN_FRAC)
     grid = jnp.linspace(lo, hi, _BETA_SCAN_NODES)
 
+    # Scale-normalize the probe vector for the β estimate.  β is
+    # scale-invariant, but the residuals below scale with ‖v‖: on the
+    # Kottke density-PEC path the plane-integrated V can be ~1e-14
+    # (2026-06-12 G2 NaN session), which makes the residual curve
+    # numerically flat in float32 and collapses the parabolic
+    # second-difference `denom` to ~1e-21 — far below the 1e-20 guard
+    # the threshold was designed around.  Normalizing restores the
+    # threshold's meaning.  (α/γ/Z0 keep absolute scale — the final
+    # lstsq in `extract_msl_nprobe` runs on the RAW v.)
+    v_scale = jnp.max(jnp.abs(v))
+    v_n = v / jnp.where(v_scale > 0.0, v_scale, 1.0)
+
     def _resid(b):
-        _, _, r = _lstsq_alpha_gamma(v, x, b.astype(jnp.complex64))
+        _, _, r = _lstsq_alpha_gamma(v_n, x, b.astype(jnp.complex64))
         return r
 
     resids = jax.vmap(_resid)(grid)
@@ -437,9 +449,19 @@ def _estimate_beta(
     b_lo, b_mid, _ = grid[k - 1], grid[k], grid[k + 1]
     r_lo, r_mid, r_hi = resids[k - 1], resids[k], resids[k + 1]
     # Parabolic vertex offset (in grid-step units), clamped to [-1, 1].
+    # Double-where idiom: the single-where form computed `num / denom`
+    # in the untaken branch, and when catastrophic cancellation drives
+    # denom to ~0 the untaken branch's backward pass produces inf/nan
+    # that `0 * nan = nan` leaks through the mask (the exact trap class
+    # the _solve_q custom-JVP comment above documents; reintroduced
+    # here by the lstsq rewrite and caught 2026-06-12 as the G2
+    # grad=nan).  `safe_denom` keeps the untaken branch finite in both
+    # the primal and the cotangent.
     denom = (r_lo - 2.0 * r_mid + r_hi)
     num = 0.5 * (r_lo - r_hi)
-    frac = jnp.where(jnp.abs(denom) > 1e-20, num / denom, 0.0)
+    ok = jnp.abs(denom) > 1e-20
+    safe_denom = jnp.where(ok, denom, 1.0)
+    frac = jnp.where(ok, num / safe_denom, 0.0)
     frac = jnp.clip(frac, -1.0, 1.0)
     step = b_mid - b_lo
     return (b_mid + frac * step).astype(jnp.complex64)
