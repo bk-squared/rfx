@@ -235,11 +235,22 @@ sim_rfx.add_flux_monitor(axis="x", coordinate=flux_out_rfx,
 
 sim_rfx.preflight(strict=False)
 
-rfx_total_t = meep_total_t * a / C0
+# rfx integration time is a FIXED 400 time units (a/c0), NOT slaved to
+# Meep's stop_when_fields_decayed wall clock. Inheriting Meep's wall time
+# truncated the rfx flux DFT whenever Meep stopped early (lane run
+# 27393931821: Meep stopped at t=200, rfx got 3059 steps and read
+# T(f_peak)=1.155 from truncation aliasing). Measured convergence at this
+# duration: T=0.9736 at 1x (5995 steps), 0.9772 at 3x — a 0.4% band.
+# NOTE: until_decay=1e-5 at flux_out was tried and REJECTED for this
+# geometry: the stopper triggers at ~2200 steps (point ez goes quiet)
+# while the flux DFT is still accumulating the slow low-group-velocity
+# tail of the eps=12 guide — T reads 0.745. Point-field decay is not a
+# flux-convergence witness here.
+rfx_total_t = 400.0 * a / C0
 dt_rfx = dx / (C0 * math.sqrt(2)) * 0.99
 n_steps = int(rfx_total_t / dt_rfx) + 200
 
-print(f"  Running rfx: {n_steps} steps...")
+print(f"  Running rfx: {n_steps} steps (fixed 400 a/c0 units)...")
 t0 = time.time()
 res_rfx = sim_rfx.run(n_steps=n_steps, subpixel_smoothing=True)
 print(f"  Done in {time.time()-t0:.1f}s")

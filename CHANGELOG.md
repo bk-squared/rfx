@@ -20,6 +20,15 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   resolution including the recipe mesh. Truncation witness: bounded
   resolution-10 T(f_peak) = 0.977 at 3x run length. Gate unchanged.
   Falsifier matrix: `scripts/diagnostics/cv03_flux/sweep_t_deficit.py`.
+- Second comparator defect (same script, surfaced by the lane's first real
+  Meep execution): the rfx integration time was slaved to Meep's
+  `stop_when_fields_decayed` wall clock — when Meep stopped at t=200 the
+  rfx flux DFT was truncated mid-tail and read T=1.155. rfx now runs a
+  fixed 400 a/c0 units (measured band: 0.9736 at 1x, 0.9772 at 3x).
+  `until_decay=1e-5` was tried and rejected for this geometry: the point
+  stopper triggers at ~2200 steps while the eps=12 guide's slow tail is
+  still carrying flux (T=0.745) — point-field decay is not a
+  flux-convergence witness here (filed as a follow-up issue).
 
 ### Fixed — preflight 2D false positive + unit-adaptive warning text (issue #166, 2026-06-12)
 
