@@ -47,7 +47,7 @@ physical S11 design objective through `forward()` on every PR.
   `distributed=True` raise).
 - Pass `port_s11_freqs=...` whenever the objective reads port S11.
 
-## Lane B — direct `jax.grad` through the S-matrix API (GRADIENT-VERIFIED, design-blocked)
+## Lane B — direct `jax.grad` through the S-matrix API (waveguide: verified after the #150 fix)
 
 `jax.grad` flows end-to-end through `sim.compute_waveguide_s_matrix(...,
 eps_override=eps(theta))` and `compute_msl_s_matrix` — the gradient itself
@@ -57,15 +57,16 @@ is accurate (AD↔FD relative error ~4.5e-4;
 `rfx.optimize_objectives` compose here too — they accept any result
 exposing `.s_params` / `.freqs`.
 
-**However, closed-loop waveguide design on this lane is currently
-blocked**, verified 2026-06-11: on a preflight-clean dielectric two-slab
-toy, the extracted |S11| grows non-passive with run length under both
-`normalize=False` and `normalize='flux'`
-([#150](https://github.com/bk-squared/rfx/issues/150)) — an optimizer fed
-those numbers chases an extraction artifact, and `validate_port_smatrix`
-on the final design fails passivity. Until #150 is resolved, use Lane B
-for gradient/sensitivity studies, not for trusting the optimized |S11|
-value. MSL Lane B does not have an equivalent verified toy yet.
+**The run-length-growth pathology previously reported here
+([#150](https://github.com/bk-squared/rfx/issues/150)) is resolved**
+(2026-06-12): the root cause was the waveguide source's `f0` default
+(`freq_max/2`) landing below the mode cutoff — an evanescent launch whose
+extracted S grew with `n_steps`. `f0=None` now defaults to the center of
+the requested band, and preflight flags `port_source_below_cutoff` /
+`port_freqs_below_cutoff`. Always pass measurement `freqs` (and ideally an
+explicit in-band `f0`), keep every bin above the mode cutoff, and check
+the final design at 2× `n_steps` (run-length invariance) before trusting
+it. MSL Lane B does not have an equivalent verified toy yet.
 
 ## Validation step (both lanes)
 
@@ -92,7 +93,7 @@ value. MSL Lane B does not have an equivalent verified toy yet.
   once ([#149](https://github.com/bk-squared/rfx/issues/149)).
 - **`compute_waveguide_s_matrix` takes no `freqs` argument** — the result
   carries its own grid (`res.freqs`); select bins from it.
-- **An improving loss is not an improving design.** In the blocked-lane
+- **An improving loss is not an improving design.** In the original #150
   toy, the optimizer "improved" the loss 100× by saturating the design
   variable — the underlying extraction was the thing moving. The
   validation step above is what catches this.

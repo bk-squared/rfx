@@ -353,6 +353,24 @@ class _CompileMixin:
             )
         return (lo_idx, hi_idx), actual_span
 
+    def _default_waveguide_f0(self, freqs) -> float:
+        """Default waveguide source center = center of the requested DFT band.
+
+        The old fallback (``freq_max / 2``) had no relation to the port mode
+        and could land below the mode cutoff (issue #150: an evanescent
+        launch whose near-cutoff content crawls at vanishing group velocity,
+        producing junk S-parameters that GROW with run length while the
+        in-band incident reference sits in the source tail). Centering on
+        the band the user asked to measure is the only honest default.
+        """
+        try:
+            f_arr = np.asarray(freqs, dtype=float)
+            if f_arr.size:
+                return float((f_arr.min() + f_arr.max()) / 2.0)
+        except (TypeError, ValueError):
+            pass
+        return self._freq_max / 2.0
+
     def _build_waveguide_port_config(
         self,
         entry: _WaveguidePortEntry,
@@ -414,7 +432,7 @@ class _CompileMixin:
                 grid.dx,
                 freqs,
                 n_modes=entry.n_modes,
-                f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
+                f0=entry.f0 if entry.f0 is not None else self._default_waveguide_f0(freqs),
                 bandwidth=entry.bandwidth,
                 amplitude=entry.amplitude,
                 probe_offset=entry.probe_offset,
@@ -430,7 +448,7 @@ class _CompileMixin:
             port,
             grid.dx,
             freqs,
-            f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
+            f0=entry.f0 if entry.f0 is not None else self._default_waveguide_f0(freqs),
             bandwidth=entry.bandwidth,
             amplitude=entry.amplitude,
             probe_offset=entry.probe_offset,

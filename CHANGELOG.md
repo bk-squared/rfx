@@ -6,6 +6,27 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — waveguide-port default source spectrum (issue #150, 2026-06-12)
+
+- **`f0=None` now defaults to the center of the requested DFT band** instead
+  of the unrelated `freq_max / 2`. The old fallback could land at or below
+  the port mode's cutoff (canonical WR-90 toy: 6 GHz < fc_TE10 = 6.56 GHz),
+  launching an evanescent near-cutoff crawl whose extracted S-parameters were
+  physically meaningless and **grew with `n_steps`** (max column power
+  20 → 57 → 114 over 600 → 2400 steps on the recorded #150 toy; post-fix
+  1.107, identical at 4800 and 9600 steps). Explicit-`f0` setups unchanged.
+- **New preflight guards** `port_source_below_cutoff` and
+  `port_freqs_below_cutoff`: the resolved source center or any requested
+  measurement bin at/below the excited mode's cutoff is now flagged loudly
+  (below-cutoff bins also NaN gradients under `jax.grad`).
+- `examples/inverse_design/differentiable_s11_design.py` setup corrected
+  (issue #149): ports moved clear of the CPML, measurement band kept inside
+  the TE20 contamination bound, preflight now runs visibly and aborts on
+  issues. AD↔FD relative error after the cleanup: 2.8e-4.
+- New gates: `tests/test_waveguide_port_spectrum_guard.py` (preflight codes,
+  f0-omitted empty-guide transmission |S21|≈1, and the #150 toy's
+  column-power growth signature locked at the measured envelope).
+
 ### Current main status (2026-06-10)
 
 - **Recommended public lane remains uniform Cartesian Yee RF/FDTD.**

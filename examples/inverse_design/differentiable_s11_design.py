@@ -30,10 +30,19 @@ from rfx import Simulation
 _WR90_A = 22.86e-3    # broad wall (m)
 _WR90_B = 10.16e-3    # narrow wall (m)
 _WR90_DX = 2e-3       # cell size (m)
-_WR90_LX = 0.05       # domain length (m)
+# Domain length: ports must clear the CPML absorber (issue #149 — the
+# original LX=0.05 with cpml_layers=8 x dx=2mm put BOTH port planes inside
+# the 16mm absorber; sim.preflight() flags exactly this).
+_WR90_LX = 0.10       # domain length (m)
 
-# TE10 cutoff for WR-90: c/(2a) ≈ 6.56 GHz; all freqs here are above cutoff.
-_WR90_FREQS = jnp.linspace(8e9, 12e9, 8)
+# TE10 cutoff for WR-90: c/(2a) ≈ 6.56 GHz; all freqs here are above cutoff
+# AND below 0.90 x fc_TE20 = 11.8 GHz (preflight's next-mode contamination
+# bound — the original 8-12 GHz band tripped it at the top edge).
+# f0 is set explicitly at band center — a source centered at/below cutoff
+# launches an evanescent crawl whose extracted S grows with n_steps
+# (issue #150; preflight code "port_source_below_cutoff" now guards this).
+_WR90_FREQS = jnp.linspace(8e9, 11.5e9, 8)
+_WR90_F0 = 9.75e9
 
 
 def _build_sim() -> Simulation:
@@ -47,19 +56,21 @@ def _build_sim() -> Simulation:
     )
     sim.add_waveguide_port(
         direction="+x",
-        x_position=0.01,
+        x_position=0.024,
         y_range=(0.0, _WR90_A),
         z_range=(0.0, _WR90_B),
         n_modes=1,
         freqs=_WR90_FREQS,
+        f0=_WR90_F0,
     )
     sim.add_waveguide_port(
         direction="-x",
-        x_position=_WR90_LX - 0.01,
+        x_position=_WR90_LX - 0.024,
         y_range=(0.0, _WR90_A),
         z_range=(0.0, _WR90_B),
         n_modes=1,
         freqs=_WR90_FREQS,
+        f0=_WR90_F0,
     )
     return sim
 
@@ -96,6 +107,11 @@ if __name__ == "__main__":
     print("=" * 70)
 
     sim = _build_sim()
+    # Preflight runs VISIBLY (never optimize against a setup you have not
+    # preflighted — issues #149/#150 both hid behind suppressed warnings).
+    issues = sim.preflight()
+    if issues:
+        raise SystemExit(f"preflight reported {len(issues)} issue(s) — fix the setup first")
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
     alpha0 = jnp.float32(1.0)
