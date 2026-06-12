@@ -93,6 +93,13 @@ jobs:
       - name: Run external-reference crossval scripts (per-script exit codes)
         run: |
           set -uo pipefail
+          # The job default shell is `bash -el` — the -e (errexit) survives
+          # `set -uo pipefail`, so any nonzero script exit killed the step
+          # BEFORE the `code=$?` classification below could run. That defeats
+          # the whole W2.5 design (exit 2 = visible SKIP, exit 1 = red with
+          # a per-script verdict table). Disable errexit explicitly; this
+          # loop classifies every exit code itself and sets `fail`.
+          set +e
           mkdir -p crossval_logs
           export PYTHONPATH="$PWD"
           export MPLBACKEND=Agg
