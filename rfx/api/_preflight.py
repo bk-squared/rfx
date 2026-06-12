@@ -855,6 +855,53 @@ class _PreflightMixin:
                 return (C0 / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
 
             fc_excited = _fc(m0, n0)
+
+            # --- LOWER bound (issue #150): source center / measurement bins
+            # at or below the excited mode's own cutoff. Below fc the launch
+            # is evanescent and near-cutoff content crawls at vanishing group
+            # velocity: the extracted S is junk that GROWS with n_steps (the
+            # in-band incident reference sits in the source spectral tail),
+            # and below-cutoff DFT bins additionally NaN the gradient.
+            if entry.freqs is not None:
+                f_arr = np.asarray(entry.freqs, dtype=float)
+                f_min = float(f_arr.min())
+                band_center = float((f_arr.min() + f_arr.max()) / 2.0)
+            else:
+                f_min = None
+                band_center = self._freq_max / 2.0
+            f0_resolved = entry.f0 if entry.f0 is not None else band_center
+            if f0_resolved <= fc_excited:
+                _w.warn(
+                    PreflightWarning(
+                        f"Waveguide port '{entry.name}': source center "
+                        f"f0={f0_resolved / 1e9:.3f} GHz is at or below the "
+                        f"{entry.mode_type}{m0}{n0} cutoff "
+                        f"fc={fc_excited / 1e9:.3f} GHz"
+                        f"{' (defaulted from the measurement band)' if entry.f0 is None else ''}. "
+                        f"The launch is evanescent — extracted S-parameters are "
+                        f"physically meaningless and grow with n_steps. Set "
+                        f"f0 well above fc (e.g. the center of the measurement "
+                        f"band).",
+                        code="port_source_below_cutoff",
+                        source="_check_waveguide_port_evanescent",
+                    ),
+                    stacklevel=4,
+                )
+            if f_min is not None and f_min <= fc_excited:
+                _w.warn(
+                    PreflightWarning(
+                        f"Waveguide port '{entry.name}': minimum measurement "
+                        f"frequency {f_min / 1e9:.3f} GHz is at or below the "
+                        f"{entry.mode_type}{m0}{n0} cutoff "
+                        f"fc={fc_excited / 1e9:.3f} GHz. Below-cutoff bins "
+                        f"produce junk S-parameters and NaN gradients under "
+                        f"jax.grad. Restrict freqs to f > fc.",
+                        code="port_freqs_below_cutoff",
+                        source="_check_waveguide_port_evanescent",
+                    ),
+                    stacklevel=4,
+                )
+
             fc_next = min(
                 (
                     _fc(m, n)
