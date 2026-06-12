@@ -26,6 +26,43 @@ from rfx.core.yee import MaterialArrays
 from rfx.core.jax_utils import is_tracer
 
 
+def _fmt_len(meters: float) -> str:
+    """Unit-adaptive length for warning text (issue #166).
+
+    Fixed-mm formatting rendered µm-scale setups as ``0.0mm`` / ``0.000mm``
+    and misled optical-scale users into reading a routine value as a bug;
+    pick the unit that keeps the digits visible.
+    """
+    m = abs(meters)
+    if m == 0.0:
+        return "0mm"
+    if m >= 1.0:
+        return f"{meters:.4g}m"
+    if m >= 1e-3:
+        return f"{meters*1e3:.4g}mm"
+    if m >= 1e-6:
+        return f"{meters*1e6:.4g}µm"
+    return f"{meters*1e9:.4g}nm"
+
+
+def _fmt_freq(hz: float) -> str:
+    """Unit-adaptive frequency for warning text (issue #166).
+
+    Fixed-GHz formatting printed optical-scale ``freq_max`` as
+    ``74950.00GHz`` instead of ``74.95THz``.
+    """
+    h = abs(hz)
+    if h == 0.0:
+        return "0Hz"
+    if h >= 1e12:
+        return f"{hz/1e12:.4g}THz"
+    if h >= 1e9:
+        return f"{hz/1e9:.4g}GHz"
+    if h >= 1e6:
+        return f"{hz/1e6:.4g}MHz"
+    return f"{hz:.4g}Hz"
+
+
 class PreflightWarning(UserWarning):
     """Base for structured preflight findings carried on the warning instance.
 
@@ -534,7 +571,7 @@ class _PreflightMixin:
                             f"Zero-thickness geometry '{mat_name}' along "
                             f"{axis_name}-axis. On non-uniform mesh this may "
                             f"produce empty rasterization. Consider giving it "
-                            f"at least one cell of thickness ({cell*1e3:.2f}mm).",
+                            f"at least one cell of thickness ({_fmt_len(cell)}).",
                             code="mesh_resolution",
                             source="_validate_mesh_quality",
                         ),
@@ -553,7 +590,7 @@ class _PreflightMixin:
                     )
                     _w.warn(
                         PreflightWarning(
-                            f"'{mat_name}' {axis_name}-extent {dim*1e3:.2f}mm = "
+                            f"'{mat_name}' {axis_name}-extent {_fmt_len(dim)} = "
                             f"{cells_count:.1f} cells — below 1 cell resolution."
                             + hint,
                             code="mesh_resolution",
@@ -578,7 +615,7 @@ class _PreflightMixin:
                             _w.warn(
                                 PreflightWarning(
                                     f"PEC '{mat_name}' {axis_name}-extent "
-                                    f"{dim*1e3:.2f}mm = {cells:.1f} cells — "
+                                    f"{_fmt_len(dim)} = {cells:.1f} cells — "
                                     "volume under-resolved (PEC volume needs "
                                     "≥5 cells; thin sheets <3 cells are fine).",
                                     code="mesh_resolution",
@@ -628,8 +665,8 @@ class _PreflightMixin:
                                     f"dielectric '{mat_name}' on {axis_name}: "
                                     f"{cells_per_lam:.1f} cells per λ_eff "
                                     f"(eps_r={eps_r:.2f}, freq_max="
-                                    f"{self._freq_max/1e9:.2f}GHz, "
-                                    f"dx={cell*1e3:.3f}mm). Need ≥"
+                                    f"{_fmt_freq(self._freq_max)}, "
+                                    f"dx={_fmt_len(cell)}). Need ≥"
                                     f"{threshold:.0f} cells/λ_eff for "
                                     f"phase-accurate propagation."
                                     f"{suffix}",
@@ -655,7 +692,7 @@ class _PreflightMixin:
                                 _w.warn(
                                     PreflightWarning(
                                         f"Gap between PEC structures: "
-                                        f"{gap*1e3:.2f}mm = {gap/cell:.1f} cells "
+                                        f"{_fmt_len(gap)} = {gap/cell:.1f} cells "
                                         f"along {'xyz'[ax]} — coupling may be "
                                         f"under-resolved.",
                                         code="mesh_resolution",
@@ -1694,6 +1731,14 @@ class _PreflightMixin:
             face = f"{ax_name}_{side}"
             if self._boundary not in ("cpml", "upml"):
                 return 0.0
+            if ax_name == "z" and self._mode.startswith("2d"):
+                # 2D modes collapse z to a single cell with NO absorber
+                # (Grid sets pad_z_lo = pad_z_hi = 0 and strips z from
+                # cpml_axes — rfx/grid.py). Without this mirror rule the
+                # z thickness is the full cpml budget and every 2D
+                # source/probe at z=0 false-trips absorber_overlap
+                # (issue #166).
+                return 0.0
             if face in self._pec_faces or face in _pmc_faces_set:
                 return 0.0
             if ax_name in self._periodic_axes:
@@ -1775,7 +1820,7 @@ class _PreflightMixin:
                             PreflightWarning(
                                 f"Probe at {pos} is near/inside {absorber_label} region "
                                 f"({absorber_label} {'xyz'[ax]}-thickness: "
-                                f"lo={ct_lo*1e3:.1f}mm, hi={ct_hi*1e3:.1f}mm). "
+                                f"lo={_fmt_len(ct_lo)}, hi={_fmt_len(ct_hi)}). "
                                 f"Signal will be attenuated. Move probe to interior.",
                                 code="absorber_overlap",
                                 source="_validate_cfg_absorber_placement",
@@ -1796,7 +1841,7 @@ class _PreflightMixin:
                             PreflightWarning(
                                 f"Source/port at {pos} is near/inside {absorber_label} region "
                                 f"({absorber_label} {'xyz'[ax]}-thickness: "
-                                f"lo={ct_lo*1e3:.1f}mm, hi={ct_hi*1e3:.1f}mm). "
+                                f"lo={_fmt_len(ct_lo)}, hi={_fmt_len(ct_hi)}). "
                                 f"Energy will be absorbed. Move source to interior.",
                                 code="absorber_overlap",
                                 source="_validate_cfg_absorber_placement",

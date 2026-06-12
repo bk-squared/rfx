@@ -337,3 +337,66 @@ def test_run_hard_fails_on_error_severity_and_skip_bypasses():
     with _w.catch_warnings():
         _w.simplefilter("error")  # no preflight warning/raise should fire
         sim.run(n_steps=5, skip_preflight=True)
+
+
+# ------------------------------------------------- issue #166: 2D z + units
+def test_absorber_overlap_no_false_positive_on_2d_collapsed_z():
+    """2D modes collapse z to a single cell with NO absorber (Grid strips z
+    from cpml_axes and sets pad_z=0). Every 2D source/probe necessarily sits
+    at z=0, so the z-axis proximity check must not fire (issue #166: cv03
+    emitted one absorber_overlap line per line-source point)."""
+    sim = Simulation(domain=(16e-6, 9e-6, 1e-7), freq_max=7.5e13, dx=1e-7,
+                     boundary="upml", cpml_layers=20, mode="2d_tmz")
+    # mid-domain in x and y — only the collapsed z coordinate (0) is "near"
+    # the phantom z absorber the old mirror logic assumed.
+    sim.add_source((8e-6, 4.5e-6, 0), component="ez")
+    sim.add_probe((9e-6, 4.5e-6, 0), component="ez")
+    report = sim.preflight()
+    overlap = report.by_code("absorber_overlap")
+    assert not overlap, f"false positive on collapsed z axis: {list(overlap)}"
+
+
+def test_absorber_overlap_still_fires_on_2d_xy():
+    """The 2D-z exemption must not silence real x/y absorber overlap."""
+    sim = Simulation(domain=(16e-6, 9e-6, 1e-7), freq_max=7.5e13, dx=1e-7,
+                     boundary="upml", cpml_layers=20, mode="2d_tmz")
+    sim.add_source((1e-7, 4.5e-6, 0), component="ez")   # deep in x_lo absorber
+    report = sim.preflight()
+    overlap = report.by_code("absorber_overlap")
+    assert overlap, "expected absorber_overlap for a source at the x_lo edge"
+    assert any("x-thickness" in str(i) for i in overlap)
+
+
+def test_unit_adaptive_formatting_helpers():
+    """_fmt_len/_fmt_freq pick units that keep digits visible at any scale
+    (issue #166: fixed mm/GHz rendered 0.1µm as 0.000mm and 74.95THz as
+    74950.00GHz)."""
+    from rfx.api._preflight import _fmt_len, _fmt_freq
+    assert _fmt_len(1e-7) == "100nm"
+    assert _fmt_len(2e-6) == "2µm"
+    assert _fmt_len(0.002) == "2mm"
+    assert _fmt_len(0.02286) == "22.86mm"
+    assert _fmt_len(1.5) == "1.5m"
+    assert _fmt_len(5e-10) == "0.5nm"
+    assert _fmt_len(0.0) == "0mm"
+    assert _fmt_freq(7.495e13) == "74.95THz"
+    assert _fmt_freq(10e9) == "10GHz"
+    assert _fmt_freq(9.322e9) == "9.322GHz"
+    assert _fmt_freq(2.45e6) == "2.45MHz"
+
+
+def test_mesh_warning_uses_adaptive_units_at_optical_scale():
+    """The cv03-class mesh-resolution warning must print THz/µm, not
+    0.000mm / five-digit GHz, at optical scale."""
+    sim = Simulation(domain=(16e-6, 9e-6, 1e-7), freq_max=7.495e13, dx=1e-7,
+                     boundary="upml", cpml_layers=20, mode="2d_tmz")
+    sim.add_material("wg", eps_r=12.0)
+    sim.add(Box((0, 4e-6, 0), (16e-6, 5e-6, 1e-7)), material="wg")
+    sim.add_source((8e-6, 4.5e-6, 0), component="ez")
+    report = sim.preflight()
+    mesh = [str(i) for i in report.by_code("mesh_resolution")
+            if "cells per λ_eff" in str(i)]
+    assert mesh, "expected the cells-per-λ_eff warning at 11.5 cells/λ_eff"
+    assert any("74.95THz" in m for m in mesh), mesh
+    assert any("100nm" in m for m in mesh), mesh
+    assert not any("0.000mm" in m for m in mesh), mesh
