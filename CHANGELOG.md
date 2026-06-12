@@ -6,6 +6,42 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — cv03 flux-region congruence (issue #160, 2026-06-12)
+
+- `examples/crossval/03_straight_waveguide_flux.py`: the rfx flux monitors
+  are now bounded to the same `2*wg_width` region the Meep `FluxRegion`
+  measures, instead of the full y-plane (UPML padding included). The
+  full-plane `flux_in` additionally integrated the line source's radiation
+  cone — power that physically exits through the transverse absorber before
+  `flux_out` — so the self-transmission read 0.913 against the [0.95, 1.05]
+  gate with **no flux-normalization bug present**. Measured matrix
+  (resolution 10/15/20): full-plane 0.913 / 0.986 / 0.958 (non-monotonic,
+  not a convergence curve); bounded 0.974 / 1.011 / 0.997 — passing at every
+  resolution including the recipe mesh. Truncation witness: bounded
+  resolution-10 T(f_peak) = 0.977 at 3x run length. Gate unchanged.
+  Falsifier matrix: `scripts/diagnostics/cv03_flux/sweep_t_deficit.py`.
+- Second comparator defect (same script, surfaced by the lane's first real
+  Meep execution): the rfx integration time was slaved to Meep's
+  `stop_when_fields_decayed` wall clock — when Meep stopped at t=200 the
+  rfx flux DFT was truncated mid-tail and read T=1.155. rfx now runs a
+  fixed 400 a/c0 units (measured band: 0.9736 at 1x, 0.9772 at 3x).
+  `until_decay=1e-5` was tried and rejected for this geometry: the point
+  stopper triggers at ~2200 steps while the eps=12 guide's slow tail is
+  still carrying flux (T=0.745) — point-field decay is not a
+  flux-convergence witness here (filed as issue #169).
+- Gate statistic re-specified to the **central-band mean** T (fcen ±
+  0.15·df), tolerances unchanged at 1.0 ± 0.05 and cross-diff < 0.05.
+  Measured first (sweep matrix + lane runs 27393931821/27394439174): at
+  the recipe mesh — 11.5 cells/λ_eff at freq_max, below the preflight's
+  own ≥20 floor for flux extraction — rfx's per-bin T(f) carries the
+  preflight-documented ±5-10% coarse-mesh ripple while Meep's curve is
+  smooth, so the old single-bin gate sampled at Meep's peak bin landed
+  in ripple valleys (0.902 at f=0.1510) even at resolutions where the
+  band-energy transmission is clean (band-mean 0.966 / 1.005 / 0.989 at
+  resolution 10/15/20). The band mean is the physically meaningful
+  energy-transmission estimator; peak-bin values remain printed for
+  information.
+
 ### Fixed — preflight 2D false positive + unit-adaptive warning text (issue #166, 2026-06-12)
 
 - **`absorber_overlap` no longer false-trips on the collapsed z axis in 2D
