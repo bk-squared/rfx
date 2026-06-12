@@ -6,6 +6,27 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — MSL N-probe extractor NaN gradient at tiny field scales (2026-06-12)
+
+- `extract_msl_nprobe`'s β-refinement (`_estimate_beta`) produced `nan`
+  gradients when the plane-integrated probe voltages were very small
+  (|V| ~ 1e-14, measured on the density-PEC/Kottke forward path): the
+  float32 residual curve over the β scan went numerically flat, the
+  parabolic second-difference collapsed below its 1e-20 guard, and the
+  **single-where** division guard leaked `0 * nan = nan` through the
+  backward pass — the exact trap class the module's `_solve_q`
+  custom-JVP comment documents, reintroduced by the lstsq rewrite.
+  Forward values were always finite (the failure was invisible to
+  value-level checks and to unit-scale AD tests — composition-level
+  only). Fixed with the double-where idiom plus scale-normalizing the
+  β-estimate input (`v/max|v|`; α/γ/Z0 keep absolute scale via the raw
+  final lstsq). Found by the msl_stub G2 re-run (VESSL 369367242390:
+  Adam grad=nan from iter 0 while the 17-point brute scan stayed
+  finite). Regression-locked by
+  `test_nprobe_grad_finite_and_scale_invariant_at_tiny_v` (fails on the
+  old code; locks finiteness at scale 1e-14 + scale-invariance + FD
+  match).
+
 ### Fixed — cv03 flux-region congruence (issue #160, 2026-06-12)
 
 - `examples/crossval/03_straight_waveguide_flux.py`: the rfx flux monitors

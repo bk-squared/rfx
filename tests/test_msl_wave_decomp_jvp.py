@@ -108,3 +108,52 @@ def test_solve_q_jvp_w_r_t_v3():
     assert jnp.allclose(fd, ad, atol=2e-3, rtol=1e-2), (
         f"FD={fd}  AD={ad}  diff={fd - ad}"
     )
+
+
+# ---------------------------------------------------------------- issue: G2 NaN
+def _nprobe_cost(g, scale):
+    """|S11| from extract_msl_nprobe for a synthetic 2-wave field whose
+    backward amplitude is parameterized by the real latent ``g``."""
+    from rfx.probes.msl_wave_decomp import extract_msl_nprobe
+    delta = 381e-6
+    x = jnp.array([0.0, delta, 2.0 * delta], dtype=jnp.float32)
+    beta_true = jnp.asarray(213.0, dtype=jnp.float32)   # ~6 GHz MSL class
+    alpha = scale * jnp.asarray(1.0 + 0.2j, dtype=jnp.complex64)
+    gamma = scale * g * jnp.asarray(0.3 + 0.1j, dtype=jnp.complex64)
+    ph = (beta_true * x).astype(jnp.complex64)
+    v = (alpha * jnp.exp(-1j * ph) + gamma * jnp.exp(+1j * ph))[None, :]
+    i1 = jnp.asarray([scale / 50.0 + 0j], dtype=jnp.complex64)
+    res = extract_msl_nprobe(v, x, i1, beta_true[None])
+    return jnp.abs(res["s11"][0])
+
+
+def test_nprobe_grad_finite_and_scale_invariant_at_tiny_v():
+    """2026-06-12 G2 regression lock (grad=nan on the Kottke path).
+
+    With |V| ~ 1e-14 (measured on the density-PEC/Kottke path) the
+    beta-scan residual curve is numerically flat in float32; the
+    parabolic second-difference collapses below the 1e-20 guard and the
+    OLD single-where division leaked nan through the backward pass
+    (0 * nan = nan).  Lock three properties:
+
+      1. grad is finite at scale 1e-14 (was nan),
+      2. grad matches the scale=1.0 grad (s11 and d|s11|/dg are
+         scale-invariant by construction),
+      3. grad matches central finite differences.
+    """
+    g0 = 0.7
+
+    grad_tiny = jax.grad(_nprobe_cost)(g0, 1e-14)
+    assert jnp.isfinite(grad_tiny), f"grad at scale 1e-14 is {grad_tiny}"
+
+    grad_unit = jax.grad(_nprobe_cost)(g0, 1.0)
+    assert jnp.isfinite(grad_unit)
+    assert jnp.allclose(grad_tiny, grad_unit, rtol=5e-2), (
+        f"scale invariance broken: tiny={grad_tiny} unit={grad_unit}"
+    )
+
+    h = 1e-3
+    fd = (_nprobe_cost(g0 + h, 1.0) - _nprobe_cost(g0 - h, 1.0)) / (2 * h)
+    assert jnp.allclose(grad_unit, fd, rtol=2e-2, atol=1e-4), (
+        f"AD={grad_unit} FD={fd}"
+    )
