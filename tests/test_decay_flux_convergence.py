@@ -50,6 +50,28 @@ import os
 import numpy as np
 import pytest
 
+try:
+    # Modern JAX (scoped x64 context manager promoted to top-level).
+    from jax import enable_x64 as _enable_x64
+except ImportError:  # older JAX (< ~0.4.31)
+    from jax.experimental import enable_x64 as _enable_x64
+
+
+@pytest.fixture(autouse=True)
+def _scoped_x64():
+    """Enable x64 PER-TEST via the context manager, NOT a module-level
+    ``jax.config.update`` (which permanently flips x64 for the whole pytest
+    process and leaks into downstream same-process tests — they then fail
+    with lax.scan carry-dtype TypeErrors mid-suite; see #171 commit 8e4ed44
+    and tests/test_waveguide_sparam_ad.py). The eps=12 guided flux DFT
+    underflows to NaN in complex64, so the acceptance test needs float64 to
+    measure ``flux_spectrum``; the context manager restores the prior setting
+    on exit, keeping x64 scoped to this file. (The fast JSON-replay sentinel
+    is unaffected — it is pure float64 numpy already.)"""
+    with _enable_x64(True):
+        yield
+
+
 # --------------------------------------------------------------------------- #
 # (1) FAST recorded-divergence witness (no FDTD; reads the diagnostic JSON).
 # --------------------------------------------------------------------------- #
@@ -248,23 +270,24 @@ def _T_peak(res, meep_freqs):
 
 
 @pytest.mark.gpu
-@pytest.mark.xfail(
-    strict=True,
-    reason="#169: run_until_decay point-field stopper under-runs the flux DFT "
-    "on the eps=12 guide (stop ~2151 -> T~0.857 vs converged ~0.921). Flips "
-    "to PASS when the decay criterion is made flux-residual-aware (architect "
-    "Candidate C). Criterion change deferred to user go-ahead.",
-)
 def test_issue169_decay_reaches_flux_converged_value():
     """run_until_decay on a guided eps=12 sim must reach the converged flux.
 
-    SUCCESS CRITERION (what the fix must achieve): the decay run's flux-DFT
-    transmission at its stop step must be within ``_TOL`` of the
-    fixed-duration converged truth. Today the instantaneous-point-field
-    stopper fires at the slow-tail transient null (~step 2151) where the flux
-    DFT has only reached ~0.857 of the converged ~0.921 — so this assertion
-    FAILS, and the test is xfail(strict). When the criterion is made
-    flux-aware it will stop later (~converged) and the test flips to pass.
+    RESOLVED by Criterion A (total interior-domain-energy decay). On absorbing
+    boundaries (upml here) the stop now gates on the whole-domain energy
+    ``U = sum(E^2 + H^2)`` over the non-CPML interior, declared decayed once
+    ``U < decay_by * peak_U`` on ``decay_energy_consecutive`` (default 2)
+    consecutive checks. Unlike the old single-cell point-field stop — which
+    fired at a slow-tail transient null (~step 2151, T~0.857 vs converged
+    ~0.921, a ~7% under-run) — the whole-domain energy does not pass through
+    per-cell interference nulls, so the stop now lands at the flux-converged
+    transmission.
+
+    SUCCESS CRITERION: the decay run's flux-DFT transmission at its stop step
+    must be within ``_TOL`` of the fixed-duration converged truth. With
+    Criterion A this PASSES (de-risk at res=8: fires near step ~4351, well past
+    the old ~2151 under-run point and below the cap, with T within ~0.13% of
+    truth).
     """
     _TOL = 0.02  # 2% of the converged transmission
 
@@ -298,8 +321,20 @@ def test_issue169_decay_reaches_flux_converged_value():
         f"decay run hit max_steps cap {decay_cap}; criterion never fired"
     )
 
+    # Positive witness (Criterion A): the energy stop must land in the
+    # CONVERGED range — well PAST the old single-cell point-field under-run
+    # (~2151 steps), where the flux DFT had not yet integrated the slow tail.
+    # The interior-energy criterion fires only after the energy has actually
+    # left the domain, which on this geometry is ~4351 steps (de-risk). We pin
+    # a generous lower bound that still excludes the old under-run point.
+    assert stop_step > 3000, (
+        f"decay stopped at step {stop_step}; Criterion A should fire well past "
+        "the old ~2151-step point-field under-run, in the flux-converged range"
+    )
+
     # The fix criterion: decay-stop transmission within tol of the converged
-    # truth. FAILS today (point stopper under-runs) -> xfail(strict).
+    # truth. PASSES under Criterion A (interior-energy decay lands at the
+    # flux-converged stop); the pre-fix point-field stop under-ran here.
     assert abs(T_stop - T_truth) <= _TOL * abs(T_truth), (
         f"run_until_decay stopped at step {stop_step} with T_peak={T_stop:.4f}, "
         f"but the converged truth is T_peak={T_truth:.4f} "
