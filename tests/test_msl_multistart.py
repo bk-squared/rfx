@@ -27,7 +27,13 @@ import pytest
 import jax
 import jax.numpy as jnp
 
-jax.config.update("jax_enable_x64", True)
+# NOTE: do NOT call jax.config.update("jax_enable_x64", True) at module
+# level — it is a PROCESS-GLOBAL flag, and flipping it at import/collection
+# time contaminates every other test in the same pytest-split shard
+# (their complex64 scan carries then receive complex128 DFT accumulators →
+# "carry input and output must have equal types" TypeError). These tests
+# exercise the pure float32 _multistart_adam helper, which is exactly how
+# the example runs in production; tolerances below are float32-safe.
 
 EXAMPLE = (
     pathlib.Path(__file__).resolve().parent.parent
@@ -155,15 +161,16 @@ def test_step_clamp_bounds_physical_move_per_iter():
     # h["L"] is in MILLIMETRES of latent_to_L output * 1e3 in the
     # example; here latent_to_L is identity so h["L"] = L * 1e3.
     Ls = [v / 1e3 for v in h["L"]]
-    assert abs(Ls[0] - seed) < 1e-9
-    tol = 1e-9
+    assert abs(Ls[0] - seed) < 1e-6
+    tol = 1e-5  # float32-safe clamp slack (the clamp is exact; this only
+    #            absorbs float32 rounding in the L round-trip)
     for a, b in zip(Ls[:-1], Ls[1:]):
         assert abs(b - a) <= max_dL + tol, (
             f"per-step |ΔL|={abs(b-a)} exceeded clamp {max_dL}"
         )
     # best_L is the BEST-seen iterate — it must be one of the visited L
     # points (the clamp bounds the moves between them, asserted above).
-    assert any(abs(best_L - L) < 1e-9 for L in Ls), (
+    assert any(abs(best_L - L) < 1e-6 for L in Ls), (
         f"best_L={best_L} is not a visited iterate"
     )
 
