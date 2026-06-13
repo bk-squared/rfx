@@ -1907,6 +1907,14 @@ class _ExecuteMixin:
         until_decay : float or None
             When provided, overrides *n_steps* and runs until field
             energy decays to this fraction of peak. E.g. ``1e-3``.
+            **Caveat (issue #169):** the stop is gated on the instantaneous
+            single-cell field, a valid decay witness only for lossy /
+            radiating structures with a clean ring-down. For flux /
+            S-parameter / transmission measurements on guided or low-loss
+            geometries it stops far too early (interference nulls between
+            slow-tail packets) — use a fixed ``n_steps`` instead (see
+            ``examples/crossval/03_straight_waveguide_flux.py`` and the
+            :func:`rfx.simulation.run_until_decay` warning).
         decay_check_interval : int
             Check decay every N steps (default 50).
         decay_min_steps : int

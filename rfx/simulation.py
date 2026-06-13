@@ -1820,6 +1820,25 @@ def run_until_decay(
       from the two paths are therefore not numerically identical even for
       the same step count.
 
+    .. warning::
+
+       **Not suitable for flux / S-parameter / transmission measurements on
+       guided or low-loss geometries (issue #169, DEFERRED).** The stop is
+       gated on the *instantaneous* squared field at a *single* cell, so it
+       is a valid decay witness only for lossy / radiating structures with a
+       clean ring-down envelope. On a low-group-velocity guided structure
+       (e.g. a dielectric waveguide), the point field passes through
+       interference nulls *between* slow-tail wave packets while the flux DFT
+       is still accumulating, so the criterion stops far too early and the
+       transmission reads low (cv03: stop at ~2200 steps, T=0.75, vs the
+       converged ~5900 steps, T=0.97). Three replacement criteria
+       (flux-residual, windowed-max, energy-slope) were all refuted — the
+       distinction "ring-down complete vs between packets" provably needs a
+       trailing window >= the inter-packet gap, which is unbounded as the
+       guided mode approaches cutoff. **For flux / S-parameter / transmission
+       measurements use a fixed** ``n_steps`` **via** :func:`run` **(see**
+       ``examples/crossval/03_straight_waveguide_flux.py``\\ **).**
+
     Returns
     -------
     SimResult
