@@ -1872,6 +1872,7 @@ class _ExecuteMixin:
         decay_check_interval: int = 50,
         decay_min_steps: int = 100,
         decay_max_steps: int = 50_000,
+        decay_energy_consecutive: int = 2,
         decay_monitor_component: str = "ez",
         decay_monitor_position: tuple[float, float, float] | None = None,
         checkpoint: bool = False,
@@ -1907,22 +1908,35 @@ class _ExecuteMixin:
         until_decay : float or None
             When provided, overrides *n_steps* and runs until field
             energy decays to this fraction of peak. E.g. ``1e-3``.
-            **Caveat (issue #169):** the stop is gated on the instantaneous
-            single-cell field, a valid decay witness only for lossy /
-            radiating structures with a clean ring-down. For flux /
-            S-parameter / transmission measurements on guided or low-loss
-            geometries it stops far too early (interference nulls between
-            slow-tail packets) — use a fixed ``n_steps`` instead (see
+            **Boundary-dependent stop (issue #169, RESOLVED for absorbing
+            boundaries):** On **absorbing** boundaries (``cpml`` / ``upml``)
+            the stop now uses the **total interior-domain energy**
+            ``U = sum(E^2 + H^2)`` over the non-CPML interior — a whole-domain
+            quantity that does not pass through the per-cell interference nulls
+            of the old single-cell point-field stop, so it **is** suitable for
+            flux / S-parameter / transmission measurements on guided / low-loss
+            geometries (#169 resolved). On **closed / PEC** boundaries domain
+            energy does not decay, so the stop falls back to the historical
+            *instantaneous* single-cell field; that fallback keeps the original
+            limitation (valid only for lossy / radiating ring-down, not flux /
+            S-param / transmission gating on guided / low-loss closed geometries
+            — use a fixed ``n_steps`` there, see
             ``examples/crossval/03_straight_waveguide_flux.py`` and the
-            :func:`rfx.simulation.run_until_decay` warning).
+            :func:`rfx.simulation.run_until_decay` note).
         decay_check_interval : int
             Check decay every N steps (default 50).
         decay_min_steps : int
             Always run at least this many steps (default 100).
         decay_max_steps : int
             Hard upper limit on steps (default 50000).
+        decay_energy_consecutive : int
+            Absorbing-boundary only: number of consecutive sub-threshold
+            interior-energy checks required before stopping (default ``2``;
+            ``>= 2`` mandatory — the interior energy is not null-free and a
+            single check can false-fire on a transient inter-packet dip).
         decay_monitor_component : str
-            Field component to monitor (default ``"ez"``).
+            Field component to monitor (default ``"ez"``). Used only by the
+            closed/PEC point-field fallback stop.
         decay_monitor_position : tuple or None
             Physical position to monitor. If None, use domain center.
         conformal_pec : bool
@@ -2110,6 +2124,7 @@ class _ExecuteMixin:
             decay_check_interval=decay_check_interval,
             decay_min_steps=decay_min_steps,
             decay_max_steps=decay_max_steps,
+            decay_energy_consecutive=decay_energy_consecutive,
             decay_monitor_component=decay_monitor_component,
             decay_monitor_position=decay_monitor_position,
             checkpoint=checkpoint,

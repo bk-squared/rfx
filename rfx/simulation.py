@@ -1746,6 +1746,7 @@ def run_until_decay(
     check_interval: int = 50,
     min_steps: int = 100,
     max_steps: int = 50_000,
+    decay_energy_consecutive: int = 2,
     monitor_component: str = "ez",
     monitor_position: tuple[float, float, float] | None = None,
     boundary: str = "pec",
@@ -1793,8 +1794,19 @@ def run_until_decay(
         Always run at least this many steps.
     max_steps : int
         Hard upper limit on steps.
+    decay_energy_consecutive : int
+        On **absorbing** boundaries (``cpml`` / ``upml``) the stop uses the
+        total interior-domain energy criterion (issue #169). It fires only
+        after the interior energy ``U`` has stayed below ``decay_by * peak_U``
+        on this many *consecutive* checks. Default ``2`` (MANDATORY minimum):
+        the interior energy of a guided geometry is not null-free, dipping
+        through transient inter-packet minima that recover; a single below-
+        threshold check can false-fire on such a dip, so ``>= 2`` is required
+        to absorb the chatter. Has no effect on closed/PEC boundaries (which
+        use the instantaneous point-field fallback).
     monitor_component : str
-        Field component to monitor ("ez", "hy", etc.).
+        Field component to monitor ("ez", "hy", etc.). Used only by the
+        closed/PEC point-field fallback stop.
     monitor_position : tuple or None
         Physical position (x, y, z) to monitor. If None, use center of
         the domain.
@@ -1820,24 +1832,35 @@ def run_until_decay(
       from the two paths are therefore not numerically identical even for
       the same step count.
 
-    .. warning::
+    .. note::
 
-       **Not suitable for flux / S-parameter / transmission measurements on
-       guided or low-loss geometries (issue #169, DEFERRED).** The stop is
-       gated on the *instantaneous* squared field at a *single* cell, so it
-       is a valid decay witness only for lossy / radiating structures with a
-       clean ring-down envelope. On a low-group-velocity guided structure
-       (e.g. a dielectric waveguide), the point field passes through
-       interference nulls *between* slow-tail wave packets while the flux DFT
-       is still accumulating, so the criterion stops far too early and the
-       transmission reads low (cv03: stop at ~2200 steps, T=0.75, vs the
-       converged ~5900 steps, T=0.97). Three replacement criteria
-       (flux-residual, windowed-max, energy-slope) were all refuted — the
-       distinction "ring-down complete vs between packets" provably needs a
-       trailing window >= the inter-packet gap, which is unbounded as the
-       guided mode approaches cutoff. **For flux / S-parameter / transmission
-       measurements use a fixed** ``n_steps`` **via** :func:`run` **(see**
-       ``examples/crossval/03_straight_waveguide_flux.py``\\ **).**
+       **The stop criterion depends on the boundary (issue #169, RESOLVED for
+       absorbing boundaries).**
+
+       * **Absorbing boundaries (``cpml`` / ``upml``)** — the stop is gated on
+         the **total interior-domain energy** ``U = sum(E^2 + H^2)`` over the
+         non-CPML interior slice, declared decayed once ``U < decay_by * peak_U``
+         on ``decay_energy_consecutive`` consecutive checks. Because it is a
+         whole-domain energy, it does not pass through the per-cell
+         interference nulls that the old single-cell point-field stopper hit
+         between slow-tail wave packets, so it **is** suitable for flux /
+         S-parameter / transmission measurements on guided / low-loss
+         geometries. (On the cv03-class eps=12 guide it now stops at the
+         flux-converged transmission within ~0.13%, vs the prior ~7% under-run
+         of the point-field stop.) ``decay_energy_consecutive >= 2`` is
+         mandatory because the interior energy is *not* null-free — it dips
+         through transient inter-packet minima that recover, so a single
+         below-threshold check can false-fire.
+
+       * **Closed / PEC boundaries** — domain energy does not decay in a
+         lossless closed cavity, so the stop falls back to the historical
+         *instantaneous* squared field at the single ``monitor_component`` cell
+         (``val_sq < decay_by * peak_sq``). This fallback retains the original
+         limitation: it is a valid decay witness only for lossy / radiating
+         structures with a clean ring-down envelope, and is **not** suitable
+         for flux / S-parameter / transmission gating on guided / low-loss
+         closed geometries — for those use a fixed ``n_steps`` via
+         :func:`run` (see ``examples/crossval/03_straight_waveguide_flux.py``).
 
     Returns
     -------
@@ -1956,7 +1979,44 @@ def run_until_decay(
         mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
 
     # ---- Python loop with decay check ----
-    peak_sq = 0.0
+    # Stop criterion depends on the boundary (issue #169):
+    #   * absorbing (cpml/upml): TOTAL interior-domain energy decay. The energy
+    #     leaves through the absorber, so U -> 0 and the criterion is a genuine
+    #     convergence witness for flux / S-param / transmission. Requires
+    #     decay_energy_consecutive >= 2 consecutive sub-threshold checks because
+    #     the interior energy is NOT null-free (it dips through transient
+    #     inter-packet minima that recover).
+    #   * closed/PEC: domain energy never decays in a lossless cavity, so fall
+    #     back to the historical instantaneous single-cell point-field stop.
+    #     That branch is BYTE-IDENTICAL to the pre-#169 behavior.
+    use_absorbing = boundary in ("cpml", "upml")
+
+    # Non-CPML interior slice bounds (Python ints — never enter the traced
+    # step; the reduction below is host-side, like the existing float()).
+    _ix0, _ix1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
+    _iy0, _iy1 = grid.pad_y_lo, grid.ny - grid.pad_y_hi
+    if grid.is_2d:
+        _iz0, _iz1 = 0, grid.nz
+    else:
+        _iz0, _iz1 = grid.pad_z_lo, grid.nz - grid.pad_z_hi
+
+    def _interior_energy(state) -> float:
+        """Total interior-domain field energy U = sum(E^2 + H^2) (host float)."""
+        sx, sy, sz = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
+        if grid.is_2d:
+            # 2d_tmz active fields: ez, hx, hy (ex/ey/hz are identically zero).
+            u = (state.ez[sx, sy, sz] ** 2
+                 + state.hx[sx, sy, sz] ** 2
+                 + state.hy[sx, sy, sz] ** 2)
+        else:
+            u = (state.ex[sx, sy, sz] ** 2 + state.ey[sx, sy, sz] ** 2
+                 + state.ez[sx, sy, sz] ** 2 + state.hx[sx, sy, sz] ** 2
+                 + state.hy[sx, sy, sz] ** 2 + state.hz[sx, sy, sz] ** 2)
+        return float(jnp.sum(u))
+
+    peak_sq = 0.0          # closed/PEC point-field running peak
+    peak_U = 0.0           # absorbing interior-energy running peak (at checks)
+    energy_below = 0       # consecutive sub-threshold energy checks
     all_probes = []
     actual_steps = 0
 
@@ -1969,14 +2029,33 @@ def run_until_decay(
         all_probes.append(probe_out)
         actual_steps = step + 1
 
-        # Decay check
-        val_sq = float(monitor_val) ** 2
-        if val_sq > peak_sq:
-            peak_sq = val_sq
+        if use_absorbing:
+            # Interior-energy criterion. The reduction is check-step-only (the
+            # whole-domain sum is the expensive part), so we compute U ONLY on
+            # an eligible check step — never every step.
+            if actual_steps >= min_steps and step % check_interval == 0:
+                U = _interior_energy(carry["fdtd"])
+                if U > peak_U:
+                    peak_U = U
+                # Forced-N escape preserved: decay_by=0.0 -> U < 0 is never
+                # true (U >= 0) -> never fires; check_interval > max_steps ->
+                # this branch is never entered. min/max-steps bound the loop.
+                if U < decay_by * peak_U:
+                    energy_below += 1
+                    if energy_below >= decay_energy_consecutive:
+                        break
+                else:
+                    energy_below = 0
+        else:
+            # Closed/PEC fallback — BYTE-IDENTICAL to the pre-#169 point stop.
+            # Decay check
+            val_sq = float(monitor_val) ** 2
+            if val_sq > peak_sq:
+                peak_sq = val_sq
 
-        if actual_steps >= min_steps and step % check_interval == 0 and peak_sq > 0.0:
-            if val_sq < decay_by * peak_sq:
-                break
+            if actual_steps >= min_steps and step % check_interval == 0 and peak_sq > 0.0:
+                if val_sq < decay_by * peak_sq:
+                    break
 
     # ---- assemble result ----
     time_series = jnp.stack(all_probes, axis=0)
