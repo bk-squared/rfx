@@ -496,8 +496,10 @@ def main() -> int:
     # the per-step physical-length clamp RFX_Y2B_MAXDL (default 0.2 mm
     # < the ~0.6 mm secondary-valley width) is the hard guard.  N_ITERS
     # raised to 8: a seed offset onto the basin wall (6.5 mm, Finding 4)
-    # must DESCEND ~0.5 mm into 7.0 mm under the 0.2 mm/step clamp, which
-    # needs more than the old 4 steps to land within the ≤1% G2 gate.
+    # must DESCEND ~0.5 mm into the 7.0 mm notch under the 0.2 mm/step
+    # clamp, which needs more than the old 4 steps to reach the global
+    # null floor (best-iterate keeps the deepest point even if Adam then
+    # overshoots the sharp null).
     NUM_PERIODS = float(os.environ.get("RFX_Y2B_PERIODS", 10.0))
     N_ITERS = int(os.environ.get("RFX_Y2B_ITERS", 8))
     LR = float(os.environ.get("RFX_Y2B_LR", 0.15))
@@ -717,18 +719,25 @@ def main() -> int:
     #     descend (cost landscape near a partial-notch minimum can be
     #     shallow on a coarse mesh; the meaningful test is ‘decreasing’
     #     not a fixed dB number).  Reported on the winning start.
-    #   * G2  ``L_opt ≈ L_ref(brute scan)`` ≤ 1 % — the best-basin
-    #     multi-start ``L_opt`` lands on the SAME GLOBAL minimum the
-    #     brute-force scan finds via the same JAX extractor (L_ref ≈
-    #     7.0 mm).  MULTI-START IS REQUIRED here: the [4, 12] mm cost
-    #     surface is physically MULTIMODAL (in-band λ/4 notch ~7.0 mm =
-    #     global min vs the below-band longer-stub valley ~9.5 mm,
-    #     ~290× shallower).  A single-start Adam from 9.5 mm settles in
-    #     the secondary valley and FAILS this gate — that single-start
-    #     was the latent defect the #171 falsifier identified, not an
-    #     extractor or AD bug (AD is sign-correct + device-independent).
-    #     R5: this gate now reflects REAL optimizer convergence to the
-    #     global basin, not a single-bin headline that hid the trap.
+    #   * G2  best-basin multi-start ``L_opt`` lands in the brute-scan
+    #     GLOBAL-min grid cell (|ΔL| ≤ brute grid spacing) — i.e. Adam
+    #     escaped the trap and reached the global λ/4 notch (~7.0 mm), not
+    #     the below-band longer-stub valley (~9.5 mm, ~290× shallower).
+    #     MULTI-START IS REQUIRED: the [4, 12] mm cost surface is
+    #     physically MULTIMODAL, so single-start Adam from 9.5 mm settles
+    #     in the secondary valley — the latent defect the #171 falsifier
+    #     identified (NOT an extractor or AD bug; AD is sign-correct +
+    #     device-independent).
+    #     NOTE (#171, GPU run 369367242483 + user decision 2026-06-13):
+    #     the STRICTER "L_opt within 1 % of L_ref" is DEMOTED to an
+    #     informational diagnostic.  The 7.0 mm notch is a FLAT-bottomed
+    #     resonant null (brute 7.004→2.54e-5, 7.122→2.33e-5, both −46 dB),
+    #     so sub-1 % (≤0.07 mm) L-precision is below the flat-null width
+    #     (~0.12 mm) AND the brute grid spacing (0.5 mm) — it measures
+    #     grid-quantization noise, not convergence quality (R5).  Best-
+    #     iterate Adam reaches the −46 dB floor; the basin gate above +
+    #     the G3 depth check are the physically meaningful success
+    #     criteria.  The ≤1 % number is still printed below for the record.
     #   * G3  imperative-cross-solver notch depth ≤ -15 dB — verifies
     #     a real (i.e. FDTD-confirmed) deep notch exists at the
     #     Adam-found ``L_opt`` (independently extracted by the
@@ -740,26 +749,33 @@ def main() -> int:
     # gates as informational deltas — the ε_eff staircase that drives
     # them is a property of the chosen mesh, not of this demo's
     # AD pipeline.
+    brute_dL_mm = (L_MAX - L_MIN) * 1e3 / (N_SCAN - 1)  # brute grid spacing
+    L_err_ref_mm = abs(L_opt - L_ref) * 1e3
     g1 = cost_drop_db >= 0.3
-    g2 = L_err_ref <= 1.0  # best-basin multi-start L_opt vs brute global L_ref
+    g2 = L_err_ref_mm <= brute_dL_mm  # basin: within the brute L-resolution
     g3 = depth_imp <= -15.0
     g4 = not on_rail
     print(f"  G1  Adam cost ↓ ≥ 0.3 dB:                "
           f"{cost_drop_db:.2f} dB  ({'PASS' if g1 else 'FAIL'})")
-    print(f"  G2  L_opt ≈ brute-scan L_ref (≤ 1%):     "
-          f"err={L_err_ref:.2f}%  ({'PASS' if g2 else 'FAIL'})")
+    print(f"  G2  L_opt in brute global-min basin:     "
+          f"|ΔL|={L_err_ref_mm:.3f} ≤ grid {brute_dL_mm:.3f}mm  "
+          f"({'PASS' if g2 else 'FAIL'})")
     print(f"  G3  Imperative notch depth ≤ -15 dB:     "
           f"{depth_imp:+.1f} dB  ({'PASS' if g3 else 'FAIL'})")
     print(f"  G4  L_opt strictly interior:             "
           f"{L_opt*1e3:.3f} mm  ({'PASS' if g4 else 'FAIL'})")
     all_ok = g1 and g2 and g3 and g4
     print(f"\n  Overall: {'PASS' if all_ok else 'FAIL'}")
-    print(f"  L_opt={L_opt*1e3:.3f}mm  L_ref={L_ref*1e3:.3f}mm  "
-          f"L_target(an)={L_TARGET_AN*1e3:.3f}mm  "
+    # Informational diagnostics — NOT gates (flat-null / mesh-staircase
+    # properties, not AD-pipeline quality; see the G2 note above).
+    print(f"  [info] L_opt={L_opt*1e3:.3f}mm  L_ref={L_ref*1e3:.3f}mm  "
+          f"strict L-match={L_err_ref:.2f}%  "
+          f"(flat −46 dB null: sub-1% L is below grid/null resolution, "
+          f"not a convergence defect)")
+    print(f"  [info] L_target(an)={L_TARGET_AN*1e3:.3f}mm  "
           f"(ε_eff staircase Δ ≈ {L_err_an:.1f}% on this mesh)")
-    print(f"  imperative notch f={f_notch_imp/1e9:.3f} GHz  "
-          f"(target {F_TARGET/1e9:.2f} GHz, Δ {f_err:.1f}%; "
-          f"mesh-staircase informational)")
+    print(f"  [info] imperative notch f={f_notch_imp/1e9:.3f} GHz "
+          f"(target {F_TARGET/1e9:.2f} GHz, Δ {f_err:.1f}%; mesh-staircase)")
 
     # ---- Plot ----
     fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
