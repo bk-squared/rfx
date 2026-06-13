@@ -377,8 +377,11 @@ def _multistart_adam(
     Returns
     -------
     (best_L, best_cost, best_history, all_histories)
-        ``best_L`` / ``best_cost`` are the winning start's final
-        physical length and cost; ``best_history`` is that start's
+        ``best_L`` / ``best_cost`` are the winning start's BEST-SEEN
+        iterate (lowest cost along its trajectory — NOT the final iterate,
+        which can be an overshoot of a sharp resonant null); exposed on
+        each history as ``L_best`` / ``cost_best`` alongside the diagnostic
+        ``L_final`` / ``cost_final``.  ``best_history`` is that start's
         per-iter dict; ``all_histories`` is the list of every start's
         history dict (for the multi-basin plot witness).
     """
@@ -437,26 +440,45 @@ def _multistart_adam(
         hist["L_final"] = final_L
         hist["cost_final"] = final_loss
         hist["latent_final"] = float(latent)
+        # BEST-ITERATE selection (GPU run 369367242483, #171): Adam
+        # OVERSHOOTS a sharp resonant null.  The seed-6.5mm trajectory hit
+        # the −46 dB null at L=7.00–7.12mm (iter 4–5) but momentum carried
+        # it OUT to 7.43mm / −34 dB by iter 8; keeping the FINAL iterate
+        # discarded the −46 dB point Adam actually visited.  Keep the
+        # BEST-seen iterate along the trajectory instead (standard
+        # best-checkpoint, not last-checkpoint).  Only finite costs are
+        # eligible (NaN can never win — preserves the Finding-1 guard).
+        finite_pts = [
+            (c, Lmm, lat)
+            for c, Lmm, lat in zip(hist["cost"], hist["L"], hist["latent"])
+            if math.isfinite(c)
+        ]
+        if finite_pts:
+            c_best, Lmm_best, lat_best = min(finite_pts, key=lambda t: t[0])
+            hist["cost_best"], hist["L_best"], hist["latent_best"] = (
+                c_best, Lmm_best / 1e3, lat_best,
+            )
+        else:
+            hist["cost_best"], hist["L_best"], hist["latent_best"] = (
+                float("nan"), final_L, float(latent),
+            )
         all_histories.append(hist)
-        # Review Finding 1 (MAJOR): NaN-safe best-of. A non-finite final
-        # cost must NEVER win — the old ``final_loss < best_cost`` with
-        # ``best_cost`` initialised to None let a first-start NaN lock in
-        # (every finite challenger then fails ``finite < nan``), silently
-        # selecting a NaN L_opt that the dB printout masks (R5 violation).
-        if math.isfinite(final_loss) and final_loss < (
+        # NaN-safe best-OF-starts on the per-trajectory BEST iterate (not the
+        # final, which may be an overshoot of a sharp null).
+        if math.isfinite(hist["cost_best"]) and hist["cost_best"] < (
             best_cost if best_cost is not None else math.inf
         ):
-            best_cost = final_loss
+            best_cost = hist["cost_best"]
             best_idx = s
     if best_idx is None:
-        # Every start produced a non-finite final cost — fail loudly rather
-        # than indexing all_histories[None] with a NaN optimum.
+        # Every start produced a non-finite cost everywhere — fail loudly
+        # rather than indexing all_histories[None] with a NaN optimum.
         raise RuntimeError(
             f"multi-start Adam: all {len(latent_inits)} starts produced a "
-            "non-finite final cost; no usable optimum."
+            "non-finite cost at every iterate; no usable optimum."
         )
     best_history = all_histories[best_idx]
-    best_L = best_history["L_final"]
+    best_L = best_history["L_best"]
     return best_L, best_cost, best_history, all_histories
 
 
@@ -609,15 +631,21 @@ def main() -> int:
         for it in range(len(h["db"])):
             print(f"    iter {it:3d}  L={h['L'][it]:6.3f}mm  "
                   f"|S21|²={h['cost'][it]:.4e}  S21={h['db'][it]:+6.1f}dB")
+        # Show final AND best-seen — they differ when Adam overshoots a
+        # sharp null (the kept optimum is the BEST iterate, not the final).
         print(f"    final     L={h['L_final']*1e3:6.3f}mm  "
-              f"|S21|²={h['cost_final']:.4e}")
-    # `history` = the WINNING trajectory (used for G1 init→final cost drop
+              f"|S21|²={h['cost_final']:.4e}   "
+              f"best L={h['L_best']*1e3:6.3f}mm  |S21|²={h['cost_best']:.4e}")
+    # `history` = the WINNING trajectory (used for G1 init→best cost drop
     # and the convergence plot).
     history = best_history
+    _overshot = abs(best_history["L_final"] - best_history["L_best"]) > 1e-4
     print(f"\nMulti-start Adam done in {time.time() - t_total:.1f}s — "
           f"best start {best_history['start']} (seed "
           f"{L_seeds_mm[best_history['start']]:.2f}mm) → "
-          f"L_opt={L_opt*1e3:.3f} mm,  |S21|²={cost_opt:.4e}")
+          f"L_opt={L_opt*1e3:.3f} mm (BEST-iterate),  |S21|²={cost_opt:.4e}"
+          + (f"  [overshot to L_final={best_history['L_final']*1e3:.3f}mm; "
+             f"kept best]" if _overshot else ""))
 
     # ---- Brute-force scan ----
     print("\n" + "=" * 70)

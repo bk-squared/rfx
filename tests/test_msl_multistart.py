@@ -101,9 +101,10 @@ def test_multistart_finds_global_min_from_both_basins():
     # local min (~0.70).
     assert best_cost < 0.2, f"best_cost={best_cost} not at the deep-well floor"
 
-    # best_cost must equal the lowest final cost across all starts.
-    finals = [h["cost_final"] for h in all_histories]
-    assert best_cost == min(finals)
+    # best_cost must equal the lowest BEST-ITERATE cost across all starts
+    # (not the lowest final — selection is on the best visited point).
+    bests = [h["cost_best"] for h in all_histories]
+    assert best_cost == min(bests)
     assert len(all_histories) == len(latent_inits)
 
 
@@ -160,8 +161,11 @@ def test_step_clamp_bounds_physical_move_per_iter():
         assert abs(b - a) <= max_dL + tol, (
             f"per-step |ΔL|={abs(b-a)} exceeded clamp {max_dL}"
         )
-    # The final landing move (last recorded L → L_final) is also clamped.
-    assert abs(best_L - Ls[-1]) <= max_dL + tol
+    # best_L is the BEST-seen iterate — it must be one of the visited L
+    # points (the clamp bounds the moves between them, asserted above).
+    assert any(abs(best_L - L) < 1e-9 for L in Ls), (
+        f"best_L={best_L} is not a visited iterate"
+    )
 
 
 def _bimodal_cost_nan_below(x):
@@ -209,7 +213,7 @@ def test_multistart_all_nan_raises():
     module = _load_example()
     fn = module._multistart_adam
     latent_to_L = lambda lat: lat  # noqa: E731
-    with pytest.raises(RuntimeError, match="non-finite final cost"):
+    with pytest.raises(RuntimeError, match="non-finite cost at every iterate"):
         fn(
             cost_fn=_bimodal_cost_nan_below,
             latent_inits=[-1.0, -2.0],
@@ -218,6 +222,53 @@ def test_multistart_all_nan_raises():
             max_dL_per_step=0.5,
             latent_to_L=latent_to_L,
         )
+
+
+def _sharp_well(x):
+    """A NARROW global well at x=8.0 that Adam with momentum overshoots.
+
+    cost(x) = 1 - exp(-(x-8)^2 / (2*sigma^2)),  sigma=0.3
+    Smooth/differentiable; sharp enough that a high-lr Adam rushes in,
+    hits the ~0 floor near x=8, and momentum carries it back out — so the
+    FINAL iterate is worse than the BEST visited iterate.
+    """
+    return 1.0 - jnp.exp(-((x - 8.0) ** 2) / (2.0 * 0.3 ** 2))
+
+
+def test_multistart_keeps_best_iterate_not_overshot_final():
+    """GPU run 369367242483 regression (#171): on a sharp resonant null
+    Adam OVERSHOOTS (hit -46 dB at L=7.0-7.1mm, momentum carried it out to
+    7.43mm/-34 dB), and returning the FINAL iterate discarded the deep
+    point Adam actually visited. The helper must return the BEST-seen
+    iterate along the trajectory.
+    """
+    module = _load_example()
+    fn = module._multistart_adam
+    latent_to_L = lambda lat: lat  # noqa: E731
+
+    best_L, best_cost, best_history, all_histories = fn(
+        cost_fn=_sharp_well,
+        latent_inits=[7.0],
+        n_iters=40,
+        lr=0.8,                 # high — builds momentum, overshoots the well
+        max_dL_per_step=10.0,   # effectively unclamped
+        latent_to_L=latent_to_L,
+    )
+    # Invariant (always holds): the kept optimum is the min over the whole
+    # trajectory, and is no worse than the final iterate.
+    h = best_history
+    finite_costs = [c for c in h["cost"] if math.isfinite(c)]
+    assert best_cost == min(finite_costs)
+    assert h["cost_best"] <= h["cost_final"] + 1e-12
+
+    # This setup actually overshoots: the best-seen is the well floor near
+    # x=8, strictly better than the overshot final, at a different L.
+    assert abs(best_L - 8.0) < 0.1, f"best_L={best_L} not at the well floor"
+    assert h["cost_best"] < h["cost_final"], (
+        "expected an overshoot (best < final); if this fails the test "
+        "setup no longer exercises the overshoot path"
+    )
+    assert abs(h["L_best"] - h["L_final"]) > 1e-3
 
 
 def test_helper_is_importable_and_pure():
