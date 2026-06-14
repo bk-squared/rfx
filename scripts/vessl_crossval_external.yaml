@@ -39,25 +39,38 @@ run: |-
   ldconfig
   export CSXCAD_INSTALL_PATH=/usr/local
   export OPENEMS_INSTALL_PATH=/usr/local
-  cd CSXCAD/python && /usr/bin/python3 setup.py install 2>&1 | tail -2 && cd ../..
-  cd openEMS/python && /usr/bin/python3 setup.py install 2>&1 | tail -2 && cd ../..
-  /usr/bin/python3 -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+  # Use the image's conda python (>=3.10) for EVERYTHING below. rfx needs
+  # jax>=0.4.20 (Python>=3.9), but the base image's /usr/bin/python3 is 3.8
+  # (its pip resolves jax only up to 0.4.13). cv05 imports the openEMS bindings
+  # AND rfx in the same process, so the bindings must build against this same
+  # conda python. numpy<2 keeps the cython-built bindings ABI-compatible.
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  # Pre-install the bindings' python deps with pip (wheels, 3.10-compatible
+  # versions) BEFORE setup.py install. Otherwise legacy `setup.py install`
+  # invokes easy_install for unsatisfied install_requires (matplotlib) and
+  # easy_install cannot build a modern meson sdist -> the bindings install dies.
+  "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
+  cd CSXCAD/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
+  cd openEMS/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
 
   # -- rfx runtime deps (CPU jax) --
   cd /root/workspace/byungkwan-workspace/research/rfx
   git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
   git rev-parse HEAD || true
-  /usr/bin/python3 -m pip install -q "jax[cpu]==0.6.2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
   export RFX_REPO_ROOT=/root/workspace/byungkwan-workspace/research/rfx
   export PYTHONPATH="$RFX_REPO_ROOT"
-  /usr/bin/python3 -c "import jax, rfx; print('probe ok', jax.__version__)"
+  "$PY" -c "import jax, rfx; print('probe ok', jax.__version__)"
 
   out=".omx/crossval-external/$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$out"
 
   # -- cv05: patch antenna vs openEMS (exit 0 full pass / 1 fail / 2 ref-missing) --
   set +e
-  timeout 7200 /usr/bin/python3 examples/crossval/05_patch_antenna.py \
+  timeout 7200 "$PY" examples/crossval/05_patch_antenna.py \
     > "$out/cv05.log" 2>&1
   cv05_rc=$?
   set -e
@@ -67,7 +80,7 @@ run: |-
 
   # -- cv11: WR-90 vs committed Meep/Palace references --
   set +e
-  timeout 3600 /usr/bin/python3 examples/crossval/11_waveguide_port_wr90.py \
+  timeout 3600 "$PY" examples/crossval/11_waveguide_port_wr90.py \
     > "$out/cv11.log" 2>&1
   cv11_rc=$?
   set -e
