@@ -770,3 +770,10 @@ if json_out:
         json.dump(payload, f, indent=2, sort_keys=True)
         f.write("\n")
     print(f"  JSON output: {json_out}")
+
+# Exit-code contract (0 = full pass / 1 = rfx self-check or cross-check FAIL /
+# 2 = external reference missing). The ref-missing path already exited 2 above
+# (CSXCAD/openEMS unavailable); a reference-present run must surface a genuine
+# failure as exit 1 — without this, a real cv05 FAIL falls through to implicit
+# exit 0 and the monthly external-crossval lane would report it GREEN.
+_sys.exit(0 if all_ok else 1)

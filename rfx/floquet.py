@@ -524,10 +524,16 @@ def compute_floquet_s_params(
 ) -> dict:
     """Compute Floquet S-parameters from DFT accumulators.
 
-    .. warning:: **Experimental / untested.** This pipeline has no pytest
-        caller and no end-to-end S-parameter or autodiff validation; its only
-        caller is a diagnostics script. Do not build accuracy claims on it.
-        Tracking: https://github.com/bk-squared/rfx/issues/141
+    .. warning:: **Experimental.** This pipeline carries an E0 contract test
+        (``tests/test_floquet_s_params_contract.py``) — the first real pytest
+        caller, a passivity check on pre-isolated pure-wave input, and a
+        finite-grad AD smoke (the path is jnp-pure and AD-traceable) — but **no
+        accuracy validation against an external periodic-cell solver**. It also
+        presumes the input accumulators already isolate the incident /
+        reflected / transmitted waves: a naive single-run soft-source drive
+        does NOT (a bidirectional source leaves no pure-forward monitor plane),
+        so ``|S11|`` from such a drive can exceed 1. Do not build accuracy
+        claims on it. Tracking: https://github.com/bk-squared/rfx/issues/141
 
     Uses incident, reflected, and (optionally) transmitted plane
     DFT data to compute S11 (reflection) and S21 (transmission).

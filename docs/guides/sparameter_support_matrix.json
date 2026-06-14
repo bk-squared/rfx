@@ -366,8 +366,8 @@
         "requires RCWA/external periodic-cell references before promotion",
         "requires mesh/frequency/scan-angle/polarization envelope before E5 promotion"
       ],
-      "ad_traceable": "untested",
-      "ad_evidence": "no pytest caller of compute_floquet_s_params; jnp-pure by static inspection, AD unverified either way — https://github.com/bk-squared/rfx/issues/141"
+      "ad_traceable": "yes",
+      "ad_evidence": "first real pytest caller of compute_floquet_s_params plus finite-grad smokes through compute_floquet_s_params and extract_floquet_modes (issue #141): tests/test_floquet_s_params_contract.py::test_compute_floquet_s_params_real_fdtd_runs, ::test_compute_floquet_s_params_grad_finite, ::test_extract_floquet_modes_grad_finite — this is an E0 AD-tape contract, not an accuracy claim; high-level Floquet S-parameters remain experimental — https://github.com/bk-squared/rfx/issues/141"
     },
     {
       "primitive": "add_source(...) / add_polarized_source(...)",
