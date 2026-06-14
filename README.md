@@ -46,7 +46,7 @@ The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. No
 - **Periodic × CPML correctness (v1.6.3)**: `set_periodic_axes("xy")` + `boundary="cpml"` only allocates CPML on non-periodic faces. Required for normal-incidence absorber / FSS / RIS setups.
 - **Current practical anchors**: `examples/crossval/05_patch_antenna.py` for the patch cross-check and `examples/nonuniform_patch_demo.py` for a quick repo-local thin-substrate demo.
 - **Curated star-import surface (current `main`)**: `rfx.__all__` exposes the supported public API (176 names); per-step kernels and internal bookkeeping stay importable for back-compat but are no longer part of the star-import surface.
-- **Maintained validation lanes (current `main`)**: a full-suite PR gate (4-shard fast suite + API-reference drift gate + agent-docs hygiene), a maintained GPU suite harness (`scripts/vessl_gpu_suite.yaml`), a weekly external-crossval CI lane with real Meep, and a monthly source-built-OpenEMS lane — all using the honest exit-code convention (reference-missing is a visible SKIP, never a silent pass).
+- **Maintained validation lanes (current `main`)**: a full-suite PR gate (4-shard fast suite + API-reference drift gate + agent-docs hygiene), a maintained GPU suite harness (`scripts/vessl_gpu_suite.yaml`), a weekly external-crossval CI lane with real Meep, and an on-demand source-built-OpenEMS lane (run per release) — all using the honest exit-code convention (reference-missing is a visible SKIP, never a silent pass).
 - **Public docs separate lanes**: start with the uniform Yee RF lane; treat advanced features as experimental unless a guide or support matrix gives a narrower claims-bearing envelope.
 
 ## Installation
