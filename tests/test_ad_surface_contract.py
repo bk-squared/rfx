@@ -83,13 +83,16 @@ AD_CLASSIFICATION = {
         "numpy RCS post-processor on top of compute_far_field",
     ),
     "compute_floquet_s_params": (
-        UNTESTED,
-        "no pytest caller; jnp-pure by static inspection, AD unverified — "
+        GRAD_SAFE,
+        "first real pytest caller + finite-grad smoke (issue #141): "
+        "tests/test_floquet_s_params_contract.py::test_compute_floquet_s_params_grad_finite, "
+        "tests/test_floquet_s_params_contract.py::test_compute_floquet_s_params_real_fdtd_runs — "
         "https://github.com/bk-squared/rfx/issues/141",
     ),
     "extract_floquet_modes": (
-        UNTESTED,
-        "structure tests only (tests/test_floquet.py), no grad evidence — "
+        GRAD_SAFE,
+        "finite-grad smoke through the jnp-pure mode extractor (issue #141): "
+        "tests/test_floquet_s_params_contract.py::test_extract_floquet_modes_grad_finite — "
         "https://github.com/bk-squared/rfx/issues/141",
     ),
     "extract_coaxial_plane_vi_from_dft": (
