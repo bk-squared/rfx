@@ -775,5 +775,5 @@ if json_out:
 # 2 = external reference missing). The ref-missing path already exited 2 above
 # (CSXCAD/openEMS unavailable); a reference-present run must surface a genuine
 # failure as exit 1 — without this, a real cv05 FAIL falls through to implicit
-# exit 0 and the monthly external-crossval lane would report it GREEN.
+# exit 0 and the external-crossval lane would report it GREEN.
 _sys.exit(0 if all_ok else 1)

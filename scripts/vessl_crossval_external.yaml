@@ -1,5 +1,5 @@
-name: rfx-crossval-external-monthly
-description: "W2.5(c) monthly external-crossval lane: cv05 vs a real openEMS source build + cv11 vs committed Meep/Palace references (CPU node)"
+name: rfx-crossval-external
+description: "W2.5(c) on-demand external-crossval lane: cv05 vs a real openEMS source build + cv11 vs committed Meep/Palace references (CPU node, remilab-c0 lab cluster). No fixed cadence -- run per release tag and whenever the cv05/cv11 physics paths change; free on the lab cluster, so submit as needed: vessl run create -f scripts/vessl_crossval_external.yaml"
 tags: [rfx, crossval-external, ci-trust, w25]
 resources:
   cluster: remilab-c0
@@ -47,7 +47,7 @@ run: |-
   cd /root/workspace/byungkwan-workspace/research/rfx
   git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
   git rev-parse HEAD || true
-  /usr/bin/python3 -m pip install -q "jax[cpu]==0.4.35" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  /usr/bin/python3 -m pip install -q "jax[cpu]==0.6.2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
   export RFX_REPO_ROOT=/root/workspace/byungkwan-workspace/research/rfx
   export PYTHONPATH="$RFX_REPO_ROOT"
   /usr/bin/python3 -c "import jax, rfx; print('probe ok', jax.__version__)"
