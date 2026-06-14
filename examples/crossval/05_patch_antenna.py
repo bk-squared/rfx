@@ -776,4 +776,6 @@ if json_out:
 # (CSXCAD/openEMS unavailable); a reference-present run must surface a genuine
 # failure as exit 1 — without this, a real cv05 FAIL falls through to implicit
 # exit 0 and the external-crossval lane would report it GREEN.
-_sys.exit(0 if all_ok else 1)
+# NB: use the SystemExit builtin (no import) — `_sys` is bound only inside the
+# CSXCAD-missing skip branch above, so it is undefined on the success path.
+raise SystemExit(0 if all_ok else 1)
