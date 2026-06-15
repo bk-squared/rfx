@@ -30,12 +30,12 @@ Minimizing L raises directivity toward 30 deg while suppressing the broadside
 and backward-hemisphere lobes.  The optimization starts from a linear-ramp
 ("dielectric wedge") initialization, which already biases the phase front.
 
-Full-resolution paper result (TAP Example 4 / Sec. V-D, GPU run of record:
+Full-resolution target (projected — not yet locked by a committed run;
 dx = lambda/20, 31 x 31 x 3 cell superstrate ~= 2.9k DOF, 140 Adam iters):
 
-    D(30 deg) = 11.0 dBi, with the realized pattern peak at ~30-32 deg,
-    versus <= 5.4 dBi for ANY laterally uniform slab of the same aperture
-    and 5.9 dBi for the bare plate-backed dipole.
+    D(30 deg) ~ 11 dBi, with the realized pattern peak at ~30-32 deg,
+    versus ~5.4 dBi for a laterally uniform slab of the same aperture
+    and ~5.9 dBi for the bare plate-backed dipole.
 
 A laterally uniform cover cannot steer at any thickness or permittivity; the
 gain comes entirely from the spatially graded eps_r profile that AD discovers.
@@ -271,6 +271,13 @@ def main():
 
     pattern, _ = make_pattern_fn(sim, grid, plate, lo, hi, n_steps)
 
+    # Preflight once (surfaces NTFF/Huygens clearance + injected-PEC-plate
+    # placement issues); the per-iteration forward below skips it for speed.
+    issues = sim.preflight()
+    print(f"preflight: {len(issues)} message(s)")
+    for s in issues:
+        print(f"  - {s}")
+
     def loss(psi):
         p = pattern(eps_of_psi(psi))
         prad = jnp.sum(p * _W)
@@ -332,6 +339,9 @@ def main():
     if th_pk > 12.0:
         print(f"[done] main lobe is OFF broadside (peak at {th_pk:.1f} deg) "
               f"-> beam steering demonstrated")
+    else:
+        print(f"[done] (SMOKE) peak still near broadside (th_pk={th_pk:.1f} deg) "
+              f"-> steering needs the full-resolution settings (SMOKE=0)")
 
     # --- Figure: superstrate eps map + E-plane cut (bare vs optimized) ---
     fig, axes = plt.subplots(1, 2, figsize=(9.5, 3.8))

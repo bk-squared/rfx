@@ -26,13 +26,14 @@ reshape *changes* total radiated power, the legacy frozen-denominator form
 (``stop_gradient`` on P_rad) would drop the ``-U P'/P^2`` term and give a
 biased gradient. We deliberately use the unbiased form here.
 
-Full-resolution paper result (for reference)
---------------------------------------------
-At the paper mesh (dx = lambda/20, larger/thicker design slab, ~120 Adam
-iterations) the broadside directivity rises from the bare dipole's
-**1.11 dBi** to **6.39 dBi** (mesh-stable). Directivity is reported as
-D = 4*pi*U_max/P_rad integrated over the full (theta, phi) sphere with the
-sin(theta) solid-angle weight (``rfx.farfield.directivity``).
+Full-resolution target (projected — not yet locked by a committed run)
+----------------------------------------------------------------------
+At the full mesh (dx = lambda/20, larger/thicker design slab, ~120 Adam
+iterations) the broadside directivity is expected to rise from the bare
+dipole's **~1.1 dBi** to **~6.4 dBi** (mesh-invariance not yet witnessed).
+Directivity is reported as D = 4*pi*U_max/P_rad integrated over the full
+(theta, phi) sphere with the sin(theta) solid-angle weight
+(``rfx.farfield.directivity``).
 
 SMOKE mode
 ----------

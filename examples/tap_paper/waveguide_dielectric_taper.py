@@ -21,13 +21,15 @@ public differentiable modal S-matrix ``Simulation.compute_waveguide_s_matrix``.
 Reverse-mode AD (``jax.grad``) flows through the full FDTD solve + modal
 S-extraction; Adam descent lowers the broadband |S11|.
 
-Full-resolution paper result (TAP Example 2 / Section V-B)
-----------------------------------------------------------
-At dx = 0.5 mm the optimized 30-section taper reaches a band-averaged
-reflection of -27.5 dB. Re-optimized at the production resolution dx = 0.25 mm
-it reaches -38 dB, beating a discretized Klopfenstein taper (-36.6 dB) of the
-same electrical length. (Halving dx ~4x lowers the Yee-dispersion reflection
-floor, deepening the achievable match on the same layout.)
+Full-resolution target (projected — not yet locked by a committed run)
+----------------------------------------------------------------------
+At dx = 0.5 mm the optimized 30-section taper is expected to reach a
+band-averaged reflection near -27.5 dB, and near -38 dB re-optimized at the
+production resolution dx = 0.25 mm (cf. a discretized Klopfenstein taper at
+about -36.6 dB of the same electrical length). (Halving dx ~4x lowers the
+Yee-dispersion reflection floor, deepening the achievable match on the same
+layout.) These full-resolution numbers are projected targets, not yet
+locked by a committed run.
 
 The reverse-mode tape over the full-resolution scan (~12-14k steps) is made
 affordable by ``checkpoint_segments``: segmented gradient checkpointing reduces
@@ -226,7 +228,10 @@ def make_objective(sim, eps_from_theta, grid):
 
     def s11(theta):
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+            # Mute only the expected normalize=False Yee-dispersion advisory
+            # (the documented-correct choice for strong-reflector |S11|), so any
+            # other warning still surfaces during the AD scan.
+            warnings.filterwarnings("ignore", message=".*normalize=False.*")
             r = sim.compute_waveguide_s_matrix(
                 n_steps=n_steps,
                 normalize=False,            # |S11| of a strong reflector

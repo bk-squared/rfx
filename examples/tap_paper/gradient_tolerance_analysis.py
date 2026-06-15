@@ -18,15 +18,15 @@ gradient REUSED for fabrication-tolerance analysis once a design exists:
   2. First-order tolerance propagation. For independent per-cell permittivity
      errors with standard deviation sigma_eps, the directivity standard
      deviation is sigma_D = sqrt(sum_i (dD/d eps_i * sigma_eps)^2). A small
-     Monte-Carlo ensemble of forward solves validates this linear prediction.
+     Monte-Carlo ensemble of forward solves cross-checks this linear prediction.
 
   3. Worst-case fabrication corner. Projected gradient ascent on -D inside the
      per-cell tolerance box |delta eps| <= bound finds the perturbation that
      degrades directivity the most — a corner that random sampling misses.
 
-Full-resolution paper result (Section V-E)
-------------------------------------------
-On the run-of-record GRIN slab (dx = lambda/20, 507 design cells):
+Full-resolution target (projected — not yet locked by a committed run)
+----------------------------------------------------------------------
+On a GRIN slab at dx = lambda/20, 507 design cells, we expect:
   * 507 per-cell sensitivities from ONE backward pass, vs 1014 finite
     differences (2 forwards/cell) for the same information.
   * First-order sigma_D matches an 80-sample Monte-Carlo ensemble at
@@ -213,13 +213,24 @@ def main():
     print(f"grid {tuple(int(s) for s in grid.shape)}  "
           f"design slab {design_shape} = {n_cells} cells  n_steps {n_steps}")
 
+    # Preflight once (surfaces NTFF/Huygens placement issues); the repeated
+    # forward/optimize calls below skip it for speed.
+    issues = sim.preflight()
+    print(f"preflight: {len(issues)} message(s)")
+    for s in issues:
+        print(f"  - {s}")
+
     # -- Step 0: obtain an optimized GRIN superstrate (inline) ----------------
     # In the paper this slab is loaded from the run-of-record design; here we
     # re-optimise a small one so the example is self-contained.
     print(f"\n[0] Optimising GRIN superstrate ({N_OPT_ITERS} iters) ...")
     t0 = time.time()
     opt = optimize(sim, region,
-                   maximize_directivity(theta_target=0.0, phi_target=0.0),
+                   # log_ratio=True: the design var is a power-changing
+                   # dielectric reshape; the frozen-denominator form is
+                   # wrong-sign for such DoFs (GitHub #129).
+                   maximize_directivity(theta_target=0.0, phi_target=0.0,
+                                        log_ratio=True),
                    n_iters=N_OPT_ITERS, lr=0.15, n_steps=n_steps,
                    num_periods=NUM_PERIODS, verbose=False, skip_preflight=True)
     eps_opt = np.asarray(opt.eps_design, dtype=np.float32)
