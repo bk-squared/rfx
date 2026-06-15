@@ -1,0 +1,163 @@
+{
+  "schema": "rfx.waveguide_wr10_wband_broad_e5_envelope",
+  "schema_version": 1,
+  "status": "passed",
+  "evidence_level": "E5-broad-mesh-frequency-geometry-flux-wr10_wband",
+  "claim": "rfx WR-10 compute_waveguide_s_matrix(normalize='flux') S-parameter envelope versus analytic Airy reference across 2 mesh refinement points (dx=[25, 40] um) and 2 geometries (eps_r=[2.0, 4.0]) over the 75.0-110.0 GHz W band passes the broad-E5 magnitude tolerance of 0.05.",
+  "claim_scope": "broad rfx WR-10 rectangular_waveguide_port compute_waveguide_s_matrix(normalize='flux') versus analytic Airy reference envelope spanning the uniform mesh refinement axis (dx from 25 to 40 um), the frequency axis (75.0-110.0 GHz W band, cutoff ratio 1.27-1.86), and the geometry axis (eps_r in [2.0, 4.0] dielectric slabs). Power-flux extraction (extract_waveguide_s_matrix_flux) eliminates the Z_TE impedance-mismatch error of normalize=False and the round-trip dispersion error of normalize=True diagonal formula. Truth source is independent analytic Airy formula (multi-reflection inside dielectric slab with TE10 modal impedance), not a same-class FDTD reference.",
+  "commit_hash": "deead58",
+  "generated_at": "2026-06-15T12:18:07.338611+00:00",
+  "max_mag_abs_tol": 0.05,
+  "ratio_spread_floor": 0.005,
+  "noise_floor_baseline": 0.0021,
+  "primary_reference": {
+    "label": "analytic_airy",
+    "truth_key": "airy_slab_closed_form",
+    "path": "internal_closed_form",
+    "meta": {
+      "formula": "S_slab = rho(1-e^{-2j delta}) / (1 - rho^2 e^{-2j delta})",
+      "eps_r_values": [
+        2.0,
+        4.0
+      ],
+      "slab_length_m": 0.0006
+    }
+  },
+  "cross_check_references": [],
+  "envelope_summary": {
+    "case_count": 4,
+    "passed_case_count": 4,
+    "failed_case_count": 0,
+    "freq_range_hz": [
+      75000000000.0,
+      110000000000.0
+    ],
+    "cutoff_te10_hz": 59014263385.82677,
+    "cutoff_ratio_range": [
+      1.2708792027049594,
+      1.8639561639672737
+    ],
+    "geometries": [
+      "slab_er2",
+      "slab_er4"
+    ],
+    "dx_values_m": [
+      2.5e-05,
+      4e-05
+    ],
+    "eps_r_values": [
+      2.0,
+      4.0
+    ],
+    "max_mag_abs_diff_across_cases": 0.00959157943725586,
+    "mean_max_mag_abs_diff_across_cases": 0.008841678500175476,
+    "ratio_spread": 0.15880872483221475,
+    "primary_reference_label": "analytic_airy",
+    "primary_truth_key": "airy_slab_closed_form",
+    "mesh_axis_kind": "uniform_dx_refinement",
+    "setup_recipe": {
+      "cpml_layers": 24,
+      "normalize": "flux",
+      "num_periods": 60,
+      "domain_m": [
+        0.015,
+        0.00254,
+        0.00127
+      ]
+    },
+    "runtime_env": {
+      "jax_default_backend": "gpu",
+      "jax_enable_x64": false,
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4"
+    }
+  },
+  "diagnostic_note": "max_mag_abs_diff_across_cases 0.0096 (tol 0.05); ratio_spread 0.1588 (floor 0.005); flux-mode recipe from docs/guides/sparameter_support_matrix.md.",
+  "rfx_manifest_path": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr10_wband-flux/rfx-sweep/rfx_wr10_wband_flux_sweep_manifest.json",
+  "cases": [
+    {
+      "tag": "dx25_slab_er2",
+      "dx_m": 2.5e-05,
+      "geometry": "slab_er2",
+      "eps_r": 2.0,
+      "slab_length_m": 0.0006,
+      "n_cells_total": 3096768,
+      "cells_per_lambda_max_hz": 109.01543927272726,
+      "freqs_hz_min": 74999996416.0,
+      "freqs_hz_max": 109999996928.0,
+      "n_freqs": 11,
+      "s11_max_mag_abs_diff": 0.00835949182510376,
+      "s11_mean_mag_abs_diff": 0.003155421232804656,
+      "s21_max_mag_abs_diff": 0.00397181510925293,
+      "s21_mean_mag_abs_diff": 0.0016107126139104366,
+      "max_mag_abs_diff": 0.00835949182510376,
+      "unitarity_min": 0.9999864101409912,
+      "unitarity_max": 1.0000094175338745,
+      "rfx_npz": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr10_wband-flux/rfx-sweep/dx25_slab_er2.npz",
+      "status": "passed"
+    },
+    {
+      "tag": "dx25_slab_er4",
+      "dx_m": 2.5e-05,
+      "geometry": "slab_er4",
+      "eps_r": 4.0,
+      "slab_length_m": 0.0006,
+      "n_cells_total": 3096768,
+      "cells_per_lambda_max_hz": 109.01543927272726,
+      "freqs_hz_min": 74999996416.0,
+      "freqs_hz_max": 109999996928.0,
+      "n_freqs": 11,
+      "s11_max_mag_abs_diff": 0.008068352937698364,
+      "s11_mean_mag_abs_diff": 0.0028700530529022217,
+      "s21_max_mag_abs_diff": 0.004269838333129883,
+      "s21_mean_mag_abs_diff": 0.002130952663719654,
+      "max_mag_abs_diff": 0.008068352937698364,
+      "unitarity_min": 0.9999896883964539,
+      "unitarity_max": 1.000016212463379,
+      "rfx_npz": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr10_wband-flux/rfx-sweep/dx25_slab_er4.npz",
+      "status": "passed"
+    },
+    {
+      "tag": "dx40_slab_er2",
+      "dx_m": 4e-05,
+      "geometry": "slab_er2",
+      "eps_r": 2.0,
+      "slab_length_m": 0.0006,
+      "n_cells_total": 756046,
+      "cells_per_lambda_max_hz": 68.13464954545454,
+      "freqs_hz_min": 74999996416.0,
+      "freqs_hz_max": 109999996928.0,
+      "n_freqs": 11,
+      "s11_max_mag_abs_diff": 0.00959157943725586,
+      "s11_mean_mag_abs_diff": 0.004748347215354443,
+      "s21_max_mag_abs_diff": 0.005311191082000732,
+      "s21_mean_mag_abs_diff": 0.002425199141725898,
+      "max_mag_abs_diff": 0.00959157943725586,
+      "unitarity_min": 0.9999977946281433,
+      "unitarity_max": 1.00010347366333,
+      "rfx_npz": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr10_wband-flux/rfx-sweep/dx40_slab_er2.npz",
+      "status": "passed"
+    },
+    {
+      "tag": "dx40_slab_er4",
+      "dx_m": 4e-05,
+      "geometry": "slab_er4",
+      "eps_r": 4.0,
+      "slab_length_m": 0.0006,
+      "n_cells_total": 756046,
+      "cells_per_lambda_max_hz": 68.13464954545454,
+      "freqs_hz_min": 74999996416.0,
+      "freqs_hz_max": 109999996928.0,
+      "n_freqs": 11,
+      "s11_max_mag_abs_diff": 0.009347289800643921,
+      "s11_mean_mag_abs_diff": 0.005063165444880724,
+      "s21_max_mag_abs_diff": 0.0065694451332092285,
+      "s21_mean_mag_abs_diff": 0.003955727443099022,
+      "max_mag_abs_diff": 0.009347289800643921,
+      "unitarity_min": 0.9999877214431763,
+      "unitarity_max": 1.0000488758087158,
+      "rfx_npz": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr10_wband-flux/rfx-sweep/dx40_slab_er4.npz",
+      "status": "passed"
+    }
+  ]
+}

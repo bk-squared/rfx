@@ -107,11 +107,11 @@
         ".omx/physics-gate/2026-06-02-waveguide-tjunction-broad-e5-converged/waveguide_tjunction_meep_external_comparison.json"
       ],
       "broad_e5_envelope_artifacts": [
-        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr28_kaband-flux/waveguide_wr28_kaband_broad_e5_envelope.json",
-        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr62_kuband-flux/waveguide_wr62_kuband_broad_e5_envelope.json",
-        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr15_vband-flux/waveguide_wr15_vband_broad_e5_envelope.json",
-        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr340_sband-flux/waveguide_wr340_sband_broad_e5_envelope.json",
-        ".omx/physics-gate/2026-05-26-waveguide-broad-e5-wr10_wband-flux/waveguide_wr10_wband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr28_kaband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr62_kuband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr15_vband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr340_sband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr10_wband_broad_e5_envelope.json",
         ".omx/physics-gate/2026-05-27-waveguide-multimode-broad-e5-flux/waveguide_multimode_broad_e5_envelope.json",
         ".omx/physics-gate/2026-05-27-waveguide-wr90-nonuniform-broad-e5/waveguide_wr90_nonuniform_broad_e5_envelope.json",
         ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/waveguide_wr90_nu_flux_broad_e5_envelope.json",

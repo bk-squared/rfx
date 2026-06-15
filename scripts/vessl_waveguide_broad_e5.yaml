@@ -1,0 +1,45 @@
+name: rfx-waveguide-broad-e5-regen
+description: "Port-1 E5 (waveguide): regenerate the 5 WR-band analytic-Airy broad-E5 flux envelopes (LEG A) on GPU so they can be committed to tracked fixtures (replacing the gitignored .omx artifacts the auditor reports as blocked). rfx-only, no external solver. vessl run create -f scripts/vessl_waveguide_broad_e5.yaml"
+tags: [rfx, port-external, waveguide-broad, sparameter-validation, e5]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$(pwd)" || true
+  echo "=== rfx waveguide broad-E5 regen (LEG A: analytic Airy, 5 WR bands) ==="
+  date
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('jax_backend', jax.default_backend(), 'rfx', getattr(rfx,'__version__','unknown'))"
+  DATE=2026-06-15
+  run_band() {
+    band="$1"; tok="$2"; lab="$3"
+    echo "=== regen ${band} (${tok}) ==="
+    python scripts/diagnostics/run_waveguide_band_broad_e5_flux_sweep.py --band "${band}" --date-tag "${DATE}"
+    python scripts/diagnostics/build_waveguide_band_broad_e5_envelope.py \
+      --manifest ".omx/physics-gate/${DATE}-waveguide-broad-e5-${tok}-flux/rfx-sweep/rfx_${tok}_flux_sweep_manifest.json" \
+      --band-token "${tok}" --band-label "${lab}"
+  }
+  run_band WR28  wr28_kaband Ka
+  run_band WR62  wr62_kuband Ku
+  run_band WR15  wr15_vband  V
+  run_band WR340 wr340_sband S
+  run_band WR10  wr10_wband  W
+  echo "=== ALL 5 ENVELOPES BUILT ==="
+  ls -la .omx/physics-gate/${DATE}-waveguide-broad-e5-*/waveguide_*_broad_e5_envelope.json
+  echo "=== per-band status summary ==="
+  for j in .omx/physics-gate/${DATE}-waveguide-broad-e5-*/waveguide_*_broad_e5_envelope.json; do
+    python -c "import json,sys; d=json.load(open(sys.argv[1])); s=d['envelope_summary']; print(d['schema'], d['status'], 'max_diff=%.4f'%s['max_mag_abs_diff_across_cases'], 'passed=%d/%d'%(s['passed_case_count'], s['case_count']))" "$j"
+  done
+  echo "=== DONE waveguide broad-E5 regen ==="
