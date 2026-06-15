@@ -1,0 +1,118 @@
+{
+  "claim": "rfx rectangular_waveguide_port compute_waveguide_s_matrix(normalize='flux') magnitude comparison against Palace_r_h2 (Palace high-order frequency-domain FEM) across the WR-90 empty / PEC-short / dielectric-slab geometry axis passes the broad-E4 magnitude tolerance of 0.1.",
+  "claim_scope": "broad external cross-solver magnitude comparison of rfx rectangular_waveguide_port against an independent full-wave solver (Palace_r_h2, Palace high-order frequency-domain FEM) across the WR-90 geometry axis (empty guide, PEC short, dielectric slab) over the X-band frequency grid. Phase conventions are not compared (magnitude metric).",
+  "evidence_level": "E4-broad-external-palace-fem-rectangular-wr90-multigeometry-te10",
+  "external_reference_column": "Palace_r_h2",
+  "max_mag_abs_tol": 0.1,
+  "mean_mag_abs_tol": 0.07,
+  "pairs": [
+    {
+      "component": "S11",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8199999999.999999,
+      "geometry": "empty",
+      "max_mag_abs_diff": 0.0,
+      "mean_mag_abs_diff": 0.0,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.0,
+        0.0
+      ],
+      "rfx_mag_range": [
+        0.0,
+        0.0
+      ],
+      "status": "passed"
+    },
+    {
+      "component": "S21",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8199999999.999999,
+      "geometry": "empty",
+      "max_mag_abs_diff": 2.220446049250313e-16,
+      "mean_mag_abs_diff": 4.7580986769649563e-17,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.9999999999999998,
+        1.0000000000000002
+      ],
+      "rfx_mag_range": [
+        1.0,
+        1.0
+      ],
+      "status": "passed"
+    },
+    {
+      "component": "S11",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8199999999.999999,
+      "geometry": "pec_short",
+      "max_mag_abs_diff": 0.00039999999999995595,
+      "mean_mag_abs_diff": 0.00018571428571425468,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.9999999999999999,
+        1.0
+      ],
+      "rfx_mag_range": [
+        0.9995999999999999,
+        1.0
+      ],
+      "status": "passed"
+    },
+    {
+      "component": "S11",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8199999999.999999,
+      "geometry": "slab",
+      "max_mag_abs_diff": 0.0707,
+      "mean_mag_abs_diff": 0.0439761904761905,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.0014,
+        0.5437
+      ],
+      "rfx_mag_range": [
+        0.0397,
+        0.5924000000000001
+      ],
+      "status": "passed"
+    },
+    {
+      "component": "S21",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8199999999.999999,
+      "geometry": "slab",
+      "max_mag_abs_diff": 0.007399999999999851,
+      "mean_mag_abs_diff": 0.0030095238095237792,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.8393,
+        0.9999999999999999
+      ],
+      "rfx_mag_range": [
+        0.8443,
+        1.0014
+      ],
+      "status": "passed"
+    }
+  ],
+  "r5_reference_note": "Meep res-3/4 gives a non-physical PEC-short |S11|=1.1985>1; rfx is 1.0000 (||S11|-1|<=4e-4) and Palace FEM agrees to <=4e-4, so the converged Palace reference is used for the |Gamma|->1 geometry. The disagreement was a reference defect, not an rfx residual (R4/R5).",
+  "schema": "rfx.waveguide_wr90_rectangular_broad_e4_comparison",
+  "schema_version": 1,
+  "source_cv11_stdout": "/tmp/cv11_fresh.stdout",
+  "status": "passed",
+  "summary": {
+    "failed_pair_count": 0,
+    "geometries": [
+      "empty",
+      "pec_short",
+      "slab"
+    ],
+    "geometry_count": 3,
+    "max_mag_abs_diff": 0.0707,
+    "mean_mag_abs_diff": 0.009434285714285718,
+    "pair_count": 5,
+    "passed_pair_count": 5
+  }
+}

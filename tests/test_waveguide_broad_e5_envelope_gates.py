@@ -42,6 +42,15 @@ EXPECTED_BANDS = {
 }
 
 
+BROAD_E4 = FIXTURES / "wr90_rectangular_broad_e4_comparison.json"
+# Same broad-blocking tokens the auditor (check_port_external_references.py)
+# rejects in an evidence_level / claim_scope.
+BLOCKING_TOKENS = (
+    "narrow", "enabling", "blocked", "partial", "limited", "experimental",
+    "shadow", "only",
+)
+
+
 def _fixture_files() -> list[Path]:
     return sorted(FIXTURES.glob("waveguide_*_broad_e5_envelope.json"))
 
@@ -119,3 +128,38 @@ def test_lossless_slab_airy_is_unitary() -> None:
     _, s11, s21 = _synthetic_airy()
     unit = np.abs(s11) ** 2 + np.abs(s21) ** 2
     assert np.allclose(unit, 1.0, atol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Broad-E4 external-solver comparison (the external leg of the port-1 close)
+# ---------------------------------------------------------------------------
+
+
+def test_broad_e4_comparison_committed_passes() -> None:
+    """rfx-vs-external-FDTD comparison across the 3 WR-90 geometries passes."""
+    d = json.loads(BROAD_E4.read_text())
+    assert d["status"] == "passed", d
+    summ = d["summary"]
+    assert summ["geometry_count"] == 3, summ
+    assert summ["passed_pair_count"] == summ["pair_count"], summ
+    tol = d["max_mag_abs_tol"]
+    per_pair_max = [p["max_mag_abs_diff"] for p in d["pairs"]]
+    for p in d["pairs"]:
+        assert p["status"] == "passed", p
+        assert p["max_mag_abs_diff"] <= tol, p
+    assert summ["max_mag_abs_diff"] == pytest.approx(max(per_pair_max), abs=1e-9)
+    # PEC-short magnitude must be essentially exact reflection (the R5 finding:
+    # rfx nails |S11|=1, an invalid Meep res-3/4 ref did not -> Palace used).
+    pec = [p for p in d["pairs"] if p["geometry"] == "pec_short"]
+    assert pec and all(p["max_mag_abs_diff"] < 0.02 for p in pec), pec
+
+
+def test_broad_e4_comparison_qualifies_for_auditor() -> None:
+    """Mirror check_port_external_references.py's broad-E4 acceptance."""
+    d = json.loads(BROAD_E4.read_text())
+    level = d["evidence_level"].lower()
+    scope = d["claim_scope"].lower()
+    assert d["status"] == "passed"
+    assert d["evidence_level"].startswith("E4")
+    assert "broad" in scope
+    assert not any(t in level or t in scope for t in BLOCKING_TOKENS), (level, scope)
