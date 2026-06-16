@@ -1,7 +1,7 @@
 """Unit tests for the MSL (microstrip line) port primitive.
 
-These tests exercise the geometry/material setup and the closed-form
-3-probe de-embedding math without running an FDTD scan.
+These tests exercise the geometry/material setup and the closed
+Ampère-loop current / wave-decomposition math without running an FDTD scan.
 """
 
 from __future__ import annotations
@@ -16,8 +16,6 @@ from rfx.core.yee import MaterialArrays
 from rfx.sources.msl_port import (
     MSLPort,
     _msl_yz_cells,
-    compute_s21,
-    msl_forward_amplitude,
     msl_loop_current,
     msl_probe_x_coords,
     setup_msl_port,
@@ -260,29 +258,6 @@ def test_add_msl_port_api():
     with pytest.raises(ValueError):
         sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0),
                          width=1e-3, height=2.54e-4, n_probe_offset=2)
-
-
-# ---------------------------------------------------------------------------
-# Test 7: msl_forward_amplitude + compute_s21 sanity
-# ---------------------------------------------------------------------------
-
-
-def test_compute_s21_round_trip():
-    beta = 200.0
-    Delta = 0.5e-3
-    x1 = 5e-3
-    V_plus = 1.0
-    V1 = np.array([V_plus * np.exp(-1j * beta * x1)])
-    V2 = np.array([V_plus * np.exp(-1j * beta * (x1 + Delta))])
-    V3 = np.array([V_plus * np.exp(-1j * beta * (x1 + 2 * Delta))])
-    alpha_drv, _ = msl_forward_amplitude(V1, V2, V3)
-    # Passive port sees half the forward amplitude (lossy line).
-    V1p = 0.5 * V1
-    V2p = 0.5 * V2
-    V3p = 0.5 * V3
-    alpha_pas, _ = msl_forward_amplitude(V1p, V2p, V3p)
-    s21 = compute_s21(alpha_pas, alpha_drv)
-    assert abs(s21[0] - 0.5) < 1e-3
 
 
 # ---------------------------------------------------------------------------

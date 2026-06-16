@@ -854,26 +854,8 @@ def msl_probe_x_coords_n(
 
 
 # ---------------------------------------------------------------------------
-# 3-probe S-parameter extraction
+# Closed Ampère-loop current (∮H·dl) for S-parameter extraction
 # ---------------------------------------------------------------------------
-
-
-def _integrate_v(ez_plane: np.ndarray, j_center: int, z_lo_idx: int, z_hi_idx: int,
-                 dz_arr: np.ndarray) -> np.ndarray:
-    """V(f) = ∫ Ez dz along the substrate height at y = j_center."""
-    total = np.zeros(ez_plane.shape[0], dtype=complex)
-    for k in range(z_lo_idx, z_hi_idx + 1):
-        total = total + ez_plane[:, j_center, k] * float(dz_arr[k])
-    return total
-
-
-def _integrate_i(hy_plane: np.ndarray, y_lo_idx: int, y_hi_idx: int, z_top_idx: int,
-                 dy_arr: np.ndarray) -> np.ndarray:
-    """I(f) = ∫ Hy dy across the trace width at z = z_top_idx."""
-    total = np.zeros(hy_plane.shape[0], dtype=complex)
-    for j in range(y_lo_idx, y_hi_idx + 1):
-        total = total + hy_plane[:, j, z_top_idx] * float(dy_arr[j])
-    return total
 
 
 def msl_loop_current(
@@ -912,8 +894,7 @@ def msl_loop_current(
     the top face.  ``Hz[i,j,k]`` sits at ``y=(j+½)dy``, so
     ``Hz[·,j_hi,·]`` / ``Hz[·,j_lo-1,·]`` are the right / left side edges.
 
-    The pre-issue-#80 current (``_integrate_i`` / the inline integral in
-    ``compute_msl_s_matrix``) used the bottom leg only, undercounting
+    The pre-issue-#80 current (a bottom-leg-only Hy integral) undercounted
     ``I`` by ~1.5x — it dropped the air-side return Hy and the trace-edge
     Hz — which inflated the de-embedded Z0 to ~74 ohm vs the ~48 ohm
     analytic Hammerstad-Jensen value.  Closing the loop restores Ampere's
@@ -966,68 +947,3 @@ def msl_loop_current(
     if direction == "+x":
         i_loop = -i_loop
     return i_loop
-
-
-
-def _solve_3probe(v1, v2, v3, i1, eps):
-    """Closed-form 3-probe solver used by msl_forward_amplitude."""
-    # q + 1/q = (V1 + V3) / V2  →  q² − coeff·q + 1 = 0
-    coeff = (v1 + v3) / (v2 + eps)
-    disc = coeff**2 - 4.0 + 0j
-    sqrt_disc = np.sqrt(disc)
-    q_plus = (coeff + sqrt_disc) / 2.0
-    q_minus = (coeff - sqrt_disc) / 2.0
-
-    # Both roots are reciprocals (q_minus = 1/q_plus), so on a lossless
-    # line they have |q|=1 exactly and the |q|≤1 selector becomes
-    # ambiguous.  The physical forward root must reproduce the observed
-    # forward step ratio V2/V1 in the absence of strong reflection; we
-    # therefore pick the root whose phase is closer to V2/V1.
-    ratio = v2 / (v1 + eps)
-    err_plus = np.abs(q_plus - ratio)
-    err_minus = np.abs(q_minus - ratio)
-    # Tie-breaker: |q| ≤ 1 (decaying) is preferred when both errors match.
-    use_plus = (err_plus < err_minus) | (
-        (np.isclose(err_plus, err_minus)) & (np.abs(q_plus) <= np.abs(q_minus))
-    )
-    q = np.where(use_plus, q_plus, q_minus)
-
-    # Forward (alpha) and backward (gamma) wave amplitudes at probe 1
-    denom = (q * q - 1.0) + eps
-    alpha = (q * v2 - v1) / denom
-    gamma = q * (v1 * q - v2) / denom
-
-    z0 = (alpha - gamma) / (i1 + eps)
-    s11 = gamma / (alpha + eps)
-    return s11, z0, q
-
-
-def msl_forward_amplitude(
-    v1: np.ndarray,
-    v2: np.ndarray,
-    v3: np.ndarray,
-    *,
-    eps: float = 1e-30,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return ``(alpha, q)``: forward amplitude at probe 1 and per-Δ phasor.
-
-    Useful on the passive (non-driven) port where only the voltage triple
-    is needed to recover the transmitted forward wave.
-    """
-    v1 = np.asarray(v1, dtype=complex)
-    v2 = np.asarray(v2, dtype=complex)
-    v3 = np.asarray(v3, dtype=complex)
-    # Reuse the shared solver (i1 unused for q/alpha — pass v1 as a
-    # placeholder; z0/s11 outputs are discarded).
-    _, _, q = _solve_3probe(v1, v2, v3, v1, eps)
-    denom = (q * q - 1.0) + eps
-    alpha = (q * v2 - v1) / denom
-    return alpha, q
-
-
-def compute_s21(alpha_passive: np.ndarray, alpha_driven: np.ndarray,
-                *, eps: float = 1e-30) -> np.ndarray:
-    """S21 from forward amplitudes on driven (port 1) and passive (port 2)."""
-    return np.asarray(alpha_passive, dtype=complex) / (
-        np.asarray(alpha_driven, dtype=complex) + eps
-    )

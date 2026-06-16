@@ -6,6 +6,20 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Removed — orphaned legacy 3-probe MSL extractor (2026-06-15)
+
+- Deleted the pre-issue-#80 closed-form 3-probe MSL de-embedding helpers
+  from `rfx/sources/msl_port.py`: `_solve_3probe`, `msl_forward_amplitude`,
+  `compute_s21`, and the unused `_integrate_v` / `_integrate_i` line
+  integrals.  They had **zero callers in `rfx/`** — the production MSL
+  S-matrix path uses the closed Ampère-loop current (`msl_loop_current`,
+  retained) plus the SVD N-probe wave decomposition (`extract_msl_nprobe`)
+  — and were only kept alive by one unit test
+  (`tests/test_msl_port.py::test_compute_s21_round_trip`), removed with its
+  imports.  None were exported (no `__all__`; absent from top-level `rfx`),
+  so the public surface and the api-reference inventory are unchanged.
+  Closes architect-review item NEW-1.
+
 ### Fixed — normalize='flux' waveguide S-matrix joins the AD tape (issue #148, 2026-06-12)
 
 - `extract_waveguide_s_matrix_flux` is now jnp-native end to end: the

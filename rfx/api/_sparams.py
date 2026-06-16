@@ -925,8 +925,8 @@ class _SparamMixin:
         # ``-x`` ports; the extractor anchors the model at probe 0 and
         # only uses coordinate differences, so feeding raw physical x
         # keeps alpha = the +x-travelling wave for BOTH port directions
-        # — matching the legacy 3-probe convention that compute_s21 and
-        # the S11 sign were validated against.
+        # — matching the legacy 3-probe sign convention the S11 sign
+        # was validated against.
 
         # Per-axis cell-size arrays for V/I integration. Both uniform
         # and non-uniform grids are supported.
