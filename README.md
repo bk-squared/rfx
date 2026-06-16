@@ -32,7 +32,7 @@ The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. No
 | **Conformal PEC** | Dey-Mittra weights — experimental; known NaN at fine mesh (dx <= 2 mm); 2nd-order convergence on curved conductors not validated (staircase is the supported PEC floor) |
 | **Multi-GPU** | Single-host multi-GPU distributed FDTD with 1D slab decomposition (experimental lane) |
 | **Waveguide modal ports** | Analytical TE/TM eigenmodes for documented rectangular-guide S-matrix envelopes |
-| **Coaxial line reflection** | One-port coaxial transmission-line reflection envelope via `compute_coaxial_line_reflection(...)` |
+| **Coaxial line reflection** | One-port coaxial transmission-line reflection path via `compute_coaxial_line_reflection(...)`; broad-E5 physics demonstrated but evidence not committed — clean-checkout audit BLOCKED (re-validation pending) |
 | **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC (experimental lane; analytic/external promotion still pending) |
 | **Non-uniform x/y/z profiles** | Thin-substrate shadow lane (graded `dz`, per-cell `dx/dy`); forward fields validated — NU **S-matrix extraction of non-trivial devices is an open issue** (strict-xfail tracked) and rejects the differentiable overrides rather than silently dropping them |
 | **Published benchmark evidence** | 5-case benchmark against Balanis/Pozar (patch 1.97%, cavity 0.016%) |
@@ -41,7 +41,7 @@ The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. No
 ## Current main highlights
 
 - **Structured preflight and runtime guards (current `main`)**: `preflight()` and `preflight_sparameters()` return coded `PreflightReport` issues while remaining list/string compatible; `run()`, `forward()`, S-matrix calculators, sweeps, and optimizers now surface NaN/passivity/setup problems earlier.
-- **Coaxial line reflection envelope (current `main`)**: `compute_coaxial_line_reflection(...)` is the validated coaxial transmission-line reflection path, with analytic broad-E5 and independent MEEP broad-E4 short/open evidence; the older single-plane `compute_coaxial_s_matrix(...)` path is deprecated/experimental.
+- **Coaxial line reflection (current `main`)**: `compute_coaxial_line_reflection(...)` is the coaxial transmission-line reflection path. Broad-E5 physics was demonstrated (analytic Γ envelope over short/open/matched + resistive loads, two characteristic impedances; plus independent MEEP broad-E4 short/open cross-check), but the evidence artifacts are not committed to the repo. A clean-checkout port-external audit reports `coaxial_port` BLOCKED — re-validation is pending the validation-framework rework. The older single-plane `compute_coaxial_s_matrix(...)` path is deprecated/experimental.
 - **Waveguide S-matrix memory control (current `main`)**: `compute_waveguide_s_matrix(checkpoint_segments=...)` threads segmented checkpointing through uniform waveguide extractors for AD-heavy runs with bit-identical forward results in regression tests.
 - **Periodic × CPML correctness (v1.6.3)**: `set_periodic_axes("xy")` + `boundary="cpml"` only allocates CPML on non-periodic faces. Required for normal-incidence absorber / FSS / RIS setups.
 - **Current practical anchors**: `examples/crossval/05_patch_antenna.py` for the patch cross-check and `examples/nonuniform_patch_demo.py` for a quick repo-local thin-substrate demo.

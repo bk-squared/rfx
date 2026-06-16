@@ -657,17 +657,18 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["missing_passed_comparison_artifact_count"] == 6
     assert audit["passed_comparison_artifact_count"] == 1
     assert audit["passed_broad_e4_comparison_artifact_count"] == 1
-    # coaxial_port is current_status=broad_e5_passed but its MEEP broad-E4 +
-    # analytic broad-E5 artifacts (PR #130) still live under the gitignored .omx/
-    # tree — absent on a clean checkout — so it ALONE is counted "missing" one
-    # broad-E4 and one broad-E5 artifact. (rectangular_waveguide_port used to be
-    # counted here too; its evidence is now committed, so only coaxial_port remains
-    # on this clean-checkout contract — not a defect.)
-    assert audit["missing_broad_e4_comparison_artifact_count"] == 1
-    assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == [
-        "coaxial_port",
-    ]
-    assert audit["missing_broad_e5_envelope_artifact_count"] == 1
+    # No family is now MISSING a broad-E4/E5 artifact. rectangular_waveguide_port
+    # is the only current_status=broad_e5_passed family and its broad-E4 + broad-E5
+    # artifacts ARE committed (tests/fixtures/, PR #181). coaxial_port was
+    # downgraded from broad_e5_passed -> broad_e5_demonstrated_evidence_uncommitted
+    # (validation-framework honesty pass): its evidence is gitignored .omx/ and the
+    # clean-checkout audit reports it BLOCKED, so it no longer CLAIMS broad-E5 and
+    # therefore no longer "owes" a broad-E4/E5 artifact. It is still counted among
+    # the families missing a passed *comparison* artifact (count 6 above) and stays
+    # in `incomplete` below.
+    assert audit["missing_broad_e4_comparison_artifact_count"] == 0
+    assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == []
+    assert audit["missing_broad_e5_envelope_artifact_count"] == 0
     assert audit["passed_broad_e5_envelope_artifact_count"] == 5
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}
