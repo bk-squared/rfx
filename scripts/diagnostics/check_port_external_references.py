@@ -33,6 +33,73 @@ BROAD_E5_ENVELOPE_BLOCKING_TOKENS = (
 )
 BROAD_E4_COMPARISON_BLOCKING_TOKENS = BROAD_E5_ENVELOPE_BLOCKING_TOKENS
 
+# Numeric definition of "broad" (T1, 2026-06-16). Prior to this the auditor
+# decided "broad" purely by substring-matching the word 'broad' in a producer-
+# authored prose string + a token blocklist — gameable by writing the right
+# adjectives. These minima make "broad" a property of the artifact's own
+# machine-readable summary, enforced for EVERY family (the floor previously lived
+# only in tests/test_waveguide_broad_e5_envelope_gates.py for one family).
+MIN_BROAD_E5_ENVELOPE_CASES = 4
+MIN_BROAD_E5_MESH_POINTS = 2          # distinct dx values (mesh-refinement axis)
+MIN_BROAD_E5_GEOMETRY_VARIANTS = 2    # distinct eps_r OR distinct geometries
+MIN_BROAD_E5_FREQ_SPAN_RATIO = 1.4    # freq_hi/freq_lo; admits standard WR
+                                      # single-mode bands (intrinsically ~1.45-1.5:1)
+                                      # while rejecting a near-single-frequency fake
+MIN_BROAD_E4_COMPARISON_GEOMETRIES = 2
+
+
+def _envelope_breadth_ok(payload: dict[str, Any]) -> tuple[bool, str]:
+    """Numeric breadth + all-cases-pass check on a broad-E5 envelope's summary.
+
+    Fail-closed: an artifact with no machine-readable ``envelope_summary`` (or
+    one whose spans fall below the minima) is NOT broad, regardless of prose.
+    """
+    s = payload.get("envelope_summary")
+    if not isinstance(s, dict):
+        return False, "no envelope_summary block (cannot verify breadth numerically)"
+    try:
+        case_count = int(s.get("case_count", 0))
+        passed = int(s.get("passed_case_count", -1))
+        dx = {float(x) for x in (s.get("dx_values_m") or [])}
+        eps = {float(x) for x in (s.get("eps_r_values") or [])}
+        geoms = set(s.get("geometries") or [])
+        fr = s.get("freq_range_hz") or [0.0, 0.0]
+        lo, hi = float(fr[0]), float(fr[1])
+    except (TypeError, ValueError) as exc:
+        return False, f"unparsable envelope_summary fields: {exc}"
+    if case_count < MIN_BROAD_E5_ENVELOPE_CASES:
+        return False, f"case_count {case_count} < {MIN_BROAD_E5_ENVELOPE_CASES}"
+    if passed != case_count:
+        return False, f"passed_case_count {passed} != case_count {case_count}"
+    if len(dx) < MIN_BROAD_E5_MESH_POINTS:
+        return False, f"only {len(dx)} distinct dx value(s) < {MIN_BROAD_E5_MESH_POINTS}"
+    if max(len(eps), len(geoms)) < MIN_BROAD_E5_GEOMETRY_VARIANTS:
+        return False, f"only {max(len(eps), len(geoms))} geometry/eps variant(s) < {MIN_BROAD_E5_GEOMETRY_VARIANTS}"
+    if lo <= 0 or hi / lo < MIN_BROAD_E5_FREQ_SPAN_RATIO:
+        return False, f"freq span ratio {hi}/{lo} < {MIN_BROAD_E5_FREQ_SPAN_RATIO}"
+    tol = payload.get("max_mag_abs_tol")
+    md = s.get("max_mag_abs_diff_across_cases")
+    if tol is not None and md is not None and float(md) > float(tol):
+        return False, f"max_mag_abs_diff {md} > tol {tol}"
+    return True, ""
+
+
+def _comparison_breadth_ok(payload: dict[str, Any]) -> tuple[bool, str]:
+    """Numeric breadth + all-pairs-pass check on a broad-E4 comparison summary."""
+    s = payload.get("summary")
+    if not isinstance(s, dict):
+        return False, "no summary block (cannot verify breadth numerically)"
+    try:
+        g = int(s.get("geometry_count", 0))
+        failed = int(s.get("failed_pair_count", -1))
+    except (TypeError, ValueError) as exc:
+        return False, f"unparsable comparison summary fields: {exc}"
+    if g < MIN_BROAD_E4_COMPARISON_GEOMETRIES:
+        return False, f"geometry_count {g} < {MIN_BROAD_E4_COMPARISON_GEOMETRIES}"
+    if failed != 0:
+        return False, f"failed_pair_count {failed} != 0"
+    return True, ""
+
 
 def _repo_path(value: str) -> Path:
     path = Path(value)
@@ -93,13 +160,18 @@ def _comparison_artifact_check(value: str) -> dict[str, Any]:
     check["is_passed_e4_comparison"] = status == "passed" and evidence_level.startswith(
         "E4"
     )
+    breadth_ok, breadth_err = _comparison_breadth_ok(payload)
+    check["breadth_ok"] = breadth_ok
     check["is_passed_broad_e4_comparison"] = (
         check["is_passed_e4_comparison"]
         and "broad" in scope_text
         and not has_broad_blocking_token
+        and breadth_ok
     )
     if not check["is_passed_e4_comparison"]:
         check["error"] = "comparison artifact is not a passed E4/E4-enabling report"
+    elif "broad" in scope_text and not has_broad_blocking_token and not breadth_ok:
+        check["error"] = f"E4 comparison claims broad but fails numeric breadth: {breadth_err}"
     return check
 
 
@@ -134,18 +206,27 @@ def _broad_e5_envelope_artifact_check(value: str) -> dict[str, Any]:
         token in normalized_level or token in scope_text
         for token in BROAD_E5_ENVELOPE_BLOCKING_TOKENS
     )
+    breadth_ok, breadth_err = _envelope_breadth_ok(payload)
     is_broad_e5 = (
         status == "passed"
         and normalized_level.startswith("e5")
         and "broad" in scope_text
         and not has_blocking_token
+        and breadth_ok
     )
     check["status"] = status
     check["evidence_level"] = evidence_level
     check["scope_text"] = scope_text
+    check["breadth_ok"] = breadth_ok
     check["is_passed_broad_e5_envelope"] = is_broad_e5
     if not is_broad_e5:
-        check["error"] = "envelope artifact is not a passed broad E5 report"
+        # Prefer the numeric-breadth reason when the prose/status looked broad —
+        # that is the gameability the T1 numeric check closes.
+        if (status == "passed" and normalized_level.startswith("e5")
+                and "broad" in scope_text and not has_blocking_token and not breadth_ok):
+            check["error"] = f"envelope claims broad but fails numeric breadth: {breadth_err}"
+        else:
+            check["error"] = "envelope artifact is not a passed broad E5 report"
     return check
 
 
@@ -219,6 +300,7 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
         "passed"
         if required
         and status == BROAD_E5_PASS_STATUS
+        and not entry.get("missing_evidence")
         and not missing_artifacts
         and passed_comparison_artifact_count > 0
         and passed_broad_e4_comparison_artifact_count > 0
