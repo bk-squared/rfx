@@ -642,33 +642,33 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["vessl_yaml_contract_launchable_family_count"] == 7
     assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 7
     assert audit["comparison_artifact_coverage_status"] == "blocked"
-    # broad-E5 envelope coverage is "blocked" on a clean checkout: the
-    # populated broad_e5_envelope_artifacts entries (waveguide/coaxial, added
-    # by dc3be92/48a2ce6/1c06643) point at uncommitted .omx/ JSON, so they
-    # count as failed-because-missing rather than passed.
+    # broad-E5 envelope coverage stays "blocked" on a clean checkout: although
+    # rectangular_waveguide_port's envelopes are now committed (see below), the
+    # other required families still lack a committed broad-E5 envelope.
     assert audit["broad_e5_envelope_artifact_coverage_status"] == "blocked"
     assert audit["required_surface_family_count"] == 7
     assert audit["missing_manifest_family_count"] == 0
-    # No family reaches current_status=broad_e5_passed yet, so no artifact is
-    # counted as passed and all 7 required families are missing a passed
-    # comparison artifact on a clean (no-.omx/) checkout.
-    assert audit["missing_passed_comparison_artifact_count"] == 7
-    assert audit["passed_comparison_artifact_count"] == 0
-    assert audit["passed_broad_e4_comparison_artifact_count"] == 0
-    # Two families are current_status=broad_e5_passed and so REQUIRE a broad-E4
-    # comparison + broad-E5 envelope artifact: rectangular_waveguide_port
-    # (T-junction, PR #114) and coaxial_port (MEEP broad-E4 + analytic broad-E5,
-    # PR #130). Both sets of artifacts are VESSL/MEEP outputs under the gitignored
-    # .omx/ tree — absent on a clean checkout — so each family is counted "missing"
-    # one broad-E4 and one broad-E5 artifact. (Same clean-checkout contract as the
-    # broad-E5/schema assertions above; not a defect.)
-    assert audit["missing_broad_e4_comparison_artifact_count"] == 2
+    # rectangular_waveguide_port broad-E5 evidence is now COMMITTED to tracked
+    # tests/fixtures/waveguide_broad_e5/ (PR #181): 5 analytic-Airy band envelopes
+    # + an rfx-vs-Palace-FEM broad-E4 comparison, all present on a clean checkout.
+    # So exactly 1 family has a passed comparison + passed broad-E4 artifact and 5
+    # passed broad-E5 envelope artifacts; the other 6 required families are still
+    # missing a passed comparison artifact on a clean (no-.omx/) checkout.
+    assert audit["missing_passed_comparison_artifact_count"] == 6
+    assert audit["passed_comparison_artifact_count"] == 1
+    assert audit["passed_broad_e4_comparison_artifact_count"] == 1
+    # coaxial_port is current_status=broad_e5_passed but its MEEP broad-E4 +
+    # analytic broad-E5 artifacts (PR #130) still live under the gitignored .omx/
+    # tree — absent on a clean checkout — so it ALONE is counted "missing" one
+    # broad-E4 and one broad-E5 artifact. (rectangular_waveguide_port used to be
+    # counted here too; its evidence is now committed, so only coaxial_port remains
+    # on this clean-checkout contract — not a defect.)
+    assert audit["missing_broad_e4_comparison_artifact_count"] == 1
     assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == [
         "coaxial_port",
-        "rectangular_waveguide_port",
     ]
-    assert audit["missing_broad_e5_envelope_artifact_count"] == 2
-    assert audit["passed_broad_e5_envelope_artifact_count"] == 0
+    assert audit["missing_broad_e5_envelope_artifact_count"] == 1
+    assert audit["passed_broad_e5_envelope_artifact_count"] == 5
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}
     assert "lumped_port" in incomplete
