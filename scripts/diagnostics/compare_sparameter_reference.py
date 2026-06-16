@@ -234,6 +234,10 @@ def compare_sparameter_datasets(
         # 100°+, so callers MUST pass a LOOSE envelope (e.g. 60°≈1.047 rad) for
         # external-solver comparisons; a tight value is valid only against an
         # analytic oracle de-embedded to the same reference plane.
+        # Asymmetry by design: ungated (tol None) stays vacuously True even when no
+        # bin clears the mask (legacy preserved), but REQUESTING a gate that cannot
+        # be evaluated is a failure — absent evidence != pass (mirrors T1).
+        phase_n_points = int(np.sum(phase_mask))
         if max_phase_abs_tol_rad is None:
             phase_passed = True
         elif max_phase_abs_diff_rad is None:
@@ -258,6 +262,7 @@ def compare_sparameter_datasets(
                 "mean_mag_abs_diff": float(np.mean(mag_abs_diff)),
                 "max_phase_abs_diff_rad": max_phase_abs_diff_rad,
                 "phase_passed": phase_passed,
+                "phase_n_points": phase_n_points,
             }
         )
 
