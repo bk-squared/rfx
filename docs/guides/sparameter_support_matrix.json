@@ -222,13 +222,14 @@
         "multi-mode normalize=True is unsupported",
         "not compatible with lumped ports, TFSF, or manual periodic-axis overrides"
       ],
-      "evidence_level": "E5-broad-magnitude (analytic-Airy oracle; +E4-external WR-90 slab, magnitude-only)",
+      "evidence_level": "E5-broad-magnitude (analytic-Airy oracle; +E4-external WR-90 slab, magnitude-only) + convention-free TE10 propagation-phase witness (test_waveguide_phase_gate; NOT yet wired into the broad-E5 auditor verdict)",
       "promotion_requirements": [
         "keep exact envelope and blocked branch/T-junction, multi-mode normalize=True, and broad nonuniform claims visible",
         "add separate reference geometries before promoting arbitrary waveguide networks"
       ],
       "evidence_artifacts": [
         "tests/test_waveguide_port_validation_battery.py",
+        "tests/test_waveguide_phase_gate.py",
         "tests/test_waveguide_twoport_contract_v1.py",
         "examples/crossval/11_waveguide_port_wr90.py",
         "scripts/diagnostics/wr90_port/s11_from_dumps.py",
