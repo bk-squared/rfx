@@ -1,18 +1,22 @@
-"""T2.1 R5 prototype — convention-INDEPENDENT monitor-offset phase witness.
+"""T2.1 R5 prototype — approximately convention-free monitor-offset phase witness.
 
 Goal: validate, on real rfx FDTD output, that the *physical* propagation
 phase between the port's two recorded planes (reference @ ``reference_x_m``
-and probe @ ``probe_x_m``) tracks the analytic guided β — WITHOUT calling
-rfx's own ``_compute_beta`` / ``_shift_modal_waves`` on the measured leg.
+and probe @ ``probe_x_m``) tracks the analytic guided β — comparing against
+an INDEPENDENT numpy-double β, not rfx's own ``_compute_beta``.
 
-Why this is not a tautology (critic C2):
+Why this is approximately convention-free (critic C2, reviewer-corrected):
   forward(plane) = 0.5 * (V(plane) + z_mode * I(plane))
 The modal impedance ``z_mode`` (which internally calls ``_compute_beta``)
 is IDENTICAL at both planes (same freqs / f_cutoff / dt / dx), so in the
-RATIO ``forward_probe / forward_ref`` it cancels exactly, leaving only the
-physical FDTD propagation ``exp(-j*beta_phys*Δx)``. The measured leg is
-therefore convention-free. The predicted leg uses an INDEPENDENT continuous
-β = sqrt(k² - kc²) computed in numpy float64 — never rfx's β.
+RATIO ``forward_probe / forward_ref`` it cancels **to first order in the
+residual reflection** ``|b/a|`` (measured ~6-15% on this CPML guide — see the
+report below), leaving mostly the physical FDTD propagation
+``exp(-j*beta_phys*Δx)``. It is APPROXIMATELY convention-free, not strictly
+β-free: a gross z_mode error still leaks into the ratio (good — the gate then
+catches it). The predicted leg uses an INDEPENDENT continuous β = sqrt(k² - kc²)
+in numpy float64 — never rfx's β — so predicted and measured are not the same
+source (not a tautology).
 
 This is an R5 inspection script (full per-frequency dump), not a committed
 gate. It sets up the numbers (continuous-vs-discrete β gap, noise floor)
@@ -89,10 +93,13 @@ def probe(direction: str, port_x: float, label: str):
     #     already direction-resolved: incident = global +x for a "+x" port,
     #     global -x for a "-x" port. Differencing incident@probe vs
     #     incident@ref isolates the physical FDTD propagation phase.
-    inc_ref, _ = _extract_port_waves_from_time_series(cfg, cfg.v_ref_t, cfg.i_ref_t)
+    inc_ref, out_ref = _extract_port_waves_from_time_series(cfg, cfg.v_ref_t, cfg.i_ref_t)
     inc_probe, _ = _extract_port_waves_from_time_series(cfg, cfg.v_probe_t, cfg.i_probe_t)
     fwd_ref = np.asarray(inc_ref)
     fwd_probe = np.asarray(inc_probe)
+    # Residual reflection |b/a| at the ref plane — the bound on z_mode cancellation
+    # (the cancellation is first-order in this quantity, NOT exact).
+    refl = np.abs(np.asarray(out_ref)) / np.where(np.abs(fwd_ref) > 0, np.abs(fwd_ref), 1.0)
 
     step_sign = 1 if direction.startswith("+") else -1
 
@@ -134,14 +141,19 @@ def probe(direction: str, port_x: float, label: str):
     print(f"  --> max|resid vs Yee-discrete β| = {deg(np.max(np.abs(resid_yee))):.4f}°")
     print(f"  --> continuous-vs-discrete β gap  = "
           f"{deg(np.max(np.abs(predicted_wrapped - predicted_yee))):.4f}° (sets T2.4 tol term)")
+    mag = np.abs(fwd_ref)
+    refl_mask = mag >= 0.05 * mag.max()
+    print(f"  --> residual reflection |b/a| (masked) = {refl[refl_mask].min():.4f}"
+          f"–{refl[refl_mask].max():.4f} (z_mode cancellation is first-order in THIS)")
     return {
         "max_resid_continuous_deg": float(deg(np.max(np.abs(resid_cont)))),
         "max_resid_yee_deg": float(deg(np.max(np.abs(resid_yee)))),
         "dx_planes_mm": dx_planes * 1e3,
+        "max_residual_reflection": float(refl[refl_mask].max()),
     }
 
 
 if __name__ == "__main__":
     print("T2.1 monitor-offset phase witness — R5 prototype")
     probe("+x", PORT_X, "FORWARD (+x) port")
-    probe("-x", DOMAIN[0] - PORT_X, "REVERSE (-x) port — step_sign bug witness")
+    probe("-x", DOMAIN[0] - PORT_X, "REVERSE (-x) port — direction-resolved incident")

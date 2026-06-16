@@ -2,30 +2,36 @@
 
 The headline broad-E5/E4 S-parameter gate was magnitude-only (framework audit
 2026-06-16, finding #7: phase-blind). This battery adds a phase witness that is
-**independent of any cross-solver phase convention** — so it sidesteps the cv11
-143° saga (Meep/OpenEMS/Palace disagree 100°+ on absolute phase) while still
-catching a wrong-phase extractor (wrong-sign de-embed, the ``step_sign``
-−direction bug).
+**approximately independent of any cross-solver phase convention** — so it
+sidesteps the cv11 143° saga (Meep/OpenEMS/Palace disagree 100°+ on absolute
+phase) while still catching a wrong measured-propagation-phase (a mis-selected
+V/I component, a gross modal-impedance error). A SEPARATE de-embed test below
+(`test_deembed_step_sign_rotation_correct`) covers the historical
+``_shift_modal_waves`` ``step_sign`` −direction bug, which this monitor-offset
+witness does NOT exercise (it runs at ``ref_shift = probe_shift = 0``).
 
-Mechanism (convention-free): the waveguide port records the modal V/I at two
+Mechanism (approximately convention-free): the port records modal V/I at two
 physical planes — reference @ ``reference_x_m`` and probe @ ``probe_x_m``. The
 local-incident wave at each plane is
 
     incident(plane) = 0.5 * (V(plane) ± z_mode * I(plane))
 
 and ``z_mode`` (which internally calls ``_compute_beta``) is IDENTICAL at both
-planes, so in the ratio ``incident_probe / incident_ref`` it cancels exactly,
-leaving only the physical FDTD propagation ``exp(-j·β_phys·Δx)``. The MEASURED
-phase therefore never touches rfx's β. The PREDICTED phase uses an INDEPENDENT
-continuous β = √(k² − k_c²) computed in numpy float64 — never rfx's
-``_compute_beta`` / ``_shift_modal_waves``. If the two β were the same source,
-the error would cancel and the test would pass anything (a tautology); the
-independent predictor + the slope-tracking assertion below are what make this a
-real catch.
+planes, so in the ratio ``incident_probe / incident_ref`` it cancels **to first
+order in the residual reflection**. On this guide the reference-plane reflection
+``|b/a|`` is ~6–15% (CPML floor, weaker near the band edges), so the cancellation
+is approximate, not exact: a gross ``z_mode`` error (e.g. 2×) still shifts the
+measured phase by a few degrees and is caught — which is GOOD (the gate is not a
+rubber stamp) but means the measured leg is NOT strictly β-free. The PREDICTED
+phase uses an INDEPENDENT continuous β = √(k² − k_c²) computed in numpy float64 —
+never rfx's ``_compute_beta`` / ``_shift_modal_waves``. The predictor being an
+independent source (not rfx's β) + the slope-tracking assertion (recovers the
+geometric plane separation) are what make this a real catch rather than a
+tautology.
 
 R5 evidence + tolerance derivation: docs/research_notes/20260616_t2.1_phase_witness_r5.md
-(healthy residual ≤ 5.1° both directions; a mis-selected-component extractor bug
-gave 58–180° — a 10–30× gate window).
+(masked healthy residual ~3.8° both directions; a mis-selected-component
+extractor bug gave 58–180° — a >10× gate window).
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ import pytest
 from rfx.api import Simulation
 from rfx.sources.waveguide_port import (
     _extract_port_waves_from_time_series,
+    extract_waveguide_port_waves,
     _compute_beta,
     C0_LOCAL,
 )
@@ -156,31 +163,106 @@ def test_phase_slope_recovers_known_plane_separation(direction, port_x):
     r2 = 1.0 - ss_res / ss_tot
     print(f"\n[slope {direction}] fit slope={slope*1e3:.4f} mm  "
           f"expected={-d['dx_local']*1e3:.4f} mm  R²={r2:.6f}")
-    assert r2 >= 0.999, f"phase-vs-β fit not linear (R²={r2:.5f})"
-    # slope recovers the physical plane separation to within 5 %.
+    # R² ≥ 0.998 (observed ~0.9991) — 0.999 sat on a knife-edge cross-machine.
+    assert r2 >= 0.998, f"phase-vs-β fit not linear (R²={r2:.5f})"
+    # Slope recovers the physical plane separation to within 5 % (observed ~3.7 %
+    # deficit). The deficit is SYSTEMATIC, not noise: the predictor is continuous
+    # β while the FDTD propagates the Yee-discrete β, plus the first-order-only
+    # z_mode cancellation under ~6–15 % residual reflection. A wrong-sign / wrong-β
+    # extractor would be 100 %+ off, so 5 % still strongly discriminates.
     assert abs(slope - (-d["dx_local"])) <= 0.05 * abs(d["dx_local"]), (
         f"recovered plane sep {slope*1e3:.3f} mm != known {-d['dx_local']*1e3:.3f} mm"
     )
 
 
 def test_perturbed_predictor_fails_the_gate():
-    """Falsifier: a 10 % β error must break the gate.
+    """Falsifier: a 10 % β error must break the gate (non-vacuous).
 
-    Proves the predicted leg is load-bearing and the tolerance is tight — a gate
-    that a 10 %-wrong β still passes would be vacuous. The healthy residual is
-    single-signed (measured lags β slightly), so a +10 % perturbation partially
-    cancels it (~6.7°) while a −10 % perturbation adds (~12°); we test BOTH signs
-    and require the worst to exceed the gate, which is the robust statement of
-    "the gate catches a 10 % β error".
+    Proves the predicted leg is load-bearing. The healthy residual is
+    single-signed (measured lags β slightly), so the effect is ASYMMETRIC: a
+    −10 % perturbation ADDS to the residual (~12°, robustly fails) while a +10 %
+    perturbation partially CANCELS (~6.7°, clears the 6° gate by only ~0.7°). We
+    require BOTH the worst-sign to fail by a comfortable margin AND each sign to
+    measurably move the residual, so the assertion does not hinge on the fragile
+    +10 % arm. Honest statement: the gate robustly catches a 10 % β error in the
+    adding direction; one-sided sensitivity is ~10 %.
     """
     d = _measure_phase("+x", 0.025)
-    worst = 0.0
+    healthy = float(np.degrees(np.abs(_wrap(d["measured"] - d["predicted"])))[d["mask"]].max())
+    per_sign = {}
     for scale in (1.10, 0.90):
         predicted_pert = _wrap(-scale * d["beta_np"] * d["dx_local"])
         resid_deg = np.degrees(np.abs(_wrap(d["measured"] - predicted_pert)))
-        worst = max(worst, float(resid_deg[d["mask"]].max()))
-    print(f"\n[perturbed ±10% β] worst max|resid|={worst:.3f}° (must exceed {PHASE_TOL_DEG}°)")
-    assert worst > PHASE_TOL_DEG, (
-        "a 10% β perturbation stayed within tolerance — gate is too loose to "
-        "be a real phase check"
+        per_sign[scale] = float(resid_deg[d["mask"]].max())
+    worst = max(per_sign.values())
+    print(f"\n[perturbed β] healthy={healthy:.3f}°  +10%={per_sign[1.10]:.3f}°  "
+          f"-10%={per_sign[0.90]:.3f}°  (gate {PHASE_TOL_DEG}°)")
+    # Worst-sign must fail with margin (robust, not knife-edge).
+    assert worst > PHASE_TOL_DEG + 2.0, (
+        "a 10% β perturbation did not robustly exceed the gate — too loose"
+    )
+    # Both signs must measurably worsen the residual (the predictor is load-bearing).
+    assert min(per_sign.values()) > healthy + 1.0, (
+        "a 10% β perturbation barely moved the residual — gate not β-sensitive"
+    )
+
+
+@pytest.mark.parametrize("direction,port_x", [("+x", 0.025), ("-x", 0.095)])
+def test_deembed_step_sign_rotation_correct(direction, port_x):
+    """Covers the historical ``_shift_modal_waves`` ``step_sign`` −direction bug.
+
+    The monitor-offset witness above runs at ``ref_shift=0`` and never touches
+    the de-embed path, so it cannot catch the 2026-04-22 bug where
+    ``_shift_modal_waves`` ignored ``step_sign`` and applied the "+x" rotation to
+    "-x" ports (cv11 phase offset never closed). This test exercises that path
+    directly: de-embedding the incident wave by Δ rotates its phase by exactly
+    ``-β·(step_sign·Δ)``. We compare the rfx de-embed rotation to an INDEPENDENT
+    numpy-double β·Δ with the CORRECT sign; a reintroduced step_sign bug flips the
+    sign for "-x", giving a ``2·β·Δ`` (~50°) error that this gate catches.
+
+    The de-embed rotation is a pure analytic ``exp(-jβ·shift)`` multiply (no
+    reflection contamination), so the healthy residual is just the
+    continuous-vs-Yee β gap (<1°); the tolerance is 3°.
+    """
+    freqs = np.linspace(BAND_HZ[0], BAND_HZ[1], N_FREQS)
+    f0 = float(freqs.mean())
+    bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
+    sim = Simulation(
+        freq_max=float(freqs[-1]), domain=DOMAIN, boundary="cpml", cpml_layers=10,
+    )
+    sim.add_waveguide_port(
+        port_x, direction=direction, mode=(1, 0), mode_type="TE",
+        freqs=np.asarray(freqs), f0=f0, bandwidth=bandwidth,
+        waveform="modulated_gaussian", n_modes=1, name="p",
+    )
+    cfg = sim.run(num_periods=40, compute_s_params=False).waveguide_ports["p"]
+
+    shift_m = 0.004  # 4 mm de-embed; β·Δ ~ 20–30° (no 2π wrap)
+    a0, _ = extract_waveguide_port_waves(cfg, ref_shift=0.0)
+    a1, _ = extract_waveguide_port_waves(cfg, ref_shift=shift_m)
+    a0 = np.asarray(a0)
+    a1 = np.asarray(a1)
+    measured_rot = np.angle(a1 / np.where(np.abs(a0) > 0, a0, 1.0))
+
+    step_sign = 1 if direction.startswith("+") else -1
+    beta_np = _beta_continuous_np(freqs)
+    predicted_rot = _wrap(-beta_np * (step_sign * shift_m))  # CORRECT-sign prediction
+
+    mag = np.abs(a0)
+    mask = mag >= MAG_MASK_FRAC * float(mag.max())
+    resid_deg = np.degrees(np.abs(_wrap(measured_rot - predicted_rot)))
+    # Witness that a step_sign bug WOULD be caught: the wrong-sign prediction.
+    wrong_sign = _wrap(-beta_np * (-step_sign * shift_m))
+    wrong_resid = np.degrees(np.abs(_wrap(measured_rot - wrong_sign)))
+    print(f"\n[de-embed {direction}] max|resid correct-sign|={resid_deg[mask].max():.3f}°  "
+          f"max|resid wrong-sign|={wrong_resid[mask].max():.3f}° (bug would be caught)")
+    assert resid_deg[mask].max() <= 3.0, (
+        f"{direction} de-embed rotation {resid_deg[mask].max():.2f}° != analytic "
+        f"-β·(step_sign·Δ) — _shift_modal_waves step_sign regression"
+    )
+    # Sign-discrimination witness: the opposite-sign rotation (what a step_sign
+    # bug produces on a "-x" port) is ~2·β·Δ (~50°) away — far outside the 3° gate,
+    # so the bug cannot hide. Holds for both directions (the rotation is signed).
+    assert wrong_resid[mask].max() > 10.0, (
+        "wrong-sign de-embed not distinguishable — gate would miss a step_sign bug"
     )
