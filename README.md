@@ -11,7 +11,7 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.6.3 package; current `main` after v1.6.3** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, structured setup guards, and port-family validation envelopes.
+**v1.6.4 package** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, structured setup guards, and port-family validation envelopes.
 
 > **Project status (June 2026):** `rfx` remains an actively validated research/product simulator. Use the uniform Cartesian Yee RF lane first; advanced lanes are promoted only inside explicitly documented evidence envelopes rather than as blanket simulator guarantees.
 
@@ -298,7 +298,7 @@ Gitops-side snapshot/build CI lives in the deploy repo:
   title        = {rfx: JAX-based differentiable 3D FDTD simulator for RF engineering},
   institution  = {REMI Lab, Chungnam National University},
   year         = {2026},
-  version      = {1.6.3},
+  version      = {1.6.4},
   url          = {https://github.com/bk-squared/rfx}
 }
 ```

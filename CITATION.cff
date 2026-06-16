@@ -7,7 +7,7 @@ authors:
     given-names: "Byungkwan"
     email: "byungkwan.kim@cnu.ac.kr"
     affiliation: "REMI Lab, Chungnam National University"
-version: "1.6.3"
+version: "1.6.4"
 date-released: "2026-04-17"
 license: MIT
 repository-code: "https://github.com/bk-squared/rfx"

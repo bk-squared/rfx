@@ -6,6 +6,31 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-06-16
+
+Highlights: the rectangular-waveguide-port **broad-E5 close** (committed
+analytic-Airy band envelopes + an rfx-vs-Palace-FEM external comparison, with the
+port-external-reference audit GREEN for `rectangular_waveguide_port` on a clean
+checkout) and removal of the orphaned legacy 3-probe MSL extractor — on top of the
+accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.3.
+
+### Added — rectangular waveguide port broad-E5 evidence, committed (PR #181, 2026-06-16)
+
+- `compute_waveguide_s_matrix(normalize='flux')` broad-E5 evidence now survives a
+  clean checkout: five WR-band (WR-28/62/15/340/10, eps_r 2 & 4) analytic-Airy flux
+  envelopes (20/20 cases, max |S| diff ≤ 0.0414) committed under
+  `tests/fixtures/waveguide_broad_e5/`, plus an rfx-vs-Palace-FEM broad-E4 external
+  comparison across the empty / PEC-short / dielectric-slab geometry axis (max |S|
+  diff 0.0707, gate 0.10). Previously this evidence lived only in gitignored
+  `.omx/` outputs, so `scripts/diagnostics/check_port_external_references.py`
+  reported the family `blocked` on a clean checkout while the manifest claimed
+  `broad_e5_passed`; the auditor now reports `rectangular_waveguide_port` passed.
+  New gate `tests/test_waveguide_broad_e5_envelope_gates.py` re-derives both
+  verdicts from the committed fixtures and mirrors the auditor's broad-E5/E4
+  acceptance. R5 note: coarse Meep (res 3/4) gives a non-physical PEC-short
+  |S11|>1, so the converged Palace high-order FEM reference is used for that
+  geometry; rfx itself is exact (|S11|=1.0000).
+
 ### Removed — orphaned legacy 3-probe MSL extractor (2026-06-15)
 
 - Deleted the pre-issue-#80 closed-form 3-probe MSL de-embedding helpers
