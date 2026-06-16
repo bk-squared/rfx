@@ -172,6 +172,7 @@ def compare_sparameter_datasets(
     max_mag_abs_tol: float = 5e-2,
     mean_mag_abs_tol: float = 2e-2,
     min_phase_mag: float = 1e-6,
+    max_phase_abs_tol_rad: float | None = None,
 ) -> dict[str, Any]:
     if comparison_mode not in {"complex", "magnitude"}:
         raise ValueError(f"unsupported comparison_mode: {comparison_mode!r}")
@@ -224,9 +225,28 @@ def compare_sparameter_datasets(
             float(np.max(mag_abs_diff)) <= max_mag_abs_tol
             and float(np.mean(mag_abs_diff)) <= mean_mag_abs_tol
         )
-        term_status = "passed" if magnitude_passed else "failed"
+        # Phase gate (T2.1) — OPT-IN. The framework audit (2026-06-16, #7) found
+        # phase was COMPUTED (`max_phase_abs_diff_rad`) but never GATED. When a
+        # caller supplies `max_phase_abs_tol_rad`, the masked-bin phase diff must
+        # also clear it. Fail-CLOSED: requesting a phase gate when NO bin clears
+        # `min_phase_mag` (so phase is unverifiable) is a failure, not a pass.
+        # NOTE (cv11 143° saga): cross-solver absolute phase conventions disagree
+        # 100°+, so callers MUST pass a LOOSE envelope (e.g. 60°≈1.047 rad) for
+        # external-solver comparisons; a tight value is valid only against an
+        # analytic oracle de-embedded to the same reference plane.
+        if max_phase_abs_tol_rad is None:
+            phase_passed = True
+        elif max_phase_abs_diff_rad is None:
+            phase_passed = False
+        else:
+            phase_passed = max_phase_abs_diff_rad <= float(max_phase_abs_tol_rad)
+        term_status = "passed" if (magnitude_passed and phase_passed) else "failed"
         if comparison_mode == "complex":
-            term_status = "passed" if complex_passed and magnitude_passed else "failed"
+            term_status = (
+                "passed"
+                if (complex_passed and magnitude_passed and phase_passed)
+                else "failed"
+            )
         metrics_by_term.append(
             {
                 "term": f"S{receiver + 1}{driven + 1}",
@@ -237,6 +257,7 @@ def compare_sparameter_datasets(
                 "max_mag_abs_diff": float(np.max(mag_abs_diff)),
                 "mean_mag_abs_diff": float(np.mean(mag_abs_diff)),
                 "max_phase_abs_diff_rad": max_phase_abs_diff_rad,
+                "phase_passed": phase_passed,
             }
         )
 
@@ -279,6 +300,7 @@ def compare_sparameter_datasets(
             "max_mag_abs_tol": max_mag_abs_tol,
             "mean_mag_abs_tol": mean_mag_abs_tol,
             "min_phase_mag": min_phase_mag,
+            "max_phase_abs_tol_rad": max_phase_abs_tol_rad,
         },
         "summary": summary,
         "metrics_by_term": metrics_by_term,
@@ -304,6 +326,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-mag-abs-tol", type=float, default=5e-2)
     parser.add_argument("--mean-mag-abs-tol", type=float, default=2e-2)
     parser.add_argument("--min-phase-mag", type=float, default=1e-6)
+    parser.add_argument(
+        "--max-phase-abs-tol-rad",
+        type=float,
+        default=None,
+        help=(
+            "OPT-IN phase gate (T2.1): masked-bin |∠candidate − ∠reference| must "
+            "clear this. Omit to leave phase ungated (legacy). For external-solver "
+            "comparisons use a LOOSE envelope (~1.047 rad = 60°) per the cv11 143° "
+            "cross-solver phase-convention saga; tight only vs an analytic oracle."
+        ),
+    )
     args = parser.parse_args(argv)
 
     candidate = load_sparameter_dataset(args.candidate)
@@ -320,6 +353,7 @@ def main(argv: list[str] | None = None) -> int:
         max_mag_abs_tol=args.max_mag_abs_tol,
         mean_mag_abs_tol=args.mean_mag_abs_tol,
         min_phase_mag=args.min_phase_mag,
+        max_phase_abs_tol_rad=args.max_phase_abs_tol_rad,
     )
 
     output_path = _repo_path(args.output_json)
