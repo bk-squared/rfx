@@ -11,8 +11,9 @@ This page summarizes user-visible changes without internal run logs or diagnosti
 
 The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane**. Non-uniform mesh, distributed execution, Floquet/Bloch, general SBP-SAT subgridding, generalized planar ports, and broad inverse-design extensions stay lane-scoped. Rectangular waveguide S-matrices and coaxial transmission-line reflection have stronger port-family evidence envelopes, but those envelopes are not blanket S-parameter guarantees.
 
-## Current main after v1.6.3 — June 2026
+## v1.6.4 — June 2026
 
+- Rectangular waveguide-port **broad-E5** evidence is now committed and passes the port-external-reference audit on a clean checkout: five WR-band power-flux envelopes versus analytic Airy plus an rfx-vs-Palace-FEM external comparison across the empty / PEC-short / dielectric-slab geometry axis. The orphaned legacy 3-probe microstrip extractor was removed (no public-surface change).
 - `preflight()` and `preflight_sparameters()` now expose coded report objects for automation while preserving older list/string behaviour.
 - Run/forward results, S-matrix calculators, sweeps, and optimizers now surface finite-data, passivity, setup, and NaN-gradient issues earlier.
 - `compute_coaxial_line_reflection(...)` is the current coaxial line-reflection path inside its documented transmission-line envelope. The older `compute_coaxial_s_matrix(...)` single-plane path is deprecated/experimental.
