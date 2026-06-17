@@ -162,6 +162,16 @@ external_solver_dependency_check = _load_module(
 )
 
 
+def _dataset_from_arrays(module, freqs_hz, s_params):
+    """Build an in-memory SParameterDataset (no file round-trip)."""
+    return module.SParameterDataset(
+        path=Path("<memory>"),
+        freqs_hz=module.np.asarray(freqs_hz, dtype=float),
+        s_params=module.np.asarray(s_params, dtype=module.np.complex128),
+        source_format="memory",
+    )
+
+
 def test_required_external_solver_skip_blocks_full_coverage():
     stdout = """
 =========================== short test summary info ============================
@@ -1305,6 +1315,68 @@ def test_generic_sparameter_reference_comparator_passes_npz_fixture(tmp_path: Pa
     assert rc == 0
     saved = json.loads((tmp_path / "comparison.json").read_text())
     assert saved["status"] == "passed"
+
+
+def test_phase_gate_catches_phase_only_error_that_magnitude_mode_passes():
+    """T2.1: opt-in phase gate closes the audit's 'phase computed but not gated' gap.
+
+    A candidate with IDENTICAL magnitudes but a rotated phase passes magnitude
+    mode (legacy) and stays passing when phase is ungated — but fails once a
+    tight `max_phase_abs_tol_rad` is supplied.
+    """
+    np = sparameter_reference_compare.np
+    freqs_hz = np.asarray([3.0e9, 4.0e9, 5.0e9])
+    ref_s = np.zeros((2, 2, 3), dtype=np.complex128)
+    ref_s[0, 0, :] = 0.5 + 0.0j
+    ref_s[1, 0, :] = 0.5 + 0.0j
+    ref_s[0, 1, :] = ref_s[1, 0, :]
+    ref_s[1, 1, :] = ref_s[0, 0, :]
+    # Candidate: same |S| but rotated 90° -> phase diff = pi/2 ~ 1.571 rad.
+    cand_s = ref_s * np.exp(1j * (np.pi / 2))
+
+    ref = _dataset_from_arrays(sparameter_reference_compare, freqs_hz, ref_s)
+    cand = _dataset_from_arrays(sparameter_reference_compare, freqs_hz, cand_s)
+
+    # Magnitude mode, phase UNGATED (legacy): magnitudes match -> passes.
+    legacy = sparameter_reference_compare.compare_sparameter_datasets(
+        cand, ref, terms="S11", comparison_mode="magnitude",
+    )
+    assert legacy["status"] == "passed"
+    # The phase diff was computed all along (the audit's point) ...
+    assert legacy["metrics_by_term"][0]["max_phase_abs_diff_rad"] > 1.5
+    assert legacy["metrics_by_term"][0]["phase_passed"] is True  # ungated
+
+    # Same comparison, phase GATED tight -> the rotation now fails.
+    gated = sparameter_reference_compare.compare_sparameter_datasets(
+        cand, ref, terms="S11", comparison_mode="magnitude",
+        max_phase_abs_tol_rad=0.1,
+    )
+    assert gated["status"] == "failed"
+    assert gated["metrics_by_term"][0]["phase_passed"] is False
+    assert gated["tolerances"]["max_phase_abs_tol_rad"] == 0.1
+
+
+def test_phase_gate_fails_closed_when_no_bin_clears_mask():
+    """T2.1: requesting a phase gate that cannot be evaluated must FAIL, not pass.
+
+    When every |S| bin is below `min_phase_mag` the phase diff is unverifiable
+    (max_phase_abs_diff_rad is None); fail-closed mirrors the T1 numeric-breadth
+    philosophy (absent evidence != pass).
+    """
+    np = sparameter_reference_compare.np
+    freqs_hz = np.asarray([3.0e9, 4.0e9])
+    ref_s = np.full((2, 2, 2), 1.0e-9, dtype=np.complex128)
+    cand_s = ref_s.copy()
+    ref = _dataset_from_arrays(sparameter_reference_compare, freqs_hz, ref_s)
+    cand = _dataset_from_arrays(sparameter_reference_compare, freqs_hz, cand_s)
+
+    payload = sparameter_reference_compare.compare_sparameter_datasets(
+        cand, ref, terms="S11", comparison_mode="magnitude",
+        min_phase_mag=1e-6, max_phase_abs_tol_rad=1.0,
+    )
+    assert payload["metrics_by_term"][0]["max_phase_abs_diff_rad"] is None
+    assert payload["metrics_by_term"][0]["phase_passed"] is False
+    assert payload["status"] == "failed"
 
 
 def test_msl_openems_generic_builder_uses_magnitude_mode(tmp_path: Path):
