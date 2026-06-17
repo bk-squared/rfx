@@ -10,6 +10,7 @@ external-solver coverage.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -122,23 +123,57 @@ def _artifact_check(value: str) -> dict[str, Any]:
     return {"artifact": value, "path_checked": _display(path), "exists": path.exists()}
 
 
+_SKIP_XFAIL_MARKERS = {"xfail", "skip", "skipif"}
+
+
+def _decorator_marker_names(node: ast.AST) -> set[str]:
+    """Trailing attribute names of a decorator (``pytest.mark.xfail`` -> {xfail})."""
+    target = node.func if isinstance(node, ast.Call) else node
+    names: set[str] = set()
+    while isinstance(target, ast.Attribute):
+        names.add(target.attr)
+        target = target.value
+    return names
+
+
+def _module_marks_skip_xfail(tree: ast.Module) -> bool:
+    """Detect a module-level ``pytestmark = pytest.mark.{xfail,skip,skipif}``."""
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(t, ast.Name) and t.id == "pytestmark" for t in node.targets
+        ):
+            continue
+        values = node.value.elts if isinstance(node.value, ast.List) else [node.value]
+        for v in values:
+            if _decorator_marker_names(v) & _SKIP_XFAIL_MARKERS:
+                return True
+    return False
+
+
 def _ad_test_check(value: Any) -> dict[str, Any]:
-    """Static existence check of a family's named AD-vs-FD test (T2.2).
+    """Static AST check of a family's named AD-vs-FD test (T2.2).
 
     ``value`` is a ``path::testname`` pytest nodeid, or None when the family has
-    no committed AD-vs-FD test. This is a STATIC check (file + ``def testname``
-    present) — the same level as the artifact checks. The COLLECTION-TIME proof
-    that the test is collected and NOT xfail/skip-marked lives in
-    ``tests/test_ad_surface_contract.py`` (a regex/AST scrape is insufficient,
-    so the dynamic check is done via pytest collection there). Together they
-    enforce: no family reaches broad_e5_passed without a real, non-xfail,
-    collected AD-vs-FD test — wiring the differentiability "moat" into the
-    broad-E5 verdict (framework audit finding #6).
+    no committed AD-vs-FD test. Uses ``ast`` (NOT a naked substring) so it (a)
+    finds the real ``def`` — no comment / ``def test_foo`` ⊂ ``def test_foobar``
+    false positives — and (b) BACKSTOPS the xfail/skip check: a statically
+    xfail/skip/skipif-marked test (on the function or a module ``pytestmark``)
+    fails here too. The AUTHORITATIVE, collection-time proof (catches conditional
+    / parametrize / fixture markers the AST can't see, and dynamic skips it also
+    can't — those remain a documented boundary) lives in
+    ``tests/test_ad_surface_contract.py::test_ad_fd_gate_tests_are_collected_and_not_xfail_skip``.
+    Both gates share this manifest, so they cannot point at different tests, and
+    the static backstop means the release verdict cannot silently diverge from
+    the collection check (reviewer T2.2). Together they wire the differentiability
+    "moat" into the broad-E5 verdict (framework audit finding #6).
     """
     check: dict[str, Any] = {
         "ad_fd_test": value,
         "declared": bool(value),
         "exists": False,
+        "found": False,
         "path_checked": "",
         "testname": "",
         "error": "",
@@ -151,16 +186,40 @@ def _ad_test_check(value: Any) -> dict[str, Any]:
         check["error"] = f"ad_fd_test {nodeid!r} is not a path::testname nodeid"
         return check
     path_str, testname = nodeid.split("::", 1)
-    # Strip any parametrization suffix for the source-def check.
-    testfunc = testname.split("[", 1)[0]
+    # Strip any parametrization suffix and a class qualifier for the def lookup.
+    testfunc = testname.split("[", 1)[0].split("::")[-1]
     path = _repo_path(path_str)
     check["path_checked"] = _display(path)
     check["testname"] = testname
     if not path.exists():
         check["error"] = "ad_fd_test file is missing"
         return check
-    if f"def {testfunc}" not in path.read_text(encoding="utf-8"):
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError as exc:
+        check["error"] = f"ad_fd_test file does not parse: {exc}"
+        return check
+    func = next(
+        (
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == testfunc
+        ),
+        None,
+    )
+    if func is None:
         check["error"] = f"ad_fd_test {testfunc!r} not defined in {path_str}"
+        return check
+    check["found"] = True
+    marked = any(
+        _decorator_marker_names(d) & _SKIP_XFAIL_MARKERS for d in func.decorator_list
+    ) or _module_marks_skip_xfail(tree)
+    if marked:
+        check["error"] = (
+            f"ad_fd_test {testfunc!r} is statically xfail/skip/skipif-marked — "
+            "cannot prove the differentiability moat"
+        )
         return check
     check["exists"] = True
     return check

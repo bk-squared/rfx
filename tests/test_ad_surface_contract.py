@@ -38,8 +38,9 @@ import pytest
 import rfx
 from rfx import Simulation
 
-MATRIX_PATH = Path("docs/guides/sparameter_support_matrix.json")
-MANIFEST_PATH = Path("scripts/diagnostics/port_external_reference_requirements.json")
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+MATRIX_PATH = _REPO_ROOT / "docs/guides/sparameter_support_matrix.json"
+MANIFEST_PATH = _REPO_ROOT / "scripts/diagnostics/port_external_reference_requirements.json"
 
 GRAD_SAFE = "grad-safe"
 NOT_TRACEABLE = "not-traceable"
@@ -225,11 +226,12 @@ def _collect_nodeids(paths, marker_filter=None):
     if marker_filter:
         args += ["-m", marker_filter]
     args += list(paths)
-    proc = subprocess.run(args, capture_output=True, text=True, cwd=Path.cwd())
+    proc = subprocess.run(args, capture_output=True, text=True, cwd=_REPO_ROOT)
     nodeids = set()
     for line in proc.stdout.splitlines():
         line = line.strip()
-        if "::" in line and not line.startswith(("=", "<", "warning")):
+        # pytest -q --collect-only emits one nodeid per line: ``path::name``.
+        if re.match(r"^\S+\.py::\S+$", line):
             nodeids.add(line)
     return nodeids, proc
 
@@ -249,6 +251,14 @@ def test_ad_fd_gate_tests_are_collected_and_not_xfail_skip():
     a declared AD-vs-FD test that is xfail/skip-marked CANNOT satisfy the moat,
     so it must be collected under `not (xfail or skip or skipif)`. gpu-marked
     tests pass (they run on the gpu lane, not xfail/skip).
+
+    Boundary (documented, not enforced here): this proves "collected + not
+    statically xfail/skip/skipif-marked", NOT "executed green". A test that calls
+    `pytest.skip()` in its body, or a gpu-only test whose hardware lane has not
+    run this cycle, is collectable + unmarked yet may not have actually exercised
+    the FD comparison. The gpu lane (e.g. the MSL AD-vs-FD test) is run per the
+    release cadence in CLAUDE.md; this gate guarantees the pointer is real and
+    expected-to-pass, the lane guarantees it did.
     """
     manifest = json.loads(MANIFEST_PATH.read_text())
     declared = [
@@ -260,11 +270,22 @@ def test_ad_fd_gate_tests_are_collected_and_not_xfail_skip():
 
     paths = sorted({nodeid.split("::", 1)[0] for _, nodeid in declared})
     all_collected, proc_all = _collect_nodeids(paths)
+    # pytest --collect-only exit codes: 0 = collected, 5 = none collected.
+    assert proc_all.returncode in (0, 5), (
+        f"pytest --collect-only failed (rc={proc_all.returncode}); "
+        f"stderr:\n{proc_all.stderr[-2000:]}"
+    )
     assert all_collected, (
         "pytest --collect-only returned no nodeids for the AD-vs-FD test files; "
         f"stderr:\n{proc_all.stderr[-2000:]}"
     )
-    passable, _ = _collect_nodeids(paths, marker_filter="not (xfail or skip or skipif)")
+    passable, proc_pass = _collect_nodeids(
+        paths, marker_filter="not (xfail or skip or skipif)"
+    )
+    assert proc_pass.returncode in (0, 5) and passable, (
+        "marker-filtered collection returned nothing — parse/infra error, not a "
+        f"real xfail/skip verdict; stderr:\n{proc_pass.stderr[-2000:]}"
+    )
 
     for family, nodeid in declared:
         assert _nodeid_present(nodeid, all_collected), (
