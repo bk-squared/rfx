@@ -6,6 +6,20 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — documentation honesty: coaxial clean-checkout audit status (2026-06-17)
+
+- Corrected a stale claim in the 2026-06-08 coaxial changelog entry that the
+  coaxial family was *"the current validated"* method and *"the only family
+  currently passing the clean-checkout port external-reference audit."*  That
+  was true only before the rectangular-waveguide broad-E5 evidence was committed
+  (PR #181, v1.6.4).  On the current clean checkout the coaxial broad-E5/E4
+  evidence still lives in gitignored `.omx/`, so
+  `check_port_external_references.py` reports `coaxial_port` BLOCKED, and the
+  single family that passes is `rectangular_waveguide_port`.  This brings the
+  changelog in line with the T0 honesty downgrade already applied to the README,
+  support matrix, port-selection guide, evidence-rule doc, and manifest
+  (`coaxial_port` → `broad_e5_demonstrated_evidence_uncommitted`).
+
 ## [1.6.4] - 2026-06-16
 
 Highlights: the rectangular-waveguide-port **broad-E5 close** (committed
@@ -208,17 +222,20 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
 
 ### Added — coaxial line reflection evidence envelope (2026-06-08)
 
-- `Simulation.compute_coaxial_line_reflection(...)` is the current validated
-  coaxial transmission-line reflection method.  The broad-E5 analytic envelope
-  covers short/open/matched plus resistive 25/100 Ω loads across two
-  characteristic impedances and mesh resolution cases; the broad-E4 external
-  MEEP power-flux comparison covers short/open cases over 4–12 GHz.
+- `Simulation.compute_coaxial_line_reflection(...)` is the coaxial
+  transmission-line reflection path.  Its broad-E5 physics was *demonstrated*
+  (analytic Γ envelope over short/open/matched plus resistive 25/100 Ω loads,
+  two characteristic impedances and mesh-resolution cases, max |Γ| dev 0.037)
+  plus an independent broad-E4 MEEP power-flux short/open comparison over
+  4–12 GHz (max |S11| diff 0.063).  **The evidence artifacts live in gitignored
+  `.omx/` and are not committed to the repo**, so
+  `check_port_external_references.py` reports `coaxial_port` BLOCKED on a clean
+  checkout; do not cite this path as `broad_e5_passed` until the artifacts are
+  committed and the auditor returns PASSED.  (See the 2026-06-17 documentation
+  honesty correction under [Unreleased].)
 - `Simulation.compute_coaxial_s_matrix(...)` remains available for backward
   compatibility but is deprecated as the older single-plane V/I path; it is
   not the promoted coaxial claims surface.
-- The coaxial family is the only family currently passing the
-  clean-checkout port external-reference audit; other families remain blocked
-  as noted above.
 
 ### Added — waveguide S-matrix memory control (2026-06-09)
 
