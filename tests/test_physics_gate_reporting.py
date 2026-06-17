@@ -657,17 +657,18 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["missing_passed_comparison_artifact_count"] == 6
     assert audit["passed_comparison_artifact_count"] == 1
     assert audit["passed_broad_e4_comparison_artifact_count"] == 1
-    # coaxial_port is current_status=broad_e5_passed but its MEEP broad-E4 +
-    # analytic broad-E5 artifacts (PR #130) still live under the gitignored .omx/
-    # tree — absent on a clean checkout — so it ALONE is counted "missing" one
-    # broad-E4 and one broad-E5 artifact. (rectangular_waveguide_port used to be
-    # counted here too; its evidence is now committed, so only coaxial_port remains
-    # on this clean-checkout contract — not a defect.)
-    assert audit["missing_broad_e4_comparison_artifact_count"] == 1
-    assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == [
-        "coaxial_port",
-    ]
-    assert audit["missing_broad_e5_envelope_artifact_count"] == 1
+    # No family is now MISSING a broad-E4/E5 artifact. rectangular_waveguide_port
+    # is the only current_status=broad_e5_passed family and its broad-E4 + broad-E5
+    # artifacts ARE committed (tests/fixtures/, PR #181). coaxial_port was
+    # downgraded from broad_e5_passed -> broad_e5_demonstrated_evidence_uncommitted
+    # (validation-framework honesty pass): its evidence is gitignored .omx/ and the
+    # clean-checkout audit reports it BLOCKED, so it no longer CLAIMS broad-E5 and
+    # therefore no longer "owes" a broad-E4/E5 artifact. It is still counted among
+    # the families missing a passed *comparison* artifact (count 6 above) and stays
+    # in `incomplete` below.
+    assert audit["missing_broad_e4_comparison_artifact_count"] == 0
+    assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == []
+    assert audit["missing_broad_e5_envelope_artifact_count"] == 0
     assert audit["passed_broad_e5_envelope_artifact_count"] == 5
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}
@@ -791,6 +792,12 @@ def test_port_external_reference_audit_requires_passed_comparison_for_broad_e5(
                 "status": "passed",
                 "evidence_level": "E4",
                 "claim_scope": "broad external S-parameter comparison",
+                "summary": {
+                    "geometry_count": 3,
+                    "pair_count": 5,
+                    "passed_pair_count": 5,
+                    "failed_pair_count": 0,
+                },
             }
         ),
         encoding="utf-8",
@@ -814,6 +821,16 @@ def test_port_external_reference_audit_requires_passed_comparison_for_broad_e5(
                 "evidence_level": "E5",
                 "required_scope": "broad_e5",
                 "claim_scope": "broad mesh/frequency/geometry envelope",
+                "max_mag_abs_tol": 0.05,
+                "envelope_summary": {
+                    "case_count": 4,
+                    "passed_case_count": 4,
+                    "dx_values_m": [5e-5, 1e-4],
+                    "eps_r_values": [2.0, 4.0],
+                    "geometries": ["slab"],
+                    "freq_range_hz": [1.0e10, 1.5e10],
+                    "max_mag_abs_diff_across_cases": 0.02,
+                },
             }
         ),
         encoding="utf-8",
@@ -972,6 +989,12 @@ def test_port_external_reference_shard_requires_comparison_and_envelope(
                 "status": "passed",
                 "evidence_level": "E4",
                 "claim_scope": "broad external S-parameter comparison",
+                "summary": {
+                    "geometry_count": 3,
+                    "pair_count": 5,
+                    "passed_pair_count": 5,
+                    "failed_pair_count": 0,
+                },
             }
         ),
         encoding="utf-8",
@@ -984,6 +1007,16 @@ def test_port_external_reference_shard_requires_comparison_and_envelope(
                 "evidence_level": "E5",
                 "required_scope": "broad_e5",
                 "claim_scope": "broad mesh/frequency/geometry envelope",
+                "max_mag_abs_tol": 0.05,
+                "envelope_summary": {
+                    "case_count": 4,
+                    "passed_case_count": 4,
+                    "dx_values_m": [5e-5, 1e-4],
+                    "eps_r_values": [2.0, 4.0],
+                    "geometries": ["slab"],
+                    "freq_range_hz": [1.0e10, 1.5e10],
+                    "max_mag_abs_diff_across_cases": 0.02,
+                },
             }
         ),
         encoding="utf-8",
@@ -1752,6 +1785,12 @@ def test_rf_infra_e5_goal_audit_requires_external_manifest_envelope(
                 "status": "passed",
                 "evidence_level": "E4",
                 "claim_scope": "broad external S-parameter comparison",
+                "summary": {
+                    "geometry_count": 3,
+                    "pair_count": 5,
+                    "passed_pair_count": 5,
+                    "failed_pair_count": 0,
+                },
             }
         ),
         encoding="utf-8",
@@ -1764,6 +1803,16 @@ def test_rf_infra_e5_goal_audit_requires_external_manifest_envelope(
                 "evidence_level": "E5",
                 "required_scope": "broad_e5",
                 "claim_scope": "broad mesh/frequency/geometry envelope",
+                "max_mag_abs_tol": 0.05,
+                "envelope_summary": {
+                    "case_count": 4,
+                    "passed_case_count": 4,
+                    "dx_values_m": [5e-5, 1e-4],
+                    "eps_r_values": [2.0, 4.0],
+                    "geometries": ["slab"],
+                    "freq_range_hz": [1.0e10, 1.5e10],
+                    "max_mag_abs_diff_across_cases": 0.02,
+                },
             }
         ),
         encoding="utf-8",
@@ -1858,6 +1907,12 @@ def test_rf_infra_e5_goal_audit_rejects_failed_json_evidence_artifact(
                 "status": "passed",
                 "evidence_level": "E4",
                 "claim_scope": "broad external S-parameter comparison",
+                "summary": {
+                    "geometry_count": 3,
+                    "pair_count": 5,
+                    "passed_pair_count": 5,
+                    "failed_pair_count": 0,
+                },
             }
         ),
         encoding="utf-8",
@@ -1870,6 +1925,16 @@ def test_rf_infra_e5_goal_audit_rejects_failed_json_evidence_artifact(
                 "evidence_level": "E5",
                 "required_scope": "broad_e5",
                 "claim_scope": "broad mesh/frequency/geometry envelope",
+                "max_mag_abs_tol": 0.05,
+                "envelope_summary": {
+                    "case_count": 4,
+                    "passed_case_count": 4,
+                    "dx_values_m": [5e-5, 1e-4],
+                    "eps_r_values": [2.0, 4.0],
+                    "geometries": ["slab"],
+                    "freq_range_hz": [1.0e10, 1.5e10],
+                    "max_mag_abs_diff_across_cases": 0.02,
+                },
             }
         ),
         encoding="utf-8",
@@ -1906,3 +1971,51 @@ def test_rf_infra_e5_goal_audit_rejects_failed_json_evidence_artifact(
     assert family["status"] == "partial"
     assert "status=passed" in "; ".join(family["blockers"])
     assert family["artifact_checks"][0]["reported_status"] == "failed"
+
+
+def test_broad_envelope_rejected_without_numeric_breadth(tmp_path: Path):
+    """Single-case prose-'broad' artifact must be rejected (T1 gameability fix)."""
+    # Case 1: single-case artifact — fails case_count < 4.
+    single_case = tmp_path / "single_case_envelope.json"
+    single_case.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "evidence_level": "E5-broad-totally-legit",
+                "claim_scope": "broad mesh frequency geometry coverage",
+                "envelope_summary": {
+                    "case_count": 1,
+                    "passed_case_count": 1,
+                    "dx_values_m": [1e-4],
+                    "eps_r_values": [2.0],
+                    "geometries": ["slab"],
+                    "freq_range_hz": [1e9, 1e9],
+                },
+                "max_mag_abs_tol": 0.05,
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Pass absolute paths — _repo_path() returns them unchanged when is_absolute().
+    result_single = port_external_reference_check._broad_e5_envelope_artifact_check(
+        str(single_case)
+    )
+    assert result_single["is_passed_broad_e5_envelope"] is False
+
+    # Case 2: artifact with NO envelope_summary key at all.
+    no_summary = tmp_path / "no_summary_envelope.json"
+    no_summary.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "evidence_level": "E5-broad-totally-legit",
+                "claim_scope": "broad mesh frequency geometry coverage",
+                "max_mag_abs_tol": 0.05,
+            }
+        ),
+        encoding="utf-8",
+    )
+    result_no_summary = port_external_reference_check._broad_e5_envelope_artifact_check(
+        str(no_summary)
+    )
+    assert result_no_summary["is_passed_broad_e5_envelope"] is False

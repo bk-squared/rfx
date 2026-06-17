@@ -34,6 +34,14 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 # Gate thresholds — kept here so a regression bump is one diff.
+# WARNING: thru_max_s11=0.10 is an artifact-derived threshold and is
+# physically UNREACHABLE on a clean mesh. The MSL thru mesh-convergence
+# diagnostic (scripts/diagnostics/msl_thru_mesh_convergence.py, PR #183)
+# measured the clean-alignment matched-thru floor at ~0.16-0.22; the
+# old "0.118" figure was a mixed-cell-danger-zone artifact, not a
+# validated clean-mesh result. The MSL thru broad-E5 lane is blocked
+# pending the Z0-staircase-bias fix. Do NOT present thru_max_s11=0.10
+# as a met criterion — this lane cannot pass on a clean mesh at present.
 THRESH = dict(
     thru_mean_s21_min=0.95,
     thru_max_s11=0.10,

@@ -31,7 +31,7 @@ Status legend:
 | ADI | experimental | research lane | separate accuracy/stability envelope |
 | Distributed | experimental | scaling lane | not part of correctness-bearing baseline |
 | Floquet/Bloch | experimental | periodic/phased-array lane | M18 synthetic modal oracle and M20 real-FDTD DFT-plane replay exist; promotion still pending analytic/RCWA/external benchmark ladder |
-| Coaxial line reflection | supported envelope | one-port transmission-line reflection lane | `compute_coaxial_line_reflection(...)` has analytic broad-E5 + MEEP broad-E4 evidence; older `compute_coaxial_s_matrix(...)` remains deprecated / experimental |
+| Coaxial line reflection | broad-E5 physics demonstrated — audit BLOCKED | one-port transmission-line reflection lane | M74 broad-E5 physics demonstrated (analytic Γ envelope + MEEP broad-E4 cross-check), but evidence artifacts live in gitignored `.omx/`; clean-checkout audit reports `coaxial_port` BLOCKED; re-validation pending validation-framework rework; older `compute_coaxial_s_matrix(...)` remains deprecated / experimental |
 
 ## Reference-lane support table
 
