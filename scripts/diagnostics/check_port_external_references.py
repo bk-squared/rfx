@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -116,6 +117,36 @@ def _display(path: Path) -> str:
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+_GIT_TRACKED_CACHE: set[str] | None = None
+
+
+def _git_tracked_paths() -> set[str]:
+    """Repo-relative paths under git version control (T2.5).
+
+    One ``git ls-files`` call, cached. This is the m2 mechanism — version-control
+    membership, NOT ``path.exists()`` — so a gitignored ``.omx`` artifact that is
+    merely present on the author's disk (the coaxial-overclaim root cause, audit
+    #2) is correctly seen as uncommitted.
+    """
+    global _GIT_TRACKED_CACHE
+    if _GIT_TRACKED_CACHE is None:
+        try:
+            r = subprocess.run(
+                ["git", "ls-files"], cwd=REPO_ROOT,
+                capture_output=True, text=True,
+            )
+            _GIT_TRACKED_CACHE = (
+                set(r.stdout.splitlines()) if r.returncode == 0 else set()
+            )
+        except (OSError, FileNotFoundError):
+            _GIT_TRACKED_CACHE = set()
+    return _GIT_TRACKED_CACHE
+
+
+def _is_committed(artifact: str) -> bool:
+    return _display(_repo_path(artifact)) in _git_tracked_paths()
 
 
 def _artifact_check(value: str) -> dict[str, Any]:
@@ -333,7 +364,9 @@ def _broad_e5_envelope_artifact_check(value: str) -> dict[str, Any]:
     return check
 
 
-def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
+def _requirement_result(
+    entry: dict[str, Any], require_committed: bool = False
+) -> dict[str, Any]:
     required = bool(entry.get("required_for_e5", False))
     status = str(entry.get("current_status", ""))
     scope = str(entry.get("required_scope", ""))
@@ -349,22 +382,48 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
     ]
     ad_test_check = _ad_test_check(entry.get("ad_fd_test"))
     ad_gate_ok = bool(ad_test_check["declared"] and ad_test_check["exists"])
+    # T2.5: annotate every artifact with its git-tracked status. Under
+    # require_committed the GATING artifacts (comparison + envelope) must be
+    # version-controlled, not merely present on disk — closing the gitignored-.omx
+    # overclaim hole (audit #2). git_tracked is reported always (transparency).
+    for c in artifact_checks + yaml_checks + comparison_checks + envelope_checks:
+        c["git_tracked"] = _is_committed(str(c["artifact"]))
+
+    def _committed_ok(check: dict[str, Any]) -> bool:
+        return (not require_committed) or bool(check["git_tracked"])
+
     missing_artifacts = [a for a in artifact_checks + yaml_checks if not a["exists"]]
     failed_comparison_artifacts = [
         a for a in comparison_checks if not a["is_passed_e4_comparison"]
     ]
     passed_comparison_artifact_count = sum(
-        1 for a in comparison_checks if a["is_passed_e4_comparison"]
+        1 for a in comparison_checks
+        if a["is_passed_e4_comparison"] and _committed_ok(a)
     )
     passed_broad_e4_comparison_artifact_count = sum(
-        1 for a in comparison_checks if a["is_passed_broad_e4_comparison"]
+        1 for a in comparison_checks
+        if a["is_passed_broad_e4_comparison"] and _committed_ok(a)
     )
     failed_envelope_artifacts = [
         a for a in envelope_checks if not a["is_passed_broad_e5_envelope"]
     ]
     passed_envelope_artifact_count = sum(
-        1 for a in envelope_checks if a["is_passed_broad_e5_envelope"]
+        1 for a in envelope_checks
+        if a["is_passed_broad_e5_envelope"] and _committed_ok(a)
     )
+    # Gating artifacts that pass on CONTENT but are not committed — the precise
+    # overclaim require_committed exists to catch.
+    uncommitted_gating_artifacts = []
+    if require_committed:
+        uncommitted_gating_artifacts = [
+            a["path_checked"]
+            for a in comparison_checks
+            if a["is_passed_e4_comparison"] and not a["git_tracked"]
+        ] + [
+            a["path_checked"]
+            for a in envelope_checks
+            if a["is_passed_broad_e5_envelope"] and not a["git_tracked"]
+        ]
 
     blockers = []
     if required and status != BROAD_E5_PASS_STATUS:
@@ -407,6 +466,13 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
         blockers.append("listed external comparison artifact is missing, invalid, or not passed")
     if failed_envelope_artifacts:
         blockers.append("listed broad E5 envelope artifact is missing, invalid, or not passed")
+    if uncommitted_gating_artifacts:
+        blockers.append(
+            "broad_e5_passed gating artifact(s) pass on content but are NOT "
+            "git-tracked (present on disk only, e.g. gitignored .omx) under "
+            f"--require-committed: {uncommitted_gating_artifacts} — commit them to "
+            "tests/fixtures/ (audit #2, the coaxial-overclaim hole)"
+        )
 
     result_status = (
         "passed"
@@ -420,6 +486,7 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
         and ad_gate_ok
         and not failed_comparison_artifacts
         and not failed_envelope_artifacts
+        and not uncommitted_gating_artifacts
         else "blocked"
     )
     if not required:
@@ -447,6 +514,8 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
         "passed_broad_e5_envelope_artifact_count": passed_envelope_artifact_count,
         "ad_fd_test_check": ad_test_check,
         "ad_gate_ok": ad_gate_ok,
+        "require_committed": require_committed,
+        "uncommitted_gating_artifacts": uncommitted_gating_artifacts,
         "vessl_yaml_count": len(yaml_checks),
         "missing_artifact_count": len(missing_artifacts),
         "failed_comparison_artifact_count": len(failed_comparison_artifacts),
@@ -507,6 +576,7 @@ def _surface_coverage(
 def build_external_reference_audit(
     manifest_path: Path,
     support_matrix_path: Path | None = None,
+    require_committed: bool = False,
 ) -> dict[str, Any]:
     if support_matrix_path is None:
         support_matrix_path = _repo_path(DEFAULT_SUPPORT_MATRIX)
@@ -518,7 +588,10 @@ def build_external_reference_audit(
     yaml_contract: dict[str, Any] | None = None
     if check_yaml_contract:
         yaml_contract = build_execution_manifest(manifest_path)
-    results = [_requirement_result(entry) for entry in manifest.get("requirements", [])]
+    results = [
+        _requirement_result(entry, require_committed=require_committed)
+        for entry in manifest.get("requirements", [])
+    ]
     coverage = _surface_coverage(results, support_matrix_path)
     required_results = [row for row in results if row["required_for_e5"]]
     missing_vessl_yaml = [
@@ -764,12 +837,23 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Exit 2 unless every required port family has broad E5 external/reference coverage.",
     )
+    parser.add_argument(
+        "--require-committed",
+        action="store_true",
+        help=(
+            "T2.5: a broad_e5_passed family's GATING artifacts (comparison + "
+            "envelope) must be git-tracked, not merely present on disk (catches "
+            "gitignored .omx — the coaxial-overclaim hole). On in CI; off for unit "
+            "tests that use tmp_path artifacts."
+        ),
+    )
     args = parser.parse_args(argv)
 
     manifest_path = _repo_path(args.manifest)
     payload = build_external_reference_audit(
         manifest_path,
         _repo_path(args.support_matrix),
+        require_committed=args.require_committed,
     )
     _write_report(payload, _repo_path(args.output_dir))
     print(f"status={payload['status']} incomplete_count={payload['incomplete_count']}")

@@ -28,8 +28,11 @@ def build_family_reference_shard(
     family: str,
     manifest_path: Path,
     support_matrix_path: Path,
+    require_committed: bool = False,
 ) -> dict[str, Any]:
-    audit = build_external_reference_audit(manifest_path, support_matrix_path)
+    audit = build_external_reference_audit(
+        manifest_path, support_matrix_path, require_committed=require_committed
+    )
     rows = {row["family"]: row for row in audit["requirements"]}
     row = rows.get(family)
     if row is None:
@@ -137,12 +140,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Exit 2 unless the selected family is broad-E5 complete.",
     )
+    parser.add_argument(
+        "--require-committed",
+        action="store_true",
+        help=(
+            "T2.5: require the family's gating artifacts to be git-tracked, not "
+            "merely present on disk (catches gitignored .omx). Use on clean-"
+            "checkout CI / VESSL lanes."
+        ),
+    )
     args = parser.parse_args(argv)
 
     payload = build_family_reference_shard(
         args.family,
         _repo_path(args.manifest),
         _repo_path(args.support_matrix),
+        require_committed=args.require_committed,
     )
     _write_report(payload, _repo_path(args.output_dir))
     print(f"status={payload['status']} family={payload['family']}")

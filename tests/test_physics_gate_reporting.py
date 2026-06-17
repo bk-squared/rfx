@@ -2160,6 +2160,111 @@ def test_ad_fd_gate_blocks_broad_e5_without_valid_ad_test(
         assert any("ad_fd_test" in b for b in family["blockers"]), family["blockers"]
 
 
+def test_real_manifest_broad_e5_family_survives_require_committed():
+    """T2.5 'on in CI': the real broad_e5_passed family (waveguide) survives the
+    committed-artifact check — its gating evidence is GENUINELY git-tracked, not
+    riding on gitignored .omx. This gates every PR in the fast suite (which has
+    git). Skips only where git is unavailable (the check degrades to empty-set;
+    e.g. the git-less VESSL image), so it never false-fails there.
+    """
+    if not port_external_reference_check._git_tracked_paths():
+        pytest.skip("git ls-files unavailable; require_committed cannot be verified")
+    audit = port_external_reference_check.build_external_reference_audit(
+        REPO_ROOT / "scripts/diagnostics/port_external_reference_requirements.json",
+        REPO_ROOT / "docs/guides/sparameter_support_matrix.json",
+        require_committed=True,
+    )
+    wg = [r for r in audit["requirements"]
+          if r["family"] == "rectangular_waveguide_port"][0]
+    assert wg["status"] == "passed", wg["blockers"]
+    assert not wg["uncommitted_gating_artifacts"], wg["uncommitted_gating_artifacts"]
+
+
+def test_is_committed_distinguishes_tracked_from_present(tmp_path: Path):
+    """T2.5: _is_committed uses git-tracked membership, not path.exists()."""
+    # A real tracked repo file is committed.
+    assert port_external_reference_check._is_committed(
+        "scripts/diagnostics/port_external_reference_requirements.json"
+    )
+    # A present-on-disk-but-untracked file (the .omx-overclaim shape) is NOT.
+    untracked = tmp_path / "present_but_untracked.json"
+    untracked.write_text("{}", encoding="utf-8")
+    assert untracked.exists()  # path.exists() would have passed it (the old bug)
+    assert not port_external_reference_check._is_committed(str(untracked))
+
+
+def test_require_committed_blocks_uncommitted_gating_artifacts(tmp_path: Path):
+    """T2.5 falsifier: under require_committed, present-but-untracked gating
+    artifacts (gitignored .omx) do NOT count -> broad_e5_passed is blocked.
+
+    Everything else passes (broad-E4 comparison + broad-E5 envelope content +
+    YAML + a real AD test); the artifacts live in tmp_path, so they exist on disk
+    but are not git-tracked — exactly the coaxial-overclaim shape (audit #2).
+    """
+    support_matrix = tmp_path / "sparameter_support_matrix.json"
+    support_matrix.write_text(
+        json.dumps({"port_families": [{"family": "lumped_port",
+                                       "primitive": "add_port(extent=None)",
+                                       "is_port": True, "evidence_level": "E5"}],
+                    "future_port_families": []}),
+        encoding="utf-8",
+    )
+    comparison = tmp_path / "broad_comparison.json"
+    comparison.write_text(
+        json.dumps({"status": "passed", "evidence_level": "E4",
+                    "claim_scope": "broad external S-parameter comparison",
+                    "summary": {"geometry_count": 3, "pair_count": 5,
+                                "passed_pair_count": 5, "failed_pair_count": 0}}),
+        encoding="utf-8",
+    )
+    envelope = tmp_path / "broad_envelope.json"
+    envelope.write_text(
+        json.dumps({"status": "passed", "evidence_level": "E5",
+                    "required_scope": "broad_e5",
+                    "claim_scope": "broad mesh/frequency/geometry envelope",
+                    "max_mag_abs_tol": 0.05,
+                    "envelope_summary": {"case_count": 4, "passed_case_count": 4,
+                                         "dx_values_m": [5e-5, 1e-4],
+                                         "eps_r_values": [2.0, 4.0],
+                                         "geometries": ["slab", "notch"],
+                                         "freq_range_hz": [1.0e10, 1.5e10],
+                                         "max_mag_abs_diff_across_cases": 0.02}}),
+        encoding="utf-8",
+    )
+    yaml_path = tmp_path / "physics_gate_port_external_lumped.yaml"
+    yaml_path.write_text("name: unit\n", encoding="utf-8")
+    manifest = tmp_path / "port_external_reference_requirements.json"
+    manifest.write_text(
+        json.dumps({"requirements": [{
+            "family": "lumped_port", "required_for_e5": True,
+            "required_scope": "broad_e5", "current_status": "broad_e5_passed",
+            "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
+            "missing_evidence": [], "existing_artifacts": [],
+            "existing_vessl_yamls": [str(yaml_path)],
+            "external_comparison_artifacts": [str(comparison)],
+            "broad_e5_envelope_artifacts": [str(envelope)],
+        }]}),
+        encoding="utf-8",
+    )
+
+    # Default (require_committed=False): tmp artifacts exist + content-pass -> passed.
+    default = port_external_reference_check.build_external_reference_audit(
+        manifest, support_matrix
+    )
+    assert default["requirements"][0]["status"] == "passed", (
+        default["requirements"][0]["blockers"]
+    )
+
+    # require_committed=True: tmp artifacts are not git-tracked -> blocked.
+    committed = port_external_reference_check.build_external_reference_audit(
+        manifest, support_matrix, require_committed=True
+    )
+    fam = committed["requirements"][0]
+    assert fam["status"] == "blocked"
+    assert fam["uncommitted_gating_artifacts"], "uncommitted gating artifacts not surfaced"
+    assert any("git-tracked" in b for b in fam["blockers"]), fam["blockers"]
+
+
 def test_broad_envelope_rejected_without_numeric_breadth(tmp_path: Path):
     """Single-case prose-'broad' artifact must be rejected (T1 gameability fix)."""
     # Case 1: single-case artifact — fails case_count < 4.
