@@ -2,7 +2,7 @@
   "version": 1,
   "created_at": "2026-05-09",
   "purpose": "Machine-readable external-reference backlog for broad E5 RF port/S-parameter validation. This is separate from the release slow-shard manifest: it tracks which port families still need external solver/reference evidence, preferably as independent VESSL jobs.",
-  "completion_rule": "Broad all-port E5 requires every required family to have current_status=broad_e5_passed, required_scope=broad_e5, existing reference/YAML paths present, at least one passed E4/E4-enabling external S-parameter comparison artifact, at least one passed broad E4 external S-parameter comparison artifact that is not merely E4-enabling/narrow, and at least one passed broad-E5 mesh/frequency/geometry envelope artifact.",
+  "completion_rule": "Broad all-port E5 requires every required family to have current_status=broad_e5_passed, required_scope=broad_e5, existing reference/YAML paths present, at least one passed E4/E4-enabling external S-parameter comparison artifact, at least one passed broad E4 external S-parameter comparison artifact that is not merely E4-enabling/narrow, and at least one passed broad-E5 mesh/frequency/geometry envelope artifact. Additionally (T2.2), each family must declare a named AD-vs-FD test (ad_fd_test) that exists, is collected, and is NOT xfail/skip-marked — the differentiability moat is wired into the broad_e5_passed verdict (framework audit #6); families whose extractor is numpy/not-traceable (e.g. coaxial) cannot satisfy this and must resolve it before broad_e5_passed.",
   "requirements": [
     {
       "family": "lumped_port",
@@ -31,7 +31,9 @@
         ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/lumped_openems_sweep_sparameter_comparison.json",
         ".omx/physics-gate/vessl-2026-05-10-lumped-openems-parallel-v5/lumped_openems_sweep_aggregate/lumped_openems_sweep_sparameter_comparison.json"
       ],
-      "broad_e5_envelope_artifacts": []
+      "broad_e5_envelope_artifacts": [],
+      "ad_fd_test": null,
+      "ad_fd_test_note": "grad-flow tests exist (test_s11_at_freq, test_minimize_s11_at_freq_physical) but no committed AD-vs-FD CONVERGENCE test yet; required before broad_e5_passed."
     },
     {
       "family": "wire_port",
@@ -59,7 +61,9 @@
       ],
       "broad_e5_envelope_artifacts": [
         ".omx/physics-gate/2026-05-10-m68-wire-openems-broad-envelope/wire_openems_broad_envelope.json"
-      ]
+      ],
+      "ad_fd_test": null,
+      "ad_fd_test_note": "grad-flow smoke only (test_wire_port_sparams_forward::test_forward_wire_port_grad_flows); no AD-vs-FD convergence test yet."
     },
     {
       "family": "microstrip_line_port",
@@ -87,7 +91,9 @@
       "external_comparison_artifacts": [
         ".omx/physics-gate/2026-05-09-m29-msl-openems-generic-comparison/msl_openems_generic_sparameter_comparison.json"
       ],
-      "broad_e5_envelope_artifacts": []
+      "broad_e5_envelope_artifacts": [],
+      "ad_fd_test": "tests/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight",
+      "ad_fd_test_note": "AD-vs-FD converged on the MSL S-matrix; @pytest.mark.gpu (runs on the gpu suite, not CPU CI)."
     },
     {
       "family": "rectangular_waveguide_port",
@@ -112,7 +118,9 @@
         "tests/fixtures/waveguide_broad_e5/waveguide_wr15_vband_broad_e5_envelope.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr340_sband_broad_e5_envelope.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr10_wband_broad_e5_envelope.json"
-      ]
+      ],
+      "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
+      "ad_fd_test_note": "AD-vs-FD consistency on the normalize='flux' S-matrix path (issue #148); CPU, unmarked."
     },
     {
       "family": "coaxial_port",
@@ -152,7 +160,9 @@
       ],
       "broad_e5_envelope_artifacts": [
         ".omx/physics-gate/2026-06-07-coaxial-line-broad-e5-envelope/coaxial_line_broad_e5_envelope.json"
-      ]
+      ],
+      "ad_fd_test": null,
+      "ad_fd_test_note": "extractor is numpy / not-traceable (test_ad_surface_contract::test_coaxial_reflection_extraction_breaks_tape proves it breaks the tape); no AD-vs-FD test BY DESIGN -> the differentiable moat is unavailable and MUST be resolved (e.g. a differentiable reflection path) before broad_e5_passed."
     },
     {
       "family": "floquet_port",
@@ -179,7 +189,9 @@
         "scripts/physics_gate_port_external_floquet.yaml"
       ],
       "external_comparison_artifacts": [],
-      "broad_e5_envelope_artifacts": []
+      "broad_e5_envelope_artifacts": [],
+      "ad_fd_test": null,
+      "ad_fd_test_note": "grad-finite smoke only (test_floquet_s_params_contract::test_compute_floquet_s_params_grad_finite); no AD-vs-FD convergence test yet."
     },
     {
       "family": "generalized_planar_ports",
@@ -204,7 +216,9 @@
         "scripts/physics_gate_port_external_generalized_planar.yaml"
       ],
       "external_comparison_artifacts": [],
-      "broad_e5_envelope_artifacts": []
+      "broad_e5_envelope_artifacts": [],
+      "ad_fd_test": null,
+      "ad_fd_test_note": "planned only; no AD path yet."
     }
   ],
   "next_validation_target_decision": "2026-06-11 (W5.6 backlog decision, recorded NOT started): next port family for external validation = lumped_port (most existing scaffolding: narrow openEMS PEC-box + position-sweep comparisons already in evidence; needs the broad matched/open/short/load external fixture set). wire_port second (blocked_absolute_external_reference, needs an absolute external reference design first). Both are analytic-E5-only effort class."

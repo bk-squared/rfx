@@ -10,6 +10,7 @@ external-solver coverage.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -120,6 +121,108 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _artifact_check(value: str) -> dict[str, Any]:
     path = _repo_path(value)
     return {"artifact": value, "path_checked": _display(path), "exists": path.exists()}
+
+
+_SKIP_XFAIL_MARKERS = {"xfail", "skip", "skipif"}
+
+
+def _decorator_marker_names(node: ast.AST) -> set[str]:
+    """Trailing attribute names of a decorator (``pytest.mark.xfail`` -> {xfail})."""
+    target = node.func if isinstance(node, ast.Call) else node
+    names: set[str] = set()
+    while isinstance(target, ast.Attribute):
+        names.add(target.attr)
+        target = target.value
+    return names
+
+
+def _module_marks_skip_xfail(tree: ast.Module) -> bool:
+    """Detect a module-level ``pytestmark = pytest.mark.{xfail,skip,skipif}``."""
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(t, ast.Name) and t.id == "pytestmark" for t in node.targets
+        ):
+            continue
+        values = node.value.elts if isinstance(node.value, ast.List) else [node.value]
+        for v in values:
+            if _decorator_marker_names(v) & _SKIP_XFAIL_MARKERS:
+                return True
+    return False
+
+
+def _ad_test_check(value: Any) -> dict[str, Any]:
+    """Static AST check of a family's named AD-vs-FD test (T2.2).
+
+    ``value`` is a ``path::testname`` pytest nodeid, or None when the family has
+    no committed AD-vs-FD test. Uses ``ast`` (NOT a naked substring) so it (a)
+    finds the real ``def`` — no comment / ``def test_foo`` ⊂ ``def test_foobar``
+    false positives — and (b) BACKSTOPS the xfail/skip check: a statically
+    xfail/skip/skipif-marked test (on the function or a module ``pytestmark``)
+    fails here too. The AUTHORITATIVE, collection-time proof (catches conditional
+    / parametrize / fixture markers the AST can't see, and dynamic skips it also
+    can't — those remain a documented boundary) lives in
+    ``tests/test_ad_surface_contract.py::test_ad_fd_gate_tests_are_collected_and_not_xfail_skip``.
+    Both gates share this manifest, so they cannot point at different tests, and
+    the static backstop means the release verdict cannot silently diverge from
+    the collection check (reviewer T2.2). Together they wire the differentiability
+    "moat" into the broad-E5 verdict (framework audit finding #6).
+    """
+    check: dict[str, Any] = {
+        "ad_fd_test": value,
+        "declared": bool(value),
+        "exists": False,
+        "found": False,
+        "path_checked": "",
+        "testname": "",
+        "error": "",
+    }
+    if not value:
+        check["error"] = "no ad_fd_test declared"
+        return check
+    nodeid = str(value)
+    if "::" not in nodeid:
+        check["error"] = f"ad_fd_test {nodeid!r} is not a path::testname nodeid"
+        return check
+    path_str, testname = nodeid.split("::", 1)
+    # Strip any parametrization suffix and a class qualifier for the def lookup.
+    testfunc = testname.split("[", 1)[0].split("::")[-1]
+    path = _repo_path(path_str)
+    check["path_checked"] = _display(path)
+    check["testname"] = testname
+    if not path.exists():
+        check["error"] = "ad_fd_test file is missing"
+        return check
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError as exc:
+        check["error"] = f"ad_fd_test file does not parse: {exc}"
+        return check
+    func = next(
+        (
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == testfunc
+        ),
+        None,
+    )
+    if func is None:
+        check["error"] = f"ad_fd_test {testfunc!r} not defined in {path_str}"
+        return check
+    check["found"] = True
+    marked = any(
+        _decorator_marker_names(d) & _SKIP_XFAIL_MARKERS for d in func.decorator_list
+    ) or _module_marks_skip_xfail(tree)
+    if marked:
+        check["error"] = (
+            f"ad_fd_test {testfunc!r} is statically xfail/skip/skipif-marked — "
+            "cannot prove the differentiability moat"
+        )
+        return check
+    check["exists"] = True
+    return check
 
 
 def _comparison_artifact_check(value: str) -> dict[str, Any]:
@@ -244,6 +347,8 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
         _broad_e5_envelope_artifact_check(str(a))
         for a in entry.get("broad_e5_envelope_artifacts", [])
     ]
+    ad_test_check = _ad_test_check(entry.get("ad_fd_test"))
+    ad_gate_ok = bool(ad_test_check["declared"] and ad_test_check["exists"])
     missing_artifacts = [a for a in artifact_checks + yaml_checks if not a["exists"]]
     failed_comparison_artifacts = [
         a for a in comparison_checks if not a["is_passed_e4_comparison"]
@@ -291,6 +396,13 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
             "broad_e5_passed requires at least one passed broad E5 envelope "
             "artifact covering mesh/frequency/geometry scope"
         )
+    if required and status == BROAD_E5_PASS_STATUS and not ad_gate_ok:
+        blockers.append(
+            "broad_e5_passed requires a named AD-vs-FD test (ad_fd_test) that "
+            f"exists and is collected/non-xfail: {ad_test_check['error'] or 'not satisfied'} "
+            "— the differentiability moat must be wired into the broad-E5 claim "
+            "(framework audit #6)"
+        )
     if failed_comparison_artifacts:
         blockers.append("listed external comparison artifact is missing, invalid, or not passed")
     if failed_envelope_artifacts:
@@ -305,6 +417,7 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
         and passed_comparison_artifact_count > 0
         and passed_broad_e4_comparison_artifact_count > 0
         and passed_envelope_artifact_count > 0
+        and ad_gate_ok
         and not failed_comparison_artifacts
         and not failed_envelope_artifacts
         else "blocked"
@@ -332,6 +445,8 @@ def _requirement_result(entry: dict[str, Any]) -> dict[str, Any]:
         ),
         "broad_e5_envelope_artifact_count": len(envelope_checks),
         "passed_broad_e5_envelope_artifact_count": passed_envelope_artifact_count,
+        "ad_fd_test_check": ad_test_check,
+        "ad_gate_ok": ad_gate_ok,
         "vessl_yaml_count": len(yaml_checks),
         "missing_artifact_count": len(missing_artifacts),
         "failed_comparison_artifact_count": len(failed_comparison_artifacts),
