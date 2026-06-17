@@ -14,7 +14,12 @@ Two layers, mirroring ``tests/test_msl_broad_e5_envelope_gates.py``:
    perturbed S-parameters, asserting the magnitude-diff gate fires exactly at
    the threshold (ideal slab passes; a +0.1 |S| perturbation fails).
 
-These are pure-Python contracts (no FDTD).
+These are pure-Python contracts (no FDTD). Because both layers REPLAY frozen
+numbers, a regression in the live ``compute_waveguide_s_matrix`` would not flip
+them red — that gap is closed by the LIVE-physics anchor
+``tests/test_waveguide_broad_e5_live_anchor.py`` (T2.3), which runs the
+production extractor at CI time on non-trivial geometries (PEC-short, empty-guide
+transmission) and checks it against analytic physics.
 """
 from __future__ import annotations
 
