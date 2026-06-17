@@ -282,6 +282,9 @@ def test_aggregate_refuses_required_skip_as_full_claim(tmp_path: Path):
 
 
 def test_msl_openems_magnitude_comparison_metrics_pass_for_close_curves():
+    """Matched thru-line: |S11| is intrinsically small (~0.12), so the S11 channel is
+    NON-discriminating (a degenerate rfx S11 would 'pass' the 0.15 tol). The honest
+    status is transmission-only; S11 is informational, not a gate."""
     np = msl_openems_compare.np
     freqs = np.linspace(3.0e9, 4.5e9, 5)
     ref_s11 = np.full(freqs.shape, 0.12 + 0.01j, dtype=complex)
@@ -300,9 +303,62 @@ def test_msl_openems_magnitude_comparison_metrics_pass_for_close_curves():
         f_hi_hz=4.5e9,
     )
 
-    assert metrics["status"] == "passed"
+    # ref |S11| ~0.12 < 2x tol (0.30) -> S11 channel cannot discriminate -> informational.
+    assert metrics["s11_gate_discriminating"] is False
+    assert metrics["pass_s11_mean_abs_diff_le_0p15"] is None
+    assert metrics["status"] == "passed_transmission_only_s11_nondiscriminating"
     assert metrics["s11_mean_abs_diff"] < 0.15
     assert metrics["s21_mean_abs_diff"] < 0.15
+
+
+def test_msl_openems_comparison_s11_channel_is_not_vacuous():
+    """Validation-honesty lock (2026-06-17): the comparator must NOT report a bare
+    'passed' for a degenerate rfx output on a matched line (the bug the reference-
+    verification found: |S11| tol 0.15 exceeded the reference |S11| ~0.12, so a
+    degenerate rfx S11=0 'passed'). It must flag the S11 channel non-discriminating.
+    A genuinely strong-reflector reference (|S11| >= 2x tol) must still gate on S11."""
+    np = msl_openems_compare.np
+    freqs = np.linspace(3.0e9, 4.5e9, 5)
+    ref_s11 = np.full(freqs.shape, 0.12 + 0.01j, dtype=complex)
+    ref_s21 = np.full(freqs.shape, 0.98 - 0.02j, dtype=complex)
+
+    # Degenerate rfx (zero reflection physics, ideal transmission): must NOT bare-pass.
+    degenerate = msl_openems_compare.compare_magnitudes(
+        freqs, np.zeros(freqs.shape, complex), np.ones(freqs.shape, complex),
+        freqs, ref_s11, ref_s21, f_lo_hz=3.0e9, f_hi_hz=4.5e9,
+    )
+    assert degenerate["status"] != "passed"
+    assert degenerate["s11_gate_discriminating"] is False
+
+    # Strong reflector (ref |S11| = 0.5 >= 2x tol): the S11 channel IS a real gate,
+    # and a mismatched rfx S11 (=0) must FAIL it.
+    strong_ref = np.full(freqs.shape, 0.5 + 0.0j, dtype=complex)
+    strong_s21 = np.full(freqs.shape, 0.86 + 0.0j, dtype=complex)
+    far = msl_openems_compare.compare_magnitudes(
+        freqs, np.zeros(freqs.shape, complex), strong_s21,
+        freqs, strong_ref, strong_s21, f_lo_hz=3.0e9, f_hi_hz=4.5e9,
+    )
+    assert far["s11_gate_discriminating"] is True
+    assert far["pass_s11_mean_abs_diff_le_0p15"] is False
+    assert far["status"] == "failed"
+
+
+def test_msl_openems_comparison_pass_status_maps_to_success_exit_code():
+    """Exit-code regression lock: the transmission-only PASS must map to success.
+
+    The honesty fix added a new success status; an exact ``== "passed"`` exit-code
+    check would turn a GREEN M3 VESSL lane RED on a matched line — the exact
+    harness false-negative the fix must NOT introduce. ``main()`` keys its exit
+    code off ``is_pass_status``.
+    """
+    assert msl_openems_compare.is_pass_status("passed") is True
+    assert (
+        msl_openems_compare.is_pass_status(
+            "passed_transmission_only_s11_nondiscriminating"
+        )
+        is True
+    )
+    assert msl_openems_compare.is_pass_status("failed") is False
 
 
 def test_waveguide_report_parser_captures_cv11_gates_and_refs():

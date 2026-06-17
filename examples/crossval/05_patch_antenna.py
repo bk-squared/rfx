@@ -47,7 +47,12 @@ Three independent measurements of the patch resonance:
      appears as a small local dip rather than a deep -20 dB match.
      Pattern-match `tests/test_crossval_comprehensive.py::TestLumpedPortCavity`.
 
-Primary PASS metric: rfx Harminv vs OpenEMS S11 < 5 %.
+Primary PASS gate: rfx Harminv vs OpenEMS Harminv (resonance frequency) < 20 %
+(`pass_vs_openems`); rfx internal self-consistency < 5 % (`pass_internal`).
+(NOTE: the vs-OpenEMS number is a Harminv-vs-Harminv RESONANCE-FREQUENCY
+agreement, not an S11-vs-S11 magnitude match — the OpenEMS S11 dip itself sits
+~10 % off analytic and is used only as a fallback when the OpenEMS port-V(t)
+Harminv fails. See the "primary metric" print near the end of this script.)
 
 Analytic reference (Balanis, *Antenna Theory*, Ch. 14):
   εr_eff = (εr+1)/2 + (εr-1)/2 · (1 + 12·h/W)^(-1/2)
