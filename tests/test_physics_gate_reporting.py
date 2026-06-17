@@ -2160,6 +2160,40 @@ def test_ad_fd_gate_blocks_broad_e5_without_valid_ad_test(
         assert any("ad_fd_test" in b for b in family["blockers"]), family["blockers"]
 
 
+def test_every_family_declares_target_ceiling_and_usage_rule():
+    """Per-port formalization (2026-06-17): broad-E5 is NOT a universal goal.
+
+    Every E5-required family must declare a physics-set `target_ceiling` from the
+    controlled vocab + a `usage_rule` ("use this port when ..."). This locks the
+    rule that single-cell ports top out at E4 (validated-to-ceiling, not blocked),
+    MSL is matched-regime-only, coax needs a differentiable API, floquet is
+    broadside-only, generalized-planar is unimplemented — so a `blocked` broad_e5
+    verdict is contextualized, not read as failure.
+    """
+    manifest = json.loads(
+        (REPO_ROOT / "scripts/diagnostics/port_external_reference_requirements.json").read_text()
+    )
+    vocab = port_external_reference_check.VALID_TARGET_CEILINGS
+    for e in manifest["requirements"]:
+        fam = e["family"]
+        assert e.get("target_ceiling") in vocab, (
+            f"{fam}: target_ceiling {e.get('target_ceiling')!r} not in {sorted(vocab)}"
+        )
+        assert e.get("usage_rule", "").strip(), f"{fam}: missing usage_rule"
+    # The auditor must surface the formalized fields per family.
+    audit = port_external_reference_check.build_external_reference_audit(
+        REPO_ROOT / "scripts/diagnostics/port_external_reference_requirements.json",
+        REPO_ROOT / "docs/guides/sparameter_support_matrix.json",
+    )
+    for r in audit["requirements"]:
+        assert r["target_ceiling"] in vocab
+        assert r["usage_rule"]
+    by = {e["family"]: e["target_ceiling"] for e in manifest["requirements"]}
+    assert by["rectangular_waveguide_port"] == "broad-E5"
+    assert by["lumped_port"] == "E4-natural-ceiling"
+    assert by["wire_port"] == "E4-natural-ceiling"
+
+
 def test_real_manifest_broad_e5_family_survives_require_committed():
     """T2.5 'on in CI': the real broad_e5_passed family (waveguide) survives the
     committed-artifact check — its gating evidence is GENUINELY git-tracked, not

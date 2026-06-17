@@ -23,6 +23,21 @@ from build_port_external_shard_execution_manifest import build_execution_manifes
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BROAD_E5_PASS_STATUS = "broad_e5_passed"
 DEFAULT_SUPPORT_MATRIX = "docs/guides/sparameter_support_matrix.json"
+
+# Per-port physics-set TARGET ceiling (formalized 2026-06-17). broad-E5 is NOT a
+# universal goal: some ports top out at E4 by their physical nature (single-cell
+# feeds have no transmission-line oracle to sweep an envelope against), so a port
+# meeting its ceiling reads "validated to ceiling", not "blocked from E5". This
+# is descriptive context emitted alongside the broad_e5 verdict — it does NOT
+# change the gate logic.
+VALID_TARGET_CEILINGS = {
+    "broad-E5",                          # full bar reachable (waveguide: achieved)
+    "broad-E5-regime-restricted",        # E5 only in a sub-regime (MSL: matched-only)
+    "broad-E5-needs-differentiable-api", # E5 physics ok, needs a new API (coax)
+    "broad-E5-structural-partial",       # structural ceiling -> sub-case only (floquet broadside)
+    "E4-natural-ceiling",                # E4 IS the physical ceiling (lumped/wire)
+    "needs-implementation",              # no API yet (generalized_planar)
+}
 BROAD_E5_ENVELOPE_BLOCKING_TOKENS = (
     "narrow",
     "enabling",
@@ -527,6 +542,14 @@ def _requirement_result(
         "failed_comparison_artifact_count": len(failed_comparison_artifacts),
         "failed_broad_e5_envelope_artifact_count": len(failed_envelope_artifacts),
         "blockers": blockers,
+        "target_ceiling": str(entry.get("target_ceiling", "")),
+        "usage_rule": str(entry.get("usage_rule", "")),
+        "at_or_below_target_ceiling": (
+            # A family whose physical ceiling is E4 (or needs-impl/structural) is
+            # NOT "failing broad-E5" — broad-E5 is not its goal. This contextualizes
+            # a 'blocked' broad_e5 verdict without changing it.
+            str(entry.get("target_ceiling", "")) != "broad-E5"
+        ),
         "notes": str(entry.get("notes", "")),
     }
 
