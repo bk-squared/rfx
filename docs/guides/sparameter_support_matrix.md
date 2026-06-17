@@ -37,6 +37,27 @@ Hz.
 | `add_tfsf_source(...)` | none | field, flux, NTFF/RCS observables where supported | not a port | plane-wave observables, not port calibration |
 | probes, DFT plane probes, flux monitors | none | field/flux observables | not a port | no port impedance or reference plane |
 
+## Port selection: usage rule & validation ceiling
+
+**`broad-E5` is not a universal goal.** A port's *appropriate* validation level is
+set by its physics, not by a uniform ladder. Single-cell feeds (lumped, wire) are
+not transmission lines, so there is no analytic line oracle to sweep a broad-E5
+envelope against — **E4 is their natural ceiling, and meeting it means "validated
+to ceiling", not "blocked from E5"**. Use each port only where its rule says, and
+read its status against its `target_ceiling` (machine-readable in
+`scripts/diagnostics/port_external_reference_requirements.json`, surfaced by the
+auditor, locked by `tests/test_physics_gate_reporting.py::test_every_family_declares_target_ceiling_and_usage_rule`).
+
+| Port | Use it when… | Target ceiling | Status today |
+|---|---|---|---|
+| `add_waveguide_port` | rectangular waveguide TE/TM, uniform Cartesian lane | **broad-E5** | ✅ broad-E5 achieved |
+| `add_msl_port` | matched / thru-line / notch microstrip (quasi-TEM) | broad-E5-regime-restricted | matched-regime only; strong-reflector \|S11\| has a ~0.16-0.22 staircase-Z0 floor (mesh-conv #183); eigenmode port is a falsified dead-end |
+| `add_coaxial_port` | coax line reflection (forward); **not** in an AD/optimization loop | broad-E5-needs-differentiable-api | physics demonstrated; blocked — evidence uncommitted + numpy extractor fails the AD moat |
+| `add_port(extent=None)` lumped | sub-cell lumped R/L/C/RLC element | **E4-natural-ceiling** | E4 is the ceiling (not a transmission line); validate to E4, do not chase E5 |
+| `add_port(extent=...)` wire | one-cell transverse probe/wire feed (magnitude-only) | **E4-natural-ceiling** | use `add_msl_port` for a real line; E4 is the ceiling |
+| `add_floquet_port` | periodic structure, **broadside (θ=0) only** | broad-E5-structural-partial | off-broadside needs a split-field complex-Bloch rewrite (structural ceiling) |
+| generalized planar (stripline/CPW/launch) | — | needs-implementation | no API yet; would inherit the MSL-class ceiling once built |
+
 ## Lane and validation boundaries
 
 ### Lumped `add_port(..., extent=None)`
