@@ -27,7 +27,7 @@ The following surfaces are real and useful, but should be treated as narrower th
 | distributed execution | scaling lane; check feature combinations before use |
 | Floquet/Bloch | experimental periodic/unit-cell workflow |
 | SBP-SAT subgridding | research/experimental local mesh refinement |
-| coaxial transmission-line reflection | validated only through `compute_coaxial_line_reflection(...)` inside the coax-line envelope; older `compute_coaxial_s_matrix(...)` is deprecated/experimental |
+| coaxial transmission-line reflection | broad-E5 physics demonstrated through `compute_coaxial_line_reflection(...)` inside the coax-line envelope, but the evidence artifacts are not committed, so a clean-checkout audit reports `coaxial_port` BLOCKED; older `compute_coaxial_s_matrix(...)` is deprecated/experimental |
 | generalized planar and other advanced port workflows | planned or under active calibration and validation |
 | inverse-design extensions | available for selected workflows; check examples and limitations |
 
@@ -36,7 +36,7 @@ The following surfaces are real and useful, but should be treated as narrower th
 - `run(compute_s_params=True)` is the full S-matrix API for lumped/wire `add_port(...)` workflows.
 - `compute_msl_s_matrix()` is the microstrip-line S-matrix API.
 - `compute_waveguide_s_matrix()` is the rectangular waveguide S-matrix API.
-- `compute_coaxial_line_reflection(...)` is the current validated coaxial line-reflection method inside its documented envelope; `compute_coaxial_s_matrix(...)` remains deprecated/experimental.
+- `compute_coaxial_line_reflection(...)` is the coaxial line-reflection method; its broad-E5 physics was demonstrated inside its documented envelope, but the evidence artifacts are not committed, so a clean-checkout audit reports `coaxial_port` BLOCKED (do not cite `broad_e5_passed` until artifacts are committed and the auditor returns PASSED); `compute_coaxial_s_matrix(...)` remains deprecated/experimental.
 - Floquet surfaces are experimental and should not be presented as a default S-parameter path.
 
 ## Practical rule
