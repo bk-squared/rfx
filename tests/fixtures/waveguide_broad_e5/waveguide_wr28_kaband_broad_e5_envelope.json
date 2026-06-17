@@ -9,7 +9,7 @@
   "generated_at": "2026-06-15T11:57:32.938887+00:00",
   "max_mag_abs_tol": 0.05,
   "ratio_spread_floor": 0.005,
-  "noise_floor_baseline": 0.0021,
+  "noise_floor_baseline": 0.0006976723670959473,
   "primary_reference": {
     "label": "analytic_airy",
     "truth_key": "airy_slab_closed_form",
@@ -159,5 +159,7 @@
       "rfx_npz": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr28_kaband-flux/rfx-sweep/dx100_slab_er4.npz",
       "status": "passed"
     }
-  ]
+  ],
+  "noise_floor_baseline_role": "DESCRIPTIVE metadata, not a gate input (T2.4 reconciliation; cases[] physics untouched)",
+  "noise_floor_measurement": "tests/fixtures/waveguide_broad_e5/noise_floor_measurement.json"
 }

@@ -18,8 +18,42 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 C0 = 299_792_458.0
 ETA0 = 376.730313668
+
+# Broad-E5 magnitude tolerance — DERIVED FROM THE MEASURED ENVELOPE, not a round
+# number and NOT a (k·dx)² dispersion formula. T2.4 (2026-06-17) fit the 20
+# committed cases to `C·(k·dx)² + floor` and FALSIFIED it (C<0, R²=0.19): the
+# error is dominated by dielectric contrast / slab-interface staircasing, not
+# grid dispersion (see docs/research_notes/20260617_t2.4_dispersion_tolerance_falsified.md).
+# So MAX_TOL is the measured envelope: the worst committed case diff is 0.0414
+# (an eps_r=4 slab at fine mesh); 0.05 = 0.0414 × ~1.2 safety margin. The margin
+# is bounded on BOTH sides by tests/test_waveguide_broad_e5_tolerance_envelope.py
+# (>= worst case so it never fails a validated case; <= worst × 1.5 so it is not
+# slack). Tightening below ~0.05 would fail real eps_r=4 cases — that ceiling is
+# physics, not slack.
 MAX_TOL = 0.05
 RATIO_FLOOR = 0.005
+
+# Irreducible empty-guide |S| floor — a re-derivable MEASUREMENT
+# (scripts/diagnostics/measure_waveguide_noise_floor.py), not a bare constant.
+# NOTE: this is DESCRIPTIVE metadata, NOT a gate input — the only gate is
+# `max_mag_abs_diff <= MAX_TOL`, and the floor (~7e-4) sits far below MAX_TOL
+# (0.05), so it never clamps anything. It documents the extractor's irreducible
+# |S| floor for context, and replaces the old un-derived 0.0021 with a number a
+# reader can re-derive.
+_NOISE_FLOOR_FIXTURE = (
+    REPO / "tests" / "fixtures" / "waveguide_broad_e5" / "noise_floor_measurement.json"
+)
+
+
+def _committed_noise_floor() -> float:
+    """Read the committed empty-guide noise-floor measurement (T2.4).
+
+    Raises rather than falling back to the retired 0.0021 constant — a missing or
+    malformed measurement must surface, not silently resurrect the bare number
+    T2.4 set out to retire.
+    """
+    import json
+    return float(json.loads(_NOISE_FLOOR_FIXTURE.read_text())["noise_floor"])
 
 
 def airy_slab(f, eps_r, L, fc_v):
@@ -154,8 +188,19 @@ def build_envelope(manifest_path: Path, band_token: str, band_label: str):
         "commit_hash": _commit_hash(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "max_mag_abs_tol": MAX_TOL,
+        "max_mag_abs_tol_provenance": (
+            "measured-envelope: worst committed case diff 0.0414 (eps_r=4 slab, "
+            "fine mesh) x ~1.2 margin; (k.dx)^2 dispersion model falsified (T2.4)"
+        ),
         "ratio_spread_floor": RATIO_FLOOR,
-        "noise_floor_baseline": 0.0021,
+        "noise_floor_baseline": _committed_noise_floor(),
+        "noise_floor_baseline_role": (
+            "DESCRIPTIVE metadata, not a gate input — the only gate is "
+            "max_mag_abs_diff <= max_mag_abs_tol; the floor sits far below it"
+        ),
+        "noise_floor_measurement": (
+            "tests/fixtures/waveguide_broad_e5/noise_floor_measurement.json"
+        ),
         "primary_reference": {
             "label": "analytic_airy",
             "truth_key": "airy_slab_closed_form",
