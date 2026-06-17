@@ -144,9 +144,11 @@ def main(argv: list[str] | None = None) -> int:
         "--require-committed",
         action="store_true",
         help=(
-            "T2.5: require the family's gating artifacts to be git-tracked, not "
-            "merely present on disk (catches gitignored .omx). Use on clean-"
-            "checkout CI / VESSL lanes."
+            "T2.5: require the family's gating artifacts to be committed to HEAD, "
+            "not merely present on disk (catches gitignored .omx). REQUIRES git — "
+            "do NOT use on the git-less VESSL run image (git ls-tree returns empty "
+            "there, which fail-closed would block everything). Use in the fast-"
+            "suite / GitHub-Actions CI lanes that have git."
         ),
     )
     args = parser.parse_args(argv)

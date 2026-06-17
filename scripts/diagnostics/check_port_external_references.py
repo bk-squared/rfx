@@ -119,34 +119,42 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-_GIT_TRACKED_CACHE: set[str] | None = None
+_GIT_COMMITTED_CACHE: set[str] | None = None
 
 
-def _git_tracked_paths() -> set[str]:
-    """Repo-relative paths under git version control (T2.5).
+def _reset_git_cache() -> None:
+    """Test hook: clear the committed-path cache (it is process-global)."""
+    global _GIT_COMMITTED_CACHE
+    _GIT_COMMITTED_CACHE = None
 
-    One ``git ls-files`` call, cached. This is the m2 mechanism — version-control
-    membership, NOT ``path.exists()`` — so a gitignored ``.omx`` artifact that is
-    merely present on the author's disk (the coaxial-overclaim root cause, audit
-    #2) is correctly seen as uncommitted.
+
+def _git_committed_paths() -> set[str]:
+    """Repo-relative paths committed to HEAD (T2.5).
+
+    One ``git ls-tree -r HEAD --name-only`` call, cached. Uses HEAD membership —
+    genuinely COMMITTED, not merely ``git ls-files``-staged — and definitely not
+    ``path.exists()``: a gitignored ``.omx`` artifact merely present on the
+    author's disk (the coaxial-overclaim root cause, audit #2) is correctly seen
+    as uncommitted. If git is unavailable the set is empty, which under
+    require_committed BLOCKS everything (fail-closed, the safe direction).
     """
-    global _GIT_TRACKED_CACHE
-    if _GIT_TRACKED_CACHE is None:
+    global _GIT_COMMITTED_CACHE
+    if _GIT_COMMITTED_CACHE is None:
         try:
             r = subprocess.run(
-                ["git", "ls-files"], cwd=REPO_ROOT,
+                ["git", "ls-tree", "-r", "HEAD", "--name-only"], cwd=REPO_ROOT,
                 capture_output=True, text=True,
             )
-            _GIT_TRACKED_CACHE = (
+            _GIT_COMMITTED_CACHE = (
                 set(r.stdout.splitlines()) if r.returncode == 0 else set()
             )
-        except (OSError, FileNotFoundError):
-            _GIT_TRACKED_CACHE = set()
-    return _GIT_TRACKED_CACHE
+        except OSError:
+            _GIT_COMMITTED_CACHE = set()
+    return _GIT_COMMITTED_CACHE
 
 
 def _is_committed(artifact: str) -> bool:
-    return _display(_repo_path(artifact)) in _git_tracked_paths()
+    return _display(_repo_path(artifact)) in _git_committed_paths()
 
 
 def _artifact_check(value: str) -> dict[str, Any]:
@@ -382,37 +390,35 @@ def _requirement_result(
     ]
     ad_test_check = _ad_test_check(entry.get("ad_fd_test"))
     ad_gate_ok = bool(ad_test_check["declared"] and ad_test_check["exists"])
-    # T2.5: annotate every artifact with its git-tracked status. Under
-    # require_committed the GATING artifacts (comparison + envelope) must be
-    # version-controlled, not merely present on disk — closing the gitignored-.omx
-    # overclaim hole (audit #2). git_tracked is reported always (transparency).
+    # T2.5: annotate git-committed status ONLY under require_committed (so the
+    # default path stays a true no-op — no git subprocess). git_tracked is None
+    # when the check was not run.
     for c in artifact_checks + yaml_checks + comparison_checks + envelope_checks:
-        c["git_tracked"] = _is_committed(str(c["artifact"]))
-
-    def _committed_ok(check: dict[str, Any]) -> bool:
-        return (not require_committed) or bool(check["git_tracked"])
+        c["git_tracked"] = _is_committed(str(c["artifact"])) if require_committed else None
 
     missing_artifacts = [a for a in artifact_checks + yaml_checks if not a["exists"]]
     failed_comparison_artifacts = [
         a for a in comparison_checks if not a["is_passed_e4_comparison"]
     ]
+    # Counts are CONTENT-only — a passing-content artifact counts as passing. The
+    # committed requirement is a SEPARATE gate (uncommitted_gating_artifacts +
+    # result_status), so the count-based blockers never contradict the committed
+    # blocker for an artifact that genuinely passes on content (M3).
     passed_comparison_artifact_count = sum(
-        1 for a in comparison_checks
-        if a["is_passed_e4_comparison"] and _committed_ok(a)
+        1 for a in comparison_checks if a["is_passed_e4_comparison"]
     )
     passed_broad_e4_comparison_artifact_count = sum(
-        1 for a in comparison_checks
-        if a["is_passed_broad_e4_comparison"] and _committed_ok(a)
+        1 for a in comparison_checks if a["is_passed_broad_e4_comparison"]
     )
     failed_envelope_artifacts = [
         a for a in envelope_checks if not a["is_passed_broad_e5_envelope"]
     ]
     passed_envelope_artifact_count = sum(
-        1 for a in envelope_checks
-        if a["is_passed_broad_e5_envelope"] and _committed_ok(a)
+        1 for a in envelope_checks if a["is_passed_broad_e5_envelope"]
     )
-    # Gating artifacts that pass on CONTENT but are not committed — the precise
-    # overclaim require_committed exists to catch.
+    # Gating artifacts that pass on CONTENT but are not committed to HEAD — the
+    # precise overclaim require_committed exists to catch (present-but-untracked,
+    # which path.exists() missed; audit #2).
     uncommitted_gating_artifacts = []
     if require_committed:
         uncommitted_gating_artifacts = [
@@ -469,7 +475,7 @@ def _requirement_result(
     if uncommitted_gating_artifacts:
         blockers.append(
             "broad_e5_passed gating artifact(s) pass on content but are NOT "
-            "git-tracked (present on disk only, e.g. gitignored .omx) under "
+            "committed to HEAD (present on disk only, e.g. gitignored .omx) under "
             f"--require-committed: {uncommitted_gating_artifacts} — commit them to "
             "tests/fixtures/ (audit #2, the coaxial-overclaim hole)"
         )
@@ -842,9 +848,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "T2.5: a broad_e5_passed family's GATING artifacts (comparison + "
-            "envelope) must be git-tracked, not merely present on disk (catches "
-            "gitignored .omx — the coaxial-overclaim hole). On in CI; off for unit "
-            "tests that use tmp_path artifacts."
+            "envelope) must be committed to HEAD, not merely present on disk "
+            "(catches gitignored .omx — the coaxial-overclaim hole). REQUIRES git "
+            "(fail-closed if absent); use in git-having CI, off for unit tests "
+            "that use tmp_path artifacts."
         ),
     )
     args = parser.parse_args(argv)

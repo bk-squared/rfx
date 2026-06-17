@@ -2167,8 +2167,8 @@ def test_real_manifest_broad_e5_family_survives_require_committed():
     git). Skips only where git is unavailable (the check degrades to empty-set;
     e.g. the git-less VESSL image), so it never false-fails there.
     """
-    if not port_external_reference_check._git_tracked_paths():
-        pytest.skip("git ls-files unavailable; require_committed cannot be verified")
+    if not port_external_reference_check._git_committed_paths():
+        pytest.skip("git unavailable; require_committed cannot be verified")
     audit = port_external_reference_check.build_external_reference_audit(
         REPO_ROOT / "scripts/diagnostics/port_external_reference_requirements.json",
         REPO_ROOT / "docs/guides/sparameter_support_matrix.json",
@@ -2247,7 +2247,12 @@ def test_require_committed_blocks_uncommitted_gating_artifacts(tmp_path: Path):
         encoding="utf-8",
     )
 
-    # Default (require_committed=False): tmp artifacts exist + content-pass -> passed.
+    # This is the EXACT audit-#2 shape: the gating artifacts are PRESENT on disk
+    # (so the old path.exists() would pass them) but NOT committed to HEAD.
+    assert comparison.exists() and envelope.exists()
+
+    # Default (require_committed=False): present + content-pass -> passed. This is
+    # precisely the overclaim the old path.exists()-based check let through.
     default = port_external_reference_check.build_external_reference_audit(
         manifest, support_matrix
     )
@@ -2255,14 +2260,21 @@ def test_require_committed_blocks_uncommitted_gating_artifacts(tmp_path: Path):
         default["requirements"][0]["blockers"]
     )
 
-    # require_committed=True: tmp artifacts are not git-tracked -> blocked.
+    # require_committed=True: present-but-uncommitted -> blocked, with the gating
+    # artifacts surfaced as uncommitted and marked git_tracked=False (the unique
+    # present-but-untracked path, exercised here in CI — not just the missing-file
+    # path that a clean checkout would hit).
     committed = port_external_reference_check.build_external_reference_audit(
         manifest, support_matrix, require_committed=True
     )
     fam = committed["requirements"][0]
     assert fam["status"] == "blocked"
     assert fam["uncommitted_gating_artifacts"], "uncommitted gating artifacts not surfaced"
-    assert any("git-tracked" in b for b in fam["blockers"]), fam["blockers"]
+    assert any("committed to HEAD" in b for b in fam["blockers"]), fam["blockers"]
+    assert all(
+        c["git_tracked"] is False
+        for c in fam["broad_e5_envelope_artifact_checks"]
+    ), "present-but-untracked envelope artifacts not flagged git_tracked=False"
 
 
 def test_broad_envelope_rejected_without_numeric_breadth(tmp_path: Path):
