@@ -66,14 +66,18 @@ def main():
     payload = {
         "schema": "waveguide_broad_e5_noise_floor",
         "claim": "irreducible |S| magnitude floor on a matched empty guide "
-                 "(analytic |S11|=0, |S21|=1), normalize='flux'",
+                 "(analytic |S11|=0, |S21|=1), normalize='flux'. The floor is the "
+                 "|S21| transmission residual; |S11| is STRUCTURALLY 0 (the flux "
+                 "extractor clamps |S_ii| to 0 when the reflected-power ratio <= 0 "
+                 "on a matched guide), so it is not an independent measured term.",
         "geometry": {"domain_m": list(DOMAIN), "fc_te10_hz": 3.75e9,
                      "band_hz": list(BAND_HZ), "n_freqs": N_FREQS},
         "cases": cases,
         "noise_floor": noise_floor,
         "note": "Replaces the bare noise_floor_baseline constant with a "
-                "clean-checkout-verifiable measurement (T2.4). NOT a fitted "
-                "tolerance — a measured extractor property on a known-exact case.",
+                "re-derivable measurement (re-run this script). NOT a fitted "
+                "tolerance and NOT a gate input (descriptive metadata) — a "
+                "measured extractor property on a known-exact case.",
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, indent=2) + "\n")

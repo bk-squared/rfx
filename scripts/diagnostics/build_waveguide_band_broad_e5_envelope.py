@@ -33,20 +33,27 @@ ETA0 = 376.730313668
 MAX_TOL = 0.05
 RATIO_FLOOR = 0.005
 
-# Irreducible empty-guide |S| floor — a clean-checkout-verifiable MEASUREMENT
+# Irreducible empty-guide |S| floor — a re-derivable MEASUREMENT
 # (scripts/diagnostics/measure_waveguide_noise_floor.py), not a bare constant.
+# NOTE: this is DESCRIPTIVE metadata, NOT a gate input — the only gate is
+# `max_mag_abs_diff <= MAX_TOL`, and the floor (~7e-4) sits far below MAX_TOL
+# (0.05), so it never clamps anything. It documents the extractor's irreducible
+# |S| floor for context, and replaces the old un-derived 0.0021 with a number a
+# reader can re-derive.
 _NOISE_FLOOR_FIXTURE = (
     REPO / "tests" / "fixtures" / "waveguide_broad_e5" / "noise_floor_measurement.json"
 )
 
 
-def _committed_noise_floor(default: float = 0.0021) -> float:
-    """Read the committed empty-guide noise-floor measurement (T2.4)."""
-    try:
-        import json
-        return float(json.loads(_NOISE_FLOOR_FIXTURE.read_text())["noise_floor"])
-    except (OSError, KeyError, ValueError):
-        return default
+def _committed_noise_floor() -> float:
+    """Read the committed empty-guide noise-floor measurement (T2.4).
+
+    Raises rather than falling back to the retired 0.0021 constant — a missing or
+    malformed measurement must surface, not silently resurrect the bare number
+    T2.4 set out to retire.
+    """
+    import json
+    return float(json.loads(_NOISE_FLOOR_FIXTURE.read_text())["noise_floor"])
 
 
 def airy_slab(f, eps_r, L, fc_v):
@@ -187,6 +194,10 @@ def build_envelope(manifest_path: Path, band_token: str, band_label: str):
         ),
         "ratio_spread_floor": RATIO_FLOOR,
         "noise_floor_baseline": _committed_noise_floor(),
+        "noise_floor_baseline_role": (
+            "DESCRIPTIVE metadata, not a gate input — the only gate is "
+            "max_mag_abs_diff <= max_mag_abs_tol; the floor sits far below it"
+        ),
         "noise_floor_measurement": (
             "tests/fixtures/waveguide_broad_e5/noise_floor_measurement.json"
         ),
