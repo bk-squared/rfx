@@ -26,6 +26,8 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import jax
@@ -37,6 +39,7 @@ import rfx
 from rfx import Simulation
 
 MATRIX_PATH = Path("docs/guides/sparameter_support_matrix.json")
+MANIFEST_PATH = Path("scripts/diagnostics/port_external_reference_requirements.json")
 
 GRAD_SAFE = "grad-safe"
 NOT_TRACEABLE = "not-traceable"
@@ -205,6 +208,74 @@ def test_coaxial_reflection_extraction_breaks_tape():
     )
     with pytest.raises(jax.errors.TracerArrayConversionError):
         jax.grad(objective)(jnp.asarray(0.7))
+
+
+def _collect_nodeids(paths, marker_filter=None):
+    """COLLECTION-TIME nodeid set for the given test files (T2.2).
+
+    Uses a child ``pytest --collect-only`` (NOT a regex/AST scrape of the
+    source — m1) and clears the repo's default ``addopts`` (which deselects
+    ``gpu``/``slow``) so a gpu-marked AD test is still collected; only the
+    explicit ``marker_filter`` is applied. With ``marker_filter='not (xfail or
+    skip or skipif)'`` an xfail/skip/skipif-marked test is dropped, so comparing
+    the two sets reveals "exists but cannot pass".
+    """
+    args = [sys.executable, "-m", "pytest", "--collect-only", "-q",
+            "-o", "addopts=", "-p", "no:cacheprovider"]
+    if marker_filter:
+        args += ["-m", marker_filter]
+    args += list(paths)
+    proc = subprocess.run(args, capture_output=True, text=True, cwd=Path.cwd())
+    nodeids = set()
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if "::" in line and not line.startswith(("=", "<", "warning")):
+            nodeids.add(line)
+    return nodeids, proc
+
+
+def _nodeid_present(nodeid, collected):
+    return nodeid in collected or any(
+        c == nodeid or c.startswith(nodeid + "[") for c in collected
+    )
+
+
+def test_ad_fd_gate_tests_are_collected_and_not_xfail_skip():
+    """T2.2: every declared `ad_fd_test` must be COLLECTED and NOT xfail/skip.
+
+    The auditor (`check_port_external_references.py`) statically requires a
+    declared+existing `ad_fd_test` for broad_e5_passed; existence is not enough
+    (the framework audit's gameability lesson). This test is the dynamic half:
+    a declared AD-vs-FD test that is xfail/skip-marked CANNOT satisfy the moat,
+    so it must be collected under `not (xfail or skip or skipif)`. gpu-marked
+    tests pass (they run on the gpu lane, not xfail/skip).
+    """
+    manifest = json.loads(MANIFEST_PATH.read_text())
+    declared = [
+        (e["family"], e["ad_fd_test"])
+        for e in manifest["requirements"]
+        if e.get("ad_fd_test")
+    ]
+    assert declared, "no family declares an ad_fd_test — manifest regression"
+
+    paths = sorted({nodeid.split("::", 1)[0] for _, nodeid in declared})
+    all_collected, proc_all = _collect_nodeids(paths)
+    assert all_collected, (
+        "pytest --collect-only returned no nodeids for the AD-vs-FD test files; "
+        f"stderr:\n{proc_all.stderr[-2000:]}"
+    )
+    passable, _ = _collect_nodeids(paths, marker_filter="not (xfail or skip or skipif)")
+
+    for family, nodeid in declared:
+        assert _nodeid_present(nodeid, all_collected), (
+            f"{family}: ad_fd_test {nodeid} is not collected (typo / removed / "
+            f"renamed). Update the manifest or restore the test."
+        )
+        assert _nodeid_present(nodeid, passable), (
+            f"{family}: ad_fd_test {nodeid} is xfail/skip/skipif-marked, so it "
+            f"cannot prove the differentiability moat. An AD-vs-FD gate must be a "
+            f"test expected to PASS (gpu-marked is fine)."
+        )
 
 
 def test_support_matrix_has_ad_traceable_column():

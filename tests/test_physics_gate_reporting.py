@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -852,6 +853,7 @@ def test_port_external_reference_audit_requires_passed_comparison_for_broad_e5(
         "required_for_e5": True,
         "required_scope": "broad_e5",
         "current_status": "broad_e5_passed",
+        "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
         "missing_evidence": [],
         "existing_artifacts": [],
         "existing_vessl_yamls": [],
@@ -1039,6 +1041,7 @@ def test_port_external_reference_shard_requires_comparison_and_envelope(
         "required_for_e5": True,
         "required_scope": "broad_e5",
         "current_status": "broad_e5_passed",
+        "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
         "missing_evidence": [],
         "existing_artifacts": [],
         "existing_vessl_yamls": [str(yaml_path)],
@@ -1897,6 +1900,7 @@ def test_rf_infra_e5_goal_audit_requires_external_manifest_envelope(
         "required_for_e5": True,
         "required_scope": "broad_e5",
         "current_status": "broad_e5_passed",
+        "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
         "missing_evidence": [],
         "existing_artifacts": [],
         "existing_vessl_yamls": [str(yaml_path)],
@@ -2023,6 +2027,7 @@ def test_rf_infra_e5_goal_audit_rejects_failed_json_evidence_artifact(
                         "required_for_e5": True,
                         "required_scope": "broad_e5",
                         "current_status": "broad_e5_passed",
+                        "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
                         "missing_evidence": [],
                         "existing_artifacts": [],
                         "existing_vessl_yamls": [str(yaml_path)],
@@ -2043,6 +2048,116 @@ def test_rf_infra_e5_goal_audit_rejects_failed_json_evidence_artifact(
     assert family["status"] == "partial"
     assert "status=passed" in "; ".join(family["blockers"])
     assert family["artifact_checks"][0]["reported_status"] == "failed"
+
+
+@pytest.mark.parametrize(
+    "ad_fd_test,expect_passed",
+    [
+        # A real, existing, non-xfail AD-vs-FD test -> the AD gate is satisfied.
+        ("tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent", True),
+        # No AD test declared -> the differentiability moat is absent -> blocked.
+        (None, False),
+        # Declared but the file/test does not exist -> dangling pointer -> blocked.
+        ("tests/test_does_not_exist.py::test_nope", False),
+    ],
+)
+def test_ad_fd_gate_blocks_broad_e5_without_valid_ad_test(
+    tmp_path: Path, ad_fd_test, expect_passed
+):
+    """T2.2 falsifier: broad_e5_passed requires a valid named AD-vs-FD test.
+
+    Everything else (broad E4 comparison + broad E5 envelope + YAML) passes; the
+    ONLY differentiator is `ad_fd_test`. Removing/dangling it must flip the
+    family GREEN->blocked — wiring the differentiability moat into the verdict
+    (framework audit #6). The companion collection-time check (a declared test
+    that is xfail/skip cannot satisfy the gate) lives in
+    tests/test_ad_surface_contract.py::test_ad_fd_gate_tests_are_collected_and_not_xfail_skip.
+    """
+    support_matrix = tmp_path / "sparameter_support_matrix.json"
+    support_matrix.write_text(
+        json.dumps(
+            {
+                "port_families": [
+                    {
+                        "family": "lumped_port",
+                        "primitive": "add_port(extent=None)",
+                        "is_port": True,
+                        "evidence_level": "E5",
+                    }
+                ],
+                "future_port_families": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    comparison = tmp_path / "broad_comparison.json"
+    comparison.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "evidence_level": "E4",
+                "claim_scope": "broad external S-parameter comparison",
+                "summary": {
+                    "geometry_count": 3,
+                    "pair_count": 5,
+                    "passed_pair_count": 5,
+                    "failed_pair_count": 0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    envelope = tmp_path / "broad_envelope.json"
+    envelope.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "evidence_level": "E5",
+                "required_scope": "broad_e5",
+                "claim_scope": "broad mesh/frequency/geometry envelope",
+                "max_mag_abs_tol": 0.05,
+                "envelope_summary": {
+                    "case_count": 4,
+                    "passed_case_count": 4,
+                    "dx_values_m": [5e-5, 1e-4],
+                    "eps_r_values": [2.0, 4.0],
+                    "geometries": ["slab", "notch"],
+                    "freq_range_hz": [1.0e10, 1.5e10],
+                    "max_mag_abs_diff_across_cases": 0.02,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    yaml_path = tmp_path / "physics_gate_port_external_lumped.yaml"
+    yaml_path.write_text("name: unit\n", encoding="utf-8")
+    entry = {
+        "family": "lumped_port",
+        "required_for_e5": True,
+        "required_scope": "broad_e5",
+        "current_status": "broad_e5_passed",
+        "missing_evidence": [],
+        "existing_artifacts": [],
+        "existing_vessl_yamls": [str(yaml_path)],
+        "external_comparison_artifacts": [str(comparison)],
+        "broad_e5_envelope_artifacts": [str(envelope)],
+    }
+    if ad_fd_test is not None:
+        entry["ad_fd_test"] = ad_fd_test
+    manifest = tmp_path / "port_external_reference_requirements.json"
+    manifest.write_text(json.dumps({"requirements": [entry]}), encoding="utf-8")
+
+    audit = port_external_reference_check.build_external_reference_audit(
+        manifest, support_matrix
+    )
+    family = audit["requirements"][0]
+    if expect_passed:
+        assert family["status"] == "passed", family["blockers"]
+        assert family["ad_gate_ok"] is True
+    else:
+        assert family["status"] == "blocked"
+        assert family["ad_gate_ok"] is False
+        assert any("ad_fd_test" in b for b in family["blockers"]), family["blockers"]
 
 
 def test_broad_envelope_rejected_without_numeric_breadth(tmp_path: Path):
