@@ -21,8 +21,10 @@ regression turns it red. Per the T2.3 design + review:
   secondary S21 witness + passivity check, NOT as the S11 regression witness.
 - boundary is CPML on both: ``run_until_decay`` / flux convergence assume an
   absorbing boundary (#169); the test asserts the CPML boundary explicitly.
-- falsifier: a perturbed live S-matrix must breach the gate — proving the anchor
-  catches what the frozen replay cannot.
+- discrimination is STRUCTURAL: these tests run the production extractor, so a
+  real regression flips them red; the frozen replay reads a fixed JSON answer key
+  and cannot. The PEC-short test also asserts the gate margin is tight (healthy
+  values sit ~1% above the 0.99 floor), so the gate is not slack.
 - R5: full per-frequency dump on every run.
 """
 
@@ -84,7 +86,10 @@ def _s_matrix(sim, *, normalize, num_periods=40):
 
 
 def _assert_cpml(sim):
-    # m3: the flux / decay convergence assumes an absorbing boundary.
+    # Cheap constructor guard (echoes the boundary kwarg). The REAL absorbing-
+    # boundary witness (m3 / #169) is downstream: the empty-guide |S11|≈0 in
+    # test_live_empty_guide_s21_anchor — a non-absorbing boundary could not give
+    # a matched-load reflection near zero.
     assert sim._boundary == "cpml", (
         f"live anchor requires a CPML (absorbing) boundary, got {sim._boundary!r}"
     )
@@ -118,7 +123,17 @@ def test_live_pec_short_s11_anchor():
         f"LIVE PEC-short min|S11|={s11.min():.4f} < 0.99 — compute_waveguide_s_matrix "
         f"regression (the frozen broad-E5 replay would NOT catch this)"
     )
+    # 1.03 matches the battery's validated near-cutoff ceiling (the 5 GHz bin at
+    # f/fc=1.33 carries a small over-unity discrete-Yee Z_TE residual).
     assert s11.max() < 1.03, f"LIVE PEC-short max|S11|={s11.max():.4f} non-passive"
+    # Gate-tightness witness (non-vacuous): the live healthy values sit close to
+    # the 0.99 floor, so the gate catches a regression of ~1%, not a slack one.
+    # This is what makes the LIVE anchor discriminating where the frozen replay
+    # (a fixed JSON answer key, blind to the live extractor) is not.
+    assert s11.min() - 0.99 < 0.02, (
+        f"PEC-short gate is slack: healthy min|S11|={s11.min():.4f} is >0.02 above "
+        f"the 0.99 floor, so a real regression could hide under it"
+    )
 
 
 def test_live_empty_guide_s21_anchor():
@@ -138,31 +153,21 @@ def test_live_empty_guide_s21_anchor():
     power = s11**2 + s21**2
     print(f"\n[live empty] |S21|={np.array2string(s21, precision=4)}  (ideal 1)")
     print(f"[live empty] |S11|={np.array2string(s11, precision=4)}  passivity={np.array2string(power, precision=4)}")
-    assert s21.min() >= 0.9, (
-        f"LIVE empty-guide min|S21|={s21.min():.4f} < 0.9 — transmission "
+    # Tight transmission witness (measured ~0.999; the battery's matched-load
+    # gates are ratcheted to their values, so this is too — 0.98 keeps ~2%
+    # cross-machine float margin, far tighter than the prior slack 0.9).
+    assert s21.min() >= 0.98, (
+        f"LIVE empty-guide min|S21|={s21.min():.4f} < 0.98 — transmission "
         f"extraction regression in compute_waveguide_s_matrix"
+    )
+    # Absorbing-boundary witness (m3 / #169): a matched empty guide reflects ~0
+    # ONLY because the boundary is genuinely absorbing — this is the real
+    # downstream CPML check (vs the constructor-echo in _assert_cpml).
+    assert s11.max() < 0.05, (
+        f"LIVE empty-guide max|S11|={s11.max():.4f} >= 0.05 — boundary is not "
+        f"absorbing as expected (or matched-load extraction regressed)"
     )
     assert power.max() <= 1.05, (
         f"LIVE empty-guide max(|S11|²+|S21|²)={power.max():.4f} > 1.05 — "
         f"non-passive (energy-injection) extractor bug"
-    )
-
-
-def test_live_anchor_catches_extractor_perturbation():
-    """Falsifier: the live anchor flips red under an extractor regression.
-
-    Runs PEC-short live, then perturbs the live |S11| by −10 % (a stand-in for a
-    compute_waveguide_s_matrix regression) and asserts the gate predicate fails.
-    This is the property the FROZEN replay lacks: it would keep passing against
-    its committed answer key. Lightweight (no second FDTD run).
-    """
-    freqs = np.linspace(*BAND_HZ, N_FREQS)
-    sim = _build_sim(freqs, pec_short_x=0.085)
-    s, _, idx = _s_matrix(sim, normalize=False)
-    s11 = np.abs(s[idx["left"], idx["left"], :])
-    assert s11.min() >= 0.99  # healthy live baseline
-    perturbed = s11 * 0.90  # simulate a 10% extractor regression
-    assert perturbed.min() < 0.99, (
-        "a −10 % extractor regression did not breach the 0.99 gate — the live "
-        "anchor would be too loose to catch a real regression"
     )
