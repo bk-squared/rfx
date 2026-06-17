@@ -2188,10 +2188,24 @@ def test_every_family_declares_target_ceiling_and_usage_rule():
     for r in audit["requirements"]:
         assert r["target_ceiling"] in vocab
         assert r["usage_rule"]
+        # broad_e5_is_the_target_ceiling is a PURE LABEL restatement, not an
+        # achieved-vs-ceiling check: it must equal (ceiling == "broad-E5") and
+        # never read evidence/status. Locks the 2026-06-17 rename away from the
+        # earlier misnamed `at_or_below_target_ceiling` (which a reader could
+        # mistake for a real "validated to its ceiling" signal).
+        assert r["broad_e5_is_the_target_ceiling"] == (
+            r["target_ceiling"] == "broad-E5"
+        ), f"{r['family']}: broad_e5_is_the_target_ceiling must restate the label only"
     by = {e["family"]: e["target_ceiling"] for e in manifest["requirements"]}
     assert by["rectangular_waveguide_port"] == "broad-E5"
     assert by["lumped_port"] == "E4-natural-ceiling"
     assert by["wire_port"] == "E4-natural-ceiling"
+    # Concrete value witnesses: only the broad-E5-target family reads True.
+    flag = {r["family"]: r["broad_e5_is_the_target_ceiling"] for r in audit["requirements"]}
+    assert flag["rectangular_waveguide_port"] is True
+    assert flag["lumped_port"] is False
+    assert flag["wire_port"] is False
+    assert flag["coaxial_port"] is False
 
 
 def test_real_manifest_broad_e5_family_survives_require_committed():

@@ -51,7 +51,7 @@ auditor, locked by `tests/test_physics_gate_reporting.py::test_every_family_decl
 | Port | Use it when… | Target ceiling | Status today |
 |---|---|---|---|
 | `add_waveguide_port` | rectangular waveguide TE/TM, uniform Cartesian lane | **broad-E5** | ✅ broad-E5 achieved |
-| `add_msl_port` | matched / thru-line / notch microstrip (quasi-TEM) | broad-E5-regime-restricted | matched-regime only; strong-reflector \|S11\| has a ~0.16 staircase-Z0 floor; eigenmode port is a falsified dead-end |
+| `add_msl_port` | matched / thru-line / notch microstrip (quasi-TEM) | broad-E5-regime-restricted | matched-regime only; strong-reflector \|S11\| has a ~0.16-0.22 staircase-Z0 floor (mesh-conv #183); eigenmode port is a falsified dead-end |
 | `add_coaxial_port` | coax line reflection (forward); **not** in an AD/optimization loop | broad-E5-needs-differentiable-api | physics demonstrated; blocked — evidence uncommitted + numpy extractor fails the AD moat |
 | `add_port(extent=None)` lumped | sub-cell lumped R/L/C/RLC element | **E4-natural-ceiling** | E4 is the ceiling (not a transmission line); validate to E4, do not chase E5 |
 | `add_port(extent=...)` wire | one-cell transverse probe/wire feed (magnitude-only) | **E4-natural-ceiling** | use `add_msl_port` for a real line; E4 is the ceiling |

@@ -99,7 +99,7 @@
       "ad_fd_test": "tests/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight",
       "ad_fd_test_note": "AD-vs-FD converged on the MSL S-matrix; @pytest.mark.gpu (runs on the gpu suite, not CPU CI).",
       "target_ceiling": "broad-E5-regime-restricted",
-      "usage_rule": "Matched / thru-line / notch-filter microstrip (quasi-TEM, Hammerstad-Jensen oracle). broad-E5 reachable in the MATCHED regime only; strong-reflector |S11| has a ~0.16 Yee-staircase-Z0 floor and the eigenmode port is a falsified dead-end (do not pursue)."
+      "usage_rule": "Matched / thru-line / notch-filter microstrip (quasi-TEM, Hammerstad-Jensen oracle). broad-E5 reachable in the MATCHED regime only; strong-reflector |S11| has a ~0.16-0.22 Yee-staircase-Z0 floor (mesh-conv #183; the earlier 0.118 was a danger-zone artifact) and the eigenmode port is a falsified dead-end (do not pursue)."
     },
     {
       "family": "rectangular_waveguide_port",

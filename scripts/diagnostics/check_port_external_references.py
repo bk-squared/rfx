@@ -29,7 +29,10 @@ DEFAULT_SUPPORT_MATRIX = "docs/guides/sparameter_support_matrix.json"
 # feeds have no transmission-line oracle to sweep an envelope against), so a port
 # meeting its ceiling reads "validated to ceiling", not "blocked from E5". This
 # is descriptive context emitted alongside the broad_e5 verdict — it does NOT
-# change the gate logic.
+# change the gate logic. The vocab is ENFORCED by the contract test
+# (test_physics_gate_reporting.py::test_every_family_declares_target_ceiling_and_usage_rule),
+# not by this auditor — the emit path passes an unknown ceiling string through
+# unchallenged (it is descriptive, never a gate input).
 VALID_TARGET_CEILINGS = {
     "broad-E5",                          # full bar reachable (waveguide: achieved)
     "broad-E5-regime-restricted",        # E5 only in a sub-regime (MSL: matched-only)
@@ -544,11 +547,16 @@ def _requirement_result(
         "blockers": blockers,
         "target_ceiling": str(entry.get("target_ceiling", "")),
         "usage_rule": str(entry.get("usage_rule", "")),
-        "at_or_below_target_ceiling": (
-            # A family whose physical ceiling is E4 (or needs-impl/structural) is
-            # NOT "failing broad-E5" — broad-E5 is not its goal. This contextualizes
-            # a 'blocked' broad_e5 verdict without changing it.
-            str(entry.get("target_ceiling", "")) != "broad-E5"
+        "broad_e5_is_the_target_ceiling": (
+            # Pure restatement of the declared target_ceiling LABEL — NOT an
+            # achieved-vs-ceiling check (it reads no evidence/status field). It
+            # exists only to contextualize the broad_e5 verdict: when this is
+            # False, the family's physical ceiling is below full broad-E5 (E4,
+            # structural-partial, needs-impl, regime-restricted), so a 'blocked'
+            # broad_e5 verdict is by-design ("validated to ceiling"), not a
+            # failure. Whether the family actually MEETS its ceiling is a
+            # separate question this field does not answer.
+            str(entry.get("target_ceiling", "")) == "broad-E5"
         ),
         "notes": str(entry.get("notes", "")),
     }
