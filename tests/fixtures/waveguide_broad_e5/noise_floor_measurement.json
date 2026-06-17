@@ -1,0 +1,33 @@
+{
+  "schema": "waveguide_broad_e5_noise_floor",
+  "claim": "irreducible |S| magnitude floor on a matched empty guide (analytic |S11|=0, |S21|=1), normalize='flux'",
+  "geometry": {
+    "domain_m": [
+      0.12,
+      0.04,
+      0.02
+    ],
+    "fc_te10_hz": 3750000000.0,
+    "band_hz": [
+      4500000000.0,
+      6500000000.0
+    ],
+    "n_freqs": 8
+  },
+  "cases": [
+    {
+      "dx_m": 0.0015,
+      "max_s11_residual": 0.0,
+      "max_s21_residual": 0.0005137920379638672,
+      "noise_floor": 0.0005137920379638672
+    },
+    {
+      "dx_m": 0.002,
+      "max_s11_residual": 0.0,
+      "max_s21_residual": 0.0006976723670959473,
+      "noise_floor": 0.0006976723670959473
+    }
+  ],
+  "noise_floor": 0.0006976723670959473,
+  "note": "Replaces the bare noise_floor_baseline constant with a clean-checkout-verifiable measurement (T2.4). NOT a fitted tolerance \u2014 a measured extractor property on a known-exact case."
+}
