@@ -5,6 +5,15 @@ This is an M3 external-reference smoke check, not a claims-bearing MSL-port
 promotion.  It uses a stored openEMS artifact generated outside rfx and reruns
 rfx on the same core microstrip dimensions, then compares S11/S21 magnitudes in
 the 3.0--4.5 GHz quasi-TEM gate window.
+
+Validation-honesty note: on a MATCHED thru-line |S11| is intrinsically small
+(reference mean ~0.12), comparable to the comparison tolerance (0.15), so the
+S11 channel cannot discriminate rfx physics from a constant (a degenerate
+``S11==0`` would "pass" it).  The S11 channel is therefore reported as
+INFORMATIONAL (``s11_gate_discriminating=False``) and does NOT gate; the status
+then reads ``passed_transmission_only_s11_nondiscriminating`` so a green result
+is never mis-read as an S11 validation.  Transmission (|S21|~1) is the real
+discriminator here.
 """
 
 from __future__ import annotations
@@ -112,6 +121,17 @@ def run_rfx_msl_thru(
     }
 
 
+def is_pass_status(status: str) -> bool:
+    """True for any PASS status, for exit-code purposes.
+
+    Includes ``passed_transmission_only_s11_nondiscriminating`` — a GREEN result on
+    a matched line where the |S11| channel is informational (too small to
+    discriminate). That is a pass and must NOT turn the M3 VESSL lane red; the
+    exit code keys off this helper, not an exact ``== "passed"`` match.
+    """
+    return status.startswith("passed")
+
+
 def compare_magnitudes(
     freqs_hz: np.ndarray,
     rfx_s11: np.ndarray,
@@ -139,9 +159,27 @@ def compare_magnitudes(
     s11_mean_ref = float(np.mean(ref_s11_mag))
     s21_mean_rfx = float(np.mean(rfx_s21_mag))
     s21_mean_ref = float(np.mean(ref_s21_mag))
-    pass_s11 = s11_mean_abs_diff <= 0.15
-    pass_s21 = s21_mean_abs_diff <= 0.15
+    mag_tol = 0.15
+    # Validation-honesty guard: on a MATCHED thru-line |S11| is intrinsically tiny
+    # (here ref mean ~0.12), so an absolute |S11| tolerance of 0.15 is LARGER than the
+    # signal it is supposed to check — a degenerate rfx output (S11==0) would pass it,
+    # i.e. the gate cannot distinguish rfx physics from a constant. The S11 channel is a
+    # real discriminator ONLY when the reference |S11| comfortably exceeds the tolerance.
+    # When it does not, we mark S11 INFORMATIONAL and let the gate rest on transmission,
+    # so a green status is never mis-read as "rfx S11 validated".
+    s11_gate_discriminating = s11_mean_ref >= 2.0 * mag_tol
+    pass_s11 = (s11_mean_abs_diff <= mag_tol) if s11_gate_discriminating else None
+    pass_s21 = s21_mean_abs_diff <= mag_tol
     pass_transmission = 0.85 <= s21_mean_rfx <= 1.10 and 0.85 <= s21_mean_ref <= 1.10
+
+    if s11_gate_discriminating:
+        status = "passed" if (pass_s11 and pass_s21 and pass_transmission) else "failed"
+    else:
+        status = (
+            "passed_transmission_only_s11_nondiscriminating"
+            if (pass_s21 and pass_transmission)
+            else "failed"
+        )
 
     return {
         "frequency_window_hz": [float(f_lo_hz), float(f_hi_hz)],
@@ -155,7 +193,19 @@ def compare_magnitudes(
         "pass_s11_mean_abs_diff_le_0p15": pass_s11,
         "pass_s21_mean_abs_diff_le_0p15": pass_s21,
         "pass_transmission_magnitude_window": pass_transmission,
-        "status": "passed" if (pass_s11 and pass_s21 and pass_transmission) else "failed",
+        "s11_gate_discriminating": bool(s11_gate_discriminating),
+        "s11_discrimination_note": (
+            "S11 channel discriminating (ref |S11| mean "
+            f"{s11_mean_ref:.3f} >= 2x tol {2.0 * mag_tol:.2f})"
+            if s11_gate_discriminating
+            else (
+                f"S11 channel NON-discriminating: ref |S11| mean {s11_mean_ref:.3f} < 2x "
+                f"tol {2.0 * mag_tol:.2f}; a degenerate rfx S11 would pass it, so S11 is "
+                "INFORMATIONAL only and does NOT gate. This is a transmission smoke "
+                "check, not an S11 validation."
+            )
+        ),
+        "status": status,
     }
 
 
@@ -242,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"status": payload["status"], "metrics": metrics}, indent=2))
     print(f"wrote {out_path.relative_to(REPO_ROOT)}")
-    return 0 if payload["status"] == "passed" else 1
+    return 0 if is_pass_status(payload["status"]) else 1
 
 
 if __name__ == "__main__":
