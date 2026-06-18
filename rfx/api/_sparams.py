@@ -1184,7 +1184,7 @@ class _SparamMixin:
                     # Z0 (raw_z0, Z0_per_run) and the |Z0| honesty-guard; it never
                     # enters S11/S21 (which use the static analytic Hammerstad-Jensen
                     # z0_hj). It removes the spurious ~228% guard deviation on -x ports
-                    # while leaving the genuine ~27% 3-cell Yee-staircase Z0 warning on
+                    # while leaving the genuine ~20-27% 3-cell Yee-staircase Z0 warning on
                     # both ports. NB: the raw current dump (raw_i1) intentionally keeps
                     # its un-normalized sign; only the DERIVED Z0 is sign-normalized.
                     dir_sign = 1.0 if msl_ports[p_idx].direction == "+x" else -1.0

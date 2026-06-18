@@ -364,7 +364,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     1. **Per-port positive Z0 sign — the #140 fix.** ``msl_loop_current`` negates
        the loop current only for ``+x`` ports, so before the fix the ``-x`` port
        reported a NEGATIVE Re(Z0) and false-fired the |Z0| honesty guard (~228%
-       deviation vs the true ~27% Yee-staircase bias). This asserts BOTH ports
+       deviation vs the true ~20-27% Yee-staircase bias). This asserts BOTH ports
        report Re(Z0) > 0 across the band — it FAILS on the pre-fix code and PASSES
        after. The reported-Z0 sign does NOT enter S11/S21 (those use the static
        analytic Hammerstad-Jensen z0), so this is purely a reported/diagnostic fix.
