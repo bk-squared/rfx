@@ -80,7 +80,7 @@ codebase:
    pytest tests/ -x -q
    ```
 4. **Update the docs.** If the change affects users, update the relevant page
-   under `docs/public/guide/` or `docs/agent/`.
+   under `docs/public/`. Keep development records and qualification notes out of public user guides.
 5. **Add or update docstrings.** Any new public API should carry a clear,
    accurate docstring.
 
@@ -123,8 +123,7 @@ Geometry primitives live in `rfx/geometry/`. Follow this pattern:
      overlap.
    - Integration with `Simulation.add()`.
 
-5. **Document** the shape in the public guide set (see
-   [Geometry & Limitations](/rfx/guide/geometry-and-limitations/)).
+5. **Document** the shape in the public guide set when it is part of a supported user workflow.
 
 ## How to Submit Changes
 
@@ -173,7 +172,6 @@ rfx/
   geometry/            # CSG primitives + Via / CurvedPatch
   materials/           # Material library, dispersive models
   runners/             # High-level uniform / non-uniform runners
-  subgridding/         # SBP-SAT research implementation
   probes/              # DFT and time-domain probes
   harminv.py           # Matrix Pencil resonance extraction
   farfield.py          # Near-to-far-field transform
@@ -184,7 +182,6 @@ rfx/
 tests/                 # pytest test suite
 examples/              # Self-contained example scripts
 docs/public/guide/     # Canonical public guide source
-docs/agent/            # Canonical public AI-agent docs
 ```
 
 ## Questions?

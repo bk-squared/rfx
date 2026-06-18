@@ -1,17 +1,15 @@
 ---
 title: "API Reference"
-description: "Curated public API pages for the claims-bearing rfx surface; generated symbol docs live under /rfx/api/generated/."
+description: "Curated public API pages for the documented rfx surface."
 sidebar:
   order: 20
 ---
 
-rfx uses a **curated API hub** for the supported, claims-bearing surface.
-Anything not covered here belongs either in the generated reference layer at
-`/rfx/api/generated/` or in the canonical guides and support documents.
+rfx uses a **curated API hub** for the supported public surface. Anything not covered here should be treated as lower-level implementation detail unless a guide and support entry document it.
 
 This hub is intentionally narrow:
 
-- it documents the object model used by the current reference lane
+- it documents the object model used by the current reference workflow
 - it keeps solver, geometry, and workflow boundaries explicit
 - it does **not** try to be a complete symbol inventory
 
@@ -24,18 +22,15 @@ This hub is intentionally narrow:
 | [Sources & Ports](./sources-ports/) | excitation, impedance loading, calibration | you need to drive a structure or measure S-parameters |
 | [Results & Observables](./results-observables/) | return object fields and resonance extraction | you need to read solver outputs |
 | [Automation](./automation/) | `auto_configure`, `Simulation.auto`, mesh helpers | you want a derived starting point |
-| [Support Boundaries](./support-boundaries/) | supported vs shadow vs experimental scope | you need to know whether a feature is claims-bearing |
-| [Generated API](./generated/) | subordinate symbol layer | you need a route for lower-level inventory that is not promoted yet |
+| [Support Boundaries](./support-boundaries/) | recommended, bounded, and unsupported combinations | you need to know whether a feature is documented |
 
 ## Canonical rule
 
-Public API wording must stay aligned with the support matrix and reference-lane
-contract. If a capability is only described in generated docs, treat it as
-subordinate until it is promoted here.
+Public API wording must stay aligned with the support matrix and reference workflow. If a capability is not described in the curated pages, do not present it as part of the documented public workflow.
 
-## Current reference lane
+## Current reference workflow
 
-The curated public API reflects the current claims-bearing lane:
+The curated public API reflects the current documented workflow:
 
 - uniform Cartesian Yee RF workflows
 - PEC / CPML / bounded UPML boundaries
@@ -43,13 +38,6 @@ The curated public API reflects the current claims-bearing lane:
 - lumped and wire ports
 - specialized microstrip-line ports
 - waveguide ports
-- probes, Harminv resonance, benchmarked NTFF, and S-parameters only through
-  the support-matrix envelopes
+- probes, Harminv resonance, benchmarked NTFF, and S-parameters only through the documented support envelopes
 
-For the authoritative support scope, see
-[Support Boundaries](./support-boundaries/) and
-[Reference Lane](../validation/reference-lane/).
-
-For lower-level symbol inventory, use
-[`/rfx/api/generated/`](./generated/). It is intentionally subordinate until a
-symbol is promoted into the curated surface.
+For the authoritative support scope, see [Support Boundaries](./support-boundaries/) and [Reference Lane](/rfx/validation/reference-lane/).

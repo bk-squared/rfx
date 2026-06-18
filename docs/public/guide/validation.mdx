@@ -5,9 +5,7 @@ sidebar:
   order: 7
 ---
 
-This page gives the short public version of rfx validation status. For the
-per-case table (each A/B crossval → named upstream reference, metric, accept
-envelope, and reproduce command) see the [Benchmark Table](../benchmarks/).
+This page gives the short public version of rfx validation status. For the per-case table, see the [Benchmark Table](/rfx/guide/benchmarks/).
 
 ## Recommended default lane
 
@@ -21,18 +19,15 @@ The most mature public path is the **uniform Cartesian Yee RF/FDTD lane**:
 
 Use this lane when you want the safest starting point.
 
-## Under active validation
+## Bounded envelopes
 
-The following features are useful, but should be treated as port-family envelopes, shadow lanes, experimental surfaces, or under active validation as listed:
+The following workflows are public only within their documented envelope:
 
-- rectangular waveguide S-matrices: documented port-family envelope
-- coaxial transmission-line reflection: documented one-port line-reflection envelope
-- non-uniform mesh workflows: shadow lane
-- distributed execution
-- Floquet/Bloch periodic workflows
-- SBP-SAT subgridding
-- generalized planar and other advanced port workflows
-- inverse-design extensions
+- rectangular waveguide S-matrices via `compute_waveguide_s_matrix(...)`
+- specialized microstrip-line S-matrices via `compute_msl_s_matrix(...)`
+- lumped/wire S-parameters via the matching `add_port(...)` calculator
+- one-port coaxial transmission-line reflection via `compute_coaxial_line_reflection(...)`
+- differentiable design loops that use proxy objectives and then validate the final observable through the relevant lane
 
 These features may have examples and tests, but their support boundaries are narrower than the default lane and must be described with their current evidence envelope.
 
@@ -42,9 +37,8 @@ These features may have examples and tests, but their support boundaries are nar
 |---|---|
 | `examples/crossval/05_patch_antenna.py` | current patch cross-check and practical antenna reference |
 | `examples/crossval/11_waveguide_port_wr90.py` | rectangular waveguide-port reference workflow |
-| `examples/nonuniform_patch_demo.py` | quick non-uniform thin-substrate demo; shadow lane |
 | `examples/inverse_design/multilayer_ar_coating.py` | inverse-design demo with a conservative public scope |
 
 ## Practical takeaway
 
-Lead public messaging with the recommended uniform Yee RF lane. Mention promoted port-family envelopes or experimental lanes only when the user specifically needs them, and keep those descriptions scoped to current examples, evidence, and limitations.
+Lead public messaging with the recommended uniform Yee RF lane. Mention bounded port-family envelopes only when the user specifically needs them, and keep those descriptions scoped to current examples, evidence, and limitations.

@@ -1,23 +1,79 @@
 ---
 title: "Tutorial: Convergence Study"
-description: "Step-by-step tutorial for mesh convergence analysis in rfx FDTD simulations."
+description: "Step-by-step mesh convergence analysis for rfx FDTD simulations."
 sidebar:
   order: 32
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+A convergence study answers a simple question: does the reported metric stabilize as the Yee cell size decreases? Use it before making quantitative claims from a new geometry, mesh, or objective.
 
-<Aside type="caution" title="Under construction">
-  This page is a placeholder. Content will be added in a future update.
-</Aside>
+## 1. Choose one scalar metric
 
-## Overview
+Pick a metric that matches the claim you want to make:
 
-This tutorial will demonstrate how to verify simulation accuracy via convergence studies:
+| Claim type | Example metric |
+|---|---|
+| resonance | first Harminv frequency in a target band |
+| S-parameter | `abs(S[receiver, driven, f_idx])` at a documented frequency |
+| field amplitude | peak or RMS probe value after source decay |
+| far field | directivity or normalized pattern value from a documented NTFF setup |
 
-1. **Baseline simulation** — coarse mesh at the CFL limit
-2. **Mesh refinement** — progressive halving of cell size
-3. **Metric tracking** — resonant frequency, S-parameter, and field convergence
-4. **Convergence criterion** — when results stabilise within a tolerance
+Do not mix several changing metrics in one convergence decision. Run separate studies if needed.
 
-See [Non-Uniform Mesh](../nonuniform-mesh/) for graded profiles and [Validation](../validation/) for the cross-simulator benchmark suite.
+## 2. Build a simulation factory
+
+The factory should accept `dx` and return the same physical problem at that cell size.
+
+```python
+from rfx import Simulation, Box, GaussianPulse
+
+
+def make_patch(dx: float) -> Simulation:
+    sim = Simulation(freq_max=4e9, domain=(0.08, 0.06, 0.025), boundary="cpml", dx=dx)
+    sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0016)), material="fr4")
+    sim.add(Box((0.02, 0.01, 0.0016), (0.049, 0.049, 0.0016)), material="pec")
+    sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0)), material="pec")
+    sim.add_source((0.029, 0.03, 0.0008), "ez", waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8))
+    sim.add_probe((0.029, 0.03, 0.0008), "ez")
+    return sim
+```
+
+## 3. Run the study
+
+```python
+from rfx import convergence_study
+
+
+def resonance_metric(result) -> float:
+    mode = result.find_resonances(freq_range=(1.5e9, 3.5e9))[0]
+    return float(mode.freq)
+
+study = convergence_study(
+    sim_factory=make_patch,
+    dx_values=[1.5e-3, 1.2e-3, 1.0e-3],
+    metric_fn=resonance_metric,
+    run_kwargs={"n_steps": 4000},
+)
+
+print(study.summary())
+```
+
+Use a short smoke budget first, then rerun the final study with the time window required by your observable.
+
+## 4. Interpret the result
+
+A useful convergence report should include:
+
+- the tested `dx` values,
+- the scalar metric at each resolution,
+- the Richardson-extrapolated value and observed order,
+- the relative error of the finest point,
+- the exact command or notebook cell used to reproduce the study.
+
+If the finest two points do not move monotonically or the observed order is implausible, treat the result as inconclusive and inspect the setup before tightening tolerances.
+
+## 5. Archive the evidence
+
+A convergence plot or table is evidence for that exact observable, not for every feature in the simulation. Keep it with the support status, git SHA, run command, and any external reference used for the final claim.
+
+For broader validation context, see [Cross-Validation and Accuracy](/rfx/guide/validation/) and the [Benchmark Table](/rfx/guide/benchmarks/).

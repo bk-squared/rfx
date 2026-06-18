@@ -5,17 +5,11 @@ sidebar:
   order: 8
 ---
 
-This page is the **guide-side API entrypoint** for the current public surface. Use it to decide which API
-surface you need, then jump into the dedicated `/rfx/api/` pages.
+This page is the **guide-side API entrypoint** for the current public surface. Use it to decide which API surface you need, then jump into the dedicated `/rfx/api/` pages.
 
 ## How to use the API docs
 
-`rfx` now separates API documentation into two layers:
-
-1. **Curated public API** — the supported, claims-bearing surface we expect
-   users and agents to build on.
-2. **Generated API** — symbol-complete reference generated from the codebase,
-   useful for deep lookup but not the primary public contract.
+`rfx` documents the supported public API through curated pages that users should start from.
 
 ## Start with the curated API
 
@@ -27,48 +21,17 @@ Use these pages first:
 | `Simulation` construction and run semantics | [/rfx/api/simulation/](/rfx/api/simulation/) |
 | `Result`, observables, Harminv, S-parameters | [/rfx/api/results-observables/](/rfx/api/results-observables/) |
 | Shapes, materials, and dispersive models | [/rfx/api/geometry-materials/](/rfx/api/geometry-materials/) |
-| Sources, lumped ports, waveguide/Floquet notes | [/rfx/api/sources-ports/](/rfx/api/sources-ports/) |
+| Sources, lumped ports, microstrip-line ports, waveguide ports, and coaxial line reflection | [/rfx/api/sources-ports/](/rfx/api/sources-ports/) |
 | `auto_configure()` and higher-level setup helpers | [/rfx/api/automation/](/rfx/api/automation/) |
-| Supported / shadow / experimental boundaries | [/rfx/api/support-boundaries/](/rfx/api/support-boundaries/) |
-
-## Use the generated API for symbol lookup
-
-If you already know the symbol or module name and need the raw generated
-reference, use:
-
-- [/rfx/api/generated/](/rfx/api/generated/)
-
-Treat that generated tree as **subordinate deep reference**. It is useful for
-lookup, but it should not be read as a blanket support promise for every symbol
-it exposes.
+| Supported, bounded, and outside the documented public support scope boundaries | [/rfx/api/support-boundaries/](/rfx/api/support-boundaries/) |
 
 ## Current API contract rules
 
-- The current claims-bearing reference lane is the **uniform Cartesian Yee RF
-  workflow**.
-- S-parameter APIs are port-family-specific: lumped/wire ports use
-  `run(compute_s_params=True)`, MSL ports use `compute_msl_s_matrix()`,
-  waveguide ports use `compute_waveguide_s_matrix()`, and coaxial line
-  reflection uses `compute_coaxial_line_reflection(...)`.
-- Non-uniform graded-z, distributed, Floquet/Bloch, ADI, and subgridding paths
-  need to be read through the support-boundary lens, not as blanket guarantees.
-- Prefer the newest current recommended workflow pages when choosing a
-  public example or reference path.
+- The current validated reference lane is the **uniform Cartesian Yee RF workflow**.
+- S-parameter APIs are port-family-specific: lumped/wire ports use `run(compute_s_params=True)`, MSL ports use `compute_msl_s_matrix()`, waveguide ports use `compute_waveguide_s_matrix()`, and coaxial line reflection uses `compute_coaxial_line_reflection(...)`.
+- Importable lower-level symbols are not public API promises unless documented in the curated API and support matrix.
+- Prefer the newest current recommended workflow pages when choosing a public example or reference path.
 
-## What still needs functional/API work
+## Boundary rule
 
-While writing the API surface, a few missing or still-too-implicit areas stand
-out:
-
-1. **Programmatic support introspection is missing.** There is no public
-   `rfx.supports(...)`-style API to query supported / shadow / experimental
-   combinations directly.
-2. **Validation artifacts are not discoverable through a stable code-level
-   registry.** Public validation evidence currently lives in scripts and docs,
-   not in a structured runtime manifest.
-3. **Some advanced lanes still hard-fail rather than providing a richer
-   compatibility-planning surface.** That is safer than silent fallback, but it
-   leaves room for better user-facing capability reporting.
-
-Those are not blockers for the curated docs surface, but they are the main
-follow-on product/API improvements surfaced by this docs pass.
+The public API is intentionally narrow. Supported public workflows are the ones described in the curated API pages and support matrices.

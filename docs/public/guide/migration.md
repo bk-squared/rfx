@@ -26,7 +26,6 @@ concepts are familiar -- the API surface is different.
 | Dispersive media | `LorentzianSusceptibility` | `AddLorentzMaterial` | `DebyePole`, `LorentzPole`, `drude_pole()` |
 | Differentiable | Not available | Not available | `jax.grad(loss_fn)(params)` |
 | Inverse design | Not native (adjoint plugin) | Not native | `rfx.optimize(sim, design_region, objective)` |
-| Subgridding | Not available | Not available | experimental / specialized |
 | Non-uniform mesh | Not native | `SmoothMeshLines` | `dz_profile` or `auto_configure()` |
 
 ---
@@ -179,7 +178,4 @@ one globally fine uniform mesh.
 - [Quick Start](/rfx/guide/quickstart/) -- first simulation in 15 minutes
 - [Simulation API](/rfx/guide/api-reference/) -- current builder reference
 - [Sources & Ports](/rfx/guide/sources-ports/) -- source vs. port workflows
-- [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) -- thin-substrate workflow
 - [Inverse Design](/rfx/guide/inverse-design/) -- gradient-based optimization
-- [Advanced Features](/rfx/guide/advanced/) -- dispersive materials, CFS-CPML
-- [Geometry & Limitations](/rfx/guide/geometry-and-limitations/) -- tool comparison

@@ -40,6 +40,13 @@ def copy_tree(src: Path, dst: Path) -> None:
     shutil.copytree(src, dst)
 
 
+def remove_tree(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
 def sync_generated_api_assets(src: Path, dst: Path) -> None:
     """Sync generated API assets into a curated api/generated subtree.
 
@@ -92,7 +99,6 @@ def main() -> int:
     public_root = repo_root / "docs" / "public"
     source_root_docs = iter_public_root_docs(public_root)
     public_subtrees = discover_public_subtrees(public_root)
-    src_agent = repo_root / "docs" / "agent"
     src_generated_api = repo_root / "docs" / "api"
     has_generated_api = src_generated_api.exists()
 
@@ -109,7 +115,6 @@ def main() -> int:
 
     required = [
         public_root,
-        src_agent,
         gitops_root,
         *source_root_docs,
         *public_subtrees,
@@ -125,7 +130,7 @@ def main() -> int:
         print(f"public_root: {public_root}")
         print(f"root_docs: {[path.name for path in source_root_docs]}")
         print(f"public_subtrees: {[path.name for path in public_subtrees]}")
-        print(f"agent: {src_agent}")
+        print("agent: excluded from public export")
         if has_generated_api:
             print(f"generated_api: {src_generated_api}")
         else:
@@ -149,7 +154,7 @@ def main() -> int:
     for subtree in public_subtrees:
         copy_tree(subtree, dst_root / subtree.name)
 
-    copy_tree(src_agent, dst_root / "agent")
+    remove_tree(dst_root / "agent")
     if has_generated_api:
         sync_generated_api_assets(src_generated_api, dst_generated_api)
 

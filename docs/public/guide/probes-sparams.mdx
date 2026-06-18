@@ -81,17 +81,16 @@ Use the calculator that matches the port family:
 
 | Primitive | Calculator | Result | Evidence framing |
 |---|---|---|---|
-| `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | limited / under active validation |
-| `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | partial / under active validation, calibration caveated |
+| `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | limited / bounded by the documented examples |
+| `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | partial / bounded by the documented examples, calibration caveated |
 | lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | S11 vectors in `ForwardResult.s_params` | differentiable workflow; check current limitations |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | specialized uniform-Yee workflow; broader support under active validation |
+| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | specialized uniform-Yee workflow; broader support bounded by the documented examples |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | recommended rectangular-guide workflow within documented limits |
-| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, diagnostics | validated one-port coaxial line-reflection envelope; older `compute_coaxial_s_matrix(...)` is deprecated/experimental |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, diagnostics | bounded one-port coaxial line-reflection envelope |
 
 Sources, TFSF, probes, DFT plane probes, and flux monitors are non-port
 observables. They do not define a port impedance or S-matrix reference.
-See `docs/guides/sparameter_support_matrix.md` for the artifact, metric, and
-envelope attached to each claim.
+Use the S-parameter support matrix for the artifact, metric, and envelope attached to each result.
 
 For host-side report checks on any S-matrix cube, use
 `network_quality_metrics()`:
@@ -104,7 +103,7 @@ print(quality["passivity_excess"], quality["reciprocity_error"])
 ```
 
 This helper reports finite-data, passivity, reciprocity, max magnitude, and
-column-power diagnostics. It is an interop/reporting gate, not a substitute for
+column-power checks. It is an interop/reporting gate, not a substitute for
 the port-family physics evidence listed in the support matrix.
 
 ### Lumped port S-matrix

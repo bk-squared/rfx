@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-PRIMARY_ROUTE_PREFIXES = ("rfx/guide", "rfx/agent")
+PRIMARY_ROUTE_PREFIXES = ("rfx/guide",)
 LEGACY_GUIDE_QUARANTINE = {
     "documentation_architecture.md": "legacy docs/guide architecture note kept outside the public route manifest",
     "inverse_design_cookbook.md": "legacy cookbook retained until examples hub lands",
@@ -38,8 +38,6 @@ def resolve_slug(repo_root: Path, slug: str) -> bool:
         repo_root / "docs" / "public" / f"{rel}.mdx",
         repo_root / "docs" / "public" / rel / "index.md",
         repo_root / "docs" / "public" / rel / "index.mdx",
-        repo_root / "docs" / "agent" / f"{rel.removeprefix('agent/')}.md",
-        repo_root / "docs" / "agent" / f"{rel.removeprefix('agent/')}.mdx",
     ]
     return any(path.exists() for path in candidates)
 

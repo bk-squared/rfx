@@ -7,13 +7,12 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page is the per-case companion to [Cross-Validation and Accuracy](../validation/).
+This page is the per-case companion to [Cross-Validation and Accuracy](/rfx/guide/validation/).
 It lists every cross-validation script in `examples/crossval/` that has reached
 **A/B (validated)** status, maps it to its **named upstream reference**, and gives
 the exact **reproduce command** plus the accept **envelope** taken from the
 script's own gate code. For the high-level lane guidance and support boundaries,
-read [Cross-Validation and Accuracy](../validation/) first; for a feature-level
-solver comparison see [Solver Comparison](../comparison/).
+read [Cross-Validation and Accuracy](/rfx/guide/validation/) first.
 
 <Aside type="note" title="Numbers come from the scripts">
   Every metric and tolerance below is copied from the named script's own
@@ -51,7 +50,7 @@ treat it as "when the gate was last changed", not a re-run timestamp.
 | `06_msl_notch_filter` | MSL open-stub notch-filter (non-uniform wire-port lane) | **OpenEMS** `MSL_NotchFilter.py` tutorial (`thliebig/openEMS`) | notch freq vs analytic `< 15%`; vs OpenEMS `< 15%`; `\|S11\| < 1.5`; `\|S21\| > 1e-3` | `python examples/crossval/06_msl_notch_filter.py` | `c7071d7` |
 | `06b_msl_notch_filter_uniform` | Same notch physics via distributed `add_msl_port` (uniform mesh) | **Analytic** quarter-wave stub notch | notch freq vs analytic `< 15%`; notch depth `< −10 dB`; `Z₀ median ∈ (40, 65) Ω` | `python examples/crossval/06b_msl_notch_filter_uniform.py` | `c7071d7` |
 | `09_half_symmetric_waveguide` | PMC symmetry-plane vs full PEC cavity (TE₁₀₁) | **Analytic** rectangular-cavity (Pozar Ch. 6) | `f_full`, `f_half` each within `10%` of analytic; `\|f_full − f_half\|/f_full < 5%` | `python examples/crossval/09_half_symmetric_waveguide.py` | `4da9415` |
-| `10_pmc_cpml_half_symmetric` | PMC+CPML per-face composition (regression lock) | **Internal** physical expectation (no external solver) | peak spread `(max−min)/max < 0.02` per path; no NaN/Inf; both uniform + NU paths | `python examples/crossval/10_pmc_cpml_half_symmetric.py` | `18edbcd` |
+| `10_pmc_cpml_half_symmetric` | PMC+CPML per-face composition (regression lock) | **Regression** physical expectation (no external solver) | peak spread `(max−min)/max < 0.02` per path; no NaN/Inf; both uniform + NU paths | `python examples/crossval/10_pmc_cpml_half_symmetric.py` | `18edbcd` |
 | `11_waveguide_port_wr90` | WR-90 waveguide-port S-parameters (3 geometries) | **Analytic** Airy + **Meep**/**Palace** reference JSON when present | empty-guide `max\|S11\| < 0.02`, `min\|S21\| > 0.97`; PEC-short mean `\|S11\| ∈ [0.97, 1.03]`; slab Airy `\|S\|` mean diffs + 60° phase / 0.30 complex-S envelope | `python examples/crossval/11_waveguide_port_wr90.py` | `c7071d7` |
 
 ### Per-case notes (read these — the headline metric is not the whole story)
@@ -62,7 +61,7 @@ treat it as "when the gate was last changed", not a re-run timestamp.
   cross-check. The single-cell lumped port has a known parasitic reactance, so the
   resonance shows as a shallow local `\|S11\|` dip; use the Harminv frequency as the
   clean resonance and the dip only as a passivity / local-dip confirmation.
-- **`06_msl_notch_filter`** — uses the non-uniform wire-port shadow lane and is a
+- **`06_msl_notch_filter`** — uses the non-uniform wire-port limited-support path and is a
   crossval **reporter**, not the source of a broad MSL-port S-parameter envelope.
   It needs the OpenEMS reference `.npz`; without it the script exits `2`. The
   dominant `\|S21\|` dip in this lane is a Fabry–Pérot null of the single-cell wire
@@ -85,9 +84,7 @@ treat it as "when the gate was last changed", not a re-run timestamp.
 
 ### Not on this table
 
-- `12_subgrid_disjoint_prototype.py`, `13_subgrid_material_validation.py` —
-  subgrid **prototypes**, **not validated**. Excluded from the validated set and
-  from the CPU runner.
+Additional local scripts are outside the validated public set unless a public guide and support entry list them.
 
 ## Reproduce on CPU
 

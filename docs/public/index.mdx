@@ -7,21 +7,21 @@ sidebar:
 
 **Differentiable FDTD for RF/Microwave — powered by JAX**
 
-rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built in JAX. It targets RF and microwave engineers who want practical field simulation, RF workflow tooling, and native gradient support for inverse design in Python.
+rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built in JAX. These docs focus on maintained user workflows with explicit support boundaries.
 
 ## Current public status
 
-Use rfx with explicit support lanes in mind:
+Use the **uniform Cartesian Yee RF/FDTD lane** first. The public docs highlight maintained workflows and explicitly bounded claim envelopes:
 
-| Lane | Use it for | Status |
-|---|---|---|
-| **Recommended default: uniform Cartesian Yee RF workflows** | cavity and waveguide studies, patch-style resonance workflows, probes, Harminv, selected port/S-parameter workflows, and benchmarked far-field workflows | best place to start |
-| **Narrow guarded subgrid envelope** | one-sided PEC/no-CPML z-slab source/probe, static-material, and single-cell lumped-port S-parameter runs | supported only inside the subgridding guide boundary |
-| **Shadow** | non-uniform thin-substrate workflows | retained and tested, but not the claims-bearing default |
-| **Port-family evidence envelopes** | rectangular-waveguide S-matrices and coaxial transmission-line reflection via the documented calculators | claims-bearing only inside the support-matrix envelope; not a universal port guarantee |
-| **Experimental / under active validation** | distributed execution, Floquet/Bloch workflows, general SBP-SAT subgridding, generalized planar/advanced ports, and inverse-design extensions | useful for experiments; check current limitations |
+| Surface | Public role |
+|---|---|
+| **Uniform Yee RF workflows** | recommended default for tutorials, examples, probes, Harminv, selected S-parameter workflows, and benchmarked far-field workflows |
+| **Rectangular waveguide S-matrices** | validated inside the documented rectangular-guide envelope |
+| **Lumped, wire, and microstrip-line port workflows** | available through their matching calculators; validation scope follows the support matrix |
+| **Coaxial line reflection** | bounded one-port transmission-line workflow only; not a general coaxial S-matrix promise |
+| **Differentiable design loops** | use proxy objectives and documented validation checks before treating a design result as evidence |
 
-The docs keep advanced features visible, but they should not be read as blanket guarantees.
+If a capability is not listed here or in the support-boundary page, treat it as outside the documented public support scope until the support matrix lists it.
 
 ---
 
@@ -32,8 +32,8 @@ The docs keep advanced features visible, but they should not be read as blanket 
 | **GPU acceleration** | JAX/JIT execution for large 3-D grids |
 | **Differentiable simulation** | `jax.grad` through time-domain workflows for inverse design |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field utilities |
-| **Recommended examples** | current runnable scripts under `examples/crossval/` and `examples/inverse_design/` |
-| **Shadow / experimental lanes** | non-uniform mesh is shadow; distributed runs, Floquet/Bloch, general SBP-SAT subgridding, generalized planar ports, and broad inverse-design extensions remain lane-scoped |
+| **Recommended examples** | current runnable scripts under `examples/crossval/` and selected inverse-design examples |
+| **Support-boundary discipline** | public claims are tied to explicit guide/support-matrix envelopes, not to every importable symbol |
 
 ---
 
@@ -83,43 +83,28 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
 
 - [Simulation API](guide/api-reference/) — `Simulation`, `Result`, `auto_configure`, ports, NTFF, and design helpers
 - [Materials & Geometry](guide/materials-geometry/) — library materials, Debye/Lorentz, CSG shapes, PCB stackup
-- [Sources & Ports](guide/sources-ports/) — point sources, lumped/wire ports, waveguide ports, coaxial-line reflection, and experimental Floquet surfaces
+- [Sources & Ports](guide/sources-ports/) — point sources, lumped/wire ports, microstrip-line ports, waveguide ports, and bounded coaxial-line reflection
 - [Probes & S-Parameters](guide/probes-sparams/) — DFT probes, S-matrix helpers, Harminv, de-embedding, exports
 - [Memory Reduction](guide/memory-reduction/) — reduce FDTD/AD memory while preserving validation boundaries
-- [Non-Uniform Mesh](guide/nonuniform-mesh/) — shadow thin-substrate workflows
 - [Waveguide Ports](guide/waveguide-ports/) — rectangular waveguide modal workflows
-- [Floquet Ports](guide/floquet-ports/) — experimental Bloch-periodic unit-cell workflows
 
 ### Analysis & Validation
 
 - [Cross-Validation & Accuracy](guide/validation/) — short public validation overview
+- [Benchmarks](guide/benchmarks/) — quantitative benchmark summary
 - [Convergence Study](guide/tutorial-convergence/) — mesh refinement workflow
 - [Far-Field & RCS](guide/farfield-rcs/) — NTFF radiation patterns and scattering workflows
-- [Antenna Metrics](guide/antenna-metrics/) — gain, efficiency, beamwidth, bandwidth, F/B ratio
 - [Visualization & Analysis](guide/visualization-and-analysis/) — plotting, exports, post-processing
-- [Solver Comparison](guide/comparison/) — workflow comparison vs. Meep and OpenEMS
 
 ### Design & Optimization
 
-- [Inverse Design](guide/inverse-design/) — autodiff-driven topology, shape, and far-field optimization
-- [Topology Optimization](guide/topology-optimisation/) — density-based inverse design
-- [Parametric Sweeps](guide/parametric-sweeps/) — sequential sweep and `jax.vmap` batch evaluation
-- [Material Fitting](guide/material-fitting/) — Debye/Lorentz fitting and differentiable refinement
+- [Inverse Design](guide/inverse-design/) — autodiff-driven optimization with documented proxy objectives
+- [Gradient Behavior](guide/gradient-behavior/) — where gradients are reliable vs noisy
+- [Parametric Sweeps](guide/parametric-sweeps/) — sequential sweep and `jax.vmap` design-space exploration
 - [Patch Antenna Design](guide/tutorial-patch-antenna/) — rectangular patch workflow
-- [Microstrip Filter Design](guide/tutorial-microstrip-filter/) — experimental microstrip workflow
-
-### Advanced / Experimental
-
-- [Advanced Features](guide/advanced/) — distributed execution, mixed precision, nonlinear materials, and research-style workflows
-- [Conformal PEC](guide/conformal-pec/) — Dey-Mittra method for curved conductors
-- [SBP-SAT Subgridding](guide/subgridding/) — guarded one-sided local refinement envelope; general subgridding remains experimental
-- [Gradient Behavior](guide/gradient-behavior/) — where gradients are strong vs noisy
-- [Geometry & Limitations](guide/geometry-and-limitations/) — supported workflows and current trade-offs
 
 ### Secondary hubs
 
 - [Examples](/rfx/examples/) — recommended public runnable paths
 - [Validation](/rfx/validation/) — public support and validation overview
 - [API](/rfx/api/) — curated public API contract
-- [Generated API](/rfx/api/generated/) — subordinate generated symbol reference
-- [AI Agent Guide](/rfx/agent/overview/) — safe agent prompts, auto-configuration, and review workflow

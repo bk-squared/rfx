@@ -7,7 +7,7 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page connects the quick resonance workflow in [Your First Patch Antenna](../first-patch/) with the current public patch cross-check in `examples/crossval/05_patch_antenna.py`.
+This page connects the quick resonance workflow in [Your First Patch Antenna](/rfx/guide/first-patch/) with the current public patch cross-check in `examples/crossval/05_patch_antenna.py`.
 
 <Aside type="note" title="Public scope">
   Treat this as a recommended practical patch workflow. It is not a blanket claim that every antenna, feed, substrate, or mesh setting is already fully qualified.
@@ -17,9 +17,9 @@ This page connects the quick resonance workflow in [Your First Patch Antenna](..
 
 | Stage | Goal | Primary page / script |
 |---|---|---|
-| 1. Quick resonance check | Size the patch, run the simulation, and extract the dominant mode | [Your First Patch Antenna](../first-patch/) |
+| 1. Quick resonance check | Size the patch, run the simulation, and extract the dominant mode | [Your First Patch Antenna](/rfx/guide/first-patch/) |
 | 2. Cross-check | Compare the same class of structure against the current repo reference | `examples/crossval/05_patch_antenna.py` |
-| 3. Radiation / reporting | Move to far-field and antenna metrics after the resonance setup is stable | [Far-Field & RCS](../farfield-rcs/), [Antenna Metrics](../antenna-metrics/) |
+| 3. Radiation / reporting | Move to far-field reporting after the resonance setup is stable | [Far-Field & RCS](/rfx/guide/farfield-rcs/) |
 
 ## Current baseline geometry
 
@@ -37,11 +37,11 @@ Expected output is a console summary and generated local artifacts from the scri
 
 - Use Harminv resonance as the primary frequency estimate.
 - Treat lumped-port S11 dips as secondary diagnostics.
-- Treat non-uniform mesh variants as shadow unless the page you are following says otherwise.
+- Treat non-uniform mesh variants as limited support unless the page you are following says otherwise.
 - For top-level claims, keep the wording narrow: this is a recommended patch workflow, not a universal antenna guarantee.
 
 ## Where to go next
 
-- Start with [Your First Patch Antenna](../first-patch/) for the shortest path to a resonance run.
-- Continue to [Far-Field & RCS](../farfield-rcs/) and [Antenna Metrics](../antenna-metrics/) once the resonance setup is stable.
-- See [Cross-Validation and Accuracy](../validation/) for the broader support overview.
+- Start with [Your First Patch Antenna](/rfx/guide/first-patch/) for the shortest path to a resonance run.
+- Continue to [Far-Field & RCS](/rfx/guide/farfield-rcs/) once the resonance setup is stable.
+- See [Cross-Validation and Accuracy](/rfx/guide/validation/) for the broader support overview.
