@@ -43,12 +43,24 @@ import pytest
 @pytest.mark.slow
 def test_nonuniform_z_graded_cavity_tm111_accuracy():
     """A genuinely z-graded NU mesh reproduces the closed-form TM111 cavity
-    resonance to within a measured tolerance (the graded axis sets the analytic).
+    resonance to within a measured tolerance.
 
     Gate: |f_sim - f_analytic(actual d)| / f_analytic < 4% (measured 2.66% on a
     0.25mm fine band / dx=1mm air cavity, 2026-06-18; ~1.5x margin for cross-
     machine float). Mode-ID is robust: TM111 sits >1 GHz from its nearest sim
     neighbour (measured 1.08 GHz), so the nearest-to-analytic match is unambiguous.
+
+    LEVERAGE (honest power of this gate): the graded-z (p=1) term contributes only
+    ~29% of f^2 here (the (1/d)^2 term vs (1/a)^2+(1/b)^2), so f's sensitivity to the
+    graded-z extent is diluted ~sqrt. This gate therefore catches GROSS graded-z
+    metric errors (an effective-d wrong by more than ~12-17% would trip 4%), NOT
+    sub-percent ones — sub-percent graded-stencil correctness is the job of the
+    CORE-C2 per-stencil guard (test_review_tier1_validation_battery.py::test_corec2_*).
+    This test's role is the end-to-end full-FDTD analytic anchor the oracle-free
+    sibling lacks, not a high-resolution stencil probe.
+
+    The 2nd-nearest separation gate below also doubles as a spurious-mode guard: a
+    Harminv split/ghost line inside the band would shrink the separation and trip it.
     """
     from rfx import Simulation, GaussianPulse
     from rfx.auto_config import smooth_grading
