@@ -5,7 +5,7 @@ sidebar:
 ---
 
 rfx supports rectangular waveguide ports with analytical TE/TM mode profiles.
-S-parameter claims are intentionally bounded: the promoted full-matrix path is
+S-parameter claims are intentionally bounded: the documented full-matrix path is
 `compute_waveguide_s_matrix(...)` under the rectangular-guide evidence envelope
 in `docs/guides/sparameter_support_matrix.md`.
 

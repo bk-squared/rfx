@@ -1,6 +1,6 @@
 ---
 title: "Reference Lane"
-description: "Public summary of the current recommended rfx lane and experimental surfaces."
+description: "Public summary of the current recommended rfx lane."
 sidebar:
   order: 41
 ---
@@ -17,30 +17,26 @@ Start with the **uniform Cartesian Yee RF/FDTD lane**:
 
 This is the lane to use first for ordinary RF examples and public tutorials.
 
-## Non-default lanes
+## Bounded envelopes
 
-The following surfaces are real and useful, but should be treated as narrower than the default lane:
+The following surfaces are narrower than the default lane and must be described with their exact calculator and support limits:
 
 | Surface | Public status |
 |---|---|
-| non-uniform mesh | shadow thin-substrate lane; retained but not the default claim lane |
-| distributed execution | scaling lane; check feature combinations before use |
-| Floquet/Bloch | experimental periodic/unit-cell workflow |
-| SBP-SAT subgridding | research/experimental local mesh refinement |
-| coaxial transmission-line reflection | broad-E5 physics demonstrated through `compute_coaxial_line_reflection(...)` inside the coax-line envelope, but the evidence artifacts are not committed, so a clean-checkout audit reports `coaxial_port` BLOCKED; older `compute_coaxial_s_matrix(...)` is deprecated/experimental |
-| generalized planar and other advanced port workflows | planned or under active calibration and validation |
-| inverse-design extensions | available for selected workflows; check examples and limitations |
+| rectangular waveguide S-matrix | documented rectangular-guide envelope via `compute_waveguide_s_matrix(...)` |
+| microstrip-line S-matrix | specialized uniform-Yee workflow via `compute_msl_s_matrix(...)` |
+| lumped/wire S-parameters | calculator-specific support envelope via `run(compute_s_params=True)` or `forward(port_s11_freqs=...)` |
+| coaxial transmission-line reflection | one-port line-reflection envelope via `compute_coaxial_line_reflection(...)`; not a general coaxial network solver |
+| differentiable design loops | proxy-objective optimization; final claims inherit the observable/port-family evidence |
 
 ## S-parameter API boundaries
 
 - `run(compute_s_params=True)` is the full S-matrix API for lumped/wire `add_port(...)` workflows.
 - `compute_msl_s_matrix()` is the microstrip-line S-matrix API.
 - `compute_waveguide_s_matrix()` is the rectangular waveguide S-matrix API.
-- `compute_coaxial_line_reflection(...)` is the coaxial line-reflection method; its broad-E5 physics was demonstrated inside its documented envelope, but the evidence artifacts are not committed, so a clean-checkout audit reports `coaxial_port` BLOCKED (do not cite `broad_e5_passed` until artifacts are committed and the auditor returns PASSED); `compute_coaxial_s_matrix(...)` remains deprecated/experimental.
-- Floquet surfaces are experimental and should not be presented as a default S-parameter path.
+- `compute_coaxial_line_reflection(...)` is the bounded coaxial line-reflection method.
+- Field sources, TFSF, probes, DFT planes, and flux monitors are not port calculators.
 
 ## Practical rule
 
-If a feature is not in the recommended default lane, call it shadow,
-experimental, or under active validation as appropriate and point users to the
-current example or limitation page.
+If a feature is not in the recommended default lane or a bounded envelope above, keep it out of public docs until the support matrix covers it.

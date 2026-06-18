@@ -7,8 +7,8 @@ sidebar:
 
 
 rfx provides a **graded z-profile** (non-uniform Yee grid) with uniform dx and
-dy. In the current support contract, this is a **shadow qualification lane**:
-retained for thin-substrate workflows, but not the current claims-bearing
+dy. In the current support contract, this is a **limited-support path**:
+retained for thin-substrate workflows, but not the default validated
 reference lane.
 
 ### Current support status
@@ -18,11 +18,11 @@ reference lane.
 - unsupported combinations now fail clearly
 
 Current unsupported combinations:
-- Floquet + non-uniform z mesh
+- periodic-port workflows + non-uniform z mesh
 - NTFF + non-uniform z mesh
 - DFT planes + non-uniform z mesh
 - TFSF + non-uniform z mesh
-- waveguide ports + non-uniform z mesh except the documented restricted `compute_waveguide_s_matrix(normalize=True)` single-mode shadow path
+- waveguide ports + non-uniform z mesh except the documented restricted `compute_waveguide_s_matrix(normalize=True)` single-mode limited-support path
 - single-cell lumped-port S-parameters + non-uniform z mesh
 - `compute_msl_s_matrix()` + non-uniform z mesh
 - coaxial ports + non-uniform z mesh
@@ -34,8 +34,8 @@ Current unsupported combinations:
 
 | Situation | Recommendation |
 |---|---|
-| Substrate much thinner than wavelength (e.g., 1.6 mm FR4 at 2.4 GHz, lambda = 125 mm) | Non-uniform z is the shadow-lane tool to evaluate |
-| Layer stack with multiple thin dielectric sheets | Non-uniform z for each layer, with shadow-lane caveats |
+| Substrate much thinner than wavelength (e.g., 1.6 mm FR4 at 2.4 GHz, lambda = 125 mm) | Non-uniform z is the limited-support tool to evaluate |
+| Layer stack with multiple thin dielectric sheets | Non-uniform z for each layer, with limited-support caveats |
 | Bulk 3-D structure with no thin z-features | Uniform grid |
 | RCS / far-field only | Uniform grid is usually sufficient |
 
@@ -217,7 +217,7 @@ The same planning artifact can be generated from the command line with:
 python scripts/memory_reduction_planning_artifact.py --available-memory-gb 24.0
 ```
 
-For claims-bearing work, treat the report as a planning artifact rather than a
+For validated work, treat the report as a planning artifact rather than a
 physics validation by itself: resolve any `preflight_issues`, then verify the
 observable against the appropriate uniform or external reference lane.
 

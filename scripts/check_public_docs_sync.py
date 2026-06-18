@@ -184,7 +184,7 @@ def discover_public_subtrees(public_root: Path) -> list[Path]:
 
 
 def managed_public_entries(public_root: Path, public_subtrees: list[Path]) -> set[str]:
-    entries = {"agent", *(subtree.name for subtree in public_subtrees)}
+    entries = {subtree.name for subtree in public_subtrees}
     entries.update(
         path.name
         for path in public_root.iterdir()
@@ -217,7 +217,6 @@ def make_report(repo_root: Path, deploy_root: Path) -> AuditReport:
             compare_section(subtree.name, subtree, deploy_root / subtree.name)
             for subtree in public_subtrees
         ),
-        compare_section("agent", repo_root / "docs" / "agent", deploy_root / "agent"),
     ]
 
     deploy_has_generated_assets = generated_api_deploy.exists() and any(

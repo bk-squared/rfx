@@ -52,19 +52,21 @@
       }
     },
     "sbp_sat_subgridding": {
-      "status": "experimental"
+      "status": "outside_public_support_scope",
+      "role": "local_refinement_code_path",
+      "public_docs_policy": "exclude_from_public_guides_until_support_matrix_and_public_workflow_are_added"
     },
     "adi": {
-      "status": "experimental"
+      "status": "outside_public_support_scope"
     },
     "distributed": {
-      "status": "experimental"
+      "status": "outside_public_support_scope"
     },
     "floquet_bloch": {
-      "status": "experimental"
+      "status": "outside_public_support_scope"
     },
     "coaxial_line_reflection": {
-      "status": "supported_envelope",
+      "status": "bounded_envelope_revalidation_pending",
       "role": "one_port_coaxial_transmission_line_reflection",
       "calculator": "Simulation.compute_coaxial_line_reflection(...)",
       "evidence": "analytic_broad_E5_plus_MEEP_broad_E4_short_open",
@@ -81,7 +83,8 @@
     "explicit_contract",
     "unit_and_integration_evidence",
     "analytic_dump_external_or_benchmark_evidence",
-    "docs_examples_api_alignment"
+    "docs_examples_api_alignment",
+    "public_route_wording_free_of_development_log_or_diagnostic_only_detail"
   ],
   "sparameter_support_matrix": "docs/guides/sparameter_support_matrix.json",
   "physics_evidence_rule": "docs/guides/physics_validation_evidence_rule.md",

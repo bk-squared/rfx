@@ -43,7 +43,7 @@ sim.add_material(
 | `mu_r` | relative permeability | default is 1.0 |
 | `debye_poles` | dispersive Debye terms | current public guides should use the actual `DebyePole(delta_eps, tau)` signature |
 | `lorentz_poles` | dispersive Lorentz terms | current code exposes `LorentzPole(omega_0, delta, kappa)` |
-| `chi3` | third-order nonlinearity | advanced / research-oriented |
+| `chi3` | third-order nonlinearity | specialized nonlinear-material workflows |
 
 > **Authoring gap to watch:** legacy guide text still shows an older
 > `LorentzPole` parameterization. The actual API signature is
@@ -51,7 +51,7 @@ sim.add_material(
 
 ## Public note
 
-Geometry and materials are part of the claims-bearing reference lane only when
+Geometry and materials are part of the validated reference lane only when
 they are paired with a supported boundary / source / observable combination.
-If a structure depends on a shadow lane, the public docs should say so
+If a structure depends on a limited-support path, the public docs should say so
 explicitly.

@@ -14,8 +14,8 @@ metric is stable.
 
 <Aside type="caution" title="Support boundary">
   A sweep multiplies the assumptions of the underlying simulation. If a single
-  run uses a shadow or experimental lane, the sweep results stay shadow or
-  experimental until the relevant support/evidence matrix promotes that lane.
+  run uses a limited support or workflow outside the documented support scope, the sweep results stay limited support or
+  outside the documented support scope until the relevant support matrix covers that lane.
 </Aside>
 
 ## 1. Define the parameter grid
@@ -108,7 +108,7 @@ dataset.to_csv("sweep_metrics.csv")
 
 ## 5. S-parameter and Touchstone sweeps
 
-If the sweep uses a promoted S-parameter calculator, keep the port family and
+If the sweep uses a documented S-parameter calculator, keep the port family and
 support envelope with the output files.
 
 ```python
@@ -152,7 +152,7 @@ freqs = jax.vmap(quarter_wave_freq)(lengths, eps_eff)
 
 ## Manifest-backed sweeps
 
-For claim-bearing or long-running sweeps, prefer `run_batch_with_manifest()`.
+For validated or long-running sweeps, prefer `run_batch_with_manifest()`.
 It writes `manifest.json` under the output directory with:
 
 - schema version
@@ -211,7 +211,7 @@ not silently treated as valid completed runs.
 
 `run_kwargs` are fingerprinted into each case record. Reusing the same output
 directory with a different run budget, such as a changed `n_steps`, forces a
-rerun instead of returning stale cases. If the simulation factory, metric
+rerun instead of returning outdated cases. If the simulation factory, metric
 definition, mesh source, or any external input changes while `run_kwargs` stay
 the same, pass a new `run_fingerprint="..."` value to invalidate old cases.
 

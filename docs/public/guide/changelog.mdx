@@ -5,32 +5,32 @@ sidebar:
   order: 99
 ---
 
-This page summarizes user-visible changes without internal run logs or diagnostic detail.
+This page summarizes user-visible changes.
 
 ## Current public status
 
-The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane**. Non-uniform mesh, distributed execution, Floquet/Bloch, general SBP-SAT subgridding, generalized planar ports, and broad inverse-design extensions stay lane-scoped. Rectangular waveguide S-matrices and coaxial transmission-line reflection have stronger port-family evidence envelopes, but those envelopes are not blanket S-parameter guarantees.
+The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane**. Public guides emphasize maintained workflows and bounded port-family envelopes.
 
 ## v1.6.4 — June 2026
 
-- Rectangular waveguide-port **broad-E5** evidence is now committed and passes the port-external-reference audit on a clean checkout: five WR-band power-flux envelopes versus analytic Airy plus an rfx-vs-Palace-FEM external comparison across the empty / PEC-short / dielectric-slab geometry axis. The orphaned legacy 3-probe microstrip extractor was removed (no public-surface change).
+- Rectangular waveguide-port evidence now covers WR-band empty-guide, PEC-short, and dielectric-slab cases with analytic and external-reference comparisons.
 - `preflight()` and `preflight_sparameters()` now expose coded report objects for automation while preserving older list/string behaviour.
 - Run/forward results, S-matrix calculators, sweeps, and optimizers now surface finite-data, passivity, setup, and NaN-gradient issues earlier.
-- `compute_coaxial_line_reflection(...)` is the current coaxial line-reflection path inside its documented transmission-line envelope. The older `compute_coaxial_s_matrix(...)` single-plane path is deprecated/experimental.
+- `compute_coaxial_line_reflection(...)` is the current coaxial line-reflection path inside its documented transmission-line envelope.
 - `compute_waveguide_s_matrix(checkpoint_segments=...)` adds segmented checkpointing for uniform waveguide AD-heavy runs.
 - Finite-size flux monitors are regression-locked against the matching full-plane integrand window; the old finite-size instability caveat is superseded.
 - The directivity objective gained a log-ratio option for sign-correct gradients when design variables change total radiated power.
 
-## Recent public-doc direction
+## Documentation direction
 
-- Public docs separate the recommended default lane, port-family evidence envelopes, shadow lanes, and experimental lanes.
+- Public docs lead with the recommended default lane and bounded port-family evidence envelopes.
 - Current examples are routed through maintained paths such as `examples/crossval/05_patch_antenna.py`, `examples/crossval/11_waveguide_port_wr90.py`, `examples/nonuniform_patch_demo.py`, and `examples/inverse_design/multilayer_ar_coating.py`.
-- S-parameter documentation emphasizes matching the calculator to the port family: lumped/wire, MSL, waveguide, coaxial line reflection, or experimental Floquet/generalized-planar workflows.
+- S-parameter documentation emphasizes matching the calculator to the port family: lumped/wire, MSL, waveguide, or bounded coaxial line reflection.
 
 ## v1.6 line
 
-- Continued work on non-uniform mesh workflows, distributed execution, and differentiable design loops.
-- Added clearer feature-boundary wording so advanced lanes are not presented as the default public path.
+- Continued work on differentiable design loops and validation-boundary reporting.
+- Added clearer feature-boundary wording so repository code outside the documented support scope is not presented as the default public path.
 - Improved port and observable APIs for selected RF workflows.
 
 ## v1.5 line
@@ -38,6 +38,6 @@ The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane*
 - Expanded public guide structure for examples, API surfaces, and validation/support boundaries.
 - Added practical RF examples and clearer routing for patch, waveguide, and microstrip-style workflows.
 
-## Older releases
+## Earlier releases
 
 Earlier releases introduced the core JAX FDTD solver, material/geometry helpers, sources, probes, ports, far-field utilities, and inverse-design workflows. See the Git history and package releases for full implementation detail.

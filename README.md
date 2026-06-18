@@ -13,7 +13,7 @@
 
 **v1.6.4 package** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, structured setup guards, and port-family validation envelopes.
 
-> **Project status (June 2026):** `rfx` remains an actively validated research/product simulator. Use the uniform Cartesian Yee RF lane first; advanced lanes are promoted only inside explicitly documented evidence envelopes rather than as blanket simulator guarantees.
+> **Project status (June 2026):** `rfx` is an actively validated RF/FDTD simulator. Use the uniform Cartesian Yee RF lane first; additional workflows should be used only inside their documented evidence envelopes.
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://github.com/bk-squared/rfx/actions/workflows/pr-tests.yml/badge.svg)](https://github.com/bk-squared/rfx/actions)
@@ -22,32 +22,27 @@
 
 ## At a Glance
 
-The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. Non-uniform mesh, distributed execution, Floquet/Bloch, SBP-SAT subgridding, generalized planar ports, and inverse-design extensions remain lane-scoped; coaxial line reflection and rectangular-waveguide S-matrices now have stronger port-family evidence envelopes documented below.
+The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. Public claims are scoped to documented workflows and bounded evidence envelopes rather than every importable symbol.
 
 | | |
 |---|---|
 | **GPU-accelerated** | 7,309 Mcells/s on RTX 4090, 5,249 on A6000 via `jax.lax.scan` JIT |
-| **Differentiable** | `jax.grad` through full time-stepping for inverse design |
-| **Topology optimization** | Density-based with filtering, projection, and beta continuation |
-| **Conformal PEC** | Dey-Mittra weights — experimental; known NaN at fine mesh (dx <= 2 mm); 2nd-order convergence on curved conductors not validated (staircase is the supported PEC floor) |
-| **Multi-GPU** | Single-host multi-GPU distributed FDTD with 1D slab decomposition (experimental lane) |
-| **Waveguide modal ports** | Analytical TE/TM eigenmodes for documented rectangular-guide S-matrix envelopes |
-| **Coaxial line reflection** | One-port coaxial transmission-line reflection path via `compute_coaxial_line_reflection(...)`; broad-E5 physics demonstrated but evidence not committed — clean-checkout audit BLOCKED (re-validation pending) |
-| **Floquet ports** | Phased-array unit-cell analysis with Bloch periodic BC (experimental lane; analytic/external promotion still pending) |
-| **Non-uniform x/y/z profiles** | Thin-substrate shadow lane (graded `dz`, per-cell `dx/dy`); forward fields validated — NU **S-matrix extraction of non-trivial devices is an open issue** (strict-xfail tracked) and rejects the differentiable overrides rather than silently dropping them |
+| **Differentiable** | `jax.grad` through time-domain workflows for inverse design |
+| **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field utilities |
+| **Waveguide modal ports** | analytical TE/TM eigenmodes for documented rectangular-guide S-matrix envelopes |
+| **Port-family S-parameter routing** | lumped/wire, microstrip-line, rectangular waveguide, and coaxial-line workflows use different calculators and evidence envelopes |
 | **Published benchmark evidence** | 5-case benchmark against Balanis/Pozar (patch 1.97%, cavity 0.016%) |
 | **Regression checks** | CI and local checks support development without replacing feature-specific validation |
+| **Documentation scope** | public guides cover maintained workflows and explicitly bounded support envelopes |
 
 ## Current main highlights
 
-- **Structured preflight and runtime guards (current `main`)**: `preflight()` and `preflight_sparameters()` return coded `PreflightReport` issues while remaining list/string compatible; `run()`, `forward()`, S-matrix calculators, sweeps, and optimizers now surface NaN/passivity/setup problems earlier.
-- **Coaxial line reflection (current `main`)**: `compute_coaxial_line_reflection(...)` is the coaxial transmission-line reflection path. Broad-E5 physics was demonstrated (analytic Γ envelope over short/open/matched + resistive loads, two characteristic impedances; plus independent MEEP broad-E4 short/open cross-check), but the evidence artifacts are not committed to the repo. A clean-checkout port-external audit reports `coaxial_port` BLOCKED — re-validation is pending the validation-framework rework. The older single-plane `compute_coaxial_s_matrix(...)` path is deprecated/experimental.
-- **Waveguide S-matrix memory control (current `main`)**: `compute_waveguide_s_matrix(checkpoint_segments=...)` threads segmented checkpointing through uniform waveguide extractors for AD-heavy runs with bit-identical forward results in regression tests.
-- **Periodic × CPML correctness (v1.6.3)**: `set_periodic_axes("xy")` + `boundary="cpml"` only allocates CPML on non-periodic faces. Required for normal-incidence absorber / FSS / RIS setups.
-- **Current practical anchors**: `examples/crossval/05_patch_antenna.py` for the patch cross-check and `examples/nonuniform_patch_demo.py` for a quick repo-local thin-substrate demo.
-- **Curated star-import surface (current `main`)**: `rfx.__all__` exposes the supported public API (176 names); per-step kernels and internal bookkeeping stay importable for back-compat but are no longer part of the star-import surface.
-- **Maintained validation lanes (current `main`)**: a full-suite PR gate (4-shard fast suite + API-reference drift gate + agent-docs hygiene), a maintained GPU suite harness (`scripts/vessl_gpu_suite.yaml`), a weekly external-crossval CI lane with real Meep, and an on-demand source-built-OpenEMS lane (run per release) — all using the honest exit-code convention (reference-missing is a visible SKIP, never a silent pass).
-- **Public docs separate lanes**: start with the uniform Yee RF lane; treat advanced features as experimental unless a guide or support matrix gives a narrower claims-bearing envelope.
+- **Public workflow scope (June 2026)**: user guides lead with uniform Yee RF workflows, documented waveguide/MSL/lumped/wire port envelopes, bounded coaxial line reflection, and conservative differentiable design loops.
+- **Structured preflight and runtime guards (current `main`)**: `preflight()` and `preflight_sparameters()` return coded `PreflightReport` issues while remaining list/string compatible; `run()`, `forward()`, S-matrix calculators, sweeps, and optimizers surface NaN/passivity/setup problems earlier.
+- **Waveguide S-matrix evidence (current `main`)**: rectangular waveguide S-matrices have the strongest current port-family evidence envelope; use the support matrix for exact limits rather than broadening the claim.
+- **Coaxial line reflection (current `main`)**: `compute_coaxial_line_reflection(...)` is the bounded one-port coaxial transmission-line reflection path. It is not a general coaxial network solver.
+- **Curated star-import surface (current `main`)**: `rfx.__all__` exposes the supported public API; per-step kernels and bookkeeping helpers remain available for compatibility but are outside the curated API surface.
+- **Maintained validation lanes (current `main`)**: a full-suite PR gate, API-reference drift checks, a maintained GPU suite harness, weekly external-crossval CI, and on-demand source-built-OpenEMS validation use the honest exit-code convention (reference-missing is a visible SKIP, never a silent pass).
 
 ## Installation
 
@@ -112,35 +107,15 @@ The runnable version with a finite-difference cross-check is
 correctness lock is `tests/test_sparam_ad_end_to_end.py`. Memory-bounded
 reverse mode for long runs is available via `checkpoint_segments`.
 
-## For AI Agents
+## Support Contracts
 
-rfx ships agent-facing operating docs designed for autonomous use from a
-fresh clone:
+Machine-readable and maintainer-facing support contracts keep public claims aligned with evidence:
 
-- [Agent overview & operating rules](docs/agent/overview.mdx) — safe-lane
-  defaults and a prompt skeleton
-- [Repo map & feature discovery](docs/agent/repo-map.mdx) — grep the API
-  surface before writing low-level code
-- [Port & source selection](docs/agent/port-selection.mdx) — device class →
-  primitive → validated compute path
-- Task recipes: [waveguide S-parameters](docs/agent/recipe-waveguide-sparams.mdx),
-  [R/T measurement](docs/agent/recipe-rt-measurement.mdx),
-  [resonance extraction](docs/agent/recipe-resonance-extraction.mdx),
-  [parameter sweeps](docs/agent/recipe-parameter-sweeps.mdx),
-  [end-to-end design loop](docs/agent/recipe-design-loop.mdx)
-- [Failed-gate triage](docs/agent/recipe-failed-gate-triage.mdx) — decision
-  tree for failed gates whose terminal nodes are this project's
-  implemented-and-falsified dead ends (do not re-attempt them)
-- Machine-readable support contracts:
-  [`docs/guides/support_matrix.json`](docs/guides/support_matrix.json),
-  [`docs/guides/sparameter_support_matrix.json`](docs/guides/sparameter_support_matrix.json)
-  — the S-parameter matrix carries a per-family `ad_traceable` column, locked
-  by a contract test that fails when a new compute entry point ships without
-  an autodiff classification
-- The public API surface is pinned: a symbol/signature inventory gate
-  regenerates the pdoc reference in CI and fails on undocumented API drift
-- Every `run()`/`forward()`/`optimize()` auto-runs a structured preflight
-  (machine-readable codes); S-matrix extractors auto-run a passivity guard.
+- [`docs/guides/support_matrix.md`](docs/guides/support_matrix.md) and [`docs/guides/support_matrix.json`](docs/guides/support_matrix.json) — feature support status and public-scope rules.
+- [`docs/guides/sparameter_support_matrix.md`](docs/guides/sparameter_support_matrix.md) and [`docs/guides/sparameter_support_matrix.json`](docs/guides/sparameter_support_matrix.json) — port-family calculators, result schemas, and evidence envelopes.
+- [`docs/guides/public_surface_scope_inventory_20260617.md`](docs/guides/public_surface_scope_inventory_20260617.md) — maintainer-only list of public-repo code surfaces that stay outside user docs until support evidence and public workflow docs exist.
+
+The public API surface is pinned by a symbol/signature inventory gate and the curated public docs.
 
 ## GPU Performance (Measured)
 
@@ -171,43 +146,24 @@ Benchmarked against Balanis "Antenna Theory" and Pozar "Microwave Engineering":
 | Microstrip Z0 | Hammerstad-Jensen | 0.47% |
 | Coupled-line filter | Pozar Ch 8 | 22.5% (formula limitation) |
 
-The full cross-validation suite (Meep / OpenEMS / Palace / analytic
-references, one reproduce command per case) is tabulated on the
-[benchmarks page](docs/public/guide/benchmarks.mdx); the CPU-feasible subset
-runs locally via `python scripts/run_crossval_cpu.py` using the repo-wide
-exit-code convention (0 = full pass with external reference, 1 = self-check
-failure, 2 = reference unavailable — visibly skipped, never silently green).
+The full cross-validation suite (Meep / OpenEMS / Palace / analytic references, one reproduce command per case) is summarized in the public validation docs. The CPU-feasible subset runs locally via `python scripts/run_crossval_cpu.py` using the repo-wide exit-code convention (0 = full pass with external reference, 1 = self-check failure, 2 = reference unavailable — visibly skipped, never silently green).
 
-For practical public examples, start with `examples/crossval/05_patch_antenna.py`
-for the patch workflow and `examples/crossval/11_waveguide_port_wr90.py` for
-rectangular waveguide ports. Treat non-uniform workflows as shadow unless the
-relevant guide says otherwise; treat distributed, Floquet/Bloch, subgridding,
-generalized planar ports, and advanced inverse-design workflows as experimental
-unless the relevant guide says otherwise. Use the coaxial line reflection
-method only inside its documented coax transmission-line envelope. Known open
-accuracy items are tracked honestly as GitHub issues rather than hidden
-(see the issue tracker; the failed-gate triage recipe routes them).
+For practical public examples, start with `examples/crossval/05_patch_antenna.py` for the patch workflow and `examples/crossval/11_waveguide_port_wr90.py` for rectangular waveguide ports. Use scripts outside the recommended example set only as local diagnostics unless a public guide and support matrix entry state otherwise.
 
 ## Key Features
 
 ### Core Simulator
 - 3D/2D Yee FDTD with CFS-CPML (kappa_max=1.0 default — measured sweep showed kappa_max>1 degrades guided-mode absorption)
-- Conformal PEC via Dey-Mittra (experimental — known NaN at fine mesh; staircased PEC is the supported floor)
-- Non-uniform z-mesh for thin substrates (shadow qualification lane)
-- Multi-GPU via jax.pmap (experimental distributed lane)
 - Mixed precision (float16 fields, 2x memory reduction)
 - Auto-configuration from geometry + frequency range
+- Structured preflight reports for setup, support-boundary, and S-parameter routing checks
 
 ### Sources & Ports
 - GaussianPulse, ModulatedGaussian, CW, custom waveforms
-- Lumped/wire feed ports and lumped RLC (series/parallel ADE); calibrated
-  S-parameter workflows depend on the selected port family
-- Rectangular waveguide modal ports (analytical TE/TM eigenmodes, documented
-  rectangular-guide workflow)
-- Coaxial transmission-line reflection through the documented
-  `compute_coaxial_line_reflection(...)` envelope
-- Floquet ports with Bloch periodic BC (experimental lane)
-- Oblique TFSF (2D TMz + TEz auxiliary grids)
+- Lumped/wire feed ports and lumped RLC (series/parallel ADE); calibrated S-parameter workflows depend on the selected port family
+- Specialized microstrip-line ports through `compute_msl_s_matrix(...)`
+- Rectangular waveguide modal ports through `compute_waveguide_s_matrix(...)`
+- Coaxial transmission-line reflection through the bounded `compute_coaxial_line_reflection(...)` envelope
 
 ### Materials
 - Debye/Lorentz/Drude dispersive, Kerr nonlinear (chi3)
@@ -221,7 +177,7 @@ accuracy items are tracked honestly as GitHub issues rather than hidden
 - Harminv resonance extraction (MPM)
 - Far-field, RCS, radiation patterns, polarization
 - Antenna metrics: gain, efficiency, HPBW, F/B ratio, bandwidth
-- Topology optimization (density filter + projection + beta schedule)
+- Differentiable proxy-objective optimization for selected workflows
 - Parametric sweep + jax.vmap batch evaluation
 - Smith chart, de-embedding, Touchstone I/O (.s2p/.s4p/.snp)
 - Auto convergence study with Richardson extrapolation
@@ -229,10 +185,8 @@ accuracy items are tracked honestly as GitHub issues rather than hidden
 ### Geometry & Workflow
 - Box, Sphere, Cylinder (CSG), Via, CurvedPatch
 - PCB stackup builder (2-layer, 4-layer presets)
-- RIS unit cell workflow
-- Pre-AMR error indicator + neural surrogate export
 - Field animation (GIF/MP4)
-- Streamlit web dashboard
+- Artifact/report exporters for reproducible review bundles
 
 ## Documentation
 
@@ -249,13 +203,13 @@ Canonical public-doc sources in this repo:
 - `docs/public/guide/` — public guide pages
 - `docs/public/examples/` — runnable example hubs
 - `docs/public/validation/` — quantitative evidence and lane-label hubs
-- `docs/agent/` — public AI-agent pages
+- `docs/public/api/` — curated public API pages
 - `docs/guides/public_docs_architecture.md` — ownership, sync, and deploy rules
-- `docs/guides/public_docs_maintenance.md` — release/docs-sync checklist, stale-doc policy, and support-matrix cadence
+- `docs/guides/public_docs_maintenance.md` — release/docs-sync checklist, outdated-doc policy, and support-matrix cadence
 
 ### Public docs maintenance workflow
 
-1. Edit the source pages in `docs/public/index.mdx`, `docs/public/guide/`, or `docs/agent/`.
+1. Edit the source pages in `docs/public/index.mdx`, `docs/public/guide/`, `docs/public/examples/`, `docs/public/validation/`, or `docs/public/api/`.
 2. Validate the source tree:
    ```bash
    python scripts/check_public_docs_manifest.py
@@ -278,15 +232,13 @@ Gitops-side snapshot/build CI lives in the deploy repo:
 - [Public landing page](docs/public/index.mdx)
 - [Validation hub](docs/public/validation/index.mdx) — support overview and lane labels
 - [Examples hub](docs/public/examples/index.mdx) — current runnable entry points
-- [Non-Uniform Mesh guide](docs/public/guide/nonuniform-mesh.mdx) — practical thin-substrate shadow-lane workflows
 
 ### Tutorials
 - [Patch Antenna Design](docs/public/guide/tutorial-patch-antenna.mdx) — practical patch workflow from local resonance run to external cross-check
-- [Microstrip Filter](docs/public/guide/tutorial-microstrip-filter.mdx) — Coupled-line BPF from Pozar
-- [Convergence Study](docs/public/guide/tutorial-convergence.mdx) — Mesh independence methodology
+- [Convergence Study](docs/public/guide/tutorial-convergence.mdx) — mesh independence methodology
 
 ### Guides
-- [Migration from Meep/OpenEMS](docs/public/guide/comparison.mdx)
+- [Migration from Meep/OpenEMS](docs/public/guide/migration.md)
 - [Changelog](docs/public/guide/changelog.mdx)
 - [Contributing](docs/public/guide/contributing.md)
 
