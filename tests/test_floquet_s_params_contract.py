@@ -339,8 +339,8 @@ def test_compute_floquet_s_params_grad_matches_central_fd():
     cliff) full periodic-cell adjoint run; a full-FDTD Floquet AD-vs-FD test remains
     future work (see the floquet ad_fd_test_note in the port-external manifest).
 
-    Measured 2026-06-18 (the gate is set from this, R5): g_ad = 0.360555 = |Gamma|
-    exactly; central-FD rel_err <= 3.2e-4 across theta in {0.5,1.0,1.5}, h in
+    Measured 2026-06-18 (the gate is set from this, R5): g_ad = 0.360555 =
+    |Gamma| = |0.30+0.20j| exactly (recomputed dynamically below, so it cannot rot); central-FD rel_err <= 3.2e-4 across theta in {0.5,1.0,1.5}, h in
     {1e-2,1e-3}; sign always matches. Gate rel_err < 1e-2 is ~30x the measured worst
     for cross-machine/float robustness.
     """
