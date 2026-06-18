@@ -1175,7 +1175,21 @@ class _SparamMixin:
                         jnp.asarray(beta0_per_port[p_idx]),
                         z0_hj=z0_hj_per_port[p_idx],
                     )
-                    raw_z0 = raw_z0.at[driven, p_idx, :].set(jnp.asarray(res_p["z0"], dtype=_complex_dtype))
+                    # Normalize the REPORTED characteristic-impedance sign per port
+                    # (issue #140). msl_loop_current negates the loop current ONLY for
+                    # "+x" ports (rfx/sources/msl_port.py:947-948), so a "-x" port's
+                    # fitted z0 = (alpha - gamma)/I inherits a negative sign while a
+                    # physical Z0 is positive-real. Mirror that exact binary so BOTH
+                    # ports report a positive Z0. This touches ONLY the reported/dumped
+                    # Z0 (raw_z0, Z0_per_run) and the |Z0| honesty-guard; it never
+                    # enters S11/S21 (which use the static analytic Hammerstad-Jensen
+                    # z0_hj). It removes the spurious ~228% guard deviation on -x ports
+                    # while leaving the genuine ~20-27% 3-cell Yee-staircase Z0 warning on
+                    # both ports. NB: the raw current dump (raw_i1) intentionally keeps
+                    # its un-normalized sign; only the DERIVED Z0 is sign-normalized.
+                    dir_sign = 1.0 if msl_ports[p_idx].direction == "+x" else -1.0
+                    z0_fit = jnp.asarray(res_p["z0"], dtype=_complex_dtype) * dir_sign
+                    raw_z0 = raw_z0.at[driven, p_idx, :].set(z0_fit)
                     raw_q = raw_q.at[driven, p_idx, :].set(jnp.asarray(res_p["q"], dtype=_complex_dtype))
                     if p_idx == driven:
                         # V·I single-plane wave split at probe 0 (issue #80
@@ -1192,7 +1206,7 @@ class _SparamMixin:
                         a_fwd_d = 0.5 * (v0_d + z0hj_d * i_f)
                         b_ref_d = 0.5 * (v0_d - z0hj_d * i_f)
                         S = S.at[driven, driven, :].set(jnp.asarray(b_ref_d / (a_fwd_d + 1e-30), dtype=_complex_dtype))
-                        Z0_per_run = Z0_per_run.at[driven, :].set(jnp.asarray(res_p["z0"], dtype=_complex_dtype))
+                        Z0_per_run = Z0_per_run.at[driven, :].set(z0_fit)
                         alpha_d = a_fwd_d
                         if driven == 0:
                             beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)

@@ -313,3 +313,124 @@ def test_msl_thru_line_eigenmode_gate():
     assert 35.0 < mean_z0 < 70.0, (
         f"Re(Z0) = {mean_z0:.2f} Ω outside (35, 70) Ω"
     )
+
+
+def _run_msl_thru(l_line: float):
+    """Build + run the canonical RO4350B microstrip thru-line at a given physical
+    line length and return its MSL S-matrix result.
+
+    Identical geometry/run params to ``test_msl_thru_line_passive_gate`` (the
+    validated single-length envelope), parameterised by ``l_line`` so the
+    length-invariance test can sweep it. ``LY``/``LZ`` are length-independent.
+    """
+    lx = l_line + 2 * PORT_MARGIN
+    sim = Simulation(
+        freq_max=F_MAX,
+        domain=(lx, LY, LZ),
+        dx=DX,
+        cpml_layers=8,
+        boundary=BoundarySpec(
+            x="cpml", y="cpml",
+            z=Boundary(lo="pec", hi="cpml"),
+        ),
+    )
+    sim.add_material("ro4350b", eps_r=EPS_R)
+    sim.add(Box((0.0, 0.0, 0.0), (lx, LY, H_SUB)), material="ro4350b")
+    y_centre = LY / 2.0
+    trace_y_lo = y_centre - W_TRACE / 2.0
+    trace_y_hi = y_centre + W_TRACE / 2.0
+    sim.add(
+        Box((0.0, trace_y_lo, H_SUB), (lx, trace_y_hi, H_SUB + DX)),
+        material="pec",
+    )
+    sim.add_msl_port(
+        position=(PORT_MARGIN, y_centre, 0.0),
+        width=W_TRACE, height=H_SUB, direction="+x", impedance=50.0,
+    )
+    sim.add_msl_port(
+        position=(PORT_MARGIN + l_line, y_centre, 0.0),
+        width=W_TRACE, height=H_SUB, direction="-x", impedance=50.0,
+    )
+    return sim.compute_msl_s_matrix(n_freqs=30, num_periods=12)
+
+
+@pytest.mark.slow
+def test_msl_thru_line_z0_length_invariance_and_positive_sign():
+    """MSL |Z0| length-invariance + per-port POSITIVE Z0 sign (issue #140).
+
+    First committed test of MSL characteristic-impedance invariance ACROSS
+    physical line lengths (every other MSL test is single-length). Two locks:
+
+    1. **Per-port positive Z0 sign — the #140 fix.** ``msl_loop_current`` negates
+       the loop current only for ``+x`` ports, so before the fix the ``-x`` port
+       reported a NEGATIVE Re(Z0) and false-fired the |Z0| honesty guard (~228%
+       deviation vs the true ~20-27% Yee-staircase bias). This asserts BOTH ports
+       report Re(Z0) > 0 across the band — it FAILS on the pre-fix code and PASSES
+       after. The reported-Z0 sign does NOT enter S11/S21 (those use the static
+       analytic Hammerstad-Jensen z0), so this is purely a reported/diagnostic fix.
+    2. **|Z0| length-invariance.** A thru-line's characteristic impedance is a
+       per-unit-length property, so the mean-band |Z0| must agree across lengths
+       to a few percent.
+
+    Tolerances tie to the 2026-06-14 #140 verify-only measurement (|Z0| ~57.5 Ω,
+    cross-length spread ~0.49%, passivity 1.009-1.013, mean|S11| 0.052-0.124); the
+    5% spread gate is ~10x the measured spread for cross-machine robustness.
+    @slow: three full FDTD thru-line runs.
+    """
+    # Lengths chosen so the largest domain (L + 2*PORT_MARGIN = 14 mm) matches the
+    # validated single-length gate's domain — three FDTD runs each ~that gate's cost,
+    # spanning a 67% length range (enough to expose any length-dependent Z0 drift).
+    lengths = [6e-3, 8e-3, 10e-3]
+    mean_abs_z0_per_length = []
+    for l_line in lengths:
+        result = _run_msl_thru(l_line)
+        S, Z0, freqs = result.S, result.Z0, result.freqs
+        mask = (freqs >= GATE_F_LO) & (freqs <= GATE_F_HI)
+        assert np.any(mask), f"no gate-band freqs at L={l_line}"
+        z0_p0 = Z0[0, mask]   # +x driven port
+        z0_p1 = Z0[1, mask]   # -x port (the one that read negative pre-fix)
+        s11 = np.abs(S[0, 0, mask])
+        s21 = np.abs(S[1, 0, mask])
+
+        # R5 witness: dump the full per-port Z0 trace, not just a headline.
+        print(f"\n[MSL z0-len L={l_line*1e3:.0f}mm] Re(Z0[+x]) min/mean/max = "
+              f"{z0_p0.real.min():.2f}/{z0_p0.real.mean():.2f}/{z0_p0.real.max():.2f}")
+        print(f"[MSL z0-len L={l_line*1e3:.0f}mm] Re(Z0[-x]) min/mean/max = "
+              f"{z0_p1.real.min():.2f}/{z0_p1.real.mean():.2f}/{z0_p1.real.max():.2f}")
+        print(f"[MSL z0-len L={l_line*1e3:.0f}mm] mean|S11|={np.mean(s11):.4f} "
+              f"mean|S21|={np.mean(s21):.4f}")
+
+        # (1) #140 LOCK: positive Re(Z0) on BOTH ports, every band bin.
+        assert np.all(z0_p0.real > 0), f"+x port Re(Z0) not all positive at L={l_line}"
+        assert np.all(z0_p1.real > 0), (
+            f"-x port Re(Z0) not all positive at L={l_line} — issue #140 sign regression"
+        )
+        # (2) passivity (per-bin, not just mean).
+        assert np.max(s11) <= 1.05 and np.max(s21) <= 1.05, (
+            f"passivity violated at L={l_line}: max|S11|={np.max(s11):.3f} "
+            f"max|S21|={np.max(s21):.3f}"
+        )
+        # (3) transmission + reflection envelope (consistent with the single-length gate).
+        assert float(np.mean(s21)) > 0.90, f"|S21|={np.mean(s21):.3f} too low at L={l_line}"
+        assert float(np.mean(s11)) < 0.15, f"|S11|={np.mean(s11):.3f} too high at L={l_line}"
+        # (4) |Z0| magnitude symmetry: the -x port differs from +x only in (now-fixed) sign.
+        m0 = float(np.mean(np.abs(z0_p0)))
+        m1 = float(np.mean(np.abs(z0_p1)))
+        assert abs(m0 - m1) / m0 < 0.05, (
+            f"|Z0| +x/-x magnitude mismatch at L={l_line}: {m0:.2f} vs {m1:.2f}"
+        )
+        # consistent with the existing single-length Z0 gate.
+        assert 40.0 < float(np.mean(z0_p0.real)) < 65.0, (
+            f"mean Re(Z0[+x])={np.mean(z0_p0.real):.2f} outside (40,65) at L={l_line}"
+        )
+        mean_abs_z0_per_length.append(m0)
+
+    # (5) |Z0| length-invariance: per-unit-length property -> agree across lengths.
+    mean_of_means = sum(mean_abs_z0_per_length) / len(mean_abs_z0_per_length)
+    spread = (max(mean_abs_z0_per_length) - min(mean_abs_z0_per_length)) / mean_of_means
+    print(f"\n[MSL z0-len] mean|Z0| per length {[round(z, 2) for z in mean_abs_z0_per_length]} Ω; "
+          f"spread = {spread*100:.2f}%")
+    assert spread < 0.05, (
+        f"|Z0| length spread {spread*100:.1f}% >= 5% — not length-invariant "
+        f"({mean_abs_z0_per_length})"
+    )
