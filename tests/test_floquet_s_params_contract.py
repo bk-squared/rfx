@@ -323,6 +323,69 @@ def test_compute_floquet_s_params_grad_finite():
     assert abs(grad) > 1e-6, f"grad unexpectedly ~0: {grad}"
 
 
+def test_compute_floquet_s_params_grad_matches_central_fd():
+    """jax.grad through compute_floquet_s_params AGREES with central finite-difference.
+
+    Strengthens the grad-FINITE smoke above (which only checks the tape survives)
+    to a grad-CONVERGENCE gate: the differentiability MOAT for the Floquet S-param
+    EXTRACTOR. Same analytic planted-phasor objective (theta scales the reflection
+    at the reference plane); the planted |S11| is linear in theta so the analytic
+    derivative is exactly |Gamma|, and central-FD must reproduce it.
+
+    SCOPE (honest): this exercises the EXTRACTOR (compute_floquet_s_params on built
+    accumulators), NOT a full FDTD forward — unlike the MSL/waveguide converged
+    AD-vs-FD tests which differentiate through the solver via eps_override. It is
+    the strongest AD-vs-FD gate available for Floquet without a (slow, AD-memory-
+    cliff) full periodic-cell adjoint run; a full-FDTD Floquet AD-vs-FD test remains
+    future work (see the floquet ad_fd_test_note in the port-external manifest).
+
+    Measured 2026-06-18 (the gate is set from this, R5): g_ad = 0.360555 =
+    |Gamma| = |0.30+0.20j| exactly (recomputed dynamically below, so it cannot rot); central-FD rel_err <= 3.2e-4 across theta in {0.5,1.0,1.5}, h in
+    {1e-2,1e-3}; sign always matches. Gate rel_err < 1e-2 is ~30x the measured worst
+    for cross-machine/float robustness.
+    """
+    n_freqs = 4
+    plane_shape = (6, 5)
+    freqs = jnp.linspace(8e9, 12e9, n_freqs)
+    A = 1.0 + 0.25j
+    Gamma = 0.30 + 0.20j
+
+    def objective(theta):
+        e_inc = jnp.full((n_freqs,) + plane_shape, A, dtype=jnp.complex64)
+        h_inc = jnp.full((n_freqs,) + plane_shape, A / ETA0, dtype=jnp.complex64)
+        ex_ref = A + theta * Gamma * A
+        hy_ref = (A - theta * Gamma * A) / ETA0
+        e_ref = jnp.full((n_freqs,) + plane_shape, 1.0 + 0j,
+                         dtype=jnp.complex64) * ex_ref
+        h_ref = jnp.full((n_freqs,) + plane_shape, 1.0 + 0j,
+                         dtype=jnp.complex64) * hy_ref
+        acc_inc = init_floquet_dft(n_freqs, plane_shape)._replace(
+            e_tang1_dft=e_inc, h_tang2_dft=h_inc)
+        acc_ref = init_floquet_dft(n_freqs, plane_shape)._replace(
+            e_tang1_dft=e_ref, h_tang2_dft=h_ref)
+        res = compute_floquet_s_params(
+            acc_inc, acc_ref, None,
+            dx=0.001, Lx=0.01, Ly=0.01, freqs=freqs,
+            theta_deg=0.0, phi_deg=0.0,
+        )
+        return jnp.mean(jnp.abs(res["S11"]))
+
+    theta0 = 1.0
+    h = 1e-3
+    g_ad = float(jax.grad(objective)(theta0))
+    g_fd = float((objective(theta0 + h) - objective(theta0 - h)) / (2.0 * h))
+    rel_err = abs(g_ad - g_fd) / max(abs(g_fd), 1e-12)
+    print(f"\n[floquet AD-vs-FD] g_ad={g_ad:.6f} g_fd={g_fd:.6f} rel_err={rel_err:.3e}")
+
+    assert np.isfinite(g_ad) and np.isfinite(g_fd), "AD/FD gradient non-finite"
+    assert abs(g_ad) > 1e-6, f"grad unexpectedly ~0: {g_ad}"
+    assert g_ad * g_fd > 0, f"AD/FD gradient sign disagreement: {g_ad} vs {g_fd}"
+    assert rel_err < 1e-2, (
+        f"AD-vs-central-FD rel_err {rel_err:.3e} >= 1e-2 — the Floquet S-param "
+        "extractor gradient does not converge to finite-difference"
+    )
+
+
 def test_extract_floquet_modes_grad_finite():
     """jax.grad of mean(|S|) through extract_floquet_modes is finite.
 

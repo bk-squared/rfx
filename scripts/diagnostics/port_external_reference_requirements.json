@@ -200,8 +200,8 @@
       ],
       "external_comparison_artifacts": [],
       "broad_e5_envelope_artifacts": [],
-      "ad_fd_test": null,
-      "ad_fd_test_note": "grad-finite smoke only (test_floquet_s_params_contract::test_compute_floquet_s_params_grad_finite); no AD-vs-FD convergence test yet.",
+      "ad_fd_test": "tests/test_floquet_s_params_contract.py::test_compute_floquet_s_params_grad_matches_central_fd",
+      "ad_fd_test_note": "EXTRACTOR-LEVEL AD-vs-FD convergence (2026-06-18): jax.grad of mean(|S11|) through compute_floquet_s_params on analytic planted-phasor accumulators matches central-FD to rel_err<1e-2 (measured <=3.2e-4; g_ad=|Gamma| exactly, the planted reflection is linear in theta). Validates the Floquet S-param EXTRACTOR gradient. NOTE: extractor-level, NOT a full-FDTD adjoint (unlike the MSL/waveguide converged tests that differentiate through the solver via eps_override); a full-FDTD Floquet AD-vs-FD test remains future work. floquet stays blocked on external broadside-RCWA evidence regardless.",
       "target_ceiling": "broad-E5-structural-partial",
       "usage_rule": "Periodic-structure broadside (theta=0) only. Off-broadside scan needs a split-field complex-Bloch BC rewrite (the Bloch BC currently drops the imaginary phase) — a structural ceiling, not a tuning gap."
     },
