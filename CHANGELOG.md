@@ -6,19 +6,112 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
-### Fixed — documentation honesty: coaxial clean-checkout audit status (2026-06-17)
+## [1.6.5] - 2026-06-19
 
-- Corrected a stale claim in the 2026-06-08 coaxial changelog entry that the
-  coaxial family was *"the current validated"* method and *"the only family
-  currently passing the clean-checkout port external-reference audit."*  That
-  was true only before the rectangular-waveguide broad-E5 evidence was committed
-  (PR #181, v1.6.4).  On the current clean checkout the coaxial broad-E5/E4
-  evidence still lives in gitignored `.omx/`, so
-  `check_port_external_references.py` reports `coaxial_port` BLOCKED, and the
-  single family that passes is `rectangular_waveguide_port`.  This brings the
-  changelog in line with the T0 honesty downgrade already applied to the README,
-  support matrix, port-selection guide, evidence-rule doc, and manifest
-  (`coaxial_port` → `broad_e5_demonstrated_evidence_uncommitted`).
+Highlights: a validation-framework **reframe** — the `broad_e5_passed`
+port-external-reference verdict now means magnitude envelope + an (approximately)
+convention-free phase witness + an AD-vs-FD differentiability moat + a live-physics
+anchor + committed-artifact enforcement (it was a magnitude-only checkmark) — plus
+machine-readable per-port physics-set validation ceilings, several
+documentation-honesty corrections, a public-docs surface narrowing, and MSL /
+Floquet / non-uniform / distributed test hardening. This is mostly validation rigor
+and honesty; the only user-visible runtime change is a per-port reported-Z0 sign
+normalization (S-parameter-invariant).
+
+### Changed — port-external-reference validation reframe (T0–T2.5; PRs #184, #190, #186, #187, #188, #189)
+
+- `scripts/diagnostics/check_port_external_references.py`'s `broad_e5_passed`
+  verdict now requires, beyond the magnitude envelope: a documented numeric
+  breadth floor (≥4 cases, ≥2 mesh, ≥2 geometry/eps, a freq-span ratio, all cases
+  pass) enforced for **every** family (was waveguide-only); an approximately
+  convention-free TE10 propagation-phase witness (`tests/test_waveguide_phase_gate.py`);
+  an **AD-vs-FD differentiability gate wired into the verdict** (a family whose
+  extractor is numpy / not-traceable — e.g. coaxial — cannot pass); a live-physics
+  anchor that runs a real `compute_waveguide_s_matrix` PEC-short / empty-guide check
+  rather than only replaying a frozen JSON; physics-derived (measured-envelope)
+  tolerances; and git-committed-artifact enforcement (`--require-committed`) so
+  evidence living only in gitignored `.omx/` no longer counts. `missing_evidence`
+  now gates the verdict. (T2.4 note: the planned `C·(k·dx)²` dispersion-tolerance
+  model was falsified by the committed data and replaced with a measured envelope —
+  a stop-and-redesign, not a tweak.)
+
+### Added — per-port physics-set target ceilings + usage rules (PR #191)
+
+- The port-external manifest and auditor now declare, per family, a
+  machine-readable `target_ceiling` (the validation ceiling the port can physically
+  reach) and `usage_rule`, from a controlled vocabulary. broad-E5 is **not** a
+  universal goal: `rectangular_waveguide_port` = broad-E5 (achieved);
+  `microstrip_line_port` = broad-E5 matched-regime only; `coaxial_port` = broad-E5
+  pending a differentiable API; lumped/wire = E4 natural ceiling (single-cell feeds
+  have no transmission-line oracle — "validated to ceiling", not a failure);
+  `floquet_port` = broadside structural-partial; generalized-planar = unimplemented.
+  Descriptive context emitted alongside the verdict — it does **not** change the
+  pass/block gate logic.
+
+### Changed — public documentation surface narrowed (PR #198)
+
+- Public `/rfx/` docs were narrowed to maintained workflows + bounded support
+  envelopes: the route inventory was trimmed, generated-API and agent-deploy-sync
+  surfaces removed, and public wording rewritten around documented evidence
+  envelopes (temporary surfaces such as SBP-SAT subgridding stay out of user docs).
+  No library behaviour change.
+
+### Fixed — documentation honesty (T0; PRs #192, #193)
+
+- Corrected a stale claim that the coaxial family was *"the current validated"*
+  method and *"the only family currently passing the clean-checkout port
+  external-reference audit"* — true only before the rectangular-waveguide broad-E5
+  evidence was committed (PR #181, v1.6.4). Coaxial evidence still lives in
+  gitignored `.omx/`, so the auditor reports `coaxial_port` BLOCKED and
+  `rectangular_waveguide_port` is the single passing family
+  (`coaxial_port` → `broad_e5_demonstrated_evidence_uncommitted` across README,
+  support matrix, port-selection guide, evidence-rule doc, manifest, CHANGELOG, and
+  the reference-lane doc).
+- The MSL thru-line openEMS smoke comparator
+  (`compare_msl_thru_openems_reference.py`) no longer reports a bare `passed` when
+  its |S11| channel is non-discriminating (on a matched line the reference |S11| ≈
+  the tolerance, so a degenerate output would have "passed"); it now flags the S11
+  channel informational and rests on transmission. Added a committed
+  estimator-level test for `rfx.harminv` (synthetic known-frequency recovery,
+  float32 robustness), and corrected the cv05 metric label (a Harminv-vs-Harminv
+  resonance-frequency agreement, not an S11-vs-S11 match).
+
+### Fixed — microstrip-line reported characteristic impedance sign (issue #140, PR #194)
+
+- `compute_msl_s_matrix` now reports a positive `Re(Z0)` on **both** ports. A `-x`
+  port previously reported a negative Z0 (it inherited the sign of the
+  direction-aware closed-Ampère loop current), which also false-fired the |Z0|
+  honesty guard at ~228% deviation. This is **S-parameter-invariant** — the reported
+  Z0 never enters S11/S21 (those use the static analytic Hammerstad-Jensen Z0); the
+  genuine ~20–27% Yee-staircase Z0 warning correctly remains. A new `@slow`
+  thru-line test locks |Z0| length-invariance + the positive-sign behaviour. The
+  earlier PR-#134 alarm (non-physical Z0 corrupting S-params, runaway passivity) was
+  verified-and-refuted; **issue #140 closed**.
+
+### Added — validation test coverage (PRs #195, #196)
+
+- Floquet: an extractor-level AD-vs-FD **agreement** test for
+  `compute_floquet_s_params` (the differentiability moat — `jax.grad` agrees with
+  central finite-difference to <1e-2 at a fixed step; previously only a finiteness
+  smoke existed).
+- Non-uniform mesh: an analytic-gated NonUniformGrid accuracy test against a
+  **graded-axis-dependent** mode — an air PEC cavity TM111 resonance (p=1, whose
+  closed-form frequency moves with the graded *z* extent, unlike the existing
+  `test_stage1_nu_physics_gate` TM110 p=0 gate, which is z-independent) reproduced to
+  ~2.7% on a genuinely graded mesh. This gates the graded axis against a number it
+  actually changes.
+
+### Fixed — distributed tests on a single-GPU pod (issue #162, PR #197)
+
+- The multi-GPU `tests/test_distributed.py` tests are now device-count-adaptive
+  (shard across `min(4, jax.device_count())`) and skip cleanly when <2 devices are
+  present, instead of failing a hardcoded `len(devices)==4` assert on a single-GPU
+  pod (where the host-device-count sentinel does not add virtual devices). The
+  distributed runner is verified equivalent to single-device by the committed tests
+  (rel-err ≤1e-3) — this was test brittleness, not a runner defect. The GPU suite
+  goes green because the multi-device tests now SKIP cleanly on the single-GPU pod;
+  reliable multi-device CI coverage is environment-gated (a known follow-up — needs
+  an isolated pytest lane). **issue #162 closed**.
 
 ## [1.6.4] - 2026-06-16
 

@@ -11,6 +11,14 @@ This page summarizes user-visible changes.
 
 The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane**. Public guides emphasize maintained workflows and bounded port-family envelopes.
 
+## v1.6.5 — June 2026
+
+- The port-external-reference validation verdict was **reframed**: `broad_e5_passed` now means a magnitude envelope **plus** an (approximately) convention-free phase witness, an AD-vs-FD differentiability gate wired into the verdict, a live-physics anchor (not only a frozen replay), physics-derived tolerances, and committed-artifact enforcement — not a magnitude-only checkmark.
+- Per-port **physics-set validation ceilings** + usage rules are now declared (machine-readable): broad-E5 is not a universal goal — single-cell lumped/wire feeds top out at E4 by their nature, MSL is matched-regime-only, Floquet is broadside-only, generalized-planar is unimplemented. Only `rectangular_waveguide_port` passes the clean-checkout audit; coaxial is reported BLOCKED (its broad-E5 evidence is uncommitted and its extractor is not differentiable).
+- `compute_msl_s_matrix` now reports a positive characteristic impedance on **both** ports (a reported-Z0 sign fix that is S-parameter-invariant — the reported Z0 never enters S11/S21).
+- New validation coverage: a Floquet AD-vs-FD agreement test, and an analytic-gated non-uniform-mesh accuracy test against a mode whose resonance frequency depends on the graded axis (an air-cavity TM111 resonance).
+- Documentation-honesty corrections across the changelog, support matrix, and reference-lane docs; the public documentation surface was narrowed to maintained workflows; the multi-GPU distributed tests are device-count-adaptive and skip cleanly on a single-GPU pod.
+
 ## v1.6.4 — June 2026
 
 - Rectangular waveguide-port evidence now covers WR-band empty-guide, PEC-short, and dielectric-slab cases with analytic and external-reference comparisons.
