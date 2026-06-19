@@ -11,7 +11,7 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.6.4 package** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, structured setup guards, and port-family validation envelopes.
+**v1.6.5 package** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, structured setup guards, and port-family validation envelopes.
 
 > **Project status (June 2026):** `rfx` is an actively validated RF/FDTD simulator. Use the uniform Cartesian Yee RF lane first; additional workflows should be used only inside their documented evidence envelopes.
 
@@ -93,7 +93,7 @@ import jax
 
 def objective(eps_plug):
     eps = base_eps.at[plug_region].set(eps_plug)   # design variable
-    res = sim.compute_waveguide_s_matrix(normalize=True, eps_override=eps)
+    res = sim.compute_waveguide_s_matrix(normalize=False, eps_override=eps)
     s11 = res.s_params[0, 0, target_freq_idx]
     return jnp.abs(s11) ** 2
 
@@ -250,7 +250,7 @@ Gitops-side snapshot/build CI lives in the deploy repo:
   title        = {rfx: JAX-based differentiable 3D FDTD simulator for RF engineering},
   institution  = {REMI Lab, Chungnam National University},
   year         = {2026},
-  version      = {1.6.4},
+  version      = {1.6.5},
   url          = {https://github.com/bk-squared/rfx}
 }
 ```

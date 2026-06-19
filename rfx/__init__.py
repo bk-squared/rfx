@@ -1,7 +1,7 @@
 """rfx — JAX-based RF FDTD electromagnetic simulator."""
 # ruff: noqa: F401
 
-__version__ = "1.6.4"
+__version__ = "1.6.5"
 
 from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult
