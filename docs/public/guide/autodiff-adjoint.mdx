@@ -1,0 +1,181 @@
+---
+title: "Autodiff and Adjoint Background"
+sidebar:
+  order: 13
+---
+
+This guide explains the gradient language used by rfx for microwave engineers
+who already think in terms of fields, ports, S-parameters, and design tuning.
+It uses Meep's adjoint-solver documentation as the comparison point, then maps
+those ideas to the JAX-native rfx workflow.
+
+## The engineering problem
+
+A conventional RF design loop is easy to state:
+
+1. choose geometry and materials,
+2. run the electromagnetic solver,
+3. extract an observable such as `|S11|`, `|S21|`, input impedance, radiated
+   power, or field intensity,
+4. change the design and run again.
+
+For one or two scalar variables, a sweep or finite-difference derivative is often
+sufficient. For a design region with hundreds or millions of material degrees of
+freedom, finite differences become too expensive because each variable requires
+additional solver runs.
+
+Gradient methods answer a different question: if the current design is fixed,
+which direction in the design-variable space most quickly improves a scalar
+objective?
+
+```text
+design variables -> FDTD fields -> probes / ports / far-field data -> scalar loss
+       eps_r(x)        E,H(t)              S11, S21, power             J
+```
+
+The output of autodiff or an adjoint calculation is the sensitivity of that
+scalar loss with respect to the design variables, for example `dJ / d eps_r` in
+a dielectric tuning region.
+
+## Finite difference, adjoint, and autodiff
+
+| Method | What it does | Cost shape | When it is useful |
+|---|---|---|---|
+| Parameter sweep | Evaluate a grid of candidate designs | many full simulations | low-dimensional engineering trade studies |
+| Finite difference | Perturb one variable at a time and re-run | one or two runs per variable | sanity checks and small parameter sets |
+| Adjoint method | Solve a forward problem and an adjoint sensitivity problem | roughly independent of design-variable count for one scalar objective family | large design regions and topology-style optimization |
+| Reverse-mode automatic differentiation | Apply the chain rule to the implemented discrete program | one differentiated program, with memory/recompute tradeoffs | JAX-native differentiable workflows in rfx |
+
+Meep's current adjoint-solver documentation describes a dedicated adjoint module
+for gradients of functions of mode coefficients, S-parameters, DFT fields, LDOS,
+and far fields with respect to a `MaterialGrid`. In that formulation, Meep runs a
+forward calculation to obtain the objective and design-region fields, then an
+adjoint calculation with a special current-source distribution; the gradient is
+assembled from the forward and adjoint fields. Meep highlights that this is why a
+large number of design variables can be handled without one simulation per
+variable.
+
+rfx uses a different implementation route. rfx writes the solver and supported
+objective paths in JAX, then uses JAX reverse-mode automatic differentiation to
+compute gradients of the implemented discrete computation. This is closely
+related to a discrete adjoint at the linear-algebra level: both are efficient
+ways to compute vector-Jacobian products for a scalar objective. The practical
+interface, however, is `jax.grad(loss_fn)(params)`, not a separate Meep-style
+adjoint run object.
+
+## What to carry over from Meep's adjoint model
+
+Meep's adjoint documentation is a useful mental model because it keeps four
+ideas explicit:
+
+1. **The objective must be explicit.** A solver does not optimize an antenna,
+   filter, or waveguide by itself. You must define a scalar loss such as
+   reflected energy, transmitted energy, directivity at an angle, or mismatch to
+   a target impedance.
+2. **The design variables must be continuous.** Gradients are natural for
+   permittivity, material-density, shape-parameter, or other continuous
+   variables. They do not make an integer grid size, a boolean topology switch,
+   or an arbitrary CAD operation differentiable.
+3. **The gradient is tied to the implemented observable.** A proxy loss such as
+   reflected probe energy is not automatically the same claim as a calibrated
+   S-parameter benchmark. Use the support matrix for the physical claim you want
+   to make.
+4. **Optimization still needs constraints and validation.** Filters,
+   projection, minimum feature-size rules, mesh convergence, passivity checks,
+   and final independent verification remain engineering requirements.
+
+Those rules are the same whether the gradient comes from a hand-derived adjoint
+solver, an automated adjoint module, or JAX autodiff.
+
+## rfx interpretation
+
+In rfx, the public gradient story is:
+
+- `jax.grad` can differentiate scalar losses through supported JAX-traced FDTD
+  workflows.
+- The result is a gradient of the implemented discrete simulation, not a
+  guarantee that the chosen observable is the right RF metric.
+- `checkpoint=True` or segmented checkpointing can reduce reverse-mode memory by
+  recomputing parts of the forward pass during the backward pass.
+- New problem setups should start with finite-difference checks on a few cells or
+  parameters before trusting the gradient for optimization.
+- Final RF claims should be verified by the relevant public workflow: port-family
+  S-parameter checks, convergence studies, far-field checks, or benchmarked
+  validation cases.
+
+This distinction matters for microwave work. A gradient can correctly optimize a
+proxy loss while the final design still fails a stricter measurement definition,
+for example a calibrated de-embedded `S11` envelope or a far-field directivity
+metric.
+
+## Practical microwave examples
+
+| Task | Good gradient variable | Good first objective | Validation after optimization |
+|---|---|---|---|
+| Dielectric matching block | continuous `eps_r` in a bounded design region | reflected probe energy or `forward(port_s11_freqs=...)` where supported | compare to the documented port-family S-parameter path |
+| Waveguide taper | dielectric profile or smooth shape parameters | transmitted modal energy or waveguide-port metric inside the guide envelope | run `compute_waveguide_s_matrix()` with convergence checks |
+| Patch-style tuning | substrate or feed-region continuous parameters | resonance/probe proxy during iteration | re-run resonance extraction and documented patch workflow checks |
+| Far-field shaping | continuous dielectric or layout-density field away from CPML | NTFF/directivity objective where configured | re-run far-field workflow and mesh/convergence checks |
+
+Avoid using gradients for cells inside CPML, boolean geometry insertion/removal,
+unsupported mixed-port combinations, or workflows that do not have a public guide
+and support entry.
+
+## Minimal gradient-check pattern
+
+Use this kind of check before a new optimization setup:
+
+```python
+import jax
+
+ad_grad = jax.grad(loss_fn)(params)
+
+idx = (10, 5, 3)
+h = 1e-2
+params_p = params.at[idx].add(h)
+params_m = params.at[idx].add(-h)
+fd_grad = (loss_fn(params_p) - loss_fn(params_m)) / (2 * h)
+
+rel_err = abs(ad_grad[idx] - fd_grad) / max(abs(fd_grad), 1e-30)
+print(rel_err)
+```
+
+For float32 FDTD workflows, very small finite-difference steps can be dominated
+by cancellation. Start with `h = 1e-2` for permittivity-like variables, then
+adjust based on the scale of the loss and the design variable.
+
+## Reading map
+
+- [Meep Adjoint Solver](https://meep.readthedocs.io/en/latest/Python_Tutorials/Adjoint_Solver/)
+  introduces the forward/adjoint two-run structure, MaterialGrid design
+  variables, broad-bandwidth objectives, and implementation references.
+- A. M. Hammond, A. Oskooi, M. Chen, Z. Lin, S. G. Johnson, and S. E. Ralph,
+  ["High-performance hybrid time/frequency-domain topology optimization for
+  large-scale photonics inverse design"](https://doi.org/10.1364/OE.442074),
+  *Optics Express* 30, 4467-4491 (2022), is the main Meep adjoint-solver
+  reference cited by the Meep documentation.
+- M. B. Giles and N. A. Pierce,
+  ["An Introduction to the Adjoint Approach to Design"](https://doi.org/10.1023/A:1011430410075),
+  *Flow, Turbulence and Combustion* 65, 393-415 (2000), is a classic
+  engineering introduction to adjoint design sensitivities.
+- S. Molesky, Z. Lin, A. Y. Piggott, W. Jin, J. Vuckovic, and A. W. Rodriguez,
+  ["Outlook for inverse design in nanophotonics"](https://doi.org/10.1038/s41566-018-0246-9),
+  *Nature Photonics* 12, 659-670 (2018), surveys inverse-design concepts and
+  motivation in photonics.
+- The [JAX automatic differentiation guide](https://docs.jax.dev/en/latest/automatic-differentiation.html)
+  and [Autodiff Cookbook](https://docs.jax.dev/en/latest/notebooks/autodiff_cookbook.html)
+  explain `jax.grad`, `value_and_grad`, JVPs, VJPs, and finite-difference checks
+  from the programming side.
+- A. Taflove and S. C. Hagness,
+  [*Computational Electrodynamics: The Finite-Difference Time-Domain Method*,
+  3rd ed.](https://us.artechhouse.com/Computational-Electrodynamics-The-Finite-Difference-Time-Domain-Method-Third-Edition-P2342.aspx),
+  Artech House (2005), is the standard FDTD background reference.
+
+## Next steps in rfx
+
+- Use [Inverse Design](/rfx/guide/inverse-design/) for the rfx optimization API
+  and objective families.
+- Use [Gradient Behavior](/rfx/guide/gradient-behavior/) for known stable,
+  noisy, and non-differentiable paths.
+- Use [Memory Reduction](/rfx/guide/memory-reduction/) when reverse-mode memory,
+  checkpointing, or run size is the limiting factor.

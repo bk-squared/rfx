@@ -4,14 +4,16 @@ sidebar:
   order: 16
 ---
 
-rfx is fully differentiable — `jax.grad` computes gradients through the entire
-FDTD simulation, enabling gradient-based inverse design of RF structures.
+rfx exposes JAX-differentiable FDTD workflows: `jax.grad` computes reverse-mode
+gradients of a scalar loss through the implemented discrete time-domain
+calculation. If you are coming from Meep's adjoint terminology, start with
+[Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/).
 
 ## How it works
 
-JAX traces the computation graph through all FDTD time steps.
-`jax.checkpoint` reduces memory from `O(n_steps)` to `O(sqrt(n_steps))` by
-recomputing forward states during backpropagation.
+JAX traces the supported solver and objective path as a computation graph.
+`jax.checkpoint` reduces reverse-mode memory by recomputing forward states
+during backpropagation.
 
 ```text
 Forward:  eps_r → FDTD steps → probes / NTFF / loss

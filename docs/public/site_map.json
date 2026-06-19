@@ -33,6 +33,7 @@
     {
       "label": "Design & Optimization",
       "items": [
+        "rfx/guide/autodiff-adjoint",
         "rfx/guide/inverse-design",
         "rfx/guide/gradient-behavior",
         "rfx/guide/parametric-sweeps",

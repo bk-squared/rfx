@@ -24,8 +24,8 @@ concepts are familiar -- the API surface is different.
 | PEC | `PerfectElectricalConductor` | `AddMetal` | `material="pec"` |
 | PML / ABC | `PML(thickness)` | `AddPML` | `boundary="cpml"` |
 | Dispersive media | `LorentzianSusceptibility` | `AddLorentzMaterial` | `DebyePole`, `LorentzPole`, `drude_pole()` |
-| Differentiable | Not available | Not available | `jax.grad(loss_fn)(params)` |
-| Inverse design | Not native (adjoint plugin) | Not native | `rfx.optimize(sim, design_region, objective)` |
+| Differentiable | adjoint-solver workflows for selected design-region objectives | not native | `jax.grad(loss_fn)(params)` on supported JAX-traced workflows |
+| Inverse design | `meep.adjoint` / `OptimizationProblem` | not native | `rfx.optimize(sim, design_region, objective)` |
 | Non-uniform mesh | Not native | `SmoothMeshLines` | `dz_profile` or `auto_configure()` |
 
 ---
@@ -94,10 +94,10 @@ rectangular-guide gates. Do not treat `run(compute_s_params=True)` as a
 universal OpenEMS `CalcPort` equivalent; it is the lumped/wire `add_port(...)`
 calculator only.
 
-### Meep Adjoint -> rfx Inverse Design
+### Meep Adjoint Solver -> rfx Inverse Design
 
 ```python
-# Meep (requires meep.adjoint plugin)
+# Meep (uses the meep.adjoint module)
 opt = mpa.OptimizationProblem(...)
 opt.update_design([design_params])
 f, g = opt()  # forward + adjoint
@@ -128,12 +128,12 @@ file-based I/O between the Python front-end and a C++ solver. The full
 time-stepping loop is JIT-compiled and executes on GPU (~3,000 Mcells/s on
 RTX 4090).
 
-### Differentiable by Default
+### JAX-Native Differentiation
 
-Every rfx simulation is differentiable with `jax.grad`. Gradients propagate
-through the entire FDTD time-stepping, sources, probes, and post-processing.
-This enables gradient-based inverse design without adjoint plugins or
-finite-difference approximations.
+Supported rfx optimization workflows are written so `jax.grad` can propagate
+through the implemented discrete time-stepping, sources, probes, and objective
+post-processing. This enables gradient-based inverse design from ordinary Python
+loss functions, while final RF claims still need the relevant validation path.
 
 ### Declarative Builder API
 
@@ -178,4 +178,5 @@ one globally fine uniform mesh.
 - [Quick Start](/rfx/guide/quickstart/) -- first simulation in 15 minutes
 - [Simulation API](/rfx/guide/api-reference/) -- current builder reference
 - [Sources & Ports](/rfx/guide/sources-ports/) -- source vs. port workflows
+- [Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/) -- Meep-informed gradient concepts
 - [Inverse Design](/rfx/guide/inverse-design/) -- gradient-based optimization
