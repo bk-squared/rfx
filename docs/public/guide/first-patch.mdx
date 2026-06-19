@@ -149,12 +149,12 @@ sim.add_probe((feed_x, feed_y, feed_z), "ez")
 ## 5. Run the simulation
 
 ```python
-# Build grid to get dt, then set n_steps for ~10 ns simulation time
-grid    = sim._build_grid()
-n_steps = int(np.ceil(10e-9 / grid.dt))
-print(f"Grid: {grid.shape}, dt={grid.dt*1e12:.2f} ps, n_steps={n_steps}")
-
-result = sim.run(n_steps=n_steps)
+# run() sizes the time stepping for you. num_periods counts cycles of the
+# resolved band (freq_max = 4 GHz here), so 40 periods ≈ 10 ns. The realized
+# dt and step count are reported on the result — no private grid access needed.
+result = sim.run(num_periods=40)
+n_steps = result.time_series.shape[0]   # realized number of timesteps
+print(f"dt={result.dt*1e12:.2f} ps, n_steps={n_steps}")
 ```
 
 ---
@@ -184,6 +184,14 @@ if modes:
 
 If you want a quick diagnostic S-parameter run, you can re-run with a lumped
 port instead of a soft source:
+
+!!! warning
+    This single-cell lumped-port `compute_s_params=True` snippet is illustrative.
+    It raises `NotImplementedError` on the non-uniform `dz_profile` mesh built in
+    §2 — single-cell lumped-port S-parameters are not wired for the non-uniform
+    path. For calibrated S-parameters use a multi-cell `add_port(..., extent=...)`
+    WirePort, or a dedicated port workflow (see the waveguide/MSL S-parameter
+    recipes).
 
 ```python
 sim2 = Simulation(

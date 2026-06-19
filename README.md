@@ -82,6 +82,14 @@ modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
 print(f"Resonance: {modes[0].freq/1e9:.4f} GHz  Q={modes[0].Q:.0f}")
 ```
 
+> This compact snippet favours brevity over a production-clean mesh, so `run()`
+> prints a few non-fatal preflight advisories (thin PEC sheets; substrate/feed
+> near the CPML absorber) and the reported resonance is only approximate (this
+> coarse mesh lands ~10–15% high). For a
+> properly resolved patch — PEC ground, non-uniform z-mesh, lossy FR4, and a
+> cross-checked resonance — follow the
+> [First Patch tutorial](docs/public/guide/first-patch.mdx).
+
 ## Differentiable S-Parameters
 
 `jax.grad` flows end-to-end through the **public S-parameter API** — the
@@ -232,6 +240,13 @@ Gitops-side snapshot/build CI lives in the deploy repo:
 - [Public landing page](docs/public/index.mdx)
 - [Validation hub](docs/public/validation/index.mdx) — support overview and lane labels
 - [Examples hub](docs/public/examples/index.mdx) — current runnable entry points
+
+### For AI coding agents
+Working from a fresh clone with an LLM agent? Start with the purpose-built agent docs:
+- [Agent overview & operating rules](docs/agent/overview.mdx) — start here; includes a safe prompt skeleton
+- [Repo map & feature discovery](docs/agent/repo-map.mdx) — how the code is organized + the grep map for finding existing primitives before writing new code
+- [Port selection](docs/agent/port-selection.mdx) — pick the right port family / S-parameter calculator
+- Task recipes: [waveguide S-params](docs/agent/recipe-waveguide-sparams.mdx) · [R(f)/T(f) measurement](docs/agent/recipe-rt-measurement.mdx) · [resonance extraction](docs/agent/recipe-resonance-extraction.mdx) · [differentiable design loop](docs/agent/recipe-design-loop.mdx) · [parameter sweeps](docs/agent/recipe-parameter-sweeps.mdx) · [failed-gate triage](docs/agent/recipe-failed-gate-triage.mdx)
 
 ### Tutorials
 - [Patch Antenna Design](docs/public/guide/tutorial-patch-antenna.mdx) — practical patch workflow from local resonance run to external cross-check
