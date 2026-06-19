@@ -4,15 +4,16 @@ sidebar:
   order: 14
 ---
 
-rfx guarantees that `jax.grad` flows correctly through the entire FDTD
-simulation. This guide documents where gradients are reliable, where they
-are noisy, and best practices for using them.
+rfx gradient workflows use JAX reverse-mode automatic differentiation through
+the implemented discrete FDTD calculation. This guide documents where gradients
+are reliable, where they are noisy, and best practices for using them. For the
+conceptual background, see [Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/).
 
 ## How It Works
 
-JAX traces the entire FDTD time-stepping loop as a computation graph.
-`jax.checkpoint` (rematerialization) reduces memory from O(n_steps) to
-O(sqrt(n_steps)) by recomputing forward states during backpropagation.
+JAX traces the supported FDTD time-stepping and objective path as a computation
+graph. `jax.checkpoint` (rematerialization) reduces reverse-mode memory by
+recomputing forward states during backpropagation.
 
 ```python
 import jax
@@ -24,7 +25,7 @@ def objective(eps_r):
                  checkpoint=True)
     return jnp.sum(result.time_series ** 2)
 
-grad = jax.grad(objective)(eps_r)  # exact gradient via reverse-mode AD
+grad = jax.grad(objective)(eps_r)  # discrete reverse-mode AD gradient
 ```
 
 ## Where Gradients Work Well
@@ -86,7 +87,7 @@ JAX defaults to float32. For very small perturbations, finite-difference
 validation may show large disagreement with AD due to cancellation.
 
 **Mitigation**: When validating with FD, use h >= 1e-2 (not 1e-4).
-The AD gradient is correct; the FD estimate is imprecise at small h.
+A too-small FD step can be imprecise even when the AD path is stable.
 
 ## What Is NOT Differentiable
 
@@ -134,7 +135,7 @@ def fd_check(objective, eps_r, cell=(10, 5, 5), h=1e-2):
 5. **Average over frequencies** — broadband objectives are smoother
 6. **Exclude CPML from design region** — gradients there are artifacts
 7. **Use `until_decay`** — don't run longer than needed
-8. **GPU for speed** — same code, 10-50x faster, identical gradients
+8. **GPU for speed** — same differentiated program, faster execution when JAX has CUDA devices
 
 ## Supported Gradient Paths
 

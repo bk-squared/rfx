@@ -19,7 +19,7 @@ Use the **uniform Cartesian Yee RF/FDTD lane** first. The public docs highlight 
 | **Rectangular waveguide S-matrices** | validated inside the documented rectangular-guide envelope |
 | **Lumped, wire, and microstrip-line port workflows** | available through their matching calculators; validation scope follows the support matrix |
 | **Coaxial line reflection** | bounded one-port transmission-line workflow only; not a general coaxial S-matrix promise |
-| **Differentiable design loops** | use proxy objectives and documented validation checks before treating a design result as evidence |
+| **Differentiable design loops** | use proxy objectives, gradient checks, and documented validation before treating a design result as evidence |
 
 If a capability is not listed here or in the support-boundary page, treat it as outside the documented public support scope until the support matrix lists it.
 
@@ -98,6 +98,7 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
 
 ### Design & Optimization
 
+- [Autodiff and Adjoint Background](guide/autodiff-adjoint/) — Meep-informed gradient concepts for microwave engineers
 - [Inverse Design](guide/inverse-design/) — autodiff-driven optimization with documented proxy objectives
 - [Gradient Behavior](guide/gradient-behavior/) — where gradients are reliable vs noisy
 - [Parametric Sweeps](guide/parametric-sweeps/) — sequential sweep and `jax.vmap` design-space exploration

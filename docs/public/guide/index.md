@@ -50,6 +50,7 @@ Start with the recommended default lane unless a public guide explicitly routes 
 
 | Guide | Description |
 |---|---|
+| [Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/) | Gradient concepts for microwave engineers, mapped from Meep adjoint terminology to rfx autodiff workflows |
 | [Inverse Design](/rfx/guide/inverse-design/) | Gradient-based optimization with proxy objectives and validation caveats |
 | [Gradient Behavior](/rfx/guide/gradient-behavior/) | Where gradients are strong, weak, or noisy |
 | [Parametric Sweeps](/rfx/guide/parametric-sweeps/) | Sequential sweeps and `jax.vmap` batch evaluation |
