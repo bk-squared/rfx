@@ -858,7 +858,8 @@ def extract_s_matrix(
             state = update_h(state, mats, dt, dx)
             if use_cpml:
                 state, cpml_state = apply_cpml_h(
-                    state, cpml_params, cpml_state, grid, cpml_axes)
+                    state, cpml_params, cpml_state, grid, cpml_axes,
+                    materials=mats)
 
             state, debye_state, lorentz_state = _update_e_with_optional_dispersion(
                 state,
@@ -871,7 +872,8 @@ def extract_s_matrix(
 
             if use_cpml:
                 state, cpml_state = apply_cpml_e(
-                    state, cpml_params, cpml_state, grid, cpml_axes)
+                    state, cpml_params, cpml_state, grid, cpml_axes,
+                    materials=mats)
             state = apply_pec(state)
 
             # Apply interior PEC mask (e.g. ground plane, scatterers
@@ -1105,7 +1107,8 @@ def extract_s_matrix_wire(
             state = update_h(state, mats, dt, dx)
             if use_cpml:
                 state, cpml_state = apply_cpml_h(
-                    state, cpml_params, cpml_state, grid, cpml_axes)
+                    state, cpml_params, cpml_state, grid, cpml_axes,
+                    materials=mats)
 
             state, debye_state, lorentz_state = _update_e_with_optional_dispersion(
                 state,
@@ -1118,7 +1121,8 @@ def extract_s_matrix_wire(
 
             if use_cpml:
                 state, cpml_state = apply_cpml_e(
-                    state, cpml_params, cpml_state, grid, cpml_axes)
+                    state, cpml_params, cpml_state, grid, cpml_axes,
+                    materials=mats)
             state = apply_pec(state)
 
             if pec_mask is not None:
