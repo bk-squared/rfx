@@ -139,6 +139,13 @@ corners: `Box((x_lo, -1, -1), (x_hi, 1, 1))`.
 `d`-thick slab can map to `d + dx` cells. Nudge the upper x-corner down by
 `dx/2` to hit the last interior cell: `slab_x_hi = center + d/2 - dx/2`.
 
+### (e) dtype-truncation warnings are expected, not errors
+
+Under the default `precision="float32"`, the flux DFT accumulators emit benign
+`complex128 → complex64` truncation `UserWarning`s (from `rfx/probes/probes.py`)
+on every run. They are expected and do not affect the R/T result — do **not**
+enable `jax_enable_x64` globally to silence them.
+
 ## Do NOT use
 
 **`add_probe` (time-series) + `np.fft.rfft`** for dispersive media.
@@ -179,6 +186,10 @@ necessarily a usage error in either tool.
 
 ## Canonical examples
 
+- `examples/slab_rt_flux_monitor.py` — **the recommended path**: `add_flux_monitor`
+  + two-run field-level reference subtraction via the `Simulation` API, with an
+  analytic Fresnel witness and an energy-conservation readout (on the coarse demo
+  grid R+T sits slightly above 1; refine `dx` to tighten it). Start here.
 - `examples/crossval/04_multilayer_fresnel.py` — dispersionless Fresnel slab,
   analytic comparison. Note: this script uses a raw Yee loop (`update_e` /
   `update_h`) rather than the `Simulation` API. The raw-loop approach works for
