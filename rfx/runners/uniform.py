@@ -647,6 +647,16 @@ def run_uniform(
                 pec_mask=pec_mask,
             )
 
+        # Passivity self-check (tracer-safe) — surface non-physical |S11|>1 from
+        # the eager single-cell lumped/wire extractor, matching forward() and
+        # compute_*_s_matrix (which previously had no such check on this path).
+        if s_params is not None:
+            from rfx.probes.probes import warn_if_nonpassive_lumped_s11
+            warn_if_nonpassive_lumped_s11(
+                s_params, freqs_out,
+                extractor="run(compute_s_params=True)",
+            )
+
     waveguide_ports_result = (
         {
             entry.name: cfg

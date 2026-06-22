@@ -974,6 +974,73 @@ def extract_lumped_s11(
     return (v_dft + z0 * i_dft) / safe_denom
 
 
+def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
+                                  passivity_tol: float = 0.10) -> None:
+    """Tracer-safe passivity self-check for lumped/wire port S11 (issue #206 sib).
+
+    ``run(compute_s_params=True)`` and ``forward(port_s11_freqs=...)`` for
+    lumped/wire ports assemble S11 from the eager single-cell extractor, but —
+    unlike ``compute_*_s_matrix`` (which calls
+    :func:`rfx.api._sparams._warn_if_nonpassive_smatrix`) — they previously
+    surfaced no passivity check. A passive one-port cannot have ``|S11| > 1``;
+    a gross violation (measured up to ~1.98 on a high-eps closed cavity) means
+    the extractor is unreliable at that frequency (single-cell curl-of-H
+    current is ill-conditioned where the incident wave is weak, i.e. spectral
+    band edges), NOT that the device is exotic. Surface it so an eager
+    analysis / optimizer setup does not trust or chase those bins.
+
+    ``s_params``: ``(n_freqs,)`` single port, or ``(n_ports, n_freqs)`` per-port
+    diagonal S_ii. ``passivity_tol`` matches the repo standard (0.10) so mild
+    float32 noise just above 1.0 is not flagged.
+
+    Tracer-safe: under ``jax.grad`` / ``jax.jit`` ``s_params`` is an abstract
+    tracer with no concrete value, so the check is skipped entirely — it never
+    perturbs an AD/optimization run, only the eager research call.
+    """
+    import numpy as np
+    import jax as _jax
+    try:
+        if isinstance(s_params, _jax.core.Tracer):
+            return
+    except Exception:
+        pass
+    try:
+        mag = np.abs(np.asarray(s_params))
+        f = np.asarray(freqs)
+    except Exception:
+        return
+    if mag.size == 0:
+        return
+    nonfinite = ~np.isfinite(mag)
+    over = mag > (1.0 + passivity_tol)
+    if not (over.any() or nonfinite.any()):
+        return
+    worst = float(np.nanmax(mag)) if np.isfinite(mag).any() else float("nan")
+    bad_f = []
+    try:
+        bad_cols = np.unique(np.where(over | nonfinite)[-1])
+        bad_f = [f"{float(f[c]) / 1e9:.3f}" for c in bad_cols[:6] if c < f.size]
+    except Exception:
+        pass
+    # Describe the actual trigger accurately: a non-finite bin is its own
+    # failure mode (don't report a misleadingly-small finite max for it).
+    if nonfinite.any():
+        kind = f"non-finite (and max finite|S11|={worst:.3f})"
+    else:
+        kind = f"max|S11|={worst:.3f} > 1+{passivity_tol:g}"
+    import warnings as _w
+    _w.warn(
+        f"{extractor}: lumped/wire port S11 is non-passive ({kind}) "
+        f"at freq(GHz)={bad_f}"
+        f"{' …' if len(bad_f) == 6 else ''}. A passive one-port cannot have "
+        f"|S11|>1; the single-cell extractor is unreliable where the incident "
+        f"wave is weak (spectral band edges). Do not trust or optimize against "
+        f"these bins — restrict the band to where the source has energy, or use "
+        f"run() for a passive analysis curve.",
+        stacklevel=3,
+    )
+
+
 def extract_s11_normalised(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
     """Compute S11 normalised against the incident source DFT.
 

@@ -888,6 +888,19 @@ class _ExecuteMixin:
             s_params_out = w_list[0] if len(w_list) == 1 else jnp.stack(w_list, axis=0)
             freqs_out = result.wire_port_sparams[0][0].freqs
 
+        # Passivity self-check (tracer-safe; skipped under jax.grad/jit) — the
+        # eager single-cell lumped/wire extractor can return non-physical
+        # |S11|>1 where the incident wave is weak (spectral band edges), and
+        # forward() previously surfaced no check (unlike compute_*_s_matrix).
+        if s_params_out is not None and (
+            result.lumped_port_sparams or result.wire_port_sparams
+        ):
+            from rfx.probes.probes import warn_if_nonpassive_lumped_s11
+            warn_if_nonpassive_lumped_s11(
+                s_params_out, freqs_out,
+                extractor="forward(port_s11_freqs=...)",
+            )
+
         # Convert tuple → name-keyed dict, mirroring runners/uniform.py:704
         # so consumers can index by the same name they registered with.
         dft_planes_out = None
