@@ -396,7 +396,7 @@ def _kappa_correction(kappa, curl_slice, shape_broadcast):
 
 def apply_cpml_e(
     state, cpml_params, cpml_state: CPMLState, grid,
-    axes: str = "xyz", materials=None,  # materials reserved for future per-cell CPML
+    axes: str = "xyz", materials=None,  # per-cell eps_r for material-aware CPML (None = free-space)
 ) -> tuple:
     """Apply CPML correction to E-field update on all 6 faces.
 

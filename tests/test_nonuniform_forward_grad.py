@@ -82,9 +82,16 @@ def test_forward_nonuniform_grad_eps_matches_fd():
     grad_fd = (lp - lm) / (2.0 * h)
 
     rel_err = abs(grad_ad - grad_fd) / max(abs(grad_fd), 1e-12)
-    assert rel_err < 0.02, (
+    # Tolerance is 5% (the house AD-vs-FD standard, cf. MSL / waveguide-flux
+    # gradient tests), not tighter: the FD reference is a centred difference of
+    # two ~1e10-scale float32 losses, i.e. a small-difference-of-large-numbers
+    # with machine-dependent cancellation. The SAME (correct) AD gradient has
+    # been observed at 0.4%–2.2% rel-err across machines while grad_ad itself is
+    # stable to all printed digits; the 2% threshold was cross-machine-flaky.
+    # This gate validates gradient correctness (AD≈FD), not FD float32 noise.
+    assert rel_err < 0.05, (
         f"AD grad {grad_ad:.4e} vs FD grad {grad_fd:.4e} — "
-        f"rel_err {rel_err:.4%} above 2% threshold"
+        f"rel_err {rel_err:.4%} above 5% threshold"
     )
 
 
