@@ -22,13 +22,19 @@ from __future__ import annotations
 
 import numpy as np
 
+import jax.numpy as jnp
+
 from rfx.probes.probes import (
+    PortVIReplayBundle,
+    WirePortVIReplayBundle,
     decompose_lumped_s_matrix,
     decompose_wire_s_matrix,
 )
 
 
-def compute_lumped_wire_s_matrix_via_scan(sim, freqs, *, n_steps=None):
+def compute_lumped_wire_s_matrix_via_scan(
+    sim, freqs, *, n_steps=None, return_vi_dump=False
+):
     """Full lumped/wire N-port S-matrix via the production scan.
 
     Drives each sparam-eligible lumped/wire port in turn through the
@@ -46,12 +52,24 @@ def compute_lumped_wire_s_matrix_via_scan(sim, freqs, *, n_steps=None):
         Number of FDTD steps per drive.  Defaults to
         ``grid.num_timesteps(num_periods=30)`` (matching the eager
         extractors' default).
+    return_vi_dump : bool
+        When True, return the SAME replay bundle type the eager extractor
+        produces (:class:`~rfx.probes.probes.PortVIReplayBundle` for an
+        all-lumped set, :class:`~rfx.probes.probes.WirePortVIReplayBundle`
+        for an all-wire set), populated from the driver's per-drive V/I
+        accumulators with the identical sign conventions, shapes
+        ``(n_driven, n_ports, n_freqs)``, and field names/order as the eager
+        bundle.  This lets the production-scan driver feed the existing replay
+        path byte-for-byte (item-5 Stage 2, PURE ADD).
 
     Returns
     -------
     (S, freqs) : (np.ndarray, np.ndarray)
-        ``S`` has shape ``(n_ports, n_ports, n_freqs)`` where ``S[i, j]`` is
-        the response at receive port *i* when driving port *j*.
+        Default.  ``S`` has shape ``(n_ports, n_ports, n_freqs)`` where
+        ``S[i, j]`` is the response at receive port *i* when driving port *j*.
+    PortVIReplayBundle or WirePortVIReplayBundle
+        When ``return_vi_dump=True`` — the same bundle the eager
+        ``extract_s_matrix`` / ``extract_s_matrix_wire`` return.
 
     Notes
     -----
@@ -153,10 +171,40 @@ def compute_lumped_wire_s_matrix_via_scan(sim, freqs, *, n_steps=None):
             decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts),
             dtype=np.complex64,
         )
+        if return_vi_dump:
+            # Mirror ``extract_s_matrix_wire``'s WirePortVIReplayBundle
+            # field-for-field.  The wire dump stores the FDTD-sign midpoint V
+            # (no negation, unlike lumped) — ``v_all``/``i_all`` already hold
+            # the same ``sprobes[i].v_dft`` / ``i_dft`` the eager path stores.
+            return WirePortVIReplayBundle(
+                s_params=S,
+                freqs=jnp.asarray(freqs),
+                raw_voltages_fdt=v_all,
+                raw_currents=i_all,
+                port_impedances=z0,
+                port_cell_counts=port_cell_counts,
+                port_names=tuple(f"wire_{idx}" for idx in range(n_ports)),
+                driven_port_indices=tuple(range(n_ports)),
+            )
     else:
         S = np.asarray(
             decompose_lumped_s_matrix(v_all, i_all, z0),
             dtype=np.complex64,
         )
+        if return_vi_dump:
+            # Mirror ``extract_s_matrix``'s PortVIReplayBundle field-for-field.
+            # The portable dump schema uses voltage positive into the DUT, so
+            # store ``-V`` (the FDTD-sign V is ``v_all``); current is positive
+            # into the DUT, so store ``+I`` (``i_all``) — matching the eager
+            # comment exactly.
+            return PortVIReplayBundle(
+                s_params=S,
+                freqs=jnp.asarray(freqs),
+                voltages=-v_all,
+                currents=i_all,
+                port_impedances=z0,
+                port_names=tuple(f"port_{idx}" for idx in range(n_ports)),
+                driven_port_indices=tuple(range(n_ports)),
+            )
 
     return S, freqs
