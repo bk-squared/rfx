@@ -1,0 +1,67 @@
+# Microstrip through-line on FR4 — a small, fast config-CLI example.
+#
+# A 8 mm PEC trace on a 1 mm FR4 substrate over a PEC ground plane, fed by
+# a 50 ohm lumped wire port at each end (port 1 excited, port 2 passive
+# matched load) for a 2-port S-parameter sweep.
+#
+# The grid is intentionally tiny (~57 x 41 x 29 cells, dx = 0.5 mm) so the
+# whole run finishes in a few seconds on CPU. This is a structural / API
+# smoke example, not a calibrated S-parameter reference. At this coarse mesh
+# the 1 mm substrate is only ~2 cells thick, so `rfx run` will emit one
+# expected preflight advisory ("Gap between PEC structures ... coupling may be
+# under-resolved") — that is the mesh-resolution check working as intended,
+# not an error. Refine `dx` for a quantitative run.
+#
+#   rfx run examples/config/microstrip_thru.yaml --output thru.h5
+#   rfx plot thru.h5 --quantity s_params --out thru_s11.png
+#   rfx export-geometry examples/config/microstrip_thru.yaml --output thru_geo.json
+
+frequency:
+  freq_max: 12e9
+
+domain: {x: 0.020, y: 0.012, z: 0.006}
+
+boundary: cpml
+cpml_layers: 8
+dx: 0.0005
+
+materials:
+  fr4: {eps_r: 4.4, sigma: 0.02}   # small loss avoids artificially infinite Q
+
+geometry:
+  # Ground plane (PEC), 0.5 mm thick at the bottom interior.
+  - {shape: box, bounds: [[0.0, 0.0, 0.0015], [0.020, 0.012, 0.002]], material: pec}
+  # FR4 substrate, 1 mm thick on top of the ground plane.
+  - {shape: box, bounds: [[0.0, 0.0, 0.002], [0.020, 0.012, 0.003]], material: fr4}
+  # Microstrip trace (PEC), 1 mm wide, 8 mm long, on top of the substrate.
+  - {shape: box, bounds: [[0.006, 0.0055, 0.003], [0.014, 0.0065, 0.0035]], material: pec}
+
+sources:
+  # Port 1: excited 50 ohm lumped wire port, seated inside the substrate near
+  # the feed end. The wire is lifted off the ground-plane PEC top face
+  # (z = 0.002) and stops below the trace PEC (z = 0.003) so neither endpoint
+  # overlaps a conductor cell (avoids the "inside PEC" preflight advisory).
+  - type: port
+    position: [0.006, 0.006, 0.0021]
+    component: ez
+    impedance: 50.0
+    extent: 0.0008
+    waveform: {type: gaussian_pulse, f0: 6e9, bandwidth: 0.9, amplitude: 1.0}
+  # Port 2: passive matched load (no excitation) for the off-diagonal S entry.
+  - type: port
+    position: [0.014, 0.006, 0.0021]
+    component: ez
+    impedance: 50.0
+    extent: 0.0008
+    excite: false
+
+probes:
+  - {position: [0.010, 0.006, 0.0025], component: ez}
+
+execution:
+  n_steps: 1200
+  compute_s_params: true
+  s_param_freq_start: 2e9
+  s_param_freq_end: 10e9
+  s_param_n_freqs: 81
+  s_param_n_steps: 1200
