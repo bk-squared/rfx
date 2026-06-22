@@ -960,7 +960,8 @@ def run_nonuniform(
                 st = _apply_wg_h_nu(st, cfg_meta, step_idx, dt, grid.dx)
         if use_cpml:
             st, cpml_new = apply_cpml_h(st, cpml_params, carry["cpml"],
-                                         cpml_grid, cpml_axes_eff)
+                                         cpml_grid, cpml_axes_eff,
+                                         materials=materials)
         else:
             cpml_new = None
         if use_pmc_faces:
@@ -998,7 +999,8 @@ def run_nonuniform(
                 st = _apply_wg_e_nu(st, cfg_meta, step_idx, dt, grid.dx)
         if use_cpml:
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
-                                         cpml_grid, cpml_axes_eff)
+                                         cpml_grid, cpml_axes_eff,
+                                         materials=materials)
 
         # PEC
         st = apply_pec(st)
