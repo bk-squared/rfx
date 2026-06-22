@@ -443,6 +443,21 @@ class _PreflightMixin:
                 "reference lane."
             )
 
+        # The lumped/wire S-parameter extractor runs a SEPARATE eager FDTD
+        # re-run that does NOT apply periodic boundaries, so it would silently
+        # ignore set_periodic_axes() and return an S-matrix for the wrong
+        # (non-periodic) boundary-value problem (issue #206). Fail loudly
+        # instead of returning silently-wrong S-parameters.
+        if self._periodic_axes and port_entries:
+            raise NotImplementedError(
+                "run(compute_s_params=True) for lumped/wire add_port(...) does "
+                "not honor periodic axes: the S-parameter extraction re-run uses "
+                "non-periodic boundaries, so the returned S-matrix would silently "
+                f"ignore set_periodic_axes({self._periodic_axes!r}). Remove the "
+                "periodic axes for the S-parameter run, or use a port family that "
+                "supports periodicity (e.g. a Floquet port)."
+            )
+
     def _validate_forward_sparameter_request(self) -> None:
         """Reject ``forward(port_s11_freqs=...)`` outside its narrow path."""
 
