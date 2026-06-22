@@ -756,6 +756,115 @@ def update_wire_sparam_probe(
     return probe._replace(v_dft=new_v, i_dft=new_i, v_inc_dft=new_vinc)
 
 
+# ---------------------------------------------------------------------------
+# Pure wave decomposers (single source of truth for the lumped/wire S-matrix)
+# ---------------------------------------------------------------------------
+#
+# These extract the *post-processing* of the eager extractors into reusable,
+# AD-friendly (jnp) module-level functions so that both the eager
+# Python-loop extractor (extract_s_matrix / extract_s_matrix_wire) and the
+# production-scan driver (rfx/probes/sparam_driver.py) decompose V/I phasors
+# with ONE implementation.  The eager extractors call these so the eager path
+# stays bit-identical (item-5 Stage 1, 2026-06-22).
+
+def decompose_lumped_s_matrix(v, i, z0):
+    """Lumped-port N-port S-matrix from accumulated V/I DFTs.
+
+    Wave decomposition with the FDTD sign convention (``V = -E·dx``):
+
+        a_j = (-V[j,j] + Z0[j]·I[j,j]) / (2·√Z0[j])    # incident at driven port j
+        b_i = (-V[j,i] - Z0[i]·I[j,i]) / (2·√Z0[i])    # reflected at receive port i
+        S[i,j] = b_i / a_j
+
+    where the safe-denominator guard replaces a zero incident wave by 1 (so
+    S → 0 / 1 = 0 rather than NaN).  Mirrors ``extract_s_matrix`` exactly.
+
+    Parameters
+    ----------
+    v, i : (n_ports, n_ports, n_freqs) complex
+        ``v[j, i]`` / ``i[j, i]`` are the V/I DFT phasors at receive port *i*
+        when driving port *j* (FDTD sign convention).
+    z0 : (n_ports,) real
+        Per-port reference impedance.
+
+    Returns
+    -------
+    S : (n_ports, n_ports, n_freqs) complex
+        ``S[i, j]`` is the response at receive port *i* when driving port *j*.
+    """
+    v = jnp.asarray(v)
+    i = jnp.asarray(i)
+    z0 = jnp.asarray(z0)
+    n_ports = v.shape[0]
+    n_freqs = v.shape[-1]
+    S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
+    for j in range(n_ports):
+        z0_j = z0[j]
+        a_j = (-v[j, j] + z0_j * i[j, j]) / (2.0 * jnp.sqrt(z0_j))
+        safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
+        for ri in range(n_ports):
+            z0_i = z0[ri]
+            b_i = (-v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
+            S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
+    return S
+
+
+def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
+    """Wire-port N-port S-matrix from accumulated midpoint V/I DFTs.
+
+    Diagonal entries use the measured input impedance reflection
+    (``Z_in = -V/I``; ``S_ii = (Z_in − Z0_i)/(Z_in + Z0_i)``); off-diagonal
+    entries use a *per-cell-normalized* impedance ``Z0/n_cells`` for the wave
+    decomposition.  Mirrors ``extract_s_matrix_wire`` line-for-line.
+
+    Parameters
+    ----------
+    v, i : (n_ports, n_ports, n_freqs) complex
+        ``v[j, i]`` / ``i[j, i]`` are the midpoint-cell V/I DFT phasors at
+        receive port *i* when driving port *j* (FDTD sign convention).
+    z0 : (n_ports,) real
+        Per-port total reference impedance.
+    port_cell_counts : (n_ports,) int
+        Number of wire cells per port (for per-cell impedance normalization).
+
+    Returns
+    -------
+    S : (n_ports, n_ports, n_freqs) complex
+        ``S[i, j]`` is the response at receive port *i* when driving port *j*.
+    """
+    v = jnp.asarray(v)
+    i = jnp.asarray(i)
+    z0 = jnp.asarray(z0)
+    n_ports = v.shape[0]
+    n_freqs = v.shape[-1]
+    S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
+    for j in range(n_ports):
+        z0_j = z0[j]
+        safe_i = jnp.where(
+            jnp.abs(i[j, j]) > 0,
+            i[j, j],
+            jnp.ones_like(i[j, j]) * 1e-30,
+        )
+        z_in_j = -v[j, j] / safe_i  # measured input impedance
+        for ri in range(n_ports):
+            z0_i = z0[ri]
+            if ri == j:
+                S = S.at[ri, j, :].set(
+                    ((z_in_j - z0_i) / (z_in_j + z0_i)).astype(jnp.complex64))
+            else:
+                n_cells_i = max(int(port_cell_counts[ri]), 1)
+                z0_cell_i = z0_i / n_cells_i
+                b_i = (-v[j, ri] - z0_cell_i * i[j, ri]) / (
+                    2.0 * jnp.sqrt(z0_cell_i))
+                n_cells_j = max(int(port_cell_counts[j]), 1)
+                z0_cell_j = z0_j / n_cells_j
+                a_j = (-v[j, j] + z0_cell_j * i[j, j]) / (
+                    2.0 * jnp.sqrt(z0_cell_j))
+                safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
+                S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
+    return S
+
+
 def extract_s_matrix(
     grid,
     materials,
@@ -836,7 +945,9 @@ def extract_s_matrix(
         lorentz_poles, lorentz_masks = lorentz_spec
         lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks)
 
-    S = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+    # FDTD-sign V/I phasors per (drive j, receive i) for the shared decomposer.
+    v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+    i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     raw_v = (
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
@@ -898,17 +1009,14 @@ def extract_s_matrix(
             # Excite only port j
             state = apply_lumped_port(state, grid, ports[j], t, mats)
 
-        # Wave decomposition with FDTD sign convention (V = -E·dx):
-        #   a = (-V + Z0·I) / (2·√Z0)   # incident
-        #   b = (-V - Z0·I) / (2·√Z0)   # reflected
-        # Incident wave at excitation port j
-        z0_j = ports[j].impedance
-        a_j = (-sprobes[j].v_dft + z0_j * sprobes[j].i_dft) / (
-            2.0 * np.sqrt(z0_j))
-        safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-
-        # Response at each receiving port i
+        # Collect per-(drive j, receive i) V/I DFT phasors for the shared
+        # wave decomposer (``decompose_lumped_s_matrix``) — single source of
+        # truth for the lumped decomposition shared with the production-scan
+        # driver (item-5 Stage 1).  The dump schema stores ``-V`` (voltage
+        # positive into the DUT); the FDTD-sign V is fed to the decomposer.
         for i in range(n_ports):
+            v_all[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
+            i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
             if return_vi_dump:
                 # ``port_voltage`` returns the FDTD-sign voltage used by the
                 # legacy extractor (V = -E·dx).  The portable dump schema uses
@@ -918,10 +1026,10 @@ def extract_s_matrix(
                 # decomposition below exactly.
                 raw_v[j, i, :] = np.asarray(-sprobes[i].v_dft, dtype=np.complex128)
                 raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
-            z0_i = ports[i].impedance
-            b_i = (-sprobes[i].v_dft - z0_i * sprobes[i].i_dft) / (
-                2.0 * np.sqrt(z0_i))
-            S[i, j, :] = np.array(b_i / safe_a)
+
+    z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
+    S = np.asarray(
+        decompose_lumped_s_matrix(v_all, i_all, z0_arr), dtype=np.complex64)
 
     if return_vi_dump:
         return PortVIReplayBundle(
@@ -1145,7 +1253,10 @@ def extract_s_matrix_wire(
         lorentz_poles, lorentz_masks = lorentz_spec
         lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks)
 
-    S = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+    # FDTD-sign midpoint V/I phasors per (drive j, receive i) for the
+    # shared wire decomposer (``decompose_wire_s_matrix``).
+    v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+    i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     raw_v = (
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
@@ -1205,38 +1316,21 @@ def extract_s_matrix_wire(
             # Excite only port j
             state = apply_wire_port(state, grid, ports[j], t, mats)
 
-        # Wave decomposition at the midpoint cell with FDTD sign
-        # convention (V = -E·dx → Z_in = -V/I).
-        z0_j = ports[j].impedance
-        safe_i = jnp.where(
-            jnp.abs(sprobes[j].i_dft) > 0,
-            sprobes[j].i_dft,
-            jnp.ones_like(sprobes[j].i_dft) * 1e-30,
-        )
-        z_in_j = -sprobes[j].v_dft / safe_i  # measured input impedance
-
+        # Collect per-(drive j, receive i) midpoint V/I DFT phasors for the
+        # shared wire wave decomposer (``decompose_wire_s_matrix``) — single
+        # source of truth shared with the production-scan driver.  Wire dump
+        # stores the FDTD-sign V (no negation, unlike lumped).
         for i in range(n_ports):
+            v_all[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
+            i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
             if return_vi_dump:
                 raw_v[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
                 raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
-            z0_i = ports[i].impedance
-            if i == j:
-                # S11: reflection from input impedance
-                S[i, j, :] = np.array(
-                    (z_in_j - z0_i) / (z_in_j + z0_i)
-                )
-            else:
-                # Sij: wave decomposition with negated V (FDTD sign)
-                n_cells_i = int(port_cell_counts[i])
-                z0_cell_i = z0_i / max(n_cells_i, 1)
-                b_i = (-sprobes[i].v_dft - z0_cell_i * sprobes[i].i_dft) / (
-                    2.0 * np.sqrt(z0_cell_i))
-                n_cells_j = int(port_cell_counts[j])
-                z0_cell_j = z0_j / max(n_cells_j, 1)
-                a_j = (-sprobes[j].v_dft + z0_cell_j * sprobes[j].i_dft) / (
-                    2.0 * np.sqrt(z0_cell_j))
-                safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-                S[i, j, :] = np.array(b_i / safe_a)
+
+    z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
+    S = np.asarray(
+        decompose_wire_s_matrix(v_all, i_all, z0_arr, port_cell_counts),
+        dtype=np.complex64)
 
     if return_vi_dump:
         return WirePortVIReplayBundle(

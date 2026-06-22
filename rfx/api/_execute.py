@@ -478,8 +478,32 @@ class _ExecuteMixin:
         pec_mask: jnp.ndarray | None = None,
         pec_occupancy: jnp.ndarray | None = None,
         port_s11_freqs: object | None = None,
-    ) -> ForwardResult:
-        """Run a minimal differentiable forward path from explicit materials."""
+        _sparam_drive_idx: int | None = None,
+        _return_raw_port_sparams: bool = False,
+    ) -> ForwardResult | dict:
+        """Run a minimal differentiable forward path from explicit materials.
+
+        Internal multi-drive S-matrix hook (item-5 Stage 1, 2026-06-22)
+        --------------------------------------------------------------
+        ``_sparam_drive_idx`` and ``_return_raw_port_sparams`` exist solely
+        for the production-scan S-matrix driver
+        (``rfx.probes.sparam_driver``).  Their defaults preserve the current
+        ``forward()`` / ``run()`` behavior EXACTLY:
+
+        * ``_sparam_drive_idx`` (default ``None``): when set to an integer,
+          build the excitation source for ONLY the sparam-eligible
+          lumped/wire port at that 0-based index (in registration order over
+          the lumped+wire ports), ignoring every port's ``excite`` flag.  All
+          other ports remain matched loads (their impedance is still folded
+          into materials via ``setup_lumped_port`` / ``setup_wire_port``).
+          When ``None``, excitation follows ``pe.excite`` as before.
+        * ``_return_raw_port_sparams`` (default ``False``): when ``True``,
+          return ``{"lumped": result.lumped_port_sparams,
+          "wire": result.wire_port_sparams, "freqs": ...}`` (the all-port
+          ``(v_dft, i_dft)`` accumulators) instead of the diagonal
+          ``ForwardResult``.  When ``False``, the normal ``ForwardResult`` is
+          returned unchanged.
+        """
         if self._solver == "adi":
             return self._run_adi_from_materials(
                 grid,
@@ -522,6 +546,19 @@ class _ExecuteMixin:
         # Collect all port cell indices for Kottke dilation guard (issue #82).
         _port_cleared_cells: list[tuple[int, int, int]] = []
 
+        # Multi-drive S-matrix hook (item-5 Stage 1): 0-based counter over the
+        # sparam-eligible lumped/wire ports (impedance != 0) in registration
+        # order. When ``_sparam_drive_idx`` is set, only the port whose counter
+        # equals it is excited; all others are matched loads regardless of
+        # ``pe.excite``. When ``_sparam_drive_idx`` is None this counter is
+        # inert and excitation follows ``pe.excite`` (current behavior).
+        _sparam_port_idx = -1
+
+        def _excite_this_port(pe) -> bool:
+            if _sparam_drive_idx is None:
+                return pe.excite
+            return _sparam_port_idx == _sparam_drive_idx
+
         for pe in self._ports:
             if pe.impedance == 0.0:
                 from rfx.simulation import make_j_source
@@ -530,6 +567,9 @@ class _ExecuteMixin:
                                   pe.waveform, n_steps, materials)
                 )
                 continue
+
+            # Sparam-eligible lumped/wire port — advance the multi-drive index.
+            _sparam_port_idx += 1
 
             if pe.extent is not None:
                 axis_map = {"ex": 0, "ey": 1, "ez": 2}
@@ -544,7 +584,7 @@ class _ExecuteMixin:
                     excitation=pe.waveform,
                 )
                 materials = setup_wire_port(grid, wp, materials)
-                if pe.excite:
+                if _excite_this_port(pe):
                     sources.extend(make_wire_port_sources(grid, wp, materials, n_steps))
                 wp_cells = _wire_port_cells(grid, wp)
                 for cell in wp_cells:
@@ -578,7 +618,7 @@ class _ExecuteMixin:
                 excitation=pe.waveform,
             )
             materials = setup_lumped_port(grid, lp, materials)
-            if pe.excite:
+            if _excite_this_port(pe):
                 sources.append(make_port_source(grid, lp, materials, n_steps))
             idx = grid.position_to_index(pe.position)
             if pec_mask_local is not None:
@@ -865,6 +905,21 @@ class _ExecuteMixin:
             dft_planes=dft_planes if dft_planes else None,
             return_state=False,
         )
+
+        # Multi-drive S-matrix hook (item-5 Stage 1): return the raw all-port
+        # (v_dft, i_dft) accumulators for off-line wave decomposition by the
+        # production-scan driver, bypassing the diagonal-only extraction below.
+        if _return_raw_port_sparams:
+            _raw_freqs = None
+            if result.lumped_port_sparams:
+                _raw_freqs = result.lumped_port_sparams[0][0].freqs
+            elif result.wire_port_sparams:
+                _raw_freqs = result.wire_port_sparams[0][0].freqs
+            return {
+                "lumped": result.lumped_port_sparams,
+                "wire": result.wire_port_sparams,
+                "freqs": _raw_freqs,
+            }
 
         s_params_out = getattr(result, "s_params", None)
         freqs_out = getattr(result, "freqs", None)
