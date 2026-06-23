@@ -1442,7 +1442,7 @@ class _PreflightMixin:
 
         # CHECK 3: λ/2 (Huygens) and λ/4 (reactive-near-field) gaps to any
         # geometry/source/probe. Issue #77: the λ/2 Huygens-equivalence rule
-        # was documented in papers/rfx-tap/CLAUDE.md but only the λ/4 strong
+        # was documented but only the λ/4 strong
         # tier was enforced; a face at λ/30 above a ground-plane PEC silently
         # ran and produced corrupted directivity. The two-tier check below
         # warns mildly in [λ/4, λ/2) (results may degrade) and strongly in
@@ -1599,8 +1599,7 @@ class _PreflightMixin:
         <= ~2 mm drives the field to NaN. Root cause is a discrete-adjointness
         break (the E-update-only ``eps_eff=eps/w`` makes the update operator
         non-SPSD), NOT a CFL issue — reducing dt does not cure it, and four fix
-        methods are falsified (see docs/agent-memory/rfx-known-issues.md, the
-        conformal-PEC item). ``normalize=False`` is NOT a safe workaround.
+        methods are falsified. ``normalize=False`` is NOT a safe workaround.
         Surfacing this at preflight converts a silent-NaN GPU run into an
         instant redirect. Emitted as a WARNING-severity ``PreflightWarning``
         (code ``conformal_nan``), NOT error — conformal is actively-worked and
@@ -1635,14 +1634,14 @@ class _PreflightMixin:
             # MAINTENANCE: delete this guard when the BCK/USC contour-FIT
             # redesign lands. The strict-xfail tracker
             # tests/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec
-            # will hard-fail (XPASS) to force this removal. See
-            # docs/agent-memory/rfx-known-issues.md (conformal-PEC item).
+            # will hard-fail (XPASS) to force this removal (conformal-PEC
+            # known issue).
             _w.warn(
                 PreflightWarning(
                     f"conformal PEC is enabled on faces {sorted(cf)} with a min "
                     f"cell size {min_cell * 1e3:.3f} mm <= 2 mm — this is a KNOWN "
                     f"NaN (discrete-adjointness break, not CFL; 4 fix methods "
-                    f"falsified — see docs/agent-memory/rfx-known-issues.md). "
+                    f"falsified — tracked at https://github.com/bk-squared/rfx/issues). "
                     f"normalize=False is NOT a safe workaround at fine dx. Use "
                     f"conformal=False (staircase PEC) or a coarser mesh "
                     f"(dx > 2 mm) until the contour-FIT redesign lands.",
@@ -1888,9 +1887,8 @@ class _PreflightMixin:
             odd-symmetric and must be zero at the plane by image,
             so injecting it fights the mirror.
 
-        See docs/research_notes/2026-04-20_source_on_symmetry_plane_industry_survey.md
-        for the industry survey behind this rule (Meep / OpenEMS /
-        Tidy3D all follow the same convention).
+        This follows the industry convention (Meep / OpenEMS /
+        Tidy3D all follow the same rule).
         """
         _all_reflector_faces = set(self._pec_faces) | set(_pmc_faces_set)
         if _all_reflector_faces:
@@ -2616,8 +2614,7 @@ class _PreflightMixin:
             # biased — typically reading |S11| ≪ 1 even when physics
             # demands full reflection.  Catches the cv06b-vs-Y2-demo
             # divergence (cv06b's L_LINE=30mm passes; Y2's L_LINE=5mm
-            # fails by ~7 dB on |S11|@notch — see
-            # `docs/research_notes/20260506_y2_s11_notch_bias_root_cause.md`).
+            # fails by ~7 dB on |S11|@notch).
             #
             # Conservative ε_eff_proxy = 5.0 → upper bound on β → lower
             # bound on λ_g → most stringent (smallest) recommended

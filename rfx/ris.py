@@ -548,7 +548,7 @@ def _extract_reflection(
     S11. It FFTs the raw probe time series (total field, with no
     incident-field reference subtraction) and peak-normalizes the
     magnitude. This violates the repo rule "never FFT-of-probe for R(f)"
-    (.claude/rules/rfx-feature-discovery.md) and yields a spectrum shaped
+    and yields a spectrum shaped
     by the source, not a reflection coefficient. The fallback is kept
     only so RIS demos run end-to-end; treat its output as a qualitative
     placeholder, not a measured S-parameter.

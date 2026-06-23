@@ -51,8 +51,8 @@ def _warn_if_nonpassive_smatrix(
     S-matrix and surface a non-physical result as a warning (or raise when
     ``strict``).
 
-    This operationalizes the R5 "no surface-metric verdict" discipline
-    (CLAUDE.md): a passive structure cannot scatter more power than it
+    This operationalizes the R5 "no surface-metric verdict" discipline:
+    a passive structure cannot scatter more power than it
     receives, so a per-column power > 1 (e.g. ``|S11| > 1`` on a one-port)
     means the *extractor* is wrong — mismeasured current sign/scale or a
     bad reference plane — and the S-parameters are untrustworthy, NOT that
@@ -649,8 +649,8 @@ class _SparamMixin:
         # the asymmetric boundary treatment causes the reference outgoing-wave
         # amplitude to diverge / go unstable, producing NaN |S21|.  Use
         # normalize=False (single-run V/I, no reference run) until the reference
-        # run is updated to carry conformal_weights.  Tracked in
-        # docs/agent-memory/rfx-known-issues.md (cv11 mesh-conv NaN xfail).
+        # run is updated to carry conformal_weights.  Known issue
+        # (cv11 mesh-conv NaN xfail).
         if conformal_weights is not None and normalize:
             import warnings as _w
             _w.warn(
@@ -660,7 +660,7 @@ class _SparamMixin:
                 "empty-guide reference outgoing wave to diverge at fine mesh "
                 "spacings (dx <= 2 mm for WR-90) and produce NaN |S21|.  "
                 "Use normalize=False for conformal=True geometries.  "
-                "Tracked in docs/agent-memory/rfx-known-issues.md.",
+                "Tracked at https://github.com/bk-squared/rfx/issues.",
                 UserWarning,
                 stacklevel=3,
             )
@@ -1199,8 +1199,7 @@ class _SparamMixin:
                         # bounded |S11|<=1, unlike the Fix-C alpha/gamma
                         # spatial fit that blew up to |S11|>1 on a strong
                         # reflector. Z0 is analytic Hammerstad-Jensen; I is
-                        # the closed Ampere loop. See
-                        # docs/agent-memory/port_sparam_review_2026-05-19.md.
+                        # the closed Ampere loop.
                         v0_d = v_per_port[driven][0]
                         z0hj_d = z0_hj_per_port[driven]
                         a_fwd_d = 0.5 * (v0_d + z0hj_d * i_f)
@@ -1258,8 +1257,7 @@ class _SparamMixin:
                         f"f = {freqs_arr[k_s] / 1e9:.4f} GHz — non-physical "
                         "for a passive structure. The closed Ampere-loop "
                         "current is likely mismeasured (sign/scale); the "
-                        "extracted S11/S21 are UNRELIABLE. See "
-                        "docs/agent-memory/port_sparam_review_2026-05-19.md."
+                        "extracted S11/S21 are UNRELIABLE."
                     )
                     if strict_extractor:
                         raise ValueError(msg)

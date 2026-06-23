@@ -129,8 +129,8 @@ class _ExecuteMixin:
                 "is not supported on the non-uniform mesh path. "
                 "Drop the dx/dy/dz profile or use the legacy "
                 "``Boundary(conformal=True)`` Stage 1 path on a "
-                "uniform mesh. Tracking: docs/agent-memory/"
-                "stage2_subpixel_pec_unified_design.md §8 Q2."
+                "uniform mesh. Tracked at "
+                "https://github.com/bk-squared/rfx/issues."
             )
         from rfx.runners.nonuniform import run_nonuniform_path
         return run_nonuniform_path(
@@ -744,8 +744,7 @@ class _ExecuteMixin:
         # DFT plane probes — mirror runners/uniform.py:340-359 so the
         # JIT scan body actually accumulates plane-resolved DFT, then
         # carry the result back through ForwardResult.dft_planes for
-        # plane-integrated V/I objectives (gap #4 in
-        # docs/agent-memory/rfx-known-issues.md, 2026-05-05).
+        # plane-integrated V/I objectives (known gap #4, 2026-05-05).
         dft_planes = []
         if self._dft_planes:
             from rfx.probes.probes import init_dft_plane_probe
@@ -847,9 +846,7 @@ class _ExecuteMixin:
         # wiggle near high-Q resonances.  Bypasses the legacy
         # ``apply_pec_occupancy`` E-zeroing path on this branch — the
         # two would double-correct at sigmoid edges (cf. Stage 2
-        # design memo §R9 anti-pattern).  See
-        # ``docs/agent-memory/rfx-known-issues.md`` for the full
-        # diagnosis and the closure predicate.
+        # design memo §R9 anti-pattern).
         aniso_inv_eps_run = None
         pec_occupancy_for_run = pec_occupancy_local
         if (pec_occupancy_local is not None and

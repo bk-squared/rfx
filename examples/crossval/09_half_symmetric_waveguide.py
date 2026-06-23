@@ -28,8 +28,7 @@ Setup:
     - f_{101}(analytic) = 8.246 GHz.
     - dx = 0.5 mm (uniform), cpml_layers = 0 on both runs.
       Closed cavities with cpml_layers=0 sidestep the PMC+CPML composition
-      architectural gap documented in
-      docs/research_notes/2026-04-19_v175_t10_half_symmetric_pmc.md.
+      architectural gap.
     - Gaussian-pulse E_y source offset from center; E_y probe off-node.
     - Harminv on ringdown (skip first 25 %) to extract the dominant mode.
 

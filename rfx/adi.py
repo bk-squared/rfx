@@ -730,8 +730,7 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     but cavity-resonance error reaches ~42% at 5x CFL from the LOD
     splitting (2D LOD by contrast holds <2% to 50x CFL). Only divergence
     /stability tests cover it — there is no physics-accuracy validation.
-    Do not use for quantitative results.
-    See docs/agent-memory/rfx-known-issues.md (OPT-C1).
+    Do not use for quantitative results (known issue OPT-C1).
 
     Parameters
     ----------

@@ -898,8 +898,7 @@ def msl_loop_current(
     ``I`` by ~1.5x — it dropped the air-side return Hy and the trace-edge
     Hz — which inflated the de-embedded Z0 to ~74 ohm vs the ~48 ohm
     analytic Hammerstad-Jensen value.  Closing the loop restores Ampere's
-    law.  See ``docs/agent-memory/port_sparam_review_2026-05-19.md``
-    (stage S1).
+    law.
 
     Parameters
     ----------

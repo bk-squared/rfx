@@ -16,8 +16,8 @@ Status: EXPERIMENTAL / NOT physics-validated. An energy-stability check
 at step 1000); the small transient growth (~1.004x) at step 100 is SAT
 penalty equilibration, not instability. That is a stability observation
 only — 3D SBP-SAT subgridding has NOT been validated against a reference
-solver or analytic result, and the repo CLAUDE.md explicitly marks 3D
-subgridding unvalidated. Do not present its output as validated.
+solver or analytic result, and rfx marks 3D subgridding as experimental
+and unvalidated. Do not present its output as validated.
 
 SAT penalty coefficients (Eq. from Cheng et al.)
 -------------------------------------------------

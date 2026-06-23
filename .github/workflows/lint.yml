@@ -51,3 +51,21 @@ jobs:
             exit 1
           fi
           echo "docs/agent/ clean"
+
+      - name: Forbid gitignored-path references in rfx/ and examples/
+        # Shipped code (docstrings, comments, runtime message strings) must not
+        # point a public-clone reader at gitignored internal paths. A public
+        # clone has no docs/agent-memory/, CLAUDE.md, or .claude/. NOTE:
+        # research_notes is intentionally excluded from this scan — two
+        # examples have legitimate functional research_notes file paths
+        # (multilayer_ar_coating optional Meep-reference loader and
+        # 13_subgrid_material_validation ARTIFACT_PATH); the docs/agent/ check
+        # above still forbids research_notes in exported agent pages.
+        run: |
+          hits=$(grep -rn 'agent-memory\|CLAUDE\.md\|\.claude/' rfx/ examples/ || true)
+          if [ -n "$hits" ]; then
+            echo "rfx/ and examples/ must not reference gitignored internal paths:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "rfx/ and examples/ clean"
