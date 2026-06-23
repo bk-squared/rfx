@@ -6,6 +6,28 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Internal — refactor + repo hygiene (no user-visible behaviour change; PRs #218, #219)
+
+- Extracted the rectangular-waveguide transverse mode solver and mode-profile
+  linear algebra (10 pure-NumPy helpers) out of the 3364-line
+  `rfx/sources/waveguide_port.py` into a new sibling module
+  `rfx/sources/_waveguide_modes.py`, re-imported so every existing import path
+  (`rfx.sources.waveguide_port.*`, the `rfx/eigenmode.py` private imports, the
+  public re-exports) is unchanged (`waveguide_port.py` 3364 → 3090 LOC). A
+  verbatim, behaviour-preserving move: the helpers' outputs are byte-identical
+  pre/post (verified by output digest on both `main` and the branch), the
+  `jax.grad` S-parameter tape is unaffected, and the GPU suite is unchanged
+  (187 passed / 62 skipped / 2 xfailed). A new contract test
+  (`tests/test_waveguide_modes_extraction_contract.py`) pins the re-export
+  surface and the pure-NumPy (no-import-cycle) invariant. (PR #219)
+- Removed 23 dangling references to gitignored internal docs
+  (`docs/agent-memory/…`, `docs/research_notes/…`, `.claude/…`, `CLAUDE.md`) from
+  shipped code and examples — public clones do not contain those paths — and
+  repointed the two with public equivalents to `docs/agent/recipe-*.mdx`. Added a
+  CI guard (`.github/workflows/lint.yml` `agent-docs-hygiene`) so the class cannot
+  regress. Docstring / comment / warning-message text only; no behaviour change.
+  (PR #218)
+
 ## [1.6.5] - 2026-06-19
 
 Highlights: a validation-framework **reframe** — the `broad_e5_passed`
