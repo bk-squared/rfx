@@ -63,6 +63,29 @@ git clone https://github.com/bk-squared/rfx.git
 cd rfx && pip install -e ".[all]"
 ```
 
+### Interactive dashboard (GUI)
+
+rfx ships an experimental Streamlit dashboard — a browser GUI for assembling a
+simulation (geometry, materials, sources/ports, probes), running it, and
+inspecting the results (S-parameter magnitude (dB) plots, Smith chart, field
+slices, probe time series, and Touchstone export) without writing Python. It is
+a convenience front end for quick exploration, not a replacement for the
+scripted API used in the validation lanes.
+
+Install the optional dependency and launch the bundled console command:
+
+```bash
+pip install "rfx-fdtd[dashboard]"
+rfx-dashboard
+```
+
+`rfx-dashboard` forwards any extra arguments straight to `streamlit run`, so you
+can override Streamlit options as usual:
+
+```bash
+rfx-dashboard --server.port 8502
+```
+
 ## Quick Start
 
 ```python
