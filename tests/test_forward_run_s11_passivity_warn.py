@@ -67,9 +67,11 @@ def test_passivity_helper_fires_on_gross_silent_otherwise():
     """Unit-test the shared helper directly (geometry-independent).
 
     This is the robust proof that the guard FIRES on a gross violation — used
-    on both the forward() and run() paths. (run() happens to be the better-
-    conditioned path and stays passive on the eps cavity above, so its firing
-    cannot be witnessed by geometry; this unit test covers it instead.)
+    on both the forward() and run() paths. It is geometry-independent, so it
+    pins the helper's firing/silence regardless of which extractor path feeds
+    it (since item-5 Stage 3, run()-lumped shares forward()'s scan path and the
+    band-edge firing is now witnessable on geometry too — see
+    ``test_run_passivity_warns_on_band_edge_after_consolidation``).
     """
     from rfx.probes.probes import warn_if_nonpassive_lumped_s11
     f = np.array([1e9, 5e9, 9e9])
@@ -84,19 +86,26 @@ def test_passivity_helper_fires_on_gross_silent_otherwise():
         assert _warned_nonpassive(rec) is expect, f"helper {label}: wrong warn state"
 
 
-def test_run_passivity_guard_wired_no_overfire():
-    """run(compute_s_params=True) has the guard wired and does not over-fire.
+def test_run_passivity_warns_on_band_edge_after_consolidation():
+    """run(compute_s_params=True) warns on the eps-cavity band-edge.
 
-    run() is the better-conditioned path (item-3): on the eps cavity it stays
-    passive (max|S11|<1), so it correctly does NOT warn. This pins that the
-    guard is present on the run path without false-alarming on a passive run.
+    As of item-5 Stage 3, run()-lumped routes its S-parameter extraction
+    through the production-scan driver (the SAME graph as forward()), not the
+    old eager extract_s_matrix loop. It therefore shares forward()'s band-edge
+    behavior: the lossless eps cavity produces a non-physical |S11| > 1 at a
+    spectral band edge, and the #210 passivity guard correctly surfaces it.
+
+    This supersedes the pre-consolidation premise (run() was the better-
+    conditioned path and stayed passive on this cavity). The forward() analog
+    is ``test_forward_lumped_s11_passivity_warns_on_gross_violation`` above;
+    run() now mirrors it because they are one path.
     """
     sim = _cavity(eps_r=10.0)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
         res = sim.run(n_steps=1500, compute_s_params=True, s_param_freqs=_FREQS)
-    assert float(np.abs(np.asarray(res.s_params).reshape(-1)).max()) <= 1.10
-    assert not _warned_nonpassive(rec), "run() passive sweep must not warn"
+    assert float(np.abs(np.asarray(res.s_params).reshape(-1)).max()) > 1.10
+    assert _warned_nonpassive(rec), "run()-lumped should warn on the band-edge |S11|>1"
 
 
 def test_passivity_check_is_tracer_safe_under_grad():

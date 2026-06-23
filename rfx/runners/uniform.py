@@ -638,13 +638,20 @@ def run_uniform(
                 pec_mask=pec_mask,
             )
         else:
-            s_params = extract_s_matrix(
-                grid, base_materials, lumped_ports, s_param_freqs,
-                n_steps=sp_n_steps,
-                boundary=sim._boundary,
-                debye_spec=debye_spec,
-                lorentz_spec=lorentz_spec,
-                pec_mask=pec_mask,
+            # item-5 Stage 3 (reroute-only): the LUMPED run() path now goes
+            # through the production-scan driver (= forward()'s graph) instead
+            # of the eager extract_s_matrix loop. The eager extractors are KEPT
+            # (diagnostics / openEMS-crossval tooling) but are no longer on the
+            # run() hot path. Consequence: run()-lumped now inherits forward()'s
+            # band-edge non-physical |S11|>1 on lossless PEC cavities (it was
+            # better-conditioned on the old eager path); the #210 passivity
+            # warning below correctly surfaces those unreliable band-edge bins.
+            # CPML run()-lumped stays byte-close (driver↔eager ~1e-6..1.5e-3).
+            from rfx.probes.sparam_driver import (
+                compute_lumped_wire_s_matrix_via_scan,
+            )
+            s_params, _ = compute_lumped_wire_s_matrix_via_scan(
+                sim, s_param_freqs, n_steps=sp_n_steps,
             )
 
         # Passivity self-check (tracer-safe) — surface non-physical |S11|>1 from
