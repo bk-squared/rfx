@@ -1188,6 +1188,30 @@
         "output_probe_idx"
       ]
     },
+    "microstrip_eps_eff": {
+      "kind": "function",
+      "params": [
+        "width",
+        "height",
+        "eps_r"
+      ]
+    },
+    "microstrip_impedance": {
+      "kind": "function",
+      "params": [
+        "width",
+        "height",
+        "eps_r"
+      ]
+    },
+    "microstrip_width": {
+      "kind": "function",
+      "params": [
+        "z0",
+        "height",
+        "eps_r"
+      ]
+    },
     "minimize_reflected_energy": {
       "kind": "function",
       "params": [

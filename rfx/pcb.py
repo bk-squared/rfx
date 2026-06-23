@@ -38,6 +38,12 @@ PCB_MATERIAL_ALIASES: dict[str, str] = {
     # object; the alias simply lets the stackup builder pass a valid
     # library name downstream.
     "prepreg": "fr4",
+    # Natural-name aliases for common RF laminates whose canonical
+    # MATERIAL_LIBRARY keys are spelled differently.
+    "ro4003c": "rogers4003c",
+    "ro4350b": "rogers4350b",
+    "rt5880": "rt_duroid_5880",
+    "duroid5880": "rt_duroid_5880",
 }
 
 
