@@ -37,6 +37,7 @@ dependencies = [
 [project.scripts]
 rfx = "rfx.cli:main"
 rfx-dashboard = "rfx.dashboard.cli:main"
+rfx-diagnose = "rfx.diagnostics:main"
 
 [project.optional-dependencies]
 optimization = ["optax>=0.1.7"]
