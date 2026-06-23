@@ -387,6 +387,202 @@ class Result(NamedTuple):
         _w.warn(msg, stacklevel=2)
         return False
 
+    # ------------------------------------------------------------------
+    # RF-friendly S-parameter accessors
+    #
+    # Convention: port numbers are 1-indexed (RF usage), so ``s(1, 1)``
+    # is S11 = port1->port1.  The underlying ``s_params`` array is
+    # 0-indexed with layout ``(n_ports, n_ports, n_freqs)`` — the
+    # ``m, n`` ports map to ``s_params[m - 1, n - 1, :]``.
+    # ------------------------------------------------------------------
+
+    @property
+    def freqs_hz(self) -> np.ndarray:
+        """Frequency vector in Hz (``freqs`` is already stored in Hz).
+
+        Returns
+        -------
+        (n_freqs,) float array
+
+        Raises
+        ------
+        ValueError
+            If this Result carries no frequency vector.
+        """
+        if self.freqs is None:
+            raise ValueError(
+                "no frequencies in this Result — run with compute_s_params=True"
+            )
+        return np.asarray(self.freqs)
+
+    def _require_s_params(self) -> np.ndarray:
+        """Return ``s_params`` as an ndarray or raise a clear error."""
+        if self.s_params is None:
+            raise ValueError(
+                "no S-parameters in this Result — run with compute_s_params=True"
+            )
+        return np.asarray(self.s_params)
+
+    def s(self, m: int, n: int) -> np.ndarray:
+        """Complex S-parameter vector S_mn vs frequency (1-indexed ports).
+
+        Parameters
+        ----------
+        m, n : int
+            1-indexed port numbers. ``s(1, 1)`` is S11.
+
+        Returns
+        -------
+        (n_freqs,) complex array
+
+        Raises
+        ------
+        ValueError
+            If this Result has no S-parameters, or if ``m``/``n`` are out
+            of range (the available port count is named in the message).
+        """
+        sp = self._require_s_params()
+        n_ports = sp.shape[0]
+        if not (1 <= m <= n_ports and 1 <= n <= n_ports):
+            raise ValueError(
+                f"port index out of range: requested S({m},{n}) but this "
+                f"Result has {n_ports} port(s) (valid 1-indexed range "
+                f"1..{n_ports})"
+            )
+        return sp[m - 1, n - 1, :]
+
+    def s11(self) -> np.ndarray:
+        """Complex S11 vector (port1->port1). Valid for >=1 port."""
+        return self.s(1, 1)
+
+    def s21(self) -> np.ndarray:
+        """Complex S21 vector (port1->port2). Valid for >=2 ports."""
+        return self.s(2, 1)
+
+    def s12(self) -> np.ndarray:
+        """Complex S12 vector (port2->port1). Valid for >=2 ports."""
+        return self.s(1, 2)
+
+    def s22(self) -> np.ndarray:
+        """Complex S22 vector (port2->port2). Valid for >=2 ports."""
+        return self.s(2, 2)
+
+    def s_db(self, m: int, n: int) -> np.ndarray:
+        """Magnitude of S_mn in dB: ``20*log10(|S_mn|)`` (1-indexed ports).
+
+        The magnitude is floored at ``1e-10`` before the log (matching the
+        floor used by :func:`rfx.visualize.plot_s_params`) so an exact zero
+        yields a large negative dB value instead of ``-inf`` and the numeric
+        accessor agrees with the plotted curve at deep nulls.
+        """
+        mag = np.abs(self.s(m, n))
+        return 20.0 * np.log10(np.maximum(mag, 1e-10))
+
+    # ------------------------------------------------------------------
+    # One-call plotting — thin wrappers over the existing engine in
+    # rfx.visualize / rfx.smith. Imports stay lazy so ``import rfx``
+    # remains light and headless-safe.
+    # ------------------------------------------------------------------
+
+    def plot_s_params(self, *, db: bool = True, title: str = "S-Parameters"):
+        """Plot all S-parameter magnitudes vs frequency.
+
+        Thin wrapper over :func:`rfx.visualize.plot_s_params`, which builds
+        and returns its own matplotlib Figure (it does not accept an
+        externally supplied Axes).
+
+        Parameters
+        ----------
+        db : bool
+            Plot magnitudes in dB (default) or linear.
+        title : str
+            Plot title.
+
+        Returns
+        -------
+        matplotlib Figure
+
+        Raises
+        ------
+        ValueError
+            If this Result has no S-parameters.
+        """
+        from rfx.visualize import plot_s_params as _plot_s_params
+
+        sp = self._require_s_params()
+        return _plot_s_params(sp, self.freqs_hz, db=db, title=title)
+
+    def plot_smith(self, *, ports: tuple[int, int] | None = None, **kw):
+        """Plot an S-parameter trajectory on a Smith chart.
+
+        Thin wrapper over :func:`rfx.smith.plot_smith`.
+
+        Parameters
+        ----------
+        ports : (m, n) tuple of 1-indexed ports, optional
+            Which S-parameter to plot. Defaults to ``(1, 1)`` (S11).
+        **kw
+            Forwarded to :func:`rfx.smith.plot_smith` (e.g. ``z0``,
+            ``ax``, ``show_vswr``, ``markers``, ``title``).
+
+        Returns
+        -------
+        matplotlib Axes
+
+        Raises
+        ------
+        ValueError
+            If this Result has no S-parameters, or ``ports`` are out of
+            range.
+        """
+        from rfx.smith import plot_smith as _plot_smith
+
+        if ports is None:
+            m, n = 1, 1
+        else:
+            if len(ports) != 2:
+                raise ValueError(
+                    "ports must be a (m, n) tuple of two 1-indexed ports, "
+                    f"got {ports!r}"
+                )
+            m, n = ports
+        gamma = self.s(m, n)
+        return _plot_smith(gamma, self.freqs_hz, **kw)
+
+    def plot_time_series(self, *, labels=None, title: str = "Probe Time Series"):
+        """Plot the probe time series.
+
+        Thin wrapper over :func:`rfx.visualize.plot_time_series`. Requires
+        ``dt`` to be present (run with ``store_dt=True``).
+
+        Parameters
+        ----------
+        labels : list of str, optional
+            Per-probe labels.
+        title : str
+            Plot title.
+
+        Returns
+        -------
+        matplotlib Figure
+
+        Raises
+        ------
+        ValueError
+            If ``dt`` is not available in this Result.
+        """
+        from rfx.visualize import plot_time_series as _plot_time_series
+
+        if self.dt is None:
+            raise ValueError(
+                "no dt in this Result — run with store_dt=True to plot the "
+                "time series"
+            )
+        ts = np.asarray(self.time_series)
+        if ts.ndim == 1:
+            ts = ts[:, None]
+        return _plot_time_series(ts, float(self.dt), labels=labels, title=title)
+
 
 class ForwardResult(NamedTuple):
     """Minimal differentiable simulation result.
