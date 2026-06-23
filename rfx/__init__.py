@@ -148,6 +148,9 @@ from rfx.probes.probes import (
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
 from rfx.pcb import PCBLayer, Stackup
+from rfx.microstrip import (
+    microstrip_impedance, microstrip_eps_eff, microstrip_width,
+)
 from rfx.floquet import (
     FloquetPort,
     floquet_phase_shift,
@@ -213,6 +216,8 @@ __all__ = [
     # geometry
     "Box", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
     "PCBLayer", "Stackup",
+    # microstrip closed-form synthesis / analysis
+    "microstrip_impedance", "microstrip_eps_eff", "microstrip_width",
     # sources / waveforms / ports (builder classes; not per-step kernels)
     "GaussianPulse", "ModulatedGaussian", "CWSource", "CustomWaveform",
     "WaveguidePort", "WaveguidePortConfig", "CoaxialPort",
