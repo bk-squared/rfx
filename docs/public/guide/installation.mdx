@@ -20,6 +20,31 @@ The package name on PyPI is `rfx-fdtd`, while the Python import remains:
 import rfx
 ```
 
+## Verify your install
+
+After installing, confirm the environment can actually run a simulation.
+
+First run the bundled diagnostics command:
+
+```bash
+rfx-diagnose
+```
+
+It prints a PASS / WARN / FAIL report (Python and rfx versions, the JAX
+backend and devices, core dependencies, optional extras) and finishes with a
+tiny end-to-end FDTD smoke run. It exits `0` only when every critical check
+passes; WARN lines (CPU-only backend, x64 disabled) are informational.
+
+Then run the quick hello-world example (a second or two) to see a real
+simulation step:
+
+```bash
+python examples/quickstart/hello_world.py
+```
+
+It builds a tiny box, injects one pulse, records one field probe, and prints
+a short summary. If you see finite numbers, rfx is working.
+
 ## GPU support
 
 ```bash
