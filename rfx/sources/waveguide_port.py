@@ -969,8 +969,7 @@ def init_waveguide_port(
     # Empirically: weight 0.5 (PROD half-weight kludge, used 2026-04-23..27)
     # gives PEC-short min |S11| ≈ 0.94, weight 0.0 (DROP, OpenEMS-equivalent)
     # gives min |S11| = 0.9997. The half-weight was a 2026-04-26 staging
-    # compromise (docs/research_notes/2026-04-26_phase2_aperture_weight_dead_end.md
-    # Phase 2 dead-end) that protected mesh-conv and asymmetric-obstacle
+    # compromise (Phase 2 dead-end) that protected mesh-conv and asymmetric-obstacle
     # reciprocity at the cost of capping PEC-short closure. With DROP,
     # one mesh-conv |S21| test currently regresses (xfail-locked in
     # tests/test_waveguide_port_validation_battery.py); the receive-side
@@ -2440,7 +2439,7 @@ def extract_waveguide_s_params_normalized(
 
     A power-flux (Poynting-vector) extraction analogous to Meep's
     ``add_flux`` would eliminate this limitation for both S11 and S21.
-    Tracked in ``docs/agent-memory/rfx-known-issues.md``.
+    Tracked at https://github.com/bk-squared/rfx/issues.
 
     Parameters
     ----------

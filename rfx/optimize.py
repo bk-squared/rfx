@@ -251,9 +251,8 @@ def optimize(
             _w.warn(
                 f"optimize: non-finite loss/gradient (NaN or Inf) at iteration "
                 f"{it} — the FDTD forward almost certainly diverged. Common "
-                f"causes: dt above CFL, conformal=True at fine dx (a known NaN, "
-                f"see docs/agent-memory/rfx-known-issues.md), PEC inside the "
-                f"CPML region, or a sub-cell PEC feature. Stopping early and "
+                f"causes: dt above CFL, conformal=True at fine dx (a known NaN), "
+                f"PEC inside the CPML region, or a sub-cell PEC feature. Stopping early and "
                 f"returning the last finite design (from before iteration "
                 f"{it}).",
                 stacklevel=2,

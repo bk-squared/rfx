@@ -25,7 +25,6 @@ Failed prior attempts (do not repeat):
 
 * MPB subprocess wrapper (deleted 2026-05-04): boxed-PEC MPB modes do not
   match open-FDTD modes — geometry mismatch, |S11| = 0.61 vs Laplace 0.118.
-  See ``docs/research_notes/20260504_msl_eigenmode_handover.md``.
 * H-only formulation (deleted): cannot self-consistently couple E/H in
   inhomogeneous ε — gave ε_eff = 1.37 instead of ~3 for microstrip.
 * 4-component (Ey,Ez,Hy,Hz) propagation matrix (deleted): redundant DOF +
@@ -185,6 +184,6 @@ def compute_msl_eigenmode_profile(
         "Path B from-scratch FDFD eigenmode solver "
         "(rfx.sources.msl_fdfd_eigenmode) is not yet wired in. "
         "MPB subprocess approach was removed 2026-05-04 — see module "
-        "docstring + docs/research_notes/20260504_msl_eigenmode_handover.md. "
+        "docstring. "
         "Use mode='laplace' for now."
     )

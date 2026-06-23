@@ -536,8 +536,7 @@ def topology_optimize(
                 f"topology_optimize: non-finite loss/gradient (NaN or Inf) at "
                 f"iteration {it} — the FDTD forward almost certainly diverged "
                 f"(dt above CFL, conformal=True at fine dx, PEC inside CPML, or "
-                f"a sub-cell PEC feature; see docs/agent-memory/"
-                f"rfx-known-issues.md). Stopping early and returning the last "
+                f"a sub-cell PEC feature). Stopping early and returning the last "
                 f"finite design (from before iteration {it}).",
                 stacklevel=2,
             )

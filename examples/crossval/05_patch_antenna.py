@@ -34,7 +34,7 @@ Three independent measurements of the patch resonance:
      source inside the substrate, probe Ez at another substrate
      point, extract resonances via filter diagonalization. Clean
      frequency, independent of port calibration.
-     (See `docs/agent-memory/task_recipes/resonance_extraction.md`.)
+     (See `docs/agent/recipe-resonance-extraction.mdx`.)
 
   2. **OpenEMS lumped-port S11** (reference) — full-wave S11 sweep
      with 50 Ω lumped port from ground to patch at the feed inset.
@@ -353,8 +353,7 @@ except ImportError as _e:
     print("\n" + "!" * 70)
     print("!! CROSSVAL 05 SKIPPED — CSXCAD / openEMS not installed")
     print(f"!!   reason: {_e}")
-    print("!!   install recipe: research/microwave-energy/ (see note in")
-    print("!!       docs/agent-memory/index.md)")
+    print("!!   install openEMS / CSXCAD to run the reference comparison.")
     print("!!   this run is NOT a crossval against OpenEMS. Exiting with")
     print("!!   status 2 (SKIPPED) so CI does not treat it as PASS.")
     print("!" * 70)

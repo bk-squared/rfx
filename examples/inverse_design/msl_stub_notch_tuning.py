@@ -29,8 +29,7 @@ reproduced on the current composition.  They predate the 2026-05-24
 WI-3 extractor consolidation onto the single ``extract_msl_nprobe``
 plane extractor.  At L = 9.5 mm the current-composition cost is
 ≈ 8.6e-3 (not #965's 0.493).  Kept only as a chronology marker; do
-not cite as current evidence (issue #171; see
-``docs/research_notes/20260612_msl_g2_rerun_nan_session.md``):
+not cite as current evidence (issue #171):
 
   [#965, pre-WI-3, NOT reproduced]
   iter 0  L= 9.500mm  |S21|²=0.493  -3.1dB  grad=+1.015
@@ -115,8 +114,7 @@ Validation chain (the point of this example):
 Three earlier session attempts (2026-05-07/08) shipped band-aids
 (σ-loading via ``materials.sigma += occ × 1e10``, ``apply_pec_occupancy_h``,
 sharper SIGMOID_BETA) that worked on a single mesh but broke at
-others.  All three were reverted.  The closure predicate captured
-in ``docs/agent-memory/rfx-known-issues.md`` (local) gates against
+others.  All three were reverted.  The closure predicate gates against
 repeating that pattern: any future ``pec_occupancy_override`` change
 must (a) descend Adam at dx ∈ {clean, danger}, (b) FD-vs-AD agree
 at L = {min, notch±Δ, notch}, (c) AD descent matches FD with δ=2β,
@@ -295,8 +293,7 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
     # (Hy) per port.  Mirrors the imperative `compute_msl_s_matrix`
     # plane integrals exactly, so the JAX-traceable N-probe extractor
     # in `extract_msl_nprobe` no longer carries the
-    # scalar-Ez bias documented in `docs/agent-memory/rfx-known-issues.md`
-    # (gap #2/#4, closed 2026-05-07).
+    # scalar-Ez bias (gap #2/#4, closed 2026-05-07).
     d_set = register_msl_plane_probes(sim, port_index=0, freqs=freqs,
                                       name_prefix="d")
     p_set = register_msl_plane_probes(sim, port_index=1, freqs=freqs,

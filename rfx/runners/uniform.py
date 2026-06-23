@@ -86,8 +86,7 @@ def run_uniform(
     # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step
     # apply_conformal_pec) chain with a single inverse-permittivity
     # tensor that encodes both dielectric subpixel smoothing and PEC
-    # behaviour (inv = 0 freezes the field). See
-    # docs/agent-memory/stage2_subpixel_pec_unified_design.md §5.
+    # behaviour (inv = 0 freezes the field).
     aniso_eps = None
     aniso_inv_eps = None
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")

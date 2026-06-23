@@ -102,8 +102,7 @@ class Grid:
         # token is ``pec``/``pmc``/``periodic`` gets ``pad=0`` on that
         # side even when the axis as a whole participates in CPML —
         # this is the Meep / OpenEMS / Tidy3D convention and the
-        # architectural fix for PMC + CPML composition. See
-        # ``docs/research_notes/2026-04-19_v175_t10_half_symmetric_pmc.md``.
+        # architectural fix for PMC + CPML composition.
         def _face_pad(axis: str, side: str) -> int:
             face = f"{axis}_{side}"
             if face in self.pec_faces or face in self.pmc_faces:

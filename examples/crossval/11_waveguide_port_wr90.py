@@ -33,14 +33,14 @@ simultaneously before the waveguide port is cleared to Meep-class:
    Geometry: uniform εr=2.0 slab of length L inside WR-90.
    Reference: closed-form using the modal impedances of the two guide
    segments (vacuum-filled + dielectric-filled) and the Airy-formula
-   multi-reflection summation (see ``docs/agent-memory/task_recipes/
-   waveguide_sparams.md``, "Analytic reference" section).
+   multi-reflection summation (see ``docs/agent/recipe-waveguide-sparams.mdx``,
+   "Analytic reference" section).
    Accept: S11 |S| mean diff < 0.10, S21 |S| mean diff < 0.07,
    phase mean diff < 60° with |S_ref| >= 0.30 mask, and complex-S
    envelope max diff <= 0.30. This is a reference-convention-aware
    diagnostic envelope, not a blanket phase-accuracy claim.
 
-**Rule compliance** (`.claude/rules/rfx-feature-discovery.md`):
+**Rule compliance**:
 This crossval uses the canonical ``add_waveguide_port`` +
 ``compute_waveguide_s_matrix`` pipeline. It does NOT compute S-params
 from a time-series FFT or probe-subtraction hacks.
@@ -117,8 +117,7 @@ CPML_LAYERS = 20    # 20 mm physical CPML (was 10 — guided-mode reflection ~12
 # `num_periods` and is independent of scan length once the source pulse
 # has played out — verified byte-identical at np=200/500/1000/2000 for
 # PEC-short. The legacy `dft_window`/`dft_end_step`/`num_periods_dft`
-# magic-number knobs were removed; see
-# docs/research_notes/2026-04-25_port_extractor_principled_refactor_design.md.
+# magic-number knobs were removed.
 NUM_PERIODS_LONG = 200     # uniform scan length, all geometries
 
 # Domain length along propagation axis.

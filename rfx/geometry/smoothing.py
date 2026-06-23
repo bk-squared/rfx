@@ -595,7 +595,7 @@ def compute_smoothed_eps(
 # `1e-30` epsilon trap that would otherwise produce ε ≈ 1e30 (huge but
 # finite) for ε_inside = ∞.
 #
-# Reference: docs/agent-memory/stage2_ca_cb_derivation.md §4.
+# Reference: subpixel-averaging C_a/C_b derivation.
 
 
 def _kottke_inv_eps_diag(

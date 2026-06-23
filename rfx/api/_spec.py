@@ -220,7 +220,7 @@ def _nonfinite_fields(result) -> list[tuple[str, int]]:
 
 _NONFINITE_CAUSE_HINT = (
     "the FDTD likely diverged. Common causes: dt above CFL, conformal=True "
-    "at fine dx (a known NaN — see docs/agent-memory/rfx-known-issues.md), "
+    "at fine dx (a known NaN), "
     "PEC inside the CPML region, or a sub-cell PEC feature."
 )
 

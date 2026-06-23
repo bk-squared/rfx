@@ -12,7 +12,7 @@ a few percent.
     the input and output planes
   - Two-run reference subtraction pattern (T = flux_out / flux_in)
 
-**Rule compliance** (.claude/rules/rfx-feature-discovery.md):
+**Rule compliance**:
 This script uses ``add_flux_monitor`` and ``flux_spectrum`` — the
 canonical rfx primitives for R(f) / T(f) measurement. An earlier
 version of this script computed a single-point FFT of a time-series
