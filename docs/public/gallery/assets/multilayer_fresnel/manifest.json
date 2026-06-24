@@ -1,13 +1,13 @@
 {
   "schema_version": "rfx-gallery-manifest-v1",
-  "generated_at": "2026-06-24T03:50:18.807094Z",
+  "generated_at": "2026-06-24T10:02:37.961449Z",
   "case_id": "multilayer_fresnel",
   "title": "Multilayer Fresnel Slab",
   "description": "Normal-incidence reflection/transmission of a dielectric slab, cross-validated against the exact transfer-matrix solution.",
   "quick_smoke": false,
   "provenance": {
     "rfx_version": "1.6.5",
-    "git_sha": "6cbc902ddb1355281f8966f5e2d0051c99717d89",
+    "git_sha": "03a85874454004a98c24033ceb5c5980a4b09dd2",
     "params": {
       "eps_slab": 4.0,
       "slab_thickness_m": 0.01,
@@ -18,11 +18,11 @@
       "mode": "2d_tmz",
       "notes": "Lossless reciprocal slab; |S11|^2=R, |S21|^2=T. rfx magnitudes from FDTD R/T; phase taken from the exact transfer matrix."
     },
-    "runtime_seconds": 25.076,
-    "hostname": "run-execution-vseq9rji6dm8-0",
+    "runtime_seconds": 14.949,
+    "hostname": "run-execution-ueaqxe8kk3d3-0",
     "backend": "gpu",
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-177-generic-x86_64-with-glibc2.31"
+    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.31"
   },
   "validation": {
     "tier": "E5",
@@ -67,6 +67,20 @@
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.json",
       "sha256": "a86964736d87444e183f8fff0921690426c374a0ab73f173610b9ee4967c80d0",
       "size_bytes": 60025
+    },
+    {
+      "filename": "geometry.png",
+      "type": "geometry-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/geometry.png",
+      "sha256": "8a0155a48de5eae387d16031f1fa428dae78b4953a819a47e9e5f46c0e0b873a",
+      "size_bytes": 30176
+    },
+    {
+      "filename": "fields.gif",
+      "type": "animation",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/fields.gif",
+      "sha256": "bb9e1e8e608332ee8a0c8de1a4c1fdbc5756953b0ef6d3a785709c38d68e5c2a",
+      "size_bytes": 1154472
     }
   ]
 }

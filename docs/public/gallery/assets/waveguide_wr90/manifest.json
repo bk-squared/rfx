@@ -1,13 +1,13 @@
 {
   "schema_version": "rfx-gallery-manifest-v1",
-  "generated_at": "2026-06-24T03:50:40.821095Z",
+  "generated_at": "2026-06-24T10:03:09.789920Z",
   "case_id": "waveguide_wr90",
   "title": "WR-90 Waveguide Port (Empty Guide)",
   "description": "X-band WR-90 rectangular waveguide port S-matrix for a matched (empty) guide, against the exact |S11|=0 / |S21|=1 reference.",
   "quick_smoke": false,
   "provenance": {
     "rfx_version": "1.6.5",
-    "git_sha": "6cbc902ddb1355281f8966f5e2d0051c99717d89",
+    "git_sha": "03a85874454004a98c24033ceb5c5980a4b09dd2",
     "params": {
       "band": "X-band (8.2-12.4 GHz)",
       "waveguide": "WR-90 TE10",
@@ -18,11 +18,11 @@
       "domain_x_m": 0.2,
       "notes": "Empty matched-load guide; analytic reference |S11|=0, |S21|=1."
     },
-    "runtime_seconds": 21.839,
-    "hostname": "run-execution-vseq9rji6dm8-0",
+    "runtime_seconds": 16.401,
+    "hostname": "run-execution-ueaqxe8kk3d3-0",
     "backend": "gpu",
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-177-generic-x86_64-with-glibc2.31"
+    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.31"
   },
   "validation": {
     "tier": "E5",
@@ -58,15 +58,29 @@
       "filename": "sparams.s2p",
       "type": "touchstone",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.s2p",
-      "sha256": "2255739f4763bdd9d3fb82892dfc6eaab75ca715d4f9f249d0c19ab130b25abb",
+      "sha256": "66e2f2ab4112278d76f9d2e381f6d1e8aa91d6b4b88e79b2cf1200371dd62525",
       "size_bytes": 3214
     },
     {
       "filename": "sparams.json",
       "type": "sparams-json",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.json",
-      "sha256": "512dba4e0f95c1e5b543b60031635da22d6e74cc12639c6c9dad573058dcec9e",
-      "size_bytes": 4857
+      "sha256": "708097846c56b237559b41054efdfd0f96d4d72e9c2c5c34127be990facc69be",
+      "size_bytes": 4878
+    },
+    {
+      "filename": "geometry.png",
+      "type": "geometry-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/geometry.png",
+      "sha256": "04a771f5107610d628cae9790b4c19b0aea64d40de71a0997789f58626d0e63f",
+      "size_bytes": 209524
+    },
+    {
+      "filename": "fields.gif",
+      "type": "animation",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/fields.gif",
+      "sha256": "db85a086daeecc4184cafd697139202939c38bbe9ba3275e162919f1eaeaee5e",
+      "size_bytes": 1116079
     }
   ]
 }

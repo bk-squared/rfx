@@ -1,13 +1,13 @@
 {
   "schema_version": "rfx-gallery-manifest-v1",
-  "generated_at": "2026-06-24T03:50:49.167969Z",
+  "generated_at": "2026-06-24T10:03:36.944780Z",
   "case_id": "patch_antenna",
   "title": "2.4 GHz Patch Antenna (FR4)",
-  "description": "Probe-fed rectangular microstrip patch antenna on FR4; lumped-port S11 resonance dip cross-validated against OpenEMS.",
+  "description": "Probe-fed rectangular microstrip patch antenna on FR4; the S11 resonance dip vs the analytic transmission-line (Balanis) estimate.",
   "quick_smoke": false,
   "provenance": {
     "rfx_version": "1.6.5",
-    "git_sha": "6cbc902ddb1355281f8966f5e2d0051c99717d89",
+    "git_sha": "03a85874454004a98c24033ceb5c5980a4b09dd2",
     "params": {
       "design_freq_hz": 2400000000.0,
       "substrate": "FR4 (eps_r=4.3)",
@@ -20,18 +20,18 @@
       "s_param_n_steps": 12000,
       "notes": "Single-cell lumped-port S11 has parasitic reactance, so the patch resonance appears as a local dip. Reference is OpenEMS Harminv resonance frequency (E4 resonance agreement, not calibrated S)."
     },
-    "runtime_seconds": 8.201,
-    "hostname": "run-execution-vseq9rji6dm8-0",
+    "runtime_seconds": 6.086,
+    "hostname": "run-execution-ueaqxe8kk3d3-0",
     "backend": "gpu",
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-177-generic-x86_64-with-glibc2.31"
+    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.31"
   },
   "validation": {
     "tier": "E4",
-    "metric": "resonance frequency within 20% of OpenEMS Harminv; |S11| passive",
+    "metric": "resonance frequency within 20% of the analytic transmission-line estimate; |S11| passive",
     "metric_value": "resonance dip f=2.660 GHz vs analytic 2.424 GHz (9.8% err); passive=True",
     "tolerance": "resonance freq error < 20%, |S11| <= 1.05",
-    "reference_solver": "OpenEMS Harminv (coarse-mesh resonance)",
+    "reference_solver": "analytic transmission-line (Balanis) estimate",
     "passed": true
   },
   "reproducibility": {
@@ -69,6 +69,20 @@
       "served_url": "/rfx/gallery/assets/patch_antenna/sparams.json",
       "sha256": "2028c287bb6e7a15a301b46c9c3c74c4e953b7279215c5365ebee831b82e4af5",
       "size_bytes": 10115
+    },
+    {
+      "filename": "geometry.png",
+      "type": "geometry-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/geometry.png",
+      "sha256": "b6b74525ce5b909406462a2c8b3ce3c35557b9383446c6701b9f5d36592e72ac",
+      "size_bytes": 219220
+    },
+    {
+      "filename": "fields.gif",
+      "type": "animation",
+      "served_url": "/rfx/gallery/assets/patch_antenna/fields.gif",
+      "sha256": "de90837092ae5e07a90b89c5c143267fda9e14a5a351c9be2675b4b9d0307910",
+      "size_bytes": 2516643
     }
   ]
 }
