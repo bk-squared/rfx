@@ -25,6 +25,7 @@ from numbers import Integral
 import jax.numpy as jnp
 import numpy as np
 
+
 from rfx.grid import Grid, C0  # noqa: F401
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, Shape  # noqa: F401
@@ -77,6 +78,66 @@ from rfx.api._spec import (  # noqa: E402
     MSLSMatrixResult,
 )
 from rfx.mesh_planner import MeshPlan, plan_simulation_mesh  # noqa: E402,F401
+
+def _require_integral_param(name: str, value: object) -> int:
+    """Return ``value`` as int after rejecting bools and non-integral values."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Integral):
+        raise TypeError(f"{name} must be an integer, got {value!r}")
+    return int(value)
+
+
+def _require_positive_finite_scalar(name: str, value: object) -> float:
+    """Return ``value`` as a finite positive Python float."""
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"{name} must be a finite real scalar, got {value!r}")
+    arr = np.asarray(value)
+    if arr.shape != ():
+        raise TypeError(
+            f"{name} must be a finite real scalar, got array shape {arr.shape}"
+        )
+    if not np.issubdtype(arr.dtype, np.number) or np.issubdtype(
+        arr.dtype, np.complexfloating
+    ):
+        raise TypeError(f"{name} must be a finite real scalar, got {value!r}")
+    out = float(arr.item())
+    if not math.isfinite(out):
+        raise ValueError(f"{name} must be finite")
+    if out <= 0.0:
+        raise ValueError(f"{name} must be positive")
+    return out
+
+
+def _positive_divisors(value: int) -> list[int]:
+    """Return positive divisors of ``value`` sorted ascending."""
+    small: list[int] = []
+    large: list[int] = []
+    root = math.isqrt(value)
+    for divisor in range(1, root + 1):
+        if value % divisor == 0:
+            small.append(divisor)
+            paired = value // divisor
+            if paired != divisor:
+                large.append(paired)
+    return small + large[::-1]
+
+AD_MEMORY_FIT_SAFETY_FACTOR = 1.30
+
+
+def _format_memory_gb(value: float) -> str:
+    """Render GB values without hiding sub-10MB estimates as ``0.00 GB``."""
+    if value < 0.01:
+        return f"{value * 1000.0:.1f} MB"
+    return f"{value:.2f} GB"
+
+
+def _format_memory_with_safety(value: float, safety_factor: float) -> str:
+    """Render raw and safety-adjusted memory when the safety factor is active."""
+    if safety_factor == 1.0:
+        return _format_memory_gb(value)
+    return (
+        f"{_format_memory_gb(value)} "
+        f"({_format_memory_gb(value * safety_factor)} with {safety_factor:.2f}x safety)"
+    )
 
 # ---------------------------------------------------------------------------
 # Preflight / validation methods — moved to rfx/api/_preflight.py
@@ -1906,20 +1967,78 @@ class Simulation(
         *,
         available_memory_gb: float | None = None,
         checkpoint_every: int | None = None,
+        checkpoint_segments: int | None = None,
+        n_warmup: int = 0,
+        design_mask: jnp.ndarray | np.ndarray | None = None,
     ) -> "AD_MemoryEstimate":
         """Estimate reverse-mode AD memory for this simulation.
 
-        Returns an AD_MemoryEstimate with forward, checkpointed-AD, and
-        non-checkpointed-AD sizes in GB, plus a best-effort warning if
-        estimated AD memory exceeds 85% of available VRAM.
+        Returns a static-estimate AD_MemoryEstimate with forward,
+        checkpointed-AD, and non-checkpointed-AD sizes in GB, plus a
+        best-effort warning if estimated AD memory exceeds 85% of available
+        VRAM. This artifact is planning evidence, not a certificate of peak
+        runtime memory.
 
         When ``checkpoint_every`` is provided, the returned
-        ``ad_segmented_gb`` reflects the segmented scan-of-scan path
-        from issue #31. The legacy ``ad_checkpointed_gb`` field keeps
-        its old (optimistic) heuristic for backwards compatibility; it
+        ``ad_segmented_gb`` reflects the non-uniform segmented scan-of-scan
+        chunk-size path from issue #31. When ``checkpoint_segments`` is
+        provided, it reflects the uniform segmented-scan segment-count path
+        from issue #73. ``n_warmup`` must be an integer with
+        ``0 <= n_warmup < n_steps``. ``design_mask`` must be a boolean array
+        matching the simulation grid shape and selecting at least one cell.
+        ``n_warmup`` reduces reported reverse-mode tape time. ``design_mask``
+        is reported as active-design metadata but does not reduce primary
+        memory estimates until masked-state memory has observed calibration.
+        The legacy
+        ``ad_checkpointed_gb`` field keeps its old (optimistic) heuristic
+        for backwards compatibility; it
         is NOT accurate for FDTD on the non-uniform path — see the
         class docstring.
         """
+        n_steps_i = _require_integral_param("n_steps", n_steps)
+        n_warmup_i = _require_integral_param("n_warmup", n_warmup)
+        checkpoint_every_i = (
+            None
+            if checkpoint_every is None
+            else _require_integral_param("checkpoint_every", checkpoint_every)
+        )
+        checkpoint_segments_i = (
+            None
+            if checkpoint_segments is None
+            else _require_integral_param("checkpoint_segments", checkpoint_segments)
+        )
+        avail_gb = (
+            None
+            if available_memory_gb is None
+            else _require_positive_finite_scalar(
+                "available_memory_gb", available_memory_gb
+            )
+        )
+
+        if n_steps_i <= 0:
+            raise ValueError("n_steps must be positive")
+        if n_warmup_i < 0:
+            raise ValueError("n_warmup must be >= 0")
+        if n_warmup_i >= n_steps_i:
+            raise ValueError(f"n_warmup ({n_warmup_i}) must be < n_steps ({n_steps_i})")
+        if checkpoint_every_i is not None and checkpoint_segments_i is not None:
+            raise ValueError(
+                "checkpoint_every and checkpoint_segments are mutually exclusive"
+            )
+        if checkpoint_every_i is not None and checkpoint_every_i <= 0:
+            raise ValueError(
+                f"checkpoint_every must be positive when provided, got {checkpoint_every_i}"
+            )
+        if checkpoint_segments_i is not None:
+            if checkpoint_segments_i < 1:
+                raise ValueError(
+                    f"checkpoint_segments must be ≥ 1, got {checkpoint_segments_i}"
+                )
+            if n_steps_i % checkpoint_segments_i != 0:
+                raise ValueError(
+                    f"checkpoint_segments={checkpoint_segments_i} does not divide "
+                    f"n_steps={n_steps_i}"
+                )
         dx = self._dx or (C0 / self._freq_max / 20.0)
 
         def _nx(extent: float, prof) -> int:
@@ -1952,22 +2071,54 @@ class Simulation(
         # step_fn. NOT valid for the NU path after issue #31 because the
         # scan carry itself is not rematerialised.
         ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes
-        # Non-checkpointed AD: O(n_steps) tape — 6 field arrays per step
-        ad_full_bytes = n_steps * field_bytes + ntff_bytes + forward_bytes
+        active_steps = n_steps_i - n_warmup_i
+        active_design_fraction = 1.0
+        if design_mask is not None:
+            mask = np.asarray(design_mask)
+            if mask.size == 0:
+                raise ValueError("design_mask must be non-empty")
+            if mask.shape == ():
+                raise ValueError("design_mask must be a boolean array matching grid shape")
+            if mask.dtype != np.bool_:
+                raise TypeError("design_mask must have boolean dtype")
+            grid_shape = (nx, ny, nz)
+            if mask.shape != grid_shape:
+                raise ValueError(
+                    f"design_mask shape {mask.shape} must match simulation grid shape {grid_shape}"
+                )
+            selected_cells = int(np.count_nonzero(mask))
+            if selected_cells == 0:
+                raise ValueError("design_mask must select at least one cell")
+            active_design_fraction = float(selected_cells) / float(mask.size)
+        active_tape_field_bytes = field_bytes
 
-        # Segmented scan-of-scan (issue #31). Outer scan wraps
-        # jax.checkpoint around an inner scan of length K; the tape
-        # stores carry + cotangent at (n_steps/K) segment boundaries.
-        # Formula fit to VESSL 369367233490 data on 608k cells within
-        # ~15% (see issue #39).
+        # Non-checkpointed AD: O(active_steps) full-grid field tape. ``n_warmup``
+        # reduces active reverse-mode time, while ``design_mask`` is retained as
+        # metadata only until masked-state memory has observed calibration.
+        ad_full_bytes = active_steps * active_tape_field_bytes + ntff_bytes + forward_bytes
+
+        # Segmented scan paths. ``checkpoint_every`` is the non-uniform
+        # scan-of-scan chunk length (issue #31); ``checkpoint_segments`` is
+        # the uniform segmented-scan segment count (issue #73). Both store
+        # carry + cotangent at segment boundaries.
         ad_seg_bytes: int | None = None
-        if checkpoint_every is not None and checkpoint_every > 0:
-            n_segments = math.ceil(n_steps / checkpoint_every)
-            # 2x per segment: primal carry + cotangent stored for backward
-            ad_seg_bytes = 2 * n_segments * field_bytes + forward_bytes + ntff_bytes
+        segmented_active_segments: int | None = None
+        if checkpoint_segments_i is not None:
+            segment_len = n_steps_i // checkpoint_segments_i
+            first_active_segment = n_warmup_i // segment_len
+            segmented_active_segments = checkpoint_segments_i - first_active_segment
+            ad_seg_bytes = (
+                2 * segmented_active_segments * active_tape_field_bytes + forward_bytes + ntff_bytes
+            )
+        elif checkpoint_every_i is not None:
+            total_segments = math.ceil(n_steps_i / checkpoint_every_i)
+            inactive_segments = n_warmup_i // checkpoint_every_i
+            segmented_active_segments = total_segments - inactive_segments
+            ad_seg_bytes = (
+                2 * segmented_active_segments * active_tape_field_bytes + forward_bytes + ntff_bytes
+            )
 
         # VRAM detection (best effort)
-        avail_gb = available_memory_gb
         if avail_gb is None:
             try:
                 devs = jax.local_devices()
@@ -1988,14 +2139,21 @@ class Simulation(
         warning = None
         if avail_gb is not None and primary_bytes * to_gb > avail_gb * 0.85:
             label = "segmented" if ad_seg_bytes is not None else "non-checkpointed"
-            action = (
-                "Increase checkpoint_every, reduce grid size, or reduce n_steps."
-                if ad_seg_bytes is not None
-                else "Use plan_ad_memory() to choose checkpoint_every, reduce grid size, or reduce n_steps."
-            )
+            if checkpoint_segments_i is not None:
+                if segmented_active_segments == 1:
+                    action = "Reduce grid size, reduce n_steps, or use a more aggressive memory-reduction lane."
+                else:
+                    action = "Reduce checkpoint_segments, reduce grid size, or reduce n_steps."
+            elif ad_seg_bytes is not None:
+                if segmented_active_segments == 1:
+                    action = "Reduce grid size, reduce n_steps, or use a more aggressive memory-reduction lane."
+                else:
+                    action = "Increase checkpoint_every, reduce grid size, or reduce n_steps."
+            else:
+                action = "Use plan_ad_memory() to choose a segmented checkpoint setting, reduce grid size, or reduce n_steps."
             warning = (
-                f"AD memory estimate {primary_bytes*to_gb:.2f}GB ({label}) "
-                f"exceeds 85% of {avail_gb:.2f}GB available VRAM. "
+                f"AD memory estimate {_format_memory_gb(primary_bytes * to_gb)} ({label}) "
+                f"exceeds 85% of {_format_memory_gb(avail_gb)} available VRAM. "
                 f"{action}"
             )
         return AD_MemoryEstimate(
@@ -2006,7 +2164,11 @@ class Simulation(
             available_gb=avail_gb,
             warning=warning,
             ad_segmented_gb=(ad_seg_bytes * to_gb) if ad_seg_bytes is not None else None,
-            checkpoint_every=checkpoint_every,
+            checkpoint_every=checkpoint_every_i,
+            checkpoint_segments=checkpoint_segments_i,
+            ad_active_steps=active_steps,
+            ad_active_design_fraction=active_design_fraction,
+            ad_segmented_active_segments=segmented_active_segments,
         )
 
     def plan_ad_memory(
@@ -2015,99 +2177,219 @@ class Simulation(
         available_memory_gb: float,
         *,
         target_fraction: float = 0.85,
+        n_warmup: int = 0,
+        design_mask: jnp.ndarray | np.ndarray | None = None,
+        safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
     ) -> ADMemoryPlan:
-        """Choose a segmented-AD ``checkpoint_every`` for a memory budget.
+        """Choose a segmented-AD memory plan for a memory budget.
 
-        The planner reuses :meth:`estimate_ad_memory` and returns an artifact
-        rather than mutating the simulation.  If ordinary reverse-mode AD already
-        fits under ``target_fraction * available_memory_gb``, the returned
-        ``checkpoint_every`` is ``None``.  Otherwise it returns the smallest
-        chunk length estimated to fit the segmented scan-of-scan memory model.
-        If even ``checkpoint_every=n_steps`` is too large, ``segmented_fits`` is
-        false and the recommendation points back to mesh reduction.
+        The planner reuses :meth:`estimate_ad_memory` and returns a
+        calibrated conservative planning artifact rather than mutating the
+        simulation or certifying runtime peak memory. If ordinary reverse-mode
+        AD already fits under ``target_fraction * available_memory_gb``, both
+        checkpoint knobs are ``None``. Otherwise it returns a segmented
+        candidate: ``checkpoint_every`` for non-uniform grids or
+        ``checkpoint_segments`` for uniform grids. Only wire the candidate when
+        ``segmented_fits`` is true; a non-fitting plan keeps the least-memory
+        candidate as diagnostics.
+        ``n_warmup`` must be an integer with ``0 <= n_warmup < n_steps``.
+        ``design_mask`` must be a boolean array matching the simulation grid
+        shape and selecting at least one cell. ``n_warmup`` reduces active
+        reverse-mode time; ``design_mask`` is metadata only for conservative
+        budgeting. Raw estimates must also fit after multiplying by
+        ``safety_factor`` before fit flags are set, so near-boundary plans stay
+        conservative.
         """
-        if n_steps <= 0:
-            raise ValueError("n_steps must be positive")
-        if available_memory_gb <= 0:
-            raise ValueError("available_memory_gb must be positive")
-        if not (0.0 < target_fraction <= 1.0):
-            raise ValueError("target_fraction must be in the interval (0, 1]")
-
-        target_memory_gb = float(available_memory_gb) * float(target_fraction)
-        full_estimate = self.estimate_ad_memory(
-            n_steps,
-            available_memory_gb=available_memory_gb,
+        n_steps_i = _require_integral_param("n_steps", n_steps)
+        n_warmup_i = _require_integral_param("n_warmup", n_warmup)
+        available_memory_gb_f = _require_positive_finite_scalar(
+            "available_memory_gb", available_memory_gb
         )
-        if full_estimate.ad_full_gb <= target_memory_gb:
+        target_fraction_f = _require_positive_finite_scalar(
+            "target_fraction", target_fraction
+        )
+        safety_factor_f = _require_positive_finite_scalar(
+            "safety_factor", safety_factor
+        )
+
+        if n_steps_i <= 0:
+            raise ValueError("n_steps must be positive")
+        if n_warmup_i < 0:
+            raise ValueError("n_warmup must be >= 0")
+        if n_warmup_i >= n_steps_i:
+            raise ValueError(f"n_warmup ({n_warmup_i}) must be < n_steps ({n_steps_i})")
+        if target_fraction_f > 1.0:
+            raise ValueError("target_fraction must be in the interval (0, 1]")
+        if safety_factor_f < 1.0:
+            raise ValueError("safety_factor must be >= 1")
+
+        target_memory_gb = available_memory_gb_f * target_fraction_f
+        full_estimate = self.estimate_ad_memory(
+            n_steps_i,
+            available_memory_gb=available_memory_gb_f,
+            n_warmup=n_warmup_i,
+            design_mask=design_mask,
+        )
+        if full_estimate.ad_full_gb * safety_factor_f <= target_memory_gb:
             return ADMemoryPlan(
-                n_steps=int(n_steps),
-                available_memory_gb=float(available_memory_gb),
-                target_fraction=float(target_fraction),
+                n_steps=n_steps_i,
+                available_memory_gb=available_memory_gb_f,
+                target_fraction=target_fraction_f,
                 target_memory_gb=target_memory_gb,
                 checkpoint_every=None,
+                checkpoint_segments=None,
+                checkpoint_mode=None,
+                fit_safety_factor=safety_factor_f,
                 selected_estimate=full_estimate,
                 full_ad_fits=True,
-                segmented_fits=True,
+                segmented_fits=False,
                 recommendation=(
-                    f"full reverse-mode AD estimate ({full_estimate.ad_full_gb:.2f} GB) "
-                    f"fits within the {target_memory_gb:.2f} GB target; "
+                    f"full reverse-mode AD estimate ({_format_memory_with_safety(full_estimate.ad_full_gb, safety_factor_f)}) "
+                    f"fits within the {_format_memory_gb(target_memory_gb)} target; "
                     "segmented checkpointing is optional for memory"
+                ),
+            )
+
+        uses_nonuniform = (
+            self._dx_profile is not None
+            or self._dy_profile is not None
+            or self._dz_profile is not None
+        )
+        if not uses_nonuniform:
+            divisors = _positive_divisors(n_steps_i)
+            sqrt_steps = math.sqrt(n_steps_i)
+            recommended_segments = min(
+                divisors,
+                key=lambda divisor: (
+                    abs(float(divisor) - sqrt_steps),
+                    -divisor,
+                ),
+            )
+            best_segments: int | None = None
+            best_estimate: AD_MemoryEstimate | None = None
+            for segments in sorted(
+                (divisor for divisor in divisors if divisor <= recommended_segments),
+                reverse=True,
+            ):
+                estimate = self.estimate_ad_memory(
+                    n_steps_i,
+                    available_memory_gb=available_memory_gb_f,
+                    checkpoint_segments=segments,
+                    n_warmup=n_warmup_i,
+                    design_mask=design_mask,
+                )
+                segmented_gb = estimate.ad_segmented_gb
+                if segmented_gb is not None and segmented_gb * safety_factor_f <= target_memory_gb:
+                    best_segments = segments
+                    best_estimate = estimate
+                    break
+
+            if best_segments is not None and best_estimate is not None:
+                return ADMemoryPlan(
+                    n_steps=n_steps_i,
+                    available_memory_gb=available_memory_gb_f,
+                    target_fraction=target_fraction_f,
+                    target_memory_gb=target_memory_gb,
+                    checkpoint_every=None,
+                    checkpoint_segments=best_segments,
+                    checkpoint_mode="checkpoint_segments",
+                    fit_safety_factor=safety_factor_f,
+                    selected_estimate=best_estimate,
+                    full_ad_fits=False,
+                    segmented_fits=True,
+                    recommendation=(
+                        f"use checkpoint_segments={best_segments}: segmented AD estimate "
+                        f"{_format_memory_with_safety(best_estimate.ad_segmented_gb, safety_factor_f)} fits within the "
+                        f"{_format_memory_gb(target_memory_gb)} target"
+                    ),
+                )
+
+            minimum_segment_estimate = self.estimate_ad_memory(
+                n_steps_i,
+                available_memory_gb=available_memory_gb_f,
+                checkpoint_segments=1,
+                n_warmup=n_warmup_i,
+                design_mask=design_mask,
+            )
+            return ADMemoryPlan(
+                n_steps=n_steps_i,
+                available_memory_gb=available_memory_gb_f,
+                target_fraction=target_fraction_f,
+                target_memory_gb=target_memory_gb,
+                checkpoint_every=None,
+                checkpoint_segments=1,
+                checkpoint_mode="checkpoint_segments",
+                fit_safety_factor=safety_factor_f,
+                selected_estimate=minimum_segment_estimate,
+                full_ad_fits=False,
+                segmented_fits=False,
+                recommendation=(
+                    "even checkpoint_segments=1 is estimated at "
+                    f"{_format_memory_with_safety(minimum_segment_estimate.ad_segmented_gb, safety_factor_f)}, above the "
+                    f"{_format_memory_gb(target_memory_gb)} target; reduce mesh size, reduce "
+                    "n_steps, or use a more aggressive memory-reduction lane"
                 ),
             )
 
         best_checkpoint: int | None = None
         best_estimate: AD_MemoryEstimate | None = None
-        lo, hi = 1, int(n_steps)
-        while lo <= hi:
-            mid = (lo + hi) // 2
+        for checkpoint in range(1, n_steps_i + 1):
             estimate = self.estimate_ad_memory(
-                n_steps,
-                available_memory_gb=available_memory_gb,
-                checkpoint_every=mid,
+                n_steps_i,
+                available_memory_gb=available_memory_gb_f,
+                checkpoint_every=checkpoint,
+                n_warmup=n_warmup_i,
+                design_mask=design_mask,
             )
             segmented_gb = estimate.ad_segmented_gb
-            if segmented_gb is not None and segmented_gb <= target_memory_gb:
-                best_checkpoint = mid
+            if segmented_gb is not None and segmented_gb * safety_factor_f <= target_memory_gb:
+                best_checkpoint = checkpoint
                 best_estimate = estimate
-                hi = mid - 1
-            else:
-                lo = mid + 1
+                break
 
         if best_checkpoint is not None and best_estimate is not None:
             return ADMemoryPlan(
-                n_steps=int(n_steps),
-                available_memory_gb=float(available_memory_gb),
-                target_fraction=float(target_fraction),
+                n_steps=n_steps_i,
+                available_memory_gb=available_memory_gb_f,
+                target_fraction=target_fraction_f,
                 target_memory_gb=target_memory_gb,
                 checkpoint_every=best_checkpoint,
+                checkpoint_segments=None,
+                checkpoint_mode="checkpoint_every",
+                fit_safety_factor=safety_factor_f,
                 selected_estimate=best_estimate,
                 full_ad_fits=False,
                 segmented_fits=True,
                 recommendation=(
                     f"use checkpoint_every={best_checkpoint}: segmented AD estimate "
-                    f"{best_estimate.ad_segmented_gb:.2f} GB fits within the "
-                    f"{target_memory_gb:.2f} GB target"
+                    f"{_format_memory_with_safety(best_estimate.ad_segmented_gb, safety_factor_f)} fits within the "
+                    f"{_format_memory_gb(target_memory_gb)} target"
                 ),
             )
 
         largest_chunk_estimate = self.estimate_ad_memory(
-            n_steps,
-            available_memory_gb=available_memory_gb,
-            checkpoint_every=n_steps,
+            n_steps_i,
+            available_memory_gb=available_memory_gb_f,
+            checkpoint_every=n_steps_i,
+            n_warmup=n_warmup_i,
+            design_mask=design_mask,
         )
         return ADMemoryPlan(
-            n_steps=int(n_steps),
-            available_memory_gb=float(available_memory_gb),
-            target_fraction=float(target_fraction),
+            n_steps=n_steps_i,
+            available_memory_gb=available_memory_gb_f,
+            target_fraction=target_fraction_f,
             target_memory_gb=target_memory_gb,
-            checkpoint_every=n_steps,
+            checkpoint_every=n_steps_i,
+            checkpoint_segments=None,
+            checkpoint_mode="checkpoint_every",
+            fit_safety_factor=safety_factor_f,
             selected_estimate=largest_chunk_estimate,
             full_ad_fits=False,
             segmented_fits=False,
             recommendation=(
-                f"even checkpoint_every={n_steps} is estimated at "
-                f"{largest_chunk_estimate.ad_segmented_gb:.2f} GB, above the "
-                f"{target_memory_gb:.2f} GB target; reduce mesh size, reduce "
+                f"even checkpoint_every={n_steps_i} is estimated at "
+                f"{_format_memory_with_safety(largest_chunk_estimate.ad_segmented_gb, safety_factor_f)}, above the "
+                f"{_format_memory_gb(target_memory_gb)} target; reduce mesh size, reduce "
                 "n_steps, or use a more aggressive memory-reduction lane"
             ),
         )
@@ -2117,7 +2399,10 @@ class Simulation(
         *,
         n_steps: int | None = None,
         checkpoint_every: int | None = None,
+        checkpoint_segments: int | None = None,
         available_memory_gb: float | None = None,
+        n_warmup: int = 0,
+        design_mask: jnp.ndarray | np.ndarray | None = None,
         check_ntff: bool = True,
         check_resolution: bool = True,
     ) -> MeshIntelligenceReport:
@@ -2133,6 +2418,11 @@ class Simulation(
         surface: it helps users decide whether existing non-uniform mesh
         plus segmented checkpointing is enough before attempting
         research-only true subgridding.
+
+        ``checkpoint_every`` and ``checkpoint_segments`` are forwarded to the
+        same AD estimator used by :meth:`plan_ad_memory`; they are mutually
+        exclusive. ``n_warmup`` and ``design_mask`` are forwarded as
+        reverse-mode tape metadata only, matching ``estimate_ad_memory``.
         """
         import contextlib
         import io
@@ -2196,6 +2486,9 @@ class Simulation(
                 n_steps,
                 available_memory_gb=available_memory_gb,
                 checkpoint_every=checkpoint_every,
+                checkpoint_segments=checkpoint_segments,
+                n_warmup=n_warmup,
+                design_mask=design_mask,
             )
 
         uses_nonuniform = any(
@@ -2225,17 +2518,17 @@ class Simulation(
             )
 
         if ad_memory is not None:
-            if checkpoint_every and ad_memory.ad_segmented_gb is not None:
+            if ad_memory.warning:
+                recommendation_parts.append(ad_memory.warning)
+            elif (checkpoint_every or checkpoint_segments) and ad_memory.ad_segmented_gb is not None:
                 recommendation_parts.append(
-                    f"use segmented AD estimate ({ad_memory.ad_segmented_gb:.2f} GB) "
+                    f"use segmented AD estimate ({_format_memory_gb(ad_memory.ad_segmented_gb)}) "
                     "rather than the legacy step-checkpoint heuristic"
                 )
-            elif ad_memory.warning:
-                recommendation_parts.append(ad_memory.warning)
             else:
                 recommendation_parts.append(
-                    f"estimated full reverse-mode AD memory is "
-                    f"{ad_memory.ad_full_gb:.2f} GB"
+                    "estimated full reverse-mode AD memory is "
+                    f"{_format_memory_gb(ad_memory.ad_full_gb)}"
                 )
 
         return MeshIntelligenceReport(
