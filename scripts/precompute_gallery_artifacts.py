@@ -135,11 +135,32 @@ class GalleryCase:
     builder: Callable[[bool], "CaseResult"]
     n_ports: int = 2
     has_smith: bool = True
+    # --- Gallery-v2 visual config ---
+    geometry_mode: str = "slice2d"  # "slice2d" (εr cross-section) | "geom3d"
+    geometry_slice_axis: int = 2  # axis index for the εr slice (slice2d only)
+    anim_slice_axis: int = 2  # SnapshotSpec.slice_axis: INT 0/1/2 (capture)
+    anim_render_axis: str = "z"  # save_field_animation slice_axis: STR x/y/z
+    anim_component: str = "ez"
+    has_animation: bool = True
+    is_optimization: bool = False  # opt cases skip S-param/Smith/Touchstone
 
 
 @dataclass
 class CaseResult:
-    """What a builder returns: S-params plus a validation summary."""
+    """What a builder returns: S-params plus a validation summary.
+
+    The optional fields support the richer Gallery-v2 assets:
+
+    * ``sim`` — the constructed :class:`~rfx.api.Simulation`, attached by each
+      builder so the emitter can render a geometry image and run a second
+      snapshot forward for the field animation. ``None`` for cases that do not
+      expose a Simulation (e.g. the raw-functional Fresnel path).
+    * ``geometry_path`` / ``animation_path`` — pre-rendered asset paths a
+      builder may emit itself; normally the emitter fills these in.
+    * Optimization-case extras (``loss_history`` … ``r_reference``) carry the
+      convergence trace, per-iteration design state, and reflection spectra so
+      the emitter can draw the convergence / design-evolution / spectrum plots.
+    """
 
     freqs_hz: np.ndarray
     s_params: np.ndarray  # (n_ports, n_ports, n_freqs) complex
@@ -147,6 +168,22 @@ class CaseResult:
     metric_value: str  # e.g. "max|S11| = 0.012"
     params: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
+    # --- Gallery-v2 optional plumbing ---
+    sim: Any = None  # rfx.api.Simulation, for geometry image + animation forward
+    anim_sim: Any = None  # optional dedicated Simulation for the field animation
+    #                       (used when the validated `sim` cannot snapshot —
+    #                       e.g. a 2-port waveguide or a non-uniform-mesh run)
+    geometry_path: Path | None = None
+    animation_path: Path | None = None
+    # --- optimization-case extras ---
+    loss_history: np.ndarray | None = None  # (n_iters,) cost per Adam step
+    eps_trace: np.ndarray | None = None  # (n_iters, n_layers) design εr per step
+    eps_reference: np.ndarray | None = None  # (n_layers,) analytic-optimum εr
+    freqs_spectrum_hz: np.ndarray | None = None  # (n_f,) for the R(f) spectra
+    r_initial: np.ndarray | None = None  # (n_f,) reflection R(f), start of run
+    r_final: np.ndarray | None = None  # (n_f,) reflection R(f), end of run
+    r_reference: np.ndarray | None = None  # (n_f,) analytic-optimum R(f)
+    reference_cost: float | None = None  # analytic-optimum scalar cost
 
 
 # ---------------------------------------------------------------------------
@@ -317,10 +354,43 @@ def _build_multilayer_fresnel(quick: bool) -> CaseResult:
     cons = float(np.abs(r_rfx + t_rfx - 1).mean())
     passed = None if quick else bool(t_err < 0.05 and r_err < 0.05 and cons < 0.05)
 
+    # Companion Simulation (visuals only — geometry image + field animation).
+    # The validated S-params above come from the raw-functional TFSF path; this
+    # high-level Simulation reproduces the same slab geometry so the gallery can
+    # show *what the structure is* and *what the wave does* without touching the
+    # measured physics.
+    from rfx import Simulation, Box
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    from rfx.sources.sources import GaussianPulse
+
+    dom_x = nx_interior * dx
+    sim_vis = Simulation(
+        freq_max=20e9,
+        domain=(dom_x, 0.004, dx),
+        dx=dx,
+        cpml_layers=n_cpml,
+        boundary=BoundarySpec(
+            x=Boundary(lo="cpml", hi="cpml"),
+            y=Boundary(lo="periodic", hi="periodic"),
+            z=Boundary(lo="periodic", hi="periodic"),
+        ),
+    )
+    sim_vis.add_material("slab", eps_r=eps_slab, sigma=0.0)
+    sim_vis.add(
+        Box((dom_x / 2 - d_slab / 2, 0.0, 0.0), (dom_x / 2 + d_slab / 2, 0.004, dx)),
+        material="slab",
+    )
+    sim_vis.add_source(
+        (dom_x * 0.15, 0.002, dx / 2),
+        "ez",
+        waveform=GaussianPulse(f0=f0, bandwidth=bw, amplitude=1.0),
+    )
+
     return CaseResult(
         freqs_hz=f_band,
         s_params=s,
         passed=passed,
+        sim=sim_vis,
         metric_value=(
             f"mean|T_rfx-T_an|={t_err:.4f}, mean|R_rfx-R_an|={r_err:.4f}, "
             f"R+T dev={cons:.4f}"
@@ -424,10 +494,35 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     min_s21 = float(np.abs(s[1, 0, :]).min())
     passed = None if quick else bool(max_s11 < 0.02 and min_s21 > 0.97)
 
+    # Companion Simulation for the field animation. The validated S-matrix is
+    # produced by compute_waveguide_s_matrix() with two waveguide ports, which
+    # Simulation.run() (the snapshot path) cannot drive — so a source-fed empty
+    # guide reproduces the same TE10 propagation purely for the visual.
+    from rfx.sources.sources import GaussianPulse
+
+    sim_anim = Simulation(
+        freq_max=float(freqs[-1]) * 1.1,
+        domain=(domain_x, a_wg, b_wg),
+        boundary=BoundarySpec(
+            x=Boundary(lo="cpml", hi="cpml"),
+            y=Boundary(lo="pec", hi="pec"),
+            z=Boundary(lo="pec", hi="pec"),
+        ),
+        cpml_layers=cpml_layers,
+        dx=dx,
+    )
+    sim_anim.add_source(
+        (port_left_x, a_wg / 2, b_wg / 2),
+        "ez",
+        waveform=GaussianPulse(f0=f0, bandwidth=bandwidth, amplitude=1.0),
+    )
+
     return CaseResult(
         freqs_hz=f_hz,
         s_params=s,
         passed=passed,
+        sim=sim,
+        anim_sim=sim_anim,
         metric_value=f"max|S11|={max_s11:.4f}, min|S21|={min_s21:.4f}",
         params={
             "band": "X-band (8.2-12.4 GHz)",
@@ -567,10 +662,46 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
         f_err = float("inf")
     passed = None if quick else bool(passive and f_err < 20.0)
 
+    # Companion Simulation for the field animation. The validated S11 run uses a
+    # non-uniform z stack (graded dz) on which the snapshot path is not wired, so
+    # a uniform-mesh twin of the same patch — soft-fed instead of lumped-port —
+    # reproduces the field spreading under the patch purely for the visual.
+    n_z_unif = max(4, int(math.ceil((air_below + h_sub + air_above) / dx)))
+    dom_z = n_z_unif * dx
+    z0_gnd = air_below
+    sim_anim = Simulation(
+        freq_max=4e9,
+        domain=(dom_x, dom_y, dom_z),
+        dx=dx,
+        boundary=BoundarySpec.uniform("cpml"),
+        cpml_layers=n_cpml,
+    )
+    sim_anim.add_material("fr4", eps_r=eps_r, sigma=0.0)
+    sim_anim.add(
+        Box((gx_lo, gy_lo, z0_gnd - dx), (gx_hi, gy_hi, z0_gnd)), material="pec"
+    )
+    sim_anim.add(
+        Box((gx_lo, gy_lo, z0_gnd), (gx_hi, gy_hi, z0_gnd + dx)), material="fr4"
+    )
+    sim_anim.add(
+        Box(
+            (patch_x_lo, patch_y_lo, z0_gnd + dx),
+            (patch_x_hi, patch_y_hi, z0_gnd + 2 * dx),
+        ),
+        material="pec",
+    )
+    sim_anim.add_source(
+        (feed_x, feed_y, z0_gnd + 0.5 * dx),
+        "ez",
+        waveform=GaussianPulse(f0=f_design, bandwidth=0.8),
+    )
+
     return CaseResult(
         freqs_hz=f_hz,
         s_params=s,
         passed=passed,
+        sim=sim,
+        anim_sim=sim_anim,
         metric_value=(
             f"resonance dip f={f_res_rfx / 1e9:.3f} GHz vs analytic "
             f"{f_res_an / 1e9:.3f} GHz ({f_err:.1f}% err); passive={passive}"
@@ -591,6 +722,273 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
     )
 
 
+def _build_ar_coating_design(quick: bool) -> CaseResult:
+    """Inverse-designed 3-layer anti-reflection coating (differentiable FDTD).
+
+    Ports ``examples/inverse_design/multilayer_ar_coating.py``: a high-εr
+    substrate (εr=12) is matched over the X-band by three quarter-wave coating
+    layers whose permittivities are optimized by gradient descent *through* the
+    FDTD solver (``jax.value_and_grad`` + Adam), and cross-validated against the
+    exact transfer-matrix-method (TMM) optimum.
+
+    Returns the loss history, per-iteration design εr, the initial/final/exact
+    reflection spectra, and a companion :class:`Simulation` (the matched stack)
+    so the emitter can draw convergence, design-evolution, spectrum, and
+    geometry images. This case has no S-matrix/Touchstone.
+    """
+    import jax
+    import jax.numpy as jnp
+    from scipy.optimize import minimize as _scimin
+
+    from rfx import Simulation, Box
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    from rfx.sources.sources import GaussianPulse
+
+    eps_sub = 12.0
+    n_layers = 3
+    f_lo, f_hi = 8e9, 12e9
+    f0 = 0.5 * (f_lo + f_hi)
+    f_max = 15e9
+    lambda0 = C0 / f0
+    n_ref = eps_sub ** (0.5 / (n_layers + 1))
+    layer_thk = lambda0 / (4.0 * n_ref)
+    dx = 0.5e-3
+
+    x_src = 10e-3
+    x_refl = 22e-3
+    x_design_lo = 35e-3
+    x_design_hi = x_design_lo + n_layers * layer_thk
+    x_trans = x_design_hi + 8e-3
+    lx = x_trans + 18e-3
+    ly = lz = dx
+
+    n_periods = 30
+    # --quick: fewer Adam iterations and shorter time-marching for a fast CPU
+    # smoke; the full validated run keeps n_iters=60.
+    n_iters = 3 if quick else 60
+    lr = 0.15
+
+    def _make_sim() -> Simulation:
+        sim = Simulation(
+            freq_max=f_max,
+            domain=(lx, ly, lz),
+            dx=dx,
+            cpml_layers=10,
+            boundary=BoundarySpec(
+                x="cpml",
+                y=Boundary(lo="periodic", hi="periodic"),
+                z=Boundary(lo="periodic", hi="periodic"),
+            ),
+        )
+        bw = (f_hi - f_lo) / f0 * 1.6
+        sim.add_source(
+            (x_src, ly / 2, lz / 2),
+            "ez",
+            waveform=GaussianPulse(f0=f0, bandwidth=bw, amplitude=1.0),
+        )
+        sim.add_probe((x_refl, ly / 2, lz / 2), "ez")
+        sim.add_probe((x_trans, ly / 2, lz / 2), "ez")
+        return sim
+
+    sim_probe = _make_sim()
+    grid = sim_probe._build_grid()
+    nx = grid.shape[0]
+    dt = float(grid.dt)
+    n_steps = int(round(n_periods / f0 / dt))
+    if quick:
+        n_steps = min(n_steps, 600)
+
+    layer_edges_c = [
+        int(round((x_design_lo + i * layer_thk) / dx)) for i in range(n_layers + 1)
+    ]
+    i_sub_lo = layer_edges_c[-1]
+    i_sub_hi = nx
+
+    def _base_eps() -> jnp.ndarray:
+        eps = jnp.ones((nx, 1, 1), dtype=jnp.float32)
+        return eps.at[i_sub_lo:i_sub_hi, :, :].set(eps_sub)
+
+    def _vacuum_eps() -> jnp.ndarray:
+        return jnp.ones((nx, 1, 1), dtype=jnp.float32)
+
+    def _render_design_eps(layer_eps: jnp.ndarray) -> jnp.ndarray:
+        eps = _base_eps()
+        for i in range(n_layers):
+            eps = eps.at[layer_edges_c[i]:layer_edges_c[i + 1], :, :].set(layer_eps[i])
+        return eps
+
+    def _latent_to_eps(latent: jnp.ndarray) -> jnp.ndarray:
+        return 1.0 + (eps_sub - 1.0) * jax.nn.sigmoid(latent)
+
+    # ---- analytic TMM reference ----
+    def tmm_R(layer_eps: np.ndarray, freqs: np.ndarray) -> np.ndarray:
+        n0 = 1.0
+        n_sub = float(np.sqrt(eps_sub))
+        R = np.zeros_like(freqs, dtype=float)
+        for fi, f in enumerate(freqs):
+            if f <= 0:
+                R[fi] = 0.0
+                continue
+            M = np.eye(2, dtype=complex)
+            for li in range(len(layer_eps)):
+                n_l = float(np.sqrt(layer_eps[li]))
+                beta = 2.0 * np.pi * f * n_l * layer_thk / C0
+                cos_b, sin_b = np.cos(beta), np.sin(beta)
+                ML = np.array(
+                    [[cos_b, 1j * sin_b / n_l], [1j * n_l * sin_b, cos_b]],
+                    dtype=complex,
+                )
+                M = M @ ML
+            num = n0 * M[0, 0] + n0 * n_sub * M[0, 1] - M[1, 0] - n_sub * M[1, 1]
+            den = n0 * M[0, 0] + n0 * n_sub * M[0, 1] + M[1, 0] + n_sub * M[1, 1]
+            R[fi] = float(np.abs(num / den) ** 2)
+        return R
+
+    def tmm_band_cost(layer_eps: np.ndarray) -> float:
+        fs = np.linspace(f_lo, f_hi, 51)
+        return float(np.mean(tmm_R(layer_eps, fs)))
+
+    res_tmm = _scimin(
+        tmm_band_cost,
+        x0=np.array([2.5, 4.0, 7.0]),
+        bounds=[(1.0, eps_sub)] * n_layers,
+        method="L-BFGS-B",
+    )
+    tmm_eps = res_tmm.x
+    tmm_cost = float(res_tmm.fun)
+    geo_ladder = np.array(
+        [eps_sub ** ((i + 1) / (n_layers + 1)) for i in range(n_layers)]
+    )
+
+    # ---- vacuum reference forward (incident-wave subtraction) ----
+    sim_ref = _make_sim()
+    result_ref = sim_ref.forward(
+        eps_override=_vacuum_eps(), n_steps=n_steps, skip_preflight=True
+    )
+    ts_inc_refl = jnp.asarray(result_ref.time_series[:, 0])
+
+    nfft = int(2 ** np.ceil(np.log2(n_steps)))
+    freqs_fft = jnp.fft.rfftfreq(nfft, d=dt)
+    band_mask = (freqs_fft >= f_lo) & (freqs_fft <= f_hi)
+    band_norm = float(jnp.sum(band_mask))
+
+    sim_design = _make_sim()
+
+    def cost_with_aux(latent: jnp.ndarray):
+        layer_eps = _latent_to_eps(latent)
+        res = sim_design.forward(
+            eps_override=_render_design_eps(layer_eps),
+            n_steps=n_steps,
+            skip_preflight=True,
+        )
+        ts_scat = res.time_series[:, 0] - ts_inc_refl
+        S_inc = jnp.fft.rfft(ts_inc_refl, n=nfft)
+        S_scat = jnp.fft.rfft(ts_scat, n=nfft)
+        R = (jnp.abs(S_scat) / (jnp.abs(S_inc) + 1e-30)) ** 2
+        cost = jnp.sum(R * band_mask) / band_norm
+        return cost, R
+
+    grad_fn = jax.value_and_grad(lambda lat: cost_with_aux(lat)[0])
+
+    # Warm start from the geometric-ladder closed-form approximation.
+    p_geo = np.clip((geo_ladder - 1.0) / (eps_sub - 1.0), 1e-3, 1.0 - 1e-3)
+    latent = jnp.asarray(np.log(p_geo / (1.0 - p_geo)), dtype=jnp.float32)
+    m = jnp.zeros_like(latent)
+    v = jnp.zeros_like(latent)
+    beta1, beta2, adam_eps = 0.9, 0.999, 1e-8
+
+    losses: list[float] = []
+    eps_trace: list[np.ndarray] = []
+    initial_R: np.ndarray | None = None
+    for it in range(n_iters):
+        cost, grad = grad_fn(latent)
+        losses.append(float(cost))
+        eps_trace.append(np.asarray(_latent_to_eps(latent)))
+        if it == 0:
+            _, R0 = cost_with_aux(latent)
+            initial_R = np.asarray(R0)
+        m = beta1 * m + (1 - beta1) * grad
+        v = beta2 * v + (1 - beta2) * grad ** 2
+        m_hat = m / (1 - beta1 ** (it + 1))
+        v_hat = v / (1 - beta2 ** (it + 1))
+        latent = latent - lr * m_hat / (jnp.sqrt(v_hat) + adam_eps)
+
+    final_eps = np.asarray(_latent_to_eps(latent))
+    _, R_final = cost_with_aux(latent)
+    R_final = np.asarray(R_final)
+    final_cost = losses[-1]
+
+    freqs_fft_arr = np.asarray(freqs_fft)
+    mask = (freqs_fft_arr >= f_lo) & (freqs_fft_arr <= f_hi)
+    fs_band = freqs_fft_arr[mask]
+    r_initial_band = initial_R[mask] if initial_R is not None else R_final[mask]
+    r_final_band = R_final[mask]
+    r_ref_band = tmm_R(tmm_eps, fs_band)
+
+    cost_ratio_to_tmm = final_cost / max(tmm_cost, 1e-20)
+    geo_cost = tmm_band_cost(geo_ladder)
+    cost_ratio_to_geo = final_cost / max(geo_cost, 1e-20)
+    n_intermediate = int(np.sum((final_eps > 1.5) & (final_eps < eps_sub - 0.5)))
+    passed = (
+        None
+        if quick
+        else bool(
+            cost_ratio_to_tmm <= 1.2
+            and cost_ratio_to_geo <= 0.7
+            and n_intermediate >= 2
+        )
+    )
+
+    # Companion Simulation at the final design (geometry image only).
+    sim_vis = _make_sim()
+    sim_vis.add_material("substrate", eps_r=eps_sub, sigma=0.0)
+    sim_vis.add(Box((x_design_hi, 0.0, 0.0), (lx, ly, lz)), material="substrate")
+    for i in range(n_layers):
+        lo_m = layer_edges_c[i] * dx
+        hi_m = layer_edges_c[i + 1] * dx
+        name = f"layer{i + 1}"
+        sim_vis.add_material(name, eps_r=float(final_eps[i]), sigma=0.0)
+        sim_vis.add(Box((lo_m, 0.0, 0.0), (hi_m, ly, lz)), material=name)
+
+    return CaseResult(
+        freqs_hz=fs_band,
+        s_params=np.zeros((1, 1, len(fs_band)), dtype=complex),
+        passed=passed,
+        sim=sim_vis,
+        metric_value=(
+            f"final cost {final_cost:.2e} = {cost_ratio_to_tmm:.2f}x the "
+            f"exact-theory optimum (passes if <=1.2x)"
+        ),
+        params={
+            "eps_substrate": eps_sub,
+            "n_layers": n_layers,
+            "band": "X-band (8-12 GHz)",
+            "n_iters": n_iters,
+            "n_steps": int(n_steps),
+            "dx_m": dx,
+            "final_eps": [float(e) for e in final_eps],
+            "tmm_eps": [float(e) for e in tmm_eps],
+            "cost_ratio_to_tmm": cost_ratio_to_tmm,
+            "cost_ratio_to_geo": cost_ratio_to_geo,
+        },
+        notes=(
+            "Gradient-based inverse design: Adam descends through the "
+            "differentiable FDTD forward; reference is the exact transfer-matrix "
+            "optimum. The X-band-mean reflection cost is the cross-validated "
+            "quantity (the degenerate εr surface admits multiple equal-cost "
+            "designs)."
+        ),
+        loss_history=np.asarray(losses),
+        eps_trace=np.asarray(eps_trace),
+        eps_reference=np.asarray(tmm_eps),
+        freqs_spectrum_hz=fs_band,
+        r_initial=r_initial_band,
+        r_final=r_final_band,
+        r_reference=r_ref_band,
+        reference_cost=tmm_cost,
+    )
+
+
 CASE_REGISTRY: list[GalleryCase] = [
     GalleryCase(
         id="multilayer_fresnel",
@@ -606,6 +1004,10 @@ CASE_REGISTRY: list[GalleryCase] = [
         builder=_build_multilayer_fresnel,
         n_ports=2,
         has_smith=True,
+        geometry_mode="slice2d",
+        geometry_slice_axis=2,
+        anim_slice_axis=2,
+        anim_render_axis="z",
     ),
     GalleryCase(
         id="waveguide_wr90",
@@ -621,6 +1023,11 @@ CASE_REGISTRY: list[GalleryCase] = [
         builder=_build_waveguide_wr90,
         n_ports=2,
         has_smith=True,
+        # An empty guide has no dielectric to show in an εr slice; the 3D
+        # renderer shows the guide domain + port instead (matplotlib backend).
+        geometry_mode="geom3d",
+        anim_slice_axis=2,
+        anim_render_axis="z",
     ),
     GalleryCase(
         id="patch_antenna",
@@ -636,6 +1043,31 @@ CASE_REGISTRY: list[GalleryCase] = [
         builder=_build_patch_antenna,
         n_ports=1,
         has_smith=True,
+        geometry_mode="geom3d",
+        anim_slice_axis=2,
+        anim_render_axis="z",
+    ),
+    GalleryCase(
+        id="ar_coating_design",
+        title="Anti-Reflection Coating Design",
+        description=(
+            "A 3-layer anti-reflection coating for a high-permittivity substrate, "
+            "designed automatically by gradient-based optimization through the "
+            "FDTD solver and checked against exact theory."
+        ),
+        validation_tier="OPT",
+        metric="X-band-mean reflection cost vs the exact transfer-matrix optimum; ratio <= 1.2",
+        tolerance="final cost <= 1.2x exact-theory optimum and <= 0.7x closed-form ladder",
+        reference_solver="analytic transfer matrix (exact-theory optimum)",
+        builder=_build_ar_coating_design,
+        n_ports=1,
+        has_smith=False,
+        geometry_mode="slice2d",
+        geometry_slice_axis=2,
+        anim_slice_axis=2,
+        anim_render_axis="z",
+        has_animation=True,
+        is_optimization=True,
     ),
 ]
 
@@ -740,6 +1172,187 @@ def _detect_backend() -> str:
 # ---------------------------------------------------------------------------
 
 
+def _emit_geometry(case: GalleryCase, result: "CaseResult", out_dir: Path) -> dict | None:
+    """Render the geometry image (``geometry.png``). Returns the asset dict.
+
+    ``geom3d`` cases use the 3D geometry renderer (matplotlib backend — pyvista
+    is fragile headless); ``slice2d`` cases draw an εr cross-section. Returns
+    ``None`` (and prints a warning) if no Simulation was attached or rendering
+    fails, so a missing image never aborts the bundle.
+    """
+    import matplotlib.pyplot as plt
+
+    if result.sim is None:
+        return None
+    geom_png = out_dir / "geometry.png"
+    try:
+        if case.geometry_mode == "geom3d":
+            from rfx.visualize3d import plot_geometry_3d
+
+            fig = plot_geometry_3d(
+                result.sim,
+                backend="matplotlib",
+                show_ports=True,
+                title=f"{case.title} — structure",
+            )
+        else:
+            from rfx.visualize import plot_geometry_2d_slice
+
+            fig = plot_geometry_2d_slice(
+                result.sim,
+                axis=case.geometry_slice_axis,
+                title=f"{case.title} — structure (εᵣ)",
+            )
+        fig.savefig(geom_png, dpi=130, bbox_inches="tight")
+        plt.close(fig)
+    except Exception as exc:  # pragma: no cover - rendering robustness
+        print(f"    [warn] geometry render failed: {exc}", flush=True)
+        return None
+    return {"filename": geom_png.name, "type": "geometry-png"}
+
+
+def _emit_animation(
+    case: GalleryCase, result: "CaseResult", out_dir: Path, quick: bool
+) -> dict | None:
+    """Run a second snapshot forward and save the field animation.
+
+    Captures a 2D slice (``SnapshotSpec.slice_axis`` is the INT axis index) to
+    bound memory, then renders with ``save_field_animation`` (``slice_axis`` is
+    the STRING axis name). The animation may come back as ``.gif`` if ffmpeg is
+    absent — we emit whatever path the renderer returns. Returns ``None`` on any
+    failure so a missing clip never aborts the bundle.
+    """
+    from rfx.simulation import SnapshotSpec
+    from rfx.animation import save_field_animation
+
+    anim_sim = result.anim_sim if result.anim_sim is not None else result.sim
+    if anim_sim is None or not case.has_animation:
+        return None
+    n_anim_steps = 300 if quick else 1200
+    try:
+        anim_result = anim_sim.run(
+            n_steps=n_anim_steps,
+            compute_s_params=False,
+            snapshot=SnapshotSpec(
+                interval=10,
+                components=(case.anim_component,),
+                slice_axis=case.anim_slice_axis,
+                slice_index=None,
+            ),
+        )
+    except Exception as exc:  # pragma: no cover - solver robustness
+        print(f"    [warn] field animation forward failed: {exc}", flush=True)
+        return None
+
+    def _save(ext: str) -> str:
+        return save_field_animation(
+            anim_result,
+            str(out_dir / f"fields.{ext}"),
+            component=case.anim_component,
+            slice_axis=case.anim_render_axis,
+            interval=3,
+            fps=12,
+        )
+
+    # Prefer .mp4 (ffmpeg). save_field_animation falls back to .gif when the
+    # FFMpegWriter cannot be *constructed*, but a missing ffmpeg *binary* only
+    # surfaces at save time as FileNotFoundError — so retry with .gif here.
+    try:
+        saved = _save("mp4")
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        print(f"    [warn] mp4 encode unavailable ({exc}); falling back to gif", flush=True)
+        try:
+            saved = _save("gif")
+        except Exception as exc2:  # pragma: no cover - rendering robustness
+            print(f"    [warn] field animation failed: {exc2}", flush=True)
+            return None
+    except Exception as exc:  # pragma: no cover - rendering robustness
+        print(f"    [warn] field animation failed: {exc}", flush=True)
+        return None
+    return {"filename": Path(saved).name, "type": "animation"}
+
+
+def _emit_optimization(result: "CaseResult", out_dir: Path) -> list[dict]:
+    """Emit the optimization-case plots + JSON. Returns the asset dicts."""
+    import matplotlib.pyplot as plt
+
+    assets: list[dict] = []
+    losses = np.asarray(result.loss_history)
+    eps_trace = np.asarray(result.eps_trace)
+    eps_ref = np.asarray(result.eps_reference)
+    iters_x = np.arange(len(losses))
+
+    # convergence.png — cost vs iteration, with the exact-theory optimum line.
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.semilogy(iters_x, losses, "g-", lw=2, label="optimizer")
+    if result.reference_cost is not None:
+        ax.axhline(result.reference_cost, color="k", ls="--", label="exact-theory optimum")
+    ax.set_xlabel("Optimization step")
+    ax.set_ylabel("Average reflection across the band")
+    ax.set_title("How the design converges")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_dir / "convergence.png", dpi=130)
+    plt.close(fig)
+    assets.append({"filename": "convergence.png", "type": "convergence-png"})
+
+    # design_evolution.png — per-layer εr vs iteration with exact-theory dashed.
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for li in range(eps_trace.shape[1]):
+        (line,) = ax.plot(iters_x, eps_trace[:, li], lw=2, label=f"layer {li + 1}")
+        ax.axhline(eps_ref[li], color=line.get_color(), ls="--", alpha=0.6)
+    ax.set_xlabel("Optimization step")
+    ax.set_ylabel("Layer permittivity εᵣ")
+    ax.set_title("How each layer changes (dashed = exact-theory target)")
+    ax.legend(loc="best")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_dir / "design_evolution.png", dpi=130)
+    plt.close(fig)
+    assets.append({"filename": "design_evolution.png", "type": "design-evolution-png"})
+
+    # result_spectrum.png — reflection R(f): initial vs final vs exact-theory.
+    fs_ghz = np.asarray(result.freqs_spectrum_hz) / 1e9
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.semilogy(fs_ghz, np.clip(result.r_initial, 1e-7, None), "r-", lw=1.5, label="before")
+    ax.semilogy(fs_ghz, np.clip(result.r_final, 1e-7, None), "g-", lw=2, label="after")
+    ax.semilogy(fs_ghz, np.clip(result.r_reference, 1e-7, None), "k--", lw=1.2, label="exact-theory optimum")
+    ax.set_xlabel("Frequency (GHz)")
+    ax.set_ylabel("Reflected power")
+    ax.set_title("Reflection before vs after design")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_dir / "result_spectrum.png", dpi=130)
+    plt.close(fig)
+    assets.append({"filename": "result_spectrum.png", "type": "result-spectrum-png"})
+
+    # optimization.json — rows [iter, cost, eps1, eps2, eps3].
+    rows = [
+        [int(i), float(losses[i]), *[float(e) for e in eps_trace[i]]]
+        for i in range(len(losses))
+    ]
+    (out_dir / "optimization.json").write_text(
+        json.dumps(
+            {
+                "columns": ["iter", "cost"]
+                + [f"eps{j + 1}" for j in range(eps_trace.shape[1])],
+                "reference_cost": float(result.reference_cost)
+                if result.reference_cost is not None
+                else None,
+                "reference_eps": [float(e) for e in eps_ref],
+                "rows": rows,
+            },
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    )
+    assets.append({"filename": "optimization.json", "type": "optimization-json"})
+    return assets
+
+
 def _emit_case(case: GalleryCase, out_dir: Path, quick: bool) -> dict[str, Any]:
     """Run a case builder and write its artifact bundle. Returns the manifest."""
     import matplotlib
@@ -760,54 +1373,68 @@ def _emit_case(case: GalleryCase, out_dir: Path, quick: bool) -> dict[str, Any]:
     s = np.asarray(result.s_params)
     assets: list[dict[str, Any]] = []
 
-    # S-parameter magnitude PNG
-    sparam_png = out_dir / "sparams.png"
-    fig = plot_s_params(s, freqs, db=True, title=f"{case.title} — |S| (dB)")
-    fig.savefig(sparam_png, dpi=130)
-    plt.close(fig)
-    assets.append({"filename": sparam_png.name, "type": "sparam-plot-png"})
+    if not case.is_optimization:
+        # S-parameter magnitude PNG
+        sparam_png = out_dir / "sparams.png"
+        fig = plot_s_params(s, freqs, db=True, title=f"{case.title} — |S| (dB)")
+        fig.savefig(sparam_png, dpi=130)
+        plt.close(fig)
+        assets.append({"filename": sparam_png.name, "type": "sparam-plot-png"})
 
-    # Smith PNG (S11 trajectory)
-    if case.has_smith:
-        smith_png = out_dir / "smith.png"
-        ax = plot_smith(s[0, 0, :], freqs, title=f"{case.title} — S11")
-        ax.figure.savefig(smith_png, dpi=130)
-        plt.close(ax.figure)
-        assets.append({"filename": smith_png.name, "type": "smith-png"})
+        # Smith PNG (S11 trajectory)
+        if case.has_smith:
+            smith_png = out_dir / "smith.png"
+            ax = plot_smith(s[0, 0, :], freqs, title=f"{case.title} — S11")
+            ax.figure.savefig(smith_png, dpi=130)
+            plt.close(ax.figure)
+            assets.append({"filename": smith_png.name, "type": "smith-png"})
 
-    # Touchstone (.s1p/.s2p/.s4p depending on port count)
-    touchstone = out_dir / f"sparams.s{case.n_ports}p"
-    write_touchstone(
-        touchstone,
-        s,
-        freqs,
-        z0=50.0,
-        comments=[
-            f"rfx gallery case {case.id}",
-            f"tier {case.validation_tier}; quick_smoke={quick}",
-        ],
-    )
-    assets.append({"filename": touchstone.name, "type": "touchstone"})
-
-    # Machine-readable S-params for the (gitops) interactive viewer draft.
-    sparams_json = out_dir / "sparams.json"
-    sparams_json.write_text(
-        json.dumps(
-            {
-                "case_id": case.id,
-                "freqs_hz": [float(f) for f in freqs],
-                "n_ports": int(case.n_ports),
-                "s": [
-                    [[[float(v.real), float(v.imag)] for v in s[i, j, :]] for j in range(s.shape[1])]
-                    for i in range(s.shape[0])
-                ],
-            },
-            indent=2,
-            allow_nan=False,
+        # Touchstone (.s1p/.s2p/.s4p depending on port count)
+        touchstone = out_dir / f"sparams.s{case.n_ports}p"
+        write_touchstone(
+            touchstone,
+            s,
+            freqs,
+            z0=50.0,
+            comments=[
+                f"rfx gallery case {case.id}",
+                f"tier {case.validation_tier}; quick_smoke={quick}",
+            ],
         )
-        + "\n"
-    )
-    assets.append({"filename": sparams_json.name, "type": "sparams-json"})
+        assets.append({"filename": touchstone.name, "type": "touchstone"})
+
+        # Machine-readable S-params for the (gitops) interactive viewer draft.
+        sparams_json = out_dir / "sparams.json"
+        sparams_json.write_text(
+            json.dumps(
+                {
+                    "case_id": case.id,
+                    "freqs_hz": [float(f) for f in freqs],
+                    "n_ports": int(case.n_ports),
+                    "s": [
+                        [[[float(v.real), float(v.imag)] for v in s[i, j, :]] for j in range(s.shape[1])]
+                        for i in range(s.shape[0])
+                    ],
+                },
+                indent=2,
+                allow_nan=False,
+            )
+            + "\n"
+        )
+        assets.append({"filename": sparams_json.name, "type": "sparams-json"})
+    else:
+        # Optimization case: convergence / design-evolution / spectrum + JSON.
+        assets.extend(_emit_optimization(result, out_dir))
+
+    # Geometry image (what the structure is) — every case.
+    geom_asset = _emit_geometry(case, result, out_dir)
+    if geom_asset is not None:
+        assets.append(geom_asset)
+
+    # Field animation (what the physics does) — every case with a Simulation.
+    anim_asset = _emit_animation(case, result, out_dir, quick)
+    if anim_asset is not None:
+        assets.append(anim_asset)
 
     # Compute sha256 + size for each written asset.
     for asset in assets:

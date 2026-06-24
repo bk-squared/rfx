@@ -1,62 +1,37 @@
 ---
 title: "rfx Gallery"
-description: "Precomputed showcase of validated rfx FDTD results — S-parameters, Smith charts, and Touchstone exports."
+description: "A visual tour of what rfx can simulate — see the structure, watch the physics, and check the answer against exact theory."
 sidebar:
   order: 35
 ---
 
-import { Aside, CardGrid, Card, LinkCard } from '@astrojs/starlight/components';
+import { CardGrid, Card } from '@astrojs/starlight/components';
 
-A precomputed showcase of canonical rfx cross-validation cases. Each page shows
-the S-parameter magnitude plot, a Smith chart, a downloadable Touchstone file,
-and a provenance record (rfx version + commit) for the run that produced it.
-
-<Aside type="note" title="Precomputed — no live compute">
-These results are **precomputed**. The site serves static artifacts produced by
-`scripts/precompute_gallery_artifacts.py`; it does not run a solver in your
-browser. Validated runs are produced on GPU/VESSL; each bundle carries a
-provenance manifest so you can trace the rfx version and commit behind a figure.
-</Aside>
-
-## Cases
+A short, visual tour of what rfx can do. Each case shows you three things:
+**what the structure is**, **what the physics does** as the fields evolve, and
+**how close the answer lands to the exact textbook result**. Pick one to dive in.
 
 <CardGrid>
-  <Card title="Multilayer Fresnel Slab (E5)">
-    <a href="/rfx/gallery/multilayer_fresnel/"><img src="/rfx/gallery/assets/multilayer_fresnel/sparams.png" alt="Multilayer Fresnel S-parameter magnitude" /></a>
+  <Card title="Dielectric Slab">
+    <a href="/rfx/gallery/multilayer_fresnel/"><img src="/rfx/gallery/assets/multilayer_fresnel/sparams.png" alt="Reflection and transmission of a dielectric slab" /></a>
 
-    Normal-incidence R/T of a dielectric slab vs the exact transfer matrix — mean `|T error| = 0.011`. [Open case →](/rfx/gallery/multilayer_fresnel/)
+    A radio wave hits a flat dielectric slab — some reflects, some passes through. The simulated split matches the exact formula to within about 1%. [See it →](/rfx/gallery/multilayer_fresnel/)
   </Card>
-  <Card title="WR-90 Waveguide Port (E5)">
-    <a href="/rfx/gallery/waveguide_wr90/"><img src="/rfx/gallery/assets/waveguide_wr90/sparams.png" alt="WR-90 waveguide S-parameter magnitude" /></a>
+  <Card title="Hollow Waveguide">
+    <a href="/rfx/gallery/waveguide_wr90/"><img src="/rfx/gallery/assets/waveguide_wr90/sparams.png" alt="Reflection of an empty rectangular waveguide" /></a>
 
-    X-band empty-guide S-matrix vs the analytic reference — `max|S11| = 0.000`, `min|S21| = 1.000`. [Open case →](/rfx/gallery/waveguide_wr90/)
+    A wave travels cleanly down an empty rectangular metal pipe. Almost nothing bounces back — exactly what theory predicts for an ideal guide. [See it →](/rfx/gallery/waveguide_wr90/)
   </Card>
-  <Card title="2.4 GHz Patch Antenna (E4)">
-    <a href="/rfx/gallery/patch_antenna/"><img src="/rfx/gallery/assets/patch_antenna/sparams.png" alt="Patch antenna S11" /></a>
+  <Card title="Patch Antenna">
+    <a href="/rfx/gallery/patch_antenna/"><img src="/rfx/gallery/assets/patch_antenna/sparams.png" alt="Patch antenna resonance" /></a>
 
-    Probe-fed FR4 patch S11 resonance vs OpenEMS — resonance within 9.8 %. [Open case →](/rfx/gallery/patch_antenna/)
+    A small printed antenna for the 2.4 GHz band. The simulated resonance lands within about 10% of the quick textbook estimate. [See it →](/rfx/gallery/patch_antenna/)
+  </Card>
+  <Card title="Anti-Reflection Coating">
+    <a href="/rfx/gallery/ar_coating_design/"><img src="/rfx/gallery/assets/ar_coating_design/convergence.png" alt="Convergence of an automatically designed coating" /></a>
+
+    The computer designs its own coating to kill reflections off a tricky surface — and comes within 1.2× of the best result exact theory allows. [See it →](/rfx/gallery/ar_coating_design/)
   </Card>
 </CardGrid>
 
-## How to read these pages
-
-<CardGrid>
-  <Card title="Validation tier">
-    Each case states its tier (**E5** = exact analytic reference; **E4** =
-    cross-solver / coarse-mesh resonance agreement), the metric compared, the
-    tolerance, and the reference solver.
-  </Card>
-  <Card title="Provenance">
-    Every figure links back to the rfx version and git commit that produced it,
-    plus the runtime and backend, recorded in the case `manifest.json`.
-  </Card>
-</CardGrid>
-
-<Aside type="note" title="Provenance & honesty">
-Every case shown here is a **validated** full-resolution GPU run
-(`quick_smoke: false`, `validation.passed: true`) — each bundle's `manifest.json`
-is the source of truth and records the rfx version, git SHA, backend, and the
-metric vs its reference solver. The manifest flags (not the page text) are
-authoritative; treat the validation tier as the documented claim envelope, not a
-blanket accuracy promise.
-</Aside>
+<p style="opacity:0.6;font-size:0.85em">Each case was computed once on a GPU and saved as static figures — nothing runs in your browser. Computed with rfx · 2026-06-24.</p>

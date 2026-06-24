@@ -47,10 +47,24 @@ def test_registry_required_fields_present():
     for case in pg.CASE_REGISTRY:
         assert case.id and isinstance(case.id, str)
         assert case.title and case.description
-        assert case.validation_tier in {"E4", "E5"}
+        assert case.validation_tier in {"E4", "E5", "OPT"}
         assert case.metric and case.tolerance and case.reference_solver
         assert callable(case.builder), f"{case.id} builder must be callable"
         assert case.n_ports >= 1
+
+
+def test_registry_has_optimization_case():
+    opt = pg.CASE_BY_ID.get("ar_coating_design")
+    assert opt is not None, "ar_coating_design optimization case must be registered"
+    assert opt.is_optimization is True
+    assert opt.has_smith is False
+    assert opt.has_animation is True
+
+
+def test_optimization_case_has_no_touchstone_tier():
+    # Validation tiers in {E4, E5} carry a Touchstone; the OPT case does not.
+    opt = pg.CASE_BY_ID["ar_coating_design"]
+    assert opt.validation_tier == "OPT"
 
 
 # ---------------------------------------------------------------------------
@@ -218,3 +232,43 @@ def test_quick_smoke_emits_bundle(tmp_path):
     for asset in manifest["assets"]:
         assert (case_dir / asset["filename"]).exists()
         assert asset["served_url"].startswith("/rfx/gallery/assets/multilayer_fresnel/")
+
+    asset_types = {a["type"] for a in manifest["assets"]}
+    assert "geometry-png" in asset_types, "a geometry image must be emitted"
+    assert "animation" in asset_types, "a field animation must be emitted"
+    geom = next(a for a in manifest["assets"] if a["type"] == "geometry-png")
+    assert geom["filename"] == "geometry.png"
+    anim = next(a for a in manifest["assets"] if a["type"] == "animation")
+    # Animation is .mp4 when ffmpeg is present, otherwise .gif (Pillow fallback).
+    assert anim["filename"].split(".")[-1] in {"mp4", "gif"}
+
+
+@pytest.mark.slow
+def test_quick_smoke_optimization_case_emits_bundle(tmp_path):
+    rc = pg.main(["--case", "ar_coating_design", "--quick", "--out", str(tmp_path)])
+    assert rc == 0
+
+    case_dir = tmp_path / "ar_coating_design"
+    manifest = json.loads((case_dir / "manifest.json").read_text())
+    assert manifest["case_id"] == "ar_coating_design"
+    assert manifest["quick_smoke"] is True
+    assert manifest["validation"]["passed"] is None
+
+    asset_types = {a["type"] for a in manifest["assets"]}
+    assert {
+        "convergence-png",
+        "design-evolution-png",
+        "result-spectrum-png",
+        "optimization-json",
+        "geometry-png",
+    } <= asset_types, f"optimization assets missing: got {asset_types}"
+    # The optimization case carries no S-matrix / Touchstone / Smith.
+    assert "touchstone" not in asset_types
+    assert "smith-png" not in asset_types
+
+    for asset in manifest["assets"]:
+        assert (case_dir / asset["filename"]).exists()
+
+    opt = json.loads((case_dir / "optimization.json").read_text())
+    assert opt["columns"][:2] == ["iter", "cost"]
+    assert opt["rows"], "optimization.json must have at least one row"

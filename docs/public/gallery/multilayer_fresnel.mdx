@@ -1,52 +1,46 @@
 ---
-title: "Multilayer Fresnel Slab"
-description: "Normal-incidence reflection/transmission of a dielectric slab, cross-validated against the exact transfer matrix."
+title: "Dielectric Slab"
+description: "A radio wave hits a flat dielectric slab — see how much reflects and how much passes through, checked against the exact formula."
 sidebar:
   order: 36
 ---
 
-import { Aside, LinkCard } from '@astrojs/starlight/components';
+import { LinkCard } from '@astrojs/starlight/components';
 
-Normal-incidence reflection and transmission of a dielectric slab
-(εr = 4.0, 10 mm) driven by a TFSF plane wave, mapped onto a 2-port S-matrix
-(`|S11|² = R`, `|S21|² = T`).
+When a radio wave meets a flat sheet of plastic-like material, part of it bounces
+back and part continues through. This is the same effect that makes a window
+both reflect and let light pass. Here we measure that split and compare it to the
+exact textbook answer.
 
-<Aside type="tip" title="Validation — tier E5">
-**Metric:** `|S11|² = R` and `|S21|² = T` vs the exact transfer-matrix solution.
-**Tolerance:** mean `|R/T error| < 0.05`, energy `|R+T−1| < 0.05`.
-**Reference solver:** analytic transfer matrix (Meep secondary cross-check).
-</Aside>
+## The structure
 
-## S-parameters
+![Cross-section of the dielectric slab](/rfx/gallery/assets/multilayer_fresnel/geometry.png)
 
-![S-parameter magnitude](/rfx/gallery/assets/multilayer_fresnel/sparams.png)
+A single slab of dielectric material (about four times denser to a radio wave
+than air) sits in open space, 10 mm thick. The wave arrives from the left. The
+bright band is the slab; everything around it is empty space.
 
-## Smith chart (S11)
+## The physics
 
-![Smith chart of S11](/rfx/gallery/assets/multilayer_fresnel/smith.png)
+<video controls width="100%" src="/rfx/gallery/assets/multilayer_fresnel/fields.mp4"></video>
 
-## Field animation
+Watch the wave sweep in from the left, partly bounce off the front face of the
+slab, and partly pass through. The interference between the two reflections
+(front and back of the slab) is what sets the final reflected amount.
 
-<Aside type="note" title="Field animation pending">
-A precomputed field-evolution clip will appear here once a validated VESSL run
-is generated and its media synced to
-`/rfx/gallery/assets/multilayer_fresnel/fields.mp4`. MP4 media is intentionally
-not committed to the repo — see the deployment runbook.
-</Aside>
+## The result
 
-## Download
+![Reflection and transmission vs frequency](/rfx/gallery/assets/multilayer_fresnel/sparams.png)
+
+The curves show how much of the wave reflects and how much transmits across the
+frequency band. The simulation matches the exact formula to within about 1% —
+and the reflected plus transmitted energy adds back up to 100%, as it must for a
+lossless material.
 
 <LinkCard
-  title="Touchstone (.s2p)"
+  title="Download the data (Touchstone .s2p)"
   href="/rfx/gallery/assets/multilayer_fresnel/sparams.s2p"
-  description="2-port S-parameters, 50 Ω reference, real/imag format."
+  description="Reflection and transmission vs frequency, in the standard format RF tools read."
 />
 
-<Aside type="tip" title="Validated on GPU">
-Precomputed from a full-resolution rfx run on an RTX 4090 (`JAX_ENABLE_X64=1`):
-mean `|T error| = 0.011`, `|R error| = 0.0066`, energy `|R+T−1| = 0.009` vs the
-exact transfer matrix — within the tier-E5 tolerance (< 0.05).
-</Aside>
-
-**Provenance:** rfx 1.6.5 · commit `6cbc902` · GPU (RTX 4090, x64) · status
-`provenance-only` (see [`manifest.json`](/rfx/gallery/assets/multilayer_fresnel/manifest.json)).
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-24</p>

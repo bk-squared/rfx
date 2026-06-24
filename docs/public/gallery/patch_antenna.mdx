@@ -1,56 +1,46 @@
 ---
-title: "2.4 GHz Patch Antenna (FR4)"
-description: "Probe-fed rectangular microstrip patch antenna on FR4; lumped-port S11 resonance cross-validated against OpenEMS."
+title: "Patch Antenna"
+description: "A small printed antenna for the 2.4 GHz band — see where it resonates and how close that lands to the textbook estimate."
 sidebar:
   order: 38
 ---
 
-import { Aside, LinkCard } from '@astrojs/starlight/components';
+import { LinkCard } from '@astrojs/starlight/components';
 
-Probe-fed 2.4 GHz rectangular microstrip patch antenna on FR4 (εr = 4.3,
-1.5 mm), driven by a 50 Ω lumped port. The patch resonance shows as a local
-S11 dip near the Balanis transmission-line frequency.
+A patch antenna is a small flat metal rectangle printed on a circuit board — the
+kind of antenna tucked inside Wi-Fi and Bluetooth devices. It radiates most
+strongly at one particular frequency, its resonance. Here we find that resonance
+and compare it to the quick textbook estimate.
 
-<Aside type="note" title="Validation — tier E4">
-**Metric:** resonance frequency within 20% of the OpenEMS Harminv resonance;
-`|S11|` passive (`≤ 1.05`).
-**Tolerance:** resonance-frequency error `< 20%`, `|S11| ≤ 1.05`.
-**Reference solver:** OpenEMS Harminv (coarse-mesh resonance agreement — not a
-calibrated absolute-S claim).
-</Aside>
+## The structure
 
-## S-parameters
+![The patch antenna structure](/rfx/gallery/assets/patch_antenna/geometry.png)
 
-![S-parameter magnitude](/rfx/gallery/assets/patch_antenna/sparams.png)
+A rectangular metal patch sits on a thin circuit-board substrate above a metal
+ground plane, fed from below. The patch size sets the frequency it likes best —
+here, near the 2.4 GHz band used by Wi-Fi.
 
-## Smith chart (S11)
+## The physics
 
-![Smith chart of S11](/rfx/gallery/assets/patch_antenna/smith.png)
+<video controls width="100%" src="/rfx/gallery/assets/patch_antenna/fields.mp4"></video>
 
-## Field animation
+Energy is injected under the patch and spreads out across it. At the antenna's
+favourite frequency the patch rings strongly, which is what lets it radiate
+efficiently into the air.
 
-<Aside type="note" title="Field animation pending">
-A precomputed field-evolution clip will appear here once a validated VESSL run
-is generated and its media synced to
-`/rfx/gallery/assets/patch_antenna/fields.mp4`. MP4 media is intentionally
-not committed to the repo — see the deployment runbook.
-</Aside>
+## The result
 
-## Download
+![Antenna response vs frequency](/rfx/gallery/assets/patch_antenna/sparams.png)
+
+The dip in the curve marks the resonance. The dip sits at 2.66 GHz versus a
+2.42 GHz textbook estimate — within about 10%. Read the **location** of the dip,
+not how deep it is: the depth depends on fine feed details, but the location is
+the meaningful number here.
 
 <LinkCard
-  title="Touchstone (.s1p)"
+  title="Download the data (Touchstone .s1p)"
   href="/rfx/gallery/assets/patch_antenna/sparams.s1p"
-  description="1-port S-parameters, 50 Ω reference, real/imag format."
+  description="Antenna response vs frequency, in the standard format RF tools read."
 />
 
-<Aside type="tip" title="Validated on GPU">
-Precomputed from a full-resolution rfx run on an RTX 4090 (`JAX_ENABLE_X64=1`):
-resonance dip at 2.660 GHz vs the analytic 2.424 GHz (9.8 % error) — within the
-tier-E4 tolerance (< 20 %); port is passive. Read the **resonance dip**, not the
-absolute S11 level (single-cell lumped-port parasitic background), and note the
-dielectric is lossless so the Q is idealized.
-</Aside>
-
-**Provenance:** rfx 1.6.5 · commit `6cbc902` · GPU (RTX 4090, x64) · status
-`provenance-only` (see [`manifest.json`](/rfx/gallery/assets/patch_antenna/manifest.json)).
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-24</p>
