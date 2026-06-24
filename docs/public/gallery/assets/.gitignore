@@ -10,7 +10,6 @@
 # --- ignore large generated media / volume files ---
 *.mp4
 *.webm
-*.gif
 *.npz
 *.npy
 *.vtk

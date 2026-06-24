@@ -498,21 +498,36 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     # produced by compute_waveguide_s_matrix() with two waveguide ports, which
     # Simulation.run() (the snapshot path) cannot drive — so a source-fed empty
     # guide reproduces the same TE10 propagation purely for the visual.
+    #
+    # CPML bug note: Simulation._build_grid() sets face_layers[y/z] = cpml_layers
+    # regardless of boundary type (PEC y,z walls get pad=0 but the CPML arrays
+    # are still allocated with size cpml_layers). When cpml_layers (e.g. 20)
+    # exceeds the guide cross-section cell count (b_wg/dx ≈ 10), XLA's shape
+    # inference fails with a broadcasting error. Fix: pad b_wg so nz > 2*cpml
+    # (still hollow air — only the domain extent changes, not the physics).
     from rfx.sources.sources import GaussianPulse
+
+    anim_cpml = 8  # fixed, safe for the guide cross-section in both quick/full runs
+    # Ensure the guide cross-section fits at least 2*anim_cpml+4 cells in each
+    # transverse direction so CPML arrays never exceed the grid extent.
+    b_wg_anim = max(b_wg, (2 * anim_cpml + 4) * dx)
+    a_wg_anim = max(a_wg, (2 * anim_cpml + 4) * dx)
+    anim_domain_x = 0.100  # compact x: enough for one clear pulse transit
+    anim_src_x = anim_domain_x * 0.15  # source near the left CPML exit
 
     sim_anim = Simulation(
         freq_max=float(freqs[-1]) * 1.1,
-        domain=(domain_x, a_wg, b_wg),
+        domain=(anim_domain_x, a_wg_anim, b_wg_anim),
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
             y=Boundary(lo="pec", hi="pec"),
             z=Boundary(lo="pec", hi="pec"),
         ),
-        cpml_layers=cpml_layers,
+        cpml_layers=anim_cpml,
         dx=dx,
     )
     sim_anim.add_source(
-        (port_left_x, a_wg / 2, b_wg / 2),
+        (anim_src_x, a_wg_anim / 2, b_wg_anim / 2),
         "ez",
         waveform=GaussianPulse(f0=f0, bandwidth=bandwidth, amplitude=1.0),
     )
@@ -1244,28 +1259,19 @@ def _emit_animation(
         print(f"    [warn] field animation forward failed: {exc}", flush=True)
         return None
 
-    def _save(ext: str) -> str:
-        return save_field_animation(
+    # Save as GIF (Pillow writer — requires no external encoder, works on every
+    # platform including GPU images without h264). MP4 was previously attempted
+    # first but the conda ffmpeg on the GPU node lacks an h264 encoder, causing
+    # broken partial files. GIF via PillowWriter is unambiguously reliable.
+    try:
+        saved = save_field_animation(
             anim_result,
-            str(out_dir / f"fields.{ext}"),
+            str(out_dir / "fields.gif"),
             component=case.anim_component,
             slice_axis=case.anim_render_axis,
             interval=3,
             fps=12,
         )
-
-    # Prefer .mp4 (ffmpeg). save_field_animation falls back to .gif when the
-    # FFMpegWriter cannot be *constructed*, but a missing ffmpeg *binary* only
-    # surfaces at save time as FileNotFoundError — so retry with .gif here.
-    try:
-        saved = _save("mp4")
-    except (FileNotFoundError, OSError, RuntimeError) as exc:
-        print(f"    [warn] mp4 encode unavailable ({exc}); falling back to gif", flush=True)
-        try:
-            saved = _save("gif")
-        except Exception as exc2:  # pragma: no cover - rendering robustness
-            print(f"    [warn] field animation failed: {exc2}", flush=True)
-            return None
     except Exception as exc:  # pragma: no cover - rendering robustness
         print(f"    [warn] field animation failed: {exc}", flush=True)
         return None
