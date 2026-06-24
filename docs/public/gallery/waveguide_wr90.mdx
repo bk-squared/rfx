@@ -44,12 +44,11 @@ not committed to the repo — see the deployment runbook.
   description="2-port S-parameters, 50 Ω reference, real/imag format."
 />
 
-<Aside type="caution" title="MVP scaffold artifact">
-The bundle currently shipped is a **quick-smoke placeholder**
-(`quick_smoke: true`, `validation.passed: null`) — a reduced-grid run used to
-exercise the pipeline, not validated physics. Replace it with a validated VESSL
-run before citing this page.
+<Aside type="tip" title="Validated on GPU">
+Precomputed from a full-resolution rfx run on an RTX 4090 (`JAX_ENABLE_X64=1`):
+empty-guide `max|S11| = 0.000`, `min|S21| = 1.000` (ideal matched propagation),
+consistent with the tier-E5 analytic/oracle reference.
 </Aside>
 
-**Provenance:** rfx 1.6.5 · commit `2ac0946` · status `provenance-only`
-(see [`manifest.json`](/rfx/gallery/assets/waveguide_wr90/manifest.json)).
+**Provenance:** rfx 1.6.5 · commit `6cbc902` · GPU (RTX 4090, x64) · status
+`provenance-only` (see [`manifest.json`](/rfx/gallery/assets/waveguide_wr90/manifest.json)).

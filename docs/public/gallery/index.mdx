@@ -52,11 +52,11 @@ provenance manifest so you can trace the rfx version and commit behind a figure.
   </Card>
 </CardGrid>
 
-<Aside type="caution" title="Honesty note">
-Some bundles shipped with this MVP scaffold are **quick-smoke placeholders**
-(`quick_smoke: true`, `validation.passed: null`) used to exercise the pipeline.
-They are reduced-grid runs and are **not** validated physics. A page is only
-evidence once its manifest shows a validated (`quick_smoke: false`) run with
-`passed: true`. Treat tiers as the documented claim envelope, not a blanket
-accuracy promise.
+<Aside type="note" title="Provenance & honesty">
+Every case shown here is a **validated** full-resolution GPU run
+(`quick_smoke: false`, `validation.passed: true`) — each bundle's `manifest.json`
+is the source of truth and records the rfx version, git SHA, backend, and the
+metric vs its reference solver. The manifest flags (not the page text) are
+authoritative; treat the validation tier as the documented claim envelope, not a
+blanket accuracy promise.
 </Aside>

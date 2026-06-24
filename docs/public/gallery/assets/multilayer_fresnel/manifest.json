@@ -1,42 +1,42 @@
 {
   "schema_version": "rfx-gallery-manifest-v1",
-  "generated_at": "2026-06-24T02:28:32.636941Z",
+  "generated_at": "2026-06-24T03:50:18.807094Z",
   "case_id": "multilayer_fresnel",
   "title": "Multilayer Fresnel Slab",
   "description": "Normal-incidence reflection/transmission of a dielectric slab, cross-validated against the exact transfer-matrix solution.",
-  "quick_smoke": true,
+  "quick_smoke": false,
   "provenance": {
     "rfx_version": "1.6.5",
-    "git_sha": "2ac0946d0c89db322a96cacb5d60348c341124d4",
+    "git_sha": "6cbc902ddb1355281f8966f5e2d0051c99717d89",
     "params": {
       "eps_slab": 4.0,
       "slab_thickness_m": 0.01,
       "dx_m": 0.001,
-      "cpml_layers": 12,
-      "nx_interior": 240,
-      "n_steps": 279,
+      "cpml_layers": 20,
+      "nx_interior": 600,
+      "n_steps": 719,
       "mode": "2d_tmz",
       "notes": "Lossless reciprocal slab; |S11|^2=R, |S21|^2=T. rfx magnitudes from FDTD R/T; phase taken from the exact transfer matrix."
     },
-    "runtime_seconds": 4.869,
-    "hostname": "run-execution-5zrps3hpcglk-0",
-    "backend": "cpu",
-    "python": "3.10.12",
-    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.35"
+    "runtime_seconds": 25.076,
+    "hostname": "run-execution-vseq9rji6dm8-0",
+    "backend": "gpu",
+    "python": "3.10.13",
+    "platform": "Linux-5.15.0-177-generic-x86_64-with-glibc2.31"
   },
   "validation": {
     "tier": "E5",
     "metric": "|S11|^2=R and |S21|^2=T vs exact transfer matrix; mean |error| < 0.05",
-    "metric_value": "mean|T_rfx-T_an|=0.8495, mean|R_rfx-R_an|=1.6392, R+T dev=2.4563",
+    "metric_value": "mean|T_rfx-T_an|=0.0110, mean|R_rfx-R_an|=0.0066, R+T dev=0.0091",
     "tolerance": "mean |R/T error| < 0.05, |R+T-1| < 0.05",
     "reference_solver": "analytic transfer matrix (+ Meep secondary)",
-    "passed": null
+    "passed": true
   },
   "reproducibility": {
     "status": "provenance-only",
     "limitations": [
       "Precomputed artifact: the public site does not re-run a solver.",
-      "Quick-smoke artifacts use reduced grids/steps and are NOT validated."
+      "Validated runs are produced on GPU/VESSL."
     ]
   },
   "assets": [
@@ -44,29 +44,29 @@
       "filename": "sparams.png",
       "type": "sparam-plot-png",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.png",
-      "sha256": "26ce44acdda8815a54f8d52aa26b73da2456f16a298f77fdf1e92305233a71cc",
-      "size_bytes": 50159
+      "sha256": "8e26f82318351cff7b5fe940cab8361a0ded030486bd133a054602ea3076d831",
+      "size_bytes": 50039
     },
     {
       "filename": "smith.png",
       "type": "smith-png",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/smith.png",
-      "sha256": "10d49a4200f83c233698d490cc8779290eed12454864cb0722b3301ebf0a4287",
-      "size_bytes": 102433
+      "sha256": "7ab4495cf95b69ba4062a8c3d7f91adb643c5d8d88ecce24a847784c18ac4c8f",
+      "size_bytes": 102947
     },
     {
       "filename": "sparams.s2p",
       "type": "touchstone",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.s2p",
-      "sha256": "e408b492311b7237d83561aa6b608143162bdd94f85fad826d263286ea73c144",
-      "size_bytes": 17238
+      "sha256": "b5f439fd680dadfbaa7931c3690e2548168b5b274c3e9ec7c274fa929c402933",
+      "size_bytes": 25585
     },
     {
       "filename": "sparams.json",
       "type": "sparams-json",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.json",
-      "sha256": "64b95a1fe60c7447af2f0c57dcac47a6087a640337e10a61facf3c4f7fd6c54f",
-      "size_bytes": 40418
+      "sha256": "a86964736d87444e183f8fff0921690426c374a0ab73f173610b9ee4967c80d0",
+      "size_bytes": 60025
     }
   ]
 }

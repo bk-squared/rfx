@@ -44,13 +44,13 @@ not committed to the repo — see the deployment runbook.
   description="1-port S-parameters, 50 Ω reference, real/imag format."
 />
 
-<Aside type="caution" title="MVP scaffold artifact">
-The bundle currently shipped is a **quick-smoke placeholder**
-(`quick_smoke: true`, `validation.passed: null`) — a reduced-grid run used to
-exercise the pipeline, not validated physics. Single-cell lumped-port S11 also
-carries a parasitic-reactance background, so read the resonance dip, not the
-absolute level. Replace with a validated VESSL run before citing.
+<Aside type="tip" title="Validated on GPU">
+Precomputed from a full-resolution rfx run on an RTX 4090 (`JAX_ENABLE_X64=1`):
+resonance dip at 2.660 GHz vs the analytic 2.424 GHz (9.8 % error) — within the
+tier-E4 tolerance (< 20 %); port is passive. Read the **resonance dip**, not the
+absolute S11 level (single-cell lumped-port parasitic background), and note the
+dielectric is lossless so the Q is idealized.
 </Aside>
 
-**Provenance:** rfx 1.6.5 · commit `2ac0946` · status `provenance-only`
-(see [`manifest.json`](/rfx/gallery/assets/patch_antenna/manifest.json)).
+**Provenance:** rfx 1.6.5 · commit `6cbc902` · GPU (RTX 4090, x64) · status
+`provenance-only` (see [`manifest.json`](/rfx/gallery/assets/patch_antenna/manifest.json)).

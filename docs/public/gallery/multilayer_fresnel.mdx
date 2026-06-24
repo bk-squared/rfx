@@ -42,12 +42,11 @@ not committed to the repo — see the deployment runbook.
   description="2-port S-parameters, 50 Ω reference, real/imag format."
 />
 
-<Aside type="caution" title="MVP scaffold artifact">
-The bundle currently shipped is a **quick-smoke placeholder**
-(`quick_smoke: true`, `validation.passed: null`) — a reduced-grid run used to
-exercise the pipeline, not validated physics. Replace it with a validated VESSL
-run before citing this page.
+<Aside type="tip" title="Validated on GPU">
+Precomputed from a full-resolution rfx run on an RTX 4090 (`JAX_ENABLE_X64=1`):
+mean `|T error| = 0.011`, `|R error| = 0.0066`, energy `|R+T−1| = 0.009` vs the
+exact transfer matrix — within the tier-E5 tolerance (< 0.05).
 </Aside>
 
-**Provenance:** rfx 1.6.5 · commit `2ac0946` · status `provenance-only`
-(see [`manifest.json`](/rfx/gallery/assets/multilayer_fresnel/manifest.json)).
+**Provenance:** rfx 1.6.5 · commit `6cbc902` · GPU (RTX 4090, x64) · status
+`provenance-only` (see [`manifest.json`](/rfx/gallery/assets/multilayer_fresnel/manifest.json)).
