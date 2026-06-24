@@ -73,8 +73,14 @@ class AD_MemoryEstimate(NamedTuple):
     estimate; for FDTD on the non-uniform path this is *not* a
     realistic memory number because the scan carry itself is not
     rematerialised (see issue #31 VESSL 369367233490). Use
-    ``ad_segmented_gb`` when ``checkpoint_every`` is set — that matches
-    the observed memory on RTX 4090 within ~15%.
+    ``ad_segmented_gb`` for the runner-supported segmented paths:
+    ``checkpoint_every`` on the non-uniform scan-of-scan path and
+    ``checkpoint_segments`` on the uniform segmented-scan path. When present,
+    ``ad_segmented_active_segments`` is the actual number of active segment
+    boundaries/carry snapshots used by the segmented estimate after warmup.
+    ``evidence_class`` labels this artifact as a static estimate so downstream
+    tooling does not confuse it with observed profiler evidence or a bounded
+    compiled-executable certificate.
     """
     forward_gb: float
     ad_checkpointed_gb: float
@@ -84,10 +90,20 @@ class AD_MemoryEstimate(NamedTuple):
     warning: str | None
     ad_segmented_gb: float | None = None
     checkpoint_every: int | None = None
+    checkpoint_segments: int | None = None
+    ad_active_steps: int | None = None
+    ad_active_design_fraction: float | None = None
+    ad_segmented_active_segments: int | None = None
+    @property
+    def evidence_class(self) -> str:
+        """Evidence class label serialized with this static estimate."""
+        return "static_estimate"
+
 
     def to_dict(self) -> dict[str, float | int | None | str]:
         """Return a stable JSON-serializable AD memory artifact."""
         return {
+            "evidence_class": self.evidence_class,
             "forward_gb": float(self.forward_gb),
             "ad_checkpointed_gb": float(self.ad_checkpointed_gb),
             "ad_full_gb": float(self.ad_full_gb),
@@ -100,24 +116,39 @@ class AD_MemoryEstimate(NamedTuple):
                 None if self.ad_segmented_gb is None else float(self.ad_segmented_gb)
             ),
             "checkpoint_every": self.checkpoint_every,
+            "checkpoint_segments": self.checkpoint_segments,
+            "ad_active_steps": self.ad_active_steps,
+            "ad_active_design_fraction": (
+                None
+                if self.ad_active_design_fraction is None
+                else float(self.ad_active_design_fraction)
+            ),
+            "ad_segmented_active_segments": self.ad_segmented_active_segments,
         }
 
     def to_json(self, **kwargs: object) -> str:
         """Serialize the estimate for research-note and CI artifacts."""
         options = {"indent": 2, "sort_keys": True}
         options.update(kwargs)
+        options["allow_nan"] = False
         return json.dumps(self.to_dict(), **options)
 
 
 class ADMemoryPlan(NamedTuple):
     """Checkpoint planning result for reverse-mode AD memory.
 
-    ``checkpoint_every`` is the smallest segmented-scan chunk length estimated
-    to fit under ``target_fraction * available_memory_gb``.  ``None`` means the
-    full reverse-mode estimate already fits and segmented checkpointing is not
-    required for memory.
-    """
+    ``checkpoint_every`` is the non-uniform segmented-scan chunk length.
+    ``checkpoint_segments`` is the uniform segmented-scan segment count.
+    ``checkpoint_mode`` is the knob selector, not a runnable-fit verdict:
+    check ``full_ad_fits`` first, then require ``segmented_fits`` before wiring
+    the selected segmented knob. A non-fitting plan may still carry the
+    least-memory candidate knob for diagnostics.
+    ``fit_safety_factor`` records the conservative multiplier used before an
+    estimate is allowed to set ``full_ad_fits`` or ``segmented_fits``.
+    ``evidence_class`` labels this artifact as a calibrated conservative plan,
+    not a certificate or observed runtime profile.
 
+    """
     n_steps: int
     available_memory_gb: float
     target_fraction: float
@@ -127,15 +158,26 @@ class ADMemoryPlan(NamedTuple):
     full_ad_fits: bool
     segmented_fits: bool
     recommendation: str
+    checkpoint_segments: int | None = None
+    checkpoint_mode: str | None = None
+    fit_safety_factor: float = 1.0
+    @property
+    def evidence_class(self) -> str:
+        """Evidence class label serialized with this conservative plan."""
+        return "calibrated_conservative_plan"
 
     def to_dict(self) -> dict[str, object]:
         """Return a stable JSON-serializable AD memory plan artifact."""
         return {
+            "evidence_class": self.evidence_class,
             "n_steps": int(self.n_steps),
             "available_memory_gb": float(self.available_memory_gb),
             "target_fraction": float(self.target_fraction),
             "target_memory_gb": float(self.target_memory_gb),
+            "fit_safety_factor": float(self.fit_safety_factor),
             "checkpoint_every": self.checkpoint_every,
+            "checkpoint_segments": self.checkpoint_segments,
+            "checkpoint_mode": self.checkpoint_mode,
             "selected_estimate": self.selected_estimate.to_dict(),
             "full_ad_fits": bool(self.full_ad_fits),
             "segmented_fits": bool(self.segmented_fits),
@@ -146,6 +188,7 @@ class ADMemoryPlan(NamedTuple):
         """Serialize the plan for memory-budget and CI artifacts."""
         options = {"indent": 2, "sort_keys": True}
         options.update(kwargs)
+        options["allow_nan"] = False
         return json.dumps(self.to_dict(), **options)
 
 
@@ -191,6 +234,7 @@ class MeshIntelligenceReport(NamedTuple):
         """Serialize the report for memory-reduction evidence artifacts."""
         options = {"indent": 2, "sort_keys": True}
         options.update(kwargs)
+        options["allow_nan"] = False
         return json.dumps(self.to_dict(), **options)
 
 
