@@ -1471,10 +1471,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 # 1. H update (local)
                 st = _update_h_local(st, materials_slab, dt, dx)
 
-                # 2. CPML H correction (before ghost exchange)
+                # 2. CPML H correction (before ghost exchange) — material-aware (#205)
                 st, cpml_st = _apply_cpml_h_distributed(
                     st, cpml_params, cpml_st, n_cpml, dt, dx,
-                    n_devices, ghost=ghost, axis_name="devices")
+                    n_devices, ghost=ghost, axis_name="devices",
+                    mu_r=materials_slab.mu_r)
 
                 # 3. Exchange H ghost cells (conditionally skip)
                 do_exchange = (_step_idx % _exchange_interval == 0)
@@ -1504,10 +1505,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 if has_lorentz:
                     lr_st = new_lr
 
-                # 5. CPML E correction (before ghost exchange)
+                # 5. CPML E correction (before ghost exchange) — material-aware (#205)
                 st, cpml_st = _apply_cpml_e_distributed(
                     st, cpml_params, cpml_st, n_cpml, dt, dx,
-                    n_devices, ghost=ghost, axis_name="devices")
+                    n_devices, ghost=ghost, axis_name="devices",
+                    eps_r=materials_slab.eps_r)
 
                 # 6. Exchange E ghost cells (conditionally skip)
                 st = lax.cond(
