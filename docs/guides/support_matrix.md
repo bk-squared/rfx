@@ -63,6 +63,19 @@ Current retained subset:
 - graded-z thin-substrate workflows with probes and current-style excitation
 - smoke/convergence coverage in `tests/test_nonuniform_api.py` and `tests/test_nonuniform_convergence.py`
 - selected dispersive-material smoke coverage
+- NU waveguide-port flux (TE10, single-mode, forward-only): **broad-E5-analytic
+  evidence committed + gated** vs independent analytic Airy across the graded-`dy`
+  transverse mesh axis (grading 1-3x, eps_r {2,4}, 16/16 ≤0.0157; gpu-rtx4090
+  VESSL 369367244527 @ `ff9bfcb`). Lives in
+  `tests/fixtures/waveguide_nu_broad_e5/` + `tests/test_waveguide_nu_broad_e5_envelope_gates.py`
+  and the np=40 power/reciprocity live gate `tests/test_waveguide_nu_nontrivial.py`.
+  This is a **broad-E5-analytic tier (analytic-oracle, no external solver / no AD),
+  NOT a claims-bearing promotion** — the lane stays
+  shadow. Remaining ladder rungs before any uniform-class flip: (1) a broad-E4
+  external-solver (Meep/OpenEMS) cross-check on a graded mesh, and (2)
+  AD-traceability of the NU waveguide S-matrix (`eps_override`/`sigma_override`
+  are currently `NotImplementedError` on the NU path). `check_port_external_references.py`
+  correctly blocks `broad_e5_passed` until both exist.
 
 Current policy:
 - preserved for continuity and qualification work
@@ -78,7 +91,7 @@ Current policy:
 | NTFF + nonuniform | unsupported | hard-fail |
 | DFT planes + nonuniform | unsupported | hard-fail |
 | TFSF + nonuniform | unsupported | hard-fail |
-| Waveguide ports + nonuniform | shadow / restricted | only documented `compute_waveguide_s_matrix(normalize=True)` single-mode path; otherwise hard-fail |
+| Waveguide ports + nonuniform | shadow / restricted | `compute_waveguide_s_matrix(normalize=True/'flux')` single-mode TE10 validated at settled `num_periods`; **broad-E5-analytic envelope committed + gated** (graded-`dy` 1-3x, eps_r 2/4, vs analytic Airy, `tests/test_waveguide_nu_broad_e5_envelope_gates.py`); still **shadow / not claims-bearing** pending broad-E4 external cross-solver + AD-traceability; otherwise hard-fail |
 | Lumped-port S-parameters + nonuniform | unsupported | hard-fail |
 | `compute_msl_s_matrix()` + nonuniform | unsupported | hard-fail |
 | Coaxial port + nonuniform | unsupported | hard-fail |
