@@ -1,0 +1,62 @@
+---
+title: "rfx Gallery"
+description: "Precomputed showcase of validated rfx FDTD results — S-parameters, Smith charts, and Touchstone exports."
+sidebar:
+  order: 35
+---
+
+import { Aside, CardGrid, Card, LinkCard } from '@astrojs/starlight/components';
+
+A precomputed showcase of canonical rfx cross-validation cases. Each page shows
+the S-parameter magnitude plot, a Smith chart, a downloadable Touchstone file,
+and a provenance record (rfx version + commit) for the run that produced it.
+
+<Aside type="note" title="Precomputed — no live compute">
+These results are **precomputed**. The site serves static artifacts produced by
+`scripts/precompute_gallery_artifacts.py`; it does not run a solver in your
+browser. Validated runs are produced on GPU/VESSL; each bundle carries a
+provenance manifest so you can trace the rfx version and commit behind a figure.
+</Aside>
+
+## Cases
+
+<CardGrid>
+  <LinkCard
+    title="Multilayer Fresnel Slab (E5)"
+    href="/rfx/gallery/multilayer_fresnel/"
+    description="Normal-incidence R/T of a dielectric slab vs the exact transfer matrix."
+  />
+  <LinkCard
+    title="WR-90 Waveguide Port (E5)"
+    href="/rfx/gallery/waveguide_wr90/"
+    description="X-band empty-guide S-matrix vs the analytic matched-load reference."
+  />
+  <LinkCard
+    title="2.4 GHz Patch Antenna (E4)"
+    href="/rfx/gallery/patch_antenna/"
+    description="Probe-fed FR4 patch S11 resonance cross-validated against OpenEMS."
+  />
+</CardGrid>
+
+## How to read these pages
+
+<CardGrid>
+  <Card title="Validation tier">
+    Each case states its tier (**E5** = exact analytic reference; **E4** =
+    cross-solver / coarse-mesh resonance agreement), the metric compared, the
+    tolerance, and the reference solver.
+  </Card>
+  <Card title="Provenance">
+    Every figure links back to the rfx version and git commit that produced it,
+    plus the runtime and backend, recorded in the case `manifest.json`.
+  </Card>
+</CardGrid>
+
+<Aside type="caution" title="Honesty note">
+Some bundles shipped with this MVP scaffold are **quick-smoke placeholders**
+(`quick_smoke: true`, `validation.passed: null`) used to exercise the pipeline.
+They are reduced-grid runs and are **not** validated physics. A page is only
+evidence once its manifest shows a validated (`quick_smoke: false`) run with
+`passed: true`. Treat tiers as the documented claim envelope, not a blanket
+accuracy promise.
+</Aside>

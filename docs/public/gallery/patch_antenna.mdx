@@ -1,0 +1,56 @@
+---
+title: "2.4 GHz Patch Antenna (FR4)"
+description: "Probe-fed rectangular microstrip patch antenna on FR4; lumped-port S11 resonance cross-validated against OpenEMS."
+sidebar:
+  order: 38
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+Probe-fed 2.4 GHz rectangular microstrip patch antenna on FR4 (εr = 4.3,
+1.5 mm), driven by a 50 Ω lumped port. The patch resonance shows as a local
+S11 dip near the Balanis transmission-line frequency.
+
+<Aside type="note" title="Validation — tier E4">
+**Metric:** resonance frequency within 20% of the OpenEMS Harminv resonance;
+`|S11|` passive (`≤ 1.05`).
+**Tolerance:** resonance-frequency error `< 20%`, `|S11| ≤ 1.05`.
+**Reference solver:** OpenEMS Harminv (coarse-mesh resonance agreement — not a
+calibrated absolute-S claim).
+</Aside>
+
+## S-parameters
+
+![S-parameter magnitude](/rfx/gallery/assets/patch_antenna/sparams.png)
+
+## Smith chart (S11)
+
+![Smith chart of S11](/rfx/gallery/assets/patch_antenna/smith.png)
+
+## Field animation
+
+<Aside type="note" title="Field animation pending">
+A precomputed field-evolution clip will appear here once a validated VESSL run
+is generated and its media synced to
+`/rfx/gallery/assets/patch_antenna/fields.mp4`. MP4 media is intentionally
+not committed to the repo — see the deployment runbook.
+</Aside>
+
+## Download
+
+<LinkCard
+  title="Touchstone (.s1p)"
+  href="/rfx/gallery/assets/patch_antenna/sparams.s1p"
+  description="1-port S-parameters, 50 Ω reference, real/imag format."
+/>
+
+<Aside type="caution" title="MVP scaffold artifact">
+The bundle currently shipped is a **quick-smoke placeholder**
+(`quick_smoke: true`, `validation.passed: null`) — a reduced-grid run used to
+exercise the pipeline, not validated physics. Single-cell lumped-port S11 also
+carries a parasitic-reactance background, so read the resonance dip, not the
+absolute level. Replace with a validated VESSL run before citing.
+</Aside>
+
+**Provenance:** rfx 1.6.5 · commit `2ac0946` · status `provenance-only`
+(see [`manifest.json`](/rfx/gallery/assets/patch_antenna/manifest.json)).

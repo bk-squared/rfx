@@ -1,0 +1,55 @@
+---
+title: "WR-90 Waveguide Port (Empty Guide)"
+description: "X-band WR-90 rectangular waveguide port S-matrix for a matched empty guide, vs the analytic reference."
+sidebar:
+  order: 37
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+X-band WR-90 rectangular waveguide port S-matrix (TE10, 8.2–12.4 GHz) for a
+matched, empty guide, computed with the canonical `add_waveguide_port` +
+`compute_waveguide_s_matrix` pipeline.
+
+<Aside type="tip" title="Validation — tier E5">
+**Metric:** `max|S11| < 0.02`, `min|S21| > 0.97` vs the analytic matched-load
+reference (`|S11| = 0`, `|S21| = 1`).
+**Tolerance:** `max|S11| < 0.02`, `min|S21| > 0.97`.
+**Reference solver:** analytic matched-load (MEEP / OpenEMS / Palace
+cross-check on VESSL).
+</Aside>
+
+## S-parameters
+
+![S-parameter magnitude](/rfx/gallery/assets/waveguide_wr90/sparams.png)
+
+## Smith chart (S11)
+
+![Smith chart of S11](/rfx/gallery/assets/waveguide_wr90/smith.png)
+
+## Field animation
+
+<Aside type="note" title="Field animation pending">
+A precomputed field-evolution clip will appear here once a validated VESSL run
+is generated and its media synced to
+`/rfx/gallery/assets/waveguide_wr90/fields.mp4`. MP4 media is intentionally
+not committed to the repo — see the deployment runbook.
+</Aside>
+
+## Download
+
+<LinkCard
+  title="Touchstone (.s2p)"
+  href="/rfx/gallery/assets/waveguide_wr90/sparams.s2p"
+  description="2-port S-parameters, 50 Ω reference, real/imag format."
+/>
+
+<Aside type="caution" title="MVP scaffold artifact">
+The bundle currently shipped is a **quick-smoke placeholder**
+(`quick_smoke: true`, `validation.passed: null`) — a reduced-grid run used to
+exercise the pipeline, not validated physics. Replace it with a validated VESSL
+run before citing this page.
+</Aside>
+
+**Provenance:** rfx 1.6.5 · commit `2ac0946` · status `provenance-only`
+(see [`manifest.json`](/rfx/gallery/assets/waveguide_wr90/manifest.json)).

@@ -1,0 +1,30 @@
+# Gallery asset hygiene
+#
+# Large generated binaries are NOT committed here: validated runs produce them
+# on VESSL (scripts/precompute_gallery_artifacts.py) and the large media are
+# synced into the gitops repo separately (see gallery-deploy/DEPLOYMENT.md).
+#
+# Small samples ARE committed so the public pages render: PNG thumbnails,
+# manifest.json, sparams.json, and small Touchstone files.
+
+# --- ignore large generated media / volume files ---
+*.mp4
+*.webm
+*.gif
+*.npz
+*.npy
+*.vtk
+*.vti
+*.h5
+*.hdf5
+
+# --- but always allow the small committed samples ---
+!.gitignore
+!README.md
+!**/manifest.json
+!**/sparams.json
+!**/*.png
+!**/*.s1p
+!**/*.s2p
+!**/*.s3p
+!**/*.s4p

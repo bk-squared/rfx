@@ -1,0 +1,104 @@
+---
+// DRAFT — apply in remilab-sites-gitops, NOT auto-deployed by the rfx export.
+//
+// Custom .astro components CANNOT live in the rfx repo (the public-docs export
+// only carries doc-tree content). Place this file at:
+//
+//   deploy/obsidian-stack/astro-starlight-presets/public/components/RfxGalleryViewer.astro
+//
+// Then a seed page at
+//   .../public/seed-pages/rfx/gallery/<case>.mdx
+// imports it at depth (rfx/gallery/<case> is 3 levels under seed-pages — same
+// depth as the existing seed-pages/.../weeks/*.mdx pages, which use ../../../../):
+//
+//   import RfxGalleryViewer from '../../../../components/RfxGalleryViewer.astro';
+//   <RfxGalleryViewer src="/rfx/gallery/assets/<case>/sparams.json" />
+//
+// It reads a precomputed sparams.json (the schema emitted by
+// scripts/precompute_gallery_artifacts.py: {case_id, freqs_hz, n_ports, s})
+// and renders an interactive |S| vs frequency plot via uPlot from a CDN.
+// No server, no live solver — purely client-side rendering of static data.
+//
+// NB: this is a draft. The MVP gallery .mdx pages do NOT import this; they use
+// the static PNG + Touchstone download. Land this in gitops to add interactivity.
+
+interface Props {
+  /** Absolute served URL of the precomputed sparams.json. */
+  src: string;
+  /** Plot height in px. */
+  height?: number;
+}
+
+const { src, height = 360 } = Astro.props;
+const uid = 'rfxgv-' + Math.random().toString(36).slice(2, 10);
+---
+
+<div class="rfx-gallery-viewer">
+  <div id={uid} style={`width:100%;height:${height}px;`}></div>
+  <p class="rfx-gallery-viewer__hint">
+    Interactive |S| (dB) vs frequency — precomputed, rendered client-side.
+  </p>
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css" />
+<script
+  define:vars={{ src, uid }}
+  type="module"
+>
+  // Lazy-load uPlot from a CDN, then fetch the precomputed S-parameter JSON.
+  const uPlotModule = await import('https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.esm.js');
+  const uPlot = uPlotModule.default;
+
+  const el = document.getElementById(uid);
+  if (!el) throw new Error('RfxGalleryViewer: target element missing');
+
+  const resp = await fetch(src);
+  if (!resp.ok) {
+    el.textContent = `Failed to load ${src} (${resp.status})`;
+  } else {
+    const data = await resp.json();
+    const fGHz = data.freqs_hz.map((f) => f / 1e9);
+    const n = data.n_ports;
+    const series = [{}];
+    const plotData = [fGHz];
+    const palette = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4'];
+    let ci = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const cell = data.s[i][j]; // array of [re, im]
+        const sdb = cell.map(([re, im]) => {
+          const mag = Math.hypot(re, im);
+          return 20 * Math.log10(Math.max(mag, 1e-10));
+        });
+        plotData.push(sdb);
+        series.push({
+          label: `S${i + 1}${j + 1}`,
+          stroke: palette[ci % palette.length],
+          width: 1.5,
+        });
+        ci++;
+      }
+    }
+
+    const opts = {
+      title: data.case_id,
+      width: el.clientWidth || 720,
+      height: el.clientHeight || 360,
+      scales: { x: { time: false } },
+      axes: [
+        { label: 'Frequency (GHz)' },
+        { label: '|S| (dB)' },
+      ],
+      series,
+    };
+    new uPlot(opts, plotData, el);
+  }
+</script>
+
+<style>
+  .rfx-gallery-viewer__hint {
+    font-size: 0.85rem;
+    opacity: 0.7;
+    margin-top: 0.25rem;
+  }
+</style>

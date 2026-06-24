@@ -1,0 +1,74 @@
+{
+  "schema_version": "rfx-gallery-manifest-v1",
+  "generated_at": "2026-06-24T02:29:31.997926Z",
+  "case_id": "patch_antenna",
+  "title": "2.4 GHz Patch Antenna (FR4)",
+  "description": "Probe-fed rectangular microstrip patch antenna on FR4; lumped-port S11 resonance dip cross-validated against OpenEMS.",
+  "quick_smoke": true,
+  "provenance": {
+    "rfx_version": "1.6.5",
+    "git_sha": "2ac0946d0c89db322a96cacb5d60348c341124d4",
+    "params": {
+      "design_freq_hz": 2400000000.0,
+      "substrate": "FR4 (eps_r=4.3)",
+      "patch_mm": [
+        38.0,
+        29.5
+      ],
+      "dx_m": 0.001,
+      "cpml_layers": 8,
+      "s_param_n_steps": 2000,
+      "notes": "Single-cell lumped-port S11 has parasitic reactance, so the patch resonance appears as a local dip. Reference is OpenEMS Harminv resonance frequency (E4 resonance agreement, not calibrated S)."
+    },
+    "runtime_seconds": 37.588,
+    "hostname": "run-execution-5zrps3hpcglk-0",
+    "backend": "cpu",
+    "python": "3.10.12",
+    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.35"
+  },
+  "validation": {
+    "tier": "E4",
+    "metric": "resonance frequency within 20% of OpenEMS Harminv; |S11| passive",
+    "metric_value": "resonance dip f=2.633 GHz vs analytic 2.424 GHz (8.7% err); passive=True",
+    "tolerance": "resonance freq error < 20%, |S11| <= 1.05",
+    "reference_solver": "OpenEMS Harminv (coarse-mesh resonance)",
+    "passed": null
+  },
+  "reproducibility": {
+    "status": "provenance-only",
+    "limitations": [
+      "Precomputed artifact: the public site does not re-run a solver.",
+      "Quick-smoke artifacts use reduced grids/steps and are NOT validated."
+    ]
+  },
+  "assets": [
+    {
+      "filename": "sparams.png",
+      "type": "sparam-plot-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.png",
+      "sha256": "f23921f8a72142b4dc7bfa64985bdefb657ef3a81f498bfeabb59be42cf5ab9c",
+      "size_bytes": 46504
+    },
+    {
+      "filename": "smith.png",
+      "type": "smith-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/smith.png",
+      "sha256": "345ed226d44321dfb7163db301d902e0af596b21b6164ddbc1f2c242b6c410ef",
+      "size_bytes": 100786
+    },
+    {
+      "filename": "sparams.s1p",
+      "type": "touchstone",
+      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.s1p",
+      "sha256": "821003365cccbca34d01d9b0d2e0170920a69cd5c026728db64ef9841289e40e",
+      "size_bytes": 1645
+    },
+    {
+      "filename": "sparams.json",
+      "type": "sparams-json",
+      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.json",
+      "sha256": "0a7eff1f2be2c1faa95a0611c9aa7b86b550f74f284c0b169074963c8dc03017",
+      "size_bytes": 3178
+    }
+  ]
+}
