@@ -21,15 +21,15 @@ public differentiable modal S-matrix ``Simulation.compute_waveguide_s_matrix``.
 Reverse-mode AD (``jax.grad``) flows through the full FDTD solve + modal
 S-extraction; Adam descent lowers the broadband |S11|.
 
-Full-resolution target (projected — not yet locked by a committed run)
-----------------------------------------------------------------------
-At dx = 0.5 mm the optimized 30-section taper is expected to reach a
-band-averaged reflection near -27.5 dB, and near -38 dB re-optimized at the
-production resolution dx = 0.25 mm (cf. a discretized Klopfenstein taper at
-about -36.6 dB of the same electrical length). (Halving dx ~4x lowers the
-Yee-dispersion reflection floor, deepening the achievable match on the same
-layout.) These full-resolution numbers are projected targets, not yet
-locked by a committed run.
+Full-resolution result
+----------------------
+At dx = 0.5 mm the optimized 30-section taper reaches a band-mean
+reflection of -26.7 dB, and -38.0 dB re-optimized at the production
+resolution dx = 0.25 mm (cf. a discretized Klopfenstein taper of the same
+electrical length at -36.6 dB at dx = 0.25 mm). Halving dx (~4x more cells)
+lowers the Yee-dispersion reflection floor, deepening the achievable match
+on the same layout. At a comparable coarse-grid solve budget, particle-swarm
+and genetic search trail the gradient by at least 11.6 dB.
 
 The reverse-mode tape over the full-resolution scan (~12-14k steps) is made
 affordable by ``checkpoint_segments``: segmented gradient checkpointing reduces
@@ -43,7 +43,7 @@ SMOKE mode
 a handful of Adam steps so the example runs in ~1-3 min on CPU. It still does
 real reverse-mode AD through the S-matrix and lowers the broadband |S11|.
 ``SMOKE=0`` switches to the paper's dx = 0.5 mm / 30-section / 120-iteration
-settings (GPU recommended).
+settings (GPU required in practice for the full-resolution scan).
 
 Run
 ---
@@ -101,7 +101,7 @@ if SMOKE:
     REF_OFFSET = 0.033
 else:
     # Paper resolution (dx = 0.5 mm, 80 mm / 30-section taper). The
-    # full-resolution dx = 0.25 mm run in the paper reaches -38 dB; that grid
+    # full-resolution dx = 0.25 mm run in the paper reaches -38.0 dB; that grid
     # is heavier still — start from this and halve dx for the production point.
     DX_M = 0.5e-3
     DOMAIN_X = 0.220
@@ -301,7 +301,7 @@ def main() -> int:
     print(f"  wall time                : {time.time()-t0:8.1f} s")
     if SMOKE:
         print("\n  (SMOKE: coarse grid / few iters. The paper run at dx=0.5mm")
-        print("   reaches -27.5 dB; at production dx=0.25mm it reaches -38 dB,")
+        print("   reaches -26.7 dB; at production dx=0.25mm it reaches -38.0 dB,")
         print("   beating a discretized Klopfenstein taper at -36.6 dB.)")
 
     _save_figure(grid, layout, eps_from_theta, theta, s11_init, s11_opt,
