@@ -6,6 +6,15 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-06-24
+
+Maintenance release: a behaviour-preserving internal refactor (extract the
+waveguide mode solver into its own module — byte-identical, GPU-suite-confirmed)
+plus repo hygiene (remove dangling internal-doc references from shipped code and
+add a CI guard). **No user-visible behaviour or public-API change.** Per-release
+GPU gate green: `pytest -m gpu` on the release commit = 187 passed / 62 skipped /
+2 xfailed (VESSL gpu-rtx4090).
+
 ### Internal — refactor + repo hygiene (no user-visible behaviour change; PRs #218, #219)
 
 - Extracted the rectangular-waveguide transverse mode solver and mode-profile
