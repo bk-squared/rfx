@@ -43,25 +43,32 @@
   },
   "assets": [
     {
-      "filename": "sparams.png",
+      "filename": "geometry.png",
+      "type": "geometry-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/geometry.png",
+      "sha256": "560c36d2ef23334a23316ade3e89535bf15b900371c41036d90642d29e8cb51c",
+      "size_bytes": 48322
+    },
+    {
+      "filename": "field_resonance.png",
+      "type": "field-map-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/field_resonance.png",
+      "sha256": "d483625824846c5d15ab47fc5b10694f78c1d30584972567ba858f663f598dee",
+      "size_bytes": 59268
+    },
+    {
+      "filename": "s11_db.png",
       "type": "sparam-plot-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.png",
-      "sha256": "e002924373e4ab6da61a1ad4dcc8d279e47c4f1cb332576dd328923acbd0aabd",
-      "size_bytes": 49993
+      "served_url": "/rfx/gallery/assets/patch_antenna/s11_db.png",
+      "sha256": "868ee6989d03c4f5f6184226a74b70d23037b1ed18e9dff0a65ed2bfad81cc7c",
+      "size_bytes": 87354
     },
     {
-      "filename": "smith.png",
-      "type": "smith-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/smith.png",
-      "sha256": "027b469222690f9d657f208a739550b56430164f2265da8a3c5f630234a4f96e",
-      "size_bytes": 100956
-    },
-    {
-      "filename": "sparams.s1p",
-      "type": "touchstone",
-      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.s1p",
-      "sha256": "f2b082cc4f7ddcb807d8177035ec1d2998726ee3713dd44181f5aa6ba89c4899",
-      "size_bytes": 5077
+      "filename": "validation.png",
+      "type": "validation-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/validation.png",
+      "sha256": "b797e50eabbde63fb89a539225b441f0d9953ffea4ee584b53ecc42d012d34ed",
+      "size_bytes": 33301
     },
     {
       "filename": "sparams.json",
@@ -71,18 +78,11 @@
       "size_bytes": 10115
     },
     {
-      "filename": "geometry.png",
-      "type": "geometry-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/geometry.png",
-      "sha256": "b6b74525ce5b909406462a2c8b3ce3c35557b9383446c6701b9f5d36592e72ac",
-      "size_bytes": 219220
-    },
-    {
-      "filename": "fields.gif",
-      "type": "animation",
-      "served_url": "/rfx/gallery/assets/patch_antenna/fields.gif",
-      "sha256": "de90837092ae5e07a90b89c5c143267fda9e14a5a351c9be2675b4b9d0307910",
-      "size_bytes": 2516643
+      "filename": "sparams.s1p",
+      "type": "touchstone",
+      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.s1p",
+      "sha256": "f2b082cc4f7ddcb807d8177035ec1d2998726ee3713dd44181f5aa6ba89c4899",
+      "size_bytes": 5077
     }
   ]
 }
