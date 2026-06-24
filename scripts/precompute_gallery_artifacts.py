@@ -1033,13 +1033,13 @@ CASE_REGISTRY: list[GalleryCase] = [
         id="patch_antenna",
         title="2.4 GHz Patch Antenna (FR4)",
         description=(
-            "Probe-fed rectangular microstrip patch antenna on FR4; lumped-port "
-            "S11 resonance dip cross-validated against OpenEMS."
+            "Probe-fed rectangular microstrip patch antenna on FR4; the S11 "
+            "resonance dip vs the analytic transmission-line (Balanis) estimate."
         ),
         validation_tier="E4",
-        metric="resonance frequency within 20% of OpenEMS Harminv; |S11| passive",
+        metric="resonance frequency within 20% of the analytic transmission-line estimate; |S11| passive",
         tolerance="resonance freq error < 20%, |S11| <= 1.05",
-        reference_solver="OpenEMS Harminv (coarse-mesh resonance)",
+        reference_solver="analytic transmission-line (Balanis) estimate",
         builder=_build_patch_antenna,
         n_ports=1,
         has_smith=True,
