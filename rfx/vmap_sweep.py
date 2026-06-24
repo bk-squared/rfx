@@ -310,14 +310,24 @@ def _build_vmap_scan_fn(
             # H update
             st = update_h(st, materials, dt, dx, periodic=periodic)
             if use_cpml:
+                # Material-aware CPML: pass the per-element materials so the
+                # absorber is impedance-matched to the local dielectric. Under
+                # vmap, ``materials`` is the per-batch-element MaterialArrays
+                # (the run_one arg), so vmap batches this transparently — no
+                # batch-axis slicing needed. WITHOUT this, a dielectric that
+                # fills the CPML region gets a free-space (eps_r x too strong)
+                # absorber and the scan diverges to NaN (issue #205, same
+                # mechanism as #203/#204 uniform and #208 non-uniform).
                 st, cpml_st = apply_cpml_h(
-                    st, cpml_params, cpml_st, grid, cpml_axes)
+                    st, cpml_params, cpml_st, grid, cpml_axes,
+                    materials=materials)
 
             # E update
             st = update_e(st, materials, dt, dx, periodic=periodic)
             if use_cpml:
                 st, cpml_st = apply_cpml_e(
-                    st, cpml_params, cpml_st, grid, cpml_axes)
+                    st, cpml_params, cpml_st, grid, cpml_axes,
+                    materials=materials)
 
             # PEC boundaries
             if pec_axes:
