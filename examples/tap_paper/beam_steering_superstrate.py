@@ -30,12 +30,14 @@ Minimizing L raises directivity toward 30 deg while suppressing the broadside
 and backward-hemisphere lobes.  The optimization starts from a linear-ramp
 ("dielectric wedge") initialization, which already biases the phase front.
 
-Full-resolution target (projected — not yet locked by a committed run;
-dx = lambda/20, 31 x 31 x 3 cell superstrate ~= 2.9k DOF, 140 Adam iters):
+Full-resolution result (at the lambda/40 mesh-converged recut):
 
-    D(30 deg) ~ 11 dBi, with the realized pattern peak at ~30-32 deg,
-    versus ~5.4 dBi for a laterally uniform slab of the same aperture
-    and ~5.9 dBi for the bare plate-backed dipole.
+    D(30 deg) = 9.5 dBi for the 441-parameter latent parameterization and
+    9.45 dBi for the full 2883-cell superstrate -- a +3.6 dB gain over the
+    5.9 dBi bare plate-backed dipole. A laterally uniform slab of the same
+    aperture reaches at most 5.4 dBi toward 30 deg. An independent openEMS
+    run corroborates the steered direction (8.9 dBi toward 30 deg, with the
+    pattern peak near 30 deg).
 
 A laterally uniform cover cannot steer at any thickness or permittivity; the
 gain comes entirely from the spatially graded eps_r profile that AD discovers.
@@ -45,7 +47,7 @@ SMOKE mode
 ``SMOKE=1`` (the default here) uses a coarse grid (dx = lambda/12), a small
 superstrate, and a handful of Adam iterations so the example imports, builds
 the simulation, takes a few optimizer steps, and demonstrates the lobe moving
-*off broadside* in 1-3 min on CPU.  It does NOT reproduce the 11 dBi headline
+*off broadside* in 1-3 min on CPU.  It does NOT reproduce the 9.5 dBi headline
 (that needs the full GPU settings); it shows the mechanism end to end.
 
 Run

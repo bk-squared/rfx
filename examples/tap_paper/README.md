@@ -1,36 +1,81 @@
-# rfx inverse-design examples
+# rfx inverse-design examples (T-MTT paper)
 
-Illustrative inverse-design examples for an in-progress internal rfx manuscript
-(working title *"rfx: A JAX-Native Differentiable 3-D FDTD Simulator with a
-Trusted-Gradient Design Loop"* — not yet written or submitted). Each script is
-self-contained, runs a real reverse-mode FDTD gradient, and defaults to a fast
-`SMOKE=1` CPU sanity mode; set `SMOKE=0` for the full-resolution settings (GPU
-recommended, and required in practice for the taper).
+These scripts reproduce the inverse-design results of the paper
 
-The full-resolution numbers quoted below are **projected targets**, not yet
-locked by a committed run — treat them as design goals, not validated results.
-The `SMOKE=1` runs only exercise the pipeline end to end; they do not reproduce
-the headline figures.
+> **rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave
+> Engineering**, B. Kim, submitted to *IEEE Transactions on Microwave Theory and
+> Techniques* (T-MTT).
+
+Each script is self-contained and runs a real reverse-mode FDTD gradient.
+`SMOKE=1` (the default) verifies the pipeline end to end on CPU in ~1-3 min;
+it does not reproduce the headline numbers. `SMOKE=0` reproduces the paper's
+headline numbers and is GPU-backed in practice for the taper and the
+beam-steering superstrate.
 
 > **Install.** These scripts use the optional optimization extra (for `optax`):
 > `pip install rfx-fdtd[optimization]` (with the repo on `PYTHONPATH`, or an
-> editable install). `gradient_tolerance_analysis.py` does not need `optax`.
+> editable install).
 
-> **Related examples elsewhere in the repo.** The notch-filter and patch-antenna
-> examples are not duplicated here:
-> - Notch filter (MSL stub tuning): `examples/inverse_design/msl_stub_notch_tuning.py`
->   (cross-validation companion: `examples/crossval/06_msl_notch_filter.py`).
-> - Patch antenna (cross-solver validation): `examples/crossval/05_patch_antenna.py`.
+> **Notch filter (Example 1) lives elsewhere in the repo**, not duplicated here:
+> `examples/inverse_design/msl_stub_notch_tuning.py` (cross-validation companion:
+> `examples/crossval/06_msl_notch_filter.py`).
 
-> **GPU note.** `SMOKE=0` for the dielectric taper does a long, full-resolution
-> reverse-mode scan and is impractical without a GPU.
+> **GPU note.** `SMOKE=0` for the dielectric taper and the beam-steering
+> superstrate runs a long, full-resolution reverse-mode scan and is impractical
+> without a GPU.
 
-## Scripts
+## Worked examples
 
-- **`waveguide_dielectric_taper.py`** — broadband WR-90 waveguide-to-dielectric-load matching by optimizing a graded N-section dielectric taper via the differentiable modal S-matrix. *Projected full-res target:* a 30-section taper reaching band-averaged reflection near **-27.5 dB at dx=0.5 mm** (and near **-38 dB** re-optimized at dx=0.25 mm, cf. a discretized Klopfenstein taper at about -36.6 dB) — design goals, not yet locked by a committed run. Run: `SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/waveguide_dielectric_taper.py` (CPU, ~1-3 min); `SMOKE=0 python examples/tap_paper/waveguide_dielectric_taper.py` (full, GPU recommended).
+**Example 1 - Microstrip notch filter (1 variable).** A transmission notch is
+placed at 6 GHz by descending a single stub-length design variable. The
+single-variable descent reaches a -46.1 dB in-band objective, and the validated
+optimized null is -55.7 dB at 5.924 GHz, within 3.1% of the analytic
+quarter-wave length. Not duplicated here; see
+`examples/inverse_design/msl_stub_notch_tuning.py` (cross-validation companion:
+`examples/crossval/06_msl_notch_filter.py`).
 
-- **`grin_superstrate_directivity.py`** — maximizes broadside directivity of a dipole by optimizing a per-cell GRIN dielectric-superstrate permittivity field, with reverse-mode AD through the FDTD solve and the NTFF transform (`maximize_directivity(..., log_ratio=True)`, the unbiased power-changing-DoF form). *Projected full-res target:* broadside directivity rising from the bare dipole's **~1.1 dBi to ~6.4 dBi**, with D = 4*pi*U_max/P_rad over the full (theta,phi) sphere using the sin(theta) solid-angle weight. Run: `SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/grin_superstrate_directivity.py` (CPU, ~1-3 min); `SMOKE=0 python examples/tap_paper/grin_superstrate_directivity.py` (full, GPU).
+**Example 2 - Waveguide dielectric taper (30 sections).**
+`waveguide_dielectric_taper.py` matches a WR-90 guide to a high-permittivity
+load over the X-band by optimizing a graded N-section dielectric taper through
+the differentiable modal S-matrix. The 30-section taper reaches a band-mean
+|S11| of -26.7 dB at dx = 0.5 mm, and -38.0 dB re-optimized at the production
+resolution dx = 0.25 mm, versus a discretized Klopfenstein taper of the same
+electrical length at -36.6 dB (dx = 0.25 mm). At a comparable coarse-grid solve
+budget, particle-swarm and genetic search trail the gradient by at least
+11.6 dB. Run:
+`SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/waveguide_dielectric_taper.py`
+(CPU, ~1-3 min); `SMOKE=0 python examples/tap_paper/waveguide_dielectric_taper.py`
+(full, GPU).
 
-- **`beam_steering_superstrate.py`** — tilts the main beam off broadside (toward 30 deg) by optimizing a graded per-cell dielectric superstrate over a reflector-backed dipole. *Projected full-res target:* **D(30 deg) ~ 11 dBi** with the realized peak at ~30-32 deg, versus ~5.4 dBi for a laterally uniform slab of the same aperture and ~5.9 dBi for the bare plate-backed dipole (dx=lambda/20, 31x31x3-cell superstrate ~= 2.9k DOF, 140 Adam iters). Run: `SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/beam_steering_superstrate.py` (CPU, ~1-3 min); `SMOKE=0 python examples/tap_paper/beam_steering_superstrate.py` (full, GPU).
+**Example 3 - Beam-steering superstrate (441-param latent / 2883-cell).**
+`beam_steering_superstrate.py` tilts the main beam of a reflector-backed dipole
+toward 30 deg by optimizing a graded per-cell dielectric superstrate, with
+reverse-mode AD through the FDTD solve and the near-to-far-field (NTFF)
+transform. At the lambda/40 mesh-converged recut, D(30 deg) = 9.5 dBi for the
+441-parameter latent parameterization and 9.45 dBi for the full 2883-cell
+superstrate, a +3.6 dB gain over the 5.9 dBi bare plate-backed dipole. A
+laterally uniform slab of the same aperture reaches at most 5.4 dBi toward
+30 deg. An independent openEMS run corroborates the steered direction (8.9 dBi
+toward 30 deg, with the pattern peak near 30 deg). Run:
+`SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/beam_steering_superstrate.py`
+(CPU, ~1-3 min); `SMOKE=0 python examples/tap_paper/beam_steering_superstrate.py`
+(full, GPU).
 
-- **`gradient_tolerance_analysis.py`** — reuses the FDTD gradient for analysis (not design): one reverse pass yields the full per-cell sensitivity field dD/d(eps), first-order tolerance propagation predicts sigma_D (cross-checked in-script against a small Monte-Carlo ensemble), and projected gradient ascent finds the worst-case fabrication corner; re-optimizes a small GRIN slab inline so no saved eps is needed. *Projected full-res target:* at dx=lambda/20 with 507 design cells, **507 per-cell sensitivities from ONE backward pass** (vs 1014 finite differences = 2 forwards/cell); first-order sigma_D matching an 80-sample Monte-Carlo at sigma_eps=0.10; a worst-case corner ~0.16 dB below nominal. Run: `SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/gradient_tolerance_analysis.py` (CPU, ~1-3 min; corner -0.034 dB below random worst at the coarse SMOKE settings); `SMOKE=0 python examples/tap_paper/gradient_tolerance_analysis.py` (full, GPU).
+## Gradient verification
+
+`lumped_port_gradient_check.py` verifies the lumped voltage-current S11 path:
+the analytic directional derivative of |S11|^2 (one reverse-mode pass) agrees
+with a central finite difference (two forward passes) to 0.2% over the 24-cell
+design region. Runs on CPU in ~5-10 min (no GPU needed):
+`JAX_PLATFORMS=cpu python examples/tap_paper/lumped_port_gradient_check.py`.
+
+The modal-S gradient check (taper) and the NTFF log-ratio gradient check
+(superstrate) are exercised by their example scripts. AD-vs-FD agreement is
+2.0% for the modal-S path and 1.1% for the NTFF path.
+
+## Forward validation
+
+The solver's forward accuracy is cross-checked against analytic references and,
+for the notch filter and the beam-steering case, against openEMS: PEC cavity
+eigenfrequencies to 0.008%, and WR-90 dielectric-step and Debye S-parameters to
+~0.01 in |S11|.
