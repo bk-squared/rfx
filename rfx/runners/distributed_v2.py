@@ -279,8 +279,15 @@ def _apply_pmc_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 # ---------------------------------------------------------------------------
 
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
-                         mesh, n_devices, ghost=1):
-    """Apply CPML E-field correction using shard_map."""
+                         mesh, n_devices, ghost=1, eps_r=None):
+    """Apply CPML E-field correction using shard_map.
+
+    ``eps_r`` (the x-sharded per-cell relative permittivity slab) is a new
+    READ-ONLY input: it is threaded into the inner shard so the CPML
+    correction is material-aware (#205).  It is NOT returned, so it gets an
+    extra ``P("x")`` entry in ``in_specs`` only.  ``None`` reproduces the
+    vacuum (pre-#205) coefficient bit-identically.
+    """
 
     @partial(
         shard_map,
@@ -296,6 +303,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             P("x"), P("x"), P("x"), P("x"),  # ey_xlo/xhi, ez_xlo/xhi
             P("x"), P("x"), P("x"), P("x"),  # ex_ylo/yhi, ez_ylo/yhi
             P("x"), P("x"), P("x"), P("x"),  # ex_zlo/zhi, ey_zlo/zhi
+            P("x"),  # eps_r (read-only, material-aware coefficient)
         ),
         out_specs=(
             P("x"), P("x"), P("x"),           # ex, ey, ez
@@ -308,7 +316,8 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     def _cpml_e(ex, ey, ez, hx, hy, hz,
                 psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
                 psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
-                psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi):
+                psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi,
+                eps_r_slab):
         # Reconstruct minimal state and cpml_state objects
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
@@ -322,7 +331,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         )
         new_st, new_cs = _apply_cpml_e_distributed(
             _st, cpml_params, _cs, n_cpml, dt, dx,
-            n_devices, ghost=ghost, axis_name="x")
+            n_devices, ghost=ghost, axis_name="x", eps_r=eps_r_slab)
         return (
             new_st.ex, new_st.ey, new_st.ez,
             new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
@@ -345,6 +354,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         cpml_state.psi_ez_ylo, cpml_state.psi_ez_yhi,
         cpml_state.psi_ex_zlo, cpml_state.psi_ex_zhi,
         cpml_state.psi_ey_zlo, cpml_state.psi_ey_zhi,
+        eps_r,
     )
     new_state = state._replace(ex=ex, ey=ey, ez=ez)
     new_cpml = cpml_state._replace(
@@ -359,8 +369,15 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
-                         mesh, n_devices, ghost=1):
-    """Apply CPML H-field correction using shard_map."""
+                         mesh, n_devices, ghost=1, mu_r=None):
+    """Apply CPML H-field correction using shard_map.
+
+    ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
+    READ-ONLY input threaded into the inner shard for material-aware CPML
+    (#205).  Like ``eps_r`` in the E-variant it gets one extra ``P("x")``
+    in ``in_specs`` only and is not returned.  ``None`` reproduces the
+    vacuum (pre-#205) coefficient bit-identically.
+    """
 
     @partial(
         shard_map,
@@ -375,6 +392,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             P("x"), P("x"), P("x"), P("x"),  # hy_xlo/xhi, hz_xlo/xhi
             P("x"), P("x"), P("x"), P("x"),  # hx_ylo/yhi, hz_ylo/yhi
             P("x"), P("x"), P("x"), P("x"),  # hx_zlo/zhi, hy_zlo/zhi
+            P("x"),  # mu_r (read-only, material-aware coefficient)
         ),
         out_specs=(
             P("x"), P("x"), P("x"),           # hx, hy, hz
@@ -387,7 +405,8 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     def _cpml_h(ex, ey, ez, hx, hy, hz,
                 psi_hy_xlo, psi_hy_xhi, psi_hz_xlo, psi_hz_xhi,
                 psi_hx_ylo, psi_hx_yhi, psi_hz_ylo, psi_hz_yhi,
-                psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi):
+                psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi,
+                mu_r_slab):
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
         _cs = cpml_state._replace(
@@ -400,7 +419,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         )
         new_st, new_cs = _apply_cpml_h_distributed(
             _st, cpml_params, _cs, n_cpml, dt, dx,
-            n_devices, ghost=ghost, axis_name="x")
+            n_devices, ghost=ghost, axis_name="x", mu_r=mu_r_slab)
         return (
             new_st.hx, new_st.hy, new_st.hz,
             new_cs.psi_hy_xlo, new_cs.psi_hy_xhi,
@@ -423,6 +442,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         cpml_state.psi_hz_ylo, cpml_state.psi_hz_yhi,
         cpml_state.psi_hx_zlo, cpml_state.psi_hx_zhi,
         cpml_state.psi_hy_zlo, cpml_state.psi_hy_zhi,
+        mu_r,
     )
     new_state = state._replace(hx=hx, hy=hy, hz=hz)
     new_cpml = cpml_state._replace(
@@ -1232,10 +1252,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 1. H update
         st = _update_h_shmap(st, sharded_materials)
 
-        # 2. CPML H correction
+        # 2. CPML H correction (material-aware, #205)
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params, cpml_st, n_cpml, dt, dx,
-            mesh, n_devices, ghost=ghost)
+            mesh, n_devices, ghost=ghost, mu_r=sharded_materials.mu_r)
 
         # 3. Exchange H ghost cells (conditionally skip)
         do_exchange = (_step_idx % _exchange_interval == 0)
@@ -1258,10 +1278,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             debye_coeffs_sharded, db_st,
             lorentz_coeffs_sharded, lr_st)
 
-        # 5. CPML E correction
+        # 5. CPML E correction (material-aware, #205)
         st, cpml_st = _apply_cpml_e_shmap(
             st, cpml_params, cpml_st, n_cpml, dt, dx,
-            mesh, n_devices, ghost=ghost)
+            mesh, n_devices, ghost=ghost, eps_r=sharded_materials.eps_r)
 
         # 6. Exchange E ghost cells
         st = lax.cond(
