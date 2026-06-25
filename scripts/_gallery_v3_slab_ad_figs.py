@@ -225,7 +225,7 @@ def make_figure(data):
     # mark the half-wave transmission peak where dT/dd crosses zero
     i_pk = int(np.argmax(T_curve))
     axR.plot(dd[i_pk] * mm, T_curve[i_pk], "o", color="#1f7a3a", ms=6)
-    axR.annotate("half-wave peak: T -> 1, dT/dd = 0",
+    axR.annotate("half-wave peak: T = 1, dT/dd = 0",
                  xy=(dd[i_pk] * mm, T_curve[i_pk]),
                  xytext=(dd[i_pk] * mm, 0.55), ha="center", fontsize=8.5,
                  color="0.3",

@@ -362,9 +362,26 @@ def make_geometry():
 # ===========================================================================
 # Figure 2: E_z field map at resonance (TM010)
 # ===========================================================================
+def _despeckle(frame):
+    """Replace lone single-cell spikes (a probe/corner cell can show up as one
+    near-zero pixel inside a strong lobe) with their local 3x3 median, leaving
+    the smooth mode untouched. Touches only cells deviating from the local
+    median by both >6x the local MAD and >20% of the global peak.
+    """
+    from numpy.lib.stride_tricks import sliding_window_view
+    f = np.asarray(frame, dtype=np.float32)
+    pad = np.pad(f, 1, mode="edge")
+    win = sliding_window_view(pad, (3, 3))
+    med = np.median(win, axis=(-1, -2))
+    mad = np.median(np.abs(win - med[..., None, None]), axis=(-1, -2))
+    gmax = float(np.abs(f).max()) or 1.0
+    spike = (np.abs(f - med) > 6.0 * mad) & (np.abs(f - med) > 0.20 * gmax)
+    return np.where(spike, med, f).astype(np.float32)
+
+
 def make_field():
     z = _load_cache()
-    field = np.asarray(z["field"])
+    field = _despeckle(np.asarray(z["field"]))
     inset = float(z["fm_inset"])
     f_res = float(z["fm_fres"])
     x_mm = np.arange(field.shape[0]) * DX * 1e3

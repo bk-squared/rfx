@@ -55,6 +55,26 @@ DX = 0.001
 F_CUTOFF = C0 / (2.0 * A_WG)   # ~6.557 GHz
 
 
+def _despeckle(frame, size=3):
+    """Replace local spikes (the source-injection footprint shows up as a small
+    near-zero cluster inside a strong lobe) with their local size x size median,
+    so the field map reads cleanly. Only cells deviating from their neighbourhood
+    median by both >6x the local MAD and >20% of the global peak are touched —
+    the smooth mode itself is left untouched. Use a window larger than the
+    cluster (e.g. 5) so the surrounding good cells outvote it.
+    """
+    from numpy.lib.stride_tricks import sliding_window_view
+    r = size // 2
+    f = np.asarray(frame, dtype=np.float32)
+    pad = np.pad(f, r, mode="edge")
+    win = sliding_window_view(pad, (size, size))                 # (nx, ny, s, s)
+    med = np.median(win, axis=(-1, -2))
+    mad = np.median(np.abs(win - med[..., None, None]), axis=(-1, -2))
+    gmax = float(np.abs(f).max()) or 1.0
+    spike = (np.abs(f - med) > 6.0 * mad) & (np.abs(f - med) > 0.20 * gmax)
+    return np.where(spike, med, f).astype(np.float32)
+
+
 # ===========================================================================
 # Figure 1: TE10 propagation map (source-fed companion guide)
 # ===========================================================================
@@ -127,12 +147,15 @@ def make_field():
     cand = np.where(valid & (np.abs(xcent - target) < 0.16 * nx))[0]
     f_idx = int(cand[np.argmax(e_down[cand])]) if len(cand) else int(np.argmax(e_down))
     frame = np.asarray(interior[f_idx], dtype=np.float32)
-
-    x_mm = np.arange(frame.shape[0]) * DX * 1e3
+    frame = _despeckle(_despeckle(frame, 5), 5)   # defensive: clear stray cells
+    # Crop the view to DOWNSTREAM of the drive cell so the launcher footprint
+    # (a small staggered-grid source cluster) is out of frame; the propagating
+    # TE10 lobe and the trailing half-cycle are what we want to show.
+    x_show = min(src_i + 8, frame.shape[0] - 2)
+    frame = frame[x_show:, :]
+    x_mm = (np.arange(frame.shape[0]) + x_show) * DX * 1e3
     y_mm = np.arange(frame.shape[1]) * DX * 1e3
-    # scale to the downstream wave packet so its half-sine is visible (a
-    # residual source blob, if any, then saturates rather than washing it out)
-    vmax = float(np.abs(frame[down_lo:, :]).max()) or 1.0
+    vmax = float(np.abs(frame).max()) or 1.0
 
     fig, ax = plt.subplots(figsize=(8.2, 3.2), layout="constrained")
     im = ax.pcolormesh(x_mm, y_mm, frame.T, cmap="RdBu_r",
@@ -144,7 +167,7 @@ def make_field():
     ax.set_aspect("equal")
     # annotation inside the axes, near the lower PEC wall where the half-sine
     # field is faint; the white halo keeps it readable
-    t = ax.text(x_mm[-1] * 0.5, y_mm[-1] * 0.07,
+    t = ax.text(0.5 * (x_mm[0] + x_mm[-1]), y_mm[-1] * 0.07,
                 "half-sine across the broad wall,  travelling +x",
                 ha="center", va="bottom", fontsize=9, color="0.12")
     t.set_path_effects(_HALO)
