@@ -275,16 +275,23 @@ class _SparamMixin:
                 unsupported.append("normalize=True or normalize='flux' is required")
             if any(entry.n_modes > 1 for entry in entries):
                 unsupported.append("multi-mode ports (n_modes>1) are not supported")
-            # The NU extractor has no eps/sigma/subpixel inputs; accepting
-            # these kwargs and forwarding nothing would silently break the
-            # documented differentiable channel (G-AD-WIRE-WG2).
-            if eps_override is not None:
+            # The differentiable eps/sigma AD channel is wired on the NU
+            # path only for normalize='flux' (mirrors the uniform PR #172
+            # flux-AD fix): the flux extractor is now jnp-native end-to-end
+            # so a traced eps_override flows into the device Yee update and
+            # back through the S-matrix. normalize=True is kept out of scope
+            # — its diagonal a_inc_ref denominator carries the #88 band-edge
+            # fragility, so accepting eps_override there could yield
+            # silently-wrong gradients.
+            if eps_override is not None and normalize != "flux":
                 unsupported.append(
-                    "eps_override (differentiable AD channel) is not wired on the NU path"
+                    "eps_override (differentiable AD channel) on the NU path "
+                    "requires normalize='flux'"
                 )
-            if sigma_override is not None:
+            if sigma_override is not None and normalize != "flux":
                 unsupported.append(
-                    "sigma_override (differentiable AD channel) is not wired on the NU path"
+                    "sigma_override (differentiable AD channel) on the NU path "
+                    "requires normalize='flux'"
                 )
             if subpixel_smoothing:
                 unsupported.append("subpixel_smoothing is not supported")
@@ -300,6 +307,8 @@ class _SparamMixin:
                 n_steps=n_steps,
                 num_periods=num_periods,
                 normalize=normalize,
+                eps_override=eps_override,
+                sigma_override=sigma_override,
             )
             return _finalize_sparam_result(
                 _res_nu,
@@ -1894,6 +1903,8 @@ class _SparamMixin:
         n_steps: int | None,
         num_periods: float,
         normalize: bool,
+        eps_override=None,
+        sigma_override=None,
     ) -> WaveguideSMatrixResult:
         """Non-uniform-mesh two-run S-matrix extraction.
 
@@ -1907,8 +1918,15 @@ class _SparamMixin:
         vacuum before the scan launches.
 
         Current scope (matches the uniform path minus a few niceties):
-          - ``normalize=True`` only.
+          - ``normalize=True`` or ``normalize='flux'``.
           - Single-mode ports (``n_modes == 1``) only.
+          - ``eps_override`` / ``sigma_override`` (the differentiable AD
+            design variable) are wired only for ``normalize='flux'``: they
+            are threaded into the *device* run so the traced eps flows
+            through the jnp-native flux extraction and back to the
+            S-matrix gradient. The *reference* run stays vacuum. They are
+            rejected for ``normalize=True`` (its diagonal a_inc_ref
+            denominator carries the #88 band-edge fragility).
 
         Extracts ``a_inc`` / ``b_out`` via the same
         ``extract_waveguide_port_waves`` helper as the uniform path and
@@ -2036,10 +2054,22 @@ class _SparamMixin:
                     for idx, e in enumerate(original_entries)
                 ]
 
+                # Device run: thread the public eps/sigma override (the
+                # traced design variable) into the device Yee update so the
+                # gradient flows from eps_override -> device fields -> flux
+                # -> S-matrix (mirrors the uniform PR #172 flux-AD wiring).
+                # When eps_override is None the assembled device materials
+                # are used unchanged (device fields identical); the np->jnp
+                # flux extraction below matches the prior np path to
+                # rtol<=1e-5 (float reassociation only, per uniform PR #172).
                 dev_result = run_nonuniform_path(
                     self, n_steps=n_steps,
+                    eps_override=eps_override,
+                    sigma_override=sigma_override,
                     attach_waveguide_flux=_flux_mode,
                 )
+                # Reference run stays vacuum (incident-power reference) and is
+                # independent of the design variable.
                 ref_result = run_nonuniform_path(
                     self,
                     n_steps=n_steps,
@@ -2099,27 +2129,52 @@ class _SparamMixin:
                             "per-port flux spectra; run_nonuniform_path did "
                             "not return waveguide_port_flux."
                         )
-                    P_inc = np.abs(np.asarray(F_ref[drive_idx]))
-                    safe_P_inc = np.where(P_inc > 1e-60, P_inc, 1.0)
+                    # jnp-native (mirrors the uniform PR #172 flux-AD fix):
+                    # no np.asarray() concretization — keeps the whole flux
+                    # extraction on the AD tape so an eps_override-traced
+                    # device run yields finite gradients through the
+                    # S-matrix. Uses the DOUBLE-WHERE trick at sqrt(0) /
+                    # angle(0) (guard the INPUT, not just the output): a
+                    # single jnp.where still leaks NaN grad through the dead
+                    # branch (#171/#172/#148). Forward values are identical
+                    # to the prior np version for P_inc / P > 0.
+                    P_inc = jnp.abs(F_ref[drive_idx])
+                    safe_P_inc = jnp.where(
+                        P_inc > 1e-60, P_inc, jnp.ones_like(P_inc)
+                    )
                     recv_col = []
                     for recv_idx in range(n_ports):
                         recv_name = original_entries[recv_idx].name
                         _, b_recv_dev = extract_waveguide_port_waves(
                             dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
                         )
-                        phase = np.angle(
-                            np.asarray(b_recv_dev) / np.asarray(safe_a_inc)
+                        # AD-safe angle (double-where): angle() has an
+                        # undefined gradient at 0; angle(1)=0 matches
+                        # np.angle(0)=0 so the primal is unchanged.
+                        ratio = b_recv_dev / safe_a_inc
+                        ratio_ok = jnp.abs(ratio) > 0.0
+                        phase = jnp.angle(
+                            jnp.where(ratio_ok, ratio, jnp.ones_like(ratio))
                         )
                         if recv_idx == drive_idx:
-                            P_refl = np.abs(
-                                np.asarray(F_ref[drive_idx])
-                                - np.asarray(F_dev[drive_idx])
-                            )
-                            mag = np.sqrt(P_refl / safe_P_inc)
+                            P_num = jnp.abs(F_ref[drive_idx] - F_dev[drive_idx])
                         else:
-                            P_trans = np.abs(np.asarray(F_dev[recv_idx]))
-                            mag = np.sqrt(P_trans / safe_P_inc)
-                        recv_col.append(jnp.asarray(mag * np.exp(1j * phase)))
+                            P_num = jnp.abs(F_dev[recv_idx])
+                        # AD-safe sqrt (double-where): a perfect match/null
+                        # makes the power ratio exactly 0, where
+                        # d(sqrt)/dx = inf would leak 0*inf=nan through the
+                        # backward pass; primal stays exactly sqrt(x) for
+                        # x>0 and exactly 0 at x=0.
+                        p_ratio = P_num / safe_P_inc
+                        p_ok = p_ratio > 0.0
+                        mag = jnp.where(
+                            p_ok,
+                            jnp.sqrt(
+                                jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))
+                            ),
+                            0.0,
+                        )
+                        recv_col.append(mag * jnp.exp(1j * phase))
                     s_columns.append(recv_col)
                     continue
 

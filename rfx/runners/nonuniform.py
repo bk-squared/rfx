@@ -735,10 +735,18 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 ref_shift=reference_plane - measured_reference_plane,
                 probe_shift=probe_plane - measured_probe_plane,
             )
+            # jnp-native (NU flux-AD): this per-port diagnostic is a SIDE
+            # output the normalize='flux' S-matrix path does not consume, but
+            # run_nonuniform_path always assembles it. np.array(tracer) here
+            # detaches / crashes the eps_override-traced device run (the same
+            # concretization class as issue #70 / #148). Keeping these as
+            # jnp arrays is forward bit-identical for concrete consumers
+            # (np.asarray accepts jnp transparently — test_nonuniform_api /
+            # test_api read .s11 via np.abs / np.isfinite).
             waveguide_sparams_result[entry.name] = WaveguideSParamResult(
-                freqs=np.array(cfg.freqs),
-                s11=np.array(s11),
-                s21=np.array(s21),
+                freqs=cfg.freqs,
+                s11=s11,
+                s21=s21,
                 calibration_preset=calibration_preset,
                 source_plane=float(source_plane),
                 measured_reference_plane=measured_reference_plane,
@@ -772,8 +780,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         from rfx.probes.probes import flux_spectrum
         n_sim_flux = len(flux_monitor_objs)
         wg_final = r["flux_monitors"][n_sim_flux:]
+        # jnp-native (NU flux-AD, mirrors the uniform PR #172 fix): keep
+        # flux_spectrum on the AD tape — np.array() here would detach the
+        # eps_override-traced gradient (the issue #148 concretization bug).
+        # The sole consumer (compute_waveguide_s_matrix_nu, normalize='flux')
+        # is jnp-native; np.asarray(...) downstream still accepts these for
+        # any concrete-path numpy reader, so forward values are unchanged.
         waveguide_port_flux_result = tuple(
-            np.array(flux_spectrum(m)) for m in wg_final
+            flux_spectrum(m) for m in wg_final
         )
 
     return Result(
