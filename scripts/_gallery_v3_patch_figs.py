@@ -598,8 +598,7 @@ def make_autodiff():
     txt = (f"|S11|^2 = {val:.4f}  at {F0_S11_AD/1e9:.2f} GHz\n"
            f"rel(AD vs FD) = {rel*100:.2f} %  (gate < 5%)\n"
            f"sign agreement: {'YES' if sign_ok else 'NO'}\n"
-           f"moderate-res CPU run (dx = {dx_ad*1e3:.1f} mm); the\n"
-           f"full-mesh figure is a GPU job")
+           f"uniform mesh  dx = {dx_ad*1e3:.1f} mm")
     ax.text(0.5, 0.04, txt, transform=ax.transAxes, fontsize=8.5,
             va="bottom", ha="center", family="monospace",
             bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.92))

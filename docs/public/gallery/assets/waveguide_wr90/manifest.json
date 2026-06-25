@@ -72,8 +72,8 @@
       "filename": "geometry.png",
       "type": "geometry-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/geometry.png",
-      "sha256": "04a771f5107610d628cae9790b4c19b0aea64d40de71a0997789f58626d0e63f",
-      "size_bytes": 209524
+      "sha256": "2e4b64ee164e34cdbd1e73a27836fbd1727038ed1aebf4296b1f94608d56bc0b",
+      "size_bytes": 88021
     },
     {
       "filename": "fields.gif",

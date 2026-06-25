@@ -1,27 +1,34 @@
 ---
 title: "rfx Gallery"
-description: "A visual tour of what rfx can simulate — see the structure, watch the physics, and check the answer against exact theory."
+description: "A visual tour of what rfx can simulate — the structure, the fields as they evolve, the answer against exact theory, and the gradient of that answer straight through the solver."
 sidebar:
   order: 35
 ---
 
 import { CardGrid, Card } from '@astrojs/starlight/components';
 
-A short, visual tour of what rfx can do. Each case shows you three things:
-**what the structure is**, **what the physics does** as the fields evolve, and
-**how close the answer lands to the exact textbook result**. Pick one to dive in.
+A short, visual tour of what rfx can do. Each case shows four things: **what the
+structure is**, **what the fields do** as they evolve, **how close the answer
+lands to the exact textbook result**, and — because rfx is a fully differentiable
+FDTD code — **the gradient of that answer** taken straight through the solver with
+`jax.grad`. Pick one to dive in.
 
 <CardGrid>
   <Card title="Dielectric Slab">
     <a href="/rfx/gallery/multilayer_fresnel/"><img src="/rfx/gallery/assets/multilayer_fresnel/rt_overlay.png" alt="Reflection and transmission of a dielectric slab vs the exact Fresnel curves" /></a>
 
-    A plane wave hits a flat dielectric slab — some reflects, some transmits. The simulated reflection and transmission match the exact Fresnel formula to within about 1%. [See it →](/rfx/gallery/multilayer_fresnel/)
+    A plane wave at normal incidence on a lossless dielectric slab. Reflection and transmission track the exact transfer-matrix curves to ~1%, and `jax.grad` returns `dT/dd` matching the closed-form derivative. [See it →](/rfx/gallery/multilayer_fresnel/)
   </Card>
   <Card title="Patch Antenna">
     <a href="/rfx/gallery/patch_antenna/"><img src="/rfx/gallery/assets/patch_antenna/s11_db.png" alt="Patch antenna return loss with a deep matched dip at resonance" /></a>
 
-    A small printed antenna for the 2.4 GHz band. A tuned feed gives a deep return-loss dip right at the resonance, cross-checked against a ring-down resonance and the textbook estimate. [See it →](/rfx/gallery/patch_antenna/)
+    A 2.4 GHz microstrip patch on FR4. A tuned inset feed gives a deep matched return-loss dip at the TM010 resonance, cross-checked with a Harminv ring-down, plus a differentiable substrate-permittivity sweep. [See it →](/rfx/gallery/patch_antenna/)
+  </Card>
+  <Card title="Rectangular Waveguide">
+    <a href="/rfx/gallery/waveguide_wr90/"><img src="/rfx/gallery/assets/waveguide_wr90/field_te10.png" alt="TE10 mode propagating down a WR-90 rectangular waveguide" /></a>
+
+    The TE10 dominant mode down a WR-90 X-band guide. |S11|/|S21| match the exact matched empty-guide answer at the CPML floor, and `jax.grad` differentiates the transmission through a dielectric fill. [See it →](/rfx/gallery/waveguide_wr90/)
   </Card>
 </CardGrid>
 
-<p style="opacity:0.6;font-size:0.85em">Each case was computed once on a GPU and saved as static figures — nothing runs in your browser. Computed with rfx · 2026-06-24.</p>
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-25</p>

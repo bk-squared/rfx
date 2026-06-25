@@ -349,6 +349,95 @@ def make_autodiff():
     return dict(val=val, g_ad=g_ad, g_fd=g_fd, rel=rel, sign_ok=sign_ok)
 
 
+def make_geometry():
+    """Two-panel WR-90 layout, replacing the empty 3D wireframe.
+
+    Left: the transverse a x b cross-section (PEC walls, air fill) with the
+    TE10 half-sine of the transverse E-field sketched across the broad wall.
+    Right: a longitudinal top view down the guide axis showing the two
+    waveguide ports, their reference planes and the CPML at both x ends.
+    """
+    a_mm, b_mm = A_WG * 1e3, B_WG * 1e3
+    Lx_mm = 200.0
+    cpml_mm = 20.0
+    port_lo, port_hi = 40.0, Lx_mm - 40.0
+    ref_lo, ref_hi = 50.0, Lx_mm - 50.0
+
+    fig, (axc, axl) = plt.subplots(
+        1, 2, figsize=(10.5, 3.6),
+        gridspec_kw=dict(width_ratios=[1.0, 3.2]))
+
+    # ---- transverse cross-section (y-z): a (broad) x b (narrow) -----------
+    axc.add_patch(plt.Rectangle((0, 0), a_mm, b_mm, facecolor="#dcecff",
+                                edgecolor="none", zorder=1))
+    axc.add_patch(plt.Rectangle((0, 0), a_mm, b_mm, fill=False,
+                                edgecolor="#222", linewidth=3.0, zorder=3))
+    yy = np.linspace(0, a_mm, 200)
+    half = 0.5 * b_mm + 0.28 * b_mm * np.sin(np.pi * yy / a_mm)
+    axc.plot(yy, half, color="#c1121f", lw=1.6, ls="--", zorder=4)
+    axc.text(a_mm / 2, 1.10 * b_mm, "TE10 E-field",
+             ha="center", va="bottom", fontsize=8.5, color="#c1121f",
+             path_effects=_HALO, zorder=5)
+    axc.annotate("", xy=(0, -0.20 * b_mm), xytext=(a_mm, -0.20 * b_mm),
+                 arrowprops=dict(arrowstyle="<->", color="#333", lw=1.0))
+    axc.text(a_mm / 2, -0.34 * b_mm, f"a = {a_mm:.2f} mm",
+             ha="center", va="top", fontsize=9)
+    axc.annotate("", xy=(-0.13 * a_mm, 0), xytext=(-0.13 * a_mm, b_mm),
+                 arrowprops=dict(arrowstyle="<->", color="#333", lw=1.0))
+    axc.text(-0.17 * a_mm, b_mm / 2, f"b = {b_mm:.2f} mm", ha="right",
+             va="center", rotation=90, fontsize=9)
+    axc.text(a_mm / 2, b_mm / 2, "air", ha="center", va="center",
+             fontsize=9, color="#33506e", path_effects=_HALO)
+    axc.set_xlim(-0.46 * a_mm, 1.06 * a_mm)
+    axc.set_ylim(-0.50 * b_mm, 1.40 * b_mm)
+    axc.set_aspect("equal")
+    axc.set_title("Cross-section (PEC walls)")
+    axc.axis("off")
+
+    # ---- longitudinal top view (x-y at z = b/2) ---------------------------
+    axl.add_patch(plt.Rectangle((0, 0), Lx_mm, a_mm, facecolor="#dcecff",
+                                edgecolor="none", zorder=1))
+    for x0 in (0.0, Lx_mm - cpml_mm):
+        axl.add_patch(plt.Rectangle((x0, 0), cpml_mm, a_mm, facecolor="#f3c9c0",
+                                    edgecolor="none", alpha=0.85, zorder=2))
+    axl.text(cpml_mm / 2, a_mm * 1.12, "CPML", ha="center", va="bottom",
+             fontsize=8.5, color="#8a2d1c")
+    axl.text(Lx_mm - cpml_mm / 2, a_mm * 1.12, "CPML", ha="center", va="bottom",
+             fontsize=8.5, color="#8a2d1c")
+    axl.plot([0, Lx_mm], [0, 0], color="#222", lw=3.0, zorder=4)
+    axl.plot([0, Lx_mm], [a_mm, a_mm], color="#222", lw=3.0, zorder=4)
+    axl.plot([port_lo, port_lo], [0, a_mm], color="#1f6f3f", lw=2.2, zorder=5)
+    axl.plot([port_hi, port_hi], [0, a_mm], color="#1f6f3f", lw=2.2, zorder=5)
+    axl.annotate("", xy=(port_lo + 24, a_mm / 2), xytext=(port_lo + 4, a_mm / 2),
+                 arrowprops=dict(arrowstyle="-|>", color="#1f6f3f", lw=2.0),
+                 zorder=6)
+    axl.text(port_lo, -0.18 * a_mm, "left port\nTE10 launch (+x)",
+             ha="center", va="top", fontsize=8.5, color="#1f6f3f")
+    axl.text(port_hi, -0.18 * a_mm, "right port\nmatched load (-x)",
+             ha="center", va="top", fontsize=8.5, color="#1f6f3f")
+    for xr in (ref_lo, ref_hi):
+        axl.plot([xr, xr], [0, a_mm], color="#555", lw=1.0, ls=":", zorder=5)
+    axl.text(ref_lo, a_mm * 1.04, "ref", ha="center", va="bottom", fontsize=8,
+             color="#555", path_effects=_HALO)
+    axl.text(ref_hi, a_mm * 1.04, "ref", ha="center", va="bottom", fontsize=8,
+             color="#555", path_effects=_HALO)
+    axl.text(Lx_mm / 2, a_mm / 2, "hollow WR-90 guide  (air)", ha="center",
+             va="center", fontsize=9.5, color="#33506e", path_effects=_HALO,
+             zorder=6)
+    axl.set_xlim(-6, Lx_mm + 6)
+    axl.set_ylim(-0.62 * a_mm, 1.30 * a_mm)
+    axl.set_xlabel("propagation axis x  (mm)")
+    axl.set_title("Longitudinal view: ports, reference planes, CPML")
+    axl.set_yticks([])
+    for s in ("top", "left", "right"):
+        axl.spines[s].set_visible(False)
+
+    out = os.path.join(ASSETS, "geometry.png")
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
+    plt.close(fig)
+    print("wrote", out)
+
+
 def register_v3_assets(case_id, new_assets):
     """Add/refresh v3 figure entries in a case manifest.json, in place.
 
@@ -388,6 +477,8 @@ def register_v3_assets(case_id, new_assets):
 
 if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if which in ("all", "geometry"):
+        make_geometry()
     if which in ("all", "field"):
         make_field()
     if which in ("all", "validation"):
@@ -396,6 +487,7 @@ if __name__ == "__main__":
         make_autodiff()
     if which in ("all", "manifest"):
         register_v3_assets("waveguide_wr90", [
+            ("geometry.png", "geometry-png"),
             ("field_te10.png", "field-map-png"),
             ("validation.png", "validation-png"),
             ("autodiff.png", "autodiff-png"),

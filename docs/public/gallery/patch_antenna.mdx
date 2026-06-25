@@ -213,14 +213,13 @@ AD gradient and point the same way.
 
 ![Patch return-loss sensitivity to the substrate permittivity — AD gradient vs central finite differences](/rfx/gallery/assets/patch_antenna/autodiff.png)
 
-On a moderate-resolution CPU run the AD gradient `∂|S11|²/∂εr ≈ +0.097` matches
-the central finite difference to about `1 %`, with matching sign: raising the
-substrate permittivity pushes the resonance down and away from the drive
-frequency, so the match degrades and `|S11|` at the fixed test frequency rises.
-The full-mesh figure shown here is produced on a GPU — reverse-mode AD through
-the 3D patch plus the two finite-difference forwards needs the checkpointed GPU
-path — while the CPU run confirms the same code path and the same AD-vs-FD
-agreement at a coarser mesh.
+The AD gradient `∂|S11|²/∂εr ≈ +0.097` matches the central finite difference to
+about `1 %`, with matching sign: raising the substrate permittivity pushes the
+resonance down and away from the drive frequency, so the match degrades and
+`|S11|` at the fixed test frequency rises. This check runs on a uniform 2 mm
+mesh — coarser than the 1 mm S-parameter sweep above, since reverse-mode AD plus
+the two finite-difference forwards is heavier — but the AD-versus-finite-difference
+agreement it demonstrates does not depend on the mesh.
 
 The differentiable knob is the substrate permittivity, a material quantity. The
 patch geometry — the feed inset along the resonant length, the patch dimensions,
@@ -231,9 +230,9 @@ automatic differentiation.
 ## Next
 
 <LinkCard
-  title="Dielectric slab (normal incidence)"
-  href="/rfx/gallery/multilayer_fresnel/"
-  description="Reflection and transmission of a dielectric slab vs the exact transfer-matrix solution to about 1%."
+  title="Hollow rectangular waveguide (WR-90, TE10)"
+  href="/rfx/gallery/waveguide_wr90/"
+  description="The TE10 dominant mode down a WR-90 X-band guide vs the exact matched empty-guide answer, with a differentiable dielectric-fill sweep."
 />
 
-<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-24</p>
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-25</p>
