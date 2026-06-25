@@ -44,7 +44,7 @@
         "ntff": "hard_fail",
         "dft_plane": "hard_fail",
         "tfsf": "hard_fail",
-        "waveguide_port": "restricted_shadow_normalize_true_single_mode_otherwise_hard_fail",
+        "waveguide_port": "shadow_te10_single_mode: normalize=True/'flux' validated at settled num_periods; broad-E5-ANALYTIC envelope committed+gated (graded-dy 1-3x, eps_r 2/4, vs analytic Airy, 16/16<=0.0157); NOT claims-bearing (broad-E4 external cross-solver + AD-traceability pending); other combinations hard_fail",
         "lumped_rlc": "hard_fail",
         "lumped_port_sparameters": "hard_fail",
         "msl_s_matrix": "hard_fail",
