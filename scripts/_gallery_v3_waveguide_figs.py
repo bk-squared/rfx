@@ -159,13 +159,22 @@ def make_field():
 # ===========================================================================
 # Figure 2: |S11| / |S21| vs the exact matched empty-guide answer
 # ===========================================================================
+_FLOOR_CACHE = None
+
+
 def _raw_floor_s():
     """Run an empty WR-90 guide with normalize=False to expose the REAL
     measurement floor: |S11| is set by CPML back-reflection (a few percent),
     not by construction. normalize=True/'flux' divide out the incident wave and
     return |S11|=0, |S21|=1 exactly, which is the matched-guide reference but
     not an informative scatter plot. The raw run is the honest validation.
+
+    Memoised so the Result (dB) and Validation (linear-vs-exact) figures share a
+    single FDTD run when both are generated in one invocation.
     """
+    global _FLOOR_CACHE
+    if _FLOOR_CACHE is not None:
+        return _FLOOR_CACHE
     import jax.numpy as jnp
     from rfx.api import Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -199,7 +208,8 @@ def _raw_floor_s():
     il, ir = pidx["left"], pidx["right"]
     s = np.asarray(res.s_params)
     f = np.asarray(res.freqs)
-    return f, np.abs(s[il, il, :]), np.abs(s[ir, il, :])
+    _FLOOR_CACHE = (f, np.abs(s[il, il, :]), np.abs(s[ir, il, :]))
+    return _FLOOR_CACHE
 
 
 def make_validation():
@@ -235,6 +245,41 @@ def make_validation():
     fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print("wrote", out, f"(max|S11|={max_s11:.4f}, min|S21|={min_s21:.4f})")
+
+
+def make_result():
+    """Headline |S11|/|S21| in dB across the X-band, from the honest
+    normalize=False run: |S21| sits at ~0 dB (near-lossless) and |S11| at the
+    CPML back-reflection floor (around -20 dB). This is the conventional dB
+    sweep an engineer reads; the validation figure compares the same data,
+    linearly, against the exact matched-guide reference.
+    """
+    f, abs_s11, abs_s21 = _raw_floor_s()
+    f_ghz = f / 1e9
+    s11_db = 20.0 * np.log10(np.clip(abs_s11, 1e-6, None))
+    s21_db = 20.0 * np.log10(np.clip(abs_s21, 1e-6, None))
+
+    fig, ax = plt.subplots(figsize=(7.6, 4.6), layout="constrained")
+    ax.plot(f_ghz, s21_db, "-o", color="#1f7a3a", ms=4, mfc="white", mew=1.2,
+            label="|S21|  (transmission)")
+    ax.plot(f_ghz, s11_db, "-s", color="#b00000", ms=4, mfc="white", mew=1.2,
+            label="|S11|  (reflection)")
+    ax.set_xlabel("Frequency  (GHz)")
+    ax.set_ylabel("|S|  (dB)")
+    ax.set_xlim(f_ghz[0], f_ghz[-1])
+    ax.set_ylim(-42, 8)
+    ax.set_title("Empty WR-90 guide: TE10 reflection and transmission")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="center right", framealpha=0.9)
+    ax.text(0.015, 0.06,
+            f"|S21| >= {s21_db.min():.2f} dB   (near-lossless)\n"
+            f"|S11| <= {s11_db.max():.1f} dB   (CPML back-reflection floor)",
+            transform=ax.transAxes, fontsize=8.5, va="bottom", ha="left",
+            bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.92))
+    out = os.path.join(ASSETS, "sparams.png")
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
+    plt.close(fig)
+    print("wrote", out, f"(S11 max {s11_db.max():.1f} dB, S21 min {s21_db.min():.2f} dB)")
 
 
 # ===========================================================================
@@ -481,6 +526,8 @@ if __name__ == "__main__":
         make_geometry()
     if which in ("all", "field"):
         make_field()
+    if which in ("all", "result"):
+        make_result()
     if which in ("all", "validation"):
         make_validation()
     if which in ("all", "autodiff"):
@@ -489,6 +536,7 @@ if __name__ == "__main__":
         register_v3_assets("waveguide_wr90", [
             ("geometry.png", "geometry-png"),
             ("field_te10.png", "field-map-png"),
+            ("sparams.png", "sparams-png"),
             ("validation.png", "validation-png"),
             ("autodiff.png", "autodiff-png"),
         ])

@@ -43,53 +43,53 @@
   },
   "assets": [
     {
-      "filename": "geometry.png",
-      "type": "geometry-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/geometry.png",
-      "sha256": "560c36d2ef23334a23316ade3e89535bf15b900371c41036d90642d29e8cb51c",
-      "size_bytes": 48322
-    },
-    {
-      "filename": "field_resonance.png",
-      "type": "field-map-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/field_resonance.png",
-      "sha256": "d483625824846c5d15ab47fc5b10694f78c1d30584972567ba858f663f598dee",
-      "size_bytes": 59268
-    },
-    {
-      "filename": "s11_db.png",
-      "type": "sparam-plot-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/s11_db.png",
-      "sha256": "868ee6989d03c4f5f6184226a74b70d23037b1ed18e9dff0a65ed2bfad81cc7c",
-      "size_bytes": 87354
-    },
-    {
-      "filename": "validation.png",
-      "type": "validation-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/validation.png",
-      "sha256": "b797e50eabbde63fb89a539225b441f0d9953ffea4ee584b53ecc42d012d34ed",
-      "size_bytes": 33301
-    },
-    {
-      "filename": "sparams.json",
-      "type": "sparams-json",
-      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.json",
-      "sha256": "2028c287bb6e7a15a301b46c9c3c74c4e953b7279215c5365ebee831b82e4af5",
-      "size_bytes": 10115
-    },
-    {
-      "filename": "sparams.s1p",
-      "type": "touchstone",
-      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.s1p",
-      "sha256": "f2b082cc4f7ddcb807d8177035ec1d2998726ee3713dd44181f5aa6ba89c4899",
-      "size_bytes": 5077
-    },
-    {
       "filename": "autodiff.png",
       "type": "autodiff-png",
       "served_url": "/rfx/gallery/assets/patch_antenna/autodiff.png",
       "sha256": "d939a479e8e990b4d28e0837bff59b9651082c18e4717d12bec042162675ace1",
       "size_bytes": 71677
+    },
+    {
+      "filename": "field_resonance.png",
+      "type": "field-map-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/field_resonance.png",
+      "sha256": "af353ae1736c666b672b188b442021a2cd57b288cad87465d9a818748fe14b46",
+      "size_bytes": 77602
+    },
+    {
+      "filename": "geometry.png",
+      "type": "geometry-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/geometry.png",
+      "sha256": "9a4683370c3d685d4463cf20450c967ffeaa7caf3fb815eba947f1c9d7a1cf89",
+      "size_bytes": 64537
+    },
+    {
+      "filename": "s11_db.png",
+      "type": "sparam-plot-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/s11_db.png",
+      "sha256": "34de7d505503a48c2b57aa26770a97015f9e705b41b9c7db0bf9fcd4bd46e460",
+      "size_bytes": 118112
+    },
+    {
+      "filename": "sparams.json",
+      "type": "sparams-json",
+      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.json",
+      "sha256": "c87061c74dbc3c5882897a369e659030d104d533b1d414ef97c31673b97445f0",
+      "size_bytes": 5973
+    },
+    {
+      "filename": "sparams.s1p",
+      "type": "touchstone",
+      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.s1p",
+      "sha256": "ca261182b78ea8d2d5ae4f909fec47a45e77ea2bac115f4a00031352adfd4ff0",
+      "size_bytes": 3621
+    },
+    {
+      "filename": "validation.png",
+      "type": "validation-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/validation.png",
+      "sha256": "fb1a92814064cefc734221c71d2aa6638d61533bb516938f62043c1a54c43fe7",
+      "size_bytes": 47241
     }
   ]
 }
