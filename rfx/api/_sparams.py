@@ -2069,13 +2069,23 @@ class _SparamMixin:
                     attach_waveguide_flux=_flux_mode,
                 )
                 # Reference run stays vacuum (incident-power reference) and is
-                # independent of the design variable.
+                # independent of the design variable. ``strip_interior_pec``
+                # drops the rasterized interior PEC (iris / wall / post) from
+                # the reference so it is a clean empty guide: the boundary y/z
+                # guide walls survive (they are enforced via pec_faces, not
+                # pec_mask). Without this the vacuum override replaces only
+                # eps/sigma and the reference retains the device's interior
+                # PEC mask → device and reference DFTs are bit-identical →
+                # (device - reference) = 0 → S11 = 0 for any PEC reflector.
+                # This mirrors the uniform reference run, which builds the
+                # reference with dielectric_shapes=[] + boundary-only PEC.
                 ref_result = run_nonuniform_path(
                     self,
                     n_steps=n_steps,
                     eps_override=vacuum_eps,
                     sigma_override=vacuum_sigma,
                     attach_waveguide_flux=_flux_mode,
+                    strip_interior_pec=True,
                 )
 
                 dev_wg = dev_result.waveguide_ports or {}

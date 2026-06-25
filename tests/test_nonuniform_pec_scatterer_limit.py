@@ -1,25 +1,37 @@
-"""Sentinel: volumetric PEC scatterers do NOT reflect on the NU waveguide path.
+"""Gate: volumetric PEC scatterers reflect on the NU waveguide path (RESOLVED).
 
-Discovered 2026-06-25 while scoping a non-uniform external-E4 iris comparison.
-An identical inductive iris (a symmetric pair of PEC fins, ``sigma=1e7`` > the
-1e6 PEC threshold, blocking ~60% of the WR-90 width) reflects strongly on the
-UNIFORM Yee path (``|S11|`` ~ 0.78-0.95) but is effectively ABSENT on the
-non-uniform (graded-``dy``) path (``|S11|`` ~ 0, ``|S21|`` ~ 1 -- the iris
-neither reflects nor blocks transmission). Dielectric Boxes DO rasterize +
-reflect on the NU path (``tests/test_waveguide_nu_flux.py`` and the rung-1
-broad-E5 Airy envelope), so the gap is PEC-scatterer-specific: the
-geometry-derived ``pec_mask`` from ``rasterize_geometry`` on non-uniform coords
-is not taking effect in the NU scan (root cause not yet isolated -- R2-STOP, no
-blind fix).
+Discovered 2026-06-25 while scoping a non-uniform external-E4 iris comparison:
+an identical inductive iris (a symmetric pair of PEC fins, ``sigma=1e7`` > the
+1e6 PEC threshold, blocking ~60% of the WR-90 width) appeared to reflect on the
+UNIFORM Yee path (``|S11|`` ~ 0.78-2.1) but to be ABSENT on the non-uniform
+(graded-``dy``) path (``|S11|`` ~ 0, ``|S21|`` ~ 1). The first framing blamed
+the rasterized ``pec_mask`` "not taking effect in the NU scan / NU is
+dielectric-only for scatterers" -- THAT FRAMING WAS WRONG.
 
-Consequence: the NU waveguide lane is currently DIELECTRIC-ONLY for scatterers;
-metal obstacles (irises, posts, septa) silently vanish. Documented in
-``docs/guides/support_matrix.{json,md}``.
+ROOT CAUSE (verified experimentally 2026-06-25, fixed same day): the interior
+PEC IS applied to the NU device run. The NU two-run S-matrix *vacuum reference*
+run, however, retained the device's interior ``pec_mask`` -- the vacuum
+override (``run_nonuniform_path(eps_override=vacuum_eps,
+sigma_override=vacuum_sigma)``) replaced only eps_r/sigma and never neutralized
+``pec_mask``. So the reference was physically identical to the device, the two
+flux DFTs were bit-identical, ``(device - reference) = 0``, and ``S11 = 0`` for
+ANY PEC reflector regardless of the extractor formula. The uniform path never
+had this bug -- it builds the reference with ``dielectric_shapes=[]`` plus
+boundary-only PEC (see ``rfx/api/_sparams.py``, which warns inline that
+applying the interior ``pec_mask`` to the reference makes it identical to the
+device and forces ``S11=0``).
 
-The uniform witness PASSES (confirms the iris geometry/material is a valid
-strong reflector). The NU sentinel is ``xfail(strict=True)``: when the
-pec_mask-on-NU path is fixed it will XPASS and trip CI, forcing this doc + the
-support-matrix note to be promoted to a hard gate.
+FIX: ``run_nonuniform_path(..., strip_interior_pec=True)`` drops the
+interior-geometry ``pec_mask`` from the NU vacuum reference while KEEPING the
+boundary y/z guide walls (those are enforced via ``pec_faces`` / ``apply_pec``,
+not ``pec_mask``). After the fix the NU iris recovers to ``|S11|`` ~ 1.4-1.6 (a
+full NU short to ``|S11|`` ~ 0.6-2.1), matching the uniform reflector class, and
+the empty NU guide still reads ``|S11|`` ~ 0 (no spurious reflection, boundary
+walls intact). Documented in ``docs/guides/support_matrix.{json,md}``.
+
+Both tests are now hard gates: the uniform witness confirms the iris fixture is
+a valid strong reflector, and the NU gate confirms the PEC iris reflects on the
+graded-``dy`` path within the uniform reflector class.
 """
 from __future__ import annotations
 
@@ -95,19 +107,26 @@ def test_uniform_pec_iris_reflects():
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Volumetric PEC scatterers do not reflect on the NU waveguide path: "
-        "the same iris that gives |S11|~0.9 on the uniform path gives |S11|~0 "
-        "on the graded-dy path (pec_mask from rasterize_geometry not effective "
-        "in the NU scan; dielectric Boxes DO work). NU is dielectric-only for "
-        "scatterers. XPASS => the PEC-on-NU path was fixed: promote this to a "
-        "hard gate and update docs/guides/support_matrix.* + nu known-limits."
-    ),
-)
 def test_nonuniform_pec_iris_reflects():
-    """Sentinel (xfail-strict): the NU PEC iris SHOULD reflect like the uniform
-    one. It does not today (|S11|~0) — documenting the dielectric-only limit."""
-    s11 = _iris_s11_max(nonuniform=True)
-    assert s11 > 0.2, f"NU PEC iris |S11|max={s11:.3f} <= 0.2 — iris not reflecting"
+    """Gate (RESOLVED 2026-06-25): the NU PEC iris reflects like the uniform one.
+
+    Root cause was the NU two-run S-matrix vacuum reference retaining the
+    device's interior PEC mask (vacuum override replaced only eps/sigma, never
+    pec_mask) → device and reference DFTs bit-identical → S11=0 for any
+    reflector. Fixed by ``run_nonuniform_path(..., strip_interior_pec=True)`` on
+    the reference (drops interior PEC, keeps the boundary guide walls). The
+    iris now recovers to |S11| ~ 1.4-1.6 on the graded-dy path, in the same
+    strong-reflector class as the uniform witness."""
+    s11_nu = _iris_s11_max(nonuniform=True)
+    assert s11_nu > 0.2, (
+        f"NU PEC iris |S11|max={s11_nu:.3f} <= 0.2 — iris not reflecting; the "
+        "NU vacuum-reference interior-PEC-strip fix has regressed"
+    )
+    # Same strong-reflector class as the uniform witness (both are the
+    # identical iris geometry); the NU iris must land within a factor of the
+    # uniform max, not collapse toward 0.
+    s11_uni = _iris_s11_max(nonuniform=False)
+    assert s11_nu > 0.4 * s11_uni, (
+        f"NU PEC iris |S11|max={s11_nu:.3f} not in the uniform reflector class "
+        f"(uniform |S11|max={s11_uni:.3f}) — NU reflection is weak/wrong"
+    )

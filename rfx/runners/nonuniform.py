@@ -210,7 +210,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         emit_time_series=True, checkpoint_every=None,
                         n_warmup=0, design_mask=None,
                         subpixel_smoothing: bool = False,
-                        attach_waveguide_flux: bool = False):
+                        attach_waveguide_flux: bool = False,
+                        strip_interior_pec: bool = False):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -227,6 +228,21 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         path to inject optimisation variables.
     pec_mask_override : jnp.ndarray or None
         Extra hard-PEC mask ORed into the geometry-derived pec_mask.
+    strip_interior_pec : bool
+        When True, drop the interior-geometry ``pec_mask`` returned by
+        ``assemble_materials_nu`` (the rasterized iris / wall / post),
+        forcing a clean vacuum-plus-boundary-walls reference run. The
+        boundary-wall PEC (the y/z guide walls from the BoundarySpec) is
+        NOT carried in ``pec_mask`` — it is enforced separately via
+        ``pec_faces`` (grid pad=0 + ``apply_pec`` / CPML face split), so
+        stripping ``pec_mask`` keeps the guide walls while removing the
+        scatterer. This is the NU analogue of the uniform two-run
+        S-matrix reference (``_sparams.py``: the reference run uses
+        ``dielectric_shapes=[]`` + boundary-only PEC, and a comment there
+        warns that applying the interior ``pec_mask`` to the reference
+        makes it bit-identical to the device → ``(device-reference)=0`` →
+        ``S11=0`` for any reflector). Used ONLY by the NU two-run S-matrix
+        vacuum reference; the device run leaves this False.
 
     Returns
     -------
@@ -261,6 +277,20 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ),
     )
     materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(sim, grid)
+
+    # Two-run S-matrix vacuum reference: drop the interior-geometry PEC
+    # (the rasterized iris / wall / post) so the reference is a clean
+    # empty guide. The boundary-wall PEC (y/z guide walls) is NOT in
+    # ``pec_mask`` — it is enforced via ``pec_faces`` (grid pad=0 +
+    # ``apply_pec`` / CPML face split) — so the guide walls survive. This
+    # mirrors the uniform reference run (``_sparams.py``: dielectric/PEC
+    # interior shapes dropped, boundary PEC kept). Without this, the
+    # vacuum override replaces only eps_r/sigma and the reference keeps
+    # the same interior PEC mask as the device → both DFTs are
+    # bit-identical → ``(device-reference)=0`` → ``S11=0`` for any
+    # PEC reflector on the NU path.
+    if strip_interior_pec:
+        pec_mask = None
 
     # ``eps_override`` / ``sigma_override`` replace the assembled material
     # arrays for the scan. We keep the original concrete ``materials`` for

@@ -96,7 +96,7 @@ Current policy:
 | `compute_msl_s_matrix()` + nonuniform | unsupported | hard-fail |
 | Coaxial port + nonuniform | unsupported | hard-fail |
 | Lumped RLC + nonuniform | unsupported | hard-fail |
-| Volumetric PEC scatterer (iris / post / septum) + nonuniform waveguide | unsupported (**silent**) | reflects on the uniform path (\|S11\|~0.9) but \|S11\|~0 / \|S21\|~1 on the NU graded scan — the metal obstacle silently vanishes; NU is **dielectric-only** for scatterers (`pec_mask` from `rasterize_geometry` not effective in the NU scan, root cause not yet isolated). Sentinel: `tests/test_nonuniform_pec_scatterer_limit.py` (xfail-strict; XPASS = fixed) |
+| Volumetric PEC scatterer (iris / post / septum) + nonuniform waveguide | **RESOLVED 2026-06-25** | The earlier "NU is dielectric-only / `pec_mask` not effective" note was **WRONG**: the interior PEC IS applied to the NU device run. Root cause was the NU two-run S-matrix **vacuum reference** retaining the device's interior `pec_mask` (the vacuum override replaced only eps/sigma, never `pec_mask`) → device and reference flux DFTs bit-identical → \|S11\|=0 for any reflector. Fixed by `run_nonuniform_path(..., strip_interior_pec=True)` on the reference (drops interior PEC, keeps the boundary guide walls). The PEC iris now reflects on the NU graded scan (\|S11\|~1.4-1.6, a full short ~0.6-2.1), matching the uniform reflector class; empty NU stays \|S11\|~0. Gate: `tests/test_nonuniform_pec_scatterer_limit.py::test_nonuniform_pec_iris_reflects` (was xfail-strict, now a hard gate). |
 
 ## Reporting and export artifact rule
 
