@@ -78,8 +78,15 @@ def _despeckle(frame, size=3):
 # ===========================================================================
 # Figure 1: TE10 propagation map (source-fed companion guide)
 # ===========================================================================
-def make_field():
-    """Snapshot E_z on the broad-wall mid-plane of a source-fed empty guide.
+def _run_te10_frames(bandwidth=0.5, num_periods=60):
+    """Run the source-fed empty WR-90 guide and return the broad-wall mid-plane
+    E_z snapshots plus geometry indices: (interior (n_frames,nx,ny), src_i,
+    down_lo, nx). Shared by the static snapshot and the animation.
+
+    bandwidth controls the source pulse: the static snapshot uses the default
+    (0.5) for a compact packet; the animation uses a narrower band (a longer,
+    more coherent wavetrain) so the travelling TE10 mode reads cleanly rather
+    than dispersing into a faint blob (a waveguide is dispersive near cutoff).
 
     The validated S-matrix path (two waveguide ports) cannot snapshot fields, so
     a source-fed empty guide reproduces the same TE10 propagation purely for the
@@ -91,7 +98,6 @@ def make_field():
     from rfx.simulation import SnapshotSpec
 
     f0 = 10.2e9
-    bandwidth = 0.5
     # CPML must fit the guide cross-section: pad b so nz > 2*cpml (still hollow
     # air — only the extent changes, not the physics), as the builder does.
     anim_cpml = 8
@@ -120,7 +126,7 @@ def make_field():
     _, _, kz = grid.position_to_index((src_x, a_anim / 2, b_anim / 2))
     snap = SnapshotSpec(interval=8, components=("ez",), slice_axis=2,
                         slice_index=int(kz))
-    res = sim.run(num_periods=60, snapshot=snap, skip_preflight=True)
+    res = sim.run(num_periods=num_periods, snapshot=snap, skip_preflight=True)
     g = res.grid
     ez = np.asarray(res.snapshots["ez"])  # (n_frames, nx, ny)
 
@@ -128,15 +134,19 @@ def make_field():
     iy0, iy1 = g.pad_y_lo, g.ny - g.pad_y_hi
     interior = ez[:, ix0:ix1, iy0:iy1]
     nx = interior.shape[1]
-
-    # Pick a frame where the pulse has PROPAGATED to mid-guide (not the source
-    # blob at firing time). The pulsed source keeps re-radiating near its own
-    # cell, so the global energy peak sits AT the source — useless. Instead,
-    # look only DOWNSTREAM of the source (x > src) and choose the frame whose
-    # downstream energy peaks near the guide centre: that is the travelling
-    # TE10 wave packet, where the half-sine across the broad wall is clean.
     src_i = int(round(src_x / DX))
     down_lo = src_i + int(0.18 * nx)        # safely clear of the source blob
+    return interior, src_i, down_lo, nx
+
+
+def make_field():
+    """Snapshot E_z on the broad-wall mid-plane of a source-fed empty guide:
+    the single frame where the travelling TE10 packet sits near mid-guide."""
+    interior, src_i, down_lo, nx = _run_te10_frames()
+
+    # Pick a frame where the pulse has PROPAGATED to mid-guide (not the source
+    # blob at firing time): look only DOWNSTREAM of the source and choose the
+    # frame whose downstream energy peaks near the guide centre.
     e_down = np.sum(interior[:, down_lo:, :] ** 2, axis=(1, 2))   # (n_frames,)
     x_idx = np.arange(nx - down_lo)
     e_xd = np.sum(interior[:, down_lo:, :] ** 2, axis=2)          # (n_frames, ndown)
@@ -177,6 +187,49 @@ def make_field():
     fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print("wrote", out, f"(frame {f_idx}, vmax={vmax:.3e})")
+
+
+def make_field_anim():
+    """Animate the TE10 packet travelling +x down the guide (E_z on the
+    broad-wall mid-plane). The launcher footprint is cropped out of frame and the
+    colour scale is fixed across frames, so only the propagating mode moves.
+    """
+    import matplotlib.animation as manim
+    interior, src_i, down_lo, nx = _run_te10_frames()
+    x_show = min(src_i + 8, nx - 2)
+    cropped = interior[:, x_show:, :]                          # (n, ncrop, ny)
+    e = np.sum(cropped ** 2, axis=(1, 2))
+    keep = np.where(e > 0.10 * e.max())[0]   # full transit through the guide
+    idx = np.arange(int(keep.min()), int(keep.max()) + 1)
+    if len(idx) > 48:
+        idx = idx[np.linspace(0, len(idx) - 1, 48).round().astype(int)]
+    sel = np.stack([_despeckle(_despeckle(np.asarray(cropped[i], np.float32), 5), 5)
+                    for i in idx])                             # (nf, ncrop, ny)
+    # robust colour scale: the concentrated entry spike saturates, the travelling
+    # lobes stay well-coloured as the packet disperses across the guide
+    vmax = float(np.percentile(np.abs(sel), 99.0)) or 1.0
+    x_mm = (np.arange(sel.shape[1]) + x_show) * DX * 1e3
+    y_mm = np.arange(sel.shape[2]) * DX * 1e3
+
+    fig, ax = plt.subplots(figsize=(8.2, 3.2))
+    mesh = ax.pcolormesh(x_mm, y_mm, sel[0].T, cmap="RdBu_r",
+                         vmin=-vmax, vmax=vmax, shading="nearest")
+    ax.set_xlabel("propagation axis  x  (mm)")
+    ax.set_ylabel("broad wall  y  (mm)")
+    ax.set_aspect("equal")
+    ax.set_title("TE$_{10}$ mode travelling +x down the empty WR-90 guide — E$_z$")
+    cb = fig.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04)
+    cb.set_label("E$_z$  (normalised, divergent scale)")
+
+    def _upd(i):
+        mesh.set_array(sel[i].T.ravel())
+        return (mesh,)
+
+    anim = manim.FuncAnimation(fig, _upd, frames=len(sel), blit=False)
+    out = os.path.join(ASSETS, "field_anim.gif")
+    anim.save(out, writer=manim.PillowWriter(fps=12), dpi=90)
+    plt.close(fig)
+    print("wrote", out, f"({len(sel)} frames, vmax={vmax:.3e})")
 
 
 # ===========================================================================
@@ -549,6 +602,8 @@ if __name__ == "__main__":
         make_geometry()
     if which in ("all", "field"):
         make_field()
+    if which in ("all", "anim"):
+        make_field_anim()
     if which in ("all", "result"):
         make_result()
     if which in ("all", "validation"):
@@ -559,6 +614,7 @@ if __name__ == "__main__":
         register_v3_assets("waveguide_wr90", [
             ("geometry.png", "geometry-png"),
             ("field_te10.png", "field-map-png"),
+            ("field_anim.gif", "field-anim-gif"),
             ("sparams.png", "sparams-png"),
             ("validation.png", "validation-png"),
             ("autodiff.png", "autodiff-png"),

@@ -42,10 +42,17 @@
   "assets": [
     {
       "filename": "autodiff.png",
-      "type": "autodiff-png",
+      "type": "figure-png",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/autodiff.png",
       "sha256": "152fbd0cf18657f1e09f5d094531b4645cc8547cfd52315fcbb8391e6857074b",
       "size_bytes": 191339
+    },
+    {
+      "filename": "field_anim.gif",
+      "type": "field-anim-gif",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/field_anim.gif",
+      "sha256": "6313267e6499b12b847ef5b25359a5576db97fa4547a1cdb0753aade7780d453",
+      "size_bytes": 463658
     },
     {
       "filename": "field_xt.png",
@@ -56,7 +63,7 @@
     },
     {
       "filename": "geometry.png",
-      "type": "geometry-png",
+      "type": "figure-png",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/geometry.png",
       "sha256": "e08ff91698b3fc30f91fd3e985715e7ef437fdf8b2693027941d5362d41af5ad",
       "size_bytes": 48847

@@ -129,7 +129,11 @@ def make_geometry():
 # ===========================================================================
 # Figure 2: space-time (x-t) map of E_z on the propagation axis
 # ===========================================================================
-def make_field_xt():
+def _run_slab_field():
+    """Run the 1D-physics slab sim (a 2D TMz strip) and return E_z(x,t) on the
+    interior propagation axis: (field (n_steps, nx), x_mm [0 at the slab front
+    face], t_ns, slab_front_mm, slab_back_mm). Shared by the x-t map and the
+    propagation animation."""
     from rfx.grid import Grid
     from rfx.core.yee import init_state, init_materials, update_e, update_h
     from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
@@ -190,6 +194,11 @@ def make_field_xt():
     t_ns = np.arange(n_steps) * dt * 1e9
     slab_front_mm = 0.0
     slab_back_mm = (slab_hi_g - slab_lo_g) * DX * 1e3
+    return field, x_mm, t_ns, slab_front_mm, slab_back_mm
+
+
+def make_field_xt():
+    field, x_mm, t_ns, slab_front_mm, slab_back_mm = _run_slab_field()
 
     vmax = float(np.percentile(np.abs(field), 99.5)) or 1.0
 
@@ -223,6 +232,47 @@ def make_field_xt():
     fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print("wrote", out, f"(n_steps={n_steps}, vmax={vmax:.3f})")
+
+
+def make_field_anim():
+    """Animate the plane-wave pulse along x: it travels +x at c, hits the slab
+    front face, and splits into a reflected pulse (heading back -x) and a
+    transmitted pulse (continuing +x, slowed to c/n inside the slab)."""
+    import matplotlib.animation as manim
+    field, x_mm, t_ns, slab_front_mm, slab_back_mm = _run_slab_field()
+    n_steps = field.shape[0]
+    vmax = float(np.percentile(np.abs(field), 99.5)) or 1.0
+    ylim = 1.15 * vmax
+    nframes = 80
+    idx = np.linspace(0, n_steps - 1, nframes).round().astype(int)
+
+    fig, ax = plt.subplots(figsize=(7.4, 3.4))
+    ax.axvspan(slab_front_mm, slab_back_mm, color="0.25", alpha=0.18, lw=0)
+    ax.axvline(slab_front_mm, color="0.25", lw=0.9, ls="--")
+    ax.axvline(slab_back_mm, color="0.25", lw=0.9, ls="--")
+    s_lbl = ax.text(slab_back_mm + 2, ylim * 0.86, "slab", fontsize=9,
+                    color="0.2", va="top")
+    s_lbl.set_path_effects(_HALO)
+    ax.axhline(0, color="0.6", lw=0.6)
+    (line,) = ax.plot(x_mm, field[idx[0]], color="#1f4e9c", lw=1.4)
+    ax.set_xlim(x_mm[0], x_mm[-1])
+    ax.set_ylim(-ylim, ylim)
+    ax.set_xlabel("position along propagation axis  (mm,  0 = slab front face)")
+    ax.set_ylabel("E$_z$  (incident amplitude = 1)")
+    ax.set_title("Plane-wave pulse: incidence, reflection and transmission at the slab")
+    tlabel = ax.text(0.985, 0.94, "", transform=ax.transAxes, ha="right",
+                     va="top", fontsize=8.5, color="0.25")
+
+    def _upd(k):
+        line.set_ydata(field[idx[k]])
+        tlabel.set_text(f"t = {t_ns[idx[k]]:.2f} ns")
+        return (line, tlabel)
+
+    anim = manim.FuncAnimation(fig, _upd, frames=nframes, blit=False)
+    out = os.path.join(ASSETS, "field_anim.gif")
+    anim.save(out, writer=manim.PillowWriter(fps=15), dpi=90)
+    plt.close(fig)
+    print("wrote", out, f"({nframes} frames, vmax={vmax:.3f})")
 
 
 # ===========================================================================
@@ -291,3 +341,5 @@ if __name__ == "__main__":
         make_rt_overlay()
     if which in ("all", "field"):
         make_field_xt()
+    if which in ("all", "anim"):
+        make_field_anim()

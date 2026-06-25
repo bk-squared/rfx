@@ -417,6 +417,56 @@ def make_field():
     print("wrote", out, f"(vmax={vmax:.3e})")
 
 
+def make_field_anim():
+    """Animate the TM010 standing wave oscillating in place over one RF period:
+    E_z(x,t) = E_mode(x) * cos(wt). The two radiating edges swap sign each half
+    period (red <-> blue through a zero crossing) — the standing-wave signature.
+    """
+    import matplotlib.animation as manim
+    z = _load_cache()
+    field = _despeckle(np.asarray(z["field"]))
+    inset = float(z["fm_inset"])
+    f_res = float(z["fm_fres"])
+    x_mm = np.arange(field.shape[0]) * DX * 1e3
+    y_mm = np.arange(field.shape[1]) * DX * 1e3
+    feed_x = PATCH_X_LO + inset
+    fx_i = int(round(feed_x / DX))
+    fy_i = int(round(FEED_Y / DX))
+    yy, xx = np.meshgrid(np.arange(field.shape[1]), np.arange(field.shape[0]))
+    feed_mask = (xx - fx_i) ** 2 + (yy - fy_i) ** 2 > 4 ** 2
+    vmax = float(np.percentile(np.abs(field[feed_mask]), 99.0))
+    if vmax <= 0:
+        vmax = float(np.max(np.abs(field))) or 1.0
+
+    nframes = 40
+    phase = np.linspace(0.0, 2 * np.pi, nframes, endpoint=False)
+    cx, cy = field.shape[0] * DX / 2 * 1e3, field.shape[1] * DX / 2 * 1e3
+
+    fig, ax = plt.subplots(figsize=(6.0, 5.2))
+    mesh = ax.pcolormesh(x_mm, y_mm, (field * np.cos(phase[0])).T,
+                         cmap="RdBu_r", vmin=-vmax, vmax=vmax, shading="nearest")
+    ax.add_patch(Rectangle((cx - L / 2 * 1e3, cy - W / 2 * 1e3),
+                           L * 1e3, W * 1e3, fill=False, edgecolor="k", lw=1.4))
+    ax.plot((cx - L / 2 * 1e3) + inset * 1e3, cy, "k+", ms=10, mew=1.6)
+    ax.set_xlabel("x  (mm)")
+    ax.set_ylabel("y  (mm)")
+    ax.set_aspect("equal")
+    ax.set_title(f"TM$_{{010}}$ standing wave at {f_res/1e9:.2f} GHz — E$_z$ over "
+                 "one RF period")
+    cb = fig.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04)
+    cb.set_label("E$_z$  (normalised, divergent scale)")
+
+    def _upd(i):
+        mesh.set_array((field * np.cos(phase[i])).T.ravel())
+        return (mesh,)
+
+    anim = manim.FuncAnimation(fig, _upd, frames=nframes, blit=False)
+    out = os.path.join(ASSETS, "field_anim.gif")
+    anim.save(out, writer=manim.PillowWriter(fps=12), dpi=90)
+    plt.close(fig)
+    print("wrote", out, f"({nframes} frames, vmax={vmax:.3e})")
+
+
 # ===========================================================================
 # Figure 3: |S11| dB with matched dip + zoom inset
 # ===========================================================================
@@ -640,6 +690,8 @@ if __name__ == "__main__":
         make_s11()
     elif which == "field":
         make_field()
+    elif which == "anim":
+        make_field_anim()
     elif which == "validation":
         make_validation()
     else:

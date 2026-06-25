@@ -42,21 +42,28 @@
   "assets": [
     {
       "filename": "autodiff.png",
-      "type": "autodiff-png",
+      "type": "figure-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/autodiff.png",
       "sha256": "10fea5ba5cb14748da82813ff6b7913846367dc274a36a1ffd80c0f9c05b9add",
       "size_bytes": 74163
     },
     {
+      "filename": "field_anim.gif",
+      "type": "field-anim-gif",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/field_anim.gif",
+      "sha256": "412721574e3c36213ada9982b86226294f0161ef77657c4aa3e74d40a6b889f0",
+      "size_bytes": 960043
+    },
+    {
       "filename": "field_te10.png",
-      "type": "field-map-png",
+      "type": "figure-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/field_te10.png",
       "sha256": "bd6b6c484b047e2ea27949971a4ecf698d9891391b107ffcdedfe2610726c30c",
       "size_bytes": 88345
     },
     {
       "filename": "geometry.png",
-      "type": "geometry-png",
+      "type": "figure-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/geometry.png",
       "sha256": "2e4b64ee164e34cdbd1e73a27836fbd1727038ed1aebf4296b1f94608d56bc0b",
       "size_bytes": 88021
@@ -70,7 +77,7 @@
     },
     {
       "filename": "sparams.png",
-      "type": "sparam-plot-png",
+      "type": "figure-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.png",
       "sha256": "65c373924f4c9cbc072d5067ce821be9cbc275ade41c2f4ba650332e673f0184",
       "size_bytes": 106930
@@ -84,7 +91,7 @@
     },
     {
       "filename": "validation.png",
-      "type": "validation-png",
+      "type": "figure-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/validation.png",
       "sha256": "e4eb10873f3384fa6faa4108f43df58069c27df07a975622bf561bd118991854",
       "size_bytes": 97509
