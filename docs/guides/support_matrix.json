@@ -48,7 +48,8 @@
         "lumped_rlc": "hard_fail",
         "lumped_port_sparameters": "hard_fail",
         "msl_s_matrix": "hard_fail",
-        "coaxial_port": "hard_fail"
+        "coaxial_port": "hard_fail",
+        "pec_volume_scatterer": "silent_no_reflection: a volumetric PEC obstacle (iris/post/septum) reflects on the uniform path (|S11|~0.9) but is ABSENT on the NU graded scan (|S11|~0, |S21|~1); NU is dielectric-only for scatterers (pec_mask from rasterize_geometry not effective in the NU scan, root cause not yet isolated); sentinel tests/test_nonuniform_pec_scatterer_limit.py"
       }
     },
     "sbp_sat_subgridding": {
