@@ -194,6 +194,40 @@ self-consistency that matters here. The substrate is thin relative to the cells,
 so the absolute frequency carries a coarse-mesh bias — a finer mesh (a GPU pass at
 0.25–0.5 mm) tightens the absolute number without changing the picture.
 
+## Autodiff
+
+The same matched patch can be differentiated. The design variable is the FR4
+substrate permittivity `εr`, and the scalar is the return loss `|S11|²` at the
+resonance. The permittivity enters through `eps_override`, and `|S11|` is read
+with the wave-decomposition objective `minimize_s11_at_freq_wave_decomp`, which
+runs inside `Simulation.forward(port_s11_freqs=...)` — the AD-traceable path that
+accumulates the port voltage/current DFTs inside the time-stepping loop. A single
+`jax.value_and_grad` call then returns `∂|S11|²/∂εr` straight through the solver.
+
+Unlike the slab, the patch has no closed-form return loss, so there is no exact
+derivative to compare against. Instead this is a **finite-difference gate**: the
+AD gradient is checked against central finite differences, with the same 5%
+tolerance and sign-agreement test the inverse-design examples use. Re-running the
+forward at `εr ± h` and forming the central difference must land within 5% of the
+AD gradient and point the same way.
+
+![Patch return-loss sensitivity to the substrate permittivity — AD gradient vs central finite differences](/rfx/gallery/assets/patch_antenna/autodiff.png)
+
+On a moderate-resolution CPU run the AD gradient `∂|S11|²/∂εr ≈ +0.097` matches
+the central finite difference to about `1 %`, with matching sign: raising the
+substrate permittivity pushes the resonance down and away from the drive
+frequency, so the match degrades and `|S11|` at the fixed test frequency rises.
+The full-mesh figure shown here is produced on a GPU — reverse-mode AD through
+the 3D patch plus the two finite-difference forwards needs the checkpointed GPU
+path — while the CPU run confirms the same code path and the same AD-vs-FD
+agreement at a coarser mesh.
+
+The differentiable knob is the substrate permittivity, a material quantity. The
+patch geometry — the feed inset along the resonant length, the patch dimensions,
+the mesh cell counts — is discrete and is not a `jax.grad` input; its sensitivity
+is the job of a finite-difference sweep (re-meshing and re-running), not of
+automatic differentiation.
+
 ## Next
 
 <LinkCard

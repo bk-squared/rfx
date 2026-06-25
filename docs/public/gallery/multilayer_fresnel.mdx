@@ -169,6 +169,49 @@ half-wave peak near 7.5 GHz is already converged at 1 mm. The model is lossless
 and normal-incidence only — oblique incidence and material loss would each need
 their own setup.
 
+## Autodiff
+
+The slab is the cleanest place to see what makes rfx different: `jax.grad` flows
+straight through the FDTD time stepping. Here the design variable is the slab
+thickness `d` and the scalar of interest is the transmission `T = |S21|²` at one
+frequency. The thickness enters the permittivity as a soft top-hat — a smoothed
+slab edge that is a continuous function of `d` — so a single `jax.value_and_grad`
+call returns both `T(d)` and the sensitivity `dT/dd`, with the gradient computed
+by reverse-mode differentiation through every Yee update.
+
+What makes this the cleanest case is that the slab transfer matrix gives `T(d)`
+in closed form, so the derivative has an exact analytic expression:
+
+`T(d) = 1 / (1 + F·sin²δ)` with `F = ((n − 1/n)²)/4` and `δ = 2·π·f·n·d/c`, giving
+`dT/dd = −T²·F·sin(2δ)·(2·π·f·n/c)`.
+
+This is an **exact-derivative cross-check**, not a finite-difference gate: the AD
+gradient is compared directly against the closed-form `dT/dd`. We report two
+numbers, because they answer two different questions:
+
+- **AD vs central finite differences** on the same discretised forward — is the
+  AD machinery itself correct? Here `0.002 %`. The gradient `jax.grad` returns is
+  the exact derivative of the simulation it ran.
+- **AD vs the continuum analytic derivative** — has the FDTD physics converged to
+  the textbook slab? Here `2.6 %` at 0.25 mm cells. The residual is numerical
+  (Yee phase-velocity dispersion plus the one-cell soft edge) and shrinks as the
+  mesh is refined.
+
+![Slab transmission sensitivity dT/dd — AD markers on the exact derivative, and T(d) with its gradient through a Fabry-Perot half-period](/rfx/gallery/assets/multilayer_fresnel/autodiff.png)
+
+The left panel lays the AD markers on the exact `dT/dd` curve across a
+Fabry-Pérot half-period; they sit on the analytic line. The right panel shows
+`T(d)` and `dT/dd` together: the gradient passes through zero exactly at the
+half-wave transmission peak, where `T → 1` and the slab is momentarily
+insensitive to a small change in thickness. The working point is chosen on a
+steep mid-slope (`δ ≈ 2` rad), not at the peak, where the relative comparison is
+well posed.
+
+The differentiable knob here is a material/thickness quantity. The number of mesh
+cells across the slab is a discrete count and is not differentiable; thickness is
+made smooth on purpose, through the soft top-hat, so that `d` can be a continuous
+input to the solver.
+
 ## Next
 
 <LinkCard

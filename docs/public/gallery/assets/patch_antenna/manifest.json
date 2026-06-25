@@ -83,6 +83,13 @@
       "served_url": "/rfx/gallery/assets/patch_antenna/sparams.s1p",
       "sha256": "f2b082cc4f7ddcb807d8177035ec1d2998726ee3713dd44181f5aa6ba89c4899",
       "size_bytes": 5077
+    },
+    {
+      "filename": "autodiff.png",
+      "type": "autodiff-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/autodiff.png",
+      "sha256": "1781f4725afed644d6fe1cb5a47ed0e14d475d4ce7b7148a3b9c006421ed64e0",
+      "size_bytes": 80219
     }
   ]
 }

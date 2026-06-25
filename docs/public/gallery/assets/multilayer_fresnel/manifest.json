@@ -81,6 +81,13 @@
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/fields.gif",
       "sha256": "bb9e1e8e608332ee8a0c8de1a4c1fdbc5756953b0ef6d3a785709c38d68e5c2a",
       "size_bytes": 1154472
+    },
+    {
+      "filename": "autodiff.png",
+      "type": "autodiff-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/autodiff.png",
+      "sha256": "ebcace771006380e1ba624fc49ec56422f8138f8a7967ae913c925e5d1b0e3bb",
+      "size_bytes": 191792
     }
   ]
 }

@@ -1,36 +1,210 @@
 ---
-title: "Hollow Waveguide"
-description: "A wave travels down an empty rectangular metal pipe with almost nothing bouncing back — exactly what theory predicts for an ideal guide."
+title: "Hollow rectangular waveguide (WR-90, TE10)"
+description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11|/|S21| match the exact matched-guide answer, with a jax.grad sensitivity of |S21| to the dielectric fill validated against finite differences."
 sidebar:
   order: 37
 ---
 
-import { LinkCard } from '@astrojs/starlight/components';
+import { Aside, LinkCard } from '@astrojs/starlight/components';
 
-A waveguide is a hollow metal pipe that carries microwave energy from one place
-to another, the way a pipe carries water. A well-made empty guide should pass the
-wave straight through with almost no reflection. This case checks exactly that.
+A rectangular waveguide is a hollow metal pipe that carries one electromagnetic
+mode at a time above a cutoff frequency. This case drives the dominant TE10 mode
+down a standard WR-90 guide (X-band) and reads the two-port S-parameters. An
+ideal empty guide should pass the mode with almost no reflection — and because
+the matched empty-guide answer is known in closed form, it is a clean absolute
+check on the waveguide port.
 
 ## The structure
 
 ![The hollow rectangular waveguide](/rfx/gallery/assets/waveguide_wr90/geometry.png)
 
-A standard rectangular waveguide (the WR-90 size used across the X-band, roughly
-8 to 12 GHz). The walls are metal and the inside is empty air. A wave is launched
-in at one end and collected at the other.
+A WR-90 guide: broad wall a = 22.86 mm, narrow wall b = 10.16 mm, metal (PEC)
+walls, hollow air inside. The mode is launched at the left port and collected at
+the right port. Both end faces are absorbing (CPML); the four side walls are PEC.
 
-## The result
+## What this is
 
-![How much reflects vs how much passes](/rfx/gallery/assets/waveguide_wr90/sparams.png)
+The dominant mode of a rectangular guide is TE10. It only propagates above the
+cutoff frequency set by the broad-wall width: `f_c = c / (2·a)`. For WR-90,
+`a = 22.86 mm` gives `f_c ≈ 6.557 GHz`, so the X-band (8.2–12.4 GHz) sits
+comfortably above cutoff and the TE10 mode travels cleanly. Below `f_c` the mode
+is evanescent and the guide rejects it. Filling the guide with a dielectric `εr`
+lowers the cutoff to `f_c,d = f_c / √εr` — the lever the autodiff section below
+differentiates through.
 
-Across the whole band, the reflection is essentially zero — it matches the exact
-answer for an ideal empty guide, where everything that goes in comes out the far
-end.
+## What you'll learn
+
+- Launching the **TE10 dominant mode** with a mode-matched waveguide port (a
+  one-sided mode injection, not a soft point source).
+- The **cutoff relation** `f_c = c/(2·a)` and why X-band propagates in WR-90
+  while lower frequencies would not.
+- Reading two-port **|S11| (reflection) and |S21| (transmission)** against the
+  exact matched empty-guide answer (`|S11| = 0`, `|S21| = 1`).
+- Taking a **gradient through the FDTD solver** with `jax.grad`: how `|S21|`
+  responds to the guide's dielectric fill, validated against finite differences.
+
+## Geometry & materials
+
+```python
+import numpy as np
+C0 = 299_792_458.0
+
+a_wg = 22.86e-3        # WR-90 broad wall (sets the TE10 cutoff)
+b_wg = 10.16e-3        # WR-90 narrow wall
+f_c  = C0 / (2 * a_wg) # TE10 cutoff: c / (2a) -> 6.557 GHz
+dx   = 1.0e-3          # 1 mm cells -> ~30 cells/wavelength at 10 GHz
+freqs = np.linspace(8.2e9, 12.4e9, 21)   # X-band sweep
+```
+
+The guide is hollow air inside PEC walls. The only material knob is the optional
+dielectric fill used in the gradient demonstration below.
+
+## Source, ports, boundaries, mesh
+
+- **Two TE10 waveguide ports.** The left port (`direction="+x"`) launches the
+  mode; the right port (`direction="-x"`) acts as a matched load. Each port
+  injects the discrete Yee-grid mode profile, so the launcher back-reflection is
+  minimal.
+- **CPML on the propagation axis only (20 cells).** Twenty layers hold the
+  residual guided-mode reflection near 4%; the default 10–12 layers leave it
+  around 12% (a known trap). Only the two x faces absorb.
+- **PEC side walls.** The four y/z walls are PEC — that is what defines a
+  rectangular guide and its cutoff.
+- **Uniform 1 mm mesh.** Ten cells span the narrow wall, about 23 the broad
+  wall, and roughly 30 cells per wavelength at the top of the band — enough to
+  resolve the TE10 half-sine across `a` and keep numerical dispersion small.
+
+<Aside type="note">
+Drop the absorber to the default 10–12 layers and the empty-guide |S11| floor
+rises from about 0.01 to about 0.1 — pure absorber back-reflection, not a solver
+error. Above cutoff the guide is nearly lossless, so the measurement floor is set
+by the CPML.
+</Aside>
+
+## Geometry check (before running)
+
+The render above confirms the guide before committing compute: broad wall a,
+narrow wall b, the two port planes set back from the absorbers, and clearance to
+the CPML on both ends. An empty WR-90 run at 1 mm (about 46k cells, a few hundred
+steps) finishes in seconds on a CPU; peak memory is a few tens of megabytes.
+
+## Run
+
+```python
+import numpy as np, jax.numpy as jnp
+from rfx.api import Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
+
+a_wg, b_wg, dx = 22.86e-3, 10.16e-3, 1.0e-3
+freqs = np.linspace(8.2e9, 12.4e9, 21)
+f0 = float(freqs.mean()); bandwidth = 0.5
+domain_x = 0.200
+
+sim = Simulation(
+    freq_max=float(freqs[-1]) * 1.1,
+    domain=(domain_x, a_wg, b_wg), dx=dx,
+    boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
+                          y=Boundary(lo="pec", hi="pec"),
+                          z=Boundary(lo="pec", hi="pec")),
+    cpml_layers=20,
+)
+port_freqs = jnp.asarray(freqs)
+sim.add_waveguide_port(0.040, direction="+x", mode=(1, 0), mode_type="TE",
+    freqs=port_freqs, f0=f0, bandwidth=bandwidth,
+    waveform="modulated_gaussian", reference_plane=0.050, name="left")
+sim.add_waveguide_port(domain_x - 0.040, direction="-x", mode=(1, 0), mode_type="TE",
+    freqs=port_freqs, f0=f0, bandwidth=bandwidth,
+    waveform="modulated_gaussian", reference_plane=domain_x - 0.050, name="right")
+
+result = sim.compute_waveguide_s_matrix(num_periods=200, normalize=True)
+```
+
+Run it from the command line:
+
+```bash
+python scripts/precompute_gallery_artifacts.py --case waveguide_wr90
+```
+
+## Fields
+
+E_z on the broad-wall mid-plane of a source-fed empty guide, captured once the
+pulse has propagated to mid-guide. The field is a half-sine across the broad wall
+— peaking at the centre and vanishing at the PEC side walls — travelling in the
++x direction, with the next half-cycle of opposite sign following behind. That is
+the TE10 mode moving down the guide.
+
+![TE10 mode E_z on the broad-wall mid-plane of the WR-90 guide](/rfx/gallery/assets/waveguide_wr90/field_te10.png)
+
+## Result
+
+Across the X-band, |S11| stays near the measurement floor and |S21| near unity —
+the empty matched guide passes the TE10 mode almost perfectly, which is exactly
+what an ideal guide above cutoff should do.
+
+![Reflection and transmission vs frequency for the empty WR-90 guide](/rfx/gallery/assets/waveguide_wr90/sparams.png)
 
 <LinkCard
-  title="Download the data (Touchstone .s2p)"
+  title="S-parameter data (Touchstone .s2p)"
   href="/rfx/gallery/assets/waveguide_wr90/sparams.s2p"
-  description="Reflection and transmission vs frequency, in the standard format RF tools read."
+  description="Reflection (S11) and transmission (S21) vs frequency, two-port Touchstone."
 />
 
-<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-24</p>
+## Validation & limits
+
+The empty matched guide has an exact answer: `|S11| = 0` and `|S21| = 1` at every
+frequency above cutoff. The figure overlays the rfx values on that reference.
+
+![|S11| and |S21| vs the exact matched empty-guide answer](/rfx/gallery/assets/waveguide_wr90/validation.png)
+
+The transmission `|S21|` sits on the unity line (minimum about 0.997 across the
+band — near-lossless), and `|S11|` traces the genuine measurement floor: a few
+percent of CPML back-reflection, up to about 0.09, scattered across the band.
+That floor is set by the absorber, not the solver — thickening the CPML lowers
+it, thinning it raises it.
+
+### Autodiff
+
+Fill part of the guide with a dielectric and `|S21|` responds, and that response
+is differentiable. The design variable is the fill permittivity `εr`, entered
+through `eps_override`, and the scalar is `|S21|²`. A single `jax.value_and_grad`
+call returns `∂|S21|²/∂εr` straight through `compute_waveguide_s_matrix(
+normalize="flux", ...)` — the power-flux extraction is on the AD tape, so the
+gradient flows through the full modal S-matrix assembly.
+
+There is no closed form for the filled-guide `|S21|`, so this is a
+**finite-difference gate**, not an exact-derivative check: the AD gradient is
+compared against central finite differences with a 5% tolerance and a sign test,
+mirroring the waveguide AD regression test (`h = 0.05`).
+
+![Transmission sensitivity to the dielectric fill — AD gradient vs central finite differences](/rfx/gallery/assets/waveguide_wr90/autodiff.png)
+
+The AD gradient `∂|S21|²/∂εr ≈ −0.220` matches the central finite difference to
+about `0.2 %`, with matching sign. The sign is physical: a dielectric fill lowers
+the cutoff toward the band through `f_c,d = f_c / √εr` (so
+`∂f_c,d/∂εr = −f_c / (2·εr^{3/2})`, about `−1.8 GHz`), which moves the band edge
+and reduces transmission. The closed-form cutoff relation points the same way the
+solver gradient does.
+
+**Limits.** The reflection floor is the CPML, not the physics — 20 layers give
+about 4%, the default 10–12 the ~12% trap. The broad-wall width `a` is **not**
+a `jax.grad` input: `a/dx` is a discrete cell count and the analytic mode profile
+is rebuilt for each width, so its sensitivity is shown by re-meshing and finite
+differences, alongside the analytic cutoff relation `f_c = c/(2·a)` — not by
+automatic differentiation. Both `normalize=True` and `normalize="flux"` support
+the gradient; each costs two runs per port.
+
+## Next
+
+<LinkCard
+  title="Dielectric slab (normal incidence)"
+  href="/rfx/gallery/multilayer_fresnel/"
+  description="Reflection and transmission of a dielectric slab vs the exact transfer-matrix solution, with an exact-derivative autodiff check."
+/>
+
+<LinkCard
+  title="Rectangular microstrip patch antenna (2.4 GHz, FR4)"
+  href="/rfx/gallery/patch_antenna/"
+  description="A printed resonator: matched return-loss dip, Harminv resonance, and a differentiable substrate sweep."
+/>
+
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-25</p>

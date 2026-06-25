@@ -21,9 +21,21 @@ import os
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 from matplotlib.patches import Rectangle, FancyArrowPatch
 import numpy as np
+
+# --- shared layout standard (gallery v3) -----------------------------------
+mpl.rcParams.update({
+    "figure.dpi": 200, "savefig.dpi": 200, "savefig.bbox": "tight",
+    "savefig.pad_inches": 0.02, "font.size": 10, "axes.titlesize": 11,
+    "axes.labelsize": 10, "xtick.labelsize": 9, "ytick.labelsize": 9,
+    "legend.fontsize": 9, "axes.titlepad": 10,
+    "figure.constrained_layout.use": True,
+})
+_HALO = [pe.withStroke(linewidth=2.5, foreground="white")]
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -72,7 +84,7 @@ def make_geometry():
     d_mm = D_SLAB * 1e3
     slab_lo, slab_hi = -d_mm / 2, d_mm / 2
 
-    fig, ax = plt.subplots(figsize=(8.0, 3.6))
+    fig, ax = plt.subplots(figsize=(8.0, 3.6), layout="constrained")
     ax.add_patch(Rectangle((x_lo, 0), x_hi - x_lo, 1.0,
                            facecolor="#eaf2fb", edgecolor="none", zorder=1))
     ax.add_patch(Rectangle((slab_lo, 0), d_mm, 1.0,
@@ -105,13 +117,11 @@ def make_geometry():
     ax.set_ylim(0, 1.0)
     ax.set_xlabel("propagation axis  x  (mm)")
     ax.set_yticks([])
-    ax.set_title("Dielectric slab in free space — normal-incidence cross-section",
-                 fontsize=11, pad=10)
+    ax.set_title("Dielectric slab in free space — normal-incidence cross-section")
     for s in ("top", "right", "left"):
         ax.spines[s].set_visible(False)
-    fig.tight_layout()
     out = os.path.join(ASSETS, "geometry.png")
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print("wrote", out)
 
@@ -183,32 +193,34 @@ def make_field_xt():
 
     vmax = float(np.percentile(np.abs(field), 99.5)) or 1.0
 
-    fig, ax = plt.subplots(figsize=(7.4, 5.2))
+    fig, ax = plt.subplots(figsize=(7.4, 5.2), layout="constrained")
     im = ax.pcolormesh(x_mm, t_ns, field, cmap="RdBu_r",
                        vmin=-vmax, vmax=vmax, shading="auto")
     # slab band
     ax.axvspan(slab_front_mm, slab_back_mm, color="0.25", alpha=0.18, lw=0)
     ax.axvline(slab_front_mm, color="0.25", lw=0.9, ls="--")
     ax.axvline(slab_back_mm, color="0.25", lw=0.9, ls="--")
-    ax.text(slab_back_mm + 2, t_ns[-1] * 0.97, "slab", fontsize=9, color="0.2",
-            va="top")
-    # annotate the three wave branches
-    ax.text(x_mm[0] + 40, t_ns[-1] * 0.30, "incident →", color="#0b3d6b",
-            fontsize=9, rotation=-38)
-    ax.text(x_mm[0] + 40, t_ns[-1] * 0.86, "← reflected", color="#7a0000",
-            fontsize=9, rotation=38)
-    ax.text(slab_back_mm + 30, t_ns[-1] * 0.80, "transmitted →", color="#0b3d6b",
-            fontsize=9, rotation=-38)
+    s_lbl = ax.text(slab_back_mm + 2, t_ns[-1] * 0.97, "slab", fontsize=9,
+                    color="0.2", va="top")
+    s_lbl.set_path_effects(_HALO)
+    # annotate the three wave branches (white halo so they read over the bright
+    # pulse streaks)
+    for x_pos, y_frac, label, color, rot in (
+        (x_mm[0] + 40, 0.30, "incident →", "#0b3d6b", -38),
+        (x_mm[0] + 40, 0.86, "← reflected", "#7a0000", 38),
+        (slab_back_mm + 30, 0.80, "transmitted →", "#0b3d6b", -38),
+    ):
+        t = ax.text(x_pos, t_ns[-1] * y_frac, label, color=color, fontsize=9,
+                    rotation=rot)
+        t.set_path_effects(_HALO)
 
     ax.set_xlabel("position along propagation axis  (mm,  0 = slab front face)")
     ax.set_ylabel("time  (ns)")
-    ax.set_title("E$_z$ space-time map: incident, reflected, transmitted pulse",
-                 fontsize=10.5)
+    ax.set_title("E$_z$ space-time map: incident, reflected, transmitted pulse")
     cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cb.set_label("E$_z$  (incident amplitude = 1)")
-    fig.tight_layout()
     out = os.path.join(ASSETS, "field_xt.png")
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print("wrote", out, f"(n_steps={n_steps}, vmax={vmax:.3f})")
 
@@ -234,7 +246,7 @@ def make_rt_overlay():
     step = max(1, len(f) // 40)
     mk = slice(None, None, step)
 
-    fig, ax = plt.subplots(figsize=(7.6, 4.8))
+    fig, ax = plt.subplots(figsize=(7.6, 4.8), layout="constrained")
     ax.plot(f_ghz, T_an, "-", color="#1f7a3a", lw=2.0, label="T  — exact transfer matrix")
     ax.plot(f_ghz, R_an, "-", color="#b00000", lw=2.0, label="R  — exact transfer matrix")
     ax.plot(f_ghz[mk], T[mk], "o", color="#1f7a3a", ms=5, mfc="white", mew=1.3,
@@ -245,10 +257,9 @@ def make_rt_overlay():
     ax.set_ylabel("Power fraction")
     ax.set_ylim(-0.03, 1.05)
     ax.set_xlim(f_ghz[0], f_ghz[-1])
-    ax.set_title("Reflected (R) and transmitted (T) power — rfx vs exact Fresnel",
-                 fontsize=10.5)
+    ax.set_title("Reflected (R) and transmitted (T) power — rfx vs exact Fresnel")
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8.5, loc="center right", framealpha=0.9)
+    ax.legend(loc="center right", framealpha=0.9)
 
     r_err = float(np.abs(R - R_an).mean())
     t_err = float(np.abs(T - T_an).mean())
@@ -265,9 +276,8 @@ def make_rt_overlay():
                 xy=(f_ghz[i], T_an[i]), xytext=(f_ghz[i], 0.55),
                 fontsize=8, ha="center", color="0.3",
                 arrowprops=dict(arrowstyle="->", color="0.5", lw=0.8))
-    fig.tight_layout()
     out = os.path.join(ASSETS, "rt_overlay.png")
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print("wrote", out, f"(r_err={r_err:.4f}, t_err={t_err:.4f}, cons={cons:.4f})")
 

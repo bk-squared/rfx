@@ -81,6 +81,27 @@
       "served_url": "/rfx/gallery/assets/waveguide_wr90/fields.gif",
       "sha256": "db85a086daeecc4184cafd697139202939c38bbe9ba3275e162919f1eaeaee5e",
       "size_bytes": 1116079
+    },
+    {
+      "filename": "field_te10.png",
+      "type": "field-map-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/field_te10.png",
+      "sha256": "1b206a31a65f964c93e952a7909834887be2f828d6dacc38f1fd65a5595f93b3",
+      "size_bytes": 88451
+    },
+    {
+      "filename": "validation.png",
+      "type": "validation-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/validation.png",
+      "sha256": "e4eb10873f3384fa6faa4108f43df58069c27df07a975622bf561bd118991854",
+      "size_bytes": 97509
+    },
+    {
+      "filename": "autodiff.png",
+      "type": "autodiff-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/autodiff.png",
+      "sha256": "10fea5ba5cb14748da82813ff6b7913846367dc274a36a1ffd80c0f9c05b9add",
+      "size_bytes": 74163
     }
   ]
 }
