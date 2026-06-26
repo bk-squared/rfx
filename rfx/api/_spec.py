@@ -134,6 +134,81 @@ class AD_MemoryEstimate(NamedTuple):
         return json.dumps(self.to_dict(), **options)
 
 
+class ADMemoryComponent(NamedTuple):
+    """Named contribution to a reverse-mode AD memory explanation."""
+
+    name: str
+    memory_gb: float
+    share_of_selected: float
+    kind: str
+    unit: str | None = None
+    count: int | None = None
+    bytes_per_unit_gb: float | None = None
+    explanation: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable JSON-serializable component artifact."""
+        return {
+            "name": self.name,
+            "kind": self.kind,
+            "memory_gb": float(self.memory_gb),
+            "share_of_selected": float(self.share_of_selected),
+            "unit": self.unit,
+            "count": self.count,
+            "bytes_per_unit_gb": (
+                None
+                if self.bytes_per_unit_gb is None
+                else float(self.bytes_per_unit_gb)
+            ),
+            "explanation": self.explanation,
+        }
+
+
+class ADMemoryExplainabilityReport(NamedTuple):
+    """Static reverse-mode AD memory explainability artifact.
+
+    The report decomposes the selected AD estimate into named components so
+    users can see whether field tape, segment-boundary carries, CPML/material
+    state, or monitor state dominates the planning artifact. It is still static
+    planning evidence, not profiler evidence or a bounded certificate.
+    """
+
+    n_steps: int
+    strategy: str
+    selected_memory_gb: float
+    selected_memory_field: str
+    estimate: AD_MemoryEstimate
+    components: tuple[ADMemoryComponent, ...]
+    dominant_component: str
+    recommendations: tuple[str, ...]
+
+    @property
+    def evidence_class(self) -> str:
+        """Evidence class label serialized with this static explanation."""
+        return "static_ad_explainability"
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable JSON-serializable AD explainability artifact."""
+        return {
+            "evidence_class": self.evidence_class,
+            "n_steps": int(self.n_steps),
+            "strategy": self.strategy,
+            "selected_memory_gb": float(self.selected_memory_gb),
+            "selected_memory_field": self.selected_memory_field,
+            "estimate": self.estimate.to_dict(),
+            "components": [component.to_dict() for component in self.components],
+            "dominant_component": self.dominant_component,
+            "recommendations": list(self.recommendations),
+        }
+
+    def to_json(self, **kwargs: object) -> str:
+        """Serialize the explanation for AD-memory diagnostics."""
+        options = {"indent": 2, "sort_keys": True}
+        options.update(kwargs)
+        options["allow_nan"] = False
+        return json.dumps(self.to_dict(), **options)
+
+
 class ADMemoryPlan(NamedTuple):
     """Checkpoint planning result for reverse-mode AD memory.
 
@@ -924,6 +999,8 @@ __all__ = [
     "MATERIAL_LIBRARY",
     "AD_MemoryEstimate",
     "ADMemoryPlan",
+    "ADMemoryComponent",
+    "ADMemoryExplainabilityReport",
     "MeshIntelligenceReport",
     "Result",
     "ForwardResult",

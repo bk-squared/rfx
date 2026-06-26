@@ -17,12 +17,13 @@ The memory-reduction goal in `rfx` is to keep JAX-native FDTD workflows small en
 
 ## Memory evidence levels
 
-Current `estimate_ad_memory(...)` and `plan_ad_memory(...)` artifacts are not certificates and are not a universal guaranteed peak predictor. They are planning evidence for sizing reverse-mode AD runs and choosing supported checkpoint knobs.
+Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory(...)` artifacts are not certificates and are not a universal guaranteed peak predictor. They are planning evidence for sizing reverse-mode AD runs, choosing supported checkpoint knobs, and explaining static memory drivers.
 
 | Evidence class | Produced by current APIs | Meaning |
 |---|---:|---|
 | `static_estimate` | yes | Formula/static metadata estimate for planning. It may include shape, dtype, NTFF, active-step, and design-mask metadata, but it is not a compiled-executable peak-memory proof. |
 | `calibrated_conservative_plan` | yes | Budget-fitting helper result built from static estimates plus safety margins. It can say whether a conservative plan fits the configured budget target, not whether runtime peak memory is guaranteed. |
+| `static_ad_explainability` | yes | Decomposition of the selected static AD estimate into field state, material/CPML state, reverse-mode saved state, and monitor state so users can see why a run is large. It is diagnostic planning evidence, not profiling. |
 | `observed_profile` | no | A future or external measured run artifact for calibration/regression. It records one environment/run and must not be reused as proof for changed scope. |
 | `bounded_certificate` | no | A separately approved future artifact only if compiler/runtime metadata can support a fail-closed certificate for one exact compiled executable, environment, input/static args/shapes, precision, and checkpoint configuration. |
 
@@ -61,7 +62,28 @@ plan_json = plan.to_json()
 report_json = report.to_json()
 ```
 
-Use the report to check:
+For a more actionable memory diagnostic, generate an explainability artifact next
+to the plan:
+
+```python
+explain = sim.explain_ad_memory(
+    n_steps=10_000,
+    checkpoint_every=plan.checkpoint_every if plan.segmented_fits else None,
+    checkpoint_segments=plan.checkpoint_segments if plan.segmented_fits else None,
+    available_memory_gb=24.0,
+)
+
+print(explain.dominant_component)
+print(explain.recommendations)
+explain_json = explain.to_json()
+```
+
+`explain_ad_memory(...)` reports the selected memory field (`ad_full_gb` or
+`ad_segmented_gb`), the active AD strategy, and a component breakdown. Use it to
+decide whether the dominant cost is full field tape, segmented boundary state,
+CPML/material state, or NTFF monitor state.
+
+Use the mesh intelligence report to check:
 
 - `cell_savings_factor`: comparison against a uniform-fine grid at the smallest configured cell size,
 - `preflight_issues`: geometry, resolution, and feature-support warnings to resolve before trusting results,
@@ -117,9 +139,10 @@ For a validated memory-reduction result, keep these artifacts together:
 
 1. `mesh_intelligence_report(...).to_json()`,
 2. `plan_ad_memory(...).to_json()` when reverse-mode AD memory is part of the claim,
-3. the exact run command and version/commit,
-4. the physics validation artifact for the claimed observable,
-5. any unsupported-feature decisions or validation errors,
-6. gradient evidence if the result depends on `jax.grad`.
+3. `explain_ad_memory(...).to_json()` when deciding why AD memory is large,
+4. the exact run command and version/commit,
+5. the physics validation artifact for the claimed observable,
+6. any unsupported-feature decisions or validation errors,
+7. gradient evidence if the result depends on `jax.grad`.
 
 This keeps the memory story separate from the physics claim: saving cells or AD tape is useful only when the RF observable and gradient path remain inside their validated support boundary.

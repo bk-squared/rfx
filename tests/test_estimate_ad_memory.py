@@ -26,7 +26,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from rfx import ADMemoryPlan, AD_MemoryEstimate, MeshIntelligenceReport, Simulation
+from rfx import (
+    ADMemoryComponent,
+    ADMemoryExplainabilityReport,
+    ADMemoryPlan,
+    AD_MemoryEstimate,
+    MeshIntelligenceReport,
+    Simulation,
+)
 from rfx.api import AD_MEMORY_FIT_SAFETY_FACTOR
 
 _FORBIDDEN_CURRENT_EVIDENCE_FIELDS = {
@@ -108,21 +115,29 @@ def _design_mask(sim: Simulation, *, fraction: float = 0.25) -> np.ndarray:
 def test_public_imports_and_json_roundtrip():
     from rfx import ADMemoryPlan as TopPlan
     from rfx import AD_MemoryEstimate as TopEstimate
+    from rfx import ADMemoryComponent as TopComponent
+    from rfx import ADMemoryExplainabilityReport as TopExplanation
     from rfx import Simulation as TopSimulation
     from rfx.api import ADMemoryPlan as ApiPlan
     from rfx.api import AD_MemoryEstimate as ApiEstimate
+    from rfx.api import ADMemoryComponent as ApiComponent
+    from rfx.api import ADMemoryExplainabilityReport as ApiExplanation
     from rfx.api import Simulation as ApiSimulation
 
     assert TopEstimate is ApiEstimate is AD_MemoryEstimate
     assert TopPlan is ApiPlan is ADMemoryPlan
+    assert TopComponent is ApiComponent is ADMemoryComponent
+    assert TopExplanation is ApiExplanation is ADMemoryExplainabilityReport
     assert TopSimulation is ApiSimulation is Simulation
 
     sim = _uniform_sim()
     estimate = sim.estimate_ad_memory(n_steps=120, checkpoint_segments=10)
     plan = sim.plan_ad_memory(n_steps=120, available_memory_gb=100.0)
+    explanation = sim.explain_ad_memory(n_steps=120, checkpoint_segments=10)
 
     assert json.loads(estimate.to_json()) == estimate.to_dict()
     assert json.loads(plan.to_json()) == plan.to_dict()
+    assert json.loads(explanation.to_json()) == explanation.to_dict()
     assert estimate.to_dict()["checkpoint_segments"] == 10
     estimate_keys = {
         "evidence_class",
@@ -155,9 +170,23 @@ def test_public_imports_and_json_roundtrip():
         "segmented_fits",
         "recommendation",
     }
+    explanation_keys = {
+        "evidence_class",
+        "n_steps",
+        "strategy",
+        "selected_memory_gb",
+        "selected_memory_field",
+        "estimate",
+        "components",
+        "dominant_component",
+        "recommendations",
+    }
     assert plan.to_dict()["evidence_class"] == "calibrated_conservative_plan"
     assert set(estimate.to_dict()) == estimate_keys
     assert set(plan.to_dict()) == plan_keys
+    assert set(explanation.to_dict()) == explanation_keys
+    assert explanation.to_dict()["estimate"]["evidence_class"] == "static_estimate"
+    assert explanation.to_dict()["evidence_class"] == "static_ad_explainability"
     assert set(plan.to_dict()["selected_estimate"]) == estimate_keys
     assert plan.to_dict()["selected_estimate"]["evidence_class"] == "static_estimate"
     _assert_no_forbidden_current_fields(estimate.to_dict())
@@ -165,6 +194,8 @@ def test_public_imports_and_json_roundtrip():
     _assert_no_forbidden_current_fields(plan.to_dict()["selected_estimate"])
     assert "evidence_class" not in AD_MemoryEstimate._fields
     assert "evidence_class" not in ADMemoryPlan._fields
+    assert "evidence_class" not in ADMemoryComponent._fields
+    assert "evidence_class" not in ADMemoryExplainabilityReport._fields
     with pytest.raises(ValueError):
         estimate._replace(evidence_class="observed_profile")
     with pytest.raises(ValueError):
@@ -175,6 +206,11 @@ def test_current_memory_artifacts_keep_evidence_classes_separate():
     sim = _patch_like_sim()
     estimate = sim.estimate_ad_memory(n_steps=10_000, checkpoint_every=500)
     plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=1.0)
+    explanation = sim.explain_ad_memory(
+        n_steps=10_000,
+        checkpoint_every=500,
+        available_memory_gb=1.0,
+    )
     report = sim.mesh_intelligence_report(
         n_steps=10_000,
         checkpoint_every=plan.checkpoint_every,
@@ -184,21 +220,124 @@ def test_current_memory_artifacts_keep_evidence_classes_separate():
     estimate_artifact = estimate.to_dict()
     plan_artifact = plan.to_dict()
     report_artifact = report.to_dict()
+    explanation_artifact = explanation.to_dict()
 
     assert estimate_artifact["evidence_class"] == "static_estimate"
     assert plan_artifact["evidence_class"] == "calibrated_conservative_plan"
     assert plan_artifact["selected_estimate"]["evidence_class"] == "static_estimate"
     assert report_artifact["ad_memory"]["evidence_class"] == "static_estimate"
+    assert explanation_artifact["evidence_class"] == "static_ad_explainability"
+    assert explanation_artifact["estimate"]["evidence_class"] == "static_estimate"
 
     _assert_no_forbidden_current_fields(estimate_artifact)
     _assert_no_forbidden_current_fields(plan_artifact)
     _assert_no_forbidden_current_fields(plan_artifact["selected_estimate"])
     _assert_no_forbidden_current_fields(report_artifact["ad_memory"])
+    _assert_no_forbidden_current_fields(explanation_artifact["estimate"])
+
+
+def test_explain_ad_memory_decomposes_selected_estimate():
+    sim = _patch_like_sim()
+
+    explanation = sim.explain_ad_memory(n_steps=10_000, checkpoint_every=500)
+    artifact = explanation.to_dict()
+    components = {component["name"]: component for component in artifact["components"]}
+
+    assert explanation.strategy == "segmented_checkpoint_every"
+    assert explanation.selected_memory_field == "ad_segmented_gb"
+    assert explanation.selected_memory_gb == explanation.estimate.ad_segmented_gb
+    assert explanation.dominant_component == "segmented_boundary_field_tape"
+    assert {
+        "field_state",
+        "material_auxiliary_state",
+        "cpml_auxiliary_state",
+        "segmented_boundary_field_tape",
+        "ntff_dft_state",
+    } == set(components)
+    assert components["segmented_boundary_field_tape"]["kind"] == "reverse_ad_saved_state"
+    assert components["segmented_boundary_field_tape"]["count"] == (
+        2 * explanation.estimate.ad_segmented_active_segments
+    )
+    assert components["segmented_boundary_field_tape"]["memory_gb"] > components["field_state"]["memory_gb"]
+    assert sum(
+        component["memory_gb"] for component in artifact["components"]
+    ) == pytest.approx(explanation.selected_memory_gb)
+    assert json.loads(explanation.to_json()) == artifact
+
+def test_explain_ad_memory_covers_ntff_and_segmented_warmup_paths():
+    baseline = _uniform_sim().explain_ad_memory(n_steps=120, checkpoint_segments=10)
+    sim = _uniform_sim()
+    sim.add_ntff_box(
+        (1e-3, 1e-3, 1e-3),
+        (9e-3, 9e-3, 4e-3),
+        n_freqs=3,
+    )
+
+    segmented = sim.explain_ad_memory(
+        n_steps=120,
+        checkpoint_segments=10,
+        n_warmup=61,
+    )
+    chunked = sim.explain_ad_memory(
+        n_steps=120,
+        checkpoint_every=12,
+        n_warmup=61,
+    )
+
+    for explanation, strategy in (
+        (segmented, "segmented_checkpoint_segments"),
+        (chunked, "segmented_checkpoint_every"),
+    ):
+        artifact = explanation.to_dict()
+        components = {component["name"]: component for component in artifact["components"]}
+
+        assert explanation.strategy == strategy
+        assert explanation.selected_memory_field == "ad_segmented_gb"
+        assert explanation.estimate.ntff_dft_gb > baseline.estimate.ntff_dft_gb
+        assert explanation.estimate.ad_segmented_active_segments == 5
+        assert components["ntff_dft_state"]["memory_gb"] == pytest.approx(
+            explanation.estimate.ntff_dft_gb
+        )
+        assert components["segmented_boundary_field_tape"]["count"] == (
+            2 * explanation.estimate.ad_segmented_active_segments
+        )
+        assert sum(
+            component["memory_gb"] for component in artifact["components"]
+        ) == pytest.approx(explanation.selected_memory_gb)
+
+
+def test_explain_ad_memory_records_warmup_mask_and_full_tape():
+    sim = _uniform_sim()
+    design_mask = _design_mask(sim, fraction=0.5)
+
+    explanation = sim.explain_ad_memory(
+        n_steps=120,
+        n_warmup=20,
+        design_mask=design_mask,
+    )
+    artifact = explanation.to_dict()
+    components = {component["name"]: component for component in artifact["components"]}
+
+    assert explanation.strategy == "full_reverse_ad_static_tape"
+    assert explanation.selected_memory_field == "ad_full_gb"
+    assert components["full_reverse_field_tape"]["count"] == 100
+    assert explanation.estimate.ad_active_design_fraction == pytest.approx(
+        np.count_nonzero(design_mask) / design_mask.size
+    )
+    assert any("design_mask" in rec for rec in explanation.recommendations)
+    assert sum(
+        component["memory_gb"] for component in artifact["components"]
+    ) == pytest.approx(explanation.selected_memory_gb)
 
 
 def test_current_memory_recommendations_do_not_claim_guarantees():
     sim = _patch_like_sim()
     plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=1.0)
+    explanation = sim.explain_ad_memory(
+        n_steps=10_000,
+        checkpoint_every=plan.checkpoint_every,
+        available_memory_gb=1.0,
+    )
     report = sim.mesh_intelligence_report(
         n_steps=10_000,
         checkpoint_every=plan.checkpoint_every,
@@ -209,6 +348,7 @@ def test_current_memory_recommendations_do_not_claim_guarantees():
         plan.recommendation,
         report.recommendation,
         sim.estimate_ad_memory(n_steps=10_000, available_memory_gb=1e-6).warning,
+        *explanation.recommendations,
     ]
     for text in texts:
         assert text is not None
@@ -220,8 +360,10 @@ def test_memory_reduction_docs_separate_planning_from_certificate_evidence():
     doc = Path("docs/public/guide/memory-reduction.mdx").read_text()
     assert "`static_estimate`" in doc
     assert "`calibrated_conservative_plan`" in doc
+    assert "`static_ad_explainability`" in doc
+    assert "explain_ad_memory(...)" in doc
     assert "`bounded_certificate`" in doc
-    assert "Current `estimate_ad_memory(...)` and `plan_ad_memory(...)` artifacts are not certificates" in doc
+    assert "Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory(...)` artifacts are not certificates" in doc
     assert "not a universal guaranteed peak predictor" in doc
 
 

@@ -58,6 +58,8 @@ from rfx.api._spec import (  # noqa: E402
     MATERIAL_LIBRARY,
     AD_MemoryEstimate,
     ADMemoryPlan,
+    ADMemoryComponent,
+    ADMemoryExplainabilityReport,
     MeshIntelligenceReport,
     Result,
     ForwardResult,
@@ -1960,6 +1962,52 @@ class Simulation(
     # ---- build helpers ----
 
     # ---- AD memory estimation (issue #30 CHECK 4) ----
+    def _ad_memory_static_accounting(self) -> dict[str, int]:
+        """Return shared static byte accounting for AD memory artifacts."""
+        dx = self._dx or (C0 / self._freq_max / 20.0)
+
+        def _nx(extent: float, prof) -> int:
+            if prof is not None:
+                return len(prof) + 1 + 2 * self._cpml_layers
+            return int(math.ceil(extent / dx)) + 1 + 2 * self._cpml_layers
+
+        nx = _nx(self._domain[0], self._dx_profile)
+        ny = _nx(self._domain[1], self._dy_profile)
+        nz = _nx(self._domain[2], self._dz_profile)
+        cells = int(nx * ny * nz)
+
+        # Forward working set: 6 field + ~6 material + ~4 CPML psi (~15%)
+        bytes_per_cell = 4  # float32
+        field_bytes = cells * 6 * bytes_per_cell
+        material_bytes = cells * 6 * bytes_per_cell
+        cpml_bytes = (
+            int(cells * 0.15 * 24 * bytes_per_cell)
+            if self._cpml_layers > 0
+            else 0
+        )
+        forward_bytes = field_bytes + material_bytes + cpml_bytes
+
+        # NTFF DFT state: 6 faces × n_freqs × face cells × (3 E + 3 H) × complex64.
+        ntff_bytes = 0
+        if self._ntff is not None:
+            _, _, freqs = self._ntff
+            n_freqs = int(len(freqs)) if freqs is not None else 10
+            face_est = 2 * ((nx * ny) + (ny * nz) + (nx * nz))
+            ntff_bytes = face_est * n_freqs * 6 * 8
+
+        return {
+            "nx": nx,
+            "ny": ny,
+            "nz": nz,
+            "cells": cells,
+            "bytes_per_cell": bytes_per_cell,
+            "field_bytes": field_bytes,
+            "material_bytes": material_bytes,
+            "cpml_bytes": cpml_bytes,
+            "forward_bytes": forward_bytes,
+            "ntff_bytes": ntff_bytes,
+        }
+
 
     def estimate_ad_memory(
         self,
@@ -2039,33 +2087,13 @@ class Simulation(
                     f"checkpoint_segments={checkpoint_segments_i} does not divide "
                     f"n_steps={n_steps_i}"
                 )
-        dx = self._dx or (C0 / self._freq_max / 20.0)
-
-        def _nx(extent: float, prof) -> int:
-            if prof is not None:
-                return len(prof) + 1 + 2 * self._cpml_layers
-            return int(math.ceil(extent / dx)) + 1 + 2 * self._cpml_layers
-
-        nx = _nx(self._domain[0], self._dx_profile)
-        ny = _nx(self._domain[1], self._dy_profile)
-        nz = _nx(self._domain[2], self._dz_profile)
-        cells = nx * ny * nz
-
-        # Forward working set: 6 field + ~6 material + ~4 CPML psi (~15%)
-        bytes_per_cell = 4  # float32
-        field_bytes = cells * 6 * bytes_per_cell
-        mat_bytes = cells * 6 * bytes_per_cell
-        cpml_bytes = int(cells * 0.15 * 24 * bytes_per_cell) if self._cpml_layers > 0 else 0
-        forward_bytes = field_bytes + mat_bytes + cpml_bytes
-
-        # NTFF DFT state: 6 faces × n_freqs × face_cells × 4 (3 E + 3 H) × complex64 (8B)
-        ntff_bytes = 0
-        if self._ntff is not None:
-            _, _, freqs = self._ntff
-            n_freqs = int(len(freqs)) if freqs is not None else 10
-            # Approx face cells from domain extents / dx
-            face_est = 2 * ((nx * ny) + (ny * nz) + (nx * nz))
-            ntff_bytes = face_est * n_freqs * 6 * 8
+        accounting = self._ad_memory_static_accounting()
+        nx = accounting["nx"]
+        ny = accounting["ny"]
+        nz = accounting["nz"]
+        field_bytes = accounting["field_bytes"]
+        forward_bytes = accounting["forward_bytes"]
+        ntff_bytes = accounting["ntff_bytes"]
 
         # Legacy "checkpointed" estimate: remat-recomputes internals of
         # step_fn. NOT valid for the NU path after issue #31 because the
@@ -2169,6 +2197,194 @@ class Simulation(
             ad_active_steps=active_steps,
             ad_active_design_fraction=active_design_fraction,
             ad_segmented_active_segments=segmented_active_segments,
+        )
+
+    def explain_ad_memory(
+        self,
+        n_steps: int,
+        *,
+        available_memory_gb: float | None = None,
+        checkpoint_every: int | None = None,
+        checkpoint_segments: int | None = None,
+        n_warmup: int = 0,
+        design_mask: jnp.ndarray | np.ndarray | None = None,
+    ) -> ADMemoryExplainabilityReport:
+        """Explain the static reverse-mode AD memory estimate.
+
+        This method uses the same conservative accounting as
+        :meth:`estimate_ad_memory`, then decomposes the selected AD memory
+        number into named contributors. It is meant to answer "what is making
+        this AD run large?" without claiming profiler evidence or a runtime
+        peak bound.
+        """
+        n_steps_i = _require_integral_param("n_steps", n_steps)
+        estimate = self.estimate_ad_memory(
+            n_steps_i,
+            available_memory_gb=available_memory_gb,
+            checkpoint_every=checkpoint_every,
+            checkpoint_segments=checkpoint_segments,
+            n_warmup=n_warmup,
+            design_mask=design_mask,
+        )
+
+        accounting = self._ad_memory_static_accounting()
+        field_bytes = accounting["field_bytes"]
+        material_bytes = accounting["material_bytes"]
+        cpml_bytes = accounting["cpml_bytes"]
+        ntff_bytes = accounting["ntff_bytes"]
+        cells = accounting["cells"]
+        bytes_per_cell = accounting["bytes_per_cell"]
+
+        active_steps = estimate.ad_active_steps if estimate.ad_active_steps is not None else n_steps_i
+        if estimate.ad_segmented_gb is not None:
+            selected_field = "ad_segmented_gb"
+            selected_gb = float(estimate.ad_segmented_gb)
+            strategy = (
+                "segmented_checkpoint_segments"
+                if estimate.checkpoint_segments is not None
+                else "segmented_checkpoint_every"
+            )
+            active_segments = (
+                estimate.ad_segmented_active_segments
+                if estimate.ad_segmented_active_segments is not None
+                else 0
+            )
+            tape_count = int(2 * active_segments)
+            tape_bytes = tape_count * field_bytes
+            tape_name = "segmented_boundary_field_tape"
+            tape_explanation = (
+                "Segmented reverse-mode AD stores field carry and cotangent "
+                "state at active segment boundaries instead of every active "
+                "time step."
+            )
+            tape_unit = "carry-or-cotangent-field-state"
+        else:
+            selected_field = "ad_full_gb"
+            selected_gb = float(estimate.ad_full_gb)
+            strategy = "full_reverse_ad_static_tape"
+            tape_count = int(active_steps)
+            tape_bytes = tape_count * field_bytes
+            tape_name = "full_reverse_field_tape"
+            tape_explanation = (
+                "Full reverse-mode AD stores a field tape entry for each "
+                "active post-warmup time step."
+            )
+            tape_unit = "active-time-step-field-state"
+
+        def _share(memory_bytes: int) -> float:
+            if selected_gb <= 0.0:
+                return 0.0
+            return float(memory_bytes / 1e9 / selected_gb)
+
+        def _component(
+            name: str,
+            memory_bytes: int,
+            kind: str,
+            *,
+            unit: str | None,
+            count: int | None,
+            bytes_per_unit: int | None,
+            explanation: str,
+        ) -> ADMemoryComponent:
+            return ADMemoryComponent(
+                name=name,
+                kind=kind,
+                memory_gb=memory_bytes / 1e9,
+                share_of_selected=_share(memory_bytes),
+                unit=unit,
+                count=count,
+                bytes_per_unit_gb=(
+                    None if bytes_per_unit is None else bytes_per_unit / 1e9
+                ),
+                explanation=explanation,
+            )
+
+        components = (
+            _component(
+                "field_state",
+                field_bytes,
+                "forward_working_set",
+                unit="field-array",
+                count=6,
+                bytes_per_unit=cells * bytes_per_cell,
+                explanation="Six E/H field arrays carried by the forward solve.",
+            ),
+            _component(
+                "material_auxiliary_state",
+                material_bytes,
+                "forward_working_set",
+                unit="material-array",
+                count=6,
+                bytes_per_unit=cells * bytes_per_cell,
+                explanation=(
+                    "Static material/ADE auxiliary allocation used by the "
+                    "planner's forward working-set model."
+                ),
+            ),
+            _component(
+                "cpml_auxiliary_state",
+                cpml_bytes,
+                "forward_working_set",
+                unit="cpml-overhead",
+                count=None,
+                bytes_per_unit=None,
+                explanation=(
+                    "CPML auxiliary state estimate; zero when the simulation "
+                    "does not use CPML layers."
+                ),
+            ),
+            _component(
+                tape_name,
+                tape_bytes,
+                "reverse_ad_saved_state",
+                unit=tape_unit,
+                count=tape_count,
+                bytes_per_unit=field_bytes,
+                explanation=tape_explanation,
+            ),
+            _component(
+                "ntff_dft_state",
+                ntff_bytes,
+                "monitor_state",
+                unit="ntff-dft-state",
+                count=None,
+                bytes_per_unit=None,
+                explanation=(
+                    "Near-to-far-field DFT monitor state retained in forward "
+                    "and AD planning estimates."
+                ),
+            ),
+        )
+
+        dominant = max(components, key=lambda component: component.memory_gb)
+        recommendations: list[str] = [
+            f"Dominant AD memory contributor is {dominant.name}.",
+            "Treat ad_checkpointed_gb as a legacy heuristic; use the selected memory field in this report for planning.",
+        ]
+        if estimate.ad_segmented_gb is None:
+            recommendations.append(
+                "Use plan_ad_memory() to choose a supported segmented checkpoint knob when full reverse-mode AD is too large."
+            )
+        else:
+            recommendations.append(
+                f"Selected strategy stores {tape_count} {tape_unit} unit(s) instead of {active_steps} active time-step tape entries."
+            )
+        if estimate.ad_active_design_fraction is not None and estimate.ad_active_design_fraction < 1.0:
+            recommendations.append(
+                "design_mask is recorded as active-design metadata only; it does not reduce the selected memory estimate."
+            )
+        if estimate.warning:
+            recommendations.append(estimate.warning)
+
+        return ADMemoryExplainabilityReport(
+            n_steps=n_steps_i,
+            strategy=strategy,
+            selected_memory_gb=selected_gb,
+            selected_memory_field=selected_field,
+            estimate=estimate,
+            components=components,
+            dominant_component=dominant.name,
+            recommendations=tuple(recommendations),
         )
 
     def plan_ad_memory(
@@ -2663,6 +2879,8 @@ __all__ = [
     "MATERIAL_LIBRARY",
     "AD_MemoryEstimate",
     "ADMemoryPlan",
+    "ADMemoryComponent",
+    "ADMemoryExplainabilityReport",
     "MeshIntelligenceReport",
     "Result",
     "ForwardResult",
