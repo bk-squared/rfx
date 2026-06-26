@@ -191,22 +191,47 @@ def make_field():
 
 def make_field_anim():
     """Animate the TE10 packet travelling +x down the guide (E_z on the
-    broad-wall mid-plane). The launcher footprint is cropped out of frame and the
-    colour scale is fixed across frames, so only the propagating mode moves.
+    broad-wall mid-plane). Only the FORWARD-TRANSIT window is shown — from when a
+    wavefront has formed and left the launch cell to when its leading edge first
+    reaches the far wall (one clean transit). This deliberately stops before the
+    long post-transit ring-down: a waveguide is dispersive near cutoff, so a
+    broadband launch eventually smears into a faint guide-filling wash, and an
+    evenly-sampled clip would spend most of its frames on that decaying tail
+    rather than on the propagating mode. The launcher footprint is cropped out of
+    frame and the colour scale is fixed across frames, so only the travelling
+    TE10 mode moves; frames are strided so the carrier visibly advances (rather
+    than aliasing into an apparent crawl).
     """
     import matplotlib.animation as manim
     interior, src_i, down_lo, nx = _run_te10_frames()
     x_show = min(src_i + 8, nx - 2)
     cropped = interior[:, x_show:, :]                          # (n, ncrop, ny)
+    n, ncrop, ny = cropped.shape
+
+    # Forward-transit window, read from the field itself (reproducible): start
+    # once a wavefront has formed and moved off the launch cell, end when its
+    # leading edge first reaches the far wall. This drops the dispersive ring-down
+    # that otherwise dominates the clip.
     e = np.sum(cropped ** 2, axis=(1, 2))
-    keep = np.where(e > 0.10 * e.max())[0]   # full transit through the guide
-    idx = np.arange(int(keep.min()), int(keep.max()) + 1)
-    if len(idx) > 48:
-        idx = idx[np.linspace(0, len(idx) - 1, 48).round().astype(int)]
+    ex = np.sum(cropped ** 2, axis=2)                          # energy per x-column
+    gpc = float(ex.max()) or 1.0
+    lead = np.array([(np.where(ex[i] > 0.05 * gpc)[0].max()
+                      if (ex[i] > 0.05 * gpc).any() else 0) for i in range(n)])
+    entered = e > 0.04 * e.max()
+    cand = np.where(entered & (lead >= 0.08 * ncrop))[0]
+    start = int(cand.min()) if len(cand) else 0
+    reached = np.where(lead >= 0.93 * ncrop)[0]
+    reached = reached[reached > start]
+    end = int(reached.min()) if len(reached) else int(np.argmax(e))
+    # stride keeps the apparent carrier motion smooth (<~0.3 guide-period/frame)
+    # while capping the clip length
+    stride = max(2, min(3, int(np.ceil((end - start + 1) / 84))))
+    idx = np.arange(start, end + 1, stride)
+
     sel = np.stack([_despeckle(_despeckle(np.asarray(cropped[i], np.float32), 5), 5)
                     for i in idx])                             # (nf, ncrop, ny)
     # robust colour scale: the concentrated entry spike saturates, the travelling
-    # lobes stay well-coloured as the packet disperses across the guide
+    # lobes stay well-coloured as the wavefront advances down the guide
     vmax = float(np.percentile(np.abs(sel), 99.0)) or 1.0
     x_mm = (np.arange(sel.shape[1]) + x_show) * DX * 1e3
     y_mm = np.arange(sel.shape[2]) * DX * 1e3
@@ -227,9 +252,27 @@ def make_field_anim():
 
     anim = manim.FuncAnimation(fig, _upd, frames=len(sel), blit=False)
     out = os.path.join(ASSETS, "field_anim.gif")
-    anim.save(out, writer=manim.PillowWriter(fps=12), dpi=90)
+    anim.save(out, writer=manim.PillowWriter(fps=15), dpi=84)
     plt.close(fig)
-    print("wrote", out, f"({len(sel)} frames, vmax={vmax:.3e})")
+    # Shrink the palette so the longer clip stays web-light without flicker: one
+    # shared 128-colour palette (the colour scale is fixed, so a global palette is
+    # stable frame-to-frame) + frame-diff optimisation.
+    try:
+        from PIL import Image, ImageSequence
+        g = Image.open(out)
+        dur = g.info.get("duration", 67)
+        rgb = [f.convert("RGB") for f in ImageSequence.Iterator(g)]
+        w, h = rgb[0].size
+        stack = Image.fromarray(np.concatenate(
+            [np.asarray(f.resize((w // 3, h // 3))) for f in rgb], axis=0))
+        pal = stack.quantize(colors=128, method=Image.MEDIANCUT)
+        q = [f.quantize(palette=pal, dither=Image.NONE) for f in rgb]
+        q[0].save(out, save_all=True, append_images=q[1:], loop=0,
+                  duration=dur, optimize=True, disposal=2)
+    except Exception as exc:                                   # pragma: no cover
+        print("  (gif palette optimise skipped:", exc, ")")
+    print("wrote", out, f"({len(sel)} frames, stride {stride}, "
+          f"sim[{start},{end}], vmax={vmax:.3e})")
 
 
 # ===========================================================================
