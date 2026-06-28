@@ -96,9 +96,73 @@ def _shift_bwd(arr, axis):
     return padded[tuple(slices)]
 
 
-@partial(jax.jit, static_argnums=(4,))
+# --- (2,4) fourth-order-in-space staggered stencil (Fang 1996 / standard) ---
+# A 4th-order option for the smooth-bulk lever (analytic gate-1: ~2.52x fewer
+# cells/wavelength than (2,2) for the same dispersion error; gate-2 spike:
+# this advantage is a SMOOTH-PROPAGATION property and does NOT extend to PEC /
+# geometric features, which staircase at 2nd order regardless — see
+# docs/research_notes/20260627_memory_efficiency_techniques_exploration.md).
+# The two coefficients on the near (1/2-cell) and far (3/2-cell) staggered
+# differences. At a non-periodic boundary the wider stencil reaches outside the
+# domain, so the first/last TWO gaps revert to 2nd order (the 2-cell PEC/edge
+# ribbon — a 1-cell ribbon leaves the i=N-2 fwd / i=1 bwd gap malformed).
+_C4_NEAR = 9.0 / 8.0
+_C4_FAR = -1.0 / 24.0
+
+
+def _ribbon_2nd(d4, d2, axis):
+    """Revert the first TWO and last TWO slices along ``axis`` to the 2nd-order
+    difference. The (2,4) far term f[i+2]-f[i-1] (fwd) / f[i+1]-f[i-2] (bwd)
+    reaches outside the domain for any gap within 2 cells of a non-periodic face;
+    those zero-padded far terms form a malformed stencil, so revert them. Width-2
+    covers every boundary-affected gap for BOTH directions (over-reverts at most
+    one interior-valid cell — negligible in the large domains 4th order targets;
+    for tiny axes it safely degenerates to all-2nd-order)."""
+    lead = [slice(None)] * d4.ndim
+    lead[axis] = slice(0, 2)
+    trail = [slice(None)] * d4.ndim
+    trail[axis] = slice(-2, None)
+    d4 = d4.at[tuple(lead)].set(d2[tuple(lead)])
+    d4 = d4.at[tuple(trail)].set(d2[tuple(trail)])
+    return d4
+
+
+def _diff_fwd_o(arr, axis, periodic, order):
+    """Forward staggered first difference (f[i+1]-f[i] family), at i+1/2; the
+    caller divides by dx. order=2 is byte-identical to ``_shift_fwd(arr)-arr``."""
+    if order == 2:
+        nxt = jnp.roll(arr, -1, axis) if periodic[axis] else _shift_fwd(arr, axis)
+        return nxt - arr
+    # order == 4:  c1*(f[i+1]-f[i]) + c2*(f[i+2]-f[i-1])
+    if periodic[axis]:
+        near = jnp.roll(arr, -1, axis) - arr
+        far = jnp.roll(arr, -2, axis) - jnp.roll(arr, 1, axis)
+        return _C4_NEAR * near + _C4_FAR * far
+    near = _shift_fwd(arr, axis) - arr
+    far = _shift_fwd(_shift_fwd(arr, axis), axis) - _shift_bwd(arr, axis)
+    return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
+
+
+def _diff_bwd_o(arr, axis, periodic, order):
+    """Backward staggered first difference (f[i]-f[i-1] family), at i-1/2; the
+    caller divides by dx. order=2 is byte-identical to ``arr-_shift_bwd(arr)``."""
+    if order == 2:
+        prv = jnp.roll(arr, 1, axis) if periodic[axis] else _shift_bwd(arr, axis)
+        return arr - prv
+    # order == 4:  c1*(f[i]-f[i-1]) + c2*(f[i+1]-f[i-2])
+    if periodic[axis]:
+        near = arr - jnp.roll(arr, 1, axis)
+        far = jnp.roll(arr, -1, axis) - jnp.roll(arr, 2, axis)
+        return _C4_NEAR * near + _C4_FAR * far
+    near = arr - _shift_bwd(arr, axis)
+    far = _shift_fwd(arr, axis) - _shift_bwd(_shift_bwd(arr, axis), axis)
+    return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
+
+
+@partial(jax.jit, static_argnums=(4, 5))
 def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
-             periodic: tuple = (False, False, False)) -> FDTDState:
+             periodic: tuple = (False, False, False),
+             stencil_order: int = 2) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
@@ -107,11 +171,12 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     For non-uniform z grids, use ``update_h_nu`` / ``update_e_nu`` instead.
 
     periodic: tuple of 3 bools selecting periodic boundary per axis (x, y, z).
+    stencil_order: 2 (default, byte-identical) or 4 (Fang (2,4) wide stencil,
+        reverting to 2nd order in the 1-cell ribbon at non-periodic faces).
     """
-    def fwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, -1, axis)
-        return _shift_fwd(arr, axis)
+    so = stencil_order
+    if so not in (2, 4):
+        raise ValueError(f"stencil_order must be 2 or 4, got {so}")
 
     # Upcast to float32 for arithmetic when using reduced-precision fields
     _fdtype = state.ex.dtype
@@ -120,21 +185,21 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ez = state.ez.astype(jnp.float32)
     mu = materials.mu_r * MU_0
 
-    # curl E components via forward differences (zero-padded, no wraparound)
+    # curl E components via forward staggered differences (order=2 byte-identical)
     # dEz/dy - dEy/dz
     curl_x = (
-        (fwd(ez, 1) - ez) / dx
-        - (fwd(ey, 2) - ey) / dx
+        _diff_fwd_o(ez, 1, periodic, so) / dx
+        - _diff_fwd_o(ey, 2, periodic, so) / dx
     )
     # dEx/dz - dEz/dx
     curl_y = (
-        (fwd(ex, 2) - ex) / dx
-        - (fwd(ez, 0) - ez) / dx
+        _diff_fwd_o(ex, 2, periodic, so) / dx
+        - _diff_fwd_o(ez, 0, periodic, so) / dx
     )
     # dEy/dx - dEx/dy
     curl_z = (
-        (fwd(ey, 0) - ey) / dx
-        - (fwd(ex, 1) - ex) / dx
+        _diff_fwd_o(ey, 0, periodic, so) / dx
+        - _diff_fwd_o(ex, 1, periodic, so) / dx
     )
 
     hx = (state.hx.astype(jnp.float32) - (dt / mu) * curl_x).astype(_fdtype)
@@ -144,9 +209,10 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-@partial(jax.jit, static_argnums=(4,))
+@partial(jax.jit, static_argnums=(4, 5))
 def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
-             periodic: tuple = (False, False, False)) -> FDTDState:
+             periodic: tuple = (False, False, False),
+             stencil_order: int = 2) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -156,11 +222,12 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     Cb = (dt/ε) / (1 + σ*dt/(2ε))
 
     periodic: tuple of 3 bools selecting periodic boundary per axis (x, y, z).
+    stencil_order: 2 (default, byte-identical) or 4 (Fang (2,4) wide stencil,
+        reverting to 2nd order in the 1-cell ribbon at non-periodic faces).
     """
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
+    so = stencil_order
+    if so not in (2, 4):
+        raise ValueError(f"stencil_order must be 2 or 4, got {so}")
 
     # Upcast to float32 for arithmetic when using reduced-precision fields
     _fdtype = state.ex.dtype
@@ -175,21 +242,21 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
     cb = (dt / eps) / (1.0 + sigma_dt_2eps)
 
-    # curl H components via backward differences (zero-padded, no wraparound)
+    # curl H components via backward staggered differences (order=2 byte-identical)
     # dHz/dy - dHy/dz
     curl_x = (
-        (hz - bwd(hz, 1)) / dx
-        - (hy - bwd(hy, 2)) / dx
+        _diff_bwd_o(hz, 1, periodic, so) / dx
+        - _diff_bwd_o(hy, 2, periodic, so) / dx
     )
     # dHx/dz - dHz/dx
     curl_y = (
-        (hx - bwd(hx, 2)) / dx
-        - (hz - bwd(hz, 0)) / dx
+        _diff_bwd_o(hx, 2, periodic, so) / dx
+        - _diff_bwd_o(hz, 0, periodic, so) / dx
     )
     # dHy/dx - dHx/dy
     curl_z = (
-        (hy - bwd(hy, 0)) / dx
-        - (hx - bwd(hx, 1)) / dx
+        _diff_bwd_o(hy, 0, periodic, so) / dx
+        - _diff_bwd_o(hx, 1, periodic, so) / dx
     )
 
     ex = (ca * state.ex.astype(jnp.float32) + cb * curl_x).astype(_fdtype)
