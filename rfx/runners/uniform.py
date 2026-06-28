@@ -550,6 +550,7 @@ def run_uniform(
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
             mag_sources=mag_sources or None,
+            stencil_order=sim._stencil_order,
         )
     else:
         sim_result = _run(
@@ -578,12 +579,28 @@ def run_uniform(
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
             mag_sources=mag_sources or None,
+            stencil_order=sim._stencil_order,
         )
 
     # S-parameters: use JIT-integrated DFT for wire ports (fast),
     # fall back to Python loop for lumped ports
     if compute_s_params is None:
         compute_s_params = len(lumped_ports) > 0 or len(wire_ports) > 0
+
+    # (2,4) stencil fence: the lumped/wire S-parameter extractors below run a
+    # SEPARATE eager FDTD pass (extract_s_matrix_wire /
+    # compute_lumped_wire_s_matrix_via_scan) that does not thread
+    # stencil_order — under order=4 they would silently produce a 2nd-order
+    # S-matrix while the main field evolution is 4th order. Reject loudly
+    # rather than return a mixed-order result.
+    if compute_s_params and sim._stencil_order == 4 and (lumped_ports or wire_ports):
+        raise NotImplementedError(
+            "run(compute_s_params=True) is not supported with "
+            "stencil_order=4: the lumped/wire S-parameter extractor runs a "
+            "separate 2nd-order FDTD pass that does not honour the (2,4) "
+            "stencil. Use stencil_order=2 for S-parameter runs, or compute "
+            "the main field at order=4 with compute_s_params=False."
+        )
 
     s_params = None
     freqs_out = None

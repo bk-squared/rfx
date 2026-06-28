@@ -24,6 +24,15 @@ from rfx.core.yee import (
 from rfx.boundaries.pec import apply_pec, apply_pec_faces, apply_pec_occupancy
 
 
+# CFL derating for the (2,4) fourth-order-in-space stencil.  The wider
+# staggered difference raises the maximum spatial wavenumber the scheme
+# resolves, so the explicit-leapfrog stability bound tightens: the (2,4)
+# stable timestep is ~0.857x the (2,2) Courant limit (the 1D bound is
+# 6/7 ≈ 0.857; see the kernel header in rfx/core/yee.py).  Applied only
+# when stencil_order == 4; order=2 keeps grid.dt unchanged (byte-identical).
+_ORDER4_CFL_FACTOR = 0.857
+
+
 # ---------------------------------------------------------------------------
 # Source / probe specifications
 # ---------------------------------------------------------------------------
@@ -287,6 +296,7 @@ def _update_e_with_optional_dispersion(
     periodic: tuple = (False, False, False),
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
+    stencil_order: int = 2,
 ) -> tuple[FDTDState, object | None, object | None]:
     """Update E with standard, Debye, Lorentz, or mixed dispersion.
 
@@ -300,6 +310,12 @@ def _update_e_with_optional_dispersion(
         diagonal. When set, takes precedence over ``aniso_eps`` and
         dispatches to ``update_e_aniso_inv``. Numerically stable in the
         PEC limit (inv = 0); see derivation §5.
+    stencil_order : int
+        2 (default, byte-identical) or 4 ((2,4) wide stencil). Only the
+        plain vacuum/dielectric branch honours order=4 — the dispersion
+        (debye/lorentz) and anisotropic (aniso_eps/aniso_inv_eps) branches
+        are fenced against order=4 upstream in ``_build_step_setup`` and
+        keep their 2nd-order kernels regardless.
     """
     if debye is None and lorentz is None:
         if aniso_inv_eps is not None:
@@ -310,7 +326,8 @@ def _update_e_with_optional_dispersion(
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
                                   dt, dx, periodic=periodic), None, None
-        return update_e(state, materials, dt, dx, periodic=periodic), None, None
+        return update_e(state, materials, dt, dx, periodic=periodic,
+                        stencil_order=stencil_order), None, None
 
     if debye is not None and lorentz is None:
         from rfx.materials.debye import update_e_debye
@@ -549,6 +566,7 @@ def _build_step_setup(
     kerr_chi3: "object | None",
     field_dtype: object,
     mag_sources: list,
+    stencil_order: int = 2,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -616,6 +634,44 @@ def _build_step_setup(
     use_lumped_rlc = len(lumped_rlc) > 0
     use_kerr = kerr_chi3 is not None
     use_mag_sources = len(mag_sources) > 0
+
+    # ---- (2,4) fourth-order-in-space stencil (PR-1b) ----
+    # order=2 is the default and BYTE-IDENTICAL: dt and every kernel call are
+    # untouched.  order=4 is reachable ONLY on the plain uniform-Cartesian
+    # vacuum/dielectric path (pec/periodic boundary, default solver, no
+    # dispersion / anisotropy / conformal-PEC / Kerr).  Any other sub-feature
+    # under order=4 raises here — a silent 2nd-order result on an unsupported
+    # path is a CRITICAL correctness failure.
+    if stencil_order not in (2, 4):
+        raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
+    if stencil_order == 4:
+        _unsupported = []
+        if use_cpml:
+            _unsupported.append("boundary='cpml'")
+        if use_upml:
+            _unsupported.append("boundary='upml'")
+        if use_debye:
+            _unsupported.append("debye dispersion")
+        if use_lorentz:
+            _unsupported.append("lorentz dispersion")
+        if aniso_eps is not None:
+            _unsupported.append("aniso_eps (subpixel/anisotropic eps)")
+        if aniso_inv_eps is not None:
+            _unsupported.append("aniso_inv_eps (Kottke inverse-eps tensor)")
+        if use_conformal:
+            _unsupported.append("conformal PEC")
+        if use_kerr:
+            _unsupported.append("Kerr nonlinearity")
+        if _unsupported:
+            raise NotImplementedError(
+                "stencil_order=4 is only supported on the plain uniform "
+                "Cartesian vacuum/dielectric path (pec/periodic boundary, "
+                "default solver, no dispersion/anisotropy/conformal/Kerr). "
+                "Unsupported feature(s) present: " + ", ".join(_unsupported)
+                + ". Use stencil_order=2 (the default) for these."
+            )
+        # Derate the timestep for the (2,4) stability bound.
+        dt = dt * _ORDER4_CFL_FACTOR
 
     # Lazily-imported helper callables (imported now so they can be passed
     # into _StepContext and survive JIT reuse across calls).
@@ -771,6 +827,7 @@ def _build_step_setup(
         dx=dx,
         periodic=periodic,
         pec_axes=pec_axes,
+        stencil_order=stencil_order,
         use_upml=use_upml,
         use_cpml=use_cpml,
         use_tfsf=use_tfsf,
@@ -896,6 +953,9 @@ class _StepContext:
     dx: Any
     periodic: tuple
     pec_axes: str
+    # (2,4) fourth-order-in-space stencil order: 2 (default, byte-identical)
+    # or 4. Threaded into the H / E kernel calls in core_step.
+    stencil_order: int
 
     # ---- subsystem flags ----
     use_fast_he: bool
@@ -1010,7 +1070,8 @@ def make_core_step(ctx: _StepContext):
             if ctx.use_upml:
                 st = ctx.apply_upml_h(st, ctx.upml_coeffs, periodic=periodic)
             else:
-                st = update_h(st, materials, dt, dx, periodic=periodic)
+                st = update_h(st, materials, dt, dx, periodic=periodic,
+                              stencil_order=ctx.stencil_order)
             if ctx.use_tfsf:
                 st = ctx.apply_tfsf_h(st, ctx.tfsf_cfg, carry["tfsf"], dx, dt)
             if ctx.use_waveguide_ports:
@@ -1091,6 +1152,7 @@ def make_core_step(ctx: _StepContext):
                     periodic=periodic,
                     aniso_eps=aniso_eps,
                     aniso_inv_eps=aniso_inv_eps,
+                    stencil_order=ctx.stencil_order,
                 )
 
             # Kerr nonlinear ADE correction (after linear E-update)
@@ -1406,6 +1468,7 @@ def run(
     field_dtype=None,
     return_state: bool = True,
     mag_sources: list | None = None,
+    stencil_order: int = 2,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -1490,6 +1553,7 @@ def run(
         kerr_chi3=kerr_chi3,
         field_dtype=field_dtype,
         mag_sources=mag_sources,
+        stencil_order=stencil_order,
     )
     carry_init = _setup.carry_init
     dt = _setup.dt
@@ -1537,7 +1601,10 @@ def run(
     # kernel launches — always beneficial.  On CPU, XLA fuses scatter
     # ops efficiently so the extra coefficient arrays hurt at small-to-
     # medium grids; enable only when explicitly requested via GPU backend.
-    use_fast_he = _fast_eligible and _on_gpu
+    # The GPU fast path has an INLINE 2nd-order stencil (update_he_fast),
+    # so it must never be used for stencil_order=4 — that would silently
+    # produce a 2nd-order result. Gate it on order==2.
+    use_fast_he = _fast_eligible and _on_gpu and stencil_order == 2
     _fast_coeffs = (
         precompute_coeffs(materials, dt, dx, pec_axes=_setup.pec_axes)
         if use_fast_he else None
@@ -1778,6 +1845,7 @@ def run_until_decay(
     return_state: bool = True,
     mag_sources: list | None = None,
     checkpoint_segments: int | None = None,
+    stencil_order: int = 2,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -1913,6 +1981,7 @@ def run_until_decay(
         kerr_chi3=kerr_chi3,
         field_dtype=field_dtype,
         mag_sources=mag_sources,
+        stencil_order=stencil_order,
     )
     carry = _setup.carry_init
     dx = _setup.dx

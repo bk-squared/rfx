@@ -151,6 +151,17 @@ class Simulation(
     adi_cfl_factor : float
         Timestep multiplier relative to the standard 2D CFL limit when
         ``solver="adi"``.
+    stencil_order : int
+        Spatial finite-difference order for the explicit Yee update: ``2``
+        (default, the standard (2,2) scheme — BYTE-IDENTICAL to prior
+        releases) or ``4`` (the (2,4) fourth-order-in-space stencil). Order
+        4 is supported ONLY on the plain uniform Cartesian vacuum/dielectric
+        path: boundary ``pec``/``periodic`` (NOT cpml/upml), default ``yee``
+        solver (NOT adi), uniform mesh (no dz/dx/dy profile), no dispersive
+        materials, no anisotropic/subpixel eps, no conformal PEC, no Kerr,
+        not distributed. Any unsupported combination with
+        ``stencil_order=4`` raises ``NotImplementedError``. Order 4 derates
+        the timestep by ~0.857x for stability (the (2,4) CFL bound).
     """
 
     def __init__(
@@ -170,6 +181,7 @@ class Simulation(
         precision: str = "float32",
         solver: str = "yee",
         adi_cfl_factor: float = 5.0,
+        stencil_order: int = 2,
     ):
         from rfx.boundaries.spec import normalize_boundary
 
@@ -201,6 +213,8 @@ class Simulation(
             raise ValueError(f"solver must be 'yee' or 'adi', got {solver!r}")
         if adi_cfl_factor <= 0:
             raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
+        if stencil_order not in (2, 4):
+            raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
         # Synthesize domain extents from axis profiles before validation.
         # dx_profile / dy_profile set x / y; dz_profile sets z.
         # Tracer-valued profiles require the caller to supply a concrete
@@ -314,6 +328,11 @@ class Simulation(
         self._precision = precision
         self._solver = solver
         self._adi_cfl_factor = adi_cfl_factor
+        # (2,4) fourth-order-in-space stencil (PR-1b). 2 = default,
+        # byte-identical. 4 is reachable ONLY on the plain uniform Cartesian
+        # vacuum/dielectric path; the comprehensive API fence
+        # (_check_stencil_order_supported) rejects every unsupported runner.
+        self._stencil_order = stencil_order
 
         if self._solver == "adi":
             if self._mode not in ("2d_tmz", "3d"):
