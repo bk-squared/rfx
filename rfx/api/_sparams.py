@@ -218,8 +218,20 @@ class _SparamMixin:
             auto-computed ``n_steps`` (the runner rejects non-divisors —
             choose the nearest divisor of √n_steps; padding is rejected
             because it would shift the V/I DFT windows).  Default
-            ``None`` is byte-identical to the pre-checkpoint scan; NU
-            mesh raises ``NotImplementedError``.
+            ``None`` is byte-identical to the pre-checkpoint scan.
+
+            On a NON-uniform mesh (``dx_profile`` / ``dy_profile``,
+            issue #73) ``checkpoint_segments=K`` is now supported: ``K`` is
+            translated to the NU runner's ``checkpoint_every`` chunk size — the
+            divisor of ``n_steps`` nearest to ``n_steps/K`` — and applied to the
+            *device* run only (the vacuum reference is constant in the design
+            variable). The chunk MUST divide ``n_steps`` (same as the uniform
+            path): a non-divisor chunk would let the NU runner's zero-padding add
+            spurious ring-down steps to the carry-accumulated flux DFT and shift
+            the S-matrix. With an exact divisor the result is forward-IDENTICAL
+            and the ≈O(√n_steps) tape reduction is realised under ``jax.grad``
+            with ``normalize='flux'`` + an ``eps_override`` / ``sigma_override``
+            design variable.
         """
         if not normalize:
             import warnings
@@ -262,13 +274,9 @@ class _SparamMixin:
         # is met (``normalize=True``, single-mode ports); otherwise
         # raise so the user is not given silently-wrong numbers.
         if self._dx_profile is not None or self._dy_profile is not None:
-            if checkpoint_segments is not None:
-                raise NotImplementedError(
-                    "compute_waveguide_s_matrix(checkpoint_segments=...) is "
-                    "currently wired only on the uniform single-device path "
-                    "(issue #73 / PR #125). Drop checkpoint_segments or run "
-                    "on a uniform mesh (no dx_profile / dy_profile). NU "
-                    "support is tracked as a follow-up."
+            if checkpoint_segments is not None and checkpoint_segments < 1:
+                raise ValueError(
+                    f"checkpoint_segments must be >= 1, got {checkpoint_segments}"
                 )
             unsupported = []
             if normalize is not True and normalize != "flux":
@@ -309,6 +317,7 @@ class _SparamMixin:
                 normalize=normalize,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
+                checkpoint_segments=checkpoint_segments,
             )
             return _finalize_sparam_result(
                 _res_nu,
@@ -1905,6 +1914,7 @@ class _SparamMixin:
         normalize: bool,
         eps_override=None,
         sigma_override=None,
+        checkpoint_segments: int | None = None,
     ) -> WaveguideSMatrixResult:
         """Non-uniform-mesh two-run S-matrix extraction.
 
@@ -2062,11 +2072,31 @@ class _SparamMixin:
                 # are used unchanged (device fields identical); the np->jnp
                 # flux extraction below matches the prior np path to
                 # rtol<=1e-5 (float reassociation only, per uniform PR #172).
+                # issue #73: translate the uniform `checkpoint_segments` (K
+                # segments) → the NU runner's `checkpoint_every` (chunk size).
+                # The chunk MUST exactly divide n_steps (pad=0): the NU runner
+                # zero-pads non-divisor chunks and those extra ring-down steps
+                # would corrupt the carry-accumulated flux DFT (the time_series
+                # is truncated to n_steps but the flux accumulator is NOT), so a
+                # non-divisor chunk is NOT forward-identical for the flux
+                # S-matrix — same divisor rule as the uniform V/I-DFT path. Pick
+                # the divisor of n_steps nearest to n_steps/K. Checkpoint ONLY the
+                # *device* run — the vacuum reference is constant in the design
+                # variable so it carries no AD tape. The √N tape win is realised
+                # under jax.grad (normalize='flux' + eps_override); plain forward
+                # is identical.
+                from rfx.simulation import _nearest_divisor
+                _ckpt_every = None
+                if checkpoint_segments is not None and checkpoint_segments > 1:
+                    _ck = _nearest_divisor(n_steps, max(1, n_steps // int(checkpoint_segments)))
+                    if 0 < _ck < n_steps:
+                        _ckpt_every = _ck
                 dev_result = run_nonuniform_path(
                     self, n_steps=n_steps,
                     eps_override=eps_override,
                     sigma_override=sigma_override,
                     attach_waveguide_flux=_flux_mode,
+                    checkpoint_every=_ckpt_every,
                 )
                 # Reference run stays vacuum (incident-power reference) and is
                 # independent of the design variable. ``strip_interior_pec``
