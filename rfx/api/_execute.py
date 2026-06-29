@@ -89,6 +89,56 @@ class _ExecuteMixin:
     ``Simulation`` instance (resolved via MRO).
     """
 
+    # ---- (2,4) stencil comprehensive API fence (PR-1b) ----
+
+    def _check_stencil_order_supported(self, *, distributed: bool = False) -> None:
+        """Reject ``stencil_order=4`` on any unsupported execution lane.
+
+        order=4 is implemented ONLY in the plain uniform-Cartesian core_step
+        kernel (``rfx.simulation.update_e``/``update_h``). The nonuniform,
+        distributed, distributed-NU, and ADI lanes are SEPARATE runners that
+        do not flow through that kernel; CPML/UPML boundaries pull the E/H
+        update onto the absorber path. None of those honour ``stencil_order``,
+        so a 4th-order request there would silently fall back to 2nd order —
+        a CRITICAL correctness failure. This single guard, called at the top
+        of every run/forward entry BEFORE any dispatch, guarantees order=4
+        can never reach an unsupported runner even if a per-path fence is
+        missed. order=2 (the default) is unaffected.
+        """
+        if getattr(self, "_stencil_order", 2) != 4:
+            return
+        unsupported = []
+        is_nonuniform = (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        )
+        if is_nonuniform:
+            unsupported.append("non-uniform mesh (dx/dy/dz profile)")
+        if self._solver == "adi":
+            unsupported.append("solver='adi'")
+        if self._refinement is not None:
+            unsupported.append("subgridding (refinement)")
+        if distributed:
+            unsupported.append("distributed execution")
+        # Absorbing boundary on ANY face (legacy scalar OR per-face spec).
+        _absorber = None
+        _spec = getattr(self, "_boundary_spec", None)
+        if _spec is not None:
+            _absorber = _spec.absorber_type  # @property → 'cpml'/'upml'/None
+        if _absorber in ("cpml", "upml") or self._boundary in ("cpml", "upml"):
+            unsupported.append(
+                f"boundary='{_absorber or self._boundary}'"
+            )
+        if unsupported:
+            raise NotImplementedError(
+                "stencil_order=4 is only supported on the plain uniform "
+                "Cartesian vacuum/dielectric path (uniform mesh, default "
+                "'yee' solver, pec/periodic boundary, single device). "
+                "Unsupported configuration: " + ", ".join(unsupported)
+                + ". Use stencil_order=2 (the default) for these lanes."
+            )
+
     # ---- subgridded run ----
 
     def _run_subgridded(
@@ -123,6 +173,8 @@ class _ExecuteMixin:
                         subpixel_smoothing: bool | str = False,
                         checkpoint: bool = False):
         """Run simulation on non-uniform grid with graded dz."""
+        # Defense-in-depth: the NU runner does not honour stencil_order.
+        self._check_stencil_order_supported()
         if subpixel_smoothing == "kottke_pec":
             raise NotImplementedError(
                 "subpixel_smoothing='kottke_pec' (Stage 2 unified PEC) "
@@ -901,6 +953,7 @@ class _ExecuteMixin:
             wire_port_sparams=wire_port_sparam_specs or None,
             dft_planes=dft_planes if dft_planes else None,
             return_state=False,
+            stencil_order=self._stencil_order,
         )
 
         # Multi-drive S-matrix hook (item-5 Stage 1): return the raw all-port
@@ -1034,6 +1087,8 @@ class _ExecuteMixin:
         wrapped in ``jax.checkpoint`` so reverse-mode AD memory scales
         with ``sqrt(n_steps)`` instead of ``n_steps``.
         """
+        # Defense-in-depth: the NU runner does not honour stencil_order.
+        self._check_stencil_order_supported()
         from rfx.runners.nonuniform import run_nonuniform_path
 
         result = run_nonuniform_path(
@@ -1094,6 +1149,9 @@ class _ExecuteMixin:
 
         See :meth:`forward` for the public-facing kwarg semantics.
         """
+        # Defense-in-depth: the distributed-NU runner does not honour
+        # stencil_order (both distributed and non-uniform are unsupported).
+        self._check_stencil_order_supported(distributed=True)
         if self._flux_monitors:
             raise NotImplementedError(
                 "add_flux_monitor() is not supported on the distributed "
@@ -1849,6 +1907,9 @@ class _ExecuteMixin:
 
         self._auto_preflight(skip=skip_preflight, context="forward")
 
+        # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
+        self._check_stencil_order_supported(distributed=distributed)
+
         # ---- W6.3 unified lane dispatch: one place decides + rejects ----
         plan = self._dispatch_plan(
             mode="forward",
@@ -2070,6 +2131,10 @@ class _ExecuteMixin:
         # forward(port_s11_freqs=...)/optimize). Avoids hard-failing run() on
         # an NTFF-box-crosses-PEC config that completed before this change.
         self._auto_preflight(skip=skip_preflight, context="run", check_ntff=False)
+
+        # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
+        _distributed_run = devices is not None and len(devices) > 1
+        self._check_stencil_order_supported(distributed=_distributed_run)
 
         # ---- W6.3 unified lane dispatch: one place decides + rejects ----
         # _dispatch_plan computes the is_nonuniform/_nu_profile boolean, runs
