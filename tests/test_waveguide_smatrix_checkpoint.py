@@ -4,7 +4,7 @@ Validates the checkpoint_segments plumbing added in issue #131:
   - Forward equivalence: S(checkpoint=None) == S(K) bit-identically.
   - Gradient equivalence: grad wrt eps_override with None vs K, rel < 1e-5.
   - Non-divisor checkpoint_segments raises ValueError.
-  - NU mesh + checkpoint_segments raises NotImplementedError before any run.
+  - NU mesh + checkpoint_segments is now SUPPORTED (issue #73; was a fence).
 
 Grid: tiny WR-90-like 2-port (~57×15×8 cells), num_periods=4 → n_steps≈70,
 K=7 (divides 70). CPU-only, float32.  Kept fast (each test ≪ 30 s).
