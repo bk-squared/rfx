@@ -221,11 +221,14 @@ def test_nondivisor_checkpoint_raises_value_error():
 
 
 # ---------------------------------------------------------------------------
-# 4. NU mesh + checkpoint_segments raises NotImplementedError before running
+# 4. NU mesh + checkpoint_segments is now SUPPORTED (issue #73; was a fence)
 # ---------------------------------------------------------------------------
 
-def test_nu_mesh_checkpoint_raises_not_implemented():
-    """checkpoint_segments on a NU mesh raises NotImplementedError immediately."""
+@pytest.mark.slow
+def test_nu_mesh_checkpoint_now_supported():
+    """issue #73: checkpoint_segments on a NU mesh now RUNS (previously raised
+    NotImplementedError). Forward-identity + AD-gradient gates live in
+    tests/test_waveguide_nu_checkpoint.py."""
     from rfx import Simulation
     from rfx.boundaries.spec import BoundarySpec, Boundary
 
@@ -256,11 +259,12 @@ def test_nu_mesh_checkpoint_raises_not_implemented():
         freqs=_FREQS, f0=6e9, bandwidth=0.5, name="right",
     )
 
-    with pytest.raises(NotImplementedError, match="checkpoint_segments"):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            sim.compute_waveguide_s_matrix(
-                num_periods=4.0,
-                normalize=True,   # NU path requires normalize=True or flux
-                checkpoint_segments=7,
-            )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = sim.compute_waveguide_s_matrix(
+            num_periods=4.0,
+            normalize=True,   # NU path requires normalize=True or 'flux'
+            checkpoint_segments=7,
+        )
+    s = np.asarray(res.s_params)
+    assert s.shape[0] == s.shape[1] and np.all(np.isfinite(s))
