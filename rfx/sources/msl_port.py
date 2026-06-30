@@ -75,7 +75,19 @@ def _axis_cell_size(grid, axis: str, idx: int) -> float:
     """Return the cell size at index ``idx`` along ``axis``.
 
     Supports both uniform Grid and NonUniformGrid via duck typing.
+
+    On a ``NonUniformGrid`` the per-cell sizes live in ``dx_arr``/``dy_arr``/
+    ``dz`` (the NamedTuple has NO ``*_profile`` attribute), so the duck-typed
+    ``getattr(grid, "dx_profile")`` path below would fall through to the scalar
+    BOUNDARY ``grid.dx`` for every cell — the wrong-cell bug. Read the real
+    per-cell array first. On a uniform ``Grid`` (not a ``NonUniformGrid``) this
+    branch is skipped and the legacy behaviour is byte-identical.
     """
+    from rfx.nonuniform import NonUniformGrid
+    if isinstance(grid, NonUniformGrid):
+        per_cell = np.asarray({"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis])
+        clamped = max(0, min(int(idx), int(per_cell.shape[0]) - 1))
+        return float(per_cell[clamped])
     profile_attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
     profile = getattr(grid, profile_attr, None)
     if profile is not None:
@@ -95,8 +107,8 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     ``i`` is the feed-plane x index. ``j`` ranges over the y-cells from
     ``port.y_lo`` to ``port.y_hi`` (inclusive); ``k`` likewise over z.
     """
-    i_feed, j_lo, k_lo = grid.position_to_index((port.feed_x, port.y_lo, port.z_lo))
-    _, j_hi, k_hi = grid.position_to_index((port.feed_x, port.y_hi, port.z_hi))
+    i_feed, j_lo, k_lo = _msl_position_to_index(grid, (port.feed_x, port.y_lo, port.z_lo))
+    _, j_hi, k_hi = _msl_position_to_index(grid, (port.feed_x, port.y_hi, port.z_hi))
     j_a, j_b = (j_lo, j_hi) if j_lo <= j_hi else (j_hi, j_lo)
     k_a, k_b = (k_lo, k_hi) if k_lo <= k_hi else (k_hi, k_lo)
     cells = []

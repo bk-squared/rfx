@@ -203,6 +203,79 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     )
 
 
+def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
+                        n_steps, pec_mask):
+    """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
+
+    Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
+    but with two NU-specific differences:
+      * the eigenmode J+M launch is FENCED — ``run_nonuniform`` carries no
+        magnetic-source channel, so the Schelkunoff H-source would have
+        nowhere to go; and
+      * the substrate ``eps_r`` is read from ``materials_concrete`` so the
+        value stays concrete under ``jax.grad`` (the same concreteness split
+        ``make_current_source`` uses on this path).
+
+    The Ez point-sources are appended to ``sources`` (they ride the generic
+    NU point-source scan injection). The per-probe DFT planes are registered
+    separately by ``compute_msl_s_matrix`` via ``add_dft_plane_probe`` and
+    flow through the existing NU ``dft_plane_probes`` accumulation. Returns
+    the (possibly σ-updated) ``materials`` and ``pec_mask``.
+    """
+    from rfx.sources.msl_port import (
+        MSLPort,
+        _msl_yz_cells,
+        compute_msl_mode_profile,
+        make_msl_port_sources,
+        setup_msl_port,
+    )
+    for pe in sim._msl_ports:
+        x_feed, y_centre, z_lo = pe.position
+        mp = MSLPort(
+            feed_x=float(x_feed),
+            y_lo=float(y_centre - pe.width / 2),
+            y_hi=float(y_centre + pe.width / 2),
+            z_lo=float(z_lo),
+            z_hi=float(z_lo + pe.height),
+            direction=pe.direction,
+            impedance=pe.impedance,
+            excitation=pe.waveform,
+        )
+        port_mode = getattr(pe, "mode", "laplace")
+        if port_mode == "eigenmode":
+            raise NotImplementedError(
+                "NU MSL S-params support mode='laplace'/'uniform' (Ez feed) "
+                "only: the eigenmode J+M launch needs the magnetic-source "
+                "channel, which run_nonuniform does not carry. Use "
+                "mode='laplace' (the add_msl_port default) on the "
+                "non-uniform lane."
+            )
+        # laplace / uniform: build the static-Laplace Ez mode profile from the
+        # substrate eps_r read concretely under the trace centre.
+        cells = _msl_yz_cells(grid, mp)
+        j_set = sorted({c[1] for c in cells})
+        k_set = sorted({c[2] for c in cells})
+        j_centre = (j_set[0] + j_set[-1]) // 2
+        k_mid = (k_set[0] + k_set[-1]) // 2
+        i_feed = cells[0][0]
+        if pe.eps_r_sub is not None:
+            eps_r_sub = float(pe.eps_r_sub)
+        else:
+            eps_r_sub = float(np.asarray(
+                materials_concrete.eps_r[i_feed, j_centre, k_mid]))
+        mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
+
+        materials = setup_msl_port(grid, mp, materials, mode_profile=mode_profile)
+        if pe.excite and pe.waveform is not None:
+            sources.extend(make_msl_port_sources(
+                grid, mp, materials_concrete, n_steps, mode_profile=mode_profile,
+            ))
+        if pec_mask is not None:
+            for cell in _msl_yz_cells(grid, mp):
+                pec_mask = pec_mask.at[cell[0], cell[1], cell[2]].set(False)
+    return materials, pec_mask
+
+
 def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None,
                         eps_override=None, sigma_override=None,
                         pec_mask_override=None, pec_occupancy_override=None,
@@ -590,6 +663,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     sim, pe, grid, wg_freqs, n_steps,
                 )
             )
+
+    # MSL ports — full cross-section distributed Ez feed (NU lane). Sources
+    # ride the generic point-source `sources` list; per-probe DFT planes are
+    # registered by compute_msl_s_matrix via add_dft_plane_probe.
+    if getattr(sim, "_msl_ports", None):
+        materials, pec_mask = _setup_msl_ports_nu(
+            sim, grid, materials, materials_concrete, sources, n_steps, pec_mask,
+        )
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
     # probe plane (issue #88 flux-extractor path). Built from the same

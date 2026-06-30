@@ -175,7 +175,7 @@ def test_preflight_sparameters_rejects_unknown_calculator():
         sim.preflight_sparameters(calculator="not-a-calculator")
 
 
-def test_compute_msl_s_matrix_rejects_nonuniform_profiles():
+def _nu_msl_sim(mode: str = "laplace") -> "Simulation":
     sim = Simulation(
         freq_max=10e9,
         domain=(0.02, 0.006, 0.002),
@@ -188,7 +188,53 @@ def test_compute_msl_s_matrix_rejects_nonuniform_profiles():
         width=0.5e-3,
         height=0.5e-3,
         direction="+x",
+        mode=mode,
     )
+    return sim
 
-    with pytest.raises(NotImplementedError, match="uniform Yee lane only"):
+
+def test_compute_msl_s_matrix_nu_laplace_not_fenced():
+    """The NU MSL lane is OPEN for the Ez static-Laplace feed (PR feat/msl-nu-runner
+    lifted the blanket fence). A laplace port must get PAST the fence — here the
+    minimal geometry has no PEC trace, so it proceeds into the extractor and fails
+    with the trace-PEC RuntimeError, NOT the old 'uniform Yee lane only'
+    NotImplementedError (which would mean the fence still blocks it)."""
+    sim = _nu_msl_sim(mode="laplace")
+    with pytest.raises(RuntimeError, match="no PEC trace conductor"):
         sim.compute_msl_s_matrix(n_steps=1)
+
+
+def test_compute_msl_s_matrix_nu_eigenmode_still_fenced():
+    """The eigenmode J+M launch stays fenced on the NU lane — run_nonuniform has
+    no magnetic-source channel for the Schelkunoff H-source."""
+    sim = _nu_msl_sim(mode="eigenmode")
+    with pytest.raises(NotImplementedError, match="magnetic-source channel"):
+        sim.compute_msl_s_matrix(n_steps=1)
+
+
+def test_msl_nu_fence_message_parity_sparams_vs_preflight():
+    """Contract-test governance: the eigenmode-fence message must be byte-identical
+    between compute_msl_s_matrix (_sparams) and preflight_sparameters (_preflight),
+    so preflight never green-lights a config the method rejects (or vice versa)."""
+    # _sparams raises; _preflight collects the same error into a PreflightReport.
+    sim_a = _nu_msl_sim(mode="eigenmode")
+    try:
+        sim_a.compute_msl_s_matrix(n_steps=1)
+        msg_sparams = None
+    except NotImplementedError as e:
+        msg_sparams = str(e)
+    assert msg_sparams is not None, "_sparams must fence eigenmode-on-NU"
+
+    sim_b = _nu_msl_sim(mode="eigenmode")
+    report = sim_b.preflight_sparameters(calculator="msl")
+    fence_issues = [str(i) for i in report.issues if "magnetic-source channel" in str(i)]
+    assert len(fence_issues) == 1, (
+        f"_preflight must surface the eigenmode fence exactly once; "
+        f"got {[str(i) for i in report.issues]}"
+    )
+    # The _sparams message must appear VERBATIM in the _preflight issue (the
+    # report prefixes it with 'NotImplementedError: '): no fence-message drift.
+    assert msg_sparams in fence_issues[0], (
+        "fence message drift: _sparams vs _preflight must stay byte-identical.\n"
+        f"  _sparams:        {msg_sparams!r}\n  _preflight issue: {fence_issues[0]!r}"
+    )

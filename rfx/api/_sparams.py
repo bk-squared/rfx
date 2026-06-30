@@ -913,15 +913,21 @@ class _SparamMixin:
                 "coaxial-port S-parameters need a separate validated V/I "
                 "extraction and calibration contract."
             )
-        if (
+        is_nonuniform = (
             self._dz_profile is not None
             or self._dx_profile is not None
             or self._dy_profile is not None
+        )
+        if is_nonuniform and any(
+            getattr(pe, "mode", "laplace") == "eigenmode"
+            for pe in self._msl_ports
         ):
             raise NotImplementedError(
-                "compute_msl_s_matrix() currently supports the uniform Yee "
-                "lane only. Drop dx_profile/dy_profile/dz_profile or use a "
-                "documented diagnostic path."
+                "compute_msl_s_matrix() on a non-uniform mesh supports "
+                "mode='laplace'/'uniform' (Ez static-Laplace feed) only; the "
+                "eigenmode J+M launch needs the magnetic-source channel that "
+                "the non-uniform runner does not carry. Use mode='laplace' "
+                "(the add_msl_port default) on the graded-mesh lane."
             )
         if self._refinement is not None:
             raise NotImplementedError(
@@ -937,7 +943,37 @@ class _SparamMixin:
         entries = list(self._msl_ports)
         n_ports = len(entries)
 
-        grid = self._build_grid()
+        # Build the grid used for probe placement + the eps anchor. On the
+        # non-uniform lane this MUST be the SAME grid run_nonuniform_path
+        # builds (so probe_xs, port cells, dy/dz arrays and the eps anchor
+        # align with the run's field planes). build_nonuniform_grid needs a
+        # concrete dz_profile — synthesise from dx when absent into a LOCAL.
+        # self._dz_profile is mutated only INSIDE the run try/finally below (so
+        # the restore always runs even if probe placement / the trace-PEC scan
+        # raises) — the subsequent self.run() then reads the same dz and builds
+        # a byte-matching grid.
+        _dz_profile_saved = self._dz_profile
+        _dz_for_grid = self._dz_profile
+        if is_nonuniform:
+            from rfx.runners.nonuniform import build_nonuniform_grid
+            if _dz_for_grid is None:
+                _nz_syn = int(round(float(self._domain[2]) / float(self._dx)))
+                _dz_for_grid = np.full(max(_nz_syn, 1), float(self._dx))
+            grid = build_nonuniform_grid(
+                self._freq_max, self._domain, self._dx, self._cpml_layers,
+                _dz_for_grid,
+                dx_profile=self._dx_profile, dy_profile=self._dy_profile,
+                pec_faces=self._boundary_spec.pec_faces()
+                    if self._boundary_spec is not None else None,
+                pmc_faces=self._boundary_spec.pmc_faces()
+                    if self._boundary_spec is not None else None,
+                cpml_axes="".join(
+                    ax for ax in "xyz"
+                    if ax not in (self._periodic_axes or "")
+                ),
+            )
+        else:
+            grid = self._build_grid()
 
         if freqs is None:
             freqs_arr = np.asarray(jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs))
@@ -1020,7 +1056,10 @@ class _SparamMixin:
         # land beta outside the scan window for a loaded substrate.
         from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
         _C0_MSL = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
-        _msl_assembled = self._assemble_materials(grid)
+        _msl_assembled = (
+            self._assemble_materials_nu(grid) if is_nonuniform
+            else self._assemble_materials(grid)
+        )
         _msl_materials = _msl_assembled[0]
         _msl_pec_mask = (
             None if _msl_assembled[3] is None
@@ -1079,6 +1118,11 @@ class _SparamMixin:
         saved_msl = list(self._msl_ports)
         saved_ports = list(self._ports)
         try:
+            # Mutate self._dz_profile to the (possibly synthesised) grid dz only
+            # now — inside the try — so the finally always restores it and the
+            # subsequent self.run() builds a grid matching the one above.
+            if is_nonuniform:
+                self._dz_profile = _dz_for_grid
             _complex_dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
             S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
@@ -1405,6 +1449,7 @@ class _SparamMixin:
             self._dft_planes = saved_dft
             self._msl_ports = saved_msl
             self._ports = saved_ports
+            self._dz_profile = _dz_profile_saved
 
     def compute_coaxial_s_matrix(
         self,
