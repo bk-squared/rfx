@@ -54,6 +54,10 @@ B_WG = 0.01016            # narrow wall
 DX = 0.001
 F_CUTOFF = C0 / (2.0 * A_WG)   # ~6.557 GHz
 
+# Per-case AD/FD gate for the dielectric-fill |S21|^2 sensitivity (h=0.05, 5%);
+# this is the case's own threshold, never the MSL 0.10.
+GATE_THRESHOLD = 0.05
+
 
 def _despeckle(frame, size=3):
     """Replace local spikes (the source-injection footprint shows up as a small
@@ -278,61 +282,26 @@ def make_field_anim():
 # ===========================================================================
 # Figure 2: |S11| / |S21| vs the exact matched empty-guide answer
 # ===========================================================================
-_FLOOR_CACHE = None
+def _committed_s():
+    """Read the committed sparams.json (the single source of truth produced by
+    precompute_gallery_artifacts.py::_build_waveguide_wr90 at the published
+    thick-CPML configuration) and return (f, |S11|, |S21|).
 
-
-def _raw_floor_s():
-    """Run an empty WR-90 guide with normalize=False to expose the REAL
-    measurement floor: |S11| is set by CPML back-reflection (a few percent),
-    not by construction. normalize=True/'flux' divide out the incident wave and
-    return |S11|=0, |S21|=1 exactly, which is the matched-guide reference but
-    not an informative scatter plot. The raw run is the honest validation.
-
-    Memoised so the Result (dB) and Validation (linear-vs-exact) figures share a
-    single FDTD run when both are generated in one invocation.
+    The figure plots THIS data so figure == Touchstone == manifest. The earlier
+    standalone thin-CPML re-sim (normalize=False) reported a different |S11|
+    (~0.09 CPML floor) and is no longer rendered; that floor is disclosed in the
+    page prose, not in this validation figure.
     """
-    global _FLOOR_CACHE
-    if _FLOOR_CACHE is not None:
-        return _FLOOR_CACHE
-    import jax.numpy as jnp
-    from rfx.api import Simulation
-    from rfx.boundaries.spec import Boundary, BoundarySpec
-
-    freqs = np.linspace(8.2e9, 12.4e9, 21)
-    f0 = float(freqs.mean())
-    bandwidth = 0.5
-    domain_x = 0.200
-    sim = Simulation(
-        freq_max=float(freqs[-1]) * 1.1,
-        domain=(domain_x, A_WG, B_WG),
-        boundary=BoundarySpec(
-            x=Boundary(lo="cpml", hi="cpml"),
-            y=Boundary(lo="pec", hi="pec"),
-            z=Boundary(lo="pec", hi="pec"),
-        ),
-        cpml_layers=20,
-        dx=DX,
-    )
-    pf = jnp.asarray(freqs)
-    sim.add_waveguide_port(0.040, direction="+x", mode=(1, 0), mode_type="TE",
-                           freqs=pf, f0=f0, bandwidth=bandwidth,
-                           waveform="modulated_gaussian",
-                           reference_plane=0.050, name="left")
-    sim.add_waveguide_port(domain_x - 0.040, direction="-x", mode=(1, 0),
-                           mode_type="TE", freqs=pf, f0=f0, bandwidth=bandwidth,
-                           waveform="modulated_gaussian",
-                           reference_plane=domain_x - 0.050, name="right")
-    res = sim.compute_waveguide_s_matrix(num_periods=200, normalize=False)
-    pidx = {n: i for i, n in enumerate(res.port_names)}
-    il, ir = pidx["left"], pidx["right"]
-    s = np.asarray(res.s_params)
-    f = np.asarray(res.freqs)
-    _FLOOR_CACHE = (f, np.abs(s[il, il, :]), np.abs(s[ir, il, :]))
-    return _FLOOR_CACHE
+    d = json.load(open(os.path.join(ASSETS, "sparams.json")))
+    f = np.asarray(d["freqs_hz"])
+    s = np.asarray(d["s"])
+    abs_s11 = np.abs(s[0, 0, :, 0] + 1j * s[0, 0, :, 1])
+    abs_s21 = np.abs(s[1, 0, :, 0] + 1j * s[1, 0, :, 1])
+    return f, abs_s11, abs_s21
 
 
 def make_validation():
-    f, abs_s11, abs_s21 = _raw_floor_s()
+    f, abs_s11, abs_s21 = _committed_s()
     f_ghz = f / 1e9
     max_s11 = float(abs_s11.max())
     min_s21 = float(abs_s21.min())
@@ -346,7 +315,7 @@ def make_validation():
     ax.plot(f_ghz, abs_s21, "o", color="#1f7a3a", ms=5, mfc="white", mew=1.3,
             label="|S21|  — rfx FDTD")
     ax.plot(f_ghz, abs_s11, "s", color="#b00000", ms=4.5, mfc="white",
-            mew=1.3, label="|S11|  — rfx FDTD (CPML floor)")
+            mew=1.3, label="|S11|  — rfx FDTD")
     ax.set_xlabel("Frequency  (GHz)")
     ax.set_ylabel("|S|  (linear)")
     ax.set_ylim(-0.03, 1.08)
@@ -354,7 +323,7 @@ def make_validation():
     ax.set_title("Empty WR-90 guide: |S11| / |S21| vs the exact matched answer")
     ax.grid(True, alpha=0.3)
     ax.legend(loc="center right", framealpha=0.9)
-    txt = (f"max |S11| = {max_s11:.3f}   (CPML back-reflection floor)\n"
+    txt = (f"max |S11| = {max_s11:.3f}   (matched-guide reference)\n"
            f"min |S21| = {min_s21:.3f}   (near-lossless transmission)\n"
            f"f_c(TE10) = {F_CUTOFF/1e9:.3f} GHz  (band well above cutoff)")
     ax.text(0.015, 0.10, txt, transform=ax.transAxes, fontsize=8.5,
@@ -367,13 +336,13 @@ def make_validation():
 
 
 def make_result():
-    """Headline |S11|/|S21| in dB across the X-band, from the honest
-    normalize=False run: |S21| sits at ~0 dB (near-lossless) and |S11| at the
-    CPML back-reflection floor (around -20 dB). This is the conventional dB
-    sweep an engineer reads; the validation figure compares the same data,
-    linearly, against the exact matched-guide reference.
+    """Headline |S11|/|S21| in dB across the X-band, from the committed
+    sparams.json (the published thick-CPML S-matrix): |S21| sits at ~0 dB
+    (near-lossless) and |S11| is the matched-guide reference. This is the
+    conventional dB sweep an engineer reads; the validation figure compares the
+    same data, linearly, against the exact matched-guide reference.
     """
-    f, abs_s11, abs_s21 = _raw_floor_s()
+    f, abs_s11, abs_s21 = _committed_s()
     f_ghz = f / 1e9
     s11_db = 20.0 * np.log10(np.clip(abs_s11, 1e-6, None))
     s21_db = 20.0 * np.log10(np.clip(abs_s21, 1e-6, None))
@@ -392,7 +361,7 @@ def make_result():
     ax.legend(loc="center right", framealpha=0.9)
     ax.text(0.015, 0.06,
             f"|S21| >= {s21_db.min():.2f} dB   (near-lossless)\n"
-            f"|S11| <= {s11_db.max():.1f} dB   (CPML back-reflection floor)",
+            f"|S11| <= {s11_db.max():.1f} dB   (matched-guide reference)",
             transform=ax.transAxes, fontsize=8.5, va="bottom", ha="left",
             bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.92))
     out = os.path.join(ASSETS, "sparams.png")
@@ -602,17 +571,27 @@ def make_geometry():
     print("wrote", out)
 
 
-def register_v3_assets(case_id, new_assets):
+def register_v3_assets(case_id, new_assets, *, assets_dir=None):
     """Add/refresh v3 figure entries in a case manifest.json, in place.
 
     new_assets: list of (filename, type) tuples. Existing entries with the same
     filename are refreshed (sha256 + size); the rest of the manifest is left
     untouched. Keeps the committed provenance/validation blocks intact.
+
+    ``assets_dir``: override the case directory (default: ROOT/docs/.../case_id).
+    Writes atomically (temp file + os.replace).
     """
     import hashlib
+    import tempfile
 
-    case_dir = os.path.join(ROOT, "docs", "public", "gallery", "assets", case_id)
+    if assets_dir is not None:
+        case_dir = str(assets_dir)
+    else:
+        case_dir = os.path.join(ROOT, "docs", "public", "gallery", "assets", case_id)
     man_path = os.path.join(case_dir, "manifest.json")
+    if not os.path.exists(man_path):
+        print(f"  skip register_v3_assets ({man_path} not on disk)")
+        return
     with open(man_path) as f:
         man = json.load(f)
     by_name = {a["filename"]: a for a in man.get("assets", [])}
@@ -633,14 +612,103 @@ def register_v3_assets(case_id, new_assets):
         })
         by_name[filename] = entry
     man["assets"] = list(by_name.values())
-    with open(man_path, "w") as f:
-        json.dump(man, f, indent=2, allow_nan=False)
-        f.write("\n")
+    text = json.dumps(man, indent=2, allow_nan=False) + "\n"
+    dir_ = os.path.dirname(man_path)
+    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".manifest_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, man_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     print(f"  updated {man_path} ({len(man['assets'])} assets)")
 
 
+def emit_gradient(ad):
+    """Write gradient.json from a make_autodiff() result dict and mirror it into
+    the case manifest.json (top-level gradient_validation + assets[]).
+    Both writes are atomic (temp file + os.replace). The served_url uses the
+    actual ASSETS directory name so --assets-dir overrides work correctly."""
+    import hashlib
+    import tempfile
+
+    grad = {
+        "param": "dielectric_fill_eps_r",
+        "ad_value": float(ad["g_ad"]),
+        "fd_value": float(ad["g_fd"]),
+        "fd_step_h": 0.05,
+        "rel_err_vs_fd": float(ad["rel"]),
+        "rel_err_vs_analytic": None,
+        "sign_agreement": bool(ad["sign_ok"]),
+        "gate_threshold": GATE_THRESHOLD,
+    }
+    grad_path = os.path.join(ASSETS, "gradient.json")
+    text = json.dumps(grad, indent=2, allow_nan=False) + "\n"
+    dir_ = os.path.dirname(grad_path) or "."
+    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".gradient_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, grad_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    print("wrote", grad_path)
+    man_path = os.path.join(ASSETS, "manifest.json")
+    if os.path.exists(man_path):
+        with open(man_path) as f:
+            man = json.load(f)
+        man["gradient_validation"] = grad
+        sha = hashlib.sha256(open(grad_path, "rb").read()).hexdigest()
+        # Use the actual case id from the ASSETS directory name so
+        # --assets-dir /tmp/... produces a correct served_url.
+        case_id = os.path.basename(os.path.normpath(ASSETS))
+        by_name = {a["filename"]: a for a in man.get("assets", [])}
+        entry = by_name.get("gradient.json", {})
+        entry.update({
+            "filename": "gradient.json",
+            "type": "gradient-json",
+            "served_url": f"/rfx/gallery/assets/{case_id}/gradient.json",
+            "sha256": sha,
+            "size_bytes": os.path.getsize(grad_path),
+        })
+        by_name["gradient.json"] = entry
+        man["assets"] = list(by_name.values())
+        text2 = json.dumps(man, indent=2, allow_nan=False) + "\n"
+        fd2, tmp2 = tempfile.mkstemp(dir=os.path.dirname(man_path),
+                                     prefix=".manifest_", suffix=".tmp")
+        try:
+            with os.fdopen(fd2, "w") as fh:
+                fh.write(text2)
+            os.replace(tmp2, man_path)
+        except Exception:
+            try:
+                os.unlink(tmp2)
+            except OSError:
+                pass
+            raise
+        print(f"  updated {man_path} ({len(man['assets'])} assets)")
+    return grad
+
+
 if __name__ == "__main__":
-    which = sys.argv[1] if len(sys.argv) > 1 else "all"
+    import argparse
+    parser = argparse.ArgumentParser(description="WR-90 waveguide v3 figures")
+    parser.add_argument("which", nargs="?", default="all",
+                        choices=["all", "geometry", "field", "anim", "result",
+                                 "validation", "autodiff", "manifest"])
+    parser.add_argument("--assets-dir", default=ASSETS,
+                        help="Case assets dir (default: committed tree).")
+    args = parser.parse_args()
+    ASSETS = args.assets_dir
+    which = args.which
     if which in ("all", "geometry"):
         make_geometry()
     if which in ("all", "field"):
@@ -652,19 +720,13 @@ if __name__ == "__main__":
     if which in ("all", "validation"):
         make_validation()
     if which in ("all", "autodiff"):
-        make_autodiff()
+        emit_gradient(make_autodiff())
     if which in ("all", "manifest"):
         register_v3_assets("waveguide_wr90", [
             ("geometry.png", "geometry-png"),
             ("field_te10.png", "field-map-png"),
-            ("field_anim.gif", "field-anim-gif"),
-            ("sparams.png", "sparams-png"),
+            ("field_anim.gif", "field-animation-gif"),
+            ("sparams.png", "sparam-plot-png"),
             ("validation.png", "validation-png"),
             ("autodiff.png", "autodiff-png"),
-        ])
-        register_v3_assets("patch_antenna", [
-            ("autodiff.png", "autodiff-png"),
-        ])
-        register_v3_assets("multilayer_fresnel", [
-            ("autodiff.png", "autodiff-png"),
-        ])
+        ], assets_dir=ASSETS)

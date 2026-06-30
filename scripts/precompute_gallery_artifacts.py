@@ -61,7 +61,7 @@ import numpy as np
 
 C0 = 2.998e8
 SERVED_URL_PREFIX = "/rfx/gallery/assets"
-MANIFEST_SCHEMA_VERSION = "rfx-gallery-manifest-v1"
+MANIFEST_SCHEMA_VERSION = "rfx-gallery-manifest-v2"
 DEFAULT_OUT = Path("docs/public/gallery/assets")
 
 
@@ -135,6 +135,13 @@ class GalleryCase:
     builder: Callable[[bool], "CaseResult"]
     n_ports: int = 2
     has_smith: bool = True
+    # --- Gallery-v2 taxonomy (per-case-true, committed in the manifest) ---
+    # application: one of free-space/stratified | antenna | waveguide/port |
+    #              inverse-design.
+    # capability: subset of validated-vs-exact | field-animation |
+    #             autodiff-gradient | touchstone-export | inverse-design.
+    application: str = "free-space/stratified"
+    capability: tuple[str, ...] = ()
     # --- Gallery-v2 visual config ---
     geometry_mode: str = "slice2d"  # "slice2d" (εr cross-section) | "geom3d"
     geometry_slice_axis: int = 2  # axis index for the εr slice (slice2d only)
@@ -184,6 +191,12 @@ class CaseResult:
     r_final: np.ndarray | None = None  # (n_f,) reflection R(f), end of run
     r_reference: np.ndarray | None = None  # (n_f,) analytic-optimum R(f)
     reference_cost: float | None = None  # analytic-optimum scalar cost
+    # Offline snapshot-replay (T4.0): given a strided subset of eps_trace
+    # iterations, replay a snapshot forward and return per-iteration E-field
+    # slices for the co-evolution GIF. None for non-optimization cases. This is
+    # a SEPARATE path from cost_with_aux (the differentiable cost stays
+    # snapshot-free); it reads only the captured design trajectory.
+    coevolution_replay: Callable[[int], dict[str, Any]] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -965,6 +978,68 @@ def _build_ar_coating_design(quick: bool) -> CaseResult:
         sim_vis.add_material(name, eps_r=float(final_eps[i]), sigma=0.0)
         sim_vis.add(Box((lo_m, 0.0, 0.0), (hi_m, ly, lz)), material=name)
 
+    eps_trace_arr = np.asarray(eps_trace)
+
+    def coevolution_replay(stride: int) -> dict[str, Any]:
+        """Offline snapshot-replay over the captured eps_trace (T4.0).
+
+        For a strided subset of Adam iterations, bake that iteration's layer εr
+        into a fresh Simulation (the eps_sub substrate + the three coating
+        layers), run a snapshot forward, and return the per-iteration design εr
+        profile + a 1-D E_z field slice along the propagation axis. This never
+        touches ``cost_with_aux`` (which stays snapshot-free); it consumes only
+        the recorded design trajectory.
+
+        Returns ``{iters, eps_profiles (n_sel, nx), fields (n_sel, nx),
+        x_m (nx,), layer_edges_c, i_sub_lo}``.
+        """
+        from rfx.simulation import SnapshotSpec
+
+        sel = list(range(0, eps_trace_arr.shape[0], max(1, int(stride))))
+        if len(sel) < 2 and eps_trace_arr.shape[0] >= 2:
+            sel = [0, eps_trace_arr.shape[0] - 1]
+        eps_profiles: list[np.ndarray] = []
+        fields: list[np.ndarray] = []
+        for it in sel:
+            layer_eps = eps_trace_arr[it]
+            sim_rep = _make_sim()
+            sim_rep.add_material("substrate", eps_r=eps_sub, sigma=0.0)
+            sim_rep.add(
+                Box((x_design_hi, 0.0, 0.0), (lx, ly, lz)), material="substrate"
+            )
+            for i in range(n_layers):
+                lo_m = layer_edges_c[i] * dx
+                hi_m = layer_edges_c[i + 1] * dx
+                name = f"rep_layer{i + 1}"
+                sim_rep.add_material(name, eps_r=float(layer_eps[i]), sigma=0.0)
+                sim_rep.add(Box((lo_m, 0.0, 0.0), (hi_m, ly, lz)), material=name)
+            snap = SnapshotSpec(
+                interval=max(1, n_steps // 12), components=("ez",), slice_axis=2,
+                slice_index=0,
+            )
+            res = sim_rep.run(n_steps=n_steps, snapshot=snap, skip_preflight=True)
+            ez = np.asarray(res.snapshots["ez"])  # (n_frames, nx, ny)
+            # Pick the frame with the most field energy (steady packet in the
+            # stack) and reduce to a 1-D x-slice on the strip mid-line.
+            frame_e = np.sum(ez ** 2, axis=(1, 2))
+            kf = int(np.argmax(frame_e))
+            fld = np.asarray(ez[kf, :, ez.shape[2] // 2], dtype=np.float32)
+            # εr profile on the same x-grid for the design panel.
+            prof = np.ones(nx, dtype=np.float32)
+            prof[i_sub_lo:i_sub_hi] = eps_sub
+            for i in range(n_layers):
+                prof[layer_edges_c[i]:layer_edges_c[i + 1]] = float(layer_eps[i])
+            eps_profiles.append(prof[: fld.shape[0]])
+            fields.append(fld)
+        nx_min = min(p.shape[0] for p in eps_profiles)
+        return {
+            "iters": np.asarray(sel),
+            "eps_profiles": np.asarray([p[:nx_min] for p in eps_profiles]),
+            "fields": np.asarray([f[:nx_min] for f in fields]),
+            "x_m": np.arange(nx_min) * dx,
+            "eps_substrate": eps_sub,
+        }
+
     return CaseResult(
         freqs_hz=fs_band,
         s_params=np.zeros((1, 1, len(fs_band)), dtype=complex),
@@ -1001,6 +1076,7 @@ def _build_ar_coating_design(quick: bool) -> CaseResult:
         r_final=r_final_band,
         r_reference=r_ref_band,
         reference_cost=tmm_cost,
+        coevolution_replay=coevolution_replay,
     )
 
 
@@ -1019,6 +1095,13 @@ CASE_REGISTRY: list[GalleryCase] = [
         builder=_build_multilayer_fresnel,
         n_ports=2,
         has_smith=True,
+        application="free-space/stratified",
+        capability=(
+            "validated-vs-exact",
+            "field-animation",
+            "autodiff-gradient",
+            "touchstone-export",
+        ),
         geometry_mode="slice2d",
         geometry_slice_axis=2,
         anim_slice_axis=2,
@@ -1038,6 +1121,13 @@ CASE_REGISTRY: list[GalleryCase] = [
         builder=_build_waveguide_wr90,
         n_ports=2,
         has_smith=True,
+        application="waveguide/port",
+        capability=(
+            "validated-vs-exact",
+            "field-animation",
+            "autodiff-gradient",
+            "touchstone-export",
+        ),
         # An empty guide has no dielectric to show in an εr slice; the 3D
         # renderer shows the guide domain + port instead (matplotlib backend).
         geometry_mode="geom3d",
@@ -1058,6 +1148,13 @@ CASE_REGISTRY: list[GalleryCase] = [
         builder=_build_patch_antenna,
         n_ports=1,
         has_smith=True,
+        application="antenna",
+        capability=(
+            "validated-vs-exact",
+            "field-animation",
+            "autodiff-gradient",
+            "touchstone-export",
+        ),
         geometry_mode="geom3d",
         anim_slice_axis=2,
         anim_render_axis="z",
@@ -1077,6 +1174,12 @@ CASE_REGISTRY: list[GalleryCase] = [
         builder=_build_ar_coating_design,
         n_ports=1,
         has_smith=False,
+        application="inverse-design",
+        capability=(
+            "validated-vs-exact",
+            "field-animation",
+            "inverse-design",
+        ),
         geometry_mode="slice2d",
         geometry_slice_axis=2,
         anim_slice_axis=2,
@@ -1108,6 +1211,7 @@ def build_manifest(
     hostname: str | None = None,
     backend: str | None = None,
     generated_at: str | None = None,
+    gradient_validation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the gallery ``manifest.json`` payload (no I/O, no sim).
 
@@ -1135,12 +1239,14 @@ def build_manifest(
             }
         )
 
-    return {
+    manifest: dict[str, Any] = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "generated_at": generated_at or _utc_now(),
         "case_id": case.id,
         "title": case.title,
         "description": case.description,
+        "application": case.application,
+        "capability": list(case.capability),
         "quick_smoke": quick_smoke,
         "provenance": {
             "rfx_version": rfx_version if rfx_version is not None else _rfx_version(),
@@ -1149,6 +1255,7 @@ def build_manifest(
             "runtime_seconds": round(float(runtime_seconds), 3),
             "hostname": hostname if hostname is not None else socket.gethostname(),
             "backend": backend if backend is not None else _detect_backend(),
+            "jax_x64": _jax_x64(),
             "python": sys.version.split()[0],
             "platform": platform.platform(),
         },
@@ -1171,6 +1278,9 @@ def build_manifest(
         },
         "assets": asset_entries,
     }
+    if gradient_validation is not None:
+        manifest["gradient_validation"] = gradient_validation
+    return manifest
 
 
 def _detect_backend() -> str:
@@ -1180,6 +1290,20 @@ def _detect_backend() -> str:
         return str(jax.default_backend())
     except Exception:
         return "unknown"
+
+
+def _jax_x64() -> bool | None:
+    """Whether JAX 64-bit precision is enabled (rfx is nominally f64/complex128).
+
+    Recorded in provenance so a committed artifact proves it was produced at
+    full precision rather than silently truncated to f32/complex64.
+    """
+    try:
+        import jax
+
+        return bool(jax.config.read("jax_enable_x64"))
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1275,7 +1399,7 @@ def _emit_animation(
     except Exception as exc:  # pragma: no cover - rendering robustness
         print(f"    [warn] field animation failed: {exc}", flush=True)
         return None
-    return {"filename": Path(saved).name, "type": "animation"}
+    return {"filename": Path(saved).name, "type": "field-animation-gif"}
 
 
 def _emit_optimization(result: "CaseResult", out_dir: Path) -> list[dict]:
@@ -1357,6 +1481,95 @@ def _emit_optimization(result: "CaseResult", out_dir: Path) -> list[dict]:
     )
     assets.append({"filename": "optimization.json", "type": "optimization-json"})
     return assets
+
+
+def _emit_coevolution(result: "CaseResult", out_dir: Path, quick: bool) -> dict | None:
+    """Stitch the design+field co-evolution GIF (T4.1a).
+
+    Top panel: the 3-layer εr profile along the propagation axis; bottom panel:
+    the E_z field slice, both morphing across the strided Adam iterations from
+    the offline snapshot-replay. Saved under the DISTINCT filename
+    ``design_field_coevolution.gif`` so it never clobbers the time-domain
+    ``fields.gif``. Reuses the Pillow 128-colour / no-flicker post-pass from
+    ``_gallery_v3_waveguide_figs.py``. Returns ``None`` on any failure so a
+    missing clip never aborts the bundle.
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.animation as manim
+
+    if result.coevolution_replay is None:
+        return None
+    # Stride: keep the clip short on a quick smoke; subsample iterations.
+    stride = 1 if quick else 3
+    try:
+        rep = result.coevolution_replay(stride)
+    except Exception as exc:  # pragma: no cover - solver robustness
+        print(f"    [warn] co-evolution replay failed: {exc}", flush=True)
+        return None
+
+    iters = np.asarray(rep["iters"])
+    eps_profiles = np.asarray(rep["eps_profiles"])
+    fields = np.asarray(rep["fields"])
+    x_mm = np.asarray(rep["x_m"]) * 1e3
+    n_sel = fields.shape[0]
+    if n_sel < 2:
+        print("    [warn] co-evolution replay produced <2 frames", flush=True)
+        return None
+
+    eps_max = float(max(eps_profiles.max(), rep.get("eps_substrate", 12.0))) * 1.05
+    fmax = float(np.percentile(np.abs(fields), 99.0)) or 1.0
+    out = out_dir / "design_field_coevolution.gif"
+
+    fig, (axe, axf) = plt.subplots(2, 1, figsize=(7.2, 4.8), sharex=True)
+    (eline,) = axe.plot(x_mm, eps_profiles[0], color="#1f5fa8", lw=2.0)
+    axe.set_ylim(0.0, eps_max)
+    axe.set_ylabel("design εᵣ(x)")
+    axe.set_title("AR coating: design + field co-evolution across Adam iterations")
+    axe.grid(True, alpha=0.3)
+    (fline,) = axf.plot(x_mm, fields[0], color="#b00000", lw=1.4)
+    axf.set_ylim(-1.15 * fmax, 1.15 * fmax)
+    axf.axhline(0.0, color="0.6", lw=0.6)
+    axf.set_xlabel("propagation axis  x  (mm)")
+    axf.set_ylabel("E$_z$  (replay)")
+    axf.grid(True, alpha=0.3)
+    label = axe.text(0.985, 0.90, "", transform=axe.transAxes, ha="right",
+                     va="top", fontsize=9, color="0.25")
+
+    def _upd(k):
+        eline.set_ydata(eps_profiles[k])
+        fline.set_ydata(fields[k])
+        label.set_text(f"iteration {int(iters[k])}")
+        return (eline, fline, label)
+
+    try:
+        anim = manim.FuncAnimation(fig, _upd, frames=n_sel, blit=False)
+        anim.save(str(out), writer=manim.PillowWriter(fps=4), dpi=90)
+        plt.close(fig)
+    except Exception as exc:  # pragma: no cover - rendering robustness
+        print(f"    [warn] co-evolution gif save failed: {exc}", flush=True)
+        plt.close(fig)
+        return None
+
+    # Shrink the palette so the clip stays web-light without flicker: one shared
+    # 128-colour palette + frame-diff optimisation (the colour scale is fixed,
+    # so a global palette is stable frame-to-frame).
+    try:
+        from PIL import Image, ImageSequence
+
+        g = Image.open(out)
+        dur = g.info.get("duration", 250)
+        rgb = [f.convert("RGB") for f in ImageSequence.Iterator(g)]
+        w, h = rgb[0].size
+        stack = Image.fromarray(np.concatenate(
+            [np.asarray(f.resize((w // 3, h // 3))) for f in rgb], axis=0))
+        pal = stack.quantize(colors=128, method=Image.MEDIANCUT)
+        q = [f.quantize(palette=pal, dither=Image.NONE) for f in rgb]
+        q[0].save(out, save_all=True, append_images=q[1:], loop=0,
+                  duration=dur, optimize=True, disposal=2)
+    except Exception as exc:  # pragma: no cover
+        print("    (coevolution gif palette optimise skipped:", exc, ")")
+    print(f"    co-evolution gif: {out.name} ({n_sel} frames)", flush=True)
+    return {"filename": out.name, "type": "design-field-coevolution-gif"}
 
 
 def _emit_case(case: GalleryCase, out_dir: Path, quick: bool) -> dict[str, Any]:
@@ -1441,6 +1654,13 @@ def _emit_case(case: GalleryCase, out_dir: Path, quick: bool) -> dict[str, Any]:
     anim_asset = _emit_animation(case, result, out_dir, quick)
     if anim_asset is not None:
         assets.append(anim_asset)
+
+    # Design + field co-evolution GIF (optimization cases only) — distinct from
+    # the time-domain fields.gif above (T4.1a/T4.2).
+    if case.is_optimization:
+        coevo_asset = _emit_coevolution(result, out_dir, quick)
+        if coevo_asset is not None:
+            assets.append(coevo_asset)
 
     # Compute sha256 + size for each written asset.
     for asset in assets:

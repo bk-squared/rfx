@@ -56,6 +56,111 @@ ASSETS = os.path.join(ROOT, "docs", "public", "gallery", "assets", "patch_antenn
 CACHE = os.path.join(HERE, "_patch_v3_cache.npz")
 C0 = 2.99792458e8
 
+# Per-case AD/FD gate for the patch substrate-εr sensitivity (h=0.05, 5%); this
+# is the case's own threshold, never the MSL 0.10.
+GATE_THRESHOLD = 0.05
+
+
+def _register_assets(manifest_path, case_id, new_assets):
+    """Add/refresh asset entries in a case manifest.json, in place, computing
+    sha256 + size in the same shape the precompute emitter uses.
+    Writes atomically (temp file + os.replace)."""
+    import hashlib
+    import tempfile
+    if not os.path.exists(manifest_path):
+        print(f"  skip manifest update ({manifest_path} not on disk)")
+        return
+    with open(manifest_path) as f:
+        man = json.load(f)
+    case_dir = os.path.dirname(manifest_path)
+    by_name = {a["filename"]: a for a in man.get("assets", [])}
+    for filename, atype in new_assets:
+        path = os.path.join(case_dir, filename)
+        if not os.path.exists(path):
+            print(f"  skip {filename} (not on disk)")
+            continue
+        with open(path, "rb") as fh:
+            sha = hashlib.sha256(fh.read()).hexdigest()
+        entry = by_name.get(filename, {})
+        entry.update({
+            "filename": filename,
+            "type": atype,
+            "served_url": f"/rfx/gallery/assets/{case_id}/{filename}",
+            "sha256": sha,
+            "size_bytes": os.path.getsize(path),
+        })
+        by_name[filename] = entry
+    man["assets"] = list(by_name.values())
+    text = json.dumps(man, indent=2, allow_nan=False) + "\n"
+    dir_ = os.path.dirname(manifest_path)
+    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".manifest_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, manifest_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    print(f"  updated {manifest_path} ({len(man['assets'])} assets)")
+
+
+def emit_gradient(ad):
+    """Write gradient.json from a make_autodiff() result dict and mirror it into
+    the case manifest.json (top-level gradient_validation + assets[]).
+    Both the gradient.json and manifest.json are written atomically."""
+    import tempfile
+    grad = {
+        "param": "substrate_eps_r",
+        "ad_value": float(ad["g_ad"]),
+        "fd_value": float(ad["g_fd"]),
+        "fd_step_h": 0.05,
+        "rel_err_vs_fd": float(ad["rel"]),
+        "rel_err_vs_analytic": None,
+        "sign_agreement": bool(ad["sign_ok"]),
+        "gate_threshold": GATE_THRESHOLD,
+    }
+    grad_path = os.path.join(ASSETS, "gradient.json")
+    text = json.dumps(grad, indent=2, allow_nan=False) + "\n"
+    dir_ = os.path.dirname(grad_path) or "."
+    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".gradient_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, grad_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    print("wrote", grad_path)
+    manifest_path = os.path.join(ASSETS, "manifest.json")
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            man = json.load(f)
+        man["gradient_validation"] = grad
+        text2 = json.dumps(man, indent=2, allow_nan=False) + "\n"
+        fd2, tmp2 = tempfile.mkstemp(dir=os.path.dirname(manifest_path),
+                                     prefix=".manifest_", suffix=".tmp")
+        try:
+            with os.fdopen(fd2, "w") as fh:
+                fh.write(text2)
+            os.replace(tmp2, manifest_path)
+        except Exception:
+            try:
+                os.unlink(tmp2)
+            except OSError:
+                pass
+            raise
+        # case_id for served_url uses the actual ASSETS directory name so --assets-dir works
+        case_id = os.path.basename(os.path.normpath(ASSETS))
+        _register_assets(manifest_path, case_id,
+                         [("gradient.json", "gradient-json")])
+    return grad
+
 # --- geometry (matches examples/crossval/05_patch_antenna.py) ---
 EPS_R = 4.3
 TAN_D = 0.02
@@ -197,6 +302,63 @@ def sweep():
     print(f"-> set PATCH_INSET_M={best[0]:.4f} and run `final`")
 
 
+def _update_manifest_validation(manifest_path: str, f_dip_hz: float,
+                                f_analytic_hz: float) -> None:
+    """Overwrite the ``validation`` block of an existing manifest.json so that
+    metric_value / metric / tolerance / reference_solver / tier reflect v3's
+    OWN measured S11 dip, not the precompute builder's coarser resonance estimate.
+
+    Rules (INV-6 / T0.0):
+    * ``passed`` is read from the existing manifest and PRESERVED verbatim
+      (precompute owns passed; v3 owns the physics-dependent text).
+    * ``reference_solver`` is the analytic transmission-line (Balanis) estimate —
+      NOT Harminv, which is rfx's own self-extraction, not an independent solver.
+    * Writes atomically (temp file + os.replace).
+    * No-ops silently if the manifest does not yet exist (precompute hasn't run).
+    """
+    import tempfile
+    if not os.path.exists(manifest_path):
+        print(f"  [skip] manifest not found at {manifest_path} — precompute first")
+        return
+    with open(manifest_path) as fh:
+        man = json.load(fh)
+
+    err_pct = 100.0 * abs(f_dip_hz - f_analytic_hz) / f_analytic_hz
+    existing_passed = man.get("validation", {}).get("passed")  # preserve exactly
+
+    man["validation"] = {
+        "tier": "E4",
+        "metric": (
+            "resonance dip vs first-order analytic estimate; "
+            "|resonance error| within 20% (tier E4)"
+        ),
+        "metric_value": (
+            f"resonance dip f={f_dip_hz/1e9:.3f} GHz vs analytic "
+            f"{f_analytic_hz/1e9:.3f} GHz ({err_pct:.1f}% err)"
+        ),
+        "tolerance": "resonance within 20%, passive |S11| <= 1.05",
+        "reference_solver": "analytic transmission-line (Balanis) estimate",
+        "passed": existing_passed,
+    }
+
+    text = json.dumps(man, indent=2, allow_nan=False) + "\n"
+    dir_ = os.path.dirname(manifest_path) or "."
+    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".manifest_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, manifest_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    print(f"  updated manifest validation block: f_dip={f_dip_hz/1e9:.3f} GHz  "
+          f"analytic={f_analytic_hz/1e9:.3f} GHz  err={err_pct:.1f}%  "
+          f"passed={existing_passed}")
+
+
 # ===========================================================================
 # final: chosen inset -> S11 sweep + Harminv + field map (all coherent)
 # ===========================================================================
@@ -235,6 +397,22 @@ def final():
     make_field()
     make_validation()
     make_geometry()
+    # gradient.json is written as part of `final` (the canonical "produce
+    # everything" invocation) so a single `final` call on VESSL covers all assets.
+    emit_gradient(make_autodiff())
+
+    # ---- Update manifest validation block to match THIS run's physics -------
+    # Precompute writes the skeleton manifest (incl. `passed`) before v3 runs.
+    # After final() measures f_dip from its own S11 sweep, we overwrite only the
+    # validation sub-block so manifest == sparams.json == figure (T0.0 fix).
+    # The existing `passed` value written by precompute is PRESERVED unchanged.
+    # Reference is the analytic transmission-line estimate (Balanis), NOT Harminv
+    # (Harminv is rfx's own self-extraction, not an independent reference; INV-6).
+    _update_manifest_validation(
+        manifest_path=os.path.join(ASSETS, "manifest.json"),
+        f_dip_hz=f_dip,
+        f_analytic_hz=F_ANALYTIC,
+    )
     print(f"\nSUMMARY  inset={inset*1e3:.1f}mm  dip={db_dip:.2f}dB @ "
           f"{f_dip/1e9:.3f}GHz  Harminv f_res={f_res/1e9:.3f}GHz Q={q_res:.1f}  "
           f"analytic={F_ANALYTIC/1e9:.3f}GHz")
@@ -472,10 +650,16 @@ def make_field_anim():
 # ===========================================================================
 def make_s11():
     z = _load_cache()
-    f = np.asarray(z["freqs"]) / 1e9
-    s11 = np.asarray(z["s11_re"]) + 1j * np.asarray(z["s11_im"])
+    # Forward |S11| curve is read from the committed sparams.json so the plotted
+    # return loss is the SAME data as the Touchstone/manifest (single source of
+    # truth); the resonance/dip markers come from the same-run cache.
+    d = json.load(open(os.path.join(ASSETS, "sparams.json")))
+    f = np.asarray(d["freqs_hz"]) / 1e9
+    s = np.asarray(d["s"])
+    s11 = s[0, 0, :, 0] + 1j * s[0, 0, :, 1]
     db = 20 * np.log10(np.maximum(np.abs(s11), 1e-6))
-    f_dip, db_dip = float(z["f_dip"]) / 1e9, float(z["db_dip"])
+    idip = int(np.argmin(db))
+    f_dip, db_dip = float(f[idip]), float(db[idip])
     f_res = float(z["f_res"]) / 1e9
 
     fig, ax = plt.subplots(figsize=(7.2, 4.6), layout="constrained")
@@ -677,13 +861,22 @@ def make_autodiff():
 
 
 if __name__ == "__main__":
-    which = sys.argv[1] if len(sys.argv) > 1 else "final"
+    import argparse
+    parser = argparse.ArgumentParser(description="Patch antenna v3 figures")
+    parser.add_argument("which", nargs="?", default="final",
+                        choices=["sweep", "final", "autodiff", "geometry",
+                                 "s11", "field", "anim", "validation"])
+    parser.add_argument("--assets-dir", default=ASSETS,
+                        help="Case assets dir (default: committed tree).")
+    args = parser.parse_args()
+    ASSETS = args.assets_dir
+    which = args.which
     if which == "sweep":
         sweep()
     elif which == "final":
         final()
     elif which == "autodiff":
-        make_autodiff()
+        emit_gradient(make_autodiff())
     elif which == "geometry":
         make_geometry()
     elif which == "s11":

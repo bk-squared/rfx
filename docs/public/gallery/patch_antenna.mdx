@@ -160,9 +160,10 @@ signature of the TM010 resonance, not a travelling wave.
 |S11| of the 50 Ω port across 1.5–3.5 GHz. With the feed inset tuned to **3.0 mm**
 from the radiating edge, the port sees close to 50 Ω at resonance and the return
 loss drops to a deep, matched dip of **−12.2 dB at 2.36 GHz** — right at the
-TM010 resonance (dashed line). The dashed line is the independent Harminv
-ring-down resonance; the matched dip and the resonance coincide to within 0.5 %
-because the feed is matched.
+TM010 resonance (dashed line). The dashed line is rfx's own Harminv ring-down
+resonance (a self-extraction); the matched dip and the ring-down coincide to
+within about 0.5% because the feed is matched — both are rfx reads of the same
+run, not an external reference.
 
 ![Patch antenna |S11| in dB with the matched dip](/rfx/gallery/assets/patch_antenna/s11_db.png)
 
@@ -174,24 +175,29 @@ because the feed is matched.
 
 ## Validation & limits
 
-Three independent reads of the resonance agree:
+This is an **E4** resonance-agreement case: the quantity under test is the rfx
+resonance frequency, and the reference it is checked against is the first-order
+analytic transmission-line (Balanis) estimate. The rfx numbers below are
+self-extractions, not the oracle.
 
-| Quantity | Frequency | Note |
-|---|---|---|
-| rfx Harminv (ring-down) | **2.35 GHz** | full-wave; Q ≈ 20 |
-| rfx \|S11\| matched dip | **2.36 GHz** | −12.2 dB, deep match |
-| Analytic (transmission-line) | **2.42 GHz** | first-order, no finite-ground term |
+| Observable | rfx (self-extraction) | Reference | Tolerance | Pass |
+|---|---|---|---|---|
+| Resonance frequency | 2.360 GHz (\|S11\| dip self-extraction) | 2.423 GHz (analytic transmission-line, Balanis) | within 20% | yes |
+| Resonance error vs reference | 2.6% | — | within 20% | yes |
+| Passive return loss | \|S11\| <= 1.05 | — | passive | yes |
 
-![rfx Harminv resonance vs first-order analytic estimate](/rfx/gallery/assets/patch_antenna/validation.png)
+![rfx |S11|-dip resonance vs the analytic transmission-line estimate](/rfx/gallery/assets/patch_antenna/validation.png)
 
-The Harminv ring-down and the matched |S11| dip land at the **same** frequency
-(2.35 vs 2.36 GHz, 0.5 % apart) — the feed match is real, not a numerical
-artefact, and the return-loss minimum is now a meaningful operating point. The
-first-order transmission-line formula sits about **3 %** above: its closed-form
-ΔL undercounts the fringing extension and it ignores the finite-ground and
-probe-feed loading, so it is a sanity bound rather than the reference. The
-full-wave solver carries the true boundary conditions and is the more
-trustworthy of the two for the as-built patch.
+Reference: analytic transmission-line (Balanis) estimate; validation tier **E4**
+(resonance within 20%, passive `|S11| <= 1.05`). The validated quantity is
+`|rfx resonance − analytic|`, which is 2.6% — comfortably inside the 20% E4
+tolerance. The Harminv ring-down is an rfx self-extraction (not the oracle), as
+is the matched |S11| dip; both rfx reads of the same run land at essentially the
+same frequency (about 2.36 GHz), which confirms the feed match is real and the
+dip is a meaningful operating point. The first-order analytic estimate is
+the reference here: its closed-form ΔL undercounts the fringing extension and it
+ignores the finite-ground and probe-feed loading, so a few-percent offset is
+expected — and at 2.6% the rfx resonance sits well within the E4 band.
 
 **Convergence.** Refining the uniform mesh and tightening the absorber shifts the
 extracted resonance by a few percent at most; the coarse 1 mm mesh already places
@@ -208,7 +214,8 @@ resonance. The permittivity enters through `eps_override`, and `|S11|` is read
 with the wave-decomposition objective `minimize_s11_at_freq_wave_decomp`, which
 runs inside `Simulation.forward(port_s11_freqs=...)` — the AD-traceable path that
 accumulates the port voltage/current DFTs inside the time-stepping loop. A single
-`jax.value_and_grad` call then returns `∂|S11|²/∂εr` straight through the solver.
+`jax.value_and_grad` call then returns `∂|S11|²/∂εr` through this supported
+time-domain S-parameter workflow.
 
 Unlike the slab, the patch has no closed-form return loss, so there is no exact
 derivative to compare against. Instead this is a **finite-difference gate**: the
@@ -216,6 +223,14 @@ AD gradient is checked against central finite differences, with the same 5%
 tolerance and sign-agreement test the inverse-design examples use. Re-running the
 forward at `εr ± h` and forming the central difference must land within 5% of the
 AD gradient and point the same way.
+
+| Check | AD value | Compared against | rel. error | Sign agrees |
+|---|---|---|---|---|
+| `∂\|S11\|²/∂εr` (`rel_err_vs_fd`) | `+0.0967` | central FD `+0.0956` (h = 0.05) | 0.0114 (1.1%) | yes |
+
+There is no closed-form return loss, so this is a finite-difference gate (no
+`rel_err_vs_analytic`): the AD gradient is checked against central finite
+differences with a `rel_err <= 0.05` threshold and a sign test. It passes.
 
 ![Patch return-loss sensitivity to the substrate permittivity — AD gradient vs central finite differences](/rfx/gallery/assets/patch_antenna/autodiff.png)
 

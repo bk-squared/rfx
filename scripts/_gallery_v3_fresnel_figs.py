@@ -231,7 +231,8 @@ def make_field_xt():
     out = os.path.join(ASSETS, "field_xt.png")
     fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
-    print("wrote", out, f"(n_steps={n_steps}, vmax={vmax:.3f})")
+    n_steps_used = field.shape[0]
+    print("wrote", out, f"(n_steps={n_steps_used}, vmax={vmax:.3f})")
 
 
 def make_field_anim():
@@ -333,8 +334,15 @@ def make_rt_overlay():
 
 
 if __name__ == "__main__":
-    import sys
-    which = sys.argv[1] if len(sys.argv) > 1 else "all"
+    import argparse
+    parser = argparse.ArgumentParser(description="Fresnel slab v3 figures")
+    parser.add_argument("which", nargs="?", default="all",
+                        choices=["all", "geometry", "rt", "field", "anim"])
+    parser.add_argument("--assets-dir", default=ASSETS,
+                        help="Case assets dir (default: committed tree).")
+    args = parser.parse_args()
+    ASSETS = args.assets_dir
+    which = args.which
     if which in ("all", "geometry"):
         make_geometry()
     if which in ("all", "rt"):

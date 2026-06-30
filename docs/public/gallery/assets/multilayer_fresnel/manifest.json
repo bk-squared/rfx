@@ -1,13 +1,20 @@
 {
-  "schema_version": "rfx-gallery-manifest-v1",
-  "generated_at": "2026-06-24T10:02:37.961449Z",
+  "schema_version": "rfx-gallery-manifest-v2",
+  "generated_at": "2026-06-30T03:19:53.491332Z",
   "case_id": "multilayer_fresnel",
   "title": "Multilayer Fresnel Slab",
   "description": "Normal-incidence reflection/transmission of a dielectric slab, cross-validated against the exact transfer-matrix solution.",
+  "application": "free-space/stratified",
+  "capability": [
+    "validated-vs-exact",
+    "field-animation",
+    "autodiff-gradient",
+    "touchstone-export"
+  ],
   "quick_smoke": false,
   "provenance": {
     "rfx_version": "1.6.5",
-    "git_sha": "03a85874454004a98c24033ceb5c5980a4b09dd2",
+    "git_sha": "1eb551bc4971cf6e0e17f080319560149d6d42e7",
     "params": {
       "eps_slab": 4.0,
       "slab_thickness_m": 0.01,
@@ -18,11 +25,12 @@
       "mode": "2d_tmz",
       "notes": "Lossless reciprocal slab; |S11|^2=R, |S21|^2=T. rfx magnitudes from FDTD R/T; phase taken from the exact transfer matrix."
     },
-    "runtime_seconds": 14.949,
-    "hostname": "run-execution-ueaqxe8kk3d3-0",
+    "runtime_seconds": 12.392,
+    "hostname": "run-execution-bomtddem7h6t-0",
     "backend": "gpu",
-    "python": "3.10.13",
-    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.31"
+    "jax_x64": false,
+    "python": "3.10.12",
+    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.35"
   },
   "validation": {
     "tier": "E5",
@@ -41,53 +49,84 @@
   },
   "assets": [
     {
-      "filename": "autodiff.png",
-      "type": "figure-png",
-      "served_url": "/rfx/gallery/assets/multilayer_fresnel/autodiff.png",
-      "sha256": "152fbd0cf18657f1e09f5d094531b4645cc8547cfd52315fcbb8391e6857074b",
-      "size_bytes": 191339
-    },
-    {
-      "filename": "field_anim.gif",
-      "type": "field-anim-gif",
-      "served_url": "/rfx/gallery/assets/multilayer_fresnel/field_anim.gif",
-      "sha256": "6313267e6499b12b847ef5b25359a5576db97fa4547a1cdb0753aade7780d453",
-      "size_bytes": 463658
-    },
-    {
-      "filename": "field_xt.png",
-      "type": "figure-png",
-      "served_url": "/rfx/gallery/assets/multilayer_fresnel/field_xt.png",
-      "sha256": "9e03d0a1c0bfaf25d126d89ad260f420ef34cbc6bfc2ec4047b52ec52ab895db",
-      "size_bytes": 290216
-    },
-    {
-      "filename": "geometry.png",
-      "type": "figure-png",
-      "served_url": "/rfx/gallery/assets/multilayer_fresnel/geometry.png",
-      "sha256": "e08ff91698b3fc30f91fd3e985715e7ef437fdf8b2693027941d5362d41af5ad",
-      "size_bytes": 48847
-    },
-    {
-      "filename": "rt_overlay.png",
-      "type": "figure-png",
-      "served_url": "/rfx/gallery/assets/multilayer_fresnel/rt_overlay.png",
-      "sha256": "f9a77fe3c323121daaed3897b2f9f46b55dff755476fa099fb05b868a0056fc8",
-      "size_bytes": 139208
-    },
-    {
       "filename": "sparams.json",
       "type": "sparams-json",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.json",
-      "sha256": "a86964736d87444e183f8fff0921690426c374a0ab73f173610b9ee4967c80d0",
-      "size_bytes": 60025
+      "sha256": "fa2171af8d92f5b5528aa13ee4d9ee49e2e0dbacc3c093092b8bc3bf39944595",
+      "size_bytes": 60019
     },
     {
       "filename": "sparams.s2p",
       "type": "touchstone",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.s2p",
-      "sha256": "b5f439fd680dadfbaa7931c3690e2548168b5b274c3e9ec7c274fa929c402933",
+      "sha256": "70bdd94d3b4774497013a46ff0d5be84a22cc034a57d81b2ee48e1ea24a9bf7d",
       "size_bytes": 25585
+    },
+    {
+      "filename": "sparams.png",
+      "type": "sparam-plot-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.png",
+      "sha256": "6089212d6f71d2a95e5939517889d0718b8660448a7ad8581ed070cd8e939b05",
+      "size_bytes": 50059
+    },
+    {
+      "filename": "smith.png",
+      "type": "smith-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/smith.png",
+      "sha256": "5d6843b8cbaf8ed7a1c97edf8f6298c00a233519181b4cd22fa125023dd34be7",
+      "size_bytes": 102945
+    },
+    {
+      "filename": "geometry.png",
+      "type": "geometry-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/geometry.png",
+      "sha256": "3f69f4e7764a3cf6b8feeb9b5025549b514ebefb5cc26196d6d6d8bfeb6ae057",
+      "size_bytes": 48847
+    },
+    {
+      "filename": "field_anim.gif",
+      "type": "field-animation-gif",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/field_anim.gif",
+      "sha256": "bb64e15400ee97a06897c7f062fcb3e34ca052dfa81912d75c1e54dbd4f4e83f",
+      "size_bytes": 463334
+    },
+    {
+      "filename": "autodiff.png",
+      "type": "autodiff-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/autodiff.png",
+      "sha256": "e8abed81eab8b865b89823350911249cec73fed0e86654df7b324bf829ca9163",
+      "size_bytes": 191339
+    },
+    {
+      "filename": "gradient.json",
+      "type": "gradient-json",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/gradient.json",
+      "sha256": "19a0875c336df058f7df7cc3cd0d2667952995d94eb1bbe6ce116e5c047ec244",
+      "size_bytes": 264
+    },
+    {
+      "filename": "rt_overlay.png",
+      "type": "rt-overlay-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/rt_overlay.png",
+      "sha256": "0f9ec070e834f62faaa40517de482a1ce3b4489c5c3c162650274afc8305f6b3",
+      "size_bytes": 139208
+    },
+    {
+      "filename": "field_xt.png",
+      "type": "field-xt-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/field_xt.png",
+      "sha256": "2ec73917b79100505f20d4c2fc1b599215ce9d2bada346fad59e0159e069b053",
+      "size_bytes": 290107
     }
-  ]
+  ],
+  "gradient_validation": {
+    "param": "slab_thickness_d",
+    "ad_value": 64.77245407992417,
+    "fd_value": 64.77236747741699,
+    "fd_step_h": 5e-05,
+    "rel_err_vs_fd": 1.3370285903430088e-06,
+    "rel_err_vs_analytic": 0.026057964935126667,
+    "sign_agreement": true,
+    "gate_threshold": 0.05
+  }
 }

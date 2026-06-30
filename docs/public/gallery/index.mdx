@@ -1,6 +1,6 @@
 ---
 title: "rfx Gallery"
-description: "A visual tour of what rfx can simulate — the structure, the fields as they evolve, the answer against exact theory, and the gradient of that answer straight through the solver."
+description: "A visual tour of what rfx simulates — the structure, the fields as they evolve, the result against exact theory, and the gradient of that result via jax.grad through the supported time-domain workflows."
 sidebar:
   order: 35
 ---
@@ -8,10 +8,10 @@ sidebar:
 import { CardGrid, Card } from '@astrojs/starlight/components';
 
 A short, visual tour of what rfx can do. Each case shows four things: **what the
-structure is**, **what the fields do** as they evolve, **how close the answer
-lands to the exact textbook result**, and — because rfx is a fully differentiable
-FDTD code — **the gradient of that answer** taken straight through the solver with
-`jax.grad`. Pick one to dive in.
+structure is**, **what the fields do** as they evolve, **how close the result
+lands to the exact textbook answer**, and — because rfx is a differentiable
+FDTD code — **the gradient of that result**, taken with `jax.grad` through the
+supported time-domain workflow. Pick one to dive in.
 
 <CardGrid>
   <Card title="Dielectric Slab">
@@ -29,6 +29,11 @@ FDTD code — **the gradient of that answer** taken straight through the solver 
 
     The TE10 dominant mode down a WR-90 X-band guide. |S11|/|S21| match the exact matched empty-guide answer at the CPML floor, and `jax.grad` differentiates the transmission through a dielectric fill. [See it →](/rfx/gallery/waveguide_wr90/)
   </Card>
+  <Card title="Anti-Reflection Coating Design">
+    <a href="/rfx/gallery/ar_coating_design/"><img src="/rfx/gallery/assets/ar_coating_design/result_spectrum.png" alt="Reflection spectrum of a gradient-designed 3-layer AR coating vs the bare substrate and the transfer-matrix optimum" /></a>
+
+    A gradient-designed 3-layer anti-reflection coating on a high-permittivity substrate. Adam descends the X-band-mean reflection cost via `jax.grad` through the FDTD to about 0.99x the exact transfer-matrix optimum over 60 iterations. [See it →](/rfx/gallery/ar_coating_design/)
+  </Card>
 </CardGrid>
 
-<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-25</p>
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-30</p>

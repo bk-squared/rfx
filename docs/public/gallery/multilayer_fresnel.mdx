@@ -163,6 +163,9 @@ The rfx R/T track the exact Fresnel curves across the full 3–12 GHz band:
 | Transmission T | mean \|T_rfx − T_exact\| ≈ 0.011 | absolute power error |
 | Energy R + T | mean \|R + T − 1\| ≈ 0.009 | lossless: should be 1 |
 
+Reference: the exact transfer-matrix (Fresnel) solution; validation tier **E5**
+(acceptance `mean |R/T error| < 0.05` and `|R + T − 1| < 0.05`, met with margin).
+
 The agreement is at the ~1% level and the reflected plus transmitted power adds
 back to unity, as it must for a lossless slab — a clean independent check that no
 energy is created or lost at the interfaces.
@@ -196,12 +199,25 @@ gradient is compared directly against the closed-form `dT/dd`. We report two
 numbers, because they answer two different questions:
 
 - **AD vs central finite differences** on the same discretised forward — is the
-  AD machinery itself correct? Here `0.002 %`. The gradient `jax.grad` returns is
-  the exact derivative of the simulation it ran.
+  AD machinery itself correct? Here `0.00013 %` (rel. error 1.3e-06). The gradient
+  `jax.grad` returns is the exact derivative of the simulation it ran.
 - **AD vs the continuum analytic derivative** — has the FDTD physics converged to
   the textbook slab? Here `2.6 %` at 0.25 mm cells. The residual is numerical
   (Yee phase-velocity dispersion plus the one-cell soft edge) and shrinks as the
   mesh is refined.
+
+| Check | AD value | Compared against | rel. error | Sign agrees |
+|---|---|---|---|---|
+| AD machinery (`rel_err_vs_fd`) | `dT/dd = 64.7725` | central FD `64.7724` (h = 5e-5) | 1.3e-06 (0.00013%) | yes |
+| Continuum derivative (`rel_err_vs_analytic`) | `dT/dd = 64.7725` | closed-form `dT/dd` | 0.0261 (2.6%) | yes |
+
+The first row is the AD-machinery cross-check (AD vs central finite difference on
+the *same* discretised forward); the second is the physics convergence check (AD
+vs the continuum closed-form `dT/dd`, mesh-limited at 0.25 mm cells). The
+finite-difference gate threshold is `rel_err <= 0.05`; both rows pass. The tiny
+`rel_err_vs_fd` confirms the AD is the exact derivative of the simulation that
+ran — it is *not* the exact-derivative cross-check, which is the 2.6% analytic
+row.
 
 ![Slab transmission sensitivity dT/dd — AD markers on the exact derivative, and T(d) with its gradient through a Fabry-Perot half-period](/rfx/gallery/assets/multilayer_fresnel/autodiff.png)
 

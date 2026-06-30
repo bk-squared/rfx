@@ -30,8 +30,22 @@ def parse_args() -> argparse.Namespace:
 
 
 def default_gitops_root(repo_root: Path) -> Path:
-    workspace = repo_root.parent.parent
-    return workspace / "infra" / "remilab-sites-gitops"
+    """Resolve the remilab-sites-gitops checkout.
+
+    The original heuristic (``repo_root.parent.parent/infra/...``) is correct
+    only when run from ``…/byungkwan-workspace/research/rfx``. From other clones
+    (e.g. the gallery worktree under ``bk-workspace``) it resolves to a path that
+    does not exist, so prefer the first candidate that actually exists and fall
+    back to the heuristic for a clear error message.
+    """
+    candidates = [
+        repo_root.parent.parent / "infra" / "remilab-sites-gitops",
+        Path("/root/workspace/byungkwan-workspace/infra/remilab-sites-gitops"),
+    ]
+    for cand in candidates:
+        if cand.exists():
+            return cand
+    return candidates[0]
 
 
 def copy_tree(src: Path, dst: Path) -> None:

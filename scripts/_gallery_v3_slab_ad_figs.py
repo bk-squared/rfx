@@ -22,11 +22,17 @@ We report BOTH cross-checks, which answer two different questions:
 The working point d0 is chosen on a steep mid-slope of T(d) (delta ~ 2 rad), not
 at a transmission peak where dT/dd -> 0 and the relative comparison is ill-posed.
 
-Produces docs/public/gallery/assets/multilayer_fresnel/autodiff.png.
+Produces docs/public/gallery/assets/multilayer_fresnel/autodiff.png and
+gradient.json (the machine-readable gradient-validation record), and registers
+both in the case manifest.json.
 
 Run: python scripts/_gallery_v3_slab_ad_figs.py
+     python scripts/_gallery_v3_slab_ad_figs.py --assets-dir /tmp/g/multilayer_fresnel
 """
 
+import argparse
+import hashlib
+import json
 import os
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
@@ -52,6 +58,10 @@ from rfx.sources.sources import GaussianPulse
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 ASSETS = os.path.join(ROOT, "docs", "public", "gallery", "assets", "multilayer_fresnel")
+
+# Per-case AD/FD gate (slab AD machinery vs central finite difference). This is
+# NOT the MSL 0.10 gate; the slab AD path tracks central FD to <0.1%.
+GATE_THRESHOLD = 0.05
 
 # --- shared layout standard (gallery v3) -----------------------------------
 mpl.rcParams.update({
@@ -178,7 +188,7 @@ def compute():
     )
 
 
-def make_figure(data):
+def make_figure(data, assets=ASSETS):
     # dense analytic curves over a full Fabry-Perot half-period
     d_lo, d_hi = D0 * 0.40, D0 * 1.95
     dd = np.linspace(d_lo, d_hi, 400)
@@ -234,12 +244,127 @@ def make_figure(data):
     axR.legend(lines, [ln.get_label() for ln in lines],
                loc="lower right", framealpha=0.9)
 
-    out = os.path.join(ASSETS, "autodiff.png")
+    out = os.path.join(assets, "autodiff.png")
     fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print("wrote", out)
 
 
+def _register_assets(manifest_path, case_id, new_assets):
+    """Add/refresh asset entries in a case manifest.json, in place, computing
+    sha256 + size in the same shape the precompute emitter uses. Existing
+    entries with the same filename are refreshed; the rest is left untouched.
+    """
+    if not os.path.exists(manifest_path):
+        print(f"  skip manifest update ({manifest_path} not on disk)")
+        return
+    with open(manifest_path) as f:
+        man = json.load(f)
+    case_dir = os.path.dirname(manifest_path)
+    by_name = {a["filename"]: a for a in man.get("assets", [])}
+    for filename, atype in new_assets:
+        path = os.path.join(case_dir, filename)
+        if not os.path.exists(path):
+            print(f"  skip {filename} (not on disk)")
+            continue
+        with open(path, "rb") as fh:
+            sha = hashlib.sha256(fh.read()).hexdigest()
+        entry = by_name.get(filename, {})
+        entry.update({
+            "filename": filename,
+            "type": atype,
+            "served_url": f"/rfx/gallery/assets/{case_id}/{filename}",
+            "sha256": sha,
+            "size_bytes": os.path.getsize(path),
+        })
+        by_name[filename] = entry
+    man["assets"] = list(by_name.values())
+    import tempfile as _tmp
+    text = json.dumps(man, indent=2, allow_nan=False) + "\n"
+    dir_ = os.path.dirname(manifest_path) or "."
+    fd, tmp = _tmp.mkstemp(dir=dir_, prefix=".manifest_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, manifest_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    print(f"  updated {manifest_path} ({len(man['assets'])} assets)")
+
+
+def emit_gradient(data, assets=ASSETS):
+    """Write gradient.json (the machine-readable AD/FD record) and mirror it into
+    the case manifest.json's top-level gradient_validation block + assets[].
+
+    Two cross-checks are kept distinct and honestly labelled:
+      * rel_err_vs_fd      — AD machinery vs central finite difference on the
+                             SAME discretised forward (~0.002%); a correctness
+                             check of the AD machinery, NOT an exact-derivative
+                             cross-check.
+      * rel_err_vs_analytic — AD vs the continuum closed-form dT/dd (~2.6%),
+                             mesh-limited (Yee dispersion + one-cell soft edge).
+    """
+    grad = {
+        "param": "slab_thickness_d",
+        "ad_value": float(data["dT_ad"]),
+        "fd_value": float(data["dT_fd"]),
+        "fd_step_h": 0.05e-3,
+        "rel_err_vs_fd": float(data["rel_fd"]),
+        "rel_err_vs_analytic": float(data["rel_an"]),
+        "sign_agreement": bool((data["dT_ad"] * data["dT_fd"]) > 0),
+        "gate_threshold": GATE_THRESHOLD,
+    }
+    import tempfile
+    grad_path = os.path.join(assets, "gradient.json")
+    text = json.dumps(grad, indent=2, allow_nan=False) + "\n"
+    dir_ = os.path.dirname(grad_path) or "."
+    fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".gradient_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, grad_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    print("wrote", grad_path)
+
+    manifest_path = os.path.join(assets, "manifest.json")
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            man = json.load(f)
+        man["gradient_validation"] = grad
+        text2 = json.dumps(man, indent=2, allow_nan=False) + "\n"
+        fd2, tmp2 = tempfile.mkstemp(dir=os.path.dirname(manifest_path),
+                                     prefix=".manifest_", suffix=".tmp")
+        try:
+            with os.fdopen(fd2, "w") as fh:
+                fh.write(text2)
+            os.replace(tmp2, manifest_path)
+        except Exception:
+            try:
+                os.unlink(tmp2)
+            except OSError:
+                pass
+            raise
+        # case_id from the assets directory name so --assets-dir works correctly.
+        case_id = os.path.basename(os.path.normpath(assets))
+        _register_assets(manifest_path, case_id,
+                         [("gradient.json", "gradient-json")])
+    return grad
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Slab AD figure + gradient.json")
+    parser.add_argument("--assets-dir", default=ASSETS,
+                        help="Case assets dir (default: committed tree).")
+    args = parser.parse_args()
     data = compute()
-    make_figure(data)
+    make_figure(data, assets=args.assets_dir)
+    emit_gradient(data, assets=args.assets_dir)

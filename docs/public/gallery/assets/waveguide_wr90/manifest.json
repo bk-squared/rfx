@@ -1,13 +1,20 @@
 {
-  "schema_version": "rfx-gallery-manifest-v1",
-  "generated_at": "2026-06-24T10:03:09.789920Z",
+  "schema_version": "rfx-gallery-manifest-v2",
+  "generated_at": "2026-06-30T03:22:31.110097Z",
   "case_id": "waveguide_wr90",
   "title": "WR-90 Waveguide Port (Empty Guide)",
   "description": "X-band WR-90 rectangular waveguide port S-matrix for a matched (empty) guide, against the exact |S11|=0 / |S21|=1 reference.",
+  "application": "waveguide/port",
+  "capability": [
+    "validated-vs-exact",
+    "field-animation",
+    "autodiff-gradient",
+    "touchstone-export"
+  ],
   "quick_smoke": false,
   "provenance": {
     "rfx_version": "1.6.5",
-    "git_sha": "03a85874454004a98c24033ceb5c5980a4b09dd2",
+    "git_sha": "1eb551bc4971cf6e0e17f080319560149d6d42e7",
     "params": {
       "band": "X-band (8.2-12.4 GHz)",
       "waveguide": "WR-90 TE10",
@@ -18,11 +25,12 @@
       "domain_x_m": 0.2,
       "notes": "Empty matched-load guide; analytic reference |S11|=0, |S21|=1."
     },
-    "runtime_seconds": 16.401,
-    "hostname": "run-execution-ueaqxe8kk3d3-0",
+    "runtime_seconds": 12.154,
+    "hostname": "run-execution-bomtddem7h6t-0",
     "backend": "gpu",
-    "python": "3.10.13",
-    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.31"
+    "jax_x64": false,
+    "python": "3.10.12",
+    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.35"
   },
   "validation": {
     "tier": "E5",
@@ -41,60 +49,84 @@
   },
   "assets": [
     {
-      "filename": "autodiff.png",
-      "type": "figure-png",
-      "served_url": "/rfx/gallery/assets/waveguide_wr90/autodiff.png",
-      "sha256": "10fea5ba5cb14748da82813ff6b7913846367dc274a36a1ffd80c0f9c05b9add",
-      "size_bytes": 74163
-    },
-    {
-      "filename": "field_anim.gif",
-      "type": "field-anim-gif",
-      "served_url": "/rfx/gallery/assets/waveguide_wr90/field_anim.gif",
-      "sha256": "412721574e3c36213ada9982b86226294f0161ef77657c4aa3e74d40a6b889f0",
-      "size_bytes": 960043
-    },
-    {
-      "filename": "field_te10.png",
-      "type": "figure-png",
-      "served_url": "/rfx/gallery/assets/waveguide_wr90/field_te10.png",
-      "sha256": "bd6b6c484b047e2ea27949971a4ecf698d9891391b107ffcdedfe2610726c30c",
-      "size_bytes": 88345
-    },
-    {
-      "filename": "geometry.png",
-      "type": "figure-png",
-      "served_url": "/rfx/gallery/assets/waveguide_wr90/geometry.png",
-      "sha256": "2e4b64ee164e34cdbd1e73a27836fbd1727038ed1aebf4296b1f94608d56bc0b",
-      "size_bytes": 88021
-    },
-    {
       "filename": "sparams.json",
       "type": "sparams-json",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.json",
-      "sha256": "708097846c56b237559b41054efdfd0f96d4d72e9c2c5c34127be990facc69be",
-      "size_bytes": 4878
-    },
-    {
-      "filename": "sparams.png",
-      "type": "figure-png",
-      "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.png",
-      "sha256": "65c373924f4c9cbc072d5067ce821be9cbc275ade41c2f4ba650332e673f0184",
-      "size_bytes": 106930
+      "sha256": "509c77d1276fe530f971a2c7eddb063ccd08f547cd6d1623631d347ea438da35",
+      "size_bytes": 4963
     },
     {
       "filename": "sparams.s2p",
       "type": "touchstone",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.s2p",
-      "sha256": "66e2f2ab4112278d76f9d2e381f6d1e8aa91d6b4b88e79b2cf1200371dd62525",
-      "size_bytes": 3214
+      "sha256": "c3d40344d870a914ab6268515c32f69a988a570a04e8f01590a850e8bd6301d6",
+      "size_bytes": 3213
+    },
+    {
+      "filename": "sparams.png",
+      "type": "sparam-plot-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.png",
+      "sha256": "c4055bda57c30f21665e003307254394ced8d597619f9740e7f884b9ffb0143f",
+      "size_bytes": 70901
+    },
+    {
+      "filename": "smith.png",
+      "type": "smith-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/smith.png",
+      "sha256": "5eb274a7e23dbfa37fc22518faff3369ff4488f11f0c50fd70a7a642f48aee63",
+      "size_bytes": 101170
+    },
+    {
+      "filename": "geometry.png",
+      "type": "geometry-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/geometry.png",
+      "sha256": "8a43373f51e8053b57aba5335ffd0cb2dadd97b2c2eadee7ce96d6f048be53cd",
+      "size_bytes": 88021
+    },
+    {
+      "filename": "field_anim.gif",
+      "type": "field-animation-gif",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/field_anim.gif",
+      "sha256": "b9fae0690a250347a997c6aeeb8a07207068f1074463fc251b55949f55b44ea2",
+      "size_bytes": 1447151
+    },
+    {
+      "filename": "autodiff.png",
+      "type": "autodiff-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/autodiff.png",
+      "sha256": "2e097718d857232123675269c6a6306ca01eacff1e16879492a20b1e8156e824",
+      "size_bytes": 74163
     },
     {
       "filename": "validation.png",
-      "type": "figure-png",
+      "type": "validation-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/validation.png",
-      "sha256": "e4eb10873f3384fa6faa4108f43df58069c27df07a975622bf561bd118991854",
-      "size_bytes": 97509
+      "sha256": "cacf4e0b07a65b7c3a86effb82a6d635acc939d8a7c0293a185653325cd40508",
+      "size_bytes": 92213
+    },
+    {
+      "filename": "gradient.json",
+      "type": "gradient-json",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/gradient.json",
+      "sha256": "1b5a3e65f27481c6bd8b87bf30de172b14ffbca22f1eb0a60c98e3570d8453a5",
+      "size_bytes": 255
+    },
+    {
+      "filename": "field_te10.png",
+      "type": "field-te10-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/field_te10.png",
+      "sha256": "b0bf5f6c15a9ddd15516b918fda44cce4745f824f1d33b6bd62f75f90a79ec72",
+      "size_bytes": 88350
     }
-  ]
+  ],
+  "gradient_validation": {
+    "param": "dielectric_fill_eps_r",
+    "ad_value": -0.22006267309188843,
+    "fd_value": -0.2196866273880005,
+    "fd_step_h": 0.05,
+    "rel_err_vs_fd": 0.001711736887943501,
+    "rel_err_vs_analytic": null,
+    "sign_agreement": true,
+    "gate_threshold": 0.05
+  }
 }
