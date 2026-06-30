@@ -25,6 +25,7 @@ from rfx.sources.msl_port import (
     msl_probe_x_coords,
     msl_probe_x_coords_n,
     _msl_position_to_index,
+    _axis_cell_size,
 )
 from rfx.api._sparams import _msl_cell_profile
 
@@ -209,6 +210,38 @@ def test_cell_profile_uniform_byte_identical():
     for axis, n in (("x", grid.nx), ("y", grid.ny), ("z", grid.nz)):
         np.testing.assert_array_equal(
             _msl_cell_profile(grid, axis, n), np.full(n, float(grid.dx)))
+
+
+# ---------------------------------------------------------------------------
+# 3b. _axis_cell_size (SOURCE-side helper): NU per-cell vs uniform scalar
+# ---------------------------------------------------------------------------
+
+def test_axis_cell_size_nu_reads_per_cell():
+    """setup_msl_port / make_msl_port_sources weight sigma + the Ez feed by
+    _axis_cell_size; on a graded mesh it must return the per-cell size, not the
+    scalar boundary grid.dx."""
+    prof = _tent(_NX, _DX)
+    grid = _nu_grid(prof)
+    # x axis is graded — sizes across interior indices must vary
+    sizes = [_axis_cell_size(grid, "x", i) for i in range(grid.pad_x_lo, grid.nx - grid.pad_x_hi)]
+    assert np.ptp(sizes) > 1e-9, "graded x: _axis_cell_size must not be constant"
+    # each equals the per-cell dx_arr value
+    dx_arr = np.asarray(grid.dx_arr, float)
+    for i in range(grid.pad_x_lo, grid.nx - grid.pad_x_hi):
+        assert abs(_axis_cell_size(grid, "x", i) - dx_arr[i]) < 1e-12
+    # y / z read their own per-cell arrays (not the x boundary cell)
+    assert abs(_axis_cell_size(grid, "y", grid.ny // 2)
+               - float(np.asarray(grid.dy_arr, float)[grid.ny // 2])) < 1e-12
+    assert abs(_axis_cell_size(grid, "z", grid.nz // 2)
+               - float(np.asarray(grid.dz, float)[grid.nz // 2])) < 1e-12
+
+
+def test_axis_cell_size_uniform_byte_identical():
+    """On a uniform Grid (no NonUniformGrid branch) _axis_cell_size returns the
+    legacy scalar grid.dx for every axis."""
+    grid = _uniform_grid()
+    for axis in ("x", "y", "z"):
+        assert _axis_cell_size(grid, axis, 5) == float(grid.dx)
 
 
 # ---------------------------------------------------------------------------

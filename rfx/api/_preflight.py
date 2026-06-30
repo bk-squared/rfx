@@ -1281,11 +1281,16 @@ class _PreflightMixin:
             self._dz_profile is not None
             or self._dx_profile is not None
             or self._dy_profile is not None
+        ) and any(
+            getattr(pe, "mode", "laplace") == "eigenmode"
+            for pe in self._msl_ports
         ):
             raise NotImplementedError(
-                "compute_msl_s_matrix() currently supports the uniform Yee "
-                "lane only. Drop dx_profile/dy_profile/dz_profile or use a "
-                "documented diagnostic path."
+                "compute_msl_s_matrix() on a non-uniform mesh supports "
+                "mode='laplace'/'uniform' (Ez static-Laplace feed) only; the "
+                "eigenmode J+M launch needs the magnetic-source channel that "
+                "the non-uniform runner does not carry. Use mode='laplace' "
+                "(the add_msl_port default) on the graded-mesh lane."
             )
         if self._refinement is not None:
             raise NotImplementedError(
