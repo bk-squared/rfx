@@ -791,6 +791,50 @@ def make_msl_port_sources_jm(
 # ---------------------------------------------------------------------------
 
 
+def _msl_position_to_index(grid, pos):
+    """Grid-agnostic physical-position -> index lookup.
+
+    ``rfx.grid.Grid`` exposes ``position_to_index`` as a method; the
+    ``NonUniformGrid`` NamedTuple does NOT — its lookup is the free
+    function ``rfx.nonuniform.position_to_index`` (cumulative cell-edge,
+    so it is graded-aware). Duck-types over both.
+    """
+    method = getattr(grid, "position_to_index", None)
+    if callable(method):
+        return method(pos)
+    from rfx.nonuniform import position_to_index as _nu_position_to_index
+    return _nu_position_to_index(grid, pos)
+
+
+def _msl_x_for_index(grid, target_i: int) -> float:
+    """Physical x-coordinate of a (clamped) grid index, graded-aware.
+
+    On a uniform ``Grid`` this is the legacy ``(clamped - pad_x_lo) *
+    grid.dx`` and is byte-identical (``Grid`` has no ``dx_arr``). On a
+    ``NonUniformGrid`` ``grid.dx`` is ONLY the boundary cell, so the index
+    must be converted to a physical coordinate via the cumulative
+    cell-edge sum of the interior ``dx_arr`` profile (mirroring
+    ``_range_to_slice_nu`` in ``rfx/runners/nonuniform.py``). Indices are
+    clamped into the in-domain range. (In the leading-CPML region ``u<0``
+    the uniform branch returns a negative coord while the NU branch clamps
+    to ``edges[0]=0``; valid probe placement never targets that region.)
+    """
+    nx = int(grid.nx)
+    pad = int(getattr(grid, "pad_x_lo", 0))
+    clamped = max(0, min(int(target_i), nx - 1))
+    u = clamped - pad  # user-domain (non-CPML) interior index
+    dx_arr = getattr(grid, "dx_arr", None)
+    if dx_arr is None:
+        # Uniform Grid — legacy scalar spacing (byte-identical).
+        return float(u * grid.dx)
+    # NonUniformGrid — cumulative interior cell-edge positions.
+    pad_hi = int(getattr(grid, "pad_x_hi", 0))
+    interior = np.asarray(dx_arr, dtype=float)[pad : nx - pad_hi]
+    edges = np.insert(np.cumsum(interior), 0, 0.0)
+    u_c = max(0, min(u, len(edges) - 1))
+    return float(edges[u_c])
+
+
 def msl_probe_x_coords(
     grid,
     port: MSLPort,
@@ -803,22 +847,18 @@ def msl_probe_x_coords(
     remaining two are spaced by ``n_spacing_cells`` further along the
     propagation direction.  Indices are clamped into the valid grid
     range so callers always receive in-domain physical coordinates.
+    Graded-mesh aware (see :func:`_msl_x_for_index`).
     """
-    i_feed, _, _ = grid.position_to_index((port.feed_x, port.y_lo, port.z_lo))
+    i_feed, _, _ = _msl_position_to_index(grid, (port.feed_x, port.y_lo, port.z_lo))
     sign = 1 if port.direction == "+x" else -1
-    nx = grid.nx
-
-    def _x_for_index(target_i: int) -> float:
-        clamped = max(0, min(target_i, nx - 1))
-        # User-domain physical x-coord. position_to_index adds pad_x_lo, so
-        # subtract it back when rebuilding the coordinate.
-        pad = getattr(grid, "pad_x_lo", 0)
-        return float((clamped - pad) * grid.dx)
-
     i1 = i_feed + sign * n_offset_cells
     i2 = i1 + sign * n_spacing_cells
     i3 = i2 + sign * n_spacing_cells
-    return _x_for_index(i1), _x_for_index(i2), _x_for_index(i3)
+    return (
+        _msl_x_for_index(grid, i1),
+        _msl_x_for_index(grid, i2),
+        _msl_x_for_index(grid, i3),
+    )
 
 
 def msl_probe_x_coords_n(
@@ -838,17 +878,10 @@ def msl_probe_x_coords_n(
     """
     if n_probes < 3:
         raise ValueError(f"n_probes must be >= 3, got {n_probes}")
-    i_feed, _, _ = grid.position_to_index((port.feed_x, port.y_lo, port.z_lo))
+    i_feed, _, _ = _msl_position_to_index(grid, (port.feed_x, port.y_lo, port.z_lo))
     sign = 1 if port.direction == "+x" else -1
-    nx = grid.nx
-    pad = getattr(grid, "pad_x_lo", 0)
-
-    def _x_for_index(target_i: int) -> float:
-        clamped = max(0, min(target_i, nx - 1))
-        return float((clamped - pad) * grid.dx)
-
     return tuple(
-        _x_for_index(i_feed + sign * (n_offset_cells + n * n_spacing_cells))
+        _msl_x_for_index(grid, i_feed + sign * (n_offset_cells + n * n_spacing_cells))
         for n in range(n_probes)
     )
 

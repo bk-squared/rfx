@@ -30,6 +30,8 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,
 )
 
+from rfx.nonuniform import NonUniformGrid
+
 from rfx.api._spec import (
     WaveguideSMatrixResult,
     CoaxialSMatrixResult,
@@ -38,6 +40,40 @@ from rfx.api._spec import (
     _WaveguidePortEntry,
     _MSLPortEntry,
 )
+
+
+def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
+    """Per-cell size array (length ``n``, full/padded) along ``axis`` for
+    MSL V/I integration. Graded-mesh aware.
+
+    ``NonUniformGrid`` (a NamedTuple) stores per-cell spacings as
+    ``dx_arr`` / ``dy_arr`` / ``dz`` and exposes NO ``*_profile``
+    attributes — so the legacy ``getattr(grid, "dy_profile", None)``
+    fell through to ``np.full(n, grid.dx)``, i.e. the SCALAR boundary-x
+    cell for every transverse cell (wrong axis AND scalar-not-per-cell).
+    This reads the real per-cell array on a NU grid. On a uniform
+    ``Grid`` it is byte-identical to the legacy path (``Grid`` is not a
+    ``NonUniformGrid``, so the per-cell branch is never taken): the
+    ``*_profile`` attr if present, else ``np.full(n, grid.dx)`` — the
+    legacy behaviour of using ``grid.dx`` for every axis is preserved.
+    """
+    if isinstance(grid, NonUniformGrid):
+        per_cell = {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis]
+        a = np.asarray(per_cell, dtype=float)
+        if a.shape != (n,):
+            # The NU branch is authoritative — never silently fall back to a
+            # scalar boundary-dx fill (that is the exact wrong-number bug this
+            # helper exists to fix). A shape mismatch is a wiring error.
+            raise ValueError(
+                f"NonUniformGrid {axis} per-cell profile shape {a.shape} "
+                f"!= expected ({n},)."
+            )
+        return a
+    attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
+    prof = getattr(grid, attr, None)
+    if prof is not None:
+        return np.asarray(prof, dtype=float)
+    return np.full(n, float(grid.dx), dtype=float)
 
 
 def _warn_if_nonpassive_smatrix(
@@ -946,17 +982,11 @@ class _SparamMixin:
         # — matching the legacy 3-probe sign convention the S11 sign
         # was validated against.
 
-        # Per-axis cell-size arrays for V/I integration. Both uniform
-        # and non-uniform grids are supported.
-        def _profile(axis: str, n: int) -> np.ndarray:
-            attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
-            prof = getattr(grid, attr, None)
-            if prof is not None:
-                return np.asarray(prof, dtype=float)
-            return np.full(n, float(grid.dx), dtype=float)
-
-        dy_arr = _profile("y", grid.ny)
-        dz_arr = _profile("z", grid.nz)
+        # Per-axis cell-size arrays for V/I integration. Both uniform and
+        # non-uniform grids are supported — NonUniformGrid exposes per-cell
+        # dx_arr/dy_arr/dz (NOT *_profile); see _msl_cell_profile.
+        dy_arr = _msl_cell_profile(grid, "y", grid.ny)
+        dz_arr = _msl_cell_profile(grid, "z", grid.nz)
 
         # Fixed cross-section indices per port (same across all runs).
         port_idx_meta = []
