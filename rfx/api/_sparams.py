@@ -947,18 +947,21 @@ class _SparamMixin:
         # non-uniform lane this MUST be the SAME grid run_nonuniform_path
         # builds (so probe_xs, port cells, dy/dz arrays and the eps anchor
         # align with the run's field planes). build_nonuniform_grid needs a
-        # concrete dz_profile — synthesise from dx when absent and mutate
-        # self._dz_profile (restored in the finally) so the subsequent
-        # self.run() reads the same dz and builds a byte-matching grid.
+        # concrete dz_profile — synthesise from dx when absent into a LOCAL.
+        # self._dz_profile is mutated only INSIDE the run try/finally below (so
+        # the restore always runs even if probe placement / the trace-PEC scan
+        # raises) — the subsequent self.run() then reads the same dz and builds
+        # a byte-matching grid.
         _dz_profile_saved = self._dz_profile
+        _dz_for_grid = self._dz_profile
         if is_nonuniform:
             from rfx.runners.nonuniform import build_nonuniform_grid
-            if self._dz_profile is None:
+            if _dz_for_grid is None:
                 _nz_syn = int(round(float(self._domain[2]) / float(self._dx)))
-                self._dz_profile = np.full(max(_nz_syn, 1), float(self._dx))
+                _dz_for_grid = np.full(max(_nz_syn, 1), float(self._dx))
             grid = build_nonuniform_grid(
                 self._freq_max, self._domain, self._dx, self._cpml_layers,
-                self._dz_profile,
+                _dz_for_grid,
                 dx_profile=self._dx_profile, dy_profile=self._dy_profile,
                 pec_faces=self._boundary_spec.pec_faces()
                     if self._boundary_spec is not None else None,
@@ -1115,6 +1118,11 @@ class _SparamMixin:
         saved_msl = list(self._msl_ports)
         saved_ports = list(self._ports)
         try:
+            # Mutate self._dz_profile to the (possibly synthesised) grid dz only
+            # now — inside the try — so the finally always restores it and the
+            # subsequent self.run() builds a grid matching the one above.
+            if is_nonuniform:
+                self._dz_profile = _dz_for_grid
             _complex_dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
             S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
