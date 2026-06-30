@@ -63,20 +63,6 @@
       "size_bytes": 3213
     },
     {
-      "filename": "sparams.png",
-      "type": "sparam-plot-png",
-      "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.png",
-      "sha256": "c4055bda57c30f21665e003307254394ced8d597619f9740e7f884b9ffb0143f",
-      "size_bytes": 70901
-    },
-    {
-      "filename": "smith.png",
-      "type": "smith-png",
-      "served_url": "/rfx/gallery/assets/waveguide_wr90/smith.png",
-      "sha256": "5eb274a7e23dbfa37fc22518faff3369ff4488f11f0c50fd70a7a642f48aee63",
-      "size_bytes": 101170
-    },
-    {
       "filename": "geometry.png",
       "type": "geometry-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/geometry.png",
@@ -117,6 +103,20 @@
       "served_url": "/rfx/gallery/assets/waveguide_wr90/field_te10.png",
       "sha256": "b0bf5f6c15a9ddd15516b918fda44cce4745f824f1d33b6bd62f75f90a79ec72",
       "size_bytes": 88350
+    },
+    {
+      "filename": "sparams.png",
+      "type": "sparam-plot-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.png",
+      "sha256": "c4055bda57c30f21665e003307254394ced8d597619f9740e7f884b9ffb0143f",
+      "size_bytes": 70901
+    },
+    {
+      "filename": "smith.png",
+      "type": "smith-png",
+      "served_url": "/rfx/gallery/assets/waveguide_wr90/smith.png",
+      "sha256": "5eb274a7e23dbfa37fc22518faff3369ff4488f11f0c50fd70a7a642f48aee63",
+      "size_bytes": 101170
     }
   ],
   "gradient_validation": {

@@ -67,8 +67,6 @@ _SPARAM_COMMON: dict[str, str] = {
     "sparams.json": "sparams-json",
     "sparams.s2p": "touchstone",
     "sparams.s1p": "touchstone",
-    "sparams.png": "sparam-plot-png",
-    "smith.png": "smith-png",
     "geometry.png": "geometry-png",
     # field_anim.gif is the page-referenced field animation for S-param cases.
     # precompute also emits a raw fields.gif, but it is NOT registered here — it
@@ -85,6 +83,11 @@ _SPARAM_COMMON: dict[str, str] = {
 _FRESNEL_EXTRA: dict[str, str] = {
     "rt_overlay.png": "rt-overlay-png",
     "field_xt.png": "field-xt-png",
+    # sparams.png/smith.png are consistent provenance plots for slab/waveguide
+    # (single run). They are NOT in _SPARAM_COMMON because the patch case runs a
+    # separate precompute sim and would carry STALE ones — excluded there.
+    "sparams.png": "sparam-plot-png",
+    "smith.png": "smith-png",
 }
 
 # Patch-specific extras.
@@ -96,6 +99,8 @@ _PATCH_EXTRA: dict[str, str] = {
 # Waveguide-specific extras.
 _WAVEGUIDE_EXTRA: dict[str, str] = {
     "field_te10.png": "field-te10-png",
+    "sparams.png": "sparam-plot-png",
+    "smith.png": "smith-png",
 }
 
 # AR optimization case.
@@ -105,8 +110,10 @@ _AR_CANON: dict[str, str] = {
     "design_evolution.png": "design-evolution-png",
     "result_spectrum.png": "result-spectrum-png",
     "optimization.json": "optimization-json",
-    # Two distinct GIFs, two distinct types (T4.2).
-    "fields.gif": "field-animation-gif",
+    # The design+field co-evolution GIF is the AR field animation. precompute
+    # also emits a raw time-domain fields.gif, but the AR domain is 1-D (single
+    # cell thick transversely) so it renders as a ~1px unreadable strip — it is
+    # NOT registered; the field story is the co-evolution below.
     "design_field_coevolution.gif": "design-field-coevolution-gif",
     "gradient.json": "gradient-json",
 }

@@ -109,12 +109,14 @@ emitted as machine-readable JSON alongside the figures.
 
 ## Fields
 
-The reflected and transmitted field of the converged coating, on the propagation
-axis. With the matching layers in place most of the incident wave is transmitted
-into the substrate and the reflected branch is small — the standing-wave ratio in
-the air region ahead of the stack is close to flat.
-
-![Reflected and transmitted field of the converged AR coating](/rfx/gallery/assets/ar_coating_design/fields.gif)
+This is a one-dimensional normal-incidence problem — the FDTD domain is a single
+cell thick transversely — so there is no 2-D field map; the field is the standing
+wave along the propagation axis. With the matching layers in place the reflected
+branch ahead of the stack is small (the optimizer *minimizes* it) and most of the
+incident power passes into the `εr = 12` substrate. The field is best seen
+co-evolving with the design — the animation in the optimization section below
+shows the reflected field ahead of the stack shrinking as Adam tunes the three
+layers.
 
 ## Result
 

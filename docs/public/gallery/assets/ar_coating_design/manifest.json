@@ -62,8 +62,8 @@
       "filename": "geometry.png",
       "type": "geometry-png",
       "served_url": "/rfx/gallery/assets/ar_coating_design/geometry.png",
-      "sha256": "55cdd6766f99e75506446e941d1bd77f7298779ef1dec22a8874e10dba90e1ff",
-      "size_bytes": 30594
+      "sha256": "2defee4503349d17efc69a7d14a8de756e41129d54d9b4e0fcd5521c12fc6907",
+      "size_bytes": 68113
     },
     {
       "filename": "convergence.png",
@@ -92,13 +92,6 @@
       "served_url": "/rfx/gallery/assets/ar_coating_design/optimization.json",
       "sha256": "fd4cdcb4bf0bfcb42b89a769e79a9cb9666e0ad5ca6fdd6c989a31074d82b225",
       "size_bytes": 7721
-    },
-    {
-      "filename": "fields.gif",
-      "type": "field-animation-gif",
-      "served_url": "/rfx/gallery/assets/ar_coating_design/fields.gif",
-      "sha256": "a863b56f32610a28505ec6a84e66c4007fb17800b38eb2a1083a5f57875f48c1",
-      "size_bytes": 1589535
     },
     {
       "filename": "design_field_coevolution.gif",

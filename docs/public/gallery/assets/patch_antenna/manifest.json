@@ -65,20 +65,6 @@
       "size_bytes": 3621
     },
     {
-      "filename": "sparams.png",
-      "type": "sparam-plot-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.png",
-      "sha256": "5f682f19595b07b60ecdf6de8f48fe76d086449d91d554965e65e3fb4171589b",
-      "size_bytes": 50059
-    },
-    {
-      "filename": "smith.png",
-      "type": "smith-png",
-      "served_url": "/rfx/gallery/assets/patch_antenna/smith.png",
-      "sha256": "60fc7399941b306808fa3146abbb811a3171fa66d0dab0e6c023f7c7b6a41ebc",
-      "size_bytes": 100955
-    },
-    {
       "filename": "geometry.png",
       "type": "geometry-png",
       "served_url": "/rfx/gallery/assets/patch_antenna/geometry.png",

@@ -529,8 +529,10 @@ def test_reconcile_case_renames_fields_gif_for_sparam_cases(tmp_path):
         assert "fields.gif" not in filenames
 
 
-def test_reconcile_ar_keeps_both_gifs(tmp_path):
-    """For ar_coating_design, both fields.gif and design_field_coevolution.gif are canonical."""
+def test_reconcile_ar_keeps_coevolution_drops_raw_fields_gif(tmp_path):
+    """For ar_coating_design the design+field co-evolution GIF is canonical, but the
+    raw time-domain fields.gif is NOT registered: the AR domain is 1-D (single cell
+    thick transversely) so fields.gif renders as a ~1px unreadable strip."""
     case_dir = tmp_path / "ar_coating_design"
     _make_minimal_manifest(case_dir, "ar_coating_design",
                            ["fields.gif", "design_field_coevolution.gif", "optimization.json"])
@@ -538,10 +540,9 @@ def test_reconcile_ar_keeps_both_gifs(tmp_path):
     man = rc.reconcile_case(case_dir, case_id="ar_coating_design")
 
     by_name = {a["filename"]: a["type"] for a in man["assets"]}
-    assert "fields.gif" in by_name
-    assert by_name["fields.gif"] == "field-animation-gif"
     assert "design_field_coevolution.gif" in by_name
     assert by_name["design_field_coevolution.gif"] == "design-field-coevolution-gif"
+    assert "fields.gif" not in by_name, "raw 1-D fields.gif must NOT be registered for AR"
 
 
 def test_verify_sha256_passes_after_reconcile(tmp_path):

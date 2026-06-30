@@ -63,20 +63,6 @@
       "size_bytes": 25585
     },
     {
-      "filename": "sparams.png",
-      "type": "sparam-plot-png",
-      "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.png",
-      "sha256": "6089212d6f71d2a95e5939517889d0718b8660448a7ad8581ed070cd8e939b05",
-      "size_bytes": 50059
-    },
-    {
-      "filename": "smith.png",
-      "type": "smith-png",
-      "served_url": "/rfx/gallery/assets/multilayer_fresnel/smith.png",
-      "sha256": "5d6843b8cbaf8ed7a1c97edf8f6298c00a233519181b4cd22fa125023dd34be7",
-      "size_bytes": 102945
-    },
-    {
       "filename": "geometry.png",
       "type": "geometry-png",
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/geometry.png",
@@ -117,6 +103,20 @@
       "served_url": "/rfx/gallery/assets/multilayer_fresnel/field_xt.png",
       "sha256": "2ec73917b79100505f20d4c2fc1b599215ce9d2bada346fad59e0159e069b053",
       "size_bytes": 290107
+    },
+    {
+      "filename": "sparams.png",
+      "type": "sparam-plot-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/sparams.png",
+      "sha256": "6089212d6f71d2a95e5939517889d0718b8660448a7ad8581ed070cd8e939b05",
+      "size_bytes": 50059
+    },
+    {
+      "filename": "smith.png",
+      "type": "smith-png",
+      "served_url": "/rfx/gallery/assets/multilayer_fresnel/smith.png",
+      "sha256": "5d6843b8cbaf8ed7a1c97edf8f6298c00a233519181b4cd22fa125023dd34be7",
+      "size_bytes": 102945
     }
   ],
   "gradient_validation": {
