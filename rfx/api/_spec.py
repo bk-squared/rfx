@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import NamedTuple
+from typing import Mapping, NamedTuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -57,6 +57,27 @@ MATERIAL_LIBRARY: dict[str, dict] = {
         "debye_poles": [DebyePole(delta_eps=74.1, tau=8.3e-12)],
     },
 }
+
+
+def _artifact_to_dict(value: object) -> object:
+    """Serialize nested report artifacts without importing non-leaf rfx modules."""
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        return _artifact_to_dict(value.to_dict())
+    if hasattr(value, "to_json") and callable(value.to_json):
+        return _artifact_to_dict(json.loads(value.to_json()))
+    if hasattr(value, "tolist") and callable(value.tolist):
+        return _artifact_to_dict(value.tolist())
+    if isinstance(value, Mapping):
+        return {str(key): _artifact_to_dict(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_artifact_to_dict(item) for item in value]
+    if isinstance(value, list):
+        return [_artifact_to_dict(item) for item in value]
+    raise TypeError(
+        f"preflight nested artifact contains unsupported value {type(value).__name__}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +183,45 @@ class ADMemoryComponent(NamedTuple):
             ),
             "explanation": self.explanation,
         }
+
+
+class ADMemoryActionHint(NamedTuple):
+    """Actionable AD-memory preflight hint derived from planning evidence."""
+
+    code: str
+    severity: str
+    message: str
+    action: str
+    checkpoint_mode: str | None = None
+    checkpoint_every: int | None = None
+    checkpoint_segments: int | None = None
+    blocking: bool = False
+
+    @property
+    def evidence_class(self) -> str:
+        """Evidence class label serialized with this static action hint."""
+        return "static_action_hint"
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable JSON-serializable action-hint artifact."""
+        return {
+            "evidence_class": self.evidence_class,
+            "code": self.code,
+            "severity": self.severity,
+            "message": self.message,
+            "action": self.action,
+            "checkpoint_mode": self.checkpoint_mode,
+            "checkpoint_every": self.checkpoint_every,
+            "checkpoint_segments": self.checkpoint_segments,
+            "blocking": bool(self.blocking),
+        }
+
+    def to_json(self, **kwargs: object) -> str:
+        """Serialize the action hint with non-finite floats rejected."""
+        options = {"indent": 2, "sort_keys": True}
+        options.update(kwargs)
+        options["allow_nan"] = False
+        return json.dumps(self.to_dict(), **options)
 
 
 class ADMemoryExplainabilityReport(NamedTuple):
@@ -307,6 +367,195 @@ class MeshIntelligenceReport(NamedTuple):
 
     def to_json(self, **kwargs: object) -> str:
         """Serialize the report for memory-reduction evidence artifacts."""
+        options = {"indent": 2, "sort_keys": True}
+        options.update(kwargs)
+        options["allow_nan"] = False
+        return json.dumps(self.to_dict(), **options)
+
+
+class ADMemoryPreflightReport(NamedTuple):
+    """Composite AD-memory preflight artifact.
+
+    This report composes static memory planning, static explainability,
+    optional mesh advisories, and optional trace-time JAX saved-residual
+    diagnostics. It is not runtime profiler evidence, XLA memory analysis,
+    a peak-memory guarantee, a certificate, or RF validation.
+    """
+
+    n_steps: int
+    available_memory_gb: float
+    target_fraction: float
+    target_memory_gb: float
+    fit_safety_factor: float
+    status: str
+    supported_checkpoint_mode: str | None
+    checkpoint_every: int | None
+    checkpoint_segments: int | None
+    full_ad_fits: bool
+    checkpointing_fits: bool
+    memory_plan: ADMemoryPlan
+    explainability: ADMemoryExplainabilityReport
+    mesh_report: MeshIntelligenceReport | None
+    residual_diagnostic: object | None
+    action_hints: tuple[ADMemoryActionHint, ...]
+    evidence_boundaries: tuple[str, ...]
+    recommendation: str
+
+    @property
+    def evidence_class(self) -> str:
+        """Evidence class label serialized with this composite preflight."""
+        return "composite_ad_memory_preflight"
+
+    @property
+    def source_evidence_classes(self) -> tuple[str, ...]:
+        """Evidence classes from nested artifacts, in stable order."""
+        classes: list[str] = [
+            self.memory_plan.evidence_class,
+            self.memory_plan.selected_estimate.evidence_class,
+            self.explainability.evidence_class,
+        ]
+        residual_source = getattr(
+            self.residual_diagnostic,
+            "source_evidence_class",
+            None,
+        )
+        if residual_source is not None:
+            classes.append(str(residual_source))
+        residual_evidence = getattr(self.residual_diagnostic, "evidence_class", None)
+        if residual_evidence is not None:
+            classes.append(str(residual_evidence))
+
+        deduped: list[str] = []
+        for evidence_class in classes:
+            if evidence_class not in deduped:
+                deduped.append(evidence_class)
+        return tuple(deduped)
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable JSON-serializable AD-memory preflight artifact."""
+        return {
+            "evidence_class": self.evidence_class,
+            "source_evidence_classes": list(self.source_evidence_classes),
+            "n_steps": int(self.n_steps),
+            "available_memory_gb": float(self.available_memory_gb),
+            "target_fraction": float(self.target_fraction),
+            "target_memory_gb": float(self.target_memory_gb),
+            "fit_safety_factor": float(self.fit_safety_factor),
+            "status": self.status,
+            "supported_checkpoint_mode": self.supported_checkpoint_mode,
+            "checkpoint_every": self.checkpoint_every,
+            "checkpoint_segments": self.checkpoint_segments,
+            "full_ad_fits": bool(self.full_ad_fits),
+            "checkpointing_fits": bool(self.checkpointing_fits),
+            "memory_plan": self.memory_plan.to_dict(),
+            "explainability": self.explainability.to_dict(),
+            "mesh_report": _artifact_to_dict(self.mesh_report),
+            "residual_diagnostic": _artifact_to_dict(self.residual_diagnostic),
+            "action_hints": [hint.to_dict() for hint in self.action_hints],
+            "evidence_boundaries": list(self.evidence_boundaries),
+            "recommendation": self.recommendation,
+        }
+
+    def to_json(self, **kwargs: object) -> str:
+        """Serialize the preflight report with non-finite floats rejected."""
+        options = {"indent": 2, "sort_keys": True}
+        options.update(kwargs)
+        options["allow_nan"] = False
+        return json.dumps(self.to_dict(), **options)
+
+
+class ADCompiledMemoryCertificate(NamedTuple):
+    """Bounded compiler-memory certificate for one exact compiled executable.
+
+    The report is derived from a caller-supplied JAX compiled object's
+    ``memory_analysis()`` result plus complete exact-scope metadata. It is not a
+    universal peak-memory predictor, runtime profiler artifact, RF validation
+    result, or proof that source/config digests correspond to an opaque
+    executable.
+    """
+
+    status: str
+    available_memory_gb: float
+    target_fraction: float
+    target_memory_gb: float
+    compiler_reported_required_bytes: int | None
+    compiler_reported_required_gb: float | None
+    temp_size_in_bytes: int | None
+    argument_size_in_bytes: int | None
+    output_size_in_bytes: int | None
+    alias_size_in_bytes: int | None
+    temp_gb: float | None
+    argument_gb: float | None
+    output_gb: float | None
+    alias_gb: float | None
+    exact_scope: Mapping[str, object] | None
+    scope_status: str
+    scope_status_reason: str
+    scope_digest: str | None
+    config_digest: str | None
+    environment_digest: str | None
+    memory_analysis_status: str
+    memory_analysis_status_reason: str
+    jax_version: str
+    evidence_boundaries: tuple[str, ...]
+    recommendations: tuple[str, ...]
+    source_preflight: object | None = None
+
+    @property
+    def evidence_class(self) -> str:
+        """Evidence class label serialized with this bounded certificate."""
+        return "bounded_certificate"
+
+    @property
+    def is_valid_certificate(self) -> bool:
+        """Whether compiler evidence and exact scope are complete."""
+        return self.status in {"certified_budget_fit", "certified_budget_exceeded"}
+
+    @property
+    def is_budget_safe(self) -> bool | None:
+        """Whether the compiler estimate fits the configured target budget."""
+        if self.status == "certified_budget_fit":
+            return True
+        if self.status == "certified_budget_exceeded":
+            return False
+        return None
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable JSON-serializable bounded-certificate artifact."""
+        return {
+            "evidence_class": self.evidence_class,
+            "status": self.status,
+            "is_valid_certificate": self.is_valid_certificate,
+            "is_budget_safe": self.is_budget_safe,
+            "available_memory_gb": float(self.available_memory_gb),
+            "target_fraction": float(self.target_fraction),
+            "target_memory_gb": float(self.target_memory_gb),
+            "compiler_reported_required_bytes": self.compiler_reported_required_bytes,
+            "compiler_reported_required_gb": self.compiler_reported_required_gb,
+            "temp_size_in_bytes": self.temp_size_in_bytes,
+            "argument_size_in_bytes": self.argument_size_in_bytes,
+            "output_size_in_bytes": self.output_size_in_bytes,
+            "alias_size_in_bytes": self.alias_size_in_bytes,
+            "temp_gb": self.temp_gb,
+            "argument_gb": self.argument_gb,
+            "output_gb": self.output_gb,
+            "alias_gb": self.alias_gb,
+            "exact_scope": _artifact_to_dict(self.exact_scope),
+            "scope_status": self.scope_status,
+            "scope_status_reason": self.scope_status_reason,
+            "scope_digest": self.scope_digest,
+            "config_digest": self.config_digest,
+            "environment_digest": self.environment_digest,
+            "memory_analysis_status": self.memory_analysis_status,
+            "memory_analysis_status_reason": self.memory_analysis_status_reason,
+            "jax_version": self.jax_version,
+            "evidence_boundaries": list(self.evidence_boundaries),
+            "recommendations": list(self.recommendations),
+            "source_preflight": _artifact_to_dict(self.source_preflight),
+        }
+
+    def to_json(self, **kwargs: object) -> str:
+        """Serialize the certificate with non-finite floats rejected."""
         options = {"indent": 2, "sort_keys": True}
         options.update(kwargs)
         options["allow_nan"] = False
@@ -1000,8 +1249,11 @@ __all__ = [
     "AD_MemoryEstimate",
     "ADMemoryPlan",
     "ADMemoryComponent",
+    "ADMemoryActionHint",
     "ADMemoryExplainabilityReport",
+    "ADMemoryPreflightReport",
     "MeshIntelligenceReport",
+    "ADCompiledMemoryCertificate",
     "Result",
     "ForwardResult",
     "MaterialSpec",

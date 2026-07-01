@@ -10,7 +10,35 @@ from rfx.api import (
     Simulation, Result, WaveguideSParamResult, WaveguideSMatrixResult,
     MSLSMatrixResult, CoaxialSMatrixResult, MATERIAL_LIBRARY,
     AD_MemoryEstimate, ADMemoryPlan, ADMemoryComponent,
-    ADMemoryExplainabilityReport, MeshIntelligenceReport,
+    ADMemoryActionHint, ADMemoryExplainabilityReport,
+    ADMemoryPreflightReport, ADCompiledMemoryCertificate,
+    MeshIntelligenceReport,
+)
+from rfx.ad_diagnostics import (
+    ADParserHealth,
+    ADResidualGroup,
+    ADResidualInspection,
+    ADResidualRecord,
+    ADSavedResidualDiagnosticReport,
+    diagnose_ad_saved_residuals,
+    inspect_ad_saved_residuals,
+    parse_saved_residual_line,
+)
+from rfx.pareto import (
+    ParetoFront,
+    ParetoPoint,
+    epsilon_constraint_mask,
+    pareto_front,
+    pareto_mask,
+    select_epsilon_constrained,
+    weighted_scalarization,
+)
+from rfx.jax_checks import (
+    check_bounds,
+    check_courant_number,
+    check_finite,
+    check_positive,
+    checkify_invariants,
 )
 from rfx.geometry.csg import Box, Sphere, Cylinder, PolylineWire
 from rfx.geometry.curved import CurvedPatch
@@ -214,7 +242,19 @@ __all__ = [
     "Result", "WaveguideSParamResult", "WaveguideSMatrixResult",
     "MSLSMatrixResult", "CoaxialSMatrixResult",
     "AD_MemoryEstimate", "ADMemoryPlan", "ADMemoryComponent",
+    "ADMemoryActionHint",
     "ADMemoryExplainabilityReport", "MeshIntelligenceReport",
+    "ADMemoryPreflightReport",
+    "ADCompiledMemoryCertificate",
+    "ADParserHealth", "ADResidualGroup",
+    "ADResidualInspection", "ADResidualRecord",
+    "ADSavedResidualDiagnosticReport", "diagnose_ad_saved_residuals",
+    "inspect_ad_saved_residuals", "parse_saved_residual_line",
+    "ParetoFront", "ParetoPoint", "pareto_front", "pareto_mask",
+    "weighted_scalarization", "epsilon_constraint_mask",
+    "select_epsilon_constrained",
+    "checkify_invariants", "check_finite", "check_positive",
+    "check_bounds", "check_courant_number",
     # geometry
     "Box", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
     "PCBLayer", "Stackup",

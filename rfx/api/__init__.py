@@ -19,8 +19,11 @@ Usage
 from __future__ import annotations
 
 import math
+import json
 import jax
+from collections.abc import Callable, Mapping, Sequence
 from numbers import Integral
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -59,7 +62,10 @@ from rfx.api._spec import (  # noqa: E402
     AD_MemoryEstimate,
     ADMemoryPlan,
     ADMemoryComponent,
+    ADMemoryActionHint,
     ADMemoryExplainabilityReport,
+    ADMemoryPreflightReport,
+    ADCompiledMemoryCertificate,
     MeshIntelligenceReport,
     Result,
     ForwardResult,
@@ -140,6 +146,92 @@ def _format_memory_with_safety(value: float, safety_factor: float) -> str:
         f"{_format_memory_gb(value)} "
         f"({_format_memory_gb(value * safety_factor)} with {safety_factor:.2f}x safety)"
     )
+
+
+AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES = (
+    "static memory planning only",
+    "trace-time JAX saved-residual explainability only when residual_diagnostic is present",
+    "not a runtime peak-memory guarantee",
+    "not XLA memory analysis",
+    "not profiler evidence",
+    "not a certificate",
+    "not RF validation",
+)
+
+AD_COMPILED_MEMORY_CERTIFICATE_EVIDENCE_BOUNDARIES = (
+    "bounded to one caller-supplied compiled executable",
+    "uses JAX Compiled.memory_analysis() estimates",
+    "not a universal guaranteed peak-memory predictor",
+    "not profiler evidence",
+    "not RF validation",
+    "digests are audit identities, not executable correspondence proof",
+)
+
+
+def _preflight_json_safe(value: object, *, path: str = "residual_context") -> object:
+    """Return ``value`` as JSON-native data or raise a residual-context error."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{path} contains non-finite JSON value")
+        return value
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        return _preflight_json_safe(value.to_dict(), path=path)
+    if hasattr(value, "to_json") and callable(value.to_json):
+        try:
+            parsed = json.loads(value.to_json())
+        except Exception as exc:
+            raise TypeError(f"{path} to_json() did not return JSON data") from exc
+        return _preflight_json_safe(parsed, path=path)
+    if hasattr(value, "tolist") and callable(value.tolist):
+        return _preflight_json_safe(value.tolist(), path=path)
+    if isinstance(value, Mapping):
+        return {
+            str(key): _preflight_json_safe(item, path=f"{path}.{key}")
+            for key, item in value.items()
+        }
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [
+            _preflight_json_safe(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    raise TypeError(f"{path} contains unsupported value {type(value).__name__}")
+
+
+def _validate_residual_context(
+    context: Mapping[str, object] | None,
+    *,
+    owned_fields: Mapping[str, object],
+) -> dict[str, object]:
+    """Merge and validate caller residual context before returning a report."""
+    caller_context = (
+        {}
+        if context is None
+        else _preflight_json_safe(context, path="residual_context")
+    )
+    if not isinstance(caller_context, dict):
+        raise TypeError("residual_context must be a mapping")
+    merged = dict(caller_context)
+    merged.update(
+        {
+            key: _preflight_json_safe(value, path=f"residual_context.{key}")
+            for key, value in owned_fields.items()
+        }
+    )
+    try:
+        json.dumps(merged, allow_nan=False)
+    except ValueError as exc:
+        raise ValueError("residual_context contains non-finite JSON value") from exc
+    except TypeError as exc:
+        raise TypeError("residual_context contains unsupported JSON value") from exc
+    return merged
+
+from rfx.api._compiled_memory import (  # noqa: E402
+    _canonicalize_exact_scope,
+    _environment_summary,
+    _normalize_compiled_memory_analysis,
+)
 
 # ---------------------------------------------------------------------------
 # Preflight / validation methods — moved to rfx/api/_preflight.py
@@ -2610,6 +2702,404 @@ class Simulation(
             ),
         )
 
+    def ad_memory_preflight(
+        self,
+        n_steps: int,
+        available_memory_gb: float,
+        *,
+        target_fraction: float = 0.85,
+        n_warmup: int = 0,
+        design_mask: jnp.ndarray | np.ndarray | None = None,
+        safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
+        include_mesh_report: bool = True,
+        check_ntff: bool = True,
+        check_resolution: bool = True,
+        residual_fun: Callable[..., Any] | None = None,
+        residual_args: tuple[Any, ...] = (),
+        residual_kwargs: Mapping[str, Any] | None = None,
+        residual_top_n: int = 10,
+        residual_workflow: str | None = None,
+        residual_context: Mapping[str, object] | None = None,
+    ) -> ADMemoryPreflightReport:
+        """Return a one-call AD-memory preflight planning artifact.
+
+        The report composes existing static memory planning, static
+        explainability, optional mesh advisories, and optional trace-time JAX
+        saved-residual diagnostics. It does not run FDTD and does not upgrade
+        static planning evidence into runtime memory proof.
+        """
+        plan = self.plan_ad_memory(
+            n_steps,
+            available_memory_gb,
+            target_fraction=target_fraction,
+            n_warmup=n_warmup,
+            design_mask=design_mask,
+            safety_factor=safety_factor,
+        )
+
+        if plan.full_ad_fits:
+            status = "full_ad_fits"
+            selected_checkpoint_every = None
+            selected_checkpoint_segments = None
+            supported_checkpoint_mode = None
+        else:
+            selected_checkpoint_every = plan.checkpoint_every
+            selected_checkpoint_segments = plan.checkpoint_segments
+            supported_checkpoint_mode = plan.checkpoint_mode
+            status = "checkpointing_fits" if plan.segmented_fits else "does_not_fit"
+
+        explanation = self.explain_ad_memory(
+            n_steps,
+            available_memory_gb=available_memory_gb,
+            checkpoint_every=selected_checkpoint_every,
+            checkpoint_segments=selected_checkpoint_segments,
+            n_warmup=n_warmup,
+            design_mask=design_mask,
+        )
+
+        mesh_report = (
+            self.mesh_intelligence_report(
+                n_steps=n_steps,
+                checkpoint_every=selected_checkpoint_every,
+                checkpoint_segments=selected_checkpoint_segments,
+                available_memory_gb=available_memory_gb,
+                n_warmup=n_warmup,
+                design_mask=design_mask,
+                check_ntff=check_ntff,
+                check_resolution=check_resolution,
+            )
+            if include_mesh_report
+            else None
+        )
+
+        action_hints: list[ADMemoryActionHint] = []
+        if plan.full_ad_fits:
+            recommendation = "Full reverse-mode AD fits the conservative memory target; checkpointing is optional for memory."
+            action_hints.append(
+                ADMemoryActionHint(
+                    code="full_ad_fits",
+                    severity="info",
+                    message="Full reverse-mode AD fits the configured conservative memory target.",
+                    action="Run full reverse-mode AD or still choose checkpointing for extra margin.",
+                )
+            )
+        elif plan.segmented_fits:
+            if plan.checkpoint_mode == "checkpoint_every":
+                code = "use_checkpoint_every"
+                action = (
+                    f"Wire checkpoint_every={plan.checkpoint_every} into the supported non-uniform runner."
+                )
+            else:
+                code = "use_checkpoint_segments"
+                action = (
+                    f"Wire checkpoint_segments={plan.checkpoint_segments} into the supported uniform runner."
+                )
+            recommendation = plan.recommendation
+            action_hints.append(
+                ADMemoryActionHint(
+                    code=code,
+                    severity="warning",
+                    message="Supported segmented checkpointing fits the configured conservative memory target.",
+                    action=action,
+                    checkpoint_mode=plan.checkpoint_mode,
+                    checkpoint_every=plan.checkpoint_every,
+                    checkpoint_segments=plan.checkpoint_segments,
+                )
+            )
+        else:
+            recommendation = (
+                f"{plan.recommendation}; do not launch the returned checkpoint "
+                "candidate as a fit. It is diagnostic-only."
+            )
+            action_hints.append(
+                ADMemoryActionHint(
+                    code="memory_budget_unfit",
+                    severity="blocker",
+                    message="Neither full reverse-mode AD nor the least-memory supported checkpoint candidate fits the configured conservative memory target.",
+                    action=(
+                        "Do not launch the returned checkpoint candidate as a fit; "
+                        "reduce mesh size, reduce n_steps, increase memory, or choose a stronger memory-reduction lane."
+                    ),
+                    checkpoint_mode=plan.checkpoint_mode,
+                    checkpoint_every=plan.checkpoint_every,
+                    checkpoint_segments=plan.checkpoint_segments,
+                    blocking=True,
+                )
+            )
+
+        owned_residual_context = {
+            "n_steps": int(plan.n_steps),
+            "available_memory_gb": float(plan.available_memory_gb),
+            "target_fraction": float(plan.target_fraction),
+            "target_memory_gb": float(plan.target_memory_gb),
+            "fit_safety_factor": float(plan.fit_safety_factor),
+            "checkpoint_mode": supported_checkpoint_mode,
+            "checkpoint_every": selected_checkpoint_every,
+            "checkpoint_segments": selected_checkpoint_segments,
+            "preflight_status": status,
+        }
+        merged_residual_context = (
+            _validate_residual_context(
+                residual_context,
+                owned_fields=owned_residual_context,
+            )
+            if residual_fun is not None or residual_context is not None
+            else None
+        )
+        residual_diagnostic = None
+        if residual_fun is not None:
+            from rfx.ad_diagnostics import diagnose_ad_saved_residuals
+            artifact_snapshots: dict[str, object] = {
+                "memory_plan": plan,
+                "explainability": explanation,
+            }
+            if mesh_report is not None:
+                artifact_snapshots["mesh_report"] = mesh_report
+            residual_diagnostic = diagnose_ad_saved_residuals(
+                residual_fun,
+                *residual_args,
+                top_n=residual_top_n,
+                workflow=residual_workflow,
+                context=merged_residual_context,
+                artifacts=artifact_snapshots,
+                **(dict(residual_kwargs) if residual_kwargs is not None else {}),
+            )
+            action_hints.append(
+                ADMemoryActionHint(
+                    code="inspect_saved_residuals",
+                    severity="info",
+                    message="JAX saved-residual trace context is attached for comparison with static memory artifacts.",
+                    action="Compare top residuals and groups with the static explanation before changing checkpoint policy.",
+                )
+            )
+
+        action_hints.append(
+            ADMemoryActionHint(
+                code="validate_physics_separately",
+                severity="info",
+                message="Memory preflight is separate from electromagnetic correctness checks.",
+                action="Run convergence, reference, or observable checks before making physics claims.",
+            )
+        )
+
+        return ADMemoryPreflightReport(
+            n_steps=plan.n_steps,
+            available_memory_gb=plan.available_memory_gb,
+            target_fraction=plan.target_fraction,
+            target_memory_gb=plan.target_memory_gb,
+            fit_safety_factor=plan.fit_safety_factor,
+            status=status,
+            supported_checkpoint_mode=supported_checkpoint_mode,
+            checkpoint_every=selected_checkpoint_every,
+            checkpoint_segments=selected_checkpoint_segments,
+            full_ad_fits=plan.full_ad_fits,
+            checkpointing_fits=plan.segmented_fits,
+            memory_plan=plan,
+            explainability=explanation,
+            mesh_report=mesh_report,
+            residual_diagnostic=residual_diagnostic,
+            action_hints=tuple(action_hints),
+            evidence_boundaries=AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES,
+            recommendation=recommendation,
+        )
+
+    def ad_memory_compiled_certificate(
+        self,
+        compiled: object,
+        *,
+        n_steps: int,
+        available_memory_gb: float,
+        target_fraction: float = 0.85,
+        checkpoint_every: int | None = None,
+        checkpoint_segments: int | None = None,
+        n_warmup: int = 0,
+        design_mask: jnp.ndarray | np.ndarray | None = None,
+        precision: str | None = None,
+        input_signature: object | None = None,
+        static_signature: object | None = None,
+        compiled_object_id: str | None = None,
+        runner_or_objective: str | None = None,
+        preflight: ADMemoryPreflightReport | None = None,
+        scope_context: Mapping[str, object] | None = None,
+    ) -> ADCompiledMemoryCertificate:
+        """Return a fail-closed compiler-memory certificate for one executable.
+
+        This method accepts an already-compiled JAX object and reads only its
+        ``memory_analysis()`` output. It does not compile callables, run FDTD,
+        profile runtime memory, or convert static memory plans into guarantees.
+        Green statuses are bounded to the supplied compiled object and complete
+        exact-scope metadata.
+        """
+        n_steps_i = _require_integral_param("n_steps", n_steps)
+        n_warmup_i = _require_integral_param("n_warmup", n_warmup)
+        checkpoint_every_i = (
+            None
+            if checkpoint_every is None
+            else _require_integral_param("checkpoint_every", checkpoint_every)
+        )
+        checkpoint_segments_i = (
+            None
+            if checkpoint_segments is None
+            else _require_integral_param("checkpoint_segments", checkpoint_segments)
+        )
+        available_memory_gb_f = _require_positive_finite_scalar(
+            "available_memory_gb",
+            available_memory_gb,
+        )
+        target_fraction_f = _require_positive_finite_scalar(
+            "target_fraction",
+            target_fraction,
+        )
+        if target_fraction_f > 1.0:
+            raise ValueError("target_fraction must be in the interval (0, 1]")
+
+        # Reuse the existing AD-memory validation contract for counts,
+        # checkpoint knob exclusivity/divisibility, and design-mask shape/dtype.
+        self.estimate_ad_memory(
+            n_steps_i,
+            available_memory_gb=available_memory_gb_f,
+            checkpoint_every=checkpoint_every_i,
+            checkpoint_segments=checkpoint_segments_i,
+            n_warmup=n_warmup_i,
+            design_mask=design_mask,
+        )
+
+        target_memory_gb = available_memory_gb_f * target_fraction_f
+        analysis = _normalize_compiled_memory_analysis(compiled)
+        memory_analysis_fields = (
+            tuple(analysis.fields)
+            if analysis.status == "complete"
+            else None
+        )
+        scope = _canonicalize_exact_scope(
+            compiled=compiled,
+            n_steps=n_steps_i,
+            n_warmup=n_warmup_i,
+            checkpoint_every=checkpoint_every_i,
+            checkpoint_segments=checkpoint_segments_i,
+            available_memory_gb=available_memory_gb_f,
+            target_fraction=target_fraction_f,
+            target_memory_gb=target_memory_gb,
+            precision=precision,
+            input_signature=input_signature,
+            static_signature=static_signature,
+            compiled_object_id=compiled_object_id,
+            runner_or_objective=runner_or_objective,
+            memory_analysis_fields=memory_analysis_fields,
+            preflight=preflight,
+            scope_context=scope_context,
+        )
+
+        if scope.status != "complete":
+            status = scope.status
+            status_reason = scope.reason
+        elif analysis.status != "complete":
+            status = analysis.status
+            status_reason = analysis.reason
+        else:
+            required_bytes = int(analysis.required_bytes)
+            target_bytes = target_memory_gb * 1e9
+            if required_bytes <= target_bytes:
+                status = "certified_budget_fit"
+                status_reason = (
+                    "compiled memory_analysis() required bytes fit within "
+                    "available_memory_gb * target_fraction"
+                )
+            else:
+                status = "certified_budget_exceeded"
+                status_reason = (
+                    "compiled memory_analysis() required bytes exceed "
+                    "available_memory_gb * target_fraction"
+                )
+
+        def _bytes(field: str) -> int | None:
+            return analysis.fields.get(field) if analysis.status == "complete" else None
+
+        def _gb(value: int | None) -> float | None:
+            return None if value is None else value / 1e9
+
+        temp_bytes = _bytes("temp_size_in_bytes")
+        argument_bytes = _bytes("argument_size_in_bytes")
+        output_bytes = _bytes("output_size_in_bytes")
+        alias_bytes = _bytes("alias_size_in_bytes")
+        required_bytes_out = (
+            int(analysis.required_bytes)
+            if analysis.status == "complete"
+            else None
+        )
+        env = _environment_summary()
+        exact_scope = scope.exact_scope
+        jax_version = (
+            str(exact_scope.get("jax_version"))
+            if exact_scope is not None and "jax_version" in exact_scope
+            else str(env["jax_version"])
+        )
+        recommendations = [
+            "Treat this as a bounded certificate for the exact compiled object and declared scope only.",
+            "Digests are audit identities only; they do not prove source-to-executable correspondence.",
+        ]
+        if status == "certified_budget_fit":
+            recommendations.insert(
+                0,
+                "Compiler memory analysis fits the target budget for this exact scope.",
+            )
+        elif status == "certified_budget_exceeded":
+            recommendations.insert(
+                0,
+                "Compiler memory analysis exceeds the target budget; reduce scope, checkpoint more aggressively, or increase memory.",
+            )
+        elif status == "scope_incomplete":
+            recommendations.insert(
+                0,
+                "Provide complete JSON-safe exact-scope metadata before relying on compiler memory evidence.",
+            )
+        elif status == "scope_mismatch":
+            recommendations.insert(
+                0,
+                "Resolve contradictions between declared scope, preflight metadata, and compiled-object introspection.",
+            )
+        elif status == "analysis_unavailable":
+            recommendations.insert(
+                0,
+                "JAX did not provide memory_analysis() evidence for this compiled object/backend.",
+            )
+        else:
+            recommendations.insert(
+                0,
+                "JAX memory_analysis() output is incomplete or invalid for certificate use.",
+            )
+
+        return ADCompiledMemoryCertificate(
+            status=status,
+            available_memory_gb=available_memory_gb_f,
+            target_fraction=target_fraction_f,
+            target_memory_gb=target_memory_gb,
+            compiler_reported_required_bytes=required_bytes_out,
+            compiler_reported_required_gb=_gb(required_bytes_out),
+            temp_size_in_bytes=temp_bytes,
+            argument_size_in_bytes=argument_bytes,
+            output_size_in_bytes=output_bytes,
+            alias_size_in_bytes=alias_bytes,
+            temp_gb=_gb(temp_bytes),
+            argument_gb=_gb(argument_bytes),
+            output_gb=_gb(output_bytes),
+            alias_gb=_gb(alias_bytes),
+            exact_scope=exact_scope,
+            scope_status=scope.status,
+            scope_status_reason=scope.reason,
+            scope_digest=scope.scope_digest,
+            config_digest=scope.config_digest,
+            environment_digest=scope.environment_digest,
+            memory_analysis_status=analysis.status,
+            memory_analysis_status_reason=(
+                status_reason if analysis.status == status else analysis.reason
+            ),
+            jax_version=jax_version,
+            evidence_boundaries=AD_COMPILED_MEMORY_CERTIFICATE_EVIDENCE_BOUNDARIES,
+            recommendations=tuple(recommendations),
+            source_preflight=scope.source_preflight,
+        )
+
     def mesh_intelligence_report(
         self,
         *,
@@ -2880,7 +3370,10 @@ __all__ = [
     "AD_MemoryEstimate",
     "ADMemoryPlan",
     "ADMemoryComponent",
+    "ADMemoryActionHint",
     "ADMemoryExplainabilityReport",
+    "ADMemoryPreflightReport",
+    "ADCompiledMemoryCertificate",
     "MeshIntelligenceReport",
     "Result",
     "ForwardResult",
