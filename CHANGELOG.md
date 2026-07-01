@@ -6,6 +6,27 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — AD-memory planning explainability (PR #231; diagnostic/planning-only, no numerics-path change)
+
+- `Simulation.explain_ad_memory(...)` decomposes the selected AD-memory estimate
+  into named contributors (field tape, segment-boundary carries, CPML/material,
+  NTFF) with a component-sum invariant. New public types `ADMemoryComponent` and
+  `ADMemoryExplainabilityReport` (exported from `rfx`).
+- Evidence-class labels on AD-memory artifacts (`static_estimate` /
+  `calibrated_conservative_plan` / `static_ad_explainability`) so a planning
+  estimate is never confused with profiler evidence or a bounded certificate.
+
+### Changed — AD-memory planning (PR #231)
+
+- Checkpoint knobs separated: `checkpoint_every` (non-uniform scan-of-scan chunk
+  length) vs `checkpoint_segments` (uniform segmented-scan count; must divide
+  `n_steps`; mutually exclusive).
+- Conservative `AD_MEMORY_FIT_SAFETY_FACTOR` (1.30) applied before the
+  full-AD / segmented fit flags; `design_mask` is recorded but does NOT reduce
+  the estimate until masked-state memory has observed calibration. Strict input
+  validation, strict-JSON (`allow_nan=False`) serialization, and MB-aware
+  formatting (sub-10 MB no longer rendered as `0.00 GB`).
+
 ## [1.6.6] - 2026-06-24
 
 Maintenance release: a behaviour-preserving internal refactor (extract the

@@ -15,13 +15,26 @@ import { Aside } from '@astrojs/starlight/components';
 
 The memory-reduction goal in `rfx` is to keep JAX-native FDTD workflows small enough to run while preserving the support boundary for the observable being claimed.
 
+## Memory evidence levels
+
+Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory(...)` artifacts are not certificates and are not a universal guaranteed peak predictor. They are planning evidence for sizing reverse-mode AD runs, choosing supported checkpoint knobs, and explaining static memory drivers.
+
+| Evidence class | Produced by current APIs | Meaning |
+|---|---:|---|
+| `static_estimate` | yes | Formula/static metadata estimate for planning. It may include shape, dtype, NTFF, active-step, and design-mask metadata, but it is not a compiled-executable peak-memory proof. |
+| `calibrated_conservative_plan` | yes | Budget-fitting helper result built from static estimates plus safety margins. It can say whether a conservative plan fits the configured budget target, not whether runtime peak memory is guaranteed. |
+| `static_ad_explainability` | yes | Decomposition of the selected static AD estimate into field state, material/CPML state, reverse-mode saved state, and monitor state so users can see why a run is large. It is diagnostic planning evidence, not profiling. |
+| `observed_profile` | no | A future or external measured run artifact for calibration/regression. It records one environment/run and must not be reused as proof for changed scope. |
+| `bounded_certificate` | no | A separately approved future artifact only if compiler/runtime metadata can support a fail-closed certificate for one exact compiled executable, environment, input/static args/shapes, precision, and checkpoint configuration. |
+
 ## Decision ladder
 
 | Need | Preferred lane | Public status |
 |---|---|---|
 | Ordinary RF reference, general S-parameters, ports, far-field claims | Uniform Cartesian Yee | validated default |
-| Thin substrate or layered z structure that would force a tiny uniform cell everywhere | Non-uniform z mesh + segmented AD | limited-support path; verify against a uniform or external reference before public claims |
-| Large inverse-design run where reverse-mode tape is the memory limit | `checkpoint_every` / segmented scan where the selected runner supports the physics | planning tool, not validation evidence |
+| Thin substrate or layered z structure that would force a tiny uniform cell everywhere | Non-uniform z mesh + `checkpoint_every` segmented AD | limited-support path; verify against a uniform or external reference before public claims |
+| Large uniform inverse-design run where reverse-mode tape is the memory limit | Uniform segmented scan via `checkpoint_segments` | planning tool, not validation evidence |
+| Large non-uniform inverse-design run where reverse-mode tape is the memory limit | `checkpoint_every` / segmented scan where the selected runner supports the physics | planning tool, not validation evidence |
 | Need to reduce memory for a port-family S-parameter claim | Use the calculator-supported lane first, then document the memory plan | validation scope still follows the port-family support matrix |
 
 Use the documented memory-planning and non-uniform workflows for public examples; other local-refinement code paths require an explicit support entry before publication.
@@ -32,9 +45,12 @@ Start with the non-uniform lane when a small feature only needs fine cells along
 
 ```python
 plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=24.0)
+if not (plan.full_ad_fits or plan.segmented_fits):
+    raise RuntimeError(plan.recommendation)
+
 report = sim.mesh_intelligence_report(
     n_steps=10_000,
-    checkpoint_every=plan.checkpoint_every,
+    checkpoint_every=plan.checkpoint_every if plan.segmented_fits else None,
     available_memory_gb=24.0,
 )
 
@@ -46,14 +62,68 @@ plan_json = plan.to_json()
 report_json = report.to_json()
 ```
 
-Use the report to check:
+For a more actionable memory diagnostic, generate an explainability artifact next
+to the plan:
+
+```python
+explain = sim.explain_ad_memory(
+    n_steps=10_000,
+    checkpoint_every=plan.checkpoint_every if plan.segmented_fits else None,
+    checkpoint_segments=plan.checkpoint_segments if plan.segmented_fits else None,
+    available_memory_gb=24.0,
+)
+
+print(explain.dominant_component)
+print(explain.recommendations)
+explain_json = explain.to_json()
+```
+
+`explain_ad_memory(...)` reports the selected memory field (`ad_full_gb` or
+`ad_segmented_gb`), the active AD strategy, and a component breakdown. Use it to
+decide whether the dominant cost is full field tape, segmented boundary state,
+CPML/material state, or NTFF monitor state.
+
+Use the mesh intelligence report to check:
 
 - `cell_savings_factor`: comparison against a uniform-fine grid at the smallest configured cell size,
 - `preflight_issues`: geometry, resolution, and feature-support warnings to resolve before trusting results,
-- `ad_memory.ad_segmented_gb`: reverse-mode AD planning estimate when `checkpoint_every` is enabled,
+- `ad_memory.ad_segmented_gb` and `ad_memory.ad_segmented_active_segments`: reverse-mode AD planning estimate and active segment count when the report uses `checkpoint_every`,
 - `recommendation`: compact next action for the configured case.
 
-`plan_ad_memory(...)` is the budget-fitting helper: it returns `checkpoint_every=None` when full reverse-mode AD already fits, otherwise it recommends the smallest segmented-scan chunk length estimated to fit under the requested memory target.
+`plan_ad_memory(...)` is the budget-fitting helper: it returns both checkpoint knobs as `None` when full reverse-mode AD already fits, with `full_ad_fits=True` and `segmented_fits=False` because no segmented candidate was needed. Otherwise it returns a segmented candidate: `checkpoint_every` on non-uniform grids or `checkpoint_segments` on uniform grids, matching the runner support boundary. Treat `checkpoint_mode` as a knob selector only after `segmented_fits` is true; when `segmented_fits` is false and `full_ad_fits` is also false, follow `plan.recommendation` instead of launching the returned least-memory candidate.
+
+`checkpoint_every` and `checkpoint_segments` are different knobs. Use
+`checkpoint_every` for the non-uniform scan-of-scan path, where it means chunk
+length in timesteps. Use `checkpoint_segments` for the uniform segmented-scan
+path, where it means the number of equal segments and must divide `n_steps`.
+`n_warmup` reduces the reported active reverse-mode timestep count. `design_mask`
+is recorded as active-design metadata only; the primary memory estimates stay
+full-grid until masked-state memory has observed calibration. `n_warmup` must be
+an integer with `0 <= n_warmup < n_steps`. `design_mask` must be a boolean array
+with the simulation grid shape and at least one selected cell; arbitrary numeric
+masks, scalars, and shape-mismatched masks are rejected instead of being coerced.
+`plan_ad_memory(...)` uses a conservative safety multiplier before setting
+`full_ad_fits` or `segmented_fits`; the multiplier is stored in
+`plan.fit_safety_factor` for artifacts.
+
+For a uniform inverse-design run, gate execution on the fit flags before wiring
+the selected knob:
+
+```python
+plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=24.0)
+if plan.full_ad_fits:
+    result = sim.forward(n_steps=10_000)
+    report = sim.mesh_intelligence_report(n_steps=10_000, available_memory_gb=24.0)
+elif plan.segmented_fits and plan.checkpoint_mode == "checkpoint_segments":
+    result = sim.forward(n_steps=10_000, checkpoint_segments=plan.checkpoint_segments)
+    report = sim.mesh_intelligence_report(
+        n_steps=10_000,
+        checkpoint_segments=plan.checkpoint_segments,
+        available_memory_gb=24.0,
+    )
+else:
+    raise RuntimeError(plan.recommendation)
+```
 
 For a reusable JSON artifact without running FDTD, use:
 
@@ -69,9 +139,10 @@ For a validated memory-reduction result, keep these artifacts together:
 
 1. `mesh_intelligence_report(...).to_json()`,
 2. `plan_ad_memory(...).to_json()` when reverse-mode AD memory is part of the claim,
-3. the exact run command and version/commit,
-4. the physics validation artifact for the claimed observable,
-5. any unsupported-feature decisions or validation errors,
-6. gradient evidence if the result depends on `jax.grad`.
+3. `explain_ad_memory(...).to_json()` when deciding why AD memory is large,
+4. the exact run command and version/commit,
+5. the physics validation artifact for the claimed observable,
+6. any unsupported-feature decisions or validation errors,
+7. gradient evidence if the result depends on `jax.grad`.
 
 This keeps the memory story separate from the physics claim: saving cells or AD tape is useful only when the RF observable and gradient path remain inside their validated support boundary.

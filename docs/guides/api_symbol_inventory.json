@@ -7,6 +7,12 @@
     "ADIState3D": {
       "kind": "class"
     },
+    "ADMemoryComponent": {
+      "kind": "class"
+    },
+    "ADMemoryExplainabilityReport": {
+      "kind": "class"
+    },
     "ADMemoryPlan": {
       "kind": "class"
     },
@@ -2251,7 +2257,18 @@
     "estimate_ad_memory": [
       "n_steps",
       "available_memory_gb",
-      "checkpoint_every"
+      "checkpoint_every",
+      "checkpoint_segments",
+      "n_warmup",
+      "design_mask"
+    ],
+    "explain_ad_memory": [
+      "n_steps",
+      "available_memory_gb",
+      "checkpoint_every",
+      "checkpoint_segments",
+      "n_warmup",
+      "design_mask"
     ],
     "export_artifact_bundle": [
       "path",
@@ -2284,14 +2301,20 @@
     "mesh_intelligence_report": [
       "n_steps",
       "checkpoint_every",
+      "checkpoint_segments",
       "available_memory_gb",
+      "n_warmup",
+      "design_mask",
       "check_ntff",
       "check_resolution"
     ],
     "plan_ad_memory": [
       "n_steps",
       "available_memory_gb",
-      "target_fraction"
+      "target_fraction",
+      "n_warmup",
+      "design_mask",
+      "safety_factor"
     ],
     "plan_mesh": [
       "n_steps",
