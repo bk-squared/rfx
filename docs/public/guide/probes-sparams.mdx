@@ -16,7 +16,7 @@ Records a single field component at one Yee cell over time. The time series is s
 
 ```python
 sim.add_probe(
-    position=(0.025, 0.025, 0.010),  # (x, y, z) in metres
+    position=(0.025, 0.025, 0.010),  # (x, y, z) in meters
     component="ez",                   # ex / ey / ez / hx / hy / hz
 )
 ```
@@ -83,7 +83,7 @@ Use the calculator that matches the port family:
 |---|---|---|---|
 | `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | limited / bounded by the documented examples |
 | `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | partial / bounded by the documented examples, calibration caveated |
-| lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | S11 vectors in `ForwardResult.s_params` | differentiable workflow; check current limitations |
+| lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | S11 vectors in `ForwardResult.s_params` | differentiable workflow inside documented limits |
 | `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | specialized uniform-Yee workflow; broader support bounded by the documented examples |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | recommended rectangular-guide workflow within documented limits |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, diagnostics | bounded one-port coaxial line-reflection envelope |
@@ -123,7 +123,7 @@ s11_db = 20 * np.log10(np.abs(s_matrix[0, 0, :]))
 s21_db = 20 * np.log10(np.abs(s_matrix[1, 0, :]))
 ```
 
-The S-matrix is normalised to each port's `impedance`.
+The S-matrix is normalized to each port's `impedance`.
 
 ### Wire port S-matrix (JIT-DFT)
 

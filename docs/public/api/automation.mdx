@@ -15,7 +15,7 @@ without hand-deriving every simulation parameter.
 | `plan_mesh` | `plan_mesh(geometry, freq_range, materials=None, accuracy="standard", boundary="cpml", ...)` | returns a serializable `MeshPlan` with mesh, CFL, absorber, memory, support-check, and artifact declarations |
 | `auto_configure` | `auto_configure(geometry, freq_range, materials=None, accuracy="standard", boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None)` | derives mesh, margin, and run budget from geometry + frequency range |
 | `Simulation.auto` | `Simulation.auto(freq_range, accuracy="standard", **kwargs)` | convenience constructor for a full simulation |
-| `smooth_grading` | mesh-profile smoothing helper | used by current crossval workflows for graded z-profiles |
+| `smooth_grading` | mesh-profile smoothing helper | used by documented thin-substrate workflows for graded z-profiles |
 | `apply_thirds_rule` | feature-aware mesh helper | used when derived meshes need conservative refinement |
 
 ```python
@@ -41,9 +41,8 @@ and carry the requested `accuracy`; they have not run `Simulation.preflight()`.
 - Use the result in public reporting only after it matches the support matrix and validation
   evidence for the intended lane.
 
-## Current workflow note
+## Workflow note
 
-The newest thin-substrate crossval scripts use `smooth_grading()` to build
-non-uniform z-profiles around the substrate. That is useful workflow evidence,
-but it does not by itself make the graded-z workflow a validated reference path.
-
+Thin-substrate workflows can use `smooth_grading()` to build non-uniform
+z-profiles around the substrate. That is useful setup evidence, but it does not
+by itself make the graded-z workflow a validated reference path.

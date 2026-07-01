@@ -22,7 +22,7 @@ A Gaussian-modulated sinusoid (default excitation for ports):
 from rfx import GaussianPulse
 
 pulse = GaussianPulse(
-    f0=2.4e9,       # centre frequency (Hz)
+    f0=2.4e9,       # center frequency (Hz)
     bandwidth=0.8,  # fractional bandwidth (default 0.8 -> wideband)
     amplitude=1.0,  # peak amplitude
 )
@@ -47,7 +47,7 @@ Pass `ModulatedGaussian(...)` explicitly when you want zero-DC excitation.
 
 ### CWSource
 
-Continuous-wave sinusoid, useful for steady-state field visualisation:
+Continuous-wave sinusoid, useful for steady-state field visualization:
 
 ```python
 from rfx import CWSource
@@ -82,19 +82,19 @@ A soft current source injected at a single Yee cell. No resistive load — cavit
 
 ```python
 sim.add_source(
-    position=(0.025, 0.025, 0.010),  # (x, y, z) in metres
+    position=(0.025, 0.025, 0.010),  # (x, y, z) in meters
     component="ez",                   # "ex", "ey", or "ez"
     waveform=GaussianPulse(f0=3e9),
 )
 ```
 
-Use `add_source` for resonance characterisation (Harminv) where port loading would suppress the ring-down signal.
+Use `add_source` for resonance characterization (Harminv) where port loading would suppress the ring-down signal.
 
 ---
 
-## Polarised source (`add_polarized_source`)
+## Polarized source (`add_polarized_source`)
 
-Injects a source with a specified Jones-vector polarisation:
+Injects a source with a specified Jones-vector polarization:
 
 ```python
 # Linear
@@ -113,7 +113,7 @@ sim.add_polarized_source(
 # Arbitrary Jones vector (complex)
 sim.add_polarized_source(
     (0.025, 0.025, 0.01),
-    polarization=(1.0, 1j),   # (Ex, Ey) — normalised internally
+    polarization=(1.0, 1j),   # (Ex, Ey) — normalized internally
     waveform=GaussianPulse(f0=3e9),
 )
 ```
@@ -159,7 +159,7 @@ sim.add_port(
     position=(0.029, 0.030, 0.0),    # start of wire
     component="ez",
     impedance=50.0,
-    extent=0.0016,                    # wire length in metres
+    extent=0.0016,                    # wire length in meters
     waveform=GaussianPulse(f0=2.4e9),
 )
 ```
@@ -274,7 +274,7 @@ sim.add_tfsf_source(
 
 | Method | Use case | S-params / evidence framing |
 |---|---|---|
-| `add_source()` | Resonance, visualisation | No: not a port |
+| `add_source()` | Resonance, visualization | No: not a port |
 | `add_polarized_source()` | Antenna radiation, polarimetry | No: not a port |
 | `add_port(extent=None)` | Lumped-port S-params | `run(compute_s_params=True)`; limited / bounded by the documented examples |
 | `add_port(extent=...)` | Wire / probe-feed S-params | `run(compute_s_params=True)`; partial / bounded by the documented examples, calibration caveated |

@@ -22,30 +22,26 @@ Backward: jax.grad(loss)(eps_r) → gradient of eps_r
 
 ## Manual gradient loop
 
-The most flexible approach is still a custom objective written directly against
-`run()`:
+For custom objectives, keep the loop on the high-level differentiable API. Build
+the `Simulation` once, create an `eps_override` array with the configured grid
+shape, and differentiate a scalar loss from `Simulation.forward(...)`:
 
 ```python
 import jax
 import jax.numpy as jnp
-from rfx.grid import Grid
-from rfx.core.yee import MaterialArrays
-from rfx.simulation import run, make_source, make_probe, ProbeSpec
-from rfx.sources.sources import GaussianPulse
 
-grid = Grid(freq_max=8e9, domain=(0.04, 0.01, 0.01), dx=0.001, cpml_layers=6)
-src = make_source(grid, (0.008, 0.005, 0.005), "ez", GaussianPulse(f0=4e9), n_steps=150)
-probe = ProbeSpec(i=30, j=5, k=5, component="ez")
-
-sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
-mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
-
+# sim is an already configured Simulation with sources/probes/ports.
+# eps0 has the same shape as the simulation grid's permittivity array.
 def objective(eps_r):
-    mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-    result = run(grid, mats, 150, sources=[src], probes=[probe],
-                 boundary="pec", checkpoint=True)
-    return -jnp.sum(result.time_series ** 2)  # maximize transmission
+    result = sim.forward(eps_override=eps_r, n_steps=150, checkpoint=True)
+    return -jnp.sum(result.time_series ** 2)  # example proxy loss
+
+grad = jax.grad(objective)(eps0)
 ```
+
+This computes the gradient of the implemented discrete proxy objective. It does
+not by itself validate the final RF observable; run the relevant port, resonance,
+far-field, or convergence check after optimization.
 
 ## Built-in objectives: choose the right family
 
@@ -64,11 +60,12 @@ obj_z = target_impedance(freq=5e9, z_target=50.0)
 obj_bw = maximize_bandwidth(f_center=5e9, f_bw=2e9, s11_threshold=-10)
 ```
 
-### 2) Differentiable loop objectives for `optimize()` / `topology_optimize()`
+### 2) Differentiable loop objectives for `optimize()`
 
 Inside the traced forward pass, rfx does **not** build a full post-processed
-S-parameter matrix. For gradient-based optimisation loops, prefer the proxy
-losses below:
+S-parameter matrix for every port family. For gradient-based optimization loops,
+prefer the proxy losses below unless the selected calculator explicitly documents
+its differentiable S-parameter path:
 
 ```python
 from rfx import minimize_reflected_energy, maximize_transmitted_energy
@@ -77,10 +74,10 @@ obj_reflect = minimize_reflected_energy(port_probe_idx=0)
 obj_transmit = maximize_transmitted_energy(output_probe_idx=-1)
 ```
 
-These are the recommended defaults for reflection-minimisation and
-throughput-maximisation tasks.
+These are the recommended defaults for reflection-minimization and
+throughput-maximization tasks.
 
-For NTFF/directivity optimisation, prefer
+For NTFF/directivity optimization, prefer
 `maximize_directivity(..., log_ratio=True)` when the design variable can change
 total radiated power; this keeps the directivity-gradient sign consistent with
 the full ratio objective.
@@ -110,31 +107,29 @@ result = optimize(
 
 ## Far-field objectives with NTFF data
 
-A recent improvement makes `optimize()` NTFF-aware. If your objective accepts
-`ntff_box=...`, the optimiser will build the far-field box and pass it in.
+`optimize()` can pass NTFF data to objectives that explicitly accept
+`ntff_box=...`. Use this only when the NTFF setup and final far-field validation
+path are documented for the workflow.
 
 ```python
-import jax.numpy as jnp
-from rfx import compute_far_field_jax
+from rfx import maximize_directivity
 
-grid = sim._build_grid()  # advanced usage: capture once outside the objective
-theta = jnp.linspace(0.0, jnp.pi, 181)
-phi = jnp.array([0.0])
-
-def objective(result, ntff_box=None):
-    ff = compute_far_field_jax(result.ntff_data, ntff_box, grid, theta, phi)
-    broadside = jnp.abs(ff.E_theta[0, 90, 0]) ** 2 + jnp.abs(ff.E_phi[0, 90, 0]) ** 2
-    return -broadside
+objective = maximize_directivity(
+    theta_target=0.0,
+    phi_target=0.0,
+    log_ratio=True,
+)
 ```
 
-This enables beam shaping, broadside maximisation, and other radiation-aware
-advanced objectives.
+This supports target-direction directivity and other radiation-aware objectives
+when the simulation has a documented NTFF setup and the final design is re-run
+through the far-field validation path.
 
 ## Tips
 
-- **Always use `checkpoint=True`** in custom loops — it saves large amounts of memory.
+- **Use `checkpoint=True` or the documented segmented checkpoint knob** in custom loops when reverse-mode memory is the limiting factor.
 - **Start with small grids** for design iteration, then scale up for the final verification run.
-- **Learning rate**: `0.01–0.1` is a good first range for permittivity optimisation.
+- **Learning rate**: `0.01–0.1` is a good first range for permittivity optimization.
 - **Proxy objectives first**: when in doubt, start with `minimize_reflected_energy()` or `maximize_transmitted_energy()`.
 - **Use NTFF objectives selectively** — they are powerful, but more expensive than probe-only losses.
-- **GPU acceleration** is automatic when JAX sees CUDA devices.
+- **GPU acceleration** depends on the installed JAX/CUDA environment; verify device placement for performance-sensitive runs.

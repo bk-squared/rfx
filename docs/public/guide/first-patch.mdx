@@ -142,7 +142,7 @@ sim.add_source(
 sim.add_probe((feed_x, feed_y, feed_z), "ez")
 ```
 
-`add_source` injects a soft (no impedance loading) current source — ideal for resonance characterisation. Use `add_port` if you want S-parameter extraction against a 50 Ω reference.
+`add_source` injects a soft (no impedance loading) current source — ideal for resonance characterization. Use `add_port` if you want S-parameter extraction against a 50 Ω reference.
 
 ---
 
@@ -180,61 +180,14 @@ if modes:
 
 ---
 
-## 7. Optional: exploratory lumped-port run
+## 7. S-parameter follow-up
 
-If you want a quick diagnostic S-parameter run, you can re-run with a lumped
-port instead of a soft source:
-
-!!! warning
-    This single-cell lumped-port `compute_s_params=True` snippet is illustrative.
-    It raises `NotImplementedError` on the non-uniform `dz_profile` mesh built in
-    §2 — single-cell lumped-port S-parameters are not wired for the non-uniform
-    path. For calibrated S-parameters use a multi-cell `add_port(..., extent=...)`
-    WirePort, or a dedicated port workflow (see the waveguide/MSL S-parameter
-    recipes).
-
-```python
-sim2 = Simulation(
-    freq_max=4e9,
-    domain=(dom_x, dom_y, dom_z),
-    boundary="cpml",
-    cpml_layers=12,
-    dx=5e-4,
-    dz_profile=dz_profile,
-)
-sim2.add_material("fr4_24ghz", eps_r=4.4, sigma=sigma_fr4)
-sim2.add(Box((0, 0, 0), (dom_x, dom_y, dz_sub)), material="pec")
-sim2.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="fr4_24ghz")
-sim2.add(Box((px0, py0, h), (px0+L, py0+W, h+dz_sub)), material="pec")
-sim2.add_port(
-    (feed_x, feed_y, feed_z), "ez",
-    impedance=50,
-    waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-)
-
-result2 = sim2.run(n_steps=n_steps, compute_s_params=True)
-
-import matplotlib.pyplot as plt
-freqs  = result2.freqs
-s11_db = 20 * np.log10(np.abs(result2.s_params[0, 0, :]) + 1e-12)
-
-plt.figure()
-plt.plot(freqs / 1e9, s11_db)
-plt.xlabel("Frequency (GHz)")
-plt.ylabel("|S11| (dB)")
-plt.title("Patch antenna S11 — FR4 2.4 GHz")
-plt.ylim(-30, 2)
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("patch_s11.png", dpi=150)
-plt.show()
-```
-
-!!! warning
-    For patch and microstrip feeds, treat this lumped-port S11 result as a
-    **diagnostic workflow**, not yet as the canonical public validation path.
-    The current recommended path for this tutorial is the
-    current-source + Harminv resonance workflow above.
+This tutorial intentionally uses a soft current source and Harminv resonance
+extraction. Do not reuse the non-uniform `dz_profile` setup above with the
+single-cell lumped-port S-parameter path; that combination is outside the
+documented support envelope. For impedance-referenced patch or feed studies,
+start from the documented wire-port, microstrip-line, or external cross-check
+workflow and keep the result inside its S-parameter support entry.
 
 ---
 
@@ -246,19 +199,18 @@ plt.show()
 | Analytical prediction | 2.40 GHz |
 | Discrepancy | ~1–3 % (formula limitation) |
 | Q factor | 20–60 (lossy FR4) |
-| Diagnostic lumped-port S11 | depends strongly on feed position / port model |
 
 ---
 
 ## Full script
 
-For the current public patch cross-check, prefer
+For the public patch cross-check, prefer
 `examples/crossval/05_patch_antenna.py`.
 
-That crossval is the newest committed public patch workflow in this repo and is
-the script we currently use for the OpenEMS-backed external sanity check
-described in [Tutorial: Patch Antenna Design](./tutorial-patch-antenna/).
+That script is the public patch workflow paired with the OpenEMS-backed external
+sanity check described in
+[Tutorial: Patch Antenna Design](./tutorial-patch-antenna/).
 
 Older patch example scripts can still be useful as local experiments, but they
 should not be treated as the primary public reference path unless they are
-checked against the current public workflow.
+checked against the documented public workflow.
