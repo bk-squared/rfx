@@ -147,14 +147,14 @@ slab  = Box((0.0,  0.0,  0.0),  (0.05, 0.05, 0.002))
 patch = Box((0.01, 0.01, 0.002),(0.04, 0.04, 0.002))
 ```
 
-Coordinates are in metres. `corner_lo` and `corner_hi` are `(x, y, z)` tuples.
+Coordinates are in meters. `corner_lo` and `corner_hi` are `(x, y, z)` tuples.
 
 ### Sphere
 
 ```python
 from rfx import Sphere
 
-# Sphere(centre, radius)
+# Sphere(center, radius)
 ball = Sphere((0.025, 0.025, 0.010), radius=0.005)
 sim.add(ball, material="alumina")
 ```
@@ -164,7 +164,7 @@ sim.add(ball, material="alumina")
 ```python
 from rfx import Cylinder
 
-# Cylinder(centre, radius, height, axis)
+# Cylinder(center, radius, height, axis)
 # axis: "x", "y", or "z"
 via  = Cylinder((0.025, 0.015, 0.000), radius=0.0005, height=0.002, axis="z")
 rod  = Cylinder((0.010, 0.025, 0.000), radius=0.001,  height=0.050, axis="x")
@@ -195,7 +195,11 @@ sim.add(lens, material="alumina")
 
 ## PEC mask enforcement
 
-Materials with σ ≥ 10⁶ S/m (including library `pec`) are automatically enforced via a Boolean PEC mask rather than through the conductivity update. This is exact (E-field set to zero on every PEC cell at each time step) and avoids the numerical instability that arises from very large σ in the standard update equations.
+Materials with σ ≥ 10⁶ S/m (including library `pec`) are enforced via a
+Boolean PEC mask rather than through the conductivity update. Within the
+discrete PEC-mask model, the E-field is set to zero on every PEC cell at each
+time step; this avoids the numerical instability that arises from very large σ
+in the standard update equations.
 
 !!! warning
     Do not set σ > 10⁸ S/m for non-PEC conductors such as copper. Use the library value

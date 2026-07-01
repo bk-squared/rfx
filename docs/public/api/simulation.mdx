@@ -29,7 +29,7 @@ Key constructor arguments:
 | Argument | Meaning | Notes |
 |---|---|---|
 | `freq_max` | highest frequency of interest | drives mesh and timestep selection |
-| `domain` | `(x, y, z)` domain size in metres | required unless derived by automation |
+| `domain` | `(x, y, z)` domain size in meters | required unless derived by automation |
 | `boundary` | boundary type | the public docs currently center on `cpml` |
 | `cpml_layers` | absorber thickness | high-level `Simulation` default is 16 |
 | `pec_faces` | face-based PEC truncation | use for boundaries, not for a finite antenna ground plane |
@@ -63,9 +63,9 @@ result = sim.run(n_steps=8000, compute_s_params=True)
 ```
 
 `run()` returns a tuple-like `Result` object with fields such as
-`time_series`, `s_params`, `freqs`, `ntff_data`, and `grid`. Current `main` also
-warns on non-finite run/forward outputs instead of letting silent NaNs pass
-through ordinary workflows. For S-parameter claims, use the port-family
+`time_series`, `s_params`, `freqs`, `ntff_data`, and `grid`. Non-finite
+run/forward outputs should be treated as setup or numerical failures, not as
+successful S-parameter evidence. For S-parameter claims, use the port-family
 evidence levels in the support matrix rather than the presence of `s_params`
 alone.
 

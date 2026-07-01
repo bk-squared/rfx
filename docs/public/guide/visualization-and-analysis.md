@@ -124,7 +124,9 @@ vswr = (1 + np.abs(s11)) / (1 - np.abs(s11))
 
 ```python
 import jax.numpy as jnp
-from rfx.core.yee import EPS_0, MU_0
+
+EPS_0 = 8.8541878128e-12
+MU_0 = 1.25663706212e-6
 
 grid = result.grid
 state = result.state
@@ -175,9 +177,9 @@ if result.snapshots is not None:
 
 ## External Analysis Workflows
 
-You can hand summaries to notebooks, scripts, or LLMs, but keep the raw arrays
-and plots as the source of truth. A good summary includes the frequency grid,
-S-parameters, resonant peaks, bandwidth, return loss, and the pass/fail rule you
+You can hand summaries to notebooks or scripts, but keep the raw arrays and
+plots as the source of truth. A good summary includes the frequency grid,
+S-parameters, resonant peaks, bandwidth, return loss, and the pass/fail rule
 used to judge the result.
 
 When you write public notes or reports, describe the exact metric you used

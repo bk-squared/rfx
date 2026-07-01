@@ -15,7 +15,7 @@ concepts are familiar -- the API surface is different.
 | Concept | Meep | OpenEMS | rfx |
 |---------|------|---------|-----|
 | Grid setup | `Simulation(resolution=N)` | `InitCSX()` + `InitFDTD()` | `Simulation(freq_max=...)` or `Simulation.auto(...)` |
-| Cell size | `resolution` (cells/unit) | `SetDeltaUnit(1e-3)` | `dx=` in metres (auto-calculated from `freq_max`) |
+| Cell size | `resolution` (cells/unit) | `SetDeltaUnit(1e-3)` | `dx=` in meters (auto-calculated from `freq_max`) |
 | Source | `EigenModeSource`, `Source` | `AddExcitation` | `add_port()`, `add_source()` |
 | S-parameters | `add_flux()` + post-processing | `CalcPort` | port-family-specific: lumped/wire `run(compute_s_params=True)`, MSL `compute_msl_s_matrix()`, waveguide `compute_waveguide_s_matrix()` |
 | Resonance finding | `harminv(...)` | Manual FFT | `result.find_resonances()` |
@@ -26,7 +26,7 @@ concepts are familiar -- the API surface is different.
 | Dispersive media | `LorentzianSusceptibility` | `AddLorentzMaterial` | `DebyePole`, `LorentzPole`, `drude_pole()` |
 | Differentiable | adjoint-solver workflows for selected design-region objectives | not native | `jax.grad(loss_fn)(params)` on supported JAX-traced workflows |
 | Inverse design | `meep.adjoint` / `OptimizationProblem` | not native | `rfx.optimize(sim, design_region, objective)` |
-| Non-uniform mesh | Not native | `SmoothMeshLines` | `dz_profile` or `auto_configure()` |
+| Non-uniform mesh | Not native | `SmoothMeshLines` | bounded `dz_profile` / `auto_configure()` workflows |
 
 ---
 
@@ -153,11 +153,13 @@ permittivity tables for standard substrates and conductors.
 thickness, and source waveform. For most antenna and waveguide problems you
 only need to specify `freq_max` and `domain`.
 
-### Non-Uniform Z for Thin Substrates
+### Bounded Non-Uniform Z for Thin Substrates
 
-For PCB and patch-style problems, the most practical recent `rfx` workflow is
-graded z meshing via `dz_profile` / `auto_configure()`, rather than assuming
-one globally fine uniform mesh.
+For PCB and patch-style problems, graded z meshing via `dz_profile` /
+`auto_configure()` can reduce cell count when the thin feature is primarily
+along z. Treat it as a bounded workflow: use the documented support checks and
+validate the final observable through the relevant uniform or external reference
+lane.
 
 ---
 
@@ -165,7 +167,7 @@ one globally fine uniform mesh.
 
 | Issue | Solution |
 |-------|----------|
-| Coordinates are in metres, not mm or cell units | All positions use SI metres |
+| Coordinates are in meters, not mm or cell units | All positions use SI meters |
 | `freq_max` is in Hz, not normalized frequency | Use `freq_max=5e9` for 5 GHz |
 | PML is outside the domain you specify | `domain=` is the physical region; CPML pads are added automatically |
 | `run()` returns a `Result` object | Access fields via `result.s_params`, `result.time_series`, `result.find_resonances()` |
