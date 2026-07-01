@@ -293,6 +293,14 @@ def _compute_numpy_f64_golden_s1(
             # Closed Ampere-loop current (S1 msl_loop_current, upcast to c128).
             hy_plane = _get(hy_probe_names[p_idx])
             hz_plane = _get(hz_probe_names[p_idx])
+            # Leapfrog E/H half-step time correction — MIRROR of
+            # compute_msl_s_matrix (rfx/api/_sparams.py): the DFT plane probe
+            # timestamps H at t but H lives at t - dt/2, so I = ∮H·dl is missing
+            # the exp(+jω·dt/2) the flux monitor applies. Ez (V) needs none.
+            _hs_phase = np.exp(
+                1j * 2.0 * np.pi * np.asarray(freqs) * (float(grid.dt) * 0.5))
+            hy_plane = hy_plane * _hs_phase[:, None, None]
+            hz_plane = hz_plane * _hs_phase[:, None, None]
             k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
             i_f = msl_loop_current(
                 hy_plane, hz_plane,

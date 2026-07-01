@@ -1235,6 +1235,24 @@ class _SparamMixin:
                     # jnp.ndarray and still works for numpy arrays.
                     hy_plane = jnp.asarray(planes[hy_probe_names[p_idx]].accumulator)
                     hz_plane = jnp.asarray(planes[hz_probe_names[p_idx]].accumulator)
+                    # Leapfrog E/H half-step time correction. add_dft_plane_probe
+                    # timestamps EVERY component at t = step·dt
+                    # (rfx/probes/probes.py:457), but H lives half a step behind E
+                    # (H at t − dt/2), so the recorded Hy/Hz DFT is missing the
+                    # exp(+jω·dt/2) factor the flux monitor already applies
+                    # (rfx/simulation.py:1380-1382: phase_h = phase_e·exp(+jω·dt/2)).
+                    # Ez (→ V) is correctly at t and needs no correction. Without
+                    # this, I = ∮H·dl carries a spurious exp(−jω·dt/2) so the V·I
+                    # de-embedding sees Zin = V/I rotated by exp(+jω·dt/2) — a
+                    # frequency-dependent phase that can push Re(Zin) < 0 → a
+                    # non-physical |S11| > 1 near the passive boundary (the same
+                    # half-step class as the 2026-04-28 s11_from_dumps artefact).
+                    _hs_phase = jnp.exp(
+                        1j * 2.0 * jnp.pi * jnp.asarray(freqs_arr)
+                        * (float(grid.dt) * 0.5)
+                    ).astype(hy_plane.dtype)
+                    hy_plane = hy_plane * _hs_phase[:, None, None]
+                    hz_plane = hz_plane * _hs_phase[:, None, None]
                     # Closed Ampere-loop current ∮H·dl around the trace
                     # conductor (issue #80 stage S1). The pre-S1 inline
                     # integral summed the bottom Hy leg only and undercounted
