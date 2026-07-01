@@ -24,8 +24,8 @@ Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory
 | `static_estimate` | yes | Formula/static metadata estimate for planning. It may include shape, dtype, NTFF, active-step, and design-mask metadata, but it is not a compiled-executable peak-memory proof. |
 | `calibrated_conservative_plan` | yes | Budget-fitting helper result built from static estimates plus safety margins. It can say whether a conservative plan fits the configured budget target, not whether runtime peak memory is guaranteed. |
 | `static_ad_explainability` | yes | Decomposition of the selected static AD estimate into field state, material/CPML state, reverse-mode saved state, and monitor state so users can see why a run is large. It is diagnostic planning evidence, not profiling. |
-| `observed_profile` | no | A future or external measured run artifact for calibration/regression. It records one environment/run and must not be reused as proof for changed scope. |
-| `bounded_certificate` | no | A separately approved future artifact only if compiler/runtime metadata can support a fail-closed certificate for one exact compiled executable, environment, input/static args/shapes, precision, and checkpoint configuration. |
+| `observed_profile` | no | An externally captured measured run artifact for calibration/regression. It records one environment/run and must not be reused as proof for changed scope. |
+| `bounded_certificate` | no | Not a public artifact unless compiler/runtime metadata can support a fail-closed certificate for one exact compiled executable, environment, input/static args/shapes, precision, and checkpoint configuration. |
 
 ## Decision ladder
 

@@ -11,18 +11,24 @@ This page summarizes user-visible changes.
 
 The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane**. Public guides emphasize maintained workflows and bounded port-family envelopes.
 
+## v1.6.6 — July 2026
+
+- AD memory-planning docs now separate static estimates, conservative budget-fitting plans, explainability artifacts, and measured-profile artifacts so memory reports are not mistaken for runtime certificates or RF validation evidence.
+- Differentiable workflow wording was tightened around selected JAX-traced objectives, finite-difference checks, and final port/resonance/far-field validation.
+- Public non-uniform mesh guidance now presents graded-z meshes as a bounded workflow for thin layered structures, with unsupported combinations and validation responsibilities stated up front.
+
 ## v1.6.5 — June 2026
 
 - Validation reporting is stricter: promoted port-family results now require magnitude evidence, phase-consistency evidence, differentiability checks where gradients are part of the claim, and reproducible artifact checks.
 - Port-family support wording is clearer: users should match each source or port family to its documented calculator and evidence envelope instead of treating any S-parameter helper as universal.
 - `compute_msl_s_matrix` now reports a positive characteristic impedance on both ports. This fixes reported metadata while leaving the S-parameter calculation invariant.
 - Non-uniform mesh accuracy coverage now includes an analytic gated cavity case whose resonance frequency depends on the graded axis.
-- Public guides and support pages were tightened around maintained workflows, validation boundaries, and device-count-adaptive test behaviour.
+- Public guides and support pages were tightened around maintained workflows, validation boundaries, and device-count-adaptive test behavior.
 
 ## v1.6.4 — June 2026
 
 - Rectangular waveguide-port evidence now covers WR-band empty-guide, PEC-short, and dielectric-slab cases with analytic and external-reference comparisons.
-- `preflight()` and `preflight_sparameters()` now expose coded report objects for automation while preserving older list/string behaviour.
+- `preflight()` and `preflight_sparameters()` now expose coded report objects for automation while preserving older list/string behavior.
 - Run/forward results, S-matrix calculators, sweeps, and optimizers now surface finite-data, passivity, setup, and NaN-gradient issues earlier.
 - `compute_coaxial_line_reflection(...)` is the current coaxial line-reflection path inside its documented transmission-line envelope.
 - `compute_waveguide_s_matrix(checkpoint_segments=...)` adds segmented checkpointing for uniform waveguide AD-heavy runs.

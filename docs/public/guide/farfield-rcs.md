@@ -11,23 +11,25 @@ rfx computes far-field radiation patterns via near-to-far-field transform (NTFF)
 The NTFF approach records tangential E/H fields on a closed Huygens box during simulation, then computes far-field integrals.
 
 ```python
-from rfx import Simulation, make_ntff_box, compute_far_field, radiation_pattern
+from rfx import Simulation, compute_far_field, radiation_pattern
 import numpy as np
 
 sim = Simulation(freq_max=5e9, domain=(0.1, 0.1, 0.1), boundary="cpml")
 # ... add antenna geometry and source ...
 
-# Define NTFF box enclosing the antenna
-ntff_box = make_ntff_box(grid, corner_lo=(0.02, 0.02, 0.02),
-                         corner_hi=(0.08, 0.08, 0.08),
-                         freqs=np.array([3e9]))
+# Define an NTFF box enclosing the radiator but clear of the CPML.
+sim.add_ntff_box(
+    corner_lo=(0.02, 0.02, 0.02),
+    corner_hi=(0.08, 0.08, 0.08),
+    freqs=np.array([3e9]),
+)
 
-result = sim.run(n_steps=1000, ntff=ntff_box)
+result = sim.run(n_steps=1000)
 
 # Compute far-field
 theta = np.linspace(0, np.pi, 181)
 phi = np.linspace(0, 2*np.pi, 360)
-ff = compute_far_field(result.ntff_data, ntff_box, grid, theta, phi)
+ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid, theta, phi)
 
 # Radiation pattern in dB
 pattern_dB = radiation_pattern(ff)  # (n_freqs, n_theta, n_phi)
@@ -85,7 +87,10 @@ plot_rcs(result, freq_idx=0, mode="rectangular")  # dBsm vs angle
 
 ## Notes
 
-- NTFF box must be **inside** the CPML region and **outside** all sources/scatterers
-- For RCS, the TFSF box is placed automatically around the scatterer
+- NTFF box surfaces should sit in the ordinary simulation region, outside all
+  sources/scatterers/radiators and with margin from the CPML absorber.
+- For RCS, the TFSF and NTFF boxes are derived from the configured scatterer and
+  margin settings.
 - The scattered field (outside TFSF) is what the NTFF box captures
-- Currently supports normal-incidence TFSF only (oblique in development)
+- Public RCS examples should state the incident direction, polarization,
+  observation angles, and support envelope used for the claim.

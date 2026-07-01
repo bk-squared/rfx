@@ -46,7 +46,7 @@ a dielectric tuning region.
 | Adjoint method | Solve a forward problem and an adjoint sensitivity problem | roughly independent of design-variable count for one scalar objective family | large design regions and topology-style optimization |
 | Reverse-mode automatic differentiation | Apply the chain rule to the implemented discrete program | one differentiated program, with memory/recompute tradeoffs | JAX-native differentiable workflows in rfx |
 
-Meep's current adjoint-solver documentation describes a dedicated adjoint module
+Meep's adjoint-solver documentation describes a dedicated adjoint module
 for gradients of functions of mode coefficients, S-parameters, DFT fields, LDOS,
 and far fields with respect to a `MaterialGrid`. In that formulation, Meep runs a
 forward calculation to obtain the objective and design-region fields, then an
@@ -175,7 +175,7 @@ adjust based on the scale of the loss and the design variable.
 
 - Use [Inverse Design](/rfx/guide/inverse-design/) for the rfx optimization API
   and objective families.
-- Use [Gradient Behavior](/rfx/guide/gradient-behavior/) for known stable,
-  noisy, and non-differentiable paths.
+- Use [Gradient Behavior](/rfx/guide/gradient-behavior/) for usually
+  well-behaved, noisy, and non-differentiable paths.
 - Use [Memory Reduction](/rfx/guide/memory-reduction/) when reverse-mode memory,
   checkpointing, or run size is the limiting factor.
