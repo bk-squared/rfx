@@ -29,7 +29,7 @@ Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory
 | `composite_ad_memory_preflight` | yes | One-call planning bundle from `ad_memory_preflight(...)`: budget-fit status, the selected supported checkpoint knob, static explainability, optional mesh report, optional saved-residual diagnostic, and action hints. |
 | `static_action_hint` | yes | Deterministic next-action row attached to the preflight bundle. It is a planning instruction such as `use_checkpoint_every`, not proof that a run will fit at runtime. |
 | `observed_profile` | no | A future or external measured run artifact for calibration/regression. It records one environment/run and must not be reused as proof for changed scope. |
-| `bounded_certificate` | yes | A fail-closed compiler-memory certificate from `ad_memory_compiled_certificate(...)` for one exact caller-supplied JAX compiled executable, complete exact-scope metadata, and `Compiled.memory_analysis()` byte fields. It is not a universal runtime peak-memory guarantee. |
+| `bounded_certificate` | yes | A fail-closed compiler-memory certificate from `ad_memory_compiled_certificate(...)` for one exact caller-supplied JAX compiled executable, complete exact-scope metadata, and `Compiled.memory_analysis()` byte fields. It is a compiler memory *estimate* for that exact compiled object and scope, not a runtime peak-memory guarantee. |
 
 ## Decision ladder
 
@@ -129,10 +129,16 @@ certificate = sim.ad_memory_compiled_certificate(
     runner_or_objective="notch-filter-reduced-loss",
     preflight=preflight,
 )
+```
 
 You may provide compact signature dictionaries as above or pass representative NumPy/JAX arrays / `jax.ShapeDtypeStruct` leaves inside `input_signature` and `static_signature`; rfx records only shape, dtype, and weak-type metadata for array-like leaves, not full array values. Keep semantic labels such as `"role": "design"` in explicit dictionaries when they matter for audit readability.
 
-if certificate.status == "certified_budget_fit":
+```python
+# `compiler_estimate_within_budget` means the JAX compiler's memory *estimate*
+# fits the target budget for this exact scope. It is a compiler estimate, not a
+# runtime guarantee: allocator fragmentation and runtime scratch are not
+# modeled, so a fit at high utilization can still OOM. Gate deliberately.
+if certificate.status == "compiler_estimate_within_budget":
     launch()
 else:
     raise RuntimeError(certificate.recommendations[0])
@@ -142,7 +148,7 @@ A green certificate is bounded to the supplied compiled object, backend/device m
 
 The required compiler byte fields are `temp_size_in_bytes`, `argument_size_in_bytes`, `output_size_in_bytes`, and `alias_size_in_bytes`. rfx computes required bytes exactly as `temp + argument + output - alias` and compares that value with `available_memory_gb * target_fraction`.
 
-`scope_digest`, `config_digest`, and `environment_digest` are audit identities over canonical JSON. They are not proof that source code, Python callables, or simulation configuration correspond to the opaque compiled executable unless separate introspection establishes that relationship. JAX documents memory analysis as estimated/debugging-oriented compiler metadata; it is version/backend dependent and may be unavailable. Treat `bounded_certificate` as compiler evidence for one exact scope, not profiler evidence, RF validation, or a universal guaranteed peak predictor.
+`scope_digest`, `config_digest`, and `environment_digest` are audit identities over canonical JSON. They are not proof that source code, Python callables, or simulation configuration correspond to the opaque compiled executable unless separate introspection establishes that relationship. JAX documents memory analysis as estimated/debugging-oriented compiler metadata; it is version/backend dependent and may be unavailable. Treat `bounded_certificate` as a compiler memory *estimate* for one exact scope, not profiler evidence, RF validation, or a runtime peak-memory guarantee.
 
 ## Non-uniform + segmented AD workflow
 

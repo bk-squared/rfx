@@ -20,6 +20,12 @@ import jax.ad_checkpoint as ad_checkpoint
 
 
 _AVAL_RE = re.compile(r"^(?P<dtype>[A-Za-z][A-Za-z0-9]*)(?:\[(?P<shape>[^\]]*)\])?$")
+# Split the leading abstract-value token from the source text. Anchored on the
+# aval grammar so an internal shape space (e.g. ``f32[3, 4]`` in a future JAX)
+# still yields a clean aval + source instead of corrupting both.
+_AVAL_LEAD_RE = re.compile(
+    r"^(?P<aval>[A-Za-z][A-Za-z0-9]*(?:\[[^\]]*\])?)\s+(?P<source>.*)$"
+)
 _NAMED_RE = re.compile(r"named '([^']+)'")
 _DTYPE_BYTES = {
     "bool": 1,
@@ -50,7 +56,9 @@ def _json_safe(value: object) -> object:
         return [_json_safe(item) for item in value]
     if hasattr(value, "tolist") and callable(value.tolist):
         return _json_safe(value.tolist())
-    return value
+    raise TypeError(
+        f"cannot serialize value of type {type(value).__name__!r} to JSON-native data"
+    )
 
 
 def _snapshot_artifact(value: object) -> object:
@@ -308,7 +316,12 @@ def parse_saved_residual_line(line: str, *, line_index: int | None = None) -> AD
     if not stripped:
         return ADResidualRecord(aval="", source="", raw_line=line, line_index=line_index)
 
-    aval, _, source = stripped.partition(" ")
+    lead = _AVAL_LEAD_RE.match(stripped)
+    if lead is not None:
+        aval = lead.group("aval")
+        source = lead.group("source")
+    else:
+        aval, _, source = stripped.partition(" ")
     dtype, shape, size, estimated_bytes = _parse_aval(aval)
     name_match = _NAMED_RE.search(source)
     return ADResidualRecord(
@@ -335,6 +348,12 @@ def inspect_ad_saved_residuals(
     The implementation captures ``jax.ad_checkpoint.print_saved_residuals`` and
     parses the printed abstract values into a structured, JSON-serializable
     artifact. Exceptions from tracing ``fun`` propagate to the caller.
+
+    Caveat: capture uses a process-global ``contextlib.redirect_stdout`` while
+    tracing ``fun``. It is therefore not thread-safe, and any stray ``print()``
+    executed by ``fun`` during tracing is captured and parsed as a residual
+    line (it degrades to an ``unknown`` record that nulls the byte total rather
+    than raising). Avoid printing inside ``fun`` when using this helper.
     """
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):

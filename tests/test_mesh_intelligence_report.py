@@ -123,7 +123,7 @@ def test_mesh_intelligence_report_serializes_artifact():
         "config_digest",
         "environment_digest",
         "is_valid_certificate",
-        "is_budget_safe",
+        "estimate_within_budget",
         "peak_bound_gb",
     }
     assert forbidden_fields.isdisjoint(artifact["ad_memory"])

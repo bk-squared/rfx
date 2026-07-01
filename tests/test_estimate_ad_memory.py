@@ -37,7 +37,10 @@ from rfx import (
     MeshIntelligenceReport,
     Simulation,
 )
-from rfx.api import AD_MEMORY_FIT_SAFETY_FACTOR
+from rfx.api import (
+    AD_MEMORY_FIT_SAFETY_FACTOR,
+    AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES,
+)
 
 _FORBIDDEN_CURRENT_EVIDENCE_FIELDS = {
     "compiler_memory_gb",
@@ -49,7 +52,7 @@ _FORBIDDEN_CURRENT_EVIDENCE_FIELDS = {
     "config_digest",
     "environment_digest",
     "is_valid_certificate",
-    "is_budget_safe",
+    "estimate_within_budget",
     "peak_bound_gb",
 }
 
@@ -67,15 +70,9 @@ _FORBIDDEN_RECOMMENDATION_TERMS = (
     "rf validation",
 )
 
-AD_MEMORY_PREFLIGHT_BOUNDARIES = (
-    "static memory planning only",
-    "trace-time JAX saved-residual explainability only when residual_diagnostic is present",
-    "not a runtime peak-memory guarantee",
-    "not XLA memory analysis",
-    "not profiler evidence",
-    "not a certificate",
-    "not RF validation",
-)
+# Pinned to the source constant so the doc-boundary check cannot silently drift
+# from the boundaries rfx actually emits.
+AD_MEMORY_PREFLIGHT_BOUNDARIES = AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES
 
 
 def _assert_no_forbidden_current_fields(artifact: dict[str, object]) -> None:
@@ -403,8 +400,9 @@ def test_public_imports_and_json_roundtrip():
     certificate_keys = {
         "evidence_class",
         "status",
+        "status_reason",
         "is_valid_certificate",
-        "is_budget_safe",
+        "estimate_within_budget",
         "available_memory_gb",
         "target_fraction",
         "target_memory_gb",
@@ -493,9 +491,9 @@ def test_ad_memory_compiled_certificate_fit_and_budget_exceeded():
     artifact = fit.to_dict()
 
     assert fit.evidence_class == "bounded_certificate"
-    assert fit.status == "certified_budget_fit"
+    assert fit.status == "compiler_estimate_within_budget"
     assert fit.is_valid_certificate is True
-    assert fit.is_budget_safe is True
+    assert fit.estimate_within_budget is True
     assert artifact["compiler_reported_required_bytes"] == 5_500
     assert artifact["compiler_reported_required_gb"] == pytest.approx(5_500 / 1e9)
     assert artifact["temp_size_in_bytes"] == 1_000
@@ -524,9 +522,52 @@ def test_ad_memory_compiled_certificate_fit_and_budget_exceeded():
         ),
         **_certificate_kwargs(),
     )
-    assert exceeded.status == "certified_budget_exceeded"
+    assert exceeded.status == "compiler_estimate_exceeds_budget"
     assert exceeded.is_valid_certificate is True
-    assert exceeded.is_budget_safe is False
+    assert exceeded.estimate_within_budget is False
+
+
+def test_ad_memory_compiled_certificate_budget_boundary_and_estimate_framing():
+    """The ``<=`` budget boundary is inclusive, and a fit reads as a compiler
+    *estimate* — not a runtime guarantee."""
+    sim = _uniform_sim()
+    # target_bytes = available_memory_gb * target_fraction * 1e9 = 1.0 * 0.5 * 1e9
+    target_bytes = 500_000_000
+    at_budget = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(
+            _FakeMemoryAnalysis(
+                temp_size_in_bytes=target_bytes,
+                argument_size_in_bytes=0,
+                output_size_in_bytes=0,
+                alias_size_in_bytes=0,
+            )
+        ),
+        **_certificate_kwargs(target_fraction=0.5),
+    )
+    assert at_budget.compiler_reported_required_bytes == target_bytes
+    assert at_budget.status == "compiler_estimate_within_budget"
+    assert at_budget.estimate_within_budget is True
+    # A fit must read as a compiler ESTIMATE, never a runtime guarantee.
+    fit_recs = " ".join(at_budget.recommendations).lower()
+    assert "compiler estimate" in fit_recs
+    assert "guarantee" not in fit_recs
+
+    over_budget = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(
+            _FakeMemoryAnalysis(
+                temp_size_in_bytes=target_bytes + 1,
+                argument_size_in_bytes=0,
+                output_size_in_bytes=0,
+                alias_size_in_bytes=0,
+            )
+        ),
+        **_certificate_kwargs(target_fraction=0.5),
+    )
+    assert over_budget.status == "compiler_estimate_exceeds_budget"
+    assert over_budget.estimate_within_budget is False
+    # The budget verdict is surfaced in a dedicated structured field.
+    assert "exceed" in over_budget.status_reason
+    assert over_budget.to_dict()["status_reason"] == over_budget.status_reason
 
 
 def test_ad_memory_compiled_certificate_summarizes_array_signature_inputs():
@@ -546,7 +587,7 @@ def test_ad_memory_compiled_certificate_summarizes_array_signature_inputs():
     )
     scope = report.exact_scope
 
-    assert report.status == "certified_budget_fit"
+    assert report.status == "compiler_estimate_within_budget"
     assert scope["input_signature"]["eps_r"] == {
         "shape": [2, 3],
         "dtype": "float32",
@@ -572,7 +613,7 @@ def test_ad_memory_compiled_certificate_scope_failures_are_non_certifying():
     )
     assert missing.status == "scope_incomplete"
     assert missing.is_valid_certificate is False
-    assert missing.is_budget_safe is None
+    assert missing.estimate_within_budget is None
     assert missing.memory_analysis_status == "complete"
     assert "input_signature" in missing.scope_status_reason
 
@@ -802,7 +843,7 @@ def test_ad_memory_compiled_certificate_analysis_incomplete(analysis, reason):
     assert report.scope_status == "complete"
     assert report.memory_analysis_status == "analysis_incomplete"
     assert reason in report.memory_analysis_status_reason
-    assert report.is_budget_safe is None
+    assert report.estimate_within_budget is None
 
 
 def test_ad_memory_compiled_certificate_digests_are_stable_and_scope_sensitive():
@@ -855,7 +896,7 @@ def test_ad_memory_compiled_certificate_preflight_snapshot_and_mismatch():
         **_certificate_kwargs(preflight=preflight),
     )
 
-    assert report.status == "certified_budget_fit"
+    assert report.status == "compiler_estimate_within_budget"
     assert report.source_preflight["evidence_class"] == "composite_ad_memory_preflight"
     assert report.source_preflight["status"] == preflight.status
     _assert_no_forbidden_fields_recursive(preflight.to_dict())
@@ -1211,7 +1252,7 @@ def test_memory_reduction_docs_separate_planning_from_certificate_evidence():
     assert "**checkpoint_kwargs" in doc
     assert "`bounded_certificate`" in doc
     assert "Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory(...)` artifacts are not certificates" in doc
-    assert "not a universal guaranteed peak predictor" in doc
+    assert "a runtime peak-memory guarantee" in doc
     assert "ad_memory_compiled_certificate(...)" in doc
     assert "`bounded_certificate` | yes" in doc
     assert "Compiled.memory_analysis()" in doc

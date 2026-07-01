@@ -27,6 +27,34 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   validation, strict-JSON (`allow_nan=False`) serialization, and MB-aware
   formatting (sub-10 MB no longer rendered as `0.00 GB`).
 
+### Added — AD compiled-memory certificate, saved-residual diagnostics, Pareto + checkify tooling (diagnostic/planning-only, no numerics-path change)
+
+- `Simulation.ad_memory_preflight(...)` composes the static AD-memory planner,
+  explainability, and mesh-intelligence reports (plus an optional saved-residual
+  diagnostic) into one `ADMemoryPreflightReport` with actionable
+  `ADMemoryActionHint`s. Does not run FDTD.
+- `Simulation.ad_memory_compiled_certificate(...)` reads a caller-supplied
+  compiled executable's `Compiled.memory_analysis()` once and fails closed into
+  an `ADCompiledMemoryCertificate` bounded to one exact scope. The verdict is
+  estimate-framed (`compiler_estimate_within_budget` /
+  `compiler_estimate_exceeds_budget`, boolean `estimate_within_budget`): it is a
+  JAX compiler **estimate**, not a runtime peak-memory guarantee — it excludes
+  allocator fragmentation/scratch, and the fit recommendation reports the
+  estimate's utilization of the target budget.
+- AD saved-residual introspection: `inspect_ad_saved_residuals`,
+  `diagnose_ad_saved_residuals`, `parse_saved_residual_line` parse JAX's
+  saved-residual output into JSON artifacts (`ADResidualInspection`,
+  `ADSavedResidualDiagnosticReport`, …). Read-only; not a runtime profile.
+- Multi-objective sweep tooling: `pareto_front`, `pareto_mask`,
+  `weighted_scalarization`, `epsilon_constraint_mask`,
+  `select_epsilon_constrained` (+ `SweepResult.pareto_front`) — optimizer-agnostic
+  numpy utilities returning JSON-serializable Pareto artifacts. `atol` is a
+  strict-improvement tolerance (a strict partial order: a larger `atol` retains
+  more points and never empties a non-empty front).
+- Opt-in JAX invariant checks: `checkify_invariants` with `check_finite`,
+  `check_positive`, `check_bounds`, `check_courant_number` wrap
+  `jax.experimental.checkify` so RF/design invariants survive jit/grad/vmap/scan.
+
 ## [1.6.6] - 2026-06-24
 
 Maintenance release: a behaviour-preserving internal refactor (extract the

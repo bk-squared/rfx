@@ -50,6 +50,24 @@ def test_pareto_mask_handles_all_maximize_and_tolerance_boundaries():
     assert pareto_mask(close_minimize, atol=0.10).tolist() == [True, True]
 
 
+def test_pareto_mask_never_empties_a_nonempty_front_under_tolerance():
+    # Regression: additive-epsilon dominance must remain a strict partial order.
+    # The old relation added the tolerance to BOTH the no-worse and the
+    # strictly-better tests, which is non-transitive and could mark every point
+    # dominated -> an empty front for non-empty input.
+    cycle = np.array([[1.0, 1.0, 2.0], [0.0, 3.0, 1.0], [2.0, 2.0, 0.0]])
+    mask = pareto_mask(cycle, minimize=True, atol=1.0)
+    assert mask.all()  # none of these dominate another under an exact <=
+    assert len(pareto_front(cycle, minimize=True, atol=1.0).points) == 3
+
+    rng = np.random.default_rng(1234)
+    for _ in range(200):
+        n = int(rng.integers(1, 6))
+        m = int(rng.integers(1, 4))
+        objectives = rng.normal(size=(n, m))
+        for atol in (0.0, 0.25, 1.0, 5.0):
+            assert pareto_mask(objectives, minimize=True, atol=atol).any()
+
 
 def test_pareto_front_serializes_ids_metadata_and_indices():
     objectives = np.array([

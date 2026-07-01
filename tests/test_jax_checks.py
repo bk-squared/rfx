@@ -31,6 +31,22 @@ def test_checkify_invariants_catches_user_checks_under_jit():
     assert "eps_r must be finite" in str(err.get())
 
 
+def test_checkify_invariants_survive_grad():
+    # The module docstring promises failures survive `grad`; lock that path.
+    def loss(x):
+        check_bounds(x, lower=0.0, upper=10.0, name="x")
+        return jnp.sum(x ** 2)
+
+    checked = checkify_invariants(jax.grad(loss))
+
+    err, grad = checked(jnp.array([1.0, 2.0]))
+    assert err.get() is None
+    assert grad.tolist() == pytest.approx([2.0, 4.0])
+
+    err_bad, _ = checked(jnp.array([-1.0, 2.0]))
+    assert "x must be >= 0.0" in str(err_bad.get())
+
+
 def test_checkify_invariants_can_enable_automatic_float_checks():
     def reciprocal(x):
         return 1.0 / x

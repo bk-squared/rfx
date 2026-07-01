@@ -2838,6 +2838,9 @@ class Simulation(
             "checkpoint_segments": selected_checkpoint_segments,
             "preflight_status": status,
         }
+        # Validate whenever context is supplied (a malformed context must be
+        # rejected early even without residual_fun), but warn if a valid
+        # context is provided without a function, since it is then unused.
         merged_residual_context = (
             _validate_residual_context(
                 residual_context,
@@ -2846,6 +2849,15 @@ class Simulation(
             if residual_fun is not None or residual_context is not None
             else None
         )
+        if residual_context is not None and residual_fun is None:
+            import warnings
+
+            warnings.warn(
+                "residual_context is ignored because residual_fun was not "
+                "provided; pass residual_fun to produce a saved-residual "
+                "diagnostic.",
+                stacklevel=2,
+            )
         residual_diagnostic = None
         if residual_fun is not None:
             from rfx.ad_diagnostics import diagnose_ad_saved_residuals
@@ -2990,6 +3002,7 @@ class Simulation(
             scope_context=scope_context,
         )
 
+        utilization_ratio: float | None = None
         if scope.status != "complete":
             status = scope.status
             status_reason = scope.reason
@@ -2999,14 +3012,17 @@ class Simulation(
         else:
             required_bytes = int(analysis.required_bytes)
             target_bytes = target_memory_gb * 1e9
+            utilization_ratio = (
+                required_bytes / target_bytes if target_bytes > 0 else None
+            )
             if required_bytes <= target_bytes:
-                status = "certified_budget_fit"
+                status = "compiler_estimate_within_budget"
                 status_reason = (
                     "compiled memory_analysis() required bytes fit within "
                     "available_memory_gb * target_fraction"
                 )
             else:
-                status = "certified_budget_exceeded"
+                status = "compiler_estimate_exceeds_budget"
                 status_reason = (
                     "compiled memory_analysis() required bytes exceed "
                     "available_memory_gb * target_fraction"
@@ -3038,12 +3054,21 @@ class Simulation(
             "Treat this as a bounded certificate for the exact compiled object and declared scope only.",
             "Digests are audit identities only; they do not prove source-to-executable correspondence.",
         ]
-        if status == "certified_budget_fit":
+        if status == "compiler_estimate_within_budget":
+            util_txt = (
+                f" (compiler estimate is {utilization_ratio * 100:.1f}% of the "
+                "target budget)"
+                if utilization_ratio is not None
+                else ""
+            )
             recommendations.insert(
                 0,
-                "Compiler memory analysis fits the target budget for this exact scope.",
+                "Compiler memory analysis fits the target budget for this exact "
+                f"scope{util_txt}. This is a JAX compiler estimate; it excludes "
+                "allocator fragmentation and runtime scratch, so a fit at high "
+                "utilization can still OOM at runtime.",
             )
-        elif status == "certified_budget_exceeded":
+        elif status == "compiler_estimate_exceeds_budget":
             recommendations.insert(
                 0,
                 "Compiler memory analysis exceeds the target budget; reduce scope, checkpoint more aggressively, or increase memory.",
@@ -3071,6 +3096,7 @@ class Simulation(
 
         return ADCompiledMemoryCertificate(
             status=status,
+            status_reason=status_reason,
             available_memory_gb=available_memory_gb_f,
             target_fraction=target_fraction_f,
             target_memory_gb=target_memory_gb,
@@ -3091,9 +3117,7 @@ class Simulation(
             config_digest=scope.config_digest,
             environment_digest=scope.environment_digest,
             memory_analysis_status=analysis.status,
-            memory_analysis_status_reason=(
-                status_reason if analysis.status == status else analysis.reason
-            ),
+            memory_analysis_status_reason=analysis.reason,
             jax_version=jax_version,
             evidence_boundaries=AD_COMPILED_MEMORY_CERTIFICATE_EVIDENCE_BOUNDARIES,
             recommendations=tuple(recommendations),

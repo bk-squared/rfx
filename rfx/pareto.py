@@ -25,7 +25,9 @@ def _json_safe(value: object) -> object:
         return {str(key): _json_safe(item) for key, item in value.items()}
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_json_safe(item) for item in value]
-    return value
+    raise TypeError(
+        f"cannot serialize value of type {type(value).__name__!r} to JSON-native data"
+    )
 
 class ParetoPoint(NamedTuple):
     """One candidate in a Pareto front."""
@@ -126,7 +128,12 @@ def pareto_mask(
 
     ``minimize`` may be one bool for all objectives or one bool per objective.
     Objectives marked ``False`` are treated as maximization objectives. ``atol``
-    is a dominance tolerance in the raw objective units after orientation.
+    raises the bar for *strict improvement*: after orientation a point ``p``
+    dominates ``q`` only if ``p`` is no worse than ``q`` on every objective
+    (exact ``<=``) and better by more than ``atol`` on at least one. This keeps
+    the relation a strict partial order (transitive, no dominance cycles), so a
+    larger ``atol`` retains *more* points and the front is never empty for
+    non-empty finite input.
     """
     values = _as_2d_objectives(objectives)
     minimize_tuple = _orientation(minimize, values.shape[1])
@@ -139,7 +146,12 @@ def pareto_mask(
         if not mask[i]:
             continue
         candidate = oriented[i]
-        no_worse = np.all(oriented <= candidate + tolerance, axis=1)
+        # ``no_worse`` must stay an exact componentwise ``<=`` so the dominance
+        # relation is a strict partial order; ``atol`` only relaxes the
+        # strict-improvement test. Adding the tolerance to ``no_worse`` too
+        # would make dominance non-transitive and could mark every point
+        # dominated (empty front) for non-empty input.
+        no_worse = np.all(oriented <= candidate, axis=1)
         strictly_better = np.any(oriented < candidate - tolerance, axis=1)
         dominated_by_other = no_worse & strictly_better
         dominated_by_other[i] = False

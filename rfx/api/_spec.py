@@ -475,6 +475,7 @@ class ADCompiledMemoryCertificate(NamedTuple):
     """
 
     status: str
+    status_reason: str
     available_memory_gb: float
     target_fraction: float
     target_memory_gb: float
@@ -509,14 +510,23 @@ class ADCompiledMemoryCertificate(NamedTuple):
     @property
     def is_valid_certificate(self) -> bool:
         """Whether compiler evidence and exact scope are complete."""
-        return self.status in {"certified_budget_fit", "certified_budget_exceeded"}
+        return self.status in {
+            "compiler_estimate_within_budget",
+            "compiler_estimate_exceeds_budget",
+        }
 
     @property
-    def is_budget_safe(self) -> bool | None:
-        """Whether the compiler estimate fits the configured target budget."""
-        if self.status == "certified_budget_fit":
+    def estimate_within_budget(self) -> bool | None:
+        """Whether the JAX compiler memory *estimate* fits the target budget.
+
+        This reflects ``Compiled.memory_analysis()``, a compiler estimate — not
+        a runtime guarantee. It does not model allocator fragmentation or
+        runtime scratch, so ``True`` does not promise the run avoids OOM.
+        Returns ``None`` when compiler evidence or exact scope is incomplete.
+        """
+        if self.status == "compiler_estimate_within_budget":
             return True
-        if self.status == "certified_budget_exceeded":
+        if self.status == "compiler_estimate_exceeds_budget":
             return False
         return None
 
@@ -525,8 +535,9 @@ class ADCompiledMemoryCertificate(NamedTuple):
         return {
             "evidence_class": self.evidence_class,
             "status": self.status,
+            "status_reason": self.status_reason,
             "is_valid_certificate": self.is_valid_certificate,
-            "is_budget_safe": self.is_budget_safe,
+            "estimate_within_budget": self.estimate_within_budget,
             "available_memory_gb": float(self.available_memory_gb),
             "target_fraction": float(self.target_fraction),
             "target_memory_gb": float(self.target_memory_gb),

@@ -78,7 +78,13 @@ def check_courant_number(
     limit: float = 1.0,
     name: str = "courant",
 ):
-    """Assert a finite positive Courant-like number below ``limit``."""
+    """Assert a finite positive Courant-like number at or below ``limit``.
+
+    The check is inclusive (``courant <= limit``), matching the textbook CFL
+    bound. The default ``limit=1.0`` is the 1-D ceiling; pass the
+    dimensionality-appropriate bound for the target engine (e.g. ``1/sqrt(3)``
+    ~= 0.577 for 3-D FDTD) rather than relying on the default.
+    """
     if not limit > 0:
         raise ValueError("limit must be positive")
     check_finite(courant, name=name)
