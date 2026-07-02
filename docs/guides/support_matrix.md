@@ -88,7 +88,7 @@ Current policy:
 | Combination | Status | Expected behavior |
 |---|---|---|
 | Periodic-port workflows + nonuniform | unsupported | hard-fail |
-| NTFF + nonuniform | shadow | runs on graded-z path; validate observable before any public claim |
+| NTFF + nonuniform | benchmarked (dipole) | graded-z far-field runs and a short-dipole directivity benchmarks within ~0.05 dB of the 1.76 dBi theory (`tests/test_farfield_nonuniform.py`); other observables/geometries remain shadow — validate before any public claim |
 | DFT planes + nonuniform | shadow | runs on graded-z path; validate observable before any public claim |
 | TFSF + nonuniform | shadow / restricted | normal ±x incidence (`direction='+x'`/`'-x'`, `angle_deg=0`) runs on graded-z path (shadow); oblique or ±z incidence raises |
 | Waveguide ports + nonuniform | shadow / restricted | `compute_waveguide_s_matrix(normalize=True/'flux')` single-mode TE10 validated at settled `num_periods`; **broad-E5-analytic envelope committed + gated** (graded-`dy` 1-3x, eps_r 2/4, vs analytic Airy, `tests/test_waveguide_nu_broad_e5_envelope_gates.py`); still **shadow / not claims-bearing** pending broad-E4 external cross-solver + AD-traceability; otherwise hard-fail |

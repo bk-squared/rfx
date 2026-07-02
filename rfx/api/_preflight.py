@@ -2011,7 +2011,11 @@ class _PreflightMixin:
                     )
                     break
 
-        # P1.5: (merged into P2.1 — non-uniform + NTFF is unsupported)
+        # P1.5: non-uniform + NTFF is SUPPORTED (stale "unsupported" note removed
+        # 2026-07-02). The NU runner accumulates the NTFF box and
+        # compute_far_field handles graded-z per-cell dS + z-edges; a graded-z
+        # dipole directivity benchmarks within ~0.05 dB of theory
+        # (tests/test_farfield_nonuniform.py). No guard needed.
 
     def _validate_cfg_ntff_min_steps(self, dx: float) -> None:
         """P1.7: NTFF with too few steps."""
