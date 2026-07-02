@@ -1,0 +1,34 @@
+---
+title: "rfx Gallery"
+description: "A visual tour of what rfx simulates — the structure, the fields as they evolve, the result against exact theory, and the gradient of that result via jax.grad through the supported time-domain workflows."
+sidebar:
+  order: 35
+---
+
+import { CardGrid, Card } from '@astrojs/starlight/components';
+
+A short, visual tour of what rfx can do. Each case shows four things: **what the
+structure is**, **what the fields do** as they evolve, **how close the result
+lands to the exact textbook answer**, and — because rfx is a differentiable
+FDTD code — **the gradient of that result**, taken with `jax.grad` through the
+supported time-domain workflow. Pick one to dive in.
+
+<CardGrid>
+  <Card title="Dielectric Slab">
+    <a href="/rfx/gallery/multilayer_fresnel/"><img src="/rfx/gallery/assets/multilayer_fresnel/rt_overlay.png" alt="Reflection and transmission of a dielectric slab vs the exact Fresnel curves" /></a>
+
+    A plane wave at normal incidence on a lossless dielectric slab. Reflection and transmission track the exact transfer-matrix curves to ~1%, and `jax.grad` returns `dT/dd` matching the closed-form derivative. [See it →](/rfx/gallery/multilayer_fresnel/)
+  </Card>
+  <Card title="Patch Antenna">
+    <a href="/rfx/gallery/patch_antenna/"><img src="/rfx/gallery/assets/patch_antenna/s11_db.png" alt="Patch antenna return loss with a deep matched dip at resonance" /></a>
+
+    A 2.4 GHz microstrip patch on FR4. A tuned inset feed gives a deep matched return-loss dip at the TM010 resonance, cross-checked with a Harminv ring-down, plus a differentiable substrate-permittivity sweep. [See it →](/rfx/gallery/patch_antenna/)
+  </Card>
+  <Card title="Rectangular Waveguide">
+    <a href="/rfx/gallery/waveguide_wr90/"><img src="/rfx/gallery/assets/waveguide_wr90/field_te10.png" alt="TE10 mode propagating down a WR-90 rectangular waveguide" /></a>
+
+    The TE10 dominant mode down a WR-90 X-band guide. |S11|/|S21| match the exact matched empty-guide answer at the CPML floor, and `jax.grad` differentiates the transmission through a dielectric fill. [See it →](/rfx/gallery/waveguide_wr90/)
+  </Card>
+</CardGrid>
+
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-30</p>

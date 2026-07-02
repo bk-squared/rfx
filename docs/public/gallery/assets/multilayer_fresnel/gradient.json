@@ -1,0 +1,10 @@
+{
+  "param": "slab_thickness_d",
+  "ad_value": 64.77245407992417,
+  "fd_value": 64.77236747741699,
+  "fd_step_h": 5e-05,
+  "rel_err_vs_fd": 1.3370285903430088e-06,
+  "rel_err_vs_analytic": 0.026057964935126667,
+  "sign_agreement": true,
+  "gate_threshold": 0.05
+}
