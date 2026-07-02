@@ -5,23 +5,21 @@ sidebar:
   order: 1
 ---
 
-**Differentiable FDTD for RF/Microwave — powered by JAX**
-
 rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built in JAX. These docs focus on maintained user workflows with explicit support boundaries.
 
 ## Current public status
 
-Use the **uniform Cartesian Yee RF/FDTD lane** first. The public docs highlight maintained workflows and explicitly bounded claim envelopes:
+Start with the **uniform Cartesian Yee FDTD lane**. Each surface below states an explicit support scope:
 
 | Surface | Public role |
 |---|---|
-| **Uniform Yee RF workflows** | recommended default for tutorials, examples, probes, Harminv, selected S-parameter workflows, and benchmarked far-field workflows |
+| **Uniform Yee RF workflows** | recommended default for tutorials, examples, probes, Harminv, selected S-parameter workflows, and far-field workflows |
 | **Rectangular waveguide S-matrices** | validated inside the documented rectangular-guide envelope |
 | **Lumped, wire, and microstrip-line port workflows** | available through their matching calculators; validation scope follows the support matrix |
 | **Coaxial line reflection** | bounded one-port transmission-line workflow only; not a general coaxial S-matrix promise |
 | **Differentiable design loops** | use proxy objectives, gradient checks, and documented validation before treating a design result as evidence |
 
-If a capability is not listed here or in the support-boundary page, treat it as outside the documented public support scope until the support matrix lists it.
+If a capability is not listed here or on the [Support Boundaries](/rfx/api/support-boundaries/) page, treat it as outside the documented public support scope until that page lists it.
 
 ---
 
@@ -30,7 +28,7 @@ If a capability is not listed here or in the support-boundary page, treat it as 
 | Feature | Detail |
 |---|---|
 | **GPU acceleration** | JAX/JIT execution for large 3-D grids |
-| **Differentiable simulation** | `jax.grad` through time-domain workflows for inverse design |
+| **Differentiable workflows** | `jax.grad` through selected JAX-traced objectives; validate final RF observables through their support envelope |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field utilities |
 | **Recommended examples** | current runnable scripts under `examples/crossval/` and selected inverse-design examples |
 | **Support-boundary discipline** | public claims are tied to explicit guide/support-matrix envelopes, not to every importable symbol |
@@ -100,7 +98,7 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
 
 - [Autodiff and Adjoint Background](guide/autodiff-adjoint/) — Meep-informed gradient concepts for microwave engineers
 - [Inverse Design](guide/inverse-design/) — autodiff-driven optimization with documented proxy objectives
-- [Gradient Behavior](guide/gradient-behavior/) — where gradients are reliable vs noisy
+- [Gradient Behavior](guide/gradient-behavior/) — where gradients are usually well behaved vs noisy
 - [Parametric Sweeps](guide/parametric-sweeps/) — sequential sweep and `jax.vmap` design-space exploration
 - [Patch Antenna Design](guide/tutorial-patch-antenna/) — rectangular patch workflow
 

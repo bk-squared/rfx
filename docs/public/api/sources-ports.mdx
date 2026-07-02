@@ -8,7 +8,9 @@ sidebar:
 rfx separates **sources** from **ports**:
 
 - sources inject fields without impedance loading
-- ports add an impedance model for S-parameter style workflows
+- ports add an impedance model for S-parameter workflows
+
+Most sources and ports accept a `waveform=` object that sets the time-domain excitation, so those shared types are listed first. (Waveguide ports instead select a built-in pulse by name plus `f0`/`bandwidth`.) This page is the API reference; the [Sources & Ports guide](/rfx/guide/sources-ports/) carries the worked end-to-end examples.
 
 ## Waveforms
 
@@ -16,7 +18,7 @@ rfx separates **sources** from **ports**:
 |---|---|---|
 | `GaussianPulse` | `GaussianPulse(f0, bandwidth=0.5, amplitude=1.0)` | default wideband excitation |
 | `ModulatedGaussian` | `ModulatedGaussian(f0, bandwidth=0.5, amplitude=1.0, cutoff=5.0)` | resonance work with reduced DC content |
-| `CWSource` | `CWSource(f0, amplitude=1.0, ramp_steps=50)` | steady-state field visualisation |
+| `CWSource` | `CWSource(f0, amplitude=1.0, ramp_steps=50)` | steady-state field visualization |
 | `CustomWaveform` | `CustomWaveform(func)` | JAX-compatible custom excitation |
 
 ## Sources
@@ -27,6 +29,8 @@ sim.add_polarized_source((0.025, 0.025, 0.010), polarization="rhcp")
 ```
 
 Use `add_source()` for ringdown and Harminv work when you do **not** want a load on the excited cell.
+
+`add_polarized_source()` accepts the string shortcuts `"ex"`, `"ey"`, `"ez"`, `"slant45"`, `"rhcp"`/`"circular"`, `"lhcp"`, or an arbitrary `(Ex, Ey)` Jones tuple (normalized internally).
 
 ## Ports
 
@@ -44,6 +48,8 @@ sim.add_port((0.01, 0.02, 0.0), "ez", impedance=50.0, extent=0.0016)
 sim.add_coaxial_port((0.02, 0.02, 0.0016), face="top", impedance=50.0)
 sim.add_waveguide_port(x_position=0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010))
 ```
+
+`extent` promotes the single-cell lumped port to a multi-cell wire port spanning `extent` metres from `position` along the `component` axis (here `+z`); omit it for a lumped port.
 
 ## S-parameter calculators
 
@@ -68,7 +74,11 @@ sim.preflight_sparameters(calculator="waveguide")
 sim.preflight_sparameters(calculator="forward")
 ```
 
+An empty report means the selected calculator is valid for the registered port families; otherwise it lists coded issues to fix first. Pass `strict=True` to raise instead of returning them.
+
 ## Public boundary rules
+
+See [Support Boundaries](./support-boundaries/) for the authoritative support scope. In short:
 
 - Use sources for clean transient or resonance extraction.
 - Use ports when you need impedance-normalized outputs.

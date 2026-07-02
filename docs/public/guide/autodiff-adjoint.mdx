@@ -46,7 +46,7 @@ a dielectric tuning region.
 | Adjoint method | Solve a forward problem and an adjoint sensitivity problem | roughly independent of design-variable count for one scalar objective family | large design regions and topology-style optimization |
 | Reverse-mode automatic differentiation | Apply the chain rule to the implemented discrete program | one differentiated program, with memory/recompute tradeoffs | JAX-native differentiable workflows in rfx |
 
-Meep's current adjoint-solver documentation describes a dedicated adjoint module
+Meep's adjoint-solver documentation describes a dedicated adjoint module
 for gradients of functions of mode coefficients, S-parameters, DFT fields, LDOS,
 and far fields with respect to a `MaterialGrid`. In that formulation, Meep runs a
 forward calculation to obtain the objective and design-region fields, then an
@@ -95,8 +95,11 @@ In rfx, the public gradient story is:
   workflows.
 - The result is a gradient of the implemented discrete simulation, not a
   guarantee that the chosen observable is the right RF metric.
-- `checkpoint=True` or segmented checkpointing can reduce reverse-mode memory by
-  recomputing parts of the forward pass during the backward pass.
+- `forward(...)` recomputes each step during the backward pass by default
+  (`checkpoint=True`) to bound reverse-mode memory. Long runs can trade extra
+  compute for an approximately `sqrt(n_steps)` memory reduction via segmented
+  checkpointing: `checkpoint_segments` on uniform meshes, `checkpoint_every` on
+  non-uniform. See [Memory Reduction](/rfx/guide/memory-reduction/).
 - New problem setups should start with finite-difference checks on a few cells or
   parameters before trusting the gradient for optimization.
 - Final RF claims should be verified by the relevant public workflow: port-family
@@ -123,7 +126,12 @@ and support entry.
 
 ## Minimal gradient-check pattern
 
-Use this kind of check before a new optimization setup:
+Here `params` is a JAX array of design variables (for example an `eps_override`
+field passed to `sim.forward(...)`), and `loss_fn(params)` returns a scalar loss
+from that forward run. See [Inverse Design](/rfx/guide/inverse-design/) for how
+to build `loss_fn` from a `Simulation` and an objective. Run this single-cell
+finite-difference check before trusting the gradient for a new optimization
+setup:
 
 ```python
 import jax
@@ -175,7 +183,7 @@ adjust based on the scale of the loss and the design variable.
 
 - Use [Inverse Design](/rfx/guide/inverse-design/) for the rfx optimization API
   and objective families.
-- Use [Gradient Behavior](/rfx/guide/gradient-behavior/) for known stable,
-  noisy, and non-differentiable paths.
+- Use [Gradient Behavior](/rfx/guide/gradient-behavior/) for usually
+  well-behaved, noisy, and non-differentiable paths.
 - Use [Memory Reduction](/rfx/guide/memory-reduction/) when reverse-mode memory,
   checkpointing, or run size is the limiting factor.

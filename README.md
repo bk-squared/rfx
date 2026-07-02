@@ -11,9 +11,9 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.6.5 package** — JAX-based RF/FDTD workflows, GPU-oriented execution, practical examples, structured setup guards, and port-family validation envelopes.
+**v1.6.6** — GPU-scaled `lax.scan` time-stepping, per-port-family S-parameter extractors, and structured preflight guards that surface setup errors before a run.
 
-> **Project status (June 2026):** `rfx` is an actively validated RF/FDTD simulator. Use the uniform Cartesian Yee RF lane first; additional workflows should be used only inside their documented evidence envelopes.
+> **Project status:** active RF/FDTD simulator. Start with the uniform Cartesian Yee lane; other workflows are supported only within the evidence envelopes documented in the [support matrix](docs/guides/support_matrix.md).
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://github.com/bk-squared/rfx/actions/workflows/pr-tests.yml/badge.svg)](https://github.com/bk-squared/rfx/actions)
@@ -22,27 +22,25 @@
 
 ## At a Glance
 
-The recommended starting point is the **uniform Cartesian Yee RF/FDTD lane**. Public claims are scoped to documented workflows and bounded evidence envelopes rather than every importable symbol.
+Start with the **uniform Cartesian Yee RF/FDTD lane**; the table below scopes each capability to its supported claim.
 
 | | |
 |---|---|
 | **GPU-accelerated** | 7,309 Mcells/s on RTX 4090, 5,249 on A6000 via `jax.lax.scan` JIT |
-| **Differentiable** | `jax.grad` through time-domain workflows for inverse design |
-| **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field utilities |
-| **Waveguide modal ports** | analytical TE/TM eigenmodes for documented rectangular-guide S-matrix envelopes |
-| **Port-family S-parameter routing** | lumped/wire, microstrip-line, rectangular waveguide, and coaxial-line workflows use different calculators and evidence envelopes |
-| **Published benchmark evidence** | 5-case benchmark against Balanis/Pozar (patch 1.97%, cavity 0.016%) |
-| **Regression checks** | CI and local checks support development without replacing feature-specific validation |
-| **Documentation scope** | public guides cover maintained workflows and explicitly bounded support envelopes |
+| **Differentiable** | `jax.grad` through the JAX-traced time-domain solver for sensitivity and inverse design |
+| **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field / RCS |
+| **Waveguide modal ports** | analytic TE/TM eigenmodes for rectangular-guide S-matrices |
+| **Per-family S-parameters** | lumped/wire, microstrip-line, rectangular waveguide, and coaxial-line paths use distinct calculators |
+| **Cross-validated** | public cases mapped to Meep / OpenEMS / Palace / analytic references, each with a reproduce command |
 
-## Current main highlights
+## Current Highlights
 
-- **Public workflow scope (June 2026)**: user guides lead with uniform Yee RF workflows, documented waveguide/MSL/lumped/wire port envelopes, bounded coaxial line reflection, and conservative differentiable design loops.
-- **Structured preflight and runtime guards (current `main`)**: `preflight()` and `preflight_sparameters()` return coded `PreflightReport` issues while remaining list/string compatible; `run()`, `forward()`, S-matrix calculators, sweeps, and optimizers surface NaN/passivity/setup problems earlier.
-- **Waveguide S-matrix evidence (current `main`)**: rectangular waveguide S-matrices have the strongest current port-family evidence envelope; use the support matrix for exact limits rather than broadening the claim.
-- **Coaxial line reflection (current `main`)**: `compute_coaxial_line_reflection(...)` is the bounded one-port coaxial transmission-line reflection path. It is not a general coaxial network solver.
-- **Curated star-import surface (current `main`)**: `rfx.__all__` exposes the supported public API; per-step kernels and bookkeeping helpers remain available for compatibility but are outside the curated API surface.
-- **Maintained validation lanes (current `main`)**: a full-suite PR gate, API-reference drift checks, a maintained GPU suite harness, weekly external-crossval CI, and on-demand source-built-OpenEMS validation use the honest exit-code convention (reference-missing is a visible SKIP, never a silent pass).
+- **Documented workflows**: uniform Yee RF simulation; rectangular-waveguide, MSL, lumped, and wire ports; one-port coaxial-line reflection; and conservative differentiable design loops.
+- **Structured preflight and runtime guards**: `preflight()` and `preflight_sparameters()` return a coded `PreflightReport` (a `list` subclass, so existing list/string checks still work); `run()`, `forward()`, the S-matrix calculators, sweeps, and optimizers surface NaN / passivity / setup problems early.
+- **Waveguide S-matrices** are the most mature port family; consult the [S-parameter support matrix](docs/guides/sparameter_support_matrix.md) for exact limits rather than broadening the claim.
+- **Coaxial-line reflection**: `compute_coaxial_line_reflection(...)` is the one-port coaxial transmission-line reflection path — not a general coaxial network solver.
+- **Curated star-import surface**: `rfx.__all__` is the supported public API; per-step kernels and bookkeeping helpers stay importable for back-compatibility but sit outside it.
+- **Maintained validation lanes**: a full-suite PR gate, API-reference drift checks, a GPU-suite harness, weekly external-crossval CI, and on-demand source-built-OpenEMS validation, all under the honest exit-code convention (a missing reference is a visible SKIP, never a silent pass).
 
 ## Installation
 
@@ -66,24 +64,13 @@ cd rfx && pip install -e ".[all]"
 ### Interactive dashboard (GUI)
 
 rfx ships an experimental Streamlit dashboard — a browser GUI for assembling a
-simulation (geometry, materials, sources/ports, probes), running it, and
-inspecting the results (S-parameter magnitude (dB) plots, Smith chart, field
-slices, probe time series, and Touchstone export) without writing Python. It is
-a convenience front end for quick exploration, not a replacement for the
-scripted API used in the validation lanes.
-
-Install the optional dependency and launch the bundled console command:
+simulation, running it, and inspecting results (S-parameter plots, Smith chart,
+field slices, Touchstone export) without writing Python. Install the optional
+dependency and launch:
 
 ```bash
 pip install "rfx-fdtd[dashboard]"
 rfx-dashboard
-```
-
-`rfx-dashboard` forwards any extra arguments straight to `streamlit run`, so you
-can override Streamlit options as usual:
-
-```bash
-rfx-dashboard --server.port 8502
 ```
 
 ## Quick Start
@@ -106,45 +93,31 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz  Q={modes[0].Q:.0f}")
 ```
 
 > This compact snippet favours brevity over a production-clean mesh, so `run()`
-> prints a few non-fatal preflight advisories (thin PEC sheets; substrate/feed
-> near the CPML absorber) and the reported resonance is only approximate (this
-> coarse mesh lands ~10–15% high). For a
-> properly resolved patch — PEC ground, non-uniform z-mesh, lossy FR4, and a
-> cross-checked resonance — follow the
-> [First Patch tutorial](docs/public/guide/first-patch.mdx).
+> may print non-fatal preflight advisories and the reported resonance is only
+> approximate (coarse mesh lands ~10–15% high). For a properly resolved patch
+> workflow, follow the [First Patch tutorial](docs/public/guide/first-patch.mdx).
 
-## Differentiable S-Parameters
+## Differentiable Design Workflows
 
-`jax.grad` flows end-to-end through the **public S-parameter API** — the
-gradient of a measured S-parameter with respect to material design variables
-in one call, no adjoint plumbing:
+rfx supports selected JAX-traced objectives for inverse design. Treat these as
+**sensitivity calculations through the implemented discrete solver**, not as
+standalone RF validation. For S-parameter-driven work, use the calculator that
+matches the port family and keep the final claim inside that family's evidence
+envelope.
 
-```python
-import jax
+The runnable gradient examples include:
 
-def objective(eps_plug):
-    eps = base_eps.at[plug_region].set(eps_plug)   # design variable
-    res = sim.compute_waveguide_s_matrix(normalize=False, eps_override=eps)
-    s11 = res.s_params[0, 0, target_freq_idx]
-    return jnp.abs(s11) ** 2
+- [`examples/inverse_design/differentiable_s11_design.py`](examples/inverse_design/differentiable_s11_design.py) — differentiable S11 objective with a finite-difference cross-check (measured: FD↔AD relative error 4.5e-4, ~15 s on CPU); CI-gated by `tests/test_sparam_ad_end_to_end.py`.
+- [`examples/inverse_design/multilayer_ar_coating.py`](examples/inverse_design/multilayer_ar_coating.py) — conservative differentiable material-profile demo.
 
-grad_fn = jax.grad(objective)        # that's the whole adjoint setup
-g = grad_fn(2.0)
-```
-
-The runnable version with a finite-difference cross-check is
-[`examples/inverse_design/differentiable_s11_design.py`](examples/inverse_design/differentiable_s11_design.py)
-(measured: FD↔AD relative error 4.5e-4, ~15 s on CPU). The CI-gated
-correctness lock is `tests/test_sparam_ad_end_to_end.py`. Memory-bounded
-reverse mode for long runs is available via `checkpoint_segments`.
+For the conceptual background, see the public [Autodiff and Adjoint Background](docs/public/guide/autodiff-adjoint.mdx) guide.
 
 ## Support Contracts
 
-Machine-readable and maintainer-facing support contracts keep public claims aligned with evidence:
+Support contracts keep public claims aligned with evidence:
 
 - [`docs/guides/support_matrix.md`](docs/guides/support_matrix.md) and [`docs/guides/support_matrix.json`](docs/guides/support_matrix.json) — feature support status and public-scope rules.
 - [`docs/guides/sparameter_support_matrix.md`](docs/guides/sparameter_support_matrix.md) and [`docs/guides/sparameter_support_matrix.json`](docs/guides/sparameter_support_matrix.json) — port-family calculators, result schemas, and evidence envelopes.
-- [`docs/guides/public_surface_scope_inventory_20260617.md`](docs/guides/public_surface_scope_inventory_20260617.md) — maintainer-only list of public-repo code surfaces that stay outside user docs until support evidence and public workflow docs exist.
 
 The public API surface is pinned by a symbol/signature inventory gate and the curated public docs.
 
@@ -167,19 +140,22 @@ Gradient (reverse-mode AD): ~3-4x forward pass with `jax.checkpoint`.
 
 ## Accuracy Validation
 
-Benchmarked against Balanis "Antenna Theory" and Pozar "Microwave Engineering":
+Each A/B cross-validation case is mapped to a named analytic or external reference. The values below are the **accept envelopes** enforced by each script's own gate code — not single-point marketing errors. Several cases (e.g. `11_waveguide_port_wr90`) are diagnostic reporters whose authoritative gates live in `tests/`.
 
-| Structure | Reference | Error |
-|-----------|-----------|-------|
-| Patch antenna resonance | Balanis Ch 14 | 1.97% |
-| WR-90 TE10 cutoff | Analytical | 0.60% |
-| Dielectric cavity TM110 | Analytical | 0.016% |
-| Microstrip Z0 | Hammerstad-Jensen | 0.47% |
-| Coupled-line filter | Pozar Ch 8 | 22.5% (formula limitation) |
+| Case (`examples/crossval/`) | Upstream reference | Accept envelope (from the script's gate) |
+|---|---|---|
+| `05_patch_antenna` | OpenEMS patch tutorial + Balanis TL analytic | rfx vs OpenEMS Harminv < 20%; vs Balanis TL < 10%; self-consistency < 5%; \|S11\| ≤ 1 |
+| `04_multilayer_fresnel` | Analytic transfer-matrix / Fresnel (Taflove Ch 5) | `T`, `R` mean error and `R+T` energy deviation each < 0.05 |
+| `02_ring_resonator` | Meep "Basics" tutorial + Harminv | mean mode-frequency error < 5%; ≥ 2 modes matched |
+| `09_half_symmetric_waveguide` | Analytic rectangular cavity TE₁₀₁ (Pozar Ch 6) | `f` within 10% of analytic; PMC-half vs full PEC < 5% |
+| `11_waveguide_port_wr90` | Analytic Airy + Meep/Palace JSON when present | empty-guide max\|S11\| < 0.02, min\|S21\| > 0.97; PEC-short mean \|S11\| ∈ [0.97, 1.03] |
+| `06b_msl_notch_filter_uniform` | Analytic quarter-wave stub notch | notch-frequency error < 15%; depth < −10 dB; Z₀ median ∈ (40, 65) Ω |
 
-The full cross-validation suite (Meep / OpenEMS / Palace / analytic references, one reproduce command per case) is summarized in the public validation docs. The CPU-feasible subset runs locally via `python scripts/run_crossval_cpu.py` using the repo-wide exit-code convention (0 = full pass with external reference, 1 = self-check failure, 2 = reference unavailable — visibly skipped, never silently green).
+For the per-case metric, reproduce command, and last-touched commit, see the [benchmark table](docs/public/guide/benchmarks.mdx); for lane guidance and support boundaries, read [Cross-Validation and Accuracy](docs/public/guide/validation.mdx) first.
 
-For practical public examples, start with `examples/crossval/05_patch_antenna.py` for the patch workflow and `examples/crossval/11_waveguide_port_wr90.py` for rectangular waveguide ports. Use scripts outside the recommended example set only as local diagnostics unless a public guide and support matrix entry state otherwise.
+The CPU-feasible subset runs locally via `PYTHONPATH=. python scripts/run_crossval_cpu.py`, using the repo-wide exit-code convention: `0` = full pass including the external cross-check, `1` = a self-check / numeric gate failed, `2` = the external reference (e.g. Meep / OpenEMS) was unavailable, so the case is visibly skipped — never silently green.
+
+For a first read, start with `examples/crossval/05_patch_antenna.py` (patch workflow) and `examples/crossval/11_waveguide_port_wr90.py` (rectangular waveguide ports). Treat scripts outside this validated set as local diagnostics unless a public guide and support-matrix entry list them.
 
 ## Key Features
 
@@ -199,15 +175,14 @@ For practical public examples, start with `examples/crossval/05_patch_antenna.py
 ### Materials
 - Debye/Lorentz/Drude dispersive, Kerr nonlinear (chi3)
 - Subpixel smoothing, thin conductor correction
-- Material fitting: CSV import, Debye/Lorentz pole fitting
-- Differentiable material fitting (jax.grad through FDTD)
+- Material fitting: `fit_debye` / `fit_lorentz` (Debye/Lorentz pole fitting from data); `differentiable_material_fit` (jax.grad-traced fitting through FDTD)
 - Library: pec, fr4, rogers4003c, copper, alumina, water_20c, ...
 
 ### Analysis & Optimization
-- S-parameter tooling with per-family calculators: lumped/wire, MSL, waveguide, and coaxial-line workflows use different APIs and evidence envelopes
+- Per-family S-parameter extraction (lumped/wire, MSL, waveguide, coaxial-line — see Sources & Ports above)
 - Harminv resonance extraction (MPM)
-- Far-field, RCS, radiation patterns, polarization
-- Antenna metrics: gain, efficiency, HPBW, F/B ratio, bandwidth
+- Documented far-field, RCS, radiation-pattern, and polarization workflows
+- Antenna metrics: `antenna_gain`, `antenna_efficiency`, `half_power_beamwidth`, `front_to_back_ratio`, `antenna_bandwidth` (rfx/antenna.py)
 - Differentiable proxy-objective optimization for selected workflows
 - Parametric sweep + jax.vmap batch evaluation
 - Smith chart, de-embedding, Touchstone I/O (.s2p/.s4p/.snp)
@@ -288,7 +263,7 @@ Working from a fresh clone with an LLM agent? Start with the purpose-built agent
   title        = {rfx: JAX-based differentiable 3D FDTD simulator for RF engineering},
   institution  = {REMI Lab, Chungnam National University},
   year         = {2026},
-  version      = {1.6.5},
+  version      = {1.6.6},
   url          = {https://github.com/bk-squared/rfx}
 }
 ```

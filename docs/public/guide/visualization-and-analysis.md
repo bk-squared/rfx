@@ -4,9 +4,13 @@ sidebar:
   order: 15
 ---
 
-rfx ships matplotlib-based helpers for the most common RF post-processing tasks.
-The helpers expect the same objects that the simulation and analysis APIs return,
-so prefer passing raw arrays or result fields directly.
+rfx ships matplotlib-based helpers for common RF post-processing: S-parameters,
+field slices, radiation patterns, RCS, and probe time series. Each helper takes
+plain arrays (`result.s_params`, `result.freqs`, `result.time_series`) or the
+result objects the analysis APIs return (`FarFieldResult`, `RCSResult`). For the
+most common plots, `Result` also exposes convenience methods —
+`result.plot_s_params()`, `result.plot_smith()`, and `result.plot_time_series()` —
+that forward to the functions below.
 
 ## Built-in Visualization
 
@@ -65,7 +69,8 @@ from rfx import plot_rcs
 fig = plot_rcs(rcs_result, freq_idx=0, polar=True)
 ```
 
-If you want the full computation flow, see `docs/public/guide/farfield-rcs.md`.
+For how to produce `rcs_result` from a scattering run, see
+[Far-Field & RCS](/rfx/guide/farfield-rcs/).
 
 ### Time-Domain Signal
 
@@ -124,7 +129,9 @@ vswr = (1 + np.abs(s11)) / (1 - np.abs(s11))
 
 ```python
 import jax.numpy as jnp
-from rfx.core.yee import EPS_0, MU_0
+
+EPS_0 = 8.8541878128e-12
+MU_0 = 1.25663706212e-6
 
 grid = result.grid
 state = result.state
@@ -133,12 +140,15 @@ state = result.state
 u_e = 0.5 * EPS_0 * (state.ex**2 + state.ey**2 + state.ez**2)
 # Magnetic energy density
 u_h = 0.5 * MU_0 * (state.hx**2 + state.hy**2 + state.hz**2)
-# Total stored energy for a uniform cubic grid
+# Approximate total stored energy on a uniform cubic grid
 stored_energy = float(jnp.sum(u_e + u_h) * grid.dx**3)
 ```
 
-The final line assumes a **uniform cubic grid**. For non-uniform spacing,
-integrate with the actual cell-volume weights instead of `grid.dx**3`.
+This is an estimate: it uses the vacuum permittivity `EPS_0` everywhere (no
+per-cell `eps_r` weighting, so it under-counts energy inside dielectrics) and
+treats the staggered Yee field components as if they were co-located. The final
+line also assumes a **uniform cubic grid** — for non-uniform spacing, integrate
+with the actual cell-volume weights instead of `grid.dx**3`.
 
 ### Export for External Tools
 
@@ -175,15 +185,11 @@ if result.snapshots is not None:
 
 ## External Analysis Workflows
 
-You can hand summaries to notebooks, scripts, or LLMs, but keep the raw arrays
-and plots as the source of truth. A good summary includes the frequency grid,
-S-parameters, resonant peaks, bandwidth, return loss, and the pass/fail rule you
-used to judge the result.
+Hand summaries to notebooks or reports, but keep the raw arrays and plots as the
+source of truth. A useful summary records the frequency grid, S-parameters,
+resonant peaks, bandwidth, return loss, and the exact pass/fail rule used to
+judge the result — state the metric rather than only that a design "looks good".
 
-When you write public notes or reports, describe the exact metric you used
-instead of saying only that a design "looks good".
-
-
-For reports, keep a small machine-readable manifest next to exported plots or
-Touchstone files. Include the command, git SHA, support status, and metric used
-to make the figure so the artifact can be reproduced.
+Alongside exported plots or Touchstone files, keep a small machine-readable
+manifest with the command, git SHA, support status, and metric used to produce
+the figure, so the artifact can be reproduced.
