@@ -30,6 +30,9 @@ on:
       - "scripts/check_api_reference.py"
       - "docs/guides/api_symbol_inventory.json"
 
+permissions:
+  contents: read
+
 jobs:
   public-docs-source:
     runs-on: ubuntu-latest
