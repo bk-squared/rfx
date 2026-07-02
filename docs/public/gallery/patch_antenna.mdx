@@ -161,7 +161,7 @@ signature of the TM010 resonance, not a travelling wave.
 from the radiating edge, the port sees close to 50 Ω at resonance and the return
 loss drops to a deep, matched dip of **−12.2 dB at 2.36 GHz** — right at the
 TM010 resonance (dashed line). The dashed line is rfx's own Harminv ring-down
-resonance (a self-extraction); the matched dip and the ring-down coincide to
+resonance; the matched dip and the ring-down coincide to
 within about 0.5% because the feed is matched — both are rfx reads of the same
 run, not an external reference.
 
@@ -175,29 +175,26 @@ run, not an external reference.
 
 ## Validation & limits
 
-This is an **E4** resonance-agreement case: the quantity under test is the rfx
-resonance frequency, and the reference it is checked against is the first-order
-analytic transmission-line (Balanis) estimate. The rfx numbers below are
-self-extractions, not the oracle.
+The quantity under test is the rfx resonance frequency, checked against the
+first-order analytic transmission-line (Balanis) estimate. The rfx numbers below
+are read from the simulation itself, not from an independent solver.
 
-| Observable | rfx (self-extraction) | Reference | Tolerance | Pass |
+| Observable | rfx | Reference | Agreement | Pass |
 |---|---|---|---|---|
-| Resonance frequency | 2.360 GHz (\|S11\| dip self-extraction) | 2.423 GHz (analytic transmission-line, Balanis) | within 20% | yes |
+| Resonance frequency | 2.360 GHz (\|S11\| dip) | 2.423 GHz (analytic transmission-line, Balanis) | within 20% | yes |
 | Resonance error vs reference | 2.6% | — | within 20% | yes |
-| Passive return loss | \|S11\| ≤ 1.05 | — | passive | yes |
+| Passivity | max \|S11\| ≤ 1.05 | — | no gain (5% numerical margin) | yes |
 
 ![rfx |S11|-dip resonance vs the analytic transmission-line estimate](/rfx/gallery/assets/patch_antenna/validation.png)
 
-Reference: analytic transmission-line (Balanis) estimate; validation tier **E4**
-(resonance within 20%, passive `|S11| <= 1.05`). The validated quantity is
-`|rfx resonance − analytic|`, which is 2.6% — comfortably inside the 20% E4
-tolerance. The Harminv ring-down is an rfx self-extraction (not the oracle), as
-is the matched |S11| dip; both rfx reads of the same run land at essentially the
-same frequency (about 2.36 GHz), which confirms the feed match is real and the
-dip is a meaningful operating point. The first-order analytic estimate is
-the reference here: its closed-form ΔL undercounts the fringing extension and it
-ignores the finite-ground and probe-feed loading, so a few-percent offset is
-expected — and at 2.6% the rfx resonance sits well within the E4 band.
+The checked quantity is `|rfx resonance − analytic|`, which is 2.6% —
+comfortably inside the 20% agreement one can ask of a first-order estimate. The
+Harminv ring-down and the matched |S11| dip are both read from the rfx run
+itself; that these two independent reads of the same simulation land at
+essentially the same frequency (about 2.36 GHz) confirms the feed match is real
+and the dip is a meaningful operating point. A few-percent offset from the
+analytic number is expected: its closed-form ΔL undercounts the fringing
+extension, and it ignores the finite-ground and probe-feed loading.
 
 **Convergence.** Refining the uniform mesh and tightening the absorber shifts the
 extracted resonance by a few percent at most; the coarse 1 mm mesh already places
@@ -218,19 +215,16 @@ accumulates the port voltage/current DFTs inside the time-stepping loop. A singl
 time-domain S-parameter workflow.
 
 Unlike the slab, the patch has no closed-form return loss, so there is no exact
-derivative to compare against. Instead this is a **finite-difference gate**: the
-AD gradient is checked against central finite differences, with the same 5%
-tolerance and sign-agreement test the inverse-design examples use. Re-running the
-forward at `εr ± h` and forming the central difference must land within 5% of the
-AD gradient and point the same way.
+derivative to compare against. Instead the AD gradient is checked against
+central finite differences: re-running the forward at `εr ± h` and forming the
+central difference must land within 5% of the AD gradient and point the same
+way.
 
 | Check | AD value | Compared against | rel. error | Sign agrees |
 |---|---|---|---|---|
-| `∂\|S11\|²/∂εr` (`rel_err_vs_fd`) | `+0.0967` | central FD `+0.0956` (h = 0.05) | 0.0114 (1.1%) | yes |
+| `∂\|S11\|²/∂εr` | `+0.0967` | central FD `+0.0956` (h = 0.05) | 0.0114 (1.1%) | yes |
 
-There is no closed-form return loss, so this is a finite-difference gate (no
-`rel_err_vs_analytic`): the AD gradient is checked against central finite
-differences with a `rel_err <= 0.05` threshold and a sign test. It passes.
+It does — 1.1% with matching sign, well inside the 5% agreement asked of it.
 
 ![Patch return-loss sensitivity to the substrate permittivity — AD gradient vs central finite differences](/rfx/gallery/assets/patch_antenna/autodiff.png)
 
@@ -238,8 +232,8 @@ The AD gradient `∂|S11|²/∂εr ≈ +0.097` matches the central finite differ
 about `1 %`, with matching sign: raising the substrate permittivity pushes the
 resonance down and away from the drive frequency, so the match degrades and
 `|S11|` at the fixed test frequency rises. This check runs on a uniform 2 mm
-mesh — coarser than the 1 mm S-parameter sweep above, since reverse-mode AD plus
-the two finite-difference forwards is heavier — but the AD-versus-finite-difference
+mesh — coarser than the 1 mm S-parameter sweep above, since the gradient solve
+plus the two finite-difference forwards is heavier — but the AD-versus-finite-difference
 agreement it demonstrates does not depend on the mesh.
 
 The differentiable knob is the substrate permittivity, a material quantity. The

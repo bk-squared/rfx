@@ -171,7 +171,7 @@ frequency above cutoff. The figure overlays the rfx values on that reference.
 ![|S11| and |S21| vs the exact matched empty-guide answer](/rfx/gallery/assets/waveguide_wr90/validation.png)
 
 Reference: analytic matched-load (`|S11| = 0`, `|S21| = 1` above cutoff),
-cross-checked against MEEP/OpenEMS/Palace; validation tier **E5**. With the thick
+cross-checked against MEEP/OpenEMS/Palace. With the thick
 20-layer CPML this run produces, the published result is `max|S11| = 0.0000` and
 `min|S21| = 1.0000` to the figure's precision — the empty matched guide passes
 the TE10 mode essentially perfectly, as an ideal guide above cutoff should.
@@ -191,18 +191,15 @@ call returns `∂|S21|²/∂εr` straight through `compute_waveguide_s_matrix(
 normalize="flux", ...)` — the power-flux extraction is on the AD tape, so the
 gradient flows through the full modal S-matrix assembly.
 
-There is no closed form for the filled-guide `|S21|`, so this is a
-**finite-difference gate**, not an exact-derivative check: the AD gradient is
-compared against central finite differences with a 5% tolerance and a sign test,
-mirroring the waveguide AD regression test (`h = 0.05`).
+There is no closed form for the filled-guide `|S21|`, so the AD gradient is
+compared against central finite differences (`h = 0.05`), asking for agreement
+within 5% and a matching sign.
 
 | Check | AD value | Compared against | rel. error | Sign agrees |
 |---|---|---|---|---|
-| `∂\|S21\|²/∂εr` (`rel_err_vs_fd`) | `−0.2201` | central FD `−0.2197` (h = 0.05) | 0.0017 (0.17%) | yes |
+| `∂\|S21\|²/∂εr` | `−0.2201` | central FD `−0.2197` (h = 0.05) | 0.0017 (0.17%) | yes |
 
-There is no closed-form filled-guide `|S21|`, so this is a finite-difference gate
-(no `rel_err_vs_analytic`): the AD gradient is checked against central finite
-differences with a `rel_err <= 0.05` threshold and a sign test. It passes.
+It agrees to 0.17% with matching sign — well inside the 5% asked of it.
 
 ![Transmission sensitivity to the dielectric fill — AD gradient vs central finite differences](/rfx/gallery/assets/waveguide_wr90/autodiff.png)
 
