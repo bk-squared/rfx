@@ -15,9 +15,9 @@ Vocabulary design choices
   writes ``fields.gif``; if only ``fields.gif`` is present for an S-param case
   and ``field_anim.gif`` is absent, it is renamed automatically so the page URL
   is satisfied.
-* ``fields.gif``       — the time-domain field animation for the AR case. For
-  ar_coating_design, BOTH ``fields.gif`` AND ``design_field_coevolution.gif``
-  are canonical; they keep their own distinct types.
+* ``design_field_coevolution.gif`` — the AR case's field animation. The raw
+  time-domain ``fields.gif`` is NOT registered for ar_coating_design: the AR
+  domain is 1-D (single cell thick transversely) so it renders unreadably.
 * All non-canonical files are excluded from the manifest (but left on disk).
 
 Usage
