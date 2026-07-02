@@ -55,6 +55,22 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   `check_positive`, `check_bounds`, `check_courant_number` wrap
   `jax.experimental.checkify` so RF/design invariants survive jit/grad/vmap/scan.
 
+### Changed — `maximize_directivity` objective defaults (behaviour change)
+
+- `maximize_directivity(...)` now defaults to **`log_ratio=True`** — the full,
+  sign-correct quotient gradient `U'/U - P'/P` — instead of the legacy
+  `-U/stop_gradient(P)` mode, which is wrong-sign for any degree of freedom that
+  changes total radiated power (PEC/conductor topology, lossy/σ, magnitude-only
+  dielectric reshape; GitHub #129). Pass `log_ratio=False` for the old behaviour.
+  The loss is now `-(log U - log P)` (positive below ~11 dBi), not the old
+  fixed-negative ratio.
+- The directivity denominator `P_rad` is now integrated over the **full sphere**
+  (matching `farfield.directivity()` / `antenna._total_radiated_power`) rather
+  than the upper hemisphere, so the optimized quantity is the true directivity;
+  the hemisphere-only integral inflated it (~+3 dB) for any radiator with back
+  radiation. The shipped tap-paper beam-steering example is unaffected (it builds
+  its own full-sphere `4π U/P_rad` objective and never called this function).
+
 ## [1.6.6] - 2026-06-24
 
 Maintenance release: a behaviour-preserving internal refactor (extract the

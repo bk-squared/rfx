@@ -62,7 +62,8 @@ def test_maximize_directivity_gradient_nonzero():
 
     value = float(loss(jnp.array(1.0)))
     assert np.isfinite(value)
-    assert value < 0.0, "objective sign: -directivity should be < 0"
+    # log-ratio loss = -(log U - log P) = log(4pi/D); its sign depends on D
+    # (positive below ~11 dBi), so it is not fixed-negative like the old ratio.
 
     grad = float(jax.grad(loss)(jnp.array(1.0)))
     assert np.isfinite(grad)
@@ -109,11 +110,11 @@ def _forward_lossy(sigma_scale):
 
 
 def _u_target_and_p_rad(result):
-    """Value-only (no AD) U(target) and hemisphere P_rad — for the ground-truth FD."""
+    """Value-only (no AD) U(target) and full-sphere P_rad — for the ground-truth FD."""
     from rfx.farfield import compute_far_field
     th = np.array([np.pi / 2])
     ph = np.array([0.0])
-    th_h = np.linspace(0.0, np.pi / 2, 37)
+    th_h = np.linspace(0.0, np.pi, 37)          # full sphere (matches the objective)
     ph_h = np.linspace(0.0, 2 * np.pi, 73)
     ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid, th, ph)
     u = float(jnp.abs(ff.E_theta[0, 0, 0]) ** 2 + jnp.abs(ff.E_phi[0, 0, 0]) ** 2)
@@ -141,7 +142,7 @@ def test_directivity_logratio_sign_correct_vs_fd_power_changing_dof():
     g_log_fd = (_log_loss(up, pp) - _log_loss(um, pm)) / (2 * _H)
 
     g_leg = float(jax.grad(
-        lambda s: maximize_directivity(np.pi / 2, 0.0)(_forward_lossy(s))
+        lambda s: maximize_directivity(np.pi / 2, 0.0, log_ratio=False)(_forward_lossy(s))
     )(jnp.asarray(_S0)))
     g_log = float(jax.grad(
         lambda s: maximize_directivity(np.pi / 2, 0.0, log_ratio=True)(_forward_lossy(s))
@@ -158,6 +159,41 @@ def test_directivity_logratio_sign_correct_vs_fd_power_changing_dof():
     # (3) BUG repro: legacy stop_gradient opposes the correct direction here.
     assert np.sign(g_leg) != np.sign(g_log), (
         f"#129 not reproduced: legacy {g_leg:+.3e} should oppose log_ratio {g_log:+.3e}")
+
+
+def test_directivity_default_is_logratio_and_prad_full_sphere():
+    """A+B: the default objective is now the sign-correct log-ratio (A), and its
+    P_rad spans the FULL sphere (B) — not the upper hemisphere, which would be
+    ~2x smaller (+3 dB inflation) for a free-space radiator."""
+    from rfx.farfield import compute_far_field
+    r = _forward_lossy(_S0)
+
+    # (A) default == log_ratio=True (value), and differs from the legacy mode.
+    v_def = float(maximize_directivity(np.pi / 2, 0.0)(r))
+    v_log = float(maximize_directivity(np.pi / 2, 0.0, log_ratio=True)(r))
+    v_leg = float(maximize_directivity(np.pi / 2, 0.0, log_ratio=False)(r))
+    assert v_def == v_log, "default objective is no longer the log-ratio"
+    assert v_def != v_leg, "default must differ from the legacy stop-gradient mode"
+
+    # (B) exp(-loss) = U(target)/P_rad matches the FULL-sphere normalization.
+    ff_t = compute_far_field(r.ntff_data, r.ntff_box, r.grid,
+                             np.array([np.pi / 2]), np.array([0.0]))
+    u_t = float(jnp.abs(ff_t.E_theta[0, 0, 0]) ** 2 + jnp.abs(ff_t.E_phi[0, 0, 0]) ** 2)
+
+    def _prad(theta_hi):
+        th = np.linspace(0.0, theta_hi, 37)
+        ph = np.linspace(0.0, 2 * np.pi, 73)
+        ff = compute_far_field(r.ntff_data, r.ntff_box, r.grid, th, ph)
+        u = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2
+        st = jnp.asarray(np.sin(th))
+        return float(jnp.trapezoid(
+            jnp.trapezoid(u * st[None, :, None], th, axis=1), ph, axis=1)[0])
+
+    p_full, p_hemi = _prad(np.pi), _prad(np.pi / 2)
+    assert abs(p_full - p_hemi) / p_full > 0.1, "setup: full/hemi P_rad must differ"
+    ratio_obj = np.exp(-v_def)                       # single freq -> U/P_rad
+    assert abs(ratio_obj - u_t / p_full) / (u_t / p_full) < 0.02, \
+        "objective P_rad is not full-sphere (regressed to hemisphere?)"
 
 
 def test_maximize_directivity_logratio_factory_matches_flag():

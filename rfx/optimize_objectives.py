@@ -287,16 +287,19 @@ def maximize_directivity(
     *,
     n_theta: int = 37,
     n_phi: int = 73,
-    log_ratio: bool = False,
+    log_ratio: bool = True,
     eps: float = 1e-37,
 ) -> Callable:
     """Maximize directivity in a target direction (ratio-based, scale-invariant).
 
     Computes the directivity ratio ``U(θ_target, φ_target) / P_rad`` where
     ``U = |E_θ|² + |E_φ|²`` is the radiation intensity and ``P_rad`` is
-    the total radiated power integrated over the upper hemisphere. The
-    ratio is scale-invariant, so the absolute magnitude of the NTFF
-    spectral integral drops out — gradients reflect pattern shape only.
+    the total radiated power integrated over the FULL sphere (matching
+    ``farfield.directivity()`` and ``antenna._total_radiated_power`` — so the
+    optimized quantity is the true directivity, not an upper-hemisphere proxy
+    that would inflate D for antennas with any back radiation). The ratio is
+    scale-invariant, so the absolute magnitude of the NTFF spectral integral
+    drops out — gradients reflect pattern shape only.
 
     Prior versions used absolute ``|E|²`` at the target direction, which
     is ~1e-27 in rfx's spectral NTFF convention and produces zero
@@ -309,8 +312,8 @@ def maximize_directivity(
     phi_target : float
         Azimuthal angle in radians [0, 2π].
     n_theta : int, optional
-        Number of polar samples in [0, π/2] for the hemisphere
-        integration (default 37 → 2.5° spacing).
+        Number of polar samples in [0, π] for the full-sphere P_rad
+        integration (default 37 → 5° spacing).
     n_phi : int, optional
         Number of azimuthal samples in [0, 2π] (default 73 → 5° spacing).
 
@@ -321,11 +324,12 @@ def maximize_directivity(
     Parameters (continued)
     ----------------------
     log_ratio : bool, optional
-        If True, optimize ``-(log U - log P)`` (full, sign-correct quotient
-        gradient ``U'/U - P'/P``) instead of the legacy ``-U/stop_gradient(P)``.
-        Default False (legacy, back-compat). USE ``log_ratio=True`` (or the
-        ``maximize_directivity_logratio`` factory) for any DoF that changes
-        total radiated power — see the warning below.
+        Default ``True``: optimize ``-(log U - log P)`` — the full, sign-correct
+        quotient gradient ``U'/U - P'/P`` that is right for every degree of
+        freedom (including power-changing ones). ``log_ratio=False`` selects the
+        legacy ``-U/stop_gradient(P)`` mode, kept for back-compat only; it is
+        WRONG-SIGN for any DoF that changes total radiated power — see the
+        warning below. (The default was flipped to ``True`` after GitHub #129.)
     eps : float, optional
         Floor for the ``log_ratio`` log arguments (default 1e-37). It only
         guards ``log(0)``; the log-ratio gradient ``U'/U`` is scale-invariant, so
@@ -337,7 +341,7 @@ def maximize_directivity(
 
     Notes
     -----
-    In the default (``log_ratio=False``) mode, ``stop_gradient`` is applied to
+    In the legacy (``log_ratio=False``) mode, ``stop_gradient`` is applied to
     the P_rad denominator: the ratio is scale-invariant, so a shape-preserving
     scaling leaves the directivity unchanged, and letting the denominator carry
     gradient would add noise + NaN risk when P_rad is near zero.
@@ -356,8 +360,12 @@ def maximize_directivity(
     """
     theta_arr = np.array([theta_target])
     phi_arr = np.array([phi_target])
-    theta_hemi = np.linspace(0.0, np.pi / 2.0, n_theta)
-    phi_hemi = np.linspace(0.0, 2.0 * np.pi, n_phi)
+    # Full sphere [0, pi] x [0, 2pi] so P_rad is the TRUE total radiated power
+    # (poles theta=0,pi carry sin(theta)=0 weight, so no singularity). An
+    # upper-hemisphere-only integral undercounts back radiation and inflates the
+    # normalized directivity for free-space radiators.
+    theta_sphere = np.linspace(0.0, np.pi, n_theta)
+    phi_full = np.linspace(0.0, 2.0 * np.pi, n_phi)
 
     def objective(result) -> jnp.ndarray:
         from rfx.farfield import compute_far_field
@@ -385,14 +393,14 @@ def maximize_directivity(
         u_target = (jnp.abs(ff_tgt.E_theta[:, 0, 0]) ** 2
                     + jnp.abs(ff_tgt.E_phi[:, 0, 0]) ** 2)
 
-        # Hemisphere P_rad: ∬ U(θ,φ) sin(θ) dθ dφ — (n_freqs, n_theta, n_phi)
-        ff_hemi = compute_far_field(ntff_data, ntff_box, grid, theta_hemi, phi_hemi)
-        u_hemi = (jnp.abs(ff_hemi.E_theta) ** 2 + jnp.abs(ff_hemi.E_phi) ** 2)
-        sin_theta = jnp.asarray(np.sin(theta_hemi), dtype=u_hemi.dtype)
+        # Full-sphere P_rad: ∬ U(θ,φ) sin(θ) dθ dφ — (n_freqs, n_theta, n_phi)
+        ff_sphere = compute_far_field(ntff_data, ntff_box, grid, theta_sphere, phi_full)
+        u_sphere = (jnp.abs(ff_sphere.E_theta) ** 2 + jnp.abs(ff_sphere.E_phi) ** 2)
+        sin_theta = jnp.asarray(np.sin(theta_sphere), dtype=u_sphere.dtype)
         # trapz in θ then φ
-        integrand = u_hemi * sin_theta[None, :, None]
-        p_rad_phi = jnp.trapezoid(integrand, theta_hemi, axis=1)
-        p_rad = jnp.trapezoid(p_rad_phi, phi_hemi, axis=1)  # (n_freqs,)
+        integrand = u_sphere * sin_theta[None, :, None]
+        p_rad_phi = jnp.trapezoid(integrand, theta_sphere, axis=1)
+        p_rad = jnp.trapezoid(p_rad_phi, phi_full, axis=1)  # (n_freqs,)
 
         if log_ratio:
             # Full, NaN-safe quotient: grad = U'/U - P'/P (== true dD/dθ up to
