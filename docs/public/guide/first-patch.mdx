@@ -1,6 +1,6 @@
 ---
 title: "Your First Patch Antenna"
-description: "This tutorial designs a 2.4 GHz rectangular microstrip patch on FR4 and walks through the current-source resonance workflow."
+description: "This tutorial designs a 2.4 GHz rectangular microstrip patch on FR4 and walks through the soft-source resonance workflow."
 sidebar:
   order: 2
 ---
@@ -10,8 +10,7 @@ This tutorial designs a 2.4 GHz rectangular microstrip patch on FR4, runs the
 FDTD simulation, and extracts the resonant frequency with Harminv. Estimated
 time: 20 minutes.
 
-If you want an **external-solver** check of the same class of structure after
-this resonance workflow is stable, continue to
+For an **external-solver** cross-check of this structure, continue to
 [Tutorial: Patch Antenna Design](./tutorial-patch-antenna/).
 
 ---
@@ -89,14 +88,27 @@ sim = Simulation(
 )
 ```
 
+!!! note
+    The substrate→air step in `dz_profile` (0.27 mm → 1.5 mm) is an abrupt grading
+    jump. `Simulation` warns when adjacent cells differ by more than 1.3×, since
+    large ratios seed spurious reflections. Smooth it with
+    `rfx.smooth_grading(dz_profile)` before passing it in — see
+    [Non-uniform mesh](./nonuniform-mesh/).
+
 !!! tip
-    `auto_configure()` can derive `dz_profile` automatically. Use it when you prefer
-    a one-shot configuration:
+    `auto_configure()` can derive `dz_profile` automatically. Pass the material
+    properties so it sizes cells for the dielectric (a bare name resolves to
+    vacuum, `εᵣ=1`, when you call `auto_configure` directly):
 
     ```python
     from rfx import auto_configure
     geom = [(Box((0,0,0),(dom_x,dom_y,h)), "fr4")]
-    cfg  = auto_configure(geom, freq_range=(1e9, 4e9), accuracy="standard")
+    cfg  = auto_configure(
+        geom,
+        freq_range=(1e9, 4e9),
+        materials={"fr4": {"eps_r": eps_r, "sigma": sigma_fr4}},
+        accuracy="standard",
+    )
     sim  = Simulation(**cfg.to_sim_kwargs())
     ```
 
@@ -142,7 +154,7 @@ sim.add_source(
 sim.add_probe((feed_x, feed_y, feed_z), "ez")
 ```
 
-`add_source` injects a soft (no impedance loading) current source — ideal for resonance characterization. Use `add_port` if you want S-parameter extraction against a 50 Ω reference.
+`add_source` injects a soft point source (no impedance loading) — ideal for resonance characterization, where a port's resistive load would damp the cavity. Use `add_port` (default 50 Ω) when you need S-parameter extraction against a reference impedance.
 
 ---
 
@@ -174,20 +186,22 @@ if modes:
 ```
 
 !!! note
-    The ~3 % difference between FDTD and the analytical formula is expected and is a
-    known limitation of the Hammerstad-Jensen fringe-correction formula, not an rfx
-    accuracy problem. See [Cross-Validation](./validation/).
+    The ~3 % difference between FDTD and the analytical formula is expected: it is a
+    known limitation of the closed-form fringe correction (§1), not an rfx accuracy
+    problem. For an external-solver check of rfx itself, see
+    [Cross-Validation](./validation/).
 
 ---
 
 ## 7. S-parameter follow-up
 
-This tutorial intentionally uses a soft current source and Harminv resonance
-extraction. Do not reuse the non-uniform `dz_profile` setup above with the
-single-cell lumped-port S-parameter path; that combination is outside the
-documented support envelope. For impedance-referenced patch or feed studies,
-start from the documented wire-port, microstrip-line, or external cross-check
-workflow and keep the result inside its S-parameter support entry.
+This tutorial deliberately uses a soft source plus Harminv, not an
+impedance-referenced port. Do not pair the non-uniform `dz_profile` above with
+the single-cell lumped-port S-parameter path (`add_port` +
+`run(compute_s_params=True)`): that combination is outside the validated
+S-parameter envelope. For impedance-referenced patch or feed studies, use the
+documented wire-port or microstrip-line workflow — see
+[Probes & S-parameters](./probes-sparams/).
 
 ---
 
@@ -204,13 +218,7 @@ workflow and keep the result inside its S-parameter support entry.
 
 ## Full script
 
-For the public patch cross-check, prefer
-`examples/crossval/05_patch_antenna.py`.
-
-That script is the public patch workflow paired with the OpenEMS-backed external
-sanity check described in
-[Tutorial: Patch Antenna Design](./tutorial-patch-antenna/).
-
-Older patch example scripts can still be useful as local experiments, but they
-should not be treated as the primary public reference path unless they are
-checked against the documented public workflow.
+The canonical patch script is `examples/crossval/05_patch_antenna.py` — the full
+workflow paired with the OpenEMS external cross-check described in
+[Tutorial: Patch Antenna Design](./tutorial-patch-antenna/). Treat it, not
+ad-hoc local scripts, as the reference path.

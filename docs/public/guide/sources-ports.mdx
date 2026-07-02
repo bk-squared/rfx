@@ -1,6 +1,6 @@
 ---
 title: "Sources and Ports"
-description: "All sources accept a waveform object that defines the time-domain excitation envelope."
+description: "rfx source and port primitives: waveforms, point and polarized sources, lumped/wire/microstrip/waveguide ports, TFSF plane waves, and how each feeds S-parameter extraction."
 sidebar:
   order: 4
 ---
@@ -16,25 +16,32 @@ All sources accept a waveform object that defines the time-domain excitation env
 
 ### GaussianPulse
 
-A Gaussian-modulated sinusoid (default excitation for ports):
+A differentiated Gaussian pulse (no explicit carrier) — the default excitation
+when `add_source`/`add_port` build a waveform for you:
 
 ```python
 from rfx import GaussianPulse
 
 pulse = GaussianPulse(
     f0=2.4e9,       # center frequency (Hz)
-    bandwidth=0.8,  # fractional bandwidth (default 0.8 -> wideband)
+    bandwidth=0.5,  # fractional bandwidth (class default 0.5)
     amplitude=1.0,  # peak amplitude
 )
 ```
 
-The pulse energy is concentrated in `[f0*(1-bw/2), f0*(1+bw/2)]`. Set `bandwidth` below `0.5` for narrowband excitation near `f0`.
+`f0` sets the center frequency and `bandwidth` the fractional spectral width;
+a larger `bandwidth` gives broader (more wideband) excitation, a smaller one a
+narrower band. The class default is `bandwidth=0.5`, but when rfx auto-builds
+the pulse for a source or port it uses `0.8`. The differentiated Gaussian
+carries a small DC residual (~1e-4); use `ModulatedGaussian` below when exact
+zero-DC excitation matters.
 
 ### ModulatedGaussian
 
-Like `GaussianPulse` but with zero DC content. This is often the better choice
-for resonance-focused `add_source()` runs because it prevents static charge
-accumulation on PEC surfaces:
+A Gaussian-envelope modulated carrier (Meep-style): its integral is exactly
+zero, so it adds no DC and avoids static charge buildup on PEC surfaces. Its
+spectrum is centered at `f0` with fractional width `bandwidth`, which makes it
+the preferred choice for resonance-focused `add_source()` runs:
 
 ```python
 from rfx import ModulatedGaussian
@@ -42,8 +49,9 @@ from rfx import ModulatedGaussian
 waveform = ModulatedGaussian(f0=3e9, bandwidth=0.6)
 ```
 
-If `waveform` is omitted, the current high-level API uses `GaussianPulse`.
-Pass `ModulatedGaussian(...)` explicitly when you want zero-DC excitation.
+When `waveform` is omitted, `add_source`/`add_port` default to `GaussianPulse`
+(not `ModulatedGaussian`); pass `ModulatedGaussian(...)` explicitly to get
+zero-DC excitation.
 
 ### CWSource
 
@@ -54,7 +62,7 @@ from rfx import CWSource
 
 cw = CWSource(
     f0=5.8e9,       # frequency (Hz)
-    ramp_steps=200, # linear ramp-up steps to avoid impulse at t=0
+    ramp_steps=200, # cosine-taper onset over 200 source cycles (default 50; 0 = instant on)
 )
 ```
 
@@ -124,8 +132,7 @@ Supported string shortcuts: `"ex"`, `"ey"`, `"ez"`, `"circular"` / `"rhcp"`, `"l
 
 ## Lumped port (`add_port`)
 
-A single-cell port with a resistive load equal to `impedance`. Enables S-parameter extraction referenced to that impedance.
-Its current public support is bounded by the documented examples. Use it for the documented uniform-Yee lumped-port workflows and keep any broader result scoped to its validation evidence.
+A single-cell port with a resistive load equal to `impedance`. Enables S-parameter extraction referenced to that impedance. It is validated on the uniform-Yee lumped-port examples; scope any broader result to that evidence.
 
 ```python
 sim.add_port(
@@ -136,25 +143,31 @@ sim.add_port(
 )
 ```
 
-Run with `compute_s_params=True` to extract the S-matrix:
+Run with `compute_s_params=True` to extract the S-matrix. When no frequency
+grid is supplied, rfx uses 50 points from `freq_max/10` to `freq_max`:
 
 ```python
 result = sim.run(n_steps=2000, compute_s_params=True)
-s11 = result.s_params[0, 0, :]   # (n_freqs,) complex
+s11 = result.s_params[0, 0, :]   # s_params shape (n_ports, n_ports, n_freqs), complex
 ```
 
+See [Probes and S-parameters](./probes-sparams/#s-parameter-extraction) for the
+full extraction, plotting, and Touchstone-export path.
+
 !!! tip
-    Multiple `add_port()` calls create a multi-port structure. rfx drives one port at a
-    time and assembles the full N×N S-matrix automatically.
+    Multiple `add_port()` calls create a multi-port structure. rfx drives one
+    port at a time and assembles the full N×N S-matrix automatically — you do
+    not need to set `excite=False` yourself. The set must be homogeneous
+    (all lumped or all wire); a mixed lumped+wire set is not supported.
 
 ---
 
 ## Wire port (`add_port` with `extent`)
 
-A wire port spans multiple Yee cells along the port axis, connecting conductor to conductor across a gap. This is the standard model for coaxial probe feeds and SMA connectors:
+A wire port spans multiple Yee cells along the port axis, connecting conductor to conductor across a gap. It is a common model for probe- and coaxial-style feeds:
 
 ```python
-# Port spans 1.5 mm in z, from substrate bottom to patch surface
+# Port spans 1.6 mm in z, from substrate bottom to patch surface
 sim.add_port(
     position=(0.029, 0.030, 0.0),    # start of wire
     component="ez",
@@ -164,7 +177,7 @@ sim.add_port(
 )
 ```
 
-The `extent` parameter turns the lumped port into a `WirePort`. S-parameters are extracted using voltage/current integrals over the wire span. Public examples use this primarily for probe-fed resonance workflows; broader absolute calibration should be checked against the documented examples.
+The `extent` parameter turns the lumped port into a `WirePort`. S-parameters are extracted from voltage/current integrals over the wire span. The public examples exercise this for probe-fed resonance workflows; treat absolute calibration outside that regime as unvalidated.
 
 !!! warning
     `extent` must be aligned with the `component` direction. For `component="ez"`, `extent`
@@ -195,19 +208,24 @@ sim.add_msl_port(
     name="out",
 )
 
-msl = sim.compute_msl_s_matrix(n_freqs=101, num_periods=20)
-S = msl.S          # (n_ports, n_ports, n_freqs)
-Z0 = msl.Z0        # (n_ports, n_freqs)
+msl = sim.compute_msl_s_matrix(n_freqs=101, num_periods=40)
+S = msl.S          # (n_ports, n_ports, n_freqs) complex
+Z0 = msl.Z0        # (n_ports, n_freqs) complex
 ```
 
-This path uses 3-probe numerical de-embedding. It is a uniform-lane specialized calculator; unsupported mesh/source/port combinations are rejected instead of silently returning `None`. The thru-line and notch examples define the public uniform-Yee envelope.
+The calculator drives each port in turn and de-embeds β and Z0 downstream of the
+feed plane with an N-probe (default `n_probes=5`) least-squares
+wave-decomposition extractor. It is a uniform-mesh path; unsupported
+mesh/source/port combinations are rejected rather than silently returning
+`None`. `num_periods` defaults to 40 because MSL transients drain slowly. The
+thru-line and notch examples define the public uniform-Yee envelope.
 
 ---
 
 ## Waveguide port (`add_waveguide_port`)
 
 Modal waveguide excitation for rectangular waveguide S-matrix extraction.
-Injects a specific TE/TM mode and decomposes the reflected/transmitted fields into the same modal basis. Current public examples use documented rectangular-guide gates; branch and T-junction geometries need their own reference checks before public reporting.
+Injects a specific TE/TM mode and decomposes the reflected/transmitted fields into the same modal basis. Requires `boundary="cpml"` (with `cpml_layers > 0`) and `mode="3d"`; it cannot be combined with lumped ports or a TFSF source. The public examples cover rectangular guides — validate branch or T-junction geometries against a reference before reporting.
 
 ```python
 sim.add_waveguide_port(
@@ -237,11 +255,18 @@ sim.add_waveguide_port(
 )
 
 wg = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
-S = wg.s_params    # (n_ports, n_ports, n_freqs)
+S = wg.s_params    # (n_ports, n_ports, n_freqs) complex
 ```
 
-For a single waveguide port, `run(...)` can expose per-port diagnostic
-calibrated quantities:
+`normalize=True` cancels one-way Yee dispersion in the transmission
+(off-diagonal) terms and is the right choice for S21. It does **not** correct
+the round-trip dispersion in reflection, so for the S11 of a strong reflector
+use `normalize=False` (default) or `normalize="flux"`.
+
+A plain `run(...)` also populates `result.waveguide_sparams` — per-port,
+plane-calibrated `s11`/`s21` from that single excitation. This is a diagnostic
+of one driven configuration, not the full driven-in-turn matrix that
+`compute_waveguide_s_matrix` assembles:
 
 ```python
 result = sim.run(n_steps=3000)
@@ -249,19 +274,25 @@ sp = result.waveguide_sparams["port1"]
 # sp.freqs, sp.s11, sp.s21
 ```
 
+See [Waveguide ports](./waveguide-ports/) for mode selection, calibration
+planes, and validated gates.
+
 ---
 
 ## TFSF plane-wave source (`add_tfsf_source`)
 
-Total-field/scattered-field plane wave for scattering and RCS simulations:
+Total-field/scattered-field plane wave for scattering and RCS simulations.
+Requires `boundary="cpml"` (with `cpml_layers > 0`) and a 3D or 2D-TE/TM mode.
+Scope is deliberately narrow: propagation along x only (`direction` `"+x"`/`"-x"`)
+and `polarization` `"ez"` or `"ey"`.
 
 ```python
 sim.add_tfsf_source(
     f0=5e9,
     bandwidth=0.4,
     polarization="ez",
-    direction="+x",    # propagation direction
-    angle_deg=0.0,     # oblique incidence angle (degrees from normal)
+    direction="+x",    # propagation direction (+x or -x)
+    angle_deg=0.0,     # oblique incidence angle (|angle_deg| < 90, degrees from normal)
 )
 ```
 
@@ -272,13 +303,13 @@ sim.add_tfsf_source(
 
 ## Summary table
 
-| Method | Use case | S-params / evidence framing |
+| Method | Use case | S-parameter extraction |
 |---|---|---|
-| `add_source()` | Resonance, visualization | No: not a port |
-| `add_polarized_source()` | Antenna radiation, polarimetry | No: not a port |
-| `add_port(extent=None)` | Lumped-port S-params | `run(compute_s_params=True)`; limited / bounded by the documented examples |
-| `add_port(extent=...)` | Wire / probe-feed S-params | `run(compute_s_params=True)`; partial / bounded by the documented examples, calibration caveated |
-| `add_msl_port()` | Full-strip microstrip-line S-matrix | `compute_msl_s_matrix()`; specialized uniform-Yee workflow; broader support bounded by the documented examples |
-| `add_waveguide_port()` | Modal waveguide S-matrix | `compute_waveguide_s_matrix()`; recommended rectangular-guide workflow within documented limits |
-| `add_coaxial_port()` | Coaxial transmission-line reflection | `compute_coaxial_line_reflection()` inside the documented one-port line envelope |
-| `add_tfsf_source()` | RCS, scattering, plane-wave | No: not a port |
+| `add_source()` | Resonance, field visualization | none (soft source, no port) |
+| `add_polarized_source()` | Antenna / polarimetry excitation | none (soft source, no port) |
+| `add_port(extent=None)` | Lumped-port S-params | `run(compute_s_params=True)`; validated on uniform-Yee examples |
+| `add_port(extent=...)` | Wire / probe-feed S-params | `run(compute_s_params=True)`; probe-feed examples, calibration caveated |
+| `add_msl_port()` | Full-strip microstrip S-matrix | `compute_msl_s_matrix()`; uniform mesh only |
+| `add_waveguide_port()` | Modal waveguide S-matrix | `compute_waveguide_s_matrix()`; rectangular guide, cpml + 3D |
+| `add_coaxial_port()` | One-port coaxial line reflection | `compute_coaxial_line_reflection()`; one-port line envelope |
+| `add_tfsf_source()` | RCS / scattering plane wave | none (not a port) |

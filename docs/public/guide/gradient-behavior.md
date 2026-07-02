@@ -13,14 +13,22 @@ background, see [Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/).
 ## How it works
 
 JAX traces the supported FDTD time-stepping and objective path as a computation
-graph. `jax.checkpoint` or the documented segmented checkpoint knobs can reduce
-reverse-mode memory by recomputing forward states during backpropagation.
+graph. Per-step `jax.checkpoint` (the `checkpoint=True` default) or the
+segmented checkpoint knobs — `checkpoint_segments` on uniform grids,
+`checkpoint_every` on non-uniform grids — reduce reverse-mode memory by
+recomputing forward states during backpropagation. See the
+[Memory-Reduction Path](/rfx/guide/memory-reduction/) for how to size and pick
+these knobs.
 
 ```python
 import jax
 import jax.numpy as jnp
 
 # sim is an already configured Simulation with sources/probes/ports.
+# Discover the permittivity-array shape from a quick run, then build the
+# starting array (result.grid is populated after every run() call):
+eps0 = jnp.ones(sim.run(n_steps=1).grid.shape, dtype=jnp.float32)
+
 def objective(eps_r):
     result = sim.forward(eps_override=eps_r, n_steps=400, checkpoint=True)
     return jnp.sum(result.time_series ** 2)
@@ -58,10 +66,13 @@ makes the optimization objective less dominated by one sample.
 
 ### Documented differentiable port paths
 
-Selected `forward(port_s11_freqs=...)`, waveguide, MSL, and proxy-objective
-paths are differentiable where their public support entry says so. Treat the AD
-path as a contract for sensitivity calculation; the physical claim still follows
-the port-family evidence envelope.
+Some port paths carry a differentiable |S| channel: the lumped/wire path via
+`forward(port_s11_freqs=...)`, and the `compute_waveguide_s_matrix` /
+`compute_msl_s_matrix` calculators via their `eps_override` argument. Each is
+differentiable only where its own support entry says so. Treat the AD path as a
+contract for the sensitivity calculation; the physical claim still follows the
+port-family evidence envelope. See [Inverse Design](/rfx/guide/inverse-design/)
+for end-to-end optimization loops built on these paths.
 
 ## Where gradients are noisy or problematic
 
@@ -99,9 +110,10 @@ final design with a convergence or cross-reference check.
 
 ### Float32 finite-difference checks
 
-JAX commonly runs these workflows in float32. If the finite-difference step is
-too small, cancellation can make the finite-difference witness look worse than
-the AD path.
+rfx runs these workflows in float32 by default (complex64 field and DFT
+buffers), unless you enable JAX 64-bit precision. If the finite-difference step
+is too small, cancellation can make the finite-difference witness look worse
+than the AD path.
 
 **Mitigation:** start finite-difference checks with a step that is meaningful for
 the variable scale, often around `h = 1e-2` for permittivity-like variables, then
@@ -120,6 +132,14 @@ CPML cells from design regions.
 Grid dimensions, CPML layer count, timestep count, and shape insertion/removal
 are discrete choices. Use them as fixed setup parameters, or run an outer design
 search that launches separate differentiable problems with fixed topology.
+
+### Subpixel smoothing
+
+Subpixel averaging of material properties at geometry boundaries is precomputed
+once at setup and is not part of the JAX computation graph. Gradients do not
+flow through the subpixel weights — the material boundary is treated as fixed
+during reverse-mode differentiation. Exclude geometry boundary positions from
+design variables when subpixel smoothing is active.
 
 ### Unsupported physics combinations
 
@@ -159,8 +179,9 @@ and support envelope before changing optimizer settings.
    parameters.
 5. **Prefer broadband or averaged losses** when a single frequency point is
    noisy or near a resonance null.
-6. **Use documented checkpoint knobs** when reverse-mode memory is the limiting
-   factor.
+6. **Use the segmented checkpoint knobs** (`checkpoint_segments` on uniform
+   grids, `checkpoint_every` on non-uniform grids) when reverse-mode memory is
+   the limiting factor.
 7. **Validate the final RF observable** through the relevant port, resonance,
    far-field, or convergence workflow.
 
@@ -170,7 +191,7 @@ and support envelope before changing optimizer settings.
 |---|---|---|
 | Yee E/H update | differentiable inside supported runners | validate the observable, not just the tape |
 | CPML absorber | may be on the AD tape | exclude from physical design variables |
-| Lumped/wire `forward(port_s11_freqs=...)` | differentiable S11-vector path where preflight allows it | inherits the lumped/wire support envelope |
+| Lumped/wire `forward(port_s11_freqs=...)` | differentiable S11-vector path on the uniform single-device runner | inherits the lumped/wire support envelope |
 | MSL or waveguide S-matrix AD paths | differentiable only where the calculator documents `eps_override` support | use the matching calculator and support entry |
 | DFT probes / time series | useful proxy-objective signals | not an impedance-defined port by themselves |
 | Dispersive or lossy materials | case-dependent AD path | verify with finite differences and physics evidence |

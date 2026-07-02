@@ -9,17 +9,17 @@ This page summarizes user-visible changes.
 
 ## Current public status
 
-The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane**. Public guides emphasize maintained workflows and bounded port-family envelopes.
+The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane**. Non-default lanes such as non-uniform mesh are documented through their [support and evidence envelopes](/rfx/guide/validation/), not presented as the default path.
 
-## v1.6.6 — July 2026
+## Unreleased
 
-- AD memory-planning docs now separate static estimates, conservative budget-fitting plans, explainability artifacts, and measured-profile artifacts so memory reports are not mistaken for runtime certificates or RF validation evidence.
-- Differentiable workflow wording was tightened around selected JAX-traced objectives, finite-difference checks, and final port/resonance/far-field validation.
-- Public non-uniform mesh guidance now presents graded-z meshes as a bounded workflow for thin layered structures, with unsupported combinations and validation responsibilities stated up front.
+- [AD memory-planning docs](/rfx/guide/memory-reduction/) now tag each artifact with an evidence class — static estimate, conservative budget-fit plan, or explainability breakdown — so a planning estimate is never read as a runtime profiler measurement, a peak-memory guarantee, or RF validation evidence. The compiled-executable check reports the JAX compiler's memory *estimate*, not a runtime peak.
+- [Differentiable-design guidance](/rfx/guide/autodiff-adjoint/) was tightened: it separates JAX-traced objectives and finite-difference gradient checks from the final port/resonance/far-field physics validation.
+- [Non-uniform mesh guidance](/rfx/guide/nonuniform-mesh/) now frames graded-z meshes as a bounded workflow for thin layered structures, stating the unsupported combinations and the caller's validation responsibilities up front.
 
 ## v1.6.5 — June 2026
 
-- Validation reporting is stricter: promoted port-family results now require magnitude evidence, phase-consistency evidence, differentiability checks where gradients are part of the claim, and reproducible artifact checks.
+- [Validation reporting](/rfx/guide/validation/) is stricter: a promoted port-family result now requires magnitude evidence, a phase-consistency witness, an AD-vs-finite-difference check where gradients are part of the claim, and committed (reproducible) artifacts.
 - Port-family support wording is clearer: users should match each source or port family to its documented calculator and evidence envelope instead of treating any S-parameter helper as universal.
 - `compute_msl_s_matrix` now reports a positive characteristic impedance on both ports. This fixes reported metadata while leaving the S-parameter calculation invariant.
 - Non-uniform mesh accuracy coverage now includes an analytic gated cavity case whose resonance frequency depends on the graded axis.
@@ -37,20 +37,19 @@ The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane*
 
 ## Documentation direction
 
-- Public docs lead with the recommended default lane and bounded port-family evidence envelopes.
-- Current examples are routed through maintained paths such as `examples/crossval/05_patch_antenna.py`, `examples/crossval/11_waveguide_port_wr90.py`, `examples/nonuniform_patch_demo.py`, and `examples/inverse_design/multilayer_ar_coating.py`.
-- S-parameter documentation emphasizes matching the calculator to the port family: lumped/wire, MSL, waveguide, or bounded coaxial line reflection.
+- Current examples are routed through maintained paths: `examples/crossval/05_patch_antenna.py`, `examples/crossval/11_waveguide_port_wr90.py`, `examples/nonuniform_patch_demo.py`, and `examples/inverse_design/multilayer_ar_coating.py`.
+- [S-parameter documentation](/rfx/guide/probes-sparams/) matches the calculator to the port family: lumped/wire, MSL, waveguide, or bounded coaxial line reflection.
 
 ## v1.6 line
 
-- Continued work on differentiable design loops and validation-boundary reporting.
-- Added clearer feature-boundary wording so repository code outside the documented support scope is not presented as the default public path.
-- Improved port and observable APIs for selected RF workflows.
+- Advanced the differentiable design loops and validation-boundary reporting.
+- Added feature-boundary wording so repository code outside the documented support scope is not presented as the default public path.
+- Improved port and observable APIs for RF workflows.
 
 ## v1.5 line
 
-- Expanded public guide structure for examples, API surfaces, and validation/support boundaries.
-- Added practical RF examples and clearer routing for patch, waveguide, and microstrip-style workflows.
+- Expanded the public guide structure for examples, API surfaces, and validation/support boundaries.
+- Added RF examples and clearer routing for patch, waveguide, and microstrip workflows.
 
 ## Earlier releases
 

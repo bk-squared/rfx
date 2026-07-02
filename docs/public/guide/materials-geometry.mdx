@@ -1,12 +1,12 @@
 ---
 title: "Materials and Geometry"
-description: "Library materials are available directly by name; no `add_material()` call is needed:"
+description: "Library and custom materials, dispersive poles, CSG shapes, PEC handling, and thin conductors in rfx."
 sidebar:
   order: 3
 ---
 
 
-rfx uses a two-step workflow: register a material by name, then attach it to a geometric shape.
+Building a structure in rfx is two steps: pick a material — a built-in library name or one you register with `add_material()` — and attach it to a CSG shape with `sim.add()`.
 
 ---
 
@@ -17,23 +17,27 @@ rfx uses a two-step workflow: register a material by name, then attach it to a g
 ```python
 from rfx import MATERIAL_LIBRARY
 print(list(MATERIAL_LIBRARY.keys()))
-# ['vacuum', 'air', 'fr4', 'rogers4003c', 'alumina', 'silicon',
-#  'ptfe', 'copper', 'aluminum', 'pec', 'water_20c']
+# ['vacuum', 'air', 'fr4', 'rogers4003c', 'rogers4350b', 'rt_duroid_5880',
+#  'alumina', 'silicon', 'ptfe', 'copper', 'aluminum', 'pec', 'water_20c']
 ```
 
 | Name | εᵣ | σ (S/m) | Notes |
 |---|---|---|---|
 | `vacuum` | 1.0 | 0 | Lossless free space |
 | `air` | 1.0006 | 0 | Standard atmosphere |
-| `fr4` | 4.4 | 0.025 | PCB laminate, tan_δ ≈ 0.02 at 1 GHz |
-| `rogers4003c` | 3.55 | ~0.0027·ω·ε₀·εᵣ | Low-loss microwave substrate |
+| `fr4` | 4.4 | 0.025 | Lossy PCB laminate (constant-σ loss model) |
+| `rogers4003c` | 3.55 | 2.67×10⁻³ | Low-loss substrate; σ from tan δ 0.0027 @ 5 GHz (process Dk 3.55) |
+| `rogers4350b` | 3.48 | 7.16×10⁻³ | Low-loss substrate; σ from tan δ 0.0037 @ 10 GHz (design Dk 3.48) |
+| `rt_duroid_5880` | 2.20 | 1.10×10⁻³ | Very-low-loss PTFE composite; σ from tan δ 0.0009 @ 10 GHz |
 | `alumina` | 9.8 | 0 | Ceramic substrate |
 | `silicon` | 11.9 | 0.01 | Lightly doped semiconductor |
 | `ptfe` | 2.1 | 0 | PTFE / Teflon |
-| `copper` | 1.0 | 5.8×10⁷ | Good conductor |
-| `aluminum` | 1.0 | 3.5×10⁷ | Good conductor |
+| `copper` | 1.0 | 5.8×10⁷ | Good conductor — mask-enforced as PEC (see below) |
+| `aluminum` | 1.0 | 3.5×10⁷ | Good conductor — mask-enforced as PEC (see below) |
 | `pec` | 1.0 | 1×10¹⁰ | Perfect electric conductor (mask-enforced) |
 | `water_20c` | 4.9 + Debye | 0 | Water at 20 °C with one Debye pole |
+
+The tabulated σ for the substrate laminates is a fixed effective conductivity derived from the datasheet loss tangent at the stated frequency, not a frequency-dependent model.
 
 Library materials are available directly by name; no `add_material()` call is needed:
 
@@ -104,32 +108,46 @@ sim.add_material(
 
 ### Lorentz poles
 
-Lorentz poles model phonon resonances and plasma-like media:
+Lorentz poles model phonon resonances and plasma-like media. Build them from
+physical parameters with the `lorentz_pole()` and `drude_pole()` helpers, which
+return a `LorentzPole` and pass straight into `lorentz_poles=[...]`:
 
 ```python
-from rfx import LorentzPole, drude_pole, lorentz_pole
+import numpy as np
+from rfx import lorentz_pole, drude_pole
 
-# Manual Lorentz pole
+# Lorentz oscillator from (Δε, resonance, damping)
 sim.add_material(
     "resonant_material",
     eps_r=1.0,
     lorentz_poles=[
-        LorentzPole(delta_eps=2.0, omega_0=2*3.14159*10e9, delta=1e8),
+        lorentz_pole(delta_eps=2.0, omega_0=2 * np.pi * 10e9, delta=1e8),
     ],
 )
 
-# Helper: Drude (free-electron) model for metals
-drude = drude_pole(omega_p=1.37e16, gamma=4.05e13)   # gold
-sim.add_material("gold", eps_r=1.0, lorentz_poles=[drude])
+# Drude (free-electron) model for metals — gold, illustrative constants
+gold = drude_pole(omega_p=1.37e16, gamma=4.05e13)
+sim.add_material("gold", eps_r=1.0, lorentz_poles=[gold])
 ```
 
-`LorentzPole` fields:
+`lorentz_pole()` parameters:
 
-| Field | Description |
+| Parameter | Description |
 |---|---|
-| `delta_eps` | Oscillator strength |
+| `delta_eps` | Oscillator strength Δε (dimensionless) |
 | `omega_0` | Resonance angular frequency (rad/s) |
-| `delta` | Damping rate (rad/s) |
+| `delta` | Damping coefficient (rad/s) |
+
+`drude_pole()` parameters:
+
+| Parameter | Description |
+|---|---|
+| `omega_p` | Plasma frequency (rad/s) |
+| `gamma` | Collision rate (rad/s) |
+
+Both helpers return the low-level `LorentzPole(omega_0, delta, kappa)` tuple used
+internally, where `kappa = delta_eps · omega_0²` (Lorentz) or `omega_p²` (Drude).
+Prefer the helpers over constructing `LorentzPole` directly.
 
 ---
 
@@ -171,45 +189,55 @@ rod  = Cylinder((0.010, 0.025, 0.000), radius=0.001,  height=0.050, axis="x")
 sim.add(via, material="copper")
 ```
 
-### Boolean operations
+`Box`, `Sphere`, and `Cylinder` cover most structures. rfx also ships
+`PolylineWire`, `Via`, and `CurvedPatch`; see the
+[Geometry and Materials API reference](/rfx/api/geometry-materials/) for their
+signatures.
 
-Combine shapes with set operations:
+### Composing shapes with draw order
+
+rfx has no Shape-level Boolean CSG that you can pass to `sim.add()`. Instead,
+shapes are rasterised in the order they are added, and on overlapping cells a
+later shape overwrites the (εᵣ, σ, μᵣ) fill of an earlier one. Carve or layer a
+structure by adding shapes back-to-front:
 
 ```python
-from rfx.geometry.csg import union, difference, intersection
-
-# Hollow cylinder (tube)
-outer = Cylinder((0.025, 0.025, 0.0), radius=0.010, height=0.020, axis="z")
-inner = Cylinder((0.025, 0.025, 0.0), radius=0.007, height=0.020, axis="z")
-tube  = difference(outer, inner)
-sim.add(tube, material="copper")
-
-# Lens-shaped dielectric
-sphere1 = Sphere((0.025, 0.025, 0.005), radius=0.008)
-sphere2 = Sphere((0.025, 0.025, 0.015), radius=0.008)
-lens    = intersection(sphere1, sphere2)
-sim.add(lens, material="alumina")
+# Dielectric block with a lower-εr insert carved into it
+sim.add(Box((0.010, 0.010, 0.0), (0.040, 0.040, 0.004)), material="alumina")
+sim.add(Box((0.020, 0.020, 0.0), (0.030, 0.030, 0.004)), material="air")  # wins here
 ```
+
+!!! warning
+    Draw-order overwrite applies only to dielectric / conductivity fills. PEC
+    cells (σ ≥ 10⁶ S/m, including `copper`, `aluminum`, and `pec`) accumulate in
+    a Boolean mask that is never cleared, so a later shape **cannot** carve a hole
+    in PEC. Model hollow or patterned metal by placing conductor only where metal
+    should exist.
 
 ---
 
 ## PEC mask enforcement
 
-Materials with σ ≥ 10⁶ S/m (including library `pec`) are enforced via a
-Boolean PEC mask rather than through the conductivity update. Within the
-discrete PEC-mask model, the E-field is set to zero on every PEC cell at each
-time step; this avoids the numerical instability that arises from very large σ
-in the standard update equations.
+Any material with σ ≥ 10⁶ S/m is enforced via a Boolean PEC mask rather than
+through the conductivity update: the E-field is set to zero on every PEC cell at
+each time step, which avoids the numerical instability that very large σ would
+cause in the standard update equations. This threshold captures library `pec`
+(σ = 10¹⁰) **and** the good-metal entries `copper` (5.8×10⁷) and `aluminum`
+(3.5×10⁷) — all three are modelled as perfect conductors, so finite-conductivity
+loss is not represented on this path.
 
 !!! warning
-    Do not set σ > 10⁸ S/m for non-PEC conductors such as copper. Use the library value
-    `sigma=5.8e7` for copper or define `"pec"` explicitly when a perfect conductor is intended.
+    To model a genuinely lossy conductor, keep σ below 10⁶ S/m; any material at or
+    above that threshold is silently promoted to PEC. The library `copper` and
+    `aluminum` entries are already above it, so they behave as perfect conductors,
+    not lossy metals.
 
 ---
 
 ## Thin conductor correction
 
-For printed traces and patches thinner than one cell, use the subcell thin-conductor model:
+For printed traces and patches thinner than one cell, use the subcell
+thin-conductor model instead of refining the mesh to resolve the sheet:
 
 ```python
 from rfx import Box
@@ -218,8 +246,15 @@ trace = Box((0.010, 0.014, 0.0016), (0.040, 0.016, 0.0016))
 sim.add_thin_conductor(
     trace,
     sigma_bulk=5.8e7,     # copper
-    thickness=35e-6,       # 1 oz copper = 35 µm
+    thickness=35e-6,      # 1 oz copper = 35 µm
 )
 ```
 
-This applies an effective surface conductivity correction to the Yee cells intersected by the thin sheet, rather than fully filling them.
+`add_thin_conductor` picks one of two regimes from `sigma_bulk`:
+
+- **σ_bulk ≥ 10⁶ S/m** (copper, as above): the sheet is enforced as a thin PEC
+  sheet — its cells are added to the PEC mask, no volumetric meshing needed. rfx
+  emits a warning noting this routing. This is the common case for printed copper.
+- **σ_bulk < 10⁶ S/m** (resistive films, inks): rfx sets an effective conductivity
+  `σ_eff = σ_bulk · (thickness / Δx)` on the intersected Yee cells rather than
+  fully filling them, preserving the sheet resistance `R_s = 1 / (σ_bulk · thickness)`.

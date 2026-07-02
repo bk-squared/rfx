@@ -10,7 +10,7 @@ import { Aside } from '@astrojs/starlight/components';
 This page connects the quick resonance workflow in [Your First Patch Antenna](/rfx/guide/first-patch/) with the current public patch cross-check in `examples/crossval/05_patch_antenna.py`.
 
 <Aside type="note" title="Public scope">
-  Treat this as a recommended practical patch workflow. It is not a blanket claim that every antenna, feed, substrate, or mesh setting is already fully qualified.
+  This is a recommended patch workflow, not a guarantee that every antenna, feed, substrate, or mesh setting is qualified.
 </Aside>
 
 ## Recommended workflow
@@ -21,26 +21,28 @@ This page connects the quick resonance workflow in [Your First Patch Antenna](/r
 | 2. Cross-check | Compare the same class of structure against the documented reference script | `examples/crossval/05_patch_antenna.py` |
 | 3. Radiation / reporting | Move to far-field reporting after the resonance setup is stable | [Far-Field & RCS](/rfx/guide/farfield-rcs/) |
 
-## Current baseline geometry
+## Baseline geometry
 
-The current patch workflow uses a rectangular 2.4 GHz FR4 patch with a finite ground plane. The important setup rule is simple: model the antenna ground plane as geometry, and use an absorber setup appropriate for an open radiation problem.
+The workflow models a rectangular 2.4 GHz patch on a 1.5 mm FR4 substrate over a finite ground plane. One setup choice is load-bearing: place the ground plane as an explicit finite PEC box inside the domain, not as a full-domain PEC boundary wall. A finite ground plane radiates into the absorber beneath it, which is the physical open-radiation problem; turning the bottom of the domain into a PEC wall instead makes the structure a closed cavity and shifts the resonance high. Pair the geometry with absorbing (CPML) boundaries on all faces.
 
-## How to run the practical cross-check
+## How to run the cross-check
 
 ```bash
 python examples/crossval/05_patch_antenna.py
 ```
 
-Expected output is a console summary and generated output files from the script.
-If the external solver dependency is not available, treat the script as an
-rfx-only run rather than a full cross-solver check.
+With the OpenEMS/CSXCAD Python bindings installed, the script prints a console
+summary comparing the rfx and OpenEMS resonances and writes a plot plus a JSON
+result file. Those bindings are not an rfx dependency: if they are missing, the
+script still runs and prints the rfx Harminv resonance pass, then exits with
+status 2 behind a SKIPPED banner — it flags the run as inconclusive rather than
+reporting a pass, so it is not a cross-solver check.
 
 ## Interpretation rules
 
-- Use Harminv resonance as the primary frequency estimate.
-- Use impedance-referenced S-parameter results only through a documented port workflow.
+- Read Harminv resonance as the primary frequency estimate. The script's primary gate is a resonance-frequency agreement — rfx Harminv vs OpenEMS Harminv within 20 %, and rfx internal self-consistency (Harminv vs the lumped-port S11 local dip) within 5 % — not an |S11| magnitude match.
+- Use impedance-referenced S-parameter results only through a documented port workflow — see [Sources & Ports](/rfx/guide/sources-ports/) for `add_port`. The lumped-port S11 dip in this script is a secondary check with a known single-cell parasitic reactance, so read it as a local dip near the Harminv frequency, not a deep matched null.
 - Treat non-uniform mesh variants as limited support unless the page you are following says otherwise.
-- For top-level claims, keep the wording narrow: this is a recommended patch workflow, not a universal antenna guarantee.
 
 ## Where to go next
 

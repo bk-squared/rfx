@@ -6,29 +6,39 @@ sidebar:
 ---
 
 
-rfx provides a **graded z-profile** (non-uniform Yee grid) with uniform `dx`
-and `dy`. This is a bounded workflow for thin layered structures, not the
-recommended default reference lane. Use the uniform Cartesian Yee lane first
-unless the thin feature would force an impractically small uniform cell.
+rfx supports a **non-uniform (graded) Yee grid**. This guide covers the common
+case — a graded z-profile (`dz_profile`) with uniform `dx` and `dy` — for thin
+layered structures. (`dx_profile` and `dy_profile` grade the transverse axes and
+follow the same rules.) This is a bounded workflow, not the recommended default
+reference lane: use the uniform Cartesian Yee lane first unless the thin feature
+would force an impractically small uniform cell.
 
 ### Current support status
 
 - suitable for thin-substrate or layered-z RF setup studies when the observable
   remains inside a documented support envelope;
 - memory and mesh reports are planning artifacts, not physics validation;
-- unsupported combinations raise explicit errors instead of silently dropping
-  features.
+- most unsupported combinations raise explicit errors rather than silently
+  dropping features; a few (NTFF, DFT-plane probes, full-plane flux monitors)
+  instead run on the graded-z path but stay outside the validated reference
+  lane — see the table below.
 
 Current unsupported or restricted combinations:
 
 | Combination | Public status |
 |---|---|
-| periodic-port workflows + non-uniform z mesh | unsupported |
-| NTFF, DFT planes, or TFSF + non-uniform z mesh | unsupported |
-| single-cell lumped-port S-parameters + non-uniform z mesh | unsupported |
-| `compute_msl_s_matrix()` + non-uniform z mesh | unsupported unless a specific guide and support entry says otherwise |
-| coaxial ports or lumped RLC + non-uniform z mesh | unsupported |
-| waveguide ports + non-uniform z mesh | restricted to the documented single-mode waveguide support entry; use the support matrix before making public claims |
+| periodic (Floquet) ports + non-uniform z mesh | unsupported (raises) |
+| single-cell lumped-port S-parameters + non-uniform z mesh | unsupported (raises); use `add_port(..., extent=...)` WirePort extraction or the uniform lane |
+| coaxial-port S-parameters + non-uniform z mesh | unsupported (raises) |
+| lumped-RLC + non-uniform z mesh | runs as a field ADE element (time-domain fields only); no S-parameter output — not a S-param workflow and does not raise |
+| `compute_msl_s_matrix()` + non-uniform mesh | `mode='laplace'`/`'uniform'` only (the `add_msl_port` default); `mode='eigenmode'` raises |
+| `compute_waveguide_s_matrix()` + non-uniform *transverse* mesh (`dx_profile`/`dy_profile`) | restricted to `normalize=True` and single-mode ports; consult the waveguide support entry before public claims |
+| TFSF plane-wave source + non-uniform z mesh | normal incidence along x only (`direction='+x'`/`'-x'`, `angle_deg=0`); `±z` or oblique incidence raises |
+| finite-region flux monitor (`add_flux_monitor(size=...)`) + non-uniform z mesh | unsupported (raises); use a full-plane monitor (omit `size=`) |
+
+NTFF boxes, DFT-plane probes, and full-plane flux monitors run on the graded-z
+path, but — like the rest of this lane — their observables must be validated
+against the uniform or external reference before any public claim.
 
 ---
 
@@ -41,7 +51,7 @@ Current unsupported or restricted combinations:
 | Bulk 3-D structure with no thin z-features | Uniform grid |
 | RCS / far-field only | Uniform grid is usually sufficient |
 
-Without a non-uniform z-profile, resolving a 1.6 mm substrate with a 0.5 mm cell gives only 3 cells — too coarse. Shrinking the uniform cell to 0.2 mm resolves the substrate but inflates cell count by 15x in all three dimensions.
+Without a non-uniform z-profile, resolving a 1.6 mm substrate with a 0.5 mm cell gives only 3 cells — too coarse. Shrinking the uniform cell to 0.2 mm resolves the substrate but refines all three axes at once (2.5x per axis), inflating the total cell count by roughly 15x.
 
 A non-uniform profile uses **fine cells inside the substrate** (e.g., 0.27 mm) and **coarse cells in the air region** (e.g., 1.5 mm). The resulting cell-count reduction is setup-dependent; record the mesh report and verify the RF observable, rather than treating the mesh saving itself as validation evidence.
 
@@ -71,24 +81,39 @@ dz_profile = np.concatenate([
 ```
 
 !!! tip
-    Choose `n_sub` so that `dz_sub ≤ dx / 2`. At least 4 substrate cells are
-    a practical starting point for thin-substrate studies. Use 6–8 cells when
-    the substrate field variation matters, then verify the resonance or
-    S-parameter observable for the specific geometry.
+    Resolve the substrate with at least 4 cells as a practical starting point;
+    use 6–8 when the in-substrate field variation matters. Then verify the
+    resonance or S-parameter observable for the specific geometry.
 
 ### Graded transition
 
-Avoid abrupt fine-to-coarse jumps unless a convergence check says they are
-acceptable. Adjacent-cell ratios above roughly `1.5x` can introduce transition
-reflections or dispersion. Keep grading conservative, document the generated
-profile, and verify the observable against the relevant reference lane.
+Avoid abrupt fine-to-coarse jumps; adjacent-cell ratios above 1.3x can introduce
+numerical reflections or dispersion. To generate a graded profile from scratch,
+use `make_z_profile` from `rfx.nonuniform`:
+
+```python
+from rfx.nonuniform import make_z_profile
+
+dz_profile = make_z_profile(
+    features=[0.0, h],      # z-positions that must align to cell boundaries
+    domain_z=h + margin,
+    dx_fine=dz_sub,
+    dx_coarse=dz_air,
+    grading=1.4,            # max ratio between adjacent cells
+)
+```
+
+To repair an existing profile that trips the `Simulation` grading warning, use
+`rfx.smooth_grading(dz_profile)` (default `max_ratio=1.3`). Keep grading
+conservative, document the generated profile, and verify the observable against
+the relevant reference lane.
 
 ---
 
 ## Passing `dz_profile` to `Simulation`
 
 ```python
-from rfx import Simulation, Box, GaussianPulse
+from rfx import Simulation
 import numpy as np
 
 h      = 1.6e-3
@@ -135,7 +160,8 @@ cfg = auto_configure(
 
 print(cfg.summary())
 # SimConfig (accuracy='standard'):
-#   dx = 0.500 mm (20 cells/lambda_min)
+#   dx = 0.500 mm (20 cells/λ_min)
+#   ...                              # domain / cpml / n_steps / freq / source lines
 #   dz = 0.267 – 1.500 mm (26 cells, non-uniform)
 
 if cfg.uses_nonuniform:
@@ -159,10 +185,10 @@ dt = 0.99 / (c * sqrt(1/dx^2 + 1/dy^2 + 1/dz_min^2))
 A fine substrate cell `dz_sub = 0.267 mm` with `dx = dy = 0.5 mm` gives:
 
 ```
-dt ~= 0.99 / (c * sqrt(4 + 4 + 14)) ~= 0.64 ps
+dt ~= 0.99 / (c * sqrt(4 + 4 + 14)) ~= 0.70 ps
 ```
 
-compared to `dt ~= 0.96 ps` for a uniform 0.5 mm grid. The non-uniform grid pays more timesteps because the smallest cell controls CFL; whether it is faster overall depends on the configured domain, material, monitors, and validation run.
+(the 4, 4, 14 are `1/dx^2`, `1/dy^2`, `1/dz_min^2` in mm^-2), compared to `dt ~= 0.95 ps` for a uniform 0.5 mm grid. The non-uniform grid pays more timesteps because the smallest cell controls CFL; whether it is faster overall depends on the configured domain, material, monitors, and validation run.
 
 ---
 
@@ -190,19 +216,16 @@ plan_json = plan.to_json()
 report_json = report.to_json()
 ```
 
-Use `plan_mesh(...)` when deriving a mesh from geometry, or
-`Simulation.plan_mesh(...)` before running an already configured
-memory-constrained non-uniform case. The returned `MeshPlan` carries the
-non-uniform profile audit (`nominal_dx`, `dx_min`/`dx_max`,
-`dy_min`/`dy_max`, `dz_min`/`dz_max`, and `profiles_present`), the configured
-memory summary, optional S-parameter support checks, and declaration-only
-artifact paths. Supplying `artifact_root` names intended mesh-plan/report
-outputs but does not create directories or write files; scene and replay remain
-unclaimed until dedicated exporters exist.
-
-`MeshPlan` is still a planning artifact rather than physics validation. Resolve
-any support checks, then verify the observable against the appropriate uniform
-or external reference lane.
+Use the module-level `rfx.plan_mesh(geometry, freq_range, ...)` when deriving a
+mesh from geometry, or `Simulation.plan_mesh(...)` before running an already
+configured memory-constrained non-uniform case. The returned `MeshPlan` carries
+the non-uniform profile audit in its `cell_sizes` block (`nominal_dx`,
+`dx_min`/`dx_max`, `dy_min`/`dy_max`, `dz_min`/`dz_max`, and `profiles_present`),
+the configured memory summary, optional S-parameter support checks, and
+declaration-only artifact paths. Supplying `artifact_root` names intended
+mesh-plan/report outputs but does not create directories or write files; the
+`scene` and `replay` declarations stay `not_claimed` until dedicated exporters
+exist.
 
 The same planning artifact can be generated from the command line with:
 
@@ -210,8 +233,18 @@ The same planning artifact can be generated from the command line with:
 python scripts/memory_reduction_planning_artifact.py --available-memory-gb 24.0
 ```
 
-For validated work, treat the report as a planning artifact rather than a
-physics validation by itself: resolve any `preflight_issues`, then verify the
-observable against the appropriate uniform or external reference lane.
+Both `MeshPlan` and the mesh-intelligence report are planning artifacts, not
+physics validation. Resolve any `preflight_issues` / support checks, then verify
+the observable against the appropriate uniform or external reference lane.
+
+---
+
+## Low-level API
+
+For advanced use, `run_nonuniform` and `make_current_source` (both in `rfx.__all__`)
+expose the non-uniform field-update loop and cell-volume-normalized source
+injection directly, bypassing `Simulation`. See `rfx/nonuniform.py` for their
+signatures and the `!!! note` in the graded-transition section above for when
+`make_current_source` is needed.
 
 ---

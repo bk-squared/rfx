@@ -1,6 +1,6 @@
 ---
 title: "Probes and S-Parameters"
-description: "Records a single field component at one Yee cell over time. The time series is stored in `result.time_series`."
+description: "Extract field data with point, vector, and DFT-plane probes; compute S-parameters per port family; and pull resonances via harmonic inversion."
 sidebar:
   order: 5
 ---
@@ -66,7 +66,8 @@ Access the result:
 ```python
 result = sim.run(n_steps=4000)
 plane = result.dft_planes["ez_cross_section"]
-# plane.data : shape (n_freqs, nx, ny) complex
+# plane.accumulator : shape (n_freqs, nx, ny) complex  (in-plane dims depend on axis)
+# plane.freqs       : shape (n_freqs,)
 ```
 
 !!! tip
@@ -79,18 +80,18 @@ plane = result.dft_planes["ez_cross_section"]
 
 Use the calculator that matches the port family:
 
-| Primitive | Calculator | Result | Evidence framing |
+| Primitive | Calculator | Result | Port model / scope |
 |---|---|---|---|
-| `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | limited / bounded by the documented examples |
-| `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | partial / bounded by the documented examples, calibration caveated |
-| lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | S11 vectors in `ForwardResult.s_params` | differentiable workflow inside documented limits |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | specialized uniform-Yee workflow; broader support bounded by the documented examples |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | recommended rectangular-guide workflow within documented limits |
-| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, diagnostics | bounded one-port coaxial line-reflection envelope |
+| `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | Single-cell lumped port; S normalized to each port impedance |
+| `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | Multi-cell wire port; V/I DFT integrals |
+| lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | per-port S11 in `ForwardResult.s_params` | Differentiable S11 through `forward()` |
+| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | Microstrip line; uniform-Yee mesh, N-probe de-embedding |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | Rectangular metal waveguide; modal V/I or power-flux |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, diagnostics | One-port coaxial line reflection (short/open/matched/load) |
 
 Sources, TFSF, probes, DFT plane probes, and flux monitors are non-port
-observables. They do not define a port impedance or S-matrix reference.
-Use the S-parameter support matrix for the artifact, metric, and envelope attached to each result.
+observables: they record fields but do not define a port impedance or
+S-matrix reference. Pick the calculator by the port family you registered.
 
 For host-side report checks on any S-matrix cube, use
 `network_quality_metrics()`:
@@ -102,9 +103,10 @@ quality = network_quality_metrics(s_matrix)
 print(quality["passivity_excess"], quality["reciprocity_error"])
 ```
 
-This helper reports finite-data, passivity, reciprocity, max magnitude, and
-column-power checks. It is an interop/reporting gate, not a substitute for
-the port-family physics evidence listed in the support matrix.
+This helper reports finite-data, passivity, reciprocity, max-magnitude, and
+column-power checks. These are host-side report diagnostics; they do not
+alter any solver path and are not a substitute for physically validating the
+S-parameters themselves.
 
 ### Lumped port S-matrix
 
@@ -146,13 +148,14 @@ s11 = result.s_params[0, 0, :]  # complex, shape (n_freqs,)
 MSL ports use their own calculator and result object:
 
 ```python
-msl = sim.compute_msl_s_matrix(n_freqs=101, num_periods=20)
+msl = sim.compute_msl_s_matrix(n_freqs=101, num_periods=40)
 S = msl.S          # (n_ports, n_ports, n_freqs)
 freqs = msl.freqs  # (n_freqs,) Hz
 Z0 = msl.Z0        # extracted characteristic impedance
 ```
 
-Do not expect `run(compute_s_params=True)` to include MSL ports in
+`num_periods=40` is the docstring default; values below that may under-settle
+the fields. Do not expect `run(compute_s_params=True)` to include MSL ports in
 `Result.s_params`.
 
 ### Waveguide S-parameters
@@ -166,9 +169,17 @@ S = wg.s_params      # (n_ports, n_ports, n_freqs)
 freqs = wg.freqs
 ```
 
-For memory-heavy uniform waveguide AD runs, pass
-`checkpoint_segments=K` to segment the reverse-mode tape. `K` must divide the
-timestep count; non-uniform waveguide extraction rejects the knob explicitly.
+`normalize=True` is suitable for transmission measurements. For strong-reflector
+S11 (e.g. a PEC short), use `normalize=False` or `normalize='flux'` to avoid
+the reference-run subtraction artifact — see [Migration](./migration.md) and the
+[S-parameter support matrix](../../guides/sparameter_support_matrix.md).
+
+For memory-heavy waveguide AD runs, pass `checkpoint_segments=K` to segment
+the reverse-mode tape (peak backward memory drops from O(n_steps) toward
+O(√n_steps) near K≈√n_steps). `K` must divide the timestep count exactly. On
+a non-uniform mesh (`dx_profile` / `dy_profile`) the knob is also supported:
+`K` is translated to the NU runner's per-chunk size and applied to the
+device run.
 
 `run(...)` can also expose per-port waveguide diagnostics:
 
@@ -189,7 +200,7 @@ print(f"Probe plane:     {sp.probe_plane*1e3:.1f} mm")
 | `freqs` | ndarray | Frequency array (Hz) |
 | `s11` | complex ndarray | Reflection coefficient at port |
 | `s21` | complex ndarray | Transmission to measurement plane |
-| `calibration_preset` | str | `"measured"` or `"source_to_probe"` |
+| `calibration_preset` | str | `"measured"`, `"source_to_probe"`, or `"explicit"` |
 | `source_plane` | float | Actual source injection plane (m) |
 | `reference_plane` | float | Reported S11 reference plane (m) |
 | `probe_plane` | float | Reported S21 measurement plane (m) |
@@ -198,7 +209,7 @@ print(f"Probe plane:     {sp.probe_plane*1e3:.1f} mm")
 
 ## Resonance extraction — Harminv
 
-`result.find_resonances()` applies the Harminv MUSIC-like algorithm to extract complex resonant frequencies from the probe ring-down signal. It returns a list of `HarminvMode` objects sorted by amplitude.
+`result.find_resonances()` runs harmonic inversion (the Matrix Pencil Method, Sarkar & Pereira 1995) on the probe ring-down signal to extract complex resonant frequencies. It returns a list of `HarminvMode` objects sorted by amplitude (strongest first).
 
 ```python
 modes = result.find_resonances(
@@ -217,8 +228,9 @@ for m in modes:
 | `freq` | Resonant frequency (Hz) |
 | `decay` | Exponential decay rate (1/s) |
 | `Q` | Quality factor = pi*f/decay |
-| `amplitude` | Complex mode amplitude |
+| `amplitude` | Mode amplitude (magnitude) |
 | `phase` | Phase (radians) |
+| `error` | Relative fit-error estimate for the mode |
 
 ### Parameters
 
@@ -253,12 +265,20 @@ modes = harminv(signal, dt, f_min=1e9, f_max=5e9)
 
 ## Plotting helpers
 
+Each helper takes arrays (or the final `state` + `grid`) rather than the
+`Result` object, and returns a matplotlib `Figure`:
+
 ```python
 from rfx import plot_s_params, plot_time_series, plot_field_slice
 
-plot_s_params(result)           # S11/S21 magnitude and phase
-plot_time_series(result)        # all probe time series on one axes
-plot_field_slice(result, "ez", axis="z", index=30)  # 2-D Ez cross-section
+# Magnitude (dB) of every S_ij vs frequency
+plot_s_params(result.s_params, result.freqs)
+
+# All probe time series on one axes
+plot_time_series(result.time_series, result.dt)
+
+# 2-D Ez slice through the final field state
+plot_field_slice(result.state, result.grid, component="ez", axis="z", index=30)
 ```
 
 ---

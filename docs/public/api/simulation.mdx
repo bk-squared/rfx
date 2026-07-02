@@ -1,6 +1,6 @@
 ---
 title: "Simulation"
-description: "Constructor, run loop, and orchestration entry points for the current curated rfx API."
+description: "Constructor, run loop, and orchestration entry points for the curated rfx API."
 sidebar:
   order: 21
 ---
@@ -30,16 +30,16 @@ Key constructor arguments:
 |---|---|---|
 | `freq_max` | highest frequency of interest | drives mesh and timestep selection |
 | `domain` | `(x, y, z)` domain size in meters | required unless derived by automation |
-| `boundary` | boundary type | the public docs currently center on `cpml` |
-| `cpml_layers` | absorber thickness | high-level `Simulation` default is 16 |
-| `pec_faces` | face-based PEC truncation | use for boundaries, not for a finite antenna ground plane |
+| `boundary` | boundary type | `"cpml"`, `"pec"`, `"upml"`, or a per-face `BoundarySpec`; the public examples center on `cpml` |
+| `cpml_layers` | absorber thickness | `Simulation` default is 16 |
+| `pec_faces` | face-based PEC truncation | deprecated (removed in rfx v2.0); encode PEC faces in a `BoundarySpec` instead. Not a substitute for finite antenna ground-plane metal |
 | `dx` | base lateral cell size | may be inferred by automation |
 | `dz_profile` / `dx_profile` / `dy_profile` | non-uniform cell profiles | workflow helper for thin-substrate or graded meshes |
 | `solver` | solver family | the public reference lane is currently Yee |
 
 > **Ground-plane rule:** if the structure needs a finite ground plane, model it
-> as geometry. Do not use `pec_faces={"z_lo"}` as a substitute for antenna
-> ground-plane metal.
+> as geometry. Do not use PEC face truncation (`pec_faces`, or a `pec` face in a
+> `BoundarySpec`) as a substitute for antenna ground-plane metal.
 
 ## Core methods
 
@@ -56,30 +56,44 @@ Key constructor arguments:
 | `plan_mesh(...)` | return a serializable `MeshPlan` for this configured simulation | wraps `mesh_intelligence_report()`, `preflight()`, and optional S-parameter preflight checks |
 | `run(...)` | advance the simulation | returns a `Result` object |
 
+Source, port, and probe builders are documented in detail in
+[Sources & Ports](./sources-ports/); the fields they populate are described in
+[Results & Observables](./results-observables/).
+
 ## Run loop
 
 ```python
 result = sim.run(n_steps=8000, compute_s_params=True)
 ```
 
-`run()` returns a tuple-like `Result` object with fields such as
-`time_series`, `s_params`, `freqs`, `ntff_data`, and `grid`. Non-finite
-run/forward outputs should be treated as setup or numerical failures, not as
-successful S-parameter evidence. For S-parameter claims, use the port-family
-evidence levels in the support matrix rather than the presence of `s_params`
-alone.
+`run()` returns a tuple-like `Result` (a `NamedTuple`) with fields such as
+`time_series`, `s_params`, `freqs`, `ntff_data`, and `grid` — see
+[Results & Observables](./results-observables/) for the full field list.
+Non-finite `run()` / `forward()` outputs are setup or numerical failures (rfx
+warns on them), not successful S-parameter evidence.
+
+`compute_s_params=True` populates `Result.s_params` only for lumped/wire
+`add_port(...)`; it is not a universal port dispatcher. Microstrip-line,
+waveguide, and coaxial-line ports use dedicated calculators
+(`compute_msl_s_matrix()`, `compute_waveguide_s_matrix()`,
+`compute_coaxial_line_reflection()`). See [Sources & Ports](./sources-ports/)
+for the calculator that matches each port family.
 
 ## Automation entry points
 
-`Simulation` also exposes a convenience constructor:
+`Simulation` also exposes a convenience constructor that derives `dx`, `domain`,
+CPML thickness, and step count from the analysis frequency range:
 
 ```python
 sim = Simulation.auto(freq_range=(1.5e9, 3.5e9), accuracy="standard")
 ```
 
-Use `Simulation.auto()` when you want a quick starting point.
-Use the lower-level constructor when you need to inspect or override the
-derived setup.
+`accuracy` is one of `"draft"`, `"standard"`, or `"high"`. Because the domain is
+sized from the frequency range rather than from your structure, `auto()` emits a
+warning reminding you to add geometry after construction (or to pass `domain` /
+`dx` overrides). Use the plain constructor when you need to inspect or override
+the derived setup. See [Automation](./automation/) for the underlying
+`auto_configure()` helper.
 
 Configured simulations can also produce the same planning artifact:
 
@@ -101,4 +115,4 @@ accuracy preset or lower-band edge is implied by an existing `Simulation`.
 ## Current public boundary
 
 This page covers the supported builder surface only.
-Lower-level solver internals, lower-level symbol inventories, and internal extensions are outside this curated public API until a guide and support entry document them.
+Lower-level solver internals, private symbol inventories, and internal extensions are outside this curated public API until documented. For what is recommended, bounded, or unsupported, see [Support Boundaries](./support-boundaries/).
