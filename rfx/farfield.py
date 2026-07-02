@@ -84,9 +84,10 @@ class NTFFData(NamedTuple):
     x faces store [ey, ez, hy, hz], y faces [ex, ez, hx, hz],
     z faces [ex, ey, hx, hy].  Shape: (n_freqs, face_n1, face_n2, 4).
 
-    Kahan compensation arrays (c_*) maintain near-float64 precision
-    in float32 accumulation over thousands of timesteps. The true
-    accumulated value is ``x_lo + c_x_lo`` (compensation is small).
+    Kahan compensation arrays (c_*) maintain near-float64 precision in
+    complex64 accumulation over thousands of timesteps. The value read by the
+    far-field transform is ``x_lo`` (the compensated running sum); ``c_x_lo``
+    is the running Kahan residual carried to the next add, not added at read.
     """
     x_lo: jnp.ndarray
     x_hi: jnp.ndarray
@@ -143,12 +144,11 @@ def make_ntff_box(
 def init_ntff_data(box: NTFFBox) -> NTFFData:
     """Initialize zeroed NTFF DFT accumulators.
 
-    Uses complex128 (float64 real/imag) to avoid catastrophic cancellation
-    during long DFT accumulations over thousands of timesteps.  At coarse
-    dx (e.g., 2 mm at 5 GHz), the phase rotation in each step is small
-    (dt ~ 4 ps), and float32 accumulation can lose the signal entirely.
-
-    Automatically enables JAX float64 support if not already enabled.
+    Uses complex64 accumulators with Kahan compensated summation (the ``c_*``
+    arrays), which keeps near-float64 precision over thousands of timesteps
+    WITHOUT enabling JAX x64 mode (x64 caused an MLIR scan-carry mismatch,
+    issue #14). Plain float32 accumulation would lose the signal at coarse dx,
+    where the per-step phase rotation is small; Kahan avoids that.
     """
     # Always use complex64 — Kahan compensated summation provides near-float64
     # precision without requiring JAX x64 mode (which causes MLIR issues #14).
