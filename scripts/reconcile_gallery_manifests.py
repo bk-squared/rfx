@@ -15,9 +15,6 @@ Vocabulary design choices
   writes ``fields.gif``; if only ``fields.gif`` is present for an S-param case
   and ``field_anim.gif`` is absent, it is renamed automatically so the page URL
   is satisfied.
-* ``design_field_coevolution.gif`` — the AR case's field animation. The raw
-  time-domain ``fields.gif`` is NOT registered for ar_coating_design: the AR
-  domain is 1-D (single cell thick transversely) so it renders unreadably.
 * All non-canonical files are excluded from the manifest (but left on disk).
 
 Usage
@@ -103,27 +100,11 @@ _WAVEGUIDE_EXTRA: dict[str, str] = {
     "smith.png": "smith-png",
 }
 
-# AR optimization case.
-_AR_CANON: dict[str, str] = {
-    "geometry.png": "geometry-png",
-    "convergence.png": "convergence-png",
-    "design_evolution.png": "design-evolution-png",
-    "result_spectrum.png": "result-spectrum-png",
-    "optimization.json": "optimization-json",
-    # The design+field co-evolution GIF is the AR field animation. precompute
-    # also emits a raw time-domain fields.gif, but the AR domain is 1-D (single
-    # cell thick transversely) so it renders as a ~1px unreadable strip — it is
-    # NOT registered; the field story is the co-evolution below.
-    "design_field_coevolution.gif": "design-field-coevolution-gif",
-    "gradient.json": "gradient-json",
-}
-
 # Assemble per-case canonical maps.
 CANONICAL: dict[str, dict[str, str]] = {
     "multilayer_fresnel": {**_SPARAM_COMMON, **_FRESNEL_EXTRA},
     "patch_antenna": {**_SPARAM_COMMON, **_PATCH_EXTRA},
     "waveguide_wr90": {**_SPARAM_COMMON, **_WAVEGUIDE_EXTRA},
-    "ar_coating_design": _AR_CANON,
 }
 
 # For unknown case ids fall back to accepting any file on disk with a generic

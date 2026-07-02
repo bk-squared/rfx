@@ -1,8 +1,8 @@
 """Tests for the precomputed gallery artifact pipeline.
 
 Fast (default) tests exercise the pure ``build_manifest`` helper and the case
-registry integrity without running any simulation. The single ``@pytest.mark.slow``
-test runs ``--quick`` for the fastest case and asserts a real bundle is emitted.
+registry integrity without running any simulation. The ``@pytest.mark.slow``
+tests run ``--quick`` bundles and assert real artifacts are emitted.
 """
 
 from __future__ import annotations
@@ -52,20 +52,6 @@ def test_registry_required_fields_present():
         assert case.metric and case.tolerance and case.reference_solver
         assert callable(case.builder), f"{case.id} builder must be callable"
         assert case.n_ports >= 1
-
-
-def test_registry_has_optimization_case():
-    opt = pg.CASE_BY_ID.get("ar_coating_design")
-    assert opt is not None, "ar_coating_design optimization case must be registered"
-    assert opt.is_optimization is True
-    assert opt.has_smith is False
-    assert opt.has_animation is True
-
-
-def test_optimization_case_has_no_touchstone_tier():
-    # Validation tiers in {E4, E5} carry a Touchstone; the OPT case does not.
-    opt = pg.CASE_BY_ID["ar_coating_design"]
-    assert opt.validation_tier == "OPT"
 
 
 # ---------------------------------------------------------------------------
@@ -217,17 +203,15 @@ def test_application_and_capability_are_lists():
         assert isinstance(m["capability"], list) and m["capability"]
 
 
-def test_inverse_design_capability_only_on_ar_coating():
+def test_no_case_claims_inverse_design_capability():
+    # The AR optimization case was dropped from the gallery (2026-07-02);
+    # no remaining case may claim the inverse-design capability tag.
     for case in pg.CASE_REGISTRY:
         m = pg.build_manifest(
             case, assets=_sample_assets(), runtime_seconds=1.0,
             passed=True, metric_value="x", params={}, quick_smoke=False,
         )
-        if case.id == "ar_coating_design":
-            assert "inverse-design" in m["capability"]
-            assert m["application"] == "inverse-design"
-        else:
-            assert "inverse-design" not in m["capability"]
+        assert "inverse-design" not in m["capability"]
 
 
 def test_autodiff_gradient_capability_on_three_sparam_cases():
@@ -327,53 +311,6 @@ def test_quick_smoke_emits_bundle(tmp_path):
     assert anim["filename"].split(".")[-1] in {"mp4", "gif"}
 
 
-@pytest.mark.slow
-def test_quick_smoke_optimization_case_emits_bundle(tmp_path):
-    rc = pg.main(["--case", "ar_coating_design", "--quick", "--out", str(tmp_path)])
-    assert rc == 0
-
-    case_dir = tmp_path / "ar_coating_design"
-    manifest = json.loads((case_dir / "manifest.json").read_text())
-    assert manifest["case_id"] == "ar_coating_design"
-    assert manifest["quick_smoke"] is True
-    assert manifest["validation"]["passed"] is None
-
-    asset_types = {a["type"] for a in manifest["assets"]}
-    assert {
-        "convergence-png",
-        "design-evolution-png",
-        "result-spectrum-png",
-        "optimization-json",
-        "geometry-png",
-        # the time-domain final-design E-field GIF and the design+field
-        # co-evolution GIF are distinct assets with distinct types (T4.2)
-        "field-animation-gif",
-        "design-field-coevolution-gif",
-    } <= asset_types, f"optimization assets missing: got {asset_types}"
-    # The optimization case carries no S-matrix / Touchstone / Smith.
-    assert "touchstone" not in asset_types
-    assert "smith-png" not in asset_types
-
-    # The two GIFs are distinct files (fields.gif must not be clobbered).
-    by_type = {a["type"]: a["filename"] for a in manifest["assets"]}
-    assert by_type["field-animation-gif"] == "fields.gif"
-    assert by_type["design-field-coevolution-gif"] == "design_field_coevolution.gif"
-    assert by_type["field-animation-gif"] != by_type["design-field-coevolution-gif"]
-
-    # All AR asset files exist on disk (full AR bundle).
-    for asset in manifest["assets"]:
-        assert (case_dir / asset["filename"]).exists()
-
-    # The co-evolution GIF has >= 2 frames (PIL seek(1) succeeds).
-    from PIL import Image
-    im = Image.open(case_dir / "design_field_coevolution.gif")
-    im.seek(1)
-
-    opt = json.loads((case_dir / "optimization.json").read_text())
-    assert opt["columns"][:2] == ["iter", "cost"]
-    assert opt["rows"], "optimization.json must have at least one row"
-
-
 # ---------------------------------------------------------------------------
 # Reconcile pass — pure logic (no simulation required)
 # ---------------------------------------------------------------------------
@@ -391,8 +328,8 @@ _rspec.loader.exec_module(rc)
 
 
 def test_reconcile_canonical_vocab_defined():
-    """All four known case ids have a canonical map with at least 3 filenames."""
-    for cid in ("multilayer_fresnel", "patch_antenna", "waveguide_wr90", "ar_coating_design"):
+    """All three known case ids have a canonical map with at least 3 filenames."""
+    for cid in ("multilayer_fresnel", "patch_antenna", "waveguide_wr90"):
         assert cid in rc.CANONICAL, f"{cid} not in CANONICAL"
         assert len(rc.CANONICAL[cid]) >= 3, f"{cid} canonical map too short"
 
@@ -527,22 +464,6 @@ def test_reconcile_case_renames_fields_gif_for_sparam_cases(tmp_path):
         filenames = {a["filename"] for a in man["assets"]}
         assert "field_anim.gif" in filenames
         assert "fields.gif" not in filenames
-
-
-def test_reconcile_ar_keeps_coevolution_drops_raw_fields_gif(tmp_path):
-    """For ar_coating_design the design+field co-evolution GIF is canonical, but the
-    raw time-domain fields.gif is NOT registered: the AR domain is 1-D (single cell
-    thick transversely) so fields.gif renders as a ~1px unreadable strip."""
-    case_dir = tmp_path / "ar_coating_design"
-    _make_minimal_manifest(case_dir, "ar_coating_design",
-                           ["fields.gif", "design_field_coevolution.gif", "optimization.json"])
-
-    man = rc.reconcile_case(case_dir, case_id="ar_coating_design")
-
-    by_name = {a["filename"]: a["type"] for a in man["assets"]}
-    assert "design_field_coevolution.gif" in by_name
-    assert by_name["design_field_coevolution.gif"] == "design-field-coevolution-gif"
-    assert "fields.gif" not in by_name, "raw 1-D fields.gif must NOT be registered for AR"
 
 
 def test_verify_sha256_passes_after_reconcile(tmp_path):

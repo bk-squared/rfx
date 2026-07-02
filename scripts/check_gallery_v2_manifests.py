@@ -19,7 +19,7 @@ import os
 import sys
 
 SCHEMA = "rfx-gallery-manifest-v2"
-NON_GRADIENT_CASES = {"ar_coating_design"}  # optimization case: no AD panel
+NON_GRADIENT_CASES: set[str] = set()  # cases exempt from the AD panel (none currently)
 
 
 def main() -> int:

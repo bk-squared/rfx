@@ -29,11 +29,6 @@ supported time-domain workflow. Pick one to dive in.
 
     The TE10 dominant mode down a WR-90 X-band guide. |S11|/|S21| match the exact matched empty-guide answer at the CPML floor, and `jax.grad` differentiates the transmission through a dielectric fill. [See it →](/rfx/gallery/waveguide_wr90/)
   </Card>
-  <Card title="Anti-Reflection Coating Design">
-    <a href="/rfx/gallery/ar_coating_design/"><img src="/rfx/gallery/assets/ar_coating_design/convergence.png" alt="X-band-mean reflection cost converging to the exact transfer-matrix optimum over 60 gradient-descent iterations" /></a>
-
-    A gradient-designed 3-layer anti-reflection coating on a high-permittivity substrate. Gradient descent through the FDTD (`jax.grad`) drives the X-band-mean reflection cost to about 0.99x the exact transfer-matrix optimum in 60 iterations. [See it →](/rfx/gallery/ar_coating_design/)
-  </Card>
 </CardGrid>
 
 <p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-30</p>
