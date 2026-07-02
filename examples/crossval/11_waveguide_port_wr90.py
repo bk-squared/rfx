@@ -683,8 +683,9 @@ def main() -> int:
             # shadow of 2×∠S21_rfx (twice the slab insertion phase), NOT a
             # physical reference-plane shift: rfx ∠S21 matches the analytic
             # Airy insertion phase to ≤0.89° across the band, and
-            # ∠conj(S21_meep) matches rfx ∠S21 to ≤2.63°. The rows below are
-            # an informational ≤10° corrected-phase sub-gate; the
+            # ∠conj(S21_meep) matches rfx ∠S21 to ≤2.64°. The rows below are
+            # an informational ≤10° MEAN corrected-phase sub-gate (report()
+            # gates on the band mean, not the per-frequency max); the
             # authoritative gates remain the analytic ones above.
             report("slab S11 (rfx vs conj(MEEP), time-convention corrected)",
                    f_hz, s11_rfx, np.conj(s11_meep),
@@ -712,9 +713,10 @@ def main() -> int:
     # time-convention conjugation as the slab rows (W3.4, 2026-07-02).
     # Expect residuals here even after conjugation (~0.2 |S|, ~14° mean
     # phase, measured 2026-07-02): Meep's r4 pec-short reference is itself
-    # degraded (|S11| ≈ 0.80–0.94 vs the physical 1.0 — visible in the
-    # 4-way table). Those residuals are Meep-side; rfx's authoritative
-    # pec-short check is the analytic round-trip-phase gate above.
+    # degraded (|S11| ≈ 0.93–1.20, overshooting the physical 1.0 — visible
+    # in the 4-way table; the ~0.2 |S| residual is that 1.20 overshoot).
+    # Those residuals are Meep-side; rfx's authoritative pec-short check
+    # is the analytic round-trip-phase gate above.
     if meep_block is not None:
         try:
             if "pec_short" in meep_block:

@@ -9,7 +9,8 @@ S21_meep ≈ conj(S21_rfx) at the matched insertion reference. The fitted
 shadow of 2×∠S21_rfx (twice the slab insertion phase) — the fit is good
 only because the insertion phase is nearly affine in β over 8.2–12.4 GHz.
 Witnesses: rfx ∠S21 matches the analytic Airy insertion phase to ≤0.89°
-across the band; ∠conj(S21_meep) matches rfx ∠S21 to ≤2.63°. Do NOT
+across the band; ∠conj(S21_meep) matches rfx ∠S21 to ≤2.64° (max over
+the 21-frequency band, full precision from the cv11 report row). Do NOT
 de-embed by the fitted slope/intercept — conjugate the Meep data instead.
 See the time-convention comment and corrected-phase rows in
 examples/crossval/11_waveguide_port_wr90.py (slab section).
