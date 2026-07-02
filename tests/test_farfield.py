@@ -9,6 +9,7 @@ Validates that:
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
@@ -149,16 +150,29 @@ def test_dipole_e_phi_small():
 
 
 def test_dipole_directivity():
-    """Short dipole directivity should be near 1.76 dBi (theoretical 1.5 linear)."""
-    ff, _ = _run_dipole_ntff()
-    D = directivity(ff)  # (n_freqs,) dBi
+    """Short (Hertzian) dipole directivity should be near 1.76 dBi (1.5 linear).
 
-    # Theoretical short dipole: 1.76 dBi
-    # FDTD with coarse grid: allow 1-5 dBi range
-    D_val = float(D[0])
-    print(f"\nDipole directivity: {D_val:.2f} dBi (theoretical: 1.76 dBi)")
-    assert 0 < D_val < 8, \
-        f"Directivity {D_val:.2f} dBi outside expected range [0, 8]"
+    R5 measure-before-gate note: the shared ``_run_dipole_ntff`` fixture samples
+    ``phi = [0, pi/2]`` (two points over a quarter circle), which is fine for the
+    pattern-*shape* tests but UNDER-samples the ``directivity()`` P_rad solid-angle
+    integral and inflates D by ~+3 dB (measured 4.78 dBi — a pure integration-grid
+    artefact, not physics: E_theta is phi-flat to ~1% and peaks exactly at 90).
+    We therefore re-integrate the *same* NTFF data on a proper full-2*pi sphere,
+    which recovers the physical directivity (measured ~1.84 dBi, theory 1.76).
+    """
+    _, result = _run_dipole_ntff()
+
+    # Full-sphere sampling so the P_rad integral is unbiased.
+    theta = np.linspace(0.01, np.pi - 0.01, 37)
+    phi = np.linspace(0.0, 2 * np.pi, 24, endpoint=False)
+    ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid,
+                           theta, phi)
+    D_val = float(directivity(ff)[0])
+
+    print(f"\nShort-dipole directivity: {D_val:.3f} dBi (theory 1.76 dBi)")
+    # Theory 1.76 dBi; +/-0.75 absorbs the coarse 3 mm / f0=3 GHz grid bias.
+    assert abs(D_val - 1.76) < 0.75, \
+        f"Short-dipole directivity {D_val:.3f} dBi outside 1.76 +/- 0.75 dBi"
 
 
 def test_ntff_without_ntff_returns_none():
@@ -167,3 +181,73 @@ def test_ntff_without_ntff_returns_none():
     materials = init_materials(grid.shape)
     result = run(grid, materials, 10)
     assert result.ntff_data is None
+
+
+def _run_halfwave_ntff(f0=3e9, freq_max=5e9, n_arm=7, n_steps=800,
+                       domain=(0.08, 0.08, 0.14)):
+    """Run a genuine center-fed ~lambda/2 PEC-wire dipole and return far-field.
+
+    The radiator is a single-cell-wide PEC column along z with a one-cell feed
+    gap at the center, driven by an ez soft source at the gap. Unlike a uniform
+    imposed current line (which radiates 2.43 dBi, not 2.15), a real center-fed
+    conductor self-develops the sinusoidal current of a half-wave dipole.
+    """
+    grid = Grid(freq_max=freq_max, domain=domain, cpml_layers=8)
+    dx = grid.dx
+    materials = init_materials(grid.shape)
+
+    center = (domain[0] / 2, domain[1] / 2, domain[2] / 2)
+    ic, jc, kc = grid.position_to_index(center)
+
+    # PEC wire: arms of n_arm cells above/below a one-cell feed gap at kc.
+    pec_mask = np.zeros(grid.shape, dtype=bool)
+    pec_mask[ic, jc, kc - n_arm:kc + n_arm + 1] = True
+    pec_mask[ic, jc, kc] = False  # feed gap (source cell must radiate)
+    pec_mask = jnp.asarray(pec_mask)
+
+    pulse = GaussianPulse(f0=f0, bandwidth=0.6)
+    src = make_source(grid, center, "ez", pulse, n_steps)
+
+    # NTFF box: enclose the wire while staying a few cells inside the 8-cell CPML.
+    cpml_m = 8 * dx
+    xy_m = cpml_m + 2 * dx
+    z_m = cpml_m + 3 * dx
+    ntff = make_ntff_box(
+        grid,
+        corner_lo=(xy_m, xy_m, z_m),
+        corner_hi=(domain[0] - xy_m, domain[1] - xy_m, domain[2] - z_m),
+        freqs=jnp.array([f0]),
+    )
+
+    result = run(grid, materials, n_steps, boundary="cpml",
+                 sources=[src], ntff=ntff, pec_mask=pec_mask)
+
+    theta = np.linspace(0.01, np.pi - 0.01, 73)
+    phi = np.linspace(0.0, 2 * np.pi, 24, endpoint=False)
+    ff = compute_far_field(result.ntff_data, ntff, grid, theta, phi)
+    return ff, result
+
+
+@pytest.mark.slow_physics
+def test_halfwave_dipole_directivity():
+    """Half-wave dipole directivity should be near 2.15 dBi (1.64 linear).
+
+    Uses a genuine center-fed ~lambda/2 PEC wire (n_arm=7 -> L=0.450 lambda,
+    the classic resonant length). Measured D = 2.380 dBi (full-2*pi sphere,
+    n_steps-converged to 3 decimals). The coarse 3 mm / f0=3 GHz grid biases D
+    slightly high (all lengths sit above theory; the offset shrinks with dx),
+    which the +/-0.5 tolerance absorbs. A uniform imposed current line would
+    give 2.43 dBi and be the wrong geometry, hence the real PEC conductor.
+    """
+    ff, _ = _run_halfwave_ntff()
+    D_val = float(directivity(ff)[0])
+
+    # Pattern-shape witness (R5): a half-wave dipole peaks broadside (theta=90).
+    E_th = np.abs(ff.E_theta[0]).mean(axis=1)  # phi-averaged
+    peak_theta = ff.theta[int(np.argmax(E_th))]
+    assert abs(peak_theta - np.pi / 2) < np.radians(10), \
+        f"Half-wave pattern peak at {np.degrees(peak_theta):.0f} (expected ~90)"
+
+    print(f"\nHalf-wave dipole directivity: {D_val:.3f} dBi (theory 2.15 dBi)")
+    assert abs(D_val - 2.15) < 0.5, \
+        f"Half-wave dipole directivity {D_val:.3f} dBi outside 2.15 +/- 0.5 dBi"
