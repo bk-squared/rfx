@@ -40,7 +40,7 @@ def default_gitops_root(repo_root: Path) -> Path:
     """
     candidates = [
         repo_root.parent.parent / "infra" / "remilab-sites-gitops",
-        Path("/root/workspace/byungkwan-workspace/infra/remilab-sites-gitops"),
+        Path(__file__).resolve().parents[3] / "infra" / "remilab-sites-gitops",
     ]
     for cand in candidates:
         if cand.exists():
