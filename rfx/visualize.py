@@ -79,6 +79,92 @@ def plot_field_slice(
     return fig
 
 
+def plot_geometry_2d_slice(
+    sim,
+    *,
+    axis: int = 2,
+    index: int | None = None,
+    title: str | None = None,
+    cmap: str = "viridis",
+    figsize: tuple[float, float] = (7, 5),
+) -> object:
+    """Render a 2D relative-permittivity (εr) cross-section of the geometry.
+
+    Builds the simulation grid, assembles the material arrays, and draws a
+    single slice of ``eps_r`` with a colorbar so a reader can see the dielectric
+    structure (substrate, coating layers, slab) at a glance.
+
+    Parameters
+    ----------
+    sim : Simulation
+        rfx Simulation with geometry/materials defined.
+    axis : int
+        Normal axis for the slice (0=x, 1=y, 2=z). The slice plane is the
+        remaining two axes.
+    index : int or None
+        Grid index along *axis*. ``None`` selects the centre cell.
+    title : str or None
+        Plot title.
+    cmap : str
+        Matplotlib colormap for the εr field.
+    figsize : tuple
+        Figure size in inches.
+
+    Returns
+    -------
+    matplotlib Figure
+    """
+    _require_mpl()
+
+    grid = sim._build_grid()
+    eps = np.asarray(sim._assemble_materials(grid)[0].eps_r)
+
+    if axis not in (0, 1, 2):
+        raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
+    if index is None:
+        # Pick the slice that actually contains the structure rather than the
+        # geometric centre: for thin "1D-equivalent" domains (a layered stack
+        # only a cell or two thick along y/z) the centre cell can land on a
+        # padding plane that is pure vacuum. Choose the plane along *axis* with
+        # the most permittivity variation; fall back to the centre if uniform.
+        moved = np.moveaxis(eps, axis, 0)
+        per_plane_spread = np.ptp(moved.reshape(moved.shape[0], -1), axis=1)
+        if float(per_plane_spread.max()) > 0:
+            index = int(np.argmax(per_plane_spread))
+        else:
+            index = eps.shape[axis] // 2
+
+    if axis == 0:
+        slc = eps[index, :, :]
+        xlabel, ylabel = "y (mm)", "z (mm)"
+    elif axis == 1:
+        slc = eps[:, index, :]
+        xlabel, ylabel = "x (mm)", "z (mm)"
+    else:
+        slc = eps[:, :, index]
+        xlabel, ylabel = "x (mm)", "y (mm)"
+
+    dx_mm = float(grid.dx) * 1e3
+    extent = [0.0, slc.shape[0] * dx_mm, 0.0, slc.shape[1] * dx_mm]
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(
+        slc.T,
+        origin="lower",
+        cmap=cmap,
+        aspect="auto",
+        extent=extent,
+        vmin=float(slc.min()),
+        vmax=float(slc.max()),
+    )
+    fig.colorbar(im, ax=ax, label="relative permittivity εᵣ")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title or "Geometry (εᵣ cross-section)")
+    fig.tight_layout()
+    return fig
+
+
 def plot_s_params(
     s_params: np.ndarray,
     freqs: np.ndarray,

@@ -1,0 +1,127 @@
+{
+  "schema_version": "rfx-gallery-manifest-v2",
+  "generated_at": "2026-06-30T03:21:23.108647Z",
+  "case_id": "patch_antenna",
+  "title": "2.4 GHz Patch Antenna (FR4)",
+  "description": "Probe-fed rectangular microstrip patch antenna on FR4; the S11 resonance dip vs the analytic transmission-line (Balanis) estimate.",
+  "application": "antenna",
+  "capability": [
+    "validated-vs-exact",
+    "field-animation",
+    "autodiff-gradient",
+    "touchstone-export"
+  ],
+  "quick_smoke": false,
+  "provenance": {
+    "rfx_version": "1.6.5",
+    "git_sha": "1eb551bc4971cf6e0e17f080319560149d6d42e7",
+    "params": {
+      "design_freq_hz": 2400000000.0,
+      "substrate": "FR4 (eps_r=4.3)",
+      "patch_mm": [
+        38.0,
+        29.5
+      ],
+      "dx_m": 0.001,
+      "cpml_layers": 8,
+      "s_param_n_steps": 12000,
+      "notes": "Single-cell lumped-port S11 has parasitic reactance, so the patch resonance appears as a local dip. Reference is OpenEMS Harminv resonance frequency (E4 resonance agreement, not calibrated S)."
+    },
+    "runtime_seconds": 5.41,
+    "hostname": "run-execution-bomtddem7h6t-0",
+    "backend": "gpu",
+    "jax_x64": false,
+    "python": "3.10.12",
+    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.35"
+  },
+  "validation": {
+    "tier": "E4",
+    "metric": "resonance dip vs first-order analytic estimate; |resonance error| within 20% (tier E4)",
+    "metric_value": "resonance dip f=2.360 GHz vs analytic 2.423 GHz (2.6% err)",
+    "tolerance": "resonance within 20%, passive |S11| <= 1.05",
+    "reference_solver": "analytic transmission-line (Balanis) estimate",
+    "passed": true
+  },
+  "reproducibility": {
+    "status": "provenance-only",
+    "limitations": [
+      "Precomputed artifact: the public site does not re-run a solver.",
+      "Validated runs are produced on GPU/VESSL."
+    ]
+  },
+  "assets": [
+    {
+      "filename": "sparams.json",
+      "type": "sparams-json",
+      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.json",
+      "sha256": "363e6e745eed9c952b6a26cbece471b4071fd0b1defb3a3251225d7ba6e5e46d",
+      "size_bytes": 5970
+    },
+    {
+      "filename": "sparams.s1p",
+      "type": "touchstone",
+      "served_url": "/rfx/gallery/assets/patch_antenna/sparams.s1p",
+      "sha256": "feca4bdab372aeefe187d63a3f82011b42eeb16543be800e947c0c005c706796",
+      "size_bytes": 3621
+    },
+    {
+      "filename": "geometry.png",
+      "type": "geometry-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/geometry.png",
+      "sha256": "7972b3b2621516cd1d0dd90e7fc052536dd67139df34caeea0cee60694368669",
+      "size_bytes": 64537
+    },
+    {
+      "filename": "field_anim.gif",
+      "type": "field-animation-gif",
+      "served_url": "/rfx/gallery/assets/patch_antenna/field_anim.gif",
+      "sha256": "653344f06e3a1950c792c1ce676725f57623ba27d785ac1da3e4546ef9d18d43",
+      "size_bytes": 919713
+    },
+    {
+      "filename": "autodiff.png",
+      "type": "autodiff-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/autodiff.png",
+      "sha256": "a6300f9020b3a35ce94f7b592f905d0ed49cb95e7741079a0fbe85c3d6d26ade",
+      "size_bytes": 71677
+    },
+    {
+      "filename": "validation.png",
+      "type": "validation-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/validation.png",
+      "sha256": "36fc76be8e616a534c7383394f01bdd51ae26d03577b7a53f9313404138b60a2",
+      "size_bytes": 47241
+    },
+    {
+      "filename": "gradient.json",
+      "type": "gradient-json",
+      "served_url": "/rfx/gallery/assets/patch_antenna/gradient.json",
+      "sha256": "756e086d1f8b1adc60f916896e5125e6ca9c107bc43ba14fa839cc6de465deb3",
+      "size_bytes": 247
+    },
+    {
+      "filename": "s11_db.png",
+      "type": "s11-db-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/s11_db.png",
+      "sha256": "8944d40e2ca7d1ed96a98d2281e5bbca7d88073ef307337b4e0fac1e659f1ebe",
+      "size_bytes": 118127
+    },
+    {
+      "filename": "field_resonance.png",
+      "type": "field-resonance-png",
+      "served_url": "/rfx/gallery/assets/patch_antenna/field_resonance.png",
+      "sha256": "b5d8f4688deb98a1bf556e0ace32ceca1688b0db1ade9b5ab0e92a1c30341b6e",
+      "size_bytes": 77610
+    }
+  ],
+  "gradient_validation": {
+    "param": "substrate_eps_r",
+    "ad_value": 0.0966792106628418,
+    "fd_value": 0.09558677673339844,
+    "fd_step_h": 0.05,
+    "rel_err_vs_fd": 0.011428713957896837,
+    "rel_err_vs_analytic": null,
+    "sign_agreement": true,
+    "gate_threshold": 0.05
+  }
+}

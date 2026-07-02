@@ -1,0 +1,10 @@
+{
+  "param": "substrate_eps_r",
+  "ad_value": 0.0966792106628418,
+  "fd_value": 0.09558677673339844,
+  "fd_step_h": 0.05,
+  "rel_err_vs_fd": 0.011428713957896837,
+  "rel_err_vs_analytic": null,
+  "sign_agreement": true,
+  "gate_threshold": 0.05
+}

@@ -1,0 +1,10 @@
+{
+  "param": "dielectric_fill_eps_r",
+  "ad_value": -0.22006267309188843,
+  "fd_value": -0.2196866273880005,
+  "fd_step_h": 0.05,
+  "rel_err_vs_fd": 0.001711736887943501,
+  "rel_err_vs_analytic": null,
+  "sign_agreement": true,
+  "gate_threshold": 0.05
+}

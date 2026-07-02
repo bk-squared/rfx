@@ -48,3 +48,7 @@ scripts/diagnostics/_artifacts/*.npz
 # PyPI upload credentials — never commit
 .pypi
 .pypirc
+
+# Gallery v3 figure-builder intermediate field caches (regenerated on demand)
+scripts/_patch_v3_cache.npz
+scripts/_patch_field_cache.npz
