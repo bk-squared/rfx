@@ -96,7 +96,12 @@ def test_maximize_directivity_works_with_low_level_simresult():
 
     assert loss.shape == ()
     assert jnp.isfinite(loss)
-    assert float(loss) < 0.0
+    # Default is the log-ratio objective: loss = -(log U - log P) = log(4pi/D),
+    # positive for a low-directivity source (D < 4pi) — not the old ratio-mode
+    # negative value. Guard that the default IS the log-ratio path.
+    assert float(loss) == float(
+        maximize_directivity(theta_target=np.pi / 2, phi_target=0.0,
+                             log_ratio=True)(result))
 
 
 def test_dipole_sin_theta_pattern():
