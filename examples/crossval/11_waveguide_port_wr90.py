@@ -667,11 +667,31 @@ def main() -> int:
                      gate_mag=0.07, gate_phase_deg=60.0,
                      gate_complex_diff=0.30, phase_mag_floor=0.30)
         all_pass = all_pass and ok1 and ok2
-        if meep_ref is not None and "slab" in meep_ref:
-            s11_meep = _meep_complex(meep_ref["slab"]["s11"])
-            s21_meep = _meep_complex(meep_ref["slab"]["s21"])
-            report("slab S11 (rfx vs MEEP)", f_hz, s11_rfx, s11_meep, gate_mag=0.05, gate_phase_deg=10.0)
-            report("slab S21 (rfx vs MEEP)", f_hz, s21_rfx, s21_meep, gate_mag=0.05, gate_phase_deg=10.0)
+        # NOTE: the v2 MEEP JSON nests geometries under resolution keys
+        # (r3/r4) — the old ``"slab" in meep_ref`` guard was dead code and
+        # these informational rows never printed. Use ``meep_block`` (r4),
+        # the same live block the 4-way table reads.
+        if meep_block is not None and "slab" in meep_block:
+            s11_meep = _meep_complex(meep_block["slab"]["s11"])
+            s21_meep = _meep_complex(meep_block["slab"]["s21"])
+            # Time-convention corrected MEEP comparison (W3.4, 2026-07-02).
+            # Meep fields carry the physics convention exp(-iωt) while rfx
+            # reports engineering exp(+jωt) S-parameters, so at the matched
+            # insertion reference S_meep ≈ conj(S_rfx). The historical raw
+            # ∠S21 offset (β-affine fit: slope −5.97 mm, intercept −60.8°,
+            # RMS 2.4° — scripts/phase_offset_beta_sweep.py) is the affine
+            # shadow of 2×∠S21_rfx (twice the slab insertion phase), NOT a
+            # physical reference-plane shift: rfx ∠S21 matches the analytic
+            # Airy insertion phase to ≤0.89° across the band, and
+            # ∠conj(S21_meep) matches rfx ∠S21 to ≤2.63°. The rows below are
+            # an informational ≤10° corrected-phase sub-gate; the
+            # authoritative gates remain the analytic ones above.
+            report("slab S11 (rfx vs conj(MEEP), time-convention corrected)",
+                   f_hz, s11_rfx, np.conj(s11_meep),
+                   gate_mag=0.05, gate_phase_deg=10.0, phase_mag_floor=0.30)
+            report("slab S21 (rfx vs conj(MEEP), time-convention corrected)",
+                   f_hz, s21_rfx, np.conj(s21_meep),
+                   gate_mag=0.05, gate_phase_deg=10.0)
         # 4-way table for slab (uses finest refinement of each solver).
         s11_meep4 = _ref_complex(meep_block.get("slab") if meep_block else None, "s11")
         s11_openems = _ref_complex(openems_ref["block"].get("slab") if openems_ref else None, "s11")
@@ -688,13 +708,20 @@ def main() -> int:
         skipped_any = True
 
     # 4. MEEP cross-checks for empty / PEC short (informational only; gates
-    # are owned by the analytic comparisons above).
-    if meep_ref is not None:
+    # are owned by the analytic comparisons above). Same dead-guard fix and
+    # time-convention conjugation as the slab rows (W3.4, 2026-07-02).
+    # Expect residuals here even after conjugation (~0.2 |S|, ~14° mean
+    # phase, measured 2026-07-02): Meep's r4 pec-short reference is itself
+    # degraded (|S11| ≈ 0.80–0.94 vs the physical 1.0 — visible in the
+    # 4-way table). Those residuals are Meep-side; rfx's authoritative
+    # pec-short check is the analytic round-trip-phase gate above.
+    if meep_block is not None:
         try:
-            if "pec_short" in meep_ref:
+            if "pec_short" in meep_block:
                 f_hz, s11_rfx, _ = run_rfx_pec_short()
-                s11_meep = _meep_complex(meep_ref["pec_short"]["s11"])
-                report("pec-short S11 (rfx vs MEEP)", f_hz, s11_rfx, s11_meep,
+                s11_meep = _meep_complex(meep_block["pec_short"]["s11"])
+                report("pec-short S11 (rfx vs conj(MEEP), time-convention corrected)",
+                       f_hz, s11_rfx, np.conj(s11_meep),
                        gate_mag=0.05, gate_phase_deg=10.0)
         except NotImplementedError:
             pass
