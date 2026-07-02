@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
+import subprocess
 from pathlib import Path
 
 DOC_EXTS = {".md", ".mdx"}
@@ -34,10 +36,44 @@ def default_gitops_root(repo_root: Path) -> Path:
     return workspace / "infra" / "remilab-sites-gitops"
 
 
-def copy_tree(src: Path, dst: Path) -> None:
+def get_tracked_files(repo_root: Path, *rel_dirs: str) -> frozenset[Path]:
+    """Return absolute paths of every git-tracked file under the given repo-relative dirs."""
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "ls-files", "--", *rel_dirs],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return frozenset(
+        repo_root / line
+        for line in result.stdout.splitlines()
+        if line
+    )
+
+
+def check_no_symlinks(root: Path) -> None:
+    """Raise SystemExit if root or any descendant path is a symlink."""
+    if root.is_symlink():
+        raise SystemExit(f"refusing to export symlink: {root}")
+    if not root.exists():
+        return
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        base = Path(dirpath)
+        for name in filenames + dirnames:
+            child = base / name
+            if child.is_symlink():
+                raise SystemExit(f"refusing to export symlink: {child}")
+
+
+def copy_tracked_tree(src: Path, dst: Path, tracked: frozenset[Path]) -> None:
+    """Copy only git-tracked files from src into dst, replacing dst entirely."""
     if dst.exists():
         shutil.rmtree(dst)
-    shutil.copytree(src, dst)
+    for src_file in sorted(f for f in tracked if f.is_relative_to(src) and f.is_file()):
+        rel = src_file.relative_to(src)
+        dst_file = dst / rel
+        dst_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_file, dst_file)
 
 
 def remove_tree(path: Path) -> None:
@@ -47,7 +83,7 @@ def remove_tree(path: Path) -> None:
         path.unlink()
 
 
-def sync_generated_api_assets(src: Path, dst: Path) -> None:
+def sync_generated_api_assets(src: Path, dst: Path, tracked: frozenset[Path]) -> None:
     """Sync generated API assets into a curated api/generated subtree.
 
     Curated doc pages such as ``api/generated/index.mdx`` may already exist in
@@ -56,7 +92,7 @@ def sync_generated_api_assets(src: Path, dst: Path) -> None:
     """
 
     dst.mkdir(parents=True, exist_ok=True)
-    source_files = sorted(path for path in src.rglob("*") if path.is_file())
+    source_files = sorted(f for f in tracked if f.is_relative_to(src) and f.is_file())
     source_rel_files = {path.relative_to(src).as_posix() for path in source_files}
 
     for path in sorted(dst.rglob("*"), reverse=True):
@@ -79,11 +115,14 @@ def sync_generated_api_assets(src: Path, dst: Path) -> None:
         shutil.copy2(src_file, dst_file)
 
 
-def iter_public_root_docs(public_root: Path) -> list[Path]:
+def iter_public_root_docs(public_root: Path, tracked: frozenset[Path]) -> list[Path]:
     return sorted(
         path
         for path in public_root.iterdir()
-        if path.is_file() and path.suffix in DOC_EXTS and path.name not in SKIP_PUBLIC_ROOT_FILES
+        if path.is_file()
+        and path.suffix in DOC_EXTS
+        and path.name not in SKIP_PUBLIC_ROOT_FILES
+        and path in tracked
     )
 
 
@@ -97,10 +136,22 @@ def main() -> int:
     gitops_root = (args.gitops_root or default_gitops_root(repo_root)).resolve()
 
     public_root = repo_root / "docs" / "public"
-    source_root_docs = iter_public_root_docs(public_root)
-    public_subtrees = discover_public_subtrees(public_root)
     src_generated_api = repo_root / "docs" / "api"
     has_generated_api = src_generated_api.exists()
+
+    # Collect git-tracked file set before any copy; needed for filtering
+    tracked_dirs = ["docs/public"]
+    if has_generated_api:
+        tracked_dirs.append("docs/api")
+    tracked = get_tracked_files(repo_root, *tracked_dirs)
+
+    # Refuse to export symlinks in any source tree
+    check_no_symlinks(public_root)
+    if has_generated_api:
+        check_no_symlinks(src_generated_api)
+
+    source_root_docs = iter_public_root_docs(public_root, tracked)
+    public_subtrees = discover_public_subtrees(public_root)
 
     dst_root = (
         gitops_root
@@ -152,11 +203,11 @@ def main() -> int:
         shutil.copy2(src_doc, dst_root / src_doc.name)
 
     for subtree in public_subtrees:
-        copy_tree(subtree, dst_root / subtree.name)
+        copy_tracked_tree(subtree, dst_root / subtree.name, tracked)
 
     remove_tree(dst_root / "agent")
     if has_generated_api:
-        sync_generated_api_assets(src_generated_api, dst_generated_api)
+        sync_generated_api_assets(src_generated_api, dst_generated_api, tracked)
 
     print("exported public docs to gitops snapshot")
     print(f"target: {dst_root}")
