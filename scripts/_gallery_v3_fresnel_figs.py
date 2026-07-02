@@ -152,8 +152,6 @@ def _run_slab_field():
         f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
         direction="+x", ny=grid.ny, nz=grid.nz,
     )
-    x_lo, x_hi = tfsf_cfg.x_lo, tfsf_cfg.x_hi
-
     slab_lo_g = grid.nx // 2 - int(D_SLAB / (2 * DX))
     slab_hi_g = grid.nx // 2 + int(D_SLAB / (2 * DX))
 

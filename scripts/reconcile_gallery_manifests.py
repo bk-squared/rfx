@@ -267,7 +267,6 @@ def reconcile_case(
 def reconcile_all(assets_root: Path) -> dict[str, dict[str, Any]]:
     """Reconcile all case directories found under ``assets_root``."""
     results: dict[str, dict[str, Any]] = {}
-    known_ids = set(CANONICAL.keys())
     for case_dir in sorted(assets_root.iterdir()):
         if not case_dir.is_dir():
             continue
