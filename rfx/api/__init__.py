@@ -754,14 +754,16 @@ class Simulation(
         Ideal for resonance characterization where port loading would
         damp the cavity response.
 
-        Uses ModulatedGaussian by default (zero DC content, like Meep).
-        This prevents static charge accumulation on PEC surfaces.
+        Uses a differentiated ``GaussianPulse`` by default (near-zero DC
+        content, ~1e-4). This prevents static charge accumulation on PEC
+        surfaces.
 
         Parameters
         ----------
         position : (x, y, z) in metres
         component : "ex", "ey", or "ez"
-        waveform : excitation pulse (default: ModulatedGaussian at freq_max/2)
+        waveform : excitation pulse
+            (default: ``GaussianPulse(f0=freq_max/2, bandwidth=0.8)``)
         """
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
@@ -1512,10 +1514,10 @@ class Simulation(
         result metadata reports those actual measurement planes explicitly.
 
         ``waveform`` selects the source pulse shape. Default
-        ``"differentiated_gaussian"`` matches historical rfx behaviour.
         ``"modulated_gaussian"`` is the Meep-style bandpass pulse — no
         sub-cutoff DC content, so the in-band TFSF filter collapses to
         identity, reducing directional leakage in the H+E injection pair.
+        ``"differentiated_gaussian"`` matches historical (legacy) rfx behaviour.
         Preliminary measurement shows directionality backward/forward
         ratio 13.3 % → 8.2 % for a WR-90 at f₀=10 GHz; further gains
         await the discrete-eigenmode profile work (P3).
