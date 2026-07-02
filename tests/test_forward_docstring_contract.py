@@ -78,8 +78,13 @@ def test_all_is_curated_subset():
     names = rfx.__all__
     assert isinstance(names, list)
     assert len(names) == len(set(names)), "rfx.__all__ contains duplicates"
-    # Curated: materially smaller than the full ~245-symbol flat surface.
-    assert len(names) < 200, f"rfx.__all__ too large to be curated: {len(names)}"
+    # Curated: materially smaller than the full flat surface (318 public names
+    # on the package as of the AD-certificate/diagnostics/pareto surface;
+    # __all__=204, ratio 0.64 — tighter than the 181/~245=0.74 this gate was
+    # written against). Ceiling re-specced 200 -> 210 for that deliberate
+    # 23-name expansion; kept tight on purpose so the NEXT surface expansion
+    # trips this gate again and must re-justify itself.
+    assert len(names) < 210, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 

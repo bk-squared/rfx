@@ -24,8 +24,12 @@ Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory
 | `static_estimate` | yes | Formula/static metadata estimate for planning. It may include shape, dtype, NTFF, active-step, and design-mask metadata, but it is not a compiled-executable peak-memory proof. |
 | `calibrated_conservative_plan` | yes | Budget-fitting helper result built from static estimates plus safety margins. It can say whether a conservative plan fits the configured budget target, not whether runtime peak memory is guaranteed. |
 | `static_ad_explainability` | yes | Decomposition of the selected static AD estimate into field state, material/CPML state, reverse-mode saved state, and monitor state so users can see why a run is large. It is diagnostic planning evidence, not profiling. |
+| `jax_saved_residuals_inspection` | yes | Low-level JAX trace-time saved-residual listing from `inspect_ad_saved_residuals(...)`. It preserves what JAX says reverse-mode AD would save for one function and sample argument set; it is not an XLA memory report or runtime peak-memory profile. |
+| `rfx_ad_saved_residuals_diagnostic` | yes | rfx-owned report from `diagnose_ad_saved_residuals(...)` that adds JAX version, parser health, top residuals, grouped summaries, optional artifact snapshots, and deterministic recommendations over the low-level listing. It is still trace-time explainability, not a certificate. |
+| `composite_ad_memory_preflight` | yes | One-call planning bundle from `ad_memory_preflight(...)`: budget-fit status, the selected supported checkpoint knob, static explainability, optional mesh report, optional saved-residual diagnostic, and action hints. |
+| `static_action_hint` | yes | Deterministic next-action row attached to the preflight bundle. It is a planning instruction such as `use_checkpoint_every`, not proof that a run will fit at runtime. |
 | `observed_profile` | no | A future or external measured run artifact for calibration/regression. It records one environment/run and must not be reused as proof for changed scope. |
-| `bounded_certificate` | no | A separately approved future artifact only if compiler/runtime metadata can support a fail-closed certificate for one exact compiled executable, environment, input/static args/shapes, precision, and checkpoint configuration. |
+| `bounded_certificate` | yes | A fail-closed compiler-memory certificate from `ad_memory_compiled_certificate(...)` for one exact caller-supplied JAX compiled executable, complete exact-scope metadata, and `Compiled.memory_analysis()` byte fields. It is a compiler memory *estimate* for that exact compiled object and scope, not a runtime peak-memory guarantee. |
 
 ## Decision ladder
 
@@ -38,6 +42,113 @@ Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory
 | Need to reduce memory for a port-family S-parameter claim | Use the calculator-supported lane first, then document the memory plan | validation scope still follows the port-family support matrix |
 
 Use the documented memory-planning and non-uniform workflows for public examples; other local-refinement code paths require an explicit support entry before publication.
+
+## One-call AD memory preflight
+
+Use `ad_memory_preflight(...)` before launching memory-heavy AD or inverse-design work. It composes `plan_ad_memory(...)`, `explain_ad_memory(...)`, `mesh_intelligence_report(...)`, and optionally `diagnose_ad_saved_residuals(...)` into one deterministic JSON artifact without running FDTD.
+
+```python
+preflight = sim.ad_memory_preflight(
+    n_steps=10_000,
+    available_memory_gb=24.0,
+)
+
+if preflight.full_ad_fits:
+    checkpoint_kwargs = {}
+elif (
+    preflight.checkpointing_fits
+    and preflight.supported_checkpoint_mode == "checkpoint_every"
+):
+    checkpoint_kwargs = {"checkpoint_every": preflight.checkpoint_every}
+elif (
+    preflight.checkpointing_fits
+    and preflight.supported_checkpoint_mode == "checkpoint_segments"
+):
+    checkpoint_kwargs = {"checkpoint_segments": preflight.checkpoint_segments}
+else:
+    # The returned least-memory checkpoint candidate is diagnostic-only here.
+    raise RuntimeError(preflight.recommendation)
+
+print(preflight.status)
+print(preflight.recommendation)
+print([hint.to_dict() for hint in preflight.action_hints])
+preflight_json = preflight.to_json()
+
+# After choosing a supported lane and running the required physics checks,
+# pass the selected knob into the launch path:
+# result = sim.forward(n_steps=10_000, **checkpoint_kwargs)
+```
+
+For JAX-level trace context, pass a small representative objective through `residual_fun`. `residual_context` is snapshotted before the diagnostic runs: JSON primitives, mappings, sequences, NumPy/JAX scalar or array `.tolist()` values, and valid `to_dict()` / `to_json()` outputs are accepted; unsupported objects raise `TypeError`, and non-finite JSON values raise `ValueError`.
+
+```python
+import jax.numpy as jnp
+
+def reduced_loss(params):
+    return jnp.sum(jnp.sin(params) ** 2)
+
+preflight = sim.ad_memory_preflight(
+    n_steps=10_000,
+    available_memory_gb=24.0,
+    residual_fun=reduced_loss,
+    residual_args=(jnp.ones((32,)),),
+    residual_workflow="reduced-inverse-design-loss",
+    residual_context={"case": "notch-filter-demo"},
+)
+```
+
+Canonical `ad_memory_preflight(...)` evidence boundaries are:
+
+- `static memory planning only`
+- `trace-time JAX saved-residual explainability only when residual_diagnostic is present`
+- `not a runtime peak-memory guarantee`
+- `not XLA memory analysis`
+- `not profiler evidence`
+- `not a certificate`
+- `not RF validation`
+
+The preflight bundle is the preferred UX when deciding whether to use full AD, `checkpoint_every`, or `checkpoint_segments`. It still does not replace physics validation, gradient checks, profiler measurement, or XLA/compiler memory analysis; use the compiled certificate below only after compiling the exact executable you want to bound.
+
+## Compiled executable memory certificate
+
+After `ad_memory_preflight(...)` chooses a candidate lane, compile the exact AD objective or runner you intend to launch and pass that already-compiled object to `ad_memory_compiled_certificate(...)`. Reuse the same selected checkpoint kwargs from the preflight decision so the supplied preflight scope and certificate scope match. The certificate reads `Compiled.memory_analysis()` once and fails closed unless the exact scope and compiler byte fields are complete.
+
+```python
+certificate = sim.ad_memory_compiled_certificate(
+    compiled_loss,
+    n_steps=10_000,
+    available_memory_gb=24.0,
+    target_fraction=0.85,
+    **checkpoint_kwargs,
+    precision="float32",
+    input_signature={
+        "eps_r": {"shape": [128, 64, 16], "dtype": "float32", "role": "design"}
+    },
+    static_signature={"dx": 0.0005, "boundary": "pml"},
+    compiled_object_id="notch-filter-loss-v1",
+    runner_or_objective="notch-filter-reduced-loss",
+    preflight=preflight,
+)
+```
+
+You may provide compact signature dictionaries as above or pass representative NumPy/JAX arrays / `jax.ShapeDtypeStruct` leaves inside `input_signature` and `static_signature`; rfx records only shape, dtype, and weak-type metadata for array-like leaves, not full array values. Keep semantic labels such as `"role": "design"` in explicit dictionaries when they matter for audit readability.
+
+```python
+# `compiler_estimate_within_budget` means the JAX compiler's memory *estimate*
+# fits the target budget for this exact scope. It is a compiler estimate, not a
+# runtime guarantee: allocator fragmentation and runtime scratch are not
+# modeled, so a fit at high utilization can still OOM. Gate deliberately.
+if certificate.status == "compiler_estimate_within_budget":
+    launch()
+else:
+    raise RuntimeError(certificate.recommendations[0])
+```
+
+A green certificate is bounded to the supplied compiled object, backend/device metadata, input/static signatures, precision, `n_steps`, warmup count, checkpoint mode, and target budget. Missing or non-JSON-safe exact-scope metadata returns `scope_incomplete`; contradictions with supplied preflight metadata or compiled-object introspection return `scope_mismatch`; missing `memory_analysis()`, a raised call, or a `None` result returns `analysis_unavailable`; missing or invalid byte fields return `analysis_incomplete`.
+
+The required compiler byte fields are `temp_size_in_bytes`, `argument_size_in_bytes`, `output_size_in_bytes`, and `alias_size_in_bytes`. rfx computes required bytes exactly as `temp + argument + output - alias` and compares that value with `available_memory_gb * target_fraction`.
+
+`scope_digest`, `config_digest`, and `environment_digest` are audit identities over canonical JSON. They are not proof that source code, Python callables, or simulation configuration correspond to the opaque compiled executable unless separate introspection establishes that relationship. JAX documents memory analysis as estimated/debugging-oriented compiler metadata; it is version/backend dependent and may be unavailable. Treat `bounded_certificate` as a compiler memory *estimate* for one exact scope, not profiler evidence, RF validation, or a runtime peak-memory guarantee.
 
 ## Non-uniform + segmented AD workflow
 
@@ -82,6 +193,55 @@ explain_json = explain.to_json()
 `ad_segmented_gb`), the active AD strategy, and a component breakdown. Use it to
 decide whether the dominant cost is full field tape, segmented boundary state,
 CPML/material state, or NTFF monitor state.
+
+For a JAX-level saved-residual diagnostic on a small loss function or reduced
+problem, use `diagnose_ad_saved_residuals(...)`:
+
+```python
+import jax.numpy as jnp
+from rfx import diagnose_ad_saved_residuals
+
+def loss(x):
+    return jnp.sum(jnp.sin(x) ** 2)
+
+diagnostic = diagnose_ad_saved_residuals(
+    loss,
+    jnp.ones((32,)),
+    workflow="reduced-inverse-design-loss",
+    context={"n_steps": 10_000},
+    artifacts={"memory_plan": plan_json},
+)
+print(diagnostic.parser_health)
+print(diagnostic.top_residuals)
+print(diagnostic.recommendations)
+```
+
+This wraps `jax.ad_checkpoint.print_saved_residuals(...)`, preserves the raw
+JAX lines, and adds parsed dtype/shape/byte estimates, original line indices,
+JAX version, top residuals, grouped summaries, parser health, optional context
+and memory-artifact snapshots, and deterministic recommendations. Use
+`inspect_ad_saved_residuals(...)` when you need the low-level adapter output
+only. Treat both artifacts as trace-time AD explainability, not profiling,
+compiler memory analysis, RF validation, or a certificate.
+
+For compiled invariant checks inside reduced AD examples, wrap a function with
+`checkify_invariants(...)` and place checks in the traced body:
+
+```python
+import jax.numpy as jnp
+from rfx import check_bounds, checkify_invariants
+
+def loss(eps_r):
+    check_bounds(eps_r, lower=1.0, upper=12.0, name="eps_r")
+    return jnp.sum(eps_r)
+
+checked_loss = checkify_invariants(loss)
+err, value = checked_loss(jnp.ones((16,)))
+assert err.get() is None
+```
+
+These checks are runtime diagnostics that survive JAX transforms; they are not
+physics validation and do not replace a convergence or external-reference check.
 
 Use the mesh intelligence report to check:
 

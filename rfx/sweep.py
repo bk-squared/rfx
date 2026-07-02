@@ -18,9 +18,12 @@ and may be added as a future fast-path.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
 from typing import Callable, Any
 
 import numpy as np
+
+from rfx.pareto import ParetoFront, pareto_front as build_pareto_front
 
 try:
     import matplotlib.pyplot as plt
@@ -99,6 +102,65 @@ class SweepResult:
             else:
                 vals.append(np.nan)
         return np.asarray(vals)
+
+    def pareto_front(
+        self,
+        metrics: Mapping[str, Sequence[float] | np.ndarray] | Sequence[str],
+        *,
+        minimize: bool | Sequence[bool] = True,
+        ids: Sequence[str] | None = None,
+        metadata: Sequence[Mapping[str, object] | None] | None = None,
+        atol: float = 0.0,
+    ) -> ParetoFront:
+        """Build a Pareto-front artifact from sweep metrics.
+
+        ``metrics`` may be a mapping from objective name to one value per sweep
+        point, or a sequence of ``SweepResult`` metric method names such as
+        ``("s11_min_db", "peak_field")``. Maximization objectives are declared
+        through ``minimize=False`` for that objective position.
+        """
+        if isinstance(metrics, Mapping):
+            objective_names = tuple(str(name) for name in metrics)
+            columns = [
+                np.asarray(metrics[name], dtype=float)
+                for name in metrics
+            ]
+        else:
+            objective_names = tuple(str(name) for name in metrics)
+            columns = []
+            for name in objective_names:
+                attr = getattr(self, name, None)
+                if attr is None or not callable(attr):
+                    raise ValueError(f"unknown sweep metric {name!r}")
+                columns.append(np.asarray(attr(), dtype=float))
+
+        if not columns:
+            raise ValueError("at least one metric is required")
+        n_points = len(self.results)
+        for name, column in zip(objective_names, columns, strict=True):
+            if column.shape != (n_points,):
+                raise ValueError(
+                    f"metric {name!r} must have shape ({n_points},), got {column.shape}"
+                )
+        objectives = np.column_stack(columns)
+        point_ids = (
+            ids
+            if ids is not None
+            else [f"{self.param_name}={value}" for value in self.param_values]
+        )
+        point_metadata = (
+            metadata
+            if metadata is not None
+            else [{self.param_name: value} for value in self.param_values.tolist()]
+        )
+        return build_pareto_front(
+            objectives,
+            minimize=minimize,
+            ids=point_ids,
+            objective_names=objective_names,
+            metadata=point_metadata,
+            atol=atol,
+        )
 
 
 # ---------------------------------------------------------------------------

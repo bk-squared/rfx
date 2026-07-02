@@ -27,14 +27,20 @@ import numpy as np
 import pytest
 
 from rfx import (
+    ADMemoryActionHint,
     ADMemoryComponent,
     ADMemoryExplainabilityReport,
+    ADMemoryPreflightReport,
+    ADCompiledMemoryCertificate,
     ADMemoryPlan,
     AD_MemoryEstimate,
     MeshIntelligenceReport,
     Simulation,
 )
-from rfx.api import AD_MEMORY_FIT_SAFETY_FACTOR
+from rfx.api import (
+    AD_MEMORY_FIT_SAFETY_FACTOR,
+    AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES,
+)
 
 _FORBIDDEN_CURRENT_EVIDENCE_FIELDS = {
     "compiler_memory_gb",
@@ -46,7 +52,7 @@ _FORBIDDEN_CURRENT_EVIDENCE_FIELDS = {
     "config_digest",
     "environment_digest",
     "is_valid_certificate",
-    "is_budget_safe",
+    "estimate_within_budget",
     "peak_bound_gb",
 }
 
@@ -56,11 +62,44 @@ _FORBIDDEN_RECOMMENDATION_TERMS = (
     "certified",
     "certificate",
     "peak_bound",
+    "runtime peak",
+    "profiler",
+    "profile",
+    "xla",
+    "compiler memory",
+    "rf validation",
 )
+
+# Pinned to the source constant so the doc-boundary check cannot silently drift
+# from the boundaries rfx actually emits.
+AD_MEMORY_PREFLIGHT_BOUNDARIES = AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES
 
 
 def _assert_no_forbidden_current_fields(artifact: dict[str, object]) -> None:
     assert _FORBIDDEN_CURRENT_EVIDENCE_FIELDS.isdisjoint(artifact)
+
+
+def _assert_no_forbidden_fields_recursive(value: object) -> None:
+    if isinstance(value, dict):
+        assert _FORBIDDEN_CURRENT_EVIDENCE_FIELDS.isdisjoint(value)
+        for item in value.values():
+            _assert_no_forbidden_fields_recursive(item)
+    elif isinstance(value, list):
+        for item in value:
+            _assert_no_forbidden_fields_recursive(item)
+
+
+def _assert_validate_physics_hint(report: ADMemoryPreflightReport) -> None:
+    hint = next(
+        hint
+        for hint in report.action_hints
+        if hint.code == "validate_physics_separately"
+    )
+    assert hint.severity == "info"
+    assert hint.blocking is False
+    assert hint.checkpoint_mode is None
+    assert "electromagnetic correctness" in hint.message.lower()
+    assert "physics claims" in hint.action.lower()
 
 
 def _patch_like_sim():
@@ -112,32 +151,187 @@ def _design_mask(sim: Simulation, *, fraction: float = 0.25) -> np.ndarray:
     return mask
 
 
+class _Missing:
+    pass
+
+
+_MISSING = _Missing()
+
+
+class _FakeMemoryAnalysis:
+    def __init__(
+        self,
+        *,
+        temp_size_in_bytes=100,
+        argument_size_in_bytes=200,
+        output_size_in_bytes=300,
+        alias_size_in_bytes=50,
+    ):
+        if temp_size_in_bytes is not _MISSING:
+            self.temp_size_in_bytes = temp_size_in_bytes
+        if argument_size_in_bytes is not _MISSING:
+            self.argument_size_in_bytes = argument_size_in_bytes
+        if output_size_in_bytes is not _MISSING:
+            self.output_size_in_bytes = output_size_in_bytes
+        if alias_size_in_bytes is not _MISSING:
+            self.alias_size_in_bytes = alias_size_in_bytes
+
+    def __repr__(self):
+        return "<raw-analysis-repr-must-not-be-serialized>"
+
+
+class _FakeCompiled:
+    def __init__(
+        self,
+        analysis=_MISSING,
+        *,
+        raises: Exception | None = None,
+        scope=None,
+    ):
+        self._analysis = _FakeMemoryAnalysis() if analysis is _MISSING else analysis
+        self._raises = raises
+        if scope is not None:
+            self.rfx_memory_scope = scope
+
+    def memory_analysis(self):
+        if self._raises is not None:
+            raise self._raises
+        return self._analysis
+
+
+class _NoMemoryAnalysis:
+    pass
+
+
+class _RaisingMemoryAnalysisAttribute:
+    @property
+    def memory_analysis(self):
+        raise RuntimeError("attribute boom")
+
+
+class _RaisingAnalysisField:
+    @property
+    def temp_size_in_bytes(self):
+        raise RuntimeError("field boom")
+
+    argument_size_in_bytes = 1
+    output_size_in_bytes = 1
+    alias_size_in_bytes = 0
+
+
+class _RaisingIntrospectionCompiled(_FakeCompiled):
+    @property
+    def rfx_memory_scope(self):
+        raise RuntimeError("scope boom")
+
+
+class _RaisingToDictAttribute:
+    @property
+    def to_dict(self):
+        raise RuntimeError("to_dict descriptor boom")
+
+
+class _RaisingShapeAttribute:
+    @property
+    def shape(self):
+        raise RuntimeError("shape descriptor boom")
+
+
+class _ListPreflight:
+    def to_dict(self):
+        return ["not", "a", "mapping"]
+
+
+class _FakeJaxDevice:
+    def __init__(
+        self,
+        *,
+        platform="cpu",
+        device_kind="Fake CPU",
+        raise_platform=False,
+        raise_kind=False,
+    ):
+        self._platform = platform
+        self._device_kind = device_kind
+        self._raise_platform = raise_platform
+        self._raise_kind = raise_kind
+
+    @property
+    def platform(self):
+        if self._raise_platform:
+            raise RuntimeError("platform boom")
+        return self._platform
+
+    @property
+    def device_kind(self):
+        if self._raise_kind:
+            raise RuntimeError("kind boom")
+        return self._device_kind
+
+
+def _certificate_kwargs(**overrides):
+    kwargs = {
+        "n_steps": 120,
+        "available_memory_gb": 1.0,
+        "precision": "float32",
+        "input_signature": {
+            "eps_r": {
+                "shape": [4, 4],
+                "dtype": "float32",
+                "weak_type": False,
+                "role": "design",
+            }
+        },
+        "static_signature": {"dx": 0.01, "boundary": "pml"},
+        "compiled_object_id": "toy-loss-compiled",
+        "runner_or_objective": "toy_loss",
+    }
+    kwargs.update(overrides)
+    return kwargs
+
+
 def test_public_imports_and_json_roundtrip():
     from rfx import ADMemoryPlan as TopPlan
     from rfx import AD_MemoryEstimate as TopEstimate
     from rfx import ADMemoryComponent as TopComponent
+    from rfx import ADMemoryActionHint as TopHint
     from rfx import ADMemoryExplainabilityReport as TopExplanation
+    from rfx import ADMemoryPreflightReport as TopPreflight
+    from rfx import ADCompiledMemoryCertificate as TopCertificate
     from rfx import Simulation as TopSimulation
     from rfx.api import ADMemoryPlan as ApiPlan
     from rfx.api import AD_MemoryEstimate as ApiEstimate
     from rfx.api import ADMemoryComponent as ApiComponent
+    from rfx.api import ADMemoryActionHint as ApiHint
     from rfx.api import ADMemoryExplainabilityReport as ApiExplanation
+    from rfx.api import ADMemoryPreflightReport as ApiPreflight
+    from rfx.api import ADCompiledMemoryCertificate as ApiCertificate
     from rfx.api import Simulation as ApiSimulation
 
     assert TopEstimate is ApiEstimate is AD_MemoryEstimate
     assert TopPlan is ApiPlan is ADMemoryPlan
     assert TopComponent is ApiComponent is ADMemoryComponent
+    assert TopHint is ApiHint is ADMemoryActionHint
     assert TopExplanation is ApiExplanation is ADMemoryExplainabilityReport
+    assert TopPreflight is ApiPreflight is ADMemoryPreflightReport
+    assert TopCertificate is ApiCertificate is ADCompiledMemoryCertificate
     assert TopSimulation is ApiSimulation is Simulation
 
     sim = _uniform_sim()
     estimate = sim.estimate_ad_memory(n_steps=120, checkpoint_segments=10)
     plan = sim.plan_ad_memory(n_steps=120, available_memory_gb=100.0)
     explanation = sim.explain_ad_memory(n_steps=120, checkpoint_segments=10)
+    preflight = sim.ad_memory_preflight(n_steps=120, available_memory_gb=100.0)
+    certificate = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(),
+    )
 
     assert json.loads(estimate.to_json()) == estimate.to_dict()
     assert json.loads(plan.to_json()) == plan.to_dict()
     assert json.loads(explanation.to_json()) == explanation.to_dict()
+    assert json.loads(preflight.to_json()) == preflight.to_dict()
+    assert json.loads(certificate.to_json()) == certificate.to_dict()
     assert estimate.to_dict()["checkpoint_segments"] == 10
     estimate_keys = {
         "evidence_class",
@@ -181,25 +375,552 @@ def test_public_imports_and_json_roundtrip():
         "dominant_component",
         "recommendations",
     }
+    preflight_keys = {
+        "evidence_class",
+        "source_evidence_classes",
+        "n_steps",
+        "available_memory_gb",
+        "target_fraction",
+        "target_memory_gb",
+        "fit_safety_factor",
+        "status",
+        "supported_checkpoint_mode",
+        "checkpoint_every",
+        "checkpoint_segments",
+        "full_ad_fits",
+        "checkpointing_fits",
+        "memory_plan",
+        "explainability",
+        "mesh_report",
+        "residual_diagnostic",
+        "action_hints",
+        "evidence_boundaries",
+        "recommendation",
+    }
+    certificate_keys = {
+        "evidence_class",
+        "status",
+        "status_reason",
+        "is_valid_certificate",
+        "estimate_within_budget",
+        "available_memory_gb",
+        "target_fraction",
+        "target_memory_gb",
+        "compiler_reported_required_bytes",
+        "compiler_reported_required_gb",
+        "temp_size_in_bytes",
+        "argument_size_in_bytes",
+        "output_size_in_bytes",
+        "alias_size_in_bytes",
+        "temp_gb",
+        "argument_gb",
+        "output_gb",
+        "alias_gb",
+        "exact_scope",
+        "scope_status",
+        "scope_status_reason",
+        "scope_digest",
+        "config_digest",
+        "environment_digest",
+        "memory_analysis_status",
+        "memory_analysis_status_reason",
+        "jax_version",
+        "evidence_boundaries",
+        "recommendations",
+        "source_preflight",
+    }
+    hint_keys = {
+        "evidence_class",
+        "code",
+        "severity",
+        "message",
+        "action",
+        "checkpoint_mode",
+        "checkpoint_every",
+        "checkpoint_segments",
+        "blocking",
+    }
     assert plan.to_dict()["evidence_class"] == "calibrated_conservative_plan"
     assert set(estimate.to_dict()) == estimate_keys
     assert set(plan.to_dict()) == plan_keys
     assert set(explanation.to_dict()) == explanation_keys
+    assert set(preflight.to_dict()) == preflight_keys
+    assert set(certificate.to_dict()) == certificate_keys
+    assert all(set(hint) == hint_keys for hint in preflight.to_dict()["action_hints"])
+    assert all(
+        hint["evidence_class"] == "static_action_hint"
+        for hint in preflight.to_dict()["action_hints"]
+    )
     assert explanation.to_dict()["estimate"]["evidence_class"] == "static_estimate"
     assert explanation.to_dict()["evidence_class"] == "static_ad_explainability"
+    assert preflight.to_dict()["evidence_class"] == "composite_ad_memory_preflight"
+    assert certificate.to_dict()["evidence_class"] == "bounded_certificate"
     assert set(plan.to_dict()["selected_estimate"]) == estimate_keys
     assert plan.to_dict()["selected_estimate"]["evidence_class"] == "static_estimate"
     _assert_no_forbidden_current_fields(estimate.to_dict())
     _assert_no_forbidden_current_fields(plan.to_dict())
     _assert_no_forbidden_current_fields(plan.to_dict()["selected_estimate"])
+    _assert_no_forbidden_current_fields(preflight.to_dict())
+    _assert_no_forbidden_fields_recursive(preflight.to_dict())
     assert "evidence_class" not in AD_MemoryEstimate._fields
     assert "evidence_class" not in ADMemoryPlan._fields
     assert "evidence_class" not in ADMemoryComponent._fields
     assert "evidence_class" not in ADMemoryExplainabilityReport._fields
+    assert "evidence_class" not in ADMemoryActionHint._fields
+    assert "evidence_class" not in ADMemoryPreflightReport._fields
+    assert "evidence_class" not in ADCompiledMemoryCertificate._fields
     with pytest.raises(ValueError):
         estimate._replace(evidence_class="observed_profile")
     with pytest.raises(ValueError):
         plan._replace(evidence_class="bounded_certificate")
+
+
+def test_ad_memory_compiled_certificate_fit_and_budget_exceeded():
+    sim = _uniform_sim()
+    fit = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(
+            _FakeMemoryAnalysis(
+                temp_size_in_bytes=1_000,
+                argument_size_in_bytes=2_000,
+                output_size_in_bytes=3_000,
+                alias_size_in_bytes=500,
+            )
+        ),
+        **_certificate_kwargs(),
+    )
+    artifact = fit.to_dict()
+
+    assert fit.evidence_class == "bounded_certificate"
+    assert fit.status == "compiler_estimate_within_budget"
+    assert fit.is_valid_certificate is True
+    assert fit.estimate_within_budget is True
+    assert artifact["compiler_reported_required_bytes"] == 5_500
+    assert artifact["compiler_reported_required_gb"] == pytest.approx(5_500 / 1e9)
+    assert artifact["temp_size_in_bytes"] == 1_000
+    assert artifact["argument_size_in_bytes"] == 2_000
+    assert artifact["output_size_in_bytes"] == 3_000
+    assert artifact["alias_size_in_bytes"] == 500
+    assert artifact["scope_status"] == "complete"
+    assert artifact["memory_analysis_status"] == "complete"
+    assert artifact["exact_scope"]["memory_analysis_fields"] == [
+        "temp_size_in_bytes",
+        "argument_size_in_bytes",
+        "output_size_in_bytes",
+        "alias_size_in_bytes",
+    ]
+    assert "Digests are audit identities only" in " ".join(fit.recommendations)
+    assert "raw-analysis-repr-must-not-be-serialized" not in fit.to_json()
+
+    exceeded = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(
+            _FakeMemoryAnalysis(
+                temp_size_in_bytes=2_000_000_000,
+                argument_size_in_bytes=0,
+                output_size_in_bytes=0,
+                alias_size_in_bytes=0,
+            )
+        ),
+        **_certificate_kwargs(),
+    )
+    assert exceeded.status == "compiler_estimate_exceeds_budget"
+    assert exceeded.is_valid_certificate is True
+    assert exceeded.estimate_within_budget is False
+
+
+def test_ad_memory_compiled_certificate_budget_boundary_and_estimate_framing():
+    """The ``<=`` budget boundary is inclusive, and a fit reads as a compiler
+    *estimate* — not a runtime guarantee."""
+    sim = _uniform_sim()
+    # target_bytes = available_memory_gb * target_fraction * 1e9 = 1.0 * 0.5 * 1e9
+    target_bytes = 500_000_000
+    at_budget = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(
+            _FakeMemoryAnalysis(
+                temp_size_in_bytes=target_bytes,
+                argument_size_in_bytes=0,
+                output_size_in_bytes=0,
+                alias_size_in_bytes=0,
+            )
+        ),
+        **_certificate_kwargs(target_fraction=0.5),
+    )
+    assert at_budget.compiler_reported_required_bytes == target_bytes
+    assert at_budget.status == "compiler_estimate_within_budget"
+    assert at_budget.estimate_within_budget is True
+    # A fit must read as a compiler ESTIMATE, never a runtime guarantee.
+    fit_recs = " ".join(at_budget.recommendations).lower()
+    assert "compiler estimate" in fit_recs
+    assert "guarantee" not in fit_recs
+
+    over_budget = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(
+            _FakeMemoryAnalysis(
+                temp_size_in_bytes=target_bytes + 1,
+                argument_size_in_bytes=0,
+                output_size_in_bytes=0,
+                alias_size_in_bytes=0,
+            )
+        ),
+        **_certificate_kwargs(target_fraction=0.5),
+    )
+    assert over_budget.status == "compiler_estimate_exceeds_budget"
+    assert over_budget.estimate_within_budget is False
+    # The budget verdict is surfaced in a dedicated structured field.
+    assert "exceed" in over_budget.status_reason
+    assert over_budget.to_dict()["status_reason"] == over_budget.status_reason
+
+
+def test_ad_memory_compiled_certificate_summarizes_array_signature_inputs():
+    sim = _uniform_sim()
+    report = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(
+            input_signature={
+                "eps_r": np.ones((2, 3), dtype=np.float32),
+                "scalar": np.array(1.0, dtype=np.float64),
+            },
+            static_signature={
+                "bias": np.arange(4, dtype=np.int32),
+                "mode": "toy",
+            },
+        ),
+    )
+    scope = report.exact_scope
+
+    assert report.status == "compiler_estimate_within_budget"
+    assert scope["input_signature"]["eps_r"] == {
+        "shape": [2, 3],
+        "dtype": "float32",
+    }
+    assert scope["input_signature"]["scalar"] == {
+        "shape": [],
+        "dtype": "float64",
+    }
+    assert scope["static_signature"]["bias"] == {
+        "shape": [4],
+        "dtype": "int32",
+    }
+    assert scope["static_signature"]["mode"] == "toy"
+    assert scope["input_signature"]["eps_r"] != np.ones((2, 3), dtype=np.float32).tolist()
+
+
+def test_ad_memory_compiled_certificate_scope_failures_are_non_certifying():
+    sim = _uniform_sim()
+
+    missing = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(input_signature=None),
+    )
+    assert missing.status == "scope_incomplete"
+    assert missing.is_valid_certificate is False
+    assert missing.estimate_within_budget is None
+    assert missing.memory_analysis_status == "complete"
+    assert "input_signature" in missing.scope_status_reason
+
+    non_json = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(scope_context={"bad": object()}),
+    )
+    assert non_json.status == "scope_incomplete"
+    assert "unsupported value object" in non_json.scope_status_reason
+
+    mismatch = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(scope={"n_steps": 999}),
+        **_certificate_kwargs(),
+    )
+    assert mismatch.status == "scope_mismatch"
+    assert mismatch.scope_status == "scope_mismatch"
+    assert "n_steps" in mismatch.scope_status_reason
+
+    non_string_key = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(input_signature={1: "not-exact-json"}),
+    )
+    assert non_string_key.status == "scope_incomplete"
+    assert "non-string mapping key" in non_string_key.scope_status_reason
+
+    colliding_key = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(input_signature={1: "a", "1": "b"}),
+    )
+    assert colliding_key.status == "scope_incomplete"
+    assert "non-string mapping key" in colliding_key.scope_status_reason
+
+    introspection_error = sim.ad_memory_compiled_certificate(
+        _RaisingIntrospectionCompiled(),
+        **_certificate_kwargs(),
+    )
+    assert introspection_error.status == "scope_mismatch"
+    assert "introspection attribute" in introspection_error.scope_status_reason
+
+    raising_to_dict = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(input_signature={"bad": _RaisingToDictAttribute()}),
+    )
+    assert raising_to_dict.status == "scope_incomplete"
+    assert "to_dict attribute read raised RuntimeError" in raising_to_dict.scope_status_reason
+
+    raising_shape = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(input_signature={"bad": _RaisingShapeAttribute()}),
+    )
+    assert raising_shape.status == "scope_incomplete"
+    assert "shape attribute read raised RuntimeError" in raising_shape.scope_status_reason
+
+
+def test_ad_memory_compiled_certificate_fails_closed_without_environment(monkeypatch):
+    import rfx.api._compiled_memory as compiled_memory
+
+    def fail_default_backend():
+        raise RuntimeError("no backend")
+
+    monkeypatch.setattr(compiled_memory.jax, "default_backend", fail_default_backend)
+    report = _uniform_sim().ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(),
+    )
+
+    assert report.status == "scope_incomplete"
+    assert report.scope_status == "scope_incomplete"
+    assert "default_backend" in report.scope_status_reason
+    assert report.scope_digest is None
+    assert report.environment_digest is None
+
+
+def test_ad_memory_compiled_certificate_fails_closed_without_devices(monkeypatch):
+    import rfx.api._compiled_memory as compiled_memory
+
+    def fail_local_devices():
+        raise RuntimeError("no devices")
+
+    monkeypatch.setattr(compiled_memory.jax, "local_devices", fail_local_devices)
+    report = _uniform_sim().ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(),
+    )
+
+    assert report.status == "scope_incomplete"
+    assert "local_devices" in report.scope_status_reason
+    assert report.exact_scope is None
+
+@pytest.mark.parametrize("version", ["unknown", None, "  "])
+def test_ad_memory_compiled_certificate_fails_closed_on_invalid_jax_version(
+    monkeypatch,
+    version,
+):
+    import rfx.api._compiled_memory as compiled_memory
+
+    monkeypatch.setattr(compiled_memory.jax, "__version__", version)
+    report = _uniform_sim().ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(),
+    )
+
+    assert report.status == "scope_incomplete"
+    assert "__version__" in report.scope_status_reason
+    assert report.exact_scope is None
+
+
+@pytest.mark.parametrize("backend", [None, "unknown", "  "])
+def test_ad_memory_compiled_certificate_fails_closed_on_invalid_backend(
+    monkeypatch,
+    backend,
+):
+    import rfx.api._compiled_memory as compiled_memory
+
+    monkeypatch.setattr(compiled_memory.jax, "default_backend", lambda: backend)
+    report = _uniform_sim().ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(),
+    )
+
+    assert report.status == "scope_incomplete"
+    assert "default_backend" in report.scope_status_reason
+    assert report.exact_scope is None
+
+
+@pytest.mark.parametrize(
+    "device, reason",
+    [
+        (_FakeJaxDevice(platform=None), "JAX device platform"),
+        (_FakeJaxDevice(platform="unknown"), "JAX device platform"),
+        (_FakeJaxDevice(platform="  "), "JAX device platform"),
+        (_FakeJaxDevice(device_kind=None), "JAX device_kind"),
+        (_FakeJaxDevice(device_kind="unknown"), "JAX device_kind"),
+        (_FakeJaxDevice(device_kind="  "), "JAX device_kind"),
+        (_FakeJaxDevice(raise_platform=True), "metadata read failed"),
+        (_FakeJaxDevice(raise_kind=True), "metadata read failed"),
+    ],
+)
+def test_ad_memory_compiled_certificate_fails_closed_on_invalid_device_metadata(
+    monkeypatch,
+    device,
+    reason,
+):
+    import rfx.api._compiled_memory as compiled_memory
+
+    monkeypatch.setattr(compiled_memory.jax, "local_devices", lambda: (device,))
+    report = _uniform_sim().ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(),
+    )
+
+    assert report.status == "scope_incomplete"
+    assert report.scope_status == "scope_incomplete"
+    assert reason in report.scope_status_reason
+    assert report.exact_scope is None
+
+
+@pytest.mark.parametrize(
+    "compiled, reason",
+    [
+        (_NoMemoryAnalysis(), "no callable memory_analysis"),
+        (_FakeCompiled(analysis=None), "returned None"),
+        (_FakeCompiled(raises=RuntimeError("boom")), "raised RuntimeError"),
+        (_RaisingMemoryAnalysisAttribute(), "attribute boom"),
+    ],
+)
+def test_ad_memory_compiled_certificate_analysis_unavailable(compiled, reason):
+    report = _uniform_sim().ad_memory_compiled_certificate(
+        compiled,
+        **_certificate_kwargs(),
+    )
+
+    assert report.status == "analysis_unavailable"
+    assert report.scope_status == "complete"
+    assert report.memory_analysis_status == "analysis_unavailable"
+    assert reason in report.memory_analysis_status_reason
+    assert report.is_valid_certificate is False
+    assert report.compiler_reported_required_bytes is None
+    assert report.exact_scope["memory_analysis_fields"] is None
+
+
+@pytest.mark.parametrize(
+    "analysis, reason",
+    [
+        (
+            _FakeMemoryAnalysis(temp_size_in_bytes=_MISSING),
+            "missing required byte field",
+        ),
+        (
+            _FakeMemoryAnalysis(temp_size_in_bytes=-1),
+            "must be non-negative",
+        ),
+        (
+            _FakeMemoryAnalysis(temp_size_in_bytes=1.5),
+            "non-negative integer byte count",
+        ),
+        (
+            _FakeMemoryAnalysis(temp_size_in_bytes=float("nan")),
+            "non-negative integer byte count",
+        ),
+        (
+            _FakeMemoryAnalysis(temp_size_in_bytes="1"),
+            "non-negative integer byte count",
+        ),
+        (
+            _FakeMemoryAnalysis(
+                temp_size_in_bytes=0,
+                argument_size_in_bytes=0,
+                output_size_in_bytes=0,
+                alias_size_in_bytes=1,
+            ),
+            "computed required bytes must be non-negative",
+        ),
+        (
+            _RaisingAnalysisField(),
+            "reading temp_size_in_bytes raised RuntimeError",
+        ),
+    ],
+)
+def test_ad_memory_compiled_certificate_analysis_incomplete(analysis, reason):
+    report = _uniform_sim().ad_memory_compiled_certificate(
+        _FakeCompiled(analysis),
+        **_certificate_kwargs(),
+    )
+
+    assert report.status == "analysis_incomplete"
+    assert report.scope_status == "complete"
+    assert report.memory_analysis_status == "analysis_incomplete"
+    assert reason in report.memory_analysis_status_reason
+    assert report.estimate_within_budget is None
+
+
+def test_ad_memory_compiled_certificate_digests_are_stable_and_scope_sensitive():
+    sim = _uniform_sim()
+
+    first = sim.ad_memory_compiled_certificate(_FakeCompiled(), **_certificate_kwargs())
+    second = sim.ad_memory_compiled_certificate(_FakeCompiled(), **_certificate_kwargs())
+    changed = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(runner_or_objective="different_loss"),
+    )
+
+    assert first.scope_digest == second.scope_digest
+    assert first.config_digest == second.config_digest
+    assert first.environment_digest == second.environment_digest
+    assert first.scope_digest != changed.scope_digest
+    assert first.config_digest != changed.config_digest
+
+
+def test_ad_memory_compiled_certificate_rejects_invalid_budget_scalars():
+    sim = _uniform_sim()
+
+    with pytest.raises(ValueError, match="available_memory_gb must be positive"):
+        sim.ad_memory_compiled_certificate(
+            _FakeCompiled(),
+            **_certificate_kwargs(available_memory_gb=0.0),
+        )
+    with pytest.raises(ValueError, match="target_fraction must be positive"):
+        sim.ad_memory_compiled_certificate(
+            _FakeCompiled(),
+            **_certificate_kwargs(target_fraction=0.0),
+        )
+    with pytest.raises(ValueError, match="interval"):
+        sim.ad_memory_compiled_certificate(
+            _FakeCompiled(),
+            **_certificate_kwargs(target_fraction=1.1),
+        )
+    with pytest.raises(TypeError, match="finite real scalar"):
+        sim.ad_memory_compiled_certificate(
+            _FakeCompiled(),
+            **_certificate_kwargs(available_memory_gb=[1.0]),
+        )
+
+
+def test_ad_memory_compiled_certificate_preflight_snapshot_and_mismatch():
+    sim = _uniform_sim()
+    preflight = sim.ad_memory_preflight(n_steps=120, available_memory_gb=1.0)
+    report = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(preflight=preflight),
+    )
+
+    assert report.status == "compiler_estimate_within_budget"
+    assert report.source_preflight["evidence_class"] == "composite_ad_memory_preflight"
+    assert report.source_preflight["status"] == preflight.status
+    _assert_no_forbidden_fields_recursive(preflight.to_dict())
+
+    mismatched = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(preflight=preflight, available_memory_gb=2.0),
+    )
+    assert mismatched.status == "scope_mismatch"
+    assert "available_memory_gb" in mismatched.scope_status_reason
+
+    checkpoint_mismatched = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(preflight=preflight, checkpoint_segments=10),
+    )
+    assert checkpoint_mismatched.status == "scope_mismatch"
+    assert "checkpoint mode" in checkpoint_mismatched.scope_status_reason
+
+    malformed_preflight = sim.ad_memory_compiled_certificate(
+        _FakeCompiled(),
+        **_certificate_kwargs(preflight=_ListPreflight()),
+    )
+    assert malformed_preflight.status == "scope_incomplete"
+    assert "preflight snapshot must be a JSON object mapping" in malformed_preflight.scope_status_reason
 
 
 def test_current_memory_artifacts_keep_evidence_classes_separate():
@@ -356,15 +1077,191 @@ def test_current_memory_recommendations_do_not_claim_guarantees():
         assert not any(term in lowered for term in _FORBIDDEN_RECOMMENDATION_TERMS)
 
 
+def test_ad_memory_preflight_full_fit_branch():
+    sim = _patch_like_sim()
+
+    report = sim.ad_memory_preflight(
+        n_steps=100,
+        available_memory_gb=100.0,
+        include_mesh_report=False,
+    )
+    artifact = report.to_dict()
+    hint_codes = {hint.code for hint in report.action_hints}
+
+    assert isinstance(report, ADMemoryPreflightReport)
+    assert report.status == "full_ad_fits"
+    assert report.supported_checkpoint_mode is None
+    assert report.checkpoint_every is None
+    assert report.checkpoint_segments is None
+    assert report.full_ad_fits is True
+    assert report.checkpointing_fits is False
+    assert report.memory_plan.full_ad_fits is True
+    assert report.explainability.selected_memory_field == "ad_full_gb"
+    assert report.explainability.strategy == "full_reverse_ad_static_tape"
+    assert "full_ad_fits" in hint_codes
+    assert "use_checkpoint_every" not in hint_codes
+    assert "use_checkpoint_segments" not in hint_codes
+    _assert_validate_physics_hint(report)
+    assert report.source_evidence_classes == (
+        "calibrated_conservative_plan",
+        "static_estimate",
+        "static_ad_explainability",
+    )
+    assert artifact["mesh_report"] is None
+    assert json.loads(report.to_json()) == artifact
+
+
+def test_ad_memory_preflight_nonuniform_checkpoint_branch():
+    sim = _patch_like_sim()
+
+    report = sim.ad_memory_preflight(n_steps=10_000, available_memory_gb=1.0)
+    hint = next(
+        hint for hint in report.action_hints if hint.code == "use_checkpoint_every"
+    )
+
+    assert report.status == "checkpointing_fits"
+    assert report.full_ad_fits is False
+    assert report.checkpointing_fits is True
+    assert report.supported_checkpoint_mode == "checkpoint_every"
+    assert report.checkpoint_every == report.memory_plan.checkpoint_every
+    assert report.checkpoint_segments is None
+    assert report.explainability.selected_memory_field == "ad_segmented_gb"
+    assert report.explainability.strategy == "segmented_checkpoint_every"
+    assert hint.checkpoint_mode == "checkpoint_every"
+    assert hint.checkpoint_every == report.checkpoint_every
+    assert hint.checkpoint_segments is None
+    assert hint.blocking is False
+    assert report.mesh_report is not None
+    assert report.mesh_report.ad_memory.checkpoint_every == report.checkpoint_every
+    _assert_validate_physics_hint(report)
+
+
+def test_ad_memory_preflight_uniform_checkpoint_branch():
+    sim = _uniform_sim()
+
+    report = sim.ad_memory_preflight(
+        n_steps=120,
+        available_memory_gb=0.002,
+        include_mesh_report=False,
+    )
+    hint = next(
+        hint for hint in report.action_hints if hint.code == "use_checkpoint_segments"
+    )
+
+    assert report.status == "checkpointing_fits"
+    assert report.checkpointing_fits is True
+    assert report.supported_checkpoint_mode == "checkpoint_segments"
+    assert report.checkpoint_every is None
+    assert report.checkpoint_segments == report.memory_plan.checkpoint_segments == 10
+    assert report.explainability.selected_memory_field == "ad_segmented_gb"
+    assert report.explainability.strategy == "segmented_checkpoint_segments"
+    assert hint.checkpoint_mode == "checkpoint_segments"
+    assert hint.checkpoint_every is None
+    assert hint.checkpoint_segments == 10
+    _assert_validate_physics_hint(report)
+
+
+def test_ad_memory_preflight_unfit_branch_is_diagnostic_only():
+    sim = _patch_like_sim()
+
+    report = sim.ad_memory_preflight(
+        n_steps=10_000,
+        available_memory_gb=0.001,
+        include_mesh_report=False,
+    )
+    blocker = next(
+        hint for hint in report.action_hints if hint.code == "memory_budget_unfit"
+    )
+
+    assert report.status == "does_not_fit"
+    assert report.full_ad_fits is False
+    assert report.checkpointing_fits is False
+    assert report.supported_checkpoint_mode == "checkpoint_every"
+    assert report.checkpoint_every == 10_000
+    assert report.checkpoint_segments is None
+    assert report.explainability.selected_memory_field == "ad_segmented_gb"
+    assert blocker.blocking is True
+    assert blocker.severity == "blocker"
+    assert "diagnostic-only" in report.recommendation
+    assert "do not launch" in report.recommendation.lower()
+    assert "as a fit" in blocker.action
+    assert not any(
+        hint.code in {"full_ad_fits", "use_checkpoint_every", "use_checkpoint_segments"}
+        for hint in report.action_hints
+    )
+    _assert_validate_physics_hint(report)
+
+
+def test_ad_memory_preflight_boundaries_and_action_text_are_safe():
+    patch = _patch_like_sim()
+    uniform = _uniform_sim()
+    reports = [
+        patch.ad_memory_preflight(
+            n_steps=100,
+            available_memory_gb=100.0,
+            include_mesh_report=False,
+        ),
+        patch.ad_memory_preflight(
+            n_steps=10_000,
+            available_memory_gb=1.0,
+            include_mesh_report=False,
+        ),
+        uniform.ad_memory_preflight(
+            n_steps=120,
+            available_memory_gb=0.002,
+            include_mesh_report=False,
+        ),
+        patch.ad_memory_preflight(
+            n_steps=10_000,
+            available_memory_gb=0.001,
+            include_mesh_report=False,
+        ),
+    ]
+
+    for report in reports:
+        artifact = report.to_dict()
+        assert report.evidence_boundaries == AD_MEMORY_PREFLIGHT_BOUNDARIES
+        assert artifact["evidence_boundaries"] == list(AD_MEMORY_PREFLIGHT_BOUNDARIES)
+        _assert_no_forbidden_fields_recursive(artifact)
+
+        action_texts = [
+            report.recommendation,
+            *(
+                f"{hint.message} {hint.action}"
+                for hint in report.action_hints
+            ),
+        ]
+        for text in action_texts:
+            lowered = text.lower()
+            assert not any(
+                term in lowered for term in _FORBIDDEN_RECOMMENDATION_TERMS
+            )
+
 def test_memory_reduction_docs_separate_planning_from_certificate_evidence():
     doc = Path("docs/public/guide/memory-reduction.mdx").read_text()
     assert "`static_estimate`" in doc
     assert "`calibrated_conservative_plan`" in doc
     assert "`static_ad_explainability`" in doc
+    assert "`composite_ad_memory_preflight`" in doc
+    assert "`static_action_hint`" in doc
     assert "explain_ad_memory(...)" in doc
+    assert "ad_memory_preflight(...)" in doc
+    assert "residual_context" in doc
+    assert "checkpoint_every" in doc
+    assert "checkpoint_segments" in doc
+    assert "**checkpoint_kwargs" in doc
     assert "`bounded_certificate`" in doc
     assert "Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory(...)` artifacts are not certificates" in doc
-    assert "not a universal guaranteed peak predictor" in doc
+    assert "a runtime peak-memory guarantee" in doc
+    assert "ad_memory_compiled_certificate(...)" in doc
+    assert "`bounded_certificate` | yes" in doc
+    assert "Compiled.memory_analysis()" in doc
+    assert "temp + argument + output - alias" in doc
+    assert "audit identities" in doc
+    assert "version/backend dependent and may be unavailable" in doc
+    assert "not full array values" in doc
+    for boundary in AD_MEMORY_PREFLIGHT_BOUNDARIES:
+        assert boundary in doc
 
 
 @pytest.mark.parametrize("chunk,observed_gb", [

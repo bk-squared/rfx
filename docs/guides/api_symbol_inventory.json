@@ -1,10 +1,16 @@
 {
   "_comment": "Public API surface pinned by scripts/check_api_reference.py. Regenerate with: python scripts/check_api_reference.py --write (and rebuild docs/api with pdoc: python -m pdoc -o docs/api rfx '!rfx.dashboard').",
   "rfx_exports": {
+    "ADCompiledMemoryCertificate": {
+      "kind": "class"
+    },
     "ADIState2D": {
       "kind": "class"
     },
     "ADIState3D": {
+      "kind": "class"
+    },
+    "ADMemoryActionHint": {
       "kind": "class"
     },
     "ADMemoryComponent": {
@@ -14,6 +20,24 @@
       "kind": "class"
     },
     "ADMemoryPlan": {
+      "kind": "class"
+    },
+    "ADMemoryPreflightReport": {
+      "kind": "class"
+    },
+    "ADParserHealth": {
+      "kind": "class"
+    },
+    "ADResidualGroup": {
+      "kind": "class"
+    },
+    "ADResidualInspection": {
+      "kind": "class"
+    },
+    "ADResidualRecord": {
+      "kind": "class"
+    },
+    "ADSavedResidualDiagnosticReport": {
       "kind": "class"
     },
     "AD_MemoryEstimate": {
@@ -140,6 +164,12 @@
       "kind": "class"
     },
     "ParameterSweep": {
+      "kind": "class"
+    },
+    "ParetoFront": {
+      "kind": "class"
+    },
+    "ParetoPoint": {
       "kind": "class"
     },
     "PolylineWire": {
@@ -454,6 +484,46 @@
         "prefix"
       ]
     },
+    "check_bounds": {
+      "kind": "function",
+      "params": [
+        "value",
+        "lower",
+        "upper",
+        "name"
+      ]
+    },
+    "check_courant_number": {
+      "kind": "function",
+      "params": [
+        "courant",
+        "limit",
+        "name"
+      ]
+    },
+    "check_finite": {
+      "kind": "function",
+      "params": [
+        "value",
+        "name"
+      ]
+    },
+    "check_positive": {
+      "kind": "function",
+      "params": [
+        "value",
+        "name",
+        "allow_zero"
+      ]
+    },
+    "checkify_invariants": {
+      "kind": "function",
+      "params": [
+        "fun",
+        "float_checks",
+        "index_checks"
+      ]
+    },
     "coaxial_load_reflection": {
       "kind": "function",
       "params": [
@@ -652,6 +722,18 @@
       "kind": "function",
       "params": []
     },
+    "diagnose_ad_saved_residuals": {
+      "kind": "function",
+      "params": [
+        "fun",
+        "args",
+        "top_n",
+        "workflow",
+        "context",
+        "artifacts",
+        "kwargs"
+      ]
+    },
     "differentiable_material_fit": {
       "kind": "function",
       "params": [
@@ -680,6 +762,15 @@
       "params": [
         "omega_p",
         "gamma"
+      ]
+    },
+    "epsilon_constraint_mask": {
+      "kind": "function",
+      "params": [
+        "objectives",
+        "epsilons",
+        "minimize",
+        "atol"
       ]
     },
     "eval_debye": {
@@ -1054,6 +1145,14 @@
         "dx"
       ]
     },
+    "inspect_ad_saved_residuals": {
+      "kind": "function",
+      "params": [
+        "fun",
+        "args",
+        "kwargs"
+      ]
+    },
     "load_material_csv": {
       "kind": "function",
       "params": [
@@ -1281,6 +1380,32 @@
         "n_steps",
         "until_decay",
         "run_kwargs"
+      ]
+    },
+    "pareto_front": {
+      "kind": "function",
+      "params": [
+        "objectives",
+        "minimize",
+        "ids",
+        "objective_names",
+        "metadata",
+        "atol"
+      ]
+    },
+    "pareto_mask": {
+      "kind": "function",
+      "params": [
+        "objectives",
+        "minimize",
+        "atol"
+      ]
+    },
+    "parse_saved_residual_line": {
+      "kind": "function",
+      "params": [
+        "line",
+        "line_index"
       ]
     },
     "plan_mesh": {
@@ -1827,6 +1952,16 @@
         "grid"
       ]
     },
+    "select_epsilon_constrained": {
+      "kind": "function",
+      "params": [
+        "objectives",
+        "primary_index",
+        "epsilons",
+        "minimize",
+        "atol"
+      ]
+    },
     "smooth_grading": {
       "kind": "function",
       "params": [
@@ -1999,6 +2134,15 @@
         "cfg"
       ]
     },
+    "weighted_scalarization": {
+      "kind": "function",
+      "params": [
+        "objectives",
+        "weights",
+        "minimize",
+        "normalize"
+      ]
+    },
     "wire_port_current": {
       "kind": "function",
       "params": [
@@ -2035,6 +2179,40 @@
     }
   },
   "simulation_methods": {
+    "ad_memory_compiled_certificate": [
+      "compiled",
+      "n_steps",
+      "available_memory_gb",
+      "target_fraction",
+      "checkpoint_every",
+      "checkpoint_segments",
+      "n_warmup",
+      "design_mask",
+      "precision",
+      "input_signature",
+      "static_signature",
+      "compiled_object_id",
+      "runner_or_objective",
+      "preflight",
+      "scope_context"
+    ],
+    "ad_memory_preflight": [
+      "n_steps",
+      "available_memory_gb",
+      "target_fraction",
+      "n_warmup",
+      "design_mask",
+      "safety_factor",
+      "include_mesh_report",
+      "check_ntff",
+      "check_resolution",
+      "residual_fun",
+      "residual_args",
+      "residual_kwargs",
+      "residual_top_n",
+      "residual_workflow",
+      "residual_context"
+    ],
     "add": [
       "shape",
       "material"
