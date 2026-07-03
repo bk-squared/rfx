@@ -302,7 +302,13 @@ class Simulation(
         for storage.
     solver : str
         ``"yee"`` (default) for the standard explicit scheme or
-        ``"adi"`` for the current 2D TMz ADI-FDTD path.
+        ``"adi"`` for the ADI-FDTD path. ADI is validated ONLY in 2D TMz
+        (``mode="2d_tmz"``, 2% cavity-resonance gate). The 3D ADI (LOD)
+        scheme is KNOWN-INACCURATE for physical results (a 3D PEC-cavity
+        eigenfrequency misses the analytic mode by ~41% even at 2x CFL —
+        artificial diffusion on off-axis E components); preflight emits an
+        ``adi_3d_accuracy`` warning for that combination. Use 3D ADI only
+        for qualitative stability studies.
     adi_cfl_factor : float
         Timestep multiplier relative to the standard 2D CFL limit when
         ``solver="adi"``.
