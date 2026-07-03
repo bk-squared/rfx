@@ -1,0 +1,125 @@
+{
+  "claim": "rfx NONUNIFORM (graded-dy) waveguide_port compute_waveguide_s_matrix(normalize='flux') magnitude comparison against Palace_r_h2 (high-order FEM) across the WR-90 empty / PEC-short / dielectric-slab geometry axis passes the broad-E4 magnitude tolerance of 0.1, on a graded transverse mesh (grading ratio 2.0, adjacent-cell ratio 2.00:1).",
+  "claim_scope": "broad external cross-solver magnitude comparison of the rfx NONUNIFORM graded-dy waveguide_port flux S-matrix against an independent high-order FEM solver (Palace_r_h2) across the WR-90 geometry axis (empty guide, PEC short, dielectric slab) over the X-band frequency grid. Phase conventions are not compared (magnitude metric). This is the external-solver leg that lifts the nonuniform waveguide flux lane's last open promotion rung.",
+  "evidence_level": "E4-broad-external-palace-fem-nonuniform-graded-dy-wr90-multigeometry-te10",
+  "external_reference_column": "Palace_r_h2",
+  "generated_at": "2026-07-03",
+  "max_mag_abs_tol": 0.1,
+  "mean_mag_abs_tol": 0.07,
+  "mesh": {
+    "adjacent_cell_ratio": 2.0,
+    "base_dx_m": 0.001,
+    "grading_ratio": 2.0,
+    "kind": "nonuniform_dy_profile_ratio"
+  },
+  "num_periods": 60,
+  "pairs": [
+    {
+      "component": "S11",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8200000000.0,
+      "geometry": "empty",
+      "max_mag_abs_diff": 2.9014250539463444e-05,
+      "mean_mag_abs_diff": 1.3016593655304908e-05,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        2.9631878985330444e-06,
+        2.9014250539463444e-05
+      ],
+      "rfx_mag_range": [
+        0.0,
+        0.0
+      ],
+      "status": "passed"
+    },
+    {
+      "component": "S21",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8200000000.0,
+      "geometry": "empty",
+      "max_mag_abs_diff": 0.00039791954102130767,
+      "mean_mag_abs_diff": 7.279345136337745e-05,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.999999983044079,
+        1.0000000466300203
+      ],
+      "rfx_mag_range": [
+        0.9996020793914795,
+        1.0002720355987549
+      ],
+      "status": "passed"
+    },
+    {
+      "component": "S11",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8200000000.0,
+      "geometry": "pec_short",
+      "max_mag_abs_diff": 0.016480245206660915,
+      "mean_mag_abs_diff": 0.0031020300441829633,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.9999999781587788,
+        1.000000154409645
+      ],
+      "rfx_mag_range": [
+        0.9835197329521179,
+        1.0119104385375977
+      ],
+      "status": "passed"
+    },
+    {
+      "component": "S11",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8200000000.0,
+      "geometry": "slab",
+      "max_mag_abs_diff": 0.07008732608400026,
+      "mean_mag_abs_diff": 0.03586533368268814,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.0013646269178455765,
+        0.5436609263078149
+      ],
+      "rfx_mag_range": [
+        0.03136024996638298,
+        0.6137482523918152
+      ],
+      "status": "passed"
+    },
+    {
+      "component": "S21",
+      "freq_hi_hz": 12400000000.0,
+      "freq_lo_hz": 8200000000.0,
+      "geometry": "slab",
+      "max_mag_abs_diff": 0.047026582581011445,
+      "mean_mag_abs_diff": 0.013069636004010005,
+      "n_freqs": 21,
+      "ref_mag_range": [
+        0.8393049319805781,
+        0.9999990593664221
+      ],
+      "rfx_mag_range": [
+        0.7922783493995667,
+        1.0009691715240479
+      ],
+      "status": "passed"
+    }
+  ],
+  "r5_reference_note": "Meep res-3/4 gives a non-physical PEC-short |S11|=1.1985>1; the converged Palace FEM reference (|S11|=1.0000) is used, matching the uniform-lane broad-E4 fixture. The rfx NU flux |S11| lands physical/near-unity on PEC-short (witnessed here), so the residual is reference-side resolution, not an rfx NU defect (R4/R5).",
+  "schema": "rfx.waveguide_wr90_nu_flux_broad_e4_comparison",
+  "schema_version": 1,
+  "status": "passed",
+  "summary": {
+    "failed_pair_count": 0,
+    "geometries": [
+      "empty",
+      "pec_short",
+      "slab"
+    ],
+    "geometry_count": 3,
+    "max_mag_abs_diff": 0.07008732608400026,
+    "mean_mag_abs_diff": 0.010424561955179958,
+    "pair_count": 5,
+    "passed_pair_count": 5
+  }
+}

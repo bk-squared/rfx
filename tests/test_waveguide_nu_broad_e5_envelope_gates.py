@@ -15,9 +15,12 @@ adjacent-cell ratio up to 3:1), eps_r {2, 4} (incl. the strong eps_r=4 reflector
 the ``normalize=True`` path floors at ~0.077), over X-band single-mode TE10,
 forward-only, single-slab. It deliberately does NOT establish (a) a broad-E4
 external-solver (Meep/OpenEMS) cross-check, nor (b) AD-traceability of the NU
-S-matrix -- both are REQUIRED by ``check_port_external_references.py`` for
-``broad_e5_passed`` and remain the open ladder rungs that keep the nonuniform
-lane SHADOW (not claims-bearing).
+S-matrix. Both are now CLOSED as separate committed evidence: the external E4
+cross-check lives in ``tests/fixtures/waveguide_nu_broad_e4/`` (rfx-NU-flux vs
+Palace FEM across empty/PEC-short/slab, gated by
+``test_waveguide_nu_broad_e4_comparison_gates.py``), and NU AD-traceability
+landed in #233. Promotion of the NU lane from shadow to claims-bearing is a
+separate decision; this envelope remains the analytic-oracle leg.
 
 Layer 2 drives the producer's own ``airy()`` formula + ``MAX_TOL`` with synthetic
 ideal / perturbed S-parameters to lock the gate semantics. Pure-Python (no FDTD);
@@ -89,9 +92,14 @@ def test_committed_nu_flux_envelope_passes_broad_e5() -> None:
     assert 4.0 in [float(x) for x in summ["eps_r_values"]], summ["eps_r_values"]
 
 
-def test_primary_reference_is_independent_analytic_no_external_yet() -> None:
-    """Truth is the independent analytic Airy; NU has no external E4 cross-check
-    yet (honest: the external-solver leg is an open ladder rung, lane = shadow)."""
+def test_primary_reference_is_independent_analytic() -> None:
+    """This ENVELOPE artifact's own truth is the independent analytic Airy and
+    it embeds no cross-checks. The external-solver E4 leg now lives in a
+    SEPARATE committed fixture (``tests/fixtures/waveguide_nu_broad_e4/``,
+    rfx-NU-flux vs Palace FEM, gated by
+    ``test_waveguide_nu_broad_e4_comparison_gates.py``) — so the NU flux lane's
+    last evidence rung is closed; promotion from shadow to claims-bearing is a
+    separate decision."""
     env = json.loads(FIXTURE.read_text())
     assert env["primary_reference"]["label"] == "analytic_airy", env["primary_reference"]
     assert env["cross_check_references"] == [], env["cross_check_references"]
