@@ -22,9 +22,12 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 - The MSL port's Hy/Hz current DFT now applies the Yee leapfrog `exp(+jω·dt/2)`
   half-step correction (H fields live at half-integer time steps). Reported MSL
-  S-parameters change slightly (~0.3–0.7° phase-scale at typical resolutions).
+  S-parameters change slightly (~0.3–0.7° phase-scale over the validated bands).
 
 ### Deprecated — removal slated for rfx v2.0
+
+Both functions below already carried `DeprecationWarning`s; this release only
+pins the removal version (v2.0) in the warning text and here.
 
 - `compute_coaxial_s_matrix()` (single-plane V/I in a closed PEC box; reports
   non-physical `|S11| > 1` for a lossless short) — use
