@@ -138,7 +138,8 @@ art = dict(
     method_mag_dev_max=method_mag_max, method_recurrence_residual_max=method_resid_max,
     matched_fixture_mag_dev_max=matched_mag_max,
     resolution_recipe="annulus_cells >= ~4 (dx <= ~0.38 mm for SMA); coarse points reported below",
-    cases=rows, commit_hash=commit, generated_at="2026-06-08",
+    cases=rows, commit_hash=commit,
+    generated_at=__import__("datetime").date.today().isoformat(),
     external_reference="closed-form transmission-line theory (analytic Γ), exact for these TEM "
                        "coaxial terminations. This is the rfx-internal-vs-analytic E5 ENVELOPE; an "
                        "independent full-wave (openEMS/HFSS/MEEP) broad-E4 comparison is a SEPARATE "
