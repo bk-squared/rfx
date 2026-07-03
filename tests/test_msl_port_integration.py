@@ -219,8 +219,10 @@ def test_msl_thru_line_passive_gate():
     raises=NotImplementedError,
     strict=True,
     reason=(
-        "MSL mode='eigenmode' is a planned Path-B FDFD source lane; "
-        "the current supported slow gate is mode='laplace'."
+        "MSL mode='eigenmode' is deferred/out-of-scope — the FDFD eigenmode "
+        "source is a falsified dead-end (5 attempts; Option B accepted the "
+        "Laplace floor). mode='laplace' is the supported lane. Strict "
+        "tripwire: XPASSes if an eigenmode solver ever lands."
     ),
 )
 def test_msl_thru_line_eigenmode_gate():

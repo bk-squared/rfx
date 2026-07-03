@@ -160,11 +160,11 @@
       "supported_lanes": [
         "uniform_yee_rf_specialized"
       ],
-      "validation_status": "E5-narrow for the uniform-Yee laplace/quasi-TEM MSL envelope: thru-line, analytic-notch, raw 3-probe replay, and stored-openEMS narrow smoke evidence exist; all-mode E5 remains blocked until eigenmode and nonuniform support land",
+      "validation_status": "E5-narrow for the uniform-Yee laplace/quasi-TEM MSL envelope: thru-line, analytic-notch, raw 3-probe replay, and stored-openEMS narrow smoke evidence exist; the non-uniform graded-mesh lane runs via the laplace feed since PR #239 (internally gated, external cross-solver validation owed); eigenmode is a falsified dead-end (fenced); broad all-mode E5 remains blocked",
       "known_limits": [
-        "uniform Yee lane only",
+        "uniform Yee + non-uniform laplace-feed lanes (NU externally unvalidated)",
         "not wired through Result.s_params",
-        "not supported with non-uniform profiles, SBP-SAT subgridding, ADI, TFSF, or mixed port families"
+        "not supported with mode='eigenmode' on non-uniform profiles, SBP-SAT subgridding, ADI, TFSF, or mixed port families"
       ],
       "evidence_level": "E5-narrow/eigenmode-blocked",
       "promotion_requirements": [
