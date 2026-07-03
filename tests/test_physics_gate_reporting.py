@@ -736,7 +736,13 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["missing_broad_e4_comparison_artifact_count"] == 0
     assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == []
     assert audit["missing_broad_e5_envelope_artifact_count"] == 0
-    assert audit["passed_broad_e5_envelope_artifact_count"] == 5
+    # 6 = the 5 rectangular-waveguide band envelopes (PR #181) + the coaxial
+    # line envelope committed to tests/fixtures/coax_broad_e5/ (PR #256 —
+    # regenerated vs analytic TL with a machine-readable envelope_summary).
+    # coaxial_port still stays `incomplete` below: its external COMPARISON
+    # artifacts (Meep broad-E4, m35) remain uncommitted and its ad_fd_test is
+    # null, so committing the envelope class does not flip the family.
+    assert audit["passed_broad_e5_envelope_artifact_count"] == 6
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}
     assert "lumped_port" in incomplete

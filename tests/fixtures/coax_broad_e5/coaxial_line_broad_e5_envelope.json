@@ -14,11 +14,30 @@
   "method_recurrence_residual_max": 0.00588,
   "matched_fixture_mag_dev_max": 0.0929,
   "resolution_recipe": "annulus_cells >= ~4 (dx <= ~0.38 mm for SMA); coarse points reported below",
+  "envelope_summary": {
+    "case_count": 7,
+    "passed_case_count": 7,
+    "dx_values_m": [
+      0.000249827,
+      0.000374741
+    ],
+    "geometries": [
+      "SMA_50ohm",
+      "alt_63ohm"
+    ],
+    "freq_range_hz": [
+      4000000000.0,
+      12000000000.0
+    ],
+    "max_mag_abs_diff_across_cases": 0.0372
+  },
+  "max_mag_abs_tol": 0.05,
   "cases": [
     {
       "geom": "SMA_50ohm",
       "fmax_ghz": 20.0,
       "annulus": 1.89,
+      "dx_m": 0.000749481,
       "term": "short",
       "Z0": 48.59,
       "gamma_analytic_mag": 1.0,
@@ -32,6 +51,7 @@
       "geom": "SMA_50ohm",
       "fmax_ghz": 40.0,
       "annulus": 3.79,
+      "dx_m": 0.000374741,
       "term": "short",
       "Z0": 48.59,
       "gamma_analytic_mag": 1.0,
@@ -45,6 +65,7 @@
       "geom": "SMA_50ohm",
       "fmax_ghz": 60.0,
       "annulus": 5.68,
+      "dx_m": 0.000249827,
       "term": "short",
       "Z0": 48.59,
       "gamma_analytic_mag": 1.0,
@@ -58,6 +79,7 @@
       "geom": "SMA_50ohm",
       "fmax_ghz": 40.0,
       "annulus": 3.79,
+      "dx_m": 0.000374741,
       "term": "open",
       "Z0": 48.59,
       "gamma_analytic_mag": 1.0,
@@ -71,6 +93,7 @@
       "geom": "SMA_50ohm",
       "fmax_ghz": 40.0,
       "annulus": 3.79,
+      "dx_m": 0.000374741,
       "term": "matched",
       "Z0": 48.59,
       "gamma_analytic_mag": 0.0,
@@ -84,6 +107,7 @@
       "geom": "SMA_50ohm",
       "fmax_ghz": 40.0,
       "annulus": 3.79,
+      "dx_m": 0.000374741,
       "term": "res25",
       "Z0": 48.59,
       "gamma_analytic_mag": 0.3206,
@@ -97,6 +121,7 @@
       "geom": "SMA_50ohm",
       "fmax_ghz": 40.0,
       "annulus": 3.79,
+      "dx_m": 0.000374741,
       "term": "res100",
       "Z0": 48.59,
       "gamma_analytic_mag": 0.346,
@@ -110,6 +135,7 @@
       "geom": "alt_63ohm",
       "fmax_ghz": 40.0,
       "annulus": 4.8,
+      "dx_m": 0.000374741,
       "term": "short",
       "Z0": 63.14,
       "gamma_analytic_mag": 1.0,
@@ -123,6 +149,7 @@
       "geom": "alt_63ohm",
       "fmax_ghz": 40.0,
       "annulus": 4.8,
+      "dx_m": 0.000374741,
       "term": "matched",
       "Z0": 63.14,
       "gamma_analytic_mag": 0.0,
@@ -136,6 +163,7 @@
       "geom": "alt_63ohm",
       "fmax_ghz": 40.0,
       "annulus": 4.8,
+      "dx_m": 0.000374741,
       "term": "res100",
       "Z0": 63.14,
       "gamma_analytic_mag": 0.2259,
@@ -146,7 +174,7 @@
       "mag_max": 0.2125
     }
   ],
-  "commit_hash": "b995b85",
+  "commit_hash": "8cdebb9",
   "generated_at": "2026-07-03",
   "external_reference": "closed-form transmission-line theory (analytic \u0393), exact for these TEM coaxial terminations. This is the rfx-internal-vs-analytic E5 ENVELOPE; an independent full-wave (openEMS/HFSS/MEEP) broad-E4 comparison is a SEPARATE artifact and is NOT included here (no full-wave solver available locally)."
 }
