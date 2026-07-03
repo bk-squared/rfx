@@ -1818,8 +1818,11 @@ def _make_step_fn(ctx):
                          step=step_idx)
         st_c = update_h(st_c, mats_c, dt, dx_c)
         if use_cpml:
+            # materials= keeps the CPML impedance-matched inside dielectrics
+            # (issue #205; free-space coefficients diverge when a dielectric
+            # overlaps the absorber — same mechanism as #203/#204).
             st_c, cpml_new = apply_cpml_h(st_c, cpml_params, carry["cpml"],
-                                           grid_c, cpml_axes)
+                                           grid_c, cpml_axes, materials=mats_c)
         if use_exterior_owned_z_slab and is_full_xy_z_slab:
             hx_c, hy_c, hz_c = _mask_z_slab_coarse_shadow_all(
                 (st_c.hx, st_c.hy, st_c.hz),
@@ -1946,7 +1949,7 @@ def _make_step_fn(ctx):
         st_c = update_e(st_c, mats_c, dt, dx_c)
         if use_cpml:
             st_c, cpml_new = apply_cpml_e(st_c, cpml_params, cpml_new,
-                                           grid_c, cpml_axes)
+                                           grid_c, cpml_axes, materials=mats_c)
         st_c = apply_pec(st_c)
         if use_pec_mask_c:
             st_c = apply_pec_mask(st_c, pec_mask_c)
