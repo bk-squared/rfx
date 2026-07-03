@@ -20,6 +20,7 @@ and is NOT produced here (no full-wave solver available locally).
 # rfx is imported via PYTHONPATH=<repo root>; no temp-checkout path needed.
 import os
 import json
+from datetime import date as _date
 import numpy as np
 import jax.numpy as jnp
 from rfx.api import Simulation
@@ -61,7 +62,11 @@ def case(geom, fmax, term, R=None):
     Ga = gamma_analytic(term, R if R else z0, z0)
     magdev = float(np.max(np.abs(np.abs(res.s11) - abs(Ga))))
     rr = float(np.max(res.recurrence_residual))
+    # Exact grid dz: annulus_cells is defined as (b - a) / dz in the extractor
+    # (_sparams.py), so this inversion recovers the actual cell size.
+    dx_m = float((b - a) / res.annulus_cells)
     rows.append(dict(geom=geom, fmax_ghz=fmax/1e9, annulus=round(res.annulus_cells, 2),
+                     dx_m=round(dx_m, 9),
                      term=(f"res{int(R)}" if term == "res" else term),
                      Z0=round(z0, 2), gamma_analytic_mag=round(abs(Ga), 4),
                      max_mag_dev=round(magdev, 4), max_rec_resid=round(rr, 5),
@@ -138,12 +143,29 @@ art = dict(
     method_mag_dev_max=method_mag_max, method_recurrence_residual_max=method_resid_max,
     matched_fixture_mag_dev_max=matched_mag_max,
     resolution_recipe="annulus_cells >= ~4 (dx <= ~0.38 mm for SMA); coarse points reported below",
-    cases=rows, commit_hash=commit, generated_at="2026-06-08",
+    # Machine-readable breadth summary over the GATED method cases — the
+    # auditor's _envelope_breadth_ok (check_port_external_references.py)
+    # fails-closed without this block; schema mirrors the waveguide fixtures.
+    # The matched (fixture-characterization) and coarse (resolution-recipe)
+    # cases are documented in `cases` but are NOT part of the gated set.
+    envelope_summary=dict(
+        case_count=len(method),
+        passed_case_count=sum(1 for r in method if r["status"] == "passed"),
+        dx_values_m=sorted({r["dx_m"] for r in method}),
+        geometries=sorted({r["geom"] for r in method}),
+        freq_range_hz=[float(BAND[0]), float(BAND[-1])],
+        max_mag_abs_diff_across_cases=method_mag_max,
+    ),
+    max_mag_abs_tol=MAG_TOL,
+    cases=rows, commit_hash=commit,
+    generated_at=_date.today().isoformat(),
     external_reference="closed-form transmission-line theory (analytic Γ), exact for these TEM "
                        "coaxial terminations. This is the rfx-internal-vs-analytic E5 ENVELOPE; an "
                        "independent full-wave (openEMS/HFSS/MEEP) broad-E4 comparison is a SEPARATE "
                        "artifact and is NOT included here (no full-wave solver available locally).",
 )
-json.dump(art, open(f"{OUT}/coaxial_line_broad_e5_envelope.json", "w"), indent=2)
+with open(f"{OUT}/coaxial_line_broad_e5_envelope.json", "w") as _f:
+    json.dump(art, _f, indent=2)
+    _f.write("\n")
 print(f"\nartifact -> {OUT}/coaxial_line_broad_e5_envelope.json  status={art['status']}")
 print("DONE")
