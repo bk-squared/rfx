@@ -110,7 +110,11 @@ def run_subgridded(
                          hx=hx_c, hy=hy_c, hz=hz_c,
                          step=jnp.array(step, dtype=jnp.int32))
         st_c = update_h(st_c, mats_c, dt, dx_c)
-        st_c, cpml_state = apply_cpml_h(st_c, cpml_params, cpml_state, grid_c, cpml_axes)
+        # materials= keeps the CPML impedance-matched inside dielectrics
+        # (issue #205; without it the free-space coefficients diverge when a
+        # dielectric overlaps the absorber — same mechanism as #203/#204).
+        st_c, cpml_state = apply_cpml_h(st_c, cpml_params, cpml_state, grid_c, cpml_axes,
+                                        materials=mats_c)
 
         # === Fine grid: H update ===
         st_f = FDTDState(ex=ex_f, ey=ey_f, ez=ez_f,
@@ -120,7 +124,8 @@ def run_subgridded(
 
         # === Coarse grid: E update + CPML + PEC ===
         st_c = update_e(st_c, mats_c, dt, dx_c)
-        st_c, cpml_state = apply_cpml_e(st_c, cpml_params, cpml_state, grid_c, cpml_axes)
+        st_c, cpml_state = apply_cpml_e(st_c, cpml_params, cpml_state, grid_c, cpml_axes,
+                                        materials=mats_c)
         st_c = apply_pec(st_c)
         if pec_mask_c is not None:
             st_c = apply_pec_mask(st_c, pec_mask_c)
