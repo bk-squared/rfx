@@ -1589,6 +1589,7 @@ class _PreflightMixin:
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
         self._validate_cfg_subgrid_limitations(_w)
         self._validate_cfg_conformal_fine_dx(dx)
+        self._validate_cfg_adi_3d_accuracy(_w)
         self._validate_cfg_lossless_resonator_in_absorber(_w)
         self._validate_cfg_waveguide_reference_plane(
             _w, cpml_thick_lo, cpml_thick_hi
@@ -1656,6 +1657,45 @@ class _PreflightMixin:
                 ),
                 stacklevel=2,
             )
+
+    def _validate_cfg_adi_3d_accuracy(self, _w) -> None:
+        """Warn when ``solver='adi'`` is combined with a 3D grid (OPT-C1).
+
+        The 3D ADI path (``adi_step_3d``) uses an LOD split that applies the
+        implicit tridiagonal solve to ALL E components along each sweep axis —
+        artificial diffusion on components whose curl has no derivative along
+        that axis. Measured: a lossless 3D PEC cubic cavity misses the analytic
+        eigenfrequency by ~41% even at a modest 2x CFL (2.077 vs 3.533 GHz),
+        and over-dissipates ~42% at 5x CFL. The 2D TMz ADI path is unaffected
+        (holds a 2% cavity-resonance gate). Note ``mode='3d'`` is the
+        constructor DEFAULT, so ``Simulation(solver='adi')`` lands here.
+
+        WARNING severity (NOT error): 3D ADI stays runnable for qualitative
+        stability/divergence studies, and a hard-fail would block the very
+        tests characterising it. MAINTENANCE: the strict-xfail adjudication
+        test ``tests/test_review_tier1_validation_battery.py::
+        test_optc1_adi_3d_cavity_eigenfrequency`` will hard-fail (XPASS) when
+        the scheme is fixed, forcing this warning's removal.
+        """
+        if self._solver != "adi" or self._mode != "3d":
+            return
+        _w.warn(
+            PreflightWarning(
+                "solver='adi' with a 3D grid (mode='3d' is the default): the "
+                "3D ADI (LOD) scheme is KNOWN-INACCURATE for physical "
+                "results — the implicit solve is applied to E components "
+                "whose curl has no derivative along the sweep axis "
+                "(artificial diffusion). Measured: a lossless 3D PEC cubic "
+                "cavity misses the analytic eigenfrequency by ~41% even at "
+                "2x CFL (~42% over-dissipation at 5x CFL). Use the explicit "
+                "Yee solver (solver='yee') for 3D physics; ADI is validated "
+                "only on the 2D TMz path (mode='2d_tmz', 2% resonance gate).",
+                code="adi_3d_accuracy",
+                severity="warning",
+                source="_validate_cfg_adi_3d_accuracy",
+            ),
+            stacklevel=2,
+        )
 
     def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:
         """Warn when EVERY dielectric is perfectly lossless in an open (CPML/
