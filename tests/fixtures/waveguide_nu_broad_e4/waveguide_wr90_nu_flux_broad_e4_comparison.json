@@ -1,5 +1,5 @@
 {
-  "claim": "rfx NONUNIFORM (graded-dy) waveguide_port compute_waveguide_s_matrix(normalize='flux') magnitude comparison against Palace_r_h2 (high-order FEM) across the WR-90 empty / PEC-short / dielectric-slab geometry axis passes the broad-E4 magnitude tolerance of 0.1, on a graded transverse mesh (grading ratio 2.0, adjacent-cell ratio 2.00:1).",
+  "claim": "rfx NONUNIFORM (graded-dy) waveguide_port compute_waveguide_s_matrix(normalize='flux') magnitude comparison against Palace_r_h2 (high-order FEM) across the WR-90 empty / PEC-short / dielectric-slab geometry axis passes the broad-E4 magnitude tolerance of 0.1, on a graded transverse mesh (grading ratio 2.0, max/min cell ratio 2.00:1).",
   "claim_scope": "broad external cross-solver magnitude comparison of the rfx NONUNIFORM graded-dy waveguide_port flux S-matrix against an independent high-order FEM solver (Palace_r_h2) across the WR-90 geometry axis (empty guide, PEC short, dielectric slab) over the X-band frequency grid. Phase conventions are not compared (magnitude metric). This is the external-solver leg that lifts the nonuniform waveguide flux lane's last open promotion rung.",
   "evidence_level": "E4-broad-external-palace-fem-nonuniform-graded-dy-wr90-multigeometry-te10",
   "external_reference_column": "Palace_r_h2",
@@ -7,10 +7,10 @@
   "max_mag_abs_tol": 0.1,
   "mean_mag_abs_tol": 0.07,
   "mesh": {
-    "adjacent_cell_ratio": 2.0,
     "base_dx_m": 0.001,
     "grading_ratio": 2.0,
-    "kind": "nonuniform_dy_profile_ratio"
+    "kind": "nonuniform_dy_profile_ratio",
+    "max_min_cell_ratio": 2.0
   },
   "num_periods": 60,
   "pairs": [

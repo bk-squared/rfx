@@ -25,10 +25,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
 from typing import Any
+
+# The waveguide port uses complex64 DFT accumulators; a global x64 flip causes a
+# scan-carry dtype mismatch (same guard cv11 sets). Must precede the jax import.
+os.environ.setdefault("JAX_ENABLE_X64", "0")
 
 import numpy as np
 import jax.numpy as jnp
@@ -167,7 +172,11 @@ def build(output_dir: Path) -> dict[str, Any]:
                 "ref_mag_range": [float(np.abs(ref).min()), float(np.abs(ref).max())],
                 "max_mag_abs_diff": pmax,
                 "mean_mag_abs_diff": pmean,
-                "status": "passed" if pmax <= MAX_MAG_ABS_TOL else "failed",
+                "status": (
+                    "passed"
+                    if pmax <= MAX_MAG_ABS_TOL and pmean <= MEAN_MAG_ABS_TOL
+                    else "failed"
+                ),
             })
 
     geometries = sorted({g for g, _ in GEOMETRY_COMPONENTS})
@@ -187,7 +196,7 @@ def build(output_dir: Path) -> dict[str, Any]:
             "PEC-short / dielectric-slab geometry axis "
             f"{'passes' if status == 'passed' else 'fails'} the broad-E4 magnitude "
             f"tolerance of {MAX_MAG_ABS_TOL}, on a graded transverse mesh "
-            f"(grading ratio {GRADING_RATIO}, adjacent-cell ratio {adj_ratio:.2f}:1)."
+            f"(grading ratio {GRADING_RATIO}, max/min cell ratio {adj_ratio:.2f}:1)."
         ),
         "claim_scope": (
             "broad external cross-solver magnitude comparison of the rfx "
@@ -209,7 +218,7 @@ def build(output_dir: Path) -> dict[str, Any]:
         "mesh": {
             "kind": "nonuniform_dy_profile_ratio",
             "grading_ratio": GRADING_RATIO,
-            "adjacent_cell_ratio": adj_ratio,
+            "max_min_cell_ratio": adj_ratio,
             "base_dx_m": DX,
         },
         "num_periods": NUM_PERIODS,

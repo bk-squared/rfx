@@ -66,7 +66,7 @@ def test_fixture_present_and_passed() -> None:
         assert tok not in lvl, f"blocking token {tok!r} in evidence_level"
     # It really is the NONUNIFORM lane (graded mesh), not a uniform re-run.
     assert env["mesh"]["kind"] == "nonuniform_dy_profile_ratio"
-    assert env["mesh"]["adjacent_cell_ratio"] > 1.0, env["mesh"]
+    assert env["mesh"]["max_min_cell_ratio"] > 1.0, env["mesh"]
 
 
 def test_gate_tolerances_pinned() -> None:
@@ -80,6 +80,7 @@ def test_committed_pairs_rederive_broad_e4_verdict() -> None:
     env = _env()
     pairs = env["pairs"]
     max_tol = env["max_mag_abs_tol"]
+    mean_tol = env["mean_mag_abs_tol"]
 
     # Coverage axes: the geometry axis must span empty + pec_short + slab, and
     # both S11 and S21 components must appear.
@@ -91,6 +92,9 @@ def test_committed_pairs_rederive_broad_e4_verdict() -> None:
     for p in pairs:
         assert p["status"] == "passed", p
         assert p["max_mag_abs_diff"] <= max_tol, p
+        # The gate is BOTH max<=0.10 AND mean<=0.07 (both enforced in the
+        # producer's per-pair status), so the "0.10/0.07" framing is real.
+        assert p["mean_mag_abs_diff"] <= mean_tol, p
 
     s = env["summary"]
     assert s["geometry_count"] == len(geoms)
