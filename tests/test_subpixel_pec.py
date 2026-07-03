@@ -1,10 +1,10 @@
 """TDD-first tests for Stage 1 conformal PEC face-shift (issue: WR-90
 mesh-conv xfail / staircase-vs-physical-aperture mismatch).
 
-The plan in ``docs/agent-memory/rfx-known-issues.md`` §"Stage 1 redesign"
-(2026-04-29) calls for a *boundary-face Box injection into the existing
-Dey-Mittra path*. The failing acceptance gates are split here into the
-smallest pieces that can be checked without running a full FDTD scan:
+The Stage 1 redesign plan (2026-04-29) calls for a *boundary-face Box
+injection into the existing Dey-Mittra path*. The failing acceptance
+gates are split here into the smallest pieces that can be checked
+without running a full FDTD scan:
 
 1. ``Boundary`` carries an opt-in ``conformal`` flag (default off).
 2. ``Boundary(conformal=True)`` is only valid on a PEC face.
@@ -658,7 +658,8 @@ def test_mesh_convergence_s21_with_conformal_pec():
     # "the NaN is gone" (clean tripwire), not "the tolerance happened to pass".
     assert np.all(np.isfinite(s21_values)), (
         f"conformal=True produced non-finite |S21| at fine dx: {s21_values} — "
-        "the known conformal-fine-dx NaN (see rfx-known-issues.md)."
+        "the known conformal-fine-dx NaN (see the conformal_nan preflight "
+        "warning and this test's xfail reason)."
     )
 
     coarse_delta = abs(s21_values[0] - s21_values[1])
@@ -686,13 +687,14 @@ def test_guardrail_conformal_normalize_emits_warning():
     normalize=True) must emit a UserWarning naming the known NaN
     instability.
 
-    Root cause (diagnosed 2026-05-24): the two-run normalization
-    extractor runs the empty-guide reference without conformal_weights
-    (Dey-Mittra eps_correction) while the device run uses them.  At
-    fine dx the asymmetric boundary treatment makes the reference
-    outgoing wave diverge / go NaN.  The guardrail fires before the
-    reference run so users get an actionable message instead of a
-    silent NaN.
+    Mechanism (2026-05-29, corrected from the falsified 2026-05-24
+    reference-asymmetry diagnosis): the Dey-Mittra conformal-PEC run
+    itself is intrinsically unstable at fine dx — the E-update-only
+    eps_eff=eps/w makes the update operator non-SPSD (discrete-
+    adjointness break), independent of the normalisation mode
+    (normalize=False also NaNs at dx=2 mm).  The guardrail fires before
+    the run so users get an actionable message (staircase PEC or a
+    coarser mesh) instead of a silent NaN.
 
     The test uses dx=3 mm (the coarsest mesh, finite at this
     resolution) so the run completes quickly; the warning is the
