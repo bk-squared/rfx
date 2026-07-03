@@ -10,7 +10,7 @@ from rfx.simulation import (
     run as _run, run_until_decay as _run_until_decay,
 )
 from rfx.sources.sources import LumpedPort, setup_lumped_port, WirePort, setup_wire_port
-from rfx.probes.probes import extract_s_matrix, extract_s_matrix_wire, init_dft_plane_probe, init_flux_monitor
+from rfx.probes.probes import init_dft_plane_probe, init_flux_monitor
 from rfx.sources.waveguide_port import (
     extract_waveguide_sparams,
     waveguide_plane_positions,
@@ -605,35 +605,41 @@ def run_uniform(
     s_params = None
     freqs_out = None
 
-    if compute_s_params and wire_ports and sim_result.wire_port_sparams:
-        # Extract S-params from JIT-accumulated DFTs (100x faster)
-        # NOTE: The JIT scan body accumulates V/I after source injection.
-        # For accurate S-params the Python-loop path
-        # (extract_s_matrix_wire) should be preferred; this fast path
-        # gives a usable but less accurate approximation.
+    _single_wire_fastpath = (
+        compute_s_params
+        and wire_ports
+        and not lumped_ports
+        and len(wire_ports) == 1
+        and bool(sim_result.wire_port_sparams)
+    )
+
+    if _single_wire_fastpath:
+        # SINGLE-port wire fast-path: the JIT main-scan V/I accumulators give
+        # the complete 1-port S-matrix (diagonal IS the full matrix), and this
+        # path is BETTER-CONDITIONED than the per-drive driver on lossless PEC
+        # cavities — it stays passive and byte-close to forward() in-band (the
+        # keystone contract in tests/test_run_forward_s11_contract.py). It is
+        # kept ONLY for the single-port case; MULTI-port wire routes through the
+        # driver below because this diagonal-only fill silently drops the
+        # off-diagonal S[i,j] (a 2-port wire S21 came out identically 0).
         n_wp = len(wire_ports)
         if s_param_freqs is None:
-            s_param_freqs = wire_ports[0].excitation.f0  # placeholder
-            # Use freqs from the first wire port spec
-            for wp_meta, accs in sim_result.wire_port_sparams:
+            for wp_meta, _accs in sim_result.wire_port_sparams:
                 s_param_freqs = np.array(wp_meta.freqs)
                 break
         freqs_out = np.array(s_param_freqs)
         n_freqs = len(freqs_out)
         S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.complex64)
-
         for j, (wp_meta, accs) in enumerate(sim_result.wire_port_sparams):
             v_dft, i_dft, _ = accs
             z0 = wp_meta.impedance
-            # Wave decomposition with FDTD sign convention (V = -E·dx)
+            # Wave decomposition with FDTD sign convention (V = -E·dx).
             a_j = (-v_dft + z0 * i_dft) / (2.0 * np.sqrt(z0))
             safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
             b_j = (-v_dft - z0 * i_dft) / (2.0 * np.sqrt(z0))
             S[j, j, :] = np.array(b_j / safe_a)
-
         s_params = S
     elif compute_s_params and (lumped_ports or wire_ports):
-        # Fall back to Python-loop extraction
         if s_param_freqs is None:
             s_param_freqs = jnp.linspace(
                 sim._freq_max / 10, sim._freq_max, 50,
@@ -644,34 +650,28 @@ def run_uniform(
         # extraction runs long enough for high-Q cavities to ring down.
         sp_n_steps = s_param_n_steps if s_param_n_steps is not None else n_steps
 
-        if wire_ports:
-            s_params = extract_s_matrix_wire(
-                grid, base_materials, wire_ports, s_param_freqs,
-                n_steps=sp_n_steps,
-                boundary=sim._boundary,
-                debye_spec=debye_spec,
-                lorentz_spec=lorentz_spec,
-                pec_mask=pec_mask,
-            )
-        else:
-            # item-5 Stage 3 (reroute-only): the LUMPED run() path now goes
-            # through the production-scan driver (= forward()'s graph) instead
-            # of the eager extract_s_matrix loop. The eager extractors are KEPT
-            # (diagnostics / openEMS-crossval tooling) but are no longer on the
-            # run() hot path. Consequence: run()-lumped now inherits forward()'s
-            # band-edge non-physical |S11|>1 on lossless PEC cavities (it was
-            # better-conditioned on the old eager path); the #210 passivity
-            # warning below correctly surfaces those unreliable band-edge bins.
-            # CPML run()-lumped stays byte-close (driver↔eager ~1e-6..1.5e-3).
-            from rfx.probes.sparam_driver import (
-                compute_lumped_wire_s_matrix_via_scan,
-            )
-            s_params, _ = compute_lumped_wire_s_matrix_via_scan(
-                sim, s_param_freqs, n_steps=sp_n_steps,
-            )
+        # item-5 Stage 4 (2026-07-03): lumped AND multi-port wire run() paths go
+        # through the production-scan driver (= forward()'s graph). Stage 3
+        # (#214) rerouted only lumped; this completes it for MULTI-port wire, so
+        # the eager extract_s_matrix / extract_s_matrix_wire loops are OFF the
+        # run() hot path (the #203/#205/#206 config-drift-class root — a
+        # hand-maintained second FDTD loop). They are KEPT for diagnostics /
+        # openEMS-crossval tooling. For multi-port wire this also FIXES the
+        # latent off-diagonal drop of the single-port fast-path above (its
+        # diagonal-only fill returned S21 = 0; the driver's
+        # decompose_wire_s_matrix fills the full N-port matrix, byte-close to
+        # the eager extractor on CPML — tests/test_sparam_driver_matches_eager).
+        # (The well-conditioned single-port wire case stays on the fast-path so
+        # the run()↔forward() PEC contract is preserved.)
+        from rfx.probes.sparam_driver import (
+            compute_lumped_wire_s_matrix_via_scan,
+        )
+        s_params, _ = compute_lumped_wire_s_matrix_via_scan(
+            sim, s_param_freqs, n_steps=sp_n_steps,
+        )
 
-        # Passivity self-check (tracer-safe) — surface non-physical |S11|>1 from
-        # the eager single-cell lumped/wire extractor, matching forward() and
+        # Passivity self-check (tracer-safe) — surface non-physical |S|>1 in the
+        # driver-extracted lumped/wire S-matrix, matching forward() and
         # compute_*_s_matrix (which previously had no such check on this path).
         if s_params is not None:
             from rfx.probes.probes import warn_if_nonpassive_lumped_s11

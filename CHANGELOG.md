@@ -6,6 +6,22 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — multi-port wire `run(compute_s_params=True)` S-matrix (item-5 Stage 4)
+
+- Multi-port wire ports now return the FULL S-matrix from `run(compute_s_params=True)`
+  on a uniform mesh. Previously the uniform fast-path filled only the diagonal
+  `S[j,j]` and silently dropped the off-diagonal (a 2-port wire `S21` came out
+  identically `0`); multi-port wire now routes through the production-scan driver
+  (`compute_lumped_wire_s_matrix_via_scan`), which fills the full matrix. The
+  well-conditioned single-port wire fast-path is unchanged.
+- **Behaviour change**: a MIXED lumped + wire port set with `compute_s_params=True`
+  now raises `NotImplementedError` (their wave-decomposition conventions differ)
+  instead of silently returning a wire-only diagonal matrix that dropped the
+  lumped ports. Use a homogeneous all-lumped or all-wire port set.
+- The eager `extract_s_matrix_wire` is no longer on the `run()` hot path (kept for
+  diagnostics / openEMS-crossval tooling), removing the last hand-maintained
+  second-FDTD-loop drift-class root (siblings of #203/#205/#206).
+
 ### Added — MSL S-parameters on non-uniform meshes (PRs #238, #239)
 
 - `compute_msl_s_matrix()` now runs on non-uniform (`dz_profile`/`dx_profile`/
