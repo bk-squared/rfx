@@ -670,8 +670,8 @@ def run_uniform(
             sim, s_param_freqs, n_steps=sp_n_steps,
         )
 
-        # Passivity self-check (tracer-safe) — surface non-physical |S11|>1 from
-        # the single-cell lumped/wire extractor, matching forward() and
+        # Passivity self-check (tracer-safe) — surface non-physical |S|>1 in the
+        # driver-extracted lumped/wire S-matrix, matching forward() and
         # compute_*_s_matrix (which previously had no such check on this path).
         if s_params is not None:
             from rfx.probes.probes import warn_if_nonpassive_lumped_s11
