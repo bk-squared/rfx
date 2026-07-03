@@ -563,7 +563,8 @@ def minimize_s11_at_freq(
         "minimize_s11_at_freq uses a time-gating heuristic that is biased "
         "for short-round-trip antennas (issue #72). Prefer "
         "minimize_s11_at_freq_wave_decomp + "
-        "Simulation.forward(port_s11_freqs=...).",
+        "Simulation.forward(port_s11_freqs=...). "
+        "It will be removed in rfx v2.0.",
         DeprecationWarning,
         stacklevel=2,
     )

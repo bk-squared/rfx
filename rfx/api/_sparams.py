@@ -1548,7 +1548,8 @@ class _SparamMixin:
         warnings.warn(
             "compute_coaxial_s_matrix() (single-plane V/I in a closed PEC box) is "
             "deprecated and reports non-physical |S11|>1 for a lossless short; use "
-            "compute_coaxial_line_reflection() (validated coax-line method).",
+            "compute_coaxial_line_reflection() (validated coax-line method). "
+            "It will be removed in rfx v2.0.",
             DeprecationWarning,
             stacklevel=2,
         )

@@ -14,7 +14,7 @@ For evidence status and hard envelopes, see [docs/guides/sparameter_support_matr
 | Device class | Primitive | Compute path | Status | Hard limit / envelope |
 |---|---|---|---|---|
 | Rectangular waveguide | `add_waveguide_port` | `compute_waveguide_s_matrix` | E5-narrow (current port) | Multi-port S-matrix; requires at least two waveguide ports. Single-mode; validated empty-guide, PEC-short, slab analytic + external references including Meep/OpenEMS/Palace. |
-| Microstrip / MSL | `add_msl_port` | `compute_msl_s_matrix` | E5-narrow / eigenmode-blocked | Thru-line `\|S21\|` / `Z0` gate; notch error 1.63% and depth −34.3 dB (cv06b). Eigenmode and nonuniform paths remain blocked. |
+| Microstrip / MSL | `add_msl_port` | `compute_msl_s_matrix` | E5-narrow / eigenmode-blocked | Thru-line `\|S21\|` / `Z0` gate; notch error 1.63% and depth −34.3 dB (cv06b — single-run figures; the committed gate is looser: error <15%, depth <−10 dB). Eigenmode is a falsified dead-end (fenced); the non-uniform graded-mesh lane runs via the laplace feed (internally gated, external validation still owed). |
 | Coaxial (promoted path) | `add_coaxial_port` | `compute_coaxial_line_reflection` | broad-E5 physics demonstrated — evidence NOT committed (clean-checkout audit BLOCKED) | One-port transmission-line reflection path. Broad-E5 physics was demonstrated (analytic Γ envelope over short/open/matched and resistive loads 25 Ω / 100 Ω, two characteristic impedances, mesh-resolution sweep; `max \|Γ\|` dev 0.037 ≤ 0.05) plus independent Meep broad-E4 cross-check 4–12 GHz. However, evidence artifacts live in gitignored `.omx/`; clean-checkout audit reports `coaxial_port` BLOCKED — re-validation pending validation-framework rework. |
 | Coaxial (deprecated path) | `add_coaxial_port` | `compute_coaxial_s_matrix` (**deprecated / experimental**) | E2/E3 development path only | Older single-plane V/I path retained for compatibility. Can report non-physical `\|S11\| > 1` for lossless shorts. **Do not use as the claims surface for coaxial S-parameters.** |
 | Lumped / RLC excitation | `add_lumped_rlc` / `add_port` | `Simulation.run(compute_s_params=True, ...)` or `Simulation.forward(port_s11_freqs=...)` | E2/E3 partial (lumped), E0/E1 (forward S11) | Lumped-port envelope for V/I extraction. Nonuniform lumped-port S-parameter extraction is not within the current validated envelope. `compute_s_params` path is only for `add_port` simulations. |
@@ -25,7 +25,7 @@ For evidence status and hard envelopes, see [docs/guides/sparameter_support_matr
 ## Decision Tree
 
 1. **Rectangular waveguide** → `add_waveguide_port` + `compute_waveguide_s_matrix`. Needs two or more ports for a full S-matrix.
-2. **Microstrip / MSL guided line** → `add_msl_port` + `compute_msl_s_matrix`. Eigenmode and nonuniform paths blocked.
+2. **Microstrip / MSL guided line** → `add_msl_port` + `compute_msl_s_matrix`. Use the default `mode="laplace"` feed (works on uniform and non-uniform meshes; the non-uniform lane is internally gated, externally unvalidated). `mode="eigenmode"` is fenced (falsified dead-end).
 3. **Coaxial** → `add_coaxial_port` + `compute_coaxial_line_reflection`. This is the only promoted coaxial claims surface. Do **not** use `compute_coaxial_s_matrix`.
 4. **Lumped component or discrete terminal** → `add_lumped_rlc` or `add_port`. Keep results within the lumped-port interpretation; this is not a waveguide or coaxial S-matrix path.
 5. **Free-space incident field** → `add_tfsf_source`. No port calibration applies.

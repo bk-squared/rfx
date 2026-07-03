@@ -6,6 +6,35 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — MSL S-parameters on non-uniform meshes (PRs #238, #239)
+
+- `compute_msl_s_matrix()` now runs on non-uniform (`dz_profile`/`dx_profile`/
+  `dy_profile`) meshes with the default `mode="laplace"` (and `"uniform"`) feed,
+  routed through the non-uniform runner. `mode="eigenmode"` on a non-uniform
+  mesh raises `NotImplementedError` (previously ALL non-uniform meshes were
+  rejected). The extractor math (probe abscissae, transverse integrals) is
+  NonUniformGrid-aware (#238); uniform-mesh results are byte-identical.
+  Scope: the NU lane is internally gated (settled-S11 GPU physics gate,
+  `tests/test_msl_nu_sparam_gate.py`); external cross-solver validation of the
+  NU lane is still outstanding — see `docs/guides/sparameter_support_matrix.md`.
+
+### Fixed — MSL V·I current DFT leapfrog half-step (PR #240)
+
+- The MSL port's Hy/Hz current DFT now applies the Yee leapfrog `exp(+jω·dt/2)`
+  half-step correction (H fields live at half-integer time steps). Reported MSL
+  S-parameters change slightly (~0.3–0.7° phase-scale at typical resolutions).
+
+### Deprecated — removal slated for rfx v2.0
+
+- `compute_coaxial_s_matrix()` (single-plane V/I in a closed PEC box; reports
+  non-physical `|S11| > 1` for a lossless short) — use
+  `compute_coaxial_line_reflection()` (validated coax-line method).
+- `minimize_s11_at_freq()` (time-gating heuristic biased for short-round-trip
+  antennas, issue #72) — use `minimize_s11_at_freq_wave_decomp` +
+  `Simulation.forward(port_s11_freqs=...)`.
+- (Matching the existing v2.0 removal notices on `pec_faces=` and
+  `set_periodic_axes()`.)
+
 ### Added — AD-memory planning explainability (PR #231; diagnostic/planning-only, no numerics-path change)
 
 - `Simulation.explain_ad_memory(...)` decomposes the selected AD-memory estimate

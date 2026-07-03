@@ -76,7 +76,7 @@
       "required_scope": "broad_e5",
       "current_status": "narrow_e5_passed_broad_blocked",
       "recommended_vessl_shard_id": "port_external_msl_broad",
-      "recommended_reference": "openEMS/Palace MSL thru/notch/eigenmode/nonuniform envelope",
+      "recommended_reference": "openEMS/Palace MSL thru/notch/nonuniform envelope (laplace feed; eigenmode retired as a falsified dead-end)",
       "existing_artifacts": [
         ".omx/physics-gate/2026-05-09-m10-msl-e5-narrow-envelope/msl_envelope_report.json",
         ".omx/physics-gate/vessl-2026-05-09-m3/msl_openems_reference/msl_openems_comparison.json"
@@ -87,11 +87,10 @@
         "scripts/physics_gate_port_external_msl_broad.yaml"
       ],
       "missing_evidence": [
-        "eigenmode MSL source/extractor validation",
-        "nonuniform MSL S-parameter validation",
+        "nonuniform MSL S-parameter external validation (laplace-feed NU lane shipped PR #239, internally gated only)",
         "broader substrate/mesh/frequency envelope"
       ],
-      "notes": "Existing openEMS evidence supports the narrow laplace/quasi-TEM lane only.",
+      "notes": "Existing openEMS evidence supports the narrow laplace/quasi-TEM lane only. Scope decision 2026-05-05 (recorded 2026-07-03): the eigenmode source is a falsified dead-end and is RETIRED from the evidence requirements — it is not owed evidence; laplace is the supported lane.",
       "external_comparison_artifacts": [
         ".omx/physics-gate/2026-05-09-m29-msl-openems-generic-comparison/msl_openems_generic_sparameter_comparison.json"
       ],
