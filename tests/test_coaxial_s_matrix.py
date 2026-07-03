@@ -1,10 +1,12 @@
-"""Tests for the experimental ``compute_coaxial_s_matrix`` API.
+"""Tests for the DEPRECATED ``compute_coaxial_s_matrix`` API.
 
-These tests exercise the M67 distributed TEM plane-source scaffold once
-promoted into ``Simulation.compute_coaxial_s_matrix``. The scaffold is
-documented as **experimental**: per-frequency |S11| numerics are not yet
-calibrated against analytic PEC-cavity reflection or external openEMS
-fixtures. The tests focus on:
+``compute_coaxial_s_matrix`` (single-plane V/I in a closed PEC box) is
+deprecated — it emits a ``DeprecationWarning`` and reports non-physical
+|S11| > 1 on lossless shorts (measured 1.02–1.16 on the PEC-short fixture
+here). The validated replacement is ``compute_coaxial_line_reflection``
+(coax-line method; see ``tests/test_coaxial_line_calibration.py``). These
+tests are retained as plumbing/regression guards for the deprecated path
+until its removal. They focus on:
 
 - API/schema contract (shape, types, status field)
 - Family-routing rejection (mixing port families)
@@ -13,11 +15,11 @@ fixtures. The tests focus on:
   values)
 - Validation contract on the returned ``CoaxialSMatrixResult``
 
-Calibrated PEC-short / matched-load / open / load gates against an external
-solver are tracked separately as the next promotion step (M71-> calibrated
-fixture). They are intentionally **not** wired into pytest because they
-would otherwise mark the experimental API as physics-validated by
-test-pass-alone, which the physics-validation evidence rule forbids.
+Calibrated physics gates live with the validated coax-line method
+(``tests/test_coaxial_line_calibration.py``), NOT here — wiring physics
+gates onto the deprecated single-plane path would mark it as
+physics-validated by test-pass-alone, which the physics-validation
+evidence rule forbids.
 """
 
 from __future__ import annotations
@@ -94,10 +96,14 @@ def test_returns_finite_complex_smatrix_with_reasonable_magnitude():
     sim = _make_one_port_sim()
     res = sim.compute_coaxial_s_matrix(n_steps=200, n_freqs=3)
     assert np.all(np.isfinite(res.s_params))
-    # PEC cavity feed cannot leak more than the source amplitude. We do not
-    # require |S11| ≈ 1 here because the plane source is forward-only and
-    # the M67 scaffold is documented as not yet calibrated.
-    assert float(np.max(np.abs(res.s_params))) < 5.0
+    # Smoke envelope (W3.5, tightened 5.0 → 1.5 with measured margins):
+    # measured max|S| = 0.879 on this fixture (2026-07-03). NOT a passivity
+    # gate (≤1) — the deprecated single-plane V/I method non-physically
+    # exceeds 1 on lossless shorts (see the DeprecationWarning), so 1.5 is
+    # the envelope that keeps headroom over the measured values across all
+    # three smoke fixtures (0.88 / 1.16 / 1.14) while still catching the
+    # plumbing blowups that the old 5.0 bound would have let through.
+    assert float(np.max(np.abs(res.s_params))) < 1.5
 
 
 def test_validation_helper_normalizes_coaxial_result():
@@ -219,7 +225,11 @@ def test_pec_short_smoke_returns_finite_values():
     s11 = res.s_params[0, 0, :]
     assert np.all(np.isfinite(s11))
     mag = np.abs(s11)
-    assert float(np.max(mag)) < 5.0
+    # W3.5 smoke envelope: measured max|S11| = 1.158 on this fixture
+    # (2026-07-03; >1 is the documented non-physical behaviour of the
+    # deprecated single-plane V/I method on a lossless short). 1.5 keeps
+    # ~30% headroom while catching plumbing blowups.
+    assert float(np.max(mag)) < 1.5
     assert float(np.max(mag)) > 0.0
 
 
@@ -325,7 +335,9 @@ def test_open_termination_helpers_run_without_error():
     res = sim.compute_coaxial_s_matrix(n_steps=400, n_freqs=5)
     s11 = res.s_params[0, 0, :]
     assert np.all(np.isfinite(s11))
-    assert float(np.max(np.abs(s11))) < 5.0
+    # W3.5 smoke envelope: measured max|S11| = 1.144 on this fixture
+    # (2026-07-03) — same 1.5 envelope rationale as the other smoke gates.
+    assert float(np.max(np.abs(s11))) < 1.5
     # The result must differ from a vanilla (no-helper) PEC short — if it
     # didn't, the helpers would be no-ops.
     sim_short = Simulation(
