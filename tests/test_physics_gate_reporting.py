@@ -730,20 +730,21 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     # is the only current_status=broad_e5_passed family and its broad-E4 + broad-E5
     # artifacts ARE committed (tests/fixtures/, PR #181). coaxial_port was
     # downgraded from broad_e5_passed -> broad_e5_demonstrated_evidence_uncommitted
-    # (validation-framework honesty pass): its evidence is gitignored .omx/ and the
-    # clean-checkout audit reports it BLOCKED, so it no longer CLAIMS broad-E5 and
-    # therefore no longer "owes" a broad-E4/E5 artifact. It is still counted among
-    # the families missing a passed *comparison* artifact (count 6 above) and stays
-    # in `incomplete` below.
+    # (validation-framework honesty pass): the clean-checkout audit reports it
+    # BLOCKED, so it no longer CLAIMS broad-E5 and therefore no longer "owes" a
+    # broad-E4/E5 artifact. Its broad-E5 envelope (PR #256) AND broad-E4 Meep
+    # comparison (PR #259) are now committed, so coaxial_port has DROPPED OUT of
+    # the missing-passed-comparison set (count 5 above) — yet it stays
+    # `incomplete` below on the null ad_fd_test alone.
     assert audit["missing_broad_e4_comparison_artifact_count"] == 0
     assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == []
     assert audit["missing_broad_e5_envelope_artifact_count"] == 0
     # 6 = the 5 rectangular-waveguide band envelopes (PR #181) + the coaxial
     # line envelope committed to tests/fixtures/coax_broad_e5/ (PR #256 —
     # regenerated vs analytic TL with a machine-readable envelope_summary).
-    # coaxial_port still stays `incomplete` below: its external COMPARISON
-    # artifacts (Meep broad-E4, m35) remain uncommitted and its ad_fd_test is
-    # null, so committing the envelope class does not flip the family.
+    # coaxial_port still stays `incomplete` below: with both its broad-E5
+    # envelope AND broad-E4 Meep comparison now committed, the SOLE remaining
+    # blocker is its null ad_fd_test (no AD-traceable reflection extractor).
     assert audit["passed_broad_e5_envelope_artifact_count"] == 6
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}
