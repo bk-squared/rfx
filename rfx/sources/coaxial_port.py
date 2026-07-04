@@ -1520,7 +1520,7 @@ def coaxial_line_plane_voltage_jnp(
     """Differentiable ``jax.numpy`` modal TEM voltage ``V = ∫ E_r dr`` at a z-plane.
 
     jnp-native counterpart of :func:`coaxial_line_plane_voltage` for the AD path
-    (``compute_coaxial_line_reflection(eps_override=...)``). The radial sample
+    (``compute_coaxial_line_reflection(eps_scale=...)``). The radial sample
     geometry and the bilinear-interpolation weights are STATIC (grid coordinates,
     concrete NumPy); only ``ex_dft`` (the DFT E-field plane) carries the tape.
     Byte-close to the numpy path (difference is float reassociation in the

@@ -2010,9 +2010,14 @@ class _SparamMixin:
                     if termination == "matched"
                     else jnp.asarray(np.nan + 1j * np.nan)
                 )
-            # Status from concrete geometry only (rec_resid is traced here; the
-            # contamination check is a concrete-path diagnostic).
-            status = "under_resolved" if annulus_cells < 3.5 else "passed"
+            # Status from concrete geometry only. NOTE: unlike the concrete path,
+            # the traced rec_resid>0.1 "contaminated" check is NOT evaluated here
+            # (can't Python-branch on a tracer), so ``"passed"`` on the eps_scale
+            # path means geometry-resolved, NOT fit-clean — inspect
+            # ``recurrence_residual`` (returned) if you need the contamination
+            # signal. ``"differentiable"`` flags the AD path so it is not confused
+            # with a fully-gated concrete ``"passed"``.
+            status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
             return CoaxialLineReflectionResult(
                 s11=jnp.stack(s11_c),
                 freqs=jnp.asarray(freqs),
