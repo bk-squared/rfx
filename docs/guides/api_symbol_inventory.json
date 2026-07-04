@@ -2399,7 +2399,8 @@
       "probe_start_cells",
       "probe_spacing_cells",
       "feed_impedance",
-      "dut_impedance"
+      "dut_impedance",
+      "eps_scale"
     ],
     "compute_coaxial_s_matrix": [
       "n_steps",

@@ -65,13 +65,12 @@ AD_CLASSIFICATION = {
         "deprecated single-plane V/I path; numpy extraction, no differentiable input",
     ),
     "Simulation.compute_coaxial_line_reflection": (
-        NOT_TRACEABLE,
-        "method-level: concretizes the DFT fields in coaxial_line_plane_voltage "
-        "(np.asarray) and exposes no traced design DoF, so grad(S) w.r.t. a design "
-        "variable is not wired. The reflection EXTRACTOR "
-        "(coaxial_line_reflection_from_plane_voltages) is now jax.numpy-traceable "
-        "— verified empirically by test_coaxial_reflection_extraction_is_traceable "
-        "in this file; end-to-end differentiable coax design is a separate feature",
+        GRAD_SAFE,
+        "end-to-end differentiable via the eps_scale design channel — grad flows "
+        "eps_scale -> FDTD -> DFT plane accumulators -> modal voltage "
+        "(coaxial_line_plane_voltage_jnp) -> matrix-pencil reflection -> Gamma; "
+        "composition AD-vs-FD gate: "
+        "tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent",
     ),
     # --- top-level exports --------------------------------------------------
     "compute_error_indicator": (
