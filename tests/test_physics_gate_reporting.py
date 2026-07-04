@@ -715,33 +715,36 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["broad_e5_envelope_artifact_coverage_status"] == "blocked"
     assert audit["required_surface_family_count"] == 7
     assert audit["missing_manifest_family_count"] == 0
-    # rectangular_waveguide_port broad-E5 evidence is now COMMITTED to tracked
-    # tests/fixtures/waveguide_broad_e5/ (PR #181): 5 analytic-Airy band envelopes
-    # + an rfx-vs-Palace-FEM broad-E4 comparison, all present on a clean checkout.
-    # So exactly 1 family has a passed comparison + passed broad-E4 artifact and 5
-    # passed broad-E5 envelope artifacts; the other 6 required families are still
-    # missing a passed comparison artifact on a clean (no-.omx/) checkout.
-    assert audit["missing_passed_comparison_artifact_count"] == 6
-    assert audit["passed_comparison_artifact_count"] == 1
-    assert audit["passed_broad_e4_comparison_artifact_count"] == 1
+    # TWO families now have a committed passing external comparison on a clean
+    # checkout: rectangular_waveguide_port (rfx-vs-Palace FEM, PR #181) and
+    # coaxial_port (rfx-vs-Meep power-flux broad-E4, VESSL 369367245835 recommit
+    # 2026-07-04, tests/fixtures/coax_broad_e4/). So 2 families have a passed
+    # comparison + passed broad-E4 artifact; the other 5 required families are
+    # still missing a passed comparison artifact on a clean (no-.omx/) checkout.
+    # coaxial_port still stays `incomplete` below — its ad_fd_test is null (no
+    # AD-traceable extractor), so committing the E4 comparison does not flip it.
+    assert audit["missing_passed_comparison_artifact_count"] == 5
+    assert audit["passed_comparison_artifact_count"] == 2
+    assert audit["passed_broad_e4_comparison_artifact_count"] == 2
     # No family is now MISSING a broad-E4/E5 artifact. rectangular_waveguide_port
     # is the only current_status=broad_e5_passed family and its broad-E4 + broad-E5
     # artifacts ARE committed (tests/fixtures/, PR #181). coaxial_port was
     # downgraded from broad_e5_passed -> broad_e5_demonstrated_evidence_uncommitted
-    # (validation-framework honesty pass): its evidence is gitignored .omx/ and the
-    # clean-checkout audit reports it BLOCKED, so it no longer CLAIMS broad-E5 and
-    # therefore no longer "owes" a broad-E4/E5 artifact. It is still counted among
-    # the families missing a passed *comparison* artifact (count 6 above) and stays
-    # in `incomplete` below.
+    # (validation-framework honesty pass): the clean-checkout audit reports it
+    # BLOCKED, so it no longer CLAIMS broad-E5 and therefore no longer "owes" a
+    # broad-E4/E5 artifact. Its broad-E5 envelope (PR #256) AND broad-E4 Meep
+    # comparison (PR #259) are now committed, so coaxial_port has DROPPED OUT of
+    # the missing-passed-comparison set (count 5 above) — yet it stays
+    # `incomplete` below on the null ad_fd_test alone.
     assert audit["missing_broad_e4_comparison_artifact_count"] == 0
     assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == []
     assert audit["missing_broad_e5_envelope_artifact_count"] == 0
     # 6 = the 5 rectangular-waveguide band envelopes (PR #181) + the coaxial
     # line envelope committed to tests/fixtures/coax_broad_e5/ (PR #256 —
     # regenerated vs analytic TL with a machine-readable envelope_summary).
-    # coaxial_port still stays `incomplete` below: its external COMPARISON
-    # artifacts (Meep broad-E4, m35) remain uncommitted and its ad_fd_test is
-    # null, so committing the envelope class does not flip the family.
+    # coaxial_port still stays `incomplete` below: with both its broad-E5
+    # envelope AND broad-E4 Meep comparison now committed, the SOLE remaining
+    # blocker is its null ad_fd_test (no AD-traceable reflection extractor).
     assert audit["passed_broad_e5_envelope_artifact_count"] == 6
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}

@@ -182,6 +182,23 @@ def build(output_dir: Path, *, meep_artifact_dir: Path, freqs: np.ndarray,
             f"broad-E5 envelope (see {E5_ENVELOPE_CITATION}) rather than MEEP, because "
             "matched is 0-by-construction in a PML-terminated line and a 1-cell MEEP "
             "resistive sheet merely re-tests rfx's own resistor stamp (staircase-sensitive)."),
+        # Machine-readable breadth summary the auditor's _comparison_breadth_ok
+        # fails-closed without (short/open = the termination geometry axis).
+        "summary": {
+            "geometry_count": len(per_term),
+            "geometries": [p["termination"] for p in per_term],
+            "pair_count": len(per_term),
+            "passed_pair_count": sum(
+                1 for p in per_term
+                if p["term_status"] == "passed" and p["rfx_status"] == "passed"
+            ),
+            "failed_pair_count": sum(
+                1 for p in per_term
+                if not (p["term_status"] == "passed" and p["rfx_status"] == "passed")
+            ),
+            "max_mag_abs_diff": round(worst_max, 4),
+            "mean_mag_abs_diff": round(worst_mean, 4),
+        },
         "cross_solver_max_mag_abs_diff": round(worst_max, 4),
         "cross_solver_mean_mag_abs_diff": round(worst_mean, 4),
         "tolerances": {"max_mag_abs_tol": 0.10, "mean_mag_abs_tol": 0.06},

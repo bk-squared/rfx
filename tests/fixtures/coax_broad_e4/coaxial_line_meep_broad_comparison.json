@@ -1,0 +1,92 @@
+{
+  "claim": "rfx Simulation.compute_coaxial_line_reflection |Gamma| agrees with an independent MEEP power-flux full-wave coax line to <= 0.063 (mean <= 0.024) across a broad 4-12 GHz band for the short/open (|Gamma|=1) full-reflection calibration terminations; rfx single-TEM-mode recurrence residual <= 0.0037.",
+  "claim_scope": "broad external full-wave cross-validation of the promoted rfx coaxial_port line reflection API against an independent MEEP power-flux coax LINE over a frequency axis (4-12 GHz) and the short/open full-reflection calibration terminations (|Gamma| = 1); |Gamma| magnitude comparison (reference-plane independent for the lossless line). The matched (|Gamma|=0) and resistive 25/100 ohm (|Gamma|=0.32/0.35) terminations are covered by the exact-analytic broad-E5 envelope (see coax_line_broad_e5_envelope.json) rather than MEEP, because matched is 0-by-construction in a PML-terminated line and a 1-cell MEEP resistive sheet merely re-tests rfx's own resistor stamp (staircase-sensitive).",
+  "cross_solver_max_mag_abs_diff": 0.0628,
+  "cross_solver_mean_mag_abs_diff": 0.0235,
+  "evidence_level": "E4-broad-coaxial-line-termination-meep-fdtd-comparison",
+  "generated_at": "2026-07-04T08:37:22.897789+00:00",
+  "per_termination": [
+    {
+      "gamma_analytic_mag": 1.0,
+      "max_mag_abs_diff": 0.0628,
+      "meep_abs_gamma": [
+        0.9421,
+        1.006,
+        0.9989,
+        1.0004,
+        0.9998,
+        1.0002,
+        0.9996,
+        1.0012,
+        0.996
+      ],
+      "rfx_abs_gamma": [
+        1.0049,
+        1.0098,
+        1.0096,
+        1.027,
+        1.0112,
+        1.0216,
+        1.0161,
+        1.0358,
+        1.0202
+      ],
+      "rfx_recurrence_residual_max": 0.00207,
+      "rfx_status": "passed",
+      "term_status": "passed",
+      "termination": "short"
+    },
+    {
+      "gamma_analytic_mag": 1.0,
+      "max_mag_abs_diff": 0.0491,
+      "meep_abs_gamma": [
+        0.9489,
+        1.0051,
+        0.9991,
+        1.0003,
+        0.9998,
+        1.0002,
+        0.9996,
+        1.0012,
+        0.9947
+      ],
+      "rfx_abs_gamma": [
+        0.998,
+        0.9985,
+        0.9976,
+        1.0028,
+        0.9967,
+        1.0071,
+        0.9938,
+        0.9974,
+        0.9826
+      ],
+      "rfx_recurrence_residual_max": 0.00375,
+      "rfx_status": "passed",
+      "term_status": "passed",
+      "termination": "open"
+    }
+  ],
+  "resistive_loads_reference": "coax_line_broad_e5_envelope.json",
+  "rfx_recurrence_residual_max": 0.00375,
+  "schema": "rfx.coaxial_line_meep_broad_comparison",
+  "schema_version": 1,
+  "status": "passed",
+  "stub": false,
+  "summary": {
+    "failed_pair_count": 0,
+    "geometries": [
+      "short",
+      "open"
+    ],
+    "geometry_count": 2,
+    "max_mag_abs_diff": 0.0628,
+    "mean_mag_abs_diff": 0.0235,
+    "pair_count": 2,
+    "passed_pair_count": 2
+  },
+  "tolerances": {
+    "max_mag_abs_tol": 0.1,
+    "mean_mag_abs_tol": 0.06
+  }
+}
