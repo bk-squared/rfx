@@ -445,7 +445,7 @@ def test_sparameter_claim_audit_expected_family_levels_are_current():
     )
     assert (
         sparameter_claim_audit.EXPECTED_FAMILY_LEVELS["coaxial_port"]
-        == "E2-sweep/E3/E4-gap/no-sparam"
+        == "E5-broad/E4-broad/differentiable"
     )
 
 
@@ -721,36 +721,31 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     # 2026-07-04, tests/fixtures/coax_broad_e4/). So 2 families have a passed
     # comparison + passed broad-E4 artifact; the other 5 required families are
     # still missing a passed comparison artifact on a clean (no-.omx/) checkout.
-    # coaxial_port still stays `incomplete` below — its ad_fd_test is null (no
-    # AD-traceable extractor), so committing the E4 comparison does not flip it.
+    # coaxial_port is now broad_e5_passed (2026-07-04): PR #260 made the reflection
+    # extractor AD-traceable, PR #261 added the eps_scale end-to-end differentiable
+    # channel, and this promotion wired the passing ad_fd_test + flipped
+    # current_status. It is NO LONGER in the incomplete set below.
     assert audit["missing_passed_comparison_artifact_count"] == 5
     assert audit["passed_comparison_artifact_count"] == 2
     assert audit["passed_broad_e4_comparison_artifact_count"] == 2
-    # No family is now MISSING a broad-E4/E5 artifact. rectangular_waveguide_port
-    # is the only current_status=broad_e5_passed family and its broad-E4 + broad-E5
-    # artifacts ARE committed (tests/fixtures/, PR #181). coaxial_port was
-    # downgraded from broad_e5_passed -> broad_e5_demonstrated_evidence_uncommitted
-    # (validation-framework honesty pass): the clean-checkout audit reports it
-    # BLOCKED, so it no longer CLAIMS broad-E5 and therefore no longer "owes" a
-    # broad-E4/E5 artifact. Its broad-E5 envelope (PR #256) AND broad-E4 Meep
-    # comparison (PR #259) are now committed, so coaxial_port has DROPPED OUT of
-    # the missing-passed-comparison set (count 5 above) — yet it stays
-    # `incomplete` below on the null ad_fd_test alone.
+    # No family is MISSING a broad-E4/E5 artifact. TWO families are now
+    # current_status=broad_e5_passed: rectangular_waveguide_port (PR #181) and
+    # coaxial_port (broad-E5 envelope PR #256 + broad-E4 Meep PR #259 + the
+    # ad_fd_test wired by this promotion). Both have their broad-E4 + broad-E5
+    # artifacts committed under tests/fixtures/.
     assert audit["missing_broad_e4_comparison_artifact_count"] == 0
     assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == []
     assert audit["missing_broad_e5_envelope_artifact_count"] == 0
     # 6 = the 5 rectangular-waveguide band envelopes (PR #181) + the coaxial
-    # line envelope committed to tests/fixtures/coax_broad_e5/ (PR #256 —
-    # regenerated vs analytic TL with a machine-readable envelope_summary).
-    # coaxial_port still stays `incomplete` below: with both its broad-E5
-    # envelope AND broad-E4 Meep comparison now committed, the SOLE remaining
-    # blocker is its null ad_fd_test (no AD-traceable reflection extractor).
+    # line envelope committed to tests/fixtures/coax_broad_e5/ (PR #256).
     assert audit["passed_broad_e5_envelope_artifact_count"] == 6
+    # status stays "blocked" because lumped/wire (E4-natural-ceiling) + floquet
+    # remain incomplete; coaxial_port is NO LONGER among them.
     assert audit["status"] == "blocked"
     incomplete = {item["family"]: item for item in audit["incomplete"]}
     assert "lumped_port" in incomplete
     assert "wire_port" in incomplete
-    assert "coaxial_port" in incomplete
+    assert "coaxial_port" not in incomplete  # promoted to broad_e5_passed 2026-07-04
     assert "floquet_port" in incomplete
     assert "update_goal" in audit["completion_decision"]
 
@@ -2270,7 +2265,7 @@ def test_every_family_declares_target_ceiling_and_usage_rule():
     assert flag["rectangular_waveguide_port"] is True
     assert flag["lumped_port"] is False
     assert flag["wire_port"] is False
-    assert flag["coaxial_port"] is False
+    assert flag["coaxial_port"] is True  # target_ceiling broad-E5 after promotion
 
 
 def test_real_manifest_broad_e5_family_survives_require_committed():

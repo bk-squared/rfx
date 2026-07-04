@@ -16,7 +16,7 @@ EXPECTED_FAMILY_LEVELS = {
     "wire_port": "E2/E3/E4-partial",
     "microstrip_line_port": "E5-narrow/eigenmode-blocked",
     "rectangular_waveguide_port": "E5-narrow",
-    "coaxial_port": "E2-sweep/E3/E4-gap/no-sparam",
+    "coaxial_port": "E5-broad/E4-broad/differentiable",
     "floquet_port": "E2/E3-modal/slab-analytic/no-promoted-api",
     "soft_current_source": "not_a_port",
     "tfsf_plane_wave_source": "not_a_port",
