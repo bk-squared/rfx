@@ -1801,6 +1801,7 @@ class _SparamMixin:
         probe_spacing_cells: int = 4,
         feed_impedance: float | None = None,
         dut_impedance: float | None = None,
+        eps_scale: "jnp.ndarray | float | None" = None,
     ) -> "CoaxialLineReflectionResult":
         """One-port coaxial reflection on a real transmission line (broad-E5).
 
@@ -1823,6 +1824,20 @@ class _SparamMixin:
 
         The conductors deliberately stop ~2 cells short of the +z PML — running
         PEC into CPML is numerically unstable.
+
+        Differentiable (``eps_scale``)
+        ------------------------------
+        Pass ``eps_scale`` (a scalar or ``(nx, ny, nz)`` ``jnp`` array) to make
+        the reflection differentiable w.r.t. the dielectric under ``jax.grad``.
+        It MULTIPLIES the stamped ``eps_r`` (``eps_r <- eps_r * eps_scale``),
+        applied AFTER the numpy conductor/dielectric stamps so the fixed geometry
+        (PTFE fill in ``eps_r``, PEC pin/shell in ``sigma``) is preserved and only
+        modulated — a well-conditioned design channel (unlike replacing the fill
+        with air). When provided, the field→voltage→reflection assembly runs on
+        the ``jax.numpy`` path (``coaxial_line_plane_voltage_jnp`` + the traced
+        extractor) so the gradient flows design → FDTD → DFT planes → Γ. With
+        ``eps_scale=None`` the result is byte-identical to the validated numpy
+        path. The AD↔FD gate is ``tests/test_coax_end_to_end_ad.py``.
         """
 
         from rfx.probes.probes import init_dft_plane_probe
@@ -1831,6 +1846,7 @@ class _SparamMixin:
             CoaxialPort as _CoaxPort,
             build_coaxial_tem_plane_source_specs,
             coaxial_line_plane_voltage,
+            coaxial_line_plane_voltage_jnp,
             coaxial_line_reflection_from_plane_voltages,
             coaxial_tem_characteristic_impedance,
             stamp_coaxial_line,
@@ -1919,6 +1935,12 @@ class _SparamMixin:
             )
         # "open": conductors simply end at z_dut (open circuit) — no extra stamp.
 
+        # Differentiable design channel: applied AFTER the (numpy) stamps as a
+        # MULTIPLIER so the stamped dielectric (PTFE fill) + PEC (in sigma) are
+        # preserved and only modulated — well-conditioned (vs replacing the fill).
+        if eps_scale is not None:
+            materials = materials._replace(eps_r=materials.eps_r * jnp.asarray(eps_scale))
+
         if freqs is None:
             freqs = jnp.linspace(
                 0.1 * self._freq_max, 0.6 * self._freq_max, int(n_freqs), dtype=jnp.float32
@@ -1956,6 +1978,54 @@ class _SparamMixin:
 
         # Modal voltage V(z) at every probe plane, per frequency.
         n_f = int(freqs.shape[0])
+        z_planes_m = np.array([(z - grid.pad_z_lo) * dz for z in probes_z], dtype=np.float64)
+        ref_m = (z_dut - grid.pad_z_lo) * dz
+        annulus_cells = float((b - a) / dz)
+
+        if eps_scale is not None:
+            # --- differentiable path: jnp voltage + traced extractor (AD moat) ---
+            # Gradient flows: eps_scale -> Yee update -> DFT plane accumulators
+            # -> modal voltage -> matrix-pencil reflection -> Γ.
+            V = jnp.stack(
+                [
+                    coaxial_line_plane_voltage_jnp(
+                        grid, result.dft_planes[pi * 2 + 0].accumulator,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    )
+                    for pi in range(len(probes_z))
+                ],
+                axis=0,
+            )  # (n_planes, n_freqs)
+            s11_c, gamma_c, rec_c, fit_c, z0_c = [], [], [], [], []
+            for fi in range(n_f):
+                out = coaxial_line_reflection_from_plane_voltages(
+                    z_planes_m, V[:, fi], reference_plane_m=ref_m, _prefer_jnp=True,
+                )
+                s11_c.append(out.reflection)
+                gamma_c.append(out.gamma)
+                rec_c.append(out.recurrence_residual)
+                fit_c.append(out.fit_residual)
+                z0_c.append(
+                    R_dut * (1.0 - out.reflection) / (1.0 + out.reflection)
+                    if termination == "matched"
+                    else jnp.asarray(np.nan + 1j * np.nan)
+                )
+            # Status from concrete geometry only (rec_resid is traced here; the
+            # contamination check is a concrete-path diagnostic).
+            status = "under_resolved" if annulus_cells < 3.5 else "passed"
+            return CoaxialLineReflectionResult(
+                s11=jnp.stack(s11_c),
+                freqs=jnp.asarray(freqs),
+                gamma=jnp.stack(gamma_c),
+                recurrence_residual=jnp.stack(rec_c),
+                fit_residual=jnp.stack(fit_c),
+                annulus_cells=annulus_cells,
+                z0_numerical_ohm=jnp.stack(z0_c),
+                termination=termination,
+                status=status,
+            )
+
+        # --- concrete path: NumPy (byte-identical to the validated result) ---
         v_by_plane = []
         for pi in range(len(probes_z)):
             ex = result.dft_planes[pi * 2 + 0].accumulator
@@ -1966,8 +2036,6 @@ class _SparamMixin:
                 )
             )
         V = np.stack(v_by_plane, axis=0)          # (n_planes, n_freqs)
-        z_planes_m = np.array([(z - grid.pad_z_lo) * dz for z in probes_z], dtype=np.float64)
-        ref_m = (z_dut - grid.pad_z_lo) * dz
 
         s11 = np.zeros(n_f, dtype=np.complex128)
         gamma = np.zeros(n_f, dtype=np.complex128)
@@ -1986,7 +2054,6 @@ class _SparamMixin:
                 G = out.reflection
                 z0_num[fi] = R_dut * (1.0 - G) / (1.0 + G)
 
-        annulus_cells = float((b - a) / dz)
         if annulus_cells < 3.5:
             status = "under_resolved"
         elif float(np.max(rec_resid)) > 0.1:

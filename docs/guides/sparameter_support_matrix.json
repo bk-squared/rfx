@@ -304,8 +304,8 @@
         "Do not generalize the one-port line-reflection envelope to arbitrary coax launches, multi-port networks, nonuniform meshes, or mixed port families",
         "The openEMS coax-line path is superseded because the available openEMS v0.0.35 lacks AddCoaxialPort; MEEP is the retained broad-E4 external comparison"
       ],
-      "ad_traceable": "no",
-      "ad_evidence": "Method-level not-traceable: compute_coaxial_line_reflection concretizes the DFT fields in coaxial_line_plane_voltage and exposes no traced design DoF. The reflection EXTRACTOR (coaxial_line_reflection_from_plane_voltages) is now jax.numpy-traceable (tests/test_ad_surface_contract.py::test_coaxial_reflection_extraction_is_traceable + tests/test_coaxial_line_extraction.py AD-vs-FD/closed-form gates); end-to-end differentiable coax design is a separate feature."
+      "ad_traceable": "yes",
+      "ad_evidence": "End-to-end differentiable via the eps_scale design channel (grad flows eps_scale -> FDTD -> DFT plane accumulators -> modal voltage (coaxial_line_plane_voltage_jnp) -> matrix-pencil reflection -> Gamma); composition AD-vs-FD gate tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent (2.6% AD-vs-FD). NOTE: promotion of current_status to broad_e5_passed is a separate reviewed step (this records the differentiable capability, not the claim)."
     },
     {
       "primitive": "add_floquet_port(...)",
