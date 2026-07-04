@@ -715,15 +715,17 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["broad_e5_envelope_artifact_coverage_status"] == "blocked"
     assert audit["required_surface_family_count"] == 7
     assert audit["missing_manifest_family_count"] == 0
-    # rectangular_waveguide_port broad-E5 evidence is now COMMITTED to tracked
-    # tests/fixtures/waveguide_broad_e5/ (PR #181): 5 analytic-Airy band envelopes
-    # + an rfx-vs-Palace-FEM broad-E4 comparison, all present on a clean checkout.
-    # So exactly 1 family has a passed comparison + passed broad-E4 artifact and 5
-    # passed broad-E5 envelope artifacts; the other 6 required families are still
-    # missing a passed comparison artifact on a clean (no-.omx/) checkout.
-    assert audit["missing_passed_comparison_artifact_count"] == 6
-    assert audit["passed_comparison_artifact_count"] == 1
-    assert audit["passed_broad_e4_comparison_artifact_count"] == 1
+    # TWO families now have a committed passing external comparison on a clean
+    # checkout: rectangular_waveguide_port (rfx-vs-Palace FEM, PR #181) and
+    # coaxial_port (rfx-vs-Meep power-flux broad-E4, VESSL 369367245835 recommit
+    # 2026-07-04, tests/fixtures/coax_broad_e4/). So 2 families have a passed
+    # comparison + passed broad-E4 artifact; the other 5 required families are
+    # still missing a passed comparison artifact on a clean (no-.omx/) checkout.
+    # coaxial_port still stays `incomplete` below — its ad_fd_test is null (no
+    # AD-traceable extractor), so committing the E4 comparison does not flip it.
+    assert audit["missing_passed_comparison_artifact_count"] == 5
+    assert audit["passed_comparison_artifact_count"] == 2
+    assert audit["passed_broad_e4_comparison_artifact_count"] == 2
     # No family is now MISSING a broad-E4/E5 artifact. rectangular_waveguide_port
     # is the only current_status=broad_e5_passed family and its broad-E4 + broad-E5
     # artifacts ARE committed (tests/fixtures/, PR #181). coaxial_port was
