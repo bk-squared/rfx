@@ -6,6 +6,8 @@ calibration (short/open/matched on a real line) lives in the slow_physics
 suite.
 """
 import numpy as np
+import jax
+import jax.numpy as jnp
 import pytest
 
 from rfx.sources.coaxial_port import (
@@ -88,6 +90,51 @@ def test_input_validation():
     # unequal spacing
     with pytest.raises(ValueError):
         extract(np.array([1.0, 2.0, 4.0]) * 1e-3, V, reference_plane_m=0.0)
-    # all-zero voltages
+    # all-zero voltages (concrete path keeps the informative raise)
     with pytest.raises(ValueError):
         extract(z, np.zeros(3, complex), reference_plane_m=0.0)
+
+
+# --- AD-traceability (coax AD-traceable extractor) --------------------------
+# Traced voltages dispatch to a jax.numpy core; concrete voltages keep the
+# byte-identical NumPy path. These gate the differentiable path.
+
+def test_reflection_extractor_grad_matches_closed_form_and_fd():
+    """On a planted two-wave profile V = θ·e^{+jβz} + 0.3·e^{-jβz} the load
+    reflection is Γ = 0.3/θ, so d|Γ|/dθ = -0.3/θ². Gate the AD gradient against
+    BOTH the closed form and a central finite difference."""
+    z = np.linspace(0.002, 0.013, 12)
+
+    def obj(theta):
+        V = theta * jnp.exp(1j * 300.0 * jnp.asarray(z)) + 0.3 * jnp.exp(
+            -1j * 300.0 * jnp.asarray(z)
+        )
+        return jnp.abs(extract(z, V, reference_plane_m=0.0).reflection)
+
+    g = float(jax.grad(obj)(jnp.asarray(0.7)))
+    assert np.isfinite(g), f"gradient not finite: {g}"
+    closed_form = -0.3 / 0.7 ** 2
+    assert abs(g - closed_form) < 1e-4, f"AD {g:.8f} vs closed form {closed_form:.8f}"
+
+    h = 1e-4
+    fd = (float(obj(0.7 + h)) - float(obj(0.7 - h))) / (2 * h)
+    assert abs(g - fd) / max(abs(fd), 1e-12) < 1e-3, f"AD {g:.8f} vs FD {fd:.8f}"
+
+
+def test_reflection_grad_finite_at_reactive_null():
+    """Double-``where`` robustness: a purely reactive |Γ|=1 load — the match/null
+    regime that would leak 0·inf=nan through a naive sqrt/divide — keeps a finite
+    gradient."""
+    z = np.linspace(0.002, 0.013, 12)
+
+    def obj(theta):
+        # B on the unit circle, A=θ  ->  |Γ| = 1/θ  (=1 at θ=1)
+        V = theta * jnp.exp(1j * 150.0 * jnp.asarray(z)) + np.exp(
+            1j * np.radians(120.0)
+        ) * jnp.exp(-1j * 150.0 * jnp.asarray(z))
+        return jnp.abs(extract(z, V, reference_plane_m=0.0).reflection)
+
+    val = float(obj(jnp.asarray(1.0)))
+    g = float(jax.grad(obj)(jnp.asarray(1.0)))
+    assert abs(val - 1.0) < 1e-3, f"|Gamma| not unity: {val}"
+    assert np.isfinite(g), f"gradient not finite at reactive null: {g}"

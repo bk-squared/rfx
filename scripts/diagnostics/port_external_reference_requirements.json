@@ -166,9 +166,9 @@
         "tests/fixtures/coax_broad_e5/coaxial_line_broad_e5_envelope.json"
       ],
       "ad_fd_test": null,
-      "ad_fd_test_note": "extractor is numpy / not-traceable (test_ad_surface_contract::test_coaxial_reflection_extraction_breaks_tape proves it breaks the tape); no AD-vs-FD test BY DESIGN -> the differentiable moat is unavailable and MUST be resolved (e.g. a differentiable reflection path) before broad_e5_passed.",
+      "ad_fd_test_note": "The reflection EXTRACTOR (coaxial_line_reflection_from_plane_voltages) is now jax.numpy-traceable (test_ad_surface_contract::test_coaxial_reflection_extraction_is_traceable + tests/test_coaxial_line_extraction.py AD-vs-FD/closed-form gates). BUT the compute_coaxial_line_reflection METHOD is not end-to-end differentiable (numpy DFT-field line integral in coaxial_line_plane_voltage + no traced design DoF), so a method-level AD-vs-FD test is not yet expressible and ad_fd_test stays null; the differentiable moat is still unavailable and MUST be resolved (differentiable field->voltage chain + a traced design DoF) before broad_e5_passed.",
       "target_ceiling": "broad-E5-needs-differentiable-api",
-      "usage_rule": "Coaxial transmission-line reflection (forward). broad-E5 PHYSICS demonstrated but blocked: evidence uncommitted (.omx) AND the numpy matrix-pencil extractor is not-traceable so it cannot satisfy the AD moat. Needs committed artifacts + a differentiable reflection API. Do NOT use in an optimization/AD loop."
+      "usage_rule": "Coaxial transmission-line reflection (forward). broad-E5 PHYSICS demonstrated + broad-E4/E5 evidence artifacts committed (tests/fixtures/coax_broad_e4, coax_broad_e5), but blocked: the compute_coaxial_line_reflection METHOD is not end-to-end differentiable (numpy field->voltage chain + no traced design DoF) so it cannot satisfy the AD moat. The reflection extractor itself is now AD-traceable. Needs an end-to-end differentiable reflection path before broad_e5_passed. Do NOT use in an optimization/AD loop."
     },
     {
       "family": "floquet_port",
