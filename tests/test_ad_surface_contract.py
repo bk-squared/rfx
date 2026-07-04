@@ -66,8 +66,12 @@ AD_CLASSIFICATION = {
     ),
     "Simulation.compute_coaxial_line_reflection": (
         NOT_TRACEABLE,
-        "numpy matrix-pencil extraction; verified empirically by "
-        "test_coaxial_reflection_extraction_breaks_tape in this file",
+        "method-level: concretizes the DFT fields in coaxial_line_plane_voltage "
+        "(np.asarray) and exposes no traced design DoF, so grad(S) w.r.t. a design "
+        "variable is not wired. The reflection EXTRACTOR "
+        "(coaxial_line_reflection_from_plane_voltages) is now jax.numpy-traceable "
+        "— verified empirically by test_coaxial_reflection_extraction_is_traceable "
+        "in this file; end-to-end differentiable coax design is a separate feature",
     ),
     # --- top-level exports --------------------------------------------------
     "compute_error_indicator": (
@@ -178,17 +182,25 @@ def test_grad_safe_evidence_pointers_exist():
             )
 
 
-def test_coaxial_reflection_extraction_breaks_tape():
-    """Empirical basis for the coaxial ``not-traceable`` classification.
+def test_coaxial_reflection_extraction_is_traceable():
+    """The coaxial reflection *extractor* is jax.numpy-traceable.
 
-    The roadmap critic flagged the earlier "coax breaks the tape" claim as
-    digest prose; this test IS the evidence. A synthetic two-wave voltage
-    profile with planted A=theta, B=0.3 must (a) give the planted |B/A| on the
-    concrete path (witness that we exercise the real extractor) and (b) raise
-    TracerArrayConversionError under jax.grad, because
-    ``coaxial_line_reflection_from_plane_voltages`` is numpy (np.asarray /
-    np.linalg.lstsq / complex()). If (b) starts succeeding, the extraction
-    became traceable — upgrade the classification instead of deleting this.
+    Was ``test_coaxial_reflection_extraction_breaks_tape``: the numpy
+    (``np.asarray`` / ``np.linalg.lstsq`` / ``complex()``) extractor concretized
+    traced arrays, so ``coaxial_line_reflection_from_plane_voltages`` raised
+    ``TracerArrayConversionError`` under ``jax.grad``. It now dispatches *traced*
+    voltages to a ``jax.numpy`` core (concrete inputs keep the byte-identical
+    NumPy path). A synthetic two-wave profile with planted ``A=theta``, ``B=0.3``
+    gives ``Γ = B/A = 0.3/theta``, so the closed-form gradient is
+    ``d|Γ|/dtheta = -0.3/theta**2`` — a stronger check than "did not raise".
+
+    Gates: (a) the concrete witness ``|Γ|=0.3/0.7`` is unchanged, (b) ``jax.grad``
+    flows and is finite, (c) the AD gradient matches the closed form.
+
+    SCOPE: this is EXTRACTOR-level. The enclosing
+    ``Simulation.compute_coaxial_line_reflection`` method is still not end-to-end
+    differentiable (numpy DFT-field line integral in ``coaxial_line_plane_voltage``,
+    no traced design DoF), so its ``AD_CLASSIFICATION`` stays ``not-traceable``.
     """
     from rfx.sources.coaxial_port import coaxial_line_reflection_from_plane_voltages
 
@@ -203,12 +215,19 @@ def test_coaxial_reflection_extraction_breaks_tape():
         )
         return jnp.abs(jnp.asarray(res.reflection))
 
+    # (a) concrete witness preserved: |Γ| = |B/A| = 0.3/0.7
     concrete = float(objective(jnp.asarray(0.7)))
     assert abs(concrete - 0.3 / 0.7) < 1e-3, (
         f"concrete witness drifted: |Gamma|={concrete:.6f}, expected ~{0.3/0.7:.6f}"
     )
-    with pytest.raises(jax.errors.TracerArrayConversionError):
-        jax.grad(objective)(jnp.asarray(0.7))
+    # (b) grad flows and is finite (was: TracerArrayConversionError)
+    g = float(jax.grad(objective)(jnp.asarray(0.7)))
+    assert np.isfinite(g), f"gradient is not finite: {g}"
+    # (c) AD gradient matches the closed form d|Γ|/dθ = -0.3/θ²
+    closed_form = -0.3 / 0.7 ** 2
+    assert abs(g - closed_form) < 1e-4, (
+        f"AD grad {g:.8f} != closed form {closed_form:.8f}"
+    )
 
 
 def _collect_nodeids(paths, marker_filter=None):

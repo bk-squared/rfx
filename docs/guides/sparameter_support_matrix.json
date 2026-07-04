@@ -305,7 +305,7 @@
         "The openEMS coax-line path is superseded because the available openEMS v0.0.35 lacks AddCoaxialPort; MEEP is the retained broad-E4 external comparison"
       ],
       "ad_traceable": "no",
-      "ad_evidence": "empirically verified TracerArrayConversionError through coaxial_line_reflection_from_plane_voltages (numpy matrix-pencil): tests/test_ad_surface_contract.py::test_coaxial_reflection_extraction_breaks_tape"
+      "ad_evidence": "Method-level not-traceable: compute_coaxial_line_reflection concretizes the DFT fields in coaxial_line_plane_voltage and exposes no traced design DoF. The reflection EXTRACTOR (coaxial_line_reflection_from_plane_voltages) is now jax.numpy-traceable (tests/test_ad_surface_contract.py::test_coaxial_reflection_extraction_is_traceable + tests/test_coaxial_line_extraction.py AD-vs-FD/closed-form gates); end-to-end differentiable coax design is a separate feature."
     },
     {
       "primitive": "add_floquet_port(...)",

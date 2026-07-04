@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -1508,6 +1509,62 @@ def coaxial_line_plane_voltage(
     return np.asarray(res.vi.voltage, dtype=np.complex128)
 
 
+def _coaxial_line_reflection_jnp(
+    z, plane_voltages, *, reference_plane_m, D, z0, load_below
+) -> CoaxialLineReflection:
+    """``jax.numpy`` core of :func:`coaxial_line_reflection_from_plane_voltages`.
+
+    Reached ONLY for *traced* voltages (``jax.grad`` / ``jax.jit``); the concrete
+    path stays in NumPy (float64) so the validated-precision residual gates are
+    byte-identical. ``z`` / ``D`` / ``z0`` / ``load_below`` are static geometry
+    (plain Python / NumPy) — only ``plane_voltages`` carries the tape. Singular
+    points (all-zero field, zero incident wave) use double-``where`` so the
+    gradient stays finite at a perfect match / null.
+    """
+    V = jnp.asarray(plane_voltages)
+    Vm, Vc, Vp = V[:-2], V[1:-1], V[2:]
+    den = jnp.sum(jnp.abs(Vc) ** 2)
+    safe_den = jnp.where(den > 0.0, den, 1.0)          # AD-safe divide (all-zero field)
+    p = jnp.sum((Vm + Vp) * jnp.conj(Vc)) / safe_den
+    gamma = jnp.arccosh(p / 2.0 + 0j) / D
+    gamma = jnp.where(jnp.imag(gamma) < 0.0, jnp.conj(gamma), gamma)  # enforce beta > 0
+    rec_arg = jnp.sum(jnp.abs((Vm + Vp) - p * Vc) ** 2) / (jnp.abs(p) ** 2 * den + 1e-300)
+    rec_ok = rec_arg > 0.0
+    rec_resid = jnp.where(rec_ok, jnp.sqrt(jnp.where(rec_ok, rec_arg, 1.0)), 0.0)
+
+    zc = jnp.asarray(z) - z0
+    Phi = jnp.stack([jnp.exp(+gamma * zc), jnp.exp(-gamma * zc)], axis=1)
+    AB, *_ = jnp.linalg.lstsq(Phi, V, rcond=None)
+    A, B = AB[0], AB[1]
+    resid = Phi @ AB - V
+    # AD-safe norm (double-where): a perfect fit makes the residual exactly 0,
+    # where d(sqrt)/dx = inf; symmetric with rec_resid above.
+    fit_sq = jnp.sum(jnp.abs(resid) ** 2)
+    fit_ok = fit_sq > 0.0
+    fit_num = jnp.where(fit_ok, jnp.sqrt(jnp.where(fit_ok, fit_sq, 1.0)), 0.0)
+    fit_resid = fit_num / (jnp.sqrt(jnp.sum(jnp.abs(V) ** 2)) + 1e-300)
+
+    zr = reference_plane_m - z0
+    a_wave = A * jnp.exp(+gamma * zr)    # travels -z
+    b_wave = B * jnp.exp(-gamma * zr)    # travels +z
+    if load_below:
+        v_inc, v_ref = a_wave, b_wave
+    else:
+        v_inc, v_ref = b_wave, a_wave
+    inc_ok = jnp.abs(v_inc) > 0.0
+    reflection = jnp.where(
+        inc_ok, v_ref / jnp.where(inc_ok, v_inc, 1.0), jnp.asarray(jnp.nan + 1j * jnp.nan)
+    )
+    return CoaxialLineReflection(
+        gamma=gamma,
+        reflection=reflection,
+        recurrence_residual=rec_resid,
+        fit_residual=fit_resid,
+        forward_amp=v_inc,
+        backward_amp=v_ref,
+    )
+
+
 def coaxial_line_reflection_from_plane_voltages(
     plane_positions_m,
     plane_voltages,
@@ -1532,20 +1589,50 @@ def coaxial_line_reflection_from_plane_voltages(
     plane_voltages : (N,) complex modal voltages at those planes (one frequency).
     reference_plane_m : axial position at which Γ is reported (the load plane);
         may lie outside the probe span (the two-wave model is extrapolated).
+
+    AD note
+    -------
+    ``Γ`` is differentiable w.r.t. the modal ``plane_voltages``: *traced* inputs
+    (``jax.grad`` / ``jax.jit``) run a ``jax.numpy`` core
+    (:func:`_coaxial_line_reflection_jnp`), while *concrete* inputs keep the
+    NumPy (float64) path so the validated-precision residual gates stay
+    byte-identical. Plane *positions* are static geometry. This is an
+    ``extractor``-level AD property; the enclosing
+    ``Simulation.compute_coaxial_line_reflection`` method is NOT yet end-to-end
+    differentiable (it concretizes the DFT fields in ``coaxial_line_plane_voltage``
+    and exposes no traced design DoF). Verified by
+    ``tests/test_ad_surface_contract.py::test_coaxial_reflection_extraction_is_traceable``
+    and ``tests/test_coaxial_line_extraction.py``.
     """
 
     z = np.asarray(plane_positions_m, dtype=np.float64)
-    V = np.asarray(plane_voltages, dtype=np.complex128)
     if z.ndim != 1 or z.size < 3:
         raise ValueError("plane_positions_m must be 1-D with at least 3 planes")
-    if V.shape != z.shape:
-        raise ValueError(f"plane_voltages shape {V.shape} must match positions {z.shape}")
+    if np.shape(plane_voltages) != z.shape:
+        raise ValueError(
+            f"plane_voltages shape {np.shape(plane_voltages)} must match positions {z.shape}"
+        )
     d = np.diff(z)
     if np.any(d <= 0.0):
         raise ValueError("plane_positions_m must be strictly increasing")
     D = float(d.mean())
     if np.any(np.abs(d - D) > spacing_rtol * D):
         raise ValueError("plane_positions_m must be equally spaced for the matrix pencil")
+    z0 = float(z.mean())
+    # Reference (load) plane side vs the probe centroid; ``<=`` keeps the tie
+    # case (load exactly at the probe mean — not a valid one-port geometry) on
+    # the load-below branch deterministically. Static (positions only).
+    load_below = bool(reference_plane_m <= z0)
+
+    # Traced voltages -> jax.numpy core (differentiable); concrete -> NumPy.
+    if isinstance(plane_voltages, jax.core.Tracer):
+        return _coaxial_line_reflection_jnp(
+            z, plane_voltages, reference_plane_m=float(reference_plane_m),
+            D=D, z0=z0, load_below=load_below,
+        )
+
+    # --- concrete path: NumPy (float64), byte-identical to the pre-AD code ---
+    V = np.asarray(plane_voltages, dtype=np.complex128)
 
     # Matrix-pencil estimate of p = 2 cosh(γΔ) (LS over interior planes).
     Vm, Vc, Vp = V[:-2], V[1:-1], V[2:]
@@ -1566,22 +1653,15 @@ def coaxial_line_reflection_from_plane_voltages(
     )
 
     # Two-wave least squares for A, B (centred for conditioning).
-    z0 = float(z.mean())
     Phi = np.stack([np.exp(+gamma * (z - z0)), np.exp(-gamma * (z - z0))], axis=1)
     AB, *_ = np.linalg.lstsq(Phi, V, rcond=None)
     A, B = complex(AB[0]), complex(AB[1])
     fit_resid = float(np.linalg.norm(Phi @ AB - V) / (np.linalg.norm(V) + 1e-300))
 
-    # The reference (load) plane lies OUTSIDE the probe span for a one-port
-    # measurement (the probes sit between the source and the load). The incident
-    # wave travels from the probe region toward the load, selected by which side
-    # of the probe centroid the load is on. ``<=`` keeps the centroid-tie case
-    # (load exactly at the probe mean — not a valid one-port geometry) on the
-    # load-below branch deterministically rather than silently inverting it.
     zr = float(reference_plane_m) - z0
     a_wave = A * np.exp(+gamma * zr)    # travels -z
     b_wave = B * np.exp(-gamma * zr)    # travels +z
-    if reference_plane_m <= z0:         # load below the probes: incident is -z (a_wave)
+    if load_below:                      # load below the probes: incident is -z (a_wave)
         v_inc, v_ref = a_wave, b_wave
     else:                               # load above the probes: incident is +z (b_wave)
         v_inc, v_ref = b_wave, a_wave
