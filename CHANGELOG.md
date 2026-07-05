@@ -6,7 +6,7 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
-### Added — coaxial S-parameters: AD-traceable + end-to-end differentiable + `broad_e5_passed` (PRs #260, #261)
+### Added — coaxial S-parameters: AD-traceable + end-to-end differentiable + `broad_e5_passed` (PRs #260, #261, #262)
 
 - `compute_coaxial_line_reflection(...)` is now **end-to-end differentiable** via a new
   `eps_scale` design channel: `grad(|S11|**2)` w.r.t. the dielectric flows through

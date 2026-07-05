@@ -27,10 +27,14 @@ which runs the production extractor against short/open/matched/resistive
 analytic gates at CI time.
 
 Scope honesty: this fixture is the rfx-vs-analytic E5 ENVELOPE class only.
-The independent full-wave broad-E4 comparison (Meep) and the AD-traceable
-extractor requirement (``ad_fd_test`` is null BY DESIGN in the manifest)
-remain OWED before any ``broad_e5_passed`` promotion — committing this
-fixture does not flip the family status.
+At commit time (PR #256) the independent broad-E4 Meep comparison and the
+AD-traceable extractor were still owed and this fixture alone did not flip
+the family status. Both have SINCE been delivered — the Meep broad-E4
+fixture (``tests/fixtures/coax_broad_e4/``, PR #259), the AD-traceable
+extractor + end-to-end ``eps_scale`` channel (PRs #260/#261, gated by
+``tests/test_coax_end_to_end_ad.py``) — and the family was promoted to
+``broad_e5_passed`` (PR #262). This test remains the envelope-class gate
+WITHIN that promotion; weakening it would undermine the promoted claim.
 """
 from __future__ import annotations
 

@@ -16,6 +16,7 @@ a failure, not a fix (R2-STOP).
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from rfx.api import Simulation
 from rfx.grid import Grid
@@ -156,3 +157,40 @@ def test_driver_matches_eager_wire_1port_cpml():
         f"wire 1-port CPML |S| diverged: max||S_drv|-|S_eager|| = {d:.3e} "
         f">= {_GATE_ATOL}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Mixed lumped + wire set — locked NotImplementedError (#258 behaviour change)
+# ---------------------------------------------------------------------------
+
+def _mixed_lumped_wire_sim():
+    """One lumped + one wire port (heterogeneous sparam-eligible set)."""
+    wf = _waveform()
+    sim = _driver_sim()
+    sim.add_port(position=(0.008, 0.006, 0.006), component="ez",
+                 impedance=50.0, waveform=wf)
+    sim.add_port(position=(0.016, 0.006, 0.005), component="ez",
+                 impedance=50.0, waveform=wf, extent=0.003)
+    return sim
+
+
+def test_mixed_lumped_wire_driver_raises():
+    """The driver rejects heterogeneous lumped+wire sets loudly — their
+    off-diagonal wave-decomposition conventions differ
+    (rfx/probes/sparam_driver.py mixed-set guard, PR #258). Before #258,
+    run(compute_s_params=True) on a mixed set silently returned a wire-only
+    diagonal matrix that DROPPED the lumped ports. This locks the guard
+    (it shipped without a test — declared-only surfaces rot)."""
+    sim = _mixed_lumped_wire_sim()
+    with pytest.raises(NotImplementedError, match=r"mixed lumped \+ wire"):
+        compute_lumped_wire_s_matrix_via_scan(sim, _FREQS, n_steps=200)
+
+
+def test_mixed_lumped_wire_run_compute_s_params_raises():
+    """The PUBLIC run(compute_s_params=True) path raises on a mixed set too:
+    the single-wire fast-path requires ``not lumped_ports``
+    (rfx/runners/uniform.py dispatch), so a mixed set routes to the driver
+    and hits the same guard — the #258 behaviour change users actually see."""
+    sim = _mixed_lumped_wire_sim()
+    with pytest.raises(NotImplementedError, match=r"mixed lumped \+ wire"):
+        sim.run(n_steps=200, compute_s_params=True)
