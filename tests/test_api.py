@@ -408,7 +408,32 @@ def test_waveguide_multiport_same_direction_requires_shared_boundary_plane():
 
 
 def test_waveguide_four_port_parallel_guides_through_api():
-    """Disjoint left/right apertures should support a 4-port parallel-guide S-matrix."""
+    """4-port parallel-guide PLUMBING + relative isolation — |S| is NON-PHYSICAL.
+
+    What this test validates: the >2-port assembly plumbing (S shape, port-name
+    ordering) and the within-column RELATIVE isolation (cross-coupling between
+    the two septum-separated guides < through-transmission). Within one driven
+    column every entry shares the same incident-power normalization, so those
+    relative comparisons are meaningful even when the normalization is wrong.
+
+    What it does NOT validate: absolute |S| magnitudes. The interior-PEC septum
+    (``Box(material='pec')``) is stripped from the vacuum reference run, so the
+    guided incident power P_inc is mis-normalized and the extracted S-matrix is
+    NON-PHYSICAL — measured 2026-07-05: max|S| ~ 6.2, per-drive column power up
+    to ~42 (passive requires <= 1), 18/40 (drive, freq) points exceed unity by
+    >5% (34/40 at a strict >1.0). Same root cause as the SKIPPED T-junction
+    test below (see its
+    skip reason + the extract_waveguide_s_matrix_flux docstring): ANY multi-port
+    built from interior PEC (branches, septa, splitters) hits this; only
+    straight guides whose walls are the domain boundary (pec_axes) have a
+    correct vacuum reference. The ``lo_tx/hi_tx > 0.2`` gates below are loose
+    channel-is-alive checks on that inflated scale, NOT calibrated magnitudes.
+
+    The ``pytest.warns`` wrapper LOCKS the known limitation empirically: the
+    extractor's own passivity self-check must fire on this geometry. If a
+    reference-run fix lands and the S-matrix becomes passive, this test FAILS —
+    upgrade it to real magnitude/passivity gates instead of deleting the wrapper.
+    """
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.10, 0.02),
@@ -430,7 +455,10 @@ def test_waveguide_four_port_parallel_guides_through_api():
     sim.add_waveguide_port(0.09, y_range=(0.00, 0.04), z_range=(0.00, 0.02), direction="-x", name="right_lo", **common)
     sim.add_waveguide_port(0.09, y_range=(0.06, 0.10), z_range=(0.00, 0.02), direction="-x", name="right_hi", **common)
 
-    result = sim.compute_waveguide_s_matrix(num_periods=30)
+    # Interior-PEC vacuum-reference limitation: the extractor's passivity
+    # self-check MUST fire here (locked — see docstring).
+    with pytest.warns(UserWarning, match="passivity"):
+        result = sim.compute_waveguide_s_matrix(num_periods=30)
     S = result.s_params
     assert S.shape == (4, 4, 10)
     assert result.port_names == ("left_lo", "left_hi", "right_lo", "right_hi")
@@ -440,8 +468,10 @@ def test_waveguide_four_port_parallel_guides_through_api():
     cross_lo_to_hi = np.mean(np.abs(S[3, 0, :]))
     cross_hi_to_lo = np.mean(np.abs(S[2, 1, :]))
 
+    # Channel-is-alive (inflated scale — see docstring; NOT calibrated |S|).
     assert lo_tx > 0.2
     assert hi_tx > 0.2
+    # Relative isolation (normalization-independent within a driven column).
     assert cross_lo_to_hi < lo_tx
     assert cross_hi_to_lo < hi_tx
 
