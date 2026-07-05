@@ -1,0 +1,22 @@
+{
+  "claim": "cv06b MSL open-stub notch \u2014 rfx add_msl_port vs openEMS, matched geometry dx=50 \u00b5m (converged, both passive)",
+  "comparison": {
+    "notch_freq_abs_diff_ghz": 0.1987,
+    "notch_freq_rel_pct": 5.8,
+    "s21_mag_max_abs_diff_2p5_6ghz": 0.2172,
+    "s21_mag_mean_abs_diff_2p5_6ghz": 0.105
+  },
+  "comparison_kind": "characterized_external_cross_check",
+  "openems": {
+    "max_energy_sum": 1.0024,
+    "notch_depth_db": -41.29,
+    "notch_ghz": 3.4286
+  },
+  "rfx": {
+    "max_energy_sum": 1.0063,
+    "notch_depth_db": -30.66,
+    "notch_ghz": 3.6273,
+    "re_z0_median_ohm": 31.38
+  },
+  "verdict": "CHARACTERIZED (not tight OpenEMS-class): off-notch |S21| agrees to ~0.1; notch freq ~6% high (rfx near fringing-free analytic 3.69 GHz, openEMS captures more open-end fringing \u2192 lower). cv06b's shipped dx=80 \u00b5m is non-physical for openEMS (3.175 mixed-cell substrate)."
+}
