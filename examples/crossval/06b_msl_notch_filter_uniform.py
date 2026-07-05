@@ -15,8 +15,22 @@ Rationale:
   - ``add_msl_port`` covers the FULL trace cross-section with a Laplace-Ez
     source distribution + distributed-σ matched termination + 3-probe
     de-embedding. F-P ripple is reduced to the current narrow-envelope
-    floor (\|S11\|≈0.10 = -20dB); do not call this OpenEMS-class without
-    citing an external rerun or stored reference.
+    floor (|S11|≈0.10 = -20dB).
+
+External cross-check (openEMS, 2026-07-05):
+  A matched-geometry rfx-vs-openEMS comparison is committed under
+  ``tests/fixtures/msl_notch_e4/`` (gate:
+  ``tests/test_msl_notch_e4_comparison_gates.py``). At a CONVERGED dx=50µm mesh
+  (5.08 substrate cells) where both solvers are passive, the off-notch |S21|
+  transmission agrees to ~0.1, while the notch frequency agrees to ~6% (rfx
+  3.63 GHz vs openEMS 3.43 GHz). rfx sits near the fringing-free analytic
+  quarter-wave (3.69 GHz); full-wave openEMS captures more open-end fringing and
+  lands lower. So the "err<15% vs analytic" gate below is rfx-vs-ANALYTIC (both
+  miss fringing) and is NOT an OpenEMS-class number — the true external notch is
+  ~6% lower. IMPORTANT: this example's shipped dx=80µm mesh (h_sub/dx=3.175, a
+  mixed-cell substrate) is UNDER-RESOLVED — at that mesh the openEMS MSL-port
+  extraction is itself non-physical (|S11|²+|S21|²≫1), so no external comparison
+  is valid at dx=80µm. Use dx≤64µm (≥4 substrate cells) for external-class work.
 
 Scope:
   - Uniform mesh dx=80µm (the current narrow gate at ~3 substrate cells).
