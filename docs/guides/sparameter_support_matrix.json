@@ -267,14 +267,14 @@
       "supported_lanes": [
         "uniform_yee_rf_coaxial_line_reflection_envelope"
       ],
-      "validation_status": "M74 broad-E5 physics was demonstrated for compute_coaxial_line_reflection(...) (analytic Gamma envelope over short/open/matched plus resistive 25/100 ohm loads, two characteristic impedances, mesh-resolution sweep; max |Gamma| dev 0.037 <= 0.05) plus independent MEEP broad-E4 short/open comparison over 4-12 GHz (max |S11| diff 0.063). However, all evidence artifacts live in gitignored .omx/, not committed to the repo. A clean-checkout audit (check_port_external_references.py) reports coaxial_port BLOCKED — re-validation is pending the validation-framework rework. compute_coaxial_s_matrix(...) is retained for compatibility but deprecated as the older single-plane V/I path and must not be used for promoted coaxial claims.",
+      "validation_status": "broad_e5_passed (2026-07-04). broad-E5 physics: analytic Gamma envelope over short/open/matched + resistive 25/100 ohm loads, two characteristic impedances, mesh-resolution sweep; max |Gamma| dev 0.037 <= 0.05 (committed tests/fixtures/coax_broad_e5/, gate tests/test_coax_broad_e5_envelope_gates.py). broad-E4 external: MEEP power-flux short/open comparison 4-12 GHz, max |S11| diff 0.063 (committed tests/fixtures/coax_broad_e4/, gate tests/test_coax_broad_e4_comparison_gates.py). Differentiable: compute_coaxial_line_reflection is end-to-end AD via the eps_scale dielectric channel, composition AD-vs-FD gate tests/test_coax_end_to_end_ad.py (2.6%). The clean-checkout auditor (check_port_external_references.py) returns coaxial_port PASSED on this committed evidence. compute_coaxial_s_matrix(...) is deprecated (older single-plane V/I path, non-physical |S11|>1 on lossless shorts) and must not be used for promoted coaxial claims.",
       "known_limits": [
         "compute_coaxial_line_reflection(...) is a one-port coaxial transmission-line reflection envelope, not a general multi-port coaxial network solver",
         "compute_coaxial_s_matrix(...) is deprecated / experimental and can report non-physical |S11| > 1 for lossless shorts",
         "nonuniform, Floquet, TFSF, SBP-SAT, and mixed-port combinations remain unsupported unless a guide explicitly states otherwise",
         "Simulation.run() and Simulation.forward() still reject high-level coaxial S-parameter requests"
       ],
-      "evidence_level": "broad-E5 physics demonstrated — evidence artifacts NOT committed (clean-checkout audit BLOCKED)",
+      "evidence_level": "E5-broad/E4-broad/differentiable",
       "promotion_requirements": [
         "stay inside the one-port coaxial transmission-line reflection envelope for public claims",
         "add separate external/reference evidence before claiming general multi-port coaxial S-matrices",

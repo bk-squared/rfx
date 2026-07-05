@@ -6,6 +6,21 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — coaxial S-parameters: AD-traceable + end-to-end differentiable + `broad_e5_passed` (PRs #260, #261)
+
+- `compute_coaxial_line_reflection(...)` is now **end-to-end differentiable** via a new
+  `eps_scale` design channel: `grad(|S11|**2)` w.r.t. the dielectric flows through
+  FDTD -> DFT plane accumulators -> modal voltage -> matrix-pencil reflection -> Gamma.
+  Pass a scalar or `(nx, ny, nz)` `eps_scale` to optimize a coaxial reflection under
+  `jax.grad`; `eps_scale=None` is byte-identical to the validated numpy path.
+- The reflection extractor (`coaxial_line_reflection_from_plane_voltages`) is now
+  `jax.numpy`-traceable (dual-path: concrete -> numpy float64, traced -> jnp), and a
+  differentiable voltage line-integral `coaxial_line_plane_voltage_jnp` was added.
+- **`coaxial_port` promoted to `broad_e5_passed`**: with the committed broad-E5 analytic
+  envelope + broad-E4 MEEP comparison (PRs #256/#259) and the passing composition
+  AD-vs-FD gate (`tests/test_coax_end_to_end_ad.py`, 2.6%), the clean-checkout auditor
+  (`check_port_external_references.py`) returns `coaxial_port` PASSED. Tolerances unchanged.
+
 ### Fixed — multi-port wire `run(compute_s_params=True)` S-matrix (item-5 Stage 4)
 
 - Multi-port wire ports now return the FULL S-matrix from `run(compute_s_params=True)`
