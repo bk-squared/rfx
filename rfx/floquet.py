@@ -535,6 +535,22 @@ def compute_floquet_s_params(
         so ``|S11|`` from such a drive can exceed 1. Do not build accuracy
         claims on it. Tracking: https://github.com/bk-squared/rfx/issues/141
 
+        **Drive-isolation scoping (2026-07-05, R2-STOP):** the obvious fix — a
+        two-run empty-vs-device reference subtraction (``E_scat = E_dev −
+        E_empty`` at a +z-side plane, the pattern that works for waveguide/coax
+        ports) — does NOT resolve this for a periodic Floquet cell. On an εr=4
+        slab vs the exact analytic Airy S11, the two-run extraction is
+        non-physical: |S11|≈1.5 at band-center 6 GHz where Airy=0.09 (the ~1.5
+        extraction-error floor swamps the small true reflection) and larger
+        blow-ups at band edges (small-incident normalization noise). TFSF
+        one-way plane-wave sources — the clean isolation route — are explicitly
+        barred with Floquet ports (see ``add_floquet_port``). A real fix needs
+        dedicated numerics (clean incident normalization + higher-order-mode
+        filtering, or a Floquet-compatible one-way source), NOT a parameter
+        flip; and drive-isolation is the PREREQUISITE to any external (RCWA /
+        Meep-Bloch) accuracy validation — the external reference is moot until
+        FDTD yields a physical |S11|≤1 on a real periodic structure.
+
     Uses incident, reflected, and (optionally) transmitted plane
     DFT data to compute S11 (reflection) and S21 (transmission).
 
