@@ -1918,14 +1918,27 @@ def extract_waveguide_s_matrix_flux(
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
 
     ``ref_materials_per_port`` (optional): a per-driven-port list of reference
-    materials. For a STRAIGHT guide the device PEC walls also bound the vacuum
-    reference (walls come from ``pec_axes``), so a single vacuum ``ref_materials``
-    yields the correct guided incident power P_inc. For a JUNCTION (T/branch,
-    walls in ``materials`` with ``cpml_axes`` open), a vacuum reference radiates
-    into free space and P_inc is mis-powered (all |S| inflate, non-passive). Pass
-    ``ref_materials_per_port[i]`` = a matched STRAIGHT guide for driven arm ``i``
-    (its walls extended through, no junction) so P_inc is the true single-mode
-    guided incident power and the extracted S is passive-by-construction.
+    materials. These must be PEC-FOLDED (walls as sigma≈1e10) exactly like the
+    device ``materials`` the caller passes in — NOT raw ``_build_materials``
+    output, where interior ``Box(material='pec')`` walls are NOT yet in
+    eps/sigma (they are folded from a pec-mask by ``compute_waveguide_s_matrix``
+    before this call). For a STRAIGHT guide the device PEC walls also bound the
+    vacuum reference (walls come from ``pec_axes``), so a single vacuum
+    ``ref_materials`` yields the correct guided incident power P_inc. For a
+    JUNCTION (T/branch, walls in ``materials`` with ``cpml_axes`` open), a vacuum
+    reference radiates into free space and P_inc is mis-powered (all |S| inflate
+    hard, non-passive). Passing ``ref_materials_per_port[i]`` = a matched STRAIGHT
+    guide for driven arm ``i`` (its walls extended through, no junction) moves
+    P_inc toward the true single-mode guided incident power.
+
+    NOT passive-by-construction (verified 2026-07-05, compact 3-port T-junction):
+    the per-port straight-guide reference is NECESSARY but NOT SUFFICIENT — it
+    fixes |S11| (1.86→0.49, physical) and roughly halves the blow-up (max|S|
+    9.8→3.9), yet does NOT achieve passivity on a compact junction (residual
+    max|S|≈3.9, per-drive energy sum 2-6×). Additional multi-port de-embedding
+    (probe-plane placement, higher-order-mode filtering, larger port-to-junction
+    separation) is still required. See the skipped ``test_api.py`` T-junction
+    reciprocity test.
 
     For each driven port ``i``:
 
