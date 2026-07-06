@@ -1,0 +1,59 @@
+{
+  "description": "2.4 GHz FR4 patch, lambda/4 transformer edge feed (all-rectangular PEC, no notch slots). openEMS width-swept.",
+  "units": "mm unless stated",
+  "reached_minus15dB": false,
+  "substrate": {
+    "material": "FR4",
+    "eps_r": 4.3,
+    "tan_delta": 0.02,
+    "h_mm": 1.5
+  },
+  "patch": {
+    "W_mm": 38.0,
+    "L_mm": 29.5,
+    "resonant_axis": "x (length L)"
+  },
+  "ground": {
+    "x_mm": 84.11,
+    "y_mm": 55.0,
+    "note": "extended on the feed(-x) side to host the feed; +x margin 15.25 mm and y width 55 mm kept from the stable 60x55 frame"
+  },
+  "feed_topology": "lumped port -> 50 ohm line (w50,L50) -> lambda/4 transformer (w_t,L_t) -> patch radiating-edge centre, coplanar PEC at z=h",
+  "line_50ohm": {
+    "w50_mm": 2.917,
+    "L50_mm": 15.0,
+    "Z0_ohm": 50.0
+  },
+  "transformer": {
+    "wt_mm": 0.4,
+    "Lt_mm": 18.36,
+    "Z_t_ohm_synth": 126.9,
+    "Z_edge_est_ohm": 322.0
+  },
+  "port": {
+    "type": "lumped",
+    "R_ohm": 50.0,
+    "p_dir": "z",
+    "location": "outer end of 50 ohm line, ground->line"
+  },
+  "resonance": {
+    "s11_dip_hz": 2460000000.0,
+    "s11_dip_db": -0.9398156300846349,
+    "zin_at_dip_ohm": [
+      829.3746816751966,
+      -281.3266702895244
+    ]
+  },
+  "solver_frame": {
+    "boundary": "PML_8 x6",
+    "air_margin_mm": 50.0,
+    "air_above_mm": 40.0,
+    "sub_cells": 6,
+    "fine_mm": 0.6,
+    "coarse_mm": 3.0,
+    "smooth_ratio": 1.25,
+    "gauss_f0_hz": 2400000000.0,
+    "gauss_fc_hz": 1200000000.0,
+    "note": "coarse 3 mm / ratio 1.25 (finer than the probe frame's 5 mm/1.4) to bound the feed-triggered PML late-time growth"
+  }
+}

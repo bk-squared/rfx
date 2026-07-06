@@ -1,0 +1,6 @@
+# generated crossval artifacts (JSON/PNG evidence lives in run logs / VESSL)
+out*/
+*tmp*/
+__pycache__/
+palace_patch/palace_patch.msh
+palace_patch/postpro/
