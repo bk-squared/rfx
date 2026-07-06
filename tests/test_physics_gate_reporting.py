@@ -715,18 +715,21 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["broad_e5_envelope_artifact_coverage_status"] == "blocked"
     assert audit["required_surface_family_count"] == 7
     assert audit["missing_manifest_family_count"] == 0
-    # TWO families now have a committed passing external comparison on a clean
-    # checkout: rectangular_waveguide_port (rfx-vs-Palace FEM, PR #181) and
-    # coaxial_port (rfx-vs-Meep power-flux broad-E4, VESSL 369367245835 recommit
-    # 2026-07-04, tests/fixtures/coax_broad_e4/). So 2 families have a passed
-    # comparison + passed broad-E4 artifact; the other 5 required families are
-    # still missing a passed comparison artifact on a clean (no-.omx/) checkout.
-    # coaxial_port is now broad_e5_passed (2026-07-04): PR #260 made the reflection
+    # TWO families have committed passing external comparisons on a clean
+    # checkout: rectangular_waveguide_port (rfx-vs-Palace FEM, PR #181, PLUS the
+    # 2026-07-06 T-junction rfx-vs-MEEP recommit wired as a claims-bearing
+    # passed-E4 artifact — honestly single-geometry, so it counts toward the
+    # passed-comparison total but NOT the broad-E4 total) and coaxial_port
+    # (rfx-vs-Meep power-flux broad-E4, VESSL 369367245835 recommit 2026-07-04,
+    # tests/fixtures/coax_broad_e4/). So 3 passed comparison ARTIFACTS across 2
+    # families; the other 5 required families are still missing a passed
+    # comparison artifact on a clean (no-.omx/) checkout.
+    # coaxial_port is broad_e5_passed (2026-07-04): PR #260 made the reflection
     # extractor AD-traceable, PR #261 added the eps_scale end-to-end differentiable
-    # channel, and this promotion wired the passing ad_fd_test + flipped
+    # channel, and that promotion wired the passing ad_fd_test + flipped
     # current_status. It is NO LONGER in the incomplete set below.
     assert audit["missing_passed_comparison_artifact_count"] == 5
-    assert audit["passed_comparison_artifact_count"] == 2
+    assert audit["passed_comparison_artifact_count"] == 3
     assert audit["passed_broad_e4_comparison_artifact_count"] == 2
     # No family is MISSING a broad-E4/E5 artifact. TWO families are now
     # current_status=broad_e5_passed: rectangular_waveguide_port (PR #181) and

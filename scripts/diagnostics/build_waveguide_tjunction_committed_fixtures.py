@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the committed T-junction (H-plane, WR-single-mode-TE10) broad-E4/E5
+"""Build the committed T-junction (H-plane, WR-single-mode-TE10) full-band single-geometry E4/E5
 evidence fixtures from the regenerated raw FDTD/MEEP artifacts.
 
 This is an EVIDENCE RECOMMIT, mirroring the coax pattern (PRs #256/#259): the
@@ -218,8 +218,8 @@ def build_envelope(artifacts_dir: Path, meep_res: int,
         "schema_version": 2,
         "status": "passed" if env_pass else "failed",
         "evidence_level": (
-            "E5-broad-mesh-frequency-flux-perport-matched-guide-ref-tjunction-"
-            "hplane-wr-single-mode-te10-converged"
+            "E5-fullband-mesh-flux-perport-matched-guide-ref-tjunction-"
+            "hplane-wr-single-mode-te10-converged-single-geometry"
         ),
         "claim": (
             f"rfx 3-port H-plane T-junction flux S-matrix is reciprocal "
@@ -230,12 +230,31 @@ def build_envelope(artifacts_dir: Path, meep_res: int,
             f"48mm CPML). Regenerated 2026-07 on current main (evidence recommit)."
         ),
         "claim_scope": (
-            f"broad rfx rectangular_waveguide_port H-plane T-junction 3-port flux "
-            f"S-matrix envelope over the single-mode TE10 frequency axis ({fghz}, "
-            f"cutoff ratio 1.33-1.87) and a converged mesh axis (dx 1.0 to 0.667 "
-            f"mm) at fixed 48mm CPML; gates reciprocity<=0.05, passivity<=1.10, "
-            f"mesh-convergence<=0.08. Setup: {setup}."
+            f"full-band SINGLE-GEOMETRY rfx rectangular_waveguide_port H-plane "
+            f"T-junction 3-port flux S-matrix envelope over the single-mode TE10 "
+            f"frequency axis ({fghz}, cutoff ratio 1.33-1.87) and a converged "
+            f"mesh axis (dx 1.0 to 0.667 mm) at fixed 48mm CPML; gates "
+            f"reciprocity<=0.05, passivity<=1.10, mesh-convergence<=0.08. Setup: "
+            f"{setup}. One junction geometry only — below the auditor's numeric "
+            f"breadth bar (>=2 geometry/eps variants) BY DESIGN, so this envelope "
+            f"is intentionally NOT listed in the manifest's envelope artifact "
+            f"lists; it is gated by tests/test_waveguide_tjunction_e4e5_gates.py."
         ),
+        "envelope_summary": {
+            # Honest machine-readable breadth record: the auditor's
+            # _envelope_breadth_ok correctly classifies this as NOT broad
+            # (case_count 2 < 4, one geometry < 2 variants) — matching the
+            # single-geometry claim above.
+            "case_count": len(cases),
+            "passed_case_count": sum(
+                1 for c in cases if c["reciprocity_pass"] and c["passivity_pass"]
+            ),
+            "dx_values_m": [dx_coarse * 1e-3, dx_fine * 1e-3],
+            "eps_r_values": [1.0],
+            "geometries": ["hplane_tee_W40mm_arms90_90_70"],
+            "freq_range_hz": [float(band[0]), float(band[-1])],
+            "mesh_convergence_max": conv,
+        },
         "gates": {
             "reciprocity_tol": RECIP_TOL,
             "passivity_tol": PASSIVITY_TOL,
@@ -288,7 +307,8 @@ def build_comparison(artifacts_dir: Path, meep_res: int,
         "schema_version": 2,
         "status": "passed" if cmp_pass else "failed",
         "evidence_level": (
-            "E4-broad-external-meep-fdtd-tjunction-hplane-wr-single-mode-te10-converged"
+            "E4-external-meep-fdtd-tjunction-hplane-wr-single-mode-te10-converged-"
+            "fullband-single-geometry"
         ),
         "claim": (
             f"rfx 3-port H-plane T-junction |S| agrees with an independent matched-"
@@ -299,12 +319,31 @@ def build_comparison(artifacts_dir: Path, meep_res: int,
             f"current main (evidence recommit)."
         ),
         "claim_scope": (
-            f"broad external cross-FDTD comparison of rfx rectangular_waveguide_port "
-            f"H-plane T-junction |S| vs an independent matched far-port MEEP flux "
-            f"reference (res={meep_res}) over the single-mode TE10 band ({fghz}); "
-            f"documented cross-FDTD tolerance {XFDTD_TOL} (two discretized FDTD "
-            f"solvers, no closed-form junction truth)."
+            f"full-band SINGLE-GEOMETRY external cross-FDTD comparison of rfx "
+            f"rectangular_waveguide_port H-plane T-junction |S| vs an independent "
+            f"matched far-port MEEP flux reference (res={meep_res}) over the "
+            f"single-mode TE10 band ({fghz}); documented cross-FDTD tolerance "
+            f"{XFDTD_TOL} (two discretized FDTD solvers, no closed-form junction "
+            f"truth). One junction geometry (geometry_count=1 in the summary "
+            f"below) — this is a claims-bearing passed-E4 comparison but is NOT a "
+            f"breadth-class artifact BY DESIGN; the family's breadth-class "
+            f"evidence remains the straight-guide Palace/Airy set."
         ),
+        "summary": {
+            # Honest machine-readable record for the auditor's
+            # _comparison_breadth_ok: geometry_count=1 (one H-plane tee) means it
+            # correctly classifies this as NOT breadth-class, matching the
+            # claim_scope. The three pairs are the three driven-port columns of
+            # the SAME geometry — deliberately NOT counted as geometries.
+            "pair_count": 3,
+            "passed_pair_count": 3 if cmp_pass else 0,
+            "failed_pair_count": 0 if cmp_pass else 3,
+            "geometry_count": 1,
+            "geometries": ["hplane_tee_W40mm_arms90_90_70"],
+            "drive_ports": 3,
+            "max_mag_abs_diff": xdev,
+            "bandmean_mag_abs_diff": xdev_bm,
+        },
         "cross_fdtd_tol": XFDTD_TOL,
         "rfx_vs_meep_max_abs_dev": xdev,
         "rfx_vs_meep_bandmean_max_abs_dev": xdev_bm,

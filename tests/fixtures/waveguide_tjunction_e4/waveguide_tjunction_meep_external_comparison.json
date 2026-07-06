@@ -2,9 +2,21 @@
   "schema": "rfx.waveguide_tjunction_meep_external_comparison",
   "schema_version": 2,
   "status": "passed",
-  "evidence_level": "E4-broad-external-meep-fdtd-tjunction-hplane-wr-single-mode-te10-converged",
+  "evidence_level": "E4-external-meep-fdtd-tjunction-hplane-wr-single-mode-te10-converged-fullband-single-geometry",
   "claim": "rfx 3-port H-plane T-junction |S| agrees with an independent matched-geometry MEEP FDTD flux reference (res=4000) to <= 0.084 (band-mean 0.016) across the full single-mode TE10 band 5.0-7.0 GHz; both passive (rfx<=1.002, meep<=1.000) and reciprocal. Regenerated 2026-07 on current main (evidence recommit).",
-  "claim_scope": "broad external cross-FDTD comparison of rfx rectangular_waveguide_port H-plane T-junction |S| vs an independent matched far-port MEEP flux reference (res=4000) over the single-mode TE10 band (5.0-7.0 GHz); documented cross-FDTD tolerance 0.11 (two discretized FDTD solvers, no closed-form junction truth).",
+  "claim_scope": "full-band SINGLE-GEOMETRY external cross-FDTD comparison of rfx rectangular_waveguide_port H-plane T-junction |S| vs an independent matched far-port MEEP flux reference (res=4000) over the single-mode TE10 band (5.0-7.0 GHz); documented cross-FDTD tolerance 0.11 (two discretized FDTD solvers, no closed-form junction truth). One junction geometry (geometry_count=1 in the summary below) \u2014 this is a claims-bearing passed-E4 comparison but is NOT a breadth-class artifact BY DESIGN; the family's breadth-class evidence remains the straight-guide Palace/Airy set.",
+  "summary": {
+    "pair_count": 3,
+    "passed_pair_count": 3,
+    "failed_pair_count": 0,
+    "geometry_count": 1,
+    "geometries": [
+      "hplane_tee_W40mm_arms90_90_70"
+    ],
+    "drive_ports": 3,
+    "max_mag_abs_diff": 0.08441317350055755,
+    "bandmean_mag_abs_diff": 0.016010169111347117
+  },
   "cross_fdtd_tol": 0.11,
   "rfx_vs_meep_max_abs_dev": 0.08441317350055755,
   "rfx_vs_meep_bandmean_max_abs_dev": 0.016010169111347117,
@@ -325,7 +337,7 @@
   "provenance": {
     "generated_at": "2026-07-06",
     "regeneration_note": "2026-07 evidence recommit on current main \u2014 the June-2026 T-junction validation numbers were lost with the gitignored .omx artifacts; regenerated from raw runs and committed (coax #256/#259 pattern).",
-    "commit_hash": "8a29ef8",
+    "commit_hash": "90860f2",
     "source_artifacts": [
       "tj_farport_dx1.0_nc48.npz",
       "tj_farport_dx0.7_nc72.npz",

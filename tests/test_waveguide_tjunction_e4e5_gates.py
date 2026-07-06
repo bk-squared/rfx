@@ -1,16 +1,27 @@
-"""Committed gates for the 3-port H-plane T-junction broad-E4/E5 evidence.
+"""Committed gates for the 3-port H-plane T-junction full-band E4/E5 evidence.
 
-ADDITIVE, shadow-class evidence for the already-``broad_e5_passed`` rectangular
-waveguide port family. These fixtures are deliberately NOT wired into the
-manifest's ``external_comparison_artifacts`` / ``broad_e5_envelope_artifacts``
-lists, so the external-reference auditor's per-family counts are UNCHANGED
-(the same precedent as the NU-waveguide broad-E4 lane, PR #257). This evidence
-does NOT promote a public multi-port S-matrix API: the public
-``compute_waveguide_s_matrix`` still lacks per-port reference plumbing — see the
-skipped ``test_waveguide_branch_junction_mixed_normals_reciprocal_through_api``
-in ``tests/test_api.py``. The T-junction numbers were produced through the
-module-level ``extract_waveguide_s_matrix_flux(ref_materials_per_port=...)`` with
-per-port straight-guide PEC references, an internal (not public-surface) path.
+Evidence for the already-``broad_e5_passed`` rectangular waveguide port family,
+with a deliberate CLAIMS SPLIT (promotion PR after #268/#269):
+
+* The MEEP external COMPARISON **is wired** into the manifest's
+  ``external_comparison_artifacts`` as a claims-bearing **passed-E4** artifact.
+  It is honestly labeled SINGLE-GEOMETRY (``summary.geometry_count == 1`` — the
+  three pairs are the three driven ports of ONE H-plane tee), so the auditor's
+  ``_comparison_breadth_ok`` correctly classifies it as NOT breadth-class; the
+  family's breadth-class E4 evidence remains the straight-guide Palace
+  comparison. Locked below (``test_manifest_wiring_state``).
+* The rfx-internal ENVELOPE stays intentionally **UNLISTED**: with one junction
+  geometry it is below the auditor's numeric-broad bar for
+  ``broad_e5_envelope_artifacts`` (>= 2 geometry/eps variants) — claiming
+  otherwise would be exactly the breadth-gaming the T1 numeric checks exist to
+  block. It is gated here instead.
+
+The public junction API (``port_reference_sims`` on
+``compute_waveguide_s_matrix``) shipped in PR #269; the compact T-junction test
+in ``tests/test_api.py`` remains skipped (compact geometry stays non-physical —
+necessary-but-not-sufficient). The T-junction numbers were produced through
+``extract_waveguide_s_matrix_flux(ref_materials_per_port=...)`` with per-port
+straight-guide PEC references.
 
 Two committed fixtures are locked here, both re-derived (pure NumPy, no FDTD)
 from the RAW magnitude arrays embedded in each fixture, using the SAME metric
@@ -88,7 +99,7 @@ def test_envelope_fixture_present_and_passed() -> None:
     assert env["schema"] == "rfx.waveguide_tjunction_broad_e5_envelope"
     assert env["schema_version"] == 2
     assert env["status"] == "passed"
-    assert env["evidence_level"].startswith("E5-broad")
+    assert env["evidence_level"].startswith("E5-fullband")
     lvl = env["evidence_level"].lower()
     for tok in BLOCKING_TOKENS:
         assert tok not in lvl, f"blocking token {tok!r} in evidence_level"
@@ -99,10 +110,59 @@ def test_comparison_fixture_present_and_passed() -> None:
     assert cmp["schema"] == "rfx.waveguide_tjunction_meep_external_comparison"
     assert cmp["schema_version"] == 2
     assert cmp["status"] == "passed"
-    assert cmp["evidence_level"].startswith("E4-broad")
+    assert cmp["evidence_level"].startswith("E4-external")
     lvl = cmp["evidence_level"].lower()
     for tok in BLOCKING_TOKENS:
         assert tok not in lvl, f"blocking token {tok!r} in evidence_level"
+
+
+def test_single_geometry_honesty_locks() -> None:
+    """The claims split rests on honest single-geometry labeling — lock it.
+
+    (a) Neither fixture's scope text may contain the token "broad": the auditor
+    classifies breadth from ``claim_scope`` prose + the numeric summary, and a
+    "broad"-claiming scope with a failing numeric summary is flagged as
+    gameable. (b) The comparison summary must record geometry_count == 1 with
+    zero failed pairs — inflating it to >= 2 (e.g. counting the three DRIVE
+    ports of the same tee as "geometries") is the exact breadth-gaming the T1
+    numeric checks exist to block, so a future broad claim requires a genuine
+    second junction geometry campaign. (c) The envelope summary mirrors the
+    same honesty (2 mesh cases, 1 geometry -> correctly below the numeric-broad
+    envelope bar)."""
+    env = _load_envelope()
+    cmp = _load_comparison()
+    assert "broad" not in env["claim_scope"].lower(), env["claim_scope"]
+    assert "broad" not in cmp["claim_scope"].lower(), cmp["claim_scope"]
+
+    s = cmp["summary"]
+    assert s["geometry_count"] == 1
+    assert len(s["geometries"]) == 1
+    assert s["pair_count"] == 3 and s["passed_pair_count"] == 3
+    assert s["failed_pair_count"] == 0
+
+    es = env["envelope_summary"]
+    assert es["case_count"] == 2 and es["passed_case_count"] == 2
+    assert len(set(es["dx_values_m"])) == 2
+    assert len(es["geometries"]) == 1
+
+
+def test_manifest_wiring_state() -> None:
+    """Governance lock: the comparison IS listed in the manifest's
+    ``external_comparison_artifacts`` (claims-bearing passed-E4), and the
+    envelope is NOT listed in ``broad_e5_envelope_artifacts`` (single-geometry
+    < numeric-broad bar). Silent unwiring or wrong-wiring goes red here."""
+    manifest = json.loads(
+        (REPO / "scripts" / "diagnostics" / "port_external_reference_requirements.json").read_text()
+    )
+    wg = next(e for e in manifest["requirements"]
+              if e["family"] == "rectangular_waveguide_port")
+    cmp_rel = f"tests/fixtures/waveguide_tjunction_e4/{_COMPARISON}"
+    env_rel = f"tests/fixtures/waveguide_tjunction_e4/{_ENVELOPE}"
+    assert cmp_rel in wg["external_comparison_artifacts"], (
+        "T-junction MEEP comparison silently unwired from the manifest")
+    assert env_rel not in wg["broad_e5_envelope_artifacts"], (
+        "single-geometry T-junction envelope must NOT be listed as a broad-E5 "
+        "envelope artifact (numeric-broad bar requires >=2 geometry variants)")
 
 
 def test_envelope_gates_pinned() -> None:
