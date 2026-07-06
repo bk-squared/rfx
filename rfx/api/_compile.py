@@ -220,6 +220,29 @@ class _CompileMixin:
                 sigma_ext = sigma_ext.at[:,:,-phz:].set(sigma_ext[:,:,-phz-1:-phz])
                 mu_r_ext = mu_r_ext.at[:,:,-phz:].set(mu_r_ext[:,:,-phz-1:-phz])
             eps_r, sigma, mu_r = eps_r_ext, sigma_ext, mu_r_ext
+            # EXPERIMENT (calibration track, finding #6/#7 root-cause): also
+            # replicate the PEC mask into the CPML pads. PEC geometry is
+            # routed to pec_mask (not sigma), so the sigma replication above
+            # never carries metal into the absorber: a microstrip trace
+            # touching the boundary ends in an OPEN at the interior/pad
+            # interface (openEMS/Palace continue the strip into the PML =
+            # matched line termination). The un-terminated line mode
+            # corrupts msl S-params (active thru S11; matched-dip offset).
+            if pec_mask is not None:
+                pm = pec_mask
+                if plx > 0:
+                    pm = pm.at[:plx, :, :].set(pm[plx:plx+1, :, :])
+                if phx > 0:
+                    pm = pm.at[-phx:, :, :].set(pm[-phx-1:-phx, :, :])
+                if ply > 0:
+                    pm = pm.at[:, :ply, :].set(pm[:, ply:ply+1, :])
+                if phy > 0:
+                    pm = pm.at[:, -phy:, :].set(pm[:, -phy-1:-phy, :])
+                if plz > 0:
+                    pm = pm.at[:, :, :plz].set(pm[:, :, plz:plz+1])
+                if phz > 0:
+                    pm = pm.at[:, :, -phz:].set(pm[:, :, -phz-1:-phz])
+                pec_mask = pm
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
         # Apply thin conductors (P4: PEC thin sheets go to pec_mask)
