@@ -134,9 +134,15 @@ class _CompileMixin:
         has_kerr = False
 
         # Collect per-pole masks so distinct materials do not inherit
-        # each other's dispersion poles.
-        debye_masks_by_pole: dict[DebyePole, jnp.ndarray] = {}
-        lorentz_masks_by_pole: dict[LorentzPole, jnp.ndarray] = {}
+        # each other's dispersion poles.  Keyed by object identity rather than
+        # value so that poles carrying **traced** (unhashable) JAX-array fields
+        # — as produced when differentiating through the forward pass — still
+        # work.  Identity keying is behaviour-preserving: the same pole object
+        # reused across geometry entries still merges its masks, and two
+        # distinct-but-equal concrete poles map to separate (pole, mask) pairs
+        # that ``init_debye`` handles identically to a single merged pole.
+        debye_masks_by_pole: dict[int, tuple[DebyePole, jnp.ndarray]] = {}
+        lorentz_masks_by_pole: dict[int, tuple[LorentzPole, jnp.ndarray]] = {}
 
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
@@ -157,17 +163,21 @@ class _CompileMixin:
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:
-                    if pole in debye_masks_by_pole:
-                        debye_masks_by_pole[pole] = debye_masks_by_pole[pole] | mask
+                    key = id(pole)
+                    if key in debye_masks_by_pole:
+                        prev_pole, prev_mask = debye_masks_by_pole[key]
+                        debye_masks_by_pole[key] = (prev_pole, prev_mask | mask)
                     else:
-                        debye_masks_by_pole[pole] = mask
+                        debye_masks_by_pole[key] = (pole, mask)
 
             if mat.lorentz_poles:
                 for pole in mat.lorentz_poles:
-                    if pole in lorentz_masks_by_pole:
-                        lorentz_masks_by_pole[pole] = lorentz_masks_by_pole[pole] | mask
+                    key = id(pole)
+                    if key in lorentz_masks_by_pole:
+                        prev_pole, prev_mask = lorentz_masks_by_pole[key]
+                        lorentz_masks_by_pole[key] = (prev_pole, prev_mask | mask)
                     else:
-                        lorentz_masks_by_pole[pole] = mask
+                        lorentz_masks_by_pole[key] = (pole, mask)
 
         # Extend material properties into CPML padding so that guided
         # modes in dielectric waveguides see an impedance-matched absorber
@@ -210,7 +220,6 @@ class _CompileMixin:
                 sigma_ext = sigma_ext.at[:,:,-phz:].set(sigma_ext[:,:,-phz-1:-phz])
                 mu_r_ext = mu_r_ext.at[:,:,-phz:].set(mu_r_ext[:,:,-phz-1:-phz])
             eps_r, sigma, mu_r = eps_r_ext, sigma_ext, mu_r_ext
-
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
         # Apply thin conductors (P4: PEC thin sheets go to pec_mask)
@@ -287,14 +296,14 @@ class _CompileMixin:
 
         debye_spec = None
         if debye_masks_by_pole:
-            debye_poles = list(debye_masks_by_pole)
-            debye_masks = [debye_masks_by_pole[pole] for pole in debye_poles]
+            debye_poles = [pole for pole, _ in debye_masks_by_pole.values()]
+            debye_masks = [mask for _, mask in debye_masks_by_pole.values()]
             debye_spec = (debye_poles, debye_masks)
 
         lorentz_spec = None
         if lorentz_masks_by_pole:
-            lorentz_poles = list(lorentz_masks_by_pole)
-            lorentz_masks = [lorentz_masks_by_pole[pole] for pole in lorentz_poles]
+            lorentz_poles = [pole for pole, _ in lorentz_masks_by_pole.values()]
+            lorentz_masks = [mask for _, mask in lorentz_masks_by_pole.values()]
             lorentz_spec = (lorentz_poles, lorentz_masks)
 
         has_pec = bool(jnp.any(pec_mask))

@@ -545,3 +545,204 @@ def differentiable_material_fit(
         freqs=freqs,
         converged=converged,
     )
+
+
+# ---------------------------------------------------------------------------
+# Physically-scaled S11 calibration (AD-traceable, no self-normalization)
+# ---------------------------------------------------------------------------
+
+def calibrate_material_s11(
+    sim_factory: Callable,
+    s11_measured: np.ndarray,
+    freqs: np.ndarray,
+    n_debye_poles: int = 0,
+    n_lorentz_poles: int = 0,
+    *,
+    n_iterations: int = 50,
+    learning_rate: float = 0.05,
+    num_periods: float = 20.0,
+    initial_guess=None,
+    weight_mag: float = 1.0,
+    weight_phase: float = 0.1,
+    checkpoint: bool = True,
+    verbose: bool = True,
+) -> MaterialFitResult:
+    """Fit dispersive material poles to **physically-scaled** S11 via jax.grad.
+
+    Unlike :func:`differentiable_material_fit`, which builds a
+    *self-normalized* probe-spectrum proxy (each probe spectrum is divided by
+    its own peak magnitude, discarding magnitude information), this function
+    uses the AD-traceable wave-decomposition S11 emitted directly by
+    ``Simulation.forward(port_s11_freqs=...)``.  That S11 is a single-run
+    ``b/a`` wave decomposition (``a = (-V + Z0·I)/(2√Z0)``,
+    ``b = (-V - Z0·I)/(2√Z0)``) with true magnitude and phase — no two-run
+    reference and no self-normalization — so the loss matches both magnitude
+    and phase of the measured S11.
+
+    The gradient path is::
+
+        log_poles -> exp() -> physical poles
+          -> DebyePole/LorentzPole (traced scalars)
+          -> sim_factory(...) -> Simulation.forward(port_s11_freqs=..., checkpoint=True)
+          -> ForwardResult.s_params (pure-jnp complex64 S11)
+          -> sparam_loss() -> scalar
+          <- jax.grad -> d(loss)/d(log_poles)
+
+    Constraints (v1 scope): uniform single-device meshes only (no non-uniform
+    mesh, no ``distributed=True``).  ``boundary="pec"`` is fine.  Diagonal S11
+    only — this is an S11-based calibration track.
+
+    Parameters
+    ----------
+    sim_factory : callable(eps_inf, debye_poles, lorentz_poles) -> Simulation
+        Factory that builds a ``Simulation`` (with at least one lumped/wire
+        ``add_port(...)``) from the given material parameters.  Called inside
+        the gradient tape with **traced** pole scalars, so any material built
+        from these arguments stays on the ``jax.grad`` tape.
+    s11_measured : (n_freqs,) or (..., n_freqs) complex array
+        Measured (physically-scaled) S11.  Cast to complex64 internally to
+        avoid dtype promotion against the complex64 forward S11.
+    freqs : (n_freqs,) array in Hz
+        Frequency points matching ``s11_measured``; passed to
+        ``forward(port_s11_freqs=...)``.
+    n_debye_poles, n_lorentz_poles : int
+        Number of Debye / Lorentz poles to fit.  ``0/0`` fits ``eps_inf`` only.
+    n_iterations : int
+        Number of Adam optimization iterations.
+    learning_rate : float
+        Adam learning rate (log-space parameters).
+    num_periods : float
+        Number of periods at ``freq_max`` for the forward step count.
+    initial_guess : DebyeFitResult, LorentzFitResult, or None
+        Initial pole parameters.  If None, a frequency-band-based default is
+        used.
+    weight_mag, weight_phase : float
+        Weights for magnitude and phase in :func:`sparam_loss`.
+    checkpoint : bool
+        Use gradient checkpointing in the FDTD scan (recommended).
+    verbose : bool
+        Print progress.
+
+    Returns
+    -------
+    MaterialFitResult
+        With ``final_s_params`` populated by the final physically-scaled S11
+        (the self-normalized fitter leaves this ``None``).
+    """
+    freqs = np.asarray(freqs, dtype=np.float64)
+    freqs_jnp = jnp.asarray(freqs, dtype=jnp.float32)
+    s11_meas_jnp = jnp.asarray(np.asarray(s11_measured), dtype=jnp.complex64)
+
+    # ------------------------------------------------------------------
+    # Build initial guess (reuses the log-space parameterization helpers)
+    # ------------------------------------------------------------------
+    if initial_guess is not None:
+        from rfx.material_fit import DebyeFitResult, LorentzFitResult
+
+        if isinstance(initial_guess, DebyeFitResult):
+            eps_inf_init = initial_guess.eps_inf
+            debye_init = list(initial_guess.poles)
+            lorentz_init = []
+            n_debye_poles = len(debye_init)
+        elif isinstance(initial_guess, LorentzFitResult):
+            eps_inf_init = initial_guess.eps_inf
+            debye_init = []
+            lorentz_init = list(initial_guess.poles)
+            n_lorentz_poles = len(lorentz_init)
+        else:
+            raise TypeError(f"Unsupported initial_guess type: {type(initial_guess)}")
+    else:
+        eps_inf_init, debye_init = _default_debye_guess(freqs, n_debye_poles)
+        lorentz_init = _default_lorentz_guess(freqs, n_lorentz_poles)
+
+    while len(debye_init) < n_debye_poles:
+        debye_init.append(DebyePole(delta_eps=1.0, tau=1e-11))
+    while len(lorentz_init) < n_lorentz_poles:
+        omega0 = 2 * np.pi * float(np.mean(freqs))
+        lorentz_init.append(
+            LorentzPole(omega_0=omega0, delta=omega0 * 0.05, kappa=omega0 ** 2)
+        )
+
+    params = _poles_to_params(eps_inf_init, debye_init[:n_debye_poles],
+                              lorentz_init[:n_lorentz_poles])
+
+    lorentz_offset = 1 + 2 * n_debye_poles
+
+    # ------------------------------------------------------------------
+    # Forward: log-space params -> traced poles -> Simulation.forward -> S11 -> loss
+    # ------------------------------------------------------------------
+    def _s11_from_params(p):
+        eps_inf, debye_poles = _params_to_debye_poles(p, n_debye_poles)
+        lorentz_poles = _params_to_lorentz_poles(p, n_lorentz_poles, lorentz_offset)
+        sim = sim_factory(eps_inf, debye_poles, lorentz_poles)
+        result = sim.forward(
+            port_s11_freqs=freqs_jnp,
+            num_periods=num_periods,
+            checkpoint=checkpoint,
+            skip_preflight=True,
+        )
+        return result.s_params
+
+    def forward(p):
+        s11_sim = _s11_from_params(p)
+        return sparam_loss(
+            s11_sim, s11_meas_jnp,
+            weight_mag=weight_mag, weight_phase=weight_phase,
+        )
+
+    # ------------------------------------------------------------------
+    # Optimization loop (Adam) — same pattern as differentiable_material_fit
+    # ------------------------------------------------------------------
+    grad_fn = jax.value_and_grad(forward)
+
+    m = jnp.zeros_like(params)
+    v = jnp.zeros_like(params)
+    loss_history = []
+
+    for it in range(n_iterations):
+        loss_val, grad = grad_fn(params)
+        loss_val = float(loss_val)
+        loss_history.append(loss_val)
+
+        params, m, v = _adam_step(
+            params, grad, m, v, it, learning_rate,
+        )
+
+        if verbose and (it % 10 == 0 or it == n_iterations - 1):
+            print(f"  iter {it:4d}  loss = {loss_val:.6e}  "
+                  f"|grad| = {float(jnp.max(jnp.abs(grad))):.3e}")
+
+    # ------------------------------------------------------------------
+    # Extract final poles and the final physically-scaled S11
+    # ------------------------------------------------------------------
+    final_eps_inf, final_debye = _params_to_debye_poles(params, n_debye_poles)
+    final_lorentz = _params_to_lorentz_poles(params, n_lorentz_poles, lorentz_offset)
+
+    eps_inf_out = float(final_eps_inf)
+    debye_out = [
+        DebyePole(delta_eps=float(p.delta_eps), tau=float(p.tau))
+        for p in final_debye
+    ]
+    lorentz_out = [
+        LorentzPole(omega_0=float(p.omega_0), delta=float(p.delta), kappa=float(p.kappa))
+        for p in final_lorentz
+    ]
+
+    final_s11 = np.asarray(_s11_from_params(params))
+
+    converged = False
+    if len(loss_history) >= 5:
+        recent = loss_history[-5:]
+        if recent[0] > 0:
+            rel_change = abs(recent[0] - recent[-1]) / abs(recent[0])
+            converged = rel_change < 0.01
+
+    return MaterialFitResult(
+        eps_inf=eps_inf_out,
+        debye_poles=debye_out,
+        lorentz_poles=lorentz_out,
+        loss_history=loss_history,
+        final_s_params=final_s11,
+        freqs=freqs,
+        converged=converged,
+    )
