@@ -2,9 +2,28 @@
   "schema": "rfx.waveguide_tjunction_broad_e5_envelope",
   "schema_version": 2,
   "status": "passed",
-  "evidence_level": "E5-broad-mesh-frequency-flux-perport-matched-guide-ref-tjunction-hplane-wr-single-mode-te10-converged",
+  "evidence_level": "E5-fullband-mesh-flux-perport-matched-guide-ref-tjunction-hplane-wr-single-mode-te10-converged-single-geometry",
   "claim": "rfx 3-port H-plane T-junction flux S-matrix is reciprocal (0.001), passive (<= 1.006) and mesh-convergent (0.030) across the full single-mode TE10 band 5.0-7.0 GHz on a converged mesh refinement axis (dx 1.0->0.667 mm, fixed 48mm CPML). Regenerated 2026-07 on current main (evidence recommit).",
-  "claim_scope": "broad rfx rectangular_waveguide_port H-plane T-junction 3-port flux S-matrix envelope over the single-mode TE10 frequency axis (5.0-7.0 GHz, cutoff ratio 1.33-1.87) and a converged mesh axis (dx 1.0 to 0.667 mm) at fixed 48mm CPML; gates reciprocity<=0.05, passivity<=1.10, mesh-convergence<=0.08. Setup: far-port (>=5 evanescent decay-lengths), 48mm CPML (>~1 lambda_g near band-center), mesh dx 1.0->0.667mm.",
+  "claim_scope": "full-band SINGLE-GEOMETRY rfx rectangular_waveguide_port H-plane T-junction 3-port flux S-matrix envelope over the single-mode TE10 frequency axis (5.0-7.0 GHz, cutoff ratio 1.33-1.87) and a converged mesh axis (dx 1.0 to 0.667 mm) at fixed 48mm CPML; gates reciprocity<=0.05, passivity<=1.10, mesh-convergence<=0.08. Setup: far-port (>=5 evanescent decay-lengths), 48mm CPML (>~1 lambda_g near band-center), mesh dx 1.0->0.667mm. One junction geometry only \u2014 below the auditor's numeric breadth bar (>=2 geometry/eps variants) BY DESIGN, so this envelope is intentionally NOT listed in the manifest's envelope artifact lists; it is gated by tests/test_waveguide_tjunction_e4e5_gates.py.",
+  "envelope_summary": {
+    "case_count": 2,
+    "passed_case_count": 2,
+    "dx_values_m": [
+      0.001,
+      0.0006670000000000001
+    ],
+    "eps_r_values": [
+      1.0
+    ],
+    "geometries": [
+      "hplane_tee_W40mm_arms90_90_70"
+    ],
+    "freq_range_hz": [
+      5000000000.0,
+      7000000000.0
+    ],
+    "mesh_convergence_max": 0.029678821563720703
+  },
   "gates": {
     "reciprocity_tol": 0.05,
     "passivity_tol": 1.1,
@@ -310,7 +329,7 @@
   "provenance": {
     "generated_at": "2026-07-06",
     "regeneration_note": "2026-07 evidence recommit on current main \u2014 the June-2026 T-junction validation numbers were lost with the gitignored .omx artifacts; regenerated from raw runs and committed (coax #256/#259 pattern).",
-    "commit_hash": "8a29ef8",
+    "commit_hash": "90860f2",
     "source_artifacts": [
       "tj_farport_dx1.0_nc48.npz",
       "tj_farport_dx0.7_nc72.npz"
