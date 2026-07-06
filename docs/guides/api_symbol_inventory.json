@@ -2431,7 +2431,8 @@
       "eps_override",
       "sigma_override",
       "checkpoint_segments",
-      "strict_passivity"
+      "strict_passivity",
+      "port_reference_sims"
     ],
     "estimate_ad_memory": [
       "n_steps",
