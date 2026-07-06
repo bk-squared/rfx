@@ -207,18 +207,25 @@ def _warn_junction_probe_clearance(grid, cfgs, device_sigma, ref_sigmas, freqs):
     from that port's straight-guide reference. We reduce the PEC-folded
     ``sigma`` difference over the two transverse axes to a 1-D profile along
     the port normal axis, find the nearest differing cell to the port's probe
-    plane, and compare that clearance to 5 evanescent decay lengths of the next
+    plane, and compare that clearance to evanescent decay lengths of the next
     higher mode (TE20, cutoff ``fc2 = C0 / a``). ``alpha = 2*pi*sqrt(fc2^2 -
-    f^2)/C0`` is evaluated at the band-max frequency; the recommended clearance
-    is ``5 / alpha``. If the band max reaches ``fc2`` the next mode propagates
-    in-band and this advisory is skipped (a separate preflight covers that).
-    Emits ``warnings.warn`` per under-clearance port; does not raise.
+    f^2)/C0`` is evaluated at the band-CENTRE frequency — the validated
+    far-port campaign sized its arms in mid-band decay lengths, and a band-max
+    evaluation diverges (L -> inf) as the band edge approaches ``fc2``, which
+    would false-alarm on the validated geometry (its ports sit at 3.8-5.7
+    mid-band decay lengths). The advisory FIRES below ``3 / alpha`` (the floor
+    of the validated envelope) and the message RECOMMENDS ``>= 5 / alpha``. If
+    the band max reaches ``fc2`` the next mode propagates in-band and this
+    advisory is skipped (a separate preflight covers that). Emits
+    ``warnings.warn`` per under-clearance port; does not raise.
     """
     import warnings
 
     axis_idx = {"x": 0, "y": 1, "z": 2}
     dev = np.asarray(device_sigma)
-    f_max = float(np.max(np.asarray(freqs)))
+    f_arr = np.asarray(freqs, dtype=float)
+    f_max = float(f_arr.max())
+    f_cen = 0.5 * (float(f_arr.min()) + f_max)
     dx = float(grid.dx)
     for i, cfg in enumerate(cfgs):
         a = float(cfg.a)
@@ -235,16 +242,19 @@ def _warn_junction_probe_clearance(grid, cfgs, device_sigma, ref_sigmas, freqs):
         probe = int(cfg.probe_x)
         nearest = int(differing[np.argmin(np.abs(differing - probe))])
         clearance_m = abs(nearest - probe) * dx
-        alpha = 2.0 * np.pi * np.sqrt(max(fc2 ** 2 - f_max ** 2, 0.0)) / _C0_SPARAMS
+        alpha = 2.0 * np.pi * np.sqrt(max(fc2 ** 2 - f_cen ** 2, 0.0)) / _C0_SPARAMS
         if alpha <= 0.0:
             continue
-        recommended_m = 5.0 / alpha
-        if clearance_m < recommended_m:
+        minimum_m = 3.0 / alpha       # validated-envelope floor (fires below)
+        recommended_m = 5.0 / alpha   # recommendation in the message
+        if clearance_m < minimum_m:
             warnings.warn(
                 f"port_reference_sims: port index {i} ({cfg.normal_axis}-normal) "
                 f"probe plane is only {clearance_m * 1e3:.1f} mm from the "
-                f"junction; recommend >= {recommended_m * 1e3:.1f} mm "
-                f"(5 evanescent decay lengths of the next higher mode). Compact "
+                f"junction — below {minimum_m * 1e3:.1f} mm (3 mid-band "
+                f"evanescent decay lengths of the next higher mode, the floor "
+                f"of the validated far-port envelope); recommend "
+                f">= {recommended_m * 1e3:.1f} mm (5 decay lengths). Compact "
                 f"port-to-junction clearance left residual max|S|~3.9 in the "
                 f"2026-07-06 verification (necessary-but-not-sufficient) — move "
                 f"the probe plane farther from the junction.",
