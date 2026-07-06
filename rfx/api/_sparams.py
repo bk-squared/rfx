@@ -41,6 +41,16 @@ from rfx.api._spec import (
     _MSLPortEntry,
 )
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    # Type-only forward reference to the composed class for the
+    # ``port_reference_sims: "list[Simulation] | None"`` annotation. This is
+    # NOT a runtime import: the module-import contract above forbids a runtime
+    # ``from rfx.api import ...`` (cycle / sole-composition-point), and a
+    # TYPE_CHECKING guard never executes, so the contract is preserved.
+    from rfx.api import Simulation
+
 
 def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
     """Per-cell size array (length ``n``, full/padded) along ``axis`` for
@@ -187,6 +197,99 @@ def _finalize_sparam_result(
     return result
 
 
+_C0_SPARAMS = 299792458.0
+
+
+def _warn_junction_probe_clearance(grid, cfgs, device_sigma, ref_sigmas, freqs):
+    """Advisory: probe-plane clearance from a junction (pure NumPy, no FDTD).
+
+    For each driven port, the junction is where the device materials differ
+    from that port's straight-guide reference. We reduce the PEC-folded
+    ``sigma`` difference over the two transverse axes to a 1-D profile along
+    the port normal axis, find the nearest differing cell to the port's probe
+    plane, and compare that clearance to 5 evanescent decay lengths of the next
+    higher mode (TE20, cutoff ``fc2 = C0 / a``). ``alpha = 2*pi*sqrt(fc2^2 -
+    f^2)/C0`` is evaluated at the band-max frequency; the recommended clearance
+    is ``5 / alpha``. If the band max reaches ``fc2`` the next mode propagates
+    in-band and this advisory is skipped (a separate preflight covers that).
+    Emits ``warnings.warn`` per under-clearance port; does not raise.
+    """
+    import warnings
+
+    axis_idx = {"x": 0, "y": 1, "z": 2}
+    dev = np.asarray(device_sigma)
+    f_max = float(np.max(np.asarray(freqs)))
+    dx = float(grid.dx)
+    for i, cfg in enumerate(cfgs):
+        a = float(cfg.a)
+        fc2 = _C0_SPARAMS / a  # TE20 cutoff for a TE10 port of width a
+        if f_max >= fc2:
+            # Next higher mode propagates in-band; a separate preflight warns.
+            continue
+        ax = axis_idx[cfg.normal_axis]
+        other_axes = tuple(j for j in range(3) if j != ax)
+        diff_profile = np.any(np.asarray(ref_sigmas[i]) != dev, axis=other_axes)
+        differing = np.nonzero(diff_profile)[0]
+        if differing.size == 0:
+            continue
+        probe = int(cfg.probe_x)
+        nearest = int(differing[np.argmin(np.abs(differing - probe))])
+        clearance_m = abs(nearest - probe) * dx
+        alpha = 2.0 * np.pi * np.sqrt(max(fc2 ** 2 - f_max ** 2, 0.0)) / _C0_SPARAMS
+        if alpha <= 0.0:
+            continue
+        recommended_m = 5.0 / alpha
+        if clearance_m < recommended_m:
+            warnings.warn(
+                f"port_reference_sims: port index {i} ({cfg.normal_axis}-normal) "
+                f"probe plane is only {clearance_m * 1e3:.1f} mm from the "
+                f"junction; recommend >= {recommended_m * 1e3:.1f} mm "
+                f"(5 evanescent decay lengths of the next higher mode). Compact "
+                f"port-to-junction clearance left residual max|S|~3.9 in the "
+                f"2026-07-06 verification (necessary-but-not-sufficient) — move "
+                f"the probe plane farther from the junction.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+
+def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
+    """Advisory: CPML thickness vs guide wavelength (pure NumPy, no FDTD).
+
+    For each port compute the TE10 guide wavelength at band centre,
+    ``lambda_g = lambda0 / sqrt(1 - (fc1 / f)^2)`` with ``fc1 = C0 / (2 a)``
+    and ``lambda0 = C0 / f``. If the CPML stack (``cpml_layers * dx``) is
+    thinner than ``0.5 * lambda_g`` the absorber may under-drain guided energy.
+    Heuristic from the validated campaign: 20 mm CPML produced |S11| ripple
+    ~0.11, 48 mm passed. Emits ``warnings.warn`` per thin-CPML port; does not
+    raise.
+    """
+    import warnings
+
+    f_arr = np.asarray(freqs, dtype=float)
+    f_cen = 0.5 * (float(f_arr.min()) + float(f_arr.max()))
+    cpml_m = int(cpml_layers) * float(grid.dx)
+    for i, cfg in enumerate(cfgs):
+        a = float(cfg.a)
+        fc1 = _C0_SPARAMS / (2.0 * a)  # TE10 cutoff
+        if f_cen <= fc1:
+            # Below cutoff at band centre; the guide wavelength is undefined.
+            continue
+        lambda0 = _C0_SPARAMS / f_cen
+        lambda_g = lambda0 / np.sqrt(1.0 - (fc1 / f_cen) ** 2)
+        if cpml_m < 0.5 * lambda_g:
+            warnings.warn(
+                f"port_reference_sims: port index {i} CPML stack is "
+                f"{cpml_m * 1e3:.1f} mm, less than 0.5 guide-wavelength "
+                f"({0.5 * lambda_g * 1e3:.1f} mm) at band centre. Thin CPML "
+                f"under-drains guided energy — 20 mm CPML produced |S11| ripple "
+                f"~0.11 in the validated campaign, 48 mm passed. Thicken the "
+                f"absorber.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+
 class _SparamMixin:
     """S-parameter extraction methods mixed into :class:`Simulation`."""
 
@@ -201,6 +304,7 @@ class _SparamMixin:
         sigma_override: "jnp.ndarray | None" = None,
         checkpoint_segments: int | None = None,
         strict_passivity: bool = False,
+        port_reference_sims: "list[Simulation] | None" = None,
     ) -> WaveguideSMatrixResult:
         """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
@@ -268,6 +372,48 @@ class _SparamMixin:
             and the ≈O(√n_steps) tape reduction is realised under ``jax.grad``
             with ``normalize='flux'`` + an ``eps_override`` / ``sigma_override``
             design variable.
+        port_reference_sims : list[Simulation] or None
+            Per-driven-port matched-straight-guide reference simulations for
+            **interior-PEC multi-port** structures (T-junctions, branches,
+            septa). ``port_reference_sims[i]`` is a ``Simulation`` describing
+            the STRAIGHT continuation of driven port ``i``'s guide with **no
+            junction** — same domain / ``dx`` / boundary, geometry = port
+            ``i``'s guide walls extended straight through. Only valid with
+            ``normalize='flux'`` (raises otherwise); single-mode ports only;
+            uniform mesh only; not combinable with ``eps_override`` /
+            ``sigma_override``.
+
+            **Multi-port junctions (port_reference_sims).** The default flux
+            path references incident power ``P_inc`` to a single shared VACUUM
+            run (empty domain, no interior PEC). For a straight guide the walls
+            come from ``pec_axes`` so that vacuum reference already carries the
+            guided ``P_inc`` correctly. For a junction the interior PEC septum /
+            branch is stripped from the vacuum reference, which then radiates
+            into free space: ``P_inc`` is mis-normalized and every ``|S|``
+            inflates hard (non-passive; ``normalize=True`` gave max|S|~230,
+            ``normalize='flux'`` gave max|S|~9.8, |S11|~1.9 on the verified
+            compact 3-port T-junction). Passing ``port_reference_sims[i]`` = the
+            matched straight guide for driven arm ``i`` moves ``P_inc`` toward
+            the true single-mode guided incident power (PEC-folded identically
+            to the device run).
+
+            **Far-port discipline (required for a physical S-matrix).** This
+            plumbing is NECESSARY but NOT SUFFICIENT. A physical junction
+            S-matrix additionally requires: (1) each port's probe plane placed
+            >= 5 evanescent decay lengths of the next higher mode away from the
+            junction; (2) CPML thickness >= ~0.5 guide wavelengths at band
+            centre; (3) a converged mesh. On far-port geometry (arms 90/90/70 mm,
+            48 mm CPML, dx 1.0/0.667 mm) the matched-reference flux path reaches
+            passivity 1.006/1.002, reciprocity 0.001, mesh-convergence 0.0297
+            and 0.087 vs MEEP (r2000, cross-device). On COMPACT geometry the
+            matched reference fixes |S11| (1.86 → 0.49, physical) but the overall
+            matrix stays non-physical (residual max|S|~3.9); the two in-method
+            advisories (probe clearance, CPML thickness) warn when the far-port
+            discipline is not met. This enables junction measurements UNDER the
+            documented discipline; it does NOT make arbitrary compact junctions
+            valid. See the skipped ``test_api.py`` T-junction reciprocity test
+            and the companion evidence gate test
+            ``tests/test_waveguide_tjunction_e4e5_gates.py``.
         """
         if not normalize:
             import warnings
@@ -302,6 +448,34 @@ class _SparamMixin:
             raise ValueError(
                 "compute_waveguide_s_matrix() currently supports only measured/default reference planes or explicit reference_plane overrides"
             )
+
+        # Per-port straight-guide references for interior-PEC junctions.
+        # Cheap guards first (raise BEFORE any FDTD); the grid-match check
+        # and PEC-fold happen after the device grid is assembled below.
+        if port_reference_sims is not None:
+            if normalize != "flux":
+                raise ValueError(
+                    "port_reference_sims requires normalize='flux' — the "
+                    "per-port reference feeds the flux P_inc normalization"
+                )
+            if any(entry.n_modes > 1 for entry in entries):
+                raise NotImplementedError(
+                    "port_reference_sims is not supported with multimode ports "
+                    "(n_modes>1): the multimode extractor has no per-port-"
+                    "reference support"
+                )
+            if eps_override is not None or sigma_override is not None:
+                raise NotImplementedError(
+                    "port_reference_sims combined with eps_override / "
+                    "sigma_override is an unvalidated combination and is not "
+                    "supported"
+                )
+            if len(port_reference_sims) != len(entries):
+                raise ValueError(
+                    "port_reference_sims must supply one Simulation per "
+                    f"waveguide port ({len(entries)}), got "
+                    f"{len(port_reference_sims)}"
+                )
 
         # Non-uniform-mesh dispatch. Earlier the uniform scan ran with
         # the coarse boundary dx and silently ignored ``dx_profile`` /
@@ -339,6 +513,11 @@ class _SparamMixin:
                 )
             if subpixel_smoothing:
                 unsupported.append("subpixel_smoothing is not supported")
+            if port_reference_sims is not None:
+                unsupported.append(
+                    "port_reference_sims (per-port straight-guide junction "
+                    "references) is not supported on the non-uniform lane"
+                )
             if unsupported:
                 raise NotImplementedError(
                     "compute_waveguide_s_matrix() on a non-uniform mesh "
@@ -392,6 +571,30 @@ class _SparamMixin:
             materials = materials._replace(eps_r=eps_override)
         if sigma_override is not None:
             materials = materials._replace(sigma=sigma_override)
+
+        # Per-port straight-guide reference materials for interior-PEC
+        # junctions. Each reference sim is a geometry carrier: assemble its
+        # materials on a grid that must match the device grid, then fold its
+        # interior PEC into sigma IDENTICALLY to the device path above (only
+        # the plain path — no subpixel/conformal handling for references).
+        ref_materials_per_port = None
+        if port_reference_sims is not None:
+            ref_materials_per_port = []
+            for _i, _ref_sim in enumerate(port_reference_sims):
+                _ref_grid = _ref_sim._build_grid()
+                if _ref_grid.shape != grid.shape or float(_ref_grid.dx) != float(grid.dx):
+                    raise ValueError(
+                        f"port_reference_sims[{_i}] grid "
+                        f"(shape={_ref_grid.shape}, dx={_ref_grid.dx}) must "
+                        f"match the device grid (shape={grid.shape}, "
+                        f"dx={grid.dx})"
+                    )
+                _ref_base, _, _, _ref_pec_mask, _, _, _ = _ref_sim._assemble_materials(_ref_grid)
+                if _ref_pec_mask is not None:
+                    _ref_base = _ref_base._replace(
+                        sigma=jnp.where(_ref_pec_mask, 1e10, _ref_base.sigma))
+                ref_materials_per_port.append(_ref_base)
+
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
         _, debye, lorentz = self._init_dispersion(materials, grid.dt, debye_spec, lorentz_spec)
@@ -657,6 +860,17 @@ class _SparamMixin:
         # Single-mode path (original behavior)
         cfgs = raw_cfgs
 
+        # Far-port discipline advisories for interior-PEC junction references.
+        # Pure-numpy heuristics emitted BEFORE the FDTD runs; no simulation.
+        if port_reference_sims is not None:
+            _warn_junction_probe_clearance(
+                grid, cfgs, materials.sigma,
+                [m.sigma for m in ref_materials_per_port], freqs,
+            )
+            _warn_junction_cpml_thickness(
+                grid, cfgs, freqs, self._cpml_layers,
+            )
+
         def _slices_overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
             return max(a[0], b[0]) < min(a[1], b[1])
 
@@ -747,6 +961,7 @@ class _SparamMixin:
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 ref_aniso_inv_eps=ref_aniso_inv_eps,
+                ref_materials_per_port=ref_materials_per_port,
                 checkpoint_segments=checkpoint_segments,
             )
         elif normalize:
