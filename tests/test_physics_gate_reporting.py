@@ -717,20 +717,24 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["missing_manifest_family_count"] == 0
     # TWO families have committed passing external comparisons on a clean
     # checkout: rectangular_waveguide_port (rfx-vs-Palace FEM, PR #181, PLUS the
-    # 2026-07-06 T-junction rfx-vs-MEEP recommit wired as a claims-bearing
-    # passed-E4 artifact — honestly single-geometry, so it counts toward the
-    # passed-comparison total but NOT the broad-E4 total) and coaxial_port
-    # (rfx-vs-Meep power-flux broad-E4, VESSL 369367245835 recommit 2026-07-04,
-    # tests/fixtures/coax_broad_e4/). So 3 passed comparison ARTIFACTS across 2
-    # families; the other 5 required families are still missing a passed
-    # comparison artifact on a clean (no-.omx/) checkout.
+    # T-junction rfx-vs-MEEP comparison, now upgraded to TWO junction geometries
+    # by the 2026-07-06 broad-claim campaign — summary.geometry_count=2, so it
+    # counts toward BOTH the passed-comparison total AND the broad-E4 total) and
+    # coaxial_port (rfx-vs-Meep power-flux broad-E4, VESSL 369367245835 recommit
+    # 2026-07-04, tests/fixtures/coax_broad_e4/). So 3 passed comparison ARTIFACTS
+    # across 2 families (the T-junction upgrade broadens an EXISTING artifact, it
+    # does not add a file — passed_comparison_artifact_count stays 3); the other 5
+    # required families are still missing a passed comparison artifact on a clean
+    # (no-.omx/) checkout.
     # coaxial_port is broad_e5_passed (2026-07-04): PR #260 made the reflection
     # extractor AD-traceable, PR #261 added the eps_scale end-to-end differentiable
     # channel, and that promotion wired the passing ad_fd_test + flipped
     # current_status. It is NO LONGER in the incomplete set below.
     assert audit["missing_passed_comparison_artifact_count"] == 5
     assert audit["passed_comparison_artifact_count"] == 3
-    assert audit["passed_broad_e4_comparison_artifact_count"] == 2
+    # 3 = wr90 Palace (waveguide) + the two-geometry T-junction MEEP comparison
+    # (waveguide, geometry_count=2 after the broad-claim campaign) + coax Meep.
+    assert audit["passed_broad_e4_comparison_artifact_count"] == 3
     # No family is MISSING a broad-E4/E5 artifact. TWO families are now
     # current_status=broad_e5_passed: rectangular_waveguide_port (PR #181) and
     # coaxial_port (broad-E5 envelope PR #256 + broad-E4 Meep PR #259 + the
@@ -739,9 +743,11 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["missing_broad_e4_comparison_artifact_count"] == 0
     assert sorted(audit["missing_broad_e4_comparison_artifact_families"]) == []
     assert audit["missing_broad_e5_envelope_artifact_count"] == 0
-    # 6 = the 5 rectangular-waveguide band envelopes (PR #181) + the coaxial
-    # line envelope committed to tests/fixtures/coax_broad_e5/ (PR #256).
-    assert audit["passed_broad_e5_envelope_artifact_count"] == 6
+    # 7 = the 5 rectangular-waveguide band envelopes (PR #181) + the two-geometry
+    # T-junction envelope now LISTED after the broad-claim campaign
+    # (envelope_summary.case_count=4) + the coaxial line envelope committed to
+    # tests/fixtures/coax_broad_e5/ (PR #256).
+    assert audit["passed_broad_e5_envelope_artifact_count"] == 7
     # status stays "blocked" because lumped/wire (E4-natural-ceiling) + floquet
     # remain incomplete; coaxial_port is NO LONGER among them.
     assert audit["status"] == "blocked"
