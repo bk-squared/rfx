@@ -220,7 +220,8 @@
         "compute_waveguide_s_matrix() requires at least two waveguide ports",
         "non-uniform path requires normalize=True and single-mode ports",
         "multi-mode normalize=True is unsupported",
-        "not compatible with lumped ports, TFSF, or manual periodic-axis overrides"
+        "not compatible with lumped ports, TFSF, or manual periodic-axis overrides",
+        "interior-PEC junctions (T/branch/septum) need per-port matched-straight-guide references via compute_waveguide_s_matrix(normalize='flux', port_reference_sims=[...]) under the far-port discipline; compact junctions stay non-physical (evidence tests/fixtures/waveguide_tjunction_e4/)"
       ],
       "evidence_level": "E5-broad-magnitude (analytic-Airy oracle; +E4-external WR-90 slab, magnitude-only) + approximately-convention-free TE10 propagation-phase witness vs independent numpy-double beta, ~4deg, z_mode cancels to first order in the ~6-15% CPML residual reflection (test_waveguide_phase_gate, incl. a _shift_modal_waves step_sign de-embed test; NOT yet wired into the broad-E5 auditor verdict)",
       "promotion_requirements": [

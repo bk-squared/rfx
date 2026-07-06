@@ -50,7 +50,7 @@ auditor, locked by `tests/test_physics_gate_reporting.py::test_every_family_decl
 
 | Port | Use it when… | Target ceiling | Status today |
 |---|---|---|---|
-| `add_waveguide_port` | rectangular waveguide TE/TM, uniform Cartesian lane | **broad-E5** | ✅ broad-E5 achieved |
+| `add_waveguide_port` | rectangular waveguide TE/TM, uniform Cartesian lane | **broad-E5** | ✅ broad-E5 achieved; interior-PEC junctions (T/branch/septum) measurable via `compute_waveguide_s_matrix(normalize='flux', port_reference_sims=[...])` under the far-port discipline (probe clearance ≥5 evanescent decay lengths, CPML ≥~0.5 λ_g), compact junctions stay non-physical — evidence `tests/fixtures/waveguide_tjunction_e4/` |
 | `add_msl_port` | matched / thru-line / notch microstrip (quasi-TEM) | broad-E5-regime-restricted | matched-regime only; strong-reflector \|S11\| has a ~0.16-0.22 staircase-Z0 floor (mesh-conv #183); eigenmode port is a falsified dead-end |
 | `add_coaxial_port` | coax line reflection (forward AND `jax.grad` optimization via `eps_scale`) | **broad-E5** | ✅ broad_e5_passed — committed broad-E5 envelope + broad-E4 MEEP + end-to-end differentiable (AD-vs-FD gate) |
 | `add_port(extent=None)` lumped | sub-cell lumped R/L/C/RLC element | **E4-natural-ceiling** | E4 is the ceiling (not a transmission line); validate to E4, do not chase E5 |

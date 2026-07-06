@@ -70,8 +70,32 @@ result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
 ```
 
 This runs a reference simulation (empty waveguide) to cancel Yee-grid numerical
-dispersion. Do not extrapolate this to arbitrary branches/T-junctions without a
-per-port reference-geometry validation artifact.
+dispersion. The single shared empty-guide reference is only correct when the
+guide walls are the domain boundary. For a **branch / T-junction / septum**
+(interior PEC), that reference strips the septum and radiates into free space,
+so the incident power `P_inc` is mis-normalized and every `|S|` inflates
+(a compact 3-port T-junction gives `normalize='flux'` max|S| ~ 9.8, |S11| ~ 1.9).
+
+Junction S-matrices are measurable with `normalize='flux'` by passing per-port
+matched-straight-guide references — one `Simulation` per driven port, each the
+straight continuation of that port's guide with no junction:
+
+```python
+result = sim.compute_waveguide_s_matrix(
+    num_periods=30, normalize="flux",
+    port_reference_sims=[ref_left, ref_right, ref_top],
+)
+```
+
+This is correct **only under the far-port discipline**: place each probe plane
+at least 5 evanescent decay lengths of the next higher mode from the junction,
+use CPML at least ~0.5 guide wavelengths thick, and confirm a converged mesh.
+On a far-port geometry the matched-reference path reaches passivity ~1.00,
+reciprocity ~0.001 and ~0.087 vs MEEP. On **compact** geometry the reference
+fixes |S11| (1.86 → 0.49) but the overall matrix stays non-physical (residual
+max|S| ~ 3.9); `compute_waveguide_s_matrix` emits clearance / CPML advisories
+and its passivity self-check fires. This does not make arbitrary compact
+junctions valid — keep the far-port discipline.
 
 ## Multi-Axis Ports
 

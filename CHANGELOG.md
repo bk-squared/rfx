@@ -6,6 +6,35 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — waveguide multi-port junction references (`port_reference_sims`)
+
+- `compute_waveguide_s_matrix(..., port_reference_sims=[...])` exposes public
+  plumbing for interior-PEC multi-port structures (T-junctions / branches /
+  septa). Each `port_reference_sims[i]` is a `Simulation` describing the matched
+  STRAIGHT continuation of driven port `i`'s guide (same domain / `dx` /
+  boundary, no junction); its PEC-folded materials feed the flux extractor's
+  per-port incident-power reference so the guided `P_inc` is correct. The
+  default shared VACUUM reference strips the interior PEC and mis-normalizes
+  `P_inc`, inflating every `|S|` (measured on the compact 3-port T-junction:
+  `normalize=True` max|S|~230; `normalize='flux'` max|S|~9.8, |S11|~1.9).
+- Only valid with `normalize='flux'` (raises otherwise); single-mode ports,
+  uniform mesh only; not combinable with `eps_override` / `sigma_override`;
+  each reference grid must match the device grid (shape + `dx`); one reference
+  per waveguide port.
+- Two in-method advisories (pure NumPy, no FDTD) warn when the **far-port
+  discipline** is not met: probe clearance < 5 evanescent decay lengths of the
+  next higher mode, and CPML thickness < ~0.5 guide wavelengths at band centre.
+- **Far-port numbers (verified 2026-07-06).** On a far-port geometry (arms
+  90/90/70 mm, 48 mm CPML, dx 1.0/0.667 mm) the matched-reference flux path
+  reaches passivity 1.006/1.002, reciprocity 0.001, mesh-convergence 0.0297 and
+  0.087 vs MEEP (r2000, cross-device). **Necessary-but-not-sufficient caveat:**
+  on COMPACT geometry it fixes |S11| (1.86 → 0.49) but the overall matrix stays
+  non-physical (residual max|S|~3.9); this enables junction measurements only
+  under the documented discipline, not for arbitrary compact junctions.
+- Companion committed evidence: `tests/fixtures/waveguide_tjunction_e4/` +
+  gate test `tests/test_waveguide_tjunction_e4e5_gates.py`; guard / advisory /
+  A/B-witness coverage in `tests/test_waveguide_port_reference_sims.py`.
+
 ### Added — coaxial S-parameters: AD-traceable + end-to-end differentiable + `broad_e5_passed` (PRs #260, #261, #262)
 
 - `compute_coaxial_line_reflection(...)` is now **end-to-end differentiable** via a new
