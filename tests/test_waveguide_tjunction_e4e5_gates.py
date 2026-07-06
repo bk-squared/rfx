@@ -126,6 +126,9 @@ def test_envelope_rederives_from_raw_and_gates_pass() -> None:
         S_coarse.shape, S_fine.shape)
     N = S_fine.shape[2]
     assert len(env["band_hz"]) == N
+    # Coverage axes: both converged meshes present, full single-mode TE10 band.
+    assert {c["mesh"] for c in env["cases"]} == {"coarse", "fine"}, env["cases"]
+    assert N >= 11, f"expected the full 5.0-7.0 GHz band (>=11 pts), got {N}"
 
     gates = env["gates"]
     by_mesh = {c["mesh"]: c for c in env["cases"]}
