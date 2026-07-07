@@ -1938,10 +1938,11 @@ def test_warning_has_no_false_positive_at_boundary():
     assert exact.warning is None
     assert below.warning is not None
 
-    # One-ulp headroom: gb / 0.85 * 0.85 does not round-trip exactly for
-    # every float value, and whether it lands above or below is value
-    # luck. The intent is "no warning at/above the boundary", so nudge the
-    # availability by 1e-12 relative.
+    # Float round-trip headroom: gb / 0.85 * 0.85 does not round-trip
+    # exactly for every float value (observed gap ~0.5 ulp), and whether it
+    # lands above or below is value luck. The intent is "no warning
+    # at/above the boundary", so nudge the availability by 1e-12 relative —
+    # orders of magnitude above the round-trip gap, physically negligible.
     segmented_baseline = sim.estimate_ad_memory(n_steps=120, checkpoint_segments=10)
     segmented_available = segmented_baseline.ad_segmented_gb / 0.85 * (1 + 1e-12)
     segmented_exact = sim.estimate_ad_memory(
