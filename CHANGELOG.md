@@ -6,6 +6,32 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — `compute_rcs` monostatic extraction pointed at −z broadside, not backscatter (issue #276)
+
+- `RCSResult.monostatic_rcs` was argmin-extracted at (θ=π, φ=0), which under
+  the far-field convention (`r_hat = [sinθcosφ, sinθsinφ, cosθ]`) is the −z
+  BROADSIDE direction — not the −x backscatter of the +x TFSF incidence
+  (θ=π/2, φ=π). Measured on a validated exact-Mie PEC-sphere falsifier
+  (ka≈1.0, dx=λ/40): the shipped number was 10.06 dB off Mie; the same run
+  re-extracted at the true backscatter direction is 0.06 dB off.
+- The backscatter direction is now derived from the incident propagation
+  unit vector (b_hat = −k_hat) and the far field is evaluated EXACTLY at
+  that direction on the already-accumulated NTFF data — no observation-grid
+  snapping (the default φ grid `[0, π/2]` does not even contain φ=π).
+  `monostatic_rcs` is therefore independent of `theta_obs`/`phi_obs` and is
+  now always computed (previously `None` for empty observation grids).
+- New committed evidence + gate: `tests/fixtures/rcs_sphere_mie/`
+  (exact-Mie oracle self-validated by four rfx-independent witnesses —
+  Rayleigh 9(ka)^4, GO→1, term-doubling convergence, bistatic-bridge — plus
+  fixture JSON with the full H-plane trace) and
+  `tests/test_rcs_mie_fixture.py` (live recompute at the committed
+  resolution, gate |Δ| ≤ 1.0 dB vs Mie; measured 0.06 dB). Claim scope is
+  MONOSTATIC magnitude at the committed resolution only — the same run
+  shows a NON-GATED spurious forward-oblique lobe (25–55°, ~10 dB high vs
+  Mie; TFSF/NTFF forward-face contamination suspected) and a ~1.6 dB
+  forward-scatter delta, documented per-angle in the fixture rather than
+  hidden.
+
 ### Added — waveguide multi-port junction references (`port_reference_sims`)
 
 - `compute_waveguide_s_matrix(..., port_reference_sims=[...])` exposes public

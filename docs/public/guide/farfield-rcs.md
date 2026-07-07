@@ -112,15 +112,17 @@ result = compute_rcs(
     freqs=np.array([f0]),
 )
 
-# monostatic_rcs is the observation angle nearest backscatter (theta ~ pi,
-# phi ~ 0 for the default +x incidence); populated whenever obs angles are given.
+# monostatic_rcs is evaluated exactly at the backscatter direction
+# (theta=pi/2, phi=pi for the +x incidence), independent of theta_obs/phi_obs.
 print(f"Monostatic RCS: {result.monostatic_rcs[0]:.1f} dBsm")
 print(f"Bistatic RCS range: {result.rcs_dbsm.min():.1f} to {result.rcs_dbsm.max():.1f} dBsm")
 ```
 
 `RCSResult` carries `rcs_dbsm` and `rcs_linear` (shape `(n_freqs, n_theta,
-n_phi)`), `monostatic_rcs` (`(n_freqs,)` dBsm, or `None` when no observation
-angles are given), and the `freqs` / `theta` / `phi` axes.
+n_phi)`), `monostatic_rcs` (`(n_freqs,)` dBsm, always populated — evaluated
+exactly at the backscatter direction opposite the incident propagation
+vector, so it does not depend on the observation grid), and the
+`freqs` / `theta` / `phi` axes.
 
 ## Plotting RCS
 
