@@ -52,9 +52,12 @@ Hankel-kind choice, so the RCS magnitude is convention-independent.
 
 Usage::
 
-    python scripts/diagnostics/build_rcs_mie_reference.py            # verdict from fixture
-    python scripts/diagnostics/build_rcs_mie_reference.py --run      # rerun FDTD ladder + rebuild fixture
-    python scripts/diagnostics/build_rcs_mie_reference.py --anchors  # self-validate the Mie oracle
+    python scripts/diagnostics/build_rcs_mie_reference.py                    # verdict from fixture
+    python scripts/diagnostics/build_rcs_mie_reference.py --run --commit SHA # rerun FDTD ladder + rebuild fixture
+    python scripts/diagnostics/build_rcs_mie_reference.py --anchors          # self-validate the Mie oracle
+
+Pair ``--run`` with ``--commit <sha>``: the default stamp is "uncommitted",
+which the fixture meta-integrity gate rejects on purpose (forces a real SHA).
 """
 
 from __future__ import annotations
@@ -241,8 +244,11 @@ def _meta(commit: str) -> dict[str, Any]:
             "test": "tests/test_rcs.py::TestRCSPECSphere::test_rcs_pec_sphere_mie",
             "ka": 0.9431,
             "f0_hz": 3.0e9,
-            "note": "falsifier at the committed test point measured "
-            "|rfx - Mie| = 4.89 dB (coarse lambda/10), PASS (<5 dB R2 gate)",
+            "note": "one-off R2 go/no-go falsifier at the committed test point "
+            "(f0=3 GHz, lambda/10, ka=0.9431 -- NOT on the ladder) measured "
+            "|rfx - Mie| ~ 4.9 dB. This was the falsifier check, NOT a committed "
+            "gate: the committed sphere gate is +/-15 dB vs the GO limit, and the "
+            "exact-Mie envelope here is +/-10-15 dB (see meta.finding).",
         },
         "note": "raw arrays hold rfx monostatic dBsm + exact Mie dBsm + errors; "
         "the Mie column is re-derivable from the series (scipy) by the gate test.",
