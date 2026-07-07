@@ -96,7 +96,12 @@ class AD_MemoryEstimate(NamedTuple):
     rematerialised (see issue #31 VESSL 369367233490). Use
     ``ad_segmented_gb`` for the runner-supported segmented paths:
     ``checkpoint_every`` on the non-uniform scan-of-scan path and
-    ``checkpoint_segments`` on the uniform segmented-scan path. When present,
+    ``checkpoint_segments`` on the uniform segmented-scan path. The
+    segmented model counts segment-boundary storage (carry + cotangent,
+    ``2 × active_segments``) PLUS the live-segment rematerialization tape
+    (one segment's per-step field tape resident during backward replay,
+    issue #277); it is minimized near ``sqrt(2 × n_steps)`` steps per
+    segment. When present,
     ``ad_segmented_active_segments`` is the actual number of active segment
     boundaries/carry snapshots used by the segmented estimate after warmup.
     ``evidence_class`` labels this artifact as a static estimate so downstream
