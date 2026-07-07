@@ -36,7 +36,11 @@ class RCSResult(NamedTuple):
     phi : (n_phi,) radians
     rcs_dbsm : (n_freqs, n_theta, n_phi) in dBsm
     rcs_linear : (n_freqs, n_theta, n_phi) in m^2
-    monostatic_rcs : (n_freqs,) backscatter RCS in dBsm, or None
+    monostatic_rcs : (n_freqs,) backscatter RCS in dBsm, evaluated
+        exactly at the backscatter direction (opposite the incident
+        propagation vector), independent of the theta/phi observation
+        grid. For normal-incidence +x propagation this is
+        (theta=pi/2, phi=pi), i.e. -x.
     """
     freqs: np.ndarray
     theta: np.ndarray
@@ -138,7 +142,10 @@ def compute_rcs(
     -------
     RCSResult
         freqs, theta, phi, rcs_dbsm (dBsm), rcs_linear (m^2),
-        monostatic_rcs (dBsm at backscatter direction).
+        monostatic_rcs (dBsm, evaluated exactly at the true backscatter
+        direction — for +x incidence that is (theta=pi/2, phi=pi) under
+        the farfield r_hat convention; it does not depend on
+        theta_obs/phi_obs).
     """
     # Defaults
     if theta_obs is None:
@@ -261,16 +268,52 @@ def compute_rcs(
     rcs_dbsm = 10.0 * np.log10(np.maximum(rcs_linear, 1e-30))
 
     # --- 7. Extract monostatic (backscatter) RCS ---
-    # For +x incidence, backscatter direction is theta=pi, phi=0
-    # (i.e., -x direction in spherical coordinates).
-    # Find the closest observation angle to (theta=pi, phi=0).
-    monostatic_rcs = None
-    if len(theta_obs) > 0 and len(phi_obs) > 0:
-        # Backscatter: theta = pi (or close to it), phi = 0 (or close)
-        theta_back_idx = np.argmin(np.abs(theta_obs - np.pi))
-        phi_back_idx = np.argmin(np.abs(phi_obs - 0.0))
-        mono_linear = rcs_linear[:, theta_back_idx, phi_back_idx]
-        monostatic_rcs = 10.0 * np.log10(np.maximum(mono_linear, 1e-30))
+    # Backscatter is the direction OPPOSITE the incident propagation
+    # vector.  The TFSF source above propagates along +x
+    # (``direction="+x"`` in the init_tfsf call); a non-zero theta_inc
+    # tilts the propagation in the x-y plane for "ez" polarization and
+    # in the x-z plane for "ey" (see the t_delay lines in
+    # rfx/sources/tfsf_2d.py).  So:
+    #     k_hat = (cos(theta_inc), sin(theta_inc), 0)   for "ez"
+    #     k_hat = (cos(theta_inc), 0, sin(theta_inc))   for "ey"
+    #     b_hat = -k_hat                                (backscatter)
+    # Under the far-field convention (rfx/farfield.py:
+    # r_hat = [sin(th)cos(ph), sin(th)sin(ph), cos(th)], theta = polar
+    # angle from +z), the spherical angles of b_hat are
+    #     theta_back = arccos(b_hat_z)
+    #     phi_back   = atan2(b_hat_y, b_hat_x)
+    # For the supported normal-incidence case (theta_inc = 0) this gives
+    # (theta_back, phi_back) = (pi/2, pi), i.e. the -x direction.
+    # NOTE (issue #276): the pre-fix code hardcoded (theta=pi, phi=0),
+    # which under this convention is the -z BROADSIDE direction, not
+    # backscatter.
+    #
+    # The far field is evaluated EXACTLY at the backscatter direction
+    # (one extra direction on the already-accumulated NTFF data) instead
+    # of argmin-snapping to the observation grid: the default phi grid
+    # ([0, pi/2]) does not contain phi=pi, so grid snapping would
+    # silently return a different cut.
+    theta_inc_rad = float(np.radians(theta_inc))
+    if polarization == "ey":
+        k_hat = np.array([np.cos(theta_inc_rad), 0.0, np.sin(theta_inc_rad)])
+    else:  # "ez"
+        k_hat = np.array([np.cos(theta_inc_rad), np.sin(theta_inc_rad), 0.0])
+    b_hat = -k_hat
+    theta_back = float(np.arccos(np.clip(b_hat[2], -1.0, 1.0)))
+    phi_back = float(np.mod(np.arctan2(b_hat[1], b_hat[0]), 2.0 * np.pi))
+
+    ff_back = compute_far_field(
+        result.ntff_data,
+        ntff_box,
+        grid,
+        np.array([theta_back]),
+        np.array([phi_back]),
+    )
+    Eb_theta = np.asarray(ff_back.E_theta, dtype=np.complex128)[:, 0, 0]
+    Eb_phi = np.asarray(ff_back.E_phi, dtype=np.complex128)[:, 0, 0]
+    power_back = np.abs(Eb_theta) ** 2 + np.abs(Eb_phi) ** 2  # (nf,)
+    mono_linear = 4.0 * np.pi * power_back / safe_power_inc
+    monostatic_rcs = 10.0 * np.log10(np.maximum(mono_linear, 1e-30))
 
     return RCSResult(
         freqs=freqs_arr,
