@@ -47,7 +47,7 @@ class RCSResult(NamedTuple):
     phi: np.ndarray
     rcs_dbsm: np.ndarray
     rcs_linear: np.ndarray
-    monostatic_rcs: np.ndarray | None
+    monostatic_rcs: np.ndarray
 
 
 def _incident_spectrum_amplitude(
