@@ -8,9 +8,9 @@ is a CHARACTERIZED external cross-check, NOT a tight OpenEMS-class validation:
 the notch frequency agrees to ~6% (rfx sits near the fringing-free analytic
 3.69 GHz; openEMS lands lower). UPDATE 2026-07-07: a Palace FEM referee (conformal
 tets, independent method, matched geometry) lands at ~3.631 GHz at two mesh
-densities and SIDES WITH rfx (+0.1%) — openEMS's dx=50 µm notch is the OUTLIER
-(~5.9% away), so the split is an openEMS staircase offset, not the "openEMS
-captures more open-end fringing" story once assumed. The off-notch |S21|
+densities, closest to rfx (+0.1%). Our earlier working interpretation ("openEMS
+captures more open-end fringing") is revised by that evidence — the FEM value
+indicates the fringing correction is ~1-2%. The off-notch |S21|
 transmission agrees to ~0.1. See ``msl_stub_notch_palace_referee.json``.
 
 Why dx=50 µm (not cv06b's shipped dx=80 µm): at dx=80 µm the substrate is only

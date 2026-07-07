@@ -10,10 +10,10 @@ validation — it is an honest characterization:
   * the notch frequency agrees to ~6% — rfx sits near the fringing-free analytic
     quarter-wave (3.69 GHz), openEMS lands lower (3.43 GHz). UPDATE 2026-07-07: a
     Palace FEM referee (conformal tets, independent method, matched geometry)
-    lands at ~3.631 GHz at two mesh densities and SIDES WITH rfx (+0.1%);
-    openEMS's dx=50 µm staircase notch is the OUTLIER (~5.9% away), NOT the
-    fringing truth. So the ~6% split is an openEMS offset, not an rfx error to
-    chase (R2-tight: one clean comparison, no chasing). See
+    lands at ~3.631 GHz at two mesh densities, closest to rfx (+0.1%). Our
+    earlier working interpretation (open-end fringing as the driver of the
+    split) is revised by that evidence; the ~6% figure remains characterized,
+    not an rfx error to chase (R2-tight: one clean comparison, no chasing). See
     ``msl_stub_notch_palace_referee.json`` +
     ``test_msl_notch_palace_referee_gates.py``.
 
@@ -64,9 +64,9 @@ def test_notch_frequency_characterized_within_envelope(summary):
     tight OpenEMS-class claim."""
     rel = summary["comparison"]["notch_freq_rel_pct"]
     assert rel <= 7.0, f"notch-freq disagreement {rel}% exceeds the characterized 7% envelope"
-    # rfx sits ABOVE openEMS — the 2026-07-07 Palace FEM referee lands at ~3.631
-    # GHz and sides with rfx, so openEMS is the low outlier, not the fringing
-    # truth; the sign is part of the story (see msl_stub_notch_palace_referee.json).
+    # rfx sits ABOVE openEMS — the sign is part of the committed characterization.
+    # (The 2026-07-07 Palace FEM referee lands at ~3.631 GHz, closest to rfx;
+    # see msl_stub_notch_palace_referee.json.)
     assert summary["rfx"]["notch_ghz"] > summary["openems"]["notch_ghz"], (
         "rfx notch should be higher than openEMS (staircase under-captures open-end fringing)"
     )

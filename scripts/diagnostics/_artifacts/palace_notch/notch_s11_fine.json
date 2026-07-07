@@ -1,0 +1,86 @@
+{
+  "Problem": {
+    "Type": "Driven",
+    "Verbose": 2,
+    "Output": "postpro/notch_full_fine"
+  },
+  "Model": {
+    "Mesh": "palace_notch_fine.msh",
+    "L0": 0.001
+  },
+  "Domains": {
+    "Materials": [
+      {
+        "Attributes": [
+          1
+        ],
+        "Permeability": 1.0,
+        "Permittivity": 3.66,
+        "LossTan": 0.0
+      },
+      {
+        "Attributes": [
+          2
+        ],
+        "Permeability": 1.0,
+        "Permittivity": 1.0,
+        "LossTan": 0.0
+      }
+    ]
+  },
+  "Boundaries": {
+    "PEC": {
+      "Attributes": [
+        3,
+        4
+      ]
+    },
+    "Absorbing": {
+      "Attributes": [
+        7
+      ],
+      "Order": 1
+    },
+    "LumpedPort": [
+      {
+        "Index": 1,
+        "R": 50.0,
+        "Excitation": true,
+        "Attributes": [
+          5
+        ],
+        "Direction": "+Z"
+      },
+      {
+        "Index": 2,
+        "R": 50.0,
+        "Excitation": false,
+        "Attributes": [
+          6
+        ],
+        "Direction": "+Z"
+      }
+    ]
+  },
+  "Solver": {
+    "Order": 2,
+    "Device": "GPU",
+    "Driven": {
+      "Samples": [
+        {
+          "Type": "Linear",
+          "MinFreq": 3.2,
+          "MaxFreq": 4.0,
+          "FreqStep": 0.025,
+          "SaveStep": 0
+        }
+      ]
+    },
+    "Linear": {
+      "Type": "Default",
+      "KSPType": "GMRES",
+      "Tol": 1e-08,
+      "MaxIts": 200
+    }
+  }
+}

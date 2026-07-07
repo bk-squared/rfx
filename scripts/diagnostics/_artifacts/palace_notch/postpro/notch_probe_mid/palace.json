@@ -1,0 +1,85 @@
+{
+  "ElapsedTime": {
+    "Counts": {
+      "Adaptation": 0,
+      "CoarseSolve": 262,
+      "Construction": 2,
+      "DiskIO": 3,
+      "Div.-FreeProjection": 0,
+      "EigenvalueSolve": 0,
+      "Estimation": 22,
+      "FarFields": 0,
+      "Gridfunction": 0,
+      "Initialization": 2,
+      "LinearSolve": 11,
+      "MeshPreprocessing": 1,
+      "OperatorConstruction": 1,
+      "PROMConstruction": 0,
+      "PROMSolve": 0,
+      "Paraview": 0,
+      "Postprocessing": 24,
+      "Preconditioner": 262,
+      "Rebalancing": 0,
+      "Setup": 11,
+      "Solve": 22,
+      "TimeStepping": 0,
+      "Total": 1,
+      "WavePorts": 0
+    },
+    "Durations": {
+      "Adaptation": 0.0,
+      "CoarseSolve": 310.1380716650001,
+      "Construction": 2.2914669190000003,
+      "DiskIO": 1.7604336090000001,
+      "Div.-FreeProjection": 0.0,
+      "EigenvalueSolve": 0.0,
+      "Estimation": 0.5557536400000002,
+      "FarFields": 0.0,
+      "Gridfunction": 0.0,
+      "Initialization": 1.4739011679999998,
+      "LinearSolve": 21.459613013000016,
+      "MeshPreprocessing": 7.09483659,
+      "OperatorConstruction": 10.608990287000001,
+      "PROMConstruction": 0.0,
+      "PROMSolve": 0.0,
+      "Paraview": 0.0,
+      "Postprocessing": 1.4933181340000001,
+      "Preconditioner": 1.3446330979999983,
+      "Rebalancing": 0.0,
+      "Setup": 51.79187022099999,
+      "Solve": 7.074341389,
+      "TimeStepping": 0.0,
+      "Total": 417.307675788,
+      "WavePorts": 0.0
+    }
+  },
+  "Excitations": [
+    [
+      [
+        1,
+        {
+          "CurrentDipole": [],
+          "LumpedPort": [
+            1
+          ],
+          "SurfaceCurrent": [],
+          "WavePort": []
+        }
+      ]
+    ]
+  ],
+  "GitTag": "58f2991-dirty",
+  "LinearSolver": {
+    "TotalIts": 240,
+    "TotalSolves": 11
+  },
+  "Problem": {
+    "DegreesOfFreedom": 2495418,
+    "MPISize": 1,
+    "MeshElements": 376802,
+    "MultigridDegreesOfFreedom": [
+      471457,
+      2495418
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "ElapsedTime": {
+    "Counts": {
+      "Adaptation": 0,
+      "CoarseSolve": 688,
+      "Construction": 2,
+      "DiskIO": 3,
+      "Div.-FreeProjection": 0,
+      "EigenvalueSolve": 0,
+      "Estimation": 66,
+      "FarFields": 0,
+      "Gridfunction": 0,
+      "Initialization": 2,
+      "LinearSolve": 33,
+      "MeshPreprocessing": 1,
+      "OperatorConstruction": 1,
+      "PROMConstruction": 0,
+      "PROMSolve": 0,
+      "Paraview": 0,
+      "Postprocessing": 68,
+      "Preconditioner": 688,
+      "Rebalancing": 0,
+      "Setup": 33,
+      "Solve": 66,
+      "TimeStepping": 0,
+      "Total": 1,
+      "WavePorts": 0
+    },
+    "Durations": {
+      "Adaptation": 0.0,
+      "CoarseSolve": 885.3432906130009,
+      "Construction": 2.1329748669999997,
+      "DiskIO": 1.458925943,
+      "Div.-FreeProjection": 0.0,
+      "EigenvalueSolve": 0.0,
+      "Estimation": 0.5547295800000005,
+      "FarFields": 0.0,
+      "Gridfunction": 0.0,
+      "Initialization": 1.281976506,
+      "LinearSolve": 55.80053822200009,
+      "MeshPreprocessing": 7.302963842,
+      "OperatorConstruction": 18.257382039,
+      "PROMConstruction": 0.0,
+      "PROMSolve": 0.0,
+      "Paraview": 0.0,
+      "Postprocessing": 3.195337242999998,
+      "Preconditioner": 1.9366926819999994,
+      "Rebalancing": 0.0,
+      "Setup": 151.812617631,
+      "Solve": 20.723238035000005,
+      "TimeStepping": 0.0,
+      "Total": 1150.022404112,
+      "WavePorts": 0.0
+    }
+  },
+  "Excitations": [
+    [
+      [
+        1,
+        {
+          "CurrentDipole": [],
+          "LumpedPort": [
+            1
+          ],
+          "SurfaceCurrent": [],
+          "WavePort": []
+        }
+      ]
+    ]
+  ],
+  "GitTag": "58f2991-dirty",
+  "LinearSolver": {
+    "TotalIts": 622,
+    "TotalSolves": 33
+  },
+  "Problem": {
+    "DegreesOfFreedom": 2495418,
+    "MPISize": 1,
+    "MeshElements": 376802,
+    "MultigridDegreesOfFreedom": [
+      471457,
+      2495418
+    ]
+  }
+}

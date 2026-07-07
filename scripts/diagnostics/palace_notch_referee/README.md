@@ -20,10 +20,13 @@ Ran on the SAME matched geometry at two mesh densities:
 | coarse | 0.12    | 143,812 | 101 pt, 2-7 GHz  | 369367246161 |
 | mid    | 0.085   | 376,802 | 33 pt, 3.2-4 GHz | 369367246168 |
 
-**Verdict:** Palace lands at ~3.631 GHz (parabolic notch) at BOTH densities
-(convergence shift only -0.006 GHz / 0.16%) => **+0.1% from rfx, ~1.6% from
-analytic, ~5.9% from openEMS. Palace SIDES WITH rfx.** openEMS's dx=50 µm
-staircase notch is the OUTLIER, not the fringing truth.
+**Result:** Palace lands at ~3.631 GHz (parabolic notch) at BOTH densities
+(convergence shift only -0.006 GHz / 0.16%). Distances: **+0.1% from rfx**,
+~1.6% from the fringing-free analytic, ~5.9% from the openEMS reference —
+the independent FEM value is closest to rfx. Our earlier working
+interpretation (that the split reflected open-end fringing under-captured by
+rfx) is revised by this evidence: the FEM value indicates the fringing
+correction is a ~1-2% effect.
 
 The verdict is committed as evidence — the raw Palace `port-S.csv` arrays live in
 `tests/fixtures/msl_notch_e4/msl_stub_notch_palace_referee.json` (dB -> LINEAR),

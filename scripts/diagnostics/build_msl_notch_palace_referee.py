@@ -20,14 +20,15 @@ show the answer is converged:
     coarse  LC 0.12   143,812 tets / 28,639 nodes   101 pts 2-7 GHz
     mid     LC 0.085  376,802 tets (sqrt2 refine)     33 pts 3.2-4.0 GHz
 
-VERDICT
--------
+RESULT
+------
 Palace lands at ~3.631 GHz (parabolic notch) at BOTH mesh densities (coarse->mid
 convergence shift only -0.006 GHz / 0.16%). That is +0.1% from rfx, ~1.6% from
-the analytic, and ~5.9% from openEMS. **Palace SIDES WITH rfx.** The fixture
-narrative "openEMS captures more open-end fringing" is REFUTED: the conformal
-FEM captures the fringing exactly and still lands at ~3.63 — openEMS's dx=50 µm
-staircase notch is the OUTLIER, not the truth.
+the analytic, and ~5.9% from the openEMS reference — the independent FEM value
+is closest to rfx. Our earlier working interpretation ("openEMS captures more
+open-end fringing") is revised by this evidence: the conformal FEM includes the
+fringing and lands at ~3.63, indicating the fringing correction is a ~1-2%
+effect.
 
 FALSIFIER LANES (kept on the record)
 ------------------------------------

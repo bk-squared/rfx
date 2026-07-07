@@ -6,10 +6,10 @@ frequency-domain FEM solver on a conformal tetrahedral mesh (no staircase), so i
 captures the open-end fringing exactly and REFEREES the committed rfx-vs-openEMS
 ~5.8% notch split (rfx 3.6273 GHz, openEMS 3.4286 GHz, analytic 3.69 GHz).
 
-Verdict locked here: Palace lands at ~3.631 GHz (parabolic) at BOTH mesh
-densities (coarse->mid shift only -0.006 GHz) => it SIDES WITH rfx (+0.1%), and
-openEMS's dx=50 µm staircase notch is the OUTLIER (~5.9% away). The fixture
-narrative "openEMS captures more open-end fringing" is therefore REFUTED.
+Result locked here: Palace lands at ~3.631 GHz (parabolic) at BOTH mesh
+densities (coarse->mid shift only -0.006 GHz), closest to rfx (+0.1%; the
+openEMS reference is ~5.9% away). Our earlier working interpretation
+("openEMS captures more open-end fringing") is revised by this evidence.
 
 No FDTD / no Palace re-run here: the raw Palace port-S arrays are committed as a
 fixture, and every gated number is re-derived (no CSV) by
