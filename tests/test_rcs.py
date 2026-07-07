@@ -143,6 +143,13 @@ class TestRCSPECSphere:
     For electrically small spheres (ka < 1), Rayleigh scattering applies.
     We target ka ~ 1 where both approximations are rough, so we use
     a generous tolerance.
+
+    An exact conducting-sphere Mie-series cross-method reference for this
+    geometry (ka ladder + convergence + domain-robustness witness) lives in
+    ``tests/fixtures/rcs_mie_e4/`` and is gated by
+    ``tests/test_rcs_mie_reference_gates.py``; it confirms this +/-15 dB
+    tolerance rather than tightening it (the monostatic magnitude does not
+    converge with mesh/domain refinement at these test-scale domains).
     """
 
     def test_rcs_pec_sphere_mie(self):

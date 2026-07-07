@@ -1,0 +1,341 @@
+{
+  "meta": {
+    "reference": "exact-mie-series-pec-sphere",
+    "method": "analytic conducting-sphere Mie backscatter series (Ruck 1970), pure scipy.special -- no FDTD/FEM/mesh",
+    "solver_under_test": "rfx.rcs.compute_rcs (TFSF + NTFF, Taflove Ch.8-9)",
+    "mie_convention": "sigma/(pi a^2) = (1/(ka)^2)|sum (-1)^n (2n+1)(a_n-b_n)|^2; a_n=j_n/h_n, b_n=[x j_n]'/[x h_n]'",
+    "radius_m": 0.015,
+    "domain_m": 0.1,
+    "cpml_layers": 8,
+    "polarization": "ez",
+    "n_theta_obs": 37,
+    "resolutions_cells_per_lambda": {
+      "coarse": 10,
+      "fine": 15
+    },
+    "ka_ladder": [
+      0.8,
+      1.0,
+      1.5,
+      2.0
+    ],
+    "rfx_version": "1.6.6",
+    "commit": "a82264a",
+    "date": "2026-07-07",
+    "committed_test_point": {
+      "test": "tests/test_rcs.py::TestRCSPECSphere::test_rcs_pec_sphere_mie",
+      "ka": 0.9431,
+      "f0_hz": 3000000000.0,
+      "note": "one-off R2 go/no-go falsifier at the committed test point (f0=3 GHz, lambda/10, ka=0.9431 -- NOT on the ladder) measured |rfx - Mie| ~ 4.9 dB. This was the falsifier check, NOT a committed gate: the committed sphere gate is +/-15 dB vs the GO limit, and the exact-Mie envelope here is +/-10-15 dB (see meta.finding)."
+    },
+    "note": "raw arrays hold rfx monostatic dBsm + exact Mie dBsm + errors; the Mie column is re-derivable from the series (scipy) by the gate test.",
+    "finding": "The exact Mie series CONFIRMS the committed test's +/-15 dB GO tolerance rather than tightening it. rfx's monostatic RCS magnitude does not converge with mesh refinement (convergence_delta mostly positive) or with domain size (domain_robustness swings several dB) at these test-scale 1-2 wavelength domains, where the NTFF box sits close to the sphere. The ka~1 error (~4.9 dB) is within 5 dB but is not a converged agreement. A dedicated RCS diagnostic session (larger domains, NTFF-box placement, source-spectrum SNR at f0) is the recommended follow-up; this fixture does not chase the residual."
+  },
+  "ka_ladder": [
+    {
+      "ka": 0.8,
+      "coarse": {
+        "ka": 0.8,
+        "f0_hz": 2544717418.2597027,
+        "lambda_m": 0.11780972450961724,
+        "dx_m": 0.011780972450961723,
+        "cells_per_lambda": 10,
+        "domain_m": 0.1,
+        "radius_cells": 1.2732395447351628,
+        "grid_shape": [
+          26,
+          26,
+          26
+        ],
+        "n_steps": 339,
+        "rfx_mono_dbsm": -21.32532036523639,
+        "mie_dbsm": -27.363584609723077,
+        "err_db": 6.038264244486687
+      },
+      "fine": {
+        "ka": 0.8,
+        "f0_hz": 2544717418.2597027,
+        "lambda_m": 0.11780972450961724,
+        "dx_m": 0.007853981633974483,
+        "cells_per_lambda": 15,
+        "domain_m": 0.1,
+        "radius_cells": 1.9098593171027438,
+        "grid_shape": [
+          30,
+          30,
+          30
+        ],
+        "n_steps": 509,
+        "rfx_mono_dbsm": -23.847444831740386,
+        "mie_dbsm": -27.363584609723077,
+        "err_db": 3.5161397779826906
+      },
+      "mie_dbsm": -27.363584609723077
+    },
+    {
+      "ka": 1.0,
+      "coarse": {
+        "ka": 1.0,
+        "f0_hz": 3180896772.8246284,
+        "lambda_m": 0.09424777960769379,
+        "dx_m": 0.00942477796076938,
+        "cells_per_lambda": 10,
+        "domain_m": 0.1,
+        "radius_cells": 1.5915494309189533,
+        "grid_shape": [
+          28,
+          28,
+          28
+        ],
+        "n_steps": 424,
+        "rfx_mono_dbsm": -23.12395083309338,
+        "mie_dbsm": -25.89856662477798,
+        "err_db": 2.7746157916845995
+      },
+      "fine": {
+        "ka": 1.0,
+        "f0_hz": 3180896772.8246284,
+        "lambda_m": 0.09424777960769379,
+        "dx_m": 0.006283185307179586,
+        "cells_per_lambda": 15,
+        "domain_m": 0.1,
+        "radius_cells": 2.3873241463784303,
+        "grid_shape": [
+          33,
+          33,
+          33
+        ],
+        "n_steps": 636,
+        "rfx_mono_dbsm": -29.55129882212939,
+        "mie_dbsm": -25.89856662477798,
+        "err_db": -3.6527321973514084
+      },
+      "mie_dbsm": -25.89856662477798
+    },
+    {
+      "ka": 1.5,
+      "coarse": {
+        "ka": 1.5,
+        "f0_hz": 4771345159.236942,
+        "lambda_m": 0.06283185307179587,
+        "dx_m": 0.006283185307179587,
+        "cells_per_lambda": 10,
+        "domain_m": 0.1,
+        "radius_cells": 2.38732414637843,
+        "grid_shape": [
+          33,
+          33,
+          33
+        ],
+        "n_steps": 636,
+        "rfx_mono_dbsm": -21.00581800426381,
+        "mie_dbsm": -31.190130656690034,
+        "err_db": 10.184312652426225
+      },
+      "fine": {
+        "ka": 1.5,
+        "f0_hz": 4771345159.236942,
+        "lambda_m": 0.06283185307179587,
+        "dx_m": 0.004188790204786391,
+        "cells_per_lambda": 15,
+        "domain_m": 0.1,
+        "radius_cells": 3.5809862195676447,
+        "grid_shape": [
+          41,
+          41,
+          41
+        ],
+        "n_steps": 954,
+        "rfx_mono_dbsm": -18.020981314131713,
+        "mie_dbsm": -31.190130656690034,
+        "err_db": 13.16914934255832
+      },
+      "mie_dbsm": -31.190130656690034
+    },
+    {
+      "ka": 2.0,
+      "coarse": {
+        "ka": 2.0,
+        "f0_hz": 6361793545.649257,
+        "lambda_m": 0.047123889803846894,
+        "dx_m": 0.00471238898038469,
+        "cells_per_lambda": 10,
+        "domain_m": 0.1,
+        "radius_cells": 3.1830988618379066,
+        "grid_shape": [
+          39,
+          39,
+          39
+        ],
+        "n_steps": 848,
+        "rfx_mono_dbsm": -30.889587326735214,
+        "mie_dbsm": -31.47145434371843,
+        "err_db": 0.5818670169832174
+      },
+      "fine": {
+        "ka": 2.0,
+        "f0_hz": 6361793545.649257,
+        "lambda_m": 0.047123889803846894,
+        "dx_m": 0.003141592653589793,
+        "cells_per_lambda": 15,
+        "domain_m": 0.1,
+        "radius_cells": 4.7746482927568605,
+        "grid_shape": [
+          49,
+          49,
+          49
+        ],
+        "n_steps": 1272,
+        "rfx_mono_dbsm": -25.13266164834132,
+        "mie_dbsm": -31.47145434371843,
+        "err_db": 6.338792695377112
+      },
+      "mie_dbsm": -31.47145434371843
+    }
+  ],
+  "domain_robustness": [
+    {
+      "ka": 1.0,
+      "mie_dbsm": -25.89856662477798,
+      "sweep": [
+        {
+          "ka": 1.0,
+          "f0_hz": 3180896772.8246284,
+          "lambda_m": 0.09424777960769379,
+          "dx_m": 0.00942477796076938,
+          "cells_per_lambda": 10,
+          "domain_m": 0.1,
+          "radius_cells": 1.5915494309189533,
+          "grid_shape": [
+            28,
+            28,
+            28
+          ],
+          "n_steps": 424,
+          "rfx_mono_dbsm": -23.12395083309338,
+          "mie_dbsm": -25.89856662477798,
+          "err_db": 2.7746157916845995
+        },
+        {
+          "ka": 1.0,
+          "f0_hz": 3180896772.8246284,
+          "lambda_m": 0.09424777960769379,
+          "dx_m": 0.00942477796076938,
+          "cells_per_lambda": 10,
+          "domain_m": 0.15,
+          "radius_cells": 1.5915494309189533,
+          "grid_shape": [
+            33,
+            33,
+            33
+          ],
+          "n_steps": 636,
+          "rfx_mono_dbsm": -18.600802669706486,
+          "mie_dbsm": -25.89856662477798,
+          "err_db": 7.2977639550714954
+        },
+        {
+          "ka": 1.0,
+          "f0_hz": 3180896772.8246284,
+          "lambda_m": 0.09424777960769379,
+          "dx_m": 0.00942477796076938,
+          "cells_per_lambda": 10,
+          "domain_m": 0.2,
+          "radius_cells": 1.5915494309189533,
+          "grid_shape": [
+            39,
+            39,
+            39
+          ],
+          "n_steps": 848,
+          "rfx_mono_dbsm": -27.842734611869332,
+          "mie_dbsm": -25.89856662477798,
+          "err_db": -1.944167987091351
+        }
+      ]
+    },
+    {
+      "ka": 1.5,
+      "mie_dbsm": -31.190130656690034,
+      "sweep": [
+        {
+          "ka": 1.5,
+          "f0_hz": 4771345159.236942,
+          "lambda_m": 0.06283185307179587,
+          "dx_m": 0.006283185307179587,
+          "cells_per_lambda": 10,
+          "domain_m": 0.1,
+          "radius_cells": 2.38732414637843,
+          "grid_shape": [
+            33,
+            33,
+            33
+          ],
+          "n_steps": 636,
+          "rfx_mono_dbsm": -21.00581800426381,
+          "mie_dbsm": -31.190130656690034,
+          "err_db": 10.184312652426225
+        },
+        {
+          "ka": 1.5,
+          "f0_hz": 4771345159.236942,
+          "lambda_m": 0.06283185307179587,
+          "dx_m": 0.006283185307179587,
+          "cells_per_lambda": 10,
+          "domain_m": 0.15,
+          "radius_cells": 2.38732414637843,
+          "grid_shape": [
+            41,
+            41,
+            41
+          ],
+          "n_steps": 954,
+          "rfx_mono_dbsm": -23.735161595273553,
+          "mie_dbsm": -31.190130656690034,
+          "err_db": 7.454969061416481
+        },
+        {
+          "ka": 1.5,
+          "f0_hz": 4771345159.236942,
+          "lambda_m": 0.06283185307179587,
+          "dx_m": 0.006283185307179587,
+          "cells_per_lambda": 10,
+          "domain_m": 0.2,
+          "radius_cells": 2.38732414637843,
+          "grid_shape": [
+            49,
+            49,
+            49
+          ],
+          "n_steps": 1272,
+          "rfx_mono_dbsm": -23.596787815479843,
+          "mie_dbsm": -31.190130656690034,
+          "err_db": 7.593342841210191
+        }
+      ]
+    }
+  ],
+  "envelope": {
+    "coarse": {
+      "max_abs_err_db": 10.1843,
+      "mean_abs_err_db": 4.8948
+    },
+    "fine": {
+      "max_abs_err_db": 13.1691,
+      "mean_abs_err_db": 6.6692
+    },
+    "convergence_delta_db": [
+      -2.5221,
+      0.8781,
+      2.9848,
+      5.7569
+    ],
+    "domain_swing_db": [
+      9.2419,
+      2.7293
+    ],
+    "measured_max_abs_err_db": 13.1691,
+    "gate_db": 15.0,
+    "gate_floor_db": 15.0
+  }
+}
