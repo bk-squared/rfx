@@ -1,0 +1,208 @@
+{
+  "meta": {
+    "freq_max_hz": 10000000000.0,
+    "lambda_m": 0.02998,
+    "num_periods": 20.0,
+    "vram_gb": {
+      "rtx4090_24": 24.0,
+      "a6000_48": 48.0,
+      "a6000_3x_144": 144.0
+    },
+    "headroom": 0.85,
+    "evidence_class": "static_estimate"
+  },
+  "geometries": {
+    "wr90_2port": {
+      "label": "WR-90 2-port (120 x 22.86 x 10.16 mm)",
+      "domain_m": [
+        0.12,
+        0.02286,
+        0.01016
+      ],
+      "cpml_layers": 16,
+      "rows": [
+        {
+          "rung": "lambda/20",
+          "lambda_over_dx": 20,
+          "dx_m": 0.001499,
+          "nx": 114,
+          "ny": 49,
+          "nz": 40,
+          "cells": 223440,
+          "n_steps_raw": 700,
+          "n_steps": 702,
+          "checkpoint_segments": 26,
+          "segment_len": 27,
+          "forward_gb": 0.013942656000000001,
+          "full_tape_gb": 3.778459776,
+          "ckpt_sqrtN_gb": 0.292795776,
+          "verdict": "fits-4090"
+        },
+        {
+          "rung": "lambda/40",
+          "lambda_over_dx": 40,
+          "dx_m": 0.0007495,
+          "nx": 194,
+          "ny": 64,
+          "nz": 47,
+          "cells": 583552,
+          "n_steps_raw": 1400,
+          "n_steps": 1406,
+          "checkpoint_segments": 37,
+          "segment_len": 38,
+          "forward_gb": 0.036413644,
+          "full_tape_gb": 19.727792332,
+          "ckpt_sqrtN_gb": 1.0728019960000001,
+          "verdict": "fits-4090"
+        },
+        {
+          "rung": "lambda/60",
+          "lambda_over_dx": 60,
+          "dx_m": 0.0004996666666666667,
+          "nx": 274,
+          "ny": 79,
+          "nz": 54,
+          "cells": 1168884,
+          "n_steps_raw": 2100,
+          "n_steps": 2116,
+          "checkpoint_segments": 46,
+          "segment_len": 46,
+          "forward_gb": 0.07293836100000001,
+          "full_tape_gb": 59.433543417,
+          "ckpt_sqrtN_gb": 2.653834233,
+          "verdict": "fits-4090"
+        },
+        {
+          "rung": "lambda/80",
+          "lambda_over_dx": 80,
+          "dx_m": 0.00037475,
+          "nx": 354,
+          "ny": 95,
+          "nz": 61,
+          "cells": 2051430,
+          "n_steps_raw": 2800,
+          "n_steps": 2809,
+          "checkpoint_segments": 53,
+          "segment_len": 53,
+          "forward_gb": 0.128009232,
+          "full_tape_gb": 138.427214112,
+          "ckpt_sqrtN_gb": 5.3468471520000005,
+          "verdict": "fits-4090"
+        },
+        {
+          "rung": "lambda/100",
+          "lambda_over_dx": 100,
+          "dx_m": 0.0002998,
+          "nx": 434,
+          "ny": 110,
+          "nz": 67,
+          "cells": 3198580,
+          "n_steps_raw": 3500,
+          "n_steps": 3540,
+          "checkpoint_segments": 59,
+          "segment_len": 60,
+          "forward_gb": 0.199591392,
+          "full_tape_gb": 271.950948192,
+          "ckpt_sqrtN_gb": 9.257969952,
+          "verdict": "fits-4090"
+        }
+      ]
+    },
+    "smooth_slab": {
+      "label": "Smooth dielectric-slab witness (60 x 12 x 12 mm)",
+      "domain_m": [
+        0.06,
+        0.012,
+        0.012
+      ],
+      "cpml_layers": 8,
+      "rows": [
+        {
+          "rung": "lambda/20",
+          "lambda_over_dx": 20,
+          "dx_m": 0.001499,
+          "nx": 58,
+          "ny": 26,
+          "nz": 26,
+          "cells": 39208,
+          "n_steps_raw": 700,
+          "n_steps": 702,
+          "checkpoint_segments": 26,
+          "segment_len": 27,
+          "forward_gb": 0.002446579,
+          "full_tape_gb": 0.6630229630000001,
+          "ckpt_sqrtN_gb": 0.051378163000000004,
+          "verdict": "fits-4090"
+        },
+        {
+          "rung": "lambda/40",
+          "lambda_over_dx": 40,
+          "dx_m": 0.0007495,
+          "nx": 98,
+          "ny": 34,
+          "nz": 34,
+          "cells": 113288,
+          "n_steps_raw": 1400,
+          "n_steps": 1406,
+          "checkpoint_segments": 37,
+          "segment_len": 38,
+          "forward_gb": 0.007069171000000001,
+          "full_tape_gb": 3.829859443,
+          "ckpt_sqrtN_gb": 0.20826865900000002,
+          "verdict": "fits-4090"
+        },
+        {
+          "rung": "lambda/60",
+          "lambda_over_dx": 60,
+          "dx_m": 0.0004996666666666667,
+          "nx": 138,
+          "ny": 42,
+          "nz": 42,
+          "cells": 243432,
+          "n_steps_raw": 2100,
+          "n_steps": 2116,
+          "checkpoint_segments": 46,
+          "segment_len": 46,
+          "forward_gb": 0.015190156000000002,
+          "full_tape_gb": 12.377640844,
+          "ckpt_sqrtN_gb": 0.5526880120000001,
+          "verdict": "fits-4090"
+        },
+        {
+          "rung": "lambda/80",
+          "lambda_over_dx": 80,
+          "dx_m": 0.00037475,
+          "nx": 178,
+          "ny": 50,
+          "nz": 50,
+          "cells": 445000,
+          "n_steps_raw": 2800,
+          "n_steps": 2809,
+          "checkpoint_segments": 53,
+          "segment_len": 53,
+          "forward_gb": 0.027768,
+          "full_tape_gb": 30.027888,
+          "ckpt_sqrtN_gb": 1.159848,
+          "verdict": "fits-4090"
+        },
+        {
+          "rung": "lambda/100",
+          "lambda_over_dx": 100,
+          "dx_m": 0.0002998,
+          "nx": 218,
+          "ny": 58,
+          "nz": 58,
+          "cells": 733352,
+          "n_steps_raw": 3500,
+          "n_steps": 3540,
+          "checkpoint_segments": 59,
+          "segment_len": 60,
+          "forward_gb": 0.045761164,
+          "full_tape_gb": 62.351347084000004,
+          "ckpt_sqrtN_gb": 2.122614028,
+          "verdict": "fits-4090"
+        }
+      ]
+    }
+  }
+}
