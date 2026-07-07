@@ -1,5 +1,7 @@
 {
   "meta": {
+    "jax_version": "0.6.2",
+    "rfx_version": "1.6.6",
     "work_package": "3-1",
     "witness": "smooth dielectric slab (eps_r=4), single scalar DoF",
     "freq_max_hz": 10000000000.0,
@@ -19,7 +21,7 @@
     "rel_err_floor": 0.1,
     "rel_err_margin": 1.5,
     "comparator_min_ratio": 100.0,
-    "total_wall_s": 308.41466879844666
+    "total_wall_s": 289.5472345352173
   },
   "comparator_falsifier": {
     "rung": "lambda/60",
@@ -71,8 +73,8 @@
       "rel_err_ceiling": 0.1,
       "fd_signal_over_noise": null,
       "comparator_valid": true,
-      "wall_forward_s": 2.5942158699035645,
-      "wall_grad_s": 9.049428701400757,
+      "wall_forward_s": 2.561840772628784,
+      "wall_grad_s": 6.4506611824035645,
       "preflight_issues": []
     },
     {
@@ -102,8 +104,8 @@
       "rel_err_ceiling": 0.1,
       "fd_signal_over_noise": null,
       "comparator_valid": true,
-      "wall_forward_s": 5.111263990402222,
-      "wall_grad_s": 11.249053716659546,
+      "wall_forward_s": 5.275452375411987,
+      "wall_grad_s": 11.071184635162354,
       "preflight_issues": []
     },
     {
@@ -133,8 +135,8 @@
       "rel_err_ceiling": 0.1,
       "fd_signal_over_noise": null,
       "comparator_valid": true,
-      "wall_forward_s": 9.296370267868042,
-      "wall_grad_s": 21.09239888191223,
+      "wall_forward_s": 8.955306768417358,
+      "wall_grad_s": 17.20727825164795,
       "preflight_issues": []
     },
     {
@@ -164,8 +166,8 @@
       "rel_err_ceiling": 0.1,
       "fd_signal_over_noise": null,
       "comparator_valid": true,
-      "wall_forward_s": 20.522958040237427,
-      "wall_grad_s": 50.13373899459839,
+      "wall_forward_s": 19.224661827087402,
+      "wall_grad_s": 46.76271200180054,
       "preflight_issues": []
     }
   ]

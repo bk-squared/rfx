@@ -83,6 +83,14 @@ import os
 import time
 
 import jax
+
+
+def _rfx_version():
+    try:
+        import rfx
+        return getattr(rfx, '__version__', 'unknown')
+    except Exception:
+        return 'unknown'
 import jax.numpy as jnp
 import numpy as np
 
@@ -114,6 +122,10 @@ WALL_BUDGET_S = 2.5 * 3600.0
 # Gate constants (also enforced by tests/test_gradient_dx_ladder_gates.py)
 REL_ERR_FLOOR = 0.10              # plan's per-rung rel_err gate
 REL_ERR_MARGIN = 1.5             # regression margin above the measured value
+# NOTE (review): at the measured magnitudes (~1e-5) the 1.5x margin is inert --
+# max(measured*1.5, 0.10) collapses to the plan's 0.10 floor on every rung, so
+# the effective committed ceiling IS 0.10; the tight envelope is locked instead
+# by the raw-number re-derivation + sign + comparator gates in the test.
 COMPARATOR_MIN_RATIO = 100.0     # FD-signal / repeat-noise validity gate
 
 
@@ -276,6 +288,7 @@ def main():
 
     out = {
         "meta": {
+        "jax_version": jax.__version__, "rfx_version": _rfx_version(),
             "work_package": "3-1",
             "witness": "smooth dielectric slab (eps_r=4), single scalar DoF",
             "freq_max_hz": FREQ_MAX, "f_obj_hz": F_OBJ,
