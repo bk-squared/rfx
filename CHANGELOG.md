@@ -32,6 +32,33 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   forward-scatter delta, documented per-angle in the fixture rather than
   hidden.
 
+### Fixed — `estimate_ad_memory` counts the live-segment rematerialization tape (#277)
+
+- Both segmented paths (`checkpoint_segments` and `checkpoint_every`) now model
+  peak reverse-mode AD memory as
+  `(2 x active_segments + live_tape_steps) x field_bytes + forward + ntff`.
+  The previous formula (issue #39) counted only the segment-boundary
+  carry + cotangent term; during the backward pass each segment is
+  rematerialized as a unit, so one segment's per-step field tape
+  (`n_steps // checkpoint_segments`, or `checkpoint_every` on the padded
+  non-uniform path, capped at the active step count) is resident on top of it.
+  At segment counts far from `sqrt(n_steps)` the old estimate under-counted
+  peak by up to `~(segment_len / (2 x segments))x` (a hypothetical
+  far-from-sqrt(N) knob: ~272x at `n_steps=6999`, `checkpoint_segments=3`;
+  the committed desk ladder's sqrt(N) path shifts only ~1.5x); the VESSL 369367233509
+  inverse-design gradient peaks (5.84 GB at chunk=100/n_steps=10000 vs the old
+  ~3.1 GB estimate) confirm the missing term.
+- Planning numbers shift accordingly: `ad_segmented_gb` grows, is minimized
+  near `sqrt(2 x n_steps)` steps per segment (no longer monotone in the knob),
+  and `preflight`/`estimate_ad_memory` VRAM warnings fire more often — that is
+  the estimate becoming honest, not a regression. Warnings now point at the
+  dominant term (increase or reduce the knob toward `sqrt(n_steps)`).
+- `explain_ad_memory` decomposes the new term as a
+  `segmented_live_segment_tape` component; `plan_ad_memory`'s does-not-fit
+  diagnostics now report the true least-memory candidate (balanced segment
+  size) instead of `checkpoint_segments=1` / `checkpoint_every=n_steps`, which
+  are ~full-AD-sized under the corrected model.
+
 ### Added — waveguide multi-port junction references (`port_reference_sims`)
 
 - `compute_waveguide_s_matrix(..., port_reference_sims=[...])` exposes public

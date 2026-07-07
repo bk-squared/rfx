@@ -192,7 +192,8 @@ explain_json = explain.to_json()
 `explain_ad_memory(...)` reports the selected memory field (`ad_full_gb` or
 `ad_segmented_gb`), the active AD strategy, and a component breakdown. Use it to
 decide whether the dominant cost is full field tape, segmented boundary state,
-CPML/material state, or NTFF monitor state.
+the live-segment rematerialization tape, CPML/material state, or NTFF monitor
+state.
 
 For a JAX-level saved-residual diagnostic on a small loss function or reduced
 problem, use `diagnose_ad_saved_residuals(...)`:
@@ -256,6 +257,15 @@ Use the mesh intelligence report to check:
 `checkpoint_every` for the non-uniform scan-of-scan path, where it means chunk
 length in timesteps. Use `checkpoint_segments` for the uniform segmented-scan
 path, where it means the number of equal segments and must divide `n_steps`.
+The segmented estimate counts two tape terms: carry + cotangent state at the
+active segment boundaries (`2 x active_segments` field states), plus the
+live-segment rematerialization tape — the backward pass replays one segment at
+a time, so that segment's per-step field tape (its full length in timesteps) is
+resident on top of the boundary storage. The estimate is minimized where the
+two terms balance, near `sqrt(2 x n_steps)` timesteps per segment; pushing a
+checkpoint knob to either extreme *increases* peak memory, so let
+`plan_ad_memory(...)` pick the knob rather than hand-tuning it to the smallest
+segment count.
 `n_warmup` reduces the reported active reverse-mode timestep count. `design_mask`
 is recorded as active-design metadata only; the primary memory estimates stay
 full-grid until masked-state memory has observed calibration. `n_warmup` must be
