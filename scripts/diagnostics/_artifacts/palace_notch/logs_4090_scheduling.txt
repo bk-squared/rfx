@@ -1,0 +1,9 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 6 lines of #369367246149.
+[06:51:10.718475] workload awaiting to start
+[06:51:10.718575] Workload status changed to pending
+[06:51:15.556045] Event Reason: FailedScheduling, Event Note: 0/13 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/13 nodes are available: 13 Preemption is not helpful for scheduling.
+[06:51:15.556045] Workload is in queue for scheduling. Please wait...
+[06:51:23.986451] Workload is in queue for scheduling. Please wait...
+[06:51:23.986451] Event Reason: FailedScheduling, Event Note: 0/13 nodes are available: 2 Insufficient memory, 3 node(s) had untolerated taint {node.kubernetes.io/unreachable: }, 4 Insufficient nvidia.com/gpu, 6 node(s) didn't match Pod's node affinity/selector. preemption: 0/13 nodes are available: 4 No preemption victims found for incoming pod, 9 Preemption is not helpful for scheduling.

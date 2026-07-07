@@ -23,11 +23,15 @@ External cross-check (openEMS, 2026-07-05):
   ``tests/test_msl_notch_e4_comparison_gates.py``). At a CONVERGED dx=50µm mesh
   (5.08 substrate cells) where both solvers are passive, the off-notch |S21|
   transmission agrees to ~0.1, while the notch frequency agrees to ~6% (rfx
-  3.63 GHz vs openEMS 3.43 GHz). rfx sits near the fringing-free analytic
-  quarter-wave (3.69 GHz); full-wave openEMS captures more open-end fringing and
-  lands lower. So the "err<15% vs analytic" gate below is rfx-vs-ANALYTIC (both
-  miss fringing) and is NOT an OpenEMS-class number — the true external notch is
-  ~6% lower. IMPORTANT: this example's shipped dx=80µm mesh (h_sub/dx=3.175, a
+  3.63 GHz vs openEMS 3.43 GHz; fringing-free analytic 3.69 GHz).
+  UPDATE (Palace FEM referee, 2026-07-07): an independent
+  conformal-tet FEM run on the matched geometry lands at ~3.631 GHz at two mesh
+  densities — closest to rfx (+0.1%) — see
+  ``tests/fixtures/msl_notch_e4/msl_stub_notch_palace_referee.json``. Our earlier
+  working interpretation (open-end fringing as the driver of the split) is
+  revised: the FEM value indicates the fringing correction is ~1-2%. The
+  "err<15% vs analytic" gate below is rfx-vs-ANALYTIC and is NOT an
+  OpenEMS-class number. IMPORTANT: this example's shipped dx=80µm mesh (h_sub/dx=3.175, a
   mixed-cell substrate) is UNDER-RESOLVED — at that mesh the openEMS MSL-port
   extraction is itself non-physical (|S11|²+|S21|²≫1), so no external comparison
   is valid at dx=80µm. Use dx≤64µm (≥4 substrate cells) for external-class work.
