@@ -38,28 +38,31 @@ lambda = 29.98 mm, num_periods = 20; JSON beside this file is authoritative)
 --------------------------------------------------------------------------
 (a) WR-90 2-port (120 x 22.86 x 10.16 mm, cpml_layers = 16)
  dx       cells      n_steps  fwd GB  full-tape GB  ckpt sqrtN GB  verdict
- l/20    2.234e+05     702     0.0139     3.78          0.293      fits-4090
- l/40    5.836e+05    1406     0.0364    19.73          1.073      fits-4090
- l/60    1.169e+06    2116     0.0729    59.43          2.654      fits-4090
- l/80    2.051e+06    2809     0.1280   138.43          5.347      fits-4090
- l/100   3.199e+06    3540     0.1996   271.95          9.258      fits-4090
+ l/20    2.234e+05     702     0.0139     3.78          0.438      fits-4090
+ l/40    5.836e+05    1406     0.0364    19.73          1.605      fits-4090
+ l/60    1.169e+06    2116     0.0729    59.43          3.944      fits-4090
+ l/80    2.051e+06    2809     0.1280   138.43          7.956      fits-4090
+ l/100   3.199e+06    3540     0.1996   271.95         13.864      fits-4090
 
 (b) Smooth slab witness (60 x 12 x 12 mm, cpml_layers = 8)
  dx       cells      n_steps  fwd GB  full-tape GB  ckpt sqrtN GB  verdict
- l/20    3.921e+04     702     0.0024     0.66          0.051      fits-4090
- l/40    1.133e+05    1406     0.0071     3.83          0.208      fits-4090
- l/60    2.434e+05    2116     0.0152    12.38          0.553      fits-4090
- l/80    4.450e+05    2809     0.0278    30.03          1.160      fits-4090
- l/100   7.334e+05    3540     0.0458    62.35          2.123      fits-4090
+ l/20    3.921e+04     702     0.0024     0.66          0.077      fits-4090
+ l/40    1.133e+05    1406     0.0071     3.83          0.312      fits-4090
+ l/60    2.434e+05    2116     0.0152    12.38          0.821      fits-4090
+ l/80    4.450e+05    2809     0.0278    30.03          1.726      fits-4090
+ l/100   7.334e+05    3540     0.0458    62.35          3.179      fits-4090
 
 3-0 verdict (falsifier did NOT trigger)
 ---------------------------------------
 The GPU ladder does NOT die at lambda/100 on MEMORY for either canonical
 geometry once the tape is O(sqrt(N))-checkpointed: the smallest sensible
-domain (smooth slab) needs 2.12 GB at lambda/100, and even the WR-90 2-port
-needs only 9.26 GB -- both fit a single 24 GB RTX 4090 (and remain under
-24 GB with the ~segment_len within-segment recompute term the shipped model
-omits: WR-90 l/100 ~ 9.3 + 4.6 = ~14 GB). The reason the falsifier expected a
+domain (smooth slab) needs 3.18 GB at lambda/100, and even the WR-90 2-port
+needs only 13.86 GB -- both fit a single 24 GB RTX 4090. (These numbers are
+from the corrected estimator that counts the live-segment rematerialization
+tape, issue #277 / PR #282; the earlier revision of this table under-counted
+by ~1.5x at sqrt(N) -- 9.26 GB for WR-90 l/100 -- because it omitted that
+term. The verdict column is unchanged: the fix moved the numbers, not the
+conclusion.) The reason the falsifier expected a
 wall but none appears: both canonical geometries are electrically THIN in the
 transverse plane (single-mode WR-90; a small slab box), so the cell count
 grows only ~14x over the 5x dx refinement -- the fixed 2*cpml_layers padding

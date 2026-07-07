@@ -35,7 +35,7 @@
           "segment_len": 27,
           "forward_gb": 0.013942656000000001,
           "full_tape_gb": 3.778459776,
-          "ckpt_sqrtN_gb": 0.292795776,
+          "ckpt_sqrtN_gb": 0.437584896,
           "verdict": "fits-4090"
         },
         {
@@ -52,7 +52,7 @@
           "segment_len": 38,
           "forward_gb": 0.036413644,
           "full_tape_gb": 19.727792332,
-          "ckpt_sqrtN_gb": 1.0728019960000001,
+          "ckpt_sqrtN_gb": 1.60500142,
           "verdict": "fits-4090"
         },
         {
@@ -69,7 +69,7 @@
           "segment_len": 46,
           "forward_gb": 0.07293836100000001,
           "full_tape_gb": 59.433543417,
-          "ckpt_sqrtN_gb": 2.653834233,
+          "ckpt_sqrtN_gb": 3.944282169,
           "verdict": "fits-4090"
         },
         {
@@ -86,7 +86,7 @@
           "segment_len": 53,
           "forward_gb": 0.128009232,
           "full_tape_gb": 138.427214112,
-          "ckpt_sqrtN_gb": 5.3468471520000005,
+          "ckpt_sqrtN_gb": 7.956266112000001,
           "verdict": "fits-4090"
         },
         {
@@ -103,7 +103,7 @@
           "segment_len": 60,
           "forward_gb": 0.199591392,
           "full_tape_gb": 271.950948192,
-          "ckpt_sqrtN_gb": 9.257969952,
+          "ckpt_sqrtN_gb": 13.863925152,
           "verdict": "fits-4090"
         }
       ]
@@ -131,7 +131,7 @@
           "segment_len": 27,
           "forward_gb": 0.002446579,
           "full_tape_gb": 0.6630229630000001,
-          "ckpt_sqrtN_gb": 0.051378163000000004,
+          "ckpt_sqrtN_gb": 0.076784947,
           "verdict": "fits-4090"
         },
         {
@@ -148,7 +148,7 @@
           "segment_len": 38,
           "forward_gb": 0.007069171000000001,
           "full_tape_gb": 3.829859443,
-          "ckpt_sqrtN_gb": 0.20826865900000002,
+          "ckpt_sqrtN_gb": 0.31158731500000003,
           "verdict": "fits-4090"
         },
         {
@@ -165,7 +165,7 @@
           "segment_len": 46,
           "forward_gb": 0.015190156000000002,
           "full_tape_gb": 12.377640844,
-          "ckpt_sqrtN_gb": 0.5526880120000001,
+          "ckpt_sqrtN_gb": 0.82143694,
           "verdict": "fits-4090"
         },
         {
@@ -182,7 +182,7 @@
           "segment_len": 53,
           "forward_gb": 0.027768,
           "full_tape_gb": 30.027888,
-          "ckpt_sqrtN_gb": 1.159848,
+          "ckpt_sqrtN_gb": 1.725888,
           "verdict": "fits-4090"
         },
         {
@@ -199,7 +199,7 @@
           "segment_len": 60,
           "forward_gb": 0.045761164,
           "full_tape_gb": 62.351347084000004,
-          "ckpt_sqrtN_gb": 2.122614028,
+          "ckpt_sqrtN_gb": 3.178640908,
           "verdict": "fits-4090"
         }
       ]
