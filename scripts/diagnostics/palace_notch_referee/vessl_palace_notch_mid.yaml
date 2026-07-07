@@ -1,0 +1,54 @@
+name: rfx-palace-notch-referee-mid
+description: 'WP 1-B: Palace FEM referee for the cv06b MSL stub-notch 5.8pct split (rfx 3.627 vs openEMS 3.429 GHz, analytic 3.69). Staged: dry-run -> 11pt probe + passivity gate -> 101pt sweep. No heredocs, sh/dash-safe.'
+tags: [rfx, palace, crossval, msl-notch, wp1b]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvidia/cuda:12.1.0-devel-ubuntu22.04
+env:
+  PYTHONUNBUFFERED: '1'
+  DEBIAN_FRONTEND: noninteractive
+  HDF5_USE_FILE_LOCKING: 'FALSE'
+  LANG: C.UTF-8
+  OMPI_ALLOW_RUN_AS_ROOT: '1'
+  OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: '1'
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== Palace referee: cv06b MSL stub-notch 2-7 GHz ==="
+  echo "Node: $(hostname) -- start $(date)"
+  nvidia-smi --query-gpu=name --format=csv,noheader || echo "GPU: unknown"
+
+  MWE=/root/workspace/byungkwan-workspace/research/microwave-energy/palace_simulation
+  WORK=/root/workspace/byungkwan-workspace/research/rfx/scripts/diagnostics/_artifacts/palace_notch
+  PALACE=$MWE/palace_install/bin/palace
+  test -f "$PALACE" || exit 1
+
+  export PATH=$MWE/palace_install/bin:$PATH
+  export LD_LIBRARY_PATH=$MWE/palace_install/lib
+  ln -sf $MWE/palace_install /opt/palace
+
+  apt-get update -q
+  apt-get install -y -q --no-install-recommends libopenmpi3 openmpi-bin liblapack3 libblas3 libopenblas0 libgfortran5 libunwind8 python3 > /dev/null
+
+  cd $WORK
+  rm -rf postpro/notch_probe_mid postpro/notch_full_mid
+
+  echo "=== Stage 0: config dry-run ==="
+  $PALACE -dry-run notch_s11_probe_mid.json
+  echo "dry-run OK"
+
+  echo "=== Stage 1: 11-pt probe sweep ==="
+  $PALACE -np 1 notch_s11_probe_mid.json
+
+  echo "=== Stage 1 gate: passivity witness ==="
+  python3 check_sparams.py postpro/notch_probe_mid/port-S.csv --gate
+
+  echo "=== Stage 2: full 101-pt sweep ==="
+  $PALACE -np 1 notch_s11_mid.json
+
+  echo "=== Stage 2 summary ==="
+  python3 check_sparams.py postpro/notch_full_mid/port-S.csv --summary
+
+  echo "=== Palace referee complete: $(date) ==="
