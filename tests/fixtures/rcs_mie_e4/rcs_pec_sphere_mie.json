@@ -20,16 +20,16 @@
       2.0
     ],
     "rfx_version": "1.6.6",
-    "commit": "a82264a",
+    "commit": "post-276-97ca6a5",
     "date": "2026-07-07",
     "committed_test_point": {
       "test": "tests/test_rcs.py::TestRCSPECSphere::test_rcs_pec_sphere_mie",
       "ka": 0.9431,
       "f0_hz": 3000000000.0,
-      "note": "one-off R2 go/no-go falsifier at the committed test point (f0=3 GHz, lambda/10, ka=0.9431 -- NOT on the ladder) measured |rfx - Mie| ~ 4.9 dB. This was the falsifier check, NOT a committed gate: the committed sphere gate is +/-15 dB vs the GO limit, and the exact-Mie envelope here is +/-10-15 dB (see meta.finding)."
+      "note": "one-off R2 go/no-go falsifier at the committed test point (f0=3 GHz, lambda/10, ka=0.9431 -- NOT on the ladder) measured |rfx - Mie| ~ 4.9 dB. HISTORICAL: measured with the pre-#276 extraction (before PR #279); kept as the falsifier record, NOT a committed gate. The committed sphere gate is +/-15 dB vs the GO limit; the post-fix envelope at these settings is in meta.finding."
     },
     "note": "raw arrays hold rfx monostatic dBsm + exact Mie dBsm + errors; the Mie column is re-derivable from the series (scipy) by the gate test.",
-    "finding": "The exact Mie series CONFIRMS the committed test's +/-15 dB GO tolerance rather than tightening it. rfx's monostatic RCS magnitude does not converge with mesh refinement (convergence_delta mostly positive) or with domain size (domain_robustness swings several dB) at these test-scale 1-2 wavelength domains, where the NTFF box sits close to the sphere. The ka~1 error (~4.9 dB) is within 5 dB but is not a converged agreement. A dedicated RCS diagnostic session (larger domains, NTFF-box placement, source-spectrum SNR at f0) is the recommended follow-up; this fixture does not chase the residual."
+    "finding": "Regenerated 2026-07-07 after the #276 extraction fix (PR #279: monostatic now evaluates true backscatter). At this fixture's committed test-scale settings (lambda/10-lambda/15, 1-2 wavelength domains) the measured envelope vs the exact Mie series is ~+/-9.3 dB with mixed refinement behavior (2 of 4 rungs improve lambda/10->lambda/15) and up to 8.4 dB domain sensitivity at ka=1 -- a resolution/staircase/NTFF-proximity regime. The companion fixture tests/fixtures/rcs_sphere_mie/ (PR #279) documents the finer-resolution regime, where the fixed extraction reaches ~0.06 dB at ka~1, lambda/40. The residual coarse-regime diagnostic is tracked in issue #280; this fixture locks the honest test-scale record and does not chase the residual."
   },
   "ka_ladder": [
     {
@@ -48,9 +48,9 @@
           26
         ],
         "n_steps": 339,
-        "rfx_mono_dbsm": -21.32532036523639,
+        "rfx_mono_dbsm": -20.33521973110767,
         "mie_dbsm": -27.363584609723077,
-        "err_db": 6.038264244486687
+        "err_db": 7.028364878615406
       },
       "fine": {
         "ka": 0.8,
@@ -66,9 +66,9 @@
           30
         ],
         "n_steps": 509,
-        "rfx_mono_dbsm": -23.847444831740386,
+        "rfx_mono_dbsm": -21.517025337842433,
         "mie_dbsm": -27.363584609723077,
-        "err_db": 3.5161397779826906
+        "err_db": 5.846559271880643
       },
       "mie_dbsm": -27.363584609723077
     },
@@ -88,9 +88,9 @@
           28
         ],
         "n_steps": 424,
-        "rfx_mono_dbsm": -23.12395083309338,
+        "rfx_mono_dbsm": -21.19636280965055,
         "mie_dbsm": -25.89856662477798,
-        "err_db": 2.7746157916845995
+        "err_db": 4.7022038151274295
       },
       "fine": {
         "ka": 1.0,
@@ -106,9 +106,9 @@
           33
         ],
         "n_steps": 636,
-        "rfx_mono_dbsm": -29.55129882212939,
+        "rfx_mono_dbsm": -22.24067117564847,
         "mie_dbsm": -25.89856662477798,
-        "err_db": -3.6527321973514084
+        "err_db": 3.657895449129512
       },
       "mie_dbsm": -25.89856662477798
     },
@@ -128,9 +128,9 @@
           33
         ],
         "n_steps": 636,
-        "rfx_mono_dbsm": -21.00581800426381,
+        "rfx_mono_dbsm": -23.168683083301808,
         "mie_dbsm": -31.190130656690034,
-        "err_db": 10.184312652426225
+        "err_db": 8.021447573388226
       },
       "fine": {
         "ka": 1.5,
@@ -146,9 +146,9 @@
           41
         ],
         "n_steps": 954,
-        "rfx_mono_dbsm": -18.020981314131713,
+        "rfx_mono_dbsm": -40.466161582419744,
         "mie_dbsm": -31.190130656690034,
-        "err_db": 13.16914934255832
+        "err_db": -9.27603092572971
       },
       "mie_dbsm": -31.190130656690034
     },
@@ -168,9 +168,9 @@
           39
         ],
         "n_steps": 848,
-        "rfx_mono_dbsm": -30.889587326735214,
+        "rfx_mono_dbsm": -31.437721193405213,
         "mie_dbsm": -31.47145434371843,
-        "err_db": 0.5818670169832174
+        "err_db": 0.033733150313217664
       },
       "fine": {
         "ka": 2.0,
@@ -186,9 +186,9 @@
           49
         ],
         "n_steps": 1272,
-        "rfx_mono_dbsm": -25.13266164834132,
+        "rfx_mono_dbsm": -26.55174843742982,
         "mie_dbsm": -31.47145434371843,
-        "err_db": 6.338792695377112
+        "err_db": 4.919705906288613
       },
       "mie_dbsm": -31.47145434371843
     }
@@ -212,9 +212,9 @@
             28
           ],
           "n_steps": 424,
-          "rfx_mono_dbsm": -23.12395083309338,
+          "rfx_mono_dbsm": -21.19636280965055,
           "mie_dbsm": -25.89856662477798,
-          "err_db": 2.7746157916845995
+          "err_db": 4.7022038151274295
         },
         {
           "ka": 1.0,
@@ -230,9 +230,9 @@
             33
           ],
           "n_steps": 636,
-          "rfx_mono_dbsm": -18.600802669706486,
+          "rfx_mono_dbsm": -29.548600997537136,
           "mie_dbsm": -25.89856662477798,
-          "err_db": 7.2977639550714954
+          "err_db": -3.650034372759155
         },
         {
           "ka": 1.0,
@@ -248,9 +248,9 @@
             39
           ],
           "n_steps": 848,
-          "rfx_mono_dbsm": -27.842734611869332,
+          "rfx_mono_dbsm": -21.595218895745894,
           "mie_dbsm": -25.89856662477798,
-          "err_db": -1.944167987091351
+          "err_db": 4.303347729032087
         }
       ]
     },
@@ -272,9 +272,9 @@
             33
           ],
           "n_steps": 636,
-          "rfx_mono_dbsm": -21.00581800426381,
+          "rfx_mono_dbsm": -23.168683083301808,
           "mie_dbsm": -31.190130656690034,
-          "err_db": 10.184312652426225
+          "err_db": 8.021447573388226
         },
         {
           "ka": 1.5,
@@ -290,9 +290,9 @@
             41
           ],
           "n_steps": 954,
-          "rfx_mono_dbsm": -23.735161595273553,
+          "rfx_mono_dbsm": -21.570035506074987,
           "mie_dbsm": -31.190130656690034,
-          "err_db": 7.454969061416481
+          "err_db": 9.620095150615047
         },
         {
           "ka": 1.5,
@@ -308,34 +308,34 @@
             49
           ],
           "n_steps": 1272,
-          "rfx_mono_dbsm": -23.596787815479843,
+          "rfx_mono_dbsm": -23.57461044048202,
           "mie_dbsm": -31.190130656690034,
-          "err_db": 7.593342841210191
+          "err_db": 7.615520216208015
         }
       ]
     }
   ],
   "envelope": {
     "coarse": {
-      "max_abs_err_db": 10.1843,
-      "mean_abs_err_db": 4.8948
+      "max_abs_err_db": 8.0214,
+      "mean_abs_err_db": 4.9464
     },
     "fine": {
-      "max_abs_err_db": 13.1691,
-      "mean_abs_err_db": 6.6692
+      "max_abs_err_db": 9.276,
+      "mean_abs_err_db": 5.925
     },
     "convergence_delta_db": [
-      -2.5221,
-      0.8781,
-      2.9848,
-      5.7569
+      -1.1818,
+      -1.0443,
+      1.2546,
+      4.886
     ],
     "domain_swing_db": [
-      9.2419,
-      2.7293
+      8.3522,
+      2.0046
     ],
-    "measured_max_abs_err_db": 13.1691,
-    "gate_db": 15.0,
+    "measured_max_abs_err_db": 9.276,
+    "gate_db": 13.914,
     "gate_floor_db": 15.0
   }
 }
