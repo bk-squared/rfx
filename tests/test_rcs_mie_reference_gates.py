@@ -9,23 +9,25 @@ not import the producer's Mie function, so a producer-side error cannot
 self-certify. No FDTD runs here; the committed rfx monostatic values are frozen
 evidence.
 
-MEASURED-ENVELOPE POSTURE (honest, not tightened)
--------------------------------------------------
-At the committed test-scale geometry (0.10 m cubic domain = 1-2 wavelengths) the
-exact Mie series CONFIRMS the committed ``test_rcs.py`` +/-15 dB GO tolerance
-rather than tightening it. Across the ka ladder {0.8, 1.0, 1.5, 2.0}:
+MEASURED-ENVELOPE POSTURE (honest, not tuned)
+---------------------------------------------
+Regenerated 2026-07-07 after the #276 monostatic-extraction fix (PR #279:
+true backscatter). At the committed test-scale geometry (0.10 m cubic domain =
+1-2 wavelengths, lambda/10-lambda/15) across the ka ladder {0.8, 1.0, 1.5, 2.0}:
 
-  * measured max |rfx - Mie| = 13.17 dB (ka=1.5, lambda/15);
-  * refinement (lambda/10 -> lambda/15) worsens 3 of 4 rungs (convergence_delta
-    mostly positive, max +5.76 dB) -- the staircased curved-PEC surface + close
-    NTFF box do not converge to the exact value here;
-  * the monostatic magnitude swings up to 9.24 dB (ka=1.0) across domain size.
+  * measured max |rfx - Mie| = 9.28 dB (ka=1.5, lambda/15);
+  * refinement (lambda/10 -> lambda/15) is mixed (2 of 4 rungs improve) -- the
+    staircased curved-PEC surface + close NTFF box dominate at these
+    resolutions;
+  * the monostatic magnitude swings up to 8.4 dB (ka=1.0) across domain size.
 
-So ``gate_db`` clamps to the 15 dB GO floor (measured_max * 1.5 would be looser).
-The value of this fixture is the exact oracle + the committed evidence that rfx
-RCS is a ~+/-10-15 dB tool at these domains; a dedicated RCS diagnostic session
-is the recommended follow-up. These gates lock that honest record; they must not
-be re-tuned to look tighter than the physics.
+``gate_db`` = measured_max * 1.5 = 13.9 dB, under the pre-existing 15 dB GO
+ceiling. The finer-resolution regime is documented by the companion fixture
+``tests/fixtures/rcs_sphere_mie/`` (PR #279), where the fixed extraction
+reaches ~0.06 dB at ka~1, lambda/40 -- resolution, not extraction direction, is
+now the driver of this envelope. Residual coarse-regime diagnostic: issue #280.
+These gates lock the honest test-scale record; they must not be re-tuned to
+look tighter than the physics.
 """
 from __future__ import annotations
 

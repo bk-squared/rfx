@@ -147,9 +147,11 @@ class TestRCSPECSphere:
     An exact conducting-sphere Mie-series cross-method reference for this
     geometry (ka ladder + convergence + domain-robustness witness) lives in
     ``tests/fixtures/rcs_mie_e4/`` and is gated by
-    ``tests/test_rcs_mie_reference_gates.py``; it confirms this +/-15 dB
-    tolerance rather than tightening it (the monostatic magnitude does not
-    converge with mesh/domain refinement at these test-scale domains).
+    ``tests/test_rcs_mie_reference_gates.py``; post-#276 (PR #279 backscatter
+    fix) the measured envelope at these lambda/10-15 test-scale settings is
+    ~+/-9.3 dB (gate 13.9 dB, under this 15 dB ceiling), while the companion
+    ``tests/fixtures/rcs_sphere_mie/`` fixture documents ~0.06 dB agreement at
+    lambda/40 -- resolution is the driver at test scale.
     """
 
     def test_rcs_pec_sphere_mie(self):

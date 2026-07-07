@@ -246,21 +246,24 @@ def _meta(commit: str) -> dict[str, Any]:
             "f0_hz": 3.0e9,
             "note": "one-off R2 go/no-go falsifier at the committed test point "
             "(f0=3 GHz, lambda/10, ka=0.9431 -- NOT on the ladder) measured "
-            "|rfx - Mie| ~ 4.9 dB. This was the falsifier check, NOT a committed "
-            "gate: the committed sphere gate is +/-15 dB vs the GO limit, and the "
-            "exact-Mie envelope here is +/-10-15 dB (see meta.finding).",
+            "|rfx - Mie| ~ 4.9 dB. HISTORICAL: measured with the pre-#276 "
+            "extraction (before PR #279); kept as the falsifier record, NOT a "
+            "committed gate. The committed sphere gate is +/-15 dB vs the GO "
+            "limit; the post-fix envelope at these settings is in meta.finding.",
         },
         "note": "raw arrays hold rfx monostatic dBsm + exact Mie dBsm + errors; "
         "the Mie column is re-derivable from the series (scipy) by the gate test.",
-        "finding": "The exact Mie series CONFIRMS the committed test's +/-15 dB GO "
-        "tolerance rather than tightening it. rfx's monostatic RCS magnitude does "
-        "not converge with mesh refinement (convergence_delta mostly positive) or "
-        "with domain size (domain_robustness swings several dB) at these test-scale "
-        "1-2 wavelength domains, where the NTFF box sits close to the sphere. The "
-        "ka~1 error (~4.9 dB) is within 5 dB but is not a converged agreement. A "
-        "dedicated RCS diagnostic session (larger domains, NTFF-box placement, "
-        "source-spectrum SNR at f0) is the recommended follow-up; this fixture does "
-        "not chase the residual.",
+        "finding": "Regenerated 2026-07-07 after the #276 extraction fix (PR #279: "
+        "monostatic now evaluates true backscatter). At this fixture's committed "
+        "test-scale settings (lambda/10-lambda/15, 1-2 wavelength domains) the "
+        "measured envelope vs the exact Mie series is ~+/-9.3 dB with mixed "
+        "refinement behavior (2 of 4 rungs improve lambda/10->lambda/15) and up to "
+        "8.4 dB domain sensitivity at ka=1 -- a resolution/staircase/NTFF-proximity "
+        "regime. The companion fixture tests/fixtures/rcs_sphere_mie/ (PR #279) "
+        "documents the finer-resolution regime, where the fixed extraction reaches "
+        "~0.06 dB at ka~1, lambda/40. The residual coarse-regime diagnostic is "
+        "tracked in issue #280; this fixture locks the honest test-scale record and "
+        "does not chase the residual.",
     }
 
 
@@ -362,7 +365,7 @@ def _print_verdict(fixture: dict[str, Any]) -> None:
               f"{r['fine']['rfx_mono_dbsm']:10.2f} {r['fine']['err_db']:+7.2f} {cd:+7.2f}")
     print(f"  measured max|err|: coarse={env['coarse']['max_abs_err_db']} dB "
           f"fine={env['fine']['max_abs_err_db']} dB  -> gate={env['gate_db']} dB "
-          f"(floor {env['gate_floor_db']} dB, NOT a tightening)")
+          f"(measured*1.5, under the {env['gate_floor_db']} dB ceiling)")
     if "domain_robustness" in fixture:
         print("  domain-robustness witness (mono dBsm vs domain, lam/10):")
         for w, swing in zip(fixture["domain_robustness"], env.get("domain_swing_db", [])):
