@@ -25,7 +25,11 @@ External cross-check (openEMS, 2026-07-05):
   transmission agrees to ~0.1, while the notch frequency agrees to ~6% (rfx
   3.63 GHz vs openEMS 3.43 GHz). rfx sits near the fringing-free analytic
   quarter-wave (3.69 GHz); full-wave openEMS captures more open-end fringing and
-  lands lower. So the "err<15% vs analytic" gate below is rfx-vs-ANALYTIC (both
+  lands lower. UPDATE (Palace FEM referee, 2026-07-07): an independent
+  conformal-tet FEM run on the matched geometry lands at ~3.631 GHz at two mesh
+  densities and SIDES WITH rfx (+0.1%), so openEMS's dx=50µm notch is the outlier
+  — see ``tests/fixtures/msl_notch_e4/msl_stub_notch_palace_referee.json``. So the
+  "err<15% vs analytic" gate below is rfx-vs-ANALYTIC (both
   miss fringing) and is NOT an OpenEMS-class number — the true external notch is
   ~6% lower. IMPORTANT: this example's shipped dx=80µm mesh (h_sub/dx=3.175, a
   mixed-cell substrate) is UNDER-RESOLVED — at that mesh the openEMS MSL-port
