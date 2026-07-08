@@ -6,6 +6,27 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — opt-in multi-start / best-iterate / step-clamp knobs on `optimize()` (WP 4-C)
+
+- `optimize()` gained four keyword-only, DEFAULT-OFF parameters promoted
+  from the MSL open-stub inverse-design example (`_multistart_adam`, issue
+  #171): `n_starts` (best-of random restarts), `best_iterate` (return the
+  lowest-loss visited iterate instead of the last), `step_clamp` (bound the
+  L2 norm of each Adam latent update), and `seed` (reproducible restart
+  inits).
+- Defaults (`n_starts=1`, `best_iterate=False`, `step_clamp=None`) reproduce
+  the previous single-run Adam loop BYTE-for-BYTE — start 0 always uses the
+  caller's `init_latent`, extra restarts draw i.i.d. standard-normal latents
+  from `seed`, and the legacy NaN/Inf gradient guard (warn + return the last
+  finite design) is unchanged. A bit-identity gate against a verbatim copy of
+  the legacy loop is committed in `tests/test_optimize_multistart.py`.
+- The step-clamp is GENERIC (an exact whole-step L2-norm rescale, direction
+  preserved) rather than the example's physical-length bisection, which stays
+  specialized in the example. Multi-start fails closed (raises) only when
+  every restart is non-finite; a single start keeps the fail-soft contract.
+- Scope is optimizer-loop plumbing only — no objective or numerics change.
+  Extra restarts help only on a genuinely multimodal loss surface.
+
 ### Fixed — `compute_rcs` monostatic extraction pointed at −z broadside, not backscatter (issue #276)
 
 - `RCSResult.monostatic_rcs` was argmin-extracted at (θ=π, φ=0), which under

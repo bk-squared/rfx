@@ -19,6 +19,7 @@ Example
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable
 
@@ -67,6 +68,177 @@ def _latent_to_eps(latent: jnp.ndarray, eps_min: float, eps_max: float) -> jnp.n
     return eps_min + (eps_max - eps_min) * jax.nn.sigmoid(latent)
 
 
+def _adam_multistart(
+    cost_fn: Callable,
+    latent_inits,
+    *,
+    n_iters: int,
+    lr: float,
+    best_iterate: bool = False,
+    step_clamp: float | None = None,
+    beta1: float = 0.9,
+    beta2: float = 0.999,
+    eps_adam: float = 1e-8,
+    verbose: bool = False,
+    it_count: list | None = None,
+):
+    """Best-of multi-start Adam with optional best-iterate + step-clamp.
+
+    Generic promotion of the MSL open-stub example's ``_multistart_adam``
+    (issue #171).  The three knobs are all OPT-IN and, with a single
+    start (``len(latent_inits) == 1``), ``best_iterate=False`` and
+    ``step_clamp=None``, this runs the hand-rolled Adam loop with the exact
+    same arithmetic as the legacy inline ``optimize()`` loop — the default
+    ``optimize()`` path is therefore byte-identical to before this helper
+    existed (see ``tests/test_optimize_multistart.py`` bit-identity gate).
+
+    Unlike the example, the step-clamp here is GENERIC: it bounds the L2
+    norm of the DoF (latent) update vector, rescaling the whole step by
+    ``step_clamp / ||step||`` when it overshoots (direction preserved).
+    The example clamps a physical LENGTH move through a nonlinear
+    ``latent_to_L`` and so needs a bisection; that specialization stays in
+    the example.  For a latent-space step the rescale is exact — no
+    bisection — and it reduces to ``|Δlatent| <= step_clamp`` in the
+    scalar/identity case the example tests exercise.
+
+    Parameters
+    ----------
+    cost_fn : callable(latent) -> scalar
+        Differentiable scalar objective (``jax.value_and_grad`` is taken
+        internally).  Pure in ``cost_fn`` so this is testable against a
+        synthetic cost with no FDTD forward.
+    latent_inits : sequence of latent arrays
+        One optimization is run from each init; the best is returned.
+        Element 0 is the "primary" start (``optimize()`` uses the caller's
+        ``init_latent`` here so ``n_starts=1`` is the legacy single run).
+    n_iters, lr : int, float
+        Adam iterations per start and learning rate.
+    best_iterate : bool
+        If True, each start returns (and is scored by) its lowest-loss
+        visited iterate rather than its final iterate.  Guards the sharp-
+        null overshoot the #171 GPU run caught.
+    step_clamp : float or None
+        If set (>0), clamp the L2 norm of each latent update to this value.
+    it_count : list([int]) or None
+        Optional mutable one-element counter threaded from ``optimize()``
+        so the ``forward()`` first-call banner fires exactly once.
+
+    Returns
+    -------
+    (best_latent, best_loss_history, all_loss_histories, best_start)
+        ``best_latent`` is the winning start's final iterate (or its best
+        visited iterate when ``best_iterate=True``).  ``best_loss_history``
+        is that start's per-iteration loss list.
+
+    Raises
+    ------
+    RuntimeError
+        Only for MULTI-start (``len(latent_inits) > 1``) when EVERY start
+        produced a non-finite loss at every iterate — fail-closed rather
+        than returning a NaN optimum.  A single start preserves the legacy
+        fail-soft contract (warn + return the last finite design).
+    """
+    if step_clamp is not None and step_clamp <= 0:
+        raise ValueError(f"optimize: step_clamp must be > 0, got {step_clamp}")
+
+    grad_fn = jax.value_and_grad(cost_fn)
+
+    def _run_one(init_lat):
+        m = jnp.zeros_like(init_lat)
+        v = jnp.zeros_like(init_lat)
+        latent = init_lat
+        loss_history: list[float] = []
+        # Only retain visited iterates when best-iterate is requested, so the
+        # default path holds no extra design tensors in memory.
+        latents: list = [] if best_iterate else None
+        last_good = latent  # last design with a confirmed-finite forward+gradient
+        for it in range(n_iters):
+            loss, grad = grad_fn(latent)
+
+            # NaN/Inf gradient guard (unchanged from the legacy loop): a
+            # non-finite gradient silently poisons ``latent`` and every later
+            # iteration, so stop fast and RESTORE the last finite design.
+            if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
+                import warnings as _w
+                _w.warn(
+                    f"optimize: non-finite loss/gradient (NaN or Inf) at iteration "
+                    f"{it} — the FDTD forward almost certainly diverged. Common "
+                    f"causes: dt above CFL, conformal=True at fine dx (a known NaN), "
+                    f"PEC inside the CPML region, or a sub-cell PEC feature. Stopping early and "
+                    f"returning the last finite design (from before iteration "
+                    f"{it}).",
+                    stacklevel=2,
+                )
+                latent = last_good
+                break
+
+            last_good = latent  # this design produced a finite forward+gradient
+            if it_count is not None:
+                it_count[0] = it + 1
+            loss_val = float(loss)
+            loss_history.append(loss_val)
+            if latents is not None:
+                latents.append(latent)
+
+            # Adam update
+            m = beta1 * m + (1 - beta1) * grad
+            v = beta2 * v + (1 - beta2) * grad ** 2
+            m_hat = m / (1 - beta1 ** (it + 1))
+            v_hat = v / (1 - beta2 ** (it + 1))
+            if step_clamp is None:
+                latent = latent - lr * m_hat / (jnp.sqrt(v_hat) + eps_adam)
+            else:
+                step = lr * m_hat / (jnp.sqrt(v_hat) + eps_adam)
+                snorm = jnp.linalg.norm(step)
+                step = jnp.where(snorm > step_clamp,
+                                 step * (step_clamp / snorm), step)
+                latent = latent - step
+
+            if verbose and (it % 10 == 0 or it == n_iters - 1):
+                print(f"  iter {it:4d}  loss = {loss_val:.6e}")
+
+        if loss_history:
+            if best_iterate:
+                best_i = int(np.argmin(np.asarray(loss_history)))
+                ret_latent = latents[best_i]
+                score = loss_history[best_i]
+            else:
+                ret_latent = latent
+                score = loss_history[-1]
+        else:
+            # No finite loss was recorded (diverged at iter 0): fail-soft,
+            # return the last-good design (== init_lat) with no score.
+            ret_latent = last_good
+            score = None
+        return loss_history, ret_latent, score
+
+    all_histories: list[list[float]] = []
+    results = []  # (loss_history, ret_latent, score)
+    for init_lat in latent_inits:
+        lh, rl, sc = _run_one(init_lat)
+        all_histories.append(lh)
+        results.append((lh, rl, sc))
+
+    eligible = [
+        (i, r) for i, r in enumerate(results)
+        if r[2] is not None and math.isfinite(r[2])
+    ]
+    if eligible:
+        best_start, (best_lh, best_lat, _score) = min(
+            eligible, key=lambda t: t[1][2]
+        )
+        return best_lat, best_lh, all_histories, best_start
+    if len(latent_inits) == 1:
+        # Single-start fail-soft: preserve the legacy warn-and-return-last-good
+        # contract (tests/test_result_finite_guard.py).
+        lh, rl, _sc = results[0]
+        return rl, lh, all_histories, 0
+    raise RuntimeError(
+        f"optimize multi-start: all {len(latent_inits)} starts produced a "
+        "non-finite loss at every iterate; no usable optimum."
+    )
+
+
 def optimize(
     sim,
     region: DesignRegion,
@@ -86,6 +258,10 @@ def optimize(
     distributed: bool = False,
     port_s11_freqs: object | None = None,
     checkpoint_segments: int | None = None,
+    n_starts: int = 1,
+    best_iterate: bool = False,
+    step_clamp: float | None = None,
+    seed: int = 0,
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
@@ -130,11 +306,38 @@ def optimize(
         Non-uniform meshes and ``distributed=True`` will raise
         ``NotImplementedError``; NU support is tracked as a follow-up
         on issue #73.
+    n_starts : int
+        Number of random-initialized restarts (opt-in; default 1 = the
+        legacy single run).  Start 0 always uses ``init_latent`` (so
+        ``n_starts=1`` is byte-identical to before this parameter existed);
+        starts 1..N-1 draw i.i.d. standard-normal latents from ``seed``.
+        The best restart by final loss (or best-visited loss when
+        ``best_iterate=True``) is returned.  Promoted from the MSL
+        open-stub multimodal example (issue #171); the surface must be
+        multimodal for extra starts to help.
+    best_iterate : bool
+        If True, return the lowest-loss iterate visited during the run
+        rather than the final iterate (default False = final iterate =
+        legacy behaviour).  Guards the sharp-null overshoot the #171 GPU
+        run caught.  Selection among ``n_starts`` restarts uses the same
+        best-visited loss when this is True.
+    step_clamp : float or None
+        If set (>0), clamp the L2 norm of each Adam latent update to this
+        value, rescaling the whole step (direction preserved) when it
+        overshoots.  Default None = unclamped = legacy behaviour.  Generic
+        analogue of the example's physical-length clamp.
+    seed : int
+        PRNG seed for the extra ``n_starts`` restart inits (deterministic /
+        reproducible).  Unused when ``n_starts=1``.
 
     Returns
     -------
     OptimizeResult
+        For ``n_starts>1`` this is the winning restart's result
+        (``loss_history`` is that restart's own trajectory).
     """
+    if n_starts < 1:
+        raise ValueError(f"optimize: n_starts must be >= 1, got {n_starts}")
     sim._auto_preflight(skip=skip_preflight, context="optimize")
 
     # #64: dispatch to NU or uniform grid. The differentiable pipeline
@@ -190,13 +393,6 @@ def optimize(
     base_eps_r = base_materials.eps_r
     _n_steps = n_steps if n_steps is not None else _n_steps_auto
 
-    # Adam state
-    m = jnp.zeros_like(init_latent)
-    v = jnp.zeros_like(init_latent)
-    beta1, beta2, eps_adam = 0.9, 0.999, 1e-8
-
-    latent = init_latent
-    loss_history = []
     it_count = [0]  # mutable counter for verbose inside forward()
 
     def forward(lat):
@@ -233,53 +429,32 @@ def optimize(
             return objective(result, ntff_box=result.ntff_box)
         return objective(result)
 
-    grad_fn = jax.value_and_grad(forward)
+    # Restart inits: start 0 is always ``init_latent`` (so n_starts=1 is the
+    # legacy single run, byte-identical); extras are i.i.d. standard-normal
+    # latents drawn from ``seed`` for reproducibility.
+    latent_inits = [init_latent]
+    if n_starts > 1:
+        keys = jax.random.split(jax.random.PRNGKey(seed), n_starts - 1)
+        latent_inits.extend(
+            jax.random.normal(k, design_shape, dtype=jnp.float32) for k in keys
+        )
 
-    last_good = latent  # last design with a confirmed-finite forward+gradient
-    for it in range(n_iters):
-        loss, grad = grad_fn(latent)
+    best_latent, loss_history, _all_histories, _best_start = _adam_multistart(
+        forward,
+        latent_inits,
+        n_iters=n_iters,
+        lr=lr,
+        best_iterate=best_iterate,
+        step_clamp=step_clamp,
+        verbose=verbose,
+        it_count=it_count,
+    )
 
-        # NaN/Inf gradient guard. A non-finite gradient does not crash an
-        # inverse-design loop — the Adam update below would silently poison
-        # ``latent`` (and every later iteration), so the optimizer "succeeds"
-        # while wandering on garbage. Stop fast with a cause hint and RESTORE
-        # the last design whose forward was finite (the CURRENT ``latent`` is
-        # the one that just diverged, so returning it would hand back a
-        # divergence-causing design).
-        if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
-            import warnings as _w
-            _w.warn(
-                f"optimize: non-finite loss/gradient (NaN or Inf) at iteration "
-                f"{it} — the FDTD forward almost certainly diverged. Common "
-                f"causes: dt above CFL, conformal=True at fine dx (a known NaN), "
-                f"PEC inside the CPML region, or a sub-cell PEC feature. Stopping early and "
-                f"returning the last finite design (from before iteration "
-                f"{it}).",
-                stacklevel=2,
-            )
-            latent = last_good
-            break
-
-        last_good = latent  # this design produced a finite forward+gradient
-        it_count[0] = it + 1
-        loss_val = float(loss)
-        loss_history.append(loss_val)
-
-        # Adam update
-        m = beta1 * m + (1 - beta1) * grad
-        v = beta2 * v + (1 - beta2) * grad ** 2
-        m_hat = m / (1 - beta1 ** (it + 1))
-        v_hat = v / (1 - beta2 ** (it + 1))
-        latent = latent - lr * m_hat / (jnp.sqrt(v_hat) + eps_adam)
-
-        if verbose and (it % 10 == 0 or it == n_iters - 1):
-            print(f"  iter {it:4d}  loss = {loss_val:.6e}")
-
-    eps_design = _latent_to_eps(latent, eps_min, eps_max)
+    eps_design = _latent_to_eps(best_latent, eps_min, eps_max)
     return OptimizeResult(
         eps_design=eps_design,
         loss_history=loss_history,
-        latent=latent,
+        latent=best_latent,
     )
 
 
