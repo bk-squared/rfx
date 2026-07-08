@@ -83,6 +83,21 @@ Each candidate beat the incumbent on exactly 1 of 3 benchmarks (optax_adam on
 the sharp-null MSL case, optax_lbfgs on the smooth-DoF taper case) — neither
 reaches the required 2-of-3 bar, so **VERDICT: no-adopt**.  Adam + multi-start +
 best-iterate (the PR #286 / 4-C default) is the right shipped optimizer.
+
+CAVEAT — read the incumbent's two "losses" correctly.  The two benchmarks the
+incumbent lost (msl budget 9, taper budget 12) are STARVATION budgets: the
+budget is split across the restarts, so the incumbent's best start (start 0) is
+the SAME trajectory as single-start Adam with the SAME seed, merely TRUNCATED to
+budget//n_starts iterations (3 and 4 here) to fund two random restarts that
+never pay off at that depth.  It is structurally penalized there and cannot
+showcase basin-hopping.  Only the one generous budget (ar_coating, 60 → 20
+iters/start) gives multi-start room, and it wins by ~7 dB.  So "the incumbent
+lost 2 of 3" is a starvation-budget artifact of the equal-total-solve rule, NOT
+evidence that multi-start is worse than plain Adam — at any budget large enough
+for restarts to matter it is at least as good and here strictly better.  The
+no-adopt verdict (don't add optax.adam or optax.lbfgs) is unaffected: it rests
+on neither CANDIDATE clearing the 2-of-3 bar, not on the incumbent's ranking.
+
 optax.adam is numerically identical to rfx's hand-rolled Adam on every
 benchmark (same update rule, as expected) and gains nothing on its own; its
 one clear win on MSL came from best-iterate-style luck on a single-start
