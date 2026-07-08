@@ -62,11 +62,48 @@ Run
   JAX_PLATFORMS=cpu python .../run_bakeoff.py --only ar_coating
 
 Writes ``tests/fixtures/optimizer_bakeoff/bakeoff_results.json``.
+
+Results (2026-07-08, CPU, float32, jax 0.6.2 / optax 0.2.8 / rfx 1.6.6)
+-------------------------------------------------------------------------
+best-loss in dB (10*log10), lower is better; margin = incumbent_dB - candidate_dB
+(positive margin = candidate beats incumbent; >= 3.0 needed to "beat")::
+
+    benchmark          budget  adam_rfx  optax_adam  optax_lbfgs  multistart_bi(incumbent)
+    ar_coating (60)      60     -6.61      -6.61        -6.61          -13.68
+    msl_stub_notch (9)    9    -26.91     -26.92        -16.88          -18.00
+    waveguide_taper (12) 12    -12.05     -12.05        -19.23           -9.15
+
+    margin vs incumbent (dB), "beats" = margin >= 3.0 dB:
+    benchmark          optax_adam margin   beats?   optax_lbfgs margin   beats?
+    ar_coating              -7.07 dB        no            -7.07 dB        no
+    msl_stub_notch          +8.92 dB       YES            -1.12 dB        no
+    waveguide_taper         +2.91 dB        no           +10.09 dB       YES
+
+Each candidate beat the incumbent on exactly 1 of 3 benchmarks (optax_adam on
+the sharp-null MSL case, optax_lbfgs on the smooth-DoF taper case) — neither
+reaches the required 2-of-3 bar, so **VERDICT: no-adopt**.  Adam + multi-start +
+best-iterate (the PR #286 / 4-C default) is the right shipped optimizer.
+optax.adam is numerically identical to rfx's hand-rolled Adam on every
+benchmark (same update rule, as expected) and gains nothing on its own; its
+one clear win on MSL came from best-iterate-style luck on a single-start
+9-iteration budget, not from a different descent, and it lost badly on the
+smooth AR case where multi-start's extra basins mattered.  optax.lbfgs is a
+genuinely different (quasi-Newton) method and it shows: on the taper case it
+comfortably outperformed everything, and on the SMOOTH Stage-0 falsifier case
+it never beat single-start Adam (tied at -6.61 dB, 78 solves burned on
+degenerate zoom-line-search steps 7/1/1/.../18/20/20).  It is a capable
+optimizer that this harness could not get past the adoption bar in ONE
+9-benchmark-budget bake-off, requires a host-callback shim to run against
+rfx's non-jit-traceable forward, and needs a fair per-benchmark tune (this
+run used optax's un-tuned defaults everywhere) before any adoption decision
+would be worth revisiting.  These are measured numbers at the stated fixed
+budgets, not a claim that either optax optimizer is bad in general.
 """
 
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib.util
 import json
 import math
@@ -472,11 +509,24 @@ def run_benchmark(name):
     print(f"\n{'='*72}\n[{name}] budget={budget} lr={lr} metric={cfg['metric']}\n{'='*72}")
     cost_fn, init, n_dof, src = BUILDERS[name]()
 
+    # Each optimizer gets a fresh compilation slate: eager runs and the L-BFGS
+    # host-shim JIT accumulate XLA executables / mmaps that otherwise exhaust the
+    # 64 GB cgroup + 65 k mmap limit (LLVM "cannot allocate memory") a few
+    # optimizers in.  Clearing between them costs a recompile each (cheap on the
+    # small grids here) in exchange for a bounded footprint.
+    def _fresh():
+        jax.clear_caches()
+        gc.collect()
+
     runs = {}
+    _fresh()
     runs["adam_rfx"] = run_adam_rfx(cost_fn, init, budget, lr,
                                     best_iterate=False, n_starts=1, seed=SEED)
+    _fresh()
     runs["optax_adam"] = run_optax_adam(cost_fn, init, budget, lr)
+    _fresh()
     runs["optax_lbfgs"] = run_optax_lbfgs(cost_fn, init, budget)
+    _fresh()
     runs["adam_multistart_bi"] = run_adam_rfx(cost_fn, init, budget, lr,
                                               best_iterate=True,
                                               n_starts=N_STARTS, seed=SEED)
