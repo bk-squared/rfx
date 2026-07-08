@@ -258,6 +258,12 @@ def _setup(n: int):
 
 
 def _percentiles(gabs: np.ndarray) -> dict:
+    # Aggregate in float64 over the (exactly float32->float64 widened) values so
+    # the committed stats are bit-reproducible from the committed JSON list; the
+    # gradient VALUES stay float32 (the object of study), only the aggregation
+    # is float64 (an even-length median averages two middle cells, which would
+    # otherwise differ at the float32 rounding scale between producer and gate).
+    gabs = np.asarray(gabs, dtype=np.float64)
     return {
         "min": float(np.min(gabs)),
         "p10": float(np.percentile(gabs, 10)),
@@ -289,7 +295,7 @@ def run_rung(n: int) -> dict:
     g2 = np.asarray(jax.grad(J)(eps0))
     grad_repeat_noise = float(np.max(np.abs(g1 - g2)))
 
-    g1abs = np.abs(g1).ravel()
+    g1abs = np.abs(g1).astype(np.float64).ravel()
     pct = _percentiles(g1abs)
     median_grad = pct["median"]
     max_grad = pct["max"]
