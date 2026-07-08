@@ -237,10 +237,13 @@ def test_r5_decomposition_raw_equals_objective_plus_volume() -> None:
 
     residual = p_raw - p_J
     assert residual == pytest.approx(dec["residual_raw_minus_J"], rel=1e-9)
-    # the residual (raw minus objective) is the per-cell volume exponent ~3.
+    # The load-bearing evidence: J INDEPENDENTLY decays dx^3.86, and the
+    # residual (raw minus objective) matches the per-cell volume exponent ~3.
     assert abs(residual - DX3_EXPONENT) <= DECOMP_RESIDUAL_TOL
     assert dec["residual_matches_volume"] is True
-    # p_rel is the same residual: the normalized metric IS the volume factor.
+    # NOTE: p_rel == residual is an ALGEBRAIC IDENTITY (J is a per-rung scalar,
+    # so median(g_rel) = median(|g|)/J exactly) -- this asserts the stored
+    # fields are self-consistent, NOT a second independent physics witness.
     assert p_rel == pytest.approx(residual, rel=1e-6)
 
 

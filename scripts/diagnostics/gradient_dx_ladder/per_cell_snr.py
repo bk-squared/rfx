@@ -48,9 +48,16 @@ FACTORS as ``p_raw = p_J + 3`` -- the objective's own mesh-scaling TIMES the
 per-cell volume dx^3. Dividing the objective scaling back out
 (``g_rel = |dJ/deps_cell| / J``, the per-cell derivative of ``ln J``, a
 mesh-invariant relative sensitivity) isolates the hypothesis's actual
-mechanism: median ``g_rel`` decays as dx^3, cleanly. The RAW |g| metric is a
+mechanism: median ``g_rel`` decays as ~dx^3 (2-point slope 3.05; the local
+slopes over the three rungs span 2.70-3.54, so "dx^3" is the trend, not a
+tight fit). The RAW |g| metric is a
 confounded comparator, so the falsifier + verdict ride on the NORMALIZED
 metric; the raw numbers and the decomposition are recorded for transparency.
+Note on the decomposition: because J is a per-rung SCALAR, median(g_rel) =
+median(|g|)/J identically, so ``p_raw = p_J + p_rel`` is an ALGEBRAIC IDENTITY,
+not a second independent witness. The real content is that J INDEPENDENTLY
+decays dx^3.86 and, after removing it, the residual per-cell exponent (3.05)
+matches the expected cell-volume power (3).
 
 Noise-floor discipline (WP 3-2 comparator)
 ------------------------------------------
@@ -65,12 +72,20 @@ differently for reverse-mode AD vs finite differences:
   per-cell AD SNR does not degrade as |g| shrinks. A finite crossing for AD
   would require a genuinely nondeterministic reduction (GPU atomic scatters, a
   mixed-precision tape), which is NOT measured here.
+  Scope caveat: repeat-noise = 0.0 measures REPRODUCIBILITY (determinism), not
+  the ACCURACY of the smallest per-cell gradients. Only the gradient SUM is
+  independently witnessed here (the directional AD-vs-FD check, ~1e-3, is
+  dominated by the ~1e-7 cells); the accuracy of the ~7e-10 tail cells rests on
+  the scale-invariance argument, not a direct witness.
 * FD-detectability floor (the floor a finite-difference topology method would
   hit). A central FD can only resolve a cell whose full-range perturbation
   moves J by more than float32 can represent, i.e. when the mesh-invariant
   relative sensitivity ``g_rel`` drops below ~``FLOAT32_ULP = 2^-23`` ~ 1.2e-7.
   Because ``g_rel`` decays as dx^3, this floor gives a genuine, FIXED,
-  dx-independent crossing -- reported as an extrapolated lambda/dx.
+  dx-independent crossing -- reported as an extrapolated lambda/dx. This assumes
+  an O(1) (full-range) FD perturbation of the cell; a smaller FD step raises the
+  detectability floor and pulls the crossing to COARSER dx, so the extrapolated
+  lambda/dx is a best-case (finest) estimate for the FD method.
 
 A directional finite-difference cross-check (all cells +/- h) confirms the
 per-cell AD field is a real gradient, not noise: ``sum(g)`` must match
