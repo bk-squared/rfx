@@ -750,14 +750,24 @@ def _build_step_setup(
             for cfg in waveguide_ports
         )
 
+    # Port V/I DFT accumulator dtype (wire + lumped).  ``v * phase`` inside the
+    # scan body promotes to complex128 under a scoped ``jax_enable_x64`` (dt/dx
+    # and the phase factor become float64/complex128), so a hardcoded complex64
+    # accumulator trips the lax.scan carry-dtype contract there.  Deriving the
+    # dtype from ``result_type(complex64, float64)`` keeps it complex64 with x64
+    # OFF (byte-identical to the historical pin) and promotes to complex128 with
+    # x64 ON — this is what makes forward(port_s11_freqs=...) differentiable
+    # under scoped x64 (WP 4-E gate + the pre-existing eps_override AD lane).
+    _sparam_acc_dtype = jnp.result_type(jnp.complex64, jnp.float64)
+
     wire_sparam_meta: tuple = ()
     if use_wire_sparams:
         # Initialize V, I, V_inc DFT accumulators per wire port.
         carry_init["wire_sparam_accs"] = tuple(
             (
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_dft
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # i_dft
-                jnp.zeros(len(wp.freqs), dtype=jnp.complex64),  # v_inc_dft
+                jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # v_dft
+                jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # i_dft
+                jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # v_inc_dft
             )
             for wp in wire_port_sparams
         )
@@ -770,8 +780,8 @@ def _build_step_setup(
         # ``a = (-V + Z0·I)/(2√Z0)`` is exact regardless of source pulse shape.
         carry_init["lumped_sparam_accs"] = tuple(
             (
-                jnp.zeros(len(lp.freqs), dtype=jnp.complex64),  # v_dft
-                jnp.zeros(len(lp.freqs), dtype=jnp.complex64),  # i_dft
+                jnp.zeros(len(lp.freqs), dtype=_sparam_acc_dtype),  # v_dft
+                jnp.zeros(len(lp.freqs), dtype=_sparam_acc_dtype),  # i_dft
             )
             for lp in lumped_port_sparams
         )
@@ -799,9 +809,16 @@ def _build_step_setup(
 
     rlc_meta: tuple = ()
     if use_lumped_rlc:
-        from rfx.lumped import init_rlc_state
+        from rfx.lumped import init_rlc_state, rlc_carry_dtype
         from rfx.lumped import update_rlc_element
-        carry_init["rlc_states"] = tuple(init_rlc_state() for _ in lumped_rlc)
+        # Thread the ADE-carry dtype from the metas (WP 4-E).  Concrete run()
+        # metas are all Python floats + float32 fields -> float32 (byte-identical
+        # to the historical init_rlc_state() pin); a traced float64 component
+        # value under scoped-x64 promotes the carry so the lax.scan carry
+        # input/output dtypes agree.
+        _rlc_dtype = rlc_carry_dtype(lumped_rlc, _field_dtype)
+        carry_init["rlc_states"] = tuple(
+            init_rlc_state(dtype=_rlc_dtype) for _ in lumped_rlc)
         rlc_meta = tuple(lumped_rlc)
 
     if use_kerr:

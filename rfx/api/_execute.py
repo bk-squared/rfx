@@ -530,6 +530,7 @@ class _ExecuteMixin:
         pec_mask: jnp.ndarray | None = None,
         pec_occupancy: jnp.ndarray | None = None,
         port_s11_freqs: object | None = None,
+        rlc_values_override: dict | None = None,
         _sparam_drive_idx: int | None = None,
         _return_raw_port_sparams: bool = False,
     ) -> ForwardResult | dict:
@@ -582,6 +583,29 @@ class _ExecuteMixin:
             setup_wire_port,
             _wire_port_cells,
         )
+
+        # ── Lumped RLC elements — differentiable lane (WP 4-E) ──────────
+        # Fold R/C into the jnp materials arrays FIRST (mirrors the concrete
+        # run() ordering in runners/uniform.py:82), so subsequent port folds
+        # stack on top. The traced metas are built at the very end (after all
+        # material folding) just before the _run(...) call.  Component values
+        # may be supplied AS tracers via ``rlc_values_override`` so
+        # ``jax.grad`` flows w.r.t. R/L/C (LumpedRLCSpec stores plain floats).
+        # For a sim with NO lumped RLC this block is skipped and ``rlc_metas``
+        # stays None -> the _run(...) call is byte-identical to before.
+        rlc_metas = None
+        if self._lumped_rlc:
+            from rfx.lumped import (
+                setup_rlc_materials_traced,
+                build_rlc_meta_traced,
+            )
+            _rlc_ov = rlc_values_override or {}
+            for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
+                _v = _rlc_ov.get(_rlc_idx, {})
+                materials = setup_rlc_materials_traced(
+                    grid, _rlc_spec, materials,
+                    r_val=_v.get("R"), c_val=_v.get("C"),
+                )
 
         sources = []
         probes = []
@@ -929,6 +953,20 @@ class _ExecuteMixin:
                 print(f"[kottke debug] sigma min={float(jnp.min(materials.sigma)):.3e} "
                       f"max={float(jnp.max(materials.sigma)):.3e}", file=_sys.stderr, flush=True)
 
+        # Build the TRACED RLC metas now that all material folding (RLC + ports)
+        # is complete — build_rlc_meta_traced reads the final eps/sigma at each
+        # element cell, mirroring the concrete runners/uniform.py:516 ordering.
+        if self._lumped_rlc:
+            from rfx.lumped import build_rlc_meta_traced
+            _rlc_ov = rlc_values_override or {}
+            rlc_metas = []
+            for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
+                _v = _rlc_ov.get(_rlc_idx, {})
+                rlc_metas.append(build_rlc_meta_traced(
+                    grid, _rlc_spec, materials,
+                    r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
+                ))
+
         result = _run(
             grid,
             materials,
@@ -951,6 +989,7 @@ class _ExecuteMixin:
             aniso_inv_eps_smooth=(aniso_inv_eps_run is not None),
             lumped_port_sparams=lumped_port_sparam_specs or None,
             wire_port_sparams=wire_port_sparam_specs or None,
+            lumped_rlc=rlc_metas,
             dft_planes=dft_planes if dft_planes else None,
             return_state=False,
             stencil_order=self._stencil_order,
@@ -1756,6 +1795,7 @@ class _ExecuteMixin:
         devices: list | None = None,
         exchange_interval: int = 1,
         port_s11_freqs: object | None = None,
+        rlc_values_override: dict | None = None,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
 
@@ -1860,6 +1900,23 @@ class _ExecuteMixin:
             :func:`minimize_s11_at_freq_wave_decomp` objective.  Currently
             wired only on the uniform single-device path; non-uniform meshes
             and ``distributed=True`` raise ``NotImplementedError``.
+        rlc_values_override : dict or None
+            Differentiable-value injection for lumped RLC elements added with
+            :meth:`add_lumped_rlc` (WP 4-E).  ``LumpedRLCSpec`` stores plain
+            floats, so a component value can only enter the AD tape as a tracer
+            through this override.  Maps a 0-based element index (registration
+            order over :meth:`add_lumped_rlc` calls) to a dict with any of the
+            keys ``"R"`` / ``"L"`` / ``"C"`` whose values replace the
+            registered floats — e.g.
+            ``forward(rlc_values_override={0: {"R": R, "C": C}}, ...)`` makes R
+            and C of the first RLC element differentiable.  A missing element
+            index or key falls back to the registered spec float.  ``None``
+            (default) uses the registered floats for every element.  Only wired
+            on the uniform single-device path.  NOTE: on this path a registered
+            lumped RLC element now correctly affects ``forward()`` even without
+            an override — previously it was a silent no-op.
+            Uniform-path only; the non-uniform / distributed lanes do not
+            iterate ``self._lumped_rlc`` in ``forward()``.
 
         Returns
         -------
@@ -1923,6 +1980,18 @@ class _ExecuteMixin:
             design_mask=design_mask,
         )
 
+        # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
+        # loudly rather than silently returning a zero gradient on a lane that
+        # does not iterate self._lumped_rlc in forward().
+        if rlc_values_override is not None and plan.lane != "fwd_uniform":
+            raise NotImplementedError(
+                "forward(rlc_values_override=...) is only supported on the "
+                f"uniform single-device forward lane, not {plan.lane!r}. "
+                "Lumped RLC component-value gradients require the uniform mesh "
+                "path (non-uniform / distributed forward do not process "
+                "add_lumped_rlc elements)."
+            )
+
         if plan.lane == "fwd_distributed_nu":
             return self._forward_distributed_nonuniform_from_materials(
                 eps_override=eps_override,
@@ -1983,6 +2052,7 @@ class _ExecuteMixin:
             pec_mask=pec_mask,
             pec_occupancy=pec_occupancy_override,
             port_s11_freqs=port_s11_freqs,
+            rlc_values_override=rlc_values_override,
         )
         _warn_if_nonfinite_result(_res, context="forward")
         return _res
