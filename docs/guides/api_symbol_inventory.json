@@ -1368,7 +1368,11 @@
         "design_mask",
         "distributed",
         "port_s11_freqs",
-        "checkpoint_segments"
+        "checkpoint_segments",
+        "n_starts",
+        "best_iterate",
+        "step_clamp",
+        "seed"
       ]
     },
     "parametric_sweep": {
