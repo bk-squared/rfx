@@ -152,6 +152,26 @@ For float32 FDTD workflows, very small finite-difference steps can be dominated
 by cancellation. Start with `h = 1e-2` for permittivity-like variables, then
 adjust based on the scale of the loss and the design variable.
 
+### A passing finite-difference check is necessary, not sufficient
+
+Finite-difference agreement validates the **autodiff machinery** — that the tape
+computes the derivative of the loss you actually wrote. It does **not** validate
+that the loss observes the physics you intended. Both AD and FD differentiate the
+same objective through the same observation window, so if that window is empty —
+for example the reflection you are minimizing never reaches the probe inside the
+run, or the monitor sits in an absorber — the two will still agree, on a gradient
+of numerical noise.
+
+Before trusting a low-magnitude loss, sanity-check its **absolute value** against a
+physical expectation. A time-domain reflected-energy proxy over a design that
+reflects a meaningful fraction of the incident pulse lands around `1e-2`–`1e-1`; a
+loss orders of magnitude smaller (say `~1e-7`) usually means the reflection never
+landed in the observation window, and the gradient — however cleanly it matches
+finite differences — is meaningless. Fix the setup (longer run, correct
+monitor/split placement) before reading the derivative. See
+[Inverse Design](/rfx/guide/inverse-design/) for the round-trip precondition
+behind `minimize_reflected_energy`'s split window.
+
 ## Reading map
 
 - [Meep Adjoint Solver](https://meep.readthedocs.io/en/latest/Python_Tutorials/Adjoint_Solver/)

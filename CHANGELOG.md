@@ -6,6 +6,31 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — empty-window gradient + `add_lumped_rlc`-is-not-a-port pinned in docs (blind docs-only audit, doc-pin R2-STOP)
+
+- A blind, docs-only agent (validated across two model families) trusted a
+  finite-difference-verified gradient whose loss was `~1e-7` — orders of
+  magnitude too small — because the reflection it minimized never landed in
+  `minimize_reflected_energy`'s late-time split window. AD and FD agreed because
+  both differentiate the **same empty window**; the docs prescribed the FD check
+  as the trust ritual but never warned it cannot detect an empty observable.
+- Documented the round-trip **precondition** for `minimize_reflected_energy`'s
+  split window (docstring + [Inverse Design](/rfx/guide/inverse-design/)) and the
+  "a passing finite-difference check is necessary, not sufficient — check the loss
+  **magnitude** against a physical expectation" caveat in
+  [Autodiff & Adjoint](/rfx/guide/autodiff-adjoint/) and
+  [Gradient Behavior](/rfx/guide/gradient-behavior/).
+- Clarified in [Sources & Ports](/rfx/api/sources-ports/) that
+  `add_lumped_rlc(...)` is a circuit element, **not** a reflection-referenced
+  port: a single-cell lumped element reports its own self-interaction, not a
+  `Z0`-referenced `S11`; drive with `add_port(..., impedance=Z0)` to measure a
+  load reflection coefficient.
+- R2-STOP on a preflight advisory: the split-window premise depends on the
+  geometry's round-trip time and the run length, which `preflight()` cannot know,
+  so the guidance lives in the docs, not a call-time gate. Locked by
+  `tests/test_empty_window_gradient_caveat_docpin.py`. No physics or preflight
+  behaviour changed.
+
 ### Changed — lossless-cavity infinite-Q pinned in the harminv docstrings (LLM-naive-usage audit item #4, doc-pin R2-STOP)
 
 - Measuring a resonator Q via `harminv` / `harminv_from_probe` on a **lossless
