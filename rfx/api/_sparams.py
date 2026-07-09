@@ -146,6 +146,44 @@ def _warn_if_nonpassive_smatrix(
         if i.code in ("passivity_violation", "nonfinite_sparams")
     ]
     if not bad:
+        # SOFT ADVISORY (LLM-naive-usage audit item #5): the hard check above
+        # uses the caller's ``passivity_tol``. On the ``normalize=False``
+        # waveguide path that tol is loose (2.0 -> column-power limit 3.0,
+        # i.e. |S| <= 1.732 for a 1-port) to tolerate the DOCUMENTED single-run
+        # Yee/near-cutoff over-unity: a validated strong reflector (PEC short)
+        # sits at column power ~2.0 there (|S11| entry ~1.03 plus the
+        # convention |S21| ~ 1 that the single-run decomposition does not
+        # cancel — see test_waveguide_broad_e5_live_anchor / the tol=2.0 lock
+        # in test_sparam_passivity_guard::
+        # test_normalize_aware_tol_tolerates_documented_overshoot). That leaves
+        # the window (~2.0, 3.0] UNGUARDED: a passive result whose column power
+        # is materially above the documented envelope but below the
+        # extractor-broken hard limit returns silently. Surface it as a
+        # SEPARATE, humble advisory (never raise) so a naive caller does not
+        # trust an over-unity |S| from a reference-plane / normalize choice or
+        # an under-resolved mesh. The floor 2.25 (|S| ~ 1.5 for a 1-port)
+        # clears the ~2.0 documented envelope AND the committed normalize=False
+        # PEC-short column power (~2.00) with margin; the window is EMPTY on
+        # the tight-tol path (tol=0.10 -> hard limit 1.10 < 2.25), so this
+        # advisory only fires for the loose normalize=False tol.
+        _SOFT_COLPOWER_FLOOR = 2.25
+        hard_limit = 1.0 + float(passivity_tol)
+        max_cp = report.metrics.get("max_column_power")
+        if max_cp is not None and _SOFT_COLPOWER_FLOOR < float(max_cp) <= hard_limit:
+            import warnings as _w
+            _w.warn(
+                f"{extractor}: max column power {float(max_cp):.4g} exceeds 1 "
+                f"(non-physical for a passive structure) but stays below the "
+                f"tol={float(passivity_tol):g} extractor-broken hard limit "
+                f"({hard_limit:.4g}). This is an ADVISORY, not an error: on the "
+                f"normalize=False single-run path a modest over-unity is a "
+                f"documented Yee / near-cutoff artifact (validated envelope "
+                f"~2.0), but a column power materially above it can also signal "
+                f"a reference-plane or normalize choice or an under-resolved "
+                f"mesh. Treat these S-parameters with caution and cross-check "
+                f"(normalize='flux', finer dx) before trusting them.",
+                stacklevel=3,
+            )
         return
     detail = "; ".join(f"{i.code}: {i.message}" for i in bad)
     msg = (

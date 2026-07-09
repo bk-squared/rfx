@@ -36,6 +36,10 @@ def _has(issues, substring):
     return any(substring in i for i in issues)
 
 
+def _codes(sim):
+    return {getattr(i, "code", None) for i in sim.preflight()}
+
+
 # ---------------------------------------------------------------------------
 # FP1 — thin-sheet PEC strip should not trigger PEC-volume warning
 # ---------------------------------------------------------------------------
@@ -183,4 +187,67 @@ def test_hy_probe_inside_thick_pec_volume_still_warns():
     assert _has(issues, "is inside PEC geometry"), (
         f"Hy probe in thick PEC volume must still warn; "
         f"issues: {issues!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Item #3 (LLM-naive-usage audit) — pec_boundary_open advisory: R2-STOP lock.
+#
+# The audit asked whether the ``pec_boundary_open`` advisory
+# (``_validate_cfg_pec_boundary_open_structure``) should be UNGATED from its
+# ``self._ntff is not None`` condition so an open radiator read via a near-field
+# probe / S11 alone (no NTFF box) also warns. Investigation (2026-07-09)
+# R2-STOPPED that ungating: NTFF is the SOLE radiation-intent signal on the
+# Simulation config (there is no directivity / far-field / "radiate" flag), so
+# a source (and/or a finite PEC object) inside a ``boundary="pec"`` domain is
+# config-IDENTICAL between an open radiator that mistakenly used PEC and a
+# legitimate closed cavity / internal-PEC numerics test. The committed suite is
+# full of the latter — e.g. ``test_adi.py::
+# test_simulation_adi_internal_pec_geometry_masks_ez`` (PEC Box in a pec box +
+# source), ``test_extract_s_matrix_pec_mask.py``, ``test_conformal.py::
+# test_api_conformal_flag`` (PEC cylinder in a pec box + port). Any broadening
+# that catches the footgun would false-alarm all of them, and a false-alarming
+# preflight erodes trust worse than the silent gap. These tests LOCK that
+# decision: the NTFF-declared open radiator still warns; the valid closed
+# structures must stay silent so a future well-meaning ungating cannot regress
+# them unnoticed.
+# ---------------------------------------------------------------------------
+def test_pec_boundary_open_still_warns_when_ntff_declared():
+    """Radiation intent (an NTFF box) + boundary='pec' must still warn —
+    the existing, principled gate is preserved by the R2-STOP."""
+    sim = Simulation(freq_max=10e9, domain=(0.06, 0.06, 0.06), dx=2e-3,
+                     boundary="pec")
+    sim.add_source((0.03, 0.03, 0.03), "ez")
+    sim.add(Box((0.028, 0.028, 0.020), (0.032, 0.032, 0.024)), material="pec")
+    sim.add_ntff_box((0.01, 0.01, 0.01), (0.05, 0.05, 0.05))
+    assert "pec_boundary_open" in _codes(sim), (
+        "NTFF-declared open radiator on a PEC boundary must still warn"
+    )
+
+
+def test_pec_cavity_with_internal_pec_object_stays_silent():
+    """FALSE-POSITIVE lock: a source + finite PEC object inside a pec box
+    (the ``test_adi`` internal-PEC-masks-Ez / ``test_conformal`` patterns) is a
+    VALID closed structure and must NOT emit pec_boundary_open. This is the
+    population that any ntff-ungating would false-alarm — the reason #3 was
+    R2-STOPPED."""
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     boundary="pec")
+    sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.01)), material="pec")
+    sim.add_source((0.01, 0.01, 0.0), "ez")
+    sim.add_probe((0.01, 0.01, 0.0), "ez")
+    assert "pec_boundary_open" not in _codes(sim), (
+        "internal-PEC-object closed cavity must not warn (R2-STOP rationale)"
+    )
+
+
+def test_pec_empty_cavity_with_source_stays_silent():
+    """FALSE-POSITIVE lock: a bare source in a pec box (empty resonant cavity)
+    is config-identical to an open radiator and must NOT warn — there is no
+    discriminator, hence the R2-STOP."""
+    sim = Simulation(freq_max=12e9, domain=(0.03, 0.03, 0.03), dx=1.5e-3,
+                     boundary="pec")
+    sim.add_source((0.015, 0.015, 0.015), "ez")
+    assert "pec_boundary_open" not in _codes(sim), (
+        "empty PEC cavity with a source must not warn (R2-STOP rationale)"
     )

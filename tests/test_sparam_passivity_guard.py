@@ -132,3 +132,139 @@ def test_normalize_aware_tol_tolerates_documented_overshoot():
         _warn_if_nonpassive_smatrix(
             _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
         )
+
+
+# =============================================================================
+# Item #5 (LLM-naive-usage audit) — SOFT over-unity advisory in the
+# (documented-overshoot, extractor-broken] column-power gap.
+#
+# On the ``normalize=False`` waveguide path the passivity tol is loose (2.0 ->
+# column-power hard limit 3.0, |S| <= 1.732 for a 1-port) to tolerate the
+# DOCUMENTED single-run Yee/near-cutoff over-unity: a validated PEC short sits
+# at column power ~2.0 there (see test_normalize_aware_tol_..._overshoot above
+# and the battery test_pec_short_s11_magnitude). That left the window
+# (~2.0, 3.0] UNGUARDED — a passive result materially above the documented
+# envelope but below the hard limit returned silently. A SEPARATE, humble
+# ADVISORY (never raise) now fires there. Floor is column power 2.25 (|S| ~ 1.5
+# for a 1-port): above the ~2.0 documented envelope + the committed PEC-short
+# with margin, below the tol=2.0 hard limit (3.0). The window is EMPTY on the
+# tight-tol path (tol=0.10 -> hard limit 1.10 < 2.25), so the advisory only
+# fires for normalize=False.  Message says "ADVISORY", NOT "UNRELIABLE".
+# =============================================================================
+def _soft_fired(rec):
+    return any("ADVISORY" in str(w.message) for w in rec)
+
+
+def _hard_fired(rec):
+    return any("UNRELIABLE" in str(w.message) for w in rec)
+
+
+def test_soft_advisory_fires_in_the_over_unity_gap():
+    """A passive 1-port with column power in (2.25, 3.0] on the loose tol=2.0
+    path must emit the SOFT advisory (warning, not the hard UNRELIABLE error)."""
+    s = np.full((1, 1, 3), 1.58 + 0.0j)  # column power ~2.496, in (2.25, 3.0]
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
+        )
+    assert _soft_fired(rec), "expected the soft over-unity advisory in the gap"
+    assert not _hard_fired(rec), "must NOT raise/flag the hard UNRELIABLE error"
+
+
+def test_soft_advisory_silent_at_documented_envelope():
+    """Column power == 2.0 (|S|=1.414, the documented normalize=False PEC-short
+    envelope, locked silent by test_normalize_aware_tol_...) must NOT fire the
+    soft advisory — the floor (2.25) sits above it with margin."""
+    s = np.full((1, 1, 3), np.sqrt(2.0) + 0.0j)  # column power exactly 2.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning => failure
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
+        )
+
+
+def test_soft_advisory_silent_just_below_floor():
+    """Column power 2.10 (< 2.25 floor) stays silent — margin for cross-machine
+    float drift on the validated PEC-short (~2.00-2.005)."""
+    s = np.full((1, 1, 3), np.sqrt(2.10) + 0.0j)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
+        )
+
+
+def test_soft_advisory_never_fires_on_tight_tol_path():
+    """On the tight tol=0.10 path (normalize='flux'/True) the window is empty
+    (hard limit 1.10 < 2.25): a column power that would be in the gap is a HARD
+    violation here, never the soft advisory."""
+    s = np.full((1, 1, 3), 1.58 + 0.0j)  # column power ~2.496
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=0.10
+        )
+    assert not _soft_fired(rec), "soft advisory must not fire on the tight-tol path"
+    assert _hard_fired(rec), "tight tol must flag this as the hard passivity error"
+
+
+def test_gross_violation_still_hard_not_soft():
+    """|S| >> 1 (column power > 3.0) stays the HARD UNRELIABLE error even under
+    tol=2.0 — the soft advisory does not swallow gross extractor bugs."""
+    s = np.full((1, 1, 3), 8.94 + 0.0j)  # column power ~79.9
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
+        )
+    assert _hard_fired(rec)
+    assert not _soft_fired(rec)
+
+
+@pytest.mark.slow
+def test_soft_advisory_real_coarse_pec_short_witness():
+    """REAL-geometry witness: a coarse (dx=2mm) WR-90 PEC-short on the
+    normalize=False path lands at column power ~2.51 — above the ~2.0
+    documented envelope, below the 3.0 hard limit — and used to return
+    silently. It must now emit the soft advisory. The finer validated
+    PEC-short (column power ~2.00) must stay silent (false-positive check)."""
+    import jax.numpy as jnp
+    from rfx import Box, Simulation
+
+    DOMAIN = (0.12, 0.04, 0.02)
+
+    def build(freqs, dx, cpml):
+        freqs = np.asarray(freqs, float)
+        f0 = float(freqs.mean())
+        bw = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / f0))
+        sim = Simulation(freq_max=float(freqs[-1]), domain=DOMAIN,
+                         boundary="cpml", cpml_layers=cpml, dx=dx)
+        sim.add(Box((0.085, 0, 0), (0.087, DOMAIN[1], DOMAIN[2])), material="pec")
+        pf = jnp.asarray(freqs)
+        sim.add_waveguide_port(0.01, direction="+x", mode=(1, 0), mode_type="TE",
+                               freqs=pf, f0=f0, bandwidth=bw,
+                               waveform="modulated_gaussian", name="left")
+        sim.add_waveguide_port(0.09, direction="-x", mode=(1, 0), mode_type="TE",
+                               freqs=pf, f0=f0, bandwidth=bw,
+                               waveform="modulated_gaussian", name="right")
+        return sim
+
+    # Witness: coarse mesh -> column power in the gap -> soft advisory fires.
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        res = build(np.linspace(4e9, 6e9, 6), dx=2e-3, cpml=8).\
+            compute_waveguide_s_matrix(normalize=False, num_periods=30)
+    cp = float(np.sum(np.abs(np.asarray(res.s_params)) ** 2, axis=0).max())
+    assert 2.25 < cp <= 3.0, f"expected witness column power in the gap, got {cp:.4f}"
+    assert _soft_fired(rec), f"coarse PEC-short (colpow {cp:.4f}) must emit the advisory"
+    assert not _hard_fired(rec)
+
+    # False-positive: the finer validated PEC-short (~2.00) stays silent.
+    with warnings.catch_warnings(record=True) as rec2:
+        warnings.simplefilter("always")
+        res2 = build(np.linspace(5e9, 7e9, 6), dx=1e-3, cpml=10).\
+            compute_waveguide_s_matrix(normalize=False, num_periods=40)
+    cp2 = float(np.sum(np.abs(np.asarray(res2.s_params)) ** 2, axis=0).max())
+    assert cp2 <= 2.25, f"validated PEC-short column power drifted into the gap: {cp2:.4f}"
+    assert not _soft_fired(rec2), "validated PEC-short must NOT emit the advisory"
