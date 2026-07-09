@@ -6,6 +6,21 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — lossless-cavity infinite-Q pinned in the harminv docstrings (LLM-naive-usage audit item #4, doc-pin R2-STOP)
+
+- Measuring a resonator Q via `harminv` / `harminv_from_probe` on a **lossless
+  closed (PEC) cavity** gives a window-length artefact (infinite physical Q),
+  not physics — the frequency is fine, the Q is not. Documented with a
+  `.. warning::` in both docstrings (add a realistic `sigma`/`tan_delta` loss
+  or use an open CPML boundary before trusting a Q).
+- R2-STOP on a preflight advisory: a "closed + lossless + soft source" trigger
+  has NO clean call-time discriminator — legitimate lossless-cavity resonance
+  sims (e.g. the NU stage-1 cavity physics gate, memory-planning cavities) use
+  the same config and would be false-alarmed. Per "a false-alarming preflight
+  erodes trust worse than the silent gap," the guidance lives in the API docs,
+  not in `preflight()`. No physics or preflight behaviour changed.
+
+
 ### Changed — RCS bistatic-pattern validation scope pinned in docs (LLM-naive-usage audit item #2, doc-pin R2-STOP)
 
 - `compute_rcs` returns a full bistatic `rcs_dbsm` / `rcs_linear` pattern, but
