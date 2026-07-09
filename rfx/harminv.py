@@ -45,6 +45,18 @@ def harminv(
 ) -> list[HarminvMode]:
     """Extract resonant modes via the Matrix Pencil Method.
 
+    .. warning::
+
+       **Lossless closed cavities have infinite physical Q — do not read a Q
+       off a finite window.** In a PEC-bounded domain with no material loss
+       (an empty or lossless-filled cavity), a resonance never decays, so the
+       Q returned here is a pure *windowing artefact*: it swings by orders of
+       magnitude with the run length rather than tracking any physics. The
+       resonant *frequency* is still meaningful; the *Q* is not. To measure a
+       meaningful Q, add a realistic loss (a finite ``sigma`` / ``tan_delta``
+       on the fill, or a lossy load) so the cavity has a finite physical Q, or
+       use an open (CPML) boundary so radiation sets the Q.
+
     Parameters
     ----------
     signal : 1D real or complex array
@@ -183,6 +195,13 @@ def harminv_from_probe(
 
     Automatically windows the signal to use only the ring-down
     portion (after source has decayed).
+
+    .. warning::
+
+       A **lossless closed (PEC) cavity** has infinite physical Q, so the Q
+       returned here is a window-length artefact, not physics — add a
+       realistic loss or use an open (CPML) boundary before trusting a Q.
+       See :func:`harminv` for the full note. (The frequency is fine.)
 
     Parameters
     ----------
