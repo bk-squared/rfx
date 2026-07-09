@@ -6,6 +6,23 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — `forward()` / `optimize()` are now wrappable in an outer `jax.jit` (blind-docs finding)
+
+- `_assemble_materials` decided whether to return the PEC mask via
+  `bool(jnp.any(pec_mask))` — a host-side boolean conversion on a
+  geometry-derived device array. Fine eagerly and under a bare `jax.grad`, but
+  when the whole `forward()` was wrapped in an **outer `jax.jit`** the
+  geometry-derived `pec_mask` became a tracer and the conversion raised
+  `TracerBoolConversionError` deep in material assembly — so a user JITing their
+  optimization step (a natural performance move) crashed with an opaque error.
+- The eager path keeps the exact `jnp.any` test (**bit-identical** results,
+  verified across a PEC-cavity / interior-PEC / dielectric-CPML / thin-PEC /
+  forward-override / degenerate-empty-mask digest gate); only under a trace,
+  where a host bool is impossible, does it fall back to a static Python
+  `has_pec` predicate. Now `jax.jit(loss)` and `jax.jit(jax.grad(loss))` over a
+  `forward(eps_override=...)` objective both run and match the un-jitted values.
+- Locked by `tests/test_forward_outer_jit_traceable.py`.
+
 ### Changed — empty-window gradient + `add_lumped_rlc`-is-not-a-port pinned in docs (blind docs-only audit, doc-pin R2-STOP)
 
 - A blind, docs-only agent (validated across two model families) trusted a
