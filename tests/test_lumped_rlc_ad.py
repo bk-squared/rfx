@@ -175,3 +175,32 @@ def test_forward_with_rlc_is_not_noop():
         "add_lumped_rlc had ~zero effect through forward() — the silent no-op "
         "was not fixed"
     )
+
+
+def test_run_compute_s_params_reflects_rlc():
+    """run(compute_s_params=True) now also reflects a registered RLC (bonus fix).
+
+    The S-param extraction shares ``_forward_from_materials`` with ``forward()``,
+    so threading ``lumped_rlc`` fixes both. Before WP 4-E, run(compute_s_params=
+    True) was byte-identical with/without a co-located RLC (max|Δ|=0.0 on main);
+    now it differs, locking the broader no-op fix so it can't silently regress.
+    """
+    freqs = np.array([4.5, 5.0, 5.5]) * 1e9  # in-band, well-conditioned
+    with_rlc = np.abs(np.asarray(
+        _fixture_sim().run(n_steps=1200, compute_s_params=True,
+                           s_param_freqs=freqs).s_params
+    ).reshape(-1))
+
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_port(position=_POS, component="ez", impedance=50.0,
+                 waveform=GaussianPulse(f0=_F0, bandwidth=0.9))
+    without = np.abs(np.asarray(
+        sim.run(n_steps=1200, compute_s_params=True,
+                s_param_freqs=freqs).s_params
+    ).reshape(-1))
+
+    assert np.max(np.abs(with_rlc - without)) > 1e-2, (
+        "add_lumped_rlc had ~zero effect through run(compute_s_params=True) — "
+        "the S-param extraction path still drops the RLC"
+    )

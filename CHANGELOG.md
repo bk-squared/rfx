@@ -23,9 +23,12 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   IGNORED by `forward()` (the differentiable lane never iterated
   `self._lumped_rlc`), so a sim's `forward()` |S11| was byte-identical with or
   without the element. `forward()` now correctly reflects the element even
-  without an override. `run()` was always correct and is BYTE-IDENTICAL (the
-  concrete `build_rlc_meta` / `run(lumped_rlc=...)` path is untouched; golden
-  regression-locked in the same test file).
+  without an override. Because `run(compute_s_params=True)` extracts its
+  S-matrix through the same `_forward_from_materials` path, that lane was
+  IGNORING a co-located RLC too — it now reflects it as well (witness-locked in
+  the same test file). The main field solve `run()` was always correct and is
+  BYTE-IDENTICAL (the concrete `build_rlc_meta` / `run(lumped_rlc=...)` path is
+  untouched; golden regression-locked).
 - The lumped/wire port S11 DFT accumulators
   (`forward(port_s11_freqs=...)` / `run(compute_s_params=True)`) now derive
   their complex dtype so they promote under a scoped `jax_enable_x64` instead of
