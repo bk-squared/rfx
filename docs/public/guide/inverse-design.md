@@ -89,6 +89,26 @@ obj_transmit = maximize_transmitted_energy(output_probe_idx=-1)
 `result.time_series` columns: `port_probe_idx` selects the probe co-located with
 the excitation port, `output_probe_idx` the downstream probe.
 
+**Precondition — the split window must contain the reflection.**
+`minimize_reflected_energy` splits the probe time series at `late_fraction`
+(default: the second half) and treats the late half as reflected energy. That
+premise only holds if the round trip from the port to the reflecting feature and
+back arrives *after* the split point and *before* the run ends. On a short
+round-trip geometry (a thin substrate, a feature close to the port), the
+reflection lands in the early "incident" half and the late window is nearly empty,
+so the proxy collapses to `~0` and its gradient becomes numerical noise — with no
+error raised. Sanity-check the loss magnitude (a meaningfully reflecting design
+sits near `1e-2`–`1e-1`, not `~1e-7`), then fix the window by its failure mode:
+enlarge `n_steps` if the reflection arrives after the run ends; **raise**
+`late_fraction` (which moves the split earlier) if it arrives before the split; or,
+if the incident pulse and reflection overlap in time on a very short round trip,
+narrow the source bandwidth to compress the incident pulse — or use an
+impedance-referenced port (`add_port(..., impedance=Z0)` with
+`forward(port_s11_freqs=...)`), which separates incident and reflected waves
+exactly. Note that an AD-vs-finite-difference check will *not* catch an empty
+window: both differentiate the same window and agree (see
+[Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/#a-passing-finite-difference-check-is-necessary-not-sufficient)).
+
 For NTFF/directivity optimization, pass
 `maximize_directivity(..., log_ratio=True)` when the design variable can change
 total radiated power (conductors/PEC, lossy, or magnitude-changing dielectric

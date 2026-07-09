@@ -169,6 +169,16 @@ Use the result as a witness, not as a universal tolerance. If the witness fails,
 inspect the objective scale, perturbation size, run length, monitor placement,
 and support envelope before changing optimizer settings.
 
+A *passing* witness is also not sufficient on its own. Finite differences and AD
+differentiate the same objective through the same observation window, so both
+agree even when that window is empty — an objective that never sees the physics it
+is supposed to (reflection that never reaches the probe, a monitor inside an
+absorber) produces a self-consistent gradient of numerical noise. Guard against
+this by checking the loss **magnitude** against a physical expectation, not only
+the AD-vs-FD relative error: a reflected-energy proxy on a meaningfully reflecting
+design lands near `1e-2`–`1e-1`, so a value like `~1e-7` signals an empty window,
+not a matched design.
+
 ## Best practices
 
 1. **Start with a small, supported setup** before scaling the grid or objective.

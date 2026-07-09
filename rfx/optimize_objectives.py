@@ -471,6 +471,23 @@ def minimize_reflected_energy(
     This objective works with ``optimize()`` and ``topology_optimize()``
     because it uses only ``result.time_series`` (no S-parameters needed).
 
+    .. warning::
+        The "late half = reflection" split is only valid when the round trip
+        from the port to the reflecting feature and back arrives *after* the
+        split (``1 - late_fraction`` of the series) and *before* the run ends.
+        On a short round-trip geometry (thin substrate, feature near the port)
+        the reflection lands in the early window and the late window is nearly
+        empty, so this ratio collapses toward 0 and its gradient is numerical
+        noise -- with no error raised. Sanity-check the returned magnitude (a
+        meaningfully reflecting design sits near 1e-2--1e-1, not ~1e-7), then fix
+        an empty window by its mode: enlarge ``n_steps`` if the reflection
+        arrives after the run ends; RAISE ``late_fraction`` (which moves the
+        split earlier) if it arrives before the split; if the incident pulse and
+        reflection overlap in time on a very short round trip, no split separates
+        them -- narrow the source bandwidth or use an impedance-referenced port.
+        An AD-vs-finite-difference check does NOT catch this: both differentiate
+        the same empty window and agree.
+
     Parameters
     ----------
     port_probe_idx : int
