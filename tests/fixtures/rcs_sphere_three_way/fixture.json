@@ -1,0 +1,94 @@
+{
+  "schema": "rfx.rcs_sphere_three_way",
+  "schema_version": 1,
+  "issue": "validation-campaign lane-1",
+  "claim_scope": "Independent surface-integral-equation (Bempp-cl EFIE, RWG/SNC) cross-check of monostatic PEC-sphere BACKSCATTER RCS vs the exact Mie series, across the E4 ka ladder {0.8,1.0,1.5,2.0}, plus a three-way point (exact-Mie / rfx-FDTD-fine / Bempp-BEM) at ka~1. Bempp meshes the TRUE CURVED surface with triangles (no FDTD staircase), so it is an independent-METHOD confirmation of the Mie reference and a non-FDTD witness that rfx's coarse-ladder error is rfx-side resolution, not a comparator/extraction artifact. This is NOT a bistatic validation and does not re-open or weaken any existing RCS gate.",
+  "radius_m": 0.015,
+  "convention": {
+    "incidence": "+x",
+    "pol": "E||z",
+    "backscatter": "-x",
+    "rcs": "sigma=4pi|E_inf|^2/|E_inc|^2, reported /(pi a^2)",
+    "far_field_op": "operators.far_field.maxwell.electric_field",
+    "note": "RCS is a magnitude -> convention-insensitive; harness correctness rests on the 4-ka zero-straddle + monotone h-convergence witnesses, not on any sign/conjugation check."
+  },
+  "bempp": {
+    "solver": "bempp-cl EFIE (RWG domain/range, SNC dual), Numba CPU backend",
+    "version": "0.4.2",
+    "ladder": [
+      {
+        "ka": 0.8,
+        "h_m": 0.0025,
+        "N_dofs": 1884,
+        "sigma_bempp_over_pi_a2": 2.5626107631788746,
+        "sigma_mie_over_pi_a2": 2.596026660396595,
+        "dB_bempp_vs_mie": -0.05626502334862686
+      },
+      {
+        "ka": 1.0,
+        "h_m": 0.0025,
+        "N_dofs": 1884,
+        "sigma_bempp_over_pi_a2": 3.614136875190321,
+        "sigma_mie_over_pi_a2": 3.6375665428517023,
+        "dB_bempp_vs_mie": -0.028063505077823042
+      },
+      {
+        "ka": 1.5,
+        "h_m": 0.0025,
+        "N_dofs": 1884,
+        "sigma_bempp_over_pi_a2": 1.0983559155690314,
+        "sigma_mie_over_pi_a2": 1.075609287453262,
+        "dB_bempp_vs_mie": 0.09088549886260966
+      },
+      {
+        "ka": 2.0,
+        "h_m": 0.0025,
+        "N_dofs": 1884,
+        "sigma_bempp_over_pi_a2": 0.9736888399604245,
+        "sigma_mie_over_pi_a2": 1.008143083247345,
+        "dB_bempp_vs_mie": -0.15101982500840289
+      }
+    ],
+    "convergence_ka1": [
+      {
+        "h_m": 0.005,
+        "N_dofs": 543,
+        "sigma_bempp_over_pi_a2": 3.547687958142716,
+        "dB_vs_mie": -0.10865532855891086
+      },
+      {
+        "h_m": 0.003,
+        "N_dofs": 1269,
+        "sigma_bempp_over_pi_a2": 3.5990334023458934,
+        "dB_vs_mie": -0.04625069392166718
+      },
+      {
+        "h_m": 0.001875,
+        "N_dofs": 3183,
+        "sigma_bempp_over_pi_a2": 3.6225490232248303,
+        "dB_vs_mie": -0.017966753141507377
+      }
+    ],
+    "floor_measured_db": 0.15101982500840289,
+    "wall_time_s": 79.13875532150269
+  },
+  "three_way_ka1": {
+    "ka": 1.0,
+    "sigma_mie_over_pi_a2": 3.6375665428517023,
+    "rfx_fine_over_pi_a2": 3.584995414250318,
+    "rfx_fine_source": "tests/fixtures/rcs_sphere_mie/fixture.json monostatic (ka=0.9997, dx=lambda/40, 6.36 cells/radius; the 0.0004 dB ka=0.9997-vs-1.0 mismatch is below any rounded figure)",
+    "bempp_over_pi_a2": 3.614136875190321,
+    "spread_db": {
+      "rfx_vs_mie": -0.06322342240656617,
+      "bempp_vs_mie": -0.028063505077823042,
+      "rfx_vs_bempp": -0.03515991732874326
+    }
+  },
+  "rfx_coarse_ladder_note": "rfx's E4 COARSE ladder (dx=lambda/10-15, only 1-5 cells/radius; tests/fixtures/rcs_mie_e4/, gate 13.914 dB under a 15 dB GO floor) carries 4.7-9.3 dB error. Bempp reproduces exact Mie to <=0.15 dB at the SAME ka with a staircase-free curved mesh, so that coarse-ladder gap is rfx-side resolution (staircasing + near-field NTFF box; the sibling fixture also records a large domain-size swing), independently confirmed by a non-FDTD method -- consistent with the two-regime finding (rcs_sphere_mie fine ~0.06 dB). Stated as an rfx-centric distance; no solver is framed as wrong.",
+  "provenance": {
+    "rfx_commit": "36a675f5a04f2c929aea45b42927fe4f5bd0a782",
+    "bempp_version": "0.4.2",
+    "producer": "tests/fixtures/rcs_sphere_three_way/generate_bempp.py",
+    "env": "OPENBLAS_NUM_THREADS<=64 required (192-core box core-dumps otherwise); import name is bempp_cl (not bempp) in 0.4.x"
+  }
+}
