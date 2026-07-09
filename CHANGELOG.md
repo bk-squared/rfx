@@ -6,6 +6,47 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — waveguide S-matrix soft over-unity advisory (LLM-naive-usage audit item #5)
+
+- `compute_waveguide_s_matrix(normalize=False)` now emits a SEPARATE, humble
+  ADVISORY (warning, never raise) when a passive extraction's max column power
+  lands in `(2.25, hard_limit]` — above the documented single-run overshoot
+  envelope but below the `passivity_tol` extractor-broken hard limit. On the
+  loose `normalize=False` tol (2.0 → column-power limit 3.0) the window
+  `(~2.0, 3.0]` was previously unguarded: a validated PEC short sits at column
+  power ~2.0 there (a documented Yee/near-cutoff artifact, `|S21|≈1` not
+  cancelled by the single-run decomposition), so the existing self-check
+  (`_warn_if_nonpassive_smatrix` in `rfx/api/_sparams.py`) stayed silent for a
+  passive result materially above that envelope. A real coarse-mesh (`dx=2 mm`)
+  WR-90 PEC short landing at column power ~2.51 reproduced the silent gap.
+- The floor is column power 2.25 (`|S| ~ 1.5` for a 1-port): above the ~2.0
+  documented envelope AND the committed `normalize=False` PEC short (column
+  power ~2.00, `test_pec_short_s11_magnitude` /
+  `test_normalize_aware_tol_tolerates_documented_overshoot`) with margin. The
+  window is EMPTY on the tight-tol path (`normalize='flux'`/`True` → tol 0.10 →
+  hard limit 1.10 < 2.25), so the advisory only fires for `normalize=False`. No
+  physics changed; the `tol=2.0` hard threshold and every committed gate are
+  untouched. Message wording is distinct from the hard `UNRELIABLE` error.
+  Witness + false-positive gates in `tests/test_sparam_passivity_guard.py`.
+
+### Changed — pec-open-radiator advisory kept NTFF-gated (LLM-naive-usage audit item #3, R2-STOP)
+
+- The audit asked whether `_validate_cfg_pec_boundary_open_structure`
+  (`rfx/api/_preflight.py`) should be ungated from its `self._ntff is not None`
+  condition so an open radiator read via a near-field probe / S11 alone also
+  warns. R2-STOPPED after investigation: NTFF is the SOLE radiation-intent
+  signal on the `Simulation` config, so a source (and/or a finite PEC object)
+  inside a `boundary="pec"` domain is config-IDENTICAL between an open radiator
+  that mistakenly used PEC and a legitimate closed cavity / internal-PEC
+  numerics test (e.g. `test_adi.py::test_simulation_adi_internal_pec_geometry_masks_ez`,
+  `test_conformal.py::test_api_conformal_flag`,
+  `test_extract_s_matrix_pec_mask.py`). Any broadening that caught the footgun
+  would false-alarm that legion of valid closed-structure sims, and a
+  false-alarming preflight erodes trust worse than the silent gap. The advisory
+  is unchanged; the decision is locked by regression tests in
+  `tests/test_preflight_false_positives.py` (NTFF radiator still warns; valid
+  closed structures stay silent).
+
 ### Added — lumped R/L/C component values as a differentiable design variable (WP 4-E)
 
 - `Simulation.forward()` now processes `add_lumped_rlc(...)` elements on the
