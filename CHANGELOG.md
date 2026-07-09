@@ -6,6 +6,33 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — RCS bistatic-pattern validation scope pinned in docs (LLM-naive-usage audit item #2, doc-pin R2-STOP)
+
+- `compute_rcs` returns a full bistatic `rcs_dbsm` / `rcs_linear` pattern, but
+  only the `monostatic_rcs` (backscatter) bin is cross-validated against the
+  exact Mie series (~0.06 dB at ka~1). At the auto-placed default NTFF box
+  (`ntff_offset=1`, ~1 cell off the TFSF boundary, deep in the reactive near
+  field) the off-backscatter bins can be several dB to ~20 dB off — the
+  committed ka~1 PEC sphere shows a spurious forward-oblique lobe near 25-55 deg
+  scattering angle measured ~10 dB high vs Mie. This was already recorded
+  non-gated in `tests/fixtures/rcs_sphere_mie/`; the audit asked whether it
+  should surface at call time.
+- R2-STOPPED to a doc-pin (no runtime advisory added). `monostatic_rcs` is
+  computed at the exact backscatter direction INDEPENDENT of the
+  `theta_obs`/`phi_obs` grid, and every validated monostatic test passes a full
+  observation grid, so there is no call-time signal that separates
+  "monostatic-only" from "bistatic" intent to key an advisory on without
+  false-alarming those tests (the same trap as item #3). Wiring the
+  `Simulation` NTFF near-field guard into `compute_rcs` would likewise fire on
+  every validated monostatic RCS test.
+- Pinned the caveat in the `compute_rcs` / `RCSResult` docstrings, the module
+  docstring, and `docs/public/guide/farfield-rcs.md`. Verify-first finding also
+  recorded: enlarging `ntff_offset` alone does NOT close the oblique gap at test
+  scale (offset 1->2 leaves the 25-55 deg error ~10 dB and worsens backscatter;
+  a larger domain did not help), so the docs steer users away from that dead
+  end. No physics changed; no gate touched. Doc-contract witness in
+  `tests/test_rcs_bistatic_caveat_docpin.py`.
+
 ### Added — waveguide S-matrix soft over-unity advisory (LLM-naive-usage audit item #5)
 
 - `compute_waveguide_s_matrix(normalize=False)` now emits a SEPARATE, humble

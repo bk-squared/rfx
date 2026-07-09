@@ -9,6 +9,11 @@ The standard FDTD RCS approach:
 3. NTFF computes far-field pattern
 4. RCS(theta, phi) = 4*pi*r^2 * |E_scat|^2 / |E_inc|^2
 
+Validation scope: the monostatic (backscatter) bin is cross-validated
+against the exact Mie series; the full bistatic pattern at the default
+near-field NTFF box is NOT validated (see ``compute_rcs`` / ``RCSResult``
+"Bistatic pattern caveat", audit item #2).
+
 Reference: Taflove & Hagness, Ch. 8-9.
 """
 
@@ -41,6 +46,18 @@ class RCSResult(NamedTuple):
         propagation vector), independent of the theta/phi observation
         grid. For normal-incidence +x propagation this is
         (theta=pi/2, phi=pi), i.e. -x.
+
+    VALIDATION SCOPE (read before trusting the full pattern)
+    -------------------------------------------------------
+    Only ``monostatic_rcs`` (the backscatter bin) is cross-validated
+    against the exact Mie series (``tests/test_rcs_mie_fixture.py``,
+    ~0.06 dB at ka~1). The full ``rcs_dbsm`` / ``rcs_linear`` bistatic
+    pattern is NOT validated at the auto-placed default box: the
+    off-backscatter bins can be several dB to ~20 dB off (a spurious
+    forward-oblique lobe near 25-55 deg scattering angle, measured
+    ~10 dB high vs Mie). See ``compute_rcs`` ("Bistatic pattern
+    caveat") for the cause and why bumping ``ntff_offset`` does not
+    close it at test scale.
     """
     freqs: np.ndarray
     theta: np.ndarray
@@ -136,7 +153,12 @@ def compute_rcs(
         Cells between CPML edge and TFSF boundary.
     ntff_offset : int
         Cells between TFSF boundary and NTFF box (NTFF must be in the
-        scattered-field region, i.e., outside the TFSF box).
+        scattered-field region, i.e., outside the TFSF box). The default
+        (1) places the Huygens surface deep in the reactive near field.
+        See "Bistatic pattern caveat" below: this default is validated
+        for the backscatter/monostatic bin, but is NOT a validated
+        bistatic setup, and increasing it does not close the oblique gap
+        at test scale.
 
     Returns
     -------
@@ -146,6 +168,37 @@ def compute_rcs(
         direction — for +x incidence that is (theta=pi/2, phi=pi) under
         the farfield r_hat convention; it does not depend on
         theta_obs/phi_obs).
+
+    Bistatic pattern caveat (LLM-naive-usage audit item #2)
+    -------------------------------------------------------
+    VALIDATED: ``RCSResult.monostatic_rcs`` (the backscatter bin) agrees
+    with the exact Mie series to ~0.06 dB at ka~1
+    (``tests/test_rcs_mie_fixture.py``).
+
+    NOT VALIDATED: the full ``rcs_dbsm`` / ``rcs_linear`` bistatic
+    pattern at off-backscatter angles. With the auto-placed default NTFF
+    box (``ntff_offset=1``, ~1 cell off the TFSF boundary, distance
+    << lambda) the oblique/forward bins can be several dB to ~20 dB off.
+    On the committed ka~1 PEC sphere the H-plane cut shows a spurious
+    forward-oblique lobe near 25-55 deg scattering angle measured
+    ~10 dB high vs Mie (recorded, non-gated, in
+    ``tests/fixtures/rcs_sphere_mie/``; residual diagnostic issue #280).
+
+    This caveat is a doc-pin, not a runtime warning, on purpose: the
+    monostatic value is computed at the exact backscatter direction
+    INDEPENDENT of ``theta_obs``/``phi_obs``, and the validated
+    monostatic tests themselves pass full observation grids, so there is
+    no call-time signal that separates "monostatic-only" from "bistatic"
+    intent to key an advisory on without false-alarming those tests.
+
+    Do NOT try to fix the bistatic pattern by only enlarging
+    ``ntff_offset``: measured at test scale it does not close the oblique
+    gap (offset 1->2 on the committed sphere leaves the 25-55 deg error
+    ~10 dB and worsens the backscatter bin; a larger domain did not help
+    either). The oblique lobe is dominated by the staircased curved-PEC
+    surface plus forward TFSF-face contamination, not box distance alone.
+    A converged bistatic setup needs finer resolution (and likely a
+    conformal-PEC / larger radiating-region box), tracked by issue #280.
     """
     # Defaults
     if theta_obs is None:
