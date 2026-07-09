@@ -124,6 +124,22 @@ exactly at the backscatter direction opposite the incident propagation
 vector, so it does not depend on the observation grid), and the
 `freqs` / `theta` / `phi` axes.
 
+### Validation scope: monostatic yes, bistatic not yet
+
+Only `monostatic_rcs` (the backscatter bin) is cross-validated against the
+exact Mie series — ~0.06 dB at ka ≈ 1 on a PEC sphere. The full
+`rcs_dbsm` / `rcs_linear` **bistatic pattern is not validated** at the
+auto-placed default NTFF box (`ntff_offset=1`, one cell off the TFSF
+boundary, deep in the reactive near field). At off-backscatter angles the
+default setup can be several dB to ~20 dB off — a ka ≈ 1 PEC sphere shows a
+spurious forward-oblique lobe near 25–55° scattering angle measured ~10 dB
+high versus Mie. Enlarging `ntff_offset` alone does **not** close this at
+test scale (it can worsen the backscatter bin), because the oblique error is
+dominated by the staircased curved surface and forward TFSF-face
+contamination, not box distance. Treat off-backscatter cuts as qualitative
+until a converged (finer-resolution) far-field setup is used; only the
+monostatic number carries the cross-method gate.
+
 ## Plotting RCS
 
 ```python
