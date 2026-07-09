@@ -2480,7 +2480,8 @@
       "distributed",
       "devices",
       "exchange_interval",
-      "port_s11_freqs"
+      "port_s11_freqs",
+      "rlc_values_override"
     ],
     "mesh_intelligence_report": [
       "n_steps",

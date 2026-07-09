@@ -6,6 +6,39 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — lumped R/L/C component values as a differentiable design variable (WP 4-E)
+
+- `Simulation.forward()` now processes `add_lumped_rlc(...)` elements on the
+  uniform single-device lane and gained a keyword-only `rlc_values_override`
+  injection surface, so a lumped element's R/L/C can be a `jax.grad` design
+  variable. `LumpedRLCSpec` stores plain floats, so a component value enters
+  the AD tape AS a tracer via
+  `forward(rlc_values_override={element_index: {"R": R, "C": C, "L": L}}, ...)`;
+  a missing index or key falls back to the registered float. A traced meta
+  builder (`rfx.lumped.build_rlc_meta_traced` / `setup_rlc_materials_traced`)
+  drops the `float()` coercions and keeps element topology decisions static, so
+  `jax.grad(|S11|^2)` w.r.t. R and C is finite, nonzero and FD-consistent
+  (rel < 5%, scoped x64) — gated in `tests/test_lumped_rlc_ad.py`.
+- **Fixed a silent no-op**: previously a registered `add_lumped_rlc` element was
+  IGNORED by `forward()` (the differentiable lane never iterated
+  `self._lumped_rlc`), so a sim's `forward()` |S11| was byte-identical with or
+  without the element. `forward()` now correctly reflects the element even
+  without an override. Because `run(compute_s_params=True)` extracts its
+  S-matrix through the same `_forward_from_materials` path, that lane was
+  IGNORING a co-located RLC too — it now reflects it as well (witness-locked in
+  the same test file). The main field solve `run()` was always correct and is
+  BYTE-IDENTICAL (the concrete `build_rlc_meta` / `run(lumped_rlc=...)` path is
+  untouched; golden regression-locked).
+- The lumped/wire port S11 DFT accumulators
+  (`forward(port_s11_freqs=...)` / `run(compute_s_params=True)`) now derive
+  their complex dtype so they promote under a scoped `jax_enable_x64` instead of
+  tripping the `lax.scan` carry-dtype contract — this makes the wave-decomp S11
+  AD lane (WP 4-E and the pre-existing `eps_override` channel) usable under
+  scoped x64. Byte-identical with x64 off (accumulators stay complex64).
+- Scope: uniform single-device forward lane only. `rlc_values_override` on the
+  non-uniform / distributed forward lanes raises `NotImplementedError` (those
+  lanes do not process `add_lumped_rlc` in `forward()`).
+
 ### Added — opt-in multi-start / best-iterate / step-clamp knobs on `optimize()` (WP 4-C)
 
 - `optimize()` gained four keyword-only, DEFAULT-OFF parameters promoted
