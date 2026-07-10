@@ -16,7 +16,24 @@ Key structural point: directivity D = 4*pi*U_max / P_rad is a RATIO — any
 overall scale error in the NTFF transform cancels in it. Only the
 P_ntff / P_flux cross-check in this battery pins the ABSOLUTE power scale
 of the far-field chain against an independent in-domain observable (the
-closed 6-face Poynting flux box). Predicted ratio (derived in the
+closed 6-face Poynting flux box).
+
+Bug-class coverage (what this battery now locks):
+  (a) ABSOLUTE power scale of the NTFF chain (P_ntff / P_flux cross-check);
+  (b) magnitude-pattern fidelity (sin^2(theta) bright-region gate,
+      directivity lock, dx-ladder convergence);
+  (c) PHASE / DIRECTION of the transform (offset-dipole phase-slope
+      witness: arg E_theta of a z-offset dipole must follow
+      +k*delta_z*cos(theta), matching the exp(+j k r_hat . r') kernel in
+      farfield.py — flips sign under conjugation AND under
+      r_hat -> -r_hat);
+  (d) E_phi channel shape (x-polarized dipole: E_theta ~
+      |cos(theta)cos(phi)|, E_phi ~ |sin(phi)|), making the cross-pol
+      chain non-vacuous.
+The phase witness (c) exists precisely because every magnitude gate in
+(a)/(b)/(d) is invariant under conjugation of the DFT/kernel and under
+observation-direction inversion — a wrong-sign kernel would sail through
+all of them. Predicted ratio (derived in the
 2026-07-10 convention audit, not fitted): the flux path integrates the
 UN-halved ``Re(E x H*) . n_hat`` (``rfx/probes/probes.py::flux_spectrum``)
 while the NTFF power path uses U = |E|^2 / (2*eta_0) (``rfx/antenna.py``),
@@ -49,7 +66,15 @@ same-session base-rung remeasure, bit-reproducible on this CPU box):
     jnp flux_spectrum vs float64 accumulator recompute: per-face rel
     difference <= 3.0e-7 (net 4.0e-9)
   dx-ladder (slow_physics): err_db 0.0391 -> 0.0147 -> 0.0064 (monotone);
-    flux ratio 0.4948 / 0.5128 / 0.5215 (all within 5% of 0.5)
+    flux ratio 0.4948 / 0.5128 / 0.5215 (per-rung bands, see caveat 2)
+  offset-dipole phase witness (delta_z = +2*dx = 6 mm, same base rung):
+    bright-region slope of unwrapped arg(E_theta) vs cos(theta) =
+    +0.380369 rad vs expected +k*delta_z = +0.377252 rad (+0.83% dev);
+    max linear-fit residual 0.0050 rad
+  x-dipole variant (ex, centered, same base rung): E_phi theta=90 ring vs
+    |sin(phi)| max|dev| = 0.004593; E_theta phi=0 cut vs |cos(theta)|
+    max|dev| = 0.004575; max|E_phi|/max|E_theta| over sphere = 1.002629;
+    D = 1.7999 dBi
 
 Preflight (quoted per feedback_never_ignore_preflight): explicit
 ``sim.preflight()`` on this fixture returns six lambda/4 advisories of the
@@ -74,10 +99,17 @@ Known numerics caveats carried by this battery (documented, not patched):
       the float64 recompute helper for ALL rungs, and the fast suite pins
       recompute==jnp on the base rung where both are healthy.
   (2) the measured ratio drifts away from 0.5 with refinement (0.4948 ->
-      0.5128 -> 0.5215); the coarsest rung matches the E-time-label
-      prediction 0.5*cos^2(omega*dt/2) = 0.4986. The ladder gate is a
-      +/-5% band around 0.5 at every rung (measured max off 4.3%), i.e. a
-      stability lock, NOT a convergence-to-0.5 claim.
+      0.5128 -> 0.5215); the E-time-label prediction
+      0.5*cos^2(omega*dt/2) = 0.4986 accounts for part of the
+      coarsest-rung offset (measured 0.4948). The finest-rung drift
+      mechanism is CONFIRMED as the fixed-cpml_layers absorber-thinning
+      confound: the absorber is cpml_layers*dx thick, so refining dx at
+      fixed cpml_layers thins the absorber (reviewer witness:
+      cpml_layers=12 at dx=1.5 mm restores ratio 0.4980). The ladder gate
+      is therefore a PER-RUNG band centred on the measured ratios
+      (+/-0.02 each), i.e. a stability lock, NOT a convergence-to-0.5
+      claim; a band exit at a NEW finer rung is the documented drift, not
+      automatically a regression.
 
 No network, no external solver; deterministic (fixed geometry, fixed step
 counts, rect DFT window). Tighten gates only with a fresh measured
@@ -91,6 +123,7 @@ import jax.numpy as jnp
 from rfx import Simulation, GaussianPulse
 from rfx.antenna import _radiation_intensity, _total_radiated_power
 from rfx.farfield import compute_far_field, directivity
+from rfx.grid import C0
 from rfx.probes.probes import flux_spectrum
 
 # ===========================================================================
@@ -142,42 +175,74 @@ _CROSSPOL_MAX = 0.02
 # flux_spectrum on a rung where float32 does NOT flush.
 _FLUX_RECOMPUTE_RTOL = 1e-4
 
+# Offset-dipole phase/direction witness (F1). delta_z = +2*dx = 6 mm is an
+# exact grid multiple that keeps the dipole 3 mm INSIDE the NTFF box (the
+# suggested 4*dx = 12 mm would place it outside the [0.021, 0.039] box and
+# break Huygens equivalence). Measured bright-region slope of unwrapped
+# arg(E_theta(theta, phi=0)), offset-minus-centered, vs cos(theta):
+# +0.380369 rad vs expected +k*delta_z = +0.377252 rad (+0.83% dev);
+# max linear-fit residual 0.0050 rad. Gates ~6x/10x measured.
+_OFFSET_DZ_M = 2 * BASE_DX_M
+_PHASE_SLOPE_EXPECTED = 2.0 * np.pi * F0_HZ / C0 * _OFFSET_DZ_M  # +k*delta_z
+_PHASE_SLOPE_RTOL = 0.05        # measured |dev| 0.83%
+_PHASE_FIT_RESID_MAX = 0.05     # rad; measured 0.0050
+
+# x-dipole variant (F2). Measured base rung: E_phi theta=90 ring vs
+# |sin(phi)| max|dev| = 0.004593; E_theta phi=0 cut vs |cos(theta)|
+# max|dev| = 0.004575. Gate 0.05 (~10x measured, linear normalized units).
+_XPOL_SHAPE_DEV_MAX = 0.05
+# Measured max|E_phi|/max|E_theta| over the sphere = 1.002629 (ideal
+# x-dipole: 1.0). Band [0.9, 1.1] — a wide honest margin that still proves
+# the E_phi channel carries co-pol-class magnitude (non-vacuous).
+_XPOL_PEAK_RATIO_BAND = (0.9, 1.1)
+
 # dx-ladder (slow_physics). Measured |err_db|: 0.0391, 0.0147, 0.0064.
 # Per-rung caps ~3-6x measured; plus a strict finest < coarsest witness
 # (6x apart in measurement, robust to cross-machine float noise).
+# Ratio bands: PER-RUNG, centred on the measured ratios 0.4948 / 0.5128 /
+# 0.5215, each +/-0.02 — a stability lock; the drift AWAY from 0.5 with
+# refinement is the CONFIRMED fixed-cpml_layers absorber-thinning confound
+# (module docstring caveat 2), so this deliberately does NOT assert
+# convergence to 0.5. The source-derived 0.5 +/- 0.05 gate lives ONLY on
+# the base-rung fast test above.
 _LADDER_RUNGS = (
-    # (dx_m, n_steps, err_cap_db)
-    (3.0e-3, 400, 0.15),
-    (1.5e-3, 800, 0.08),
-    (0.75e-3, 1600, 0.04),
+    # (dx_m, n_steps, err_cap_db, ratio_center)
+    (3.0e-3, 400, 0.15, 0.4948),
+    (1.5e-3, 800, 0.08, 0.5128),
+    (0.75e-3, 1600, 0.04, 0.5215),
 )
-# Measured ladder ratios: 0.4948, 0.5128, 0.5215 (max off 0.0215 = 4.3%).
-# Gate +/-0.05 around 0.5 at every rung — a stability lock; the drift AWAY
-# from 0.5 with refinement is a documented anomaly (module docstring), so
-# this deliberately does NOT assert convergence to 0.5.
-_RATIO_TOL_LADDER = 0.05
+_RATIO_BAND_LADDER = 0.02
+
+# Guard: the ladder's first rung must BE the shared base-rung fixture
+# (the ladder test reuses it instead of re-running).
+assert _LADDER_RUNGS[0][:2] == (BASE_DX_M, BASE_N_STEPS)
 
 
 # ===========================================================================
 # Shared helpers
 # ===========================================================================
-def _build_sim(dx: float) -> Simulation:
+def _build_sim(dx: float, *, component: str = "ez",
+               source_pos: tuple = None) -> Simulation:
     """Hertzian-dipole calibration fixture at cell size ``dx``.
 
     Mirrors the 2026-07-10 diagnostic lane script exactly: 0.06 m cube,
-    CPML(6 layers), single-cell soft ez GaussianPulse dipole at the centre,
-    NTFF box [0.021, 0.039]^3, and six finite flux monitors forming the
-    closed box [0.015, 0.045]^3 (each face a 0.030 x 0.030 m plane centred
-    on the domain axis). Two ez witness probes (source cell + NTFF x_hi
-    face) provide the pulse-decay witness.
+    CPML(6 layers), single-cell soft GaussianPulse dipole (``component``,
+    default ez at the centre), NTFF box [0.021, 0.039]^3, and six finite
+    flux monitors forming the closed box [0.015, 0.045]^3 (each face a
+    0.030 x 0.030 m plane centred on the domain axis). Two witness probes
+    (source cell + NTFF x_hi face) provide the pulse-decay witness.
+    ``source_pos`` (default centre) supports the phase/direction witness,
+    which offsets the dipole along z by an exact grid multiple.
     """
+    if source_pos is None:
+        source_pos = (CENTER_M,) * 3
     sim = Simulation(
         freq_max=FREQ_MAX_HZ, domain=(DOMAIN_M,) * 3, dx=dx,
         boundary="cpml", cpml_layers=CPML_LAYERS,
     )
-    sim.add_source((CENTER_M,) * 3, "ez",
+    sim.add_source(source_pos, component,
                    waveform=GaussianPulse(f0=F0_HZ, bandwidth=0.5))
-    sim.add_probe((CENTER_M,) * 3, "ez")
+    sim.add_probe(source_pos, component)
     sim.add_probe((NTFF_HI_M, CENTER_M, CENTER_M), "ez")
     sim.add_ntff_box(corner_lo=(NTFF_LO_M,) * 3, corner_hi=(NTFF_HI_M,) * 3,
                      freqs=jnp.array([F0_HZ]))
@@ -216,9 +281,10 @@ def _net_outward_power(face_flux: dict) -> float:
             - (face_flux["x_lo"] + face_flux["y_lo"] + face_flux["z_lo"]))
 
 
-def _run_rung(dx: float, n_steps: int) -> dict:
+def _run_rung(dx: float, n_steps: int, *, component: str = "ez",
+              source_pos: tuple = None) -> dict:
     """Run one fixture rung; return the derived calibration observables."""
-    sim = _build_sim(dx)
+    sim = _build_sim(dx, component=component, source_pos=source_pos)
     res = sim.run(n_steps=n_steps)
 
     # Decay witness: the rect-window DFT is only trustworthy if the pulse
@@ -257,6 +323,36 @@ def base_rung():
           f"P_ntff={rung['p_ntff']:.6e} W, "
           f"P_flux(f64)={rung['p_flux_f64']:.6e} W, "
           f"ratio={rung['p_ntff'] / rung['p_flux_f64']:.6f}, "
+          f"tail/peak={rung['tail_over_peak']:.2e}")
+    return rung
+
+
+@pytest.fixture(scope="module")
+def offset_rung():
+    """Base rung with the dipole OFFSET +2*dx along z (phase witness).
+
+    Same domain/mesh/steps as ``base_rung``; only the source (and its
+    witness probe) move to z = 0.036 m — still 3 mm inside the NTFF box.
+    All magnitude gates stay on the centered fixture; this fixture feeds
+    ONLY the phase/direction witness.
+    """
+    rung = _run_rung(BASE_DX_M, BASE_N_STEPS,
+                     source_pos=(CENTER_M, CENTER_M, CENTER_M + _OFFSET_DZ_M))
+    print(f"\n[ntff-battery offset rung] dz=+{_OFFSET_DZ_M * 1e3:.1f}mm, "
+          f"tail/peak={rung['tail_over_peak']:.2e}")
+    return rung
+
+
+@pytest.fixture(scope="module")
+def xdipole_rung():
+    """Base rung with an ex-polarized (x-oriented) centered dipole.
+
+    Same domain/mesh/steps as ``base_rung``; only the source component
+    changes. Feeds the E_phi-channel shape gates (F2) — for an x-dipole
+    E_phi is a CO-POL-class channel, so these gates are non-vacuous.
+    """
+    rung = _run_rung(BASE_DX_M, BASE_N_STEPS, component="ex")
+    print(f"\n[ntff-battery x-dipole rung] D={rung['d_dbi']:.6f} dBi, "
           f"tail/peak={rung['tail_over_peak']:.2e}")
     return rung
 
@@ -369,13 +465,106 @@ def test_crosspol_stays_numerical_noise(base_rung):
         f"cross-pol {crosspol:.6f} (measured 0.003882, gate {_CROSSPOL_MAX})")
 
 
+def test_offset_dipole_phase_slope_is_plus_k_dz_cos_theta(base_rung,
+                                                          offset_rung):
+    """Phase/DIRECTION witness: offset-dipole phase slope = +k*delta_z.
+
+    The rfx NTFF kernel integrates exp(+j k r_hat . r') (farfield.py N/L
+    integrals), so moving the dipole by +delta_z along z multiplies
+    E(theta, phi) by exp(+j k delta_z cos(theta)). Gate: the bright-region
+    slope of unwrapped [arg E_theta(offset) - arg E_theta(centered)] at
+    phi=0 vs cos(theta) must equal +k*delta_z in BOTH sign and value
+    (measured +0.380369 rad vs expected +0.377252, +0.83% dev; gate
+    +/-5%). Subtracting the centered fixture removes the theta-independent
+    offset AND every common origin/waveform phase term exactly.
+
+    This is the only gate in the battery that is NOT invariant under
+    conjugation of the DFT/kernel or under r_hat -> -r_hat: either flip
+    negates the slope (~200% deviation) and fails loudly. A fit-residual
+    cap (measured 0.0050 rad, gate 0.05) keeps the linear fit meaningful.
+    """
+    assert offset_rung["tail_over_peak"] < 1e-3, (
+        f"offset fixture not settled: "
+        f"tail/peak = {offset_rung['tail_over_peak']:.3e}")
+
+    e_cen = base_rung["ff"].E_theta[0, :, 0]     # phi = 0 cut
+    e_off = offset_rung["ff"].E_theta[0, :, 0]
+    dphase = np.unwrap(np.angle(e_off * np.conj(e_cen)))
+    x = np.cos(THETA_GRID)
+    bright = ((THETA_GRID >= np.radians(20.0))
+              & (THETA_GRID <= np.radians(160.0)))
+    slope, intercept = np.polyfit(x[bright], dphase[bright], 1)
+    resid = np.max(np.abs(dphase[bright] - (slope * x[bright] + intercept)))
+
+    assert slope > 0.0, (
+        f"phase slope SIGN flipped: {slope:.6f} rad (expected "
+        f"+{_PHASE_SLOPE_EXPECTED:.6f}) — NTFF kernel phase convention "
+        f"(exp(+j k r_hat . r')) or observation-direction sense changed")
+    rel_dev = abs(slope - _PHASE_SLOPE_EXPECTED) / _PHASE_SLOPE_EXPECTED
+    assert rel_dev < _PHASE_SLOPE_RTOL, (
+        f"phase slope {slope:.6f} rad vs expected "
+        f"{_PHASE_SLOPE_EXPECTED:.6f} (+k*delta_z), rel dev {rel_dev:.4f} "
+        f"(measured 0.0083, gate {_PHASE_SLOPE_RTOL})")
+    assert resid < _PHASE_FIT_RESID_MAX, (
+        f"phase-vs-cos(theta) not linear: max fit residual {resid:.4f} rad "
+        f"(measured 0.0050, gate {_PHASE_FIT_RESID_MAX})")
+
+
+def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
+    """x-dipole shape gates: E_theta ~ |cos(theta)cos(phi)|, E_phi ~ |sin(phi)|.
+
+    For an x-oriented Hertzian dipole E_phi is a co-pol-class channel
+    (ideal peak ratio 1.0), so these gates exercise the E_phi chain with
+    signal, unlike the z-dipole cross-pol gate where E_phi is noise-level.
+    Measured base rung: theta=90deg-ring |E_phi| vs |sin(phi)| max|dev|
+    0.004593; phi=0-cut |E_theta| vs |cos(theta)| max|dev| 0.004575 (both
+    normalized, bins where the model >= 0.5); gate 0.05 (~10x). Peak
+    ratio max|E_phi|/max|E_theta| measured 1.002629; band [0.9, 1.1].
+    """
+    assert xdipole_rung["tail_over_peak"] < 1e-3, (
+        f"x-dipole fixture not settled: "
+        f"tail/peak = {xdipole_rung['tail_over_peak']:.3e}")
+
+    E_th = np.abs(xdipole_rung["ff"].E_theta[0])   # (n_theta, n_phi)
+    E_ph = np.abs(xdipole_rung["ff"].E_phi[0])
+
+    # E_phi shape on the theta = 90 deg ring (exact grid midpoint).
+    i90 = int(np.argmin(np.abs(THETA_GRID - np.pi / 2)))
+    ring = E_ph[i90, :]
+    assert ring.max() > 0.0
+    model_ph = np.abs(np.sin(PHI_GRID))
+    mask_ph = model_ph >= 0.5
+    dev_ph = float(np.max(np.abs(ring / ring.max() - model_ph)[mask_ph]))
+    assert dev_ph < _XPOL_SHAPE_DEV_MAX, (
+        f"E_phi theta=90 ring deviates from |sin(phi)| by {dev_ph:.4f} "
+        f"(measured 0.004593, gate {_XPOL_SHAPE_DEV_MAX})")
+
+    # E_theta shape on the phi = 0 cut.
+    cut = E_th[:, 0]
+    assert cut.max() > 0.0
+    model_th = np.abs(np.cos(THETA_GRID))
+    model_th = model_th / model_th.max()
+    mask_th = model_th >= 0.5
+    dev_th = float(np.max(np.abs(cut / cut.max() - model_th)[mask_th]))
+    assert dev_th < _XPOL_SHAPE_DEV_MAX, (
+        f"E_theta phi=0 cut deviates from |cos(theta)| by {dev_th:.4f} "
+        f"(measured 0.004575, gate {_XPOL_SHAPE_DEV_MAX})")
+
+    # Non-vacuousness: E_phi must carry co-pol-class magnitude.
+    peak_ratio = float(E_ph.max() / E_th.max())
+    lo, hi = _XPOL_PEAK_RATIO_BAND
+    assert lo < peak_ratio < hi, (
+        f"max|E_phi|/max|E_theta| = {peak_ratio:.4f} outside [{lo}, {hi}] "
+        f"(measured 1.002629, ideal 1.0) — E_phi channel scale is off")
+
+
 # ===========================================================================
 # slow_physics battery (opt-in: -m slow_physics)
 # ===========================================================================
 
 @pytest.mark.slow_physics
 def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
-    """dx-ladder witness: D error shrinks with refinement; ratio stays 0.5-ish.
+    """dx-ladder witness: D error shrinks with refinement; per-rung ratio bands.
 
     Measured (2026-07-10): |err_db| 0.0391 -> 0.0147 -> 0.0064 dB across
     dx = 3.0 / 1.5 / 0.75 mm (strictly monotone); per-rung caps 0.15 /
@@ -384,19 +573,26 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
 
     Flux ratio uses the float64 recompute at EVERY rung because at
     dx=0.75 mm the jnp flux path measurably flushes to exactly 0.0
-    (float32, caveat 1). Measured ratios 0.4948 / 0.5128 / 0.5215; gate
-    0.5 +/- 0.05 per rung. This is a STABILITY lock: the measured drift
-    AWAY from 0.5 with refinement (-1.0% -> +2.6% -> +4.3%) is a documented
-    anomaly (suspected fixed-cpml_layers confound, module docstring caveat
-    2), so no convergence-to-0.5 is asserted. ~35 s CPU for the two finer
-    rungs (the base rung is reused from the module fixture).
+    (float32, caveat 1). Measured ratios 0.4948 / 0.5128 / 0.5215; gate =
+    PER-RUNG band centred on each measured ratio, +/-0.02. This is a
+    STABILITY lock, not a convergence-to-0.5 claim: the drift AWAY from
+    0.5 with refinement is CONFIRMED as the fixed-cpml_layers
+    absorber-thinning confound — the absorber is cpml_layers*dx thick, so
+    refining dx at fixed cpml_layers thins it (reviewer witness:
+    cpml_layers=12 at dx=1.5 mm gives ratio 0.4980, back near the
+    coarse-rung value). Consequence: a band exit at a NEW finer rung is
+    the documented drift mechanism, not automatically a regression —
+    measure the new rung (and its cpml_layers-scaled control) before
+    touching any band. The source-derived 0.5 +/- 0.05 gate lives ONLY on
+    the base-rung fast test. ~35 s CPU for the two finer rungs (the base
+    rung is reused from the module fixture).
     """
     rungs = [base_rung]
-    for dx, n_steps, _cap in _LADDER_RUNGS[1:]:
+    for dx, n_steps, _cap, _rc in _LADDER_RUNGS[1:]:
         rungs.append(_run_rung(dx, n_steps))
 
     errs_db = []
-    for rung, (dx, _n, cap_db) in zip(rungs, _LADDER_RUNGS):
+    for rung, (dx, _n, cap_db, ratio_center) in zip(rungs, _LADDER_RUNGS):
         err_db = abs(rung["d_dbi"] - D_THEORY_DBI)
         errs_db.append(err_db)
         print(f"[ntff-battery ladder] dx={dx * 1e3:.2f} mm: "
@@ -416,10 +612,11 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
             f"dx={dx * 1e3:.2f} mm: f64 closed-box power not positive "
             f"({p_flux:.3e})")
         ratio = rung["p_ntff"] / p_flux
-        assert abs(ratio - _RATIO_PREDICTED) < _RATIO_TOL_LADDER, (
+        assert abs(ratio - ratio_center) < _RATIO_BAND_LADDER, (
             f"dx={dx * 1e3:.2f} mm: P_ntff/P_flux = {ratio:.6f} outside "
-            f"0.5 +/- {_RATIO_TOL_LADDER} "
-            f"(measured 0.4948/0.5128/0.5215 across the ladder)")
+            f"{ratio_center} +/- {_RATIO_BAND_LADDER} (per-rung band on the "
+            f"measured 0.4948/0.5128/0.5215; drift across rungs is the "
+            f"documented fixed-cpml_layers confound, docstring caveat 2)")
 
     assert errs_db[-1] < errs_db[0], (
         f"directivity error did not shrink across the ladder: "
