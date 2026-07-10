@@ -1617,9 +1617,73 @@ class _PreflightMixin:
         self._validate_cfg_waveguide_reference_plane(
             _w, cpml_thick_lo, cpml_thick_hi
         )
+        self._validate_cfg_refplane_placement(_w)
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
+
+    def _validate_cfg_refplane_placement(self, _w) -> None:
+        """Advisories for ``add_port(reference_plane_cells=...)`` (issue #313).
+
+        (a) ``reference_plane_cells < 10`` puts the measurement planes in the
+        port near field.  Measured on the canonical 16 mm thru (dx = 0.5 mm,
+        gap-trimmed V, 2026-07-10 battery): N=3 planes read Zc = 52-53 ohm
+        with |Im/Re| up to 8.2%, beta/(w/c) = 1.16-1.20, and a -3.1%
+        closed-box-referee |S21| residual, while N=10 planes read the clean
+        mid-line constants.  The Phase-0 pre-registration rule places BOTH
+        planes (N and 2N cells) >= 10 cells from every port.
+
+        (b) When SOME but not ALL impedance-carrying wire ports opt in, the
+        off-diagonal S entries involving a non-opted port silently stay on
+        the legacy port-cell path (only pairs where both ports opt in use
+        the plane waves) — surface that at preflight instead of letting the
+        mixed matrix pass unremarked.
+        """
+        wire_ports = [
+            pe for pe in self._ports
+            if pe.impedance != 0.0 and pe.extent is not None
+        ]
+        opted = [
+            pe for pe in wire_ports
+            if getattr(pe, "reference_plane_cells", None) is not None
+        ]
+        if not opted:
+            return
+        near = [pe for pe in opted if pe.reference_plane_cells < 10]
+        if near:
+            _w.warn(
+                PreflightWarning(
+                    f"{len(near)} reference-plane port(s) use "
+                    "reference_plane_cells < 10 — planes this close sit in "
+                    "the port near field. Measured on the canonical thru "
+                    "(dx = 0.5 mm, 2026-07-10 battery): N=3 planes read "
+                    "Zc = 52-53 ohm with |Im(Zc)/Re(Zc)| up to 8.2% and "
+                    "beta/(w/c) = 1.16-1.20 (vs the clean mid-line "
+                    "constants at N=10), and the closed-box-referee |S21| "
+                    "residual was -3.1%. The Phase-0 pre-registration rule "
+                    "(issue #313) places BOTH planes (N and 2N cells) >= 10 "
+                    "cells from every port — prefer "
+                    "reference_plane_cells >= 10 when the line length "
+                    "allows it.",
+                    code="refplane_near_field",
+                    source="_validate_cfg_refplane_placement",
+                ),
+                stacklevel=2,
+            )
+        if len(opted) != len(wire_ports):
+            _w.warn(
+                PreflightWarning(
+                    f"{len(opted)} of {len(wire_ports)} impedance-carrying "
+                    "wire ports opt into reference_plane_cells — "
+                    "off-diagonal S entries involving a non-opted port "
+                    "SILENTLY stay on the legacy port-cell path (only "
+                    "pairs where BOTH ports opt in use the plane waves). "
+                    "Opt in every wire port of the S-matrix, or none.",
+                    code="refplane_partial_optin",
+                    source="_validate_cfg_refplane_placement",
+                ),
+                stacklevel=2,
+            )
 
     def _validate_cfg_conformal_fine_dx(self, dx: float) -> None:
         """Flag the KNOWN conformal-PEC fine-mesh NaN before it wastes a run.

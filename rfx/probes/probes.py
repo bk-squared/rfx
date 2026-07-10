@@ -865,9 +865,13 @@ def decompose_lumped_s_matrix(v, i, z0):
 
     OPEN item: the port-based |S21| MAGNITUDE is deflated relative to the
     extractor-independent flux referee (flux-true |S21| 0.97-1.0 vs
-    0.52-0.67 here on the canonical thru); a drive-side normalization
-    scale entering ``a_j`` is under investigation — see the drive-side
-    normalization issue #313.
+    0.52-0.67 here on the canonical thru); the Phase-0 closed-box referee
+    traced it to the port-cell wave definitions themselves (near-field
+    dominated, do not conserve power) — see issue #313.  The opt-in
+    ``add_port(reference_plane_cells=N)`` reference-plane path
+    (``rfx.probes.refplane``) replaces the opted off-diagonals with line
+    plane waves; THIS default port-cell path keeps the deflation and its
+    committed regression locks unchanged.
 
     The safe-denominator guard replaces a zero incident wave by 1 (so
     S → 0 / 1 = 0 rather than NaN).  Mirrors ``extract_s_matrix`` exactly.
@@ -943,9 +947,13 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
 
     OPEN item: the port-based |S21| MAGNITUDE is deflated relative to the
     extractor-independent flux referee (flux-true |S21| 0.97-1.0 vs
-    0.52-0.67 here on the canonical thru); a drive-side normalization
-    scale entering ``a_j`` is under investigation — see the drive-side
-    normalization issue #313.
+    0.52-0.67 here on the canonical thru); the Phase-0 closed-box referee
+    traced it to the port-cell wave definitions themselves (near-field
+    dominated, do not conserve power) — see issue #313.  The opt-in
+    ``add_port(reference_plane_cells=N)`` reference-plane path
+    (``rfx.probes.refplane``) replaces the opted off-diagonals with line
+    plane waves; THIS default port-cell path keeps the deflation and its
+    committed regression locks unchanged.
 
     Mirrors ``extract_s_matrix_wire`` line-for-line.
 

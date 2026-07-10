@@ -1683,6 +1683,7 @@
         "conformal_weights",
         "wire_port_sparams",
         "lumped_port_sparams",
+        "wire_refplane_sparams",
         "lumped_rlc",
         "kerr_chi3",
         "field_dtype",
@@ -2327,7 +2328,8 @@
       "waveform",
       "extent",
       "excite",
-      "direction"
+      "direction",
+      "reference_plane_cells"
     ],
     "add_probe": [
       "position",

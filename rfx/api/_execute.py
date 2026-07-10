@@ -153,6 +153,8 @@ class _ExecuteMixin:
         s_param_n_steps=None,
     ):
         """Run simulation using SBP-SAT subgridding (JIT-compiled)."""
+        self._reject_refplane_ports_off_uniform_lane("subgridded (SBP-SAT)",
+                                                     compute_s_params)
         from rfx.runners.subgridded import run_subgridded_path
         return run_subgridded_path(
             self,
@@ -175,6 +177,8 @@ class _ExecuteMixin:
         """Run simulation on non-uniform grid with graded dz."""
         # Defense-in-depth: the NU runner does not honour stencil_order.
         self._check_stencil_order_supported()
+        self._reject_refplane_ports_off_uniform_lane("non-uniform mesh",
+                                                     compute_s_params)
         if subpixel_smoothing == "kottke_pec":
             raise NotImplementedError(
                 "subpixel_smoothing='kottke_pec' (Stage 2 unified PEC) "
@@ -193,6 +197,25 @@ class _ExecuteMixin:
             subpixel_smoothing=subpixel_smoothing,
             checkpoint=checkpoint,
         )
+
+    def _reject_refplane_ports_off_uniform_lane(self, path_name: str,
+                                                compute_s_params) -> None:
+        """Fail loudly when reference-plane ports hit a non-uniform lane.
+
+        The issue #313 plane V/I accumulators are wired only into the
+        uniform single-device production scan; silently returning legacy
+        port-cell off-diagonals on another lane would defeat the opt-in.
+        """
+        if compute_s_params is False:
+            return
+        if any(getattr(pe, "reference_plane_cells", None) is not None
+               for pe in self._ports):
+            raise NotImplementedError(
+                "add_port(reference_plane_cells=...) S-parameters are only "
+                f"supported on the uniform single-device run() lane, not "
+                f"the {path_name} lane. Drop the opt-in or use a uniform "
+                "mesh (issue #313)."
+            )
 
     @staticmethod
     def _warn_unsupported_run_kwargs(path_name: str,
@@ -617,6 +640,7 @@ class _ExecuteMixin:
         pec_occupancy_local = pec_occupancy
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
+        wire_refplane_specs: list = []
         # Resolve a freq array once for downstream auto-build (issue #72)
         if port_s11_freqs is not None:
             _s11_freqs_arr = jnp.asarray(port_s11_freqs, dtype=jnp.float32)
@@ -688,6 +712,58 @@ class _ExecuteMixin:
                         component=pe.component,
                         freqs=_s11_freqs_arr,
                         impedance=float(pe.impedance),
+                    ))
+                # Opt-in reference-plane V/I accumulators (issue #313).
+                # Registered ONLY on the production-scan S-matrix driver
+                # path (_sparam_drive_idx is not None): the plane waves
+                # feed the OFF-diagonal S_ij and need the multi-drive
+                # sweep; forward()'s diagonal path is untouched (its S11
+                # never uses the planes), and the geometry derivation
+                # below needs concrete (non-traced) pec_mask values.
+                if (pe.reference_plane_cells is not None
+                        and _s11_freqs_arr is not None
+                        and _sparam_drive_idx is not None
+                        and wp_cells):
+                    from rfx.probes.refplane import build_wire_refplane_specs
+                    # Guard: the planes must not reach past another port
+                    # along the same line axis (they must sit on the
+                    # uniform line BETWEEN the ports).
+                    _axis_of = {"x": 0, "y": 1, "z": 2}
+                    _l_ax = _axis_of[pe.direction[1]]
+                    _sign = -1 if pe.direction[0] == "+" else +1
+                    _i_port = int(grid.position_to_index(pe.position)[_l_ax])
+                    _i_far = _i_port + _sign * 2 * int(pe.reference_plane_cells)
+                    for _other in self._ports:
+                        if _other is pe or _other.impedance == 0.0:
+                            continue
+                        _oi = int(grid.position_to_index(
+                            _other.position)[_l_ax])
+                        _in_zone = (_i_port < _oi <= _i_far) if _sign > 0 \
+                            else (_i_far <= _oi < _i_port)
+                        if _in_zone:
+                            raise ValueError(
+                                "reference_plane_cells: the reference "
+                                f"planes of the port at {pe.position} "
+                                f"(indices up to {_i_far} on axis {_l_ax}) "
+                                "reach past another port at "
+                                f"{_other.position} (index {_oi}). Reduce "
+                                "N so both planes stay on the uniform "
+                                "line between the ports. Note: this check "
+                                "compares line-axis indices only "
+                                "(conservative), so a TRANSVERSELY "
+                                "separated port on a different parallel "
+                                "trace also trips it — the check can be "
+                                "revisited if that layout is needed.")
+                    wire_refplane_specs.extend(build_wire_refplane_specs(
+                        grid=grid,
+                        port_cells=wp_cells,
+                        e_component=pe.component,
+                        impedance=float(pe.impedance),
+                        direction=pe.direction,
+                        n_cells=int(pe.reference_plane_cells),
+                        freqs=_s11_freqs_arr,
+                        port_index=_sparam_port_idx,
+                        pec_mask=pec_mask,
                     ))
                 continue
 
@@ -993,6 +1069,7 @@ class _ExecuteMixin:
             aniso_inv_eps_smooth=(aniso_inv_eps_run is not None),
             lumped_port_sparams=lumped_port_sparam_specs or None,
             wire_port_sparams=wire_port_sparam_specs or None,
+            wire_refplane_sparams=wire_refplane_specs or None,
             lumped_rlc=rlc_metas,
             dft_planes=dft_planes if dft_planes else None,
             return_state=False,
@@ -1011,6 +1088,7 @@ class _ExecuteMixin:
             return {
                 "lumped": result.lumped_port_sparams,
                 "wire": result.wire_port_sparams,
+                "wire_refplane": result.wire_refplane_sparams,
                 "freqs": _raw_freqs,
             }
 

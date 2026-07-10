@@ -33,7 +33,8 @@ from rfx.probes.probes import (
 
 
 def compute_lumped_wire_s_matrix_via_scan(
-    sim, freqs, *, n_steps=None, return_vi_dump=False
+    sim, freqs, *, n_steps=None, return_vi_dump=False,
+    return_refplane_diagnostics=False,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -60,7 +61,15 @@ def compute_lumped_wire_s_matrix_via_scan(
         accumulators with the identical sign conventions, shapes
         ``(n_driven, n_ports, n_freqs)``, and field names/order as the eager
         bundle.  This lets the production-scan driver feed the existing replay
-        path byte-for-byte (item-5 Stage 2, PURE ADD).
+        path byte-for-byte (item-5 Stage 2, PURE ADD).  Not supported
+        together with reference-plane ports (raises NotImplementedError —
+        the dump schema has no plane-phasor fields).
+    return_refplane_diagnostics : bool
+        When True and any port opted into ``reference_plane_cells``
+        (issue #313), return ``(S, freqs, diagnostics)`` where
+        ``diagnostics`` carries the per-port measured Zc(f) and beta(f)
+        (R5 inspection surface).  ``(S, freqs, None)`` when no port
+        opted in.
 
     Returns
     -------
@@ -134,6 +143,14 @@ def compute_lumped_wire_s_matrix_via_scan(
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
 
+    # Opt-in reference-plane accumulators (issue #313): raw plane phasors
+    # per (drive j, port p, plane slot).  Allocated lazily on the first
+    # drive pass that returns plane data.
+    plane_v = plane_im = plane_ip = None
+    plane_enabled = np.zeros(n_ports, dtype=bool)
+    plane_offsets = np.zeros(n_ports, dtype=np.int64)
+    plane_outboard = np.zeros(n_ports, dtype=np.int64)
+
     for j in range(n_ports):
         raw = sim._forward_from_materials(
             grid,
@@ -165,6 +182,58 @@ def compute_lumped_wire_s_matrix_via_scan(
             v_dft, i_dft = vi[0], vi[1]
             v_all[j, i, :] = np.asarray(v_dft, dtype=np.complex128)
             i_all[j, i, :] = np.asarray(i_dft, dtype=np.complex128)
+
+        rp_accs = raw.get("wire_refplane")
+        if rp_accs:
+            if plane_v is None:
+                plane_v = np.zeros((n_ports, n_ports, 2, n_freqs),
+                                   dtype=np.complex128)
+                plane_im = np.zeros_like(plane_v)
+                plane_ip = np.zeros_like(plane_v)
+            for rp_spec, rp_vi in rp_accs:
+                p = int(rp_spec.port_index)
+                s = int(rp_spec.plane_slot)
+                plane_v[j, p, s, :] = np.asarray(rp_vi[0],
+                                                 dtype=np.complex128)
+                plane_im[j, p, s, :] = np.asarray(rp_vi[1],
+                                                  dtype=np.complex128)
+                plane_ip[j, p, s, :] = np.asarray(rp_vi[2],
+                                                  dtype=np.complex128)
+                plane_enabled[p] = True
+                plane_outboard[p] = int(rp_spec.outboard_sign)
+                if s == 0:
+                    plane_offsets[p] = int(rp_spec.n_cells_outboard)
+
+    if wire_mode and plane_v is not None:
+        # issue #313 reference-plane path: byte-frozen legacy diagonals +
+        # plane-wave off-diagonals where both ports opted in.  The V/I
+        # replay dump schema has no plane-phasor fields — fail loudly
+        # rather than return a dump whose replay cannot reproduce S.
+        if return_vi_dump:
+            raise NotImplementedError(
+                "return_vi_dump=True is not supported together with "
+                "add_port(reference_plane_cells=...): the midpoint V/I "
+                "replay bundle cannot reproduce the plane-wave "
+                "off-diagonals (issue #313)."
+            )
+        from rfx.probes.refplane import (
+            decompose_wire_s_matrix_with_reference_planes,
+        )
+        out = decompose_wire_s_matrix_with_reference_planes(
+            v_all, i_all, z0, port_cell_counts,
+            plane_v=plane_v, plane_im=plane_im, plane_ip=plane_ip,
+            plane_enabled=plane_enabled,
+            plane_offsets=plane_offsets,
+            outboard_signs=plane_outboard,
+            freqs=freqs,
+            dt=float(grid.dt),
+            dx=float(grid.dx),
+            return_line_diagnostics=return_refplane_diagnostics,
+        )
+        if return_refplane_diagnostics:
+            S, diag = out
+            return np.asarray(S, dtype=np.complex64), freqs, diag
+        return np.asarray(out, dtype=np.complex64), freqs
 
     if wire_mode:
         S = np.asarray(
@@ -207,4 +276,6 @@ def compute_lumped_wire_s_matrix_via_scan(
                 driven_port_indices=tuple(range(n_ports)),
             )
 
+    if return_refplane_diagnostics:
+        return S, freqs, None
     return S, freqs
