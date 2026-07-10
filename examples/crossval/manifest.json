@@ -1,0 +1,274 @@
+{
+  "version": 1,
+  "evidence_rule": "docs/guides/physics_validation_evidence_rule.md",
+  "exit_codes": {
+    "0": "all configured numeric gates passed, including any required reference comparison",
+    "1": "a simulator self-check, numeric gate, or execution requirement failed",
+    "2": "simulator self-check passed but a reference required for script PASS, or its optional solver dependency, is unavailable, so the result is inconclusive"
+  },
+  "cases": [
+    {
+      "id": "01_waveguide_bend",
+      "script": "examples/crossval/01_waveguide_bend.py",
+      "role": "claims-bearing",
+      "public_group": "A",
+      "execution_tiers": ["cpu-runner", "scheduled-external"],
+      "evidence_levels": ["E1", "E4"],
+      "references": [
+        {"kind": "external-solver", "name": "Meep Basics 90-degree waveguide bend", "required_for_script_pass": true},
+        {"kind": "self-invariant", "name": "straight-waveguide transmission", "required_for_script_pass": true}
+      ],
+      "claim_scope": "2-D dielectric bend transmittance and straight-guide normalization under the script's published thresholds",
+      "external_dependencies": ["pymeep"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": ["examples/crossval/01_waveguide_bend.py"],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 1},
+      "scheduled_external_order": 1,
+      "failure_sentinel": "SOME CHECKS FAILED"
+    },
+    {
+      "id": "02_ring_resonator",
+      "script": "examples/crossval/02_ring_resonator.py",
+      "role": "claims-bearing",
+      "public_group": "A",
+      "execution_tiers": ["cpu-runner", "scheduled-external"],
+      "evidence_levels": ["E4"],
+      "references": [
+        {"kind": "external-solver", "name": "Meep Basics ring-resonator modes", "required_for_script_pass": true}
+      ],
+      "claim_scope": "2-D ring-resonator mode frequencies matched to Meep within the published mode-count and mean-error gates",
+      "external_dependencies": ["pymeep"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": ["examples/crossval/02_ring_resonator.py"],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 7},
+      "scheduled_external_order": 2,
+      "failure_sentinel": null
+    },
+    {
+      "id": "03_straight_waveguide_flux",
+      "script": "examples/crossval/03_straight_waveguide_flux.py",
+      "role": "claims-bearing",
+      "public_group": "A",
+      "execution_tiers": ["cpu-runner", "scheduled-external"],
+      "evidence_levels": ["E1", "E4"],
+      "references": [
+        {"kind": "external-solver", "name": "Meep Basics straight-waveguide flux", "required_for_script_pass": true},
+        {"kind": "self-invariant", "name": "unit transmission in a straight guide", "required_for_script_pass": true}
+      ],
+      "claim_scope": "2-D straight-waveguide band-mean transmission and flux normalization within the script's measured window",
+      "external_dependencies": ["pymeep"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": ["examples/crossval/03_straight_waveguide_flux.py"],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 8},
+      "scheduled_external_order": 3,
+      "failure_sentinel": null
+    },
+    {
+      "id": "04_multilayer_fresnel",
+      "script": "examples/crossval/04_multilayer_fresnel.py",
+      "role": "claims-bearing",
+      "public_group": "A",
+      "execution_tiers": ["cpu-runner", "scheduled-external"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {"kind": "analytic", "name": "normal-incidence transfer-matrix Fresnel R/T", "required_for_script_pass": true},
+        {"kind": "external-solver", "name": "Meep slab R/T", "required_for_script_pass": true}
+      ],
+      "claim_scope": "normal-incidence multilayer reflection, transmission, and energy balance over the scripted frequency band",
+      "external_dependencies": ["pymeep"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": ["examples/crossval/04_multilayer_fresnel.py"],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 2},
+      "scheduled_external_order": 4,
+      "failure_sentinel": "rfx accuracy: FAIL"
+    },
+    {
+      "id": "05_patch_antenna",
+      "script": "examples/crossval/05_patch_antenna.py",
+      "role": "claims-bearing",
+      "public_group": "B",
+      "execution_tiers": ["cpu-runner", "vessl-external"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {"kind": "analytic", "name": "Balanis transmission-line patch resonance", "required_for_script_pass": true},
+        {"kind": "external-solver", "name": "OpenEMS Simple Patch Antenna", "required_for_script_pass": true}
+      ],
+      "claim_scope": "2.4 GHz finite-ground-plane patch resonance; Harminv frequency is stronger evidence than absolute probe-feed S11 calibration",
+      "external_dependencies": ["openEMS", "CSXCAD"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": ["examples/crossval/05_patch_antenna.py"],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 3},
+      "scheduled_external_order": null,
+      "failure_sentinel": null
+    },
+    {
+      "id": "06_msl_notch_filter",
+      "script": "examples/crossval/06_msl_notch_filter.py",
+      "role": "diagnostic-reporter",
+      "public_group": "B",
+      "execution_tiers": ["gpu-manual", "external-manual"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {"kind": "analytic", "name": "quarter-wave open-stub notch", "required_for_script_pass": true},
+        {"kind": "external-solver", "name": "OpenEMS MSL_NotchFilter tutorial", "required_for_script_pass": true}
+      ],
+      "claim_scope": "non-uniform wire-port notch reporter with loose frequency and finite/passivity gates; not a broad MSL-port envelope",
+      "external_dependencies": ["OpenEMS MSL_NotchFilter reference NPZ"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": [
+        "examples/crossval/06_msl_notch_filter.py",
+        "tests/test_msl_nu_sparam_gate.py"
+      ],
+      "artifact_paths": [],
+      "cpu_runner": {"excluded_reason": "CPU-infeasible: > 700 s on CPU; also requires the OpenEMS reference artifact. Run on GPU."},
+      "scheduled_external_order": null,
+      "failure_sentinel": null
+    },
+    {
+      "id": "06b_msl_notch_filter_uniform",
+      "script": "examples/crossval/06b_msl_notch_filter_uniform.py",
+      "role": "claims-bearing",
+      "public_group": "B",
+      "execution_tiers": ["pr-fast", "gpu-manual"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {"kind": "analytic", "name": "quarter-wave open-stub notch", "required_for_script_pass": true},
+        {"kind": "external-solver", "name": "OpenEMS matched-geometry dx=50 um notch artifact", "required_for_script_pass": false}
+      ],
+      "claim_scope": "uniform add_msl_port notch demonstration under loose analytic gates plus the committed matched-geometry dx=50 um OpenEMS characterized envelope; not a broad MSL-port claim",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": [
+        "examples/crossval/06b_msl_notch_filter_uniform.py",
+        "tests/test_msl_notch_e4_comparison_gates.py",
+        "scripts/diagnostics/build_msl_notch_openems_comparison.py"
+      ],
+      "artifact_paths": [
+        "tests/fixtures/msl_notch_e4/comparison_summary.json",
+        "tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json",
+        "tests/fixtures/msl_notch_e4/msl_stub_notch_openems_dx50.json"
+      ],
+      "cpu_runner": {"excluded_reason": "CPU-infeasible: > 700 s on CPU because of the uniform fine mesh and MSL-port de-embedding. Run on GPU."},
+      "scheduled_external_order": null,
+      "failure_sentinel": null
+    },
+    {
+      "id": "09_half_symmetric_waveguide",
+      "script": "examples/crossval/09_half_symmetric_waveguide.py",
+      "role": "claims-bearing",
+      "public_group": "B",
+      "execution_tiers": ["pr-fast", "cpu-runner", "scheduled-external"],
+      "evidence_levels": ["E1", "E2"],
+      "references": [
+        {"kind": "analytic", "name": "Pozar rectangular-cavity TE101 resonance", "required_for_script_pass": true},
+        {"kind": "self-invariant", "name": "full PEC cavity versus half PEC+PMC cavity", "required_for_script_pass": true}
+      ],
+      "claim_scope": "PMC symmetry reduction for the scripted rectangular-cavity mode and mesh",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": [
+        "examples/crossval/09_half_symmetric_waveguide.py",
+        "tests/test_boundary_pmc_oracle.py"
+      ],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 4},
+      "scheduled_external_order": 5,
+      "failure_sentinel": null
+    },
+    {
+      "id": "10_pmc_cpml_half_symmetric",
+      "script": "examples/crossval/10_pmc_cpml_half_symmetric.py",
+      "role": "diagnostic-reporter",
+      "public_group": "B",
+      "execution_tiers": ["pr-fast", "cpu-runner", "scheduled-external"],
+      "evidence_levels": ["E1"],
+      "references": [
+        {"kind": "self-invariant", "name": "peak stability under per-face PMC+CPML composition", "required_for_script_pass": true}
+      ],
+      "claim_scope": "uniform and non-uniform PMC+CPML composition regression lock; not an external cross-solver claim",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": [
+        "examples/crossval/10_pmc_cpml_half_symmetric.py",
+        "tests/test_boundary_pmc_composition.py"
+      ],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 5},
+      "scheduled_external_order": 6,
+      "failure_sentinel": null
+    },
+    {
+      "id": "11_waveguide_port_wr90",
+      "script": "examples/crossval/11_waveguide_port_wr90.py",
+      "role": "diagnostic-reporter",
+      "public_group": "B",
+      "execution_tiers": ["pr-fast", "cpu-runner", "vessl-external"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {"kind": "analytic", "name": "rectangular-waveguide Airy slab and PEC short", "required_for_script_pass": true},
+        {"kind": "external-solver", "name": "Meep, OpenEMS, and Palace WR-90 references", "required_for_script_pass": false}
+      ],
+      "claim_scope": "WR-90 empty-guide, PEC-short, and slab reporter; authoritative regression gates live in the waveguide validation battery and committed envelopes",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": [
+        "examples/crossval/11_waveguide_port_wr90.py",
+        "tests/test_waveguide_port_validation_battery.py",
+        "tests/test_waveguide_broad_e5_envelope_gates.py"
+      ],
+      "artifact_paths": [
+        "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json"
+      ],
+      "cpu_runner": {"order": 6},
+      "scheduled_external_order": null,
+      "failure_sentinel": null
+    },
+    {
+      "id": "12_subgrid_disjoint_prototype",
+      "script": "examples/crossval/12_subgrid_disjoint_prototype.py",
+      "role": "research-only",
+      "public_group": null,
+      "execution_tiers": ["pr-fast", "research-manual"],
+      "evidence_levels": ["E0", "E1"],
+      "references": [
+        {"kind": "self-invariant", "name": "short-window finite energy trace", "required_for_script_pass": true}
+      ],
+      "claim_scope": "research smoke only; the disjoint Stage-2 topology is not long-time energy-stable and is not production validation",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": [
+        "examples/crossval/12_subgrid_disjoint_prototype.py",
+        "tests/test_crossval_example_imports.py"
+      ],
+      "artifact_paths": [],
+      "cpu_runner": {"excluded_reason": "Research-only subgrid prototype; not a validated crossval."},
+      "scheduled_external_order": null,
+      "failure_sentinel": null
+    },
+    {
+      "id": "13_subgrid_material_validation",
+      "script": "examples/crossval/13_subgrid_material_validation.py",
+      "role": "research-only",
+      "public_group": null,
+      "execution_tiers": ["research-manual"],
+      "evidence_levels": ["E0", "E2"],
+      "references": [
+        {"kind": "analytic", "name": "uniform dielectric TM110 cavity resonance", "required_for_script_pass": true},
+        {"kind": "self-invariant", "name": "out-of-envelope material subgrid fails closed", "required_for_script_pass": true}
+      ],
+      "claim_scope": "guarded fail-closed subgrid demonstration plus a uniform analytic material reference; not a production subgrid claim",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": ["examples/crossval/13_subgrid_material_validation.py"],
+      "artifact_paths": [],
+      "cpu_runner": {"excluded_reason": "Research-only guarded subgrid demonstration; not a validated crossval."},
+      "scheduled_external_order": null,
+      "failure_sentinel": null
+    }
+  ]
+}

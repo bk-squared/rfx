@@ -88,11 +88,18 @@ run: |-
   tail -n 15 "$out/cv11.log" || true
   echo "cv11_rc=$cv11_rc"
 
-  echo "=== verdict (exit-code convention: 0 pass / 1 FAIL / 2 ref-missing) ==="
+  echo "=== verdict (per-script exit contracts come from crossval manifest) ==="
   echo "cv05_rc=$cv05_rc cv11_rc=$cv11_rc"
-  # Red iff any script reports a REAL failure (1); ref-missing (2) is visible, not green.
   fail=0
-  [ "$cv05_rc" = "1" ] && fail=1
-  [ "$cv11_rc" = "1" ] && fail=1
-  [ "$cv05_rc" = "2" ] && echo "WARNING: cv05 reference missing despite source build — investigate"
+  case "$cv05_rc" in
+    0) ;;
+    2) echo "WARNING: cv05 reference missing despite source build — inconclusive" ;;
+    *) echo "ERROR: cv05 failed with exit $cv05_rc"; fail=1 ;;
+  esac
+  # cv11's external tables are optional and its manifest contract is 0/1 only;
+  # exit 2 would therefore be an undeclared script error, not a valid skip.
+  case "$cv11_rc" in
+    0) ;;
+    *) echo "ERROR: cv11 failed with exit $cv11_rc"; fail=1 ;;
+  esac
   exit "$fail"

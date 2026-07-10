@@ -2,21 +2,23 @@
 """Run the CPU-feasible subset of the crossval suite and print a status table.
 
 This is the single runner referenced by ``docs/public/guide/benchmarks.mdx``
-(roadmap task W4.8). It runs each CPU-feasible crossval script in a fresh
-subprocess with a per-script timeout, classifies the outcome, and exits 0 iff
-no script failed for a non-environment reason.
+(roadmap task W4.8). The canonical case inventory and CPU disposition live in
+``examples/crossval/manifest.json``. This runner executes each CPU-feasible
+case in a fresh subprocess with a per-script timeout, classifies the outcome,
+and exits 0 iff no script failed for a non-environment reason.
 
 Outcome classification
 -----------------------
 Each crossval script follows the rfx exit-code convention:
 
-  0 -> all checks passed, including any external-reference cross-check
-  1 -> a self-check / numeric accept gate failed (broken physics or infra)
+  0 -> all checks passed, including every reference required by the manifest
+  1 -> a self-check, numeric accept gate, or required execution failed
   2 -> self-check OK but an external reference or optional dependency is
        missing (inconclusive crossval, NOT a pass)
 
-Two scripts (01, 04) print a PASS/FAIL summary but exit 0 regardless, so this
-runner also scans their stdout for the failure sentinel and downgrades them.
+The manifest may name a failure sentinel for defense in depth. The runner scans
+stdout for that sentinel even when a script returns 0, so an inconsistent
+headline and process exit cannot silently become PASS.
 
 A separate ENV-SKIP class catches the case where an *optional reference solver*
 (currently Meep) is installed but unimportable -- e.g. a Meep built against
@@ -25,10 +27,9 @@ not an rfx residual, so it must not count as a FAIL.
 
 Exit status of this runner
 --------------------------
-0  iff no script ended in FAIL (a real exit-1 numeric-gate failure that is not
-   an environment artefact). PASS / SELF-CHECK-ONLY / ENV-SKIP / EXCLUDED do
-   not fail the gate.
-1  otherwise.
+0  iff no script ended in FAIL or TIMEOUT. PASS / SELF-CHECK-ONLY / ENV-SKIP /
+   EXCLUDED do not fail the gate, but remain visible in the summary.
+1  if any script failed or timed out.
 
 Usage:
     PYTHONPATH=. python scripts/run_crossval_cpu.py
@@ -36,60 +37,95 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CROSSVAL_DIR = REPO_ROOT / "examples" / "crossval"
+MANIFEST_PATH = CROSSVAL_DIR / "manifest.json"
 
 # Per-script timeout (seconds). The empirically-slowest member of the CPU
 # subset is 05 (~6 min when it short-circuits on missing OpenEMS); 900 s gives
 # headroom without letting a wedged run hang the suite.
-PER_SCRIPT_TIMEOUT_S = 900
+PER_SCRIPT_TIMEOUT_S: Final = 900
 
-# CPU-feasible subset, in suite order. Each completed in < 10 min on CPU during
-# the W4.8 empirical survey (2026-06-11).
-CPU_SUBSET = [
-    "01_waveguide_bend.py",
-    "04_multilayer_fresnel.py",
-    "05_patch_antenna.py",
-    "09_half_symmetric_waveguide.py",
-    "10_pmc_cpml_half_symmetric.py",
-    "11_waveguide_port_wr90.py",
-    # 02/03 are pure live-Meep crossvals: they import Meep at module top with no
-    # fallback, so on a host without a working Meep they cannot self-check at
-    # all. They are still attempted here (so a healthy Meep host exercises them)
-    # but are expected to land in ENV-SKIP when Meep is unimportable.
-    "02_ring_resonator.py",
-    "03_straight_waveguide_flux.py",
-]
 
-# Excluded with reasons (NOT attempted). CPU-feasibility decided empirically on
-# 2026-06-11; both exceeded a 700 s wall-clock budget on CPU.
-EXCLUDED = {
-    "06_msl_notch_filter.py": (
-        "CPU-infeasible: > 700 s on CPU (non-uniform wire-port + graded-sigma "
-        "absorber, ~150 um cells); also needs the openEMS reference .npz. "
-        "Run on GPU / with the reference present."
-    ),
-    "06b_msl_notch_filter_uniform.py": (
-        "CPU-infeasible: > 700 s on CPU (uniform fine mesh + distributed "
-        "MSL-port de-embedding). Run on GPU."
-    ),
-    # 12/13 are subgrid prototypes, NOT validated -- excluded from the
-    # validation runner on purpose.
-    "12_subgrid_disjoint_prototype.py": "subgrid prototype, not validated",
-    "13_subgrid_material_validation.py": "subgrid prototype, not validated",
+@dataclass(frozen=True, slots=True)
+class RunnerCase:
+    """CPU-runner fields parsed from one manifest entry."""
+
+    filename: str
+    cpu_order: int | None
+    excluded_reason: str | None
+    failure_sentinel: str | None
+    expected_exit_codes: frozenset[int]
+
+
+@dataclass(frozen=True, slots=True)
+class RunResult:
+    """Classified outcome from one cross-validation subprocess."""
+
+    script: str
+    returncode: int
+    elapsed: float
+    status: str
+    note: str
+
+
+def _load_runner_cases() -> tuple[RunnerCase, ...]:
+    """Load the runner projection of the canonical crossval manifest."""
+    payload = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    cases: list[RunnerCase] = []
+    for raw_case in payload["cases"]:
+        cpu_entry = raw_case["cpu_runner"]
+        cases.append(
+            RunnerCase(
+                filename=Path(raw_case["script"]).name,
+                cpu_order=cpu_entry.get("order"),
+                excluded_reason=cpu_entry.get("excluded_reason"),
+                failure_sentinel=raw_case.get("failure_sentinel"),
+                expected_exit_codes=frozenset(raw_case["expected_exit_codes"]),
+            )
+        )
+    return tuple(cases)
+
+
+_RUNNER_CASES: Final = _load_runner_cases()
+
+# CPU-feasible subset, in manifest order. The empirical classification dates to
+# the W4.8 survey; the manifest is now the single owner of that policy.
+CPU_SUBSET: Final = tuple(
+    case.filename
+    for case in sorted(
+        (case for case in _RUNNER_CASES if case.cpu_order is not None),
+        key=lambda case: case.cpu_order or 0,
+    )
+)
+
+# Cases intentionally not attempted by the CPU runner, with their visible reason.
+EXCLUDED: Final = {
+    case.filename: case.excluded_reason
+    for case in _RUNNER_CASES
+    if case.excluded_reason is not None
 }
 
-# Scripts that print a PASS/FAIL summary but always exit 0; scan stdout to
-# recover a real failure. Maps script -> failure sentinel substring.
-EXIT0_FAIL_SENTINELS = {
-    "01_waveguide_bend.py": "SOME CHECKS FAILED",
-    "04_multilayer_fresnel.py": "rfx accuracy: FAIL",
+# Defense-in-depth stdout sentinels owned by the manifest.
+EXIT0_FAIL_SENTINELS: Final = {
+    case.filename: case.failure_sentinel
+    for case in _RUNNER_CASES
+    if case.failure_sentinel is not None
+}
+
+# Per-case exit contract. In particular, exit 2 is valid only for scripts whose
+# required external reference or solver dependency can be unavailable.
+EXPECTED_EXIT_CODES: Final = {
+    case.filename: case.expected_exit_codes for case in _RUNNER_CASES
 }
 
 # Substrings that identify an unimportable optional reference solver
@@ -109,17 +145,28 @@ ENV_SKIP = "ENV-SKIP"
 TIMEOUT = "TIMEOUT"
 
 
-def classify(script: str, returncode: int, output: str, timed_out: bool) -> tuple[str, str]:
+def classify(
+    script: str, returncode: int, output: str, timed_out: bool
+) -> tuple[str, str]:
     """Return (status_label, note) for one finished run."""
     if timed_out:
         return TIMEOUT, f"exceeded {PER_SCRIPT_TIMEOUT_S}s"
+
+    expected_exit_codes = EXPECTED_EXIT_CODES.get(script)
+    if expected_exit_codes is None:
+        return FAIL, "script is not registered in the crossval manifest"
+    if returncode not in expected_exit_codes:
+        return (
+            FAIL,
+            f"undeclared exit {returncode}; expected {sorted(expected_exit_codes)}",
+        )
 
     env_broken = any(marker in output for marker in ENV_BROKEN_REF_MARKERS)
 
     if returncode == 0:
         sentinel = EXIT0_FAIL_SENTINELS.get(script)
         if sentinel and sentinel in output:
-            return FAIL, "self-check FAIL (script exits 0 regardless)"
+            return FAIL, "failure sentinel found after exit 0"
         return PASS, "all gates passed"
 
     if returncode == 2:
@@ -130,12 +177,12 @@ def classify(script: str, returncode: int, output: str, timed_out: bool) -> tupl
             return ENV_SKIP, "optional reference solver unimportable (env/packaging)"
         return FAIL, "self-check / numeric accept gate failed"
 
-    # Any other non-zero code: treat as a script error, surface but do not fail
-    # the gate (matches the scripts' own "2 = script error" bucket intent).
-    return SELF_ONLY, f"script error (exit {returncode})"
+    # The registry contract reserves 2 for an inconclusive reference/dependency
+    # result. Every other unexpected process exit is a real runner failure.
+    return FAIL, f"unexpected script exit {returncode}"
 
 
-def run_one(script: str) -> dict:
+def run_one(script: str) -> RunResult:
     path = CROSSVAL_DIR / script
     env = dict(os.environ)
     env.setdefault("PYTHONPATH", str(REPO_ROOT))
@@ -159,19 +206,21 @@ def run_one(script: str) -> dict:
         output = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
     elapsed = time.monotonic() - start
     status, note = classify(script, returncode, output, timed_out)
-    return {
-        "script": script,
-        "returncode": returncode,
-        "elapsed": elapsed,
-        "status": status,
-        "note": note,
-    }
+    return RunResult(
+        script=script,
+        returncode=returncode,
+        elapsed=elapsed,
+        status=status,
+        note=note,
+    )
 
 
 def main() -> int:
     print("=" * 78)
     print("rfx crossval — CPU-feasible subset runner (W4.8)")
-    print(f"timeout per script: {PER_SCRIPT_TIMEOUT_S}s   |   subset: {len(CPU_SUBSET)} scripts")
+    print(
+        f"timeout per script: {PER_SCRIPT_TIMEOUT_S}s   |   subset: {len(CPU_SUBSET)} scripts"
+    )
     print("=" * 78)
 
     results = []
@@ -180,8 +229,8 @@ def main() -> int:
         res = run_one(script)
         results.append(res)
         print(
-            f"    -> {res['status']:<16} exit={res['returncode']:<3} "
-            f"{res['elapsed']:6.1f}s  ({res['note']})",
+            f"    -> {res.status:<16} exit={res.returncode:<3} "
+            f"{res.elapsed:6.1f}s  ({res.note})",
             flush=True,
         )
 
@@ -192,8 +241,7 @@ def main() -> int:
     print("-" * 78)
     for res in results:
         print(
-            f"{res['script']:<32} {res['status']:<16} "
-            f"{res['returncode']:>4} {res['elapsed']:>9.1f}"
+            f"{res.script:<32} {res.status:<16} {res.returncode:>4} {res.elapsed:>9.1f}"
         )
 
     if EXCLUDED:
@@ -201,21 +249,21 @@ def main() -> int:
         for script, reason in EXCLUDED.items():
             print(f"  - {script}: {reason}")
 
-    n_fail = sum(1 for r in results if r["status"] == FAIL)
-    n_pass = sum(1 for r in results if r["status"] == PASS)
-    n_self = sum(1 for r in results if r["status"] == SELF_ONLY)
-    n_env = sum(1 for r in results if r["status"] == ENV_SKIP)
-    n_timeout = sum(1 for r in results if r["status"] == TIMEOUT)
+    n_fail = sum(1 for result in results if result.status == FAIL)
+    n_pass = sum(1 for result in results if result.status == PASS)
+    n_self = sum(1 for result in results if result.status == SELF_ONLY)
+    n_env = sum(1 for result in results if result.status == ENV_SKIP)
+    n_timeout = sum(1 for result in results if result.status == TIMEOUT)
 
     print(
         f"\ntotals: {n_pass} PASS, {n_self} SELF-CHECK-ONLY, "
         f"{n_env} ENV-SKIP, {n_timeout} TIMEOUT, {n_fail} FAIL"
     )
 
-    if n_fail:
-        print("\nGATE: FAIL — at least one script failed a numeric accept gate.")
+    if n_fail or n_timeout:
+        print("\nGATE: FAIL — at least one script failed or timed out.")
         return 1
-    print("\nGATE: PASS — no script failed a numeric accept gate.")
+    print("\nGATE: PASS — no script failed or timed out.")
     return 0
 
 
