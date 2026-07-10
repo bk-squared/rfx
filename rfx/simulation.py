@@ -144,6 +144,11 @@ class SimResult(NamedTuple):
     lumped_port_sparams : tuple | None
         Final V/I DFT accumulators for lumped port S-params (issue #72).
         Each entry is ``(LumpedPortSParamSpec, (v_dft, i_dft))``.
+    wire_refplane_sparams : tuple | None
+        Final reference-plane V/I DFT accumulators for the opt-in wire
+        S-matrix plane path (issue #313).  Each entry is
+        ``(WireRefPlaneSpec, (v_dft, i_minus_dft, i_plus_dft))``; two
+        entries per opted port (plane slots 0 and 1).
     snapshots : dict[str, ndarray] or None
         Field snapshots keyed by component name.
     ntff_box : NTFFBox or None
@@ -162,6 +167,7 @@ class SimResult(NamedTuple):
     snapshots: dict | None = None
     ntff_box: object = None
     grid: Grid | None = None
+    wire_refplane_sparams: tuple | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +532,8 @@ class _SimSetup(NamedTuple):
     wire_sparam_meta: tuple
     lumped_sparam_meta: tuple
     rlc_meta: tuple
+    # issue #313 opt-in reference-plane accumulators (empty when unused)
+    wire_refplane_meta: tuple
     # 8-field tuple: (axis, index, freqs, comp_names, lo1, hi1, lo2, hi2)
     flux_meta_8: tuple
     # 11-field tuple adds: total_steps, window, window_alpha
@@ -567,6 +575,7 @@ def _build_step_setup(
     field_dtype: object,
     mag_sources: list,
     stencil_order: int = 2,
+    wire_refplane_sparams: "list | None" = None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -631,6 +640,8 @@ def _build_step_setup(
     use_aniso_inv = aniso_inv_eps is not None
     use_wire_sparams = len(wire_port_sparams) > 0
     use_lumped_sparams = len(lumped_port_sparams) > 0
+    wire_refplane_sparams = wire_refplane_sparams or []
+    use_wire_refplanes = len(wire_refplane_sparams) > 0
     use_lumped_rlc = len(lumped_rlc) > 0
     use_kerr = kerr_chi3 is not None
     use_mag_sources = len(mag_sources) > 0
@@ -773,6 +784,21 @@ def _build_step_setup(
         )
         wire_sparam_meta = tuple(wire_port_sparams)
 
+    wire_refplane_meta: tuple = ()
+    if use_wire_refplanes:
+        # Initialize V, I(-dx/2), I(+dx/2) DFT accumulators per reference
+        # plane (issue #313 opt-in; two planes per opted port).  Same
+        # accumulator dtype and rect-DFT kernel as the port-cell channels.
+        carry_init["wire_refplane_accs"] = tuple(
+            (
+                jnp.zeros(len(rp.freqs), dtype=_sparam_acc_dtype),  # v_dft
+                jnp.zeros(len(rp.freqs), dtype=_sparam_acc_dtype),  # i_minus
+                jnp.zeros(len(rp.freqs), dtype=_sparam_acc_dtype),  # i_plus
+            )
+            for rp in wire_refplane_sparams
+        )
+        wire_refplane_meta = tuple(wire_refplane_sparams)
+
     lumped_sparam_meta: tuple = ()
     if use_lumped_sparams:
         # Initialize V, I DFT accumulators per lumped port (issue #72).
@@ -863,6 +889,7 @@ def _build_step_setup(
         use_conformal=use_conformal,
         use_wire_sparams=use_wire_sparams,
         use_lumped_sparams=use_lumped_sparams,
+        use_wire_refplanes=use_wire_refplanes,
         use_lumped_rlc=use_lumped_rlc,
         use_kerr=use_kerr,
         use_mag_sources=use_mag_sources,
@@ -889,6 +916,7 @@ def _build_step_setup(
         waveguide_meta=waveguide_meta,
         wire_sparam_meta=wire_sparam_meta,
         lumped_sparam_meta=lumped_sparam_meta,
+        wire_refplane_meta=wire_refplane_meta,
         rlc_meta=rlc_meta,
         apply_cpml_h=apply_cpml_h,
         apply_cpml_e=apply_cpml_e,
@@ -917,6 +945,7 @@ def _build_step_setup(
         wire_sparam_meta=wire_sparam_meta,
         lumped_sparam_meta=lumped_sparam_meta,
         rlc_meta=rlc_meta,
+        wire_refplane_meta=wire_refplane_meta,
         flux_meta_8=flux_meta_8,
         flux_meta_11=flux_meta_11,
         dt=dt,
@@ -1032,6 +1061,10 @@ class _StepContext:
     wire_sparam_meta: tuple = ()
     lumped_sparam_meta: tuple = ()
     rlc_meta: tuple = ()
+    # issue #313 opt-in reference-plane channel (defaults keep every
+    # existing caller byte-identical)
+    use_wire_refplanes: bool = False
+    wire_refplane_meta: tuple = ()
 
     # ---- output extractors ----
     monitor_component: str = "ez"
@@ -1285,6 +1318,25 @@ def make_core_step(ctx: _StepContext):
                     i_dft_l + i_val_l * phase_l,
                 ))
 
+        # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
+        # pre-source-injection sample point and rect-DFT kernel as the
+        # port-cell channels above.  The planes sit >= 1 cell from every
+        # source cell, so pre/post-injection sampling is identical here.
+        if ctx.use_wire_refplanes:
+            from rfx.probes.refplane import wire_refplane_step_vi
+            new_refplane_accs = []
+            for accs, rp_meta in zip(carry["wire_refplane_accs"],
+                                     ctx.wire_refplane_meta):
+                v_dft_r, im_dft_r, ip_dft_r = accs
+                v_r, im_r, ip_r = wire_refplane_step_vi(st, rp_meta, dx)
+                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
+                phase_r = jnp.exp(-1j * 2.0 * jnp.pi * rp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                new_refplane_accs.append((
+                    v_dft_r + v_r * phase_r,
+                    im_dft_r + im_r * phase_r,
+                    ip_dft_r + ip_r * phase_r,
+                ))
+
         # Soft sources — cast source value to field dtype to avoid
         # mixed-precision scatter warnings (float32 -> float16).
         for idx_s, (si, sj, sk, sc) in enumerate(ctx.src_meta):
@@ -1443,6 +1495,8 @@ def make_core_step(ctx: _StepContext):
             new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
         if ctx.use_lumped_sparams:
             new_carry["lumped_sparam_accs"] = tuple(new_lumped_accs)
+        if ctx.use_wire_refplanes:
+            new_carry["wire_refplane_accs"] = tuple(new_refplane_accs)
         if ctx.use_lumped_rlc:
             new_carry["rlc_states"] = tuple(new_rlc_states)
 
@@ -1480,6 +1534,7 @@ def run(
     conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
     lumped_port_sparams: list | None = None,
+    wire_refplane_sparams: list | None = None,
     lumped_rlc: list | None = None,
     kerr_chi3: jnp.ndarray | None = None,
     field_dtype=None,
@@ -1538,6 +1593,7 @@ def run(
     waveguide_ports = waveguide_ports or []
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
+    wire_refplane_sparams = wire_refplane_sparams or []
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
@@ -1566,6 +1622,7 @@ def run(
         conformal_weights=conformal_weights,
         wire_port_sparams=wire_port_sparams,
         lumped_port_sparams=lumped_port_sparams,
+        wire_refplane_sparams=wire_refplane_sparams,
         lumped_rlc=lumped_rlc,
         kerr_chi3=kerr_chi3,
         field_dtype=field_dtype,
@@ -1579,11 +1636,13 @@ def run(
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
     lumped_sparam_meta = _setup.lumped_sparam_meta
+    wire_refplane_meta = _setup.wire_refplane_meta
     flux_meta = _setup.flux_meta_11   # 11-field: run() uses streaming DFT window
     use_snapshot = snapshot is not None
     use_flux_monitors = len(flux_monitors) > 0
     use_wire_sparams = len(wire_port_sparams) > 0
     use_lumped_sparams = len(lumped_port_sparams) > 0
+    use_wire_refplanes = len(wire_refplane_sparams) > 0
     use_dft_planes = len(dft_planes) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
 
@@ -1803,6 +1862,14 @@ def run(
             for lp_meta, accs in zip(lumped_sparam_meta, final_carry["lumped_sparam_accs"])
         )
 
+    final_wire_refplanes = None
+    if use_wire_refplanes:
+        final_wire_refplanes = tuple(
+            (rp_meta, accs)
+            for rp_meta, accs in zip(wire_refplane_meta,
+                                     final_carry["wire_refplane_accs"])
+        )
+
     return SimResult(
         state=final_carry["fdtd"] if return_state else None,
         time_series=time_series,
@@ -1815,6 +1882,7 @@ def run(
         snapshots=snapshots,
         ntff_box=ntff,
         grid=grid,
+        wire_refplane_sparams=final_wire_refplanes,
     )
 
 

@@ -1075,6 +1075,7 @@ class Simulation(
         extent: float | None = None,
         excite: bool = True,
         direction: str | None = None,
+        reference_plane_cells: int | None = None,
     ) -> "Simulation":
         """Add a lumped port (single-cell) or wire port (multi-cell).
 
@@ -1104,6 +1105,34 @@ class Simulation(
             processing to orient the V/I → (incoming, outgoing) wave
             decomposition. When None, the runner auto-detects from the
             port's position (closest boundary face).
+        reference_plane_cells : int or None
+            Opt-in reference-plane port waves for the wire-port S-matrix
+            OFF-diagonal extraction (issue #313). When set to an integer
+            N >= 1, ``run(compute_s_params=True)`` registers TWO line
+            V/I reference planes for this port at N and 2N cells
+            outboard (into the DUT along the line axis, i.e. opposite
+            ``direction``): gap-voltage line integrals at integer Yee
+            planes plus dual adjacent Ampere loops around the PEC signal
+            trace, accumulated in the production scan. Off-diagonal
+            ``S[i, j]`` entries whose ports BOTH opt in are then computed
+            from the plane waves — forward/backward split with the
+            MEASURED two-plane line impedance
+            ``Zc^2 = (V1^2 - V2^2)/(I1^2 - I2^2)`` (never the nominal
+            port impedance) and phase-only de-embedding to the port plane
+            with the MEASURED per-bin beta from the same two planes.
+            The Phase-0 closed-box flux referee showed the port-cell wave
+            pair does not conserve power (the port plane is near-field
+            dominated) while the plane waves close the power budget at
+            all bins; the plane path removes the drive-side |S21|
+            deflation kappa(f) = 1.49-1.86 of issue #313.
+            ``None`` (default) keeps the shipped port-cell behaviour,
+            byte-identical. The DIAGONAL ``S_jj`` always stays on the
+            byte-frozen legacy path either way, so ``forward()`` /
+            1-port S11 results are unaffected. Requires a wire port
+            (``extent=``) with an explicit ``direction`` transverse to
+            the port component, a PEC signal trace uniform across both
+            planes, and the uniform-mesh ``run()`` lane (other lanes
+            raise ``NotImplementedError``).
         """
         if self._tfsf is not None:
             raise ValueError(
@@ -1117,6 +1146,35 @@ class Simulation(
             raise ValueError(
                 f"direction must be one of '+x','-x','+y','-y' (or None), got {direction!r}"
             )
+        if reference_plane_cells is not None:
+            if extent is None:
+                raise NotImplementedError(
+                    "reference_plane_cells is only supported on wire ports "
+                    "(extent=...): the plane V/I method needs a gap-voltage "
+                    "line integral and a PEC signal trace. Single-cell "
+                    "lumped ports have no Phase-0 evidence (issue #313)."
+                )
+            if int(reference_plane_cells) != reference_plane_cells \
+                    or int(reference_plane_cells) < 1:
+                raise ValueError(
+                    "reference_plane_cells must be an integer >= 1, got "
+                    f"{reference_plane_cells!r}"
+                )
+            if direction is None:
+                raise ValueError(
+                    "reference_plane_cells requires an explicit direction= "
+                    "('+x'/'-x'/'+y'/'-y') — the reference planes go "
+                    "outboard (into the DUT), opposite the port's outward "
+                    "normal, and auto-detection is not accepted for a "
+                    "measurement-plane choice."
+                )
+            if direction[1] == component[1]:
+                raise ValueError(
+                    f"reference_plane_cells: port component {component!r} "
+                    f"lies along the line axis {direction!r} — the gap-V "
+                    "line integral must be transverse to the line."
+                )
+            reference_plane_cells = int(reference_plane_cells)
 
         if waveform is None and excite:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
@@ -1132,6 +1190,7 @@ class Simulation(
             position=position, component=component,
             impedance=impedance, waveform=waveform,
             extent=extent, excite=excite, direction=direction,
+            reference_plane_cells=reference_plane_cells,
         ))
         return self
 

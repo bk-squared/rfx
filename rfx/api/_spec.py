@@ -1053,6 +1053,14 @@ class _PortEntry:
     # values: "+x", "-x", "+y", "-y". None → auto-detect from position
     # at sim-build time.
     direction: str | None = None
+    # Opt-in reference-plane port waves for the wire S-matrix OFF-diagonal
+    # extraction (issue #313): when set to an integer N, the production
+    # scan registers TWO line V/I reference planes at N and 2N cells
+    # outboard (into the DUT) and the off-diagonal S_ij switch to plane
+    # waves with measured Zc/beta. None (default) = shipped port-cell
+    # behaviour, byte-identical. Diagonal S_jj always stays on the legacy
+    # path either way.
+    reference_plane_cells: int | None = None
 
 
 @dataclass(frozen=True)
