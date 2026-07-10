@@ -76,17 +76,19 @@ same-session base-rung remeasure, bit-reproducible on this CPU box):
     max|dev| = 0.004575; max|E_phi|/max|E_theta| over sphere = 1.002629;
     D = 1.7999 dBi
 
-Preflight (quoted per feedback_never_ignore_preflight): explicit
-``sim.preflight()`` on this fixture returns six lambda/4 advisories of the
-form "NTFF face x_lo is 9.00mm from port/source at (0.03, 0.03, 0.03) —
-below λ/4 = 24.98mm at f_max=3.00GHz. NTFF will integrate reactive
-near-field; directivity / pattern likely corrupted. Move NTFF box ≥ λ/2
-from any radiating/scattering structure (Huygens-equivalence rule)."
-(one per NTFF face; the x_hi one is triggered by a passive witness probe
-sitting ON that face). The measured 0.006-0.039 dB directivity error shows
-the advisory is conservative for a point dipole 9 mm from the box; the
-fixture keeps the run non-blocking (run()'s auto-preflight passes) and the
-battery does NOT use skip_preflight.
+Preflight (quoted per feedback_never_ignore_preflight): ``sim.preflight()``
+on this fixture returns lambda/4 advisories of the form "NTFF face x_lo is
+9.00mm from port/source at (0.03, 0.03, 0.03) — below λ/4 = 24.98mm at
+f_max=3.00GHz. NTFF will integrate reactive near-field; directivity /
+pattern likely corrupted. Move NTFF box ≥ λ/2 from any radiating/scattering
+structure (Huygens-equivalence rule)." (originally six — one per NTFF face,
+with the x_hi one triggered by a passive witness probe ON that face; since
+issue #303 passive probes are excluded from the culprit list, and run()'s
+auto-preflight surfaces these same advisories as a non-blocking UserWarning
+via its "advisory" tier instead of skipping the family). The measured
+0.006-0.039 dB directivity error shows the advisory is conservative for a
+point dipole 9 mm from the box; the runs stay non-blocking and the battery
+does NOT use skip_preflight.
 
 Known numerics caveats carried by this battery (documented, not patched):
   (1) float32 flush-to-zero in ``flux_spectrum`` at fine dx — at the

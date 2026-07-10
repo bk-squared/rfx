@@ -88,7 +88,7 @@ def test_error_severity_mapping_end_to_end():
     severity='error' PreflightIssue (not masking other checks)."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
     sim.add_source((0.01, 0.01, 0.01), component="ez")
-    sim._validate_ntff_inverse_design = lambda: warnings.warn(
+    sim._validate_ntff_inverse_design = lambda **kw: warnings.warn(
         "forced known-bad config", PreflightErrorWarning
     )
     report = sim.preflight()
@@ -299,24 +299,32 @@ def test_validator_crash_propagates_not_swallowed():
 
 
 # ----------------------------------------- run() error-severity + NTFF surface
-def test_run_skips_ntff_inverse_design_check_but_forward_runs_it():
-    """run() must NOT hard-fail on the inverse-design NTFF check (it historically
-    never ran it — run() uses check_ntff=False), while forward()/optimize (the
-    inverse-design entry points) still do. Regression lock for the NTFF/PEC
-    behavior change flagged in cold review."""
+def test_run_uses_ntff_advisory_tier_but_forward_gets_the_error():
+    """run() must NOT hard-fail on the NTFF PEC-overlap error, while
+    forward()/optimize (the inverse-design entry points) still do.
+
+    Issue #303 changed the MECHANISM (run() now uses check_ntff="advisory"
+    — the validator IS invoked, with include_pec_overlap_error=False — so
+    λ/4 advisories reach run() users) but the CONTRACT locked here is
+    unchanged: the error tier stays off run() and on forward(). The mock
+    respects the kwarg the way the real validator does."""
     def _sim():
         s = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
         s.add_source((0.01, 0.01, 0.01), component="ez")
         s.add_probe((0.01, 0.01, 0.012), component="ez")
-        # Stand in for an NTFF-box-crosses-PEC error-severity finding.
-        s._validate_ntff_inverse_design = lambda: (_ for _ in ()).throw(
-            ValueError("NTFF box face crosses PEC")
-        )
+
+        # Stand in for an NTFF-box-crosses-PEC error-severity finding that
+        # honors the error-tier switch like the real validator.
+        def _fake_ntff(*, include_pec_overlap_error: bool = True):
+            if include_pec_overlap_error:
+                raise ValueError("NTFF box face crosses PEC")
+
+        s._validate_ntff_inverse_design = _fake_ntff
         return s
 
-    # run(): check_ntff=False -> the NTFF validator is not invoked -> no hard-fail
+    # run(): advisory tier -> validator invoked WITHOUT the error tier
     _sim().run(n_steps=5)
-    # forward(): check_ntff=True -> invoked -> error-severity -> re-raised
+    # forward(): full tier -> error-severity -> re-raised
     with pytest.raises(ValueError, match="NTFF box face crosses PEC"):
         _sim().forward(n_steps=5)
 

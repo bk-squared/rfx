@@ -1004,7 +1004,7 @@ class _PreflightMixin:
         self,
         *,
         strict: bool = False,
-        check_ntff: bool = True,
+        check_ntff: bool | str = True,
         check_resolution: bool = True,
         check_ad_memory: bool = False,
         n_steps_for_memory: int | None = None,
@@ -1017,9 +1017,14 @@ class _PreflightMixin:
         strict : bool
             If True, raise ValueError on the first issue instead of
             collecting warnings.
-        check_ntff : bool
-            Run inverse-design NTFF checks (PEC overlap hard-error,
-            λ/4 near-field gap warning). Default True.
+        check_ntff : bool or "advisory"
+            ``True`` (default): run the full NTFF check family (PEC-overlap
+            hard error + λ/4 / λ/2 near-field gap advisories).
+            ``"advisory"``: run only the near-field gap advisories — the
+            tier ``run()`` uses, because the λ/4 warning is physics-relevant
+            to any far-field computation while the PEC-overlap hard error
+            remains an inverse-design gate (issue #303).
+            ``False``: skip the family entirely.
         check_resolution : bool
             Run the tightened resolution check (existing _validate_mesh_quality
             uses per-material thresholds already — this flag kept for
@@ -1049,7 +1054,9 @@ class _PreflightMixin:
                     self._validate_mesh_quality()
                 self._validate_simulation_config()
                 if check_ntff:
-                    self._validate_ntff_inverse_design()
+                    self._validate_ntff_inverse_design(
+                        include_pec_overlap_error=(check_ntff != "advisory"),
+                    )
             except ValueError as e:
                 # Collect (do NOT fail-on-first): the aggregated raise at the
                 # end escalates every finding at once under strict.
@@ -1116,8 +1123,14 @@ class _PreflightMixin:
         if issues:
             for iss in issues:
                 print(f"  [PREFLIGHT] {iss}")
-        else:
+        elif check_ntff is True:
             print("  [PREFLIGHT] All checks passed.")
+        elif check_ntff == "advisory":
+            print("  [PREFLIGHT] All checks passed (NTFF advisory tier; the "
+                  "PEC-overlap error check runs on forward()/preflight()).")
+        else:
+            print("  [PREFLIGHT] All checks passed (NTFF checks skipped; "
+                  "run sim.preflight() for the full set).")
 
         return issues
 
@@ -1396,11 +1409,18 @@ class _PreflightMixin:
                 "compute_coaxial_s_matrix() is not supported with solver='adi'."
             )
 
-    def _validate_ntff_inverse_design(self) -> None:
-        """NTFF inverse-design checks: PEC overlap (error) and λ/4 gap (warn).
+    def _validate_ntff_inverse_design(
+        self, *, include_pec_overlap_error: bool = True,
+    ) -> None:
+        """NTFF checks: PEC overlap (error) and λ/4 gap (warn).
 
-        CHECK 2: NTFF face plane strictly intersecting a PEC bbox.
-        CHECK 3: NTFF face closer than λ/4 to any geometry/source/probe.
+        CHECK 2: NTFF face plane strictly intersecting a PEC bbox
+        (hard error; skipped when ``include_pec_overlap_error=False`` —
+        the ``run()`` advisory tier, issue #303).
+        CHECK 3: NTFF face closer than λ/4 to any geometry or port/source.
+        Passive DFT probes are NOT counted: they read field state without
+        perturbing it, so a probe on a box face is a measurement choice,
+        not a radiating/scattering culprit (issue #303).
         """
         import warnings as _w
 
@@ -1418,7 +1438,10 @@ class _PreflightMixin:
             faces.append(("hi", axis, corner_hi[axis], tang))
 
         # CHECK 2: strict PEC intersection
-        pec_entries = [e for e in self._geometry if e.material_name == "pec"]
+        pec_entries = (
+            [e for e in self._geometry if e.material_name == "pec"]
+            if include_pec_overlap_error else []
+        )
         for side, axis, coord, tang in faces:
             for entry in pec_entries:
                 try:
@@ -1446,7 +1469,7 @@ class _PreflightMixin:
                     )
 
         # CHECK 3: λ/2 (Huygens) and λ/4 (reactive-near-field) gaps to any
-        # geometry/source/probe. Issue #77: the λ/2 Huygens-equivalence rule
+        # geometry/source (probes excluded, issue #303). Issue #77: the λ/2 Huygens-equivalence rule
         # was documented but only the λ/4 strong
         # tier was enforced; a face at λ/30 above a ground-plane PEC silently
         # ran and produced corrupted directivity. The two-tier check below
@@ -1473,8 +1496,8 @@ class _PreflightMixin:
         points: list[tuple[str, tuple]] = []
         for pe in self._ports:
             points.append(("port/source", tuple(pe.position)))
-        for pe in self._probes:
-            points.append(("probe", tuple(pe.position)))
+        # Probes intentionally excluded (issue #303): a DFT probe is a
+        # passive observer and does not radiate or scatter.
 
         for side, axis, coord, tang in faces:
             other = [a for a in range(3) if a != axis]
