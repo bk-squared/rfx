@@ -1,4 +1,4 @@
-"""Import smoke tests for committed crossval example scripts.
+"""Import smoke tests for committed research subgrid examples.
 
 A committed example that imports a module absent from the repository fails
 with ``ModuleNotFoundError`` the moment a user runs it.  This guards the
@@ -10,21 +10,34 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import sys
+from types import ModuleType
+from typing import Final
 
-EXAMPLES = pathlib.Path(__file__).resolve().parent.parent / "examples" / "crossval"
+RESEARCH_SUBGRID: Final = (
+    pathlib.Path(__file__).resolve().parent.parent / "examples" / "research" / "subgrid"
+)
 
 
-def _load_example(name: str):
+def _load_example(path: pathlib.Path) -> ModuleType:
     """Execute an example module top level (does not run ``main``)."""
-    path = EXAMPLES / name
-    spec = importlib.util.spec_from_file_location(f"_crossval_{path.stem}", path)
+    spec = importlib.util.spec_from_file_location(f"_research_{path.stem}", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
     return module
 
 
-def test_disjoint_prototype_example_imports_cleanly():
-    """examples/crossval/12_subgrid_disjoint_prototype.py imports without error."""
-    module = _load_example("12_subgrid_disjoint_prototype.py")
+def test_disjoint_prototype_example_imports_cleanly() -> None:
+    module = _load_example(RESEARCH_SUBGRID / "12_subgrid_disjoint_prototype.py")
     assert hasattr(module, "main")
+
+
+def test_material_validation_example_imports_cleanly() -> None:
+    module = _load_example(RESEARCH_SUBGRID / "13_subgrid_material_validation.py")
+    assert hasattr(module, "main")
+    assert hasattr(module, "run_example")

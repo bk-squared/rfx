@@ -19,7 +19,7 @@ A repository surface should stay out of public user guides until it has a public
 
 | Surface | Representative locations | Current public-guide status | Inclusion requirement |
 |---|---|---|---|
-| SBP-SAT / subgridding | `rfx/subgridding/**`, `rfx/runners/subgridded.py`, `rfx/runners/disjoint.py`, `examples/crossval/12_subgrid_disjoint_prototype.py`, `examples/crossval/13_subgrid_material_validation.py`, `tests/test_subgrid*`, `scripts/subgrid_*` | outside public support scope | add a support-matrix entry, public workflow, and validation envelope before publication |
+| SBP-SAT / subgridding | `rfx/subgridding/**`, `rfx/runners/subgridded.py`, `rfx/runners/disjoint.py`, `examples/research/subgrid/**`, `tests/test_subgrid*`, `scripts/subgrid_*` | outside public support scope | add a support-matrix entry, public workflow, and validation envelope before publication |
 | Repo-local operating notes | `docs/agent/**` | outside public site scope | publish only after an explicit user-facing documentation plan exists |
 | Incomplete guide stubs | `docs/public/guide/antenna-metrics.mdx`, `comparison.mdx`, `conformal-pec.mdx`, `material-fitting.mdx`, `topology-optimisation.mdx` | outside route inventory | publish only after the pages are complete and support-matrix aligned |
 | Floquet/RIS workflows | `rfx/floquet.py`, `rfx/ris.py`, `Simulation.add_floquet_port(...)`, `compute_floquet_s_params`, `examples/tap_paper/**` | outside public support scope | add a promoted API contract and external periodic-cell validation envelope |

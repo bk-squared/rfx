@@ -227,48 +227,6 @@
       "cpu_runner": {"order": 6},
       "scheduled_external_order": null,
       "failure_sentinel": null
-    },
-    {
-      "id": "12_subgrid_disjoint_prototype",
-      "script": "examples/crossval/12_subgrid_disjoint_prototype.py",
-      "role": "research-only",
-      "public_group": null,
-      "execution_tiers": ["pr-fast", "research-manual"],
-      "evidence_levels": ["E0", "E1"],
-      "references": [
-        {"kind": "self-invariant", "name": "short-window finite energy trace", "required_for_script_pass": true}
-      ],
-      "claim_scope": "research smoke only; the disjoint Stage-2 topology is not long-time energy-stable and is not production validation",
-      "external_dependencies": [],
-      "expected_exit_codes": [0, 1],
-      "gate_paths": [
-        "examples/crossval/12_subgrid_disjoint_prototype.py",
-        "tests/test_crossval_example_imports.py"
-      ],
-      "artifact_paths": [],
-      "cpu_runner": {"excluded_reason": "Research-only subgrid prototype; not a validated crossval."},
-      "scheduled_external_order": null,
-      "failure_sentinel": null
-    },
-    {
-      "id": "13_subgrid_material_validation",
-      "script": "examples/crossval/13_subgrid_material_validation.py",
-      "role": "research-only",
-      "public_group": null,
-      "execution_tiers": ["research-manual"],
-      "evidence_levels": ["E0", "E2"],
-      "references": [
-        {"kind": "analytic", "name": "uniform dielectric TM110 cavity resonance", "required_for_script_pass": true},
-        {"kind": "self-invariant", "name": "out-of-envelope material subgrid fails closed", "required_for_script_pass": true}
-      ],
-      "claim_scope": "guarded fail-closed subgrid demonstration plus a uniform analytic material reference; not a production subgrid claim",
-      "external_dependencies": [],
-      "expected_exit_codes": [0, 1],
-      "gate_paths": ["examples/crossval/13_subgrid_material_validation.py"],
-      "artifact_paths": [],
-      "cpu_runner": {"excluded_reason": "Research-only guarded subgrid demonstration; not a validated crossval."},
-      "scheduled_external_order": null,
-      "failure_sentinel": null
     }
   ]
 }

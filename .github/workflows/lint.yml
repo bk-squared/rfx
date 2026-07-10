@@ -61,8 +61,8 @@ jobs:
         # clone has no docs/agent-memory/, CLAUDE.md, or .claude/. NOTE:
         # research_notes is intentionally excluded from this scan — two
         # examples have legitimate functional research_notes file paths
-        # (multilayer_ar_coating optional Meep-reference loader and
-        # 13_subgrid_material_validation ARTIFACT_PATH); the docs/agent/ check
+        # (multilayer_ar_coating optional Meep-reference loader and the research
+        # subgrid material example's ARTIFACT_PATH); the docs/agent/ check
         # above still forbids research_notes in exported agent pages.
         run: |
           hits=$(grep -rn 'agent-memory\|CLAUDE\.md\|\.claude/' rfx/ examples/ || true)

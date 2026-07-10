@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Crossval 13: production subgrid material-validation example.
+"""Research example: guarded subgrid material-validation demonstration.
 
 This example is intentionally conservative.  The current production subgrid
 API is validated only for a guarded one-sided z-slab refinement envelope.  It
@@ -23,19 +23,18 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np
 
 from rfx import Box, GaussianPulse, Simulation
 from rfx.grid import C0
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_PATH = REPO_ROOT / "docs" / "research_notes" / "subgrid_material_validation_examples.json"
 
 
@@ -134,7 +133,7 @@ def main() -> int:
     result = run_example()
     ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
     ARTIFACT_PATH.write_text(json.dumps(asdict(result), indent=2, sort_keys=True), encoding="utf-8")
-    print(f"Crossval 13 subgrid material validation: {result.status.upper()}")
+    print(f"Guarded subgrid material research example: {result.status.upper()}")
     print(f"  vacuum subgrid supported:      {result.vacuum_subgrid_supported}")
     print(f"  dielectric subgrid supported:  {result.dielectric_subgrid_supported}")
     print(f"  dielectric rejection codes:    {', '.join(result.dielectric_rejection_codes)}")
