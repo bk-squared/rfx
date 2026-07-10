@@ -18,9 +18,9 @@ before writing any new simulation code.
 | `rfx/probes/` | Probe and monitor implementations (point probes, DFT-plane, flux monitors, NTFF) |
 | `rfx/materials/` | Material helpers including Debye, Lorentz, and nonlinear dispersion models |
 | `rfx/boundaries/` | Boundary condition implementations (CPML, UPML, PEC, PMC, Floquet/Bloch) |
-| `rfx/ports/` | S-parameter extraction and port post-processing utilities |
+| `rfx/sources/`, `rfx/api/_sparams.py` | Port implementations and S-parameter extraction (production lumped/wire driver: `rfx/probes/sparam_driver.py`) |
 | `tests/` | Canonical usage examples for every API surface — start here |
-| `examples/crossval/` | Validated external-reference cross-validation scripts (Meep, OpenEMS, analytic) |
+| `examples/crossval/` | Cross-validation scripts with mixed roles (claims-bearing / diagnostic-reporter / research-only) — roles are pinned in `examples/crossval/manifest.json`; check it before citing any script as validation |
 
 ## Hard rule for AI agents
 
@@ -77,4 +77,4 @@ see the `add_flux_monitor` docstring in `rfx/api/__init__.py`.
 - `docs/guides/support_matrix.md`
 - `docs/guides/sparameter_support_matrix.md`
 - `tests/` — canonical usage for every `add_*` method
-- `examples/crossval/` — validated external cross-validation scripts
+- `examples/crossval/` — cross-validation scripts; roles pinned in `examples/crossval/manifest.json` (not all entries are claims-bearing)

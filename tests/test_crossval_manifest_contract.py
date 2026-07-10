@@ -406,6 +406,22 @@ def test_scheduled_workflow_loads_manifest_instead_of_copying_case_list() -> Non
     assert "scripts=(" not in workflow_text
 
 
+def test_repo_map_defers_crossval_claims_to_manifest() -> None:
+    """The public agent repo-map must not blanket-label crossval as validated.
+
+    The directory holds mixed roles (claims-bearing / diagnostic-reporter /
+    research-only); the map must send readers to the manifest instead of
+    asserting a directory-wide validation status (2026-07-10 rules-review
+    finding, issue #300 comment).
+    """
+    repo_map_text = (REPO_ROOT / "docs" / "agent" / "repo-map.mdx").read_text(
+        encoding="utf-8"
+    )
+    assert "Validated external-reference cross-validation scripts" not in repo_map_text
+    assert "validated external" not in repo_map_text.lower()
+    assert "examples/crossval/manifest.json" in repo_map_text
+
+
 def test_vessl_external_lane_matches_manifest_classification() -> None:
     manifest = _load_manifest()
     expected_cases = {
