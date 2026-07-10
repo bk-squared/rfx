@@ -47,8 +47,7 @@ from a time-series FFT or probe-subtraction hacks.
 
 Exit code convention (per rfx crossval standard):
   0 → all three geometries within accept gates
-  1 → one or more geometries fail numeric accept gate
-  2 → script error (couldn't run a geometry at all)
+  1 → a geometry could not run or one or more numeric accept gates failed
 
 Run:
   JAX_ENABLE_X64=1 python examples/crossval/11_waveguide_port_wr90.py
@@ -176,8 +175,6 @@ def analytic_slab_s(freqs_hz: np.ndarray, eps_r: float, slab_length_m: float,
     f = freqs_hz
 
     # Vacuum-filled guide
-    k_vac = omega / C0
-    beta_v = np.sqrt(np.maximum(k_vac**2 - (2 * np.pi * f_cutoff_hz / C0) ** 2, 0.0))
     Z_v = eta0 / np.sqrt(np.maximum(1.0 - (f_cutoff_hz / f) ** 2, 1e-30))
 
     # Dielectric-filled guide. kc is the GEOMETRIC cutoff wavenumber
@@ -732,7 +729,7 @@ def main() -> int:
     if skipped_any:
         print("CROSSVAL-11 P0 SKELETON — rfx runs are NotImplementedError.")
         print("Analytic reference verified here; FDTD paths fill in at P2.1.")
-        return 2
+        return 1
     if all_pass:
         print("CROSSVAL-11 PASS — all geometries within accept gate.")
         return 0
@@ -745,4 +742,4 @@ if __name__ == "__main__":
         sys.exit(main())
     except Exception as exc:  # pragma: no cover — script error bucket
         print(f"CROSSVAL-11 ERROR: {exc}")
-        sys.exit(2)
+        sys.exit(1)

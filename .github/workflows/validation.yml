@@ -61,9 +61,9 @@ jobs:
   # Exit-code convention (per script, see examples/crossval/*.py docstrings):
   #   0 -> full PASS incl. external reference        => table row PASS
   #   1 -> rfx self-check failed (real physics/infra) => table row FAIL, job RED
-  #   2 -> self-check OK but reference missing        => table row SKIP, job green
-  # The job fails (red) iff any script exits 1. exit 2 is surfaced as a visible
-  # SKIP in the step summary but never silently turns the lane green.
+  #   2 -> reference missing, only when declared      => table row SKIP, job green
+  # The job fails on timeout, manifest/load errors, exit 1, any unexpected exit,
+  # or exit 2 from a script whose manifest contract does not allow it.
   crossval-external:
     # Existing slow-tests stays on the workflow's Monday cron untouched; this
     # lane shares the same schedule + manual dispatch and is gated so adding it
@@ -108,17 +108,35 @@ jobs:
           export MPLBACKEND=Agg
           export JAX_ENABLE_X64=1
 
-          # Six scripts under the W2.5 retrofit. cv09/cv10 are pure analytic /
-          # internal references (no external dep) — included so the lane also
-          # exercises them end to end.
-          scripts=(
-            01_waveguide_bend
-            02_ring_resonator
-            03_straight_waveguide_flux
-            04_multilayer_fresnel
-            09_half_symmetric_waveguide
-            10_pmc_cpml_half_symmetric
+          # The canonical manifest owns scheduled membership and order. cv09/
+          # cv10 are pure analytic/internal references but remain in this lane
+          # so it also exercises them end to end.
+          if ! scheduled_output="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("examples/crossval/manifest.json").read_text())
+          scheduled = sorted(
+              (
+                  case
+                  for case in manifest["cases"]
+                  if case["scheduled_external_order"] is not None
+              ),
+              key=lambda case: case["scheduled_external_order"],
           )
+          for case in scheduled:
+              allows_exit_2 = int(2 in case["expected_exit_codes"])
+              print(f"{Path(case['script']).stem}\t{allows_exit_2}")
+          PY
+          )"; then
+            echo "ERROR: could not load scheduled cases from crossval manifest" >&2
+            exit 1
+          fi
+          if [ -z "$scheduled_output" ]; then
+            echo "ERROR: crossval manifest selected no scheduled cases" >&2
+            exit 1
+          fi
+          mapfile -t scheduled_cases <<< "$scheduled_output"
 
           echo "## rfx external-reference crossval lane" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -126,7 +144,13 @@ jobs:
           echo "|--------|------|---------|" >> "$GITHUB_STEP_SUMMARY"
 
           fail=0
-          for s in "${scripts[@]}"; do
+          for scheduled_case in "${scheduled_cases[@]}"; do
+            IFS=$'\t' read -r s allows_exit_2 <<< "$scheduled_case"
+            if [ -z "$s" ] || { [ "$allows_exit_2" != "0" ] && [ "$allows_exit_2" != "1" ]; }; then
+              echo "ERROR: invalid scheduled manifest row: ${scheduled_case}" >&2
+              fail=1
+              continue
+            fi
             log="crossval_logs/${s}.log"
             echo ">>> running ${s} ..."
             # Per-script generous timeout (cv02 with real Meep is the slowest).
@@ -134,7 +158,14 @@ jobs:
             code=$?
             case $code in
               0) verdict="PASS (full crossval incl. reference)";;
-              2) verdict="SKIP (reference missing — inconclusive)";;
+              2)
+                if [ "$allows_exit_2" = "1" ]; then
+                  verdict="SKIP (reference missing — inconclusive)"
+                else
+                  verdict="FAIL (exit 2 is not declared for this script)"
+                  fail=1
+                fi
+                ;;
               124) verdict="TIMEOUT"; fail=1;;
               *) verdict="FAIL (rfx self-check / numeric gate)"; fail=1;;
             esac
@@ -144,7 +175,7 @@ jobs:
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
           if [ "$fail" -ne 0 ]; then
-            echo "**Lane result: FAIL** — at least one script exited 1 (or timed out)." >> "$GITHUB_STEP_SUMMARY"
+            echo "**Lane result: FAIL** — at least one script failed or timed out." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "**Lane result: green** (any SKIP rows are inconclusive, not pass)." >> "$GITHUB_STEP_SUMMARY"
           fi
