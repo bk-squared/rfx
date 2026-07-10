@@ -101,9 +101,12 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz  Q={modes[0].Q:.0f}")
 
 rfx supports selected JAX-traced objectives for inverse design. Treat these as
 **sensitivity calculations through the implemented discrete solver**, not as
-standalone RF validation. For S-parameter-driven work, use the calculator that
-matches the port family and keep the final claim inside that family's evidence
-envelope.
+standalone RF validation. `forward(...)` objectives can be wrapped in an outer
+`jax.jit`, `optimize(...)` exposes default-off multi-start / best-iterate /
+step-clamp safeguards, and uniform single-device `forward(...)` can differentiate
+registered lumped R/L/C values through `rlc_values_override`. For
+S-parameter-driven work, use the calculator that matches the port family and
+keep the final claim inside that family's evidence envelope.
 
 The runnable gradient examples include:
 
