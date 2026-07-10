@@ -1133,6 +1133,16 @@ class Simulation(
             the port component, a PEC signal trace uniform across both
             planes, and the uniform-mesh ``run()`` lane (other lanes
             raise ``NotImplementedError``).
+
+            Choosing N: place BOTH planes (N and 2N cells) roughly >= 10
+            cells from every port so the two-plane Zc/beta measurement
+            sits outside the port near-fields — the Phase-0
+            pre-registration rule. Measured on the canonical 16 mm thru
+            (dx = 0.5 mm): N=3 planes read beta/(w/c) = 1.21-1.25 and
+            Zc Im/Re up to 9% (near-field contaminated; |S21| referee
+            residual grew to -6.8% at 7 GHz), while N=10 planes read the
+            clean mid-line beta/(w/c) = 1.045-1.065 and closed the
+            closed-box referee within 1.2% at all bins.
         """
         if self._tfsf is not None:
             raise ValueError(

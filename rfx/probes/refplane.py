@@ -15,10 +15,15 @@ S-matrix entries only.
 Method (all conventions measured/anchored in the Phase-0 lane; constants in
 the issue #313 Phase-0 comment — do not re-derive):
 
-* Plane V = vertical-E gap line integral at an integer Yee plane N cells
-  outboard (into the DUT) along the line axis, over the same
-  component-axis cell range as the port (field is zero inside the PEC
-  trace, so dead extent cells contribute nothing).
+* Plane V = vertical-E GAP line integral at an integer Yee plane N cells
+  outboard (into the DUT) along the line axis — over the port's
+  component-axis cell range TRIMMED to the cells not PEC-masked at the
+  plane column.  Measured witness (A/B vs point probes, 2026-07-10): the
+  in-trace Ez edge of a one-cell-thick PEC trace is NOT zeroed by the
+  staircase mask convention and carries ~0.21 of the gap field, so an
+  untrimmed port-extent integral mis-scales V by ~0.89 (which cancels in
+  S but corrupts the reported Zc; Phase-0 measured 47.9-48.6 ohm with
+  the 2-cell gap integral).
 * Plane I = average of the two adjacent Ampere loops around the signal
   trace at the half-planes (plane -/+ dx/2), centring I on the V plane
   (2nd-order de-stagger).  Loop legs sit half a cell outside the PEC
@@ -258,6 +263,27 @@ def build_wire_refplane_specs(
         seed_uv = (end_cell[u_axis], end_cell[v_axis])
         u_lo, u_hi, v_lo, v_hi = _trace_bbox_at_plane(pec2d, seed_uv)
         bboxes.append((u_lo, u_hi, v_lo, v_hi))
+        # GAP trim for the V line integral: keep only the port-extent
+        # cells NOT PEC-masked at the plane column.  The in-conductor Ez
+        # edge of a one-cell-thick trace is not zeroed by the staircase
+        # mask convention and carries ~0.21 of the gap field (measured
+        # A/B vs point probes) — including it re-scales V (cancels in S,
+        # corrupts the measured Zc).  The gap must be one contiguous run.
+        gap = [c for c in range(e_lo, e_hi)
+               if not pec3d[_tri({line_axis: plane_index,
+                                  comp_axis: c,
+                                  third_axis: third_index})]]
+        if not gap:
+            raise ValueError(
+                "reference_plane_cells: every port-extent cell at the "
+                f"reference plane (index {plane_index}) is inside PEC — "
+                "no gap for the V line integral.")
+        if gap[-1] - gap[0] + 1 != len(gap):
+            raise ValueError(
+                "reference_plane_cells: the non-PEC gap cells at the "
+                f"reference plane are not contiguous ({gap}) — the gap-V "
+                "line integral is ill-defined for this geometry.")
+        gap_lo, gap_hi = gap[0], gap[-1] + 1
         # Loop legs: Hv columns half a cell outside the bbox u-faces,
         # Hu rows half a cell outside the bbox v-faces (Yee stagger).
         u_lo_leg, u_hi_leg = u_lo - 1, u_hi + 1
@@ -281,8 +307,8 @@ def build_wire_refplane_specs(
             plane_index=int(plane_index),
             e_component=e_component,
             comp_axis=comp_axis,
-            e_lo=int(e_lo),
-            e_hi=int(e_hi),
+            e_lo=int(gap_lo),
+            e_hi=int(gap_hi),
             third_index=int(third_index),
             hu_component=hu_component,
             hv_component=hv_component,
