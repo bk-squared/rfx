@@ -609,11 +609,75 @@ def flux_spectrum(mon: FluxMonitor) -> jnp.ndarray:
     flux : (n_freqs,) float
         ∫ Re(E × H*) · n̂ dA at each frequency.
         Positive = power flowing in +axis direction.
+
+    Notes
+    -----
+    With x64 disabled the accumulators are complex64, and per-cell E×H*
+    products below the float32 minimum normal (~1.18e-38) are flushed to
+    zero by XLA — a physically tiny-but-nonzero flux then returns EXACTLY
+    0.0 at every frequency with healthy field accumulators (issue #304;
+    single-cell fixed-amplitude sources radiate P ~ dx^6, so fine grids hit
+    this readily). Eager calls detect that state with a float64 NumPy
+    recompute of the identical sum and emit a UserWarning; under
+    jit/grad the check is skipped entirely (tracer-safe, off the AD tape).
     """
     # Poynting: S_n = E1*H2* - E2*H1* (cyclic cross product).
     # mon.dA is the axis-aware area weight (scalar or (n1,n2)).
     integrand = mon.e1_dft * jnp.conj(mon.h2_dft) - mon.e2_dft * jnp.conj(mon.h1_dft)
-    return jnp.real(jnp.sum(integrand * mon.dA, axis=(-2, -1)))
+    flux = jnp.real(jnp.sum(integrand * mon.dA, axis=(-2, -1)))
+    _warn_if_flux_subnormal_flush(mon, flux)
+    return flux
+
+
+def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
+    """Issue #304: eager-only detector for float32 subnormal-flushed flux.
+
+    Warns when ``flux`` is exactly 0.0 at every frequency, the field
+    accumulators are nonzero, AND a float64 recompute of the identical sum
+    is nonzero — the decisive witness that the zeros are an underflow
+    artefact, not physics. Never fires under tracing (imitates the
+    ``warn_if_nonpassive_lumped_s11`` tracer-safety pattern) and never
+    changes the returned value.
+    """
+    import jax as _jax
+    try:
+        if isinstance(flux, _jax.core.Tracer):
+            return
+    except Exception:
+        return
+    if flux.dtype != jnp.float32:
+        return  # complex128 accumulators (scoped x64) don't flush this way
+    import numpy as np
+    f32 = np.asarray(flux)
+    if f32.size == 0 or np.any(f32 != 0.0):
+        return
+    e1 = np.asarray(mon.e1_dft)
+    e2 = np.asarray(mon.e2_dft)
+    if not (np.any(e1 != 0) or np.any(e2 != 0)):
+        return  # genuinely empty monitor — zero flux is the right answer
+    h1 = np.asarray(mon.h1_dft, dtype=np.complex128)
+    h2 = np.asarray(mon.h2_dft, dtype=np.complex128)
+    dA = np.asarray(mon.dA, dtype=np.float64)
+    f64 = np.real(np.sum(
+        (e1.astype(np.complex128) * np.conj(h2)
+         - e2.astype(np.complex128) * np.conj(h1)) * dA,
+        axis=(-2, -1),
+    ))
+    if not np.any(f64 != 0.0):
+        return  # float64 agrees the flux is zero — no artefact
+    import warnings
+    peak = float(np.max(np.abs(f64)))
+    warnings.warn(
+        f"flux_spectrum returned exactly 0.0 at all {f32.size} frequencies, "
+        f"but the DFT accumulators are healthy and a float64 recompute of "
+        f"the same sum gives nonzero flux (peak |flux| = {peak:.3e}). The "
+        f"per-cell E x H* products underflowed the float32 minimum normal "
+        f"(~1.18e-38) and were flushed to zero (issue #304). Remedies: "
+        f"enable x64 in a scoped context for the flux computation, increase "
+        f"the source amplitude, or recompute from the (healthy) "
+        f"accumulators in float64 as done for this check.",
+        UserWarning, stacklevel=3,
+    )
 
 
 # ---------------------------------------------------------------------------
