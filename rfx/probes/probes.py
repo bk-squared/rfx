@@ -867,7 +867,7 @@ def decompose_lumped_s_matrix(v, i, z0):
     extractor-independent flux referee (flux-true |S21| 0.97-1.0 vs
     0.52-0.67 here on the canonical thru); a drive-side normalization
     scale entering ``a_j`` is under investigation — see the drive-side
-    normalization issue referenced in the PR.
+    normalization issue #313.
 
     The safe-denominator guard replaces a zero incident wave by 1 (so
     S → 0 / 1 = 0 rather than NaN).  Mirrors ``extract_s_matrix`` exactly.
@@ -945,7 +945,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
     extractor-independent flux referee (flux-true |S21| 0.97-1.0 vs
     0.52-0.67 here on the canonical thru); a drive-side normalization
     scale entering ``a_j`` is under investigation — see the drive-side
-    normalization issue referenced in the PR.
+    normalization issue #313.
 
     Mirrors ``extract_s_matrix_wire`` line-for-line.
 

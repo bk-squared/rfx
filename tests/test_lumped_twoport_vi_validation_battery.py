@@ -66,7 +66,7 @@ ground, Zc ~ 50 ohm, driver path of PR #258; 9 bins 3-7 GHz, 4000 steps,
     common-mode scale bias kappa(f) = 1.49..1.86 (frequency-DEPENDENT)
     entering a_j via the source-cell V/I accounting; it is invisible to
     S11. The flux-vs-port transmitted-power delta is an OPEN item
-    (recorded per-bin above; see the PR body / follow-up issue) — do
+    (issue #313; recorded per-bin above) — do
     NOT cite the 0.52-0.67 band as thru-transmission physics.
   - S21 signed phase deviation vs the analytic line delay
     exp(-j*2*pi*f*L/c): -0.754891..-0.335259 rad across 3-7 GHz — a
@@ -277,7 +277,7 @@ _IDENTITY_REL_MAX = 1.0e-5
 # ===========================================================================
 # Fixtures
 # ===========================================================================
-def _build_thru() -> Simulation:
+def _build_thru(pulse: "GaussianPulse | None" = None) -> Simulation:
     """Wire 2-port air-microstrip THRU (2026-07-10 lane M1 fixture, exact).
 
     Both ports carry excite=True + the same waveform: the production scan
@@ -306,7 +306,8 @@ def _build_thru() -> Simulation:
              _THRU_H_M + _THRU_DX_M)),
         material="pec",
     )
-    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
+    if pulse is None:
+        pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     sim.add_port(position=(_THRU_X1_M, _THRU_Y_MID_M, 0.0), component="ez",
                  impedance=50.0, extent=_THRU_H_M, waveform=pulse,
                  direction="-x")
@@ -515,7 +516,7 @@ def test_thru_s21_band_locks_shipped_decomposer_envelope(thru_smatrix):
     per-bin (flux fraction)/|S21|^2 = 2.237..3.541 (raw flux transmitted
     fraction 0.959-0.998 vs |S21|^2 = 0.274-0.446; implied flux-true
     |S21| = 0.971-0.997), a confirmed frequency-dependent drive-side
-    scale bias kappa(f) = 1.49..1.86 (see PR body / follow-up issue). Do
+    scale bias kappa(f) = 1.49..1.86 (issue #313). Do
     not cite this band as thru-transmission physics; when the kappa item
     lands, |S21| moves toward 0.97-1.0 and this fails LOUDLY —
     re-baseline in the same PR, do not widen the band to keep both
@@ -628,3 +629,60 @@ def test_thru_passivity_singular_values(thru_smatrix):
         f"gate {_THRU_MAX_SINGULAR_VALUE}) — extraction produced "
         f"over-envelope energy on the thru (or the kappa scale-bias fix "
         f"landed: re-baseline this battery in the same PR)")
+
+
+# ===========================================================================
+# DC-limit sign anchor (slow_physics) — the committed form of the low-f
+# falsifier that pinned the receive sign (issue #308 amendment round)
+# ===========================================================================
+# Measured (2026-07-10, amended sign b=(V - Z0*I)): wrapped dev
+# arg(S21) - (-2*pi*f*L/c) = -0.0236 rad @ 0.5 GHz, -0.0536 rad @ 1.0 GHz.
+# Band (-0.25, +0.10) — generous vs measurement (>4x) but decisively
+# pi-DISCRIMINATING: the first-cut receive sign (-V + Z0*I) measured
+# S21(DC) -> -1, i.e. dev ~ +-2.9..3.1 rad at these bins, far outside.
+_DCA_FREQS_HZ = np.array([0.5e9, 1.0e9])
+_DCA_N_STEPS = 12000            # 0.5 GHz bins need the long settle window
+_DCA_DEV_BAND_RAD = (-0.25, +0.10)
+
+
+@pytest.fixture(scope="module")
+def dc_anchor_smatrix():
+    """Low-frequency THRU run (same geometry, f0=2.5 GHz bw=1.0 pulse)."""
+    sim = _build_thru(pulse=GaussianPulse(f0=2.5e9, bandwidth=1.0))
+    issues = [str(i) for i in sim.preflight()]
+    for msg in issues:
+        print(f"\n[dc anchor] preflight (verbatim): {msg}")
+    assert len(issues) == 1 and _PEC_FACES_ADVISORY_SNIPPET in issues[0], (
+        f"dc-anchor fixture preflight drifted: {issues}")
+    result = sim.run(n_steps=_DCA_N_STEPS, compute_s_params=True,
+                     s_param_freqs=_DCA_FREQS_HZ)
+    return np.asarray(result.s_params).astype(np.complex128)
+
+
+@pytest.mark.slow_physics
+def test_dc_limit_pins_receive_sign(dc_anchor_smatrix):
+    """S21(DC) -> +1: the committed, re-runnable form of the sign witness.
+
+    The 3-7 GHz signed phase band locks the sign against silent
+    regression, but re-ARBITRATING which sign is physical previously
+    required the offline falsifier lane (re-review finding, both lenses).
+    This anchors it in-repo: at 0.5-1 GHz the thru's wrapped phase
+    deviation vs the analytic line delay must sit near 0 (measured
+    -0.024/-0.054 rad), NOT near +-pi (the first-cut sign's -1 DC limit).
+    Physics-anchored: this is the DC witness itself, not an envelope.
+    """
+    s21 = dc_anchor_smatrix[1, 0]
+    expected = np.exp(-1j * 2 * np.pi * _DCA_FREQS_HZ * _THRU_L_M / C0_M_PER_S)
+    dev = np.angle(s21 / expected)
+    lo, hi = _DCA_DEV_BAND_RAD
+    print(f"\n[dc anchor] |S21|={np.round(np.abs(s21), 4)} "
+          f"dev(rad)={np.round(dev, 4)}")
+    assert np.all((dev > lo) & (dev < hi)), (
+        f"DC-limit sign anchor failed: dev = {np.round(dev, 4)} rad outside "
+        f"[{lo}, {hi}] (measured -0.024/-0.054). A pi-scale dev means the "
+        f"receive-wave sign regressed to the first-cut convention")
+    # pi-discrimination witness: the sign-flipped S21 must leave the band.
+    dev_flipped = np.angle(-s21 / expected)
+    assert not np.all((dev_flipped > lo) & (dev_flipped < hi)), (
+        "sign-flipped S21 also passes the DC anchor band — the anchor "
+        "lost its discriminating power")
