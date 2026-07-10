@@ -294,3 +294,42 @@ def test_zero_issue_summary_line_is_honest(capsys):
 
     assert _clean_sim().preflight(check_ntff=False) == []
     assert "NTFF checks skipped" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Issue #314: wire-port MIDPOINT V/I probe cell inside PEC
+# ---------------------------------------------------------------------------
+
+def _microstrip_sim(port_extent_m: float) -> Simulation:
+    """Minimal air-microstrip: PEC trace at z in [1.0, 1.5] mm, dx=0.5 mm.
+
+    A vertical ez wire port from z=0 rasterizes (production
+    ``_wire_port_cells``) to cells of 0.5 mm; extent 1.5 mm -> 4 cells,
+    midpoint cell center z = 1.25 mm INSIDE the trace (the measured #314
+    corruption case); extent 1.0 mm -> 3 cells, midpoint center z =
+    0.75 mm in the substrate gap (healthy).
+    """
+    sim = Simulation(freq_max=10e9, domain=(0.016, 0.010, 0.006),
+                     boundary="cpml", cpml_layers=6, dx=0.5e-3)
+    sim.add(Box((0.004, 0.003, 0.001), (0.012, 0.007, 0.0015)),
+            material="pec")
+    sim.add_port(position=(0.008, 0.005, 0.0), component="ez",
+                 impedance=50.0, extent=port_extent_m)
+    return sim
+
+
+def test_wire_midpoint_in_pec_warns():
+    issues = _microstrip_sim(1.5e-3).preflight()
+    hits = [s for s in issues if "MIDPOINT" in s and "PEC" in s]
+    assert hits, (
+        "extent=1.5mm puts the midpoint probe cell (z=1.25mm) inside the "
+        "trace [1.0,1.5]mm — the #314 warning must fire: "
+        + "\n".join(issues))
+
+
+def test_wire_midpoint_in_gap_does_not_warn():
+    issues = _microstrip_sim(1.0e-3).preflight()
+    hits = [s for s in issues if "MIDPOINT" in s]
+    assert hits == [], (
+        "extent=1.0mm keeps the midpoint (z=0.75mm) in the gap — no #314 "
+        "warning expected: " + "\n".join(hits))
