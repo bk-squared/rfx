@@ -163,3 +163,134 @@ def test_waveguide_resolution_warns():
         and ("cells per λ_eff" in s or "phase-accurate" in s)
         for s in issues
     ), "Expected a dielectric resolution warning: " + "\n".join(issues)
+
+
+# ---------------------------------------------------------------------------
+# Issue #303: run() advisory tier + honest summary + probe exclusion
+# ---------------------------------------------------------------------------
+
+def _pec_overlap_sim():
+    """The test_ntff_pec_overlap_rejects config, reused for tier tests."""
+    sim = _sane_sim()
+    sim.add(Box((0.005, 0.005, 0.010), (0.035, 0.035, 0.040)),
+                     material="pec")
+    sim.add_ntff_box(
+        corner_lo=(0.010, 0.010, 0.024),
+        corner_hi=(0.030, 0.030, 0.035),
+        n_freqs=4,
+    )
+    return sim
+
+
+def test_advisory_tier_keeps_gap_warning_drops_pec_error():
+    """check_ntff="advisory" = λ/4 advisories WITHOUT the PEC hard error.
+
+    This is run()'s tier (issue #303): the near-field advisory is
+    physics-relevant to any far-field computation, while the PEC-overlap
+    structural error stays an inverse-design (forward/optimize/explicit
+    preflight) gate.
+    """
+    # PEC-overlap config: full tier errors, advisory tier must not.
+    issues_adv = _pec_overlap_sim().preflight(check_ntff="advisory")
+    assert not any("PEC" in s and "NTFF face" in s for s in issues_adv), (
+        "advisory tier must not run the PEC-overlap error check: "
+        + "\n".join(issues_adv))
+
+    # λ/4-gap config (from test_ntff_near_field_gap_warns): advisory tier
+    # must still surface the near-field advisory.
+    freq_max = 5e9
+    dx = C / freq_max / 20.0
+    sim = Simulation(freq_max=freq_max, domain=(0.04, 0.04, 0.04),
+                     boundary="cpml", cpml_layers=8, dx=dx)
+    src_z = 0.020
+    sim.add_port((0.020, 0.020, src_z), "ez")
+    sim.add_ntff_box(
+        corner_lo=(0.010, 0.010, src_z + 2 * dx),
+        corner_hi=(0.030, 0.030, src_z + 3 * dx),
+        n_freqs=4,
+    )
+    issues = sim.preflight(check_ntff="advisory")
+    assert any("near-field" in s or "λ/4" in s for s in issues), (
+        "advisory tier must keep the λ/4 gap advisory: " + "\n".join(issues))
+
+
+def test_run_auto_preflight_surfaces_ntff_advisories():
+    """run() now WARNS on NTFF near-field configs instead of silence (#303).
+
+    Previously run() skipped the NTFF family (check_ntff=False) and printed
+    "All checks passed", contradicting explicit sim.preflight() on the same
+    configuration. The advisory must be a non-blocking UserWarning: the run
+    completes.
+    """
+    freq_max = 5e9
+    dx = C / freq_max / 20.0
+    sim = Simulation(freq_max=freq_max, domain=(0.04, 0.04, 0.04),
+                     boundary="cpml", cpml_layers=8, dx=dx)
+    src_z = 0.020
+    sim.add_port((0.020, 0.020, src_z), "ez")
+    sim.add_ntff_box(
+        corner_lo=(0.010, 0.010, src_z + 2 * dx),
+        corner_hi=(0.030, 0.030, src_z + 3 * dx),
+        n_freqs=4,
+    )
+    with pytest.warns(UserWarning, match=r"\[run\] preflight found"):
+        result = sim.run(n_steps=3)
+    assert result is not None  # non-blocking: the run completed
+
+
+def test_run_does_not_hard_fail_on_ntff_pec_overlap():
+    """The PEC-overlap ERROR stays off run()'s tier (historical contract)."""
+    sim = _pec_overlap_sim()
+    # Must not raise PreflightConfigError/ValueError from preflight; other
+    # advisories (if any) surface as UserWarning, which we tolerate here.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = sim.run(n_steps=3)
+    assert result is not None
+
+
+def test_probe_on_ntff_face_is_not_a_culprit():
+    """Passive DFT probes are excluded from the near-field culprits (#303).
+
+    A probe ON the box face previously produced a 0.00mm 'radiating/
+    scattering structure' advisory. Config keeps every face >= λ/2 from the
+    SOURCE (x_lo gap 35mm > λ/2 = 30mm; other faces tangentially out of
+    scope), so with probes excluded the report must carry no NTFF finding.
+    """
+    freq_max = 5e9
+    domain = (0.10, 0.10, 0.10)
+    sim = Simulation(freq_max=freq_max, domain=domain, boundary="cpml",
+                     cpml_layers=8, dx=C / freq_max / 20.0)
+    sim.add_port((0.010, 0.060, 0.060), "ez")
+    sim.add_probe((0.045, 0.060, 0.060), "ez")  # exactly on the x_lo face
+    sim.add_ntff_box(
+        corner_lo=(0.045, 0.045, 0.045),
+        corner_hi=(0.075, 0.075, 0.075),
+        n_freqs=4,
+    )
+    issues = sim.preflight()
+    ntff_issues = [s for s in issues if "NTFF face" in s]
+    assert ntff_issues == [], (
+        "probe-on-face must not be an NTFF culprit: " + "\n".join(ntff_issues))
+
+
+def test_zero_issue_summary_line_is_honest(capsys):
+    """The all-clear line states which NTFF tier actually ran (#303)."""
+    def _clean_sim():
+        from rfx.sources.sources import GaussianPulse
+        sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
+                         dx=0.02 / 15, boundary="cpml", cpml_layers=6)
+        sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
+                     impedance=50.0,
+                     waveform=GaussianPulse(f0=5e9, bandwidth=0.9),
+                     extent=0.004)
+        return sim
+
+    assert _clean_sim().preflight() == []
+    assert "All checks passed." in capsys.readouterr().out
+
+    assert _clean_sim().preflight(check_ntff="advisory") == []
+    assert "NTFF advisory tier" in capsys.readouterr().out
+
+    assert _clean_sim().preflight(check_ntff=False) == []
+    assert "NTFF checks skipped" in capsys.readouterr().out

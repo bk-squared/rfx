@@ -319,7 +319,7 @@ class _ExecuteMixin:
 
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
-        check_ntff: bool = True,
+        check_ntff: bool | str = True,
     ) -> None:
         """Emit a UserWarning if preflight finds issues (issue #66).
 
@@ -329,11 +329,15 @@ class _ExecuteMixin:
         spending minutes of GPU compute. Pass ``skip_preflight=True`` at
         the call site to opt out (tests, already-validated configs).
 
-        ``check_ntff`` gates the inverse-design NTFF checks (PEC-overlap hard
-        error + λ/4 near-field gap warning). ``run()`` passes ``check_ntff=
-        False`` because those are inverse-design concerns that ``run()``
-        historically never ran — only ``forward(port_s11_freqs=...)`` /
-        ``optimize`` (the inverse-design entry points) should hard-fail on them.
+        ``check_ntff`` gates the NTFF check family. ``run()`` passes
+        ``check_ntff="advisory"`` (issue #303): the λ/4 near-field gap
+        advisories are physics-relevant to any far-field computation and
+        run() is the common NTFF entry point, so they are surfaced as
+        warnings — but only ``forward(port_s11_freqs=...)`` / ``optimize``
+        (the inverse-design entry points) hard-fail on the PEC-overlap
+        error. Previously run() skipped the family entirely and still
+        printed "All checks passed", which contradicted explicit
+        ``sim.preflight()`` output on the same configuration.
         """
         if skip:
             return
@@ -2200,7 +2204,7 @@ class _ExecuteMixin:
         # NTFF PEC-overlap check; keep that surface (it belongs to
         # forward(port_s11_freqs=...)/optimize). Avoids hard-failing run() on
         # an NTFF-box-crosses-PEC config that completed before this change.
-        self._auto_preflight(skip=skip_preflight, context="run", check_ntff=False)
+        self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory")
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         _distributed_run = devices is not None and len(devices) > 1
