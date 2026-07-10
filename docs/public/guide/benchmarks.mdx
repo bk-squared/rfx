@@ -91,10 +91,10 @@ headline and process status from silently becoming PASS.
 
 ### Not on this table
 
-Additional local scripts are outside the public A/B inventory unless the
-manifest, a public guide, and the support matrix classify them otherwise.
-Crossvals 12 and 13 are explicitly `research-only` in the manifest and are not
-public validation cases.
+Research-only subgrid scripts live under `examples/research/subgrid/`, outside
+the crossval manifest and public A/B inventory. They remain outside public
+support scope unless a future support entry and validation envelope promote
+them explicitly.
 
 ## Reproduce on CPU
 
@@ -118,8 +118,6 @@ an rfx result), or `TIMEOUT`. The runner exits `0` iff no script ended in
   graded-σ absorber) and also needs the OpenEMS reference `.npz`.
 - `06b_msl_notch_filter_uniform` — exceeds ~10 min on CPU (uniform fine mesh +
   distributed MSL-port de-embedding).
-- `12_subgrid_disjoint_prototype` and `13_subgrid_material_validation` —
-  research-only prototypes, intentionally excluded from validation execution.
 
 The Meep-referenced cases (`01`–`04`) require a Meep build matching the host's
 NumPy ABI. On a host where Meep is unimportable, the runner classifies them as

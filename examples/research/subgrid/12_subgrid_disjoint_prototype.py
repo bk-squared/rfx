@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Crossval 12: disjoint 3-D subgrid prototype smoke.
+"""Research example: disjoint 3-D subgrid prototype smoke.
 
 This example exercises the Stage-2 disjoint subgrid runner
 (``rfx.runners.disjoint.run_disjoint_stage2_path``), which is **research-only**
@@ -13,7 +13,7 @@ envelope. Guarded one-sided production subgrid crossval evidence lives in
 artifacts; this disjoint prototype remains research-only.
 
 Run:
-    python examples/crossval/12_subgrid_disjoint_prototype.py
+    python examples/research/subgrid/12_subgrid_disjoint_prototype.py
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def main() -> int:
     finite = bool(np.all(np.isfinite(series)))
     abs_max = float(np.max(np.abs(series))) if series.size else 0.0
     print(
-        "Crossval 12 disjoint subgrid prototype: short-window research smoke "
+        "Disjoint subgrid research prototype: short-window smoke "
         "(research-only; NOT a COMPLETE/production status -- the disjoint "
         "topology is not long-time energy-stable)"
     )

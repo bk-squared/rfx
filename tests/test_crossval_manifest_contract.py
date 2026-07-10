@@ -17,7 +17,7 @@ MANIFEST_PATH = CROSSVAL_DIR / "manifest.json"
 RUNNER_PATH = REPO_ROOT / "scripts" / "run_crossval_cpu.py"
 
 EvidenceLevel = Literal["E0", "E1", "E2", "E3", "E4", "E5"]
-CaseRole = Literal["claims-bearing", "diagnostic-reporter", "research-only"]
+CaseRole = Literal["claims-bearing", "diagnostic-reporter"]
 PublicGroup = Literal["A", "B"]
 ReferenceKind = Literal["analytic", "external-solver", "self-invariant"]
 ExecutionTier = Literal[
@@ -25,7 +25,6 @@ ExecutionTier = Literal[
     "scheduled-external",
     "gpu-manual",
     "external-manual",
-    "research-manual",
 ]
 
 
@@ -104,12 +103,20 @@ def test_manifest_covers_every_crossval_script_exactly_once() -> None:
     assert set(registered_scripts) == actual_scripts
 
 
+def test_crossval_manifest_forbids_research_only_cases() -> None:
+    manifest = _load_manifest()
+    assert {case["role"] for case in manifest["cases"]} <= {
+        "claims-bearing",
+        "diagnostic-reporter",
+    }
+
+
 def test_manifest_entries_are_self_consistent_and_grounded() -> None:
     manifest = _load_manifest()
     ids: list[str] = []
     scheduled_orders: list[int] = []
     cpu_orders: list[int] = []
-    valid_roles = {"claims-bearing", "diagnostic-reporter", "research-only"}
+    valid_roles = {"claims-bearing", "diagnostic-reporter"}
     valid_groups = {"A", "B", None}
     valid_evidence = {"E0", "E1", "E2", "E3", "E4", "E5"}
     valid_reference_kinds = {"analytic", "external-solver", "self-invariant"}
@@ -120,7 +127,6 @@ def test_manifest_entries_are_self_consistent_and_grounded() -> None:
         "vessl-external",
         "gpu-manual",
         "external-manual",
-        "research-manual",
     }
 
     for case in manifest["cases"]:
@@ -186,10 +192,6 @@ def test_manifest_entries_are_self_consistent_and_grounded() -> None:
 
         if case["role"] == "claims-bearing":
             assert set(case["evidence_levels"]) & {"E2", "E3", "E4", "E5"}
-
-        if case["role"] == "research-only":
-            assert case["public_group"] is None
-            assert "research-manual" in case["execution_tiers"]
 
         for relative_path in [
             case["script"],
@@ -409,10 +411,9 @@ def test_scheduled_workflow_loads_manifest_instead_of_copying_case_list() -> Non
 def test_repo_map_defers_crossval_claims_to_manifest() -> None:
     """The public agent repo-map must not blanket-label crossval as validated.
 
-    The directory holds mixed roles (claims-bearing / diagnostic-reporter /
-    research-only); the map must send readers to the manifest instead of
-    asserting a directory-wide validation status (2026-07-10 rules-review
-    finding, issue #300 comment).
+    The directory holds claims-bearing cases and diagnostic reporters; the map
+    must send readers to the manifest instead of asserting a directory-wide
+    validation status (2026-07-10 rules-review finding, issue #300 comment).
     """
     repo_map_text = (REPO_ROOT / "docs" / "agent" / "repo-map.mdx").read_text(
         encoding="utf-8"
