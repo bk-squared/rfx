@@ -834,13 +834,32 @@ def update_wire_sparam_probe(
 def decompose_lumped_s_matrix(v, i, z0):
     """Lumped-port N-port S-matrix from accumulated V/I DFTs.
 
-    Wave decomposition with the FDTD sign convention (``V = -E·dx``):
+    Wave decomposition with the FDTD sign convention (``V = -E·dx``),
+    role-selected per port (issue #308):
 
         a_j = (-V[j,j] + Z0[j]·I[j,j]) / (2·√Z0[j])    # incident at driven port j
-        b_i = (-V[j,i] - Z0[i]·I[j,i]) / (2·√Z0[i])    # reflected at receive port i
+        b_j = (-V[j,j] - Z0[j]·I[j,j]) / (2·√Z0[j])    # reflected at the DRIVE port
+        b_i = (-V[j,i] + Z0[i]·I[j,i]) / (2·√Z0[i])    # arriving at PASSIVE port i≠j
         S[i,j] = b_i / a_j
 
-    where the safe-denominator guard replaces a zero incident wave by 1 (so
+    Drive-port waves (``a_j`` and the diagonal ``b_j``) keep the
+    ``extract_lumped_s11`` algebra unchanged.  At a passive receive port the
+    b-wave is the matched-termination voltage wave: with the port's own Z0
+    terminating the cell, the arriving wave registers in the
+    ``(-V + Z0·I)`` channel.  The previous formula used ``(-V - Z0·I)`` at
+    receive ports too; there the port-cell resistor law makes
+    ``-V == +Z0_cell·I`` identically, so that channel structurally cancels
+    the arriving wave and a matched thru read |S21| near-null (issue #308).
+    The corrected sign gives the DC thru limit S21 = +1.
+
+    Polarity fence: rfx lumped/wire multiports whose ports share the same
+    field component are automatically voltage-polarity-consistent, so
+    off-diagonal phases are well-defined.  A multiport mixing components
+    (e.g. one ``ez`` and one ``ey`` port) carries a per-port voltage-polarity
+    ambiguity, leaving off-diagonal S entries defined only up to a ±1
+    (pi-phase) factor; no orientation input exists to resolve it.
+
+    The safe-denominator guard replaces a zero incident wave by 1 (so
     S → 0 / 1 = 0 rather than NaN).  Mirrors ``extract_s_matrix`` exactly.
 
     Parameters
@@ -868,7 +887,13 @@ def decompose_lumped_s_matrix(v, i, z0):
         safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
         for ri in range(n_ports):
             z0_i = z0[ri]
-            b_i = (-v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
+            if ri == j:
+                # Drive-port reflected wave — byte-frozen extract_lumped_s11
+                # algebra (issue #308 changes receive ports only).
+                b_i = (-v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
+            else:
+                # Passive receive port: matched-termination voltage wave.
+                b_i = (-v[j, ri] + z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
             S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
     return S
 
@@ -877,9 +902,31 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
     """Wire-port N-port S-matrix from accumulated midpoint V/I DFTs.
 
     Diagonal entries use the measured input impedance reflection
-    (``Z_in = -V/I``; ``S_ii = (Z_in − Z0_i)/(Z_in + Z0_i)``); off-diagonal
-    entries use a *per-cell-normalized* impedance ``Z0/n_cells`` for the wave
-    decomposition.  Mirrors ``extract_s_matrix_wire`` line-for-line.
+    (``Z_in = -V/I``; ``S_ii = (Z_in − Z0_i)/(Z_in + Z0_i)``) — byte-frozen,
+    issue #308 changes receive ports only.  Off-diagonal entries use a
+    *per-cell-normalized* impedance ``Z0/n_cells`` for the wave
+    decomposition, role-selected per port (issue #308):
+
+        a_j = (-V[j,j] + Z0c_j·I[j,j]) / (2·√Z0c_j)    # incident at driven port j
+        b_i = (-V[j,i] + Z0c_i·I[j,i]) / (2·√Z0c_i)    # arriving at PASSIVE port i≠j
+
+    with ``Z0c = Z0/n_cells``.  At a passive receive port the b-wave is the
+    matched-termination voltage wave: with the port's own Z0 terminating the
+    cell, the arriving wave registers in the ``(-V + Z0·I)`` channel.  The
+    previous receive formula used ``(-V - Z0·I)``; there the port-cell
+    resistor law makes ``-V == +Z0_cell·I`` identically, so that channel
+    structurally cancels the arriving wave and a matched thru read |S21|
+    near-null (issue #308).  The corrected sign gives the DC thru limit
+    S21 = +1.
+
+    Polarity fence: rfx wire multiports whose ports share the same field
+    component are automatically voltage-polarity-consistent, so
+    off-diagonal phases are well-defined.  A multiport mixing components
+    (e.g. one ``ez`` and one ``ey`` port) carries a per-port
+    voltage-polarity ambiguity, leaving off-diagonal S entries defined only
+    up to a ±1 (pi-phase) factor; no orientation input exists to resolve it.
+
+    Mirrors ``extract_s_matrix_wire`` line-for-line.
 
     Parameters
     ----------
@@ -918,7 +965,10 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
             else:
                 n_cells_i = max(int(port_cell_counts[ri]), 1)
                 z0_cell_i = z0_i / n_cells_i
-                b_i = (-v[j, ri] - z0_cell_i * i[j, ri]) / (
+                # Passive receive port: matched-termination voltage wave
+                # (issue #308 — the old (-V - Z0·I) channel structurally
+                # cancelled the arriving wave at a matched port).
+                b_i = (-v[j, ri] + z0_cell_i * i[j, ri]) / (
                     2.0 * jnp.sqrt(z0_cell_i))
                 n_cells_j = max(int(port_cell_counts[j]), 1)
                 z0_cell_j = z0_j / n_cells_j
@@ -1085,9 +1135,12 @@ def extract_s_matrix(
                 # ``port_voltage`` returns the FDTD-sign voltage used by the
                 # legacy extractor (V = -E·dx).  The portable dump schema uses
                 # voltage positive into the DUT, so store ``-V``.  With current
-                # positive into the DUT, the independent replay formula
-                # a=(V+ZI)/2√Z, b=(V−ZI)/2√Z reproduces the production
-                # decomposition below exactly.
+                # positive into the DUT, the drive-port replay formulas
+                # a=(V+ZI)/2√Z, b=(V−ZI)/2√Z reproduce the production
+                # DIAGONAL below exactly; since issue #308 the production
+                # PASSIVE-port b-wave is role-selected to b=(V+ZI)/2√Z (the
+                # matched-termination voltage wave), so an off-diagonal
+                # replay must apply the same per-role convention.
                 raw_v[j, i, :] = np.asarray(-sprobes[i].v_dft, dtype=np.complex128)
                 raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
 
