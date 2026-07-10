@@ -504,10 +504,13 @@ def test_driver_vi_dump_with_planes_fails_loudly():
 # from port 1 and 19/14 mm from port 2) sit >= 10 cells from every port —
 # the Phase-0 pre-registration rule for the two-plane Zc/beta measurement.
 # The rejected first candidate N=3 (planes 3/6 cells) was measured
-# near-field contaminated: beta/(w/c) read 1.21-1.25 (vs mid-line
-# 1.048-1.065), Zc Im/Re grew to 9.2%, and the |S21| referee residual
-# reached -6.8% at 7 GHz (R2 stop -> placement conformed to the Phase-0
-# clean zone; one redesign, evidence-anchored).
+# near-field contaminated (R2 stop -> placement conformed to the Phase-0
+# clean zone; one redesign, evidence-anchored). Current-code (gap-trimmed
+# V) N=3 battery numbers, 2026-07-10: beta/(w/c) 1.16-1.20 (vs mid-line
+# 1.046-1.059), Zc 52.0-53.1 ohm with Im/Re to 8.2%, |S21| closed-box
+# referee residual -3.1% at 7 GHz, row energy to 1.019.  (The pre-trim
+# driver had measured beta 1.21-1.25 / Im/Re 9.2% / resid -6.8% at the
+# same placement — same class, same verdict.)
 _REFPLANE_N = 10
 
 # Phase-0 closed-box flux referee |S21| = sqrt(P_abs/P_launch), measured

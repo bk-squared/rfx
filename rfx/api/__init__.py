@@ -1138,11 +1138,14 @@ class Simulation(
             cells from every port so the two-plane Zc/beta measurement
             sits outside the port near-fields — the Phase-0
             pre-registration rule. Measured on the canonical 16 mm thru
-            (dx = 0.5 mm): N=3 planes read beta/(w/c) = 1.21-1.25 and
-            Zc Im/Re up to 9% (near-field contaminated; |S21| referee
-            residual grew to -6.8% at 7 GHz), while N=10 planes read the
-            clean mid-line beta/(w/c) = 1.045-1.065 and closed the
-            closed-box referee within 1.2% at all bins.
+            (dx = 0.5 mm, gap-trimmed V, 2026-07-10 battery): N=3 planes
+            read beta/(w/c) = 1.16-1.20 and Zc = 52-53 ohm with Im/Re up
+            to 8.2% (near-field contaminated; |S21| closed-box-referee
+            residual -3.1% at 7 GHz, row energy |S11|^2+|S21|^2 up to
+            1.019), while N=10 planes read the clean mid-line
+            beta/(w/c) = 1.046-1.059 and Zc = 47.9-48.6 ohm (Im/Re <=
+            1.2%) and closed the closed-box referee within 0.9% at all
+            bins.
         """
         if self._tfsf is not None:
             raise ValueError(
