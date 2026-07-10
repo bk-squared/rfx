@@ -551,6 +551,24 @@ def differentiable_material_fit(
 # Physically-scaled S11 calibration (AD-traceable, no self-normalization)
 # ---------------------------------------------------------------------------
 
+def _count_excited_ports(sim) -> int:
+    """Number of ports the forward pass will actively drive.
+
+    ``Simulation.forward(port_s11_freqs=...)`` injects a source at *every*
+    port whose ``excite`` flag is True (all others act as matched loads), so a
+    one-port S11 calibration requires exactly one excited port. Counts across
+    every port collection that carries an ``excite`` flag (lumped/wire, MSL,
+    coaxial, waveguide); collections whose entries have no ``excite`` attribute
+    contribute nothing.
+    """
+    n = 0
+    for attr in ("_ports", "_msl_ports", "_coaxial_ports", "_waveguide_ports"):
+        for entry in getattr(sim, attr, ()) or ():
+            if getattr(entry, "excite", False):
+                n += 1
+    return n
+
+
 def calibrate_material_s11(
     sim_factory: Callable,
     s11_measured: np.ndarray,
@@ -590,7 +608,10 @@ def calibrate_material_s11(
 
     Constraints (v1 scope): uniform single-device meshes only (no non-uniform
     mesh, no ``distributed=True``).  ``boundary="pec"`` is fine.  Diagonal S11
-    only — this is an S11-based calibration track.
+    only — this is an S11-based calibration track.  The fixture must have
+    exactly one excited port (the S11 port); any other ports must be passive
+    matched loads (``excite=False``), else the fit targets an *active*
+    reflection coefficient rather than S11 (checked before the first step).
 
     Parameters
     ----------
@@ -667,6 +688,38 @@ def calibrate_material_s11(
                               lorentz_init[:n_lorentz_poles])
 
     lorentz_offset = 1 + 2 * n_debye_poles
+
+    # ------------------------------------------------------------------
+    # One concrete pass OUTSIDE the AD tape (issue #273 corrections 2 & 3).
+    # Build the fixture once with concrete initial parameters so we can:
+    #   (2) guard the one-port S11 contract — forward() drives every
+    #       excite=True port simultaneously, so >1 excited port silently
+    #       fits an ACTIVE reflection coefficient instead of S11 and the fit
+    #       converges to biased parameters; and
+    #   (3) run preflight ONCE on concrete parameters so genuine setup
+    #       mistakes (under-resolved mesh, geometry in CPML, probe in PEC)
+    #       surface here instead of being silently absorbed into the fitted
+    #       poles. The AD loop below keeps skip_preflight=True: preflight is
+    #       not AD-traceable and must not run per iteration.
+    # ------------------------------------------------------------------
+    _eps_c, _debye_c = _params_to_debye_poles(params, n_debye_poles)
+    _lorentz_c = _params_to_lorentz_poles(params, n_lorentz_poles, lorentz_offset)
+    _probe_sim = sim_factory(_eps_c, _debye_c, _lorentz_c)
+
+    _n_excited = _count_excited_ports(_probe_sim)
+    if _n_excited != 1:
+        raise ValueError(
+            "calibrate_material_s11 fits a one-port reflection coefficient "
+            f"(S11), but sim_factory built a simulation with {_n_excited} "
+            "excited port(s). forward(port_s11_freqs=...) drives every "
+            "excite=True port simultaneously, so the fitted quantity would be "
+            "an active reflection coefficient, not S11, and the fit would "
+            "converge to biased parameters. Leave exactly one port excite=True "
+            "and mark the rest excite=False (passive matched loads)."
+        )
+
+    # Mirrors forward()'s own _auto_preflight; the AD loop skips it per step.
+    _probe_sim._auto_preflight(skip=False, context="calibrate_material_s11")
 
     # ------------------------------------------------------------------
     # Forward: log-space params -> traced poles -> Simulation.forward -> S11 -> loss

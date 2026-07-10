@@ -18,6 +18,7 @@ calibrator. Kept tiny so it runs in well under a couple of minutes on CPU.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from rfx import Simulation, Box
 from rfx.sources.sources import GaussianPulse
@@ -116,3 +117,73 @@ def test_calibrate_material_s11_recovers_eps_inf():
     assert result.final_s_params.shape == FREQS.shape
     assert drop_factor > 5.0, f"loss did not drop enough: {drop_factor:.1f}x"
     assert rel_err < 0.05, f"eps_inf not recovered: {recovered:.4f} (rel {rel_err:.3%})"
+
+
+# --------------------------------------------------------------------------
+# One-port contract guard + concrete preflight pass (issue #273 corrections)
+# --------------------------------------------------------------------------
+
+def _make_two_excited_ports(eps_inf, debye_poles, lorentz_poles):
+    """Same box as ``_make_sim`` but with TWO excited ports.
+
+    ``add_port`` defaults to ``excite=True``, so both ports are driven — the
+    exact footgun the guard must catch (the fit would target an active
+    reflection coefficient, not S11).
+    """
+    sim = _make_sim(eps_inf, debye_poles, lorentz_poles)
+    sim.add_port(
+        position=(0.009, 0.003, 0.003),
+        component="ez",
+        impedance=50.0,
+        waveform=GaussianPulse(f0=FREQ_MAX / 2, bandwidth=0.9, amplitude=1.0),
+    )
+    return sim
+
+
+def test_calibrate_rejects_multiport_excitation():
+    """>1 excited port must fail-closed before any optimization step."""
+    dummy_s11 = np.zeros(FREQS.shape, dtype=np.complex64)
+    start = DebyeFitResult(eps_inf=WRONG_EPS_INF, poles=[], fit_error=0.0)
+    with pytest.raises(ValueError, match="excited port"):
+        calibrate_material_s11(
+            _make_two_excited_ports,
+            dummy_s11,
+            FREQS,
+            n_iterations=1,
+            num_periods=NUM_PERIODS,
+            initial_guess=start,
+            verbose=False,
+        )
+
+
+def test_calibrate_runs_one_concrete_preflight(monkeypatch):
+    """Preflight runs exactly once on concrete params (skip=False), while the
+    AD loop keeps skipping it (skip=True) per step."""
+    calls = []
+    orig = Simulation._auto_preflight
+
+    def spy(self, *, skip=False, context="forward", check_ntff=True):
+        calls.append((skip, context))
+        # Swallow the concrete pass; let the tape's skipped calls fall through
+        # to the real (no-op when skip=True) implementation.
+        if not skip:
+            return
+        return orig(self, skip=skip, context=context, check_ntff=check_ntff)
+
+    monkeypatch.setattr(Simulation, "_auto_preflight", spy)
+
+    s11_measured = _true_s11()
+    start = DebyeFitResult(eps_inf=WRONG_EPS_INF, poles=[], fit_error=0.0)
+    calibrate_material_s11(
+        _make_sim,
+        s11_measured,
+        FREQS,
+        n_iterations=1,
+        num_periods=NUM_PERIODS,
+        initial_guess=start,
+        verbose=False,
+    )
+
+    concrete = [c for c in calls if c[0] is False]
+    assert concrete, f"no concrete preflight pass ran; calls={calls}"
+    assert concrete[0][1] == "calibrate_material_s11"
