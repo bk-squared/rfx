@@ -535,9 +535,15 @@ _ZC_RE_BAND = (46.0, 50.5)     # measured 47.9-48.6; Phase-0 mid-line
                                # 47.85-48.63; Phase-0 pair-dependence
                                # spread across plane pairs 44.5-51.0
 _ZC_IM_OVER_RE_MAX = 0.03      # measured <= 0.012
-_BETA_OVER_WC_BAND = (1.03, 1.08)   # measured 1.0465-1.0589; the 5-6%
-                                    # slow-wave anomaly stays FLAGGED
-                                    # (Phase-0), not explained
+_BETA_OVER_WC_BAND = (1.03, 1.08)   # measured 1.0465-1.0589. Mechanism
+# check (2026-07-10, one dx/2 rerun at fixed physical geometry and
+# identical physical plane locations on a shortened 12 mm line): the
+# slow-wave excess is dx-STABLE — 0.0781 (dx=0.5mm) -> 0.0756 (dx=0.25mm),
+# ratio 0.97, nowhere near the halving a staircase/dispersion owner
+# would show. The beta/(w/c) = 1.05-1.08 slow wave is PHYSICAL for this
+# open air-line-over-ground geometry (finite-thickness trace, non-TEM
+# fringing), not a discretization artefact. (Measured Zc showed mild dx
+# sensitivity, 48.5 -> 47.0 ohm at dx/2; beta did not.)
 _PHASE_DEEMBED_MAX_RAD = 0.02  # measured <= 8.4e-4 (~24x margin)
 _MIXED_SV_MAX = 1.05           # measured 1.0299 — see honesty label
 _ENERGY_ROW_MAX = 1.02         # measured |S11|^2+|S21|^2 <= 1.0003
@@ -620,8 +626,10 @@ def test_refplane_thru_measured_line_constants(refplane_thru):
     radiating microstrip is not a perfect two-wave line), so the band is
     a placement-sensitive consistency gate, not a universal constant.
     beta/(w/c) gate [1.03, 1.08]: measured 1.0465-1.0589; Phase-0
-    1.048-1.061 — the 5-6% slow-wave anomaly stays FLAGGED (Phase 0),
-    this gate locks the measured class, it does not explain it."""
+    1.048-1.061 — the slow wave is attributed PHYSICAL for this open
+    line by the one dx/2 mechanism check (excess dx-stable, ratio 0.97;
+    see the band comment above), so this gate locks a physical measured
+    class, not a discretization artefact."""
     _, diag = refplane_thru
     w = 2 * np.pi * _FREQS
     for p in (0, 1):
