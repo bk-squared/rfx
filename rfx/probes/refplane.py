@@ -484,7 +484,14 @@ def decompose_wire_s_matrix_with_reference_planes(
     dt, dx : float — timestep and cell size (uniform lane).
     return_line_diagnostics : bool
         When True also return a dict with per-port measured ``zc`` and
-        ``beta`` arrays plus the plane wave pairs (R5 inspection surface).
+        ``beta`` arrays plus the raw at-plane wave pairs (R5 inspection
+        surface): ``diagnostics["plane_waves"][(j, p, slot)] =
+        (outgoing, incoming)`` for drive pass ``j``, port ``p``'s plane
+        ``slot`` (0 = reference plane, 1 = 2N plane; drive-port slot-1
+        pairs and all slot-0 pairs are recorded).  These are the
+        NON-de-embedded waves at the plane — the zero-free-parameter
+        conservation identity ``(|out|^2 - |inc|^2)/Re(Zc)`` equals the
+        net line power there (Phase-0 falsifier F2).
     """
     from rfx.probes.probes import decompose_wire_s_matrix
 
@@ -496,7 +503,8 @@ def decompose_wire_s_matrix_with_reference_planes(
     )
     n_ports = S.shape[0]
     opted = [p for p in range(n_ports) if bool(plane_enabled[p])]
-    diagnostics: dict = {"zc": {}, "beta": {}, "opted": tuple(opted)}
+    diagnostics: dict = {"zc": {}, "beta": {}, "opted": tuple(opted),
+                         "plane_waves": {}}
     if len(opted) >= 2:
         zc = {}
         beta = {}
@@ -508,12 +516,14 @@ def decompose_wire_s_matrix_with_reference_planes(
             v1 = np.asarray(plane_v[p, p, 0], dtype=np.complex128)
             v2 = np.asarray(plane_v[p, p, 1], dtype=np.complex128)
             zc[p] = refplane_zc_two_plane(v1, i1, v2, i2)
-            out1, _ = refplane_split(v1, i1, zc[p], outboard_signs[p])
-            out2, _ = refplane_split(v2, i2, zc[p], outboard_signs[p])
+            out1, in1 = refplane_split(v1, i1, zc[p], outboard_signs[p])
+            out2, in2 = refplane_split(v2, i2, zc[p], outboard_signs[p])
             beta[p] = refplane_beta(out1, out2,
                                     int(plane_offsets[p]) * float(dx))
             diagnostics["zc"][p] = zc[p]
             diagnostics["beta"][p] = beta[p]
+            diagnostics["plane_waves"][(p, p, 0)] = (out1, in1)
+            diagnostics["plane_waves"][(p, p, 1)] = (out2, in2)
         for j in opted:
             d_j = int(plane_offsets[j]) * float(dx)
             vj = np.asarray(plane_v[j, j, 0], dtype=np.complex128)
@@ -531,7 +541,9 @@ def decompose_wire_s_matrix_with_reference_planes(
                 vi_ = np.asarray(plane_v[j, i, 0], dtype=np.complex128)
                 ii = refplane_centered_current(
                     plane_im[j, i, 0], plane_ip[j, i, 0], freqs, dt)
-                _, in_i = refplane_split(vi_, ii, zc[i], outboard_signs[i])
+                out_i, in_i = refplane_split(vi_, ii, zc[i],
+                                             outboard_signs[i])
+                diagnostics["plane_waves"][(j, i, 0)] = (out_i, in_i)
                 b_port = (in_i * np.exp(-1j * beta[i] * d_i)
                           / np.sqrt(zc[i].real))
                 S[i, j, :] = (b_port / safe_a).astype(np.complex64)

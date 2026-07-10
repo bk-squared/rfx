@@ -252,6 +252,21 @@ def test_decompose_refplane_two_port_synthetic_matched():
     expect = np.exp(-1j * s["beta_true"] * s["L"])
     assert np.max(np.abs(S[1, 0] - expect)) < 1e-6
     assert np.max(np.abs(S[0, 1] - expect)) < 1e-6
+    # R5 wave-pair diagnostics (Phase-0 falsifier F2 surface): the
+    # at-plane pairs are exposed and the zero-free-parameter conservation
+    # identity (|out|^2 - |inc|^2)/Re(Zc) is plane-invariant (exact on the
+    # synthetic lossless line; matched load => incoming ~ 0 at the drive).
+    d = s["n"] * s["dx"]
+    out00, in00 = diag["plane_waves"][(0, 0, 0)]
+    assert np.max(np.abs(in00)) < 1e-12
+    assert np.max(np.abs(
+        out00 - (1.0 + 0.3j) * np.exp(-1j * s["beta_true"] * d))) < 1e-9
+    p_net_0 = (np.abs(out00) ** 2 - np.abs(in00) ** 2) / diag["zc"][0].real
+    out10, in10 = diag["plane_waves"][(0, 1, 0)]
+    p_net_1 = (np.abs(in10) ** 2 - np.abs(out10) ** 2) / diag["zc"][1].real
+    # power flows drive -> load: at the receive plane the port-incoming
+    # wave carries it, and on the lossless line the two planes agree.
+    assert np.max(np.abs(p_net_1 / p_net_0 - 1)) < 1e-9
 
 
 def test_decompose_refplane_two_port_synthetic_reflective():
