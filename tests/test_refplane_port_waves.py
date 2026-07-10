@@ -479,3 +479,174 @@ def test_driver_vi_dump_with_planes_fails_loudly():
     with pytest.raises(NotImplementedError, match="return_vi_dump"):
         compute_lumped_wire_s_matrix_via_scan(
             sim, _FREQS, n_steps=64, return_vi_dump=True)
+
+
+# ===========================================================================
+# SLOW physics battery (opt-in: -m slow_physics) — plane path on the thru
+# ===========================================================================
+#
+# Fixture choice N=10: both planes (10 and 20 cells outboard, x=13/18 mm
+# from port 1 and 19/14 mm from port 2) sit >= 10 cells from every port —
+# the Phase-0 pre-registration rule for the two-plane Zc/beta measurement.
+# The rejected first candidate N=3 (planes 3/6 cells) was measured
+# near-field contaminated: beta/(w/c) read 1.21-1.25 (vs mid-line
+# 1.048-1.065), Zc Im/Re grew to 9.2%, and the |S21| referee residual
+# reached -6.8% at 7 GHz (R2 stop -> placement conformed to the Phase-0
+# clean zone; one redesign, evidence-anchored).
+_REFPLANE_N = 10
+
+# Phase-0 closed-box flux referee |S21| = sqrt(P_abs/P_launch), measured
+# 2026-07-10 (leak-free 6-face boxes; issue #313 Phase-0 comment).
+_REFEREE_S21 = np.array([1.0066, 1.0052, 1.0033, 1.0007, 0.99775,
+                         0.99441, 0.99093, 0.98751, 0.98431])
+
+# Measured plane-path values (THIS implementation, gap-trimmed V, N=10,
+# 4000 steps, 2026-07-10):
+#   |S21| = 0.98251..0.99840; |S21|/referee - 1 = -0.82%..-0.18% per bin
+#   reciprocity rel <= 0.38%; Zc Re 47.94..48.62 ohm (both ports),
+#   Im/Re <= 1.2%; beta/(w/c) = 1.0465..1.0589;
+#   |arg(S21) + beta_meas*L| <= 8.4e-4 rad; max singular value of the
+#   mixed matrix 1.0299 max; |S11|^2+|S21|^2 <= 1.0003.
+# Gates carry margin over these measured values and are labelled with
+# their referee anchors. They are referee-consistency + regression gates
+# on the canonical thru, NOT external cross-solver validation.
+_S21_REFEREE_RESID_BAND = (-0.025, 0.010)   # Phase-0 arch class <= 2.5%
+_S21_LEGACY_BAND_HI = 0.85                  # committed legacy lock band hi
+_RECIP_REL_MAX = 0.02
+_ZC_RE_BAND = (46.0, 50.5)     # measured 47.9-48.6; Phase-0 mid-line
+                               # 47.85-48.63; Phase-0 pair-dependence
+                               # spread across plane pairs 44.5-51.0
+_ZC_IM_OVER_RE_MAX = 0.03      # measured <= 0.012
+_BETA_OVER_WC_BAND = (1.03, 1.08)   # measured 1.0465-1.0589; the 5-6%
+                                    # slow-wave anomaly stays FLAGGED
+                                    # (Phase-0), not explained
+_PHASE_DEEMBED_MAX_RAD = 0.02  # measured <= 8.4e-4 (~24x margin)
+_MIXED_SV_MAX = 1.05           # measured 1.0299 — see honesty label
+_ENERGY_ROW_MAX = 1.02         # measured |S11|^2+|S21|^2 <= 1.0003
+
+
+@pytest.fixture(scope="module")
+def refplane_thru():
+    """Opted thru through the production driver (~2.5 min);
+    quotes preflight verbatim; returns (S complex128, diagnostics)."""
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    sim = _build_thru(reference_plane_cells=_REFPLANE_N)
+    issues = [str(i) for i in sim.preflight()]
+    for msg in issues:
+        print(f"\n[refplane thru] preflight (verbatim): {msg}")
+    # Exactly the one known advisory (the infinite ground plane IS the
+    # microstrip return). Anything else = fixture drift, stop.
+    assert len(issues) == 1 and _PEC_FACES_ADVISORY_SNIPPET in issues[0], (
+        f"refplane thru preflight drifted from the baseline: {issues}")
+    S, freqs, diag = compute_lumped_wire_s_matrix_via_scan(
+        sim, _FREQS, n_steps=_N_STEPS, return_refplane_diagnostics=True)
+    S = np.asarray(S).astype(np.complex128)
+    assert S.shape == (2, 2, len(_FREQS))
+    assert np.all(np.isfinite(S))
+    with np.printoptions(precision=5, suppress=False):
+        print(f"[refplane thru] |S21|={np.abs(S[1, 0])}")
+        print(f"[refplane thru] |S21|/referee={np.abs(S[1, 0]) / _REFEREE_S21}")
+        print(f"[refplane thru] Zc0={diag['zc'][0]}")
+        print(f"[refplane thru] Zc1={diag['zc'][1]}")
+        w = 2 * np.pi * _FREQS
+        print(f"[refplane thru] beta0/(w/c)={diag['beta'][0] / (w / C0)}")
+    return S, diag
+
+
+@pytest.mark.slow_physics
+def test_refplane_thru_s21_tracks_box_referee(refplane_thru):
+    """Plane-path |S21| within the Phase-0 closed-box referee class.
+
+    HONESTY LABEL: gate band [-2.5%, +1%] per bin against the Phase-0
+    referee = the Phase-0 reference-plane-architecture residual class
+    (arch |S21| landed within 2.5% of the box referee at all bins);
+    measured here -0.82%..-0.18%. Referee-consistency on the canonical
+    thru — the external openEMS thru remains the final gate (#313)."""
+    S, _ = refplane_thru
+    resid = np.abs(S[1, 0]) / _REFEREE_S21 - 1.0
+    lo, hi = _S21_REFEREE_RESID_BAND
+    assert np.all(resid >= lo) and np.all(resid <= hi), (
+        f"plane-path |S21| left the Phase-0 referee class: resid={resid}")
+
+
+@pytest.mark.slow_physics
+def test_refplane_thru_leaves_legacy_lock_band_loudly(refplane_thru):
+    """LOUD RE-BASELINE (issue #313 falsifier item 8): the plane path
+    must move |S21| OUT of the committed legacy regression-lock band
+    ([0.35, 0.85] in test_lumped_twoport_vi_validation_battery.py, the
+    shipped kappa(f)=1.49-1.86 deflation envelope). If this fails, the
+    plane path stopped moving the number and the whole lane is void."""
+    S, _ = refplane_thru
+    s21 = np.abs(S[1, 0])
+    assert s21.min() > _S21_LEGACY_BAND_HI, (
+        f"plane-path |S21| fell back into the legacy deflation band: "
+        f"min={s21.min():.4f} <= {_S21_LEGACY_BAND_HI} — the drive-side "
+        "kappa deflation returned (issue #313)")
+
+
+@pytest.mark.slow_physics
+def test_refplane_thru_reciprocity(refplane_thru):
+    """S21 vs S12 on the symmetric thru (measured <= 0.38% rel)."""
+    S, _ = refplane_thru
+    rel = np.abs(S[1, 0] - S[0, 1]) / np.abs(S[1, 0])
+    assert np.all(rel <= _RECIP_REL_MAX), f"reciprocity broke: {rel}"
+
+
+@pytest.mark.slow_physics
+def test_refplane_thru_measured_line_constants(refplane_thru):
+    """Measured Zc and beta land in the Phase-0 mid-line class.
+
+    Zc gate [46.0, 50.5] ohm: measured 47.94-48.62 here; Phase-0
+    mid-line pair (13/19 mm) measured 47.85-48.63; the Phase-0 data's
+    pair-to-pair spread across plane pairs is 44.5-51.0 ohm (the open
+    radiating microstrip is not a perfect two-wave line), so the band is
+    a placement-sensitive consistency gate, not a universal constant.
+    beta/(w/c) gate [1.03, 1.08]: measured 1.0465-1.0589; Phase-0
+    1.048-1.061 — the 5-6% slow-wave anomaly stays FLAGGED (Phase 0),
+    this gate locks the measured class, it does not explain it."""
+    _, diag = refplane_thru
+    w = 2 * np.pi * _FREQS
+    for p in (0, 1):
+        zc = diag["zc"][p]
+        assert np.all(zc.real >= _ZC_RE_BAND[0]) \
+            and np.all(zc.real <= _ZC_RE_BAND[1]), (
+                f"port {p} Zc left the measured class: {zc.real}")
+        assert np.all(np.abs(zc.imag / zc.real) <= _ZC_IM_OVER_RE_MAX), (
+            f"port {p} Zc Im/Re too large: {zc.imag / zc.real}")
+        b = diag["beta"][p] / (w / C0)
+        assert np.all(b >= _BETA_OVER_WC_BAND[0]) \
+            and np.all(b <= _BETA_OVER_WC_BAND[1]), (
+                f"port {p} beta/(w/c) left the measured class: {b}")
+
+
+@pytest.mark.slow_physics
+def test_refplane_thru_deembedded_phase_tracks_measured_beta(refplane_thru):
+    """arg(S21) after de-embedding = -beta_meas*L to sub-milliradian
+    (measured <= 8.4e-4 rad; gate 0.02 rad, ~24x margin). This is the
+    de-embed self-consistency witness: the port-plane-referenced thru
+    phase must equal the measured line phase over the port spacing."""
+    S, diag = refplane_thru
+    beta_avg = 0.5 * (diag["beta"][0] + diag["beta"][1])
+    dev = np.angle(S[1, 0] * np.exp(1j * beta_avg * _L))
+    assert np.all(np.abs(dev) <= _PHASE_DEEMBED_MAX_RAD), (
+        f"de-embedded S21 phase left the measured-beta track: {dev}")
+
+
+@pytest.mark.slow_physics
+def test_refplane_thru_energy_and_passivity_labeled(refplane_thru):
+    """Energy/passivity envelope of the MIXED matrix — honesty label.
+
+    The matrix mixes byte-frozen legacy diagonals with plane-referenced
+    off-diagonals (separately calibrated), and the Phase-0 box referee
+    itself reads sqrt(P_abs/P_launch) up to 1.0066 at 3 GHz (~1-3%
+    flux-accounting envelope: residual box leakage + finite DFT). Small
+    >1 excursions of the singular values (measured max 1.0299) are that
+    accounting envelope, NOT validated gain — this gate bounds the
+    envelope, it does not certify passivity. Row energy
+    |S11|^2+|S21|^2 measured <= 1.0003."""
+    S, _ = refplane_thru
+    sv = np.array([np.linalg.svd(S[:, :, k], compute_uv=False)[0]
+                   for k in range(len(_FREQS))])
+    assert np.all(sv <= _MIXED_SV_MAX), f"singular values blew up: {sv}"
+    en = np.abs(S[0, 0]) ** 2 + np.abs(S[1, 0]) ** 2
+    assert np.all(en <= _ENERGY_ROW_MAX), f"row energy blew up: {en}"
