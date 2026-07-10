@@ -674,7 +674,8 @@
         "boundary",
         "cpml_layers",
         "tfsf_margin",
-        "ntff_offset"
+        "ntff_offset",
+        "subtract_incident_reference"
       ]
     },
     "convergence_study": {
