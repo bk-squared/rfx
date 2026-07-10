@@ -224,10 +224,13 @@ _THRU_S21_BAND = (0.35, 0.85)
 # Measured signed per-bin phase deviation arg(S21) - (-2*pi*f*L/c),
 # wrapped: -0.754891..-0.335259 rad (amended receive sign, 2026-07-10
 # rerun). Band [-1.1, -0.1] rad (margins ~0.35/0.24 rad; both edges
-# well inside (-pi, pi) so wrapped values stay comparable). The DC-limit
-# sign is RESOLVED (module docstring: the low-f falsifier measured
-# S21(DC) -> +1 under this sign; the first-cut sign measured -1 and was
-# amended in the same PR); the deviation is a smooth ~16.6 ps feed-post
+# well inside (-pi, pi) so wrapped values stay comparable). HONESTY
+# LABEL — REGRESSION LOCK on the deviation VALUES (flux-vs-port
+# magnitude delta OPEN, kappa — module docstring), but the overall SIGN
+# is physics-anchored by the DC witness: the low-f falsifier measured
+# S21(DC) -> +1 under this sign (dev -0.024 rad at 0.5 GHz, tracking
+# the analytic delay); the first-cut sign measured -1 and was amended
+# in the same PR. The deviation is a smooth ~16.6 ps feed-post
 # group-delay excess, physical, not a convention artefact. Signed on
 # purpose: conjugation moves 8/9 measured bins out of band (verified
 # live in the test; conj dev is NOT -dev, the analytic reference phase
@@ -545,10 +548,12 @@ def test_thru_s21_phase_band_is_sign_sensitive(thru_smatrix):
     phasors, outgoing wave e^{-j*beta*x}). Measured dev (amended receive
     sign) = -0.754891..-0.335259 rad; band [-1.1, -0.1] rad — a smooth
     ~16.6 ps feed-post group-delay excess over the 53.4 ps line delay,
-    no pi offset. The DC-limit sign is RESOLVED (module docstring: the
-    low-f falsifier measured S21(DC) -> +1 under the amended sign
-    (V - Z0*I); the first-cut sign measured -1 and was amended in this
-    same PR). Sign AND magnitude are gated (per-bin, signed) — verified
+    no pi offset. HONESTY LABEL — REGRESSION LOCK on the deviation
+    values (flux-vs-port magnitude delta OPEN, kappa — module
+    docstring); the overall SIGN is physics-anchored by the DC witness:
+    the low-f falsifier measured S21(DC) -> +1 under the amended sign
+    (V - Z0*I) (dev -0.024 rad at 0.5 GHz); the first-cut sign measured
+    -1 and was amended in this same PR. Sign AND magnitude are gated (per-bin, signed) — verified
     NOT conjugation-invariant: the test also asserts conj(S21) violates
     the band (on the measured data 8/9 bins leave it; conj dev =
     +2.347..-0.834 rad, only the 7 GHz bin stays inside), so the
