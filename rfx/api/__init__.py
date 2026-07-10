@@ -1131,8 +1131,12 @@ class Simulation(
             1-port S11 results are unaffected. Requires a wire port
             (``extent=``) with an explicit ``direction`` transverse to
             the port component, a PEC signal trace uniform across both
-            planes, and the uniform-mesh ``run()`` lane (other lanes
-            raise ``NotImplementedError``).
+            planes, and the uniform-mesh ``run()`` lane: the
+            non-uniform and subgridded lanes raise
+            ``NotImplementedError`` with the opt-in set, and the
+            distributed lane does not support ``compute_s_params`` at
+            all (it warns that the kwarg is unsupported and ignores
+            it).
 
             Choosing N: place BOTH planes (N and 2N cells) roughly >= 10
             cells from every port so the two-plane Zc/beta measurement

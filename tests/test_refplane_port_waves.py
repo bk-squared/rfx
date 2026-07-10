@@ -173,14 +173,14 @@ def test_zc_beta_split_deembed_recover_synthetic_line():
     assert np.max(np.abs(a_port - f0)) < 1e-9
 
 
-def _two_port_synthetic(gamma_load):
+def _two_port_synthetic(gamma_load, zc_true=48.3, beta_true=None):
     """Full synthetic 2-port plane dataset (drive 0 + mirrored drive 1)."""
     freqs = _FREQS
     w = 2 * np.pi * freqs
     dt = 9.6e-13
     dx = _DX
-    zc_true = 48.3
-    beta_true = 1.055 * w / C0
+    if beta_true is None:
+        beta_true = 1.055 * w / C0
     n = 3
     d = n * dx
     L = _L
@@ -494,6 +494,161 @@ def test_driver_vi_dump_with_planes_fails_loudly():
     with pytest.raises(NotImplementedError, match="return_vi_dump"):
         compute_lumped_wire_s_matrix_via_scan(
             sim, _FREQS, n_steps=64, return_vi_dump=True)
+
+
+# ===========================================================================
+# FAST — extraction-time witnesses (Zc reality warning + beta wrap guard)
+# ===========================================================================
+
+def _decompose(s, **kw):
+    return decompose_wire_s_matrix_with_reference_planes(
+        s["v_all"], s["i_all"], s["z0"], s["counts"],
+        plane_v=s["plane_v"], plane_im=s["plane_im"], plane_ip=s["plane_ip"],
+        plane_enabled=np.array([True, True]),
+        plane_offsets=np.array([s["n"], s["n"]]),
+        outboard_signs=np.array([1, -1]),
+        freqs=s["freqs"], dt=s["dt"], dx=s["dx"], **kw)
+
+
+def test_zc_witness_warns_on_contaminated_synthetic_line():
+    """A synthetic line whose measured Zc carries the N=3 near-field
+    signature (Im/Re = 8.2%, the measured contaminated class) must warn,
+    naming the near-field mechanism and the reference_plane_cells fix."""
+    s = _two_port_synthetic(gamma_load=0.0,
+                            zc_true=48.3 * (1.0 + 0.082j))
+    with pytest.warns(UserWarning,
+                      match=r"Im\(Zc\)/Re\(Zc\).*NEAR FIELD"):
+        _decompose(s)
+
+
+def test_zc_witness_boundary_class_silent_at_one_percent():
+    """Im/Re = 1.2% is the measured CLEAN class (N=10) — below the 3%
+    class boundary, no warning."""
+    s = _two_port_synthetic(gamma_load=0.0,
+                            zc_true=48.3 * (1.0 + 0.012j))
+    import warnings as _w
+    with _w.catch_warnings(record=True) as rec:
+        _w.simplefilter("always")
+        _decompose(s)
+    assert not [r for r in rec if "Im(Zc)" in str(r.message)], (
+        "Zc witness warned inside the measured clean class")
+
+
+def test_zc_witness_silent_on_clean_line():
+    """The clean real-Zc synthetic emits no warning at all."""
+    s = _two_port_synthetic(gamma_load=0.0)
+    import warnings as _w
+    with _w.catch_warnings(record=True) as rec:
+        _w.simplefilter("always")
+        _decompose(s)
+    assert not rec, [str(r.message) for r in rec]
+
+
+def test_beta_wrap_guard_rejects_band_edge():
+    """Per-bin |beta|*N*dx above 0.9*pi (phase wrap ambiguity between the
+    plane pair) must fail loudly, telling the user to reduce N or the top
+    frequency."""
+    d = 3 * _DX
+    w = 2 * np.pi * _FREQS
+    beta_bad = (0.95 * np.pi / d) * np.ones_like(w)
+    s = _two_port_synthetic(gamma_load=0.0, beta_true=beta_bad)
+    with pytest.raises(ValueError, match=r"phase-wrap.*Reduce"):
+        _decompose(s)
+
+
+def test_beta_guard_rejects_nonpositive_beta():
+    """A non-positive measured beta (wrong-way phase progression — a wrap
+    or a broken measurement, never a physical forward wave) must fail
+    loudly rather than de-embed with it."""
+    w = 2 * np.pi * _FREQS
+    s = _two_port_synthetic(gamma_load=0.0, beta_true=-1.055 * w / C0)
+    with pytest.raises(ValueError, match="non-positive"):
+        _decompose(s)
+
+
+# ===========================================================================
+# FAST — preflight placement advisories (issue #313 Phase-0 rule)
+# ===========================================================================
+
+def test_preflight_near_field_advisory_below_n10():
+    report = _build_thru(reference_plane_cells=3).preflight()
+    near = report.by_code("refplane_near_field")
+    assert near, f"expected refplane_near_field, got {[i.code for i in report]}"
+    assert any("8.2%" in i for i in near)
+    assert not report.by_code("refplane_partial_optin"), (
+        "both ports opted in — partial-opt-in advisory must not fire")
+
+
+def test_preflight_partial_optin_advisory():
+    """Opting in only ONE of two wire ports leaves the off-diagonals on
+    the legacy path silently — preflight must say so."""
+    sim = Simulation(
+        freq_max=10e9, domain=_DOMAIN, dx=_DX,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=8,
+    )
+    sim.add(
+        Box((_X1 - _DX, _Y_MID - _W / 2, _H),
+            (_X2 + _DX, _Y_MID + _W / 2, _H + _DX)),
+        material="pec",
+    )
+    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
+    sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="-x",
+                 reference_plane_cells=10)
+    sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="+x")
+    report = sim.preflight()
+    partial = report.by_code("refplane_partial_optin")
+    assert partial, (
+        f"expected refplane_partial_optin, got {[i.code for i in report]}")
+    assert any("legacy" in i for i in partial)
+
+
+def test_preflight_silent_at_n10_all_opted():
+    report = _build_thru(reference_plane_cells=10).preflight()
+    assert not report.by_code("refplane_near_field")
+    assert not report.by_code("refplane_partial_optin")
+
+
+def test_preflight_silent_without_optin():
+    report = _build_thru().preflight()
+    assert not report.by_code("refplane_near_field")
+    assert not report.by_code("refplane_partial_optin")
+
+
+# ===========================================================================
+# FAST — non-uniform lane end-to-end (finding 7: grading profile + run())
+# ===========================================================================
+
+def test_nonuniform_lane_end_to_end_raises():
+    """A real graded dz_profile routed through run(compute_s_params=True)
+    hits the NU lane and must raise, not silently return legacy
+    off-diagonals (end-to-end witness for the unit-level guard above)."""
+    dz = np.concatenate([np.full(10, 0.4e-3), np.full(12, 0.5e-3)])
+    assert abs(float(np.sum(dz)) - _DOMAIN[2]) < 1e-12
+    sim = Simulation(
+        freq_max=10e9, domain=_DOMAIN, dx=_DX, dz_profile=dz,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=8,
+    )
+    sim.add(
+        Box((_X1 - _DX, _Y_MID - _W / 2, _H),
+            (_X2 + _DX, _Y_MID + _W / 2, _H + _DX)),
+        material="pec",
+    )
+    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
+    sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="-x",
+                 reference_plane_cells=3)
+    sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="+x",
+                 reference_plane_cells=3)
+    with pytest.raises(NotImplementedError, match="uniform single-device"):
+        sim.run(n_steps=8, compute_s_params=True, s_param_freqs=_FREQS,
+                skip_preflight=True)
 
 
 # ===========================================================================

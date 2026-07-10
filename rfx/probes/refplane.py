@@ -59,6 +59,7 @@ accumulators).
 
 from __future__ import annotations
 
+import warnings
 from typing import NamedTuple
 
 import numpy as np
@@ -68,6 +69,21 @@ import jax.numpy as jnp
 _COMP_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 _H_OF_AXIS = {0: "hx", 1: "hy", 2: "hz"}
 _AXIS_OF_NAME = {"x": 0, "y": 1, "z": 2}
+
+# Zc reality witness: near-field-contaminated planes show up in the measured
+# line impedance as an imaginary part (a lossless uniform line reads a
+# (near-)real Zc).  Measured provenance (canonical 16 mm thru, dx = 0.5 mm,
+# gap-trimmed V, 2026-07-10 battery): N=3 planes in the port near field read
+# max|Im(Zc)/Re(Zc)| = 8.2%; clean N=10 mid-line planes read <= 1.2%.  0.03
+# is the class boundary between those two measured classes (not a derived
+# threshold).
+_ZC_IM_RE_WARN_RATIO = 0.03
+
+# Beta wrap guard: the measured per-bin beta comes from the phase angle
+# between two planes separated by N*dx, which is unambiguous only for
+# |beta|*N*dx < pi.  Guard at 90% of the wrap limit (safety margin, not a
+# measured constant — the measurement is exactly ambiguous AT pi).
+_BETA_WRAP_GUARD_FRACTION = 0.9
 
 
 class WireRefPlaneSpec(NamedTuple):
@@ -516,10 +532,48 @@ def decompose_wire_s_matrix_with_reference_planes(
             v1 = np.asarray(plane_v[p, p, 0], dtype=np.complex128)
             v2 = np.asarray(plane_v[p, p, 1], dtype=np.complex128)
             zc[p] = refplane_zc_two_plane(v1, i1, v2, i2)
+            # Zc reality witness (see _ZC_IM_RE_WARN_RATIO provenance): a
+            # large imaginary part in the measured line impedance means the
+            # planes sit in the port near field, where reactive fields
+            # contaminate the two-plane V/I invariant.
+            _re = np.abs(zc[p].real)
+            _im_re = float(np.max(
+                np.abs(zc[p].imag) / np.where(_re > 0.0, _re, 1.0)))
+            if _im_re > _ZC_IM_RE_WARN_RATIO:
+                warnings.warn(
+                    f"reference-plane port {p}: measured line impedance has "
+                    f"max|Im(Zc)/Re(Zc)| = {_im_re:.3f} > "
+                    f"{_ZC_IM_RE_WARN_RATIO} — a lossless uniform line reads "
+                    "a (near-)real Zc, so this indicates the reference "
+                    "planes sit in the port NEAR FIELD (reactive port "
+                    "fields contaminate the two-plane V/I invariant; "
+                    "measured 8.2% at N=3 vs <= 1.2% at N=10 on the "
+                    "canonical thru). The plane off-diagonals may be "
+                    "biased; increase reference_plane_cells so both planes "
+                    "(N and 2N cells) sit >= 10 cells from every port.",
+                    UserWarning, stacklevel=2)
             out1, in1 = refplane_split(v1, i1, zc[p], outboard_signs[p])
             out2, in2 = refplane_split(v2, i2, zc[p], outboard_signs[p])
-            beta[p] = refplane_beta(out1, out2,
-                                    int(plane_offsets[p]) * float(dx))
+            d_sep = int(plane_offsets[p]) * float(dx)
+            beta[p] = refplane_beta(out1, out2, d_sep)
+            # Beta wrap guard: the two-plane phase is unambiguous only for
+            # 0 < beta*N*dx < pi.  Both N and the extraction frequencies
+            # are known here, so fail loudly instead of de-embedding with
+            # a wrapped (or unphysical non-positive) beta.
+            _bd = np.abs(beta[p]) * d_sep
+            if np.any(beta[p] <= 0.0) or np.any(
+                    _bd > _BETA_WRAP_GUARD_FRACTION * np.pi):
+                raise ValueError(
+                    f"reference-plane port {p}: the measured per-bin beta "
+                    "is non-positive or too close to the +-pi phase-wrap "
+                    "limit of the two-plane measurement "
+                    f"(min beta = {float(np.min(beta[p])):.4g} rad/m, "
+                    f"max |beta|*N*dx = {float(np.max(_bd)):.4g} rad vs "
+                    f"guard {_BETA_WRAP_GUARD_FRACTION}*pi = "
+                    f"{_BETA_WRAP_GUARD_FRACTION * np.pi:.4g} rad over the "
+                    f"plane separation N*dx = {d_sep:.4g} m). Reduce "
+                    "reference_plane_cells (N) or the top extraction "
+                    "frequency — both are known at extraction time.")
             diagnostics["zc"][p] = zc[p]
             diagnostics["beta"][p] = beta[p]
             diagnostics["plane_waves"][(p, p, 0)] = (out1, in1)

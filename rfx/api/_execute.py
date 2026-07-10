@@ -748,7 +748,12 @@ class _ExecuteMixin:
                                 "reach past another port at "
                                 f"{_other.position} (index {_oi}). Reduce "
                                 "N so both planes stay on the uniform "
-                                "line between the ports.")
+                                "line between the ports. Note: this check "
+                                "compares line-axis indices only "
+                                "(conservative), so a TRANSVERSELY "
+                                "separated port on a different parallel "
+                                "trace also trips it — the check can be "
+                                "revisited if that layout is needed.")
                     wire_refplane_specs.extend(build_wire_refplane_specs(
                         grid=grid,
                         port_cells=wp_cells,

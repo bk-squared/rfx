@@ -6,6 +6,36 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — opt-in reference-plane port waves for the wire S-matrix off-diagonals (`add_port(reference_plane_cells=)`, issue #313)
+
+- `add_port(..., extent=..., direction=..., reference_plane_cells=N)` registers
+  two line-V/I reference planes at N and 2N cells outboard (into the DUT) and
+  computes the off-diagonal `S[i, j]` (both ports opted in) from the plane
+  waves: forward/backward split with the **measured** two-plane line impedance
+  and phase-only de-embedding with the **measured** per-bin beta. The Phase-0
+  closed-box flux referee showed the port-cell wave pair does not conserve
+  power (the port plane is near-field dominated) while the plane waves close
+  the power budget; the plane path removes the drive-side |S21| deflation
+  kappa(f) = 1.49–1.86 of issue #313.
+- Default (`reference_plane_cells=None`) is **byte-identical** to the shipped
+  behaviour, and the diagonal `S_jj` always stays on the byte-frozen legacy
+  path either way — `forward()` / 1-port S11 results are unaffected.
+- Uniform-`run()`-lane only: the non-uniform and subgridded lanes raise
+  `NotImplementedError` with the opt-in set (the distributed lane does not
+  support `compute_s_params` at all, warned-unsupported).
+- Placement guidance: put BOTH planes (N and 2N cells) >= 10 cells from every
+  port (Phase-0 pre-registration rule). N=3 planes measured near-field
+  contamination on the canonical thru (Zc Im/Re to 8.2%, beta/(w/c)
+  1.16–1.20, closed-box-referee |S21| residual -3.1%); a preflight advisory
+  fires below N=10, a UserWarning fires at extraction when the measured Zc
+  shows the contamination signature, and a wrapped/non-positive measured
+  beta fails loudly instead of de-embedding with it.
+- Honesty framing (matching the docstring): the supporting numbers are from
+  the canonical 16 mm thru battery (dx = 0.5 mm, 2026-07-10) — a single
+  geometry class, not an external cross-solver validation; the diagnostics
+  (measured `zc`, `beta`, at-plane wave pairs) are exposed for inspection
+  rather than asserted as validated beyond that envelope.
+
 ### Fixed — `forward()` / `optimize()` are now wrappable in an outer `jax.jit` (blind-docs finding)
 
 - `_assemble_materials` decided whether to return the PEC mask via
