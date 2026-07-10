@@ -27,7 +27,7 @@ import numpy as np
 from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays
 from rfx.farfield import (
-    NTFFBox, compute_far_field,
+    FarFieldResult, NTFFBox, compute_far_field,
 )
 from rfx.sources.tfsf import init_tfsf
 from rfx.simulation import run
@@ -116,6 +116,7 @@ def compute_rcs(
     cpml_layers: int = 8,
     tfsf_margin: int = 3,
     ntff_offset: int = 1,
+    subtract_incident_reference: bool = False,
 ) -> RCSResult:
     """Compute radar cross section of the scatterer defined in materials.
 
@@ -159,6 +160,20 @@ def compute_rcs(
         for the backscatter/monostatic bin, but is NOT a validated
         bistatic setup, and increasing it does not close the oblique gap
         at test scale.
+    subtract_incident_reference : bool
+        If True (default False), run a second vacuum (no-scatterer) pass
+        with the identical TFSF+NTFF setup and subtract its far-field from
+        the target's at the COMPLEX level (E_scat = E_far[target] -
+        E_far[vacuum]) before forming the RCS. This is the standard
+        total-field/scattered-field normalization; it removes the residual
+        TFSF-boundary incident-field leakage that the NTFF box otherwise
+        integrates into a spurious forward-oblique lobe (issue #280).
+        Doubles the solve cost. Default False keeps the validated
+        monostatic path byte-identical; opt in for the bistatic pattern.
+        Note: ``monostatic_rcs`` is always computed from the raw (unsubtracted)
+        run regardless of this flag -- the leakage nulls at backscatter (~90 dB
+        down), so subtraction would change it by <0.02 dB, and keeping the
+        validated monostatic extraction untouched is intentional.
 
     Returns
     -------
@@ -195,10 +210,49 @@ def compute_rcs(
     ``ntff_offset``: measured at test scale it does not close the oblique
     gap (offset 1->2 on the committed sphere leaves the 25-55 deg error
     ~10 dB and worsens the backscatter bin; a larger domain did not help
-    either). The oblique lobe is dominated by the staircased curved-PEC
-    surface plus forward TFSF-face contamination, not box distance alone.
-    A converged bistatic setup needs finer resolution (and likely a
-    conformal-PEC / larger radiating-region box), tracked by issue #280.
+    either).
+
+    Issue #280 mechanism (isolated 2026-07): an EMPTY-domain run (no
+    scatterer) produces the SAME forward-oblique lobe, proving it is not the
+    scatterer or its staircase but a residual incident-field LEAKAGE from the
+    discrete TFSF boundary that the NTFF box integrates into a spurious
+    far-field. That leakage peaks in the forward-oblique bins and nulls at
+    exact backscatter (~90 dB below its peak), which is why the monostatic bin
+    stays clean. Because the leakage is target-independent it cancels under a
+    two-run reference subtraction: pass ``subtract_incident_reference=True``.
+    Validated against the EXACT Mie bistatic series on a PEC sphere at ka~1
+    (``tests/fixtures/rcs280_reference_subtraction/``): the forward-oblique
+    lobe is removed -- the H-plane 15-90 deg gap vs exact Mie collapses
+    10.5 -> 1.2 dB, the full-pattern shape correlation (dB) rises from -0.14
+    (uncorrelated) to 0.965, mean |distance| 0.42 dB, backscatter -0.06 dB --
+    and cross-checked against an independent Bempp BEM on a cube
+    (``tests/fixtures/rcs_cube_bem/``). The remaining ~1 dB residual is NOT
+    leftover leakage; its components were isolated at test scale (issue #280):
+
+    * curved-surface STAIRCASE -- shrinks with resolution (sphere ka=1
+      forward residual roughly halves from lambda/40 to lambda/80; an
+      independent Meep run at matched resolution shows the same-order
+      residual, i.e. this is FDTD-generic, not rfx-specific);
+    * deep-pattern-NULL bias (~1-2.5 dB at bins >=9 dB below peak) -- the
+      default NTFF box sits 0.5-0.7 lambda from the scatterer (radiating
+      near field). Invariant to n_steps and resolution; cured by enlarging
+      the domain so the box is >~1 lambda from the scatterer (sphere ka=2
+      null residual 0.85 -> 0.24 dB). Trade-off: at test scale the enlarged
+      domain nudged the BRIGHT backscatter bin to +1.7 dB (invariant to CPML
+      thickness and n_steps -- a placement sensitivity, recorded not chased),
+      so keep the default box for monostatic work and enlarge only when the
+      null region is the target;
+    * a bright-bin placement sensitivity of +-1-2 dB -- the box samples a
+      residual error field that wanders with face placement (thicker CPML
+      reduces the normal-reflection component: backscatter -0.77 -> -0.20 dB
+      with 16 layers at test scale).
+
+    Converged-bistatic recipe: ``subtract_incident_reference=True`` (removes
+    the lobe) + enlarge the domain until the NTFF box is >~1 lambda from the
+    scatterer (fixes deep nulls) + finer dx for curved-PEC staircase + thicker
+    CPML for the last few tenths of a dB on bright bins. Costs scale
+    accordingly; the default setup remains tuned for the validated monostatic
+    bin. Tracked by issue #280.
     """
     # Defaults
     if theta_obs is None:
@@ -288,6 +342,41 @@ def compute_rcs(
         theta_obs,
         phi_obs,
     )
+
+    # --- 4b. Optional two-run incident-reference subtraction (issue #280) ---
+    # The discrete TFSF boundary does not perfectly cancel the incident field in
+    # the scattered-field region, so the NTFF box integrates a residual incident
+    # leakage into a spurious forward-oblique far-field lobe (an empty-domain run
+    # produces the same lobe with NO scatterer; it nulls at backscatter, ~90 dB
+    # below its forward-oblique peak). Because that leakage is target-INDEPENDENT
+    # (the TFSF injects the same incident field with or without a scatterer) it
+    # cancels under a two-run subtraction at the COMPLEX far-field level:
+    # E_scat = E_far[target] - E_far[vacuum] (equivalent to subtracting the
+    # near-fields then transforming, by linearity of the NTFF integral). This is
+    # the standard total-field/scattered-field normalization (as in Meep's
+    # scattered-field runs, done here at the far-field level). Validated vs the
+    # EXACT Mie bistatic on a PEC sphere (tests/fixtures/rcs280_reference_
+    # subtraction/): H-plane forward-oblique gap 10.5 -> 1.2 dB, shape
+    # correlation -0.14 -> 0.965; backscatter (leakage ~0) essentially unchanged.
+    # Default OFF keeps the validated monostatic path byte-identical.
+    if subtract_incident_reference:
+        vacuum = MaterialArrays(
+            eps_r=jnp.ones(grid.shape, dtype=jnp.float32),
+            sigma=jnp.zeros(grid.shape, dtype=jnp.float32),
+            mu_r=jnp.ones(grid.shape, dtype=jnp.float32),
+        )
+        ref_result = run(
+            grid, vacuum, n_steps, boundary=boundary,
+            tfsf=(tfsf_cfg, tfsf_st), ntff=ntff_box,
+        )
+        ff_ref = compute_far_field(
+            ref_result.ntff_data, ntff_box, grid, theta_obs, phi_obs,
+        )
+        ff = FarFieldResult(
+            E_theta=ff.E_theta - ff_ref.E_theta,
+            E_phi=ff.E_phi - ff_ref.E_phi,
+            theta=ff.theta, phi=ff.phi, freqs=ff.freqs,
+        )
 
     # --- 5. Compute incident field spectrum for normalization ---
     E_inc_spectrum = _incident_spectrum_amplitude(
