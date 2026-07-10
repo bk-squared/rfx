@@ -618,9 +618,21 @@ def _run_subgridded_once(
                 )
                 z_in = -v_dft[driven] / safe_i
                 s_value = (z_in - z0_i) / (z_in + z0_i)
-            else:
+            elif recv == driven:
+                # Single-cell drive-port diagonal: byte-frozen
+                # extract_lumped_s11 algebra (issue #308 changes receive
+                # ports only).
                 z0_cell_i = z0_i / n_cells_i
                 b_i = (-v_dft[recv] - z0_cell_i * i_dft[recv]) / (
+                    2.0 * jnp.sqrt(z0_cell_i)
+                )
+                s_value = b_i / safe_a
+            else:
+                # Passive receive port (issue #308): orthogonal wave channel,
+                # sign pinned by the DC falsifier — single-truth with
+                # decompose_lumped_s_matrix / decompose_wire_s_matrix.
+                z0_cell_i = z0_i / n_cells_i
+                b_i = (v_dft[recv] - z0_cell_i * i_dft[recv]) / (
                     2.0 * jnp.sqrt(z0_cell_i)
                 )
                 s_value = b_i / safe_a

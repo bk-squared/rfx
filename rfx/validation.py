@@ -561,10 +561,16 @@ def replay_smatrix_from_vi_dump(
     """Replay an S-matrix from raw V/I phasors.
 
     This is an independent post-processor for E3 evidence.  It uses the
-    standard power-wave split
+    power-wave split, role-selected per port to mirror the production
+    lumped decomposer (issue #308):
 
-    ``a = (V + Z0 I) / (2 sqrt(Z0))`` and
-    ``b = (V - Z0 I) / (2 sqrt(Z0))``
+    ``a = (V + Z0 I) / (2 sqrt(Z0))`` (incident, at the DRIVEN port),
+    ``b = (V - Z0 I) / (2 sqrt(Z0))`` (reflected, at the DRIVEN port), and
+    ``b_recv = -(V + Z0 I) / (2 sqrt(Z0))`` (arriving, at a PASSIVE
+    receive port — the production receive channel ``(V_fdtd - Z0 I)``
+    expressed in this dump's into-DUT voltage convention ``V = -V_fdtd``;
+    the overall sign is pinned empirically by the DC falsifier on the
+    canonical thru, S21(DC) -> +1)
 
     with current positive **into** the DUT by default.  If the dump records
     current positive out of the DUT, set ``current_convention="positive_out_of_dut"``
@@ -607,6 +613,9 @@ def replay_smatrix_from_vi_dump(
     sqrt_z = np.sqrt(z_view)
     a = (v + z_view * i) / (2.0 * sqrt_z)
     b = (v - z_view * i) / (2.0 * sqrt_z)
+    # Passive-receive channel (issue #308): the production receive b-wave in
+    # this dump's into-DUT convention.  Selected per role in the loop below.
+    b_recv = -(v + z_view * i) / (2.0 * sqrt_z)
 
     if reference_plane_offsets_m is not None:
         if propagation_constants is None:
@@ -631,6 +640,7 @@ def replay_smatrix_from_vi_dump(
         shift = np.exp(gamma.reshape(1, n_ports, n_freqs) * offsets.reshape(1, n_ports, 1))
         a = a / shift
         b = b * shift
+        b_recv = b_recv * shift
 
     if driven_port_indices is None:
         driven = tuple(range(n_driven))
@@ -647,9 +657,13 @@ def replay_smatrix_from_vi_dump(
     s = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     for drive_i, driven_port in enumerate(driven):
         denom = a[drive_i, driven_port, :]
+        # Role-selected numerator (issue #308): the reflected-wave channel at
+        # the driven port, the passive-receive channel everywhere else.
+        numer = b_recv[drive_i, :, :].copy()
+        numer[driven_port, :] = b[drive_i, driven_port, :]
         with np.errstate(divide="ignore", invalid="ignore"):
             s[:, driven_port, :] = np.divide(
-                b[drive_i, :, :],
+                numer,
                 denom.reshape(1, n_freqs),
                 out=np.full((n_ports, n_freqs), np.nan + 1j * np.nan),
                 where=np.abs(denom.reshape(1, n_freqs)) > 0.0,

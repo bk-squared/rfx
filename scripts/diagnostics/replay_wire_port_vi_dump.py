@@ -6,6 +6,12 @@ Diagonal entries are referenced to the total port impedance, while off-diagonal
 entries use the per-cell impedance implied by the distributed wire feed.  This
 script intentionally reimplements that math with NumPy only; it does not call
 ``extract_s_matrix_wire`` or import production port extractors.
+
+Receive-wave convention (issue #308): at a passive receive port the b-wave is
+the orthogonal channel ``(V - Z0c I) / (2 sqrt(Z0c))`` in FDTD-sign variables
+(the historical ``(-V - Z0c I)`` channel structurally cancelled the arriving
+wave at a matched port; the overall sign is pinned empirically by the DC
+falsifier on the canonical thru, S21(DC) -> +1).
 """
 
 from __future__ import annotations
@@ -91,8 +97,9 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
 
             z_cell_receiver = z0[receiver] / float(cell_counts[receiver])
             z_cell_driven = z0[driven_port] / float(cell_counts[driven_port])
+            # Passive-receive channel (issue #308), FDTD-sign variables.
             b_receiver = (
-                -raw_v[drive_row, receiver, :]
+                raw_v[drive_row, receiver, :]
                 - z_cell_receiver * raw_i[drive_row, receiver, :]
             ) / (2.0 * np.sqrt(z_cell_receiver))
             a_driven = (
