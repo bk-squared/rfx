@@ -49,6 +49,19 @@ This differentiates the proxy objective only. It does not by itself validate the
 final RF observable; re-run the relevant port, resonance, far-field, or
 convergence check on the optimized design (see [Validation](/rfx/guide/validation/)).
 
+You may wrap the whole loss in an outer `jax.jit` for performance-sensitive
+training loops:
+
+```python
+jit_objective = jax.jit(objective)
+jit_grad = jax.jit(jax.grad(objective))
+```
+
+The supported `forward(eps_override=...)` path is regression-locked so the
+outer-jitted loss and gradient match the eager path. Keep shape-changing setup
+choices outside the jitted function; pass continuous arrays or scalar design
+variables in as JAX arguments.
+
 ## Built-in objectives: choose the right family
 
 ### 1) Post-processed S-parameter objectives
@@ -151,6 +164,55 @@ result = optimize(
 The region is clamped to the grid interior; `optimize()` raises `ValueError` if
 it lies entirely inside the CPML absorber, so keep `corner_lo`/`corner_hi` within
 the physical domain rather than the padding.
+
+For difficult or multimodal proxy losses, `optimize()` also exposes default-off
+robustness knobs:
+
+| Knob | Use | Default behavior |
+|---|---|---|
+| `n_starts=N` | run `N` Adam restarts and return the best one | `1`, the legacy single run |
+| `best_iterate=True` | return the lowest-loss visited iterate instead of the final iterate | `False`, final iterate |
+| `step_clamp=value` | cap the L2 norm of each Adam latent update | `None`, unclamped |
+| `seed=...` | make extra restart initializations reproducible | used only when `n_starts > 1` |
+
+These knobs do not change the objective or the electromagnetic model. They help
+only when the loss surface itself benefits from restarts, overshoot protection,
+or reproducible restart sampling.
+
+## Scalar lumped-RLC value design
+
+A lumped R/L/C element registered with `add_lumped_rlc(...)` is a circuit element
+inside the FDTD update. On the uniform single-device `forward(...)` lane, its
+registered values now affect the differentiable run, and scalar component values
+can enter the AD tape through `rlc_values_override`:
+
+```python
+import jax
+import jax.numpy as jnp
+
+sim.add_lumped_rlc(
+    position=(0.03, 0.02, 0.01),
+    component="ez",
+    R=50.0,
+    C=0.2e-12,
+)
+
+def load_loss(R):
+    result = sim.forward(
+        n_steps=800,
+        port_s11_freqs=jnp.array([5e9]),
+        rlc_values_override={0: {"R": R}},
+    )
+    return jnp.abs(result.s_params[0, 0, 0]) ** 2
+
+dloss_dR = jax.grad(load_loss)(50.0)
+```
+
+The mapping key is the 0-based registration order of `add_lumped_rlc(...)`
+calls; missing keys fall back to the registered float value. This surface is
+uniform single-device only. It is also **not** a new port type: use
+`add_port(..., impedance=Z0)` when you need a reference-impedance S-parameter
+measurement of the load.
 
 ## Far-field objectives with NTFF data
 

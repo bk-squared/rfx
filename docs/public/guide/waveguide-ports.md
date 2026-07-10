@@ -76,6 +76,14 @@ guide walls are the domain boundary. For a **branch / T-junction / septum**
 so the incident power `P_inc` is mis-normalized and every `|S|` inflates
 (a compact 3-port T-junction gives `normalize='flux'` max|S| ~ 9.8, |S11| ~ 1.9).
 
+For `normalize=False`, a passive strong-reflector run can sit slightly above
+unit column power because the single-run decomposition keeps a documented
+near-cutoff/Yee-grid overshoot envelope. rfx emits a **soft advisory** when the
+result rises above that envelope but remains below the hard unreliability limit.
+Treat the advisory as a prompt to use `normalize="flux"`, increase settling or
+mesh quality, or compare against a reference before promoting the number; it is
+not a physics correction.
+
 Junction S-matrices are measurable with `normalize='flux'` by passing per-port
 matched-straight-guide references — one `Simulation` per driven port, each the
 straight continuation of that port's guide with no junction:

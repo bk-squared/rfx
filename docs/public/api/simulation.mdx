@@ -55,6 +55,7 @@ Key constructor arguments:
 | `mesh_intelligence_report(...)` | summarize configured grid, preflight issues, and AD memory estimates | useful for non-uniform and memory-constrained planning |
 | `plan_mesh(...)` | return a serializable `MeshPlan` for this configured simulation | wraps `mesh_intelligence_report()`, `preflight()`, and optional S-parameter preflight checks |
 | `run(...)` | advance the simulation | returns a `Result` object |
+| `forward(...)` | run the differentiable minimal-observable path | use for `jax.grad` / outer-`jax.jit` objectives; returns a `ForwardResult`, not the full `Result` |
 
 Source, port, and probe builders are documented in detail in
 [Sources & Ports](./sources-ports/); the fields they populate are described in
@@ -78,6 +79,27 @@ waveguide, and coaxial-line ports use dedicated calculators
 (`compute_msl_s_matrix()`, `compute_waveguide_s_matrix()`,
 `compute_coaxial_line_reflection()`). See [Sources & Ports](./sources-ports/)
 for the calculator that matches each port family.
+
+## Differentiable `forward(...)` path
+
+Use `sim.forward(...)` when a scalar objective must be differentiated with
+`jax.grad`, `jax.value_and_grad`, or an outer `jax.jit`-compiled loss function.
+It returns the minimal `ForwardResult` needed by differentiable objectives
+(time series, optional S11 vectors, optional NTFF data) rather than the broader
+stateful `Result` from `run(...)`.
+
+Common differentiable inputs are:
+
+| Input | Scope |
+|---|---|
+| `eps_override=...` / `sigma_override=...` | continuous material arrays with `grid.shape` |
+| `port_s11_freqs=...` | lumped/wire per-port differentiable S11 vectors on the uniform single-device path |
+| `rlc_values_override={index: {"R": R, "L": L, "C": C}}` | scalar values for registered `add_lumped_rlc(...)` elements on the uniform single-device path |
+| `checkpoint_segments=...` / `checkpoint_every=...` | reverse-mode memory reduction on their documented lanes |
+
+Keep setup choices that change shapes, registered geometry, or support lanes
+outside the jitted objective. Unsupported lane combinations raise rather than
+silently falling back.
 
 ## Automation entry points
 

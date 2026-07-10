@@ -13,6 +13,12 @@ The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane*
 
 ## Unreleased
 
+- Differentiable `forward(...)` objectives are now safe to wrap in an outer `jax.jit`: both `jax.jit(loss)` and `jax.jit(jax.grad(loss))` over `forward(eps_override=...)` are regression-locked against the eager path. This fixes a tracer crash in material assembly without changing eager results.
+- `optimize(...)` gained default-off robustness knobs for difficult proxy losses: `n_starts`, `best_iterate`, `step_clamp`, and `seed`. The default single-start Adam path remains byte-identical.
+- `add_lumped_rlc(...)` elements now participate in the differentiable uniform `forward(...)` lane. Use `forward(rlc_values_override={...})` when R/L/C values themselves are scalar design variables; this is still a lumped circuit element, not a `Z0`-referenced port.
+- Waveguide S-matrix extraction now emits a soft advisory for passive `normalize=False` results whose column power is above the documented single-run over-unity envelope but below the hard unreliability limit. The physics and hard pass/fail thresholds are unchanged.
+- Harminv, RCS, and inverse-design docs now pin recent footguns: lossless closed-cavity Q is a window-length artifact, RCS validation is monostatic-only unless additional evidence is supplied, and a finite-difference gradient check does not prove an empty observation window is physically meaningful.
+- A standalone real multi-device witness (`scripts/diagnostics/distributed_witness/multigpu_witness.py`) now compares single-device and sharded PEC/CPML/lumped-port runs on machines with two or more JAX devices; it is a distributed-runner identity check, not a new physics-validation envelope.
 - [AD memory-planning docs](/rfx/guide/memory-reduction/) now tag each artifact with an evidence class — static estimate, conservative budget-fit plan, or explainability breakdown — so a planning estimate is never read as a runtime profiler measurement, a peak-memory guarantee, or RF validation evidence. The compiled-executable check reports the JAX compiler's memory *estimate*, not a runtime peak.
 - [Differentiable-design guidance](/rfx/guide/autodiff-adjoint/) was tightened: it separates JAX-traced objectives and finite-difference gradient checks from the final port/resonance/far-field physics validation.
 - [Non-uniform mesh guidance](/rfx/guide/nonuniform-mesh/) now frames graded-z meshes as a bounded workflow for thin layered structures, stating the unsupported combinations and the caller's validation responsibilities up front.

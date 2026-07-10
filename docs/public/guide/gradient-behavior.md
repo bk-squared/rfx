@@ -68,7 +68,9 @@ makes the optimization objective less dominated by one sample.
 
 Some port paths carry a differentiable |S| channel: the lumped/wire path via
 `forward(port_s11_freqs=...)`, and the `compute_waveguide_s_matrix` /
-`compute_msl_s_matrix` calculators via their `eps_override` argument. Each is
+`compute_msl_s_matrix` calculators via their `eps_override` argument. The uniform
+`forward(...)` lane can also differentiate scalar R/L/C values through
+`rlc_values_override` for elements registered with `add_lumped_rlc(...)`. Each is
 differentiable only where its own support entry says so. Treat the AD path as a
 contract for the sensitivity calculation; the physical claim still follows the
 port-family evidence envelope. See [Inverse Design](/rfx/guide/inverse-design/)
@@ -202,6 +204,7 @@ not a matched design.
 | Yee E/H update | differentiable inside supported runners | validate the observable, not just the tape |
 | CPML absorber | may be on the AD tape | exclude from physical design variables |
 | Lumped/wire `forward(port_s11_freqs=...)` | differentiable S11-vector path on the uniform single-device runner | inherits the lumped/wire support envelope |
+| `forward(rlc_values_override=...)` for `add_lumped_rlc(...)` | differentiable scalar R/L/C component values on the uniform single-device runner | circuit-element sensitivity, not a reference-impedance port claim |
 | MSL or waveguide S-matrix AD paths | differentiable only where the calculator documents `eps_override` support | use the matching calculator and support entry |
 | DFT probes / time series | useful proxy-objective signals | not an impedance-defined port by themselves |
 | Dispersive or lossy materials | case-dependent AD path | verify with finite differences and physics evidence |
