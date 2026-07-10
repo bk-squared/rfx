@@ -31,13 +31,21 @@ S[receiver_port, driven_port, frequency_index]
 
 ## Replay formula
 
-The independent replay uses the power-wave split
+The independent replay uses the power-wave split, role-selected per port to
+match the production lumped decomposer (issue #308):
 
 ```text
-a = (V + Z0 I) / (2 sqrt(Z0))
-b = (V - Z0 I) / (2 sqrt(Z0))
-S[:, driven, f] = b[:, f] / a[driven, f]
+a      = (V + Z0 I) / (2 sqrt(Z0))     # incident, at the driven port
+b      = (V - Z0 I) / (2 sqrt(Z0))     # reflected, at the driven port
+b_recv = -(V + Z0 I) / (2 sqrt(Z0))    # arriving, at a passive receive port
+S[driven, driven, f] = b[driven, f] / a[driven, f]
+S[recv,   driven, f] = b_recv[recv, f] / a[driven, f]   (recv != driven)
 ```
+
+The receive channel is the production receive wave `(V_fdtd - Z0 I)` expressed
+in this schema's into-DUT voltage convention (`V = -V_fdtd`); its overall sign
+is pinned empirically by the DC falsifier on the canonical 2-port thru
+(S21(DC) -> +1).
 
 By default current is positive into the DUT. If a dump uses current positive
 out of the DUT, record `current_convention="positive_out_of_dut"`; replay flips

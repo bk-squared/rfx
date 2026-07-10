@@ -839,25 +839,35 @@ def decompose_lumped_s_matrix(v, i, z0):
 
         a_j = (-V[j,j] + Z0[j]·I[j,j]) / (2·√Z0[j])    # incident at driven port j
         b_j = (-V[j,j] - Z0[j]·I[j,j]) / (2·√Z0[j])    # reflected at the DRIVE port
-        b_i = (-V[j,i] + Z0[i]·I[j,i]) / (2·√Z0[i])    # arriving at PASSIVE port i≠j
+        b_i = (V[j,i] - Z0[i]·I[j,i]) / (2·√Z0[i])     # arriving at PASSIVE port i≠j
         S[i,j] = b_i / a_j
 
     Drive-port waves (``a_j`` and the diagonal ``b_j``) keep the
     ``extract_lumped_s11`` algebra unchanged.  At a passive receive port the
-    b-wave is the matched-termination voltage wave: with the port's own Z0
-    terminating the cell, the arriving wave registers in the
-    ``(-V + Z0·I)`` channel.  The previous formula used ``(-V - Z0·I)`` at
-    receive ports too; there the port-cell resistor law makes
-    ``-V == +Z0_cell·I`` identically, so that channel structurally cancels
-    the arriving wave and a matched thru read |S21| near-null (issue #308).
-    The corrected sign gives the DC thru limit S21 = +1.
+    historical ``(-V - Z0·I)`` channel structurally cancelled the arriving
+    wave: the port-cell resistor law makes ``-V == +Z0_cell·I`` identically
+    at a matched port, so a matched thru read |S21| near-null (verified,
+    issue #308).  The receive channel is therefore the orthogonal
+    combination ``±(V - Z0·I)``, and the overall sign is pinned
+    EMPIRICALLY by the low-frequency falsifier on the canonical 2-port
+    thru (2026-07-10): under ``(V - Z0·I)`` the measured S21(DC) -> +1
+    (the DC thru limit); the first-cut opposite sign ``(-V + Z0·I)``
+    measured S21(DC) -> -1 (the pi sat in the raw cross-port phasors,
+    arg(V2/V1) ≈ pi - beta·L, from the source-driven cell field sense in
+    ``V = -E·dx``).
 
-    Polarity fence: rfx lumped/wire multiports whose ports share the same
-    field component are automatically voltage-polarity-consistent, so
-    off-diagonal phases are well-defined.  A multiport mixing components
-    (e.g. one ``ez`` and one ``ey`` port) carries a per-port voltage-polarity
-    ambiguity, leaving off-diagonal S entries defined only up to a ±1
-    (pi-phase) factor; no orientation input exists to resolve it.
+    Sign convention: multiports whose ports share the same field component
+    carry a single global receive-wave sign, pinned by that DC witness on
+    the canonical thru.  A multiport mixing components (e.g. one ``ez``
+    and one ``ey`` port) has no orientation input to relate the per-port
+    voltage polarities, so its off-diagonal S entries remain defined only
+    up to a ±1 (pi-phase) factor (fence unchanged).
+
+    OPEN item: the port-based |S21| MAGNITUDE is deflated relative to the
+    extractor-independent flux referee (flux-true |S21| 0.97-1.0 vs
+    0.52-0.67 here on the canonical thru); a drive-side normalization
+    scale entering ``a_j`` is under investigation — see the drive-side
+    normalization issue referenced in the PR.
 
     The safe-denominator guard replaces a zero incident wave by 1 (so
     S → 0 / 1 = 0 rather than NaN).  Mirrors ``extract_s_matrix`` exactly.
@@ -892,8 +902,10 @@ def decompose_lumped_s_matrix(v, i, z0):
                 # algebra (issue #308 changes receive ports only).
                 b_i = (-v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
             else:
-                # Passive receive port: matched-termination voltage wave.
-                b_i = (-v[j, ri] + z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
+                # Passive receive port: orthogonal wave channel; sign pinned
+                # by the DC falsifier (S21(DC) -> +1 on the canonical thru,
+                # issue #308).
+                b_i = (v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
             S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
     return S
 
@@ -908,23 +920,32 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
     decomposition, role-selected per port (issue #308):
 
         a_j = (-V[j,j] + Z0c_j·I[j,j]) / (2·√Z0c_j)    # incident at driven port j
-        b_i = (-V[j,i] + Z0c_i·I[j,i]) / (2·√Z0c_i)    # arriving at PASSIVE port i≠j
+        b_i = (V[j,i] - Z0c_i·I[j,i]) / (2·√Z0c_i)     # arriving at PASSIVE port i≠j
 
-    with ``Z0c = Z0/n_cells``.  At a passive receive port the b-wave is the
-    matched-termination voltage wave: with the port's own Z0 terminating the
-    cell, the arriving wave registers in the ``(-V + Z0·I)`` channel.  The
-    previous receive formula used ``(-V - Z0·I)``; there the port-cell
-    resistor law makes ``-V == +Z0_cell·I`` identically, so that channel
-    structurally cancels the arriving wave and a matched thru read |S21|
-    near-null (issue #308).  The corrected sign gives the DC thru limit
-    S21 = +1.
+    with ``Z0c = Z0/n_cells``.  At a passive receive port the historical
+    ``(-V - Z0·I)`` channel structurally cancelled the arriving wave: the
+    port-cell resistor law makes ``-V == +Z0_cell·I`` identically at a
+    matched port, so a matched thru read |S21| near-null (verified, issue
+    #308).  The receive channel is therefore the orthogonal combination
+    ``±(V - Z0·I)``, and the overall sign is pinned EMPIRICALLY by the
+    low-frequency falsifier on the canonical 2-port thru (2026-07-10):
+    under ``(V - Z0·I)`` the measured S21(DC) -> +1 (the DC thru limit);
+    the first-cut opposite sign ``(-V + Z0·I)`` measured S21(DC) -> -1
+    (the pi sat in the raw cross-port phasors, arg(V2/V1) ≈ pi - beta·L,
+    from the source-driven cell field sense in ``V = -E·dx``).
 
-    Polarity fence: rfx wire multiports whose ports share the same field
-    component are automatically voltage-polarity-consistent, so
-    off-diagonal phases are well-defined.  A multiport mixing components
-    (e.g. one ``ez`` and one ``ey`` port) carries a per-port
-    voltage-polarity ambiguity, leaving off-diagonal S entries defined only
-    up to a ±1 (pi-phase) factor; no orientation input exists to resolve it.
+    Sign convention: multiports whose ports share the same field component
+    carry a single global receive-wave sign, pinned by that DC witness on
+    the canonical thru.  A multiport mixing components (e.g. one ``ez``
+    and one ``ey`` port) has no orientation input to relate the per-port
+    voltage polarities, so its off-diagonal S entries remain defined only
+    up to a ±1 (pi-phase) factor (fence unchanged).
+
+    OPEN item: the port-based |S21| MAGNITUDE is deflated relative to the
+    extractor-independent flux referee (flux-true |S21| 0.97-1.0 vs
+    0.52-0.67 here on the canonical thru); a drive-side normalization
+    scale entering ``a_j`` is under investigation — see the drive-side
+    normalization issue referenced in the PR.
 
     Mirrors ``extract_s_matrix_wire`` line-for-line.
 
@@ -965,10 +986,11 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
             else:
                 n_cells_i = max(int(port_cell_counts[ri]), 1)
                 z0_cell_i = z0_i / n_cells_i
-                # Passive receive port: matched-termination voltage wave
-                # (issue #308 — the old (-V - Z0·I) channel structurally
-                # cancelled the arriving wave at a matched port).
-                b_i = (-v[j, ri] + z0_cell_i * i[j, ri]) / (
+                # Passive receive port: orthogonal wave channel (issue #308
+                # — the old (-V - Z0·I) channel structurally cancelled the
+                # arriving wave at a matched port; sign pinned by the DC
+                # falsifier, S21(DC) -> +1 on the canonical thru).
+                b_i = (v[j, ri] - z0_cell_i * i[j, ri]) / (
                     2.0 * jnp.sqrt(z0_cell_i))
                 n_cells_j = max(int(port_cell_counts[j]), 1)
                 z0_cell_j = z0_j / n_cells_j
@@ -1138,9 +1160,10 @@ def extract_s_matrix(
                 # positive into the DUT, the drive-port replay formulas
                 # a=(V+ZI)/2√Z, b=(V−ZI)/2√Z reproduce the production
                 # DIAGONAL below exactly; since issue #308 the production
-                # PASSIVE-port b-wave is role-selected to b=(V+ZI)/2√Z (the
-                # matched-termination voltage wave), so an off-diagonal
-                # replay must apply the same per-role convention.
+                # PASSIVE-port b-wave is role-selected — in the dump's
+                # into-DUT convention b_recv=−(V+ZI)/2√Z (sign pinned by the
+                # DC falsifier) — so an off-diagonal replay must apply the
+                # same per-role convention.
                 raw_v[j, i, :] = np.asarray(-sprobes[i].v_dft, dtype=np.complex128)
                 raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
 

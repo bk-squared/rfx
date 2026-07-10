@@ -23,8 +23,10 @@ PR). The S11 floor/alive gates, the run<->forward cross-check, and the
 algebraic-identity test are byte-untouched by the re-baseline.
 
 Measured baseline (R5 measure-before-gate; re-baselined 2026-07-10 for
-the issue #308 receive-wave fix, fresh fixture rerun at 81c1983 on this
-CPU box, x64 OFF — complex64 accumulators, the documented envelope):
+the issue #308 receive-wave fix and re-measured the same day for the
+falsifier-driven receive-sign amendment b_recv = (V - Z0*I)/(2*sqrt(Z0)),
+fresh fixture reruns on this CPU box, x64 OFF — complex64 accumulators,
+the documented envelope):
 
 THRU fixture (wire 2-port, 16 mm air microstrip w/h=5 over a pec_faces
 ground, Zc ~ 50 ohm, driver path of PR #258; 9 bins 3-7 GHz, 4000 steps,
@@ -45,7 +47,10 @@ ground, Zc ~ 50 ohm, driver path of PR #258; 9 bins 3-7 GHz, 4000 steps,
     -V = +Z0_cell*I (measured -V/I = 16.6672+0.0002j ohm vs
     Z0/n_cells = 16.667 ohm), so a matched thru read |S21| =
     0.0025-0.0046 near-null, family-wide (lumped + wire). #308
-    role-selects the receive b-wave to (-V + Z0*I), recovering the
+    role-selects the receive b-wave to the orthogonal channel
+    (V - Z0*I) (sign pinned by the DC falsifier, phase item below; the
+    first-cut sign (-V + Z0*I) was amended in the same PR — |S21| is
+    sign-invariant, these magnitudes did not move), recovering the
     transmission channel. HONESTY LABEL — REGRESSION LOCK, NOT
     validated physics: the recovered channel is correct (mismatch
     witness responds per-bin; b-wave voltage-dominated at the old
@@ -64,21 +69,21 @@ ground, Zc ~ 50 ohm, driver path of PR #258; 9 bins 3-7 GHz, 4000 steps,
     (recorded per-bin above; see the PR body / follow-up issue) — do
     NOT cite the 0.52-0.67 band as thru-transmission physics.
   - S21 signed phase deviation vs the analytic line delay
-    exp(-j*2*pi*f*L/c): +2.386701..+2.806334 rad across the band —
-    near +pi minus a smooth delay-like term. HONESTY LABEL — REGRESSION
-    LOCK on the committed receive-sign convention: the low-frequency
-    falsifier run (0.5-2 GHz) measured S21(DC) -> -1 under the
-    committed sign, not the +1 DC thru limit the #308 commit message
-    claims, and the pi is already in the raw cross-port phasors
-    (arg(V2/V1) ~= pi - beta*L at 0.5 GHz) while both port diagonals
-    are internally sign-consistent. The overall receive-wave SIGN for
-    polarity-consistent same-component thrus is therefore an OPEN item
-    (a global +-1; flipping it would leave |S21|, reciprocity and all
-    flux comparisons untouched and turn this deviation into a plain
-    ~70 ps group delay = 53.4 ps line + ~16.6 ps feed excess). The band
-    center carries that unresolved pi; the gate locks the committed
-    convention so any sign decision MUST re-baseline here in the same
-    PR.
+    exp(-j*2*pi*f*L/c): -0.754891..-0.335259 rad across 3-7 GHz — a
+    smooth delay-like excess (~16.6 ps feed-post group delay on top of
+    the 53.4 ps line delay), no pi offset. The DC-limit sign is
+    RESOLVED by the same-PR amendment (2026-07-10): the first-cut #308
+    sign (-V + Z0*I) measured S21(DC) -> -1 on the low-frequency
+    falsifier (0.5-2 GHz; the pi sat in the raw cross-port phasors,
+    arg(V2/V1) ~= pi - beta*L, from the source-driven cell field sense
+    in V = -E*dx, while both port diagonals were internally
+    sign-consistent); the amended receive wave b_i =
+    (V - Z0*I)/(2*sqrt(Z0)) — a global -1 of the first cut — measures
+    S21(DC) -> +1: at 0.5 GHz S21 = +0.57116-0.11059j (arg -0.191 rad,
+    heading to 0 as f -> 0; re-verified on this exact geometry in the
+    amendment rerun). |S21|, reciprocity, the flux comparisons and both
+    diagonals are sign-invariant and did not move (bit-identical to the
+    81c1983 rerun).
   - reciprocity max|S21-S12| = 1.043e-2 absolute (rel 0.016254) on the
     recovered O(0.52-0.67) magnitudes — now a meaningful symmetry check
     on a live channel (pre-#308 it was vacuous at the near-null scale).
@@ -113,15 +118,15 @@ Direction sensitivity of the S21 phase gate (claim VERIFIED, in-test):
 the gate is on the SIGNED, per-bin wrapped deviation arg(S21) -
 (-2*pi*f*L/c), so it constrains sign AND magnitude. It is NOT
 conjugation-invariant: conjugating S21 (the 5/5-recurring comparator bug
-class, W3.4) flips arg(S21), and on the measured post-#308 data moves
-7 of 9 bins outside the band (measured conj devs -0.794..+2.308 rad vs
-band [+1.9, +3.1]; only the 6.5/7 GHz bins remain inside). The phase
-test asserts this discrimination live on the measured data (conj(S21)
-must violate the band), so the gate cannot silently degrade into a
-conjugation-blind |dev| check. Caveat stated plainly: the band's CENTER
-carries the unresolved global receive-sign pi (DC-limit open item,
-above), so it is not a line-delay claim; the sign-discrimination
-property and the committed-convention envelope are what it locks.
+class, W3.4) flips arg(S21), and on the measured amended-sign data moves
+8 of 9 bins outside the band (measured conj devs +2.347..-0.834 rad vs
+band [-1.1, -0.1]; only the 7 GHz bin remains inside). The phase test
+asserts this discrimination live on the measured data (conj(S21) must
+violate the band), so the gate cannot silently degrade into a
+conjugation-blind |dev| check. A flip back to the first-cut receive
+sign shifts every bin by pi (to ~+2.39..+2.81 rad) and also fails the
+band — the DC-witnessed sign is locked, not merely a convention
+envelope.
 
 Preflight (quoted verbatim per feedback_never_ignore_preflight; the thru
 fixture asserts and prints this at fixture setup):
@@ -217,16 +222,18 @@ _THRU_S11_ALIVE_MIN = 0.02
 _THRU_S21_BAND = (0.35, 0.85)
 
 # Measured signed per-bin phase deviation arg(S21) - (-2*pi*f*L/c),
-# wrapped: +2.386701..+2.806334 rad (post-#308). Band [+1.9, +3.1] rad
-# (margins ~0.49/0.29 rad; upper edge < pi so wrapped values stay
-# comparable). REGRESSION LOCK on the committed receive-sign convention —
-# the DC-limit sign is an OPEN item (module docstring: low-f falsifier
-# measured S21(DC) -> -1, not +1); a receive-sign decision flips this by
-# pi and MUST re-baseline here in the same PR. Signed on purpose:
-# conjugation moves 7/9 measured bins out of band (verified live in the
-# test; conj dev is NOT -dev, the analytic reference phase differs per
-# bin — measured conj devs -0.794..+2.308 with the 6.5/7 GHz bins inside).
-_THRU_PHASE_DEV_BAND_RAD = (1.9, 3.1)
+# wrapped: -0.754891..-0.335259 rad (amended receive sign, 2026-07-10
+# rerun). Band [-1.1, -0.1] rad (margins ~0.35/0.24 rad; both edges
+# well inside (-pi, pi) so wrapped values stay comparable). The DC-limit
+# sign is RESOLVED (module docstring: the low-f falsifier measured
+# S21(DC) -> +1 under this sign; the first-cut sign measured -1 and was
+# amended in the same PR); the deviation is a smooth ~16.6 ps feed-post
+# group-delay excess, physical, not a convention artefact. Signed on
+# purpose: conjugation moves 8/9 measured bins out of band (verified
+# live in the test; conj dev is NOT -dev, the analytic reference phase
+# differs per bin — measured conj devs +2.347..-0.834 with only the
+# 7 GHz bin inside), and a sign flip back moves all 9 bins (by pi).
+_THRU_PHASE_DEV_BAND_RAD = (-1.1, -0.1)
 
 # Measured reciprocity max|S21 - S12| = 1.043e-2 (rel 0.016254) on the
 # recovered O(0.52-0.67) magnitudes. Gates ~4.8x / ~6x measured. The abs
@@ -535,18 +542,19 @@ def test_thru_s21_phase_band_is_sign_sensitive(thru_smatrix):
 
     dev(f) = wrap(arg S21 - (-2*pi*f*L/c)) with the analytic ideal-thru
     delay for the 16 mm air line (DFT kernel exp(-j*2*pi*f*t) => e^{+jwt}
-    phasors, outgoing wave e^{-j*beta*x}). Measured dev (post-#308) =
-    +2.386701..+2.806334 rad; band [+1.9, +3.1] rad. REGRESSION LOCK on
-    the committed receive-sign convention: the DC-limit sign is an OPEN
-    item (module docstring — the low-f falsifier measured S21(DC) -> -1
-    under this sign; a sign decision flips dev by pi and MUST re-baseline
-    here in the same PR; with the pi removed the residual is a plain
-    ~70 ps group delay = 53.4 ps line + ~16.6 ps feed excess). Sign AND
-    magnitude are gated (per-bin, signed) — verified NOT conjugation-
-    invariant: the test also asserts conj(S21) violates the band (on the
-    measured data 7/9 bins leave it; conj dev = -0.794..+2.308 rad, only
-    the 6.5/7 GHz bins stay inside), so the W3.4-class conjugation bug
-    cannot pass.
+    phasors, outgoing wave e^{-j*beta*x}). Measured dev (amended receive
+    sign) = -0.754891..-0.335259 rad; band [-1.1, -0.1] rad — a smooth
+    ~16.6 ps feed-post group-delay excess over the 53.4 ps line delay,
+    no pi offset. The DC-limit sign is RESOLVED (module docstring: the
+    low-f falsifier measured S21(DC) -> +1 under the amended sign
+    (V - Z0*I); the first-cut sign measured -1 and was amended in this
+    same PR). Sign AND magnitude are gated (per-bin, signed) — verified
+    NOT conjugation-invariant: the test also asserts conj(S21) violates
+    the band (on the measured data 8/9 bins leave it; conj dev =
+    +2.347..-0.834 rad, only the 7 GHz bin stays inside), so the
+    W3.4-class conjugation bug cannot pass; a flip back to the first-cut
+    receive sign shifts every bin by pi (~+2.39..+2.81 rad) and fails
+    too.
     """
     s21 = thru_smatrix[1, 0]
     expected = np.exp(-1j * 2 * np.pi * _THRU_FREQS_HZ * _THRU_L_M / C0_M_PER_S)
@@ -555,9 +563,10 @@ def test_thru_s21_phase_band_is_sign_sensitive(thru_smatrix):
     print(f"\n[thru battery] signed phase dev (rad): {np.round(dev, 3)}")
     assert np.all((dev > lo) & (dev < hi)), (
         f"S21 signed phase deviation left [{lo}, {hi}] rad "
-        f"(measured +2.387..+2.806 post-#308): dev = {np.round(dev, 3)}. "
-        f"If this is a receive-sign decision landing (DC-limit open "
-        f"item), re-baseline this battery in the same PR")
+        f"(measured -0.755..-0.335 under the amended receive sign): "
+        f"dev = {np.round(dev, 3)}. A receive-sign regression back to "
+        f"the first-cut convention shifts this by pi; any deliberate "
+        f"sign decision MUST re-baseline this battery in the same PR")
 
     # Live sign-discrimination witness: a conjugated S21 must FAIL the
     # same band, otherwise this gate has degraded into a |dev| check.
