@@ -170,6 +170,12 @@ _PEC_FACES_ADVISORY_SNIPPET = (
 # moves it as predicted), so a break here means the reflection channel or
 # the Z0 normalization moved.
 _THRU_S11_FLOOR_MAX = 0.30
+# Two-sided (review finding): a DEAD diagonal channel reads ~0, which would
+# sail under the upper bound. The measured per-diagonal maxima are
+# 0.1296/0.1316 (~6.5x above this lower bound), so requiring max|Sii| > 0.02
+# makes the in-test liveness of both diagonals explicit rather than relying
+# on the lane's out-of-test Zin/mismatch witnesses.
+_THRU_S11_ALIVE_MIN = 0.02
 
 # Measured shipped |S21| = 0.002535..0.004641 across 3-7 GHz. REGRESSION
 # LOCK on the shipped structurally-near-null channel (module docstring):
@@ -195,9 +201,12 @@ _THRU_RECIP_ABS_MAX = 5.0e-4
 _THRU_RECIP_REL_MAX = 0.10
 
 # Measured passivity: max singular value over the 9 per-freq 2x2 slices
-# = 0.13439. Gate 0.5 (~3.7x) — an energy-sanity regression lock that also
-# re-locks the S11 floor; VACUOUS as thru validation (docstring).
-_THRU_MAX_SINGULAR_VALUE = 0.5
+# = 0.13439. Gate 0.30 (~2.2x measured) — chosen BELOW the Frobenius
+# dominance bound sqrt(2*0.30^2 + 2*0.02^2) ~= 0.426 implied by the S11/S21
+# gates, so this gate is independently bindable (review finding: at 0.5 it
+# could never fire first). Energy-sanity lock; still vacuous as THRU-
+# transmission validation (docstring).
+_THRU_MAX_SINGULAR_VALUE = 0.30
 
 # ===========================================================================
 # run<->forward cross-check constants
@@ -205,10 +214,12 @@ _THRU_MAX_SINGULAR_VALUE = 0.5
 _XCHK_F0_HZ = 5e9
 _XCHK_FREQS_HZ = np.array([1.0, 2.5, 4.0, 5.5, 7.0, 8.5, 10.0]) * 1e9
 # Measured max complex |S_run - S_fwd| = 4.27e-7 over ALL 7 bins (CPML,
-# well-conditioned; the two paths compile to near-identical graphs).
-# Gate 5e-6 (~12x measured) — complex-valued, so a pure-phase divergence
-# that the committed magnitude-only atol-2e-3 gate cannot see fails here.
-_XCHK_COMPLEX_DELTA_MAX = 5.0e-6
+# well-conditioned) — but that is SINGLE-MACHINE provenance at float32
+# ulp scale. Gate 5e-5 (~100x measured; review finding, the v173a
+# cross-machine-float lesson) — still 40x tighter than the committed
+# magnitude-only atol-2e-3 gate it complements, and still fails on any
+# pure-phase divergence that gate cannot see.
+_XCHK_COMPLEX_DELTA_MAX = 5.0e-5
 
 # Algebraic-identity lock (no FDTD): extract_lumped_s11 vs the decompose
 # diagonals on synthetic well-conditioned V/I. The formulas are
@@ -304,13 +315,18 @@ def crosscheck():
         return sim
 
     sim_r = _wire_sim()
-    issues = [str(i) for i in sim_r.preflight()]
+    issues = sim_r.preflight()
     for msg in issues:
         print(f"\n[crosscheck] preflight (verbatim): {msg}")
-    # Measured baseline: this fixture preflights CLEAN ("All checks
-    # passed"). A new advisory means the fixture (or a validator) drifted.
-    assert issues == [], (
-        f"1-port cross-check fixture no longer preflights clean: {issues}")
+    # Measured baseline: this fixture preflights CLEAN. Gate on
+    # error-severity only (review finding): a future advisory-only
+    # validator flagging this vanilla fixture should be PRINTED verbatim
+    # above, not fail the whole cross-check module fixture.
+    errors = [str(i) for i in issues
+              if getattr(i, "severity", "error") == "error"]
+    assert errors == [], (
+        f"1-port cross-check fixture has error-severity preflight "
+        f"findings: {errors}")
 
     r = sim_r.run(n_steps=2000, compute_s_params=True,
                   s_param_freqs=_XCHK_FREQS_HZ)
@@ -331,7 +347,9 @@ def test_extract_lumped_s11_is_the_decompose_diagonal():
     algebraically the same map; PR #258 proved observed run/forward
     divergence is float32 CONDITIONING, not formula. This pins the
     identity on synthetic well-conditioned phasors so a formula edit in
-    any one of the three fails loudly.
+    any one of the three fails loudly. This locks the FORMULA identity
+    only; the two ENTRY-POINT implementations are cross-checked end-to-end
+    in test_run_forward_complex_values_agree_on_cpml.
     """
     rng = np.random.default_rng(20260710)
     n_ports, n_freqs, z0 = 2, 11, 50.0
@@ -387,12 +405,19 @@ def test_run_forward_complex_values_agree_on_cpml(crosscheck):
     Complements tests/test_run_forward_s11_contract.py::
     test_run_forward_s11_agree_on_well_conditioned_cpml (same fixture,
     magnitude-only, atol 2e-3 — untouched): measured max complex delta is
-    4.27e-7 over all 7 bins, so this gates at 5e-6 (~12x measured), which
-    also catches a pure-PHASE divergence the magnitude gate cannot see.
-    Small deltas at this scale are the measured float32 conditioning
-    envelope (PR #258: the formulas are algebraically identical) — if this
-    fails marginally, re-measure the envelope before touching anything;
-    if it fails grossly, one of the two extraction paths regressed.
+    4.27e-7 over all 7 bins, gated at 5e-5 (~100x, cross-machine float32
+    headroom), which also catches a pure-PHASE divergence the magnitude
+    gate cannot see. NOT a tautology (review-verified): run() uses the
+    inline decomposition on the runners/uniform.py + rfx/simulation.py
+    scan path while forward() uses extract_lumped_s11 in
+    rfx/api/_execute.py — distinct code sites compiled as different XLA
+    graphs — so this gate catches a regression in EITHER entry-point
+    implementation (DFT accumulation, port eligibility, freq handling),
+    which the pure-formula identity test cannot. Small deltas at this
+    scale are the measured float32 conditioning envelope (PR #258: the
+    formulas are algebraically identical) — if this fails marginally,
+    re-measure the envelope before touching anything; if it fails
+    grossly, one of the two extraction paths regressed.
     """
     S_run, S_fwd = crosscheck
     delta = np.abs(S_run.reshape(-1).astype(np.complex128)
@@ -425,6 +450,12 @@ def test_thru_s11_floor(thru_smatrix):
     assert worst < _THRU_S11_FLOOR_MAX, (
         f"thru diagonal floor broke: max(|S11|, |S22|) = {worst:.4f} "
         f"(measured 0.130/0.132, gate {_THRU_S11_FLOOR_MAX})")
+    # Two-sided liveness (review finding): a dead diagonal reads ~0 and
+    # would pass the upper bound. Measured maxima 0.1296/0.1316.
+    assert s11.max() > _THRU_S11_ALIVE_MIN and s22.max() > _THRU_S11_ALIVE_MIN, (
+        f"thru diagonal channel reads dead: max|S11|={s11.max():.4f}, "
+        f"max|S22|={s22.max():.4f} (measured 0.130/0.132, alive floor "
+        f"{_THRU_S11_ALIVE_MIN})")
 
 
 @pytest.mark.slow_physics
@@ -443,10 +474,14 @@ def test_thru_s21_band_locks_shipped_decomposer_envelope(thru_smatrix):
     """
     s21 = np.abs(thru_smatrix[1, 0])
     lo, hi = _THRU_S21_BAND
-    assert s21.max() > lo, (
+    # Per-bin lower edge (review finding): max() would let 8/9 dead bins
+    # slip through. Measured per-bin min 2.5e-3 (2.5x this floor); still
+    # never weaker than the committed max|S21| > 1e-3 floor.
+    assert s21.min() > lo, (
         f"shipped |S21| collapsed below the committed-class floor: "
-        f"max {s21.max():.2e} <= {lo} (measured min 2.5e-3) — the residual "
-        f"channel itself died (dead probe / dead thru fixture class)")
+        f"per-bin min {s21.min():.2e} <= {lo} (measured min 2.5e-3) — the "
+        f"residual channel died in at least one bin (dead probe / dead "
+        f"thru fixture class)")
     assert s21.max() < hi, (
         f"shipped |S21| = {s21.max():.4f} left the measured near-null "
         f"envelope (max 4.6e-3, band hi {hi}). If this is the upstream "
