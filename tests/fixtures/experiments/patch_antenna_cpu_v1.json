@@ -1,0 +1,46 @@
+{
+  "schema_version": "rfx-experiment/v1",
+  "name": "cpu-draft-patch-s11",
+  "kind": "patch_antenna_s11",
+  "model": {
+    "design_frequency_hz": 2400000000.0,
+    "frequency_sweep": {
+      "start_hz": 1800000000.0,
+      "stop_hz": 3000000000.0,
+      "points": 9
+    },
+    "domain_m": [0.04, 0.036, 0.032],
+    "cell_size_m": 0.002,
+    "cpml_layers": 4,
+    "stack_base_z_m": null,
+    "substrate": {
+      "size_m": [0.018, 0.016],
+      "thickness_m": 0.002,
+      "relative_permittivity": 4.4,
+      "conductivity_s_per_m": 0.01
+    },
+    "ground": {
+      "size_m": [0.018, 0.016],
+      "thickness_m": 0.002
+    },
+    "patch": {
+      "size_m": [0.01, 0.008],
+      "thickness_m": 0.002
+    },
+    "feed": {
+      "inset_m": 0.004,
+      "impedance_ohm": 50.0,
+      "pulse_bandwidth": 0.8
+    }
+  },
+  "execution": {
+    "backend": "cpu",
+    "precision": "float32",
+    "n_steps": 12,
+    "s_param_n_steps": 12
+  },
+  "metadata": {
+    "fidelity": "structural-cpu-smoke",
+    "claims": "not-for-quantitative-rf-validation"
+  }
+}

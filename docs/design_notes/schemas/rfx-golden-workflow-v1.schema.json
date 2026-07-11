@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://remilab.ai/rfx/schemas/rfx-golden-workflow-v1.schema.json",
+  "title": "rfx Studio golden workflow",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "description",
+    "support_lane",
+    "inputs",
+    "expected_metrics",
+    "ui_journey",
+    "required_artifacts",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "rfx-golden-workflow/v1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "title": {"type": "string", "minLength": 1},
+    "description": {"type": "string", "minLength": 1},
+    "support_lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "solver", "dimensionality", "features", "evidence_tier", "support_source"],
+      "properties": {
+        "status": {"enum": ["p0-supported", "deferred", "shadow"]},
+        "solver": {"type": "string", "minLength": 1},
+        "dimensionality": {"enum": ["2d_tmz", "3d"]},
+        "features": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "evidence_tier": {"type": "string", "minLength": 1},
+        "support_source": {"type": "string", "minLength": 1}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical_source", "evidence_manifest", "cpu_smoke_spec"],
+      "properties": {
+        "canonical_source": {"type": "string", "minLength": 1},
+        "evidence_manifest": {"type": "string", "minLength": 1},
+        "cpu_smoke_spec": {"type": ["string", "null"]}
+      }
+    },
+    "expected_metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "observable", "reference", "comparison", "limit", "unit", "observed_baseline"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+          "observable": {"type": "string", "minLength": 1},
+          "reference": {"type": "string", "minLength": 1},
+          "comparison": {"enum": ["lt", "lte", "gt", "gte"]},
+          "limit": {"type": "number"},
+          "unit": {"type": "string"},
+          "observed_baseline": {"type": ["number", "null"]}
+        }
+      }
+    },
+    "ui_journey": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step", "acceptance"],
+        "properties": {
+          "step": {"type": "string", "minLength": 1},
+          "acceptance": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "required_artifacts": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+  }
+}

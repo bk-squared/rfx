@@ -1,0 +1,63 @@
+{
+  "schema_version": "rfx-golden-workflow/v1",
+  "id": "multilayer-fresnel",
+  "title": "Normal-incidence dielectric slab Fresnel workflow",
+  "description": "Create, validate, run, and inspect normal-incidence reflection and transmission against the exact transfer-matrix solution.",
+  "support_lane": {
+    "status": "p0-supported",
+    "solver": "uniform-cartesian-yee",
+    "dimensionality": "2d_tmz",
+    "features": ["isotropic-dielectric-slab", "normal-incidence", "tfsf-source", "reflection-transmission", "field-snapshot"],
+    "evidence_tier": "E5-analytic",
+    "support_source": "docs/public/guide/benchmarks.mdx"
+  },
+  "inputs": {
+    "canonical_source": "examples/crossval/04_multilayer_fresnel.py",
+    "evidence_manifest": "docs/public/gallery/assets/multilayer_fresnel/manifest.json",
+    "cpu_smoke_spec": null
+  },
+  "expected_metrics": [
+    {
+      "id": "mean_reflectance_error",
+      "observable": "mean absolute error of R(f)",
+      "reference": "exact transfer-matrix Fresnel solution",
+      "comparison": "lt",
+      "limit": 0.05,
+      "unit": "absolute-power",
+      "observed_baseline": 0.0066
+    },
+    {
+      "id": "mean_transmittance_error",
+      "observable": "mean absolute error of T(f)",
+      "reference": "exact transfer-matrix Fresnel solution",
+      "comparison": "lt",
+      "limit": 0.05,
+      "unit": "absolute-power",
+      "observed_baseline": 0.011
+    },
+    {
+      "id": "mean_energy_closure_error",
+      "observable": "mean absolute deviation of R(f)+T(f) from unity",
+      "reference": "lossless energy conservation",
+      "comparison": "lt",
+      "limit": 0.05,
+      "unit": "absolute-power",
+      "observed_baseline": 0.0091
+    }
+  ],
+  "ui_journey": [
+    {"step": "create", "acceptance": "Create a new immutable Fresnel experiment revision from the golden input."},
+    {"step": "edit", "acceptance": "Change slab thickness or permittivity through typed fields and show a semantic diff."},
+    {"step": "preview", "acceptance": "Show slab layers, source region, and observation planes without a solve."},
+    {"step": "validate", "acceptance": "Show resolution, source, boundary, and lossless-energy diagnostics."},
+    {"step": "run", "acceptance": "Approve and launch a CPU worker linked to the immutable revision."},
+    {"step": "inspect", "acceptance": "Overlay R/T against the exact reference and show energy closure plus field space-time availability."},
+    {"step": "export", "acceptance": "Export a checksum-verified bundle containing spec, code, events, metrics, and limitations."}
+  ],
+  "required_artifacts": ["experiment-spec", "generated-python", "scene-json", "preflight-report", "run-events", "reflection-transmission", "field-slice", "validation-report", "bundle-manifest"],
+  "limitations": [
+    "P0 covers isotropic, lossless, normal-incidence stratified media only.",
+    "Oblique incidence, anisotropy, and dispersive loss require separate support lanes and evidence.",
+    "The public baseline was produced on GPU; the local CPU profile must satisfy the same declared metric tolerances before promotion."
+  ]
+}

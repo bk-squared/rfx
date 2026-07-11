@@ -1,9 +1,16 @@
 __pycache__/
 *.pyc
 *.egg-info/
+.DS_Store
 .pytest_cache/
 .omc/
 .omx/
+.rfx-experiments/
+.playwright-cli/
+build/
+output/
+studio/node_modules/
+studio/*.tsbuildinfo
 docs-site/
 CLAUDE.md
 AGENTS.md

@@ -1,0 +1,28 @@
+{
+  "schema_version": "rfx-mcp-tool-snapshot/v1",
+  "tools": [
+    {"name": "get_capabilities", "properties": ["actor"], "required": [], "read_only": true, "destructive": false},
+    {"name": "get_experiment", "properties": ["actor", "experiment_id"], "required": ["experiment_id"], "read_only": true, "destructive": false},
+    {"name": "list_revisions", "properties": ["actor", "experiment_id"], "required": ["experiment_id"], "read_only": true, "destructive": false},
+    {"name": "validate_experiment", "properties": ["actor", "experiment_id", "revision_id"], "required": ["experiment_id"], "read_only": true, "destructive": false},
+    {"name": "preview_geometry", "properties": ["actor", "experiment_id", "revision_id"], "required": ["experiment_id"], "read_only": true, "destructive": false},
+    {"name": "list_runs", "properties": ["actor", "experiment_id"], "required": [], "read_only": true, "destructive": false},
+    {"name": "get_run", "properties": ["actor", "run_id"], "required": ["run_id"], "read_only": true, "destructive": false},
+    {"name": "read_artifact", "properties": ["actor", "artifact_id"], "required": ["artifact_id"], "read_only": true, "destructive": false},
+    {"name": "analyze_sparameters", "properties": ["actor", "run_id"], "required": ["run_id"], "read_only": true, "destructive": false},
+    {"name": "analyze_run", "properties": ["actor", "run_id"], "required": ["run_id"], "read_only": true, "destructive": false},
+    {"name": "compare_runs", "properties": ["actor", "run_ids"], "required": ["run_ids"], "read_only": true, "destructive": false},
+    {"name": "explain_validation", "properties": ["actor", "run_id"], "required": ["run_id"], "read_only": true, "destructive": false},
+    {"name": "list_studies", "properties": ["actor", "experiment_id"], "required": [], "read_only": true, "destructive": false},
+    {"name": "get_study", "properties": ["actor", "study_id"], "required": ["study_id"], "read_only": true, "destructive": false},
+    {"name": "create_experiment", "properties": ["actor", "approval_id", "spec"], "required": ["spec"], "read_only": false, "destructive": false},
+    {"name": "apply_experiment_patch", "properties": ["actor", "approval_id", "base_revision_id", "experiment_id", "message", "patch"], "required": ["base_revision_id", "experiment_id", "patch"], "read_only": false, "destructive": false},
+    {"name": "start_run", "properties": ["actor", "approval_id", "experiment_id", "idempotency_key", "revision_id"], "required": ["experiment_id"], "read_only": false, "destructive": false},
+    {"name": "cancel_run", "properties": ["actor", "approval_id", "run_id"], "required": ["run_id"], "read_only": false, "destructive": true},
+    {"name": "export_bundle", "properties": ["actor", "approval_id", "run_id"], "required": ["run_id"], "read_only": false, "destructive": false},
+    {"name": "run_sweep", "properties": ["actor", "approval_id", "budget_points", "direction", "early_stop_value", "experiment_id", "objective", "parameter_path", "values"], "required": ["experiment_id", "parameter_path", "values"], "read_only": false, "destructive": false},
+    {"name": "run_optimization", "properties": ["actor", "approval_id", "budget_points", "direction", "early_stop_value", "experiment_id", "objective", "parameter_path", "values"], "required": ["experiment_id", "parameter_path", "values"], "read_only": false, "destructive": false},
+    {"name": "cancel_study", "properties": ["actor", "approval_id", "study_id"], "required": ["study_id"], "read_only": false, "destructive": true},
+    {"name": "promote_study_best", "properties": ["actor", "approval_id", "study_id"], "required": ["study_id"], "read_only": false, "destructive": false}
+  ]
+}

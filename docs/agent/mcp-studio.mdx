@@ -1,0 +1,142 @@
+---
+title: Connect agents to rfx Studio MCP
+description: Use one approval-gated RF-domain MCP contract from OpenAI, Claude, or a local MCP client.
+---
+
+# Connect agents to rfx Studio MCP
+
+Install the Studio extra and launch the local workbench:
+
+```bash
+python -m pip install "rfx-fdtd[studio]"
+rfx studio --workspace .rfx-studio
+```
+
+The Streamable HTTP endpoint is `http://127.0.0.1:8765/mcp/`. It is
+loopback-only in P0, validates `Host` and `Origin`, and exposes RF-domain tools
+instead of shell, Python, or filesystem paths.
+
+For clients that launch local MCP processes, use the equivalent stdio entrypoint:
+
+```bash
+rfx-agent-mcp --workspace .rfx-studio
+```
+
+It forces the JAX CPU platform and exposes the same names, schemas,
+annotations, structured results, approval database, and audit contract as the
+HTTP endpoint. Claude Desktop can configure the installed executable as a
+local `mcpServers` command; OpenAI Secure MCP Tunnel can use it as its
+`mcp.commands` target.
+
+## Approval model
+
+Read tools execute immediately. `create_experiment`, `apply_experiment_patch`,
+`start_run`, `cancel_run`, and `export_bundle` first return
+`approval_required`. Open the **Approvals** panel in Studio, inspect the semantic
+impact and SHA-256, then approve or reject it. An approved call must be retried
+with the returned `approval_id` and byte-for-byte-equivalent domain arguments.
+Approval is one-shot.
+
+Client-side approval does not replace this server-side gate. OpenAI recommends
+`require_approval` and `allowed_tools` for sensitive MCP actions, and rfx keeps
+its own durable approval because other MCP clients have different permission
+models. See the [OpenAI MCP and Connectors guide](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
+and [MCP transport security requirements](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+
+## OpenAI Responses API
+
+The Responses API can import tools from Streamable HTTP MCP servers. A cloud
+model cannot reach localhost directly, so use an approved HTTPS deployment or
+the [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/tools-connectors-mcp#secure-mcp-tunnel).
+Do not expose the P0 loopback server directly.
+
+```python
+from openai import OpenAI
+
+client = OpenAI()
+response = client.responses.create(
+    model="YOUR_MCP_CAPABLE_MODEL",
+    input="Inspect the current patch experiment. Propose, but do not bypass approval, a title change.",
+    tools=[{
+        "type": "mcp",
+        "server_label": "rfx_studio",
+        "server_description": "Approval-gated RF experiment workbench",
+        "server_url": "https://YOUR_APPROVED_RFX_ENDPOINT/mcp/",
+        "allowed_tools": [
+            "get_capabilities", "get_experiment", "list_revisions",
+            "validate_experiment", "preview_geometry", "list_runs",
+            "get_run", "read_artifact", "analyze_sparameters",
+            "analyze_run",
+            "apply_experiment_patch", "start_run"
+        ],
+        "require_approval": "always",
+    }],
+)
+```
+
+Keep `require_approval="always"` at the provider boundary. When rfx returns an
+internal approval request, show the Studio panel to the human; do not fabricate
+or automatically approve the `approval_id`.
+
+## Anthropic Claude
+
+Claude's current Messages MCP connector uses an HTTPS URL, the
+`mcp-client-2025-11-20` beta, and an `mcp_toolset`. Use a deny-by-default
+allowlist so tools added by a future rfx version do not become available before
+review. See the [official Claude MCP connector guide](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector).
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+response = client.beta.messages.create(
+    model="YOUR_MCP_CAPABLE_CLAUDE_MODEL",
+    max_tokens=2000,
+    messages=[{
+        "role": "user",
+        "content": "Inspect the current patch experiment and propose a validated change. Never bypass rfx approval.",
+    }],
+    mcp_servers=[{
+        "type": "url",
+        "name": "rfx-studio",
+        "url": "https://YOUR_APPROVED_RFX_ENDPOINT/mcp/",
+    }],
+    tools=[{
+        "type": "mcp_toolset",
+        "mcp_server_name": "rfx-studio",
+        "default_config": {"enabled": False},
+        "configs": {
+            "get_capabilities": {"enabled": True},
+            "get_experiment": {"enabled": True},
+            "validate_experiment": {"enabled": True},
+            "preview_geometry": {"enabled": True},
+            "apply_experiment_patch": {"enabled": True},
+            "start_run": {"enabled": True},
+            "get_run": {"enabled": True},
+            "analyze_sparameters": {"enabled": True},
+            "analyze_run": {"enabled": True},
+        },
+    }],
+    betas=["mcp-client-2025-11-20"],
+)
+```
+
+Claude's connector requires a publicly reachable HTTPS endpoint. For a private
+lab server, use an organization-approved tunnel/deployment and satisfy the
+authenticated lab-server requirements in the operations guide.
+
+## Contract tests
+
+The protocol snapshot test initializes the same server as
+`openai-responses` and `anthropic-claude`, then asserts identical tool names,
+JSON Schemas, annotations, and coded results. The provider-journey smoke runs
+`get -> patch proposal -> Studio approval -> validate -> approved CPU run ->
+analyze` under both actor profiles without sending experiment content to a
+third party.
+
+```bash
+pytest -q tests/test_mcp_contract.py tests/test_provider_journey_smoke.py
+```
+
+Never put API keys in an ExperimentSpec, prompt, artifact, Studio field, or MCP
+profile.

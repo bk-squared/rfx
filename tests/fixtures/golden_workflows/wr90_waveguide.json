@@ -1,0 +1,54 @@
+{
+  "schema_version": "rfx-golden-workflow/v1",
+  "id": "wr90-waveguide",
+  "title": "WR-90 empty matched waveguide",
+  "description": "Create, validate, run, and inspect the uniform-Yee single-mode TE10 WR-90 two-port workflow.",
+  "support_lane": {
+    "status": "p0-supported",
+    "solver": "uniform-cartesian-yee",
+    "dimensionality": "3d",
+    "features": ["rectangular-waveguide", "te10-port", "two-port-sparameters", "flux-normalization", "field-snapshot"],
+    "evidence_tier": "E5-broad-magnitude",
+    "support_source": "docs/guides/sparameter_support_matrix.md"
+  },
+  "inputs": {
+    "canonical_source": "examples/crossval/11_waveguide_port_wr90.py",
+    "evidence_manifest": "docs/public/gallery/assets/waveguide_wr90/manifest.json",
+    "cpu_smoke_spec": null
+  },
+  "expected_metrics": [
+    {
+      "id": "max_s11_abs",
+      "observable": "maximum |S11| across X-band",
+      "reference": "analytic matched empty guide",
+      "comparison": "lt",
+      "limit": 0.02,
+      "unit": "ratio",
+      "observed_baseline": 0.0
+    },
+    {
+      "id": "min_s21_abs",
+      "observable": "minimum |S21| across X-band",
+      "reference": "analytic matched empty guide",
+      "comparison": "gt",
+      "limit": 0.97,
+      "unit": "ratio",
+      "observed_baseline": 1.0
+    }
+  ],
+  "ui_journey": [
+    {"step": "create", "acceptance": "Create a new immutable WR-90 experiment revision from the golden input."},
+    {"step": "edit", "acceptance": "Change guide length or measurement band through typed fields and show a semantic diff."},
+    {"step": "preview", "acceptance": "Show guide aperture, TE10 port planes, directions, and reference planes without a solve."},
+    {"step": "validate", "acceptance": "Show cutoff, next-mode, CPML-clearance, and support-lane diagnostics."},
+    {"step": "run", "acceptance": "Approve and launch a CPU worker linked to the immutable revision."},
+    {"step": "inspect", "acceptance": "Show the two-port S-matrix, S11/S21 metrics, validation state, and TE10 field availability."},
+    {"step": "export", "acceptance": "Export a checksum-verified bundle containing spec, code, events, metrics, and limitations."}
+  ],
+  "required_artifacts": ["experiment-spec", "generated-python", "scene-json", "preflight-report", "run-events", "sparameters", "field-slice", "validation-report", "bundle-manifest"],
+  "limitations": [
+    "P0 supports the uniform Cartesian, single-mode rectangular TE10 lane only.",
+    "The headline broad gate is magnitude-based; phase evidence has a separate approximately convention-free witness.",
+    "Multimode, compact junction, and nonuniform waveguide variants remain outside the P0 golden workflow."
+  ]
+}
