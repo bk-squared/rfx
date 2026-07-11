@@ -1,10 +1,10 @@
-import type { Revision, RunRecord, S11Artifact } from "./types";
+import type { FieldSliceArtifact, Revision, RunRecord, S11Artifact } from "./types";
 
 interface EngineeringEvidenceProps {
   artifact: S11Artifact;
   run: RunRecord;
   revision?: Revision;
-  hasFieldSlice: boolean;
+  fieldSlice?: FieldSliceArtifact;
 }
 
 const formatFrequency = (value: number) => `${(value / 1e9).toFixed(3)} GHz`;
@@ -21,7 +21,7 @@ const duration = (run: RunRecord) => {
   return `${(elapsed / 1000).toFixed(1)} s`;
 };
 
-export function EngineeringEvidence({ artifact, run, revision, hasFieldSlice }: EngineeringEvidenceProps) {
+export function EngineeringEvidence({ artifact, run, revision, fieldSlice }: EngineeringEvidenceProps) {
   const points = [...artifact.points].sort((left, right) => left.frequency_hz - right.frequency_hz);
   if (!points.length) {
     return (
@@ -52,19 +52,35 @@ export function EngineeringEvidence({ artifact, run, revision, hasFieldSlice }: 
   const frequencySteps = points.slice(1).map((point, index) => point.frequency_hz - points[index].frequency_hz);
   const minimumStep = frequencySteps.length ? Math.min(...frequencySteps) : null;
   const maximumStep = frequencySteps.length ? Math.max(...frequencySteps) : null;
+  const minimumStepMhz = minimumStep === null ? null : (minimumStep / 1e6).toFixed(1);
+  const maximumStepMhz = maximumStep === null ? null : (maximumStep / 1e6).toFixed(1);
   const stepLabel = minimumStep === null || maximumStep === null
     ? "single sample"
-    : Math.abs(maximumStep - minimumStep) <= Math.max(1, Math.abs(minimumStep) * 1e-9)
-      ? `${(minimumStep / 1e6).toFixed(1)} MHz step`
-      : `${(minimumStep / 1e6).toFixed(1)}–${(maximumStep / 1e6).toFixed(1)} MHz variable step`;
+    : minimumStepMhz === maximumStepMhz
+      ? `${minimumStepMhz} MHz step`
+      : `${minimumStepMhz}–${maximumStepMhz} MHz variable step`;
   const metadata = revision?.spec.metadata && typeof revision.spec.metadata === "object" && !Array.isArray(revision.spec.metadata)
     ? revision.spec.metadata as Record<string, unknown>
     : {};
+  const validation = revision?.spec.validation && typeof revision.spec.validation === "object" && !Array.isArray(revision.spec.validation)
+    ? revision.spec.validation as Record<string, unknown>
+    : {};
+  const requiredChecks = Array.isArray(validation.required_checks)
+    ? validation.required_checks.map(String)
+    : [];
+  const declaredMetrics = Array.isArray(validation.metrics)
+    ? validation.metrics.map(String)
+    : [];
   const packages = artifact.runtime.packages ?? {};
+  const minimumAtSweepEdge = minimumIndex === 0 || minimumIndex === points.length - 1;
+  const fieldCoordinateDelta = fieldSlice
+    ? Math.abs(fieldSlice.actual_coordinate_m - fieldSlice.requested_coordinate_m)
+    : null;
+  const fieldCoordinateSnapped = fieldCoordinateDelta !== null && fieldCoordinateDelta > 1e-12;
 
   const evidence = [
     { label: "Network response", detail: `${points.length} complex S11 samples`, state: "available" },
-    { label: "Field snapshot", detail: hasFieldSlice ? "immutable plane captured" : "not requested", state: hasFieldSlice ? "available" : "neutral" },
+    { label: "Field snapshot", detail: fieldSlice ? fieldCoordinateSnapped ? "captured on nearest grid plane" : "requested plane captured" : "not requested", state: fieldSlice ? "available" : "neutral" },
     { label: "Reference impedance", detail: `${artifact.reference_impedance_ohm.toFixed(1)} Ω`, state: "available" },
     { label: "Convergence trace", detail: "not captured", state: "missing" },
     { label: "Mesh statistics", detail: "not captured", state: "missing" },
@@ -84,6 +100,13 @@ export function EngineeringEvidence({ artifact, run, revision, hasFieldSlice }: 
         <div><span>Sweep coverage</span><strong>{formatFrequency(points[0].frequency_hz)} – {formatFrequency(points[points.length - 1].frequency_hz)}</strong><small>{stepLabel}</small></div>
         <div><span>Run duration</span><strong>{duration(run)}</strong><small>queue through artifact</small></div>
       </div>
+      {(minimumAtSweepEdge || points.length < 21 || fieldCoordinateSnapped) && (
+        <div className="result-advisories" aria-label="RF result advisories">
+          {minimumAtSweepEdge && <p><strong>Sweep boundary</strong> The minimum S11 occurs at the {minimumIndex === 0 ? "lower" : "upper"} sweep edge; extend the sweep before interpreting it as a resolved resonance.</p>}
+          {points.length < 21 && <p><strong>Sample density</strong> Only {points.length} frequency samples were captured; bandwidth and narrow resonances may be under-resolved.</p>}
+          {fieldCoordinateSnapped && <p><strong>Field plane</strong> The requested plane was snapped by {(fieldCoordinateDelta! * 1e3).toFixed(3)} mm to the nearest solved grid plane.</p>}
+        </div>
+      )}
       <div className="evidence-columns">
         <div>
           <h3>Evidence coverage</h3>
@@ -104,6 +127,22 @@ export function EngineeringEvidence({ artifact, run, revision, hasFieldSlice }: 
             <div><span>Artifact SHA</span><code>{shortHash(run.artifact_sha256)}</code></div>
           </div>
         </div>
+      </div>
+      <div className="validation-contract">
+        <div>
+          <span>Declared validation contract</span>
+          <strong>Declaration is not execution evidence</strong>
+        </div>
+        <div className="validation-contract-checks">
+          {requiredChecks.map((check) => (
+            <p key={check} className={check === "preflight" && revision?.preflight.ok ? "captured" : "missing"}>
+              <span /> <strong>{check}</strong>
+              <small>{check === "preflight" && revision?.preflight.ok ? "preflight passed" : "result not persisted"}</small>
+            </p>
+          ))}
+          {!requiredChecks.length && <p className="missing"><span /><strong>No checks declared</strong><small>review spec</small></p>}
+        </div>
+        <p className="validation-metrics"><span>Declared metrics</span>{declaredMetrics.join(" · ") || "none"}</p>
       </div>
       <p className="evidence-boundary"><strong>{String(metadata.fidelity ?? "Unspecified fidelity")}</strong> · {String(metadata.claims ?? "No quantitative claim declared")}. Missing convergence, mesh, and port diagnostics are shown explicitly and are not inferred from a successful lifecycle.</p>
     </section>

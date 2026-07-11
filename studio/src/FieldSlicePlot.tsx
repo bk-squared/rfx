@@ -19,6 +19,9 @@ export function FieldSlicePlot({ artifact }: { artifact: FieldSliceArtifact }) {
   const cellWidth = plotWidth / Math.max(columns, 1);
   const cellHeight = plotHeight / Math.max(rows, 1);
   const component = artifact.component.toUpperCase();
+  const coordinateDeltaMm = Math.abs(
+    artifact.actual_coordinate_m - artifact.requested_coordinate_m,
+  ) * 1e3;
 
   return (
     <section className="result-card field-card" aria-labelledby="field-slice-heading">
@@ -70,7 +73,8 @@ export function FieldSlicePlot({ artifact }: { artifact: FieldSliceArtifact }) {
         </text>
       </svg>
       <p className="field-caption">
-        {artifact.observation_id} · requested {artifact.requested_coordinate_m.toFixed(4)} m · sampled {artifact.actual_coordinate_m.toFixed(4)} m · {rows}×{columns}
+        <span>{artifact.observation_id} · requested {artifact.requested_coordinate_m.toFixed(4)} m · sampled {artifact.actual_coordinate_m.toFixed(4)} m · {rows}×{columns}</span>
+        {coordinateDeltaMm > 1e-9 && <strong>Nearest grid plane · Δ {coordinateDeltaMm.toFixed(3)} mm</strong>}
       </p>
     </section>
   );

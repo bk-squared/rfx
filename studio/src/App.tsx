@@ -22,6 +22,12 @@ import type {
 type WorkspaceTab = "design" | "setup" | "code" | "results";
 type SpecDocument = Record<string, JsonValue>;
 
+const recordArray = (value: JsonValue | undefined): Array<Record<string, JsonValue>> =>
+  Array.isArray(value)
+    ? value.filter((item): item is Record<string, JsonValue> =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    : [];
+
 const terminalStates = new Set(["succeeded", "failed", "cancelled"]);
 
 const errorText = (error: unknown) => {
@@ -282,6 +288,30 @@ export function App() {
     simulation.cell_size_m = cellSize;
     updateDraft(next);
   };
+  const updateCenterFrequency = (frequencyGhz: number) => {
+    if (!draft || !Number.isFinite(frequencyGhz) || frequencyGhz <= 0) return;
+    const next = deepCopy(draft);
+    const excitations = recordArray(next.excitations);
+    const excitationIndex = excitations.findIndex((item) => Number.isFinite(Number(item.f0_hz)));
+    if (excitationIndex < 0) return;
+    excitations[excitationIndex].f0_hz = frequencyGhz * 1e9;
+    next.excitations = excitations;
+    updateDraft(next);
+  };
+  const updateSweep = (key: "start_hz" | "stop_hz" | "points", value: number) => {
+    if (!draft || !Number.isFinite(value) || value <= 0) return;
+    const next = deepCopy(draft);
+    const observations = recordArray(next.observations);
+    const observationIndex = observations.findIndex((item) => item.kind === "sparameters");
+    if (observationIndex < 0) return;
+    observations[observationIndex][key] = key === "points" ? Math.round(value) : value * 1e9;
+    next.observations = observations;
+    if (key === "stop_hz") {
+      const simulation = next.simulation as Record<string, JsonValue>;
+      simulation.freq_max_hz = value * 1e9;
+    }
+    updateDraft(next);
+  };
   const updateDraftText = (text: string) => {
     setDraftText(text);
     try {
@@ -339,6 +369,15 @@ export function App() {
   const copilotProviderLabel = capabilities.data?.design_copilot.llm
     ? `OpenAI · ${capabilities.data.design_copilot.model}`
     : `Offline rules · ${capabilities.data?.design_copilot.model ?? "loading"}`;
+  const draftMetadata = draft ? draft.metadata as Record<string, JsonValue> : {};
+  const draftSimulation = draft ? draft.simulation as Record<string, JsonValue> : {};
+  const draftValidation = draft ? draft.validation as Record<string, JsonValue> : {};
+  const primaryExcitation = draft ? recordArray(draft.excitations).find((item) => Number.isFinite(Number(item.f0_hz))) : undefined;
+  const sparameterObservation = draft ? recordArray(draft.observations).find((item) => item.kind === "sparameters") : undefined;
+  const centerFrequencyGhz = primaryExcitation ? Number(primaryExcitation.f0_hz) / 1e9 : 0;
+  const sweepStartGhz = sparameterObservation ? Number(sparameterObservation.start_hz) / 1e9 : 0;
+  const sweepStopGhz = sparameterObservation ? Number(sparameterObservation.stop_hz) / 1e9 : 0;
+  const sweepPoints = sparameterObservation ? Number(sparameterObservation.points) : 0;
 
   return (
     <div className="app-shell">
@@ -445,7 +484,7 @@ export function App() {
               </div>
               <div className="toolbar-actions">
                 <span className={activePreview.preflight.ok && !previewError ? "gate pass" : "gate fail"}>
-                  {activePreview.preflight.ok && !previewError ? "✓ Preflight ready" : "! Run blocked"}
+                  {activePreview.preflight.ok && !previewError ? "✓ Run gate ready" : "! Run blocked"}
                 </span>
                 <button className="secondary" onClick={() => validate.mutate()} disabled={validate.isPending}>Validate</button>
                 <button
@@ -488,24 +527,57 @@ export function App() {
                     <label>Experiment title
                       <input
                         aria-label="Experiment title"
-                        value={String((draft.metadata as Record<string, JsonValue>).title)}
+                        value={String(draftMetadata.title)}
                         onChange={(event) => updateMetadataTitle(event.target.value)}
                       />
                     </label>
                     <div className="field-row">
-                      <label>Center frequency <div className="input-unit"><input value="2.40" readOnly /><span>GHz</span></div></label>
+                      <label>Center frequency <div className="input-unit"><input
+                        aria-label="Center frequency in GHz"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={centerFrequencyGhz || ""}
+                        onChange={(event) => updateCenterFrequency(event.target.valueAsNumber)}
+                      /><span>GHz</span></div></label>
                       <label>Cell size <div className="input-unit"><input
                         aria-label="Cell size in meters"
                         type="number"
                         step="0.0001"
-                        value={Number((draft.simulation as Record<string, JsonValue>).cell_size_m)}
+                        value={Number(draftSimulation.cell_size_m)}
                         onChange={(event) => updateCellSize(event.target.valueAsNumber)}
                       /><span>m</span></div></label>
+                    </div>
+                    <div className="field-row sweep-fields">
+                      <label>Sweep start <div className="input-unit"><input
+                        aria-label="Sweep start in GHz"
+                        type="number"
+                        step="0.05"
+                        min="0.01"
+                        value={sweepStartGhz || ""}
+                        onChange={(event) => updateSweep("start_hz", event.target.valueAsNumber)}
+                      /><span>GHz</span></div></label>
+                      <label>Sweep stop <div className="input-unit"><input
+                        aria-label="Sweep stop in GHz"
+                        type="number"
+                        step="0.05"
+                        min="0.01"
+                        value={sweepStopGhz || ""}
+                        onChange={(event) => updateSweep("stop_hz", event.target.valueAsNumber)}
+                      /><span>GHz</span></div></label>
+                      <label>Sweep samples <input
+                        aria-label="Sweep sample count"
+                        type="number"
+                        step="1"
+                        min="2"
+                        value={sweepPoints || ""}
+                        onChange={(event) => updateSweep("points", event.target.valueAsNumber)}
+                      /></label>
                     </div>
                     <fieldset>
                       <legend>Execution</legend>
                       <div className="readonly-row"><span>Backend</span><strong>CPU</strong></div>
-                      <div className="readonly-row"><span>Fidelity</span><strong>Structural smoke</strong></div>
+                      <div className="readonly-row"><span>Fidelity</span><strong>{String(draftMetadata.fidelity ?? "unspecified")}</strong></div>
                     </fieldset>
                   </div>
 
@@ -565,9 +637,9 @@ export function App() {
                     <div className="preflight-ok"><span>✓</span><div><strong>No blocking issues</strong><p>Canonical compiler and solver preflight agree.</p></div></div>
                   )}
                   <div className="gate-facts">
-                    <div><span>Support lane</span><strong>patch-antenna</strong></div>
-                    <div><span>Device</span><strong>CPU / float32</strong></div>
-                    <div><span>Claim</span><strong>structural only</strong></div>
+                    <div><span>Support lane</span><strong>{String(draftValidation.support_lane ?? "unspecified")}</strong></div>
+                    <div><span>Device</span><strong>CPU / {String(draftSimulation.precision ?? "unspecified")}</strong></div>
+                    <div><span>Claim</span><strong>{String(draftMetadata.claims ?? "unspecified")}</strong></div>
                   </div>
                 </section>
               </div>
@@ -619,8 +691,8 @@ export function App() {
                     <section className="comparison-card panel" aria-labelledby="comparison-heading">
                       <header className="card-header"><div><p className="eyebrow">Cited immutable runs</p><h2 id="comparison-heading">Run comparison</h2></div><span className="schema-pill">baseline {compare.data.baseline_run_id.slice(0, 6)}</span></header>
                       <div className="comparison-table">
-                        <div className="comparison-header"><span>Run</span><span>Min S11</span><span>Resonance</span><span>Δ dB</span><span>Field Δ L2</span><span>Status</span></div>
-                        {compare.data.rows.map((row) => <div key={row.run_id}><code>{row.run_id.slice(0, 8)}</code><strong>{row.minimum_s11_db.toFixed(2)} dB</strong><span>{(row.minimum_s11_frequency_hz / 1e9).toFixed(2)} GHz</span><span>{row.delta_minimum_s11_db_vs_baseline.toFixed(2)}</span><span>{row.field_normalized_l2_delta_vs_baseline?.toExponential(2) ?? "n/a"}</span><span className="comparison-status">{row.validation_status}</span></div>)}
+                        <div className="comparison-header"><span>Run</span><span>Min S11</span><span>Resonance</span><span>Δ dB</span><span>Field Δ L2</span><span>Revision state</span></div>
+                        {compare.data.rows.map((row) => <div key={row.run_id}><code>{row.run_id.slice(0, 8)}</code><strong>{row.minimum_s11_db.toFixed(2)} dB</strong><span>{(row.minimum_s11_frequency_hz / 1e9).toFixed(2)} GHz</span><span>{row.delta_minimum_s11_db_vs_baseline.toFixed(2)}</span><span>{row.field_normalized_l2_delta_vs_baseline?.toExponential(2) ?? "n/a"}</span><span className="comparison-status">revision {row.validation_status}</span></div>)}
                       </div>
                       <p className="comparison-limitation">{compare.data.limitations.join(" · ")}</p>
                     </section>
@@ -654,12 +726,11 @@ export function App() {
                             artifact={s11.data}
                             run={selectedRun}
                             revision={runRevision.data}
-                            hasFieldSlice={Boolean(fieldSliceArtifact)}
+                            fieldSlice={fieldSlice.data}
                           />
                           <div className="plots-grid"><S11Plot artifact={s11.data} /><SmithChart artifact={s11.data} />
                           {fieldSlice.data ? <FieldSlicePlot artifact={fieldSlice.data} /> : <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Declared observation</p><h3>Field slice</h3></div><span className="availability-tag">loading</span></header><div className="field-placeholder"><span>Ez</span><p>The immutable final-state field plane is loading from its checksummed artifact.</p></div></section>}
                           <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Observable coverage</p><h3>Time series & far field</h3></div><span className="availability-tag">not requested</span></header><div className="field-placeholder"><span>t / θ</span><p>This revision requests neither a time probe nor NTFF surface. The absence is explicit, rather than an empty chart.</p></div></section>
-                          <section className="result-card validation-card"><header className="card-header"><div><p className="eyebrow">Evidence boundary</p><h3>Validation & limitations</h3></div></header><ul><li><span className="check">✓</span> Lifecycle and S11 schema validated</li><li><span className="check">✓</span> CPU provenance recorded</li><li><span className="warn">!</span> Structural smoke; not quantitative RF validation</li></ul></section>
                           </div>
                         </>
                       ) : selectedRun.state === "succeeded" ? <div className="loading-panel">Loading immutable S11 artifact…</div> : null}

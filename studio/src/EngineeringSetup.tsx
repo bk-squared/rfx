@@ -80,6 +80,30 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
   const cellsPerWavelength = freqMax && cellSize && cellSize > 0
     ? SPEED_OF_LIGHT_M_S / freqMax / cellSize
     : null;
+  const geometryFeatureSizes = geometry.flatMap((item) => {
+    if (!Array.isArray(item.bounds_m) || item.bounds_m.length !== 2) return [];
+    const lower = Array.isArray(item.bounds_m[0]) ? item.bounds_m[0].map(Number) : [];
+    const upper = Array.isArray(item.bounds_m[1]) ? item.bounds_m[1].map(Number) : [];
+    return lower.length === 3 && upper.length === 3
+      ? upper.map((value, index) => Math.abs(value - lower[index])).filter((value) => value > 0)
+      : [];
+  });
+  const excitationFeatureSizes = excitations
+    .map((item) => finiteNumber(item.extent_m))
+    .filter((value): value is number => value !== null && value > 0);
+  const minimumFeature = [...geometryFeatureSizes, ...excitationFeatureSizes].length
+    ? Math.min(...geometryFeatureSizes, ...excitationFeatureSizes)
+    : null;
+  const cellsAcrossMinimumFeature = minimumFeature && cellSize && cellSize > 0
+    ? minimumFeature / cellSize
+    : null;
+  const maximumPermittivity = Math.max(
+    1,
+    ...materials.map((item) => finiteNumber(item.relative_permittivity) ?? 1),
+  );
+  const dielectricCellsPerWavelength = cellsPerWavelength
+    ? cellsPerWavelength / Math.sqrt(maximumPermittivity)
+    : null;
 
   const materialIds = new Set(materials.map((item) => String(item.id ?? "")));
   const unresolvedMaterials = geometry.filter((item) => {
@@ -99,37 +123,44 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
   const sweepStart = finiteNumber(sweepObservation?.start_hz);
   const sweepStop = finiteNumber(sweepObservation?.stop_hz);
   const sweepPoints = finiteNumber(sweepObservation?.points);
+  const fidelity = String(metadata.fidelity ?? "unspecified");
+  const claim = String(metadata.claims ?? "unspecified");
+  const diagnosticOnly = fidelity.includes("smoke") || claim.includes("not-for-quantitative");
+  const meshNeedsReview = cellsAcrossMinimumFeature !== null && cellsAcrossMinimumFeature < 4;
+  const sweepNeedsReview = sweepPoints !== null && sweepPoints < 21;
 
   const readiness = [
     {
       label: "Domain & mesh",
-      detail: gridShape.length === 3 ? `${gridShape.join("×")} cells` : "incomplete",
-      state: gridShape.length === 3 ? "good" : "bad",
+      detail: gridShape.length === 3
+        ? meshNeedsReview ? `${cellsAcrossMinimumFeature?.toFixed(1)} cells / min feature` : `${gridShape.join("×")} cells`
+        : "incomplete",
+      state: gridShape.length === 3 ? meshNeedsReview ? "review" : "configured" : "blocked",
     },
     {
       label: "Materials",
       detail: unresolvedMaterials.length ? `${unresolvedMaterials.length} unresolved` : `${materials.length} explicit`,
-      state: unresolvedMaterials.length ? "bad" : "good",
+      state: unresolvedMaterials.length ? "blocked" : "configured",
     },
     {
       label: "Excitations",
       detail: `${excitations.length} configured`,
-      state: excitations.length ? "good" : "bad",
+      state: excitations.length ? "configured" : "blocked",
     },
     {
       label: "Boundaries",
       detail: boundariesComplete ? "all faces" : "incomplete",
-      state: boundariesComplete ? "good" : "bad",
+      state: boundariesComplete ? "configured" : "blocked",
     },
     {
       label: "Observations",
-      detail: `${observations.length} requested`,
-      state: observations.length ? "good" : "bad",
+      detail: sweepNeedsReview ? `${sweepPoints} sweep samples` : `${observations.length} requested`,
+      state: observations.length ? sweepNeedsReview ? "review" : "configured" : "blocked",
     },
     {
       label: "Preflight",
-      detail: preflight.ok ? "ready" : `${preflight.n_errors} errors`,
-      state: preflight.ok ? "good" : "bad",
+      detail: preflight.ok ? "runnable" : `${preflight.n_errors} errors`,
+      state: preflight.ok ? "configured" : "blocked",
     },
   ];
 
@@ -151,6 +182,21 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
             </div>
           ))}
         </div>
+        <div className={diagnosticOnly ? "engineering-readiness diagnostic" : "engineering-readiness"}>
+          <div>
+            <span>Evidence readiness</span>
+            <strong>{diagnosticOnly ? "Diagnostic evidence only" : "Review declared fidelity"}</strong>
+          </div>
+          <p>{diagnosticOnly
+            ? "The run gate may open, but this structural CPU smoke does not establish converged quantitative RF accuracy."
+            : "Readiness follows the declared fidelity and persisted evidence; a successful lifecycle alone is insufficient."}</p>
+        </div>
+        {(meshNeedsReview || sweepNeedsReview) && (
+          <div className="setup-advisories" aria-label="Engineering setup advisories">
+            {meshNeedsReview && <p><strong>Mesh review</strong> The smallest modeled feature spans {cellsAcrossMinimumFeature?.toFixed(1)} cells; use at least 4 cells per feature before a geometry-sensitive claim.</p>}
+            {sweepNeedsReview && <p><strong>Sweep review</strong> {sweepPoints} samples are suitable for smoke coverage, but too sparse to resolve a narrow resonance or bandwidth reliably.</p>}
+          </div>
+        )}
       </section>
 
       <div className="setup-grid">
@@ -165,6 +211,8 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
             <div><span>Grid cells</span><strong>{estimatedCells ? formatInteger(estimatedCells) : "not available"}</strong></div>
             <div><span>Highest frequency</span><strong>{formatFrequency(freqMax)}</strong></div>
             <div><span>Free-space cells / λ</span><strong>{cellsPerWavelength ? cellsPerWavelength.toFixed(1) : "not available"}</strong></div>
+            <div><span>Dielectric cells / λ</span><strong>{dielectricCellsPerWavelength ? `${dielectricCellsPerWavelength.toFixed(1)} at εr ${maximumPermittivity.toFixed(2)}` : "not available"}</strong></div>
+            <div><span>Minimum feature / cell</span><strong>{minimumFeature && cellsAcrossMinimumFeature ? `${formatLength(minimumFeature)} / ${cellsAcrossMinimumFeature.toFixed(1)} cells` : "not available"}</strong></div>
           </div>
           <p className="setup-footnote">Grid values are deterministic estimates from domain and canonical cell size; solver-native mesh statistics are not yet persisted.</p>
         </section>
@@ -201,7 +249,9 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
                     <div><dt>Direction</dt><dd>{detailValue(item, ["direction"])}</dd></div>
                     <div><dt>Center</dt><dd>{formatFrequency(finiteNumber(item.f0_hz))}</dd></div>
                     <div><dt>Reference</dt><dd>{impedance ? `${impedance.toFixed(1)} Ω` : mode ? `${String(item.mode_type ?? "")} ${mode}` : "workflow-defined"}</dd></div>
-                    <div><dt>Plane</dt><dd>{formatLength(finiteNumber(item.reference_plane_m))}</dd></div>
+                    <div><dt>Plane</dt><dd>{finiteNumber(item.reference_plane_m) !== null
+                      ? formatLength(finiteNumber(item.reference_plane_m))
+                      : item.kind === "lumped_port" ? "at lumped port" : "not set"}</dd></div>
                   </dl>
                 </article>
               );

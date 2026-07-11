@@ -18,6 +18,10 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
       .locator(".object-strip")
       .getByRole("button", { name: "patch", exact: true }),
   ).toHaveClass(/active/);
+  await expect(page.getByLabel("Center frequency in GHz")).toHaveValue("2.4");
+  await expect(page.getByLabel("Sweep start in GHz")).toHaveValue("1.8");
+  await expect(page.getByLabel("Sweep stop in GHz")).toHaveValue("3");
+  await expect(page.getByLabel("Sweep sample count")).toHaveValue("9");
 
   await page.getByLabel("Cell size in meters").fill("0");
   await expect(page.getByRole("button", { name: "Run on CPU" })).toBeDisabled();
@@ -28,8 +32,10 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
     "true",
   );
   await page.getByRole("tab", { name: "Design" }).click();
-  await page.getByLabel("Cell size in meters").fill("0.002");
-  await expect(page.getByText("✓ Preflight ready", { exact: true })).toBeVisible();
+  await page.getByLabel("Cell size in meters").fill("0.0015");
+  await page.getByLabel("Center frequency in GHz").fill("2.45");
+  await page.getByLabel("Sweep sample count").fill("11");
+  await expect(page.getByText("✓ Run gate ready", { exact: true })).toBeVisible();
 
   const previewStarted = Date.now();
   const previewResponse = page.waitForResponse(
@@ -38,7 +44,7 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await page.getByLabel("Experiment title").fill("Agent-ready patch antenna");
   expect((await previewResponse).ok()).toBeTruthy();
   expect(Date.now() - previewStarted).toBeLessThan(1000);
-  await expect(page.getByText("1 change", { exact: false })).toBeVisible();
+  await expect(page.getByText("4 changes", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Approve & create revision" }).click();
   await expect(page.getByText("Revision 2 created", { exact: false })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
@@ -46,7 +52,10 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await page.getByRole("tab", { name: "Setup" }).click();
   await expect(page.getByRole("heading", { name: "Engineer setup" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Domain & mesh" })).toBeVisible();
-  await expect(page.getByText("20 × 18 × 16", { exact: true })).toBeVisible();
+  await expect(page.getByText("27 × 24 × 22", { exact: true })).toBeVisible();
+  await expect(page.getByText("Diagnostic evidence only", { exact: true })).toBeVisible();
+  await expect(page.getByText("1.1 cells / min feature", { exact: true })).toBeVisible();
+  await expect(page.getByText("11 samples are suitable for smoke coverage", { exact: false })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Ports & excitations" })).toBeVisible();
   await expect(page.getByText("50.0 Ω", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Boundary conditions" })).toBeVisible();
@@ -78,8 +87,15 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await expect(evidence.getByText("Convergence trace", { exact: true })).toBeVisible();
   await expect(evidence.getByText("not captured", { exact: true })).toHaveCount(3);
   await expect(evidence.getByText("Spec SHA", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Sweep boundary", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Sample density", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Field plane", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("120.0 MHz step", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Declared validation contract", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("result not persisted", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Nearest grid plane · Δ 0.500 mm", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Time series & far field" })).toBeVisible();
-  await expect(page.getByText("Structural smoke; not quantitative RF validation")).toBeVisible();
+  await expect(page.getByText("not-for-quantitative-rf-validation", { exact: false })).toBeVisible();
 
   await page.getByRole("button", { name: "Export bundle" }).click();
   const downloadLink = page.getByRole("link", { name: "Download .zip" });
@@ -109,7 +125,7 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   });
   await page.getByRole("button", { name: "Compare 2" }).click();
   await expect(page.getByRole("heading", { name: "Run comparison" })).toBeVisible();
-  await expect(page.locator(".comparison-table").getByText("validated")).toHaveCount(2);
+  await expect(page.locator(".comparison-table").getByText("revision validated", { exact: true })).toHaveCount(2);
 
   const experiments = await (await page.request.get("/api/experiments")).json();
   const experiment = experiments.find(

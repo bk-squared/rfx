@@ -27,6 +27,13 @@ Use the Studio views as a review sequence before treating a run as evidence:
 4. **Results** shows lifecycle events and the RF evidence summary before the
    individual S11, Smith, and field plots.
 
+Studio intentionally separates the **run gate** from **evidence readiness**.
+The run gate answers only whether the canonical model can be compiled and
+started inside the declared CPU/resource boundary. Evidence readiness also
+considers the declared fidelity, minimum-feature grid resolution, sweep sample
+density, persisted diagnostics, and result advisories. A green run gate does
+not mean the setup is ready for a quantitative RF claim.
+
 The RF evidence summary derives S11 minimum, VSWR, sampled -10 dB bandwidth,
 and sweep resolution only from the checksummed run artifact. It also cites the
 spec, compiled-model, runtime/package, and artifact identities. Solver-native
@@ -34,6 +41,14 @@ convergence history, mesh statistics, or port diagnostics are labeled **not
 captured** when absent; a successful lifecycle does not imply those checks
 passed. The bundled patch workflow remains a structural CPU smoke test, not a
 calibrated quantitative RF reference.
+
+The Design view reads center frequency and S-parameter sweep controls from the
+canonical ExperimentSpec. Editing them creates the same preview and semantic
+diff as editing JSON or accepting an agent proposal. Results warn when a sampled
+S11 minimum occurs at a sweep edge, when frequency coverage is sparse, or when
+a requested field plane is snapped to the nearest solved grid plane. Declared
+validation checks whose results are not persisted remain labeled as declarations,
+not as passed checks.
 
 ## Schema, backup, restore, and replay compatibility
 
