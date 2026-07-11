@@ -31,9 +31,17 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   identical. Canonical-thru movement (measured): max in-band |S11|
   0.130 -> 0.086 (mean 0.076 -> 0.051); |S21| 0.524–0.668 ->
   0.546–0.610; reciprocity `|S21−S12|` 1.04e-2 -> 0.75e-2. The
-  remaining |S11| floor is frequency-rising (0.033 at 4.5 GHz -> 0.086
-  at 7 GHz), consistent with a reactive feed discontinuity rather than
-  a resistive termination error — tracked separately in issue #318.
+  post-fix |S11| is a V-shaped curve (0.033 at 4.5 GHz rising to 0.086
+  at 7 GHz and 0.056 at 3 GHz) — this is rfx's *measured* feed-post
+  reflection, not a residual termination error: the two wire ports are
+  1 mm vertical feed posts (~0.26 nH each) whose reactances interfere
+  across the 16 mm line, giving a reflection null near 4.5 GHz
+  (H_FIXTURE re-diagnosis, decisive on three independent witnesses).
+  The pre-registered `max|S11| < 0.06` falsifier missed only because it
+  neglected feed-post reactance (a modelling omission in the
+  prediction, not a fix failure). The lumped/wire V·I battery and the
+  reference-plane battery gates are re-baselined onto this measured
+  physics in the same change.
 - The `wire_port_dead_extent_cells` preflight advisory now states the
   post-fix semantics (dead cells excluded; the `Z0*(n_live/n)`
   termination is cited as the historical pre-fix behaviour).
