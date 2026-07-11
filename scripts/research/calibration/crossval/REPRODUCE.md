@@ -30,8 +30,12 @@ RO4003C εr=3.38 h=0.787 mm, patch L8.595×W10.129 mm, inset 2.4 mm)에서:
 
 | 레벨 | 관측량 | rfx | openEMS | Palace | 스프레드 |
 |---|---|---|---|---|---|
-| **1. 차폐 공진** (전면 PEC 박스) | 기본모드 f₀ | **9.131 GHz** (Harminv) | **9.194 GHz** (ring-down) | **9.199 GHz** (eigenmode) | 0.7% |
+| **1. 차폐 공진** (전면 PEC 박스) | 기본모드 f₀ | **9.131 GHz** (Harminv) | **9.194 GHz** (ring-down)¹ | **9.199 GHz** (eigenmode) | 0.7% |
 | **2. 방사 S11** (개방 경계) | dip 주파수 | **9.250 GHz** (−7.04 dB, dx=197 µm) | **9.2625 GHz** (−9.46 dB) | 9.05 GHz (−12.99 dB, caveat 참조) | — |
+
+¹ openEMS 9.194 GHz는 **런타임 Harminv 출력**에서 나온 값 — 커밋된 shielded JSON의
+ratio-curve dip(~9.77 GHz)은 다른 관측량이라 그 파일에서 재유도되지 않는다
+(`verdicts.json`의 level1 caveat 참조). `--shielded`를 직접 돌리면 콘솔에서 확인된다.
 
 읽는 법 (중요):
 - **dip "주파수"만 비교 대상**이다. dip **깊이(-dB)는 솔버 간 비교 불가** — 손실 모델이
@@ -91,7 +95,8 @@ python openems_patch_inset_xband.py --inset-mm 2.4 --margin-y 10 --calc-only
 
 - 출력: `out_xband/openems_xband_inset_2.4mm*.json` — `s11_passive` PASS/FAIL 포함
   (1.05 per-bin slack; `--shielded`는 S11이 정의 안 되므로 null).
-- 메시 수렴 확인은 `--res-scale 0.5` (셀 반감; 9.347 GHz로 위쪽 이동 확인됨).
+- 메시 수렴 확인은 `--res-scale 0.5` (셀 반감). 캠페인 런 로그 기준 9.347 GHz로
+  위쪽 이동 — **run-log-only 수치**(커밋된 artifact 없음), 직접 재실행해서 확인할 것.
 - 함정: 포트 전압 파일(`port_ut_*`) 직접 읽을 땐 `np.loadtxt(..., comments='%')`.
   CPU 경합 시 3.7~17 MC/s로 편차 큼 — 수십 분 걸릴 수 있다.
 
@@ -117,7 +122,8 @@ $PALACE -np 16 patch_eigen_shielded.json # 레벨 1: 차폐 eigenmode
   MFEM의 Gmsh 리더가 msh 4.1을 거부 → `mesh_patch.py`가 이미
   `removeDuplicateNodes()` + `Mesh.MshFileVersion=2.2`로 우회해 둠.
 - 손실 관례: `patch_s11.json`은 LossTan=0.0 (FDTD 무손실 레그와 통일, #273 correction).
-  eigen config 두 개는 기록된 런이 LossTan=1e-3이었음(주석 참조) — 재실행하면 0.0으로.
+  eigen config 두 개는 기록런 그대로 LossTan=1e-3 — **그대로 돌리면 9.199 GHz 재현**,
+  관례 통일이 목적이면 0.0으로 바꿔도 주파수는 무시할 만큼만 움직인다 (config 주석 참조).
 
 ## 5. 비교·제출
 
