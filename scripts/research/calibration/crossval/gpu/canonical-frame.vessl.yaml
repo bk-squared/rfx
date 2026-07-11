@@ -1,0 +1,26 @@
+# VESSL GPU job — rfx canonical-frame legs (Level-1 shielded-harminv + Level-2 S11).
+# Student usage: edit the `cd` line below to YOUR clone path (the /root/workspace
+# NFS volume is mounted into the job, so a clone anywhere under it is visible —
+# no push needed), then:
+#   vessl run create -f scripts/research/calibration/crossval/gpu/canonical-frame.vessl.yaml
+name: rfx-canonical-frame
+description: "rfx legs of the X-band inset-patch 3-solver crossval (common box, ground=z_lo PEC face): (1) shielded-harminv Level-1 resonance (reference: Palace shielded eigen 9.199 GHz), (2) radiating harminv, (3) S11(f) at dx=197um."
+tags: [rfx, patch, crossval, canonical-frame]
+resources: {cluster: remilab-c0, preset: gpu-rtx4090}
+image: nvcr.io/nvidia/jax:24.10-py3
+env: {PYTHONUNBUFFERED: "1", XLA_PYTHON_CLIENT_PREALLOCATE: "false", LANG: "C.UTF-8"}
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # >>> EDIT THIS to your own clone path under /root/workspace <<<
+  cd /root/workspace/CHANGE-ME/rfx
+  python -m pip install -q "scipy>=1.11" "matplotlib>=3.7"
+  export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
+  S=scripts/research/calibration/crossval/rfx_patch_xband_canonical_frame.py
+  echo "=== (1) shielded-harminv 197um (Level-1; expect ~9.131 GHz vs Palace 9.199) ==="
+  timeout 3000 python $S --mode shielded-harminv --dx-um 197
+  echo "=== (2) radiating harminv 197um ==="
+  timeout 3000 python $S --mode harminv --dx-um 197
+  echo "=== (3) S11 197um (Level-2; expect dip ~-7.0 dB @ ~9.25 GHz) ==="
+  timeout 4000 python $S --mode s11 --dx-um 197 --num-periods 200

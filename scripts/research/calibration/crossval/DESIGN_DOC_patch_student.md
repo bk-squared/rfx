@@ -65,6 +65,8 @@
 
 비교용 데이터(우리 세 곡선): `/root/workspace/lab-shared/rfx-patch-crossval/` — rfx/openEMS JSON(freqs_hz + 복소 S11), Palace CSV, 종합 플롯 PNG.
 
+시뮬레이션 재현(3-솔버 전부, 단계별 명령·함정 포함): 같은 디렉토리의 `REPRODUCE.md` — 스크립트 일체는 `repro-kit/` 또는 공개 브랜치 `git clone -b research/calibration-inverse https://github.com/bk-squared/rfx.git`.
+
 ## 3. 과제 A — CST 재현 (제작 전 필수)
 
 1. **Shielded eigenmode** (Level-1): 위 차폐 박스 치수 **그대로** (배경=PEC, 유전체 무손실 εr=3.38). Eigenmode solver, 7–12 GHz 모드.
