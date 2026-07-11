@@ -124,8 +124,21 @@ export interface S11Point {
 export interface S11Artifact {
   schema_version: string;
   run_id: string;
+  spec_sha256: string;
+  compiled_sha256: string;
   reference_impedance_ohm: number;
-  runtime: { backend: string };
+  runtime: {
+    backend: string;
+    devices?: Array<{ platform: string; device_kind: string; id: number }>;
+    python_version?: string;
+    platform?: string;
+    packages?: Record<string, string>;
+    source?: {
+      git_commit?: string | null;
+      git_worktree_dirty?: boolean | null;
+      kind?: string;
+    };
+  };
   points: S11Point[];
 }
 

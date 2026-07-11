@@ -100,9 +100,13 @@ rfx studio --workspace .rfx-studio
 
 Studio keeps immutable experiment revisions, generated Python, geometry,
 preflight, durable CPU runs, S-parameter/Smith analysis, comparisons, bounded
-studies, and replay bundles in one workflow. Its MCP endpoint uses the same
-application service; every mutation or costly action requires an exact-argument
-human approval and is append-only audited. The default bind is loopback-only.
+studies, and replay bundles in one workflow. The **Setup** view organizes the
+canonical model as domain/mesh, material assignments, ports, boundaries,
+observations, and the CPU solve contract. Successful runs add an **RF evidence
+summary** with sampled S11/VSWR/bandwidth, sweep coverage, provenance, and an
+explicit list of engineering evidence that was not captured. Its MCP endpoint
+uses the same application service; every mutation or costly action requires an
+exact-argument human approval and is append-only audited. The default bind is loopback-only.
 Local MCP hosts can launch the same contract over stdio with
 `rfx-agent-mcp --workspace .rfx-studio`.
 

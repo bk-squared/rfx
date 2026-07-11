@@ -43,6 +43,15 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await expect(page.getByText("Revision 2 created", { exact: false })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
 
+  await page.getByRole("tab", { name: "Setup" }).click();
+  await expect(page.getByRole("heading", { name: "Engineer setup" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Domain & mesh" })).toBeVisible();
+  await expect(page.getByText("20 × 18 × 16", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ports & excitations" })).toBeVisible();
+  await expect(page.getByText("50.0 Ω", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Boundary conditions" })).toBeVisible();
+  await expect(page.getByText("4 CPML layers", { exact: true })).toBeVisible();
+
   await page.getByRole("tab", { name: "Spec & Code" }).click();
   await expect(page.getByRole("heading", { name: "Generated Python" })).toBeVisible();
   await expect(page.locator('[aria-label="Generated Python"]')).toContainText(
@@ -63,6 +72,12 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await expect(page.getByRole("heading", { name: "Smith chart" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "EZ field slice" })).toBeVisible();
   await expect(page.getByTestId("field-slice-heatmap")).toBeVisible();
+  const evidence = page.locator(".engineering-evidence");
+  await expect(evidence.getByRole("heading", { name: "RF evidence summary" })).toBeVisible();
+  await expect(evidence.getByText("VSWR at minimum", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Convergence trace", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("not captured", { exact: true })).toHaveCount(3);
+  await expect(evidence.getByText("Spec SHA", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Time series & far field" })).toBeVisible();
   await expect(page.getByText("Structural smoke; not quantitative RF validation")).toBeVisible();
 

@@ -14,6 +14,27 @@ installation. `RFX_TELEMETRY` defaults to `off`; `on` permits only a short
 allowlist of operational fields and rejects spec, prompt, artifact, path,
 secret, token, and key fields.
 
+## Engineering review workflow
+
+Use the Studio views as a review sequence before treating a run as evidence:
+
+1. **Design** previews geometry and blocks invalid drafts at preflight.
+2. **Setup** reviews the canonical domain and grid estimate, materials and
+   geometry assignments, ports/excitations, boundary conditions, requested
+   observations, frequency sweep, and CPU solve contract.
+3. **Spec & Code** shows the editable canonical JSON, deterministic generated
+   Python, and the semantic proposal against the immutable revision.
+4. **Results** shows lifecycle events and the RF evidence summary before the
+   individual S11, Smith, and field plots.
+
+The RF evidence summary derives S11 minimum, VSWR, sampled -10 dB bandwidth,
+and sweep resolution only from the checksummed run artifact. It also cites the
+spec, compiled-model, runtime/package, and artifact identities. Solver-native
+convergence history, mesh statistics, or port diagnostics are labeled **not
+captured** when absent; a successful lifecycle does not imply those checks
+passed. The bundled patch workflow remains a structural CPU smoke test, not a
+calibrated quantitative RF reference.
+
 ## Schema, backup, restore, and replay compatibility
 
 ```bash

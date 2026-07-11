@@ -5,6 +5,8 @@ import { api, ApiError } from "./api";
 import { CodeEditor } from "./CodeEditor";
 import { CopilotPanel } from "./CopilotPanel";
 import { buildPatch } from "./diff";
+import { EngineeringEvidence } from "./EngineeringEvidence";
+import { EngineeringSetup } from "./EngineeringSetup";
 import { FieldSlicePlot } from "./FieldSlicePlot";
 import { patchGolden } from "./golden";
 import { IntentComposer } from "./IntentComposer";
@@ -17,7 +19,7 @@ import type {
   RunRecord,
 } from "./types";
 
-type WorkspaceTab = "design" | "code" | "results";
+type WorkspaceTab = "design" | "setup" | "code" | "results";
 type SpecDocument = Record<string, JsonValue>;
 
 const terminalStates = new Set(["succeeded", "failed", "cancelled"]);
@@ -90,6 +92,11 @@ export function App() {
   );
   const selectedRun =
     experimentRuns.find((run) => run.id === selectedRunId) ?? experimentRuns[0];
+  const runRevision = useQuery({
+    queryKey: ["run-revision", selectedRun?.revision_id],
+    queryFn: () => api.getRevision(selectedRun!.revision_id!),
+    enabled: Boolean(selectedRun?.revision_id),
+  });
   const s11Artifact = selectedRun?.artifacts.find((item) => item.kind === "s11");
   const s11 = useQuery({
     queryKey: ["s11", s11Artifact?.id],
@@ -419,14 +426,20 @@ export function App() {
           <>
             <div className="toolbar">
               <div className="tabs" role="tablist" aria-label="Experiment workspace views">
-                {(["design", "code", "results"] as const).map((item) => (
+                {(["design", "setup", "code", "results"] as const).map((item) => (
                   <button
                     key={item}
                     role="tab"
                     aria-selected={tab === item}
                     onClick={() => setTab(item)}
                   >
-                    {item === "design" ? "Design" : item === "code" ? "Spec & Code" : `Results${experimentRuns.length ? ` · ${experimentRuns.length}` : ""}`}
+                    {item === "design"
+                      ? "Design"
+                      : item === "setup"
+                        ? "Setup"
+                        : item === "code"
+                          ? "Spec & Code"
+                          : `Results${experimentRuns.length ? ` · ${experimentRuns.length}` : ""}`}
                   </button>
                 ))}
               </div>
@@ -560,6 +573,15 @@ export function App() {
               </div>
             )}
 
+            {tab === "setup" && (
+              <EngineeringSetup
+                spec={draft}
+                scene={activePreview.scene}
+                preflight={activePreview.preflight}
+                onOpenSpec={() => setTab("code")}
+              />
+            )}
+
             {tab === "code" && (
               <div className="code-grid">
                 <section className="panel code-panel" aria-labelledby="spec-heading">
@@ -627,11 +649,19 @@ export function App() {
                       </section>
 
                       {selectedRun.state === "succeeded" && s11.data ? (
-                        <div className="plots-grid"><S11Plot artifact={s11.data} /><SmithChart artifact={s11.data} />
+                        <>
+                          <EngineeringEvidence
+                            artifact={s11.data}
+                            run={selectedRun}
+                            revision={runRevision.data}
+                            hasFieldSlice={Boolean(fieldSliceArtifact)}
+                          />
+                          <div className="plots-grid"><S11Plot artifact={s11.data} /><SmithChart artifact={s11.data} />
                           {fieldSlice.data ? <FieldSlicePlot artifact={fieldSlice.data} /> : <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Declared observation</p><h3>Field slice</h3></div><span className="availability-tag">loading</span></header><div className="field-placeholder"><span>Ez</span><p>The immutable final-state field plane is loading from its checksummed artifact.</p></div></section>}
                           <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Observable coverage</p><h3>Time series & far field</h3></div><span className="availability-tag">not requested</span></header><div className="field-placeholder"><span>t / θ</span><p>This revision requests neither a time probe nor NTFF surface. The absence is explicit, rather than an empty chart.</p></div></section>
                           <section className="result-card validation-card"><header className="card-header"><div><p className="eyebrow">Evidence boundary</p><h3>Validation & limitations</h3></div></header><ul><li><span className="check">✓</span> Lifecycle and S11 schema validated</li><li><span className="check">✓</span> CPU provenance recorded</li><li><span className="warn">!</span> Structural smoke; not quantitative RF validation</li></ul></section>
-                        </div>
+                          </div>
+                        </>
                       ) : selectedRun.state === "succeeded" ? <div className="loading-panel">Loading immutable S11 artifact…</div> : null}
                     </>
                   )}
