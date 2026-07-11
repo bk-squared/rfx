@@ -16,35 +16,35 @@ secret, token, and key fields.
 
 ## Engineering review workflow
 
-Use the Studio views as a review sequence before treating a run as evidence:
+Use the Studio views in the same order as a normal RF simulation review:
 
 1. **Design** previews geometry and blocks invalid drafts at preflight.
-2. **Setup** reviews the canonical domain and grid estimate, materials and
+2. **Setup** reviews the domain and grid estimate, materials and
    geometry assignments, ports/excitations, boundary conditions, requested
    observations, frequency sweep, and CPU solve contract.
-3. **Spec & Code** shows the editable canonical JSON, deterministic generated
-   Python, and the semantic proposal against the immutable revision.
-4. **Results** shows lifecycle events and the RF evidence summary before the
+3. **Model & Code** shows the editable ExperimentSpec, generated Python, and
+   pending changes against the saved revision.
+4. **Results** shows run events and the RF run summary before the
    individual S11, Smith, and field plots.
 
-Studio intentionally separates the **run gate** from **evidence readiness**.
-The run gate answers only whether the canonical model can be compiled and
-started inside the declared CPU/resource boundary. Evidence readiness also
+Studio intentionally separates **preflight** from **result confidence**.
+Preflight answers only whether the model can be compiled and started inside
+the declared CPU/resource boundary. Result confidence also
 considers the declared fidelity, minimum-feature grid resolution, sweep sample
-density, persisted diagnostics, and result advisories. A green run gate does
+density, recorded diagnostics, and result advisories. A passed preflight does
 not mean the setup is ready for a quantitative RF claim.
 
-The RF evidence summary derives S11 minimum, VSWR, sampled -10 dB bandwidth,
+The run summary derives S11 minimum, VSWR, sampled -10 dB bandwidth,
 and sweep resolution only from the checksummed run artifact. It also cites the
 spec, compiled-model, runtime/package, and artifact identities. Solver-native
 convergence history, mesh statistics, or port diagnostics are labeled **not
-captured** when absent; a successful lifecycle does not imply those checks
+recorded** when absent; a successful lifecycle does not imply those checks
 passed. The bundled patch workflow remains a structural CPU smoke test, not a
 calibrated quantitative RF reference.
 
 The Design view reads center frequency and S-parameter sweep controls from the
-canonical ExperimentSpec. Editing them creates the same preview and semantic
-diff as editing JSON or accepting an agent proposal. Results warn when a sampled
+ExperimentSpec. Editing them creates the same preview and pending-change review
+as editing JSON or accepting an assistant draft. Results warn when a sampled
 S11 minimum occurs at a sweep edge, when frequency coverage is sparse, or when
 a requested field plane is snapped to the nearest solved grid plane. Declared
 validation checks whose results are not persisted remain labeled as declarations,

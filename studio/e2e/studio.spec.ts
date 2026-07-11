@@ -5,7 +5,7 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Create patch antenna" }).click();
+  await page.getByRole("button", { name: "Load patch example" }).click();
   await expect(page.getByRole("heading", { name: "2.4 GHz FR4 patch antenna" })).toBeVisible();
   await expect(page.getByTestId("scene-viewer")).toBeVisible();
   await expect(page.locator(".latency")).not.toHaveText("canonical");
@@ -25,9 +25,9 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
 
   await page.getByLabel("Cell size in meters").fill("0");
   await expect(page.getByRole("button", { name: "Run on CPU" })).toBeDisabled();
-  await expect(page.getByText("Proposal is invalid", { exact: true })).toBeVisible();
-  await page.getByText("Proposal is invalid", { exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Spec & Code" })).toHaveAttribute(
+  await expect(page.getByText("Setup is invalid", { exact: true })).toBeVisible();
+  await page.getByText("Setup is invalid", { exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Model & Code" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -35,33 +35,33 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await page.getByLabel("Cell size in meters").fill("0.0015");
   await page.getByLabel("Center frequency in GHz").fill("2.45");
   await page.getByLabel("Sweep sample count").fill("11");
-  await expect(page.getByText("✓ Run gate ready", { exact: true })).toBeVisible();
+  await expect(page.getByText("✓ Preflight passed", { exact: true })).toBeVisible();
 
   const previewStarted = Date.now();
   const previewResponse = page.waitForResponse(
     (response) => response.url().endsWith("/api/preview") && response.request().method() === "POST",
   );
-  await page.getByLabel("Experiment title").fill("Agent-ready patch antenna");
+  await page.getByLabel("Study name").fill("2.45 GHz patch sweep study");
   expect((await previewResponse).ok()).toBeTruthy();
   expect(Date.now() - previewStarted).toBeLessThan(1000);
   await expect(page.getByText("4 changes", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Approve & create revision" }).click();
+  await page.getByRole("button", { name: "Save as new revision" }).click();
   await expect(page.getByText("Revision 2 created", { exact: false })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2.45 GHz patch sweep study" })).toBeVisible();
 
   await page.getByRole("tab", { name: "Setup" }).click();
-  await expect(page.getByRole("heading", { name: "Engineer setup" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Simulation setup" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Domain & mesh" })).toBeVisible();
   await expect(page.getByText("27 × 24 × 22", { exact: true })).toBeVisible();
-  await expect(page.getByText("Diagnostic evidence only", { exact: true })).toBeVisible();
+  await expect(page.getByText("Screening run only", { exact: true })).toBeVisible();
   await expect(page.getByText("1.1 cells / min feature", { exact: true })).toBeVisible();
-  await expect(page.getByText("11 samples are suitable for smoke coverage", { exact: false })).toBeVisible();
+  await expect(page.getByText("11 points are enough for a coarse sweep", { exact: false })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Ports & excitations" })).toBeVisible();
   await expect(page.getByText("50.0 Ω", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Boundary conditions" })).toBeVisible();
   await expect(page.getByText("4 CPML layers", { exact: true })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Spec & Code" }).click();
+  await page.getByRole("tab", { name: "Model & Code" }).click();
   await expect(page.getByRole("heading", { name: "Generated Python" })).toBeVisible();
   await expect(page.locator('[aria-label="Generated Python"]')).toContainText(
     "build_simulation",
@@ -69,12 +69,12 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await page.getByRole("tab", { name: "Design" }).click();
 
   await page.getByRole("button", { name: "Validate", exact: true }).click();
-  await expect(page.getByText("Preflight passed", { exact: false })).toBeVisible();
+  await expect(page.getByText("Preflight passed", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Run on CPU" }).click();
   await expect(page.getByRole("tab", { name: /Results/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: /Run / })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2.45 GHz patch sweep study" })).toBeVisible();
   await page.getByRole("tab", { name: /Results/ }).click();
   await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible({ timeout: 45_000 });
   await expect(page.getByRole("heading", { name: "S11 magnitude" })).toBeVisible();
@@ -82,20 +82,20 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await expect(page.getByRole("heading", { name: "EZ field slice" })).toBeVisible();
   await expect(page.getByTestId("field-slice-heatmap")).toBeVisible();
   const evidence = page.locator(".engineering-evidence");
-  await expect(evidence.getByRole("heading", { name: "RF evidence summary" })).toBeVisible();
+  await expect(evidence.getByRole("heading", { name: "Run summary" })).toBeVisible();
   await expect(evidence.getByText("VSWR at minimum", { exact: true })).toBeVisible();
   await expect(evidence.getByText("Convergence trace", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("not captured", { exact: true })).toHaveCount(3);
+  await expect(evidence.getByText("not recorded", { exact: true })).toHaveCount(3);
   await expect(evidence.getByText("Spec SHA", { exact: true })).toBeVisible();
   await expect(evidence.getByText("Sweep boundary", { exact: true })).toBeVisible();
   await expect(evidence.getByText("Sample density", { exact: true })).toBeVisible();
   await expect(evidence.getByText("Field plane", { exact: true })).toBeVisible();
   await expect(evidence.getByText("120.0 MHz step", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("Declared validation contract", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("result not persisted", { exact: true })).toHaveCount(2);
-  await expect(page.getByText("Nearest grid plane · Δ 0.500 mm", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Validation checks", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("no recorded result", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Nearest solved plane · Δ 0.500 mm", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Time series & far field" })).toBeVisible();
-  await expect(page.getByText("not-for-quantitative-rf-validation", { exact: false })).toBeVisible();
+  await expect(evidence.getByText("No quantitative RF claim", { exact: false })).toBeVisible();
 
   await page.getByRole("button", { name: "Export bundle" }).click();
   const downloadLink = page.getByRole("link", { name: "Download .zip" });
@@ -106,7 +106,7 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   expect(download.suggestedFilename()).toMatch(/rfx-replay-.*\.zip/);
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2.45 GHz patch sweep study" })).toBeVisible();
   await page.getByRole("tab", { name: /Results/ }).click();
   await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible();
 
@@ -129,7 +129,7 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
 
   const experiments = await (await page.request.get("/api/experiments")).json();
   const experiment = experiments.find(
-    (candidate: { title: string }) => candidate.title === "Agent-ready patch antenna",
+    (candidate: { title: string }) => candidate.title === "2.45 GHz patch sweep study",
   );
   expect(experiment).toBeTruthy();
   const currentRevision = await (
@@ -155,7 +155,7 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   );
   expect(longRevision.status()).toBe(201);
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2.45 GHz patch sweep study" })).toBeVisible();
   await page.getByRole("tab", { name: /Results/ }).click();
   await page.getByRole("button", { name: "Run on CPU" }).click();
   const runningRun = page
@@ -211,10 +211,10 @@ test("agent patch is inert until Studio approves the exact MCP call", async ({ p
   const approvalId = proposed.result.structuredContent.approval.id;
 
   await page.goto("/");
-  const agentButton = page.getByRole("button", { name: "Agent approvals, 1 pending" });
+  const agentButton = page.getByRole("button", { name: "Tool approvals, 1 pending" });
   await expect(agentButton).toBeVisible();
   await agentButton.click();
-  await expect(page.getByRole("heading", { name: "Agent control plane" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tool approvals" })).toBeVisible();
   await expect(page.getByText("apply experiment patch", { exact: true })).toBeVisible();
   await expect(page.locator(".approval-card details[open] pre")).toContainText(
     "/metadata/title",
@@ -230,10 +230,10 @@ test("agent patch is inert until Studio approves the exact MCP call", async ({ p
   ).toEqual([]);
 
   await page.getByRole("button", { name: "Approve exact call" }).click();
-  await expect(page.getByText("No state-changing agent action is waiting.")).toBeVisible();
+  await expect(page.getByText("No tool call is waiting for approval.")).toBeVisible();
   const executed = await rpc(2, { ...argumentsPayload, approval_id: approvalId });
   expect(executed.result.structuredContent.status).toBe("ok");
-  await page.getByRole("button", { name: "Close agent panel" }).click();
+  await page.getByRole("button", { name: "Close tool approvals" }).click();
 
   await expect(page.getByText("MCP-approved patch antenna", { exact: true })).toBeVisible();
 });

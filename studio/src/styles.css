@@ -65,9 +65,9 @@ h1, h2, h3, p { margin-top: 0; }
 .revision-chip span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
 .revision-chip code { color: var(--amber); font-size: 10px; }
 .topbar-actions { display: flex; align-items: center; gap: 9px; }
-.copilot-button { display: flex; min-height: 34px; align-items: center; gap: 7px; padding: 7px 12px; color: #122019; border: 1px solid var(--mint); border-radius: 5px; background: linear-gradient(135deg, var(--mint-bright), var(--mint)); font-size: 10px; font-weight: 800; cursor: pointer; }
-.copilot-button:hover { filter: brightness(1.08); }
-.copilot-button span { color: #315f4b; }
+.copilot-button { display: flex; min-height: 34px; align-items: center; gap: 7px; padding: 7px 12px; color: #b8cec2; border: 1px solid #315d49; border-radius: 3px; background: #10231b; font-size: 10px; font-weight: 800; cursor: pointer; }
+.copilot-button:hover { color: var(--mint-bright); border-color: var(--mint); background: #142b22; }
+.copilot-button span { color: var(--mint); font-family: var(--mono); }
 .agent-button { position: relative; display: flex; min-height: 34px; align-items: center; gap: 7px; padding: 7px 11px; color: #b8cec2; border: 1px solid var(--line); border-radius: 5px; background: #0b1713; font-size: 10px; font-weight: 750; cursor: pointer; }
 .agent-button:hover { border-color: var(--mint); }
 .agent-button > span { color: var(--mint); }
@@ -98,7 +98,7 @@ h1, h2, h3, p { margin-top: 0; }
 .welcome > p:not(.eyebrow) { max-width: 610px; color: var(--muted); font-size: 14px; line-height: 1.65; }
 .intent-composer { width: min(720px, 100%); padding: 13px; margin-top: 17px; text-align: left; border: 1px solid #3a5e4e; border-radius: 10px; background: linear-gradient(145deg, #10251c, #0a1712); box-shadow: 0 22px 70px #0005, 0 0 0 1px #82d0ad0b inset; }
 .intent-input-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: end; gap: 8px; }
-.copilot-spark { display: grid; width: 28px; height: 28px; place-items: center; align-self: start; margin-top: 4px; color: #102018; border-radius: 9px 3px 9px 3px; background: var(--mint); }
+.copilot-spark { display: grid; width: 28px; height: 28px; place-items: center; align-self: start; margin-top: 4px; color: var(--mint); border: 1px solid #315d49; border-radius: 3px; background: #10231b; font: 10px var(--mono); }
 .intent-composer textarea { width: 100%; min-height: 72px; padding: 9px 10px; resize: vertical; color: var(--text); border: 0; outline: 0; background: transparent; font-size: 12px; line-height: 1.55; }
 .intent-composer textarea::placeholder { color: #6e8278; }
 .intent-submit { min-width: 132px; }
@@ -408,7 +408,7 @@ progress::-webkit-progress-value { background: var(--mint); }
 .copilot-panel { width: min(560px, 96vw); }
 .copilot-safety { border-color: #405c4f; background: linear-gradient(135deg, #132c22, #101f19); }
 .copilot-loading { display: grid; min-height: 280px; place-items: center; align-content: center; padding: 34px; text-align: center; }
-.copilot-loading > span { display: grid; width: 46px; height: 46px; place-items: center; margin-bottom: 14px; color: #0d1a14; border-radius: 15px 5px 15px 5px; background: var(--mint); font-size: 18px; box-shadow: 0 0 0 9px #82d0ad12; }
+.copilot-loading > span { display: grid; width: 42px; height: 42px; place-items: center; margin-bottom: 14px; color: var(--mint); border: 1px solid #315d49; border-radius: 3px; background: #10231b; font: 14px var(--mono); }
 .copilot-loading strong { font: 500 20px Georgia, serif; }
 .copilot-loading p { max-width: 350px; margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
 .copilot-idle > span { background: #263d33; color: var(--mint); }

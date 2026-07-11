@@ -125,6 +125,10 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
   const sweepPoints = finiteNumber(sweepObservation?.points);
   const fidelity = String(metadata.fidelity ?? "unspecified");
   const claim = String(metadata.claims ?? "unspecified");
+  const fidelityLabel = fidelity === "structural-cpu-smoke" ? "CPU screening" : fidelity;
+  const claimLabel = claim === "not-for-quantitative-rf-validation"
+    ? "No quantitative RF claim"
+    : claim;
   const diagnosticOnly = fidelity.includes("smoke") || claim.includes("not-for-quantitative");
   const meshNeedsReview = cellsAcrossMinimumFeature !== null && cellsAcrossMinimumFeature < 4;
   const sweepNeedsReview = sweepPoints !== null && sweepPoints < 21;
@@ -169,10 +173,10 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
       <section className="panel setup-summary" aria-labelledby="engineer-setup-heading">
         <header className="panel-heading">
           <div>
-            <p className="eyebrow">Canonical model review</p>
-            <h2 id="engineer-setup-heading">Engineer setup</h2>
+            <p className="eyebrow">Model and solver inputs</p>
+            <h2 id="engineer-setup-heading">Simulation setup</h2>
           </div>
-          <button className="secondary setup-open-spec" onClick={onOpenSpec}>Open canonical spec</button>
+          <button className="secondary setup-open-spec" onClick={onOpenSpec}>View ExperimentSpec</button>
         </header>
         <div className="setup-status-rail" aria-label="RF setup readiness">
           {readiness.map((item, index) => (
@@ -184,17 +188,17 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
         </div>
         <div className={diagnosticOnly ? "engineering-readiness diagnostic" : "engineering-readiness"}>
           <div>
-            <span>Evidence readiness</span>
-            <strong>{diagnosticOnly ? "Diagnostic evidence only" : "Review declared fidelity"}</strong>
+            <span>Result confidence</span>
+            <strong>{diagnosticOnly ? "Screening run only" : "Review run class"}</strong>
           </div>
           <p>{diagnosticOnly
-            ? "The run gate may open, but this structural CPU smoke does not establish converged quantitative RF accuracy."
-            : "Readiness follows the declared fidelity and persisted evidence; a successful lifecycle alone is insufficient."}</p>
+            ? "Suitable for workflow checks and a coarse response. Refine the mesh and verify convergence before quantitative RF use."
+            : "Check the declared run class and recorded diagnostics before using the results quantitatively."}</p>
         </div>
         {(meshNeedsReview || sweepNeedsReview) && (
           <div className="setup-advisories" aria-label="Engineering setup advisories">
-            {meshNeedsReview && <p><strong>Mesh review</strong> The smallest modeled feature spans {cellsAcrossMinimumFeature?.toFixed(1)} cells; use at least 4 cells per feature before a geometry-sensitive claim.</p>}
-            {sweepNeedsReview && <p><strong>Sweep review</strong> {sweepPoints} samples are suitable for smoke coverage, but too sparse to resolve a narrow resonance or bandwidth reliably.</p>}
+            {meshNeedsReview && <p><strong>Mesh review</strong> The smallest feature is {cellsAcrossMinimumFeature?.toFixed(1)} cells across. Refine to at least 4 cells across before drawing geometry-sensitive conclusions.</p>}
+            {sweepNeedsReview && <p><strong>Sweep review</strong> {sweepPoints} points are enough for a coarse sweep, but may miss a narrow resonance or under-resolve bandwidth.</p>}
           </div>
         )}
       </section>
@@ -214,7 +218,7 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
             <div><span>Dielectric cells / λ</span><strong>{dielectricCellsPerWavelength ? `${dielectricCellsPerWavelength.toFixed(1)} at εr ${maximumPermittivity.toFixed(2)}` : "not available"}</strong></div>
             <div><span>Minimum feature / cell</span><strong>{minimumFeature && cellsAcrossMinimumFeature ? `${formatLength(minimumFeature)} / ${cellsAcrossMinimumFeature.toFixed(1)} cells` : "not available"}</strong></div>
           </div>
-          <p className="setup-footnote">Grid values are deterministic estimates from domain and canonical cell size; solver-native mesh statistics are not yet persisted.</p>
+          <p className="setup-footnote">Grid dimensions are estimated from the domain and cell size. Solver mesh statistics are not recorded for this run class.</p>
         </section>
 
         <section className="panel setup-card" aria-labelledby="materials-heading">
@@ -271,7 +275,7 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
         </section>
 
         <section className="panel setup-card" aria-labelledby="observation-heading">
-          <header className="panel-heading"><div><p className="eyebrow">Study</p><h3 id="observation-heading">Frequency & observations</h3></div><span className="schema-pill">{observations.length}</span></header>
+          <header className="panel-heading"><div><p className="eyebrow">Study</p><h3 id="observation-heading">Frequency & outputs</h3></div><span className="schema-pill">{observations.length}</span></header>
           <div className="sweep-summary">
             <div><span>Sweep</span><strong>{sweepStart !== null && sweepStop !== null ? `${formatFrequency(sweepStart)} – ${formatFrequency(sweepStop)}` : "workflow-defined"}</strong></div>
             <div><span>Samples</span><strong>{sweepPoints ? `${sweepPoints} points` : "not specified"}</strong></div>
@@ -284,19 +288,19 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
         </section>
 
         <section className="panel setup-card" aria-labelledby="execution-heading">
-          <header className="panel-heading"><div><p className="eyebrow">Solve contract</p><h3 id="execution-heading">Execution & validation</h3></div><span className="schema-pill">CPU</span></header>
+          <header className="panel-heading"><div><p className="eyebrow">Solver</p><h3 id="execution-heading">Execution & checks</h3></div><span className="schema-pill">CPU</span></header>
           <div className="setup-metrics compact">
             <div><span>Precision</span><strong>{String(simulation.precision ?? "—")}</strong></div>
             <div><span>Time steps</span><strong>{String(execution.n_steps ?? "—")}</strong></div>
             <div><span>S-parameter steps</span><strong>{String(execution.s_param_n_steps ?? "—")}</strong></div>
             <div><span>Timeout</span><strong>{String(execution.timeout_seconds ?? "—")} s</strong></div>
-            <div><span>Fidelity</span><strong>{String(metadata.fidelity ?? "unspecified")}</strong></div>
-            <div><span>Claim</span><strong>{String(metadata.claims ?? "unspecified")}</strong></div>
+            <div><span>Run class</span><strong>{fidelityLabel}</strong></div>
+            <div><span>Result use</span><strong>{claimLabel}</strong></div>
           </div>
           <div className="contract-groups">
             <div><span>Required checks</span><p>{asStrings(validation.required_checks).join(" · ") || "none declared"}</p></div>
             <div><span>Metrics</span><p>{asStrings(validation.metrics).join(" · ") || "none declared"}</p></div>
-            <div><span>Saved evidence</span><p>{asStrings(artifacts.save).join(" · ") || "none declared"}</p></div>
+            <div><span>Saved outputs</span><p>{asStrings(artifacts.save).join(" · ") || "none declared"}</p></div>
           </div>
         </section>
       </div>

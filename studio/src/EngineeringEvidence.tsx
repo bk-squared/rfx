@@ -27,10 +27,10 @@ export function EngineeringEvidence({ artifact, run, revision, fieldSlice }: Eng
     return (
       <section className="panel engineering-evidence" aria-labelledby="rf-evidence-heading">
         <header className="panel-heading">
-          <div><p className="eyebrow">Engineering interpretation</p><h2 id="rf-evidence-heading">RF evidence summary</h2></div>
-          <span className="schema-pill">incomplete artifact</span>
+          <div><p className="eyebrow">Solved results</p><h2 id="rf-evidence-heading">Run summary</h2></div>
+          <span className="schema-pill">no S11 data</span>
         </header>
-        <p className="evidence-boundary">No S11 samples were captured. Engineering metrics cannot be inferred from an empty artifact.</p>
+        <p className="evidence-boundary">No S11 samples were recorded, so resonance, VSWR, and bandwidth cannot be calculated.</p>
       </section>
     );
   }
@@ -62,6 +62,12 @@ export function EngineeringEvidence({ artifact, run, revision, fieldSlice }: Eng
   const metadata = revision?.spec.metadata && typeof revision.spec.metadata === "object" && !Array.isArray(revision.spec.metadata)
     ? revision.spec.metadata as Record<string, unknown>
     : {};
+  const fidelity = String(metadata.fidelity ?? "Unspecified run class");
+  const claim = String(metadata.claims ?? "No result-use statement");
+  const fidelityLabel = fidelity === "structural-cpu-smoke" ? "CPU screening run" : fidelity;
+  const claimLabel = claim === "not-for-quantitative-rf-validation"
+    ? "No quantitative RF claim"
+    : claim;
   const validation = revision?.spec.validation && typeof revision.spec.validation === "object" && !Array.isArray(revision.spec.validation)
     ? revision.spec.validation as Record<string, unknown>
     : {};
@@ -82,34 +88,34 @@ export function EngineeringEvidence({ artifact, run, revision, fieldSlice }: Eng
     { label: "Network response", detail: `${points.length} complex S11 samples`, state: "available" },
     { label: "Field snapshot", detail: fieldSlice ? fieldCoordinateSnapped ? "captured on nearest grid plane" : "requested plane captured" : "not requested", state: fieldSlice ? "available" : "neutral" },
     { label: "Reference impedance", detail: `${artifact.reference_impedance_ohm.toFixed(1)} Ω`, state: "available" },
-    { label: "Convergence trace", detail: "not captured", state: "missing" },
-    { label: "Mesh statistics", detail: "not captured", state: "missing" },
-    { label: "Port diagnostics", detail: "not captured", state: "missing" },
+    { label: "Convergence trace", detail: "not recorded", state: "missing" },
+    { label: "Mesh statistics", detail: "not recorded", state: "missing" },
+    { label: "Port diagnostics", detail: "not recorded", state: "missing" },
   ];
 
   return (
     <section className="panel engineering-evidence" aria-labelledby="rf-evidence-heading">
       <header className="panel-heading">
-        <div><p className="eyebrow">Engineering interpretation</p><h2 id="rf-evidence-heading">RF evidence summary</h2></div>
-        <span className="schema-pill">immutable run</span>
+        <div><p className="eyebrow">Solved results</p><h2 id="rf-evidence-heading">Run summary</h2></div>
+        <span className="schema-pill">recorded output</span>
       </header>
       <div className="evidence-kpis">
         <div><span>Minimum S11</span><strong>{minimum.magnitude_db.toFixed(2)} dB</strong><small>{formatFrequency(minimum.frequency_hz)}</small></div>
         <div><span>VSWR at minimum</span><strong>{Number.isFinite(vswr) ? vswr.toFixed(2) : "∞"}</strong><small>{artifact.reference_impedance_ohm.toFixed(1)} Ω reference</small></div>
         <div><span>−10 dB bandwidth</span><strong>{sampledBandwidth === null ? "Not resolved" : `${(sampledBandwidth / 1e6).toFixed(1)} MHz`}</strong><small>{sampledBandPoints ? `${sampledBandPoints} contiguous samples` : "threshold not reached"}</small></div>
         <div><span>Sweep coverage</span><strong>{formatFrequency(points[0].frequency_hz)} – {formatFrequency(points[points.length - 1].frequency_hz)}</strong><small>{stepLabel}</small></div>
-        <div><span>Run duration</span><strong>{duration(run)}</strong><small>queue through artifact</small></div>
+        <div><span>Run duration</span><strong>{duration(run)}</strong><small>submit to saved output</small></div>
       </div>
       {(minimumAtSweepEdge || points.length < 21 || fieldCoordinateSnapped) && (
         <div className="result-advisories" aria-label="RF result advisories">
           {minimumAtSweepEdge && <p><strong>Sweep boundary</strong> The minimum S11 occurs at the {minimumIndex === 0 ? "lower" : "upper"} sweep edge; extend the sweep before interpreting it as a resolved resonance.</p>}
-          {points.length < 21 && <p><strong>Sample density</strong> Only {points.length} frequency samples were captured; bandwidth and narrow resonances may be under-resolved.</p>}
+          {points.length < 21 && <p><strong>Sample density</strong> Only {points.length} frequency points were sampled; bandwidth and narrow resonances may be under-resolved.</p>}
           {fieldCoordinateSnapped && <p><strong>Field plane</strong> The requested plane was snapped by {(fieldCoordinateDelta! * 1e3).toFixed(3)} mm to the nearest solved grid plane.</p>}
         </div>
       )}
       <div className="evidence-columns">
         <div>
-          <h3>Evidence coverage</h3>
+          <h3>Available outputs</h3>
           <div className="evidence-list">
             {evidence.map((item) => (
               <div key={item.label} className={item.state}><span /><strong>{item.label}</strong><small>{item.detail}</small></div>
@@ -117,7 +123,7 @@ export function EngineeringEvidence({ artifact, run, revision, fieldSlice }: Eng
           </div>
         </div>
         <div>
-          <h3>Reproducibility</h3>
+          <h3>Run provenance</h3>
           <div className="provenance-list">
             <div><span>Run / revision</span><code>{run.id.slice(0, 10)} / {shortHash(run.revision_id)}</code></div>
             <div><span>Spec SHA</span><code>{shortHash(artifact.spec_sha256)}</code></div>
@@ -130,21 +136,21 @@ export function EngineeringEvidence({ artifact, run, revision, fieldSlice }: Eng
       </div>
       <div className="validation-contract">
         <div>
-          <span>Declared validation contract</span>
-          <strong>Declaration is not execution evidence</strong>
+          <span>Validation checks</span>
+          <strong>Configured checks and recorded results</strong>
         </div>
         <div className="validation-contract-checks">
           {requiredChecks.map((check) => (
             <p key={check} className={check === "preflight" && revision?.preflight.ok ? "captured" : "missing"}>
               <span /> <strong>{check}</strong>
-              <small>{check === "preflight" && revision?.preflight.ok ? "preflight passed" : "result not persisted"}</small>
+              <small>{check === "preflight" && revision?.preflight.ok ? "passed" : "no recorded result"}</small>
             </p>
           ))}
           {!requiredChecks.length && <p className="missing"><span /><strong>No checks declared</strong><small>review spec</small></p>}
         </div>
-        <p className="validation-metrics"><span>Declared metrics</span>{declaredMetrics.join(" · ") || "none"}</p>
+        <p className="validation-metrics"><span>Configured metrics</span>{declaredMetrics.join(" · ") || "none"}</p>
       </div>
-      <p className="evidence-boundary"><strong>{String(metadata.fidelity ?? "Unspecified fidelity")}</strong> · {String(metadata.claims ?? "No quantitative claim declared")}. Missing convergence, mesh, and port diagnostics are shown explicitly and are not inferred from a successful lifecycle.</p>
+      <p className="evidence-boundary"><strong>{fidelityLabel}</strong> · {claimLabel}. Convergence, solver mesh, and port diagnostics were not recorded for this run.</p>
     </section>
   );
 }

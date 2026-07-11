@@ -27,7 +27,7 @@ export function FieldSlicePlot({ artifact }: { artifact: FieldSliceArtifact }) {
     <section className="result-card field-card" aria-labelledby="field-slice-heading">
       <header className="card-header">
         <div>
-          <p className="eyebrow">Immutable final-state plane</p>
+          <p className="eyebrow">Final field sample</p>
           <h3 id="field-slice-heading">{component} field slice</h3>
         </div>
         <div className="metric">
@@ -74,7 +74,7 @@ export function FieldSlicePlot({ artifact }: { artifact: FieldSliceArtifact }) {
       </svg>
       <p className="field-caption">
         <span>{artifact.observation_id} · requested {artifact.requested_coordinate_m.toFixed(4)} m · sampled {artifact.actual_coordinate_m.toFixed(4)} m · {rows}×{columns}</span>
-        {coordinateDeltaMm > 1e-9 && <strong>Nearest grid plane · Δ {coordinateDeltaMm.toFixed(3)} mm</strong>}
+        {coordinateDeltaMm > 1e-9 && <strong>Nearest solved plane · Δ {coordinateDeltaMm.toFixed(3)} mm</strong>}
       </p>
     </section>
   );

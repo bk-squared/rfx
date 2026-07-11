@@ -186,7 +186,7 @@ export function App() {
     mutationFn: () => api.createExperiment(patchGolden),
     onSuccess: async ({ experiment }) => {
       setSelectedExperimentId(experiment.id);
-      setNotice("Patch antenna workspace created");
+      setNotice("Patch antenna study created");
       await queryClient.invalidateQueries({ queryKey: ["experiments"] });
     },
   });
@@ -205,7 +205,7 @@ export function App() {
       setSelectedExperimentId(experiment.id);
       setCopilotPanelOpen(false);
       setCopilotIntent("");
-      setNotice("Approved AI proposal created an immutable revision 1");
+      setNotice("Revision 1 created from the reviewed draft");
       await queryClient.invalidateQueries({ queryKey: ["experiments"] });
     },
   });
@@ -231,7 +231,7 @@ export function App() {
   const validate = useMutation({
     mutationFn: () => api.validateRevision(revision.data!.id),
     onSuccess: (result) =>
-      setNotice(result.preflight.ok ? "Preflight passed — run gate is open" : "Preflight blocked the run"),
+      setNotice(result.preflight.ok ? "Preflight passed" : "Preflight blocked the run"),
   });
   const start = useMutation({
     mutationFn: () => api.startRun(selectedExperiment!.id, revision.data!.id),
@@ -250,13 +250,13 @@ export function App() {
     mutationFn: () => api.exportRun(selectedRun!.id),
     onSuccess: (artifact) => {
       setExportUrl(artifact.url);
-      setNotice("Immutable run snapshot is ready to download");
+      setNotice("Run bundle is ready to download");
       queryClient.invalidateQueries({ queryKey: ["runs"] });
     },
   });
   const compare = useMutation({
     mutationFn: (runIds: string[]) => api.compareRuns(runIds),
-    onSuccess: () => setNotice("Run comparison cites immutable artifacts and validation state"),
+    onSuccess: () => setNotice("Run comparison loaded"),
   });
   const decideAgentAction = useMutation({
     mutationFn: ({ id, approved }: { id: string; approved: boolean }) =>
@@ -340,7 +340,7 @@ export function App() {
       return;
     }
     if (!revision.data || revision.data.id !== copilotProposal.base_revision_id) {
-      setNotice("The proposal base is no longer current; ask the copilot again");
+      setNotice("The draft is based on an older revision; request the change again");
       setCopilotPanelOpen(false);
       return;
     }
@@ -351,7 +351,7 @@ export function App() {
     setPreviewError("");
     setTab("design");
     setCopilotPanelOpen(false);
-    setNotice("AI proposal loaded as an uncommitted draft — review the diff before approval");
+    setNotice("Design change loaded as an unsaved draft — review it before saving a revision");
   };
 
   const semanticPatch =
@@ -378,20 +378,26 @@ export function App() {
   const sweepStartGhz = sparameterObservation ? Number(sparameterObservation.start_hz) / 1e9 : 0;
   const sweepStopGhz = sparameterObservation ? Number(sparameterObservation.stop_hz) / 1e9 : 0;
   const sweepPoints = sparameterObservation ? Number(sparameterObservation.points) : 0;
+  const fidelityLabel = String(draftMetadata.fidelity ?? "unspecified") === "structural-cpu-smoke"
+    ? "CPU screening"
+    : String(draftMetadata.fidelity ?? "unspecified");
+  const claimLabel = String(draftMetadata.claims ?? "unspecified") === "not-for-quantitative-rf-validation"
+    ? "No quantitative RF claim"
+    : String(draftMetadata.claims ?? "unspecified");
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="Experiment browser">
+      <aside className="sidebar" aria-label="Study browser">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">rƒ</span>
           <div><strong>rfx Studio</strong><span>CPU workbench</span></div>
         </div>
         <button className="new-button" onClick={() => create.mutate()} disabled={create.isPending}>
-          <span aria-hidden="true">＋</span> New patch experiment
+          <span aria-hidden="true">＋</span> New patch study
         </button>
-        <nav aria-label="Experiments" className="experiment-list">
-          <p className="sidebar-label">Experiments</p>
-          {experiments.isLoading && <p className="muted">Loading workspace…</p>}
+        <nav aria-label="Studies" className="experiment-list">
+          <p className="sidebar-label">Studies</p>
+          {experiments.isLoading && <p className="muted">Loading studies…</p>}
           {experiments.data?.map((experiment) => (
             <button
               key={experiment.id}
@@ -403,7 +409,7 @@ export function App() {
             </button>
           ))}
           {!experiments.isLoading && !experiments.data?.length && (
-            <div className="empty-sidebar"><span>∿</span><p>No experiments yet</p></div>
+            <div className="empty-sidebar"><span>∿</span><p>No studies yet</p></div>
           )}
         </nav>
         <div className="system-card">
@@ -416,22 +422,22 @@ export function App() {
         <header className="topbar">
           <div>
             <p className="breadcrumb">WORKSPACE / {selectedExperiment ? selectedExperiment.title.toUpperCase() : "START"}</p>
-            <h1>{selectedExperiment?.title ?? "Build an RF experiment"}</h1>
+            <h1>{selectedExperiment?.title ?? "New RF study"}</h1>
           </div>
           <div className="topbar-actions">
             <button
               className="copilot-button"
               onClick={() => setCopilotPanelOpen(true)}
-              aria-label="Open design copilot"
+              aria-label="Open design assistant"
             >
-              <span aria-hidden="true">✦</span> Design copilot
+              <span aria-hidden="true">Δ</span> Design assistant
             </button>
             <button
               className={pendingApprovals.data?.length ? "agent-button pending" : "agent-button"}
               onClick={() => setAgentPanelOpen(true)}
-              aria-label={`Agent approvals${pendingApprovals.data?.length ? `, ${pendingApprovals.data.length} pending` : ""}`}
+              aria-label={`Tool approvals${pendingApprovals.data?.length ? `, ${pendingApprovals.data.length} pending` : ""}`}
             >
-              <span aria-hidden="true">⌾</span> Approvals
+              <span aria-hidden="true">⌾</span> Tool approvals
               {Boolean(pendingApprovals.data?.length) && <b>{pendingApprovals.data?.length}</b>}
             </button>
             {revision.data && (
@@ -446,9 +452,9 @@ export function App() {
         {!selectedExperiment ? (
           <section className="welcome" aria-labelledby="welcome-heading">
             <div className="wave-glyph" aria-hidden="true">∿</div>
-            <p className="eyebrow">One model · human and AI editable</p>
-            <h2 id="welcome-heading">Describe the RF evidence you need</h2>
-            <p>The copilot proposes a canonical ExperimentSpec and deterministic rfx code. Nothing is saved or run until you review the physics, CPU budget, and semantic diff.</p>
+            <p className="eyebrow">Model · excitation · sweep · outputs</p>
+            <h2 id="welcome-heading">Set up an RF simulation</h2>
+            <p>Describe the device, materials, excitation, frequency range, and requested outputs. Review the model and CPU estimate before saving the first revision.</p>
             <IntentComposer
               intent={copilotIntent}
               onIntentChange={setCopilotIntent}
@@ -456,7 +462,7 @@ export function App() {
               pending={proposeDesign.isPending}
               providerLabel={copilotProviderLabel}
             />
-            <div className="template-fallback"><span>or</span><button className="secondary" onClick={() => create.mutate()} disabled={create.isPending}>Create patch antenna</button></div>
+            <div className="template-fallback"><span>or</span><button className="secondary" onClick={() => create.mutate()} disabled={create.isPending}>Load patch example</button></div>
             {create.error && <p role="alert" className="error-banner">{errorText(create.error)}</p>}
           </section>
         ) : revision.isLoading || !revision.data || !draft || !activePreview ? (
@@ -464,7 +470,7 @@ export function App() {
         ) : (
           <>
             <div className="toolbar">
-              <div className="tabs" role="tablist" aria-label="Experiment workspace views">
+              <div className="tabs" role="tablist" aria-label="Study workspace views">
                 {(["design", "setup", "code", "results"] as const).map((item) => (
                   <button
                     key={item}
@@ -477,14 +483,14 @@ export function App() {
                       : item === "setup"
                         ? "Setup"
                         : item === "code"
-                          ? "Spec & Code"
+                          ? "Model & Code"
                           : `Results${experimentRuns.length ? ` · ${experimentRuns.length}` : ""}`}
                   </button>
                 ))}
               </div>
               <div className="toolbar-actions">
                 <span className={activePreview.preflight.ok && !previewError ? "gate pass" : "gate fail"}>
-                  {activePreview.preflight.ok && !previewError ? "✓ Run gate ready" : "! Run blocked"}
+                  {activePreview.preflight.ok && !previewError ? "✓ Preflight passed" : "! Preflight blocked"}
                 </span>
                 <button className="secondary" onClick={() => validate.mutate()} disabled={validate.isPending}>Validate</button>
                 <button
@@ -520,13 +526,13 @@ export function App() {
               <div className="design-grid">
                 <section className="panel editor-panel" aria-labelledby="parameters-heading">
                   <header className="panel-heading">
-                    <div><p className="eyebrow">Structured spec</p><h2 id="parameters-heading">Design parameters</h2></div>
+                    <div><p className="eyebrow">Study definition</p><h2 id="parameters-heading">Primary parameters</h2></div>
                     <span className="schema-pill">v2</span>
                   </header>
                   <div className="form-stack">
-                    <label>Experiment title
+                    <label>Study name
                       <input
-                        aria-label="Experiment title"
+                        aria-label="Study name"
                         value={String(draftMetadata.title)}
                         onChange={(event) => updateMetadataTitle(event.target.value)}
                       />
@@ -577,12 +583,12 @@ export function App() {
                     <fieldset>
                       <legend>Execution</legend>
                       <div className="readonly-row"><span>Backend</span><strong>CPU</strong></div>
-                      <div className="readonly-row"><span>Fidelity</span><strong>{String(draftMetadata.fidelity ?? "unspecified")}</strong></div>
+                      <div className="readonly-row"><span>Run class</span><strong>{fidelityLabel}</strong></div>
                     </fieldset>
                   </div>
 
                   <div className="diff-panel" aria-live="polite">
-                    <div className="diff-title"><strong>Semantic diff</strong><span>{semanticPatch.length} change{semanticPatch.length === 1 ? "" : "s"}</span></div>
+                    <div className="diff-title"><strong>Pending changes</strong><span>{semanticPatch.length} change{semanticPatch.length === 1 ? "" : "s"}</span></div>
                     {semanticPatch.length ? (
                       <>
                         <ol>{semanticPatch.slice(0, 5).map((operation) => (
@@ -592,16 +598,16 @@ export function App() {
                           className="approve-button"
                           onClick={() => save.mutate()}
                           disabled={save.isPending || Boolean(previewError) || !activePreview.preflight.ok}
-                        >Approve & create revision</button>
+                        >Save as new revision</button>
                       </>
-                    ) : <p className="muted">Revision and proposal are aligned.</p>}
+                    ) : <p className="muted">No unsaved changes.</p>}
                   </div>
                 </section>
 
                 <section className="panel geometry-panel" aria-labelledby="geometry-heading">
                   <header className="panel-heading geometry-heading">
-                    <div><p className="eyebrow">Live scene</p><h2 id="geometry-heading">Geometry preview</h2></div>
-                    <span className="latency">{previewLatency === null ? "canonical" : `${Math.round(previewLatency)} ms`}</span>
+                    <div><p className="eyebrow">Model view</p><h2 id="geometry-heading">Geometry</h2></div>
+                    <span className="latency">{previewLatency === null ? "up to date" : `${Math.round(previewLatency)} ms`}</span>
                   </header>
                   <SceneViewer scene={activePreview.scene} selected={selectedObject} onSelect={setSelectedObject} />
                   <div className="object-strip" aria-label="Scene objects">
@@ -620,12 +626,12 @@ export function App() {
 
                 <section className="panel preflight-panel" aria-labelledby="preflight-heading">
                   <header className="panel-heading">
-                    <div><p className="eyebrow">Run gate</p><h2 id="preflight-heading">Preflight</h2></div>
+                    <div><p className="eyebrow">Run checks</p><h2 id="preflight-heading">Preflight</h2></div>
                     <span className={activePreview.preflight.ok && !previewError ? "score good" : "score bad"}>{activePreview.preflight.ok && !previewError ? "PASS" : "BLOCK"}</span>
                   </header>
                   {previewError ? (
                     <button className="issue error-issue" onClick={() => setTab("code")}>
-                      <span>!</span><div><strong>Proposal is invalid</strong><p>{previewError}</p><small>Open Spec & Code to fix the cited field.</small></div>
+                      <span>!</span><div><strong>Setup is invalid</strong><p>{previewError}</p><small>Open Model & Code to fix the cited field.</small></div>
                     </button>
                   ) : activePreview.preflight.issues.length ? (
                     <div className="issue-list">{activePreview.preflight.issues.map((issue, index) => (
@@ -634,12 +640,12 @@ export function App() {
                       </button>
                     ))}</div>
                   ) : (
-                    <div className="preflight-ok"><span>✓</span><div><strong>No blocking issues</strong><p>Canonical compiler and solver preflight agree.</p></div></div>
+                    <div className="preflight-ok"><span>✓</span><div><strong>Preflight passed</strong><p>Model, solver settings, and CPU limits passed the run checks.</p></div></div>
                   )}
                   <div className="gate-facts">
                     <div><span>Support lane</span><strong>{String(draftValidation.support_lane ?? "unspecified")}</strong></div>
                     <div><span>Device</span><strong>CPU / {String(draftSimulation.precision ?? "unspecified")}</strong></div>
-                    <div><span>Claim</span><strong>{String(draftMetadata.claims ?? "unspecified")}</strong></div>
+                    <div><span>Result use</span><strong>{claimLabel}</strong></div>
                   </div>
                 </section>
               </div>
@@ -657,18 +663,18 @@ export function App() {
             {tab === "code" && (
               <div className="code-grid">
                 <section className="panel code-panel" aria-labelledby="spec-heading">
-                  <header className="panel-heading"><div><p className="eyebrow">Editable proposal</p><h2 id="spec-heading">ExperimentSpec JSON</h2></div><span className="schema-pill">canonical</span></header>
+                  <header className="panel-heading"><div><p className="eyebrow">Input model</p><h2 id="spec-heading">ExperimentSpec</h2></div><span className="schema-pill">editable</span></header>
                   <CodeEditor label="ExperimentSpec JSON editor" value={draftText} onChange={updateDraftText} />
                 </section>
                 <section className="panel code-panel" aria-labelledby="python-heading">
-                  <header className="panel-heading"><div><p className="eyebrow">Deterministic export</p><h2 id="python-heading">Generated Python</h2></div><span className="schema-pill">read only</span></header>
+                  <header className="panel-heading"><div><p className="eyebrow">Solver setup</p><h2 id="python-heading">Generated Python</h2></div><span className="schema-pill">read only</span></header>
                   <CodeEditor label="Generated Python" value={activePreview.generated_python} readOnly />
                 </section>
                 <section className="panel diff-wide" aria-labelledby="code-diff-heading">
-                  <header className="panel-heading"><div><p className="eyebrow">Review before state change</p><h2 id="code-diff-heading">Semantic proposal</h2></div></header>
+                  <header className="panel-heading"><div><p className="eyebrow">Unsaved model edits</p><h2 id="code-diff-heading">Pending changes</h2></div></header>
                   {semanticPatch.length ? <div className="diff-table">{semanticPatch.map((operation) => (
                     <div key={`${operation.op}-${operation.path}`}><code>{operation.op}</code><strong>{operation.path}</strong><span>{operation.op === "remove" ? "removed" : JSON.stringify(operation.value)}</span></div>
-                  ))}</div> : <p className="muted padded">No changes from immutable revision {revision.data.sequence}.</p>}
+                  ))}</div> : <p className="muted padded">No changes from saved revision {revision.data.sequence}.</p>}
                 </section>
               </div>
             )}
@@ -676,7 +682,7 @@ export function App() {
             {tab === "results" && (
               <div className="results-layout">
                 <aside className="run-list panel" aria-label="Run history">
-                  <header className="panel-heading"><div><p className="eyebrow">Durable queue</p><h2>Runs</h2></div>{experimentRuns.length >= 2 && <button className="compare-button" onClick={() => compare.mutate(experimentRuns.slice(0, 2).map((run) => run.id))}>Compare 2</button>}</header>
+                  <header className="panel-heading"><div><p className="eyebrow">Job queue</p><h2>Runs</h2></div>{experimentRuns.length >= 2 && <button className="compare-button" onClick={() => compare.mutate(experimentRuns.slice(0, 2).map((run) => run.id))}>Compare 2</button>}</header>
                   {experimentRuns.length ? experimentRuns.map((run) => (
                     <button key={run.id} className={run.id === selectedRun?.id ? "run-row active" : "run-row"} onClick={() => setSelectedRunId(run.id)}>
                       <span className={`run-state ${run.state}`} />
@@ -689,7 +695,7 @@ export function App() {
                 <div className="results-main">
                   {compare.data && (
                     <section className="comparison-card panel" aria-labelledby="comparison-heading">
-                      <header className="card-header"><div><p className="eyebrow">Cited immutable runs</p><h2 id="comparison-heading">Run comparison</h2></div><span className="schema-pill">baseline {compare.data.baseline_run_id.slice(0, 6)}</span></header>
+                      <header className="card-header"><div><p className="eyebrow">Saved runs</p><h2 id="comparison-heading">Run comparison</h2></div><span className="schema-pill">baseline {compare.data.baseline_run_id.slice(0, 6)}</span></header>
                       <div className="comparison-table">
                         <div className="comparison-header"><span>Run</span><span>Min S11</span><span>Resonance</span><span>Δ dB</span><span>Field Δ L2</span><span>Revision state</span></div>
                         {compare.data.rows.map((row) => <div key={row.run_id}><code>{row.run_id.slice(0, 8)}</code><strong>{row.minimum_s11_db.toFixed(2)} dB</strong><span>{(row.minimum_s11_frequency_hz / 1e9).toFixed(2)} GHz</span><span>{row.delta_minimum_s11_db_vs_baseline.toFixed(2)}</span><span>{row.field_normalized_l2_delta_vs_baseline?.toExponential(2) ?? "n/a"}</span><span className="comparison-status">revision {row.validation_status}</span></div>)}
@@ -698,12 +704,12 @@ export function App() {
                     </section>
                   )}
                   {!selectedRun ? (
-                    <section className="panel result-empty"><div className="wave-glyph">∿</div><h2>Evidence appears here</h2><p>Run the current immutable revision to inspect RF outputs and provenance.</p></section>
+                    <section className="panel result-empty"><div className="wave-glyph">∿</div><h2>No run selected</h2><p>Start a CPU run to inspect S-parameters, fields, and run details.</p></section>
                   ) : (
                     <>
                       <section className="run-console panel" aria-labelledby="run-heading">
                         <header className="card-header">
-                          <div><p className="eyebrow">Isolated CPU worker</p><h2 id="run-heading">Run {selectedRun.id.slice(0, 8)}</h2></div>
+                          <div><p className="eyebrow">CPU solver</p><h2 id="run-heading">Run {selectedRun.id.slice(0, 8)}</h2></div>
                           <div className="run-actions">
                             {!terminalStates.has(selectedRun.state) && <button className="danger" onClick={() => cancel.mutate(selectedRun)}>Cancel</button>}
                             {terminalStates.has(selectedRun.state) && <button className="secondary" onClick={() => exportRun.mutate()} disabled={exportRun.isPending}>Export bundle</button>}
@@ -729,11 +735,11 @@ export function App() {
                             fieldSlice={fieldSlice.data}
                           />
                           <div className="plots-grid"><S11Plot artifact={s11.data} /><SmithChart artifact={s11.data} />
-                          {fieldSlice.data ? <FieldSlicePlot artifact={fieldSlice.data} /> : <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Declared observation</p><h3>Field slice</h3></div><span className="availability-tag">loading</span></header><div className="field-placeholder"><span>Ez</span><p>The immutable final-state field plane is loading from its checksummed artifact.</p></div></section>}
-                          <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Observable coverage</p><h3>Time series & far field</h3></div><span className="availability-tag">not requested</span></header><div className="field-placeholder"><span>t / θ</span><p>This revision requests neither a time probe nor NTFF surface. The absence is explicit, rather than an empty chart.</p></div></section>
+                          {fieldSlice.data ? <FieldSlicePlot artifact={fieldSlice.data} /> : <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Requested output</p><h3>Field slice</h3></div><span className="availability-tag">loading</span></header><div className="field-placeholder"><span>Ez</span><p>Loading the final field plane from the run artifact.</p></div></section>}
+                          <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Additional outputs</p><h3>Time series & far field</h3></div><span className="availability-tag">not requested</span></header><div className="field-placeholder"><span>t / θ</span><p>No time probe or NTFF surface was requested for this revision.</p></div></section>
                           </div>
                         </>
-                      ) : selectedRun.state === "succeeded" ? <div className="loading-panel">Loading immutable S11 artifact…</div> : null}
+                      ) : selectedRun.state === "succeeded" ? <div className="loading-panel">Loading S11 results…</div> : null}
                     </>
                   )}
                 </div>
@@ -755,15 +761,15 @@ export function App() {
         <div className="agent-scrim" role="presentation" onMouseDown={() => setAgentPanelOpen(false)}>
           <aside
             className="agent-panel"
-            aria-label="Agent approvals and audit"
+            aria-label="Tool approvals and audit"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header>
-              <div><p className="eyebrow">Vendor-neutral MCP</p><h2>Agent control plane</h2></div>
-              <button aria-label="Close agent panel" onClick={() => setAgentPanelOpen(false)}>×</button>
+              <div><p className="eyebrow">External MCP requests</p><h2>Tool approvals</h2></div>
+              <button aria-label="Close tool approvals" onClick={() => setAgentPanelOpen(false)}>×</button>
             </header>
             <div className="agent-security-note">
-              <span>⌾</span><p><strong>Exact-arguments gate</strong>Approval is one-shot and bound to the actor, tool, and SHA-256 of every argument.</p>
+              <span>⌾</span><p><strong>Exact call only</strong>Approval applies once to this actor, tool, and exact argument hash. Any change requires a new approval.</p>
             </div>
             <section aria-labelledby="pending-agent-heading">
               <div className="agent-section-title"><h3 id="pending-agent-heading">Pending approval</h3><span>{pendingApprovals.data?.length ?? 0}</span></div>
@@ -778,10 +784,10 @@ export function App() {
                     <button className="approve-action" onClick={() => decideAgentAction.mutate({ id: approval.id, approved: true })}>Approve exact call</button>
                   </div>
                 </article>
-              )) : <div className="agent-empty"><span>✓</span><p>No state-changing agent action is waiting.</p></div>}
+              )) : <div className="agent-empty"><span>✓</span><p>No tool call is waiting for approval.</p></div>}
             </section>
             <section aria-labelledby="audit-heading">
-              <div className="agent-section-title"><h3 id="audit-heading">Append-only audit</h3><span>{agentAudit.data?.length ?? 0}</span></div>
+              <div className="agent-section-title"><h3 id="audit-heading">Tool history</h3><span>{agentAudit.data?.length ?? 0}</span></div>
               <ol className="agent-audit" tabIndex={0}>
                 {agentAudit.data?.slice().reverse().slice(0, 20).map((event) => (
                   <li key={event.id}>

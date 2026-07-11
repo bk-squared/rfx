@@ -20,29 +20,29 @@ export function CopilotPanel({
     <div className="agent-scrim" role="presentation" onMouseDown={onClose}>
       <aside
         className="agent-panel copilot-panel"
-        aria-label="Design copilot proposal"
+        aria-label="Design change review"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
-          <div><p className="eyebrow">Intent to RF evidence</p><h2>Design copilot</h2></div>
-          <button aria-label="Close design copilot" onClick={onClose}>×</button>
+          <div><p className="eyebrow">Draft a model change</p><h2>Design assistant</h2></div>
+          <button aria-label="Close design assistant" onClick={onClose}>×</button>
         </header>
         <div className="agent-security-note copilot-safety">
           <span>◇</span>
-          <p><strong>Proposal sandbox</strong>The model can return only a bounded ExperimentSpec patch. Python stays deterministic and no revision or run is created here.</p>
+          <p><strong>Draft only</strong>The assistant can edit ExperimentSpec fields only. No revision is saved and no solver run starts from this panel.</p>
         </div>
 
         {pending && (
           <div className="copilot-loading" role="status">
-            <span>✦</span><strong>Compiling the proposal…</strong>
-            <p>Checking schema, geometry, preflight, generated Python, and CPU budget.</p>
+            <span>Δ</span><strong>Checking proposed setup…</strong>
+            <p>Validating the model, mesh estimate, preflight, generated Python, and CPU cost.</p>
           </div>
         )}
         {error && <p className="error-banner copilot-error" role="alert">{error}</p>}
         {!proposal && !pending && !error && (
           <div className="copilot-loading copilot-idle">
-            <span>✦</span><strong>Start with an engineering intent</strong>
-            <p>Close this panel and describe a new experiment or a change in the prompt bar. A selected successful run is cited automatically.</p>
+            <span>Δ</span><strong>No design change loaded</strong>
+            <p>Describe a parameter change or analysis target in the input bar. When a run is selected, its recorded values are available as read-only context.</p>
           </div>
         )}
 
@@ -55,13 +55,13 @@ export function CopilotPanel({
               <h3 id="copilot-summary-heading">{proposal.summary}</h3>
               <p>{proposal.answer}</p>
               {proposal.needs_clarification && (
-                <div className="clarification"><strong>One decision needed</strong>{proposal.question}</div>
+                <div className="clarification"><strong>Input required</strong>{proposal.question}</div>
               )}
             </section>
 
             <section aria-labelledby="proposal-impact-heading">
               <div className="agent-section-title">
-                <h3 id="proposal-impact-heading">Review gates</h3>
+                <h3 id="proposal-impact-heading">Preflight & CPU cost</h3>
                 <span>{proposal.patch.length} changes</span>
               </div>
               <div className="proposal-gates">
@@ -75,8 +75,8 @@ export function CopilotPanel({
 
             <section aria-labelledby="proposal-diff-heading">
               <div className="agent-section-title">
-                <h3 id="proposal-diff-heading">Semantic patch</h3>
-                <span>not applied</span>
+                <h3 id="proposal-diff-heading">Proposed changes</h3>
+                <span>unsaved</span>
               </div>
               {proposal.patch.length ? (
                 <ol className="copilot-diff">
@@ -88,18 +88,18 @@ export function CopilotPanel({
                     </li>
                   ))}
                 </ol>
-              ) : <p className="muted copilot-empty">No patch until the clarification is answered.</p>}
+              ) : <p className="muted copilot-empty">No changes until the required input is provided.</p>}
             </section>
 
             <section aria-labelledby="proposal-reason-heading">
-              <div className="agent-section-title"><h3 id="proposal-reason-heading">Why this change</h3></div>
+              <div className="agent-section-title"><h3 id="proposal-reason-heading">Engineering basis</h3></div>
               <ul className="copilot-list">
                 {proposal.rationale.map((item) => <li key={item}>{item}</li>)}
               </ul>
             </section>
 
             <section aria-labelledby="proposal-effect-heading">
-              <div className="agent-section-title"><h3 id="proposal-effect-heading">Expected, not yet proven</h3></div>
+              <div className="agent-section-title"><h3 id="proposal-effect-heading">Expected effect & limitations</h3></div>
               <ul className="copilot-list expected">
                 {proposal.expected_effects.map((item) => <li key={item}>{item}</li>)}
               </ul>
@@ -110,14 +110,14 @@ export function CopilotPanel({
 
             <div className="copilot-actions">
               <p>{proposal.base_revision_id
-                ? "Loading keeps this as an uncommitted draft. Review the live geometry/code diff, then approve a revision."
-                : "Creating the workspace is the first durable state change and uses this exact compiled spec."}</p>
+                ? "Load the draft, review geometry, setup, and code, then save a new revision when ready."
+                : "Review the compiled setup and preflight before creating the first saved revision."}</p>
               <button
                 className="primary"
                 onClick={onUseProposal}
                 disabled={proposal.needs_clarification || !preflightReady}
               >
-                {proposal.base_revision_id ? "Load as uncommitted draft" : "Approve & create workspace"}
+                {proposal.base_revision_id ? "Load draft for review" : "Create study from reviewed draft"}
               </button>
             </div>
           </>

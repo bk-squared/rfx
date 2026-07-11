@@ -8,9 +8,9 @@ interface IntentComposerProps {
 }
 
 const examples = [
-  "2.4 GHz FR4 patch antenna를 CPU smoke 크기로 만들어줘",
-  "WR-90 TE10 도파관의 양방향 S-parameter 실험을 만들어줘",
-  "유전체 slab의 Fresnel 반사·투과를 비교하고 싶어",
+  "2.4 GHz FR4 patch · 1.8–3.0 GHz S11 · z=14 mm Ez plane",
+  "WR-90 · TE10 · two-port S-parameters",
+  "Dielectric slab · Fresnel reflection / transmission",
 ];
 
 export function IntentComposer({
@@ -30,27 +30,27 @@ export function IntentComposer({
       }}
     >
       <div className="intent-input-row">
-        <span className="copilot-spark" aria-hidden="true">✦</span>
+        <span className="copilot-spark" aria-hidden="true">Δ</span>
         <textarea
-          aria-label={compact ? "Ask the design copilot" : "Describe an RF experiment"}
+          aria-label={compact ? "Describe a design change" : "Describe an RF simulation"}
           value={intent}
           onChange={(event) => onIntentChange(event.target.value)}
           placeholder={compact
-            ? "결과를 바탕으로 바꾸고 싶은 목표나 제약을 설명하세요…"
-            : "예: 2.4 GHz FR4 패치 안테나를 만들고 S11과 Ez field를 보고 싶어"}
+            ? "예: sweep을 3.5 GHz까지 늘리고 41 points로 변경"
+            : "예: 2.4 GHz FR4 patch, 1.8–3.0 GHz S11 sweep, z=14 mm Ez plane"}
           rows={compact ? 1 : 3}
           maxLength={4000}
         />
         <button className="primary intent-submit" type="submit" disabled={pending || !intent.trim()}>
-          {pending ? "Designing…" : compact ? "Propose change" : "Generate proposal"}
+          {pending ? "Checking setup…" : compact ? "Review change" : "Review setup"}
         </button>
       </div>
       <div className="intent-meta">
         <span>{providerLabel}</span>
-        <span>Proposal only · nothing runs or saves automatically</span>
+        <span>Draft only · no revision or run created</span>
       </div>
       {!compact && (
-        <div className="intent-examples" aria-label="Example RF intents">
+        <div className="intent-examples" aria-label="Example RF studies">
           {examples.map((example) => (
             <button key={example} type="button" onClick={() => onIntentChange(example)}>
               {example}
