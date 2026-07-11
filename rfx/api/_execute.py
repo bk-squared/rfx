@@ -702,9 +702,18 @@ class _ExecuteMixin:
                     impedance=pe.impedance,
                     excitation=_drive_waveform,
                 )
-                materials = setup_wire_port(grid, wp, materials)
+                # Live-cell-aware fold + injection (issue #318): dead
+                # extent cells inside PEC carry no port sigma and no
+                # source. ``pec_mask_local`` at this point still holds the
+                # assembled-geometry state for THIS port's cells (its own
+                # clearing happens just below), which is exactly the
+                # "live" definition.
+                materials = setup_wire_port(grid, wp, materials,
+                                            pec_mask=pec_mask_local)
                 if _drive_this_port:
-                    sources.extend(make_wire_port_sources(grid, wp, materials, n_steps))
+                    sources.extend(make_wire_port_sources(
+                        grid, wp, materials, n_steps,
+                        pec_mask=pec_mask_local))
                 wp_cells = _wire_port_cells(grid, wp)
                 for cell in wp_cells:
                     if pec_mask_local is not None:

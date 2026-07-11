@@ -214,9 +214,15 @@ def run_uniform(
                 impedance=pe.impedance, excitation=pe.waveform,
             )
             wire_ports.append(wp)
-            materials = setup_wire_port(grid, wp, materials)
+            # Live-cell-aware fold + injection (issue #318): dead extent
+            # cells inside PEC carry no port sigma and no source. The mask
+            # here is the assembled-geometry state BEFORE this port's own
+            # clearing below, which is exactly the "live" definition.
+            materials = setup_wire_port(grid, wp, materials,
+                                        pec_mask=pec_mask)
             if pe.excite:
-                sources.extend(make_wire_port_sources(grid, wp, materials, n_steps))
+                sources.extend(make_wire_port_sources(
+                    grid, wp, materials, n_steps, pec_mask=pec_mask))
             # Clear PEC mask at wire cells (probe pierces ground plane)
             if pec_mask is not None:
                 from rfx.sources.sources import _wire_port_cells

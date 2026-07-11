@@ -468,31 +468,56 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             hi_k = max(idx[axis], idx_end[axis])
 
             wire_cells = list(range(lo_k, hi_k + 1))
-            n_cells = max(len(wire_cells), 1)
 
-            _dx_np = np.asarray(grid.dx_arr)
-            _dy_np = np.asarray(grid.dy_arr)
+            # Live-cell split (issue #318): a cell whose extent lies inside
+            # PEC (assembled-geometry mask, read BEFORE this port's own
+            # clearing below) is dead — it carries no port sigma and no
+            # source, and drops out of the 1/n scaling. With no dead cells
+            # this is bit-identical to the historical all-cells formula.
+            _cells_ijk = []
             for k in wire_cells:
                 cell = list(idx)
                 cell[axis] = k
-                ci, cj, ck = cell
+                _cells_ijk.append(tuple(cell))
+            if pec_mask is not None:
+                _mask_np = np.asarray(pec_mask)
+                live_flags = [not bool(_mask_np[c[0], c[1], c[2]])
+                              for c in _cells_ijk]
+            else:
+                live_flags = [True] * len(_cells_ijk)
+            n_live = sum(live_flags)
+            if n_live == 0:
+                raise ValueError(
+                    f"WirePort at {pe.position} ({pe.component}, extent "
+                    f"{pe.extent}): all {len(_cells_ijk)} extent cells land "
+                    "inside PEC geometry, so the port has no live cell to "
+                    "terminate or drive (issue #318). Shorten the extent or "
+                    "move the port so at least one cell center sits outside "
+                    "PEC."
+                )
+
+            _dx_np = np.asarray(grid.dx_arr)
+            _dy_np = np.asarray(grid.dy_arr)
+            for (ci, cj, ck), live in zip(_cells_ijk, live_flags):
                 dxi = float(_dx_np[ci])
                 dyj = float(_dy_np[cj])
-                # 3D wire port: σ = n_cells * d_parallel / (Z0 * d_perp1 * d_perp2)
-                # Each cell in the wire carries 1/n_cells of total impedance Z0.
-                if axis == 2:
-                    d_cell = float(grid.dz[ck])
-                    dp1, dp2 = dxi, dyj
-                elif axis == 1:
-                    d_cell = dyj
-                    dp1, dp2 = dxi, float(grid.dz[ck])
-                else:
-                    d_cell = dxi
-                    dp1, dp2 = dyj, float(grid.dz[ck])
-                sigma_port = n_cells * d_cell / (pe.impedance * dp1 * dp2)
-                materials = materials._replace(
-                    sigma=materials.sigma.at[ci, cj, ck].add(
-                        sigma_port))
+                # 3D wire port: σ = n_live * d_parallel / (Z0 * d_perp1 * d_perp2)
+                # Each LIVE cell in the wire carries 1/n_live of total
+                # impedance Z0 (issue #318 — dead cells excluded).
+                if live:
+                    if axis == 2:
+                        d_cell = float(grid.dz[ck])
+                        dp1, dp2 = dxi, dyj
+                    elif axis == 1:
+                        d_cell = dyj
+                        dp1, dp2 = dxi, float(grid.dz[ck])
+                    else:
+                        d_cell = dxi
+                        dp1, dp2 = dyj, float(grid.dz[ck])
+                    sigma_port = n_live * d_cell / (pe.impedance * dp1 * dp2)
+                    materials = materials._replace(
+                        sigma=materials.sigma.at[ci, cj, ck].add(
+                            sigma_port))
                 if pec_mask is not None:
                     pec_mask = pec_mask.at[ci, cj, ck].set(False)
 
@@ -504,14 +529,15 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             mid_cell[axis] = mid_k
 
             if pe.excite:
-                for k in wire_cells:
-                    cell = list(idx)
-                    cell[axis] = k
+                for cell_ijk, live in zip(_cells_ijk, live_flags):
+                    # Dead extent cells get no source (issue #318).
+                    if not live:
+                        continue
                     src = make_current_source(
-                        grid, tuple(cell), pe.component,
+                        grid, cell_ijk, pe.component,
                         pe.waveform, n_steps, materials_concrete)
-                    # Scale by 1/n_cells for distributed excitation
-                    scaled_wf = np.array(src[4]) / n_cells
+                    # Scale by 1/n_live for distributed excitation
+                    scaled_wf = np.array(src[4]) / n_live
                     sources.append(
                         (src[0], src[1], src[2], src[3], scaled_wf))
 

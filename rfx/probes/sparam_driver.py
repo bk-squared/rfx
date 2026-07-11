@@ -122,9 +122,15 @@ def compute_lumped_wire_s_matrix_via_scan(
     n_ports = len(eligible)
     z0 = np.asarray([pe.impedance for pe in eligible], dtype=np.float64)
 
-    # Per-port wire cell counts (only needed for the wire decomposer).
+    # Per-port wire LIVE cell counts (only needed for the wire decomposer).
+    # Issue #318: the wave-decomposition normalization is Z0c = Z0/n_live so
+    # it matches the live-cell sigma fold's per-cell resistor law
+    # R_cell = Z0/n_live (the #308 receive-channel selection relies on that
+    # identity). ``pec_mask`` here is the assembled-geometry state BEFORE
+    # any port-cell clearing — exactly the "live" definition. With no dead
+    # cells this is the historical all-cells count.
     if wire_mode:
-        from rfx.sources.sources import WirePort, _wire_port_cells
+        from rfx.sources.sources import WirePort, _wire_port_live_cells
         axis_map = {"ex": 0, "ey": 1, "ez": 2}
         port_cell_counts = np.zeros(n_ports, dtype=np.int64)
         for idx, pe in enumerate(eligible):
@@ -137,7 +143,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                 impedance=pe.impedance,
                 excitation=pe.waveform,
             )
-            port_cell_counts[idx] = max(len(_wire_port_cells(grid, wp)), 1)
+            port_cell_counts[idx] = _wire_port_live_cells(
+                grid, wp, pec_mask)[2]
 
     # FDTD-sign V/I phasors per (drive j, receive i).
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)

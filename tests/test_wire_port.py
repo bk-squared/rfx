@@ -140,3 +140,62 @@ def test_wire_port_api_extent():
     assert not np.any(np.isnan(ts)), "No NaN in time series"
     print("\nAPI wire port test:")
     print(f"  Max |Ez| at probe: {np.max(np.abs(ts)):.4e}")
+
+
+def test_wire_port_live_cell_split_and_all_dead_guard():
+    """Issue #318: setup_wire_port distributes sigma over LIVE cells only.
+
+    - pec_mask=None (or all-live) is bit-identical to the historical
+      all-cells fold (the structural byte-identity predicate).
+    - A dead extent cell (pec_mask True) gets NO port sigma and the live
+      cells carry sigma scaled by n_live (per-cell R = Z0/n_live, series
+      sum over live cells = Z0 exactly).
+    - All extent cells dead -> ValueError (no live cell to terminate).
+    """
+    import jax.numpy as jnp
+    import pytest
+
+    grid = Grid(freq_max=5e9, domain=(0.01, 0.01, 0.01), dx=0.001,
+                cpml_layers=0)
+    materials = init_materials(grid.shape)
+    port = WirePort(
+        start=(0.005, 0.005, 0.002),
+        end=(0.005, 0.005, 0.004),
+        component="ez",
+        impedance=50.0,
+        excitation=GaussianPulse(f0=3e9),
+    )
+    from rfx.sources.sources import _wire_port_cells
+    cells = _wire_port_cells(grid, port)
+    assert len(cells) == 3
+
+    # pec_mask=None == all-live mask, bit-identical (structural predicate)
+    legacy = np.asarray(setup_wire_port(grid, port, materials).sigma)
+    all_live = np.asarray(setup_wire_port(
+        grid, port, materials,
+        pec_mask=jnp.zeros(grid.shape, dtype=jnp.bool_)).sigma)
+    assert np.array_equal(legacy, all_live), (
+        "all-live pec_mask must be bit-identical to pec_mask=None")
+
+    # One dead cell: sigma only at live cells, series R over live == Z0
+    mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
+    top = cells[-1]
+    mask = mask.at[top[0], top[1], top[2]].set(True)
+    folded = np.asarray(setup_wire_port(grid, port, materials,
+                                        pec_mask=mask).sigma)
+    assert folded[top[0], top[1], top[2]] == 0.0, (
+        "dead extent cell must carry no port sigma")
+    r_series = 0.0
+    for c in cells[:-1]:
+        s = float(folded[c[0], c[1], c[2]])
+        assert s > 0.0
+        r_series += 1.0 / (s * grid.dx)
+    assert abs(r_series - 50.0) < 1e-9, (
+        f"series termination over live cells must equal Z0=50, got {r_series}")
+
+    # All cells dead -> loud ValueError
+    mask_all = jnp.zeros(grid.shape, dtype=jnp.bool_)
+    for c in cells:
+        mask_all = mask_all.at[c[0], c[1], c[2]].set(True)
+    with pytest.raises(ValueError, match="no live cell"):
+        setup_wire_port(grid, port, materials, pec_mask=mask_all)
