@@ -73,6 +73,60 @@ pip install "rfx-fdtd[dashboard]"
 rfx-dashboard
 ```
 
+### Versioned CPU experiments
+
+The first AI-native execution lane accepts a strict JSON patch-antenna spec,
+compiles it to native rfx configuration/Python, runs preflight and simulation
+in a CPU-only subprocess, and stores S11 in an immutable content-addressed
+artifact:
+
+```bash
+rfx experiment validate tests/fixtures/experiments/patch_antenna_cpu_v1.json
+rfx experiment run tests/fixtures/experiments/patch_antenna_cpu_v1.json
+```
+
+The bundled fixture is a fast structural smoke test, not a calibrated RF
+reference. Durable asynchronous runs also support `submit`, `status`, and
+`cancel`; their default local state directory is `.rfx-experiments/`.
+
+### AI-native rfx Studio
+
+Install the Studio extra and launch the packaged local application:
+
+```bash
+pip install "rfx-fdtd[studio]"
+rfx studio --workspace .rfx-studio
+```
+
+Studio keeps immutable experiment revisions, generated Python, geometry,
+preflight, durable CPU runs, S-parameter/Smith analysis, comparisons, bounded
+studies, and replay bundles in one workflow. Its MCP endpoint uses the same
+application service; every mutation or costly action requires an exact-argument
+human approval and is append-only audited. The default bind is loopback-only.
+Local MCP hosts can launch the same contract over stdio with
+`rfx-agent-mcp --workspace .rfx-studio`.
+
+The built-in Design Copilot turns a natural-language RF intent into a bounded
+`ExperimentSpec` JSON Patch, compiles it without saving, and shows the semantic
+diff, deterministic Python, preflight, and CPU estimate before approval. Set an
+OpenAI API key to enable LLM proposals; without one, Studio visibly uses its
+narrow deterministic offline planner:
+
+```bash
+export OPENAI_API_KEY=...              # never stored in the workspace
+export RFX_OPENAI_MODEL=gpt-5.5        # optional; choose an entitled model
+rfx studio --workspace .rfx-studio
+```
+
+Provider responses use `store=false`. The model cannot execute Python, shell,
+or solver tools from this surface, and a proposal never creates a revision or
+starts a run. Generated Python remains read-only because the canonical editable
+source is the spec; direct users edit the synchronized ExperimentSpec JSON.
+Authenticated lab-server deployment, migration/backup/restore, and TLS/Origin
+requirements are documented in
+[`docs/guides/studio_operations.md`](docs/guides/studio_operations.md); MCP client
+setup is in [`docs/agent/mcp-studio.mdx`](docs/agent/mcp-studio.mdx).
+
 ## Quick Start
 
 ```python

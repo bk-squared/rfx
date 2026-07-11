@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://remilab.ai/rfx/schemas/rfx-experiment-v2.schema.json",
+  "title": "rfx canonical ExperimentSpec v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "metadata",
+    "simulation",
+    "materials",
+    "geometry",
+    "excitations",
+    "observations",
+    "boundaries",
+    "execution",
+    "study",
+    "validation",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": "rfx-experiment/v2"},
+    "kind": {"enum": ["patch_antenna", "wr90_waveguide", "multilayer_fresnel"]},
+    "metadata": {
+      "type": "object",
+      "required": ["id", "title", "description", "tags", "author", "parent_revision"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+        "title": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "tags": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "author": {"type": "string", "minLength": 1},
+        "parent_revision": {"type": ["string", "null"]},
+        "fidelity": {"type": "string"},
+        "claims": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "simulation": {
+      "type": "object",
+      "required": ["dimensionality", "domain_m", "cell_size_m", "freq_max_hz", "precision"],
+      "properties": {
+        "dimensionality": {"enum": ["3d", "2d_tmz"]},
+        "domain_m": {"$ref": "#/$defs/positive_xyz"},
+        "cell_size_m": {"type": "number", "exclusiveMinimum": 0},
+        "freq_max_hz": {"type": "number", "exclusiveMinimum": 0},
+        "precision": {"enum": ["float32", "mixed"]}
+      },
+      "additionalProperties": false
+    },
+    "materials": {"type": "array", "items": {"$ref": "#/$defs/material"}},
+    "geometry": {"type": "array", "items": {"$ref": "#/$defs/box_geometry"}},
+    "excitations": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "kind"]}},
+    "observations": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "kind"]}},
+    "boundaries": {
+      "type": "object",
+      "required": ["x", "y", "z", "cpml_layers"],
+      "properties": {
+        "x": {"$ref": "#/$defs/axis_boundary"},
+        "y": {"$ref": "#/$defs/axis_boundary"},
+        "z": {"$ref": "#/$defs/axis_boundary"},
+        "cpml_layers": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": ["backend", "n_steps", "s_param_n_steps", "timeout_seconds"],
+      "properties": {
+        "backend": {"const": "cpu"},
+        "n_steps": {"type": "integer", "minimum": 1},
+        "s_param_n_steps": {"type": "integer", "minimum": 1},
+        "timeout_seconds": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "study": {"type": "object", "required": ["kind"], "properties": {"kind": {"const": "single"}}, "additionalProperties": false},
+    "validation": {"type": "object", "required": ["support_lane", "required_checks", "metrics"]},
+    "artifacts": {"type": "object", "required": ["save"]}
+  },
+  "$defs": {
+    "positive_xyz": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "number", "exclusiveMinimum": 0},
+        {"type": "number", "exclusiveMinimum": 0},
+        {"type": "number", "exclusiveMinimum": 0}
+      ],
+      "items": false
+    },
+    "axis_boundary": {
+      "type": "object",
+      "required": ["lo", "hi"],
+      "properties": {
+        "lo": {"enum": ["cpml", "pec", "pmc", "periodic"]},
+        "hi": {"enum": ["cpml", "pec", "pmc", "periodic"]}
+      },
+      "additionalProperties": false
+    },
+    "material": {
+      "type": "object",
+      "required": ["id", "kind", "relative_permittivity", "conductivity_s_per_m", "provenance"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+        "kind": {"const": "isotropic"},
+        "relative_permittivity": {"type": "number", "minimum": 1},
+        "conductivity_s_per_m": {"type": "number", "minimum": 0},
+        "provenance": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "box_geometry": {
+      "type": "object",
+      "required": ["id", "kind", "material_id", "bounds_m"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+        "kind": {"const": "box"},
+        "material_id": {"type": "string"},
+        "bounds_m": {
+          "type": "array",
+          "prefixItems": [
+            {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+            {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}
+          ],
+          "items": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

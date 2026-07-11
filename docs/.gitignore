@@ -19,6 +19,10 @@
 /researchnote*/
 /superpowers/
 
+# Private AI-native notes. Keep these local and out of the public repo.
+/design_notes/ai-native-*.md
+/design_notes/ai_native_*.md
+
 # Public AI-agent docs are deployed to /rfx/agent/* and must remain trackable.
 !/agent/
 !/agent/**

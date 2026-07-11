@@ -1,0 +1,54 @@
+{
+  "schema_version": "rfx-golden-workflow/v1",
+  "id": "patch-antenna",
+  "title": "2.4 GHz rectangular patch antenna",
+  "description": "Create, validate, run, and inspect the narrow uniform-Yee FR4 patch resonance and one-port S11 workflow.",
+  "support_lane": {
+    "status": "p0-supported",
+    "solver": "uniform-cartesian-yee",
+    "dimensionality": "3d",
+    "features": ["box-geometry", "isotropic-dielectric", "finite-pec", "lumped-wire-port", "s11", "field-snapshot"],
+    "evidence_tier": "E4-narrow-resonance",
+    "support_source": "docs/guides/sparameter_support_matrix.md"
+  },
+  "inputs": {
+    "canonical_source": "examples/crossval/05_patch_antenna.py",
+    "evidence_manifest": "docs/public/gallery/assets/patch_antenna/manifest.json",
+    "cpu_smoke_spec": "tests/fixtures/experiments/patch_antenna_cpu_v1.json"
+  },
+  "expected_metrics": [
+    {
+      "id": "resonance_error_vs_analytic_pct",
+      "observable": "relative error of the TM010 resonance frequency",
+      "reference": "Balanis transmission-line estimate",
+      "comparison": "lt",
+      "limit": 20.0,
+      "unit": "percent",
+      "observed_baseline": 2.6
+    },
+    {
+      "id": "max_s11_abs",
+      "observable": "maximum one-port |S11| over the declared band",
+      "reference": "passive one-port bound with numerical margin",
+      "comparison": "lte",
+      "limit": 1.05,
+      "unit": "ratio",
+      "observed_baseline": null
+    }
+  ],
+  "ui_journey": [
+    {"step": "create", "acceptance": "Create a new immutable patch experiment revision from the golden input."},
+    {"step": "edit", "acceptance": "Change patch length or feed inset through a typed field and show a semantic diff."},
+    {"step": "preview", "acceptance": "Show substrate, finite ground, patch, and feed overlay without a solve."},
+    {"step": "validate", "acceptance": "Show coded preflight issues and block on error-severity findings."},
+    {"step": "run", "acceptance": "Approve and launch a CPU worker linked to the immutable revision."},
+    {"step": "inspect", "acceptance": "Show S11, Smith chart availability, resonance metric, validation state, and field slice availability."},
+    {"step": "export", "acceptance": "Export a checksum-verified bundle containing spec, code, events, metrics, and limitations."}
+  ],
+  "required_artifacts": ["experiment-spec", "generated-python", "scene-json", "preflight-report", "run-events", "s11", "field-slice", "validation-report", "bundle-manifest"],
+  "limitations": [
+    "The claims-bearing lane is narrow patch resonance evidence, not broad absolute wire-port S-parameter calibration.",
+    "The bundled CPU smoke spec proves lifecycle and artifact behavior only; it is not a quantitative RF reference.",
+    "The analytic estimate omits finite-ground and probe-feed loading, so tolerance-based rather than bitwise replay is required."
+  ]
+}

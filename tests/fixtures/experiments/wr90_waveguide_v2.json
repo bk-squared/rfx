@@ -1,0 +1,71 @@
+{
+  "schema_version": "rfx-experiment/v2",
+  "kind": "wr90_waveguide",
+  "metadata": {
+    "id": "wr90-waveguide-golden",
+    "title": "WR-90 empty matched guide",
+    "description": "CPU-sized canonical single-mode TE10 workflow fixture",
+    "tags": ["golden", "p0", "wr90"],
+    "author": "rfx",
+    "parent_revision": null,
+    "fidelity": "structural-cpu-smoke",
+    "claims": "not-for-quantitative-rf-validation"
+  },
+  "simulation": {
+    "dimensionality": "3d",
+    "domain_m": [0.08, 0.02286, 0.01016],
+    "cell_size_m": 0.002,
+    "freq_max_hz": 13640000000.0,
+    "precision": "float32"
+  },
+  "materials": [],
+  "geometry": [],
+  "excitations": [
+    {
+      "id": "left",
+      "kind": "waveguide_port",
+      "x_position_m": 0.02,
+      "direction": "+x",
+      "mode": [1, 0],
+      "mode_type": "TE",
+      "start_hz": 8200000000.0,
+      "stop_hz": 12400000000.0,
+      "points": 5,
+      "f0_hz": 10300000000.0,
+      "bandwidth": 0.41,
+      "reference_plane_m": 0.025
+    },
+    {
+      "id": "right",
+      "kind": "waveguide_port",
+      "x_position_m": 0.06,
+      "direction": "-x",
+      "mode": [1, 0],
+      "mode_type": "TE",
+      "start_hz": 8200000000.0,
+      "stop_hz": 12400000000.0,
+      "points": 5,
+      "f0_hz": 10300000000.0,
+      "bandwidth": 0.41,
+      "reference_plane_m": 0.055
+    }
+  ],
+  "observations": [
+    {"id": "s-matrix", "kind": "waveguide_sparameters", "normalize": "flux"},
+    {"id": "te10-field", "kind": "field_snapshot", "component": "ez", "axis": "x", "coordinate_m": 0.04}
+  ],
+  "boundaries": {
+    "x": {"lo": "cpml", "hi": "cpml"},
+    "y": {"lo": "pec", "hi": "pec"},
+    "z": {"lo": "pec", "hi": "pec"},
+    "cpml_layers": 4
+  },
+  "execution": {"backend": "cpu", "n_steps": 8, "s_param_n_steps": 8, "timeout_seconds": 300},
+  "study": {"kind": "single"},
+  "validation": {
+    "support_lane": "wr90-waveguide",
+    "required_checks": ["preflight", "passivity", "matched-guide"],
+    "metrics": ["max_s11_abs", "min_s21_abs"]
+  },
+  "artifacts": {"save": ["spec", "generated-python", "scene", "preflight", "events", "sparameters", "field-slice", "validation"]}
+}

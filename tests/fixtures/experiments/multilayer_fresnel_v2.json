@@ -1,0 +1,65 @@
+{
+  "schema_version": "rfx-experiment/v2",
+  "kind": "multilayer_fresnel",
+  "metadata": {
+    "id": "multilayer-fresnel-golden",
+    "title": "Lossless dielectric slab Fresnel workflow",
+    "description": "CPU-sized canonical normal-incidence R/T workflow fixture",
+    "tags": ["golden", "p0", "fresnel"],
+    "author": "rfx",
+    "parent_revision": null,
+    "fidelity": "structural-cpu-smoke",
+    "claims": "not-for-quantitative-rf-validation"
+  },
+  "simulation": {
+    "dimensionality": "2d_tmz",
+    "domain_m": [0.08, 0.04, 0.04],
+    "cell_size_m": 0.002,
+    "freq_max_hz": 15000000000.0,
+    "precision": "float32"
+  },
+  "materials": [
+    {
+      "id": "slab-material",
+      "kind": "isotropic",
+      "relative_permittivity": 4.0,
+      "conductivity_s_per_m": 0.0,
+      "provenance": "exact-transfer-matrix-golden"
+    }
+  ],
+  "geometry": [
+    {"id": "slab", "kind": "box", "material_id": "slab-material", "bounds_m": [[0.035, 0.01, 0.01], [0.045, 0.03, 0.03]]}
+  ],
+  "excitations": [
+    {
+      "id": "incident-wave",
+      "kind": "tfsf_plane_wave",
+      "f0_hz": 7500000000.0,
+      "bandwidth": 0.8,
+      "amplitude": 1.0,
+      "margin_cells": 2,
+      "polarization": "ez",
+      "direction": "+x",
+      "waveform": "modulated_gaussian"
+    }
+  ],
+  "observations": [
+    {"id": "reflection-flux", "kind": "flux_monitor", "axis": "x", "coordinate_m": 0.025, "start_hz": 3000000000.0, "stop_hz": 12000000000.0, "points": 9},
+    {"id": "transmission-flux", "kind": "flux_monitor", "axis": "x", "coordinate_m": 0.055, "start_hz": 3000000000.0, "stop_hz": 12000000000.0, "points": 9},
+    {"id": "slab-field", "kind": "field_snapshot", "component": "ez", "axis": "z", "coordinate_m": 0.02}
+  ],
+  "boundaries": {
+    "x": {"lo": "cpml", "hi": "cpml"},
+    "y": {"lo": "cpml", "hi": "cpml"},
+    "z": {"lo": "cpml", "hi": "cpml"},
+    "cpml_layers": 4
+  },
+  "execution": {"backend": "cpu", "n_steps": 8, "s_param_n_steps": 8, "timeout_seconds": 300},
+  "study": {"kind": "single"},
+  "validation": {
+    "support_lane": "multilayer-fresnel",
+    "required_checks": ["preflight", "energy-closure", "transfer-matrix-error"],
+    "metrics": ["mean_reflectance_error", "mean_transmittance_error", "mean_energy_closure_error"]
+  },
+  "artifacts": {"save": ["spec", "generated-python", "scene", "preflight", "events", "reflection-transmission", "field-slice", "validation"]}
+}

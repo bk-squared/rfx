@@ -1,0 +1,66 @@
+export const patchGolden = {
+  schema_version: "rfx-experiment/v2",
+  kind: "patch_antenna",
+  metadata: {
+    id: "patch-antenna-golden",
+    title: "2.4 GHz FR4 patch antenna",
+    description: "CPU-sized canonical patch workflow fixture",
+    tags: ["golden", "p0", "patch"],
+    author: "rfx",
+    parent_revision: null,
+    fidelity: "structural-cpu-smoke",
+    claims: "not-for-quantitative-rf-validation",
+  },
+  simulation: {
+    dimensionality: "3d",
+    domain_m: [0.04, 0.036, 0.032],
+    cell_size_m: 0.002,
+    freq_max_hz: 3000000000,
+    precision: "float32",
+  },
+  materials: [
+    {
+      id: "fr4",
+      kind: "isotropic",
+      relative_permittivity: 4.4,
+      conductivity_s_per_m: 0.01,
+      provenance: "golden-workflow-contract",
+    },
+  ],
+  geometry: [
+    { id: "ground", kind: "box", material_id: "pec", bounds_m: [[0.011, 0.01, 0.01], [0.029, 0.026, 0.012]] },
+    { id: "substrate", kind: "box", material_id: "fr4", bounds_m: [[0.011, 0.01, 0.012], [0.029, 0.026, 0.014]] },
+    { id: "patch", kind: "box", material_id: "pec", bounds_m: [[0.015, 0.014, 0.014], [0.025, 0.022, 0.016]] },
+  ],
+  excitations: [
+    {
+      id: "feed",
+      kind: "lumped_port",
+      position_m: [0.019, 0.018, 0.0122],
+      component: "ez",
+      impedance_ohm: 50,
+      extent_m: 0.0016,
+      direction: "+x",
+      f0_hz: 2400000000,
+      bandwidth: 0.8,
+    },
+  ],
+  observations: [
+    { id: "s11", kind: "sparameters", start_hz: 1800000000, stop_hz: 3000000000, points: 9 },
+    { id: "patch-field", kind: "field_snapshot", component: "ez", axis: "z", coordinate_m: 0.014 },
+  ],
+  boundaries: {
+    x: { lo: "cpml", hi: "cpml" },
+    y: { lo: "cpml", hi: "cpml" },
+    z: { lo: "cpml", hi: "cpml" },
+    cpml_layers: 4,
+  },
+  execution: { backend: "cpu", n_steps: 12, s_param_n_steps: 12, timeout_seconds: 300 },
+  study: { kind: "single" },
+  validation: {
+    support_lane: "patch-antenna",
+    required_checks: ["preflight", "passivity", "resonance-error"],
+    metrics: ["resonance_error_vs_analytic_pct", "max_s11_abs"],
+  },
+  artifacts: { save: ["spec", "generated-python", "scene", "preflight", "events", "s11", "field-slice", "validation"] },
+};

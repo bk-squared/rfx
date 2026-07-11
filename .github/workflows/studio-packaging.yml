@@ -1,0 +1,83 @@
+name: studio-packaging
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Install quality dependencies
+        run: |
+          python -m pip install -e ".[dev,studio]"
+          npm ci --prefix studio
+      - name: Python lint and typecheck
+        run: |
+          ruff check rfx/experiments rfx/agents rfx/studio rfx/operations.py rfx/telemetry.py rfx/cli.py
+          mypy rfx/experiments rfx/agents rfx/studio rfx/operations.py rfx/telemetry.py
+      - name: Frontend typecheck and production build
+        run: |
+          npm run lint --prefix studio
+          npm run typecheck --prefix studio
+          npm run build --prefix studio
+      - name: CPU Studio integration suite
+        run: |
+          pytest -q \
+            tests/test_golden_workflow_contracts.py \
+            tests/test_canonical_experiment_v2.py \
+            tests/test_experiment_spec.py \
+            tests/test_experiment_repository.py \
+            tests/test_experiment_cpu_smoke.py \
+            tests/test_experiment_cli.py \
+            tests/test_durable_experiments.py \
+            tests/test_durable_worker_lifecycle.py \
+            tests/test_studio_api.py \
+            tests/test_agent_control_plane.py \
+            tests/test_mcp_contract.py \
+            tests/test_provider_journey_smoke.py \
+            tests/test_analysis_studies_replay.py \
+            tests/test_operations_security_isolation.py
+
+  clean-wheel-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Build packaged frontend
+        run: |
+          npm ci --prefix studio
+          npm run build --prefix studio
+      - name: Build wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel
+      - name: Clean install, launch, and CPU golden smoke
+        shell: bash
+        run: python scripts/studio_clean_install_smoke.py dist/*.whl
