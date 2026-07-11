@@ -2261,16 +2261,19 @@ class _PreflightMixin:
         #
         # Issue #319 generalization: test EVERY rasterized extent cell, not
         # just the midpoint. A non-midpoint cell inside PEC is a DEAD cell:
-        # it is shorted, so it drops out of the series impedance chain
-        # (physical termination ~ Z0 * n_live / n) and out of the receive
-        # current path, while the extraction normalization still assumes
-        # all n cells are live (issues #313/#318). Behavior when the
-        # midpoint AND another cell are dead: BOTH warnings fire (the
-        # midpoint one for probe-cell corruption, the dead-extent one for
-        # the termination/normalization consequence), and the dead-extent
-        # live-cell count includes every dead cell — midpoint included —
-        # because the physical termination does not care which cell holds
-        # the probe.
+        # it is shorted by the surrounding conductor, so it carries no port
+        # current. Since the issue-#318 fix, dead cells are EXCLUDED from
+        # the port's sigma distribution, drive injection, and Z0c wave
+        # normalization (the port terminates at Z0 across its live cells;
+        # pre-fix versions counted all n cells and physically terminated at
+        # Z0*(n_live/n) — the issue-#313 33.3-ohm finding). This advisory
+        # remains because a port extent overlapping a conductor is usually
+        # a geometry mistake worth confirming. Behavior when the midpoint
+        # AND another cell are dead: BOTH warnings fire (the midpoint one
+        # for probe-cell corruption, the dead-extent one for the geometry/
+        # normalization consequence), and the dead-extent live-cell count
+        # includes every dead cell — midpoint included — because the live
+        # split does not care which cell holds the probe.
         for pe in self._ports:
             if not getattr(pe, "extent", None):
                 continue
@@ -2340,15 +2343,19 @@ class _PreflightMixin:
                         f"rasterizes to n={n} cells of which "
                         f"{len(dead_indices)} land inside PEC geometry "
                         f"{dead_names} (n_live/n = {n_live}/{n}). Dead "
-                        f"cells are shorted by the PEC, so the physical "
-                        f"termination is approximately "
-                        f"Z0*(n_live/n) = {z_eff:.1f} ohm instead of "
-                        f"{z0:g} ohm (measured on the issue-#313 thru: "
-                        f"n=3 with 1 dead cell terminates at 33.3 ohm, "
-                        f"not 50), and the V/I extraction normalization "
-                        f"assumes all {n} cells are live "
-                        f"(issues #313/#318). Shorten the extent or move "
-                        f"the port so every cell center sits outside PEC.",
+                        f"cells are shorted by the PEC and are excluded "
+                        f"from the port's resistance distribution, drive "
+                        f"injection, and wave normalization (issue #318 "
+                        f"fix): the port terminates at {z0:g} ohm across "
+                        f"its {n_live} live cells. (rfx versions before "
+                        f"the #318 fix counted all {n} cells and "
+                        f"physically terminated at Z0*(n_live/n) = "
+                        f"{z_eff:.1f} ohm — the issue-#313 finding.) "
+                        f"Verify the extent was MEANT to end on/inside "
+                        f"the conductor, and keep the midpoint V/I probe "
+                        f"cell live; to silence, shorten the extent or "
+                        f"move the port so every cell center sits "
+                        f"outside PEC.",
                         code="wire_port_dead_extent_cells",
                         source="_validate_cfg_port_inside_pec",
                     ),

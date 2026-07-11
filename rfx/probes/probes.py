@@ -793,23 +793,27 @@ def update_wire_sparam_probe(
     grid,
     port,
     dt: float,
+    n_live: int | None = None,
 ) -> SParamProbe:
     """Accumulate one timestep of V, I, and V_inc for a WirePort.
 
     Call this every timestep after update_e() / apply_pec() but
     **before** apply_wire_port() so that the sampled voltage reflects
     only the load/cavity response.  V and I are measured at the midpoint
-    cell.  V_inc uses the per-cell source voltage (V_src / N_cells) to
-    match the single-cell measurement.
+    cell.  V_inc uses the per-cell source voltage (V_src / n_live,
+    matching ``apply_wire_port``'s live-cell injection — issue #318;
+    ``n_live=None`` falls back to the all-cells count, the historical
+    behaviour and the degenerate no-dead-cells case).
     """
     from rfx.sources.sources import _wire_port_cells
 
     t = state.step * dt  # keep traceable: float(state.step) leaked the tracer
-    n_cells = max(len(_wire_port_cells(grid, port)), 1)
+    if n_live is None:
+        n_live = max(len(_wire_port_cells(grid, port)), 1)
 
     v = wire_port_voltage(state, grid, port)
     i_val = wire_port_current(state, grid, port)
-    v_inc = port.excitation(t) / n_cells
+    v_inc = port.excitation(t) / n_live
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
@@ -1372,7 +1376,12 @@ def extract_s_matrix_wire(
     from rfx.materials.debye import init_debye
     from rfx.materials.lorentz import init_lorentz
     from rfx.simulation import _update_e_with_optional_dispersion
-    from rfx.sources.sources import setup_wire_port, apply_wire_port, _wire_port_cells
+    from rfx.sources.sources import (
+        setup_wire_port,
+        apply_wire_port,
+        _wire_port_cells,
+        _wire_port_live_cells,
+    )
 
     n_ports = len(ports)
     n_freqs = len(freqs)
@@ -1386,10 +1395,12 @@ def extract_s_matrix_wire(
         from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
         cpml_params, cpml_state_init = init_cpml(grid)
 
-    # Fold ALL port impedances into materials (once)
+    # Fold ALL port impedances into materials (once), over LIVE cells only
+    # (issue #318 — dead extent cells inside PEC are excluded from the
+    # sigma distribution, injection, and normalization counts below).
     mats = materials
     for p in ports:
-        mats = setup_wire_port(grid, p, mats)
+        mats = setup_wire_port(grid, p, mats, pec_mask=pec_mask)
 
     debye = None
     if debye_spec is not None:
@@ -1413,10 +1424,15 @@ def extract_s_matrix_wire(
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
     )
-    port_cell_counts = np.asarray(
-        [max(len(_wire_port_cells(grid, p)), 1) for p in ports],
-        dtype=np.int64,
-    )
+    # Per-port LIVE cell counts (issue #318): feed the wave-decomposition
+    # normalization Z0c = Z0/n_live so the per-cell resistor law
+    # R_cell = Z0/n_live == Z0c stays exact (the #308 receive-channel
+    # selection relies on that identity).  With no dead cells this is the
+    # historical all-cells count.
+    port_n_live = [
+        _wire_port_live_cells(grid, p, pec_mask)[2] for p in ports
+    ]
+    port_cell_counts = np.asarray(port_n_live, dtype=np.int64)
 
     for j in range(n_ports):
         state = init_state(grid.shape)
@@ -1459,10 +1475,12 @@ def extract_s_matrix_wire(
             # the sampled voltage reflects only the load/cavity response.
             for i in range(n_ports):
                 sprobes[i] = update_wire_sparam_probe(
-                    sprobes[i], state, grid, ports[i], dt)
+                    sprobes[i], state, grid, ports[i], dt,
+                    n_live=port_n_live[i])
 
-            # Excite only port j
-            state = apply_wire_port(state, grid, ports[j], t, mats)
+            # Excite only port j (live cells only, issue #318)
+            state = apply_wire_port(state, grid, ports[j], t, mats,
+                                    pec_mask=pec_mask)
 
         # Collect per-(drive j, receive i) midpoint V/I DFT phasors for the
         # shared wire wave decomposer (``decompose_wire_s_matrix``) — single

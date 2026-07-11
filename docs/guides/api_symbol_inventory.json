@@ -2095,7 +2095,8 @@
         "state",
         "grid",
         "port",
-        "dt"
+        "dt",
+        "n_live"
       ]
     },
     "validate_artifact_report": {

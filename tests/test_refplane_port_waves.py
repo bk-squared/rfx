@@ -679,7 +679,8 @@ _REFEREE_S21 = np.array([1.0066, 1.0052, 1.0033, 1.0007, 0.99775,
 #   reciprocity rel <= 0.38%; Zc Re 47.94..48.62 ohm (both ports),
 #   Im/Re <= 1.2%; beta/(w/c) = 1.0465..1.0589;
 #   |arg(S21) + beta_meas*L| <= 8.4e-4 rad; max singular value of the
-#   mixed matrix 1.0299 max; |S11|^2+|S21|^2 <= 1.0003.
+#   mixed matrix 1.0663 max (post-#318 rerun 2026-07-11; was 1.0299 —
+#   see the SV gate note); |S11|^2+|S21|^2 <= 0.99995 (post-#318).
 # Gates carry margin over these measured values and are labelled with
 # their referee anchors. They are referee-consistency + regression gates
 # on the canonical thru, NOT external cross-solver validation.
@@ -700,8 +701,23 @@ _BETA_OVER_WC_BAND = (1.03, 1.08)   # measured 1.0465-1.0589. Mechanism
 # fringing), not a discretization artefact. (Measured Zc showed mild dx
 # sensitivity, 48.5 -> 47.0 ohm at dx/2; beta did not.)
 _PHASE_DEEMBED_MAX_RAD = 0.02  # measured <= 8.4e-4 (~24x margin)
-_MIXED_SV_MAX = 1.05           # measured 1.0299 — see honesty label
-_ENERGY_ROW_MAX = 1.02         # measured |S11|^2+|S21|^2 <= 1.0003
+# Re-baselined 2026-07-11 for issue #318: the mixed matrix pairs the
+# byte-frozen legacy DIAGONAL (which #318 shrank to the feed-post
+# V-shape, max|Sii| ~= 0.089, from the pre-#318 dead-cell 0.13) with the
+# plane-referenced OFF-diagonal (~0.99). The smaller diagonal re-phases
+# against the ~0.99 off-diagonals, so the top singular value of the
+# 2x2 rose to a measured 1.0663 max (was 1.0299 pre-#318). Gate 1.08
+# (~1.3% margin) — this is a flux-ACCOUNTING envelope (see label on the
+# test), NOT a passivity certification; the >1 excursion is the mixed
+# legacy/plane calibration + finite-DFT budget, not validated gain.
+# The genuine passivity witnesses BOTH pass strictly and improved under
+# #318, so this permissive gate is not masking a real regression:
+# _ENERGY_ROW_MAX (|S11|^2+|S21|^2 = 0.99995 < 1) and the battery
+# singular-value gate (0.633 < 0.85). Stable at dx/2 (#313 arc).
+_MIXED_SV_MAX = 1.08
+_ENERGY_ROW_MAX = 1.02         # measured |S11|^2+|S21|^2 <= 0.99995 (#318;
+                               # was <= 1.0003) — dropped as the diagonal
+                               # reflection shrank; gate kept unchanged
 
 
 @pytest.fixture(scope="module")
@@ -718,10 +734,12 @@ def refplane_thru():
     # pec_faces (the infinite ground plane IS the microstrip return)
     # PLUS one wire_port_dead_extent_cells advisory per port — the
     # canonical thru's top extent cell GENUINELY sits inside the PEC
-    # trace (issues #313/#318: physical termination ~33.3 ohm, not 50,
-    # is the documented known issue; every gate in this module was
-    # measured on this exact fixture, dead cell included, so the gates
-    # stay valid as-is). Anything else = fixture drift, stop.
+    # trace. Post-#318 the dead cell is excluded from the sigma/drive/Z0
+    # fold, so each port terminates at 50 ohm across its 2 live cells
+    # (the pre-#318 33.3-ohm Z0*(n_live/n) reading is the historical
+    # issue #313 finding). Every gate in this module was measured on this
+    # exact fixture, dead cell included, so the gates stay valid as-is.
+    # Anything else = fixture drift, stop.
     codes = sorted(getattr(i, "code", None) for i in report)
     assert codes == ["pec_faces_finite_pec",
                      "wire_port_dead_extent_cells",
@@ -832,10 +850,11 @@ def test_refplane_thru_energy_and_passivity_labeled(refplane_thru):
     off-diagonals (separately calibrated), and the Phase-0 box referee
     itself reads sqrt(P_abs/P_launch) up to 1.0066 at 3 GHz (~1-3%
     flux-accounting envelope: residual box leakage + finite DFT). Small
-    >1 excursions of the singular values (measured max 1.0299) are that
-    accounting envelope, NOT validated gain — this gate bounds the
-    envelope, it does not certify passivity. Row energy
-    |S11|^2+|S21|^2 measured <= 1.0003."""
+    >1 excursions of the singular values (measured max 1.0663 post-#318;
+    was 1.0299 — the smaller feed-post diagonal re-phases against the
+    ~0.99 plane off-diagonals) are that accounting envelope, NOT
+    validated gain — this gate bounds the envelope, it does not certify
+    passivity. Row energy |S11|^2+|S21|^2 measured <= 0.99995 (#318)."""
     S, _ = refplane_thru
     sv = np.array([np.linalg.svd(S[:, :, k], compute_uv=False)[0]
                    for k in range(len(_FREQS))])

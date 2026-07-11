@@ -702,11 +702,31 @@ class _ExecuteMixin:
                     impedance=pe.impedance,
                     excitation=_drive_waveform,
                 )
-                materials = setup_wire_port(grid, wp, materials)
+                # Live-cell-aware fold + injection (issue #318): dead
+                # extent cells inside PEC carry no port sigma and no
+                # source. ``pec_mask_local`` at this point still holds the
+                # assembled-geometry state for THIS port's cells (its own
+                # clearing happens just below), which is exactly the
+                # "live" definition.
+                materials = setup_wire_port(grid, wp, materials,
+                                            pec_mask=pec_mask_local)
                 if _drive_this_port:
-                    sources.extend(make_wire_port_sources(grid, wp, materials, n_steps))
+                    sources.extend(make_wire_port_sources(
+                        grid, wp, materials, n_steps,
+                        pec_mask=pec_mask_local))
                 wp_cells = _wire_port_cells(grid, wp)
-                for cell in wp_cells:
+                # Clear PEC mask/occupancy at LIVE wire cells only (issue
+                # #318 commit 2). Dead extent cells stay PEC — the old
+                # all-cells clearing punched a one-cell in-plane
+                # conductivity hole in the DUT conductor. The Kottke
+                # occupancy-neighbor clearing below keys off
+                # ``_port_cleared_cells`` and is scoped the same way.
+                from rfx.sources.sources import _wire_port_live_cells
+                _, wp_live_flags, _ = _wire_port_live_cells(
+                    grid, wp, pec_mask_local)
+                for cell, _live in zip(wp_cells, wp_live_flags):
+                    if not _live:
+                        continue
                     if pec_mask_local is not None:
                         pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
                     if pec_occupancy_local is not None:

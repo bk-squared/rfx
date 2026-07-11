@@ -252,34 +252,38 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
                       component=port.component, waveform=waveform)
 
 
-def make_wire_port_sources(grid, port, materials, n_steps):
+def make_wire_port_sources(grid, port, materials, n_steps, pec_mask=None):
     """Create a list of SourceSpec for a multi-cell WirePort.
 
-    Each cell in the wire gets its own SourceSpec with the Cb-corrected
-    waveform scaled by 1/N_cells.  The port impedance must already be
-    folded into *materials* via ``setup_wire_port()``.
+    Each LIVE cell in the wire gets its own SourceSpec with the
+    Cb-corrected waveform scaled by 1/n_live (issue #318: dead extent
+    cells inside PEC get no source — pre-#318 they accumulated phantom
+    EMF).  With ``pec_mask=None`` (or no dead cells) this is the
+    historical all-cells 1/N_cells behaviour.  The port impedance must
+    already be folded into *materials* via ``setup_wire_port()``.
 
     Returns
     -------
     list[SourceSpec]
     """
-    from rfx.sources.sources import _wire_port_cells
+    from rfx.sources.sources import _wire_port_live_cells
 
-    cells = _wire_port_cells(grid, port)
-    n_cells = max(len(cells), 1)
+    cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_mask)
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
 
     from rfx.sources.sources import port_d_parallel
 
     specs = []
-    for cell in cells:
+    for cell, live in zip(cells, live_flags):
+        if not live:
+            continue
         i, j, k = cell
         d_par = port_d_parallel(grid, (i, j, k), port.component)
         eps = materials.eps_r[i, j, k] * EPS_0
         sigma = materials.sigma[i, j, k]
         loss = sigma * grid.dt / (2.0 * eps)
         cb = (grid.dt / eps) / (1.0 + loss)
-        waveform = (cb / d_par) * jax.vmap(port.excitation)(times) / n_cells
+        waveform = (cb / d_par) * jax.vmap(port.excitation)(times) / n_live
         specs.append(SourceSpec(i=i, j=j, k=k,
                                 component=port.component, waveform=waveform))
     return specs
