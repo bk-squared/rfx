@@ -223,11 +223,21 @@ def run_uniform(
             if pe.excite:
                 sources.extend(make_wire_port_sources(
                     grid, wp, materials, n_steps, pec_mask=pec_mask))
-            # Clear PEC mask at wire cells (probe pierces ground plane)
+            # Clear PEC mask at LIVE wire cells only (issue #318 commit 2).
+            # Dead extent cells stay PEC: the old all-cells clearing punched
+            # a one-cell in-plane conductivity hole in the DUT conductor
+            # (the cleared cell's Ex/Ey were exempt from apply_pec_mask
+            # while its neighbors stayed zeroed). The port's Ez chain is
+            # unaffected either way: Ez at a 1-cell-thick sheet is normal
+            # to it and free under the thin-sheet rule.
             if pec_mask is not None:
-                from rfx.sources.sources import _wire_port_cells
-                for cell in _wire_port_cells(grid, wp):
-                    pec_mask = pec_mask.at[cell[0], cell[1], cell[2]].set(False)
+                from rfx.sources.sources import _wire_port_live_cells
+                wp_cells, wp_live, _ = _wire_port_live_cells(
+                    grid, wp, pec_mask)
+                for cell, live in zip(wp_cells, wp_live):
+                    if live:
+                        pec_mask = pec_mask.at[
+                            cell[0], cell[1], cell[2]].set(False)
         else:
             # Single-cell lumped port
             lp = LumpedPort(

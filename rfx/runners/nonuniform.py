@@ -518,8 +518,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     materials = materials._replace(
                         sigma=materials.sigma.at[ci, cj, ck].add(
                             sigma_port))
-                if pec_mask is not None:
-                    pec_mask = pec_mask.at[ci, cj, ck].set(False)
+                    # Clear PEC mask at LIVE cells only (issue #318
+                    # commit 2): dead extent cells stay PEC so the port
+                    # does not punch an in-plane conductivity hole in the
+                    # DUT conductor.
+                    if pec_mask is not None:
+                        pec_mask = pec_mask.at[ci, cj, ck].set(False)
 
             # Create per-cell sources — only when the port is excited.
             # Passive (excite=False) ports contribute just the σ
