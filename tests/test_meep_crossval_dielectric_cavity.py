@@ -1,8 +1,9 @@
-"""Cross-validation: rfx vs Meep for dielectric-loaded PEC cavity.
+"""Cross-validation: rfx vs Meep for a dielectric-loaded PEC cavity.
 
-Tests a substrate-thickness PEC cavity (simplified patch model) that
-isolates FDTD accuracy from analytical formula error. Both simulators
-use identical geometry — any disagreement is a true FDTD difference.
+Tests a substrate-thickness PEC cavity (simplified patch model, NOT the
+cv05/issue-80 patch antennas) that isolates FDTD accuracy from analytical
+formula error. Both simulators use identical geometry — any disagreement is
+a true FDTD difference.
 
 Uses 2D TMz mode for fast CPU execution (~seconds each).
 """

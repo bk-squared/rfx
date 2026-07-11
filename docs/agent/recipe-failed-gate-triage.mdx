@@ -7,11 +7,10 @@ sidebar:
 
 Use this recipe when a validation gate fails — non-passive `|S11| > 1`, a
 resonance that looks wrong, an R/T mismatch, or a mesh-convergence miss.
-Walk the tree before designing a fix. Terminal **STOP** nodes are paths that
-were implemented and falsified in this project's history; re-attempting one
-without new evidence wastes a session. The historical score in this repo:
-every "physics bug" of this kind so far turned out to be a comparator or
-extractor bug, not an FDTD solver residual.
+Walk the tree before designing a fix. Terminal **STOP** nodes mark paths
+already implemented and falsified — do not re-attempt one without new
+evidence. Symptoms of this kind have consistently resolved to a comparator
+or extractor bug, not an FDTD solver residual.
 
 ## Step 0 — never triage from the headline metric
 
@@ -19,10 +18,10 @@ Dump the full per-frequency curve and at least one independent witness
 (signs, magnitudes vs an analytic expectation, a sibling run) before
 believing a scalar pass/fail.
 
-Canonical trap ([issue #118](https://github.com/bk-squared/rfx/issues/118)):
-the `|S11|` magnitude dip of a directly edge-fed patch was read as "the
-resonance". It is not — for a high-impedance edge-fed patch the dip is the
-off-resonance match point. The true resonance comes from a ring-down probe
+Canonical trap: the `|S11|` magnitude dip of a directly edge-fed patch is
+easy to read as "the resonance". It is not — for a high-impedance edge-fed
+patch the dip is the off-resonance match point. The true resonance comes
+from a ring-down probe
 (`Result.find_resonances()`, see the
 [resonance extraction recipe](./recipe-resonance-extraction)) and agreed
 with the analytic value all along. The gate was re-specified, not the
@@ -44,19 +43,14 @@ solver fixed.
 ### A. Microstrip `|S11| > 1` (non-passive)
 
 Check probe placement first: the default probe offset is floored to clear
-the source fringing transient
-([#116](https://github.com/bk-squared/rfx/pull/116)); with the floor the
-reference patch device is passive at every tested mesh.
+the source fringing transient; with the floor the reference patch device is
+passive at every tested mesh.
 
-**STOP — swapping in a voltage-only spatial-fit (γ/α) extractor.** Tried
-twice ([PR #99](https://github.com/bk-squared/rfx/pull/99),
-[PR #134](https://github.com/bk-squared/rfx/pull/134)), closed twice: the
-fit is ill-conditioned at high-SWR resonant loads — the forward-wave
-amplitude collapses at resonance and the extracted `|S11|` blows up
-non-passively, getting *worse* with mesh refinement. The full analysis is
-in the PR #134 closing comment. The open, separate question about the
-matched-line regime is tracked in
-[issue #140](https://github.com/bk-squared/rfx/issues/140).
+**STOP — swapping in a voltage-only spatial-fit (γ/α) extractor.** The fit
+is ill-conditioned at high-SWR resonant loads — the forward-wave amplitude
+collapses at resonance, so the extracted `|S11|` blows up non-passively and
+gets *worse* with mesh refinement. The matched-line regime is a separate
+question and is not addressed by this extractor.
 
 ### B. Resonance / dip location looks wrong
 
@@ -65,8 +59,7 @@ Measure the resonance with a ring-down probe first (Step 0). Then:
 **STOP — refining the mesh to move the microstrip patch dip.** The dip
 location decelerates toward an asymptote outside the expected band; pushing
 it in-band needs a cell count far beyond practical GPU budgets, and the dip
-is the wrong observable anyway (match point, not resonance — see
-[issue #118](https://github.com/bk-squared/rfx/issues/118)).
+is the wrong observable anyway (match point, not resonance — see Step 0).
 
 **STOP — Zin-rotation de-embedding** (rotating V/I to the device edge via
 `tan(βd)`). The rotation amplifies the feed-line propagation-constant
@@ -76,10 +69,10 @@ de-embedding built into the production extractors instead.
 ### C. Waveguide per-frequency `|S11|` oscillation or magnitude deficit
 
 **STOP — redesigning the waveguide port extractor for this symptom.** The
-historical WR-90 PEC-short oscillation was a missing Yee leapfrog half-step
-correction in a *diagnostic script*, not in production;
-`compute_waveguide_s_matrix` was accurate throughout. The remaining
-magnitude floor is Yee grid dispersion, which no extractor change removes.
+WR-90 PEC-short per-frequency oscillation traces to a missing Yee leapfrog
+half-step correction in a *diagnostic script*, not in production;
+`compute_waveguide_s_matrix` is accurate. The remaining magnitude floor is
+Yee grid dispersion, which no extractor change removes.
 Cross-solver *phase* disagreements at single frequencies are usually
 solver-convention mismatches — Meep, OpenEMS, and Palace can disagree with
 each other by 100°+ on the same slab (see
@@ -96,10 +89,9 @@ envelope. Use a finer mesh or `NonUniformGrid` instead.
 
 ### E. "We need subgridding"
 
-**STOP — SBP-SAT subgridding.** Closed after a six-mode failure analysis
-([PR #90](https://github.com/bk-squared/rfx/pull/90)): the boundary stencil
-loses closure under FDTD leapfrog and is incompatible with CPML. The
-supported alternative is `NonUniformGrid` (see the
+**STOP — SBP-SAT subgridding.** The SBP-SAT boundary stencil loses closure
+under FDTD leapfrog and is incompatible with CPML. The supported
+alternative is `NonUniformGrid` (see the
 [non-uniform mesh guide](/rfx/guide/nonuniform-mesh/)).
 
 ## Step 3 — none of the branches match

@@ -24,11 +24,10 @@ design today.
    - Coaxial is `no` — `compute_coaxial_line_reflection` breaks the tape
      by construction (numpy matrix-pencil).
    - Waveguide `yes` covers BOTH the default extraction
-     (`normalize=False`) and, since the
-     [#148](https://github.com/bk-squared/rfx/issues/148) fix, the
-     power-flux extraction (`normalize='flux'`) — you can now optimize
-     directly through the production-recommended flux path
-     (evidence: `tests/test_waveguide_flux_ad.py`).
+     (`normalize=False`) and the power-flux extraction
+     (`normalize='flux'`), which is AD-traceable
+     (evidence: `tests/test_waveguide_flux_ad.py`) — you can optimize
+     directly through the production-recommended flux path.
 3. **Pick the design lane.**
 4. **Validate the final design — never ship the loss number alone.**
 
@@ -50,7 +49,7 @@ physical S11 design objective through `forward()` on every PR.
   `distributed=True` raise).
 - Pass `port_s11_freqs=...` whenever the objective reads port S11.
 
-## Lane B — direct `jax.grad` through the S-matrix API (waveguide: verified after the #150 fix)
+## Lane B — direct `jax.grad` through the S-matrix API (waveguide: verified)
 
 `jax.grad` flows end-to-end through `sim.compute_waveguide_s_matrix(...,
 eps_override=eps(theta))` and `compute_msl_s_matrix` — the gradient itself
@@ -60,12 +59,10 @@ is accurate (AD↔FD relative error ~4.5e-4;
 `rfx.optimize_objectives` compose here too — they accept any result
 exposing `.s_params` / `.freqs`.
 
-**The run-length-growth pathology previously reported here
-([#150](https://github.com/bk-squared/rfx/issues/150)) is resolved**
-(2026-06-12): the root cause was the waveguide source's `f0` default
-(`freq_max/2`) landing below the mode cutoff — an evanescent launch whose
-extracted S grew with `n_steps`. `f0=None` now defaults to the center of
-the requested band, and preflight flags `port_source_below_cutoff` /
+**Watch for a run-length-growth trap in the waveguide source `f0` default.**
+If `f0` (`freq_max/2`) lands below the mode cutoff, the launch is evanescent
+and the extracted S grows with `n_steps`. `f0=None` defaults to the center
+of the requested band, and preflight flags `port_source_below_cutoff` /
 `port_freqs_below_cutoff`. Always pass measurement `freqs` (and ideally an
 explicit in-band `f0`), keep every bin above the mode cutoff, and check
 the final design at 2× `n_steps` (run-length invariance) before trusting
@@ -84,7 +81,7 @@ it. MSL Lane B does not have an equivalent verified toy yet.
   and the "optimum" is suspect.
 - Check the full |S11(f)| curve, not just the objective bin.
 
-## Verified pitfalls (each cost a real debugging round)
+## Verified pitfalls
 
 - **Below-cutoff port frequencies NaN the gradient.** Every waveguide-port
   frequency must be above the guide cutoff (WR-90 TE10: ~6.56 GHz). The
@@ -93,12 +90,12 @@ it. MSL Lane B does not have an equivalent verified toy yet.
 - **Ports inside the CPML.** `cpml_layers=8` at dx=2mm is a 16mm absorber
   per side — easy to park a port inside it. `sim.preflight()` flags this
   exactly; never optimize with warnings suppressed before reading them
-  once ([#149](https://github.com/bk-squared/rfx/issues/149)).
+  once.
 - **`compute_waveguide_s_matrix` takes no `freqs` argument** — the result
   carries its own grid (`res.freqs`); select bins from it.
-- **An improving loss is not an improving design.** In the original #150
-  toy, the optimizer "improved" the loss 100× by saturating the design
-  variable — the underlying extraction was the thing moving. The
+- **An improving loss is not an improving design.** In one design toy, the
+  optimizer "improved" the loss 100× by saturating the design variable —
+  the underlying extraction was the thing moving. The
   validation step above is what catches this.
 
 ## Related

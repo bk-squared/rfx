@@ -94,6 +94,6 @@ jobs:
           pytest -q -ra -p no:cacheprovider
           --splits 4 --group ${{ matrix.group }}
           --ignore=tests/test_meep_crossval.py
-          --ignore=tests/test_meep_crossval_patch.py
+          --ignore=tests/test_meep_crossval_dielectric_cavity.py
           --ignore=tests/test_openems_crossval.py
           --ignore=tests/test_crossval_comprehensive.py
