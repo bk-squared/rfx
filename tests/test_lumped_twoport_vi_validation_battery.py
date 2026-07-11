@@ -321,15 +321,26 @@ def _build_thru(pulse: "GaussianPulse | None" = None) -> Simulation:
 def thru_smatrix():
     """Run the THRU once (~70 s); quote preflight verbatim; return S(2,2,9)."""
     sim = _build_thru()
-    issues = [str(i) for i in sim.preflight()]
+    report = sim.preflight()
+    issues = [str(i) for i in report]
     # Quote every preflight message verbatim BEFORE reporting numbers
     # (feedback_never_ignore_preflight).
     for msg in issues:
         print(f"\n[thru battery] preflight (verbatim): {msg}")
-    # Exactly the one known advisory (intended: the infinite ground plane
-    # IS the microstrip return). Anything else = fixture drift, stop.
-    assert len(issues) == 1 and _PEC_FACES_ADVISORY_SNIPPET in issues[0], (
+    # Exact known advisory set (re-pinned 2026-07-11 for issue #319):
+    # the intended pec_faces advisory (the infinite ground plane IS the
+    # microstrip return) PLUS one wire_port_dead_extent_cells advisory
+    # per port — this fixture GENUINELY has its top extent cell inside
+    # the PEC trace (issues #313/#318: physical termination ~33.3 ohm,
+    # not 50, is the documented known issue). The battery gates below
+    # were MEASURED on this exact fixture, dead cell included, so they
+    # stay valid as-is. Anything else = fixture drift, stop.
+    codes = sorted(getattr(i, "code", None) for i in report)
+    assert codes == ["pec_faces_finite_pec",
+                     "wire_port_dead_extent_cells",
+                     "wire_port_dead_extent_cells"], (
         f"thru fixture preflight drifted from the measured baseline: {issues}")
+    assert any(_PEC_FACES_ADVISORY_SNIPPET in m for m in issues)
 
     result = sim.run(n_steps=_THRU_N_STEPS, compute_s_params=True,
                      s_param_freqs=_THRU_FREQS_HZ)
@@ -649,11 +660,21 @@ _DCA_DEV_BAND_RAD = (-0.25, +0.10)
 def dc_anchor_smatrix():
     """Low-frequency THRU run (same geometry, f0=2.5 GHz bw=1.0 pulse)."""
     sim = _build_thru(pulse=GaussianPulse(f0=2.5e9, bandwidth=1.0))
-    issues = [str(i) for i in sim.preflight()]
+    report = sim.preflight()
+    issues = [str(i) for i in report]
     for msg in issues:
         print(f"\n[dc anchor] preflight (verbatim): {msg}")
-    assert len(issues) == 1 and _PEC_FACES_ADVISORY_SNIPPET in issues[0], (
+    # Same exact set as the thru_smatrix fixture above (re-pinned
+    # 2026-07-11 for issue #319): pec_faces + one dead-extent-cell
+    # advisory per port (#313/#318 — the ~33.3-ohm termination is the
+    # documented known issue on this geometry; gates measured on it
+    # stay valid as-is).
+    codes = sorted(getattr(i, "code", None) for i in report)
+    assert codes == ["pec_faces_finite_pec",
+                     "wire_port_dead_extent_cells",
+                     "wire_port_dead_extent_cells"], (
         f"dc-anchor fixture preflight drifted: {issues}")
+    assert any(_PEC_FACES_ADVISORY_SNIPPET in m for m in issues)
     result = sim.run(n_steps=_DCA_N_STEPS, compute_s_params=True,
                      s_param_freqs=_DCA_FREQS_HZ)
     return np.asarray(result.s_params).astype(np.complex128)

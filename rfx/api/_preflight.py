@@ -2258,12 +2258,29 @@ class _PreflightMixin:
         # reads over-unity ~1.06-1.15, because the voltage probe samples a
         # PEC-shorted environment and the port column punches a hole in
         # the trace). Check the exact cell production will use.
+        #
+        # Issue #319 generalization: test EVERY rasterized extent cell, not
+        # just the midpoint. A non-midpoint cell inside PEC is a DEAD cell:
+        # it is shorted, so it drops out of the series impedance chain
+        # (physical termination ~ Z0 * n_live / n) and out of the receive
+        # current path, while the extraction normalization still assumes
+        # all n cells are live (issues #313/#318). Behavior when the
+        # midpoint AND another cell are dead: BOTH warnings fire (the
+        # midpoint one for probe-cell corruption, the dead-extent one for
+        # the termination/normalization consequence), and the dead-extent
+        # live-cell count includes every dead cell — midpoint included —
+        # because the physical termination does not care which cell holds
+        # the probe.
         for pe in self._ports:
             if not getattr(pe, "extent", None):
                 continue
-            mid_center = self._wire_port_midpoint_center(pe)
-            if mid_center is None:
+            rasterized = self._wire_port_cell_centers(pe)
+            if rasterized is None:
                 continue
+            centers, mid_idx = rasterized
+            mid_center = centers[mid_idx]
+
+            pec_bboxes = []
             for entry in self._geometry:
                 if entry.material_name != "pec":
                     continue
@@ -2273,25 +2290,70 @@ class _PreflightMixin:
                     c1, c2 = entry.shape.bounding_box()
                 except (NotImplementedError, TypeError):
                     continue
-                if all(c1[ax] <= mid_center[ax] <= c2[ax] for ax in range(3)):
-                    _w.warn(
-                        PreflightWarning(
-                            f"Wire port at {pe.position} (extent "
-                            f"{pe.extent}): its MIDPOINT V/I probe cell "
-                            f"(center {tuple(round(x, 6) for x in mid_center)}) "
-                            f"lands inside PEC geometry "
-                            f"'{entry.material_name}'. S-parameters from "
-                            f"this port are silently corrupted (measured: "
-                            f"near-null forward transmission + over-unity "
-                            f"reverse). Shorten/lengthen the extent or move "
-                            f"the port so the midpoint cell sits in "
-                            f"dielectric (issue #314).",
-                            code="wire_port_midpoint_in_pec",
-                            source="_validate_cfg_port_inside_pec",
-                        ),
-                        stacklevel=3,
-                    )
-                    break
+                pec_bboxes.append((entry.material_name, c1, c2))
+
+            dead_indices: list[int] = []
+            dead_names: list[str] = []
+            for idx, center in enumerate(centers):
+                for name, c1, c2 in pec_bboxes:
+                    if all(c1[ax] <= center[ax] <= c2[ax] for ax in range(3)):
+                        dead_indices.append(idx)
+                        if name not in dead_names:
+                            dead_names.append(name)
+                        break
+
+            if mid_idx in dead_indices:
+                # Kept verbatim from the #314 fix (PR #317): probe-cell
+                # corruption is the stronger, measured failure mode.
+                name = next(
+                    name for name, c1, c2 in pec_bboxes
+                    if all(c1[ax] <= mid_center[ax] <= c2[ax]
+                           for ax in range(3))
+                )
+                _w.warn(
+                    PreflightWarning(
+                        f"Wire port at {pe.position} (extent "
+                        f"{pe.extent}): its MIDPOINT V/I probe cell "
+                        f"(center {tuple(round(x, 6) for x in mid_center)}) "
+                        f"lands inside PEC geometry "
+                        f"'{name}'. S-parameters from "
+                        f"this port are silently corrupted (measured: "
+                        f"near-null forward transmission + over-unity "
+                        f"reverse). Shorten/lengthen the extent or move "
+                        f"the port so the midpoint cell sits in "
+                        f"dielectric (issue #314).",
+                        code="wire_port_midpoint_in_pec",
+                        source="_validate_cfg_port_inside_pec",
+                    ),
+                    stacklevel=3,
+                )
+
+            non_midpoint_dead = [i for i in dead_indices if i != mid_idx]
+            if non_midpoint_dead:
+                n = len(centers)
+                n_live = n - len(dead_indices)
+                z0 = getattr(pe, "impedance", 0.0) or 0.0
+                z_eff = z0 * n_live / n
+                _w.warn(
+                    PreflightWarning(
+                        f"Wire port at {pe.position} (extent {pe.extent}) "
+                        f"rasterizes to n={n} cells of which "
+                        f"{len(dead_indices)} land inside PEC geometry "
+                        f"{dead_names} (n_live/n = {n_live}/{n}). Dead "
+                        f"cells are shorted by the PEC, so the physical "
+                        f"termination is approximately "
+                        f"Z0*(n_live/n) = {z_eff:.1f} ohm instead of "
+                        f"{z0:g} ohm (measured on the issue-#313 thru: "
+                        f"n=3 with 1 dead cell terminates at 33.3 ohm, "
+                        f"not 50), and the V/I extraction normalization "
+                        f"assumes all {n} cells are live "
+                        f"(issues #313/#318). Shorten the extent or move "
+                        f"the port so every cell center sits outside PEC.",
+                        code="wire_port_dead_extent_cells",
+                        source="_validate_cfg_port_inside_pec",
+                    ),
+                    stacklevel=3,
+                )
 
         for pe in list(self._ports) + list(self._probes):
             pos = pe.position
@@ -2324,15 +2386,18 @@ class _PreflightMixin:
                     except (NotImplementedError, TypeError):
                         pass
 
-    def _wire_port_midpoint_center(self, pe):
-        """Physical center of a wire port's midpoint V/I probe cell.
+    def _wire_port_cell_centers(self, pe):
+        """Per-cell physical sample centers of a wire port's rasterization.
 
-        Mirrors the production rasterization exactly (issue #314):
+        Mirrors the production rasterization exactly (issues #314/#319):
         ``_wire_port_cells`` on the same WirePort that
-        ``forward()``/``run()`` build from this entry, midpoint =
-        ``cells[len(cells) // 2]`` (rfx/api/_execute.py). Returns None
-        when the geometry cannot be resolved (defensive: preflight must
-        never crash a run over a diagnostics helper).
+        ``forward()``/``run()`` build from this entry. Returns
+        ``(centers, midpoint_index)`` where ``centers`` is one physical
+        sample center per rasterized cell and ``midpoint_index`` is the
+        index of the midpoint V/I probe cell, ``cells[len(cells) // 2]``
+        (rfx/api/_execute.py). Returns None when the geometry cannot be
+        resolved (defensive: preflight must never crash a run over a
+        diagnostics helper).
         """
         try:
             from rfx.sources.sources import WirePort, _wire_port_cells
@@ -2345,19 +2410,21 @@ class _PreflightMixin:
             cells = _wire_port_cells(grid, wp)
             if not cells:
                 return None
-            mid = cells[len(cells) // 2]
             d = (grid.dx, getattr(grid, "dy", grid.dx),
                  getattr(grid, "dz", grid.dx))
             pad = (getattr(grid, "pad_x_lo", 0),
                    getattr(grid, "pad_y_lo", 0),
                    getattr(grid, "pad_z_lo", 0))
-            # Inverse of grid.position_to_index (index = round(pos/d) +
-            # pad_lo): node coordinate, plus the Yee half-cell offset of
-            # the E component along its own axis (where the V probe
-            # actually samples).
-            pos = [(mid[ax] - pad[ax]) * d[ax] for ax in range(3)]
-            pos[axis] += 0.5 * d[axis]
-            return tuple(pos)
+            centers = []
+            for cell in cells:
+                # Inverse of grid.position_to_index (index = round(pos/d)
+                # + pad_lo): node coordinate, plus the Yee half-cell
+                # offset of the E component along its own axis (where the
+                # V probe actually samples).
+                pos = [(cell[ax] - pad[ax]) * d[ax] for ax in range(3)]
+                pos[axis] += 0.5 * d[axis]
+                centers.append(tuple(pos))
+            return centers, len(cells) // 2
         except Exception:
             return None
 

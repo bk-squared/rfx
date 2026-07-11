@@ -710,13 +710,24 @@ def refplane_thru():
     quotes preflight verbatim; returns (S complex128, diagnostics)."""
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
     sim = _build_thru(reference_plane_cells=_REFPLANE_N)
-    issues = [str(i) for i in sim.preflight()]
+    report = sim.preflight()
+    issues = [str(i) for i in report]
     for msg in issues:
         print(f"\n[refplane thru] preflight (verbatim): {msg}")
-    # Exactly the one known advisory (the infinite ground plane IS the
-    # microstrip return). Anything else = fixture drift, stop.
-    assert len(issues) == 1 and _PEC_FACES_ADVISORY_SNIPPET in issues[0], (
+    # Exact known advisory set (re-pinned 2026-07-11 for issue #319):
+    # pec_faces (the infinite ground plane IS the microstrip return)
+    # PLUS one wire_port_dead_extent_cells advisory per port — the
+    # canonical thru's top extent cell GENUINELY sits inside the PEC
+    # trace (issues #313/#318: physical termination ~33.3 ohm, not 50,
+    # is the documented known issue; every gate in this module was
+    # measured on this exact fixture, dead cell included, so the gates
+    # stay valid as-is). Anything else = fixture drift, stop.
+    codes = sorted(getattr(i, "code", None) for i in report)
+    assert codes == ["pec_faces_finite_pec",
+                     "wire_port_dead_extent_cells",
+                     "wire_port_dead_extent_cells"], (
         f"refplane thru preflight drifted from the baseline: {issues}")
+    assert any(_PEC_FACES_ADVISORY_SNIPPET in m for m in issues)
     S, freqs, diag = compute_lumped_wire_s_matrix_via_scan(
         sim, _FREQS, n_steps=_N_STEPS, return_refplane_diagnostics=True)
     S = np.asarray(S).astype(np.complex128)
