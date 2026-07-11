@@ -74,7 +74,9 @@ Validation chain (the point of this example):
 Any change to ``pec_occupancy_override`` should be checked for mesh
 robustness: single-mesh shortcuts (σ-loading, a sharper sigmoid) can work at
 one dx and break at another.  Verify Adam descent at more than one dx and
-FD-vs-AD agreement before trusting a new parameterisation.
+FD-vs-AD agreement (the Kottke differentiable-PEC path is gated by
+``tests/test_kottke_inv_eps_from_occupancy.py``) before trusting a new
+parameterisation.
 
 Geometry: cv06b-class (uniform dx=127 µm = h_sub/2 = 2 substrate cells,
 L_LINE=30 mm).  Long enough for each MSL port's 3-probe extractor to sit
