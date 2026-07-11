@@ -34,6 +34,23 @@ _DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
 _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 
 
+def _pole_key(pole):
+    """Dict key for the per-pole mask dedupe in ``_assemble_materials``.
+
+    Hashable poles (plain-float fields) key by value, so equal poles from
+    different materials/geometry entries share one dict slot. Poles carrying
+    jax-array fields (a traced JVPTracer under ``jax.grad``, or a concrete
+    ArrayImpl) are unhashable; fall back to object identity for those
+    (issue #274). ``id()`` returns an int and a pole never compares equal
+    to an int, so mixing both key kinds in one dict is collision-safe.
+    """
+    try:
+        hash(pole)
+    except TypeError:  # jax-array/traced field (JVPTracer or concrete ArrayImpl)
+        return id(pole)
+    return pole
+
+
 class _CompileMixin:
     """Compile cluster mixin: spec → Grid / Materials / port-config.
 
@@ -134,15 +151,20 @@ class _CompileMixin:
         has_kerr = False
 
         # Collect per-pole masks so distinct materials do not inherit
-        # each other's dispersion poles.  Keyed by object identity rather than
-        # value so that poles carrying **traced** (unhashable) JAX-array fields
-        # — as produced when differentiating through the forward pass — still
-        # work.  Identity keying is behaviour-preserving: the same pole object
-        # reused across geometry entries still merges its masks, and two
-        # distinct-but-equal concrete poles map to separate (pole, mask) pairs
-        # that ``init_debye`` handles identically to a single merged pole.
-        debye_masks_by_pole: dict[int, tuple[DebyePole, jnp.ndarray]] = {}
-        lorentz_masks_by_pole: dict[int, tuple[LorentzPole, jnp.ndarray]] = {}
+        # each other's dispersion poles.  Keys come from ``_pole_key``:
+        # hashable (plain-float-field) poles dedupe by value exactly as on
+        # main — equal poles from different materials/geometry entries merge
+        # masks and the pole's delta_eps is applied once per cell.
+        # Unhashable (jax-array-field) poles fall back to object identity:
+        # the SAME pole object reused across entries still merges, but two
+        # distinct-but-equal-by-value traced poles get separate entries and
+        # would double-count delta_eps on overlapping geometry. Accepted per
+        # issue #274: value equality is undecidable at trace time, and the
+        # supported differentiable path (``_params_to_debye_poles`` builds
+        # one pole list applied to one DUT region) never constructs
+        # overlapping duplicate traced poles.
+        debye_masks_by_pole: dict[object, tuple[DebyePole, jnp.ndarray]] = {}
+        lorentz_masks_by_pole: dict[object, tuple[LorentzPole, jnp.ndarray]] = {}
 
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
@@ -163,7 +185,7 @@ class _CompileMixin:
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:
-                    key = id(pole)
+                    key = _pole_key(pole)
                     if key in debye_masks_by_pole:
                         prev_pole, prev_mask = debye_masks_by_pole[key]
                         debye_masks_by_pole[key] = (prev_pole, prev_mask | mask)
@@ -172,7 +194,7 @@ class _CompileMixin:
 
             if mat.lorentz_poles:
                 for pole in mat.lorentz_poles:
-                    key = id(pole)
+                    key = _pole_key(pole)
                     if key in lorentz_masks_by_pole:
                         prev_pole, prev_mask = lorentz_masks_by_pole[key]
                         lorentz_masks_by_pole[key] = (prev_pole, prev_mask | mask)
@@ -220,6 +242,7 @@ class _CompileMixin:
                 sigma_ext = sigma_ext.at[:,:,-phz:].set(sigma_ext[:,:,-phz-1:-phz])
                 mu_r_ext = mu_r_ext.at[:,:,-phz:].set(mu_r_ext[:,:,-phz-1:-phz])
             eps_r, sigma, mu_r = eps_r_ext, sigma_ext, mu_r_ext
+
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
         # Apply thin conductors (P4: PEC thin sheets go to pec_mask)
