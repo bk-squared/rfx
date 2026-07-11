@@ -710,6 +710,10 @@ _PHASE_DEEMBED_MAX_RAD = 0.02  # measured <= 8.4e-4 (~24x margin)
 # (~1.3% margin) — this is a flux-ACCOUNTING envelope (see label on the
 # test), NOT a passivity certification; the >1 excursion is the mixed
 # legacy/plane calibration + finite-DFT budget, not validated gain.
+# The genuine passivity witnesses BOTH pass strictly and improved under
+# #318, so this permissive gate is not masking a real regression:
+# _ENERGY_ROW_MAX (|S11|^2+|S21|^2 = 0.99995 < 1) and the battery
+# singular-value gate (0.633 < 0.85). Stable at dx/2 (#313 arc).
 _MIXED_SV_MAX = 1.08
 _ENERGY_ROW_MAX = 1.02         # measured |S11|^2+|S21|^2 <= 0.99995 (#318;
                                # was <= 1.0003) — dropped as the diagonal
