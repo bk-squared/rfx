@@ -247,7 +247,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "tests/test_crossval_migration_smoke.py",
             "tests/test_crossval_comprehensive.py",
             "tests/test_meep_crossval.py",
-            "tests/test_meep_crossval_patch.py",
+            "tests/test_meep_crossval_dielectric_cavity.py",
             "tests/test_openems_crossval.py",
         ),
         claim_level="E0",
