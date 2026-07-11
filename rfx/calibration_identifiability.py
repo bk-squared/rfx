@@ -59,8 +59,11 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.differentiable_material_fit import (
+    _apply_nuisance,
+    _nuisance_tau_scale,
     _params_to_debye_poles,
     _params_to_lorentz_poles,
+    _poles_to_params,
 )
 
 
@@ -76,6 +79,7 @@ def s11_residual_fn(
     *,
     num_periods: float = 14.0,
     checkpoint: bool = True,
+    include_nuisance: bool = False,
 ) -> Callable:
     """Build a real-valued S11 residual over log-space material parameters.
 
@@ -86,6 +90,15 @@ def s11_residual_fn(
     log(delta_L1), ...]``) to a **real** vector of length ``2 * n_freqs``,
     namely ``concatenate([Re(S11), Im(S11)])`` evaluated by
     ``Simulation.forward(port_s11_freqs=...).s_params``.
+
+    With ``include_nuisance=True`` the residual consumes the JOINT parameter
+    vector of ``calibrate_material_s11(fit_nuisance=True)`` (issue #273
+    Stage 2): the same material layout plus a trailing
+    ``[log_alpha, phi, tau_hat]`` at offset ``1 + 2*n_debye + 3*n_lorentz``,
+    and the simulated S11 is passed through the SAME
+    :func:`~rfx.differentiable_material_fit._apply_nuisance` transform the
+    fitter uses — one nuisance model, two consumers, no drift.  ``tau_hat``
+    is the one-way delay divided by ``tau_scale = 1/(4*pi*max(freqs))``.
 
     The output is real-valued so that ``jax.jacfwd`` yields a real Jacobian
     directly (no complex-holomorphicity assumptions).
@@ -103,9 +116,14 @@ def s11_residual_fn(
         Periods at ``freq_max`` for the forward step count.
     checkpoint : bool
         Use gradient checkpointing in the FDTD scan.
+    include_nuisance : bool
+        Consume the joint vector with the ``[log_alpha, phi, tau_hat]`` tail
+        (see above).  Default False — layout unchanged for existing callers.
     """
     freqs_jnp = jnp.asarray(np.asarray(freqs, dtype=np.float64), dtype=jnp.float32)
     lorentz_offset = 1 + 2 * n_debye
+    nuisance_offset = 1 + 2 * n_debye + 3 * n_lorentz
+    tau_scale = _nuisance_tau_scale(freqs)
 
     def residual(log_params):
         eps_inf, debye_poles = _params_to_debye_poles(log_params, n_debye)
@@ -118,9 +136,40 @@ def s11_residual_fn(
             skip_preflight=True,
         ).s_params
         s11 = jnp.reshape(s11, (-1,))
+        if include_nuisance:
+            s11 = _apply_nuisance(
+                s11, freqs_jnp,
+                log_params[nuisance_offset],
+                log_params[nuisance_offset + 1],
+                log_params[nuisance_offset + 2],
+                tau_scale,
+            )
         return jnp.concatenate([jnp.real(s11), jnp.imag(s11)])
 
     return residual
+
+
+def calibration_param_names(
+    n_debye: int,
+    n_lorentz: int,
+    *,
+    include_nuisance: bool = False,
+) -> list:
+    """Column names for the log-space parameter vector, in Jacobian order.
+
+    Matches the layout of
+    :func:`rfx.differentiable_material_fit._poles_to_params` plus, when
+    ``include_nuisance=True``, the ``[log_alpha, phi, tau_hat]`` tail of
+    :func:`s11_residual_fn`.
+    """
+    names = ["log_eps_inf"]
+    for i in range(1, n_debye + 1):
+        names += [f"log_de_{i}", f"log_tau_{i}"]
+    for k in range(1, n_lorentz + 1):
+        names += [f"log_de_L{k}", f"log_w0_L{k}", f"log_delta_L{k}"]
+    if include_nuisance:
+        names += ["log_alpha", "phi", "tau_hat"]
+    return names
 
 
 def s11_jacobian(residual_fn: Callable, params: np.ndarray) -> jnp.ndarray:
@@ -364,3 +413,158 @@ def identifiability_report(
     report.correlation_matrix = corr
 
     return report
+
+
+# ---------------------------------------------------------------------------
+# Post-fit UQ entry point (issue #273 Stage 2)
+# ---------------------------------------------------------------------------
+
+def calibration_uq(
+    sim_factory: Callable,
+    freqs: np.ndarray,
+    fit_result,
+    *,
+    n_debye_poles: int,
+    n_lorentz_poles: int,
+    fit_nuisance: bool = False,
+    noise_std: float | None = None,
+    s11_measured: np.ndarray | None = None,
+    num_periods: float = 14.0,
+    checkpoint: bool = True,
+    cond_threshold: float = 1e10,
+    svd_rtol: float = 1e-6,
+) -> IdentifiabilityReport:
+    """Fisher / Cramér-Rao identifiability report AT the fitted optimum.
+
+    Packs the FITTED parameters from ``fit_result`` (a
+    :class:`~rfx.differentiable_material_fit.MaterialFitResult`, plus the
+    ``[log_alpha, phi, tau_hat]`` nuisance tail when ``fit_nuisance=True``),
+    builds the joint residual via :func:`s11_residual_fn`, takes its AD
+    Jacobian, and returns :func:`identifiability_report` of the resulting
+    Fisher information.  This is the ``compute_uq=True`` backend of
+    :func:`~rfx.differentiable_material_fit.calibrate_material_s11` and can
+    also be called standalone on any fitted result.
+
+    Unit conventions for ``report.crlb_std`` (column order =
+    ``report.param_names``, from :func:`calibration_param_names`):
+
+    - material parameters and ``log_alpha`` are log-space, so their
+      ``crlb_std`` is a RELATIVE (fractional) standard deviation;
+    - ``phi`` is linear radians;
+    - ``tau_hat`` is the scaled delay — the report does NOT de-scale it.
+      Convert to seconds yourself:
+      ``tau_std_seconds = crlb_std[tau_hat] * tau_scale`` with
+      ``tau_scale = 1 / (4*pi*max(freqs))``
+      (:func:`rfx.differentiable_material_fit._nuisance_tau_scale`).
+
+    Parameters
+    ----------
+    sim_factory : callable(eps_inf, debye_poles, lorentz_poles) -> Simulation
+        Same factory the fit used (the Jacobian must be taken through the
+        same forward model).
+    freqs : (n_freqs,) array in Hz
+        Same frequency grid the fit used.
+    fit_result : MaterialFitResult
+        Fitted optimum; supplies the material poles and (when
+        ``fit_nuisance=True``) the ``nuisance_alpha/phi/tau`` estimates.
+    n_debye_poles, n_lorentz_poles : int
+        Model order of the fit (defines the parameter layout).
+    fit_nuisance : bool
+        Analyze the JOINT material+nuisance vector (must match how the fit
+        was run; fails closed if ``fit_result`` carries no nuisance values).
+    noise_std : float or None
+        i.i.d. Gaussian noise std on Re/Im S11.  ``None`` estimates
+        ``sigma_hat = sqrt(sum(r^2) / max(2*n_freqs - n_params, 1))`` from
+        the residual at the optimum, which requires ``s11_measured``.
+    s11_measured : (n_freqs,) complex array, optional
+        Measured S11, only needed for the ``noise_std=None`` estimate.
+    num_periods : float
+        Periods at ``freq_max`` for the forward step count.
+    checkpoint : bool
+        Use gradient checkpointing in the FDTD scan.
+    cond_threshold, svd_rtol : float
+        Forwarded to :func:`identifiability_report`.
+    """
+    freqs = np.asarray(freqs, dtype=np.float64)
+
+    # Fail closed on argument problems BEFORE the expensive AD Jacobian
+    # (tens of seconds to minutes on real fixtures).
+    if noise_std is None and s11_measured is None:
+        raise ValueError(
+            "noise_std=None estimates sigma_hat from the residual at the "
+            "optimum, which requires s11_measured; pass one of the two."
+        )
+    # The [:n] slices below would silently truncate (and JAX indexing clamps
+    # silently), so a model-order mismatch must be an explicit error.
+    if len(fit_result.debye_poles) != n_debye_poles:
+        raise ValueError(
+            f"fit_result carries {len(fit_result.debye_poles)} Debye pole(s) "
+            f"but n_debye_poles={n_debye_poles}; the declared model order "
+            "must match the fitted result."
+        )
+    if len(fit_result.lorentz_poles) != n_lorentz_poles:
+        raise ValueError(
+            f"fit_result carries {len(fit_result.lorentz_poles)} Lorentz "
+            f"pole(s) but n_lorentz_poles={n_lorentz_poles}; the declared "
+            "model order must match the fitted result."
+        )
+
+    params = _poles_to_params(
+        fit_result.eps_inf,
+        list(fit_result.debye_poles)[:n_debye_poles],
+        list(fit_result.lorentz_poles)[:n_lorentz_poles],
+    )
+    param_names = calibration_param_names(
+        n_debye_poles, n_lorentz_poles, include_nuisance=fit_nuisance
+    )
+
+    if fit_nuisance:
+        alpha = getattr(fit_result, "nuisance_alpha", None)
+        phi = getattr(fit_result, "nuisance_phi", None)
+        tau = getattr(fit_result, "nuisance_tau", None)
+        if alpha is None or phi is None or tau is None:
+            raise ValueError(
+                "fit_nuisance=True but fit_result carries no nuisance estimates "
+                "(nuisance_alpha/phi/tau are None); run calibrate_material_s11 "
+                "with fit_nuisance=True, or pass fit_nuisance=False here."
+            )
+        tau_scale = _nuisance_tau_scale(freqs)
+        nuisance_tail = jnp.array(
+            [np.log(float(alpha)), float(phi), float(tau) / tau_scale],
+            dtype=params.dtype,
+        )
+        params = jnp.concatenate([params, nuisance_tail])
+
+    residual = s11_residual_fn(
+        sim_factory, freqs, n_debye_poles, n_lorentz_poles,
+        num_periods=num_periods,
+        checkpoint=checkpoint,
+        include_nuisance=fit_nuisance,
+    )
+    J = s11_jacobian(residual, params)
+
+    n_params = int(params.shape[0])
+    if noise_std is None:
+        # (s11_measured presence already validated up front.)
+        model = np.asarray(
+            residual(jnp.asarray(params, dtype=jnp.float32)), dtype=np.float64
+        )
+        meas = np.asarray(s11_measured).reshape(-1)
+        data = np.concatenate([meas.real, meas.imag]).astype(np.float64)
+        r = model - data
+        # Unbiased-ish variance estimate with n_params fit DOF removed.
+        dof = max(r.size - n_params, 1)
+        sigma = float(np.sqrt(np.sum(r**2) / dof))
+        if not np.isfinite(sigma) or sigma <= 0.0:
+            raise ValueError(
+                f"estimated sigma_hat is not usable ({sigma!r}); the fit "
+                "residual is degenerate — pass noise_std explicitly."
+            )
+    else:
+        sigma = float(noise_std)
+
+    F = fisher_information(J, sigma)
+    return identifiability_report(
+        F, param_names, J=J, noise_std=sigma,
+        cond_threshold=cond_threshold, svd_rtol=svd_rtol,
+    )

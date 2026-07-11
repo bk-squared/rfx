@@ -76,11 +76,26 @@ class MaterialFitResult:
     loss_history : list[float]
         Loss value at each iteration.
     final_s_params : np.ndarray or None
-        S-parameters from the final simulation.
+        S-parameters from the final simulation.  When the fit was run with
+        ``fit_nuisance=True`` this is the NUISANCE-APPLIED model S11 (the
+        quantity compared against the measurement), not the bare simulated S11.
     freqs : np.ndarray
         Frequency array in Hz.
     converged : bool
         Whether the optimizer converged (loss plateau).
+    nuisance_alpha : float or None
+        Fitted reflection-tracking magnitude ``alpha`` (linear).  ``None``
+        unless the fit was run with ``fit_nuisance=True`` (issue #273).
+    nuisance_phi : float or None
+        Fitted reflection-tracking phase in radians, wrapped to ``(-pi, pi]``.
+    nuisance_tau : float or None
+        Fitted one-way reference-plane offset delay in SECONDS (de-scaled
+        from the internal ``tau_hat`` optimization variable).
+    uq : object or None
+        :class:`rfx.calibration_identifiability.IdentifiabilityReport` when the
+        fit was run with ``compute_uq=True``; ``None`` otherwise.  Typed
+        ``object`` because ``calibration_identifiability`` imports from this
+        module (a top-level back-import would be circular).
     """
 
     eps_inf: float
@@ -90,6 +105,10 @@ class MaterialFitResult:
     final_s_params: np.ndarray | None = None
     freqs: np.ndarray | None = None
     converged: bool = False
+    nuisance_alpha: float | None = None
+    nuisance_phi: float | None = None
+    nuisance_tau: float | None = None
+    uq: object | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +588,50 @@ def _count_excited_ports(sim) -> int:
     return n
 
 
+# ---------------------------------------------------------------------------
+# One-port VNA nuisance model (issue #273, Stage 2)
+# ---------------------------------------------------------------------------
+
+def _nuisance_tau_scale(freqs) -> float:
+    """Scale for the nuisance delay: ``tau = tau_hat * tau_scale`` (seconds).
+
+    ``tau_scale = 1 / (4*pi*max(freqs))`` makes one unit of ``tau_hat`` equal
+    to 1 rad of round-trip phase at the top of the band, so Adam's step size
+    on ``tau_hat`` is balanced against the O(1) log-space material parameters
+    (a raw tau in seconds, ~1e-12, would be invisible to a shared learning
+    rate).  ``tau_hat`` is signed: the reference plane may sit on either side
+    of the nominal port location.
+    """
+    return 1.0 / (4.0 * np.pi * float(np.max(np.asarray(freqs))))
+
+
+def _apply_nuisance(s11, freqs_jnp, log_alpha, phi, tau_hat, tau_scale):
+    """Apply the one-port VNA nuisance model to a simulated S11 (complex64).
+
+    Model (issue #273, v1 scope)::
+
+        S11_model(f) = alpha * exp(j*phi) * exp(-j*4*pi*f*tau) * S11_sim(f)
+
+    ``alpha * exp(j*phi)`` is the reflection-tracking term ``e_r`` of the
+    standard one-port error model with directivity ``e_d`` and source match
+    ``e_s`` deliberately dropped; ``tau = tau_hat * tau_scale`` is the one-way
+    reference-plane offset delay, doubled in the exponent for the round trip.
+    Convention: measured = nuisance(true) — the transform is applied to the
+    SIMULATED S11; the measured data is never touched.
+
+    ``alpha`` arrives in log-space (positivity by construction, matching the
+    log-space material parameters); ``phi`` is linear radians, unbounded on
+    the tape (wrap only when reporting).  Constants are built as float32
+    (``jnp.float32(...)``) so nothing promotes the complex64 core to float64.
+    """
+    alpha = jnp.exp(log_alpha)
+    # 4*pi*tau_scale is precomputed in float32 (~1/f_max, well inside float32
+    # range); freqs (~1e10) times it stays O(1), then scales by tau_hat.
+    round_trip = (jnp.float32(4.0 * np.pi) * jnp.float32(tau_scale)) * freqs_jnp * tau_hat
+    factor = alpha * jnp.exp(1j * (phi - round_trip))
+    return (factor * s11).astype(jnp.complex64)
+
+
 def calibrate_material_s11(
     sim_factory: Callable,
     s11_measured: np.ndarray,
@@ -582,6 +645,10 @@ def calibrate_material_s11(
     initial_guess=None,
     weight_mag: float = 1.0,
     weight_phase: float = 0.1,
+    fit_nuisance: bool = False,
+    nuisance_init: tuple = (1.0, 0.0, 0.0),
+    compute_uq: bool = False,
+    noise_std: float | None = None,
     checkpoint: bool = True,
     verbose: bool = True,
 ) -> MaterialFitResult:
@@ -613,6 +680,44 @@ def calibrate_material_s11(
     matched loads (``excite=False``), else the fit targets an *active*
     reflection coefficient rather than S11 (checked before the first step).
 
+    Joint VNA-nuisance fitting (``fit_nuisance=True``, issue #273 Stage 2)
+    ----------------------------------------------------------------------
+    Real one-port measurements differ from the simulated S11 by residual VNA
+    error terms.  With ``fit_nuisance=True`` the fit co-estimates a nuisance
+    transform applied to the SIMULATED S11 (measured = nuisance(true))::
+
+        S11_model(f) = alpha * exp(j*phi) * exp(-j*4*pi*f*tau) * S11_sim(f)
+
+    v1 nuisance scope — EXACTLY reflection tracking plus delay:
+    ``alpha * exp(j*phi)`` is the reflection-tracking term ``e_r`` of the
+    standard one-port error model, and ``tau`` is the one-way reference-plane
+    offset delay (round trip in the exponent).  Directivity ``e_d`` and source
+    match ``e_s`` are DELIBERATELY omitted: they add 4 more real parameters a
+    single broadband S11 trace rarely constrains.  Consequence: real data with
+    poor directivity will alias ``e_d`` into the material fit — do not use v1
+    on uncorrected raw data from a bad bridge.
+
+    The three nuisance parameters are APPENDED to the log-space parameter
+    vector as ``[log_alpha, phi, tau_hat]`` where ``tau_hat = tau / tau_scale``
+    with ``tau_scale = 1/(4*pi*max(freqs))`` (one ``tau_hat`` unit = 1 rad of
+    round-trip phase at band top, balancing Adam steps across parameters).
+
+    RECOMMENDED: pass ``weight_phase=1.0`` (explicitly) when
+    ``fit_nuisance=True`` — the phase carries essentially all of the tau/phi
+    information and the default ``weight_phase=0.1`` down-weights it 10x
+    (the default is kept unchanged for existing material-only callers).
+    If the joint fit drifts into a confounded basin early (the material
+    parameters chasing the nuisance phase ramp before phi/tau adapt — Adam's
+    per-parameter normalization amplifies their initially weak gradients),
+    additionally up-weighting the magnitude channel (``weight_mag ~ 4``)
+    anchors the material to the |S11| curve shape, which alpha can only scale
+    uniformly (measured on the Stage-2 synthetic gates).
+    Keep the true delay small relative to the band (|4*pi*f_max*tau| well
+    below pi), else the phase term wraps and Adam can stall in a wrapped
+    local minimum.  For real data with a large unknown offset, pre-estimate
+    the delay from the measured group delay (slope of unwrapped phase) and
+    fold it into ``nuisance_init`` — not implemented here.
+
     Parameters
     ----------
     sim_factory : callable(eps_inf, debye_poles, lorentz_poles) -> Simulation
@@ -638,7 +743,23 @@ def calibrate_material_s11(
         Initial pole parameters.  If None, a frequency-band-based default is
         used.
     weight_mag, weight_phase : float
-        Weights for magnitude and phase in :func:`sparam_loss`.
+        Weights for magnitude and phase in :func:`sparam_loss`.  See the
+        ``weight_phase=1.0`` recommendation above for ``fit_nuisance=True``.
+    fit_nuisance : bool
+        Co-estimate the VNA nuisance parameters (see above).  Default False —
+        zero behavior change for existing material-only callers.
+    nuisance_init : tuple
+        Initial ``(alpha, phi_rad, tau_seconds)``.  The default
+        ``(1.0, 0.0, 0.0)`` is the neutral (no-nuisance) starting point.
+    compute_uq : bool
+        After the fit, run :func:`rfx.calibration_identifiability.calibration_uq`
+        at the fitted optimum and store the
+        :class:`~rfx.calibration_identifiability.IdentifiabilityReport` in
+        ``result.uq`` (Fisher / Cramér-Rao analysis, joint with the nuisance
+        tail when ``fit_nuisance=True``).
+    noise_std : float or None
+        Assumed i.i.d. Gaussian noise std on Re/Im S11 for ``compute_uq``.
+        ``None`` estimates ``sigma_hat`` from the residual at the optimum.
     checkpoint : bool
         Use gradient checkpointing in the FDTD scan (recommended).
     verbose : bool
@@ -648,7 +769,11 @@ def calibrate_material_s11(
     -------
     MaterialFitResult
         With ``final_s_params`` populated by the final physically-scaled S11
-        (the self-normalized fitter leaves this ``None``).
+        (the self-normalized fitter leaves this ``None``).  When
+        ``fit_nuisance=True``, ``final_s_params`` is the NUISANCE-APPLIED
+        model S11 — the quantity actually compared against the measurement —
+        and ``nuisance_alpha`` / ``nuisance_phi`` (wrapped to ``(-pi, pi]``) /
+        ``nuisance_tau`` (seconds) carry the fitted nuisance estimates.
     """
     freqs = np.asarray(freqs, dtype=np.float64)
     freqs_jnp = jnp.asarray(freqs, dtype=jnp.float32)
@@ -688,6 +813,22 @@ def calibrate_material_s11(
                               lorentz_init[:n_lorentz_poles])
 
     lorentz_offset = 1 + 2 * n_debye_poles
+
+    # Nuisance tail [log_alpha, phi, tau_hat] APPENDED after all pole params
+    # (issue #273 Stage 2) — the front unpack helpers above are layout-stable.
+    nuisance_offset = 1 + 2 * n_debye_poles + 3 * n_lorentz_poles
+    tau_scale = _nuisance_tau_scale(freqs)
+    if fit_nuisance:
+        alpha_init, phi_init, tau_init = nuisance_init
+        if not (np.isfinite(alpha_init) and alpha_init > 0):
+            raise ValueError(
+                f"nuisance_init alpha must be finite and positive, got {alpha_init!r}"
+            )
+        nuisance_tail = jnp.array(
+            [np.log(float(alpha_init)), float(phi_init), float(tau_init) / tau_scale],
+            dtype=params.dtype,
+        )
+        params = jnp.concatenate([params, nuisance_tail])
 
     # ------------------------------------------------------------------
     # One concrete pass OUTSIDE the AD tape (issue #273 corrections 2 & 3).
@@ -736,10 +877,26 @@ def calibrate_material_s11(
         )
         return result.s_params
 
-    def forward(p):
+    def _model_s11(p):
+        """Model S11 compared against the measurement.
+
+        With ``fit_nuisance=True`` this is the nuisance-applied simulated S11
+        (measured = nuisance(true)); otherwise the bare simulated S11.
+        """
         s11_sim = _s11_from_params(p)
+        if fit_nuisance:
+            s11_sim = _apply_nuisance(
+                s11_sim, freqs_jnp,
+                p[nuisance_offset],
+                p[nuisance_offset + 1],
+                p[nuisance_offset + 2],
+                tau_scale,
+            )
+        return s11_sim
+
+    def forward(p):
         return sparam_loss(
-            s11_sim, s11_meas_jnp,
+            _model_s11(p), s11_meas_jnp,
             weight_mag=weight_mag, weight_phase=weight_phase,
         )
 
@@ -781,7 +938,15 @@ def calibrate_material_s11(
         for p in final_lorentz
     ]
 
-    final_s11 = np.asarray(_s11_from_params(params))
+    # Nuisance-applied when fit_nuisance=True (see MaterialFitResult docstring).
+    final_s11 = np.asarray(_model_s11(params))
+
+    nuisance_alpha = nuisance_phi = nuisance_tau = None
+    if fit_nuisance:
+        nuisance_alpha = float(np.exp(float(params[nuisance_offset])))
+        # phi is unbounded on the tape; np.angle wraps the report to (-pi, pi].
+        nuisance_phi = float(np.angle(np.exp(1j * float(params[nuisance_offset + 1]))))
+        nuisance_tau = float(params[nuisance_offset + 2]) * tau_scale
 
     converged = False
     if len(loss_history) >= 5:
@@ -790,7 +955,7 @@ def calibrate_material_s11(
             rel_change = abs(recent[0] - recent[-1]) / abs(recent[0])
             converged = rel_change < 0.01
 
-    return MaterialFitResult(
+    result = MaterialFitResult(
         eps_inf=eps_inf_out,
         debye_poles=debye_out,
         lorentz_poles=lorentz_out,
@@ -798,4 +963,27 @@ def calibrate_material_s11(
         final_s_params=final_s11,
         freqs=freqs,
         converged=converged,
+        nuisance_alpha=nuisance_alpha,
+        nuisance_phi=nuisance_phi,
+        nuisance_tau=nuisance_tau,
     )
+
+    if compute_uq:
+        # Lazy import: calibration_identifiability imports FROM this module at
+        # top level, so a top-level back-import here would be circular.
+        from rfx.calibration_identifiability import calibration_uq
+
+        result.uq = calibration_uq(
+            sim_factory,
+            freqs,
+            result,
+            n_debye_poles=n_debye_poles,
+            n_lorentz_poles=n_lorentz_poles,
+            fit_nuisance=fit_nuisance,
+            noise_std=noise_std,
+            s11_measured=np.asarray(s11_measured),
+            num_periods=num_periods,
+            checkpoint=checkpoint,
+        )
+
+    return result
