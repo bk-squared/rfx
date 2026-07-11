@@ -1,0 +1,104 @@
+{
+  "_meta": {
+    "purpose": "Falsification ledger for the crossval research lane (issue #273 revival). One row per hypothesis that was killed or kept during the 2026-07-04..07-07 patch cross-validation campaigns. Numbers were re-checked against the cited artifacts before writing (2026-07-10).",
+    "fields": {
+      "id": "stable row identifier",
+      "campaign": "which cross-validation campaign the hypothesis belongs to",
+      "hypothesis": "the claim under test, stated so it can be falsified",
+      "verdict": "KILL = falsified; KEEP = survived; KEEP-freq = survived for the dip FREQUENCY only",
+      "numbers": "the deciding numbers, verbatim from the artifacts",
+      "evidence": "lane-relative artifact paths (small copies live in evidence/; out_*/ is gitignored)",
+      "caveats": "honest scope limits, including anything still OPEN"
+    },
+    "conventions": "dip frequency is mesh-limited and an unstable argmin -> never a gate (tests/test_issue80_patch_s11_regression.py); dip depth is not comparable across solvers while loss models differ"
+  },
+  "verdicts": [
+    {
+      "id": "meep-coarse-3rd-solver",
+      "campaign": "meep-2p4ghz-canonical-patch",
+      "hypothesis": "A serial coarse-mesh Meep ring-down (res=2 cells/mm, ~3.0M cells) can act as the third solver for the canonical 2.4 GHz FR4 patch resonance",
+      "verdict": "KILL",
+      "numbers": "r2 (1200 Meep-units ring-down) and r2b (600 units): no qualifying Harminv resonance (harminv_modes empty, mode-shape check 0 sign changes along x vs TM010 expecting 1); r3 (finer attempt): killed by timeout (EXIT 124, no JSON artifact)",
+      "evidence": [
+        "evidence/meep_smoke.json",
+        "evidence/meep_r2.json",
+        "evidence/meep_r2b.json"
+      ],
+      "caveats": "This Meep build is serial (non-MPI), which caps affordable resolution; 2 cells/mm under-resolves the h=1.5 mm substrate. Kills THIS configuration as a third solver, not Meep in general. r3 verdict is log-only (rfx-ref scripts/crossval/out/r3.log tail)."
+    },
+    {
+      "id": "meep-window",
+      "campaign": "meep-2p4ghz-canonical-patch",
+      "hypothesis": "The r4 Meep configuration's dominant ring-down mode lands in the 2.40-2.56 GHz cross-solver target window",
+      "verdict": "KILL",
+      "numbers": "dominant mode 3.0044 GHz, Q=7.3: +20.8% vs openEMS 2.487 GHz, +17.7% vs rfx 2.553 GHz, +24.0% vs Balanis 2.424 GHz -> OUT OF WINDOW; mode-shape check fails TM010 (0 sign changes along x, y_min/max=-1.07)",
+      "evidence": [
+        "evidence/meep_r4.json"
+      ],
+      "caveats": "Q=7.3 is far below a patch-cavity Q and the mode shape is not TM010 -- the selected mode is likely a box/feed artifact, so the +20% offset says nothing about rfx/openEMS."
+    },
+    {
+      "id": "thru-one-port-cpml",
+      "campaign": "xband-inset-patch-3solver",
+      "hypothesis": "A one-port MSL line run into the far CPML is a valid matched-thru fixture for the X-band frame (the PR #272 wiring)",
+      "verdict": "KILL",
+      "numbers": "dip -0.567 dB, max|S11|=1.0053 over 1.5-15 GHz -- an essentially total reflection record with a marginal passivity overshoot, not a matched thru",
+      "evidence": [
+        "evidence/xband_inset_-1.0mm.json"
+      ],
+      "caveats": "PR #272 withdrawn. The pec-pad thru variant survives only as evidence/rfx_patch_inset_thru_pecpad.json (artifact-only; its reproducing thru branch was deleted in this correction -- no script regenerates it). The canonical matched-thru is scripts/diagnostics/msl_thru_mesh_convergence.py (two add_msl_port ends, z_lo PEC ground boundary; pattern of tests/test_msl_port_integration.py)."
+    },
+    {
+      "id": "metal-thickness",
+      "campaign": "xband-inset-patch-3solver",
+      "hypothesis": "rfx's 1-cell-thick metal (vs the openEMS zero-thickness sheet) explains the rfx-vs-openEMS dip disagreement",
+      "verdict": "KILL",
+      "numbers": "openEMS sheet: 9.2625 GHz / -9.46 dB; openEMS 197um-thick slab: 9.2625 GHz / -10.33 dB -- dip frequency unmoved, depth shift ~0.9 dB only",
+      "evidence": [
+        "evidence/openems_xband_inset_2.4mm.json",
+        "evidence/openems_xband_inset_2.4mm_mt0.197.json"
+      ],
+      "caveats": "Tested on the openEMS side (thickness added there); assumes the thickness effect is solver-portable."
+    },
+    {
+      "id": "coarse-dip-depth",
+      "campaign": "xband-inset-patch-3solver",
+      "hypothesis": "The rfx -30.25 dB @ 10.359 GHz deep match (dx=197um, interior-ground frame) is a physical 50-ohm match point",
+      "verdict": "KILL",
+      "numbers": "dx=197um: -30.25 dB @ 10.359 GHz -> dx=98.5um: -12.02 dB @ 10.106 GHz -> canonical frame (z_lo PEC ground): -7.04 dB @ 9.250 GHz. The deep null was a coarse-mesh + miswired-frame coincidence",
+      "evidence": [
+        "evidence/xband_inset_2.4mm.json",
+        "evidence/xband_inset_2.4mm_dx98um.json",
+        "evidence/rfx_cf_s11_dx197um.json"
+      ],
+      "caveats": "This retracts the 10.1 GHz claims that palace_patch/README.md originally set out to arbitrate. Dip depth is an unstable argmin observable; never gate on it."
+    },
+    {
+      "id": "level1-shielded-agreement",
+      "campaign": "xband-inset-patch-3solver",
+      "hypothesis": "In the shared shielded (all-PEC) box the three solvers agree on the fundamental resonance",
+      "verdict": "KEEP",
+      "numbers": "rfx Harminv 9.131 GHz / openEMS ring-down 9.194 GHz / Palace eigenmode 9.199 GHz -- 0.7% spread; second mode 10.764 / 10.799 / 10.797-10.806 GHz",
+      "evidence": [
+        "evidence/rfx_cf_shielded-harminv_dx197um.json",
+        "evidence/palace_eig_shielded.csv",
+        "evidence/openems_xband_inset_2.4mm_shielded.json"
+      ],
+      "caveats": "The openEMS 9.194 GHz is the Harminv mode of the port-voltage ring-down tail (printed at run time; blessed in DESIGN_DOC_patch_student.md). It is NOT re-derivable from the committed shielded JSON, whose stored ratio-curve dip (~9.77 GHz) is a different observable -- the number's provenance is the run log. The shielded openEMS JSON's max|S11|=7.61 is NOT a passivity failure -- S11 is undefined for the closed-box ring-down (see openems_patch_inset_xband.py --shielded). The rfx artifact also carries below-window Harminv lines at 6.627/6.791 GHz (outside the requested 7-12 GHz band; Harminv conventionally returns out-of-band poles, and the Palace eigensolve Target=8 GHz could neither corroborate nor refute them -- uncharacterized, not part of the agreement claim)."
+    },
+    {
+      "id": "level2-radiating-s11",
+      "campaign": "xband-inset-patch-3solver",
+      "hypothesis": "With open boundaries the three solvers agree on the radiating S11 dip",
+      "verdict": "KEEP-freq",
+      "numbers": "dip frequency: rfx 9.250 GHz (dx=197um canonical frame, -7.04 dB) / openEMS 9.2625 GHz (-9.46 dB) / Palace driven 9.05 GHz (-12.99 dB, caveated: tight first-order absorbing box pulls the driven dip low; its shielded eigenmode agrees at 9.199 GHz). Depth spread -7.0 / -9.5 / -13.0 dB stays OPEN while loss models differ",
+      "evidence": [
+        "evidence/rfx_cf_s11_dx197um.json",
+        "evidence/openems_xband_inset_2.4mm.json",
+        "evidence/palace_port-S.csv",
+        "evidence/palace_eig_radiating.csv"
+      ],
+      "caveats": "OPEN: the canonical-frame dx=98.5um rfx run shows max|S11|=1.3579 (evidence/rfx_cf_s11_dx98um.json) -- an unresolved fine-mesh passivity violation, carried here, not hidden. Depth is not comparable across solvers until the loss models are unified (board tan-delta ~0.0027 per DESIGN_DOC_patch_student.md; the FDTD legs and the corrected Palace config are lossless by convention). Dip frequency itself is mesh-limited and never a gate."
+    }
+  ]
+}

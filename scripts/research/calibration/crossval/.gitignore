@@ -1,0 +1,7 @@
+# generated crossval artifacts (JSON/PNG evidence lives in run logs / VESSL;
+# small key artifacts backing verdicts.json are copied into evidence/)
+out*/
+*tmp*/
+__pycache__/
+*.msh
+palace_patch/postpro/

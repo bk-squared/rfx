@@ -1,0 +1,47 @@
+{
+  "solver": "meep",
+  "meep_version": "1.33.0",
+  "resonant_freq_hz": NaN,
+  "resonant_Q": NaN,
+  "harminv_modes": [],
+  "selected_mode": null,
+  "mode_check": {
+    "sign_changes_along_x": 0,
+    "y_min_over_max": -0.09727788921941069,
+    "note": "TM010 expects ~1 sign change along x (half-wave over L) and near-uniform Ez along y"
+  },
+  "resolution_cells_per_mm": 2.0,
+  "cells_approx": 2970240,
+  "runtime_s": 172.1971504688263,
+  "run_time_meep_units": 80.0,
+  "in_target_window_2p40_2p56_ghz": false,
+  "analytic_resonance_hz": 2423509824.70113,
+  "diff_vs_openems_pct": NaN,
+  "diff_vs_rfx_pct": NaN,
+  "diff_vs_analytic_pct": NaN,
+  "reference_openems_hz": 2487000000.0,
+  "reference_rfx_hz": 2553000000.0,
+  "geometry_mm": {
+    "patch_W": 38.0,
+    "patch_L": 29.5,
+    "h_sub": 1.5,
+    "ground_x": 60.0,
+    "ground_y": 55.0,
+    "probe_inset": 8.0,
+    "feed_x": -6.75,
+    "probe_x": 10.325,
+    "cell": [
+      96.0,
+      91.0,
+      42.5
+    ],
+    "dpml": 8.0,
+    "air_below": 10.0,
+    "air_above": 15.0,
+    "air_lateral": 10.0,
+    "eps_r": 4.3,
+    "loss_tangent": 0.0
+  },
+  "s11": null,
+  "notes": "Third cross-validation solver (Meep) for the cv05 2.4 GHz FR4 patch. Harminv resonance is the primary deliverable; S11 intentionally omitted."
+}

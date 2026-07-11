@@ -1,0 +1,73 @@
+{
+  "solver": "meep",
+  "meep_version": "1.33.0",
+  "resonant_freq_hz": 3004423834.0675287,
+  "resonant_Q": 7.293091176139356,
+  "harminv_modes": [
+    {
+      "freq_hz": 1036535436.3724732,
+      "Q": 3.1591677675635177,
+      "amp": 0.0012255444999598704,
+      "meep_freq": 0.0034574230699548807
+    },
+    {
+      "freq_hz": 2176703238.415423,
+      "Q": -2.1454123246099566,
+      "amp": 0.0008644632278690617,
+      "meep_freq": 0.007260517806589136
+    },
+    {
+      "freq_hz": 3004423834.0675287,
+      "Q": 7.293091176139356,
+      "amp": 0.03303295268724193,
+      "meep_freq": 0.010021427064935052
+    }
+  ],
+  "selected_mode": {
+    "freq_hz": 3004423834.0675287,
+    "Q": 7.293091176139356,
+    "amp": 0.03303295268724193,
+    "meep_freq": 0.010021427064935052
+  },
+  "mode_check": {
+    "sign_changes_along_x": 0,
+    "y_min_over_max": -1.0729219454867422,
+    "note": "TM010 expects ~1 sign change along x (half-wave over L) and near-uniform Ez along y"
+  },
+  "coarse_fft_band_peak_hz": 2988039867.1096344,
+  "probe_rms_late_over_early": 0.5942975455942214,
+  "resolution_cells_per_mm": 2.0,
+  "cells_approx": 3040128,
+  "runtime_s": 129.0014054775238,
+  "run_time_meep_units": 300.0,
+  "in_target_window_2p40_2p56_ghz": false,
+  "analytic_resonance_hz": 2423509824.70113,
+  "diff_vs_openems_pct": 20.805140091175257,
+  "diff_vs_rfx_pct": 17.682092991285888,
+  "diff_vs_analytic_pct": 23.969946539747895,
+  "reference_openems_hz": 2487000000.0,
+  "reference_rfx_hz": 2553000000.0,
+  "geometry_mm": {
+    "patch_W": 38.0,
+    "patch_L": 29.5,
+    "h_sub": 1.5,
+    "ground_x": 60.0,
+    "ground_y": 55.0,
+    "probe_inset": 8.0,
+    "feed_x": -6.75,
+    "probe_x": 10.325,
+    "cell": [
+      96.0,
+      91.0,
+      43.5
+    ],
+    "dpml": 8.0,
+    "air_below": 10.0,
+    "air_above": 15.0,
+    "air_lateral": 10.0,
+    "eps_r": 4.3,
+    "loss_tangent": 0.0
+  },
+  "s11": null,
+  "notes": "Third cross-validation solver (Meep) for the cv05 2.4 GHz FR4 patch. Harminv resonance is the primary deliverable; S11 intentionally omitted."
+}
