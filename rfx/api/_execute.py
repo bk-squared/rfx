@@ -675,6 +675,21 @@ class _ExecuteMixin:
             # Sparam-eligible lumped/wire port — advance the multi-drive index.
             _sparam_port_idx += 1
 
+            # Effective drive decision + waveform for this pass (issue #322).
+            # A passive port (excite=False) registers waveform=None BY DESIGN
+            # (add_port only defaults the waveform when excite=True). When the
+            # S-matrix scan driver (_sparam_drive_idx; PR #258 wire reroute /
+            # #214 lumped reroute) selects such a port as the driven one,
+            # synthesize the same default excitation add_port() applies for
+            # excite=True ports — otherwise make_port_source /
+            # make_wire_port_sources hits jax.vmap(None)
+            # ("TypeError: Expected a callable value, got None").
+            _drive_this_port = _excite_this_port(pe)
+            _drive_waveform = pe.waveform
+            if _drive_this_port and _drive_waveform is None:
+                _drive_waveform = GaussianPulse(
+                    f0=self._freq_max / 2, bandwidth=0.8)
+
             if pe.extent is not None:
                 axis_map = {"ex": 0, "ey": 1, "ez": 2}
                 axis = axis_map[pe.component]
@@ -685,10 +700,10 @@ class _ExecuteMixin:
                     end=tuple(end),
                     component=pe.component,
                     impedance=pe.impedance,
-                    excitation=pe.waveform,
+                    excitation=_drive_waveform,
                 )
                 materials = setup_wire_port(grid, wp, materials)
-                if _excite_this_port(pe):
+                if _drive_this_port:
                     sources.extend(make_wire_port_sources(grid, wp, materials, n_steps))
                 wp_cells = _wire_port_cells(grid, wp)
                 for cell in wp_cells:
@@ -771,10 +786,10 @@ class _ExecuteMixin:
                 position=pe.position,
                 component=pe.component,
                 impedance=pe.impedance,
-                excitation=pe.waveform,
+                excitation=_drive_waveform,
             )
             materials = setup_lumped_port(grid, lp, materials)
-            if _excite_this_port(pe):
+            if _drive_this_port:
                 sources.append(make_port_source(grid, lp, materials, n_steps))
             idx = grid.position_to_index(pe.position)
             if pec_mask_local is not None:
