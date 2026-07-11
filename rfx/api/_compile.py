@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math  # noqa: F401  (used by moved method bodies)
 
+import jax
 import jax.numpy as jnp
 import numpy as np  # noqa: F401  (used by moved method bodies)
 
@@ -149,6 +150,17 @@ class _CompileMixin:
         pec_mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
         pec_shapes = []
         has_kerr = False
+        # Track whether any PEC cells were added as a Python-side (static)
+        # predicate. This replaces a later ``bool(jnp.any(pec_mask))``, which
+        # is a host-side boolean conversion on a device array — fine eagerly,
+        # but it raises TracerBoolConversionError when the whole forward()
+        # is wrapped in an outer ``jax.jit`` (the geometry-derived pec_mask
+        # becomes a tracer). PEC cells enter pec_mask only from a PEC geometry
+        # entry or a PEC thin conductor below, both keyed on static config,
+        # so a Python flag set at those two sites is equivalent (it can only
+        # differ when a PEC shape's mask is empty — e.g. entirely outside the
+        # grid — where returning the all-False mask is a downstream no-op).
+        has_pec_cells = False
 
         # Collect per-pole masks so distinct materials do not inherit
         # each other's dispersion poles.  Keys come from ``_pole_key``:
@@ -174,6 +186,7 @@ class _CompileMixin:
                 # True PEC: mark in mask, keep eps/sigma at vacuum values
                 pec_mask = pec_mask | mask
                 pec_shapes.append(entry.shape)
+                has_pec_cells = True
             else:
                 eps_r = jnp.where(mask, mat.eps_r, eps_r)
                 sigma = jnp.where(mask, mat.sigma, sigma)
@@ -251,6 +264,7 @@ class _CompileMixin:
                 grid, tc, materials, pec_mask=pec_mask)
             if tc.is_pec:
                 pec_shapes.append(tc.shape)
+                has_pec_cells = True
 
         # Stage 1 conformal PEC face-shift (issue: WR-90 mesh-conv xfail).
         # When an axis is declared ``Boundary(conformal=True)`` we promote
@@ -329,7 +343,17 @@ class _CompileMixin:
             lorentz_masks = [mask for _, mask in lorentz_masks_by_pole.values()]
             lorentz_spec = (lorentz_poles, lorentz_masks)
 
-        has_pec = bool(jnp.any(pec_mask))
+        # Eagerly this host-converts the actual mask (a PEC shape whose mask is
+        # empty -- e.g. entirely outside the grid -- still returns None, so the
+        # eager result is bit-identical). Only under an outer ``jax.jit`` trace,
+        # where pec_mask is a tracer and cannot be host-converted to bool, do we
+        # fall back to the static Python predicate (which can over-approximate
+        # only in that empty-mask corner). This makes forward()/optimize()
+        # wrappable in an outer jax.jit without changing any eager behaviour.
+        try:
+            has_pec = bool(jnp.any(pec_mask))
+        except jax.errors.TracerBoolConversionError:
+            has_pec = has_pec_cells
         kerr_chi3 = chi3_arr if has_kerr else None
         return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes, boundary_pec_shapes, kerr_chi3
 
