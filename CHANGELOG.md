@@ -6,6 +6,38 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — wire-port termination over LIVE cells only (issue #318; field-changing for ports with extent cells inside PEC)
+
+- A wire port whose rasterized extent includes cells inside a PEC conductor
+  ("dead" cells — e.g. the top cell of a vertical feed ending inside the
+  trace) previously counted those cells in its per-cell sigma distribution,
+  drive injection, and `Z0/n_cells` wave normalization. Dead cells carry no
+  port current (measured on the issue-#313 thru: `|I_dead|/|I_mid|` =
+  0.003–0.03), so the physical series termination came out `Z0*(n_live/n)`
+  — 33.3 ohm instead of 50 on the canonical thru. Dead cells are now
+  excluded everywhere: sigma is `n_live*d_par/(Z0*dA)` at live cells only
+  (series termination exactly `Z0` by closed form), the drive is
+  `V/n_live` over live cells, and the wave normalization is
+  `Z0c = Z0/n_live`. A port whose extent lies entirely inside PEC now
+  raises `ValueError`.
+- The port-cell PEC-mask/occupancy clearing is likewise scoped to live
+  cells: the old all-cells clearing punched a one-cell in-plane
+  conductivity hole in the DUT conductor at each dead cell (witnessed:
+  in-plane `|Ex|` at the dead cell 1.5 -> 0.0 after the fix; the port's
+  Ez chain is unaffected under the thin-sheet rule).
+- **No change for ports with all extent cells live** (`n_live == n`
+  degenerates every formula to the previous one): clean fixtures,
+  goldens, and the `run()`/`forward()` contract were verified bitwise
+  identical. Canonical-thru movement (measured): max in-band |S11|
+  0.130 -> 0.086 (mean 0.076 -> 0.051); |S21| 0.524–0.668 ->
+  0.546–0.610; reciprocity `|S21−S12|` 1.04e-2 -> 0.75e-2. The
+  remaining |S11| floor is frequency-rising (0.033 at 4.5 GHz -> 0.086
+  at 7 GHz), consistent with a reactive feed discontinuity rather than
+  a resistive termination error — tracked separately in issue #318.
+- The `wire_port_dead_extent_cells` preflight advisory now states the
+  post-fix semantics (dead cells excluded; the `Z0*(n_live/n)`
+  termination is cited as the historical pre-fix behaviour).
+
 ### Added — opt-in reference-plane port waves for the wire S-matrix off-diagonals (`add_port(reference_plane_cells=)`, issue #313)
 
 - `add_port(..., extent=..., direction=..., reference_plane_cells=N)` registers

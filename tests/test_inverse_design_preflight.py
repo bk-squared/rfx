@@ -356,25 +356,32 @@ def test_wire_dead_extent_cell_warns_with_live_count():
     """The #313 geometry: extent=1.0mm -> 3 cells (centers 0.25/0.75/1.25
     mm); the TOP cell sits inside the trace [1.0,1.5]mm while the midpoint
     (0.75mm) is clean. The #319 dead-extent advisory must fire with
-    n_live/n = 2/3 and the measured ~33.3-ohm termination consequence;
-    the #314 midpoint warning must NOT fire."""
+    n_live/n = 2/3, the post-#318-fix semantics (dead cells EXCLUDED from
+    the resistance distribution / drive / normalization), and the
+    historical pre-fix Z0*(n_live/n) = 33.3-ohm citation; the #314
+    midpoint warning must NOT fire."""
     issues = _microstrip_sim(1.0e-3).preflight()
     dead = _by_code(issues, "wire_port_dead_extent_cells")
     assert len(dead) == 1, (
         "expected exactly one dead-extent advisory, got: "
         + "\n".join(str(s) for s in issues))
-    assert "2/3" in dead[0] and "33.3" in dead[0], (
+    assert "2/3" in dead[0] and "excluded" in dead[0], (
         "dead-extent advisory must report n_live/n = 2/3 and the "
-        f"33.3-ohm termination (issues #313/#318): {dead[0]}")
+        f"post-#318 excluded-from-distribution semantics: {dead[0]}")
+    assert "33.3" in dead[0], (
+        "dead-extent advisory must keep the historical pre-fix "
+        f"Z0*(n_live/n) = 33.3-ohm citation (issue #313): {dead[0]}")
     assert not _by_code(issues, "wire_port_midpoint_in_pec"), (
         "midpoint is clean on this geometry — #314 must stay silent")
 
 
 def test_wire_midpoint_only_dead_keeps_midpoint_warning_only():
-    """Regression (#314) + documented #319 behavior: when ONLY the
+    """Regression (#314) + documented #319/#318 behavior: when ONLY the
     midpoint cell is dead (extent=1.5mm -> 4 cells, only z=1.25mm inside
     the trace), the strong midpoint warning fires and the dead-extent
-    advisory (reserved for NON-midpoint dead cells) does not."""
+    advisory (reserved for NON-midpoint dead cells) does not. (The #318
+    live-cell split still excludes that dead midpoint from sigma/drive —
+    the advisory split here is about which WARNING fires.)"""
     issues = _microstrip_sim(1.5e-3).preflight()
     assert _by_code(issues, "wire_port_midpoint_in_pec"), (
         "#314 midpoint warning must still fire: "
@@ -397,11 +404,12 @@ def test_wire_port_all_cells_live_is_silent():
 
 
 def test_wire_midpoint_and_other_cell_dead_fires_both():
-    """Documented #319 behavior for the combined case: a thick trace
+    """Documented #319/#318 behavior for the combined case: a thick trace
     [0.5,1.5]mm with extent=1.5mm kills cells 0.75mm AND 1.25mm (the
     midpoint) -> BOTH warnings fire, and the dead-extent live count
-    includes the midpoint cell (n_live/n = 2/4 -> ~25.0 ohm), because the
-    physical termination does not care which cell holds the probe."""
+    includes the midpoint cell (n_live/n = 2/4; historical pre-#318-fix
+    termination citation ~25.0 ohm), because the live split does not care
+    which cell holds the probe."""
     issues = _microstrip_sim(1.5e-3, trace_z_lo_m=0.5e-3,
                              trace_z_hi_m=1.5e-3).preflight()
     assert _by_code(issues, "wire_port_midpoint_in_pec"), (
@@ -413,4 +421,4 @@ def test_wire_midpoint_and_other_cell_dead_fires_both():
         + "\n".join(str(s) for s in issues))
     assert "2/4" in dead[0] and "25.0" in dead[0], (
         "dead-extent live count must include the dead midpoint cell "
-        f"(n_live/n = 2/4, 25.0 ohm): {dead[0]}")
+        f"(n_live/n = 2/4; historical pre-fix citation 25.0 ohm): {dead[0]}")
