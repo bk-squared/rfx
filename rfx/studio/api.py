@@ -461,8 +461,11 @@ def create_app(
                 },
             )
         actual_size = path.stat().st_size
+        digest = hashlib.sha256()
         with path.open("rb") as handle:
-            actual_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        actual_sha256 = digest.hexdigest()
         if actual_size != artifact.size_bytes or actual_sha256 != artifact.sha256:
             raise HTTPException(
                 status_code=409,
