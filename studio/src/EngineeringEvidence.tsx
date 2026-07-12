@@ -5,6 +5,7 @@ interface EngineeringEvidenceProps {
   run: RunRecord;
   revision?: Revision;
   fieldSlice?: FieldSliceArtifact;
+  fieldSliceStatus: "not-requested" | "loading" | "available" | "unavailable";
 }
 
 const formatFrequency = (value: number) => `${(value / 1e9).toFixed(3)} GHz`;
@@ -21,7 +22,7 @@ const duration = (run: RunRecord) => {
   return `${(elapsed / 1000).toFixed(1)} s`;
 };
 
-export function EngineeringEvidence({ artifact, run, revision, fieldSlice }: EngineeringEvidenceProps) {
+export function EngineeringEvidence({ artifact, run, revision, fieldSlice, fieldSliceStatus }: EngineeringEvidenceProps) {
   const points = [...artifact.points].sort((left, right) => left.frequency_hz - right.frequency_hz);
   if (!points.length) {
     return (
@@ -86,7 +87,15 @@ export function EngineeringEvidence({ artifact, run, revision, fieldSlice }: Eng
 
   const evidence = [
     { label: "Network response", detail: `${points.length} complex S11 samples`, state: "available" },
-    { label: "Field snapshot", detail: fieldSlice ? fieldCoordinateSnapped ? "captured on nearest grid plane" : "requested plane captured" : "not requested", state: fieldSlice ? "available" : "neutral" },
+    {
+      label: "Field snapshot",
+      detail: fieldSlice
+        ? fieldCoordinateSnapped ? "captured on nearest grid plane" : "requested plane captured"
+        : fieldSliceStatus === "not-requested" ? "not requested"
+          : fieldSliceStatus === "loading" ? "loading requested output"
+            : "requested output unavailable",
+      state: fieldSlice ? "available" : fieldSliceStatus === "unavailable" ? "missing" : "neutral",
+    },
     { label: "Reference impedance", detail: `${artifact.reference_impedance_ohm.toFixed(1)} Ω`, state: "available" },
     { label: "Convergence trace", detail: "not recorded", state: "missing" },
     { label: "Mesh statistics", detail: "not recorded", state: "missing" },

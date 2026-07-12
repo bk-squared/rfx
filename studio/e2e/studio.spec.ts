@@ -1,5 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+const wr90Spec = JSON.parse(
+  readFileSync(new URL("../../rfx/studio/templates/wr90_waveguide.json", import.meta.url), "utf8"),
+);
 
 test("patch journey: create, edit, preview, run, inspect, compare, cancel, export", async ({
   page,
@@ -52,7 +57,8 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   await page.getByRole("tab", { name: "Setup" }).click();
   await expect(page.getByRole("heading", { name: "Simulation setup" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Domain & mesh" })).toBeVisible();
-  await expect(page.getByText("27 × 24 × 22", { exact: true })).toBeVisible();
+  await expect(page.getByText("36 × 33 × 31", { exact: true })).toBeVisible();
+  await expect(page.getByText("36,828", { exact: true })).toBeVisible();
   await expect(page.getByText("Screening run only", { exact: true })).toBeVisible();
   await expect(page.getByText("1.1 cells / min feature", { exact: true })).toBeVisible();
   await expect(page.getByText("11 points are enough for a coarse sweep", { exact: false })).toBeVisible();
@@ -67,9 +73,14 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
     "build_simulation",
   );
   await page.getByRole("tab", { name: "Design" }).click();
+  await page.getByRole("tab", { name: "Design" }).press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Setup" })).toBeFocused();
+  await expect(page.getByRole("tab", { name: "Setup" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Setup" }).press("Home");
+  await expect(page.getByRole("tab", { name: "Design" })).toBeFocused();
 
   await page.getByRole("button", { name: "Validate", exact: true }).click();
-  await expect(page.getByText("Preflight passed", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("✓ Preflight passed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Run on CPU" }).click();
   await expect(page.getByRole("tab", { name: /Results/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: /Run / })).toBeVisible();
@@ -236,4 +247,43 @@ test("agent patch is inert until Studio approves the exact MCP call", async ({ p
   await page.getByRole("button", { name: "Close tool approvals" }).click();
 
   await expect(page.getByText("MCP-approved patch antenna", { exact: true })).toBeVisible();
+});
+
+test("WR-90 primary controls keep coupled ports and sweep values synchronized", async ({ page }) => {
+  const created = await page.request.post("/api/experiments", { data: wr90Spec });
+  expect(created.status(), await created.text()).toBe(201);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /WR-90 empty matched guide/ }).click();
+  await expect(page.getByLabel("Center frequency in GHz")).toHaveValue("10.3");
+  await expect(page.getByLabel("Sweep start in GHz")).toHaveValue("8.2");
+  await expect(page.getByLabel("Sweep stop in GHz")).toHaveValue("12.4");
+  await expect(page.getByLabel("Sweep sample count")).toHaveValue("5");
+
+  await page.getByLabel("Center frequency in GHz").fill("10.5");
+  await page.getByLabel("Sweep stop in GHz").fill("12.6");
+  await page.getByLabel("Sweep sample count").fill("17");
+  await expect(page.getByRole("button", { name: "Save as new revision" })).toBeEnabled();
+  await page.getByRole("button", { name: "Save as new revision" }).click();
+  await expect(page.getByText("Revision 2 created", { exact: false })).toBeVisible();
+
+  const experiments = await (await page.request.get("/api/experiments")).json();
+  const wr90 = experiments.find(
+    (candidate: { title: string }) => candidate.title === "WR-90 empty matched guide",
+  );
+  const revision = await (
+    await page.request.get(`/api/revisions/${wr90.current_revision_id}`)
+  ).json();
+  expect(revision.spec.excitations.map((item: { f0_hz: number }) => item.f0_hz)).toEqual([
+    10.5e9,
+    10.5e9,
+  ]);
+  expect(revision.spec.excitations.map((item: { stop_hz: number }) => item.stop_hz)).toEqual([
+    12.6e9,
+    12.6e9,
+  ]);
+  expect(revision.spec.excitations.map((item: { points: number }) => item.points)).toEqual([
+    17,
+    17,
+  ]);
 });

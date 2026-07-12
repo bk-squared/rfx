@@ -537,7 +537,9 @@ def _build_simulation(
                 mode=tuple(excitation["mode"]),
                 mode_type=excitation["mode_type"],
                 freqs=jnp.linspace(
-                    excitation["start_hz"], excitation["stop_hz"], excitation["points"]
+                    float(excitation["start_hz"]),
+                    float(excitation["stop_hz"]),
+                    excitation["points"],
                 ),
                 f0=excitation["f0_hz"],
                 bandwidth=excitation["bandwidth"],
@@ -562,7 +564,9 @@ def _build_simulation(
             )
         elif kind in {"dft_plane", "flux_monitor"}:
             frequencies = jnp.linspace(
-                observation["start_hz"], observation["stop_hz"], observation["points"]
+                float(observation["start_hz"]),
+                float(observation["stop_hz"]),
+                observation["points"],
             )
             if kind == "dft_plane":
                 simulation.add_dft_plane_probe(

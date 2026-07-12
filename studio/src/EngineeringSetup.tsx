@@ -70,8 +70,17 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
     ? simulation.domain_m.map((value) => Number(value)).filter(Number.isFinite)
     : [];
   const cellSize = finiteNumber(simulation.cell_size_m);
+  const cpmlLayers = finiteNumber(boundaries.cpml_layers) ?? 0;
+  const dimensionality = String(simulation.dimensionality ?? "3d");
   const gridShape = domain.length === 3 && cellSize && cellSize > 0
-    ? domain.map((extent) => Math.ceil(extent / cellSize))
+    ? domain.map((extent, index) => {
+      if (dimensionality.startsWith("2d") && index === 2) return 1;
+      const axis = ["x", "y", "z"][index];
+      const pair = asRecord(boundaries[axis]);
+      const loPadding = pair.lo === "cpml" ? cpmlLayers : 0;
+      const hiPadding = pair.hi === "cpml" ? cpmlLayers : 0;
+      return Math.ceil(extent / cellSize) + 1 + loPadding + hiPadding;
+    })
     : [];
   const estimatedCells = gridShape.length === 3
     ? gridShape.reduce((product, value) => product * value, 1)
@@ -218,7 +227,7 @@ export function EngineeringSetup({ spec, scene, preflight, onOpenSpec }: Enginee
             <div><span>Dielectric cells / λ</span><strong>{dielectricCellsPerWavelength ? `${dielectricCellsPerWavelength.toFixed(1)} at εr ${maximumPermittivity.toFixed(2)}` : "not available"}</strong></div>
             <div><span>Minimum feature / cell</span><strong>{minimumFeature && cellsAcrossMinimumFeature ? `${formatLength(minimumFeature)} / ${cellsAcrossMinimumFeature.toFixed(1)} cells` : "not available"}</strong></div>
           </div>
-          <p className="setup-footnote">Grid dimensions are estimated from the domain and cell size. Solver mesh statistics are not recorded for this run class.</p>
+          <p className="setup-footnote">Grid dimensions include Yee-grid fence-post nodes and per-face CPML allocation. Runtime mesh statistics are not recorded for this run class.</p>
         </section>
 
         <section className="panel setup-card" aria-labelledby="materials-heading">

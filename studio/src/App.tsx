@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { api, ApiError } from "./api";
 import { CodeEditor } from "./CodeEditor";
@@ -21,6 +21,7 @@ import type {
 
 type WorkspaceTab = "design" | "setup" | "code" | "results";
 type SpecDocument = Record<string, JsonValue>;
+const workspaceTabs: WorkspaceTab[] = ["design", "setup", "code", "results"];
 
 const recordArray = (value: JsonValue | undefined): Array<Record<string, JsonValue>> =>
   Array.isArray(value)
@@ -117,6 +118,19 @@ export function App() {
     queryFn: () => api.readFieldSlice(fieldSliceArtifact!.url),
     enabled: Boolean(fieldSliceArtifact),
   });
+  const fieldSliceRequested = Boolean(
+    runRevision.data && recordArray(runRevision.data.spec.observations)
+      .some((item) => item.kind === "field_snapshot"),
+  );
+  const fieldSliceStatus: "not-requested" | "loading" | "available" | "unavailable" = fieldSlice.data
+    ? "available"
+    : runRevision.isLoading
+      ? "loading"
+      : !fieldSliceRequested
+        ? "not-requested"
+        : fieldSliceArtifact && fieldSlice.isPending
+          ? "loading"
+          : "unavailable";
   const pendingApprovals = useQuery({
     queryKey: ["agent-approvals", "pending"],
     queryFn: () => api.listAgentApprovals("pending"),
@@ -292,9 +306,9 @@ export function App() {
     if (!draft || !Number.isFinite(frequencyGhz) || frequencyGhz <= 0) return;
     const next = deepCopy(draft);
     const excitations = recordArray(next.excitations);
-    const excitationIndex = excitations.findIndex((item) => Number.isFinite(Number(item.f0_hz)));
-    if (excitationIndex < 0) return;
-    excitations[excitationIndex].f0_hz = frequencyGhz * 1e9;
+    const matching = excitations.filter((item) => Number.isFinite(Number(item.f0_hz)));
+    if (!matching.length) return;
+    matching.forEach((item) => { item.f0_hz = frequencyGhz * 1e9; });
     next.excitations = excitations;
     updateDraft(next);
   };
@@ -302,15 +316,42 @@ export function App() {
     if (!draft || !Number.isFinite(value) || value <= 0) return;
     const next = deepCopy(draft);
     const observations = recordArray(next.observations);
-    const observationIndex = observations.findIndex((item) => item.kind === "sparameters");
-    if (observationIndex < 0) return;
-    observations[observationIndex][key] = key === "points" ? Math.round(value) : value * 1e9;
+    const excitations = recordArray(next.excitations);
+    const converted = key === "points" ? Math.round(value) : value * 1e9;
+    let changed = false;
+    observations.forEach((item) => {
+      if (["start_hz", "stop_hz", "points"].every((field) => field in item) && key in item) {
+        item[key] = converted;
+        changed = true;
+      }
+    });
+    excitations.forEach((item) => {
+      if (key in item && ["start_hz", "stop_hz", "points"].every((field) => field in item)) {
+        item[key] = converted;
+        changed = true;
+      }
+    });
+    if (!changed) return;
     next.observations = observations;
+    next.excitations = excitations;
     if (key === "stop_hz") {
       const simulation = next.simulation as Record<string, JsonValue>;
       simulation.freq_max_hz = value * 1e9;
     }
     updateDraft(next);
+  };
+  const moveWorkspaceTab = (event: KeyboardEvent<HTMLButtonElement>, current: WorkspaceTab) => {
+    const currentIndex = workspaceTabs.indexOf(current);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % workspaceTabs.length;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + workspaceTabs.length) % workspaceTabs.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = workspaceTabs.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextTab = workspaceTabs[nextIndex];
+    setTab(nextTab);
+    window.requestAnimationFrame(() => document.getElementById(`studio-tab-${nextTab}`)?.focus());
   };
   const updateDraftText = (text: string) => {
     setDraftText(text);
@@ -372,12 +413,18 @@ export function App() {
   const draftMetadata = draft ? draft.metadata as Record<string, JsonValue> : {};
   const draftSimulation = draft ? draft.simulation as Record<string, JsonValue> : {};
   const draftValidation = draft ? draft.validation as Record<string, JsonValue> : {};
-  const primaryExcitation = draft ? recordArray(draft.excitations).find((item) => Number.isFinite(Number(item.f0_hz))) : undefined;
-  const sparameterObservation = draft ? recordArray(draft.observations).find((item) => item.kind === "sparameters") : undefined;
+  const draftExcitations = draft ? recordArray(draft.excitations) : [];
+  const draftObservations = draft ? recordArray(draft.observations) : [];
+  const primaryExcitation = draftExcitations.find((item) => Number.isFinite(Number(item.f0_hz)));
+  const sparameterObservation = draftObservations.find((item) =>
+    ["start_hz", "stop_hz", "points"].every((key) => Number.isFinite(Number(item[key]))));
+  const excitationSweep = draftExcitations.find((item) =>
+    ["start_hz", "stop_hz", "points"].every((key) => Number.isFinite(Number(item[key]))));
+  const sweepDefinition = sparameterObservation ?? excitationSweep;
   const centerFrequencyGhz = primaryExcitation ? Number(primaryExcitation.f0_hz) / 1e9 : 0;
-  const sweepStartGhz = sparameterObservation ? Number(sparameterObservation.start_hz) / 1e9 : 0;
-  const sweepStopGhz = sparameterObservation ? Number(sparameterObservation.stop_hz) / 1e9 : 0;
-  const sweepPoints = sparameterObservation ? Number(sparameterObservation.points) : 0;
+  const sweepStartGhz = sweepDefinition ? Number(sweepDefinition.start_hz) / 1e9 : 0;
+  const sweepStopGhz = sweepDefinition ? Number(sweepDefinition.stop_hz) / 1e9 : 0;
+  const sweepPoints = sweepDefinition ? Number(sweepDefinition.points) : 0;
   const fidelityLabel = String(draftMetadata.fidelity ?? "unspecified") === "structural-cpu-smoke"
     ? "CPU screening"
     : String(draftMetadata.fidelity ?? "unspecified");
@@ -471,12 +518,16 @@ export function App() {
           <>
             <div className="toolbar">
               <div className="tabs" role="tablist" aria-label="Study workspace views">
-                {(["design", "setup", "code", "results"] as const).map((item) => (
+                {workspaceTabs.map((item) => (
                   <button
                     key={item}
+                    id={`studio-tab-${item}`}
                     role="tab"
                     aria-selected={tab === item}
+                    aria-controls={`studio-panel-${item}`}
+                    tabIndex={tab === item ? 0 : -1}
                     onClick={() => setTab(item)}
+                    onKeyDown={(event) => moveWorkspaceTab(event, item)}
                   >
                     {item === "design"
                       ? "Design"
@@ -522,6 +573,12 @@ export function App() {
               </div>
             )}
 
+            <div
+              id={`studio-panel-${tab}`}
+              role="tabpanel"
+              aria-labelledby={`studio-tab-${tab}`}
+              tabIndex={0}
+            >
             {tab === "design" && (
               <div className="design-grid">
                 <section className="panel editor-panel" aria-labelledby="parameters-heading">
@@ -544,6 +601,7 @@ export function App() {
                         step="0.01"
                         min="0.01"
                         value={centerFrequencyGhz || ""}
+                        disabled={!primaryExcitation}
                         onChange={(event) => updateCenterFrequency(event.target.valueAsNumber)}
                       /><span>GHz</span></div></label>
                       <label>Cell size <div className="input-unit"><input
@@ -561,6 +619,7 @@ export function App() {
                         step="0.05"
                         min="0.01"
                         value={sweepStartGhz || ""}
+                        disabled={!sweepDefinition}
                         onChange={(event) => updateSweep("start_hz", event.target.valueAsNumber)}
                       /><span>GHz</span></div></label>
                       <label>Sweep stop <div className="input-unit"><input
@@ -569,6 +628,7 @@ export function App() {
                         step="0.05"
                         min="0.01"
                         value={sweepStopGhz || ""}
+                        disabled={!sweepDefinition}
                         onChange={(event) => updateSweep("stop_hz", event.target.valueAsNumber)}
                       /><span>GHz</span></div></label>
                       <label>Sweep samples <input
@@ -577,6 +637,7 @@ export function App() {
                         step="1"
                         min="2"
                         value={sweepPoints || ""}
+                        disabled={!sweepDefinition}
                         onChange={(event) => updateSweep("points", event.target.valueAsNumber)}
                       /></label>
                     </div>
@@ -733,9 +794,10 @@ export function App() {
                             run={selectedRun}
                             revision={runRevision.data}
                             fieldSlice={fieldSlice.data}
+                            fieldSliceStatus={fieldSliceStatus}
                           />
                           <div className="plots-grid"><S11Plot artifact={s11.data} /><SmithChart artifact={s11.data} />
-                          {fieldSlice.data ? <FieldSlicePlot artifact={fieldSlice.data} /> : <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Requested output</p><h3>Field slice</h3></div><span className="availability-tag">loading</span></header><div className="field-placeholder"><span>Ez</span><p>Loading the final field plane from the run artifact.</p></div></section>}
+                          {fieldSlice.data ? <FieldSlicePlot artifact={fieldSlice.data} /> : <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Field output</p><h3>Field slice</h3></div><span className="availability-tag">{fieldSliceStatus.replace("-", " ")}</span></header><div className="field-placeholder"><span>Ez</span><p>{fieldSliceStatus === "loading" ? "Loading the requested field plane from the run artifact." : fieldSliceStatus === "not-requested" ? "No field snapshot was requested for this revision." : "The requested field plane is unavailable; inspect the run events and artifact integrity."}</p></div></section>}
                           <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Additional outputs</p><h3>Time series & far field</h3></div><span className="availability-tag">not requested</span></header><div className="field-placeholder"><span>t / θ</span><p>No time probe or NTFF surface was requested for this revision.</p></div></section>
                           </div>
                         </>
@@ -745,6 +807,7 @@ export function App() {
                 </div>
               </div>
             )}
+            </div>
           </>
         )}
       </main>

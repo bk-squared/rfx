@@ -206,7 +206,9 @@ class LocalCopilotProvider:
         run_context: Mapping[str, Any] | None,
     ) -> dict[str, Any]:
         patch: list[dict[str, Any]] = []
-        rationale = ["Kept the model within the supported CPU patch-antenna workflow."]
+        rationale = [
+            f"Kept the model within the supported CPU {base_spec['kind']} workflow."
+        ]
         expected: list[str] = []
         caveats = [
             "Offline rules can change only a small set of known parameters; configure OPENAI_API_KEY for broader design changes."
@@ -233,6 +235,56 @@ class LocalCopilotProvider:
                 ]
             )
             expected.append(f"Run {steps} structural CPU time steps.")
+        frequency_matches = re.findall(
+            r"([0-9]+(?:\.[0-9]+)?)\s*(?:ghz|기가헤르츠)", lowered
+        )
+        sweep_requested = any(
+            token in lowered for token in ("sweep", "스윕", "주파수 범위")
+        )
+        points_match = re.search(
+            r"(?:([0-9]+)\s*(?:points?|포인트|샘플)|(?:points?|포인트|샘플)\s*[:=]?\s*([0-9]+))",
+            lowered,
+        )
+        stop_hz = (
+            float(frequency_matches[-1]) * 1e9
+            if sweep_requested and frequency_matches
+            else None
+        )
+        points = (
+            int(next(group for group in points_match.groups() if group))
+            if points_match
+            else None
+        )
+        if stop_hz is not None or points is not None:
+            sweep_targets: list[tuple[str, Mapping[str, Any]]] = []
+            for index, observation in enumerate(base_spec.get("observations", [])):
+                if all(
+                    key in observation for key in ("start_hz", "stop_hz", "points")
+                ):
+                    sweep_targets.append((f"/observations/{index}", observation))
+            for index, excitation in enumerate(base_spec.get("excitations", [])):
+                if all(key in excitation for key in ("start_hz", "stop_hz", "points")):
+                    sweep_targets.append((f"/excitations/{index}", excitation))
+            for path, target in sweep_targets:
+                if stop_hz is not None and "stop_hz" in target:
+                    patch.append(
+                        {"op": "replace", "path": f"{path}/stop_hz", "value": stop_hz}
+                    )
+                if points is not None and "points" in target:
+                    patch.append(
+                        {"op": "replace", "path": f"{path}/points", "value": points}
+                    )
+            if stop_hz is not None and sweep_targets:
+                patch.append(
+                    {
+                        "op": "replace",
+                        "path": "/simulation/freq_max_hz",
+                        "value": stop_hz,
+                    }
+                )
+                expected.append(f"Extend the frequency sweep to {stop_hz / 1e9:g} GHz.")
+            if points is not None and sweep_targets:
+                expected.append(f"Sample the sweep at {points} points.")
         if not patch:
             title = _intent_title(intent, str(base_spec["metadata"]["title"]))
             patch.extend(
