@@ -152,6 +152,16 @@ def _warn_if_nonpassive_smatrix(
     # above unity is still useful evidence of an extraction/normalization
     # artifact.  One worst-bin warning keeps a broadband result actionable
     # without producing one warning per frequency.
+    # Tolerance-class-aware threshold: the loose normalize=False waveguide
+    # path (passivity_tol >= 2.0) has a DOCUMENTED validated |S11| envelope
+    # reaching ~1.41 (Yee dispersion + band edge — see the normalize docstring
+    # and the 2026-06-21 policy locks in test_sparam_passivity_guard.py), so
+    # its amplitude advisory only fires above 1.5 (still catches the eager
+    # ~1.98 spike class). Tight paths (lumped/MSL/coax/normalize=True) keep
+    # the 1 + amplitude_eps (default 1.05) threshold — the MSL documented
+    # envelope is 1.0063 and the field case that motivated issue #337 was 1.36.
+    eff_amplitude_eps = (float(amplitude_eps) if float(passivity_tol) < 2.0
+                         else max(float(amplitude_eps), 0.5))
     amplitude_advisory = None
     finite_abs = np.where(np.isfinite(s_np), np.abs(s_np), -np.inf)
     if finite_abs.size:
@@ -159,7 +169,7 @@ def _warn_if_nonpassive_smatrix(
         worst_index = np.unravel_index(worst_flat, finite_abs.shape)
         worst_value = float(finite_abs[worst_index])
         frequency_index = int(worst_index[-1])
-        if worst_value > 1.0 + float(amplitude_eps):
+        if worst_value > 1.0 + eff_amplitude_eps:
             amplitude_advisory = (
                 f"{extractor}: per-frequency amplitude advisory at frequency "
                 f"index {frequency_index}: max |S| = {worst_value:.4g}; "

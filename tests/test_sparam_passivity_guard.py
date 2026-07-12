@@ -110,21 +110,17 @@ def test_guard_is_tracer_safe_under_jax_grad():
 def test_normalize_aware_tol_tolerates_documented_overshoot():
     """compute_waveguide_s_matrix(normalize=False) has documented Yee-dispersion
     + band-edge |S11| overshoot (validated paths reach ~1.4); the loose tol used
-    on that path must not trigger the hard column-power verdict for a
-    column-power ~2.0 (|S11|~1.41) result, while the independent amplitude
-    advisory still surfaces it. Gross extractor bugs are caught under either
-    tolerance."""
+    on that path must stay SILENT on a column-power ~2.0 (|S11|~1.41) result,
+    while the tight tol used on normalize=True/"flux" still flags it. Gross
+    extractor bugs (|S11|>>1) are caught under either tol."""
     s = np.zeros((1, 1, 3), dtype=complex)
     s[0, 0, :] = np.sqrt(2.0)  # column power 2.0  (|S11| = 1.414)
-    # loose column-power tol does not hard-fail, but the independent issue
-    # #337 per-bin amplitude advisory still surfaces the over-unity value.
-    with warnings.catch_warnings(record=True) as rec:
-        warnings.simplefilter("always")
+    # loose tol (the normalize=False path) -> silent
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         _warn_if_nonpassive_smatrix(
             _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
         )
-    assert not _hard_fired(rec)
-    assert any("frequency index" in str(w.message) for w in rec)
     # tight tol (the normalize=True/"flux" path) -> warns
     with pytest.warns(UserWarning, match="passivity"):
         _warn_if_nonpassive_smatrix(
@@ -177,30 +173,26 @@ def test_soft_advisory_fires_in_the_over_unity_gap():
 
 
 def test_soft_advisory_silent_at_documented_envelope():
-    """Column power == 2.0 must not fire the legacy column-power advisory.
-
-    The issue #337 amplitude advisory remains expected for |S|=1.414.
-    """
+    """Column power == 2.0 (|S|=1.414, the documented normalize=False PEC-short
+    envelope, locked silent by test_normalize_aware_tol_...) must NOT fire the
+    soft advisory — the floor (2.25) sits above it with margin."""
     s = np.full((1, 1, 3), np.sqrt(2.0) + 0.0j)  # column power exactly 2.0
-    with warnings.catch_warnings(record=True) as rec:
-        warnings.simplefilter("always")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning => failure
         _warn_if_nonpassive_smatrix(
             _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
         )
-    assert not _soft_fired(rec)
-    assert any("frequency index" in str(w.message) for w in rec)
 
 
 def test_soft_advisory_silent_just_below_floor():
-    """Column power 2.10 stays below the legacy advisory's 2.25 floor."""
+    """Column power 2.10 (< 2.25 floor) stays silent — margin for cross-machine
+    float drift on the validated PEC-short (~2.00-2.005)."""
     s = np.full((1, 1, 3), np.sqrt(2.10) + 0.0j)
-    with warnings.catch_warnings(record=True) as rec:
-        warnings.simplefilter("always")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         _warn_if_nonpassive_smatrix(
             _result(s), extractor="compute_waveguide_s_matrix", passivity_tol=2.0
         )
-    assert not _soft_fired(rec)
-    assert any("frequency index" in str(w.message) for w in rec)
 
 
 def test_soft_advisory_never_fires_on_tight_tol_path():
