@@ -20,6 +20,11 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import numpy as np
+from scipy.signal import decimate as scipy_decimate
+
+
+DECIMATION_GUARD = 8
+_MAX_DECIMATION_STAGE = 13
 
 
 class HarminvMode(NamedTuple):
@@ -42,6 +47,7 @@ def harminv(
     min_Q: float = 1.0,
     max_modes: int = 50,
     sv_threshold: float = 1e-3,
+    decimate: str | bool = "auto",
 ) -> list[HarminvMode]:
     """Extract resonant modes via the Matrix Pencil Method.
 
@@ -73,12 +79,39 @@ def harminv(
         Maximum modes to return.
     sv_threshold : float
         Singular value threshold for rank determination.
+    decimate : {"auto", False}
+        Automatically reduce oversampled, band-limited inputs before matrix
+        pencil analysis. With the default ``"auto"``, decimation is applied
+        when ``1 / dt > 8 * f_max`` using a target factor of
+        ``int(1 / dt / (4 * f_max))``. Anti-aliased, zero-phase FIR stages of
+        at most 13 are used, and the effective timestep is passed to the core
+        algorithm. Set to ``False`` to retain every input sample. This avoids
+        redundant work because the estimator scales approximately as
+        :math:`O(N^{2.7})`, while retaining the record's time span and hence
+        its frequency resolution.
 
     Returns
     -------
     list of HarminvMode, sorted by amplitude (strongest first).
     """
+    if decimate not in ("auto", False):
+        raise ValueError("decimate must be 'auto' or False")
+
     y = np.asarray(signal, dtype=np.complex128).ravel()
+    amplitude_signal = y
+    amplitude_dt = dt
+    effective_sv_threshold = sv_threshold
+    if decimate == "auto" and 1.0 / dt > DECIMATION_GUARD * f_max:
+        target_factor = int(1.0 / dt / (4.0 * f_max))
+        factors = _decimation_factors(target_factor)
+        for factor in factors:
+            y = scipy_decimate(y, factor, ftype="fir", zero_phase=True)
+            dt *= factor
+        # Signal singular values shrink with the reduced sample count while
+        # broadband noise does not shrink at the same rate. Preserve the
+        # original rank-selection meaning across the resampling operation.
+        effective_sv_threshold *= np.sqrt(target_factor)
+
     N = len(y)
     if N < 10:
         return []
@@ -101,7 +134,7 @@ def harminv(
 
     # Determine effective rank from singular values
     sv_norm = sv / sv[0] if sv[0] > 0 else sv
-    rank = max(1, int(np.sum(sv_norm > sv_threshold)))
+    rank = max(1, int(np.sum(sv_norm > effective_sv_threshold)))
     rank = min(rank, max_modes, len(sv))
 
     # Truncate to rank
@@ -147,9 +180,12 @@ def harminv(
             continue
 
         # Amplitude: project signal onto this mode
-        n_arr = np.arange(N)
-        basis = lam ** n_arr  # z^n
-        amp_complex = np.dot(y, basis.conj()) / np.dot(basis, basis.conj())
+        n_arr = np.arange(len(amplitude_signal))
+        amplitude_lam = np.exp(s * amplitude_dt)
+        basis = amplitude_lam**n_arr  # z^n at the original sample rate
+        amp_complex = np.dot(amplitude_signal, basis.conj()) / np.dot(
+            basis, basis.conj()
+        )
         amplitude = abs(amp_complex)
         phase = np.angle(amp_complex)
 
@@ -181,6 +217,20 @@ def harminv(
     # Sort by amplitude
     deduped.sort(key=lambda m: m.amplitude, reverse=True)
     return deduped[:max_modes]
+
+
+def _decimation_factors(target: int) -> list[int]:
+    """Return the largest <= target factor composed of stages no larger than 13."""
+    for effective_factor in range(target, 1, -1):
+        remainder = effective_factor
+        factors = []
+        for factor in range(_MAX_DECIMATION_STAGE, 1, -1):
+            while remainder % factor == 0:
+                factors.append(factor)
+                remainder //= factor
+        if remainder == 1:
+            return factors
+    return []
 
 
 def harminv_from_probe(
