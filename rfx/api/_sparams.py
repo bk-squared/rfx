@@ -86,6 +86,51 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
     return np.full(n, float(grid.dx), dtype=float)
 
 
+def _msl_wave_split_reliability(
+    voltages: object,
+    currents: object,
+    freqs: object,
+) -> np.ndarray:
+    """Return the per-port reliability mask for an MSL V·I wave split."""
+    v_abs = np.abs(np.asarray(voltages))
+    i_abs = np.abs(np.asarray(currents))
+    freqs_arr = np.asarray(freqs)
+    if v_abs.shape != i_abs.shape or v_abs.ndim != 2:
+        raise ValueError(
+            "MSL reliability phasors must have matching (n_ports, n_freqs) shapes"
+        )
+    if v_abs.shape[1:] != freqs_arr.shape:
+        raise ValueError("MSL reliability phasors and frequency grid do not align")
+
+    v_floor = 0.1 * np.median(v_abs, axis=1, keepdims=True)
+    i_floor = 0.1 * np.median(i_abs, axis=1, keepdims=True)
+    return ~((v_abs < v_floor) & (i_abs < i_floor))
+
+
+def _warn_msl_wave_split_unreliable(
+    reliable: np.ndarray, freqs: object
+) -> None:
+    """Emit one aggregate warning for unreliable MSL frequency bins."""
+    affected_freqs = np.flatnonzero(np.any(~reliable, axis=0))
+    if not affected_freqs.size:
+        return
+
+    import warnings
+
+    freqs_arr = np.asarray(freqs)
+    f1 = freqs_arr[int(affected_freqs[0])] / 1e9
+    f2 = freqs_arr[int(affected_freqs[-1])] / 1e9
+    warnings.warn(
+        "standing-wave null at the port plane: "
+        f"{affected_freqs.size} bins in [{f1:.4f}, {f2:.4f}] GHz "
+        "have |V|,|I| below 10% of band median — wave-split "
+        "S-parameters are unreliable there (blind spot of single-run "
+        "reflection measurements of strong reflectors); see "
+        "rfx-known-issues standing-wave-null entry",
+        stacklevel=2,
+    )
+
+
 def _warn_if_nonpassive_smatrix(
     result,
     *,
@@ -1645,6 +1690,30 @@ class _SparamMixin:
                     )
                     S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
 
+            # A deep standing-wave node can collapse both phasors at the
+            # driven port plane.  The V·I ratio is then numerically ill
+            # conditioned even though the underlying reflector is passive.
+            # Preserve S exactly as computed and expose that blind spot as
+            # per-port metadata (issue #337 follow-up).
+            reliable = None
+            try:
+                v_port = np.stack([
+                    np.asarray(jax.lax.stop_gradient(raw_v[p, p, 0, :]))
+                    for p in range(n_ports)
+                ])
+                i_port = np.stack([
+                    np.asarray(jax.lax.stop_gradient(raw_i1[p, p, :]))
+                    for p in range(n_ports)
+                ])
+                reliable = _msl_wave_split_reliability(
+                    v_port, i_port, freqs_arr
+                )
+                _warn_msl_wave_split_unreliable(reliable, freqs_arr)
+            except (jax.errors.ConcretizationTypeError, TypeError):
+                # Diagnostics cannot materialize phasors while tracing.  The
+                # eager forward result still carries the reliability mask.
+                pass
+
             # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
             # S1 moved S11/S21 onto the OpenEMS-style V·I wave split, which
             # is bounded |S11| <= 1 for a passive structure whenever the
@@ -1772,6 +1841,7 @@ class _SparamMixin:
                 Z0=Z0_per_run,
                 beta=beta_first,
                 port_names=tuple(pe.name for pe in entries),
+                reliable=reliable,
             )
             _warn_if_nonpassive_smatrix(
                 result,

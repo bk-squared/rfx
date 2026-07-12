@@ -1259,6 +1259,10 @@ class MSLSMatrixResult:
         per driven-port run (``Z0[i, :]`` is from run with port i driven).
     beta : (n_freqs,) complex
         Propagation constant β = -ln(q) / Δ at the first port's run.
+    reliable : (n_ports, n_freqs) bool, optional
+        Per-port wave-split reliability. False marks standing-wave-null bins
+        where both voltage and current collapse below 10% of their band
+        medians. S values at those bins are retained unchanged.
     port_names : tuple[str, ...]
     """
     S: np.ndarray
@@ -1266,6 +1270,7 @@ class MSLSMatrixResult:
     Z0: np.ndarray
     beta: np.ndarray
     port_names: tuple[str, ...] = ()
+    reliable: np.ndarray | None = None
 
 
 __all__ = [
