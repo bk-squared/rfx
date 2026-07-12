@@ -198,6 +198,20 @@ class _ExecuteMixin:
             checkpoint=checkpoint,
         )
 
+    @staticmethod
+    def _warn_run_sparams_if_nonpassive(result) -> None:
+        """Apply the shared lumped/wire advisory to an assembled run result."""
+        s_params = getattr(result, "s_params", None)
+        freqs = getattr(result, "freqs", None)
+        if s_params is None or freqs is None:
+            return
+        from rfx.probes.probes import warn_if_nonpassive_lumped_s11
+        warn_if_nonpassive_lumped_s11(
+            s_params,
+            freqs,
+            extractor="run(compute_s_params=True)",
+        )
+
     def _reject_refplane_ports_off_uniform_lane(self, path_name: str,
                                                 compute_s_params) -> None:
         """Fail loudly when reference-plane ports hit a non-uniform lane.
@@ -2372,6 +2386,7 @@ class _ExecuteMixin:
                 subpixel_smoothing=subpixel_smoothing,
                 checkpoint=checkpoint,
             )
+            self._warn_run_sparams_if_nonpassive(_res)
             _warn_if_nonfinite_result(_res, context="run")
             return _res
 
@@ -2461,5 +2476,6 @@ class _ExecuteMixin:
             kerr_chi3=kerr_chi3,
             field_dtype=_field_dtype,
         )
+        self._warn_run_sparams_if_nonpassive(_res)
         _warn_if_nonfinite_result(_res, context="run")
         return _res
