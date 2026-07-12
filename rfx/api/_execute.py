@@ -212,6 +212,66 @@ class _ExecuteMixin:
             extractor="run(compute_s_params=True)",
         )
 
+    def _warn_postrun_energy_witness(
+        self,
+        result,
+        *,
+        fixed_num_periods: bool,
+        until_decay: float | None,
+    ) -> None:
+        """Warn about measured late energy or an exactly zero excitation."""
+        import warnings
+
+        time_series = getattr(result, "time_series", None)
+        series = None if time_series is None else np.asarray(time_series)
+        has_probe_series = series is not None and series.size > 0
+
+        if has_probe_series:
+            magnitude = np.abs(series)
+            peak = float(np.max(magnitude))
+            if peak == 0.0:
+                warnings.warn(
+                    "no field energy was recorded — the source may not have "
+                    "coupled (position off-grid, wrong component, or zero "
+                    "amplitude) (issue #336)",
+                    stacklevel=3,
+                )
+                return
+
+            pulsed = any(
+                isinstance(getattr(source, "waveform", None), GaussianPulse)
+                for source in (*self._ports, *self._msl_ports)
+            )
+            open_boundary = self._boundary_spec.absorber_type in ("cpml", "upml")
+            if open_boundary and pulsed and fixed_num_periods and until_decay is None:
+                tail_samples = max(1, math.ceil(magnitude.shape[0] * 0.05))
+                tail = float(np.max(magnitude[-tail_samples:]))
+                tail_db = -math.inf if tail == 0.0 else 20.0 * math.log10(tail / peak)
+                if tail_db > -40.0:
+                    warnings.warn(
+                        f"run ended at {tail_db:.1f} dB of peak — ring-down "
+                        "truncated; Harminv/DFT/NTFF quantities may carry "
+                        "transient error; consider until_decay or more periods "
+                        "(issue #332)",
+                        stacklevel=3,
+                    )
+            return
+
+        state = getattr(result, "state", None)
+        fields = [
+            np.asarray(field)
+            for name in ("ex", "ey", "ez", "hx", "hy", "hz")
+            if (field := getattr(state, name, None)) is not None
+        ]
+        if fields and all(field.size > 0 and float(np.max(np.abs(field))) == 0.0
+                          for field in fields):
+            warnings.warn(
+                "no field energy was recorded — the source may not have "
+                "coupled (position off-grid, wrong component, or zero "
+                "amplitude) (issue #336)",
+                stacklevel=3,
+            )
+
     def _reject_refplane_ports_off_uniform_lane(self, path_name: str,
                                                 compute_s_params) -> None:
         """Fail loudly when reference-plane ports hit a non-uniform lane.
@@ -2287,6 +2347,8 @@ class _ExecuteMixin:
         -------
         Result
         """
+        fixed_num_periods = n_steps is None
+
         # ---- P1: Auto mesh when dx not specified and geometry exists ----
         if self._dx is None and self._geometry:
             self._auto_configure_mesh()
@@ -2387,6 +2449,11 @@ class _ExecuteMixin:
                 checkpoint=checkpoint,
             )
             self._warn_run_sparams_if_nonpassive(_res)
+            self._warn_postrun_energy_witness(
+                _res,
+                fixed_num_periods=fixed_num_periods,
+                until_decay=until_decay,
+            )
             _warn_if_nonfinite_result(_res, context="run")
             return _res
 
@@ -2477,5 +2544,10 @@ class _ExecuteMixin:
             field_dtype=_field_dtype,
         )
         self._warn_run_sparams_if_nonpassive(_res)
+        self._warn_postrun_energy_witness(
+            _res,
+            fixed_num_periods=fixed_num_periods,
+            until_decay=until_decay,
+        )
         _warn_if_nonfinite_result(_res, context="run")
         return _res
