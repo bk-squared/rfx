@@ -24,6 +24,7 @@ import numpy as np
 from rfx.grid import C0
 from rfx.core.yee import MaterialArrays
 from rfx.core.jax_utils import is_tracer
+from rfx.geometry.csg import Box
 
 
 def _fmt_len(meters: float) -> str:
@@ -1610,6 +1611,7 @@ class _PreflightMixin:
         self._validate_cfg_pec_boundary_open_structure(_w)
         self._validate_cfg_no_sources(_w)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
+        self._validate_cfg_graded_box_rasterization(_w)
         self._validate_cfg_subgrid_limitations(_w)
         self._validate_cfg_conformal_fine_dx(dx)
         self._validate_cfg_adi_3d_accuracy(_w)
@@ -1621,6 +1623,58 @@ class _PreflightMixin:
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
+
+    def _validate_cfg_graded_box_rasterization(self, _w) -> None:
+        """Warn when a Box misses the fine cells implied by its z-span."""
+        if self._dz_profile is None or is_tracer(self._dz_profile):
+            return
+
+        dz = np.asarray(self._dz_profile, dtype=np.float64)
+        if dz.size == 0:
+            return
+        edges = np.concatenate(([0.0], np.cumsum(dz)))
+        centers = 0.5 * (edges[:-1] + edges[1:])
+
+        for entry in self._geometry:
+            if not isinstance(entry.shape, Box):
+                continue
+            c1, c2 = entry.shape.bounding_box()
+            z_lo, z_hi = sorted((float(c1[2]), float(c2[2])))
+            thickness = z_hi - z_lo
+            if thickness <= 0.0:
+                continue
+
+            rasterized = (centers >= z_lo) & (centers < z_hi)
+            actual = int(np.count_nonzero(rasterized))
+            local = (edges[:-1] < z_hi) & (edges[1:] > z_lo)
+            if not np.any(local):
+                continue
+            # The #325 signature is a fine band SHIFTED OUT of the Box span by
+            # smooth_grading's transition insertion — the intended fine cells
+            # then sit ADJACENT to the span, so measure min dz over a padded
+            # neighborhood (±5 cells), not the span alone (span-only misses
+            # the shifted-substrate case entirely).
+            idx = np.flatnonzero(local)
+            lo_i = max(0, int(idx[0]) - 5)
+            hi_i = min(dz.size, int(idx[-1]) + 6)
+            implied = thickness / float(np.min(dz[lo_i:hi_i]))
+
+            if actual < math.ceil(0.5 * implied) and actual <= 4:
+                _w.warn(
+                    PreflightWarning(
+                        f"Box material '{entry.material_name}' rasterizes to "
+                        f"{actual} z cells (implied {implied:.1f}) over z-span "
+                        f"[{_fmt_len(z_lo)}, {_fmt_len(z_hi)}). "
+                        "smooth_grading transition cells may have shifted the "
+                        "fine band — derive z coordinates from the actual "
+                        "fine-band edges and assert the rasterized cell count "
+                        "(issue #325)",
+                        code="graded_box_rasterization",
+                        loc=f"z=[{z_lo}, {z_hi})",
+                        source="_validate_cfg_graded_box_rasterization",
+                    ),
+                    stacklevel=3,
+                )
 
     def _validate_cfg_refplane_placement(self, _w) -> None:
         """Advisories for ``add_port(reference_plane_cells=...)`` (issue #313).
