@@ -92,6 +92,7 @@ def _warn_if_nonpassive_smatrix(
     extractor: str,
     strict: bool = False,
     passivity_tol: float = 0.10,
+    amplitude_eps: float = 0.05,
 ) -> None:
     """Auto-run the passivity/finiteness self-check on a freshly-extracted
     S-matrix and surface a non-physical result as a warning (or raise when
@@ -102,11 +103,11 @@ def _warn_if_nonpassive_smatrix(
     receives, so a per-column power > 1 (e.g. ``|S11| > 1`` on a one-port)
     means the *extractor* is wrong — mismeasured current sign/scale or a
     bad reference plane — and the S-parameters are untrustworthy, NOT that
-    the device is exotic. Waveguide and coaxial extractors previously had
-    no such self-check; only ``compute_msl_s_matrix`` did. Wiring the
-    existing :func:`rfx.validation.validate_port_smatrix` in here is the
-    guard that would have short-circuited the multi-session WR-90 ``|S11|``
-    chase recorded in durable memory.
+    the device is exotic. The wire, waveguide, coaxial, and MSL extractors
+    all route through this shared guard before returning. Wiring the existing
+    :func:`rfx.validation.validate_port_smatrix` in here is the guard that
+    would have short-circuited the multi-session WR-90 ``|S11|`` chase
+    recorded in durable memory.
 
     Tracer-safe: under ``jax.grad`` / ``jax.jit`` tracing ``result.s_params``
     is an abstract tracer with no concrete value, so the numpy-based check is
@@ -115,6 +116,9 @@ def _warn_if_nonpassive_smatrix(
     iteration.
     """
     s = getattr(result, "s_params", None)
+    if s is None:
+        # MSLSMatrixResult uses the historical ``S`` field name.
+        s = getattr(result, "S", None)
     if s is None:
         return
     try:
@@ -141,6 +145,28 @@ def _warn_if_nonpassive_smatrix(
         passivity_limit=1.0,
         passivity_tol=float(passivity_tol),
     )
+
+    # Independent per-frequency amplitude advisory (issue #337).  Keep this
+    # separate from the column-power gate above: normalize=False deliberately
+    # has a loose column-power tolerance, but an individual |S_ij| materially
+    # above unity is still useful evidence of an extraction/normalization
+    # artifact.  One worst-bin warning keeps a broadband result actionable
+    # without producing one warning per frequency.
+    amplitude_advisory = None
+    finite_abs = np.where(np.isfinite(s_np), np.abs(s_np), -np.inf)
+    if finite_abs.size:
+        worst_flat = int(np.argmax(finite_abs))
+        worst_index = np.unravel_index(worst_flat, finite_abs.shape)
+        worst_value = float(finite_abs[worst_index])
+        frequency_index = int(worst_index[-1])
+        if worst_value > 1.0 + float(amplitude_eps):
+            amplitude_advisory = (
+                f"{extractor}: per-frequency amplitude advisory at frequency "
+                f"index {frequency_index}: max |S| = {worst_value:.4g}; "
+                "passivity violated: extraction/normalization artifact — do "
+                "not interpret as physics; see the normalize parameter "
+                "docstring and issue #337"
+            )
     bad = [
         i for i in report.issues
         if i.code in ("passivity_violation", "nonfinite_sparams")
@@ -169,10 +195,10 @@ def _warn_if_nonpassive_smatrix(
         _SOFT_COLPOWER_FLOOR = 2.25
         hard_limit = 1.0 + float(passivity_tol)
         max_cp = report.metrics.get("max_column_power")
+        soft_advisory = None
         if max_cp is not None and _SOFT_COLPOWER_FLOOR < float(max_cp) <= hard_limit:
-            import warnings as _w
-            _w.warn(
-                f"{extractor}: max column power {float(max_cp):.4g} exceeds 1 "
+            soft_advisory = (
+                f"max column power {float(max_cp):.4g} exceeds 1 "
                 f"(non-physical for a passive structure) but stays below the "
                 f"tol={float(passivity_tol):g} extractor-broken hard limit "
                 f"({hard_limit:.4g}). This is an ADVISORY, not an error: on the "
@@ -181,9 +207,12 @@ def _warn_if_nonpassive_smatrix(
                 f"~2.0), but a column power materially above it can also signal "
                 f"a reference-plane or normalize choice or an under-resolved "
                 f"mesh. Treat these S-parameters with caution and cross-check "
-                f"(normalize='flux', finer dx) before trusting them.",
-                stacklevel=3,
+                f"(normalize='flux', finer dx) before trusting them."
             )
+        advisories = [x for x in (amplitude_advisory, soft_advisory) if x]
+        if advisories:
+            import warnings as _w
+            _w.warn(" ".join(advisories), stacklevel=3)
         return
     detail = "; ".join(f"{i.code}: {i.message}" for i in bad)
     msg = (
@@ -195,6 +224,8 @@ def _warn_if_nonpassive_smatrix(
         f"rfx.validation.validate_port_smatrix / replay_smatrix_from_vi_dump "
         f"before trusting or optimizing against these numbers."
     )
+    if amplitude_advisory:
+        msg = f"{msg} {amplitude_advisory}"
     if strict:
         raise ValueError(msg)
     import warnings as _w
@@ -1725,13 +1756,20 @@ class _SparamMixin:
                     driven_port_indices=np.arange(n_ports, dtype=np.int64),
                 )
 
-            return MSLSMatrixResult(
+            result = MSLSMatrixResult(
                 S=S,
                 freqs=np.asarray(freqs_arr),
                 Z0=Z0_per_run,
                 beta=beta_first,
                 port_names=tuple(pe.name for pe in entries),
             )
+            _warn_if_nonpassive_smatrix(
+                result,
+                extractor="compute_msl_s_matrix",
+                strict=strict_extractor,
+                passivity_tol=0.10,
+            )
+            return result
         finally:
             self._dft_planes = saved_dft
             self._msl_ports = saved_msl
@@ -2703,4 +2741,3 @@ class _SparamMixin:
                 dtype=float,
             ),
         )
-
