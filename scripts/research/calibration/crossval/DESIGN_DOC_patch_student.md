@@ -108,11 +108,37 @@
 
 ## 8. 산출물 체크리스트
 
-- [ ] CST shielded eigenmode 결과 (모드 표)
-- [ ] CST 방사 S11 `.s1p` + dip 값
+- [x] CST shielded eigenmode 결과 (모드 표) ← 260712 완료
+- [x] CST 방사 S11 `.s1p` + dip 값 ← 260712 완료 (양 포트)
 - [ ] 제작 보드 사진 (상/하면, 커넥터)
 - [ ] 측정 `.s1p` + 셋업 사진
 - [ ] 종합 비교 플롯 1장 (측정+CST+rfx+openEMS+Palace)
 - [ ] 한 페이지 메모: dip 주파수/깊이 표 + 예상-실측 차이에 대한 본인 해석
 
 **질문/데이터 제출**: Prof. BK. 파일은 `/root/workspace/lab-shared/rfx-patch-crossval/student/` 아래에.
+
+---
+
+## 9. ★결과 갱신 (260712, 학생 HW — CST 4번째 솔버 완료)★
+
+**Level-1 차폐 eigenmode**: CST **9.221 GHz** (2차 10.777) — 4-솔버 스프레드 1.0%로 형상 등가 확인.
+단 adaptive pass 5에서 아직 +0.6%/pass 상승 중 + CST만 금속 t=35µm 모델링(나머지는 시트/1셀) →
+9.13–9.20 원 판정대역보다 0.2% 위는 이 두 계통차 안. **보너스**: CST 모드 6.45/6.73/6.81 GHz가
+rfx below-window 라인(6.627/6.791)을 실모드로 corroborate (verdicts.json level1 갱신).
+
+**Level-2 방사 S11** (t=35µm, lossy tanδ 0.0027): discrete port **9.12 GHz / −20.15 dB**,
+waveguide port **9.33 GHz / −12.09 dB** — 둘 다 passive (max|S11| 0.99).
+
+**§6 열린 질문 판정** (verdicts.json `feed-model-dominance` 신규 행):
+- **dip 깊이 질문 → 판정됨**: 동일 CST·동일 형상·포트만 교체 = +210 MHz / +8 dB. 깊이는
+  솔버가 아니라 **급전 모델의 관측량** — 급전 유형 간 비교·게이트 금지.
+- **Palace 9.05 vs FDTD 9.25 → 재구성**: lumped 급전(Palace LumpedPort, CST discrete)
+  9.05–9.12 vs guided 급전(rfx msl, openEMS MSL, CST waveguide) 9.25–9.33.
+  ABC 가설은 부차적 — **급전 모델이 지배항**. guided 클러스터 내부 곡선 일치
+  mean|Δ|S11|| 0.5–0.9 dB (8–11.5 GHz).
+- **실측 비교 지침**: SMA end-launch는 물리적 guided 급전 → 제작 보드 측정은
+  **guided 클러스터(9.25–9.33)와 비교**할 것 (SMA 기준면 디임베드 후).
+
+FFRP(방사패턴)도 제출됨: E/H-plane, broadside ~7 dBi, F/B ~15 dB — 양 포트 모델에서
+패턴 거의 동일(패턴은 모드가 결정, 급전 민감도 낮음 — 이론과 정합).
+데이터: `student/Radiation_pattern/` + s1p 사본 `evidence/cst_s11_*_hw260712.s1p`.

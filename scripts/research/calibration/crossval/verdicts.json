@@ -78,27 +78,45 @@
       "campaign": "xband-inset-patch-3solver",
       "hypothesis": "In the shared shielded (all-PEC) box the three solvers agree on the fundamental resonance",
       "verdict": "KEEP",
-      "numbers": "rfx Harminv 9.131 GHz / openEMS ring-down 9.194 GHz / Palace eigenmode 9.199 GHz -- 0.7% spread; second mode 10.764 / 10.799 / 10.797-10.806 GHz",
+      "numbers": "rfx Harminv 9.131 GHz / openEMS ring-down 9.194 GHz / Palace eigenmode 9.199 GHz / CST eigenmode 9.221 GHz (student HW 260712) -- 4-solver spread 1.0%; second mode 10.764 / 10.799 / 10.797-10.806 / 10.777 GHz (0.4%)",
       "evidence": [
         "evidence/rfx_cf_shielded-harminv_dx197um.json",
         "evidence/palace_eig_shielded.csv",
-        "evidence/openems_xband_inset_2.4mm_shielded.json"
+        "evidence/openems_xband_inset_2.4mm_shielded.json",
+        "student submission: /root/workspace/lab-shared/rfx-patch-crossval/student/ (CST adaptive-pass table in the design-doc zip)"
       ],
-      "caveats": "The openEMS 9.194 GHz is the Harminv mode of the port-voltage ring-down tail (printed at run time; blessed in DESIGN_DOC_patch_student.md). It is NOT re-derivable from the committed shielded JSON, whose stored ratio-curve dip (~9.77 GHz) is a different observable -- the number's provenance is the run log. The shielded openEMS JSON's max|S11|=7.61 is NOT a passivity failure -- S11 is undefined for the closed-box ring-down (see openems_patch_inset_xband.py --shielded). The rfx artifact also carries below-window Harminv lines at 6.627/6.791 GHz (outside the requested 7-12 GHz band; Harminv conventionally returns out-of-band poles, and the Palace eigensolve Target=8 GHz could neither corroborate nor refute them -- uncharacterized, not part of the agreement claim)."
+      "caveats": "The openEMS 9.194 GHz is the Harminv mode of the port-voltage ring-down tail (printed at run time; blessed in DESIGN_DOC_patch_student.md). It is NOT re-derivable from the committed shielded JSON, whose stored ratio-curve dip (~9.77 GHz) is a different observable -- the number's provenance is the run log. The shielded openEMS JSON's max|S11|=7.61 is NOT a passivity failure -- S11 is undefined for the closed-box ring-down (see openems_patch_inset_xband.py --shielded). The rfx artifact also carries below-window Harminv lines at 6.627/6.791 GHz (outside the requested 7-12 GHz band; Harminv conventionally returns out-of-band poles, and the Palace eigensolve Target=8 GHz could neither corroborate nor refute them -- uncharacterized, not part of the agreement claim). CST leg caveats: adaptive pass 5 was still rising (+0.6% on the last step, 9.166->9.221) and the CST model carries t=35um metal everywhere (vs sheet/1-cell in the other three) -- 9.221 sits 0.2% above the original 9.13-9.20 band with those two systematics unresolved. UPDATE (CST, 260712): the below-window rfx lines are now corroborated at region level -- CST eigenmode sees modes at 6.45/6.73/6.81 GHz in the same 6-7 GHz window (rfx: 6.627/6.791), so they are physical cavity/feed modes, not Harminv artifacts; a 1:1 mode mapping was not established."
     },
     {
       "id": "level2-radiating-s11",
       "campaign": "xband-inset-patch-3solver",
       "hypothesis": "With open boundaries the three solvers agree on the radiating S11 dip",
       "verdict": "KEEP-freq",
-      "numbers": "dip frequency: rfx 9.250 GHz (dx=197um canonical frame, -7.04 dB) / openEMS 9.2625 GHz (-9.46 dB) / Palace driven 9.05 GHz (-12.99 dB, caveated: tight first-order absorbing box pulls the driven dip low; its shielded eigenmode agrees at 9.199 GHz). Depth spread -7.0 / -9.5 / -13.0 dB stays OPEN while loss models differ",
+      "numbers": "dip frequency: rfx 9.250 GHz (dx=197um canonical frame, -7.04 dB) / openEMS 9.2625 GHz (-9.46 dB) / CST waveguide port 9.33 GHz (-12.09 dB) / CST discrete port 9.12 GHz (-20.15 dB, lossy tan-delta 0.0027) / Palace driven 9.05 GHz (-12.99 dB). Results cluster by FEED MODEL, not solver: guided-wave feeds (rfx msl / openEMS MSL / CST waveguide) 9.25-9.33 GHz with pairwise mean|d|S11|| 0.5-0.9 dB over 8-11.5 GHz; lumped feeds (Palace LumpedPort / CST discrete) 9.05-9.12 GHz and deeper (-13/-20 dB)",
       "evidence": [
         "evidence/rfx_cf_s11_dx197um.json",
         "evidence/openems_xband_inset_2.4mm.json",
         "evidence/palace_port-S.csv",
-        "evidence/palace_eig_radiating.csv"
+        "evidence/palace_eig_radiating.csv",
+        "evidence/cst_s11_waveguide_port_t35um_hw260712.s1p",
+        "evidence/cst_s11_discrete_port_t35um_hw260712.s1p"
       ],
-      "caveats": "OPEN: the canonical-frame dx=98.5um rfx run shows max|S11|=1.3579 (evidence/rfx_cf_s11_dx98um.json) -- an unresolved fine-mesh passivity violation, carried here, not hidden. Depth is not comparable across solvers until the loss models are unified (board tan-delta ~0.0027 per DESIGN_DOC_patch_student.md; the FDTD legs and the corrected Palace config are lossless by convention). Dip frequency itself is mesh-limited and never a gate."
+      "caveats": "REFRAMED by the CST leg (260712): CST's own discrete-vs-waveguide split (9.12 vs 9.33 GHz, -20 vs -12 dB, identical geometry/boundaries/mesh) shows the LUMPED FEED MODEL alone produces a Palace-sized downshift-and-deepen, so the earlier 'tight first-order ABC pulls the Palace dip low' hypothesis is at most secondary -- feed model is the dominant term in both the frequency split and the depth spread. Dip depth is a feed-model observable; never compare it across feed types or gate on it. OPEN: the canonical-frame dx=98.5um rfx run shows max|S11|=1.3579 (evidence/rfx_cf_s11_dx98um.json) -- an unresolved fine-mesh passivity violation, carried here, not hidden. Depth is not comparable across solvers until the loss models are unified (board tan-delta ~0.0027 per DESIGN_DOC_patch_student.md; the FDTD legs and the corrected Palace config are lossless by convention). Dip frequency itself is mesh-limited and never a gate."
+    },
+    {
+      "id": "feed-model-dominance",
+      "campaign": "xband-inset-patch-4th-solver-cst (student HW, 260712)",
+      "hypothesis": "The residual dip-frequency split (9.05-9.12 vs 9.25-9.33 GHz) and the depth spread across solvers are solver-core differences",
+      "verdict": "KILL",
+      "numbers": "Single-solver isolation: CST time domain, identical geometry/mesh/boundaries, only the port model swapped -- discrete (lumped) 9.12 GHz / -20.15 dB vs waveguide 9.33 GHz / -12.09 dB (+210 MHz, +8 dB). Cross-solver curve agreement follows the same split: CST-wg vs openEMS mean|d|S11||=0.66 dB, vs rfx 0.91 dB (8-11.5 GHz), while lumped-feed legs sit 1.5-5.9 dB away. Both CST curves passive (max|S11| 0.990/0.992).",
+      "evidence": [
+        "evidence/cst_s11_waveguide_port_t35um_hw260712.s1p",
+        "evidence/cst_s11_discrete_port_t35um_hw260712.s1p",
+        "evidence/rfx_cf_s11_dx197um.json",
+        "evidence/openems_xband_inset_2.4mm.json",
+        "evidence/palace_port-S.csv"
+      ],
+      "caveats": "CST model carries t=35um metal (metal-thickness KILL row tested thickness on openEMS only; the eigenmode legs of the other solvers are sheet/1-cell). VNA measurement (SMA end-launch = a physical guided feed with its own transition) remains the final arbiter; the fabricated board should be compared against the guided-feed cluster, de-embedded to the SMA reference plane."
     }
   ]
 }
