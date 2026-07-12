@@ -1029,7 +1029,8 @@
         "pencil_parameter",
         "min_Q",
         "max_modes",
-        "sv_threshold"
+        "sv_threshold",
+        "decimate"
       ]
     },
     "harminv_from_probe": {
