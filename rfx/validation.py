@@ -781,12 +781,29 @@ def load_port_vi_dump_npz(path: str | Path) -> PortVIDump:
         production = data["production_smatrix"] if "production_smatrix" in data else None
         offsets = data["reference_plane_offsets_m"] if "reference_plane_offsets_m" in data else None
         gamma = data["propagation_constants"] if "propagation_constants" in data else None
+        # Production MSL diagnostics retain N voltage probes as
+        # raw_v[driven, port, probe, frequency].  PortVIDump's canonical V/I
+        # view is the wave-split plane at probe zero.
+        if "raw_v" in data:
+            voltages = data["raw_v"][:, :, 0, :]
+            currents = data["raw_i1"]
+            port_defs = metadata.get("port_definitions", ())
+            impedances = np.asarray(
+                [port.get("impedance_ohm", 50.0) for port in port_defs],
+                dtype=np.complex128,
+            )
+            if not impedances.size:
+                impedances = np.full(voltages.shape[1], 50.0, dtype=np.complex128)
+        else:
+            voltages = data["voltages"]
+            currents = data["currents"]
+            impedances = data["port_impedances_ohm"]
         return PortVIDump(
             metadata=metadata,
             freqs=np.asarray(data["freqs_hz"], dtype=np.float64),
-            voltages=np.asarray(data["voltages"], dtype=np.complex128),
-            currents=np.asarray(data["currents"], dtype=np.complex128),
-            port_impedances=np.asarray(data["port_impedances_ohm"], dtype=np.complex128),
+            voltages=np.asarray(voltages, dtype=np.complex128),
+            currents=np.asarray(currents, dtype=np.complex128),
+            port_impedances=np.asarray(impedances, dtype=np.complex128),
             port_names=tuple(str(name) for name in data["port_names"].tolist()),
             driven_port_indices=tuple(int(idx) for idx in data["driven_port_indices"].tolist()),
             production_smatrix=None if production is None else np.asarray(production, dtype=np.complex128),
