@@ -144,10 +144,10 @@ Error generating stack: `+b.message+`
 #endif`,DU=`#ifdef USE_AOMAP
 	float ambientOcclusion = ( texture2D( aoMap, vAoMapUv ).r - 1.0 ) * aoMapIntensity + 1.0;
 	reflectedLight.indirectDiffuse *= ambientOcclusion;
-	#if defined( USE_CLEARCOAT ) 
+	#if defined( USE_CLEARCOAT )
 		clearcoatSpecularIndirect *= ambientOcclusion;
 	#endif
-	#if defined( USE_SHEEN ) 
+	#if defined( USE_SHEEN )
 		sheenSpecularIndirect *= ambientOcclusion;
 	#endif
 	#if defined( USE_ENVMAP ) && defined( STANDARD )
@@ -632,7 +632,7 @@ vec4 sRGBTransferOETF( in vec4 value ) {
 	#else
 		uniform sampler2D envMap;
 	#endif
-	
+
 #endif`,oB=`#ifdef USE_ENVMAP
 	uniform float reflectivity;
 	#if defined( USE_BUMPMAP ) || defined( USE_NORMALMAP ) || defined( PHONG ) || defined( LAMBERT )
@@ -649,7 +649,7 @@ vec4 sRGBTransferOETF( in vec4 value ) {
 		#define ENV_WORLDPOS
 	#endif
 	#ifdef ENV_WORLDPOS
-		
+
 		varying vec3 vWorldPosition;
 	#else
 		varying vec3 vReflect;
@@ -1898,7 +1898,7 @@ gl_Position = projectionMatrix * mvPosition;`,iz=`#ifdef DITHERING
 	float getPointShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord, float shadowCameraNear, float shadowCameraFar ) {
 		float shadow = 1.0;
 		vec3 lightToPosition = shadowCoord.xyz;
-		
+
 		float lightToPositionLength = length( lightToPosition );
 		if ( lightToPositionLength - shadowCameraFar <= 0.0 && lightToPositionLength - shadowCameraNear >= 0.0 ) {
 			float dp = ( lightToPositionLength - shadowCameraNear ) / ( shadowCameraFar - shadowCameraNear );			dp += shadowBias;
@@ -2296,21 +2296,21 @@ vec3 CustomToneMapping( vec3 color ) { return color; }`,yz=`#ifdef USE_TRANSMISS
 			for ( int i = 0; i < 3; i ++ ) {
 				vec3 transmissionRay = getVolumeTransmissionRay( n, v, thickness, iors[ i ], modelMatrix );
 				vec3 refractedRayExit = position + transmissionRay;
-		
+
 				vec4 ndcPos = projMatrix * viewMatrix * vec4( refractedRayExit, 1.0 );
 				vec2 refractionCoords = ndcPos.xy / ndcPos.w;
 				refractionCoords += 1.0;
 				refractionCoords /= 2.0;
-		
+
 				vec4 transmissionSample = getTransmissionSample( refractionCoords, roughness, iors[ i ] );
 				transmittedLight[ i ] = transmissionSample[ i ];
 				transmittedLight.a += transmissionSample.a;
 				transmittance[ i ] = diffuseColor[ i ] * volumeAttenuation( length( transmissionRay ), attenuationColor, attenuationDistance )[ i ];
 			}
 			transmittedLight.a /= 3.0;
-		
+
 		#else
-		
+
 			vec3 transmissionRay = getVolumeTransmissionRay( n, v, thickness, ior, modelMatrix );
 			vec3 refractedRayExit = position + transmissionRay;
 			vec4 ndcPos = projMatrix * viewMatrix * vec4( refractedRayExit, 1.0 );
@@ -2319,7 +2319,7 @@ vec3 CustomToneMapping( vec3 color ) { return color; }`,yz=`#ifdef USE_TRANSMISS
 			refractionCoords /= 2.0;
 			transmittedLight = getTransmissionSample( refractionCoords, roughness, ior );
 			transmittance = diffuseColor * volumeAttenuation( length( transmissionRay ), attenuationColor, attenuationDistance );
-		
+
 		#endif
 		vec3 attenuatedColor = transmittance * transmittedLight.rgb;
 		vec3 F = EnvironmentBRDF( n, v, specularColor, specularF90, roughness );
