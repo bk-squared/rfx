@@ -12,9 +12,17 @@ import { patchGolden } from "./golden";
 import { IntentComposer } from "./IntentComposer";
 import { S11Plot, SmithChart } from "./RfPlots";
 import { SceneViewer } from "./SceneViewer";
+import {
+  FresnelEvidence,
+  FresnelPlot,
+  SMatrixEvidence,
+  SMatrixPlot,
+  SMatrixSnapshot,
+} from "./WorkflowResults";
 import type {
   ExperimentPreview,
   DesignProposal,
+  FieldSliceArtifact,
   JsonValue,
   RunRecord,
 } from "./types";
@@ -38,6 +46,30 @@ const errorText = (error: unknown) => {
   }
   return error instanceof Error ? error.message : String(error);
 };
+
+function FieldOutput({
+  artifact,
+  status,
+}: {
+  artifact?: FieldSliceArtifact;
+  status: "not-requested" | "loading" | "available" | "unavailable";
+}) {
+  if (artifact) return <FieldSlicePlot artifact={artifact} />;
+  const message = status === "loading"
+    ? "Loading the requested field plane from the run artifact."
+    : status === "not-requested"
+      ? "No field snapshot was requested for this revision."
+      : "The requested field plane is unavailable; inspect the run events and artifact integrity.";
+  return (
+    <section className="result-card availability">
+      <header className="card-header">
+        <div><p className="eyebrow">Field output</p><h3>Field slice</h3></div>
+        <span className="availability-tag">{status.replace("-", " ")}</span>
+      </header>
+      <div className="field-placeholder"><span>E/H</span><p>{message}</p></div>
+    </section>
+  );
+}
 
 const deepCopy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -110,6 +142,20 @@ export function App() {
     queryFn: () => api.readS11(s11Artifact!.url),
     enabled: Boolean(s11Artifact),
   });
+  const sParametersArtifact = selectedRun?.artifacts.find((item) => item.kind === "sparameters");
+  const sParameters = useQuery({
+    queryKey: ["sparameters", sParametersArtifact?.id],
+    queryFn: () => api.readSParameters(sParametersArtifact!.url),
+    enabled: Boolean(sParametersArtifact),
+  });
+  const reflectionTransmissionArtifact = selectedRun?.artifacts.find(
+    (item) => item.kind === "reflection-transmission",
+  );
+  const reflectionTransmission = useQuery({
+    queryKey: ["reflection-transmission", reflectionTransmissionArtifact?.id],
+    queryFn: () => api.readReflectionTransmission(reflectionTransmissionArtifact!.url),
+    enabled: Boolean(reflectionTransmissionArtifact),
+  });
   const fieldSliceArtifact = selectedRun?.artifacts.find(
     (item) => item.kind === "field-slice",
   );
@@ -152,6 +198,11 @@ export function App() {
   useEffect(() => {
     if (selectedRunId) localStorage.setItem("rfx:selected-run", selectedRunId);
   }, [selectedRunId]);
+  useEffect(() => {
+    if (selectedRun && terminalStates.has(selectedRun.state)) {
+      setNotice((current) => current === "CPU run queued in isolated worker" ? "" : current);
+    }
+  }, [selectedRun]);
   useEffect(() => {
     const current = revision.data;
     if (!current || current.id === draftRevisionId) return;
@@ -449,7 +500,14 @@ export function App() {
             <button
               key={experiment.id}
               className={experiment.id === selectedExperimentId ? "experiment active" : "experiment"}
-              onClick={() => setSelectedExperimentId(experiment.id)}
+              onClick={() => {
+                setNotice("");
+                setExportUrl("");
+                setSelectedRunId("");
+                setCopilotProposal(null);
+                compare.reset();
+                setSelectedExperimentId(experiment.id);
+              }}
             >
               <span className="experiment-icon" aria-hidden="true">⌁</span>
               <span><strong>{experiment.title}</strong><small>Revision {experiment.revision_count}</small></span>
@@ -743,7 +801,7 @@ export function App() {
             {tab === "results" && (
               <div className="results-layout">
                 <aside className="run-list panel" aria-label="Run history">
-                  <header className="panel-heading"><div><p className="eyebrow">Job queue</p><h2>Runs</h2></div>{experimentRuns.length >= 2 && <button className="compare-button" onClick={() => compare.mutate(experimentRuns.slice(0, 2).map((run) => run.id))}>Compare 2</button>}</header>
+                  <header className="panel-heading"><div><p className="eyebrow">Job queue</p><h2>Runs</h2></div>{experimentRuns.length >= 2 && draft.kind !== "multilayer_fresnel" && <button className="compare-button" onClick={() => compare.mutate(experimentRuns.slice(0, 2).map((run) => run.id))}>Compare 2</button>}</header>
                   {experimentRuns.length ? experimentRuns.map((run) => (
                     <button key={run.id} className={run.id === selectedRun?.id ? "run-row active" : "run-row"} onClick={() => setSelectedRunId(run.id)}>
                       <span className={`run-state ${run.state}`} />
@@ -765,7 +823,7 @@ export function App() {
                     </section>
                   )}
                   {!selectedRun ? (
-                    <section className="panel result-empty"><div className="wave-glyph">∿</div><h2>No run selected</h2><p>Start a CPU run to inspect S-parameters, fields, and run details.</p></section>
+                    <section className="panel result-empty"><div className="wave-glyph">∿</div><h2>No run selected</h2><p>Start a CPU run to inspect the primary RF observable, fields, and run details.</p></section>
                   ) : (
                     <>
                       <section className="run-console panel" aria-labelledby="run-heading">
@@ -797,11 +855,32 @@ export function App() {
                             fieldSliceStatus={fieldSliceStatus}
                           />
                           <div className="plots-grid"><S11Plot artifact={s11.data} /><SmithChart artifact={s11.data} />
-                          {fieldSlice.data ? <FieldSlicePlot artifact={fieldSlice.data} /> : <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Field output</p><h3>Field slice</h3></div><span className="availability-tag">{fieldSliceStatus.replace("-", " ")}</span></header><div className="field-placeholder"><span>Ez</span><p>{fieldSliceStatus === "loading" ? "Loading the requested field plane from the run artifact." : fieldSliceStatus === "not-requested" ? "No field snapshot was requested for this revision." : "The requested field plane is unavailable; inspect the run events and artifact integrity."}</p></div></section>}
+                          <FieldOutput artifact={fieldSlice.data} status={fieldSliceStatus} />
                           <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Additional outputs</p><h3>Time series & far field</h3></div><span className="availability-tag">not requested</span></header><div className="field-placeholder"><span>t / θ</span><p>No time probe or NTFF surface was requested for this revision.</p></div></section>
                           </div>
                         </>
-                      ) : selectedRun.state === "succeeded" ? <div className="loading-panel">Loading S11 results…</div> : null}
+                      ) : selectedRun.state === "succeeded" && sParameters.data ? (
+                        <>
+                          <SMatrixEvidence artifact={sParameters.data} run={selectedRun} revision={runRevision.data} fieldStatus={fieldSliceStatus} />
+                          <div className="plots-grid">
+                            <SMatrixPlot artifact={sParameters.data} />
+                            <SMatrixSnapshot artifact={sParameters.data} />
+                            <FieldOutput artifact={fieldSlice.data} status={fieldSliceStatus} />
+                          </div>
+                        </>
+                      ) : selectedRun.state === "succeeded" && reflectionTransmission.data ? (
+                        <>
+                          <FresnelEvidence artifact={reflectionTransmission.data} run={selectedRun} revision={runRevision.data} fieldStatus={fieldSliceStatus} />
+                          <div className="plots-grid workflow-plots">
+                            <FresnelPlot artifact={reflectionTransmission.data} />
+                            <FieldOutput artifact={fieldSlice.data} status={fieldSliceStatus} />
+                          </div>
+                        </>
+                      ) : selectedRun.state === "succeeded" && (s11.error || sParameters.error || reflectionTransmission.error) ? (
+                        <p className="error-banner" role="alert">{errorText(s11.error ?? sParameters.error ?? reflectionTransmission.error)}</p>
+                      ) : selectedRun.state === "succeeded" && !s11Artifact && !sParametersArtifact && !reflectionTransmissionArtifact ? (
+                        <p className="error-banner" role="alert">Run succeeded without a supported primary RF result artifact. Inspect the event log and exported bundle.</p>
+                      ) : selectedRun.state === "succeeded" ? <div className="loading-panel">Loading {sParametersArtifact ? "S-matrix" : reflectionTransmissionArtifact ? "reflection / transmission" : "RF"} results…</div> : null}
                     </>
                   )}
                 </div>

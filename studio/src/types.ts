@@ -121,25 +121,62 @@ export interface S11Point {
   magnitude_db: number;
 }
 
+export interface RuntimeProvenance {
+  backend: string;
+  devices?: Array<{ platform: string; device_kind: string; id: number }>;
+  python_version?: string;
+  platform?: string;
+  packages?: Record<string, string>;
+  source?: {
+    git_commit?: string | null;
+    git_worktree_dirty?: boolean | null;
+    kind?: string;
+  };
+}
+
 export interface S11Artifact {
   schema_version: string;
   run_id: string;
   spec_sha256: string;
   compiled_sha256: string;
   reference_impedance_ohm: number;
-  runtime: {
-    backend: string;
-    devices?: Array<{ platform: string; device_kind: string; id: number }>;
-    python_version?: string;
-    platform?: string;
-    packages?: Record<string, string>;
-    source?: {
-      git_commit?: string | null;
-      git_worktree_dirty?: boolean | null;
-      kind?: string;
-    };
-  };
+  runtime: RuntimeProvenance;
   points: S11Point[];
+}
+
+export interface SParameterValue {
+  real: number;
+  imag: number;
+  magnitude_db: number;
+}
+
+export interface SParametersArtifact {
+  schema_version: "rfx-sparameters-artifact/v1";
+  run_id: string;
+  spec_sha256: string;
+  compiled_sha256: string;
+  port_names: string[];
+  runtime: RuntimeProvenance;
+  points: Array<{
+    frequency_hz: number;
+    matrix: SParameterValue[][];
+  }>;
+}
+
+export interface ReflectionTransmissionArtifact {
+  schema_version: "rfx-reflection-transmission-artifact/v1";
+  run_id: string;
+  spec_sha256: string;
+  compiled_sha256: string;
+  runtime: RuntimeProvenance;
+  points: Array<{
+    frequency_hz: number;
+    reflection: number;
+    transmission: number;
+    analytic_reflection: number;
+    analytic_transmission: number;
+    signal_valid: boolean;
+  }>;
 }
 
 export interface FieldSliceArtifact {

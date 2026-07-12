@@ -354,6 +354,27 @@ progress::-webkit-progress-value { background: var(--mint); }
 .chart-grid { stroke: #20352c; stroke-width: 1; }
 .chart-label { fill: #74887e; font: 9px var(--mono); }
 .chart-line { fill: none; stroke: #e6b76a; stroke-width: 2.5; filter: drop-shadow(0 0 4px #e6b76a55); }
+.chart-line.s11 { stroke: #e6b76a; }
+.chart-line.s21 { stroke: #83d9b3; }
+.chart-line.s12 { stroke: #77aee8; stroke-dasharray: 6 3; }
+.chart-line.s22 { stroke: #d98aa5; stroke-dasharray: 3 3; }
+.chart-line.reflection { stroke: #e6b76a; }
+.chart-line.transmission { stroke: #83d9b3; }
+.chart-line.exact { stroke-width: 1.6; stroke-dasharray: 6 4; filter: none; opacity: .85; }
+.chart-legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px 10px; color: var(--quiet); font: 8px var(--mono); }
+.chart-legend span { display: flex; align-items: center; gap: 4px; }
+.chart-legend span::before { width: 12px; height: 2px; background: #e6b76a; content: ""; }
+.chart-legend .s21::before, .chart-legend .transmission::before { background: #83d9b3; }
+.chart-legend .s12::before { background: #77aee8; }
+.chart-legend .s22::before { background: #d98aa5; }
+.chart-legend .exact::before { height: 1px; background-image: linear-gradient(90deg, currentColor 55%, transparent 55%); background-size: 5px 1px; }
+.matrix-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 215px; }
+.matrix-grid > div { display: grid; align-content: center; gap: 5px; padding: 16px; border-top: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft); text-align: center; }
+.matrix-grid > div:nth-child(2n) { border-right: 0; }
+.matrix-grid span { color: var(--quiet); font: 9px var(--mono); }
+.matrix-grid strong { color: var(--amber); font: 18px Georgia, serif; }
+.matrix-grid small { color: var(--muted); font: 8px var(--mono); }
+.workflow-evidence .evidence-list > div { grid-template-columns: 8px 1fr minmax(90px, auto); }
 .smith-ring, .smith-grid { fill: none; stroke: #355247; stroke-width: 1; }
 .smith-grid { stroke-dasharray: 2 3; }
 .smith-line { fill: none; stroke: var(--mint); stroke-width: 2; }

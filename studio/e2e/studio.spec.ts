@@ -5,6 +5,9 @@ import { readFileSync } from "node:fs";
 const wr90Spec = JSON.parse(
   readFileSync(new URL("../../rfx/studio/templates/wr90_waveguide.json", import.meta.url), "utf8"),
 );
+const fresnelSpec = JSON.parse(
+  readFileSync(new URL("../../rfx/studio/templates/multilayer_fresnel.json", import.meta.url), "utf8"),
+);
 
 test("patch journey: create, edit, preview, run, inspect, compare, cancel, export", async ({
   page,
@@ -250,6 +253,7 @@ test("agent patch is inert until Studio approves the exact MCP call", async ({ p
 });
 
 test("WR-90 primary controls keep coupled ports and sweep values synchronized", async ({ page }) => {
+  test.setTimeout(120_000);
   const created = await page.request.post("/api/experiments", { data: wr90Spec });
   expect(created.status(), await created.text()).toBe(201);
 
@@ -286,4 +290,29 @@ test("WR-90 primary controls keep coupled ports and sweep values synchronized", 
     17,
     17,
   ]);
+
+  await page.getByRole("button", { name: "Run on CPU" }).click();
+  await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "S-matrix run summary" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Two-port S-parameters" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "S-matrix snapshot" })).toBeVisible();
+  await expect(page.getByText("Reciprocity Δ", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("field-slice-heatmap")).toBeVisible();
+});
+
+test("Fresnel workflow renders R/T evidence against its analytic reference", async ({ page }) => {
+  test.setTimeout(120_000);
+  const created = await page.request.post("/api/experiments", { data: fresnelSpec });
+  expect(created.status(), await created.text()).toBe(201);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Lossless dielectric slab Fresnel workflow/ }).click();
+  await page.getByRole("button", { name: "Run on CPU" }).click();
+  await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Fresnel run summary" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reflection & transmission" })).toBeVisible();
+  await expect(page.getByText("Mean |ΔR|", { exact: true })).toBeVisible();
+  await expect(page.getByText("Transfer-matrix reference", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("field-slice-heatmap")).toBeVisible();
+  await expect(page.getByText("Nearest solved plane", { exact: false })).toHaveCount(0);
 });

@@ -46,7 +46,7 @@
   "observations": [
     {"id": "reflection-flux", "kind": "flux_monitor", "axis": "x", "coordinate_m": 0.025, "start_hz": 3000000000.0, "stop_hz": 12000000000.0, "points": 9},
     {"id": "transmission-flux", "kind": "flux_monitor", "axis": "x", "coordinate_m": 0.055, "start_hz": 3000000000.0, "stop_hz": 12000000000.0, "points": 9},
-    {"id": "slab-field", "kind": "field_snapshot", "component": "ez", "axis": "z", "coordinate_m": 0.02}
+    {"id": "slab-field", "kind": "field_snapshot", "component": "ez", "axis": "z", "coordinate_m": 0.0}
   ],
   "boundaries": {
     "x": {"lo": "cpml", "hi": "cpml"},

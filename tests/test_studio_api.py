@@ -324,6 +324,65 @@ def test_browser_integer_frequency_json_preflights_without_jax_overflow(
         assert preview.json()["preflight"]["ok"] is True
 
 
+@pytest.mark.parametrize(
+    ("template_name", "artifact_kind", "schema_version", "analysis_kind"),
+    [
+        (
+            "wr90_waveguide",
+            "sparameters",
+            "rfx-sparameters-artifact/v1",
+            "sparameters",
+        ),
+        (
+            "multilayer_fresnel",
+            "reflection-transmission",
+            "rfx-reflection-transmission-artifact/v1",
+            "reflection-transmission",
+        ),
+    ],
+)
+def test_non_patch_workflows_publish_studio_readable_primary_results(
+    tmp_path, template_name, artifact_kind, schema_version, analysis_kind
+):
+    spec = json.loads(
+        (TEMPLATE_ROOT / f"{template_name}.json").read_text(encoding="utf-8")
+    )
+    with _client(tmp_path) as client:
+        created = client.post("/api/experiments", json=spec)
+        assert created.status_code == 201, created.text
+        experiment_id = created.json()["experiment"]["id"]
+        started = client.post(
+            f"/api/experiments/{experiment_id}/runs",
+            json={"idempotency_key": f"studio-{template_name}-result"},
+        )
+        assert started.status_code == 202, started.text
+        run_id = started.json()["id"]
+
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            run = client.get(f"/api/runs/{run_id}").json()
+            if run["state"] in {"succeeded", "failed", "cancelled"}:
+                break
+            time.sleep(0.1)
+        assert run["state"] == "succeeded", run
+        primary = next(
+            item for item in run["artifacts"] if item["kind"] == artifact_kind
+        )
+        result = client.get(primary["url"])
+        assert result.status_code == 200, result.text
+        assert result.json()["schema_version"] == schema_version
+        assert len(result.json()["points"]) >= 2
+        field = next(item for item in run["artifacts"] if item["kind"] == "field-slice")
+        field_payload = client.get(field["url"]).json()
+        assert field_payload["actual_coordinate_m"] == pytest.approx(
+            field_payload["requested_coordinate_m"]
+        )
+
+        analysis = client.get(f"/api/runs/{run_id}/analysis")
+        assert analysis.status_code == 200, analysis.text
+        assert analysis.json()["analysis"]["analysis_kind"] == analysis_kind
+
+
 def test_static_spa_fallback_and_loopback_host_guard(tmp_path):
     static = tmp_path / "static"
     static.mkdir()

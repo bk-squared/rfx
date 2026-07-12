@@ -932,6 +932,26 @@ def _validate_document(document: dict[str, Any]) -> None:
             item = _object_keys(
                 base, path, required={"id", "kind", "component", "axis", "coordinate_m"}
             )
+            if item["axis"] not in {"x", "y", "z"}:
+                _fail("unsupported_variant", f"{path}.axis", "expected x/y/z")
+            axis_index = "xyz".index(item["axis"])
+            coordinate = _number(item["coordinate_m"], f"{path}.coordinate_m")
+            if coordinate < 0 or coordinate > domain[axis_index]:
+                _fail(
+                    "range_error",
+                    f"{path}.coordinate_m",
+                    "field snapshot plane must lie inside the simulation domain",
+                )
+            if (
+                simulation["dimensionality"].startswith("2d")
+                and item["axis"] == "z"
+                and coordinate != 0
+            ):
+                _fail(
+                    "range_error",
+                    f"{path}.coordinate_m",
+                    "2-D z-normal field snapshots must use the solved z=0 plane",
+                )
         else:
             _fail(
                 "unsupported_variant", f"{path}.kind", "unsupported observation variant"
