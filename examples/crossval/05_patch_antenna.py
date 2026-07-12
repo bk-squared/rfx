@@ -7,10 +7,16 @@ substrate, probe-fed. Structurally this matches the standard OpenEMS
 "Simple Patch Antenna" tutorial.
 
 Structure (stack from bottom to top):
-  - Ground plane: PEC face at z=0 (`pec_faces={"z_lo"}` in rfx,
-    explicit PEC box in OpenEMS)
-  - FR4 substrate: εr=4.3, 1.5 mm thick (6 cells in rfx non-uniform z,
-    4 cells in OpenEMS uniform z)
+  - Ground plane: FINITE 60x55 mm PEC box below the substrate (both
+    solvers; bottom CPML absorbs radiation beneath it). NOT
+    ``pec_faces={"z_lo"}`` — an infinite boundary GP turns the antenna
+    into a cavity and shifts the resonance ~8 % high (see build_patch
+    docstring).
+  - FR4 substrate: εr=4.3, 1.5 mm nominal. NOTE: with the committed
+    graded z-mesh the substrate Box RASTERIZES to 2 coarse cells, not
+    the intended 6 fine cells (issue #325); re-pinning it onto the fine
+    band was measured to DEGRADE the resonance agreement, so the
+    committed envelope is kept as-is. (OpenEMS side: 4 uniform z-cells.)
   - Patch: PEC rectangle on top of the substrate
   - Air region above the patch (MUR / CPML open boundaries)
 
