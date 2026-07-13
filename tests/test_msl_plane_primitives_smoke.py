@@ -4,7 +4,7 @@ WI-3 (2026-05-24) deleted `test_msl_plane_extractor_jax.py` along with the
 deprecated plane *extractor* (`extract_msl_s_params_jax_plane`). But the
 plane-probe PRIMITIVES it transitively exercised —
 `register_msl_plane_probes`, `_v_from_plane`, `_i_from_plane` — survive and
-are still consumed by `examples/inverse_design/msl_stub_notch_tuning.py`.
+are still consumed by `validation/tap_paper/msl_stub_notch_tuning.py`.
 This file restores minimal regression coverage for those primitives so a
 silent break surfaces here rather than only when the example is run.
 

@@ -17,7 +17,7 @@ Moved from ``examples/crossval/`` in the 2026-04-20 audit — self-tests
 belong in ``examples/inverse_design/``, not next to external-solver
 cross-validations.
 
-Run:  python examples/inverse_design/ad_gradient_demo.py
+Run:  python scripts/diagnostics/ad_gradient_selftest.py
 """
 import os, time
 import matplotlib; matplotlib.use("Agg")

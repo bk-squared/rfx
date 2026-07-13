@@ -1,6 +1,6 @@
 """Preflight false-positive refinements (2026-05-06).
 
-The Y2 MSL stub-notch demo (`examples/inverse_design/msl_stub_notch_tuning.py`)
+The Y2 MSL stub-notch demo (`validation/tap_paper/msl_stub_notch_tuning.py`)
 exposed three preflight checks that were firing on canonical
 transmission-line geometry while still leaving the original footgun cases
 covered.  These tests pin both halves of each refinement: the FP case must

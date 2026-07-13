@@ -86,7 +86,7 @@ check, enforced by `sim.preflight()` — see
 5 mm line biases |S11|@notch to ≈ -7 dB instead of the physical 0 dB; this
 geometry avoids that.
 
-Run: ``python examples/inverse_design/msl_stub_notch_tuning.py``
+Run: ``python validation/tap_paper/msl_stub_notch_tuning.py``
 """
 
 from __future__ import annotations

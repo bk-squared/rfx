@@ -52,8 +52,8 @@ the simulation, takes a few optimizer steps, and demonstrates the lobe moving
 
 Run
 ---
-    SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/beam_steering_superstrate.py
-    SMOKE=0 python examples/tap_paper/beam_steering_superstrate.py    # paper (GPU)
+    SMOKE=1 JAX_PLATFORMS=cpu python validation/tap_paper/beam_steering_superstrate.py
+    SMOKE=0 python validation/tap_paper/beam_steering_superstrate.py    # paper (GPU)
 """
 
 from __future__ import annotations

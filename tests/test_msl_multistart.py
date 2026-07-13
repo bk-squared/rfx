@@ -37,7 +37,7 @@ import jax.numpy as jnp
 
 EXAMPLE = (
     pathlib.Path(__file__).resolve().parent.parent
-    / "examples" / "inverse_design" / "msl_stub_notch_tuning.py"
+    / "validation" / "tap_paper" / "msl_stub_notch_tuning.py"
 )
 
 
