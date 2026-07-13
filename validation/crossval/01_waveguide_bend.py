@@ -17,7 +17,7 @@ Boundary selection:
 Run this script with JAX x64 enabled. The flux monitor accumulators need
 double precision for stable SI-unit spectra:
 
-  JAX_ENABLE_X64=1 python examples/crossval/01_waveguide_bend.py
+  JAX_ENABLE_X64=1 python validation/crossval/01_waveguide_bend.py
 
 Parameters (normalized, a = 1 um):
   eps=12, w=1, fcen=0.15, fwidth=0.1, resolution=10
@@ -41,7 +41,7 @@ Exit codes (rfx crossval convention):
   2 = rfx self-check OK but Meep reference is unavailable — inconclusive
       crossval, NOT a pass. CI must not treat this as green.
 
-Save: examples/crossval/01_waveguide_bend.png
+Save: validation/crossval/01_waveguide_bend.png
 """
 
 import os

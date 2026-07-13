@@ -20,7 +20,7 @@ before writing any new simulation code.
 | `rfx/boundaries/` | Boundary condition implementations (CPML, UPML, PEC, PMC, Floquet/Bloch) |
 | `rfx/sources/`, `rfx/api/_sparams.py` | Port implementations and S-parameter extraction (production lumped/wire driver: `rfx/probes/sparam_driver.py`) |
 | `tests/` | Canonical usage examples for every API surface — start here |
-| `examples/crossval/` | Claims-bearing cases and deliberate diagnostic reporters — roles are pinned in `examples/crossval/manifest.json`; check it before citing any script as validation |
+| `validation/crossval/` | Claims-bearing cases and deliberate diagnostic reporters — roles are pinned in `validation/crossval/manifest.json`; check it before citing any script as validation |
 
 ## Hard rule for AI agents
 
@@ -67,7 +67,7 @@ dispersive slabs. Time-window truncation produces artifacts that make the result
 unreliable.
 
 Use `add_flux_monitor` + two-run reference subtraction instead. The canonical
-demonstration is `examples/crossval/03_straight_waveguide_flux.py`, which shows
+demonstration is `validation/crossval/03_straight_waveguide_flux.py`, which shows
 the two-monitor flux pattern explicitly. For the reference-subtraction contract,
 see the `add_flux_monitor` docstring in `rfx/api/__init__.py`.
 
@@ -77,4 +77,4 @@ see the `add_flux_monitor` docstring in `rfx/api/__init__.py`.
 - `docs/guides/support_matrix.md`
 - `docs/guides/sparameter_support_matrix.md`
 - `tests/` — canonical usage for every `add_*` method
-- `examples/crossval/` — cross-validation scripts; roles pinned in `examples/crossval/manifest.json` (not all entries are claims-bearing)
+- `validation/crossval/` — cross-validation scripts; roles pinned in `validation/crossval/manifest.json` (not all entries are claims-bearing)

@@ -7,7 +7,7 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page connects the quick resonance workflow in [Your First Patch Antenna](/rfx/guide/first-patch/) with the current public patch cross-check in `examples/crossval/05_patch_antenna.py`.
+This page connects the quick resonance workflow in [Your First Patch Antenna](/rfx/guide/first-patch/) with the current public patch cross-check in `validation/crossval/05_patch_antenna.py`.
 
 <Aside type="note" title="Public scope">
   This is a recommended patch workflow, not a guarantee that every antenna, feed, substrate, or mesh setting is qualified.
@@ -18,7 +18,7 @@ This page connects the quick resonance workflow in [Your First Patch Antenna](/r
 | Stage | Goal | Primary page / script |
 |---|---|---|
 | 1. Quick resonance check | Size the patch, run the simulation, and extract the dominant mode | [Your First Patch Antenna](/rfx/guide/first-patch/) |
-| 2. Cross-check | Compare the same class of structure against the documented reference script | `examples/crossval/05_patch_antenna.py` |
+| 2. Cross-check | Compare the same class of structure against the documented reference script | `validation/crossval/05_patch_antenna.py` |
 | 3. Radiation / reporting | Move to far-field reporting after the resonance setup is stable | [Far-Field & RCS](/rfx/guide/farfield-rcs/) |
 
 ## Baseline geometry
@@ -28,7 +28,7 @@ The workflow models a rectangular 2.4 GHz patch on a 1.5 mm FR4 substrate over a
 ## How to run the cross-check
 
 ```bash
-python examples/crossval/05_patch_antenna.py
+python validation/crossval/05_patch_antenna.py
 ```
 
 With the OpenEMS/CSXCAD Python bindings installed, the script prints a console

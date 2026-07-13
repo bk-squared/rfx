@@ -49,7 +49,7 @@ under ``tests/test_msl_port*.py``. This crossval is a **physics-level
 demo** that the new port API can resolve a stub-notch resonance without
 the wire-port + absorber workaround.
 
-Run: ``python examples/crossval/06b_msl_notch_filter_uniform.py``
+Run: ``python validation/crossval/06b_msl_notch_filter_uniform.py``
 """
 
 import os

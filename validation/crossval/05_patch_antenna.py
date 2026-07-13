@@ -70,7 +70,7 @@ planes and finite feed inset. Both rfx and OpenEMS will deviate from
 the TL number in the same direction — that is physics, not an rfx bug.
 
 Run:
-  python examples/crossval/05_patch_antenna.py
+  python validation/crossval/05_patch_antenna.py
 """
 
 import json

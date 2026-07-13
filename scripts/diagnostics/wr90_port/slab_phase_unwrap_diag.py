@@ -1,7 +1,7 @@
 """WR-90 single-slab analytic-Airy phase mismatch — root cause localization.
 
 Goal: separate which of the following is the source of the 143° phase
-gate failure on `examples/crossval/11_waveguide_port_wr90.py`'s
+gate failure on `validation/crossval/11_waveguide_port_wr90.py`'s
 single-slab Airy comparison:
 
   (a) the convention shift `exp(-j·β_v·2d)` applied to the analytic

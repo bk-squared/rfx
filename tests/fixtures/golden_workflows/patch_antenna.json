@@ -12,7 +12,7 @@
     "support_source": "docs/guides/sparameter_support_matrix.md"
   },
   "inputs": {
-    "canonical_source": "examples/crossval/05_patch_antenna.py",
+    "canonical_source": "validation/crossval/05_patch_antenna.py",
     "evidence_manifest": "docs/public/gallery/assets/patch_antenna/manifest.json",
     "cpu_smoke_spec": "tests/fixtures/experiments/patch_antenna_cpu_v1.json"
   },

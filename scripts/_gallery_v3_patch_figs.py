@@ -161,7 +161,7 @@ def emit_gradient(ad):
                          [("gradient.json", "gradient-json")])
     return grad
 
-# --- geometry (matches examples/crossval/05_patch_antenna.py) ---
+# --- geometry (matches validation/crossval/05_patch_antenna.py) ---
 EPS_R = 4.3
 TAN_D = 0.02
 H_SUB = 1.5e-3

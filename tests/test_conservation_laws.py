@@ -157,7 +157,7 @@ def test_unitarity_lossless_waveguide():
     # This gate exists to catch GROSS conservation failure (|S|>>1 from
     # CPML accumulation, or energy collapse < 0.5 from extractor bug);
     # fine accuracy is owned by test_waveguide_port_validation_battery
-    # and examples/crossval/11_waveguide_port_wr90.py.
+    # and validation/crossval/11_waveguide_port_wr90.py.
     assert 0.6 < mean_power < 1.40, (
         f"Unexpected mean power balance: {mean_power:.6f} (expected 0.6 < x < 1.40)"
     )

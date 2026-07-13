@@ -16,7 +16,7 @@ is still climbing toward its converged value (~step 5913, T~0.967). Point-
 field decay at one position is not a flux-convergence witness for the eps=12
 low-group-velocity guide.
 
-Geometry mirrors examples/crossval/03_straight_waveguide_flux.py PART 2
+Geometry mirrors validation/crossval/03_straight_waveguide_flux.py PART 2
 exactly (eps=12, 2d_tmz, UPML, bounded 2*wg_width flux monitors).
 
 Run:
@@ -37,7 +37,7 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 C0 = 2.998e8
 
 # ---------------------------------------------------------------------------
-# cv03 geometry (verbatim from examples/crossval/03_straight_waveguide_flux.py)
+# cv03 geometry (verbatim from validation/crossval/03_straight_waveguide_flux.py)
 # ---------------------------------------------------------------------------
 eps_wg = 12.0
 wg_width = 1.0

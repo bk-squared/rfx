@@ -9,7 +9,7 @@
   "cases": [
     {
       "id": "01_waveguide_bend",
-      "script": "examples/crossval/01_waveguide_bend.py",
+      "script": "validation/crossval/01_waveguide_bend.py",
       "role": "claims-bearing",
       "public_group": "A",
       "execution_tiers": ["cpu-runner", "scheduled-external"],
@@ -21,7 +21,7 @@
       "claim_scope": "2-D dielectric bend transmittance and straight-guide normalization under the script's published thresholds",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["examples/crossval/01_waveguide_bend.py"],
+      "gate_paths": ["validation/crossval/01_waveguide_bend.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 1},
       "scheduled_external_order": 1,
@@ -29,7 +29,7 @@
     },
     {
       "id": "02_ring_resonator",
-      "script": "examples/crossval/02_ring_resonator.py",
+      "script": "validation/crossval/02_ring_resonator.py",
       "role": "claims-bearing",
       "public_group": "A",
       "execution_tiers": ["cpu-runner", "scheduled-external"],
@@ -40,7 +40,7 @@
       "claim_scope": "2-D ring-resonator mode frequencies matched to Meep within the published mode-count and mean-error gates",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["examples/crossval/02_ring_resonator.py"],
+      "gate_paths": ["validation/crossval/02_ring_resonator.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 7},
       "scheduled_external_order": 2,
@@ -48,7 +48,7 @@
     },
     {
       "id": "03_straight_waveguide_flux",
-      "script": "examples/crossval/03_straight_waveguide_flux.py",
+      "script": "validation/crossval/03_straight_waveguide_flux.py",
       "role": "claims-bearing",
       "public_group": "A",
       "execution_tiers": ["cpu-runner", "scheduled-external"],
@@ -60,7 +60,7 @@
       "claim_scope": "2-D straight-waveguide band-mean transmission and flux normalization within the script's measured window",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["examples/crossval/03_straight_waveguide_flux.py"],
+      "gate_paths": ["validation/crossval/03_straight_waveguide_flux.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 8},
       "scheduled_external_order": 3,
@@ -68,7 +68,7 @@
     },
     {
       "id": "04_multilayer_fresnel",
-      "script": "examples/crossval/04_multilayer_fresnel.py",
+      "script": "validation/crossval/04_multilayer_fresnel.py",
       "role": "claims-bearing",
       "public_group": "A",
       "execution_tiers": ["cpu-runner", "scheduled-external"],
@@ -80,7 +80,7 @@
       "claim_scope": "normal-incidence multilayer reflection, transmission, and energy balance over the scripted frequency band",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["examples/crossval/04_multilayer_fresnel.py"],
+      "gate_paths": ["validation/crossval/04_multilayer_fresnel.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 2},
       "scheduled_external_order": 4,
@@ -88,7 +88,7 @@
     },
     {
       "id": "05_patch_antenna",
-      "script": "examples/crossval/05_patch_antenna.py",
+      "script": "validation/crossval/05_patch_antenna.py",
       "role": "claims-bearing",
       "public_group": "B",
       "execution_tiers": ["cpu-runner", "vessl-external"],
@@ -100,7 +100,7 @@
       "claim_scope": "2.4 GHz finite-ground-plane patch resonance; Harminv frequency is stronger evidence than absolute probe-feed S11 calibration",
       "external_dependencies": ["openEMS", "CSXCAD"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["examples/crossval/05_patch_antenna.py"],
+      "gate_paths": ["validation/crossval/05_patch_antenna.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 3},
       "scheduled_external_order": null,
@@ -108,7 +108,7 @@
     },
     {
       "id": "06_msl_notch_filter",
-      "script": "examples/crossval/06_msl_notch_filter.py",
+      "script": "validation/crossval/06_msl_notch_filter.py",
       "role": "diagnostic-reporter",
       "public_group": "B",
       "execution_tiers": ["gpu-manual", "external-manual"],
@@ -121,7 +121,7 @@
       "external_dependencies": ["OpenEMS MSL_NotchFilter reference NPZ"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": [
-        "examples/crossval/06_msl_notch_filter.py",
+        "validation/crossval/06_msl_notch_filter.py",
         "tests/test_msl_nu_sparam_gate.py"
       ],
       "artifact_paths": [],
@@ -131,7 +131,7 @@
     },
     {
       "id": "06b_msl_notch_filter_uniform",
-      "script": "examples/crossval/06b_msl_notch_filter_uniform.py",
+      "script": "validation/crossval/06b_msl_notch_filter_uniform.py",
       "role": "claims-bearing",
       "public_group": "B",
       "execution_tiers": ["pr-fast", "gpu-manual"],
@@ -144,7 +144,7 @@
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
-        "examples/crossval/06b_msl_notch_filter_uniform.py",
+        "validation/crossval/06b_msl_notch_filter_uniform.py",
         "tests/test_msl_notch_e4_comparison_gates.py",
         "scripts/diagnostics/build_msl_notch_openems_comparison.py"
       ],
@@ -159,7 +159,7 @@
     },
     {
       "id": "09_half_symmetric_waveguide",
-      "script": "examples/crossval/09_half_symmetric_waveguide.py",
+      "script": "validation/crossval/09_half_symmetric_waveguide.py",
       "role": "claims-bearing",
       "public_group": "B",
       "execution_tiers": ["pr-fast", "cpu-runner", "scheduled-external"],
@@ -172,7 +172,7 @@
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
-        "examples/crossval/09_half_symmetric_waveguide.py",
+        "validation/crossval/09_half_symmetric_waveguide.py",
         "tests/test_boundary_pmc_oracle.py"
       ],
       "artifact_paths": [],
@@ -182,7 +182,7 @@
     },
     {
       "id": "10_pmc_cpml_half_symmetric",
-      "script": "examples/crossval/10_pmc_cpml_half_symmetric.py",
+      "script": "validation/crossval/10_pmc_cpml_half_symmetric.py",
       "role": "diagnostic-reporter",
       "public_group": "B",
       "execution_tiers": ["pr-fast", "cpu-runner", "scheduled-external"],
@@ -194,7 +194,7 @@
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
-        "examples/crossval/10_pmc_cpml_half_symmetric.py",
+        "validation/crossval/10_pmc_cpml_half_symmetric.py",
         "tests/test_boundary_pmc_composition.py"
       ],
       "artifact_paths": [],
@@ -204,7 +204,7 @@
     },
     {
       "id": "11_waveguide_port_wr90",
-      "script": "examples/crossval/11_waveguide_port_wr90.py",
+      "script": "validation/crossval/11_waveguide_port_wr90.py",
       "role": "diagnostic-reporter",
       "public_group": "B",
       "execution_tiers": ["pr-fast", "cpu-runner", "vessl-external"],
@@ -217,7 +217,7 @@
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
-        "examples/crossval/11_waveguide_port_wr90.py",
+        "validation/crossval/11_waveguide_port_wr90.py",
         "tests/test_waveguide_port_validation_battery.py",
         "tests/test_waveguide_broad_e5_envelope_gates.py"
       ],

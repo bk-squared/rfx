@@ -6,6 +6,17 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — cross-validation scripts moved to `validation/crossval/` (repo layout only; no behaviour change)
+
+- `examples/crossval/` moved to `validation/crossval/` so that `examples/`
+  holds only the user-facing learning path (see `examples/README.md`) while
+  internal verification fixtures live under `validation/` next to
+  `validation/tap_paper/` and `validation/research/`. The manifest
+  (`validation/crossval/manifest.json`), CPU runner, CI workflows, VESSL
+  YAMLs, and all docs references were re-pointed in the same commit. A
+  tombstone README remains at `examples/crossval/README.md`. Script contents
+  are unchanged except their own path self-references.
+
 ### Fixed — wire-port termination over LIVE cells only (issue #318; field-changing for ports with extent cells inside PEC)
 
 - A wire port whose rasterized extent includes cells inside a PEC conductor

@@ -39,7 +39,7 @@ run: |-
   echo "=== WR90 cv11 diagnostic run ==="
   set +e
   timeout "${RFX_WAVEGUIDE_WR90_TIMEOUT:-2400}" \
-    python examples/crossval/11_waveguide_port_wr90.py \
+    python validation/crossval/11_waveguide_port_wr90.py \
       > "$out/cv11_waveguide_wr90.stdout.txt" \
       2> "$out/cv11_waveguide_wr90.stderr.txt"
   cv11_rc=$?

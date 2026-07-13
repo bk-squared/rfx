@@ -6,7 +6,7 @@ One-attempt falsifier matrix (issue #160 acceptance):
     (comparator axis: is the deficit radiation captured by the oversized
     flux_in plane rather than a flux-normalization bug?)
 
-Geometry/source/run-length identical to examples/crossval/03 PART 2,
+Geometry/source/run-length identical to validation/crossval/03 PART 2,
 parameterized by resolution. Dumps full T(f) curves (R5) to JSON + PNG.
 
 Run: JAX_ENABLE_X64=1 python scripts/diagnostics/cv03_flux/sweep_t_deficit.py

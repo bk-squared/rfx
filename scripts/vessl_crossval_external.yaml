@@ -70,7 +70,7 @@ run: |-
 
   # -- cv05: patch antenna vs openEMS (exit 0 full pass / 1 fail / 2 ref-missing) --
   set +e
-  timeout 7200 "$PY" examples/crossval/05_patch_antenna.py \
+  timeout 7200 "$PY" validation/crossval/05_patch_antenna.py \
     > "$out/cv05.log" 2>&1
   cv05_rc=$?
   set -e
@@ -80,7 +80,7 @@ run: |-
 
   # -- cv11: WR-90 vs committed Meep/Palace references --
   set +e
-  timeout 3600 "$PY" examples/crossval/11_waveguide_port_wr90.py \
+  timeout 3600 "$PY" validation/crossval/11_waveguide_port_wr90.py \
     > "$out/cv11.log" 2>&1
   cv11_rc=$?
   set -e

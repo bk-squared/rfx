@@ -42,7 +42,7 @@ for the per-cell `dx_profile`/`dy_profile` feature added alongside
 this crossval.
 
 Run:
-  python examples/crossval/06_msl_notch_filter.py
+  python validation/crossval/06_msl_notch_filter.py
 """
 
 import os, sys, time

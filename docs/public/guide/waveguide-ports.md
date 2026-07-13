@@ -13,7 +13,7 @@ Current evidence level: Recommended for the documented WR-style rectangular-guid
 cases. The main gates are in `tests/test_waveguide_port_validation_battery.py`
 (empty-guide max `|S11| < 0.02`, passivity `< 1.02`, PEC-short
 `0.99 <= min(|S11|)` and `max(|S11|) < 1.03`) and
-`examples/crossval/11_waveguide_port_wr90.py` (analytic Airy/reference-plane
+`validation/crossval/11_waveguide_port_wr90.py` (analytic Airy/reference-plane
 gates, with external references reported as available or skipped).
 
 Waveguide ports do **not** use `run(compute_s_params=True)` for full

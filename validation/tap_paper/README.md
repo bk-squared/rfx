@@ -18,7 +18,7 @@ beam-steering superstrate.
 
 > **Notch filter (Example 1) lives elsewhere in the repo**, not duplicated here:
 > `validation/tap_paper/msl_stub_notch_tuning.py` (cross-validation companion:
-> `examples/crossval/06_msl_notch_filter.py`).
+> `validation/crossval/06_msl_notch_filter.py`).
 
 > **GPU note.** `SMOKE=0` for the dielectric taper and the beam-steering
 > superstrate runs a long, full-resolution reverse-mode scan and is impractical
@@ -32,7 +32,7 @@ single-variable descent reaches a -46.1 dB in-band objective, and the validated
 optimized null is -55.7 dB at 5.924 GHz, within 3.1% of the analytic
 quarter-wave length. Not duplicated here; see
 `validation/tap_paper/msl_stub_notch_tuning.py` (cross-validation companion:
-`examples/crossval/06_msl_notch_filter.py`).
+`validation/crossval/06_msl_notch_filter.py`).
 
 **Example 2 - Waveguide dielectric taper (30 sections).**
 `waveguide_dielectric_taper.py` matches a WR-90 guide to a high-permittivity

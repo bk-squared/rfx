@@ -199,7 +199,7 @@ Gradient (reverse-mode AD): ~3-4x forward pass with `jax.checkpoint`.
 
 Each A/B cross-validation case is mapped to a named analytic or external reference. The values below are the **accept envelopes** enforced by each script's own gate code — not single-point marketing errors. Several cases (e.g. `11_waveguide_port_wr90`) are diagnostic reporters whose authoritative gates live in `tests/`.
 
-| Case (`examples/crossval/`) | Upstream reference | Accept envelope (from the script's gate) |
+| Case (`validation/crossval/`) | Upstream reference | Accept envelope (from the script's gate) |
 |---|---|---|
 | `05_patch_antenna` | OpenEMS patch tutorial + Balanis TL analytic | rfx vs OpenEMS Harminv < 20%; vs Balanis TL < 10%; self-consistency < 5%; \|S11\| ≤ 1 |
 | `04_multilayer_fresnel` | Analytic transfer-matrix / Fresnel (Taflove Ch 5) | `T`, `R` mean error and `R+T` energy deviation each < 0.05 |

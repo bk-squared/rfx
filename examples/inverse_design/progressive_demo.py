@@ -4,9 +4,9 @@ NOT a cross-validation. Minimal API demo that shows how
 ``rfx.progressive_optimize`` runs inverse design at a sequence of
 increasing mesh resolutions, upsampling the latent between stages.
 
-Moved from ``examples/crossval/`` in the 2026-04-20 audit — self-tests
-belong in ``examples/inverse_design/``, not next to external-solver
-cross-validations.
+Moved out of the cross-validation tree (now ``validation/crossval/``) in the
+2026-04-20 audit — self-tests belong in ``examples/inverse_design/``, not next
+to external-solver cross-validations.
 
 Setup (deliberately small for a fast demo):
 

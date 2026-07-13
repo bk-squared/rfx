@@ -27,7 +27,7 @@ Fix (2026-05-02)
 A microstrip quasi-TEM mode requires a PEC trace conductor above the substrate.
 Without the trace, the Ez source excites a TM-like substrate mode giving
 Z0 ≈ 1600–2500 Ω and |S21| ≈ 0.  Following the canonical pattern in
-``examples/crossval/06_msl_notch_filter.py`` (``sim.add(Box(...), material="pec")``),
+``validation/crossval/06_msl_notch_filter.py`` (``sim.add(Box(...), material="pec")``),
 we add a one-cell-thick PEC strip at z = H_SUB spanning the full line length.
 
 The 3-probe extractor in ``compute_msl_s_matrix`` was also corrected to apply a
@@ -131,7 +131,7 @@ def test_msl_thru_line_passive_gate():
     # --- PEC trace strip (one cell thick at z = H_SUB) ---
     # A microstrip quasi-TEM mode requires a metal trace above the substrate.
     # Without the trace, the Ez source excites a TM substrate mode (Z0>>50Ω).
-    # Canonical pattern from examples/crossval/06_msl_notch_filter.py:
+    # Canonical pattern from validation/crossval/06_msl_notch_filter.py:
     #   sim.add(Box(..., substrate_thickness, substrate_thickness+dz), material="pec")
     # Use one-cell thickness (H_SUB to H_SUB + DX) so rfx Box captures the
     # cells whose z-centres fall within the box z-range.

@@ -167,7 +167,7 @@ is still preferred for its cleaner interface and decay-adaptive stopping.
 
 ## Known accuracy
 
-`examples/crossval/04_multilayer_fresnel.py` gates rfx against the analytic
+`validation/crossval/04_multilayer_fresnel.py` gates rfx against the analytic
 Fresnel / transfer-matrix result with a mean-error threshold of 0.05 (5%) for
 both T(f) and R(f), as well as energy conservation R+T within 5%. In practice
 rfx passes this gate with substantially lower error for well-resolved, lossless
@@ -190,7 +190,7 @@ necessarily a usage error in either tool.
   + two-run field-level reference subtraction via the `Simulation` API, with an
   analytic Fresnel witness and an energy-conservation readout (on the coarse demo
   grid R+T sits slightly above 1; refine `dx` to tighten it). Start here.
-- `examples/crossval/04_multilayer_fresnel.py` — dispersionless Fresnel slab,
+- `validation/crossval/04_multilayer_fresnel.py` — dispersionless Fresnel slab,
   analytic comparison. Note: this script uses a raw Yee loop (`update_e` /
   `update_h`) rather than the `Simulation` API. The raw-loop approach works for
   dispersionless media because there is no group-velocity chirp; for dispersive

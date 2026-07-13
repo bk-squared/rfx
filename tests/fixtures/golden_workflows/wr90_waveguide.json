@@ -12,7 +12,7 @@
     "support_source": "docs/guides/sparameter_support_matrix.md"
   },
   "inputs": {
-    "canonical_source": "examples/crossval/11_waveguide_port_wr90.py",
+    "canonical_source": "validation/crossval/11_waveguide_port_wr90.py",
     "evidence_manifest": "docs/public/gallery/assets/waveguide_wr90/manifest.json",
     "cpu_smoke_spec": null
   },

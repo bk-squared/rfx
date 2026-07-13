@@ -13,7 +13,7 @@ Pipeline validated:
 The slab starts at eps_r ≈ 3.5 (mid-range) and should converge toward
 eps_r ≈ 1.0 (air = no impedance mismatch = maximum transmission).
 
-Moved from ``examples/crossval/`` in the 2026-04-20 audit — self-tests
+Moved from ``validation/crossval/`` in the 2026-04-20 audit — self-tests
 belong in ``examples/inverse_design/``, not next to external-solver
 cross-validations.
 
