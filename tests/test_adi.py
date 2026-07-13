@@ -155,14 +155,24 @@ def test_adi_cavity_resonance():
     Analytical TM_mn resonance: f_mn = (C0/2) * sqrt((m/a)^2 + (n/b)^2)
     We target the TM_11 mode.
     """
-    a = 0.1   # 10 cm
-    b = 0.1   # 10 cm
-    f_analytical = (C0 / 2.0) * np.sqrt((1.0/a)**2 + (1.0/b)**2)
+    a = 0.1   # 10 cm (nominal)
+    b = 0.1   # 10 cm (nominal)
 
     # Grid
     dx = dy = 0.002   # 2 mm  → 50 x 50 cells
     Nx = int(round(a / dx))
     Ny = int(round(b / dy))
+
+    # COMPARATOR CONVENTION (issue #338, same class as the 3D OPT-C1
+    # comparator): _apply_pec_2d zeroes Ez at node indices 0 and Nx-1, so
+    # the PEC walls sit (Nx-1)*dx = 98 mm apart, one cell short of the
+    # nominal a = Nx*dx. The old analytic from a=100 mm was 2.04% low —
+    # consuming most of the 2% gate budget (measured peak 2.1552 GHz was
+    # 1.67% from the biased analytic but only 0.37% from the honest one).
+    # Same gate, honest reference.
+    a_eff = (Nx - 1) * dx
+    b_eff = (Ny - 1) * dy
+    f_analytical = (C0 / 2.0) * np.sqrt((1.0/a_eff)**2 + (1.0/b_eff)**2)
 
     # CFL timestep and ADI timestep (5x CFL)
     dt_cfl = _cfl_dt_2d(dx, dy)
