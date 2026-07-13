@@ -19,10 +19,10 @@ A repository surface should stay out of public user guides until it has a public
 
 | Surface | Representative locations | Current public-guide status | Inclusion requirement |
 |---|---|---|---|
-| SBP-SAT / subgridding | `rfx/subgridding/**`, `rfx/runners/subgridded.py`, `rfx/runners/disjoint.py`, `examples/research/subgrid/**`, `tests/test_subgrid*`, `scripts/subgrid_*` | outside public support scope | add a support-matrix entry, public workflow, and validation envelope before publication |
+| SBP-SAT / subgridding | `rfx/subgridding/**`, `rfx/runners/subgridded.py`, `rfx/runners/disjoint.py`, `validation/research/subgrid/**`, `tests/test_subgrid*`, `scripts/subgrid_*` | outside public support scope | add a support-matrix entry, public workflow, and validation envelope before publication |
 | Repo-local operating notes | `docs/agent/**` | outside public site scope | publish only after an explicit user-facing documentation plan exists |
 | Incomplete guide stubs | `docs/public/guide/antenna-metrics.mdx`, `comparison.mdx`, `conformal-pec.mdx`, `material-fitting.mdx`, `topology-optimisation.mdx` | outside route inventory | publish only after the pages are complete and support-matrix aligned |
-| Floquet/RIS workflows | `rfx/floquet.py`, `rfx/ris.py`, `Simulation.add_floquet_port(...)`, `compute_floquet_s_params`, `examples/tap_paper/**` | outside public support scope | add a promoted API contract and external periodic-cell validation envelope |
+| Floquet/RIS workflows | `rfx/floquet.py`, `rfx/ris.py`, `Simulation.add_floquet_port(...)`, `compute_floquet_s_params`, `validation/tap_paper/**` | outside public support scope | add a promoted API contract and external periodic-cell validation envelope |
 | Conformal PEC | `rfx/geometry/conformal.py`, `conformal=True` / conformal boundary support | outside public support scope | demonstrate a stable accuracy envelope before publication |
 | ADI solver | `rfx/adi.py`, top-level ADI imports | outside public support scope | add a user-facing workflow and accuracy/stability envelope |
 | Distributed / multi-GPU execution | `devices=...` run paths, distributed/nonuniform code paths, `jax.pmap` usage | outside public support scope | add maintained examples and support-combination checks |

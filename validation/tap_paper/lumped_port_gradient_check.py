@@ -14,7 +14,7 @@ the directional derivative along the gradient, which agrees with central FD to
 0.2% over the 24 design cells (the value reported in the paper).
 
 Run (CPU is fine, ~few minutes):
-    JAX_PLATFORMS=cpu python examples/tap_paper/lumped_port_gradient_check.py
+    JAX_PLATFORMS=cpu python validation/tap_paper/lumped_port_gradient_check.py
 """
 import argparse, json, os, time, warnings
 import numpy as np
@@ -42,7 +42,7 @@ def main():
     ap.add_argument("--eps0", type=float, default=4.0)
     ap.add_argument("--h", type=float, default=1e-3)
     ap.add_argument("--ncheck", type=int, default=0, help="0 = check all cells")
-    ap.add_argument("--out", type=str, default="examples/tap_paper/_out/lumped_port_gradient_check")
+    ap.add_argument("--out", type=str, default="validation/tap_paper/_out/lumped_port_gradient_check")
     args = ap.parse_args()
 
     f0 = 3.0e9

@@ -13,7 +13,7 @@ envelope. Guarded one-sided production subgrid crossval evidence lives in
 artifacts; this disjoint prototype remains research-only.
 
 Run:
-    python examples/research/subgrid/12_subgrid_disjoint_prototype.py
+    python validation/research/subgrid/12_subgrid_disjoint_prototype.py
 """
 
 from __future__ import annotations

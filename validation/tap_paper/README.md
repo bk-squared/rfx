@@ -17,7 +17,7 @@ beam-steering superstrate.
 > editable install).
 
 > **Notch filter (Example 1) lives elsewhere in the repo**, not duplicated here:
-> `examples/inverse_design/msl_stub_notch_tuning.py` (cross-validation companion:
+> `validation/tap_paper/msl_stub_notch_tuning.py` (cross-validation companion:
 > `examples/crossval/06_msl_notch_filter.py`).
 
 > **GPU note.** `SMOKE=0` for the dielectric taper and the beam-steering
@@ -31,7 +31,7 @@ placed at 6 GHz by descending a single stub-length design variable. The
 single-variable descent reaches a -46.1 dB in-band objective, and the validated
 optimized null is -55.7 dB at 5.924 GHz, within 3.1% of the analytic
 quarter-wave length. Not duplicated here; see
-`examples/inverse_design/msl_stub_notch_tuning.py` (cross-validation companion:
+`validation/tap_paper/msl_stub_notch_tuning.py` (cross-validation companion:
 `examples/crossval/06_msl_notch_filter.py`).
 
 **Example 2 - Waveguide dielectric taper (30 sections).**
@@ -43,8 +43,8 @@ resolution dx = 0.25 mm, versus a discretized Klopfenstein taper of the same
 electrical length at -36.6 dB (dx = 0.25 mm). At a comparable coarse-grid solve
 budget, particle-swarm and genetic search trail the gradient by at least
 11.6 dB. Run:
-`SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/waveguide_dielectric_taper.py`
-(CPU, ~1-3 min); `SMOKE=0 python examples/tap_paper/waveguide_dielectric_taper.py`
+`SMOKE=1 JAX_PLATFORMS=cpu python validation/tap_paper/waveguide_dielectric_taper.py`
+(CPU, ~1-3 min); `SMOKE=0 python validation/tap_paper/waveguide_dielectric_taper.py`
 (full, GPU).
 
 **Example 3 - Beam-steering superstrate (441-param latent / 2883-cell).**
@@ -57,8 +57,8 @@ superstrate, a +3.6 dB gain over the 5.9 dBi bare plate-backed dipole. A
 laterally uniform slab of the same aperture reaches at most 5.4 dBi toward
 30 deg. An independent openEMS run corroborates the steered direction (8.9 dBi
 toward 30 deg, with the pattern peak near 30 deg). Run:
-`SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/beam_steering_superstrate.py`
-(CPU, ~1-3 min); `SMOKE=0 python examples/tap_paper/beam_steering_superstrate.py`
+`SMOKE=1 JAX_PLATFORMS=cpu python validation/tap_paper/beam_steering_superstrate.py`
+(CPU, ~1-3 min); `SMOKE=0 python validation/tap_paper/beam_steering_superstrate.py`
 (full, GPU).
 
 ## Gradient verification
@@ -67,7 +67,7 @@ toward 30 deg, with the pattern peak near 30 deg). Run:
 the analytic directional derivative of |S11|^2 (one reverse-mode pass) agrees
 with a central finite difference (two forward passes) to 0.2% over the 24-cell
 design region. Runs on CPU in ~5-10 min (no GPU needed):
-`JAX_PLATFORMS=cpu python examples/tap_paper/lumped_port_gradient_check.py`.
+`JAX_PLATFORMS=cpu python validation/tap_paper/lumped_port_gradient_check.py`.
 
 The modal-S gradient check (taper) and the NTFF log-ratio gradient check
 (superstrate) are exercised by their example scripts. AD-vs-FD agreement is

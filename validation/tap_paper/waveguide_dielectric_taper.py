@@ -47,8 +47,8 @@ settings (GPU required in practice for the full-resolution scan).
 
 Run
 ---
-  SMOKE=1 JAX_PLATFORMS=cpu python examples/tap_paper/waveguide_dielectric_taper.py
-  SMOKE=0 python examples/tap_paper/waveguide_dielectric_taper.py   # paper (GPU)
+  SMOKE=1 JAX_PLATFORMS=cpu python validation/tap_paper/waveguide_dielectric_taper.py
+  SMOKE=0 python validation/tap_paper/waveguide_dielectric_taper.py   # paper (GPU)
 
 Output: initial vs optimized band-averaged |S11| in dB, plus a figure of the
 optimized permittivity profile and the |S11|(f) curves.

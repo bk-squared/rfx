@@ -15,7 +15,7 @@ from types import ModuleType
 from typing import Final
 
 RESEARCH_SUBGRID: Final = (
-    pathlib.Path(__file__).resolve().parent.parent / "examples" / "research" / "subgrid"
+    pathlib.Path(__file__).resolve().parent.parent / "validation" / "research" / "subgrid"
 )
 
 

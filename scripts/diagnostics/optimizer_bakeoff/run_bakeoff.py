@@ -226,13 +226,13 @@ def _load_msl_coarse(dx_new: str):
     made |S21| flat/garbage there; dx = h_sub and dx = h_sub/2 are the clean
     points, and h_sub is the affordable one.
     """
-    src = (REPO / "examples/inverse_design/msl_stub_notch_tuning.py").read_text()
+    src = (REPO / "validation/tap_paper/msl_stub_notch_tuning.py").read_text()
     patched = src.replace("DX = 127e-6", f"DX = {dx_new}", 1)
     if patched == src:
         raise RuntimeError("MSL dx patch did not apply")
     import types
     mod = types.ModuleType("bo_msl_coarse")
-    mod.__file__ = str(REPO / "examples/inverse_design/msl_stub_notch_tuning.py")
+    mod.__file__ = str(REPO / "validation/tap_paper/msl_stub_notch_tuning.py")
     sys.modules["bo_msl_coarse"] = mod
     exec(compile(patched, mod.__file__, "exec"), mod.__dict__)
     return mod
@@ -305,7 +305,7 @@ def build_waveguide_taper():
     ``design_layout`` + ``make_eps_builder`` + ``make_objective`` -> ``loss_fn``.
     Init = zeros theta (the example's flat mid-eps block).
     """
-    tp = _load(REPO / "examples/tap_paper/waveguide_dielectric_taper.py", "bo_tp")
+    tp = _load(REPO / "validation/tap_paper/waveguide_dielectric_taper.py", "bo_tp")
     sim = tp.build_sim()
     grid = sim._build_grid()
     layout = tp.design_layout(grid)

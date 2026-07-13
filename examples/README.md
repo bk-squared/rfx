@@ -69,7 +69,7 @@ complexity, not the evidence tier.
 | B3  | `crossval/09_half_symmetric_waveguide.py`             | B     | claims-bearing · E1/E2 · analytic/self-invariant                   | PMC half-symmetry vs full-domain reference                          |
 | B4  | `crossval/10_pmc_cpml_half_symmetric.py`              | B     | diagnostic-reporter · E1 · self-invariant                          | PMC + CPML composition on half-symmetric waveguide                  |
 | B5  | `crossval/11_waveguide_port_wr90.py`                  | B     | diagnostic-reporter · E2/E4 · analytic/external-solver             | WR-90 vs analytic Airy + Meep + OpenEMS + Palace 4-way crossval     |
-| C1  | `inverse_design/ad_gradient_demo.py`                  | C     | —                                 | rfx self-test of AD pipeline (slab εr → 1.0 in PEC cavity)          |
+| C1  | `../scripts/diagnostics/ad_gradient_selftest.py` (moved: private-API self-test, not an example)                  | C     | —                                 | rfx self-test of AD pipeline (slab εr → 1.0 in PEC cavity)          |
 | C2  | `inverse_design/progressive_demo.py`                  | C     | —                                 | Progressive-mesh Adam over a small design region                    |
 | C3  | `inverse_design/multilayer_ar_coating.py`             | C     | —                                 | 3-layer AR coating; compares JAX-grad-Adam to analytic TMM optimum  |
 | D1  | `tutorials/nonuniform_patch_demo.py`                            | D     | —                                 | In-tree NU runner end-to-end                                        |
