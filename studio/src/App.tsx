@@ -1,24 +1,41 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { api, ApiError } from "./api";
 import { CodeEditor } from "./CodeEditor";
 import { CopilotPanel } from "./CopilotPanel";
 import { buildPatch } from "./diff";
+import { EngineeringEvidence } from "./EngineeringEvidence";
+import { EngineeringSetup } from "./EngineeringSetup";
 import { FieldSlicePlot } from "./FieldSlicePlot";
 import { patchGolden } from "./golden";
 import { IntentComposer } from "./IntentComposer";
 import { S11Plot, SmithChart } from "./RfPlots";
 import { SceneViewer } from "./SceneViewer";
+import {
+  FresnelEvidence,
+  FresnelPlot,
+  SMatrixEvidence,
+  SMatrixPlot,
+  SMatrixSnapshot,
+} from "./WorkflowResults";
 import type {
   ExperimentPreview,
   DesignProposal,
+  FieldSliceArtifact,
   JsonValue,
   RunRecord,
 } from "./types";
 
-type WorkspaceTab = "design" | "code" | "results";
+type WorkspaceTab = "design" | "setup" | "code" | "results";
 type SpecDocument = Record<string, JsonValue>;
+const workspaceTabs: WorkspaceTab[] = ["design", "setup", "code", "results"];
+
+const recordArray = (value: JsonValue | undefined): Array<Record<string, JsonValue>> =>
+  Array.isArray(value)
+    ? value.filter((item): item is Record<string, JsonValue> =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    : [];
 
 const terminalStates = new Set(["succeeded", "failed", "cancelled"]);
 
@@ -29,6 +46,30 @@ const errorText = (error: unknown) => {
   }
   return error instanceof Error ? error.message : String(error);
 };
+
+function FieldOutput({
+  artifact,
+  status,
+}: {
+  artifact?: FieldSliceArtifact;
+  status: "not-requested" | "loading" | "available" | "unavailable";
+}) {
+  if (artifact) return <FieldSlicePlot artifact={artifact} />;
+  const message = status === "loading"
+    ? "Loading the requested field plane from the run artifact."
+    : status === "not-requested"
+      ? "No field snapshot was requested for this revision."
+      : "The requested field plane is unavailable; inspect the run events and artifact integrity.";
+  return (
+    <section className="result-card availability">
+      <header className="card-header">
+        <div><p className="eyebrow">Field output</p><h3>Field slice</h3></div>
+        <span className="availability-tag">{status.replace("-", " ")}</span>
+      </header>
+      <div className="field-placeholder"><span>E/H</span><p>{message}</p></div>
+    </section>
+  );
+}
 
 const deepCopy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -90,11 +131,30 @@ export function App() {
   );
   const selectedRun =
     experimentRuns.find((run) => run.id === selectedRunId) ?? experimentRuns[0];
+  const runRevision = useQuery({
+    queryKey: ["run-revision", selectedRun?.revision_id],
+    queryFn: () => api.getRevision(selectedRun!.revision_id!),
+    enabled: Boolean(selectedRun?.revision_id),
+  });
   const s11Artifact = selectedRun?.artifacts.find((item) => item.kind === "s11");
   const s11 = useQuery({
     queryKey: ["s11", s11Artifact?.id],
     queryFn: () => api.readS11(s11Artifact!.url),
     enabled: Boolean(s11Artifact),
+  });
+  const sParametersArtifact = selectedRun?.artifacts.find((item) => item.kind === "sparameters");
+  const sParameters = useQuery({
+    queryKey: ["sparameters", sParametersArtifact?.id],
+    queryFn: () => api.readSParameters(sParametersArtifact!.url),
+    enabled: Boolean(sParametersArtifact),
+  });
+  const reflectionTransmissionArtifact = selectedRun?.artifacts.find(
+    (item) => item.kind === "reflection-transmission",
+  );
+  const reflectionTransmission = useQuery({
+    queryKey: ["reflection-transmission", reflectionTransmissionArtifact?.id],
+    queryFn: () => api.readReflectionTransmission(reflectionTransmissionArtifact!.url),
+    enabled: Boolean(reflectionTransmissionArtifact),
   });
   const fieldSliceArtifact = selectedRun?.artifacts.find(
     (item) => item.kind === "field-slice",
@@ -104,6 +164,19 @@ export function App() {
     queryFn: () => api.readFieldSlice(fieldSliceArtifact!.url),
     enabled: Boolean(fieldSliceArtifact),
   });
+  const fieldSliceRequested = Boolean(
+    runRevision.data && recordArray(runRevision.data.spec.observations)
+      .some((item) => item.kind === "field_snapshot"),
+  );
+  const fieldSliceStatus: "not-requested" | "loading" | "available" | "unavailable" = fieldSlice.data
+    ? "available"
+    : runRevision.isLoading
+      ? "loading"
+      : !fieldSliceRequested
+        ? "not-requested"
+        : fieldSliceArtifact && fieldSlice.isPending
+          ? "loading"
+          : "unavailable";
   const pendingApprovals = useQuery({
     queryKey: ["agent-approvals", "pending"],
     queryFn: () => api.listAgentApprovals("pending"),
@@ -125,6 +198,11 @@ export function App() {
   useEffect(() => {
     if (selectedRunId) localStorage.setItem("rfx:selected-run", selectedRunId);
   }, [selectedRunId]);
+  useEffect(() => {
+    if (selectedRun && terminalStates.has(selectedRun.state)) {
+      setNotice((current) => current === "CPU run queued in isolated worker" ? "" : current);
+    }
+  }, [selectedRun]);
   useEffect(() => {
     const current = revision.data;
     if (!current || current.id === draftRevisionId) return;
@@ -173,7 +251,7 @@ export function App() {
     mutationFn: () => api.createExperiment(patchGolden),
     onSuccess: async ({ experiment }) => {
       setSelectedExperimentId(experiment.id);
-      setNotice("Patch antenna workspace created");
+      setNotice("Patch antenna study created");
       await queryClient.invalidateQueries({ queryKey: ["experiments"] });
     },
   });
@@ -192,7 +270,7 @@ export function App() {
       setSelectedExperimentId(experiment.id);
       setCopilotPanelOpen(false);
       setCopilotIntent("");
-      setNotice("Approved AI proposal created an immutable revision 1");
+      setNotice("Revision 1 created from the reviewed draft");
       await queryClient.invalidateQueries({ queryKey: ["experiments"] });
     },
   });
@@ -218,7 +296,7 @@ export function App() {
   const validate = useMutation({
     mutationFn: () => api.validateRevision(revision.data!.id),
     onSuccess: (result) =>
-      setNotice(result.preflight.ok ? "Preflight passed — run gate is open" : "Preflight blocked the run"),
+      setNotice(result.preflight.ok ? "Preflight passed" : "Preflight blocked the run"),
   });
   const start = useMutation({
     mutationFn: () => api.startRun(selectedExperiment!.id, revision.data!.id),
@@ -237,13 +315,13 @@ export function App() {
     mutationFn: () => api.exportRun(selectedRun!.id),
     onSuccess: (artifact) => {
       setExportUrl(artifact.url);
-      setNotice("Immutable run snapshot is ready to download");
+      setNotice("Run bundle is ready to download");
       queryClient.invalidateQueries({ queryKey: ["runs"] });
     },
   });
   const compare = useMutation({
     mutationFn: (runIds: string[]) => api.compareRuns(runIds),
-    onSuccess: () => setNotice("Run comparison cites immutable artifacts and validation state"),
+    onSuccess: () => setNotice("Run comparison loaded"),
   });
   const decideAgentAction = useMutation({
     mutationFn: ({ id, approved }: { id: string; approved: boolean }) =>
@@ -275,6 +353,57 @@ export function App() {
     simulation.cell_size_m = cellSize;
     updateDraft(next);
   };
+  const updateCenterFrequency = (frequencyGhz: number) => {
+    if (!draft || !Number.isFinite(frequencyGhz) || frequencyGhz <= 0) return;
+    const next = deepCopy(draft);
+    const excitations = recordArray(next.excitations);
+    const matching = excitations.filter((item) => Number.isFinite(Number(item.f0_hz)));
+    if (!matching.length) return;
+    matching.forEach((item) => { item.f0_hz = frequencyGhz * 1e9; });
+    next.excitations = excitations;
+    updateDraft(next);
+  };
+  const updateSweep = (key: "start_hz" | "stop_hz" | "points", value: number) => {
+    if (!draft || !Number.isFinite(value) || value <= 0) return;
+    const next = deepCopy(draft);
+    const observations = recordArray(next.observations);
+    const excitations = recordArray(next.excitations);
+    const converted = key === "points" ? Math.round(value) : value * 1e9;
+    let changed = false;
+    observations.forEach((item) => {
+      if (["start_hz", "stop_hz", "points"].every((field) => field in item) && key in item) {
+        item[key] = converted;
+        changed = true;
+      }
+    });
+    excitations.forEach((item) => {
+      if (key in item && ["start_hz", "stop_hz", "points"].every((field) => field in item)) {
+        item[key] = converted;
+        changed = true;
+      }
+    });
+    if (!changed) return;
+    next.observations = observations;
+    next.excitations = excitations;
+    if (key === "stop_hz") {
+      const simulation = next.simulation as Record<string, JsonValue>;
+      simulation.freq_max_hz = value * 1e9;
+    }
+    updateDraft(next);
+  };
+  const moveWorkspaceTab = (event: KeyboardEvent<HTMLButtonElement>, current: WorkspaceTab) => {
+    const currentIndex = workspaceTabs.indexOf(current);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % workspaceTabs.length;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + workspaceTabs.length) % workspaceTabs.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = workspaceTabs.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextTab = workspaceTabs[nextIndex];
+    setTab(nextTab);
+    window.requestAnimationFrame(() => document.getElementById(`studio-tab-${nextTab}`)?.focus());
+  };
   const updateDraftText = (text: string) => {
     setDraftText(text);
     try {
@@ -303,7 +432,7 @@ export function App() {
       return;
     }
     if (!revision.data || revision.data.id !== copilotProposal.base_revision_id) {
-      setNotice("The proposal base is no longer current; ask the copilot again");
+      setNotice("The draft is based on an older revision; request the change again");
       setCopilotPanelOpen(false);
       return;
     }
@@ -314,7 +443,7 @@ export function App() {
     setPreviewError("");
     setTab("design");
     setCopilotPanelOpen(false);
-    setNotice("AI proposal loaded as an uncommitted draft — review the diff before approval");
+    setNotice("Design change loaded as an unsaved draft — review it before saving a revision");
   };
 
   const semanticPatch =
@@ -332,32 +461,60 @@ export function App() {
   const copilotProviderLabel = capabilities.data?.design_copilot.llm
     ? `OpenAI · ${capabilities.data.design_copilot.model}`
     : `Offline rules · ${capabilities.data?.design_copilot.model ?? "loading"}`;
+  const draftMetadata = draft ? draft.metadata as Record<string, JsonValue> : {};
+  const draftSimulation = draft ? draft.simulation as Record<string, JsonValue> : {};
+  const draftValidation = draft ? draft.validation as Record<string, JsonValue> : {};
+  const draftExcitations = draft ? recordArray(draft.excitations) : [];
+  const draftObservations = draft ? recordArray(draft.observations) : [];
+  const primaryExcitation = draftExcitations.find((item) => Number.isFinite(Number(item.f0_hz)));
+  const sparameterObservation = draftObservations.find((item) =>
+    ["start_hz", "stop_hz", "points"].every((key) => Number.isFinite(Number(item[key]))));
+  const excitationSweep = draftExcitations.find((item) =>
+    ["start_hz", "stop_hz", "points"].every((key) => Number.isFinite(Number(item[key]))));
+  const sweepDefinition = sparameterObservation ?? excitationSweep;
+  const centerFrequencyGhz = primaryExcitation ? Number(primaryExcitation.f0_hz) / 1e9 : 0;
+  const sweepStartGhz = sweepDefinition ? Number(sweepDefinition.start_hz) / 1e9 : 0;
+  const sweepStopGhz = sweepDefinition ? Number(sweepDefinition.stop_hz) / 1e9 : 0;
+  const sweepPoints = sweepDefinition ? Number(sweepDefinition.points) : 0;
+  const fidelityLabel = String(draftMetadata.fidelity ?? "unspecified") === "structural-cpu-smoke"
+    ? "CPU screening"
+    : String(draftMetadata.fidelity ?? "unspecified");
+  const claimLabel = String(draftMetadata.claims ?? "unspecified") === "not-for-quantitative-rf-validation"
+    ? "No quantitative RF claim"
+    : String(draftMetadata.claims ?? "unspecified");
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="Experiment browser">
+      <aside className="sidebar" aria-label="Study browser">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">rƒ</span>
           <div><strong>rfx Studio</strong><span>CPU workbench</span></div>
         </div>
         <button className="new-button" onClick={() => create.mutate()} disabled={create.isPending}>
-          <span aria-hidden="true">＋</span> New patch experiment
+          <span aria-hidden="true">＋</span> New patch study
         </button>
-        <nav aria-label="Experiments" className="experiment-list">
-          <p className="sidebar-label">Experiments</p>
-          {experiments.isLoading && <p className="muted">Loading workspace…</p>}
+        <nav aria-label="Studies" className="experiment-list">
+          <p className="sidebar-label">Studies</p>
+          {experiments.isLoading && <p className="muted">Loading studies…</p>}
           {experiments.data?.map((experiment) => (
             <button
               key={experiment.id}
               className={experiment.id === selectedExperimentId ? "experiment active" : "experiment"}
-              onClick={() => setSelectedExperimentId(experiment.id)}
+              onClick={() => {
+                setNotice("");
+                setExportUrl("");
+                setSelectedRunId("");
+                setCopilotProposal(null);
+                compare.reset();
+                setSelectedExperimentId(experiment.id);
+              }}
             >
               <span className="experiment-icon" aria-hidden="true">⌁</span>
               <span><strong>{experiment.title}</strong><small>Revision {experiment.revision_count}</small></span>
             </button>
           ))}
           {!experiments.isLoading && !experiments.data?.length && (
-            <div className="empty-sidebar"><span>∿</span><p>No experiments yet</p></div>
+            <div className="empty-sidebar"><span>∿</span><p>No studies yet</p></div>
           )}
         </nav>
         <div className="system-card">
@@ -370,22 +527,22 @@ export function App() {
         <header className="topbar">
           <div>
             <p className="breadcrumb">WORKSPACE / {selectedExperiment ? selectedExperiment.title.toUpperCase() : "START"}</p>
-            <h1>{selectedExperiment?.title ?? "Build an RF experiment"}</h1>
+            <h1>{selectedExperiment?.title ?? "New RF study"}</h1>
           </div>
           <div className="topbar-actions">
             <button
               className="copilot-button"
               onClick={() => setCopilotPanelOpen(true)}
-              aria-label="Open design copilot"
+              aria-label="Open design assistant"
             >
-              <span aria-hidden="true">✦</span> Design copilot
+              <span aria-hidden="true">Δ</span> Design assistant
             </button>
             <button
               className={pendingApprovals.data?.length ? "agent-button pending" : "agent-button"}
               onClick={() => setAgentPanelOpen(true)}
-              aria-label={`Agent approvals${pendingApprovals.data?.length ? `, ${pendingApprovals.data.length} pending` : ""}`}
+              aria-label={`Tool approvals${pendingApprovals.data?.length ? `, ${pendingApprovals.data.length} pending` : ""}`}
             >
-              <span aria-hidden="true">⌾</span> Approvals
+              <span aria-hidden="true">⌾</span> Tool approvals
               {Boolean(pendingApprovals.data?.length) && <b>{pendingApprovals.data?.length}</b>}
             </button>
             {revision.data && (
@@ -400,9 +557,9 @@ export function App() {
         {!selectedExperiment ? (
           <section className="welcome" aria-labelledby="welcome-heading">
             <div className="wave-glyph" aria-hidden="true">∿</div>
-            <p className="eyebrow">One model · human and AI editable</p>
-            <h2 id="welcome-heading">Describe the RF evidence you need</h2>
-            <p>The copilot proposes a canonical ExperimentSpec and deterministic rfx code. Nothing is saved or run until you review the physics, CPU budget, and semantic diff.</p>
+            <p className="eyebrow">Model · excitation · sweep · outputs</p>
+            <h2 id="welcome-heading">Set up an RF simulation</h2>
+            <p>Describe the device, materials, excitation, frequency range, and requested outputs. Review the model and CPU estimate before saving the first revision.</p>
             <IntentComposer
               intent={copilotIntent}
               onIntentChange={setCopilotIntent}
@@ -410,7 +567,7 @@ export function App() {
               pending={proposeDesign.isPending}
               providerLabel={copilotProviderLabel}
             />
-            <div className="template-fallback"><span>or</span><button className="secondary" onClick={() => create.mutate()} disabled={create.isPending}>Create patch antenna</button></div>
+            <div className="template-fallback"><span>or</span><button className="secondary" onClick={() => create.mutate()} disabled={create.isPending}>Load patch example</button></div>
             {create.error && <p role="alert" className="error-banner">{errorText(create.error)}</p>}
           </section>
         ) : revision.isLoading || !revision.data || !draft || !activePreview ? (
@@ -418,21 +575,31 @@ export function App() {
         ) : (
           <>
             <div className="toolbar">
-              <div className="tabs" role="tablist" aria-label="Experiment workspace views">
-                {(["design", "code", "results"] as const).map((item) => (
+              <div className="tabs" role="tablist" aria-label="Study workspace views">
+                {workspaceTabs.map((item) => (
                   <button
                     key={item}
+                    id={`studio-tab-${item}`}
                     role="tab"
                     aria-selected={tab === item}
+                    aria-controls={`studio-panel-${item}`}
+                    tabIndex={tab === item ? 0 : -1}
                     onClick={() => setTab(item)}
+                    onKeyDown={(event) => moveWorkspaceTab(event, item)}
                   >
-                    {item === "design" ? "Design" : item === "code" ? "Spec & Code" : `Results${experimentRuns.length ? ` · ${experimentRuns.length}` : ""}`}
+                    {item === "design"
+                      ? "Design"
+                      : item === "setup"
+                        ? "Setup"
+                        : item === "code"
+                          ? "Model & Code"
+                          : `Results${experimentRuns.length ? ` · ${experimentRuns.length}` : ""}`}
                   </button>
                 ))}
               </div>
               <div className="toolbar-actions">
                 <span className={activePreview.preflight.ok && !previewError ? "gate pass" : "gate fail"}>
-                  {activePreview.preflight.ok && !previewError ? "✓ Preflight ready" : "! Run blocked"}
+                  {activePreview.preflight.ok && !previewError ? "✓ Preflight passed" : "! Preflight blocked"}
                 </span>
                 <button className="secondary" onClick={() => validate.mutate()} disabled={validate.isPending}>Validate</button>
                 <button
@@ -464,40 +631,83 @@ export function App() {
               </div>
             )}
 
+            <div
+              id={`studio-panel-${tab}`}
+              role="tabpanel"
+              aria-labelledby={`studio-tab-${tab}`}
+              tabIndex={0}
+            >
             {tab === "design" && (
               <div className="design-grid">
                 <section className="panel editor-panel" aria-labelledby="parameters-heading">
                   <header className="panel-heading">
-                    <div><p className="eyebrow">Structured spec</p><h2 id="parameters-heading">Design parameters</h2></div>
+                    <div><p className="eyebrow">Study definition</p><h2 id="parameters-heading">Primary parameters</h2></div>
                     <span className="schema-pill">v2</span>
                   </header>
                   <div className="form-stack">
-                    <label>Experiment title
+                    <label>Study name
                       <input
-                        aria-label="Experiment title"
-                        value={String((draft.metadata as Record<string, JsonValue>).title)}
+                        aria-label="Study name"
+                        value={String(draftMetadata.title)}
                         onChange={(event) => updateMetadataTitle(event.target.value)}
                       />
                     </label>
                     <div className="field-row">
-                      <label>Center frequency <div className="input-unit"><input value="2.40" readOnly /><span>GHz</span></div></label>
+                      <label>Center frequency <div className="input-unit"><input
+                        aria-label="Center frequency in GHz"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={centerFrequencyGhz || ""}
+                        disabled={!primaryExcitation}
+                        onChange={(event) => updateCenterFrequency(event.target.valueAsNumber)}
+                      /><span>GHz</span></div></label>
                       <label>Cell size <div className="input-unit"><input
                         aria-label="Cell size in meters"
                         type="number"
                         step="0.0001"
-                        value={Number((draft.simulation as Record<string, JsonValue>).cell_size_m)}
+                        value={Number(draftSimulation.cell_size_m)}
                         onChange={(event) => updateCellSize(event.target.valueAsNumber)}
                       /><span>m</span></div></label>
+                    </div>
+                    <div className="field-row sweep-fields">
+                      <label>Sweep start <div className="input-unit"><input
+                        aria-label="Sweep start in GHz"
+                        type="number"
+                        step="0.05"
+                        min="0.01"
+                        value={sweepStartGhz || ""}
+                        disabled={!sweepDefinition}
+                        onChange={(event) => updateSweep("start_hz", event.target.valueAsNumber)}
+                      /><span>GHz</span></div></label>
+                      <label>Sweep stop <div className="input-unit"><input
+                        aria-label="Sweep stop in GHz"
+                        type="number"
+                        step="0.05"
+                        min="0.01"
+                        value={sweepStopGhz || ""}
+                        disabled={!sweepDefinition}
+                        onChange={(event) => updateSweep("stop_hz", event.target.valueAsNumber)}
+                      /><span>GHz</span></div></label>
+                      <label>Sweep samples <input
+                        aria-label="Sweep sample count"
+                        type="number"
+                        step="1"
+                        min="2"
+                        value={sweepPoints || ""}
+                        disabled={!sweepDefinition}
+                        onChange={(event) => updateSweep("points", event.target.valueAsNumber)}
+                      /></label>
                     </div>
                     <fieldset>
                       <legend>Execution</legend>
                       <div className="readonly-row"><span>Backend</span><strong>CPU</strong></div>
-                      <div className="readonly-row"><span>Fidelity</span><strong>Structural smoke</strong></div>
+                      <div className="readonly-row"><span>Run class</span><strong>{fidelityLabel}</strong></div>
                     </fieldset>
                   </div>
 
                   <div className="diff-panel" aria-live="polite">
-                    <div className="diff-title"><strong>Semantic diff</strong><span>{semanticPatch.length} change{semanticPatch.length === 1 ? "" : "s"}</span></div>
+                    <div className="diff-title"><strong>Pending changes</strong><span>{semanticPatch.length} change{semanticPatch.length === 1 ? "" : "s"}</span></div>
                     {semanticPatch.length ? (
                       <>
                         <ol>{semanticPatch.slice(0, 5).map((operation) => (
@@ -507,16 +717,16 @@ export function App() {
                           className="approve-button"
                           onClick={() => save.mutate()}
                           disabled={save.isPending || Boolean(previewError) || !activePreview.preflight.ok}
-                        >Approve & create revision</button>
+                        >Save as new revision</button>
                       </>
-                    ) : <p className="muted">Revision and proposal are aligned.</p>}
+                    ) : <p className="muted">No unsaved changes.</p>}
                   </div>
                 </section>
 
                 <section className="panel geometry-panel" aria-labelledby="geometry-heading">
                   <header className="panel-heading geometry-heading">
-                    <div><p className="eyebrow">Live scene</p><h2 id="geometry-heading">Geometry preview</h2></div>
-                    <span className="latency">{previewLatency === null ? "canonical" : `${Math.round(previewLatency)} ms`}</span>
+                    <div><p className="eyebrow">Model view</p><h2 id="geometry-heading">Geometry</h2></div>
+                    <span className="latency">{previewLatency === null ? "up to date" : `${Math.round(previewLatency)} ms`}</span>
                   </header>
                   <SceneViewer scene={activePreview.scene} selected={selectedObject} onSelect={setSelectedObject} />
                   <div className="object-strip" aria-label="Scene objects">
@@ -535,12 +745,12 @@ export function App() {
 
                 <section className="panel preflight-panel" aria-labelledby="preflight-heading">
                   <header className="panel-heading">
-                    <div><p className="eyebrow">Run gate</p><h2 id="preflight-heading">Preflight</h2></div>
+                    <div><p className="eyebrow">Run checks</p><h2 id="preflight-heading">Preflight</h2></div>
                     <span className={activePreview.preflight.ok && !previewError ? "score good" : "score bad"}>{activePreview.preflight.ok && !previewError ? "PASS" : "BLOCK"}</span>
                   </header>
                   {previewError ? (
                     <button className="issue error-issue" onClick={() => setTab("code")}>
-                      <span>!</span><div><strong>Proposal is invalid</strong><p>{previewError}</p><small>Open Spec & Code to fix the cited field.</small></div>
+                      <span>!</span><div><strong>Setup is invalid</strong><p>{previewError}</p><small>Open Model & Code to fix the cited field.</small></div>
                     </button>
                   ) : activePreview.preflight.issues.length ? (
                     <div className="issue-list">{activePreview.preflight.issues.map((issue, index) => (
@@ -549,32 +759,41 @@ export function App() {
                       </button>
                     ))}</div>
                   ) : (
-                    <div className="preflight-ok"><span>✓</span><div><strong>No blocking issues</strong><p>Canonical compiler and solver preflight agree.</p></div></div>
+                    <div className="preflight-ok"><span>✓</span><div><strong>Preflight passed</strong><p>Model, solver settings, and CPU limits passed the run checks.</p></div></div>
                   )}
                   <div className="gate-facts">
-                    <div><span>Support lane</span><strong>patch-antenna</strong></div>
-                    <div><span>Device</span><strong>CPU / float32</strong></div>
-                    <div><span>Claim</span><strong>structural only</strong></div>
+                    <div><span>Support lane</span><strong>{String(draftValidation.support_lane ?? "unspecified")}</strong></div>
+                    <div><span>Device</span><strong>CPU / {String(draftSimulation.precision ?? "unspecified")}</strong></div>
+                    <div><span>Result use</span><strong>{claimLabel}</strong></div>
                   </div>
                 </section>
               </div>
             )}
 
+            {tab === "setup" && (
+              <EngineeringSetup
+                spec={draft}
+                scene={activePreview.scene}
+                preflight={activePreview.preflight}
+                onOpenSpec={() => setTab("code")}
+              />
+            )}
+
             {tab === "code" && (
               <div className="code-grid">
                 <section className="panel code-panel" aria-labelledby="spec-heading">
-                  <header className="panel-heading"><div><p className="eyebrow">Editable proposal</p><h2 id="spec-heading">ExperimentSpec JSON</h2></div><span className="schema-pill">canonical</span></header>
+                  <header className="panel-heading"><div><p className="eyebrow">Input model</p><h2 id="spec-heading">ExperimentSpec</h2></div><span className="schema-pill">editable</span></header>
                   <CodeEditor label="ExperimentSpec JSON editor" value={draftText} onChange={updateDraftText} />
                 </section>
                 <section className="panel code-panel" aria-labelledby="python-heading">
-                  <header className="panel-heading"><div><p className="eyebrow">Deterministic export</p><h2 id="python-heading">Generated Python</h2></div><span className="schema-pill">read only</span></header>
+                  <header className="panel-heading"><div><p className="eyebrow">Solver setup</p><h2 id="python-heading">Generated Python</h2></div><span className="schema-pill">read only</span></header>
                   <CodeEditor label="Generated Python" value={activePreview.generated_python} readOnly />
                 </section>
                 <section className="panel diff-wide" aria-labelledby="code-diff-heading">
-                  <header className="panel-heading"><div><p className="eyebrow">Review before state change</p><h2 id="code-diff-heading">Semantic proposal</h2></div></header>
+                  <header className="panel-heading"><div><p className="eyebrow">Unsaved model edits</p><h2 id="code-diff-heading">Pending changes</h2></div></header>
                   {semanticPatch.length ? <div className="diff-table">{semanticPatch.map((operation) => (
                     <div key={`${operation.op}-${operation.path}`}><code>{operation.op}</code><strong>{operation.path}</strong><span>{operation.op === "remove" ? "removed" : JSON.stringify(operation.value)}</span></div>
-                  ))}</div> : <p className="muted padded">No changes from immutable revision {revision.data.sequence}.</p>}
+                  ))}</div> : <p className="muted padded">No changes from saved revision {revision.data.sequence}.</p>}
                 </section>
               </div>
             )}
@@ -582,7 +801,7 @@ export function App() {
             {tab === "results" && (
               <div className="results-layout">
                 <aside className="run-list panel" aria-label="Run history">
-                  <header className="panel-heading"><div><p className="eyebrow">Durable queue</p><h2>Runs</h2></div>{experimentRuns.length >= 2 && <button className="compare-button" onClick={() => compare.mutate(experimentRuns.slice(0, 2).map((run) => run.id))}>Compare 2</button>}</header>
+                  <header className="panel-heading"><div><p className="eyebrow">Job queue</p><h2>Runs</h2></div>{experimentRuns.length >= 2 && draft.kind !== "multilayer_fresnel" && <button className="compare-button" onClick={() => compare.mutate(experimentRuns.slice(0, 2).map((run) => run.id))}>Compare 2</button>}</header>
                   {experimentRuns.length ? experimentRuns.map((run) => (
                     <button key={run.id} className={run.id === selectedRun?.id ? "run-row active" : "run-row"} onClick={() => setSelectedRunId(run.id)}>
                       <span className={`run-state ${run.state}`} />
@@ -595,21 +814,21 @@ export function App() {
                 <div className="results-main">
                   {compare.data && (
                     <section className="comparison-card panel" aria-labelledby="comparison-heading">
-                      <header className="card-header"><div><p className="eyebrow">Cited immutable runs</p><h2 id="comparison-heading">Run comparison</h2></div><span className="schema-pill">baseline {compare.data.baseline_run_id.slice(0, 6)}</span></header>
+                      <header className="card-header"><div><p className="eyebrow">Saved runs</p><h2 id="comparison-heading">Run comparison</h2></div><span className="schema-pill">baseline {compare.data.baseline_run_id.slice(0, 6)}</span></header>
                       <div className="comparison-table">
-                        <div className="comparison-header"><span>Run</span><span>Min S11</span><span>Resonance</span><span>Δ dB</span><span>Field Δ L2</span><span>Status</span></div>
-                        {compare.data.rows.map((row) => <div key={row.run_id}><code>{row.run_id.slice(0, 8)}</code><strong>{row.minimum_s11_db.toFixed(2)} dB</strong><span>{(row.minimum_s11_frequency_hz / 1e9).toFixed(2)} GHz</span><span>{row.delta_minimum_s11_db_vs_baseline.toFixed(2)}</span><span>{row.field_normalized_l2_delta_vs_baseline?.toExponential(2) ?? "n/a"}</span><span className="comparison-status">{row.validation_status}</span></div>)}
+                        <div className="comparison-header"><span>Run</span><span>Min S11</span><span>Resonance</span><span>Δ dB</span><span>Field Δ L2</span><span>Revision state</span></div>
+                        {compare.data.rows.map((row) => <div key={row.run_id}><code>{row.run_id.slice(0, 8)}</code><strong>{row.minimum_s11_db.toFixed(2)} dB</strong><span>{(row.minimum_s11_frequency_hz / 1e9).toFixed(2)} GHz</span><span>{row.delta_minimum_s11_db_vs_baseline.toFixed(2)}</span><span>{row.field_normalized_l2_delta_vs_baseline?.toExponential(2) ?? "n/a"}</span><span className="comparison-status">revision {row.validation_status}</span></div>)}
                       </div>
                       <p className="comparison-limitation">{compare.data.limitations.join(" · ")}</p>
                     </section>
                   )}
                   {!selectedRun ? (
-                    <section className="panel result-empty"><div className="wave-glyph">∿</div><h2>Evidence appears here</h2><p>Run the current immutable revision to inspect RF outputs and provenance.</p></section>
+                    <section className="panel result-empty"><div className="wave-glyph">∿</div><h2>No run selected</h2><p>Start a CPU run to inspect the primary RF observable, fields, and run details.</p></section>
                   ) : (
                     <>
                       <section className="run-console panel" aria-labelledby="run-heading">
                         <header className="card-header">
-                          <div><p className="eyebrow">Isolated CPU worker</p><h2 id="run-heading">Run {selectedRun.id.slice(0, 8)}</h2></div>
+                          <div><p className="eyebrow">CPU solver</p><h2 id="run-heading">Run {selectedRun.id.slice(0, 8)}</h2></div>
                           <div className="run-actions">
                             {!terminalStates.has(selectedRun.state) && <button className="danger" onClick={() => cancel.mutate(selectedRun)}>Cancel</button>}
                             {terminalStates.has(selectedRun.state) && <button className="secondary" onClick={() => exportRun.mutate()} disabled={exportRun.isPending}>Export bundle</button>}
@@ -627,17 +846,47 @@ export function App() {
                       </section>
 
                       {selectedRun.state === "succeeded" && s11.data ? (
-                        <div className="plots-grid"><S11Plot artifact={s11.data} /><SmithChart artifact={s11.data} />
-                          {fieldSlice.data ? <FieldSlicePlot artifact={fieldSlice.data} /> : <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Declared observation</p><h3>Field slice</h3></div><span className="availability-tag">loading</span></header><div className="field-placeholder"><span>Ez</span><p>The immutable final-state field plane is loading from its checksummed artifact.</p></div></section>}
-                          <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Observable coverage</p><h3>Time series & far field</h3></div><span className="availability-tag">not requested</span></header><div className="field-placeholder"><span>t / θ</span><p>This revision requests neither a time probe nor NTFF surface. The absence is explicit, rather than an empty chart.</p></div></section>
-                          <section className="result-card validation-card"><header className="card-header"><div><p className="eyebrow">Evidence boundary</p><h3>Validation & limitations</h3></div></header><ul><li><span className="check">✓</span> Lifecycle and S11 schema validated</li><li><span className="check">✓</span> CPU provenance recorded</li><li><span className="warn">!</span> Structural smoke; not quantitative RF validation</li></ul></section>
-                        </div>
-                      ) : selectedRun.state === "succeeded" ? <div className="loading-panel">Loading immutable S11 artifact…</div> : null}
+                        <>
+                          <EngineeringEvidence
+                            artifact={s11.data}
+                            run={selectedRun}
+                            revision={runRevision.data}
+                            fieldSlice={fieldSlice.data}
+                            fieldSliceStatus={fieldSliceStatus}
+                          />
+                          <div className="plots-grid"><S11Plot artifact={s11.data} /><SmithChart artifact={s11.data} />
+                          <FieldOutput artifact={fieldSlice.data} status={fieldSliceStatus} />
+                          <section className="result-card availability"><header className="card-header"><div><p className="eyebrow">Additional outputs</p><h3>Time series & far field</h3></div><span className="availability-tag">not requested</span></header><div className="field-placeholder"><span>t / θ</span><p>No time probe or NTFF surface was requested for this revision.</p></div></section>
+                          </div>
+                        </>
+                      ) : selectedRun.state === "succeeded" && sParameters.data ? (
+                        <>
+                          <SMatrixEvidence artifact={sParameters.data} run={selectedRun} revision={runRevision.data} fieldStatus={fieldSliceStatus} />
+                          <div className="plots-grid">
+                            <SMatrixPlot artifact={sParameters.data} />
+                            <SMatrixSnapshot artifact={sParameters.data} />
+                            <FieldOutput artifact={fieldSlice.data} status={fieldSliceStatus} />
+                          </div>
+                        </>
+                      ) : selectedRun.state === "succeeded" && reflectionTransmission.data ? (
+                        <>
+                          <FresnelEvidence artifact={reflectionTransmission.data} run={selectedRun} revision={runRevision.data} fieldStatus={fieldSliceStatus} />
+                          <div className="plots-grid workflow-plots">
+                            <FresnelPlot artifact={reflectionTransmission.data} />
+                            <FieldOutput artifact={fieldSlice.data} status={fieldSliceStatus} />
+                          </div>
+                        </>
+                      ) : selectedRun.state === "succeeded" && (s11.error || sParameters.error || reflectionTransmission.error) ? (
+                        <p className="error-banner" role="alert">{errorText(s11.error ?? sParameters.error ?? reflectionTransmission.error)}</p>
+                      ) : selectedRun.state === "succeeded" && !s11Artifact && !sParametersArtifact && !reflectionTransmissionArtifact ? (
+                        <p className="error-banner" role="alert">Run succeeded without a supported primary RF result artifact. Inspect the event log and exported bundle.</p>
+                      ) : selectedRun.state === "succeeded" ? <div className="loading-panel">Loading {sParametersArtifact ? "S-matrix" : reflectionTransmissionArtifact ? "reflection / transmission" : "RF"} results…</div> : null}
                     </>
                   )}
                 </div>
               </div>
             )}
+            </div>
           </>
         )}
       </main>
@@ -654,15 +903,15 @@ export function App() {
         <div className="agent-scrim" role="presentation" onMouseDown={() => setAgentPanelOpen(false)}>
           <aside
             className="agent-panel"
-            aria-label="Agent approvals and audit"
+            aria-label="Tool approvals and audit"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header>
-              <div><p className="eyebrow">Vendor-neutral MCP</p><h2>Agent control plane</h2></div>
-              <button aria-label="Close agent panel" onClick={() => setAgentPanelOpen(false)}>×</button>
+              <div><p className="eyebrow">External MCP requests</p><h2>Tool approvals</h2></div>
+              <button aria-label="Close tool approvals" onClick={() => setAgentPanelOpen(false)}>×</button>
             </header>
             <div className="agent-security-note">
-              <span>⌾</span><p><strong>Exact-arguments gate</strong>Approval is one-shot and bound to the actor, tool, and SHA-256 of every argument.</p>
+              <span>⌾</span><p><strong>Exact call only</strong>Approval applies once to this actor, tool, and exact argument hash. Any change requires a new approval.</p>
             </div>
             <section aria-labelledby="pending-agent-heading">
               <div className="agent-section-title"><h3 id="pending-agent-heading">Pending approval</h3><span>{pendingApprovals.data?.length ?? 0}</span></div>
@@ -677,10 +926,10 @@ export function App() {
                     <button className="approve-action" onClick={() => decideAgentAction.mutate({ id: approval.id, approved: true })}>Approve exact call</button>
                   </div>
                 </article>
-              )) : <div className="agent-empty"><span>✓</span><p>No state-changing agent action is waiting.</p></div>}
+              )) : <div className="agent-empty"><span>✓</span><p>No tool call is waiting for approval.</p></div>}
             </section>
             <section aria-labelledby="audit-heading">
-              <div className="agent-section-title"><h3 id="audit-heading">Append-only audit</h3><span>{agentAudit.data?.length ?? 0}</span></div>
+              <div className="agent-section-title"><h3 id="audit-heading">Tool history</h3><span>{agentAudit.data?.length ?? 0}</span></div>
               <ol className="agent-audit" tabIndex={0}>
                 {agentAudit.data?.slice().reverse().slice(0, 20).map((event) => (
                   <li key={event.id}>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import hashlib
 import ipaddress
 from pathlib import Path
 from typing import Any
@@ -226,6 +227,7 @@ def create_app(
 
         try:
             compiled = compile_experiment(spec)
+            preflight = compiled.preflight()
         except Exception as exc:
             raise _http_error(exc) from exc
         return {
@@ -233,17 +235,9 @@ def create_app(
             "semantic_fingerprint": compiled.semantic_fingerprint,
             "scene": compiled.scene_preview(),
             "generated_python": compiled.generated_python,
-            # Full solver preflight is deliberately reserved for revision
-            # creation and the explicit validate endpoint.  Geometry/code
-            # preview must stay responsive and the canonical parser/compiler
-            # already rejects structurally invalid proposals here.
-            "preflight": {
-                "ok": True,
-                "n_issues": 0,
-                "n_errors": 0,
-                "issues": [],
-                "preview_only": True,
-            },
+            # A draft must pass the same solver-aware gate as a persisted
+            # revision before Studio presents it as safe to save or run.
+            "preflight": preflight,
             "diagnostics": [item.to_dict() for item in compiled.diagnostics],
         }
 
@@ -464,6 +458,20 @@ def create_app(
                 detail={
                     "code": "artifact_unavailable",
                     "message": "artifact is unavailable",
+                },
+            )
+        actual_size = path.stat().st_size
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        actual_sha256 = digest.hexdigest()
+        if actual_size != artifact.size_bytes or actual_sha256 != artifact.sha256:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "artifact_integrity_error",
+                    "message": "artifact bytes do not match the registered digest",
                 },
             )
         media_type = {

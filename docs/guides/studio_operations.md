@@ -14,6 +14,42 @@ installation. `RFX_TELEMETRY` defaults to `off`; `on` permits only a short
 allowlist of operational fields and rejects spec, prompt, artifact, path,
 secret, token, and key fields.
 
+## Engineering review workflow
+
+Use the Studio views in the same order as a normal RF simulation review:
+
+1. **Design** previews geometry and blocks invalid drafts at preflight.
+2. **Setup** reviews the domain and grid estimate, materials and
+   geometry assignments, ports/excitations, boundary conditions, requested
+   observations, frequency sweep, and CPU solve contract.
+3. **Model & Code** shows the editable ExperimentSpec, generated Python, and
+   pending changes against the saved revision.
+4. **Results** shows run events and the RF run summary before the
+   individual S11, Smith, and field plots.
+
+Studio intentionally separates **preflight** from **result confidence**.
+Preflight answers only whether the model can be compiled and started inside
+the declared CPU/resource boundary. Result confidence also
+considers the declared fidelity, minimum-feature grid resolution, sweep sample
+density, recorded diagnostics, and result advisories. A passed preflight does
+not mean the setup is ready for a quantitative RF claim.
+
+The run summary derives S11 minimum, VSWR, sampled -10 dB bandwidth,
+and sweep resolution only from the checksummed run artifact. It also cites the
+spec, compiled-model, runtime/package, and artifact identities. Solver-native
+convergence history, mesh statistics, or port diagnostics are labeled **not
+recorded** when absent; a successful lifecycle does not imply those checks
+passed. The bundled patch workflow remains a structural CPU smoke test, not a
+calibrated quantitative RF reference.
+
+The Design view reads center frequency and S-parameter sweep controls from the
+ExperimentSpec. Editing them creates the same preview and pending-change review
+as editing JSON or accepting an assistant draft. Results warn when a sampled
+S11 minimum occurs at a sweep edge, when frequency coverage is sparse, or when
+a requested field plane is snapped to the nearest solved grid plane. Declared
+validation checks whose results are not persisted remain labeled as declarations,
+not as passed checks.
+
 ## Schema, backup, restore, and replay compatibility
 
 ```bash

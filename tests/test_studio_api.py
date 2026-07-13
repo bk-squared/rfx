@@ -9,9 +9,11 @@ import pytest
 
 from rfx.studio.api import create_app
 from rfx.studio.cli import build_parser, validate_launch_security
+from rfx.studio.copilot import LocalCopilotProvider
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_v2.json"
+TEMPLATE_ROOT = Path(__file__).parents[1] / "rfx" / "studio" / "templates"
 
 
 def _spec() -> dict:
@@ -163,6 +165,11 @@ def test_copilot_rejects_protected_model_patch(tmp_path):
 
 def test_create_read_preview_generated_code_and_patch_conflict(tmp_path):
     with _client(tmp_path) as client:
+        preview = client.post("/api/preview", json=_spec())
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["preflight"]["n_issues"] > 0
+        assert "preview_only" not in preview.json()["preflight"]
+
         created = client.post("/api/experiments", json=_spec())
         assert created.status_code == 201, created.text
         payload = created.json()
@@ -256,6 +263,124 @@ def test_patch_run_journey_reaches_immutable_artifact(tmp_path):
             )
             bundled_field = json.loads(archive.read(field_index["logical_path"]))
             assert bundled_field["schema_version"] == "rfx-field-slice-artifact/v1"
+
+        field_record = client.app.state.service.application_repository.get_artifact(
+            field["id"]
+        )
+        field_path = Path(field_record.path)
+        field_path.chmod(0o600)
+        field_path.write_bytes(b"tampered artifact")
+        tampered = client.get(field["url"])
+        assert tampered.status_code == 409
+        assert tampered.json()["detail"]["code"] == "artifact_integrity_error"
+
+
+def test_local_copilot_applies_advertised_sweep_change_across_workflows(tmp_path):
+    with _client(tmp_path, copilot_provider=LocalCopilotProvider()) as client:
+        center_only = client.post(
+            "/api/copilot/proposals",
+            json={"intent": "2.4 GHz patch antenna를 만들어줘"},
+        )
+        assert center_only.status_code == 200, center_only.text
+        assert center_only.json()["candidate_spec"]["simulation"]["freq_max_hz"] == 3e9
+
+        patch = client.post(
+            "/api/copilot/proposals",
+            json={"intent": "sweep을 3.5 GHz까지 늘리고 41 points로 변경"},
+        )
+        assert patch.status_code == 200, patch.text
+        patch_spec = patch.json()["candidate_spec"]
+        assert patch_spec["observations"][0]["stop_hz"] == 3.5e9
+        assert patch_spec["observations"][0]["points"] == 41
+        assert patch_spec["simulation"]["freq_max_hz"] == 3.5e9
+
+        wr90 = client.post(
+            "/api/copilot/proposals",
+            json={"intent": "WR-90 sweep을 12 GHz까지 늘리고 17 points로 변경"},
+        )
+        assert wr90.status_code == 200, wr90.text
+        wr90_spec = wr90.json()["candidate_spec"]
+        assert wr90_spec["kind"] == "wr90_waveguide"
+        assert {item["stop_hz"] for item in wr90_spec["excitations"]} == {12e9}
+        assert {item["points"] for item in wr90_spec["excitations"]} == {17}
+
+
+@pytest.mark.parametrize("template_name", ["wr90_waveguide", "multilayer_fresnel"])
+def test_browser_integer_frequency_json_preflights_without_jax_overflow(
+    tmp_path, template_name
+):
+    spec = json.loads(
+        (TEMPLATE_ROOT / f"{template_name}.json").read_text(encoding="utf-8")
+    )
+    spec["simulation"]["freq_max_hz"] = int(spec["simulation"]["freq_max_hz"])
+    for section in ("excitations", "observations"):
+        for item in spec[section]:
+            for field in ("f0_hz", "start_hz", "stop_hz"):
+                if field in item:
+                    item[field] = int(item[field])
+    with _client(tmp_path) as client:
+        preview = client.post("/api/preview", json=spec)
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["preflight"]["ok"] is True
+
+
+@pytest.mark.parametrize(
+    ("template_name", "artifact_kind", "schema_version", "analysis_kind"),
+    [
+        (
+            "wr90_waveguide",
+            "sparameters",
+            "rfx-sparameters-artifact/v1",
+            "sparameters",
+        ),
+        (
+            "multilayer_fresnel",
+            "reflection-transmission",
+            "rfx-reflection-transmission-artifact/v1",
+            "reflection-transmission",
+        ),
+    ],
+)
+def test_non_patch_workflows_publish_studio_readable_primary_results(
+    tmp_path, template_name, artifact_kind, schema_version, analysis_kind
+):
+    spec = json.loads(
+        (TEMPLATE_ROOT / f"{template_name}.json").read_text(encoding="utf-8")
+    )
+    with _client(tmp_path) as client:
+        created = client.post("/api/experiments", json=spec)
+        assert created.status_code == 201, created.text
+        experiment_id = created.json()["experiment"]["id"]
+        started = client.post(
+            f"/api/experiments/{experiment_id}/runs",
+            json={"idempotency_key": f"studio-{template_name}-result"},
+        )
+        assert started.status_code == 202, started.text
+        run_id = started.json()["id"]
+
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            run = client.get(f"/api/runs/{run_id}").json()
+            if run["state"] in {"succeeded", "failed", "cancelled"}:
+                break
+            time.sleep(0.1)
+        assert run["state"] == "succeeded", run
+        primary = next(
+            item for item in run["artifacts"] if item["kind"] == artifact_kind
+        )
+        result = client.get(primary["url"])
+        assert result.status_code == 200, result.text
+        assert result.json()["schema_version"] == schema_version
+        assert len(result.json()["points"]) >= 2
+        field = next(item for item in run["artifacts"] if item["kind"] == "field-slice")
+        field_payload = client.get(field["url"]).json()
+        assert field_payload["actual_coordinate_m"] == pytest.approx(
+            field_payload["requested_coordinate_m"]
+        )
+
+        analysis = client.get(f"/api/runs/{run_id}/analysis")
+        assert analysis.status_code == 200, analysis.text
+        assert analysis.json()["analysis"]["analysis_kind"] == analysis_kind
 
 
 def test_static_spa_fallback_and_loopback_host_guard(tmp_path):

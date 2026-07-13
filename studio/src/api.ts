@@ -7,9 +7,11 @@ import type {
   FieldSliceArtifact,
   JsonPatchOperation,
   Revision,
+  ReflectionTransmissionArtifact,
   RunComparison,
   RunRecord,
   S11Artifact,
+  SParametersArtifact,
   StudioCapabilities,
 } from "./types";
 
@@ -89,6 +91,9 @@ export const api = {
       { method: "POST" },
     ),
   readS11: (url: string) => request<S11Artifact>(url),
+  readSParameters: (url: string) => request<SParametersArtifact>(url),
+  readReflectionTransmission: (url: string) =>
+    request<ReflectionTransmissionArtifact>(url),
   readFieldSlice: (url: string) => request<FieldSliceArtifact>(url),
   compareRuns: (runIds: string[]) =>
     request<RunComparison>("/api/runs/compare", {

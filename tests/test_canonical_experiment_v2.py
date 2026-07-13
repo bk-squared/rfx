@@ -158,6 +158,18 @@ def test_public_compiler_dispatches_v2_and_json_schema_is_checked_in():
             "unsupported_workflow",
             "$.kind",
         ),
+        (
+            lambda document: document["observations"][1].update({"axis": "q"}),
+            "unsupported_variant",
+            "$.observations[1].axis",
+        ),
+        (
+            lambda document: document["observations"][1].update(
+                {"coordinate_m": 1.0}
+            ),
+            "range_error",
+            "$.observations[1].coordinate_m",
+        ),
     ],
 )
 def test_unsupported_or_unknown_features_return_coded_compile_errors(
@@ -188,6 +200,19 @@ def test_metadata_edits_preserve_semantics_but_physics_edits_change_it():
     assert base.sha256 != title_only.sha256
     assert base.semantic_fingerprint == title_only.semantic_fingerprint
     assert base.semantic_fingerprint != physics_change.semantic_fingerprint
+
+
+def test_2d_field_snapshot_is_locked_to_the_solved_z_plane():
+    document = _load(FIXTURE_ROOT / "multilayer_fresnel_v2.json")
+    assert document["observations"][2]["coordinate_m"] == 0.0
+
+    document["observations"][2]["coordinate_m"] = 0.02
+    with pytest.raises(ExperimentCompileError) as caught:
+        compile_canonical_experiment(document)
+
+    diagnostic = caught.value.diagnostics[0]
+    assert diagnostic.code == "range_error"
+    assert diagnostic.path == "$.observations[2].coordinate_m"
 
 
 def test_scene_preview_is_spec_derived_and_does_not_require_solver(monkeypatch):

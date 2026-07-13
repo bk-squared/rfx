@@ -1,11 +1,19 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+const wr90Spec = JSON.parse(
+  readFileSync(new URL("../../rfx/studio/templates/wr90_waveguide.json", import.meta.url), "utf8"),
+);
+const fresnelSpec = JSON.parse(
+  readFileSync(new URL("../../rfx/studio/templates/multilayer_fresnel.json", import.meta.url), "utf8"),
+);
 
 test("patch journey: create, edit, preview, run, inspect, compare, cancel, export", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Create patch antenna" }).click();
+  await page.getByRole("button", { name: "Load patch example" }).click();
   await expect(page.getByRole("heading", { name: "2.4 GHz FR4 patch antenna" })).toBeVisible();
   await expect(page.getByTestId("scene-viewer")).toBeVisible();
   await expect(page.locator(".latency")).not.toHaveText("canonical");
@@ -18,53 +26,90 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
       .locator(".object-strip")
       .getByRole("button", { name: "patch", exact: true }),
   ).toHaveClass(/active/);
+  await expect(page.getByLabel("Center frequency in GHz")).toHaveValue("2.4");
+  await expect(page.getByLabel("Sweep start in GHz")).toHaveValue("1.8");
+  await expect(page.getByLabel("Sweep stop in GHz")).toHaveValue("3");
+  await expect(page.getByLabel("Sweep sample count")).toHaveValue("9");
 
   await page.getByLabel("Cell size in meters").fill("0");
   await expect(page.getByRole("button", { name: "Run on CPU" })).toBeDisabled();
-  await expect(page.getByText("Proposal is invalid", { exact: true })).toBeVisible();
-  await page.getByText("Proposal is invalid", { exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Spec & Code" })).toHaveAttribute(
+  await expect(page.getByText("Setup is invalid", { exact: true })).toBeVisible();
+  await page.getByText("Setup is invalid", { exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Model & Code" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
   await page.getByRole("tab", { name: "Design" }).click();
-  await page.getByLabel("Cell size in meters").fill("0.002");
-  await expect(page.getByText("✓ Preflight ready", { exact: true })).toBeVisible();
+  await page.getByLabel("Cell size in meters").fill("0.0015");
+  await page.getByLabel("Center frequency in GHz").fill("2.45");
+  await page.getByLabel("Sweep sample count").fill("11");
+  await expect(page.getByText("✓ Preflight passed", { exact: true })).toBeVisible();
 
   const previewStarted = Date.now();
   const previewResponse = page.waitForResponse(
     (response) => response.url().endsWith("/api/preview") && response.request().method() === "POST",
   );
-  await page.getByLabel("Experiment title").fill("Agent-ready patch antenna");
+  await page.getByLabel("Study name").fill("2.45 GHz patch sweep study");
   expect((await previewResponse).ok()).toBeTruthy();
   expect(Date.now() - previewStarted).toBeLessThan(1000);
-  await expect(page.getByText("1 change", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Approve & create revision" }).click();
+  await expect(page.getByText("4 changes", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Save as new revision" }).click();
   await expect(page.getByText("Revision 2 created", { exact: false })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2.45 GHz patch sweep study" })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Spec & Code" }).click();
+  await page.getByRole("tab", { name: "Setup" }).click();
+  await expect(page.getByRole("heading", { name: "Simulation setup" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Domain & mesh" })).toBeVisible();
+  await expect(page.getByText("36 × 33 × 31", { exact: true })).toBeVisible();
+  await expect(page.getByText("36,828", { exact: true })).toBeVisible();
+  await expect(page.getByText("Screening run only", { exact: true })).toBeVisible();
+  await expect(page.getByText("1.1 cells / min feature", { exact: true })).toBeVisible();
+  await expect(page.getByText("11 points are enough for a coarse sweep", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ports & excitations" })).toBeVisible();
+  await expect(page.getByText("50.0 Ω", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Boundary conditions" })).toBeVisible();
+  await expect(page.getByText("4 CPML layers", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Model & Code" }).click();
   await expect(page.getByRole("heading", { name: "Generated Python" })).toBeVisible();
   await expect(page.locator('[aria-label="Generated Python"]')).toContainText(
     "build_simulation",
   );
   await page.getByRole("tab", { name: "Design" }).click();
+  await page.getByRole("tab", { name: "Design" }).press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Setup" })).toBeFocused();
+  await expect(page.getByRole("tab", { name: "Setup" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Setup" }).press("Home");
+  await expect(page.getByRole("tab", { name: "Design" })).toBeFocused();
 
   await page.getByRole("button", { name: "Validate", exact: true }).click();
-  await expect(page.getByText("Preflight passed", { exact: false })).toBeVisible();
+  await expect(page.getByText("✓ Preflight passed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Run on CPU" }).click();
   await expect(page.getByRole("tab", { name: /Results/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: /Run / })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2.45 GHz patch sweep study" })).toBeVisible();
   await page.getByRole("tab", { name: /Results/ }).click();
   await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible({ timeout: 45_000 });
   await expect(page.getByRole("heading", { name: "S11 magnitude" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Smith chart" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "EZ field slice" })).toBeVisible();
   await expect(page.getByTestId("field-slice-heatmap")).toBeVisible();
+  const evidence = page.locator(".engineering-evidence");
+  await expect(evidence.getByRole("heading", { name: "Run summary" })).toBeVisible();
+  await expect(evidence.getByText("VSWR at minimum", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Convergence trace", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("not recorded", { exact: true })).toHaveCount(3);
+  await expect(evidence.getByText("Spec SHA", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Sweep boundary", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Sample density", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Field plane", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("120.0 MHz step", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Validation checks", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("no recorded result", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Nearest solved plane · Δ 0.500 mm", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Time series & far field" })).toBeVisible();
-  await expect(page.getByText("Structural smoke; not quantitative RF validation")).toBeVisible();
+  await expect(evidence.getByText("No quantitative RF claim", { exact: false })).toBeVisible();
 
   await page.getByRole("button", { name: "Export bundle" }).click();
   const downloadLink = page.getByRole("link", { name: "Download .zip" });
@@ -75,7 +120,7 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   expect(download.suggestedFilename()).toMatch(/rfx-replay-.*\.zip/);
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2.45 GHz patch sweep study" })).toBeVisible();
   await page.getByRole("tab", { name: /Results/ }).click();
   await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible();
 
@@ -94,11 +139,11 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   });
   await page.getByRole("button", { name: "Compare 2" }).click();
   await expect(page.getByRole("heading", { name: "Run comparison" })).toBeVisible();
-  await expect(page.locator(".comparison-table").getByText("validated")).toHaveCount(2);
+  await expect(page.locator(".comparison-table").getByText("revision validated", { exact: true })).toHaveCount(2);
 
   const experiments = await (await page.request.get("/api/experiments")).json();
   const experiment = experiments.find(
-    (candidate: { title: string }) => candidate.title === "Agent-ready patch antenna",
+    (candidate: { title: string }) => candidate.title === "2.45 GHz patch sweep study",
   );
   expect(experiment).toBeTruthy();
   const currentRevision = await (
@@ -124,7 +169,7 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   );
   expect(longRevision.status()).toBe(201);
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Agent-ready patch antenna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2.45 GHz patch sweep study" })).toBeVisible();
   await page.getByRole("tab", { name: /Results/ }).click();
   await page.getByRole("button", { name: "Run on CPU" }).click();
   const runningRun = page
@@ -180,10 +225,10 @@ test("agent patch is inert until Studio approves the exact MCP call", async ({ p
   const approvalId = proposed.result.structuredContent.approval.id;
 
   await page.goto("/");
-  const agentButton = page.getByRole("button", { name: "Agent approvals, 1 pending" });
+  const agentButton = page.getByRole("button", { name: "Tool approvals, 1 pending" });
   await expect(agentButton).toBeVisible();
   await agentButton.click();
-  await expect(page.getByRole("heading", { name: "Agent control plane" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tool approvals" })).toBeVisible();
   await expect(page.getByText("apply experiment patch", { exact: true })).toBeVisible();
   await expect(page.locator(".approval-card details[open] pre")).toContainText(
     "/metadata/title",
@@ -199,10 +244,75 @@ test("agent patch is inert until Studio approves the exact MCP call", async ({ p
   ).toEqual([]);
 
   await page.getByRole("button", { name: "Approve exact call" }).click();
-  await expect(page.getByText("No state-changing agent action is waiting.")).toBeVisible();
+  await expect(page.getByText("No tool call is waiting for approval.")).toBeVisible();
   const executed = await rpc(2, { ...argumentsPayload, approval_id: approvalId });
   expect(executed.result.structuredContent.status).toBe("ok");
-  await page.getByRole("button", { name: "Close agent panel" }).click();
+  await page.getByRole("button", { name: "Close tool approvals" }).click();
 
   await expect(page.getByText("MCP-approved patch antenna", { exact: true })).toBeVisible();
+});
+
+test("WR-90 primary controls keep coupled ports and sweep values synchronized", async ({ page }) => {
+  test.setTimeout(120_000);
+  const created = await page.request.post("/api/experiments", { data: wr90Spec });
+  expect(created.status(), await created.text()).toBe(201);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /WR-90 empty matched guide/ }).click();
+  await expect(page.getByLabel("Center frequency in GHz")).toHaveValue("10.3");
+  await expect(page.getByLabel("Sweep start in GHz")).toHaveValue("8.2");
+  await expect(page.getByLabel("Sweep stop in GHz")).toHaveValue("12.4");
+  await expect(page.getByLabel("Sweep sample count")).toHaveValue("5");
+
+  await page.getByLabel("Center frequency in GHz").fill("10.5");
+  await page.getByLabel("Sweep stop in GHz").fill("12.6");
+  await page.getByLabel("Sweep sample count").fill("17");
+  await expect(page.getByRole("button", { name: "Save as new revision" })).toBeEnabled();
+  await page.getByRole("button", { name: "Save as new revision" }).click();
+  await expect(page.getByText("Revision 2 created", { exact: false })).toBeVisible();
+
+  const experiments = await (await page.request.get("/api/experiments")).json();
+  const wr90 = experiments.find(
+    (candidate: { title: string }) => candidate.title === "WR-90 empty matched guide",
+  );
+  const revision = await (
+    await page.request.get(`/api/revisions/${wr90.current_revision_id}`)
+  ).json();
+  expect(revision.spec.excitations.map((item: { f0_hz: number }) => item.f0_hz)).toEqual([
+    10.5e9,
+    10.5e9,
+  ]);
+  expect(revision.spec.excitations.map((item: { stop_hz: number }) => item.stop_hz)).toEqual([
+    12.6e9,
+    12.6e9,
+  ]);
+  expect(revision.spec.excitations.map((item: { points: number }) => item.points)).toEqual([
+    17,
+    17,
+  ]);
+
+  await page.getByRole("button", { name: "Run on CPU" }).click();
+  await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "S-matrix run summary" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Two-port S-parameters" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "S-matrix snapshot" })).toBeVisible();
+  await expect(page.getByText("Reciprocity Δ", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("field-slice-heatmap")).toBeVisible();
+});
+
+test("Fresnel workflow renders R/T evidence against its analytic reference", async ({ page }) => {
+  test.setTimeout(120_000);
+  const created = await page.request.post("/api/experiments", { data: fresnelSpec });
+  expect(created.status(), await created.text()).toBe(201);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Lossless dielectric slab Fresnel workflow/ }).click();
+  await page.getByRole("button", { name: "Run on CPU" }).click();
+  await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Fresnel run summary" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reflection & transmission" })).toBeVisible();
+  await expect(page.getByText("Mean |ΔR|", { exact: true })).toBeVisible();
+  await expect(page.getByText("Transfer-matrix reference", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("field-slice-heatmap")).toBeVisible();
+  await expect(page.getByText("Nearest solved plane", { exact: false })).toHaveCount(0);
 });
