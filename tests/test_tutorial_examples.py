@@ -63,3 +63,43 @@ def test_antenna_farfield_pattern_tutorial_runs():
     assert abs(peak_directivity_dbi - 1.76) < 0.3
     assert plot_path.is_file()
     assert plot_path.stat().st_size > 0
+
+
+def test_ports_and_sparams_101_tutorial_runs():
+    """Every port family preflights and the live RLC load changes S11."""
+    output = _run_tutorial("ports_and_sparams_101.py")
+
+    assert output.count("[PREFLIGHT] All checks passed") >= 4
+    assert "Microstrip port setup ready: True" in output
+    assert "Waveguide port setup ready: True" in output
+    assert "Coax build-only advisory observed: True" in output
+    assert "Coaxial port setup ready: True" in output
+
+    match = re.search(r"RLC changed max \|S11\| by:\s*([^\s]+)", output)
+    assert match is not None
+    max_change = float(match.group(1))
+    assert math.isfinite(max_change) and max_change > 0.0
+
+
+def test_run_control_and_fields_tutorial_runs():
+    """All run controls execute and the final field slice is written."""
+    plot_path = TUTORIALS_DIR / "output" / "run_control_ez_slice.png"
+    plot_path.unlink(missing_ok=True)
+
+    output = _run_tutorial("run_control_and_fields.py")
+
+    assert "[PREFLIGHT] All checks passed" in output
+    assert "Fixed n_steps samples: 120" in output
+    assert "Truncation advisory:" in output
+    assert "ring-down truncated" in output
+    assert "Until-decay truncation advisory observed: False" in output
+
+    match = re.search(r"Until-decay samples:\s*(\d+)", output)
+    assert match is not None
+    decay_samples = int(match.group(1))
+    assert 100 <= decay_samples < 1_200
+
+    assert re.search(r"Probe time_series shape: \(\d+, 1\)", output)
+    assert "Final field slice shapes: Ex=(41, 41), Ey=(41, 41), Ez=(41, 41)" in output
+    assert plot_path.is_file()
+    assert plot_path.stat().st_size > 0
