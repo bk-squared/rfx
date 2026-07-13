@@ -33,7 +33,7 @@ graded-mesh rasterization, ring-down truncation).
 
 The cross-validation scripts that used to live under `examples/crossval/` are
 internal measurement fixtures, not tutorials. They now live in
-`../validation/` (see `validation/README.md` for the script table and the
+`validation/` (see `validation/README.md` for the script table and the
 machine-readable registry `validation/crossval/manifest.json`). Start with the
 learning path above; consult the validation tree only when you need the
 evidence behind a specific accuracy statement.
