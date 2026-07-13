@@ -20,7 +20,9 @@ At f_notch ≈ c / (4 · L_stub · sqrt(εr_eff)) ≈ 3.69 GHz, the
 stub presents a virtual short circuit at the junction, creating
 a transmission zero (deep S21 notch).
 
-The canonical openEMS run (see `06_openems_ref/run_upstream_tutorial.py`)
+The canonical openEMS run (generated locally by a `06_openems_ref/`
+run-upstream script — the directory is an OPTIONAL local artifact, not
+committed; when absent this script takes the exit-2 SKIP path)
 places the notch at 3.671 GHz with |S21| ≤ −50 dB.
 
 REFERENCE DATA

@@ -59,7 +59,7 @@ design_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
 eps_min, eps_max = region.eps_range
 
 print("=" * 70)
-print("Crossval 14: E2E Inverse Design — Slab Transmission Maximization")
+print("AD gradient self-test: E2E inverse design — slab transmission maximization")
 print("=" * 70)
 print(f"Structure: PEC cavity 60×20×20 mm, port at x=10mm, probe at x=50mm")
 print(f"Design region: dielectric slab x=[25, 35] mm, εr ∈ [{eps_min}, {eps_max}]")
