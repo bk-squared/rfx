@@ -322,7 +322,7 @@ else:
     f_res_harminv = float("nan")
     Q_harminv = float("nan")
 
-print(f"\nHarminv modes (Q > 2) near analytic target:")
+print("\nHarminv modes (Q > 2) near analytic target:")
 for m in sorted(modes_good, key=lambda m: m.freq)[:6]:
     print(f"  f = {m.freq/1e9:.4f} GHz, Q = {m.Q:.1f}, amp = {m.amplitude:.2e}")
 
@@ -488,7 +488,7 @@ print(f"  OpenEMS mesh: {len(x_lines)} × {len(y_lines)} × {len(z_lines)} "
       f"cells = {len(x_lines)*len(y_lines)*len(z_lines):,}")
 if cached_oe:
     print(f"  Using cached OpenEMS output from {sim_path_oe}")
-    print(f"  (delete the folder to force a fresh run)")
+    print("  (delete the folder to force a fresh run)")
 else:
     print(f"  Running OpenEMS (GaussExcite f0={f0_hz_oe/1e9:.2f} GHz, "
           f"fc={fc_hz_oe/1e9:.2f} GHz)...")
@@ -544,7 +544,7 @@ else:
 
 oe_err_pct = 100 * abs(f_res_oe - f_resonance_an) / f_resonance_an
 
-print(f"\n  OpenEMS Harminv modes (Q > 2) near analytic target:")
+print("\n  OpenEMS Harminv modes (Q > 2) near analytic target:")
 for m in sorted(modes_oe_good, key=lambda m: m.freq)[:6]:
     print(f"    f = {m.freq/1e9:.4f} GHz, Q = {m.Q:.1f}, amp = {m.amplitude:.2e}")
 
@@ -613,7 +613,7 @@ idx_above = min(int(np.searchsorted(freqs_hz, f_resonance_an * 1.15)), len(freqs
 s11_surround = max(float(S11_dB[idx_below]), float(S11_dB[idx_above]))
 contrast = s11_surround - s11_min_dB
 
-print(f"\nrfx S11 analysis:")
+print("\nrfx S11 analysis:")
 print(f"  Passivity |S11| ≤ 1: {'PASS' if passive else 'FAIL'} (max={np.max(np.abs(S11)):.3f})")
 print(f"  Local resonance dip: {f_res_rfx/1e9:.3f} GHz")
 print(f"  |S11| at dip:        {s11_min_dB:.2f} dB")
@@ -719,7 +719,7 @@ print(f"  S11 passivity (|S11| ≤ 1):        "
       f"(max|S11|={np.max(np.abs(S11)):.3f})")
 print(f"  Overall:                          {'PASS' if all_ok else 'FAIL'}")
 print()
-print(f"  FINDING: rfx and OpenEMS Harminv agree within the coarse-mesh")
+print("  FINDING: rfx and OpenEMS Harminv agree within the coarse-mesh")
 print(f"  gate on the TM010 patch resonance ({rfx_vs_oe_pct:.2f} %, limit")
 print("  20 %), and rfx remains within the Balanis TL analytic tolerance")
 print(f"  ({harminv_err_pct:.2f} %, limit 10 %). This is narrow patch")
@@ -745,7 +745,7 @@ print("   • rfx single-cell lumped-port S11 dip is shallow (~2 dB) because")
 print("     the single-cell port has parasitic reactance — use Harminv for")
 print("     the clean resonance frequency, the S11 dip only as a")
 print("     passivity / local-dip confirmation.")
-print(f"\n  Output: 05_patch_antenna.png")
+print("\n  Output: 05_patch_antenna.png")
 
 json_out = os.environ.get("RFX_CROSSVAL05_JSON")
 if json_out:
