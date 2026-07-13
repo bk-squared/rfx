@@ -27,7 +27,7 @@ showcase aggressive convergence. For a substantive inverse-design run,
 use a resonance or far-field objective over many more iterations.
 
 Usage:
-    python examples/crossval/08_progressive_inverse_design.py
+    python examples/inverse_design/progressive_demo.py
 
 Produces ``examples/08_progressive_inverse_design.png`` with the loss
 curve (stages separated by dashed verticals) and per-stage eps_design
