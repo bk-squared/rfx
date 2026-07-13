@@ -87,7 +87,12 @@ def _extract_harminv_f_res(sim, n_steps: int = 3000) -> float:
     ts = np.asarray(res.time_series)[:, 0]
     dt = float(res.dt)
     # Harminv in the 1.5–3.5 GHz band (covers FR4 patch fundamental mode).
-    modes = harminv(ts, dt, f_min=1.5e9, f_max=3.5e9, min_Q=5.0)
+    # decimate=False: this harness feeds a bit-identity lock whose baseline was
+    # recorded before harminv grew band-limited auto-decimation (PR #347). The
+    # lock isolates SOLVER drift, so the measuring instrument stays pinned to
+    # the baseline-era extraction; auto-decimation shifts the extracted f_res
+    # by ~1e-4 relative on this 3000-step record, far above the 1e-6 lock.
+    modes = harminv(ts, dt, f_min=1.5e9, f_max=3.5e9, min_Q=5.0, decimate=False)
     if len(modes) == 0:
         return float("nan")
     # Pick the strongest mode by amplitude.
