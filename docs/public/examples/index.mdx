@@ -5,7 +5,8 @@ sidebar:
   order: 30
 ---
 
-Use these examples as starting points, not as exhaustive coverage of every importable feature.
+Use these examples to learn the supported workflows. They do not cover every
+importable module or experimental script in the repository.
 
 ## Recommended entry points
 
@@ -18,18 +19,12 @@ Use these examples as starting points, not as exhaustive coverage of every impor
 | `examples/inverse_design/differentiable_s11_design.py` | the differentiable design loop |
 | `examples/inverse_design/multilayer_ar_coating.py` | conservative inverse-design demo |
 
-**Verifying rfx** — the accuracy evidence, kept public for transparency:
+## Validate a result
 
-| Page or script | Why it matters |
-|---|---|
-| [Crossval First](./crossval/) | current public cross-check entry point |
-| [RF Workflows](./rf-workflows/) | practical workflow framing |
-| `validation/crossval/05_patch_antenna.py` | patch antenna cross-check fixture |
-| `validation/crossval/11_waveguide_port_wr90.py` | rectangular waveguide-port cross-check fixture |
+[RF Workflows](./rf-workflows/) explains which example matches a design task.
+[Cross-Solver Validation](/rfx/validation/cross-solver/) lists runnable checks
+against analytic calculations and other solvers.
 
-## How to read the example surface
-
-- Start with uniform Yee RF examples when you want the safest path.
-- Keep claims scoped to the workflow being exercised.
-- Use only the examples listed in the public guide pages as public entry points.
-- Prefer current scripts in `validation/crossval/` over outdated narrative snippets.
+Start with a uniform Yee-grid example when it fits the problem. Before using a
+result, inspect preflight warnings and confirm that the validation case covers
+the same mesh, source, port, material model, boundary, and output quantity.

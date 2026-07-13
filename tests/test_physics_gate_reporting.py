@@ -437,11 +437,11 @@ def test_sparameter_claim_audit_expected_family_levels_are_current():
         sparameter_claim_audit.EXPECTED_FAMILY_LEVELS[
             "rectangular_waveguide_port"
         ]
-        == "E5-narrow"
+        == "E5-broad-magnitude/E4-external/phase-narrow"
     )
     assert (
         sparameter_claim_audit.EXPECTED_FAMILY_LEVELS["floquet_port"]
-        == "E2/E3-modal/slab-analytic/no-promoted-api"
+        == "E2/E3-modal/slab-analytic/no-public-api"
     )
     assert (
         sparameter_claim_audit.EXPECTED_FAMILY_LEVELS["coaxial_port"]

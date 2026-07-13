@@ -1,0 +1,231 @@
+---
+title: "Studio, CLI, and MCP Experiments"
+description: "Create, run, inspect, and replay versioned CPU experiments."
+sidebar:
+  order: 4
+---
+
+rfx provides four interfaces for the versioned `ExperimentSpec` format:
+
+| Interface | Current use |
+|---|---|
+| **Studio** | edit a revision, inspect generated Python and geometry, run preflight, start CPU runs, view patch-antenna results, compare runs, and approve MCP requests |
+| **Experiment CLI** | validate, run, submit, inspect, cancel, bundle, replay, and compare JSON specs |
+| **REST API** | directly create experiments and revisions, start runs, inspect artifacts, and request studies from a trusted client |
+| **Model Context Protocol (MCP)** | inspect workspace state and request one-shot approval for tools that change state or start expensive work |
+
+The exact-argument approval gate applies to MCP/Agent tool calls. Direct REST
+POST requests do not pass through that one-shot approval flow; protect the
+server bind, token, and network boundary instead of treating REST as an
+approval-gated interface.
+
+All four can use the same SQLite database and artifact directory, but only
+when they receive the same `--workspace` path. Studio defaults to
+`.rfx-studio`; the experiment CLI defaults to `.rfx-experiments`, so their
+default workspaces are separate. The examples that combine Studio and the CLI
+use `.rfx-studio` for both.
+
+`rfx experiment validate` only compiles and checks a spec. It does not create a
+revision or run record. For a version-2 spec, `run` and `submit` create a
+revision-linked run in the selected workspace.
+
+These records show what rfx executed and preserve the generated artifacts.
+They do not establish electromagnetic accuracy. Apply the documented mesh,
+source, port, convergence, and validation limits to every result.
+
+## Install and launch Studio
+
+```bash
+python -m pip install "rfx-fdtd[studio]"
+rfx studio --workspace .rfx-studio
+```
+
+The wheel contains the compiled frontend, so Node.js is not required at
+runtime. The default server listens on loopback and opens
+`http://127.0.0.1:8765/`.
+
+The workspace contains the SQLite database, run inputs and logs, and exported
+artifacts. Reuse the same path when another rfx interface must see those
+records.
+
+## Current Studio UI scope
+
+The visible **Create patch antenna** button immediately creates an experiment
+and revision 1 of the bundled patch spec in the configured workspace. Once a
+revision exists, the main editor lets you edit a draft and inspect its generated
+Python, field-by-field changes, geometry preview, and preflight panel. For an unsaved draft, the panel
+labeled **Preflight** is a fast `preview_only` compiler result with an empty
+solver-issue list; its PASS label is not a solver preflight. Saving the draft
+creates another append-only revision and runs the full solver preflight stored
+with that revision. The revision validation endpoint can rerun it explicitly.
+Starting a CPU run is a separate action.
+
+Design Copilot can propose patch-antenna, multilayer-Fresnel, or WR-90 specs
+from a user request. The proposal service compiles the candidate and runs a full
+solver preflight in memory before returning it. For a new experiment, the
+proposal panel shows the summary, JSON Patch, pass/block state, grid, cell
+count, memory estimate, and step count. It does **not** show generated Python,
+the geometry view, or the individual preflight issues. **Approve & create
+workspace** creates the experiment and revision 1 in the configured workspace
+and stores a freshly computed full solver preflight.
+When Copilot changes an already selected revision, **Load as uncommitted draft**
+opens the proposal in the main editor, where generated code and geometry are
+available before the next revision is saved. After loading, edits use the same
+`preview_only` panel as any other unsaved draft. The full solver preflight runs
+again when that revision is saved or explicitly validated.
+
+The current results view plots the patch workflow's `s11` artifact, Smith
+chart, and optional field slice. It does **not** yet plot the WR-90
+`sparameters` artifact or the Fresnel `reflection-transmission` artifact.
+Those artifacts remain available through the API, MCP, replay bundle, and
+workspace files. The UI also has no arbitrary JSON-file import or study view.
+Use the CLI for JSON specs; use the API or MCP for studies.
+
+A proposal preview does not save a revision. Creating a revision does not
+start a run; start it explicitly after reviewing the revision.
+
+## Prepare and run a CLI spec
+
+To create an editable example from the template installed with rfx:
+
+```bash
+python - <<'PY'
+from importlib.resources import files
+from pathlib import Path
+
+template = files("rfx.studio").joinpath("templates").joinpath("patch_antenna.json")
+Path("experiment.json").write_text(
+    template.read_text(encoding="utf-8"),
+    encoding="utf-8",
+)
+PY
+```
+
+Validate without creating workspace state, then run in Studio's workspace so
+the resulting experiment and run are visible to Studio:
+
+```bash
+rfx experiment validate experiment.json
+rfx experiment run experiment.json --workspace .rfx-studio
+```
+
+For an asynchronous run, submit it and poll or cancel it later:
+
+```bash
+rfx experiment submit experiment.json --workspace .rfx-studio
+rfx experiment status RUN_ID --workspace .rfx-studio
+rfx experiment cancel RUN_ID --workspace .rfx-studio
+```
+
+Succeeded S-parameter runs can be compared. Any succeeded run can be exported
+as a checksummed replay bundle:
+
+```bash
+rfx experiment compare RUN_ID_A RUN_ID_B --workspace .rfx-studio
+rfx experiment bundle RUN_ID_A \
+  --workspace .rfx-studio \
+  --output run-a.rfx-replay.zip
+rfx experiment replay run-a.rfx-replay.zip --workspace .rfx-studio
+```
+
+Replay verifies the bundle manifest and declared metric tolerances. It does not
+promise bit-identical fields across JAX, device, or compiler versions. A
+successful replay demonstrates reproducibility; it does not add RF validation.
+
+## Using Design Copilot safely
+
+When `OPENAI_API_KEY` is set, Studio asks the OpenAI Responses API for a JSON
+Patch that must validate against the `ExperimentSpec` schema. To override the
+default model, set `RFX_OPENAI_MODEL` to a model ID available to your account:
+
+```bash
+export OPENAI_API_KEY=...
+# export RFX_OPENAI_MODEL=MODEL_ID  # optional
+rfx studio --workspace .rfx-studio
+```
+
+Provider requests use `store=false`. The key remains in the process
+environment. The provider cannot execute Python, shell commands, or solver
+tools through this feature. Studio applies the proposed patch in memory,
+compiles it, runs a full solver preflight, and shows the proposal summary before
+anything is saved or run. The proposal panel summarizes that preflight as
+pass/block; saving or explicitly validating a revision computes it again.
+
+Without an API key, Studio uses a deterministic rule-based planner and labels
+the result accordingly; it does not label that result as an LLM response.
+
+## MCP approval flow
+
+The Studio server exposes Streamable HTTP MCP at:
+
+```text
+http://127.0.0.1:8765/mcp/
+```
+
+Local MCP clients can instead launch the stdio server:
+
+```bash
+rfx-agent-mcp --workspace .rfx-studio
+```
+
+Read-only tools inspect workspace state. A tool that changes state or starts
+costly work returns `approval_required`. Check the tool name, exact arguments,
+and SHA-256 in Studio's **Approvals** panel, approve the request, and retry the
+same call with its one-shot `approval_id`. Client-side approval does not replace
+this server-side check.
+
+MCP exposes rfx operations, not arbitrary shell, Python, or filesystem access.
+Configure the client to allow only known tool names, and review newly added
+tools after a package upgrade rather than enabling them automatically.
+
+## Workspace backup and restore
+
+```bash
+rfx workspace migrate --workspace .rfx-studio
+rfx workspace backup --workspace .rfx-studio -o studio.rfx-backup.zip
+rfx workspace restore studio.rfx-backup.zip --workspace .rfx-studio
+```
+
+Migrations only add schema changes and are safe to rerun. Backup uses SQLite's
+online backup, includes the run and artifact trees, excludes credential-like
+filenames, and records a checksum for every archived file. Restore verifies
+every checksum before replacing the workspace in one operation.
+
+## Remote deployment requirements
+
+Loopback is the default and recommended mode. A non-loopback bind is rejected
+unless all of the following are supplied:
+
+- a whitespace-free token of at least 32 characters in a file that is not
+  group/world accessible;
+- an exact HTTPS origin allowlist;
+- `--tls-terminated`, confirming that an HTTPS reverse proxy is in front.
+
+```bash
+rfx studio \
+  --host 0.0.0.0 \
+  --workspace /srv/rfx-studio \
+  --auth-token-file /secure/rfx-studio.token \
+  --allowed-origin https://rfx.lab.example \
+  --tls-terminated \
+  --no-browser
+```
+
+Place organization authentication and network policy in front of a shared lab
+deployment. The packaged filesystem/SQLite adapter supports one node; it is not
+a public multi-tenant authorization service. Never put API keys or tokens in an
+experiment spec, prompt, artifact, or Studio field.
+
+## Status meanings
+
+| Status | Meaning |
+|---|---|
+| spec valid | schema validation, code generation, and preflight completed; no simulation ran |
+| run succeeded | the CPU worker completed and wrote finite data for the result files required by the spec |
+| replay passed | archive checksums and declared metric tolerances passed on the replaying system |
+| comparison created | one report compared the selected metrics from the chosen runs |
+
+None of these statuses validates RF accuracy by itself. For an engineering
+claim, also apply [Support Boundaries](/rfx/api/support-boundaries/),
+[Validation](/rfx/guide/validation/), convergence checks, and the guidance for
+the selected port or observable.

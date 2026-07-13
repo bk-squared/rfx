@@ -9,10 +9,12 @@ The standard FDTD RCS approach:
 3. NTFF computes far-field pattern
 4. RCS(theta, phi) = 4*pi*r^2 * |E_scat|^2 / |E_inc|^2
 
-Validation scope: the monostatic (backscatter) bin is cross-validated
-against the exact Mie series; the full bistatic pattern at the default
-near-field NTFF box is NOT validated (see ``compute_rcs`` / ``RCSResult``
-"Bistatic pattern caveat", audit item #2).
+Validation scope: the monostatic (backscatter) bin is cross-validated against
+the exact Mie series. The default unsubtracted bistatic pattern is not
+validated because residual TFSF incident-field leakage contaminates oblique
+angles. The two-run ``subtract_incident_reference=True`` path is validated for
+the documented ka~1 PEC-sphere comparison; other targets and configurations
+require their own convergence and reference checks.
 
 Reference: Taflove & Hagness, Ch. 8-9.
 """
@@ -49,15 +51,17 @@ class RCSResult(NamedTuple):
 
     VALIDATION SCOPE (read before trusting the full pattern)
     -------------------------------------------------------
-    Only ``monostatic_rcs`` (the backscatter bin) is cross-validated
-    against the exact Mie series (``tests/test_rcs_mie_fixture.py``,
-    ~0.06 dB at ka~1). The full ``rcs_dbsm`` / ``rcs_linear`` bistatic
-    pattern is NOT validated at the auto-placed default box: the
-    off-backscatter bins can be several dB to ~20 dB off (a spurious
-    forward-oblique lobe near 25-55 deg scattering angle, measured
-    ~10 dB high vs Mie). See ``compute_rcs`` ("Bistatic pattern
-    caveat") for the cause and why bumping ``ntff_offset`` does not
-    close it at test scale.
+    ``monostatic_rcs`` agrees with exact Mie to about 0.06 dB for the
+    committed ka~1 PEC-sphere case. The default unsubtracted
+    ``rcs_dbsm`` / ``rcs_linear`` bistatic pattern is NOT validated: residual
+    TFSF incident-field leakage contaminates off-backscatter angles, and
+    increasing ``ntff_offset`` alone does not remove it. Results produced by
+    ``compute_rcs(..., subtract_incident_reference=True)`` use two-run complex
+    far-field subtraction; that path is validated only for the documented
+    ka~1 sphere comparison. ``RCSResult`` does not record which option produced
+    it, so retain the call configuration with archived results. See
+    ``compute_rcs`` ("Bistatic pattern caveat") for limits and convergence
+    checks.
     """
     freqs: np.ndarray
     theta: np.ndarray
@@ -184,75 +188,35 @@ def compute_rcs(
         the farfield r_hat convention; it does not depend on
         theta_obs/phi_obs).
 
-    Bistatic pattern caveat (LLM-naive-usage audit item #2)
-    -------------------------------------------------------
-    VALIDATED: ``RCSResult.monostatic_rcs`` (the backscatter bin) agrees
-    with the exact Mie series to ~0.06 dB at ka~1
-    (``tests/test_rcs_mie_fixture.py``).
+    Bistatic pattern caveat
+    -----------------------
+    ``RCSResult.monostatic_rcs`` agrees with exact Mie to about 0.06 dB for the
+    committed ka~1 PEC-sphere case. It is evaluated from the raw target run at
+    the exact backscatter direction, independently of the requested observation
+    grid.
 
-    NOT VALIDATED: the full ``rcs_dbsm`` / ``rcs_linear`` bistatic
-    pattern at off-backscatter angles. With the auto-placed default NTFF
-    box (``ntff_offset=1``, ~1 cell off the TFSF boundary, distance
-    << lambda) the oblique/forward bins can be several dB to ~20 dB off.
-    On the committed ka~1 PEC sphere the H-plane cut shows a spurious
-    forward-oblique lobe near 25-55 deg scattering angle measured
-    ~10 dB high vs Mie (recorded, non-gated, in
-    ``tests/fixtures/rcs_sphere_mie/``; residual diagnostic issue #280).
+    The default unsubtracted ``rcs_dbsm`` / ``rcs_linear`` bistatic pattern is
+    NOT VALIDATED. With ``ntff_offset=1`` the oblique bins can be several dB to
+    about 20 dB from the reference. Increasing ``ntff_offset`` alone does not
+    remove the forward-oblique lobe. An empty-domain run produces the same lobe,
+    demonstrating that its dominant cause is target-independent incident-field
+    leakage from the discrete TFSF boundary rather than the scatterer staircase.
 
-    This caveat is a doc-pin, not a runtime warning, on purpose: the
-    monostatic value is computed at the exact backscatter direction
-    INDEPENDENT of ``theta_obs``/``phi_obs``, and the validated
-    monostatic tests themselves pass full observation grids, so there is
-    no call-time signal that separates "monostatic-only" from "bistatic"
-    intent to key an advisory on without false-alarming those tests.
+    Set ``subtract_incident_reference=True`` for the validated bistatic path.
+    It doubles the solve cost, subtracts a matching vacuum run at the complex
+    far-field level, and removes the target-independent leakage. In the
+    committed ka~1 PEC-sphere H-plane comparison, the largest 15-90 degree
+    difference from exact Mie falls from 10.5 to 1.2 dB, full-pattern dB
+    correlation is 0.965, mean absolute difference is 0.42 dB, and the
+    backscatter difference is about 0.06 dB. Those values validate only the
+    stated sphere, frequency, polarization, angle cut, and discretization. An
+    independent Bempp cube comparison confirms the raw discrepancy on another
+    geometry; it is not validation of a corrected cube pattern.
 
-    Do NOT try to fix the bistatic pattern by only enlarging
-    ``ntff_offset``: measured at test scale it does not close the oblique
-    gap (offset 1->2 on the committed sphere leaves the 25-55 deg error
-    ~10 dB and worsens the backscatter bin; a larger domain did not help
-    either).
-
-    Issue #280 mechanism (isolated 2026-07): an EMPTY-domain run (no
-    scatterer) produces the SAME forward-oblique lobe, proving it is not the
-    scatterer or its staircase but a residual incident-field LEAKAGE from the
-    discrete TFSF boundary that the NTFF box integrates into a spurious
-    far-field. That leakage peaks in the forward-oblique bins and nulls at
-    exact backscatter (~90 dB below its peak), which is why the monostatic bin
-    stays clean. Because the leakage is target-independent it cancels under a
-    two-run reference subtraction: pass ``subtract_incident_reference=True``.
-    Validated against the EXACT Mie bistatic series on a PEC sphere at ka~1
-    (``tests/fixtures/rcs280_reference_subtraction/``): the forward-oblique
-    lobe is removed -- the H-plane 15-90 deg gap vs exact Mie collapses
-    10.5 -> 1.2 dB, the full-pattern shape correlation (dB) rises from -0.14
-    (uncorrelated) to 0.965, mean |distance| 0.42 dB, backscatter -0.06 dB --
-    and cross-checked against an independent Bempp BEM on a cube
-    (``tests/fixtures/rcs_cube_bem/``). The remaining ~1 dB residual is NOT
-    leftover leakage; its components were isolated at test scale (issue #280):
-
-    * curved-surface STAIRCASE -- shrinks with resolution (sphere ka=1
-      forward residual roughly halves from lambda/40 to lambda/80; an
-      independent Meep run at matched resolution shows the same-order
-      residual, i.e. this is FDTD-generic, not rfx-specific);
-    * deep-pattern-NULL bias (~1-2.5 dB at bins >=9 dB below peak) -- the
-      default NTFF box sits 0.5-0.7 lambda from the scatterer (radiating
-      near field). Invariant to n_steps and resolution; cured by enlarging
-      the domain so the box is >~1 lambda from the scatterer (sphere ka=2
-      null residual 0.85 -> 0.24 dB). Trade-off: at test scale the enlarged
-      domain nudged the BRIGHT backscatter bin to +1.7 dB (invariant to CPML
-      thickness and n_steps -- a placement sensitivity, recorded not chased),
-      so keep the default box for monostatic work and enlarge only when the
-      null region is the target;
-    * a bright-bin placement sensitivity of +-1-2 dB -- the box samples a
-      residual error field that wanders with face placement (thicker CPML
-      reduces the normal-reflection component: backscatter -0.77 -> -0.20 dB
-      with 16 layers at test scale).
-
-    Converged-bistatic recipe: ``subtract_incident_reference=True`` (removes
-    the lobe) + enlarge the domain until the NTFF box is >~1 lambda from the
-    scatterer (fixes deep nulls) + finer dx for curved-PEC staircase + thicker
-    CPML for the last few tenths of a dB on bright bins. Costs scale
-    accordingly; the default setup remains tuned for the validated monostatic
-    bin. Tracked by issue #280.
+    After subtraction, refine curved surfaces, repeat with a longer run, vary
+    NTFF placement and CPML thickness, and enlarge the domain when deep pattern
+    nulls matter. Compare each new target and configuration with an analytic or
+    independent reference before treating the bistatic values as quantitative.
     """
     # Defaults
     if theta_obs is None:

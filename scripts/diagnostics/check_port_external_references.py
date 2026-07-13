@@ -576,13 +576,22 @@ def _surface_families_requiring_e5(support_matrix_path: Path) -> list[dict[str, 
                 "evidence_level": str(row.get("evidence_level", "")),
             }
         )
-    for row in support_matrix.get("future_port_families", []):
+    unavailable_key = (
+        "unavailable_port_families"
+        if "unavailable_port_families" in support_matrix
+        else "future_port_families"
+    )
+    for row in support_matrix.get(unavailable_key, []):
         families.append(
             {
                 "family": str(row.get("family", "")),
-                "source": "future_port_families",
+                "source": unavailable_key,
                 "status": str(row.get("status", "")),
-                "planned_primitives": list(row.get("planned_primitives", [])),
+                "planned_primitives": list(
+                    row.get(
+                        "current_primitives", row.get("planned_primitives", [])
+                    )
+                ),
             }
         )
     return [row for row in families if row["family"]]

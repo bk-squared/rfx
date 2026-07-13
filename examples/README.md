@@ -22,18 +22,15 @@ New to rfx? Run these in order; each teaches one decision a real design needs.
 `config/microstrip_thru.yaml` shows the declarative YAML front-end for the same
 Simulation API.
 
-Read the preflight output every time — the advisories are part of the result,
-and several of them encode hard-won physics rules (lossless-dielectric Q traps,
-graded-mesh rasterization, ring-down truncation).
+Read the preflight output every time. Its warnings identify conditions that can
+invalidate the result, including lossless-dielectric Q traps, graded-mesh
+rasterization errors, and incomplete ring-down.
 
 
 ---
 
-## Where the validation evidence went
+## Validation scripts
 
-The cross-validation scripts that used to live under `examples/crossval/` are
-internal measurement fixtures, not tutorials. They now live in
-`validation/` (see `validation/README.md` for the script table and the
-machine-readable registry `validation/crossval/manifest.json`). Start with the
-learning path above; consult the validation tree only when you need the
-evidence behind a specific accuracy statement.
+Solver checks are under `validation/crossval/`; they are not tutorials. Start
+with the learning path above. Use `validation/README.md` when you need to
+reproduce a comparison with an analytic result or another solver.

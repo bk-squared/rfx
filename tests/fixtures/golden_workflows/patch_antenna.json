@@ -2,13 +2,13 @@
   "schema_version": "rfx-golden-workflow/v1",
   "id": "patch-antenna",
   "title": "2.4 GHz rectangular patch antenna",
-  "description": "Create, validate, run, and inspect the narrow uniform-Yee FR4 patch resonance and one-port S11 workflow.",
+  "description": "Create, preflight, run, and inspect a patch workflow while keeping the unqualified gallery port artifacts out of RF claims.",
   "support_lane": {
-    "status": "p0-supported",
+    "status": "diagnostic-only",
     "solver": "uniform-cartesian-yee",
     "dimensionality": "3d",
     "features": ["box-geometry", "isotropic-dielectric", "finite-pec", "lumped-wire-port", "s11", "field-snapshot"],
-    "evidence_tier": "E4-narrow-resonance",
+    "evidence_tier": "unqualified",
     "support_source": "docs/guides/sparameter_support_matrix.md"
   },
   "inputs": {
@@ -24,7 +24,7 @@
       "comparison": "lt",
       "limit": 20.0,
       "unit": "percent",
-      "observed_baseline": 2.6
+      "observed_baseline": null
     },
     {
       "id": "max_s11_abs",
@@ -47,7 +47,8 @@
   ],
   "required_artifacts": ["experiment-spec", "generated-python", "scene-json", "preflight-report", "run-events", "s11", "field-slice", "validation-report", "bundle-manifest"],
   "limitations": [
-    "The claims-bearing lane is narrow patch resonance evidence, not broad absolute wire-port S-parameter calibration.",
+    "The gallery evidence manifest is explicitly unqualified because its port setup does not pass current preflight.",
+    "The separate crossval script supports only its narrow resonance comparison and does not qualify the gallery S11 artifacts.",
     "The bundled CPU smoke spec proves lifecycle and artifact behavior only; it is not a quantitative RF reference.",
     "The analytic estimate omits finite-ground and probe-feed loading, so tolerance-based rather than bitwise replay is required."
   ]

@@ -128,7 +128,7 @@ class GalleryCase:
     id: str
     title: str
     description: str
-    validation_tier: str  # "E5" | "E4"
+    validation_tier: str  # "E5" | "E4" | "unqualified"
     metric: str  # what is compared
     tolerance: str  # human-readable tolerance
     reference_solver: str  # e.g. "analytic transfer matrix", "OpenEMS"
@@ -138,8 +138,9 @@ class GalleryCase:
     # --- Gallery-v2 taxonomy (per-case-true, committed in the manifest) ---
     # application: one of free-space/stratified | antenna | waveguide/port |
     #              inverse-design.
-    # capability: subset of validated-vs-exact | field-animation |
-    #             autodiff-gradient | touchstone-export | inverse-design.
+    # capability: subset of validated-vs-exact | diagnostic-artifact |
+    #             field-animation | autodiff-gradient | touchstone-export |
+    #             inverse-design.
     application: str = "free-space/stratified"
     capability: tuple[str, ...] = ()
     # --- Gallery-v2 visual config ---
@@ -566,12 +567,11 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
 
 
 def _build_patch_antenna(quick: bool) -> CaseResult:
-    """Probe-fed 2.4 GHz patch antenna on FR4 (lumped-port S11 sweep).
+    """Generate diagnostic files for a probe-fed 2.4 GHz patch model.
 
-    Replicates the rfx-only lumped-port path of
-    ``validation/crossval/05_patch_antenna.py`` (no OpenEMS dependency). The
-    cross-validation reference is OpenEMS Harminv resonance frequency
-    (tier E4 — coarse-mesh resonance agreement, not absolute calibrated S).
+    The stored port geometry fails current preflight because of port/PEC
+    overlap and under-resolution. This builder does not run OpenEMS, and its
+    S-parameter output is not an RF validation result.
     """
     import jax.numpy as jnp
 
@@ -667,33 +667,11 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
     s = np.zeros((1, 1, len(f_hz)), dtype=complex)
     s[0, 0, :] = s_raw[0, 0, :]
 
-    s11 = s[0, 0, :]
-    passive = bool(np.all(np.abs(s11) < 1.05))
-    # Local dip near analytic resonance (Balanis TL ~2.42 GHz).
-    eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 * (1 + 12 * h_sub / w_patch) ** (-0.5)
-    delta_l = (
-        0.412
-        * h_sub
-        * ((eps_eff + 0.3) * (w_patch / h_sub + 0.264))
-        / ((eps_eff - 0.258) * (w_patch / h_sub + 0.8))
-    )
-    f_res_an = C0 / (2 * (l_patch + 2 * delta_l) * math.sqrt(eps_eff))
-    s11_db = 20 * np.log10(np.maximum(np.abs(s11), 1e-6))
-    lo = int(np.searchsorted(f_hz, f_res_an * 0.90))
-    hi = int(np.searchsorted(f_hz, f_res_an * 1.10))
-    if hi > lo:
-        local_idx = lo + int(np.argmin(s11_db[lo:hi]))
-        f_res_rfx = float(f_hz[local_idx])
-        f_err = 100 * abs(f_res_rfx - f_res_an) / f_res_an
-    else:
-        f_res_rfx = float("nan")
-        f_err = float("inf")
-    passed = None if quick else bool(passive and f_err < 20.0)
+    passed = None
 
-    # Companion Simulation for the field animation. The validated S11 run uses a
-    # non-uniform z stack (graded dz) on which the snapshot path is not wired, so
-    # a uniform-mesh twin of the same patch — soft-fed instead of lumped-port —
-    # reproduces the field spreading under the patch purely for the visual.
+    # Companion simulation for the field animation. The diagnostic port sweep
+    # uses a nonuniform z stack on which the snapshot path is not wired. A
+    # separate uniform, soft-fed model provides plotting data only.
     n_z_unif = max(4, int(math.ceil((air_below + h_sub + air_above) / dx)))
     dom_z = n_z_unif * dx
     z0_gnd = air_below
@@ -730,10 +708,7 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
         passed=passed,
         sim=sim,
         anim_sim=sim_anim,
-        metric_value=(
-            f"resonance dip f={f_res_rfx / 1e9:.3f} GHz vs analytic "
-            f"{f_res_an / 1e9:.3f} GHz ({f_err:.1f}% err); passive={passive}"
-        ),
+        metric_value="not reported: stored port setup fails current preflight",
         params={
             "design_freq_hz": f_design,
             "substrate": "FR4 (eps_r=4.3)",
@@ -743,9 +718,8 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
             "s_param_n_steps": s_param_n_steps,
         },
         notes=(
-            "Single-cell lumped-port S11 has parasitic reactance, so the patch "
-            "resonance appears as a local dip. Reference is OpenEMS Harminv "
-            "resonance frequency (E4 resonance agreement, not calibrated S)."
+            "Current preflight reports port/PEC overlap and under-resolution. "
+            "The builder does not run OpenEMS; no RF metric is reported."
         ),
     )
 
@@ -806,21 +780,24 @@ CASE_REGISTRY: list[GalleryCase] = [
     ),
     GalleryCase(
         id="patch_antenna",
-        title="2.4 GHz Patch Antenna (FR4)",
+        title="Patch Antenna Diagnostics",
         description=(
-            "Probe-fed rectangular microstrip patch antenna on FR4; the S11 "
-            "resonance dip vs the analytic transmission-line (Balanis) estimate."
+            "Plots, file-format output, and AD/FD data from a port setup that "
+            "fails current preflight; no RF metric is reported."
         ),
-        validation_tier="E4",
-        metric="resonance frequency within 20% of the analytic transmission-line estimate; |S11| passive",
-        tolerance="resonance freq error < 20%, |S11| <= 1.05",
-        reference_solver="analytic transmission-line (Balanis) estimate",
+        validation_tier="unqualified",
+        metric=(
+            "Current preflight reports port/PEC overlap and under-resolution; "
+            "no RF metric is reported"
+        ),
+        tolerance="not applicable",
+        reference_solver="none",
         builder=_build_patch_antenna,
         n_ports=1,
         has_smith=True,
         application="antenna",
         capability=(
-            "validated-vs-exact",
+            "diagnostic-artifact",
             "field-animation",
             "autodiff-gradient",
             "touchstone-export",
@@ -859,14 +836,15 @@ def build_manifest(
 
     The shape mirrors :func:`rfx.artifacts._provenance`: a provenance record
     plus a ``reproducibility.status = "provenance-only"`` field. ``passed`` is
-    forced to ``None`` for quick smoke runs so a smoke artifact can never be
-    read as a validated result.
+    forced to ``None`` for reduced runs and cases whose machine-readable tier is
+    ``unqualified``.
 
     ``assets`` is a list of ``{"filename", "type", "sha256", "size_bytes"}``
     dicts (``served_url`` is filled in here from the case id).
     """
     quick_smoke = bool(quick_smoke)
-    validated_pass = None if quick_smoke else passed
+    unqualified = case.validation_tier == "unqualified"
+    validated_pass = None if quick_smoke or unqualified else passed
 
     asset_entries: list[dict[str, Any]] = []
     for asset in assets:
@@ -904,18 +882,22 @@ def build_manifest(
         "validation": {
             "tier": case.validation_tier,
             "metric": case.metric,
-            "metric_value": metric_value,
-            "tolerance": case.tolerance,
-            "reference_solver": case.reference_solver,
+            "metric_value": None if unqualified else metric_value,
+            "tolerance": None if unqualified else case.tolerance,
+            "reference_solver": None if unqualified else case.reference_solver,
             "passed": validated_pass,
         },
         "reproducibility": {
             "status": "provenance-only",
             "limitations": [
                 "Precomputed artifact: the public site does not re-run a solver.",
-                "Quick-smoke artifacts use reduced grids/steps and are NOT validated."
+                "Reduced grid/step artifact; not validated and no validation metric is reported."
                 if quick_smoke
-                else "Validated runs are produced on GPU/VESSL.",
+                else (
+                    "This setup fails current preflight; no RF metric is reported."
+                    if unqualified
+                    else "Validated runs are produced on GPU/VESSL."
+                ),
             ],
         },
         "assets": asset_entries,
@@ -1351,7 +1333,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--quick",
         action="store_true",
-        help="Reduced grid/steps for a fast CPU smoke test "
+        help="Reduced grid/steps for a short CPU run "
         "(manifest tagged quick_smoke=true, validation.passed=null).",
     )
     args = parser.parse_args(argv)
@@ -1370,7 +1352,7 @@ def main(argv: list[str] | None = None) -> int:
     out_root: Path = args.out
     print(
         f"Precomputing {len(cases)} case(s) -> {out_root}"
-        + (" [QUICK SMOKE]" if args.quick else "")
+        + (" [SHORT RUN]" if args.quick else "")
     )
     for case in cases:
         case_dir = out_root / case.id

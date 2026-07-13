@@ -185,8 +185,8 @@ if result.snapshots is not None:
 
 ## External Analysis Workflows
 
-Hand summaries to notebooks or reports, but keep the raw arrays and plots as the
-source of truth. A useful summary records the frequency grid, S-parameters,
+Hand summaries to notebooks or reports, but retain the raw arrays and plots
+with the summary. A useful summary records the frequency grid, S-parameters,
 resonant peaks, bandwidth, return loss, and the exact pass/fail rule used to
 judge the result — state the metric rather than only that a design "looks good".
 

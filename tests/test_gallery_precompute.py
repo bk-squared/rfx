@@ -48,7 +48,7 @@ def test_registry_required_fields_present():
     for case in pg.CASE_REGISTRY:
         assert case.id and isinstance(case.id, str)
         assert case.title and case.description
-        assert case.validation_tier in {"E4", "E5", "OPT"}
+        assert case.validation_tier in {"E4", "E5", "OPT", "unqualified"}
         assert case.metric and case.tolerance and case.reference_solver
         assert callable(case.builder), f"{case.id} builder must be callable"
         assert case.n_ports >= 1

@@ -1,227 +1,154 @@
 # rfx Simulation Methodology
 
-## 1. Core Problem
+This guide describes how to configure and assess an rfx simulation. It does not
+define one mesh or error tolerance for every model. Choose those values from the
+observable, frequency band, geometry, material representation, and applicable
+validation result.
 
-FDTD simulation accuracy depends on ~7 configuration parameters that interact nonlinearly. Incorrect settings cause errors from 3% to 60%+, and the failure modes are silent (no crash, just wrong frequencies). The simulator must auto-derive these from geometry + frequency specification.
+## 1. Define the result before building the model
 
-## 2. Validated Configuration Rules
+Record the following before choosing a grid:
 
-Based on systematic convergence testing (VESSL runs #369367231424, #369367231427):
+- the frequency band and requested observable;
+- the source or port family and its reference impedance or normalization;
+- the geometry dimensions and material model that must be resolved;
+- the boundary condition and required clearance from absorbers;
+- the comparison metric, reference result, and acceptance threshold.
 
-### 2.1 Cell Size (dx)
+Use a soft field source plus a probe for resonance or ring-down studies where a
+port load would alter the response. Use a documented port and its matching
+S-parameter calculator when the result must be impedance referenced. A field
+peak from a soft-source run is not return loss.
 
-```
-dx = min(lambda_min / 20, min_feature_size / 4)
-```
+The current port-specific restrictions are listed in
+[S-parameter support](sparameter_support_matrix.md). The broader solver and mesh
+restrictions are listed in [support boundaries](support_matrix.md).
 
-- `lambda_min = C0 / freq_max` — shortest wavelength in simulation
-- `min_feature_size` — thinnest geometry (substrate thickness, trace width, etc.)
-- At least 4 cells per feature for geometric fidelity
-- Grid dispersion error ∝ (dx/λ)² — at λ/20, dispersion < 0.1%
+## 2. Choose and inspect the mesh
 
-**Convergence data (2.4 GHz patch, h=1.6mm):**
+Uniform Cartesian Yee grids are the general default. A graded `dz_profile` can
+reduce the cell count for supported thin-z geometries, but it does not make
+every source, port, boundary, or observable available on a nonuniform grid.
+Check the support documents before switching mesh type.
 
-| dx | h/dx | f_res | error |
-|----|------|-------|-------|
-| 1.0mm | 1.6 | 2.248 GHz | 6.3% |
-| 0.5mm | 3.2 | 2.318 GHz | 3.4% |
-| Richardson (dx→0) | ∞ | 2.341 GHz | 2.5% |
+`auto_configure(...)` derives a starting `SimConfig` from geometry and a
+frequency range. `plan_mesh(...)` returns the same setup with resolution,
+absorber, CFL, and memory information in a serializable `MeshPlan`. These tools
+do not establish mesh independence or electromagnetic accuracy.
 
-Extrapolated limit ~2.5% is from finite geometry effects (not grid error).
+For every model:
 
-### 2.2 Domain Size
+1. Confirm that important dielectric regions occupy enough cells to represent
+   their interfaces and thickness.
+2. Represent a zero-thickness conductor with `add_thin_conductor(...)`, or use
+   an edge-aligned PEC volume that occupies at least one cell.
+3. Inspect the final cell edges after grading. A requested physical thickness
+   can still rasterize to zero cells.
+4. Respect the adjacent-cell ratio reported by preflight.
+5. Repeat the requested observable on at least one finer mesh before using it
+   as an RF result.
 
-```
-margin = max(lambda_max / 4, 8 * dx)
-```
+See [Nonuniform mesh](../public/guide/nonuniform-mesh.mdx) for supported graded-z
+usage and [Automation](../public/api/automation.mdx) for the exact planning API.
 
-- `lambda_max = C0 / freq_min` — longest wavelength
-- **Critical**: small margins cause domain resonance that dominates the spectrum
-- At margin = 0.12λ, domain resonance at ~1.35 GHz masked the 2.4 GHz patch resonance
-- At margin = 0.25λ, domain resonance eliminated
+## 3. Model materials and conductors explicitly
 
-### 2.3 CPML Absorbing Boundary
+Material names do not imply a loss model. Set `eps_r`, `mu_r`, conductivity, or
+the supported dispersive parameters required by the calculation, and document
+the values used.
 
-```
-cpml_layers = max(ceil(lambda_max / (10 * dx)), 8)
-```
+rfx promotes materials with `sigma >= 1e6 S/m` to the PEC mask. Such a material
+does not retain finite volumetric conductivity in the update equations. Use
+PEC when that is the intended approximation. A finite sheet-resistance study
+requires a supported finite-conductivity representation below that threshold
+and a mesh/convergence study for the loss observable.
 
-- At least λ/10 physical thickness
-- Below this, low-frequency reflections corrupt the spectrum
-- CFS-CPML with kappa_max scaling for wideband absorption
+PEC geometry is rasterized to the Yee grid. Subcell warnings identify geometry
+that may disappear or change effective dimensions; they are not evidence that
+the approximation is acceptable. See
+[Geometry and materials](../public/api/geometry-materials.mdx).
 
-### 2.4 PEC Handling
+## 4. Keep active geometry clear of absorbers
 
-**Must use true PEC mask (E-field zeroing), NOT high-sigma approximation.**
+Place sources, ports, probes, conductors, dielectrics, and NTFF surfaces outside
+the effective CPML or UPML region unless the documented workflow explicitly
+allows otherwise. Check clearance against the final grid and absorber cell
+count, not only against nominal model coordinates.
 
-- High-sigma (σ=1e10): Ca ≈ -1 causes oscillation, shifts resonance by 20%+
-- True PEC mask: component-specific tangential zeroing
-  - Only zero E-components where PEC extends ≥2 cells in that direction
-  - Preserves normal E at thin PEC surfaces (surface charge)
-  - Uses neighbor analysis: `mask_ez = pec(i,j,k) AND (pec(i,j,k-1) OR pec(i,j,k+1))`
+For NTFF calculations, rfx applies conservative preflight heuristics to the
+projected face clearance from PEC geometry. Passing those checks does not prove
+far-field separation. The transform may use a closed surface in the near field;
+mesh convergence and an analytic or independent reference remain necessary.
 
-### 2.5 Timesteps
+See [Far field and RCS](../public/guide/farfield-rcs.md) for the six-face box,
+clearance calculation, settling checks, and reference-subtraction procedure.
 
-```
-n_steps = ceil((T_source + T_ringdown) / dt)
-T_source = 6 * tau = 6 / (f0 * bandwidth * pi)
-T_ringdown = Q / (pi * f_min)  # Q ≈ 1/tan_delta for dielectric loss
-```
+## 5. Run preflight and act on every finding
 
-- The source must fully decay before ring-down analysis
-- Ring-down must be captured for spectral resolution
-- For FR4 (tan_d=0.02): Q ≈ 50, T_ringdown ≈ 6.6ns at 2.4 GHz
-- Total T_sim ≈ 10ns minimum for patch antennas
+Call `sim.preflight()` before a long run and retain the report with the inputs.
+Use `report.raise_for_failure()` to stop on errors, but also read every warning.
+Warnings such as geometry inside an absorber, zero-cell rasterization,
+port/PEC overlap, poor mesh resolution, or an unsupported configuration can
+make a finite array unusable as an RF result.
 
-### 2.6 Source Model
+Preflight checks configuration consistency. It does not validate resonance,
+return loss, Q, radiation pattern, RCS, or a derivative. A short successful run
+only confirms that the selected execution path produced output.
 
-| Use case | Source type | Rationale |
-|----------|------------|-----------|
-| Resonance detection (PEC) | `add_source()` → raw field source | No impedance loading; broadband; 0.00% on cavity |
-| Resonance detection (CPML) | `add_source()` → J source (Cb/dx) | Prevents DC accumulation from PEC charge; 3.78% on patch |
-| S-parameter extraction | Lumped/wire port | Needs V/I decomposition; requires calibration |
-| Plane wave scattering | TFSF | Clean incident/scattered separation |
+## 6. Run long enough for the requested observable
 
-**Auto-selection**: `add_source()` automatically selects the right source type:
-- `boundary='pec'` (closed cavity) → raw field add (broadband, exact cavity modes)
-- `boundary='cpml'` (open structure) → J source with Cb/dx normalization
+Source duration, resonator Q, losses, boundary reflections, and the requested
+frequency resolution determine the required run time. Do not infer convergence
+from `n_steps` alone.
 
-**Waveforms**:
-- `ModulatedGaussian(f0, bw)` — sin(2πf₀t)·Gaussian envelope. **Zero DC** (∫s=0 exactly). Default for `add_source()`. Same as Meep's `GaussianSource`.
-- `GaussianPulse(f0, bw)` — differentiated Gaussian. Near-zero DC (∫s=exp(-9)). Broader bandwidth. Used by ports.
+On the supported uniform CPML/UPML runner, `until_decay` monitors an interior
+sum-of-squared-fields proxy outside the absorber. It does not measure total
+electromagnetic energy and does not prove convergence of every DFT,
+S-parameter, Harminv, or NTFF quantity. Other runners may reject or ignore that
+option as documented by their emitted diagnostics.
 
-**Port impedance loads the cavity.** A 50Ω port in a high-Q cavity damps the resonance so heavily that the spectral peak becomes a broad hump indistinguishable from the source spectrum. Use `add_source()` for resonance characterization.
+When the post-run ring-down advisory is emitted, the tail of a recorded probe
+suggests incomplete settling. Increase the run duration or use `until_decay`
+where supported, then verify the actual observable separately. Closed PEC
+cavities do not decay through an absorber; use a fixed run and inspect the
+probe signal.
 
-### 2.7 Spectral Analysis
+## 7. Interpret the requested observable, not a convenient proxy
 
-**For cavity-interior probes:**
-1. **Window**: use only ring-down portion (after source decays): `start = ceil(2 * t0 / dt)`
-2. **DC removal**: subtract mean of windowed signal
-3. **Hann window**: reduce spectral leakage
-4. **Peak finding**: resonance = spectral PEAK (not minimum — cavity amplifies at resonance)
+- Remove source-dominated transients before applying Harminv or an FFT to a
+  ring-down signal.
+- Treat Harminv frequency and Q as estimates from the supplied time window;
+  compare stability across windows and meshes.
+- For MSL S-parameters, `reliable[p, k] == False` means the voltage/current
+  split for driven port `p` is too weak at bin `k`; exclude column `S[:, p, k]`
+  from RF interpretation. `True` is not a general accuracy guarantee.
+- On nonuniform MSL models, use the supported normalization documented by the
+  calculator. Do not assume a uniform-grid normalization option is accepted.
+- For RCS, subtract an incident-only reference field before forming scattered
+  power. A total-field NTFF result is not RCS.
+- AD/FD agreement checks differentiation of the implemented computation. It
+  does not validate the physical model that produced the objective.
 
-**Common pitfalls:**
-- `argmin` of normalized spectrum finds anti-resonance (off by ~2x)
-- Unwindowed FFT includes DC from static PEC surface charge
-- Short T_sim gives source-dominated spectrum, not cavity spectrum
+See [Probes and S-parameters](../public/guide/probes-sparams.mdx) and
+[Simulation](../public/api/simulation.mdx) for return fields and warning scope.
 
-## 3. Comparison with Meep / OpenEMS
+## 8. Establish evidence for the stated use
 
-| Feature | Meep | OpenEMS | rfx (current) | rfx (target) |
-|---------|------|---------|---------------|--------------|
-| Auto mesh | Manual `resolution` | `AutoMesh` with feature detection | Manual `dx` | Auto from geometry |
-| PEC | Native material | Native | True PEC mask | Same (validated) |
-| Domain sizing | Manual | Manual + recommendations | Manual | Auto from λ |
-| CPML/PML | Built-in with auto thickness | Manual `AddPML` | Manual | Auto from λ |
-| Port model | `EigenModeSource` + flux | `AddLumpedPort` + `CalcPort` | WirePort + DFT | Flux monitors needed |
-| Convergence | `run_until_dft_decay` | Manual | Manual | Auto decay detection |
-| Resonance | Harminv (harmonic inversion) | FFT | Windowed FFT | Harminv integration |
-| S-params | Flux plane monitors | Port V/I + FFT | Wave decomposition | Need flux monitors |
+Use all applicable checks:
 
-### Key Meep advantages to adopt:
-1. **Harminv**: exponential fitting of time series → much more accurate than FFT for finding resonance frequencies and Q factors from short time series
-2. **run_until_dft_decay**: monitors DFT accumulator convergence and stops automatically
-3. **Flux monitors**: area-integrated power flow, more robust than single-point probes
+1. **Configuration:** preflight contains no unresolved error or relevant
+   warning.
+2. **Numerical convergence:** the same physical model is repeated on refined
+   meshes and, where relevant, with increased absorber clearance and run time.
+3. **Analytic reference:** compare with a closed-form result inside its stated
+   assumptions.
+4. **Independent comparison:** compare the same geometry, materials, ports,
+   reference planes, frequency samples, and metric with another solver.
+5. **Regression check:** retain the inputs, raw arrays, plots, metric, and
+   threshold so the comparison can be rerun.
 
-### Key OpenEMS advantages to adopt:
-1. **AutoMesh**: analyzes geometry and places mesh lines at material boundaries
-2. **CalcPort**: proper lumped port with V/I extraction and automatic impedance normalization
-3. **NF2FF**: near-to-far-field as built-in post-processing (rfx already has this)
-
-## 4. Auto-Configuration Architecture
-
-### Proposed API
-
-```python
-sim = Simulation.from_geometry(
-    geometry=[ground, substrate, patch],
-    freq_range=(1e9, 4e9),      # simulation frequency band
-    accuracy="standard",         # "draft" / "standard" / "high"
-)
-# Auto-derives: dx, domain, CPML, n_steps, source, spectral method
-
-result = sim.run()
-result.resonances      # Harminv-detected modes with Q factors
-result.s_params        # Flux-monitor-based S-parameters
-result.convergence     # Convergence metric (run two resolutions internally)
-```
-
-### Auto-config module (`rfx/auto_config.py`)
-
-```python
-def auto_configure(geometry, freq_range, accuracy="standard"):
-    """Derive all simulation parameters from geometry + frequency."""
-
-    f_min, f_max = freq_range
-    lambda_min = C0 / f_max
-    lambda_max = C0 / f_min
-
-    # 1. Analyze geometry
-    features = analyze_features(geometry)  # min thickness, extent, materials
-    min_feature = features.min_thickness
-
-    # 2. Cell size
-    cells_per_lambda = {"draft": 10, "standard": 20, "high": 40}[accuracy]
-    cells_per_feature = {"draft": 2, "standard": 4, "high": 8}[accuracy]
-    dx = min(lambda_min / cells_per_lambda, min_feature / cells_per_feature)
-
-    # 3. Domain
-    margin_factor = {"draft": 0.15, "standard": 0.25, "high": 0.5}[accuracy]
-    margin = lambda_max * margin_factor
-
-    # 4. CPML
-    cpml_thickness = lambda_max / 10
-    cpml_layers = max(ceil(cpml_thickness / dx), 8)
-
-    # 5. Timesteps
-    dt = 0.99 * dx / (C0 * sqrt(3))
-    T_source = 6 / (f_center * bandwidth * pi)
-    Q_est = estimate_Q(features)  # from material loss tangent
-    T_ringdown = Q_est / (pi * f_min)
-    n_steps = ceil((T_source + T_ringdown) / dt)
-
-    # 6. Convergence check
-    if accuracy == "high":
-        # Run at two resolutions, compare
-        warn_if_not_converged = True
-
-    return SimConfig(dx=dx, margin=margin, cpml_layers=cpml_layers,
-                     n_steps=n_steps, ...)
-```
-
-### Feature analysis
-
-```python
-def analyze_features(geometry):
-    """Extract critical dimensions from geometry shapes."""
-    thicknesses = []
-    for shape, material in geometry:
-        if isinstance(shape, Box):
-            dims = [abs(c2-c1) for c1,c2 in zip(shape.corner1, shape.corner2)]
-            thicknesses.append(min(dims))
-    return FeatureInfo(
-        min_thickness=min(thicknesses),
-        max_extent=max(max(dims) for dims in all_dims),
-        has_pec=any(is_pec(m) for _, m in geometry),
-        max_eps_r=max(m.eps_r for _, m in geometry),
-        max_loss_tangent=...,
-    )
-```
-
-## 5. Validation Requirements
-
-For rfx to be credible as a simulator:
-
-1. **PEC cavity**: <1% error vs analytical (verified: 2.9% at dx=1mm, converges)
-2. **Patch antenna**: <3% error vs analytical with proper configuration (verified: 3.4% at dx=0.5mm)
-3. **Cross-validation**: <5% vs Meep/OpenEMS for same geometry (test exists: test_meep_crossval.py)
-4. **Convergence**: monotonic convergence with mesh refinement (verified)
-5. **Auto-config**: user provides geometry + freq_range, simulator handles the rest
-
-## 6. Next Steps
-
-1. **Implement `auto_config.py`** — derive all params from geometry + freq
-2. **Add Harminv** — exponential fitting for resonance/Q extraction (scipy.linalg based)
-3. **Add flux monitors** — area-integrated S-parameter extraction
-4. **Add `run_until_converged`** — auto-stop when DFT/spectrum stabilizes
-5. **Convergence test suite** — automated multi-resolution testing for key benchmarks
+A unit test, finite output, preflight pass, internal consistency check, or UI
+replay can detect software regressions without establishing RF accuracy. State
+exactly which comparison ran; a missing optional external solver is a skipped
+comparison, not a pass. Current executable comparisons and their thresholds are
+listed in [Validation](../public/guide/validation.mdx).

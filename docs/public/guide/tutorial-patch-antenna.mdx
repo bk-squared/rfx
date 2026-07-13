@@ -1,24 +1,27 @@
 ---
 title: "Tutorial: Patch Antenna Design"
-description: "Recommended workflow for a rectangular microstrip patch antenna in rfx."
+description: "Setup and validation workflow for a rectangular microstrip patch antenna in rfx."
 sidebar:
   order: 30
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page connects the quick resonance workflow in [Your First Patch Antenna](/rfx/guide/first-patch/) with the current public patch cross-check in `validation/crossval/05_patch_antenna.py`.
+This page connects the model that passes preflight in
+[Your First Patch Antenna](/rfx/guide/first-patch/) with the separate patch
+cross-check in `validation/crossval/05_patch_antenna.py`.
 
 <Aside type="note" title="Public scope">
-  This is a recommended patch workflow, not a guarantee that every antenna, feed, substrate, or mesh setting is qualified.
+  This workflow separates setup, execution, and RF evidence. Passing preflight
+  or a short run does not validate resonance, return loss, Q, or radiation.
 </Aside>
 
 ## Recommended workflow
 
 | Stage | Goal | Primary page / script |
 |---|---|---|
-| 1. Quick resonance check | Size the patch, run the simulation, and extract the dominant mode | [Your First Patch Antenna](/rfx/guide/first-patch/) |
-| 2. Cross-check | Compare the same class of structure against the documented reference script | `validation/crossval/05_patch_antenna.py` |
+| 1. Setup check | Size the patch, resolve preflight, and verify finite data from a short run | [Your First Patch Antenna](/rfx/guide/first-patch/) |
+| 2. Narrow cross-check | Run the repository's exact rfx/OpenEMS configuration and apply its stated gates | `validation/crossval/05_patch_antenna.py` |
 | 3. Radiation / reporting | Move to far-field reporting after the resonance setup is stable | [Far-Field & RCS](/rfx/guide/farfield-rcs/) |
 
 ## Baseline geometry
@@ -34,18 +37,20 @@ python validation/crossval/05_patch_antenna.py
 With the OpenEMS/CSXCAD Python bindings installed, the script prints a console
 summary comparing the rfx and OpenEMS resonances and writes a plot plus a JSON
 result file. Those bindings are not an rfx dependency: if they are missing, the
-script still runs and prints the rfx Harminv resonance pass, then exits with
-status 2 behind a SKIPPED banner — it flags the run as inconclusive rather than
-reporting a pass, so it is not a cross-solver check.
+script runs the rfx portion and then exits with status 2 behind a SKIPPED banner.
+That run is inconclusive and does not report a cross-solver pass.
 
 ## Interpretation rules
 
 - Read Harminv resonance as the primary frequency estimate. The script's primary gate is a resonance-frequency agreement — rfx Harminv vs OpenEMS Harminv within 20 %, and rfx internal self-consistency (Harminv vs the lumped-port S11 local dip) within 5 % — not an |S11| magnitude match.
+- Those tolerances and results apply only to the script's geometry, mesh,
+  frequency band, and metric. They do not validate the First Patch model or the
+  [patch gallery diagnostic](/rfx/gallery/patch_antenna/).
 - Use impedance-referenced S-parameter results only through a documented port workflow — see [Sources & Ports](/rfx/guide/sources-ports/) for `add_port`. The lumped-port S11 dip in this script is a secondary check with a known single-cell parasitic reactance, so read it as a local dip near the Harminv frequency, not a deep matched null.
 - Treat non-uniform mesh variants as limited support unless the page you are following says otherwise.
 
 ## Where to go next
 
-- Start with [Your First Patch Antenna](/rfx/guide/first-patch/) for the shortest path to a resonance run.
+- Start with [Your First Patch Antenna](/rfx/guide/first-patch/) to build the model and verify finite data in a short run.
 - Continue to [Far-Field & RCS](/rfx/guide/farfield-rcs/) once the resonance setup is stable.
 - See [Cross-Validation and Accuracy](/rfx/guide/validation/) for the broader support overview.

@@ -12,44 +12,63 @@ This page summarizes the public support scope for user-facing rfx workflows.
 | Status | Meaning |
 |---|---|
 | **recommended default** | best place to start for public examples and ordinary RF workflows |
-| **bounded envelope** | usable only within the stated geometry, mesh, frequency, or calculator limits |
+| **limited** | usable only within the stated geometry, mesh, frequency, or calculator limits |
 | **outside documented scope** | available code may exist, but public claims require a guide and support-matrix entry |
 | **unsupported** | should fail clearly rather than degrade silently |
 
-## Recommended default lane
+## Recommended configuration
 
 | Dimension | Recommended subset |
 |---|---|
 | grid / runner | uniform Cartesian Yee |
-| boundaries | PEC, CPML, bounded UPML |
+| boundaries | PEC, CPML, and UPML within its documented limits |
 | sources | point/current, lumped port, wire port, specialized microstrip-line port, rectangular waveguide port |
 | observables | probes, flux, Harminv resonance, selected S-parameter workflows, documented far-field workflows |
 | materials | isotropic linear, conductive, and documented dispersive subsets |
 | workflows | cavity, waveguide, patch-style resonance, simple scattering, de-embedding, selected differentiable proxy objectives |
+| non-uniform profiles | feature-specific limited or experimental scope; use the [Non-Uniform Mesh guide](/rfx/guide/nonuniform-mesh/) for axis and calculator restrictions |
 
-## S-parameter calculation surfaces
+## S-parameter APIs
 
 | Primitive | Calculation API | Public status |
 |---|---|---|
-| lumped/wire `add_port(...)` | `run(compute_s_params=True)` | documented calculator for the matching port family; validation scope follows the support envelope |
-| lumped/wire `add_port(...)` | `forward(port_s11_freqs=...)` | differentiable S11 vectors on the uniform single-device path |
+| lumped/wire `add_port(...)` | `run(compute_s_params=True)` | documented calculator for the matching port family; use only within its stated validation limits |
+| lumped/wire `add_port(...)` | `forward(port_s11_freqs=...)` | differentiable S11 vectors on the uniform single-device configuration |
 | `add_msl_port(...)` | `compute_msl_s_matrix()` | specialized microstrip-line workflow |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow; use the guide-recommended normalization mode |
-| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | one-port coaxial transmission-line reflection envelope only; not a general multi-port coaxial S-matrix workflow |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `precision="float32"`; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` coaxial port; see [Sources and Ports](/rfx/api/sources-ports/) for rejected registrations and accepted arguments |
 | sources, TFSF, probes, flux monitors | not port calculators | field/flux/time observables |
 
 ## Repository code outside the public support scope
 
-Some repository code exists for compatibility, testing, or qualification. It should not be used for public claims unless the workflow is documented in a public guide and has a matching support-matrix entry.
+Some repository code exists only for backward compatibility or internal testing. Treat it as supported public API only when a public guide documents the workflow and the support matrix lists it.
+
+## Studio, CLI, and MCP results
+
+These tools record and reproduce local runs. A valid spec, completed run,
+passing replay, or comparison report does not validate electromagnetic
+accuracy. Apply the documented limits for the selected mesh, source, port, and
+observable, and perform the required convergence or reference comparison.
+Studio plots only the result types listed in
+[Studio, CLI, and MCP Experiments](/rfx/guide/studio-experiments/); other
+artifacts may still be available through the CLI, API, MCP, or replay bundle.
+MCP operations that change data or start costly work require server-side
+approval.
 
 ## Unsupported combinations
 
-Unsupported combinations should fail clearly. Common examples include using a calculator with the wrong port family, mixing non-default mesh profiles with S-parameter calculators that only support the uniform lane, or treating field probes and flux monitors as impedance-defined ports.
+Unsupported combinations should fail clearly. Common examples include using a calculator with the wrong port family, mixing non-default mesh profiles with S-parameter calculators that only support a uniform grid, or treating field probes and flux monitors as impedance-defined ports.
 
 ## Practical rule
 
-If the workflow is not in the recommended default lane or a bounded envelope above, present it as outside the documented public support scope.
+If a workflow is not in the recommended configuration or a stated limited
+configuration in these tables, the linked feature guide, or the support
+matrices, present it as outside the documented public support scope. A
+successful preflight or completed run does not expand that scope.
 
 ## Artifact and report exports
 
-Touchstone files, plots, HDF5 snapshots, CSV sweep tables, and JSON manifests are interoperability or reporting artifacts. They preserve what a run produced, but they do not by themselves promote a workflow to supported status. Public reports should carry the originating port/source family, support status, command, git SHA, and metric used for pass/fail.
+Touchstone files, plots, HDF5 snapshots, CSV sweep tables, and JSON manifests
+preserve what a run produced, but they do not establish that the underlying
+calculation is supported or accurate. Public reports should include the
+port/source family, support status, command, git SHA, and pass/fail metric.

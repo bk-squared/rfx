@@ -7,17 +7,19 @@ sidebar:
 
 rfx is a 3-D finite-difference time-domain (FDTD) electromagnetic simulator built in JAX. These docs focus on maintained user workflows with explicit support boundaries.
 
-## Current public status
+## Supported workflows
 
-Start with the **uniform Cartesian Yee FDTD lane**. Each surface below states an explicit support scope:
+Start with the **uniform Cartesian Yee FDTD solver**. The table summarizes the
+documented workflows and their limits:
 
-| Surface | Public role |
+| Configuration | Documented use |
 |---|---|
-| **Uniform Yee RF workflows** | recommended default for tutorials, examples, probes, Harminv, selected S-parameter workflows, and far-field workflows |
-| **Rectangular waveguide S-matrices** | validated inside the documented rectangular-guide envelope |
+| **Uniform Yee RF workflows** | recommended default for tutorials, examples, probes, Harminv, selected S-parameter calculations, and far-field calculations |
+| **Rectangular waveguide S-matrices** | validated within the documented rectangular-guide geometry, mesh, and frequency limits |
 | **Lumped, wire, and microstrip-line port workflows** | available through their matching calculators; validation scope follows the support matrix |
-| **Coaxial line reflection** | bounded one-port transmission-line workflow only; not a general coaxial S-matrix promise |
+| **Coaxial line reflection** | float32 precision, nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` coaxial port; see [Sources and Ports](api/sources-ports/) for the self-contained calculator limits |
 | **Differentiable design loops** | use proxy objectives, gradient checks, and documented validation before treating a design result as evidence |
+| **Studio, CLI, and MCP experiments** | versioned local CPU runs, append-only revisions, replay bundles, and server-approved MCP actions; see the guide for the current UI scope |
 
 If a capability is not listed here or on the [Support Boundaries](/rfx/api/support-boundaries/) page, treat it as outside the documented public support scope until that page lists it.
 
@@ -28,10 +30,10 @@ If a capability is not listed here or on the [Support Boundaries](/rfx/api/suppo
 | Feature | Detail |
 |---|---|
 | **GPU acceleration** | JAX/JIT execution for large 3-D grids |
-| **Differentiable workflows** | `jax.grad` through selected JAX-traced objectives; validate final RF observables through their support envelope |
+| **Differentiable workflows** | `jax.grad` through selected JAX-traced objectives; validate the final RF observable within its documented limits |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field utilities |
 | **Recommended examples** | the ordered tutorials under `examples/tutorials/` (start at `examples/README.md`), plus the inverse-design examples |
-| **Support-boundary discipline** | public claims are tied to explicit guide/support-matrix envelopes, not to every importable symbol |
+| **Documented limits** | support follows the stated geometry, mesh, frequency, and calculator constraints, not every importable symbol |
 
 ---
 
@@ -49,23 +51,39 @@ pip install "jax[cuda12]" rfx-fdtd
 
 ---
 
-## Ten-line example
+## Minimal example
 
 ```python
-from rfx import Simulation, Box, GaussianPulse
+from rfx import Box, GaussianPulse, Simulation
 
-sim = Simulation(freq_max=4e9, domain=(0.08, 0.06, 0.025), boundary="cpml")
-sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0016)), material="fr4")
-sim.add(Box((0.02, 0.01, 0.0016), (0.049, 0.049, 0.0016)), material="pec")
-sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0)), material="pec")
-sim.add_source((0.029, 0.03, 0.0008), "ez",
-               waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8))
-sim.add_probe((0.029, 0.03, 0.0008), "ez")
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.14, 0.06, 0.05),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=8,
+)
+sim.add_material("slab", eps_r=2.2, sigma=0.01)
+sim.add(Box((0.07, 0.018, 0.018), (0.09, 0.042, 0.032)), material="slab")
+sim.add_source(
+    (0.03, 0.03, 0.025),
+    "ez",
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+)
+sim.add_probe((0.11, 0.03, 0.025), "ez")
 
-result = sim.run(n_steps=8000)
-modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
-print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
+preflight = sim.preflight()
+print(preflight.format())
+preflight.raise_for_failure()
+
+result = sim.run(n_steps=1200)
+print(result.time_series.shape)
 ```
+
+This records a dielectric pulse response without making a resonance or Q
+claim. Resolve any preflight warning introduced by model changes. Use the
+[First Patch tutorial](guide/first-patch/) for a patch model that passes preflight and
+the checks required before reporting resonance or Q.
 
 ---
 
@@ -75,13 +93,14 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
 
 - [Installation](guide/installation/) — Python/JAX install, GPU notes, dev setup
 - [Quick Start](guide/quickstart/) — first simulation with the current high-level API
-- [Your First Patch Antenna](guide/first-patch/) — current-source resonance workflow
+- [Your First Patch Antenna](guide/first-patch/) — build a model, run a short check, and learn what is required before reporting RF results
+- [Studio, CLI, and MCP Experiments](guide/studio-experiments/) — local UI, versioned CPU runs, replay, and MCP approvals
 
 ### Modeling & Setup
 
 - [Simulation API](guide/api-reference/) — `Simulation`, `Result`, `auto_configure`, ports, NTFF, and design helpers
 - [Materials & Geometry](guide/materials-geometry/) — library materials, Debye/Lorentz, CSG shapes, PCB stackup
-- [Sources & Ports](guide/sources-ports/) — point sources, lumped/wire ports, microstrip-line ports, waveguide ports, and bounded coaxial-line reflection
+- [Sources & Ports](guide/sources-ports/) — point sources, lumped/wire ports, microstrip-line ports, waveguide ports, and coaxial-line reflection for exactly one `face="top"` port within its stated limits
 - [Probes & S-Parameters](guide/probes-sparams/) — DFT probes, S-matrix helpers, Harminv, de-embedding, exports
 - [Memory Reduction](guide/memory-reduction/) — reduce FDTD/AD memory while preserving validation boundaries
 - [Waveguide Ports](guide/waveguide-ports/) — rectangular waveguide modal workflows
@@ -106,5 +125,5 @@ print(f"Resonance: {modes[0].freq/1e9:.4f} GHz")
 
 - [Examples](/rfx/examples/) — recommended public runnable paths
 - [Validation](/rfx/validation/) — public support and validation overview
-- [Gallery](/rfx/gallery/) — precomputed showcase of validated cases (S-parameters, Smith charts, Touchstone downloads)
+- [Gallery](/rfx/gallery/) — examples with their RF evidence and limits stated on each page
 - [API](/rfx/api/) — curated public API contract

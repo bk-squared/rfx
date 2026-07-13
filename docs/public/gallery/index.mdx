@@ -1,17 +1,17 @@
 ---
 title: "rfx Gallery"
-description: "A visual tour of what rfx simulates — the structure, the fields as they evolve, the result against exact theory, and the gradient of that result via jax.grad through the supported time-domain workflows."
+description: "Visual examples whose pages state the available RF evidence and explain any limits."
 sidebar:
   order: 35
 ---
 
 import { CardGrid, Card } from '@astrojs/starlight/components';
 
-A short, visual tour of what rfx can do. Each case shows four things: **what the
-structure is**, **what the fields do** as they evolve, **how close the result
-lands to the exact textbook answer**, and — because rfx is a differentiable
-FDTD code — **the gradient of that result**, taken with `jax.grad` through the
-supported time-domain workflow. Pick one to dive in.
+A visual tour of structures, fields, outputs, and differentiable calculations.
+The slab and waveguide pages state their reference comparisons and supported
+gradient scope. The patch page is explicitly diagnostic because its stored port
+setup does not pass current preflight; its plots and derivative are not RF
+validation. Read the status and limits on each page before reusing a number.
 
 <CardGrid>
   <Card title="Dielectric Slab">
@@ -19,10 +19,10 @@ supported time-domain workflow. Pick one to dive in.
 
     A plane wave at normal incidence on a lossless dielectric slab. Reflection and transmission track the exact transfer-matrix curves to ~1%, and `jax.grad` returns `dT/dd` matching the closed-form derivative. [See it →](/rfx/gallery/multilayer_fresnel/)
   </Card>
-  <Card title="Patch Antenna">
-    <a href="/rfx/gallery/patch_antenna/"><img src="/rfx/gallery/assets/patch_antenna/s11_db.png" alt="Patch antenna return loss with a deep matched dip at resonance" /></a>
+  <Card title="Patch Antenna Diagnostics">
+    <a href="/rfx/gallery/patch_antenna/"><img src="/rfx/gallery/assets/patch_antenna/s11_db.png" alt="Patch-antenna S11 diagnostic from a setup that fails preflight" /></a>
 
-    A 2.4 GHz microstrip patch on FR4. A tuned inset feed gives a deep matched return-loss dip at the TM010 resonance, cross-checked with a Harminv ring-down, plus a differentiable substrate-permittivity sweep. [See it →](/rfx/gallery/patch_antenna/)
+    File-format, plotting, and AD/FD artifacts from a port setup that does not pass current preflight. The plotted RF values are not validation evidence. [Read the limits →](/rfx/gallery/patch_antenna/)
   </Card>
   <Card title="Rectangular Waveguide">
     <a href="/rfx/gallery/waveguide_wr90/"><img src="/rfx/gallery/assets/waveguide_wr90/field_te10.png" alt="TE10 mode propagating down a WR-90 rectangular waveguide" /></a>

@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "reference_lane": "uniform_yee_rf",
-  "lanes": {
+  "version": 2,
+  "recommended_configuration": "uniform_yee_rf",
+  "configurations": {
     "uniform_yee_rf": {
       "status": "supported",
       "boundaries": [
@@ -31,63 +31,102 @@
       ],
       "sparameter_contract": "docs/guides/sparameter_support_matrix.json"
     },
-    "nonuniform_graded_z": {
-      "status": "shadow",
-      "role": "preserved_thin_substrate_lane",
-      "supported_subset": [
-        "probe",
-        "current_source",
-        "selected_dispersive_smoke_coverage"
+    "nonuniform_mesh": {
+      "status": "limited_by_feature",
+      "use": "check_each_source_port_and_observable",
+      "feature_status_summary": [
+        "limited_probe_and_current_source_workflows",
+        "limited_benchmarked_ntff_dipole",
+        "experimental_dft_plane_and_full_plane_flux",
+        "experimental_normal_incidence_x_tfsf",
+        "experimental_single_mode_waveguide_magnitude",
+        "experimental_msl_laplace_feed",
+        "limited_field_only_lumped_rlc"
       ],
-      "unsupported_combinations": {
-        "floquet": "hard_fail",
-        "ntff": "hard_fail",
-        "dft_plane": "hard_fail",
-        "tfsf": "hard_fail",
-        "waveguide_port": "shadow_te10_single_mode: normalize=True/'flux' validated at settled num_periods; broad-E5-ANALYTIC envelope committed+gated (graded-dy 1-3x, eps_r 2/4, vs analytic Airy, 16/16<=0.0157); NOT claims-bearing (broad-E4 external cross-solver + AD-traceability pending); other combinations hard_fail",
-        "lumped_rlc": "hard_fail",
-        "lumped_port_sparameters": "hard_fail",
-        "msl_s_matrix": "laplace lane RUNS since PR #239 (mode='laplace' quasi-TEM accepted on the graded mesh; internally gated by tests/test_msl_nu_sparam_gate.py, gpu+slow — externally UNVALIDATED, not claims-bearing); mode='eigenmode' hard_fail (falsified dead-end, raises NotImplementedError)",
-        "coaxial_port": "hard_fail"
-      },
-      "resolved_combinations": {
-        "pec_volume_scatterer": "RESOLVED 2026-06-25: a volumetric PEC obstacle (iris/post/septum) now reflects on the NU graded scan (|S11|~1.4-1.6 for the iris, ~0.6-2.1 for a full short), matching the uniform reflector class; empty NU stays |S11|~0. The earlier 'NU dielectric-only / pec_mask from rasterize_geometry not effective' framing was WRONG: the interior PEC IS applied to the NU device run. Root cause = the NU two-run S-matrix vacuum REFERENCE run retained the device's interior pec_mask (the vacuum override replaced only eps_r/sigma, never pec_mask) -> device and reference flux DFTs bit-identical -> S11=0 for any reflector. Fixed via run_nonuniform_path(strip_interior_pec=True) on the reference (drops interior PEC, keeps boundary guide walls). Gate tests/test_nonuniform_pec_scatterer_limit.py::test_nonuniform_pec_iris_reflects (was xfail-strict, now hard gate)"
+      "combinations": {
+        "floquet": {
+          "status": "unsupported",
+          "limits": "hard_fail"
+        },
+        "ntff": {
+          "status": "limited",
+          "limits": "limited to the benchmarked short-dipole directivity case; other sources and geometries need separate validation"
+        },
+        "dft_plane": {
+          "status": "experimental",
+          "limits": "experimental; runs on the graded path without a general RF-accuracy statement"
+        },
+        "tfsf": {
+          "status": "experimental",
+          "limits": "experimental for normal +/-x incidence only; oblique and +/-z incidence hard_fail"
+        },
+        "waveguide_port": {
+          "status": "experimental",
+          "limits": "experimental single-mode normalize=True or normalize='flux'; a passed Palace magnitude comparison covers normalize='flux', graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz; other profiles, bands, phase, modes, and junctions are unvalidated; eps_override and sigma_override AD are available only for normalize='flux', but only eps_override has a nonuniform AD-vs-FD regression test"
+        },
+        "lumped_rlc": {
+          "status": "limited",
+          "limits": "limited to the field update; no nonuniform S-parameter or component-value AD result"
+        },
+        "lumped_port_sparameters": {
+          "status": "unsupported",
+          "limits": "hard_fail"
+        },
+        "msl_s_matrix": {
+          "status": "experimental",
+          "limits": "experimental for mode='laplace'/'uniform' with internal settled-S11 coverage only; mode='eigenmode' hard_fail"
+        },
+        "coaxial_port": {
+          "status": "unsupported",
+          "limits": "hard_fail"
+        },
+        "pec_volume_scatterer": {
+          "status": "experimental",
+          "limits": "experimental: device/reference handling is regression-tested, but arbitrary iris, post, septum, branch, and T-junction RF results are not validated"
+        }
       }
     },
     "sbp_sat_subgridding": {
-      "status": "outside_public_support_scope",
-      "role": "local_refinement_code_path",
-      "public_docs_policy": "exclude_from_public_guides_until_support_matrix_and_public_workflow_are_added"
+      "status": "not_documented",
+      "public_docs_policy": "no_current_public_workflow",
+      "use": "local_refinement_code_path"
     },
     "adi": {
-      "status": "outside_public_support_scope"
+      "status": "not_documented"
     },
     "distributed": {
-      "status": "outside_public_support_scope"
+      "status": "not_documented"
     },
     "floquet_bloch": {
-      "status": "outside_public_support_scope"
+      "status": "experimental",
+      "public_sparameter_api": "none"
     },
     "coaxial_line_reflection": {
-      "status": "bounded_envelope_revalidation_pending",
-      "role": "one_port_coaxial_transmission_line_reflection",
-      "calculator": "Simulation.compute_coaxial_line_reflection(...)",
+      "status": "limited",
+      "calculator": "Simulation.compute_coaxial_line_reflection(...) only",
       "evidence": "analytic_broad_E5_plus_MEEP_broad_E4_short_open",
       "deprecated_related_api": "Simulation.compute_coaxial_s_matrix(...)",
       "limits": [
+        "requires exactly one registered coaxial port with face='top' and no mixed port family",
         "not a general multi-port coaxial network solver",
-        "uniform Yee envelope only",
-        "claims must cite docs/guides/sparameter_support_matrix.json"
-      ]
+        "requires mode='3d', solver='yee', precision='float32', stencil_order=2, and a uniform grid",
+        "requires boundary='cpml' with cpml_layers > 0",
+        "requires positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, and no periodic boundary axes",
+        "constructs its own line, source, DFT planes, and termination; separate geometry, RLC elements, monitors, and termination helpers are unsupported",
+        "derives the axial layout internally; the port z position, pin_length, and impedance do not set layout or loads; use feed_impedance= and use dut_impedance= only with termination='matched'",
+        "requires an integer probe_count of at least three and enough z-domain length for every requested probe plane",
+        "use only the termination, frequency, impedance, and mesh ranges in docs/guides/sparameter_support_matrix.json"
+      ],
+      "use": "one_top_face_port_coaxial_transmission_line_reflection"
     }
   },
-  "promotion_rule": [
-    "support_matrix_entry",
-    "explicit_contract",
-    "unit_and_integration_evidence",
-    "analytic_dump_external_or_benchmark_evidence",
-    "docs_examples_api_alignment",
-    "public_route_wording_free_of_development_log_or_diagnostic_only_detail"
+  "support_requirements": [
+    "current_support_matrix_entry",
+    "explicit_source_and_observable_restrictions",
+    "unit_and_integration_tests",
+    "analytic_replay_external_solver_or_convergence_evidence",
+    "documentation_and_api_agree",
+    "public_wording_states_current_limits"
   ],
   "sparameter_support_matrix": "docs/guides/sparameter_support_matrix.json",
   "physics_evidence_rule": "docs/guides/physics_validation_evidence_rule.md",

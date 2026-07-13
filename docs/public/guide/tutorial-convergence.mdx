@@ -28,37 +28,48 @@ The factory should accept `dx` and return the same physical problem at that cell
 from rfx import Simulation, Box, GaussianPulse
 
 
-def make_patch(dx: float) -> Simulation:
-    sim = Simulation(freq_max=4e9, domain=(0.08, 0.06, 0.025), boundary="cpml", dx=dx)
-    sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0016)), material="fr4")
-    sim.add(Box((0.02, 0.01, 0.0016), (0.049, 0.049, 0.0016)), material="pec")
-    sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0)), material="pec")
-    sim.add_source((0.029, 0.03, 0.0008), "ez", waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8))
-    sim.add_probe((0.029, 0.03, 0.0008), "ez")
+def make_case(dx: float) -> Simulation:
+    # Keep the absorber about 12 mm thick as dx changes.
+    cpml_layers = max(4, round(0.012 / dx))
+    sim = Simulation(
+        freq_max=4e9,
+        domain=(0.08, 0.06, 0.04),
+        boundary="cpml",
+        cpml_layers=cpml_layers,
+        dx=dx,
+    )
+    sim.add_material("insert", eps_r=4.0, sigma=0.01)
+    sim.add(Box((0.032, 0.024, 0.018), (0.048, 0.036, 0.022)), material="insert")
+    sim.add_source((0.024, 0.030, 0.020), "ez", waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8))
+    sim.add_probe((0.056, 0.030, 0.020), "ez")
     return sim
 ```
 
 ## 3. Run the study
 
 ```python
+import numpy as np
 from rfx import convergence_study
 
 
-def resonance_metric(result) -> float:
-    mode = result.find_resonances(freq_range=(1.5e9, 3.5e9))[0]
-    return float(mode.freq)
+def peak_probe_metric(result) -> float:
+    return float(np.max(np.abs(np.asarray(result.time_series[:, 0]))))
 
 study = convergence_study(
-    sim_factory=make_patch,
-    dx_values=[1.5e-3, 1.2e-3, 1.0e-3],
-    metric_fn=resonance_metric,
-    run_kwargs={"n_steps": 4000},
+    sim_factory=make_case,
+    dx_values=[2.0e-3, 1.5e-3, 1.2e-3],
+    metric_fn=peak_probe_metric,
+    run_kwargs={"num_periods": 20},
 )
 
 print(study.summary())
 ```
 
-Use a short smoke budget first, then rerun the final study with the time window required by your observable.
+Use a short trial run first, then rerun the final study with the time window
+required by your observable. Keep physical absorber thickness, geometry, source,
+probe, and run duration fixed as closely as grid quantization permits. The
+example uses a peak-probe metric because it is always defined; a resonance
+metric must handle an empty `find_resonances(...)` result explicitly.
 
 ## 4. Interpret the result
 

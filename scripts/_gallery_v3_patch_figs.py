@@ -1,10 +1,10 @@
-"""Generate v3 gallery figures for the 2.4 GHz FR4 patch antenna.
+"""Generate diagnostic gallery figures for the 2.4 GHz FR4 patch model.
 
-A SINGLE uniform-mesh patch run drives every figure, so the return-loss dip,
-the Harminv ring-down resonance, and the E_z field map are all read at ONE
-self-consistent frequency. (The non-uniform production path cannot snapshot the
-fields, which is what made the earlier dip / resonance / field-map frequencies
-disagree.)
+The stored port setup fails current preflight because of port/PEC overlap and
+under-resolution, and the script bypasses preflight. Generated files do not
+report an RF metric. The port sweep and soft-source field run are separate
+simulations. Generated files may be used to inspect plotting, file formats,
+and AD/FD plumbing only.
 
 The feed is a multi-cell wire port spanning the substrate from the ground plane
 to the patch. Its inset along the resonant length L sets the input resistance:
@@ -29,7 +29,6 @@ Modes:
 import json
 import math
 import os
-import sys
 import time
 
 import matplotlib
@@ -304,18 +303,7 @@ def sweep():
 
 def _update_manifest_validation(manifest_path: str, f_dip_hz: float,
                                 f_analytic_hz: float) -> None:
-    """Overwrite the ``validation`` block of an existing manifest.json so that
-    metric_value / metric / tolerance / reference_solver / tier reflect v3's
-    OWN measured S11 dip, not the precompute builder's coarser resonance estimate.
-
-    Rules (INV-6 / T0.0):
-    * ``passed`` is read from the existing manifest and PRESERVED verbatim
-      (precompute owns passed; v3 owns the physics-dependent text).
-    * ``reference_solver`` is the analytic transmission-line (Balanis) estimate —
-      NOT Harminv, which is rfx's own self-extraction, not an independent solver.
-    * Writes atomically (temp file + os.replace).
-    * No-ops silently if the manifest does not yet exist (precompute hasn't run).
-    """
+    """Record the failed preflight and suppress RF metrics in the manifest."""
     import tempfile
     if not os.path.exists(manifest_path):
         print(f"  [skip] manifest not found at {manifest_path} — precompute first")
@@ -323,22 +311,16 @@ def _update_manifest_validation(manifest_path: str, f_dip_hz: float,
     with open(manifest_path) as fh:
         man = json.load(fh)
 
-    err_pct = 100.0 * abs(f_dip_hz - f_analytic_hz) / f_analytic_hz
-    existing_passed = man.get("validation", {}).get("passed")  # preserve exactly
-
     man["validation"] = {
-        "tier": "E4",
+        "tier": "unqualified",
         "metric": (
-            "resonance dip vs first-order analytic estimate; "
-            "|resonance error| within 20% (tier E4)"
+            "Current preflight reports port/PEC overlap and under-resolution; "
+            "no RF metric is reported."
         ),
-        "metric_value": (
-            f"resonance dip f={f_dip_hz/1e9:.3f} GHz vs analytic "
-            f"{f_analytic_hz/1e9:.3f} GHz ({err_pct:.1f}% err)"
-        ),
-        "tolerance": "resonance within 20%, passive |S11| <= 1.05",
-        "reference_solver": "analytic transmission-line (Balanis) estimate",
-        "passed": existing_passed,
+        "metric_value": None,
+        "tolerance": None,
+        "reference_solver": None,
+        "passed": None,
     }
 
     text = json.dumps(man, indent=2, allow_nan=False) + "\n"
@@ -354,9 +336,7 @@ def _update_manifest_validation(manifest_path: str, f_dip_hz: float,
         except OSError:
             pass
         raise
-    print(f"  updated manifest validation block: f_dip={f_dip_hz/1e9:.3f} GHz  "
-          f"analytic={f_analytic_hz/1e9:.3f} GHz  err={err_pct:.1f}%  "
-          f"passed={existing_passed}")
+    print("  updated manifest validation block: preflight-failing diagnostic")
 
 
 # ===========================================================================

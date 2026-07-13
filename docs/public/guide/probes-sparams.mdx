@@ -41,13 +41,18 @@ Records all six field components (Ex, Ey, Ez, Hx, Hy, Hz) at the same position.
 sim.add_vector_probe((0.025, 0.025, 0.010))
 ```
 
-Result columns 0–5 correspond to Ex, Ey, Ez, Hx, Hy, Hz in that order.
+The six columns appended by this call correspond to Ex, Ey, Ez, Hx, Hy, Hz in
+that order. They are columns 0–5 only when no probe was registered earlier.
 
 ---
 
 ## DFT plane probe
 
-Accumulates the frequency-domain field on a 2-D cross-section during the time loop. More memory-efficient than saving full snapshots and avoids FFT leakage of short time windows.
+Accumulates selected frequencies directly on a 2-D cross-section during the
+time loop. This uses less memory than saving full snapshots and avoids
+FFT-bin/interpolation constraints, but it does not remove finite-window leakage
+or incomplete-settling error. Repeat with a longer run before interpreting a
+narrow feature.
 
 ```python
 import jax.numpy as jnp
@@ -74,6 +79,17 @@ plane = result.dft_planes["ez_cross_section"]
     Omit `freqs` and set `n_freqs` to let rfx choose a frequency array automatically
     from `freq_max / 10` to `freq_max`.
 
+### Exactly-zero flux diagnostics
+
+During normal Python execution outside JAX tracing, `flux_spectrum(...)` checks
+float32 results that are exactly zero at every frequency even though their DFT
+accumulators are nonzero. If a float64 recomputation of the same Poynting sum is
+nonzero, rfx warns that the per-cell `E × H*` products underflowed and were
+flushed to zero. The returned float32 array is not rewritten. Enable x64 for
+that computation, increase the source amplitude, or recompute from the healthy
+accumulators in float64; do not interpret the exact zeros as a physical
+transmission null.
+
 ---
 
 ## S-parameter extraction
@@ -85,9 +101,9 @@ Use the calculator that matches the port family:
 | `add_port(..., extent=None)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | Single-cell lumped port; S normalized to each port impedance |
 | `add_port(..., extent=...)` | `run(compute_s_params=True)` | `Result.s_params`, `Result.freqs` | Multi-cell wire port; V/I DFT integrals |
 | lumped/wire `add_port(...)` in AD objectives | `forward(port_s11_freqs=...)` | per-port S11 in `ForwardResult.s_params` | Differentiable S11 through `forward()` |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | Microstrip line; uniform-Yee mesh, N-probe de-embedding |
+| `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta` | Microstrip line; uniform mesh is externally compared; nonuniform `laplace`/`uniform` modes have internal checks only; `eigenmode` is unsupported |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult.s_params`, `.freqs`, metadata | Rectangular metal waveguide; modal V/I or power-flux |
-| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, diagnostics | One-port coaxial line reflection (short/open/matched/load) |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult.s11`, `.freqs`, diagnostics | float32 precision; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` coaxial port; see the [API constraints](/rfx/api/sources-ports/) |
 
 Sources, TFSF, probes, DFT plane probes, and flux monitors are non-port
 observables: they record fields but do not define a port impedance or
@@ -107,6 +123,23 @@ This helper reports finite-data, passivity, reciprocity, max-magnitude, and
 column-power checks. These are host-side report diagnostics; they do not
 alter any solver path and are not a substitute for physically validating the
 S-parameters themselves.
+
+Automatic checks differ by calculator during normal Python execution:
+
+- lumped/wire `run()` and uniform single-device `forward()` warn on non-finite entries or an
+  individual `|S| > 1.1`; they do not test total outgoing column power;
+- MSL and waveguide full-matrix calculators check individual entries and
+  column power with calculator-specific tolerances;
+- `compute_coaxial_line_reflection()` does not run that shared passivity guard,
+  so inspect `status`, `recurrence_residual`, `fit_residual`, and `s11`
+  explicitly. It is a self-contained line calculation and rejects separately
+  registered geometry, circuit elements, monitors, and termination helpers;
+  see the [complete argument rules](/rfx/api/sources-ports/).
+
+Warnings leave every computed value intact. If a passive model exceeds its
+documented limit, treat that frequency bin as suspect and check settling time,
+normalization, the reference plane, and the extraction setup. Silence only
+means that an implemented check did not fire; it does not certify passivity.
 
 ### Lumped port S-matrix
 
@@ -152,15 +185,40 @@ msl = sim.compute_msl_s_matrix(n_freqs=101, num_periods=40)
 S = msl.S          # (n_ports, n_ports, n_freqs)
 freqs = msl.freqs  # (n_freqs,) Hz
 Z0 = msl.Z0        # extracted characteristic impedance
+reliable = msl.reliable  # (driven_port, frequency), or None while tracing
 ```
 
 `num_periods=40` is the docstring default; values below that may under-settle
 the fields. Do not expect `run(compute_s_params=True)` to include MSL ports in
 `Result.s_params`.
 
+#### Low-signal MSL bins
+
+During normal Python execution outside JAX tracing,
+`MSLSMatrixResult.reliable[p, k]` is `False` if both measured `|V|` and `|I|`
+at the **driven** port `p`, frequency index `k`, fall below 10% of their
+per-port band medians. This condition can occur near a strong-reflector
+measurement null, but the mask does not diagnose the cause. Because full
+S-matrices use `S[receiver_port, driven_port, frequency_index]`, a false entry
+means that `S[:, p, k]` should not be plotted, fitted, or optimized as physical
+data. The values remain present for diagnosis. A true entry only means that the
+low-signal threshold was not triggered; it is not an accuracy guarantee.
+
+The following conservative filter keeps only frequencies that are usable for
+every driven-port column:
+
+```python
+import numpy as np
+
+if msl.reliable is not None:
+    usable_bins = np.all(msl.reliable, axis=0)
+    S_usable = msl.S[..., usable_bins]
+    freqs_usable = msl.freqs[usable_bins]
+```
+
 ### Waveguide S-parameters
 
-See [Sources & Ports](./sources-ports/) for the waveguide-port setup workflow.
+See [Sources & Ports](/rfx/guide/sources-ports/) for the waveguide-port setup workflow.
 Use `compute_waveguide_s_matrix(...)` for the full multi-port matrix:
 
 ```python
@@ -169,17 +227,23 @@ S = wg.s_params      # (n_ports, n_ports, n_freqs)
 freqs = wg.freqs
 ```
 
-`normalize=True` is suitable for transmission measurements. For strong-reflector
-S11 (e.g. a PEC short), use `normalize=False` or `normalize='flux'` to avoid
-the reference-run subtraction artifact — see [Migration](./migration.md) and the
-[S-parameter support matrix](../../guides/sparameter_support_matrix.md).
+`normalize=True` is suitable for transmission measurements. On a uniform mesh,
+use `normalize=False` or `normalize="flux"` for strong-reflector S11 (for
+example, a PEC short) to avoid the reference-run subtraction artifact. On a
+non-uniform `dx_profile` / `dy_profile` mesh, `normalize=False` is unsupported;
+use `normalize="flux"` for strong-reflector S11. See
+[Migration](/rfx/guide/migration/) and
+[Support Boundaries](/rfx/api/support-boundaries/).
 
 For memory-heavy waveguide AD runs, pass `checkpoint_segments=K` to segment
 the reverse-mode tape (peak backward memory drops from O(n_steps) toward
-O(√n_steps) near K≈√n_steps). `K` must divide the timestep count exactly. On
-a non-uniform mesh (`dx_profile` / `dy_profile`) the knob is also supported:
-`K` is translated to the NU runner's per-chunk size and applied to the
-device run.
+O(√n_steps) near K≈√n_steps). On the uniform path, `K` must divide the timestep
+count exactly. On a non-uniform `dx_profile` / `dy_profile` path, `K` is a
+target segment count and need not divide the timestep count: rfx selects the
+divisor chunk size nearest to `n_steps / K` and applies checkpointing to the
+device run. This non-uniform AD path requires `normalize="flux"` with an
+`eps_override` or `sigma_override` design variable; checkpointing does not
+expand the RF validation scope.
 
 `run(...)` can also expose per-port waveguide diagnostics:
 
@@ -238,15 +302,19 @@ for m in modes:
 modes = result.find_resonances(
     freq_range=(1e9, 4e9),
     probe_idx=0,
-    source_decay_time=None,  # auto-computed: 2*(3*tau), where tau=1/(f_c*bw*pi)
+    source_decay_time=None,  # heuristic from the requested frequency range; see note
     bandpass=None,           # auto: True for CPML (removes DC artifacts), False for PEC
 )
 ```
 
 !!! note
-    Harminv requires the signal to have decayed to ring-down before the analysis window
-    starts. `source_decay_time` is subtracted from the beginning of the time series.
-    The default auto-computation is appropriate for `GaussianPulse` excitation.
+    Harminv requires the signal to have decayed to ring-down before the analysis
+    window starts. `source_decay_time` is subtracted from the beginning of the
+    time series. When it is `None`, rfx does **not** inspect the registered
+    source: it uses the midpoint of `freq_range` as `f_center`, a fixed
+    `bandwidth=0.8`, and `2 * (3 / (pi * f_center * bandwidth))`. Pass the
+    actual source decay time when its center frequency, bandwidth, waveform, or
+    turn-off differs from that heuristic.
 
 ### Standalone Harminv
 
@@ -260,6 +328,13 @@ dt = 1e-12  # timestep in seconds
 signal = np.loadtxt("probe_data.txt")
 modes = harminv(signal, dt, f_min=1e9, f_max=5e9)
 ```
+
+Standalone `harminv(...)` uses `decimate="auto"` by default. When the sample
+rate is more than eight times `f_max`, it applies staged, anti-aliased FIR
+decimation before the matrix-pencil solve while preserving the record duration
+and using the effective timestep. This removes redundant oversampling from a
+calculation whose cost grows steeply with sample count. Pass `decimate=False`
+when exact full-rate reproduction is required.
 
 ---
 

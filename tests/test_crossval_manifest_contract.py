@@ -343,7 +343,7 @@ def _role_evidence_label(case: CrossvalCase) -> str:
     return f"{case['role']} · {'/'.join(case['evidence_levels'])} · {reference_kinds}"
 
 
-def test_public_tables_match_manifest_classification() -> None:
+def test_public_validation_docs_match_manifest() -> None:
     manifest = _load_manifest()
     public_cases = {
         case["id"]: (case["public_group"], _role_evidence_label(case))
@@ -355,30 +355,40 @@ def test_public_tables_match_manifest_classification() -> None:
         REPO_ROOT / "docs" / "public" / "guide" / "benchmarks.mdx"
     ).read_text(encoding="utf-8")
     benchmark_rows = re.findall(
-        r"^\|\s*`([0-9][0-9a-z]*_[^`]+)`\s*\|\s*([^|]+?)\s*\|",
+        r"^\|\s*(Validated comparison|Diagnostic only)\s*\|\s*"
+        r"`([0-9][0-9a-z]*_[^`]+)`\s*\|",
         benchmark_text,
         re.MULTILINE,
     )
     benchmark_classifications = {
-        case_id: classification.strip() for case_id, classification in benchmark_rows
+        case_id: label for label, case_id in benchmark_rows
     }
     assert len(benchmark_rows) == len(benchmark_classifications)
     assert benchmark_classifications == {
-        case_id: classification for case_id, (_, classification) in public_cases.items()
+        case_id: (
+            "Validated comparison"
+            if classification.startswith("claims-bearing")
+            else "Diagnostic only"
+        )
+        for case_id, (_, classification) in public_cases.items()
     }
 
     readme_text = (REPO_ROOT / "validation" / "README.md").read_text(encoding="utf-8")
-    readme_rows = re.findall(
-        r"^\|\s*[AB][^|]*\|\s*`crossval/([^`]+\.py)`\s*\|\s*([AB])\s*\|\s*([^|]+?)\s*\|",
-        readme_text,
-        re.MULTILINE,
+    readme_scripts = re.findall(
+        r"^\|\s*`crossval/([^`]+\.py)`\s*\|", readme_text, re.MULTILINE
     )
-    readme_classifications = {
-        Path(script).stem: (group, classification.strip())
-        for script, group, classification in readme_rows
+    assert len(readme_scripts) == len(set(readme_scripts))
+    assert set(readme_scripts) == {
+        Path(case["script"]).name for case in manifest["cases"]
     }
-    assert len(readme_rows) == len(readme_classifications)
-    assert readme_classifications == public_cases
+    assert "`crossval/manifest.json`" in readme_text
+    for internal_label in (
+        "claims-bearing",
+        "diagnostic-reporter",
+        "Registry classification",
+        "| Group |",
+    ):
+        assert internal_label not in readme_text
 
     reference_lane_text = (
         REPO_ROOT / "docs" / "guides" / "reference_lane_contract.md"

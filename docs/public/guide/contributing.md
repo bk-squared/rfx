@@ -80,7 +80,7 @@ codebase:
    pytest tests/ -x -q
    ```
 4. **Update the docs.** If the change affects users, update the relevant page
-   under `docs/public/`. Keep development records and qualification notes out of public user guides.
+   under `docs/public/`. Keep development records and internal validation notes out of public user guides.
 5. **Add or update docstrings.** Any new public API should carry a clear,
    accurate docstring.
 

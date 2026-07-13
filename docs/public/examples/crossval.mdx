@@ -1,21 +1,19 @@
 ---
-title: "Crossval First"
-description: "Current cross-check examples for the public rfx example surface."
+title: "Validation Examples"
+description: "Where to find runnable rfx comparisons with analytic results and other solvers."
 sidebar:
   order: 32
 ---
 
-This page points to the current public cross-check examples and keeps claims scoped to their documented workflows.
+Cross-validation scripts test solver results; they are not introductory
+examples. Follow the [examples learning path](/rfx/examples/) first, then use
+the [Cross-Solver Validation](/rfx/validation/cross-solver/) page to choose a
+check.
 
-## Current anchors
+## Repository checkout
 
-| Script | Workflow family | Public role |
-|---|---|---|
-| `validation/crossval/05_patch_antenna.py` | finite-ground-plane patch antenna | current practical patch cross-check |
-| `validation/crossval/11_waveguide_port_wr90.py` | rectangular waveguide port | current waveguide-port reference workflow |
+In a source checkout, `validation/README.md` lists every validation script, its
+reference calculation, and the meaning of its exit code.
 
-## Reading rule
-
-- Use these scripts when you need a current runnable reference.
-- Keep claims scoped to the workflow being exercised.
-- Use only cross-validation scripts that are listed in the public guide pages for public examples.
+A passing script supports only its stated geometry, mesh, frequency range,
+source, and output. It does not validate a different RF configuration.

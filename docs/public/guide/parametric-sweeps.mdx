@@ -14,8 +14,9 @@ metric is stable.
 
 <Aside type="caution" title="Support boundary">
   A sweep multiplies the assumptions of the underlying simulation. If a single
-  run uses a limited support or workflow outside the documented support scope, the sweep results stay limited support or
-  outside the documented support scope until the relevant support matrix covers that lane.
+  run uses a limited or unsupported combination, repeating it in a sweep does
+  not make the result more reliable. Check every source, port, mesh, and
+  observable against the relevant support matrix.
 </Aside>
 
 ## 1. Define the parameter grid
@@ -27,11 +28,11 @@ values. It is intentionally small and explicit so every case can be inspected.
 from rfx.batch import ParameterSweep
 
 sweep = ParameterSweep(
-    patch_width=[0.028, 0.030, 0.032],
+    insert_width=[0.008, 0.012, 0.016],
     eps_r=[3.8, 4.2],
 )
 
-print(sweep.keys)   # ['patch_width', 'eps_r']
+print(sweep.keys)   # ['insert_width', 'eps_r']
 print(sweep.total)  # 6
 
 for params in sweep.combinations():
@@ -48,13 +49,20 @@ snapshots outside git unless they are curated docs assets.
 from rfx import Simulation, Box, GaussianPulse
 
 
-def make_patch_sim(patch_width: float, eps_r: float) -> Simulation:
-    sim = Simulation(freq_max=4e9, domain=(0.08, 0.06, 0.025), boundary="cpml")
-    sim.add_material("substrate", eps_r=eps_r)
-    sim.add(Box((0.0, 0.0, 0.0), (0.08, 0.06, 0.0016)), material="substrate")
-    sim.add(Box((0.024, 0.015, 0.0016), (0.052, 0.015 + patch_width, 0.0016)), material="pec")
-    sim.add_source((0.029, 0.030, 0.0008), "ez", waveform=GaussianPulse(2.4e9, 0.8))
-    sim.add_probe((0.029, 0.030, 0.0008), "ez")
+def make_inclusion_sim(insert_width: float, eps_r: float) -> Simulation:
+    sim = Simulation(
+        freq_max=4e9,
+        domain=(0.08, 0.06, 0.04),
+        boundary="cpml",
+        cpml_layers=8,
+        dx=2e-3,
+    )
+    sim.add_material("insert", eps_r=eps_r, sigma=0.01)
+    y0 = 0.030 - insert_width / 2
+    y1 = 0.030 + insert_width / 2
+    sim.add(Box((0.032, y0, 0.018), (0.048, y1, 0.022)), material="insert")
+    sim.add_source((0.024, 0.030, 0.020), "ez", waveform=GaussianPulse(2.4e9, 0.8))
+    sim.add_probe((0.056, 0.030, 0.020), "ez")
     return sim
 ```
 
@@ -67,9 +75,9 @@ returns a list of `(params, result)` tuples.
 from rfx.batch import run_batch
 
 results = run_batch(
-    make_patch_sim,
+    make_inclusion_sim,
     sweep,
-    run_kwargs={"n_steps": 500},  # use a short smoke first
+    run_kwargs={"n_steps": 500},  # short trial; increase for the final study
 )
 
 for params, result in results:
@@ -98,7 +106,7 @@ def output_fn(result):
 
 dataset = SimulationDataset.from_results(
     results,
-    input_keys=["patch_width", "eps_r"],
+    input_keys=["insert_width", "eps_r"],
     output_fn=output_fn,
 )
 
@@ -109,7 +117,7 @@ dataset.to_csv("sweep_metrics.csv")
 ## 5. S-parameter and Touchstone sweeps
 
 If the sweep uses a documented S-parameter calculator, keep the port family and
-support envelope with the output files.
+its applicable configuration limits with the output files.
 
 ```python
 from pathlib import Path

@@ -2,8 +2,8 @@
 """Phase-C gate for the gallery v2 precompute run.
 
 Asserts every committed manifest is schema ``rfx-gallery-manifest-v2``, has
-``validation.passed`` in ``{True, null}`` (null only for ``--quick`` smokes,
-which must never be committed — see INV-4), and carries a
+``validation.passed`` in ``{True, null}`` (null only for ``--quick`` smokes or
+an explicitly ``unqualified`` artifact), and carries a
 ``gradient_validation`` block on the three S-parameter cases. Exits non-zero on
 any issue so the VESSL job (and any local pre-commit check) fails visibly.
 
@@ -48,6 +48,10 @@ def main() -> int:
             bad.append(f"{cid}: schema {sv!r} != {SCHEMA}")
         if passed not in (True, None):
             bad.append(f"{cid}: validation.passed={passed!r} (expected True or null)")
+        if passed is None and not m.get("quick_smoke") and v.get("tier") != "unqualified":
+            bad.append(
+                f"{cid}: committed null validation must declare tier='unqualified'"
+            )
         if cid not in NON_GRADIENT_CASES and not grad:
             bad.append(f"{cid}: missing gradient_validation")
 
@@ -55,7 +59,7 @@ def main() -> int:
         print("VALIDATION ISSUES:", *bad, sep="\n  ")
         return 1
     print(
-        "manifests OK (all v2; validation.passed in {True, null}; "
+        "manifests OK (all v2; passed or explicitly unqualified; "
         "gradient_validation on the 3 S-param cases)"
     )
     return 0

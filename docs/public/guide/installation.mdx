@@ -20,6 +20,18 @@ The package name on PyPI is `rfx-fdtd`, while the Python import remains:
 import rfx
 ```
 
+For the packaged local Studio, background experiment CLI, and Model Context
+Protocol (MCP) server, install the Studio extra:
+
+```bash
+pip install "rfx-fdtd[studio]"
+rfx studio --workspace .rfx-studio
+```
+
+See [Studio, CLI, and MCP Experiments](/rfx/guide/studio-experiments/) for the
+current UI scope, shared-workspace rules, replay, approvals, and remote
+deployment requirements.
+
 ## Verify your install
 
 After installing, confirm the environment can actually run a simulation.
@@ -32,18 +44,12 @@ rfx-diagnose
 
 It prints a PASS / WARN / FAIL report (Python and rfx versions, the JAX
 backend and devices, core dependencies, optional extras) and finishes with a
-tiny end-to-end FDTD smoke run. It exits `0` only when every critical check
+tiny end-to-end FDTD run. It exits `0` only when every critical check
 passes; WARN lines (CPU-only backend, x64 disabled) are informational.
 
-Then run the quick hello-world example (a second or two) to see a real
-simulation step:
-
-```bash
-python examples/quickstart/hello_world.py
-```
-
-It builds a tiny box, injects one pulse, records one field probe, and prints
-a short summary. If you see finite numbers, rfx is working.
+The diagnostic's final short run is the installed-package execution check.
+Examples under `examples/` are available only from a source checkout; they are
+not installed as wheel data.
 
 ## GPU support
 
@@ -60,7 +66,11 @@ See the official JAX installation guide for CUDA/cuDNN details.
 git clone https://github.com/bk-squared/rfx.git
 cd rfx
 pip install -e ".[dev]"
+python examples/quickstart/hello_world.py
 ```
+
+The hello-world script builds a tiny box, injects one pulse, records one field
+probe, and prints a short finite-data summary.
 
 The `dev` extra includes:
 
@@ -77,6 +87,8 @@ The `dev` extra includes:
 
 ## Next steps
 
-Run `examples/quickstart/hello_world.py` to confirm the install, then follow the
-ordered tutorials in `examples/tutorials/` — the learning path is indexed in
-`examples/README.md`.
+From a source checkout with the development install above, run
+`examples/quickstart/hello_world.py`, then follow the ordered tutorials in
+`examples/tutorials/`; `examples/README.md` lists the sequence. For a wheel-only
+install, use `rfx-diagnose` as the execution check because the wheel does not
+include `examples/`.
