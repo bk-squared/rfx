@@ -302,16 +302,18 @@ class Simulation(
         for storage.
     solver : str
         ``"yee"`` (default) for the standard explicit scheme or
-        ``"adi"`` for the ADI-FDTD path. ADI is validated ONLY in 2D TMz
-        (``mode="2d_tmz"``, 2% cavity-resonance gate). The 3D ADI (LOD)
-        scheme is KNOWN-INACCURATE for physical results (a 3D PEC-cavity
-        eigenfrequency misses the analytic mode by ~41% even at 2x CFL —
-        artificial diffusion on off-axis E components); preflight emits an
-        ``adi_3d_accuracy`` warning for that combination. Use 3D ADI only
-        for qualitative stability studies.
+        ``"adi"`` for the ADI-FDTD path. ADI is unconditionally stable in
+        both 2D TMz (``mode="2d_tmz"``, 2% cavity-resonance gate at 50x
+        CFL) and 3D (full Zheng–Chen–Zhang two-sub-step scheme since
+        2026-07-13, issue #338: 2% PEC-cavity eigenfrequency gate at 2x
+        CFL, ~15 cells/wavelength). 3D dispersion error grows ~dt^2, so
+        preflight emits an ``adi_3d_accuracy`` envelope advisory when
+        ``adi_cfl_factor > 2`` on a 3D grid — large factors trade
+        wavelength-scale accuracy for stiff-mesh throughput.
     adi_cfl_factor : float
         Timestep multiplier relative to the standard 2D CFL limit when
-        ``solver="adi"``.
+        ``solver="adi"``. Default 5.0; for quantitative wavelength-scale
+        3D results prefer <= 2.0 (see ``solver``).
     stencil_order : int
         Spatial finite-difference order for the explicit Yee update: ``2``
         (default, the standard (2,2) scheme — BYTE-IDENTICAL to prior

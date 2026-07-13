@@ -7,8 +7,9 @@ For thin substrates where standard Yee requires tiny dt, ADI allows
 Supports 2D TMz (Ez, Hx, Hy) and 3D (all 6 components).
 
 References:
-    T. Namiki, IEEE MTT 1999
-    F. Zheng et al., IEEE MGWL 2000
+    T. Namiki, IEEE MTT 1999 (2D); IEEE MTT 2000 (3D)
+    F. Zheng et al., IEEE MGWL 2000 (2D)
+    F. Zheng, Z. Chen, J. Zhang, IEEE Trans. MTT 48(9), 2000 (3D ZCZ scheme)
 """
 
 from __future__ import annotations
@@ -718,19 +719,34 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
                 pec_mask=None):
     r"""Advance all 6 field components by one full 3D ADI timestep.
 
-    **EXPERIMENTAL — not a physically accurate scheme.** Uses LOD
-    (Locally One-Dimensional) splitting with 3 sequential sub-steps
-    (x, y, z implicit). Each sub-step: E tridiagonal along one axis, then
-    H back-substitution using only the implicit-axis derivative.
+    Implements the Zheng–Chen–Zhang (ZCZ) 3D ADI-FDTD scheme (F. Zheng,
+    Z. Chen, J. Zhang, IEEE Trans. MTT 48(9), 2000; identical scheme in
+    Namiki's 3D extension): two sub-steps of ``dt/2``. In each sub-step
+    every E component is implicit along exactly one axis (tridiagonal
+    Thomas solve) and every H component is updated explicitly from the
+    just-solved E; the two sub-steps swap which curl term is implicit.
 
-    Accuracy caveat: this is NOT a valid ADI step — it applies implicit
-    diffusion to off-axis E-components, triple-applies the conductivity
-    loss (dt/3 applied in all 3 sub-steps), and time-skews the Faraday
-    update. It is stable/dissipative across a wide CFL range (0.5-50x),
-    but cavity-resonance error reaches ~42% at 5x CFL from the LOD
-    splitting (2D LOD by contrast holds <2% to 50x CFL). Only divergence
-    /stability tests cover it — there is no physics-accuracy validation.
-    Do not use for quantitative results (known issue OPT-C1).
+    This is the Peaceman–Rachford alternation
+    ``(I - dt/2·A) u' = (I + dt/2·B) u`` then
+    ``(I - dt/2·B) u'' = (I + dt/2·A) u'`` with the curl split into the
+    A/B term families. With the zero-padded difference operators used
+    here, backward differences are exactly minus the transpose of forward
+    differences (boundary rows included), so both split operators are
+    skew-symmetric in the energy variables and the full-step map is
+    similar to a product of two unitary Cayley transforms — the scheme is
+    unconditionally stable for every ``dt``, PEC domain boundary included.
+
+    Accuracy envelope (measured, 12^3 PEC cavity, TE101 at ~15 cells per
+    wavelength — ``tests/test_review_tier1_validation_battery.py``):
+    eigenfrequency error is -1.4% at 2x the 3D Yee CFL limit, growing
+    ~dt^2 (Crank–Nicolson-like temporal lag) to ~ -6.7% at 5x CFL. Runs
+    at 5-50x CFL remain stable but are quantitative only for features
+    much coarser than the timestep. Use large CFL factors for stiff
+    meshes (thin substrates), not wavelength-scale resonances.
+
+    Caveat: an *internal* ``pec_mask`` is enforced by post-solve
+    projection (same approximation as the 2D path), not by exact
+    Dirichlet rows; the domain-boundary PEC is exact.
 
     Parameters
     ----------
@@ -743,14 +759,20 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     ex, ey, ez, hx, hy, hz : updated fields
     """
     eps = eps_r * EPS_0
-    sub_dt = dt / 3.0  # each of 3 LOD sub-steps advances dt/3
+    half_dt = dt / 2.0
 
-    # Implicit sigma integration
-    sigma_term = sigma * sub_dt / 2.0
+    # Semi-implicit conductivity integration per dt/2 sub-step
+    # (ε + σ·dt/4) E' = (ε - σ·dt/4) E + ...   — mirrors adi_step_2d.
+    sigma_term = sigma * dt / 4.0
     eps_plus = eps + sigma_term
     damping = (eps - sigma_term) / eps_plus
 
-    ds = [dx, dy, dz]
+    ce = half_dt / eps_plus          # Ampère explicit-curl factor
+    ch = half_dt / MU_0              # Faraday factor (no magnetic loss)
+    cc = half_dt * half_dt / (MU_0 * eps_plus)  # substituted mixed-term factor
+    Cx = cc / (dx * dx)              # tridiagonal coupling per axis
+    Cy = cc / (dy * dy)
+    Cz = cc / (dz * dz)
 
     def _fwd(arr, ax):
         pw = [(0, 0)] * 3
@@ -766,67 +788,62 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
         s[ax] = slice(None, -1)
         return jnp.pad(arr, pw)[tuple(s)]
 
-    def _curl_e(ex_, ey_, ez_):
-        """curl(E) for Faraday: returns (curl_x, curl_y, curl_z)."""
-        return (
-            (_fwd(ez_, 1) - ez_) / dy - (_fwd(ey_, 2) - ey_) / dz,
-            (_fwd(ex_, 2) - ex_) / dz - (_fwd(ez_, 0) - ez_) / dx,
-            (_fwd(ey_, 0) - ey_) / dx - (_fwd(ex_, 1) - ex_) / dy,
-        )
+    def _dp(arr, ax, d):
+        """Forward difference (E -> H staggering)."""
+        return (_fwd(arr, ax) - arr) / d
 
-    def _curl_h(hx_, hy_, hz_):
-        """curl(H) for Ampere: returns (curl_x, curl_y, curl_z)."""
-        return (
-            (hz_ - _bwd(hz_, 1)) / dy - (hy_ - _bwd(hy_, 2)) / dz,
-            (hx_ - _bwd(hx_, 2)) / dz - (hz_ - _bwd(hz_, 0)) / dx,
-            (hy_ - _bwd(hy_, 0)) / dx - (hx_ - _bwd(hx_, 1)) / dy,
-        )
+    def _dm(arr, ax, d):
+        """Backward difference (H -> E staggering)."""
+        return (arr - _bwd(arr, ax)) / d
 
     # ===================================================================
-    # LOD: 3 sequential sub-steps, each implicit along one axis.
-    # Each sub-step: E tridiag along axis → H explicit update.
-    #
-    # NOTE: This simplified LOD applies the tridiagonal solve to ALL E
-    # components along each axis, which adds artificial diffusion for
-    # components whose curl has no derivative along that axis.  This
-    # trades accuracy for simplicity and unconditional stability.  The
-    # LOD splitting error grows with CFL factor; best accuracy at 2-5x
-    # CFL.  For higher CFL (>10x), expect over-dissipation and shifted
-    # resonance frequencies.
+    # Sub-step 1 (n -> n+1/2): implicit pairs (Ex,Hz|y), (Ey,Hx|z),
+    # (Ez,Hy|x). Each implicit operator is obtained by substituting the
+    # same-sub-step H update into the E equation; the -cc·Dm(Dp(E))
+    # mixed terms are the explicit remainder of that substitution.
     # ===================================================================
+    rhs_ex = damping * ex + ce * (_dm(hz, 1, dy) - _dm(hy, 2, dz)) \
+        - cc * _dm(_dp(ey, 0, dx), 1, dy)
+    rhs_ey = damping * ey + ce * (_dm(hx, 2, dz) - _dm(hz, 0, dx)) \
+        - cc * _dm(_dp(ez, 1, dy), 2, dz)
+    rhs_ez = damping * ez + ce * (_dm(hy, 0, dx) - _dm(hx, 1, dy)) \
+        - cc * _dm(_dp(ex, 2, dz), 0, dx)
+    # PEC on the RHS: a zero RHS line with zero Dirichlet ends solves to
+    # exactly zero, so face-parallel lines inside PEC faces stay PEC.
+    rhs_ex, rhs_ey, rhs_ez = _apply_pec_3d(rhs_ex, rhs_ey, rhs_ez, pec_mask)
 
-    for axis in range(3):
-        d = ds[axis]
-        C_axis = sub_dt ** 2 / (MU_0 * eps_plus * d * d)
-        coeff_e = sub_dt / eps_plus
+    ex1 = _solve_tridiag_along(ex, Cy, rhs_ex, axis=1)
+    ey1 = _solve_tridiag_along(ey, Cz, rhs_ey, axis=2)
+    ez1 = _solve_tridiag_along(ez, Cx, rhs_ez, axis=0)
+    ex1, ey1, ez1 = _apply_pec_3d(ex1, ey1, ez1, pec_mask)
 
-        # E update: tridiag along axis with curl(H) source
-        ch_x, ch_y, ch_z = _curl_h(hx, hy, hz)
-        rhs_ex = damping * ex + coeff_e * ch_x
-        rhs_ey = damping * ey + coeff_e * ch_y
-        rhs_ez = damping * ez + coeff_e * ch_z
+    # Explicit H updates: implicit-partner E at n+1/2, other E at n.
+    hx1 = hx + ch * (_dp(ey1, 2, dz) - _dp(ez, 1, dy))
+    hy1 = hy + ch * (_dp(ez1, 0, dx) - _dp(ex, 2, dz))
+    hz1 = hz + ch * (_dp(ex1, 1, dy) - _dp(ey, 0, dx))
 
-        ex = _solve_tridiag_along(ex, C_axis, rhs_ex, axis=axis)
-        ey = _solve_tridiag_along(ey, C_axis, rhs_ey, axis=axis)
-        ez = _solve_tridiag_along(ez, C_axis, rhs_ez, axis=axis)
+    # ===================================================================
+    # Sub-step 2 (n+1/2 -> n+1): implicit pairs (Ex,Hy|z), (Ey,Hz|x),
+    # (Ez,Hx|y) — the curl-term roles swap.
+    # ===================================================================
+    rhs_ex = damping * ex1 + ce * (_dm(hz1, 1, dy) - _dm(hy1, 2, dz)) \
+        - cc * _dm(_dp(ez1, 0, dx), 2, dz)
+    rhs_ey = damping * ey1 + ce * (_dm(hx1, 2, dz) - _dm(hz1, 0, dx)) \
+        - cc * _dm(_dp(ex1, 1, dy), 0, dx)
+    rhs_ez = damping * ez1 + ce * (_dm(hy1, 0, dx) - _dm(hx1, 1, dy)) \
+        - cc * _dm(_dp(ey1, 2, dz), 1, dy)
+    rhs_ex, rhs_ey, rhs_ez = _apply_pec_3d(rhs_ex, rhs_ey, rhs_ez, pec_mask)
 
-        ex, ey, ez = _apply_pec_3d(ex, ey, ez, pec_mask)
+    ex2 = _solve_tridiag_along(ex1, Cz, rhs_ex, axis=2)
+    ey2 = _solve_tridiag_along(ey1, Cx, rhs_ey, axis=0)
+    ez2 = _solve_tridiag_along(ez1, Cy, rhs_ez, axis=1)
+    ex2, ey2, ez2 = _apply_pec_3d(ex2, ey2, ez2, pec_mask)
 
-        # H back-substitution: only the implicit-axis derivative of E.
-        # Each Faraday curl term dE_j/d_axis contributes to one H component.
-        # After all 3 sub-steps, each H accumulates the full curl(E).
-        c = sub_dt / MU_0
-        if axis == 0:  # x: Hy gets +dEz/dx, Hz gets -dEy/dx
-            hy = hy + c * (_fwd(ez, 0) - ez) / dx
-            hz = hz - c * (_fwd(ey, 0) - ey) / dx
-        elif axis == 1:  # y: Hx gets -dEz/dy, Hz gets +dEx/dy
-            hx = hx - c * (_fwd(ez, 1) - ez) / dy
-            hz = hz + c * (_fwd(ex, 1) - ex) / dy
-        else:  # z: Hx gets +dEy/dz, Hy gets -dEx/dz
-            hx = hx + c * (_fwd(ey, 2) - ey) / dz
-            hy = hy - c * (_fwd(ex, 2) - ex) / dz
+    hx2 = hx1 + ch * (_dp(ey1, 2, dz) - _dp(ez2, 1, dy))
+    hy2 = hy1 + ch * (_dp(ez1, 0, dx) - _dp(ex2, 2, dz))
+    hz2 = hz1 + ch * (_dp(ex1, 1, dy) - _dp(ey2, 0, dx))
 
-    return ex, ey, ez, hx, hy, hz
+    return ex2, ey2, ez2, hx2, hy2, hz2
 
 
 def make_adi_absorbing_sigma_3d(nx, ny, nz, n_layers, dx, dy, dz, order=3):

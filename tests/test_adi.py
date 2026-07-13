@@ -361,8 +361,10 @@ class TestADI3DStability:
     def test_stability_3d_pec_cavity(self, cfl_factor):
         """Fields stay bounded in a 3D PEC cavity at moderate CFL factors.
 
-        The simplified LOD scheme is stable at 2-5x CFL.  Higher factors
-        (10x+) can diverge due to the all-component tridiagonal approach.
+        The ZCZ two-sub-step 3D ADI (issue #338 follow-up, 2026-07-13) is
+        unconditionally stable; 2x and 5x are the committed rungs here
+        (10x and 50x were verified bounded as free witnesses in the #338
+        evidence run — the pre-#338 LOD scheme could diverge at 10x+).
         """
         from rfx.adi import adi_step_3d
 
