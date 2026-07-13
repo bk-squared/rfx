@@ -23,11 +23,22 @@ simultaneously before the waveguide port is cleared to Meep-class:
 
 1. **Empty WR-90 guide** (matched load)
    Reference: |S11| = 0, |S21| = 1 at every frequency above fc.
-   Accept: max|S11| < 0.02, min|S21| > 0.97.
+   Accept (gated per-frequency since 2026-07-13, issue #340):
+   max|S11| < 0.02, |S21| ∈ [0.97, 1.05] at every bin.
 
 2. **PEC short-circuit termination**
    Reference: |S11| = 1 at every frequency.
-   Accept: mean|S11| ∈ [0.97, 1.03], per-freq ∈ [0.93, 1.07].
+   Accept: band-mean ||S11|−1| < 0.05 (report() gate), per-freq
+   |S11| ∈ [0.93, 1.07], and passivity ceiling max|S11| ≤ 1.05.
+   The per-freq band and ceiling are REAL gates since 2026-07-13
+   (issue #340) — before that this line advertised a per-freq band
+   that report() never implemented (band means only). Measured
+   single-run regression envelope on 2026-07-13 (dx=1 mm, CPU,
+   normalize=False): per-bin |S11| ∈ [0.99956, 1.00000], max
+   1.0000030 at 11.14 GHz — comfortably inside the band, so the
+   documented band is pinned as-is (it is a regression envelope
+   with margin, not a physics claim; the physics reference is
+   |S11| = 1 exactly).
 
 3. **Single dielectric slab (analytic Airy reflection)**
    Geometry: uniform εr=2.0 slab of length L inside WR-90.
@@ -305,6 +316,67 @@ def run_rfx_slab(eps_r: float, slab_length_m: float) -> tuple[np.ndarray, np.nda
 # =============================================================================
 # Comparison / report
 # =============================================================================
+def per_freq_band_check(label: str, f_hz: np.ndarray, mag: np.ndarray,
+                        lo: float, hi: float,
+                        ceiling: float | None = None) -> bool:
+    """Per-frequency |S| band gate (issue #340). Returns True iff EVERY bin
+    lies in ``[lo, hi]`` (and ``<= ceiling`` when given); prints a verdict
+    line plus each violating bin.
+
+    Rationale (2026-07-13): ``report()`` gates band MEANS only, and the
+    ``normalize=False`` extractor passivity guard runs at tol=2.0, so a
+    single-bin spike up to ~1.73 could pass both layers while moving the
+    21-bin mean by only ~0.035. This closes that gap at the crossval level.
+    The ``ceiling`` is the passivity line: on a passive structure |S|
+    meaningfully above 1 is non-physical (extraction artefact or
+    instability — repo passivity rule, ``test_sparam_passivity_guard``
+    envelope class). Ceiling 1.05 is pinned from the 2026-07-13 measured
+    max|S11| = 1.0000030 (PEC short), leaving Yee/near-cutoff margin while
+    still catching the tol=2.0 blind spot.
+    """
+    mag = np.asarray(mag, dtype=float)
+    in_band = (mag >= lo) & (mag <= hi)
+    ok = bool(np.all(in_band))
+    print(f"[{label}] per-freq band [{lo:.3f}, {hi:.3f}]: "
+          f"min={mag.min():.4f} max={mag.max():.4f} "
+          f"violations={int(np.sum(~in_band))}/{mag.size} "
+          f"-> {'PASS' if ok else 'FAIL'}")
+    for i in np.flatnonzero(~in_band):
+        print(f"[{label}]   VIOLATION f={f_hz[i] / 1e9:.2f} GHz |S|={mag[i]:.4f}")
+    if ceiling is not None:
+        above = mag > ceiling
+        ok_ceil = not bool(np.any(above))
+        print(f"[{label}] passivity ceiling max|S| <= {ceiling:.2f}: "
+              f"max={mag.max():.4f} -> {'PASS' if ok_ceil else 'FAIL'}")
+        for i in np.flatnonzero(above):
+            print(f"[{label}]   PASSIVITY f={f_hz[i] / 1e9:.2f} GHz |S|={mag[i]:.4f}")
+        ok = ok and ok_ceil
+    return ok
+
+
+def _selftest_per_freq_gate() -> None:
+    """Falsifier regression pre-declared in issue #340: a synthetic 21-bin
+    |S11| array of ones with ONE bin at 1.5 must FAIL the per-freq band
+    check, and an all-ones array must PASS. Pure numpy, no simulation.
+    Runs at script start and aborts (exit 1) if the gate does not bite —
+    this proves the gate is live, not decorative.
+    """
+    f_fake = np.linspace(8.2e9, 12.4e9, 21)
+    spike = np.ones(21)
+    spike[10] = 1.5
+    if per_freq_band_check("selftest 1.5-spike (must FAIL)", f_fake, spike,
+                           0.93, 1.07, ceiling=1.05):
+        print("SELFTEST BROKEN: synthetic single-bin 1.5 spike PASSED the "
+              "per-freq band gate — gate does not bite; aborting.")
+        sys.exit(1)
+    if not per_freq_band_check("selftest all-ones (must PASS)", f_fake,
+                               np.ones(21), 0.93, 1.07, ceiling=1.05):
+        print("SELFTEST BROKEN: all-ones array FAILED the per-freq band "
+              "gate — gate rejects healthy input; aborting.")
+        sys.exit(1)
+    print("[selftest] per-freq gate bites: 1.5-spike FAILS, all-ones PASSES.")
+
+
 def report(label: str, f_hz: np.ndarray, s_rfx: np.ndarray,
            s_ref: np.ndarray, gate_mag: float, gate_phase_deg: float,
            gate_complex_diff: float | None = None,
@@ -518,6 +590,9 @@ def _summarize_vs_truth(geom: str, comp: str, s_rfx: np.ndarray,
 
 
 def main() -> int:
+    # Prove the per-freq gate bites before running any physics (#340).
+    _selftest_per_freq_gate()
+
     all_pass = True
     skipped_any = False
     meep_ref = _load_meep_reference()
@@ -551,7 +626,16 @@ def main() -> int:
         ok1 = report("empty S11", f_hz, s11, ref_s11, gate_mag=0.02, gate_phase_deg=180.0)
         ok2 = report("empty |S21|", f_hz, np.abs(s21).astype(complex),
                      np.abs(ref_s21).astype(complex), gate_mag=0.03, gate_phase_deg=180.0)
-        all_pass = all_pass and ok1 and ok2
+        # Per-frequency gates (#340): the docstring bands, now actually
+        # enforced. Measured 2026-07-13: per-bin |S11| = 0.0000 (two-run
+        # normalisation is exact on the empty guide), |S21| ∈
+        # [0.99999994, 1.00000000] — both trivially inside the bands.
+        # |S21| upper bound 1.05 doubles as the passivity ceiling.
+        ok_pf1 = per_freq_band_check("empty S11 per-freq", f_hz,
+                                     np.abs(s11), 0.0, 0.02)
+        ok_pf2 = per_freq_band_check("empty S21 per-freq", f_hz,
+                                     np.abs(s21), 0.97, 1.05, ceiling=1.05)
+        all_pass = all_pass and ok1 and ok2 and ok_pf1 and ok_pf2
         # 4-way diagnostic table (rfx | MEEP_r4 | OpenEMS_r4 | Palace_r_h2)
         s11_meep = _ref_complex(meep_block.get("empty") if meep_block else None, "s11")
         s11_openems = _ref_complex(openems_ref["block"].get("empty") if openems_ref else None, "s11")
@@ -590,12 +674,25 @@ def main() -> int:
         s11_round_trip = -np.exp(-1j * beta_v_p * 2.0 * d_pec)
         ok_phase = report("pec-short S11 round-trip phase", f_hz, s11,
                           s11_round_trip, gate_mag=0.10, gate_phase_deg=15.0)
-        all_pass = all_pass and ok_mag and ok_phase
+        # Per-frequency band + passivity ceiling (#340). The [0.93, 1.07]
+        # band was advertised in the docstring since 2026-05 but never
+        # gated; measured 2026-07-13 the per-bin envelope is
+        # [0.99956, 1.00000] (max 1.0000030 at 11.14 GHz), so the
+        # documented band is implementable as-is with wide margin.
+        # Ceiling 1.05: passive structure, |S11| > 1 is non-physical —
+        # closes the tol=2.0 extractor-guard blind spot (spikes ≤ ~1.73
+        # previously passed while moving the 21-bin mean only ~0.035).
+        ok_pf = per_freq_band_check("pec-short |S11| per-freq", f_hz,
+                                    np.abs(s11), 0.93, 1.07, ceiling=1.05)
+        all_pass = all_pass and ok_mag and ok_phase and ok_pf
         # 4-way table.  Palace gives |S11|=1.0000 here (absolute truth);
         # OpenEMS r4 lands in [0.996, 1.004]; MEEP r4 in [0.93, 1.20];
         # rfx in [0.84, 1.04].  This disproves the prior "Yee+staircase
         # common limit" hypothesis — OpenEMS (also Yee) nails it, so the
         # PEC-short |S11| error is an extractor bug specific to MEEP & rfx.
+        # (HISTORICAL: the rfx [0.84, 1.04] figure predates the 2026-04-27
+        # DROP-weight fix; measured 2026-07-13 the rfx per-bin envelope is
+        # [0.99956, 1.00000] — see the per-freq gate above, issue #340.)
         s11_meep = _ref_complex(meep_block.get("pec_short") if meep_block else None, "s11")
         s11_openems = _ref_complex(openems_ref["block"].get("pec_short") if openems_ref else None, "s11")
         s11_palace = _ref_complex(palace_ref["block"].get("pec_short") if palace_ref else None, "s11")
