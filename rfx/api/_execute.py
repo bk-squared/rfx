@@ -428,7 +428,8 @@ class _ExecuteMixin:
 
         ``check_ntff`` gates the NTFF check family. ``run()`` passes
         ``check_ntff="advisory"`` (issue #303): the λ/4 near-field gap
-        advisories are physics-relevant to any far-field computation and
+        and sub-wavelength ground-plane (issue #334) advisories are
+        physics-relevant to any far-field computation and
         run() is the common NTFF entry point, so they are surfaced as
         warnings — but only ``forward(port_s11_freqs=...)`` / ``optimize``
         (the inverse-design entry points) hard-fail on the PEC-overlap
