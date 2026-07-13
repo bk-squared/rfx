@@ -37,7 +37,6 @@ codes, numerical-check files, and generated artifacts.
 | `crossval/03_straight_waveguide_flux.py` | Straight-guide flux and band-mean transmission | Meep and unit transmission within the measured window |
 | `crossval/04_multilayer_fresnel.py` | Normal-incidence multilayer reflection, transmission, and energy balance | Transfer-matrix calculation and Meep over the scripted band |
 | `crossval/05_patch_antenna.py` | 2.4 GHz finite-ground-plane patch resonance | Balanis estimate and OpenEMS; Harminv resonance is the primary result, while absolute probe-feed S11 is secondary |
-| `crossval/06_msl_notch_filter.py` | Nonuniform-mesh microstrip-notch diagnostics | Quarter-wave estimate and an OpenEMS reference; uses loose checks and does not establish general MSL-port accuracy |
 | `crossval/06b_msl_notch_filter_uniform.py` | Uniform-mesh microstrip-notch response | The script checks a quarter-wave estimate at dx=80 µm. A separate dx=50 µm OpenEMS result is checked by `tests/test_msl_notch_e4_comparison_gates.py`; the shipped dx=80 µm run is not an external-solver comparison. Neither establishes general MSL-port accuracy. |
 | `crossval/09_half_symmetric_waveguide.py` | PMC half-symmetry against a full cavity | Pozar TE101 frequency and a full-domain rfx calculation for the scripted mesh |
 | `crossval/10_pmc_cpml_half_symmetric.py` | Stability of combined PMC and CPML boundaries | rfx self-consistency check only; it is not an external-solver comparison |

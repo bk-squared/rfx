@@ -1,7 +1,8 @@
 """Cross-validation 06b: MSL Notch Filter — uniform mesh + add_msl_port.
 
-This is a sibling to ``06_msl_notch_filter.py`` (which uses non-uniform mesh
-+ wire ``add_port`` + graded-σ absorber + Z_probe=1kΩ workaround). 06b
+This began as a sibling to the RETIRED ``06_msl_notch_filter.py`` (non-uniform
+mesh + wire ``add_port`` + graded-σ absorber + Z_probe=1kΩ workaround; removed
+as artifact-anchored — issue #339, content in git history). 06b
 shows the same notch-filter physics using the **distributed MSL port**
 (``add_msl_port``) on a uniform mesh, with no graded-σ absorber. Under the
 physics-first evidence taxonomy this is E2-promising: it uses an analytic
@@ -38,8 +39,8 @@ External cross-check (openEMS, 2026-07-05):
 
 Scope:
   - Uniform mesh dx=80µm (the current narrow gate at ~3 substrate cells).
-    cv06 uses non-uniform; ``add_msl_port`` promotion remains uniform-lane
-    only until a separate non-uniform evidence ladder exists.
+    The retired cv06 used non-uniform; ``add_msl_port`` promotion remains
+    uniform-lane only until a separate non-uniform evidence ladder exists.
   - Smaller domain than cv06 (line length 30mm vs 100mm) to keep
     runtime modest.
   - Stub length 12mm (same as cv06) → analytic notch ~3.69 GHz.

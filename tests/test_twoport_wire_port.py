@@ -21,8 +21,11 @@ reactive load between two wire ports. Verify:
   3. **Direction auto-detect** — a port near x=0 gets direction
      "-x", near x=dom_x gets "+x".
 
-These are BASIC regression tests, not full validation — proper
-validation lives in `validation/crossval/06_msl_notch_filter.py`.
+These are BASIC regression tests, not full validation — the
+claims-bearing MSL notch validation lives in
+`validation/crossval/06b_msl_notch_filter_uniform.py` (`add_msl_port`;
+the nonuniform wire-port crossval lane cv06 was retired as
+artifact-anchored, issue #339).
 """
 
 from __future__ import annotations

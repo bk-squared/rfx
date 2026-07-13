@@ -107,29 +107,6 @@
       "failure_sentinel": null
     },
     {
-      "id": "06_msl_notch_filter",
-      "script": "validation/crossval/06_msl_notch_filter.py",
-      "role": "diagnostic-reporter",
-      "public_group": "B",
-      "execution_tiers": ["gpu-manual", "external-manual"],
-      "evidence_levels": ["E2", "E4"],
-      "references": [
-        {"kind": "analytic", "name": "quarter-wave open-stub notch", "required_for_script_pass": true},
-        {"kind": "external-solver", "name": "OpenEMS MSL_NotchFilter tutorial", "required_for_script_pass": true}
-      ],
-      "claim_scope": "non-uniform wire-port notch reporter with loose frequency and finite/passivity gates; not a broad MSL-port envelope",
-      "external_dependencies": ["OpenEMS MSL_NotchFilter reference NPZ"],
-      "expected_exit_codes": [0, 1, 2],
-      "gate_paths": [
-        "validation/crossval/06_msl_notch_filter.py",
-        "tests/test_msl_nu_sparam_gate.py"
-      ],
-      "artifact_paths": [],
-      "cpu_runner": {"excluded_reason": "CPU-infeasible: > 700 s on CPU; also requires the OpenEMS reference artifact. Run on GPU."},
-      "scheduled_external_order": null,
-      "failure_sentinel": null
-    },
-    {
       "id": "06b_msl_notch_filter_uniform",
       "script": "validation/crossval/06b_msl_notch_filter_uniform.py",
       "role": "claims-bearing",
