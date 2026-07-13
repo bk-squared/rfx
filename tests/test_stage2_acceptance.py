@@ -19,7 +19,7 @@ Locks three physics requirements before Stage 2 can be promoted to claims-bearin
    preserve the same total energy to a comparable degree.
 
 Step 5 gate still pending:
-  - cv05 patch antenna gate: run examples/crossval/05_patch_antenna.py with
+  - cv05 patch antenna gate: run validation/crossval/05_patch_antenna.py with
     subpixel_smoothing="kottke_pec" and verify resonance within 5% of OpenEMS.
     (Full crossval run, not included here; see rfx-known-issues.md.)
   - Rotated PEC cavity: blocked on rfx lacking a rotation/affine geometry

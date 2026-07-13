@@ -12,7 +12,7 @@
     "support_source": "docs/public/guide/benchmarks.mdx"
   },
   "inputs": {
-    "canonical_source": "examples/crossval/04_multilayer_fresnel.py",
+    "canonical_source": "validation/crossval/04_multilayer_fresnel.py",
     "evidence_manifest": "docs/public/gallery/assets/multilayer_fresnel/manifest.json",
     "cpu_smoke_spec": null
   },

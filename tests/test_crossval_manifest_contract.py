@@ -12,7 +12,7 @@ from typing import Literal, TypedDict
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CROSSVAL_DIR = REPO_ROOT / "examples" / "crossval"
+CROSSVAL_DIR = REPO_ROOT / "validation" / "crossval"
 MANIFEST_PATH = CROSSVAL_DIR / "manifest.json"
 RUNNER_PATH = REPO_ROOT / "scripts" / "run_crossval_cpu.py"
 
@@ -367,7 +367,7 @@ def test_public_tables_match_manifest_classification() -> None:
         case_id: classification for case_id, (_, classification) in public_cases.items()
     }
 
-    readme_text = (REPO_ROOT / "examples" / "README.md").read_text(encoding="utf-8")
+    readme_text = (REPO_ROOT / "validation" / "README.md").read_text(encoding="utf-8")
     readme_rows = re.findall(
         r"^\|\s*[AB][^|]*\|\s*`crossval/([^`]+\.py)`\s*\|\s*([AB])\s*\|\s*([^|]+?)\s*\|",
         readme_text,
@@ -384,12 +384,14 @@ def test_public_tables_match_manifest_classification() -> None:
         REPO_ROOT / "docs" / "guides" / "reference_lane_contract.md"
     ).read_text(encoding="utf-8")
     canonical_paths = {
-        "examples/crossval/manifest.json",
-        "examples/crossval/01_waveguide_bend.py",
+        "validation/crossval/manifest.json",
+        "validation/crossval/01_waveguide_bend.py",
         "scripts/run_crossval_cpu.py",
     }
     referenced_paths = set(
-        re.findall(r"(?:examples|scripts)/[A-Za-z0-9_./-]+", reference_lane_text)
+        re.findall(
+            r"(?:examples|scripts|validation)/[A-Za-z0-9_./-]+", reference_lane_text
+        )
     )
     assert canonical_paths <= referenced_paths
     for referenced_path in referenced_paths:
@@ -400,7 +402,7 @@ def test_scheduled_workflow_loads_manifest_instead_of_copying_case_list() -> Non
     workflow_text = (REPO_ROOT / ".github" / "workflows" / "validation.yml").read_text(
         encoding="utf-8"
     )
-    assert "examples/crossval/manifest.json" in workflow_text
+    assert "validation/crossval/manifest.json" in workflow_text
     assert "scheduled_external_order" in workflow_text
     assert "expected_exit_codes" in workflow_text
     assert "could not load scheduled cases from crossval manifest" in workflow_text
@@ -420,7 +422,7 @@ def test_repo_map_defers_crossval_claims_to_manifest() -> None:
     )
     assert "Validated external-reference cross-validation scripts" not in repo_map_text
     assert "validated external" not in repo_map_text.lower()
-    assert "examples/crossval/manifest.json" in repo_map_text
+    assert "validation/crossval/manifest.json" in repo_map_text
 
 
 def test_vessl_external_lane_matches_manifest_classification() -> None:
@@ -434,6 +436,8 @@ def test_vessl_external_lane_matches_manifest_classification() -> None:
         encoding="utf-8"
     )
     configured_cases = set(
-        re.findall(r"examples/crossval/([0-9][0-9a-z]*_[A-Za-z0-9_]+)\.py", vessl_text)
+        re.findall(
+            r"validation/crossval/([0-9][0-9a-z]*_[A-Za-z0-9_]+)\.py", vessl_text
+        )
     )
     assert configured_cases == expected_cases

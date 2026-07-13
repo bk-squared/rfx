@@ -58,7 +58,7 @@ jobs:
   # pip wheel. This job uses the conda-forge path (setup-miniconda + mamba
   # install -c conda-forge pymeep) instead.
   #
-  # Exit-code convention (per script, see examples/crossval/*.py docstrings):
+  # Exit-code convention (per script, see validation/crossval/*.py docstrings):
   #   0 -> full PASS incl. external reference        => table row PASS
   #   1 -> rfx self-check failed (real physics/infra) => table row FAIL, job RED
   #   2 -> reference missing, only when declared      => table row SKIP, job green
@@ -115,7 +115,7 @@ jobs:
           import json
           from pathlib import Path
 
-          manifest = json.loads(Path("examples/crossval/manifest.json").read_text())
+          manifest = json.loads(Path("validation/crossval/manifest.json").read_text())
           scheduled = sorted(
               (
                   case
@@ -154,7 +154,7 @@ jobs:
             log="crossval_logs/${s}.log"
             echo ">>> running ${s} ..."
             # Per-script generous timeout (cv02 with real Meep is the slowest).
-            timeout 5400 python "examples/crossval/${s}.py" > "$log" 2>&1
+            timeout 5400 python "validation/crossval/${s}.py" > "$log" 2>&1
             code=$?
             case $code in
               0) verdict="PASS (full crossval incl. reference)";;

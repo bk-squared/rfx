@@ -19,7 +19,7 @@ Exit codes (rfx crossval convention):
       crossval, NOT a pass. CI must not treat this as green.
 
 Run:
-  python examples/crossval/04_multilayer_fresnel.py
+  python validation/crossval/04_multilayer_fresnel.py
 """
 
 import os

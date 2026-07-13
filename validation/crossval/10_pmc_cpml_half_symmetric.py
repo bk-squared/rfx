@@ -51,7 +51,10 @@ Pass criteria:
 
 from __future__ import annotations
 
-import math, os, sys, time
+import math
+import os
+import sys
+import time
 import numpy as np
 
 import matplotlib

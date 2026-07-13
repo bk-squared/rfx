@@ -16,9 +16,14 @@ the directional derivative along the gradient, which agrees with central FD to
 Run (CPU is fine, ~few minutes):
     JAX_PLATFORMS=cpu python validation/tap_paper/lumped_port_gradient_check.py
 """
-import argparse, json, os, time, warnings
+import argparse
+import json
+import os
+import time
+import warnings
 import numpy as np
-import jax, jax.numpy as jnp
+import jax
+import jax.numpy as jnp
 from rfx.api import Simulation
 from rfx import GaussianPulse
 from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp

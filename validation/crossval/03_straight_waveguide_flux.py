@@ -52,7 +52,7 @@ Exit codes (rfx crossval convention):
       crossval, NOT a pass. CI must not treat this as green.
 
 Run:
-  JAX_ENABLE_X64=1 python examples/crossval/03_straight_waveguide_flux.py
+  JAX_ENABLE_X64=1 python validation/crossval/03_straight_waveguide_flux.py
 """
 
 import os

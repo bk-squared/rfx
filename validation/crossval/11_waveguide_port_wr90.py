@@ -50,7 +50,7 @@ Exit code convention (per rfx crossval standard):
   1 → a geometry could not run or one or more numeric accept gates failed
 
 Run:
-  JAX_ENABLE_X64=1 python examples/crossval/11_waveguide_port_wr90.py
+  JAX_ENABLE_X64=1 python validation/crossval/11_waveguide_port_wr90.py
 
 Status (2026-05-04):
   - Empty-guide and PEC-short magnitude gates: PASS (Meep-class via

@@ -21,7 +21,7 @@ Exit codes (rfx crossval convention):
       crossval, NOT a pass. CI must not treat this as green.
 
 Run:
-  JAX_ENABLE_X64=1 python examples/crossval/02_ring_resonator.py
+  JAX_ENABLE_X64=1 python validation/crossval/02_ring_resonator.py
 """
 
 import os

@@ -24,7 +24,7 @@ or refuted. Promoting it out of `spikes/` makes that contract explicit.
 | `per_freq_oscillation_viz.py` | Frequency-by-frequency visualisation of the rfx vs reference `|S11|` oscillation. Used for at-a-glance regression sanity checks. |
 | `geometry_visualization.py` | Static HTML/image report of the rfx vs OpenEMS vs Meep canonical geometry overlay (port positions, mon planes, PEC short). |
 
-All five scripts treat `examples/crossval/11_waveguide_port_wr90.py`
+All five scripts treat `validation/crossval/11_waveguide_port_wr90.py`
 as the source-of-truth for canonical constants (`A_WG`, `B_WG`,
 `PORT_LEFT_X`, `MON_LEFT_X`, `MON_RIGHT_X`, `PEC_SHORT_X`, `FREQS_HZ`,
 `CPML_LAYERS`, `NUM_PERIODS_LONG`). Drift between the comparator and

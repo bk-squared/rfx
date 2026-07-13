@@ -13,7 +13,7 @@ across the band; ∠conj(S21_meep) matches rfx ∠S21 to ≤2.64° (max over
 the 21-frequency band, full precision from the cv11 report row). Do NOT
 de-embed by the fitted slope/intercept — conjugate the Meep data instead.
 See the time-convention comment and corrected-phase rows in
-examples/crossval/11_waveguide_port_wr90.py (slab section).
+validation/crossval/11_waveguide_port_wr90.py (slab section).
 
 Physical hypothesis test (original framing, kept for reproducibility):
   - If ∠(S21_rfx / S21_meep) is linear in β(f) → it's a reference-plane

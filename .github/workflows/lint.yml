@@ -32,8 +32,8 @@ jobs:
       - name: Install ruff
         run: pip install ruff
 
-      - name: Lint rfx/ and tests/
-        run: ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
+      - name: Lint rfx/, tests/, and validation/
+        run: ruff check rfx/ tests/ validation/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
 
   agent-docs-hygiene:
     # docs/agent/ pages are sanitized public exports of internal (gitignored)

@@ -3,7 +3,7 @@
 
 This is the single runner referenced by ``docs/public/guide/benchmarks.mdx``
 (roadmap task W4.8). The canonical case inventory and CPU disposition live in
-``examples/crossval/manifest.json``. This runner executes each CPU-feasible
+``validation/crossval/manifest.json``. This runner executes each CPU-feasible
 case in a fresh subprocess with a per-script timeout, classifies the outcome,
 and exits 0 iff no script failed for a non-environment reason.
 
@@ -47,7 +47,7 @@ from pathlib import Path
 from typing import Final
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CROSSVAL_DIR = REPO_ROOT / "examples" / "crossval"
+CROSSVAL_DIR = REPO_ROOT / "validation" / "crossval"
 MANIFEST_PATH = CROSSVAL_DIR / "manifest.json"
 
 # Per-script timeout (seconds). The empirically-slowest member of the CPU

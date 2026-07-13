@@ -113,7 +113,7 @@
         "resolve or document the legacy total-impedance vs per-cell off-diagonal wire calibration convention"
       ],
       "evidence_artifacts": [
-        "examples/crossval/05_patch_antenna.py",
+        "validation/crossval/05_patch_antenna.py",
         "tests/test_twoport_wire_port.py",
         "tests/test_wire_sparam.py",
         "tests/test_wire_port_sparams_forward.py",
@@ -175,7 +175,7 @@
       "evidence_artifacts": [
         "tests/test_msl_port_integration.py",
         "tests/test_msl_plane_extractor_jax.py",
-        "examples/crossval/06b_msl_notch_filter_uniform.py",
+        "validation/crossval/06b_msl_notch_filter_uniform.py",
         ".omx/physics-gate/2026-05-09-m5-msl-envelope/msl_envelope_report.json",
         ".omx/physics-gate/vessl-2026-05-09-m3/msl_openems_reference/msl_openems_comparison.json",
         "docs/research_notes/msl_thru_openems_80um.json",
@@ -232,7 +232,7 @@
         "tests/test_waveguide_port_validation_battery.py",
         "tests/test_waveguide_phase_gate.py",
         "tests/test_waveguide_twoport_contract_v1.py",
-        "examples/crossval/11_waveguide_port_wr90.py",
+        "validation/crossval/11_waveguide_port_wr90.py",
         "scripts/diagnostics/wr90_port/s11_from_dumps.py",
         ".omx/physics-gate/2026-05-09-m4-waveguide-envelope/waveguide_envelope_report.json",
         ".omx/physics-gate/2026-05-09-m4-cv11-waveguide-wr90.stdout.txt"

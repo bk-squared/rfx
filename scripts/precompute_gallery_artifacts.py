@@ -207,7 +207,7 @@ class CaseResult:
 def _build_multilayer_fresnel(quick: bool) -> CaseResult:
     """Normal-incidence dielectric slab R/T vs the exact transfer matrix.
 
-    Replicates the rfx-only path of ``examples/crossval/04_multilayer_fresnel.py``
+    Replicates the rfx-only path of ``validation/crossval/04_multilayer_fresnel.py``
     (2D TMz TFSF plane wave, single-run scattered/total field measurement) and
     maps the lossless-reciprocal-slab physics onto a 2-port S-matrix:
     ``|S11|^2 = R``, ``|S21|^2 = T``. The complex analytic ``(r, t)`` from the
@@ -428,7 +428,7 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     """Empty WR-90 waveguide port: matched-load reference (|S11|=0, |S21|=1).
 
     Reuses the canonical ``add_waveguide_port`` + ``compute_waveguide_s_matrix``
-    pipeline from ``examples/crossval/11_waveguide_port_wr90.py`` for the
+    pipeline from ``validation/crossval/11_waveguide_port_wr90.py`` for the
     empty-guide geometry. The matched-load analytic reference is exact, so this
     is an E5 case.
     """
@@ -569,7 +569,7 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
     """Probe-fed 2.4 GHz patch antenna on FR4 (lumped-port S11 sweep).
 
     Replicates the rfx-only lumped-port path of
-    ``examples/crossval/05_patch_antenna.py`` (no OpenEMS dependency). The
+    ``validation/crossval/05_patch_antenna.py`` (no OpenEMS dependency). The
     cross-validation reference is OpenEMS Harminv resonance frequency
     (tier E4 — coarse-mesh resonance agreement, not absolute calibrated S).
     """

@@ -90,7 +90,7 @@ a minute on a CPU and seconds on a GPU; peak memory is well under a gigabyte.
 
 ## Run
 
-The construction below mirrors `examples/crossval/05_patch_antenna.py`, on a
+The construction below mirrors `validation/crossval/05_patch_antenna.py`, on a
 single uniform mesh. The 50 Ω wire port drives the patch and reads |S11|; a
 separate broadband-source run on the same geometry feeds the Harminv ring-down.
 
@@ -134,7 +134,7 @@ print(f"|S11| dip {20*np.log10(np.abs(s11)).min():.1f} dB")
 Run it from the command line:
 
 ```bash
-python examples/crossval/05_patch_antenna.py
+python validation/crossval/05_patch_antenna.py
 ```
 
 ## Fields

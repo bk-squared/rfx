@@ -655,7 +655,7 @@ class _PreflightMixin:
                         # extraction with a port or flux monitor
                         # amplifies dielectric-interface phase error
                         # into |S| magnitude error (see
-                        # examples/crossval/11 rfx-vs-analytic audit,
+                        # validation/crossval/11 rfx-vs-analytic audit,
                         # 2026-04-24): at 17.7 cells/λ_eff we measure
                         # ~5% |S21| deficit at Fabry-Perot peaks; at
                         # 35 cells/λ_eff (dx halved) it halves to ~2%.

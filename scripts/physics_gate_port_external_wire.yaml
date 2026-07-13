@@ -48,7 +48,7 @@ run: |-
   set +e
   RFX_CROSSVAL05_JSON="$crossval_json" \
     timeout "${RFX_WIRE_OPENEMS_TIMEOUT:-1800}" \
-    python examples/crossval/05_patch_antenna.py \
+    python validation/crossval/05_patch_antenna.py \
       > "$out/crossval05.stdout.txt" \
       2> "$out/crossval05.stderr.txt"
   crossval_rc=$?

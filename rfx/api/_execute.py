@@ -2308,7 +2308,7 @@ class _ExecuteMixin:
             limitation (valid only for lossy / radiating ring-down, not flux /
             S-param / transmission gating on guided / low-loss closed geometries
             — use a fixed ``n_steps`` there, see
-            ``examples/crossval/03_straight_waveguide_flux.py`` and the
+            ``validation/crossval/03_straight_waveguide_flux.py`` and the
             :func:`rfx.simulation.run_until_decay` note).
         decay_check_interval : int
             Check decay every N steps (default 50).

@@ -42,10 +42,12 @@ for the per-cell `dx_profile`/`dy_profile` feature added alongside
 this crossval.
 
 Run:
-  python examples/crossval/06_msl_notch_filter.py
+  python validation/crossval/06_msl_notch_filter.py
 """
 
-import os, sys, time
+import os
+import sys
+import time
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -430,7 +432,7 @@ if have_ref:
     print(f"  Notch freq vs openEMS  (< 15 %):    "
           f"{'PASS' if pass_oe else 'FAIL'}  ({rfx_vs_oe:.2f} %)")
 else:
-    print(f"  Notch freq vs openEMS  (< 15 %):    SKIP  (reference missing)")
+    print("  Notch freq vs openEMS  (< 15 %):    SKIP  (reference missing)")
 print(f"  Overall:                            "
       f"{'PASS' if all_ok else ('SKIP' if not have_ref else 'FAIL')}")
 print()
@@ -457,7 +459,7 @@ print("    mode-matches the quasi-TEM profile (analogous to openEMS")
 print("    AddMSLPort). This is a separate, larger feature and is tracked")
 print("    as the next infrastructure task.")
 print()
-print(f"  Output: 06_msl_notch_filter.png")
+print("  Output: 06_msl_notch_filter.png")
 
 # Exit codes:
 #   0 = all PASS including openEMS cross-check

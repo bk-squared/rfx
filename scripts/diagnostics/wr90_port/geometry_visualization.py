@@ -199,7 +199,7 @@ def write_wave_clean_html(html_path: Path, geom_png: str, osc_png: str,
         rfx는 "right port" = <em>port primitive 평면</em>(셀 중심 좌우대칭으로 잡힌
         <code>+60 mm</code>)으로 해석 → 결과적으로 같은 단어가 다른 평면을 가리킴.
         <br><br>
-        <strong>오늘 수정</strong>: <code>examples/crossval/11_waveguide_port_wr90.py</code>에
+        <strong>오늘 수정</strong>: <code>validation/crossval/11_waveguide_port_wr90.py</code>에
         명시적으로 <code>MON_RIGHT_X = 0.150</code>, <code>PEC_SHORT_X = MON_RIGHT_X − 0.005
         = 0.145 m</code> 상수 도입. <code>run_rfx_pec_short</code>가 이 상수를 사용.
         rfx · Meep · OpenEMS 모두 <code>+45 mm OE</code>로 정합.</div>

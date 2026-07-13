@@ -110,7 +110,7 @@ def _run_openems_line_reference(term: str, R: float | None, *, sim_dir: Path,
     * INSTABILITY: MUR on the +-z faces assumes phase velocity == c, but the PTFE
       (eps_r=2.1) TEM wave travels at c/sqrt(2.1) -> MUR-on-dielectric is unstable
       (exponential energy blow-up 5e-16 -> 2.8e13). Use PML_8 on +-z instead
-      (same fix examples/crossval/05_patch_antenna.py applied for its resonance).
+      (same fix validation/crossval/05_patch_antenna.py applied for its resonance).
       PEC on the transverse faces, PML_8 on +-z. The full coax cross-section
       (pin+PTFE+shell) extends uniformly THROUGH both PML regions so PML is
       reflectionless (constant cross-section into the PML).
