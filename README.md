@@ -212,7 +212,7 @@ For the per-case metric, reproduce command, and last-touched commit, see the [be
 
 The CPU-feasible subset runs locally via `PYTHONPATH=. python scripts/run_crossval_cpu.py`, using the repo-wide exit-code convention: `0` = full pass including the external cross-check, `1` = a self-check / numeric gate failed, `2` = the external reference (e.g. Meep / OpenEMS) was unavailable, so the case is visibly skipped — never silently green.
 
-For a first read, start with `examples/crossval/05_patch_antenna.py` (patch workflow) and `examples/crossval/11_waveguide_port_wr90.py` (rectangular waveguide ports). Treat scripts outside this validated set as local diagnostics unless a public guide and support-matrix entry list them.
+To learn rfx, start with the ordered tutorials in `examples/tutorials/` (see `examples/README.md` for the learning path). The cross-validation scripts referenced above are measurement fixtures we maintain to verify accuracy — read them for evidence, not as lessons. Treat scripts outside the tutorial and validated sets as local diagnostics unless a public guide and support-matrix entry list them.
 
 ## Key Features
 
