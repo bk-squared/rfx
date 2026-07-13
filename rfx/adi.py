@@ -736,10 +736,11 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     similar to a product of two unitary Cayley transforms — the scheme is
     unconditionally stable for every ``dt``, PEC domain boundary included.
 
-    Accuracy envelope (measured, 12^3 PEC cavity, TE101 at ~15 cells per
-    wavelength — ``tests/test_review_tier1_validation_battery.py``):
-    eigenfrequency error is -1.4% at 2x the 3D Yee CFL limit, growing
-    ~dt^2 (Crank–Nicolson-like temporal lag) to ~ -6.7% at 5x CFL. Runs
+    Accuracy envelope (12^3 PEC cavity, TE101 at ~15 cells per
+    wavelength): eigenfrequency error is -1.4% at 2x the 3D Yee CFL
+    limit (test-measured, ``tests/test_review_tier1_validation_battery.py``),
+    growing ~dt^2 (Crank–Nicolson-like temporal lag) to ~ -6.7% at 5x CFL
+    (von Neumann analysis — the 5x point is not test-measured). Runs
     at 5-50x CFL remain stable but are quantitative only for features
     much coarser than the timestep. Use large CFL factors for stiff
     meshes (thin substrates), not wavelength-scale resonances.
