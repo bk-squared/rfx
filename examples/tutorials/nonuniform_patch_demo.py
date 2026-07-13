@@ -1,15 +1,26 @@
-"""Nonuniform-mesh demo: 2.4 GHz FR4 patch antenna — NU runner validation.
+"""Non-uniform mesh workflow: resolving a thin substrate without a huge grid.
 
-Exercises the NU runner (rfx/runners/nonuniform.py) end-to-end:
-  - Non-uniform z mesh (fine in substrate, coarser in air)
-  - Broadband Gaussian Ez source + Ez probe
-  - Harminv resonance extraction
+A 2.4 GHz FR4 patch antenna has a 1.5 mm substrate inside a ~100 mm domain —
+uniform cells fine enough for the substrate would waste millions of cells in
+air. This tutorial shows the practical recipe:
 
-Geometry matches crossval/05_patch_antenna.py exactly.
-No OpenEMS code, no comparison bookkeeping — pure NU plumbing check.
+  - build a GRADED z mesh (``dz_profile``: fine cells across the substrate,
+    coarser in the air) with ``smooth_grading``,
+  - drive it with a broadband Gaussian Ez source and read an Ez probe,
+  - extract the resonance with ``harminv``.
+
+Two rules this workflow teaches:
+  1. After ``smooth_grading``, VERIFY where your thin layers actually landed —
+     transition cells shift the fine band, and a substrate placed by absolute
+     z can silently rasterize onto coarse cells. ``sim.preflight()`` warns
+     about this (graded-box-rasterization advisory); this script prints the
+     realized cell layout so you can see it.
+  2. Non-uniform meshing trades accuracy for cells: at matched dx a graded
+     mesh is NOT more accurate than uniform — use it to make big problems
+     tractable, not to chase digits.
 
 Run:
-  python examples/nonuniform_patch_demo.py
+  python examples/tutorials/nonuniform_patch_demo.py
 """
 
 import math
@@ -106,7 +117,7 @@ nz_uniform_equiv = int(math.ceil(dom_z / dz_sub))
 n_cells_uniform = nx * ny * nz_uniform_equiv
 ratio = n_cells_uniform / n_cells_nu
 
-print(f"\nMesh:")
+print("\nMesh:")
 print(f"  NU:      {nx} x {ny} x {nz_nu} = {n_cells_nu:,} cells")
 print(f"  Uniform: {nx} x {ny} x {nz_uniform_equiv} = {n_cells_uniform:,} cells")
 print(f"  Memory saving ratio: {ratio:.2f}x")
@@ -150,7 +161,7 @@ sim.add_probe(
 # =============================================================================
 # Run
 # =============================================================================
-print(f"\nRunning NU simulation (num_periods=60)...")
+print("\nRunning NU simulation (num_periods=60)...")
 t0 = time.time()
 result = sim.run(num_periods=60)
 elapsed = time.time() - t0
@@ -180,7 +191,7 @@ else:
     Q_harminv  = float("nan")
     err_pct    = float("inf")
 
-print(f"\nResults:")
+print("\nResults:")
 print(f"  Analytic f_res   = {f_an/1e9:.4f} GHz")
 print(f"  Harminv f_res    = {f_harminv/1e9:.4f} GHz  (Q = {Q_harminv:.1f})")
 print(f"  Error vs analytic = {err_pct:.2f} %")

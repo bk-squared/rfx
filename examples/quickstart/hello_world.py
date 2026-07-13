@@ -84,7 +84,7 @@ def main() -> None:
     print(f"wall time      : {elapsed:.2f} s")
     print("-" * 40)
     print("If you see finite numbers above, rfx is working. Next: try")
-    print("examples/crossval/ for real RF device validation cases.")
+    print("examples/tutorials/ — the ordered learning path (see examples/README.md).")
 
 
 if __name__ == "__main__":
