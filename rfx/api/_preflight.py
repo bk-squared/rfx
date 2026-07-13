@@ -1020,11 +1020,13 @@ class _PreflightMixin:
             collecting warnings.
         check_ntff : bool or "advisory"
             ``True`` (default): run the full NTFF check family (PEC-overlap
-            hard error + λ/4 / λ/2 near-field gap advisories).
-            ``"advisory"``: run only the near-field gap advisories — the
-            tier ``run()`` uses, because the λ/4 warning is physics-relevant
-            to any far-field computation while the PEC-overlap hard error
-            remains an inverse-design gate (issue #303).
+            hard error + λ/4 / λ/2 near-field gap advisories + the
+            sub-wavelength ground-plane pattern advisory, issue #334).
+            ``"advisory"``: run only the advisories — the tier ``run()``
+            uses, because the λ/4 and small-ground-plane warnings are
+            physics-relevant to any far-field computation while the
+            PEC-overlap hard error remains an inverse-design gate
+            (issue #303).
             ``False``: skip the family entirely.
         check_resolution : bool
             Run the tightened resolution check (existing _validate_mesh_quality
@@ -1422,6 +1424,11 @@ class _PreflightMixin:
         Passive DFT probes are NOT counted: they read field state without
         perturbing it, so a probe on a box face is a measurement choice,
         not a radiating/scattering culprit (issue #303).
+        CHECK 4: source backed by a PEC sheet under ~1λ across
+        (warning-severity advisory; both tiers, issue #334) — the far-field
+        pattern will be shaped by ground-plane edge diffraction. Expected
+        physics, not a solver defect; the advisory exists so a resonance
+        fixture is not mistaken for a pattern fixture.
         """
         import warnings as _w
 
@@ -1563,6 +1570,114 @@ class _PreflightMixin:
                     ),
                     stacklevel=3,
                 )
+
+        # CHECK 4 (issue #334): electrically small ground plane under a
+        # radiator. Advisory in BOTH tiers — it is pattern physics, not an
+        # inverse-design structural gate.
+        self._validate_ntff_small_ground_plane(f_max, lam_min)
+
+    def _validate_ntff_small_ground_plane(
+        self, f_max: float, lam: float,
+    ) -> None:
+        """CHECK 4 (issue #334): finite PEC sheet backing a radiator that is
+        under ~1λ across → edge-diffraction-shaped far-field pattern.
+
+        Background: a 0.48λ × 0.44λ ground plane produces a pattern dominated
+        by ground-plane edge diffraction (broadside dip, off-axis side peaks)
+        — correct physics for that geometry, but a trap when the fixture was
+        built for resonance/impedance work and its pattern is then read as a
+        solver defect. The advisory names the mechanism up front.
+
+        Predicate (warning-severity, fires at most ONCE per preflight):
+        - a PEC geometry entry is sheet-like: thin-axis extent
+          ``t <= max(λ/20, L_small/10)`` with both lateral extents >= λ/8;
+        - a radiator backs it: an ``add_source()`` / lumped-wire
+          ``add_port()`` entry sits laterally inside the sheet footprint and
+          within half a wavelength of the sheet along the thin axis
+          (image-theory coupling zone);
+        - among qualifying sheets only the LARGEST footprint is judged — in a
+          patch stack that is the ground plane, never the (intentionally
+          sub-wavelength) resonant patch element itself;
+        - fire iff that sheet's smaller lateral extent < 1λ at the highest
+          requested NTFF frequency (sub-wavelength across the whole
+          requested pattern band — the conservative direction).
+
+        λ is evaluated at ``f_max`` of the NTFF frequencies: if the sheet is
+        sub-wavelength even at the shortest requested wavelength, every bin
+        of the requested pattern carries the edge-diffraction shaping.
+
+        TFSF and MSL/waveguide/coax excitations are not counted as radiators
+        here (same scope as the CHECK 3 point list): a sub-wavelength PEC
+        plate as a scattering target is a legitimate RCS fixture, not a
+        ground-plane misuse.
+        """
+        import warnings as _w
+
+        ports = [tuple(pe.position) for pe in self._ports]
+        if not ports:
+            return
+
+        best = None  # (lateral_area, L_small, L_big, c1, c2)
+        for entry in self._geometry:
+            if entry.material_name != "pec":
+                continue
+            try:
+                c1, c2 = entry.shape.bounding_box()
+            except (NotImplementedError, TypeError, AttributeError):
+                continue
+            ext = [c2[a] - c1[a] for a in range(3)]
+            thin = min(range(3), key=lambda a: ext[a])
+            lat = [a for a in range(3) if a != thin]
+            l_small = min(ext[lat[0]], ext[lat[1]])
+            l_big = max(ext[lat[0]], ext[lat[1]])
+            # sheet-like: electrically thin, or thin relative to its own
+            # footprint (covers coarse-meshed few-cell-thick ground planes)
+            if ext[thin] > max(lam / 20.0, l_small / 10.0):
+                continue
+            # electrically non-negligible in BOTH lateral dims — wires,
+            # narrow straps and tiny pads are not ground planes
+            if l_small < lam / 8.0:
+                continue
+            backed = False
+            for pos in ports:
+                if not all(c1[a] <= pos[a] <= c2[a] for a in lat):
+                    continue
+                d = max(c1[thin] - pos[thin], pos[thin] - c2[thin], 0.0)
+                if d <= lam / 2.0:
+                    backed = True
+                    break
+            if not backed:
+                continue
+            area = ext[lat[0]] * ext[lat[1]]
+            if best is None or area > best[0]:
+                best = (area, l_small, l_big, c1, c2)
+
+        if best is None:
+            return
+        _, l_small, l_big, c1, c2 = best
+        if l_small >= lam:
+            return  # ground plane >= ~1λ both ways: clean-pattern regime
+
+        _w.warn(
+            PreflightWarning(
+                f"Far-field pattern advisory: the PEC sheet backing a source "
+                f"(bbox ({c1[0]*1e3:.1f}, {c1[1]*1e3:.1f}, {c1[2]*1e3:.1f})"
+                f"–({c2[0]*1e3:.1f}, {c2[1]*1e3:.1f}, {c2[2]*1e3:.1f}) mm) "
+                f"spans {l_big*1e3:.1f}mm × {l_small*1e3:.1f}mm = "
+                f"{l_big/lam:.2f}λ × {l_small/lam:.2f}λ at "
+                f"f_max={f_max/1e9:.2f}GHz — a ground plane under ~1λ "
+                f"across. Expect the radiation pattern to be shaped by "
+                f"ground-plane edge diffraction (broadside dip, off-axis "
+                f"side peaks). This is expected physics, not a solver "
+                f"defect, and the fixture stays fine for resonance / "
+                f"impedance work. For a clean broadside pattern enlarge the "
+                f"ground plane to at least ~1.4λ; if the small ground plane "
+                f"is intentional, interpret the pattern accordingly.",
+                code="ntff_small_ground_plane",
+                source="_validate_ntff_small_ground_plane",
+            ),
+            stacklevel=4,
+        )
 
     def _validate_simulation_config(self) -> None:
         """Comprehensive pre-simulation configuration validation.

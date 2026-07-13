@@ -202,6 +202,17 @@ plot_rcs(result, freq_idx=0, polar=False)   # dBsm vs angle
   boundaries and MSL source positions are not included and require manual
   clearance checks. Finite geometry such as PEC sheets is included only where
   its bounding box overlaps the NTFF face tangentially.
+- The `ntff_small_ground_plane` advisory fires when an NTFF box is present
+  and the largest PEC sheet backed by an `add_source()` / lumped-wire
+  `add_port()` entry is under ~1λ across at the highest requested NTFF
+  frequency. A sub-wavelength ground plane radiates a pattern shaped by
+  ground-plane edge diffraction (broadside dip, off-axis side peaks) — that
+  is expected physics, not a solver defect. Such a fixture stays valid for
+  resonance and impedance work; for a clean broadside pattern use a ground
+  plane of at least ~1.4λ. Deliberately small ground planes are legitimate:
+  the advisory is a warning, never a blocker, so interpret the pattern
+  accordingly and continue. TFSF-illuminated plates (RCS targets) do not
+  trigger it.
 - The automatic `ring-down truncated` warning examines a recorded probe time
   series, not the NTFF accumulators. It is emitted only for an
   absorbing-boundary run with a `GaussianPulse` entry from `add_source()`,
