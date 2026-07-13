@@ -1,4 +1,10 @@
-"""Create a small rfx runtime artifact bundle without running FDTD.
+"""Create a shareable rfx artifact bundle (scene + mesh + report) without running FDTD.
+
+Use this when you want to hand a design to a colleague or archive a setup:
+it exports the native scene, mesh/preflight metadata, a Markdown review
+report, and a manifest. Run:
+
+    python examples/tutorials/artifact_report_demo.py
 
 The demo exports the native rfx scene, mesh/preflight metadata, legacy
 ``geometry.json``, a Markdown review report, and a manifest.  It intentionally
