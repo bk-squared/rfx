@@ -103,3 +103,50 @@ def test_run_control_and_fields_tutorial_runs():
     assert "Final field slice shapes: Ex=(41, 41), Ey=(41, 41), Ez=(41, 41)" in output
     assert plot_path.is_file()
     assert plot_path.stat().st_size > 0
+
+
+def test_rcs_scattering_tutorial_runs():
+    """The sphere run subtracts its empty reference and reports backscatter."""
+    output = _run_tutorial("rcs_scattering.py")
+
+    assert "[PREFLIGHT] All checks passed" in output
+    assert "TFSF plane-wave setup ready: True" in output
+    assert "Incident-reference subtraction enabled: True" in output
+    assert "Deep-null limitation:" in output
+
+    backscatter_match = re.search(r"Backscatter RCS:\s*([^\s]+)\s*m\^2", output)
+    area_match = re.search(
+        r"Geometric-optics limit pi\*r\^2:\s*([^\s]+)\s*m\^2",
+        output,
+    )
+    assert backscatter_match is not None
+    assert area_match is not None
+
+    backscatter = float(backscatter_match.group(1))
+    geometric_optics = float(area_match.group(1))
+    assert math.isfinite(backscatter) and backscatter > 0.0
+    assert math.isfinite(geometric_optics) and geometric_optics > 0.0
+    assert 0.1 < backscatter / geometric_optics < 20.0
+
+
+def test_resonance_harminv_tutorial_runs():
+    """The longer cavity record improves the analytic TE101 frequency."""
+    output = _run_tutorial("resonance_harminv.py")
+
+    assert "[PREFLIGHT] All checks passed" in output
+    assert "Vacuum-cavity loss advisory observed: False" in output
+    assert "Short record full mode list:" in output
+    assert "Long record full mode list:" in output
+    assert output.count("amplitude=") >= 4
+    assert "Mode selection: nearest analytic frequency, not strongest amplitude" in output
+    assert "Harminv sampling: decimate='auto' is the default" in output
+
+    short_match = re.search(r"Short-record TE101 error:\s*([^%]+)%", output)
+    long_match = re.search(r"Long-record TE101 error:\s*([^%]+)%", output)
+    assert short_match is not None
+    assert long_match is not None
+
+    short_error = float(short_match.group(1))
+    long_error = float(long_match.group(1))
+    assert math.isfinite(short_error) and short_error < 0.5
+    assert math.isfinite(long_error) and long_error < short_error
