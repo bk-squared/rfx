@@ -180,10 +180,49 @@ elapsed = time.time() - t0_wall
 print(f"Simulation: {elapsed:.1f}s")
 print(f"  refl max={np.max(np.abs(ts_refl)):.4e}, trans max={np.max(np.abs(ts_trans)):.4e}")
 print(f"  inc max: refl={np.max(np.abs(ts_inc_refl)):.4e}, trans={np.max(np.abs(ts_inc_trans)):.4e}")
-print(f"  Tail: refl={np.max(np.abs(ts_refl[-100:])):.2e}, trans={np.max(np.abs(ts_trans[-100:])):.2e}")
 
 # Compute scattered (reflected) field by subtracting 1D incident from total
 ts_scattered_refl = ts_refl - ts_inc_refl
+
+# -----------------------------------------------------------------------------
+# Settling-tail witness (GATED — issue #341; previously an ungated print).
+#
+# Window choice: the old window (last 100 steps) contained the direct pulse —
+# in the committed config (nx=600, 719 steps) the 1D incident at the trans
+# probe peaks at step ~544 and is still ~11% of peak inside the last 100
+# steps, so a "tail" there mostly measured the pulse itself. The last 50
+# steps are clean: measured incident there is 2.1e-4 of peak (2026-07-13,
+# committed config). The purity check below enforces that property at
+# RUNTIME, so a future change to n_steps/geometry cannot silently re-admit
+# the direct pulse into the witness window.
+#
+# Thresholds (measured envelope + headroom, committed config 2026-07-13):
+#   - window purity: incident 2.1e-4 of peak measured -> gate 1e-3 (~5x).
+#   - tails: scattered@refl 0.036, total@trans 0.051 of incident peak; this
+#     residual is the order-2 etalon echo still in flight at run end (rung
+#     C4, job 369367246779 — collapses to ~5e-5 rel at nx=1500/1940 steps).
+#     Gate 0.10 (~2x): bounds gross non-settling (CPML contamination,
+#     late-time growth, broken time gate) while accepting the documented
+#     committed-config echo residual.
+# -----------------------------------------------------------------------------
+TAIL_WINDOW = 50
+TAIL_PURITY_LIMIT = 1e-3
+TAIL_LIMIT = 0.10
+inc_peak = max(np.max(np.abs(ts_inc_refl)), np.max(np.abs(ts_inc_trans)))
+tail_inc_rel = max(np.max(np.abs(ts_inc_refl[-TAIL_WINDOW:])),
+                   np.max(np.abs(ts_inc_trans[-TAIL_WINDOW:]))) / inc_peak
+tail_refl_rel = np.max(np.abs(ts_scattered_refl[-TAIL_WINDOW:])) / inc_peak
+tail_trans_rel = np.max(np.abs(ts_trans[-TAIL_WINDOW:])) / inc_peak
+tail_window_clean = tail_inc_rel < TAIL_PURITY_LIMIT
+tail_ok = bool(tail_window_clean
+               and tail_refl_rel < TAIL_LIMIT
+               and tail_trans_rel < TAIL_LIMIT)
+print(f"  Tail witness (last {TAIL_WINDOW} steps, rel. to incident peak): "
+      f"scat_refl={tail_refl_rel:.4f}, trans={tail_trans_rel:.4f} "
+      f"(limit {TAIL_LIMIT})")
+print(f"  Tail window purity: incident={tail_inc_rel:.2e} of peak "
+      f"(limit {TAIL_PURITY_LIMIT:g}) -> "
+      f"{'clean' if tail_window_clean else 'CONTAMINATED BY DIRECT PULSE'}")
 
 # =============================================================================
 # PART 1b: Time-domain diagnostic
@@ -232,6 +271,12 @@ S_total_t = np.fft.rfft(ts_trans, n=nfft)
 S_scat_r = np.fft.rfft(ts_scattered_refl, n=nfft)
 
 inc_power = np.abs(S_inc_t)
+# NOTE (issue #341): this 2% AMPLITUDE mask admits band-edge bins whose POWER
+# denominator |S_inc|^2 is down ~2500x from peak, so ratio errors there are
+# mask-amplified — a single-bin R+T spike up to ~10 would have passed the
+# mean-only gates silently. The mask itself stays as committed (it defines
+# the evaluated band); the per-bin max|R+T-1| ceiling below now bounds the
+# amplified-bin class.
 mask = (freqs > 3e9) & (freqs < 15e9) & (inc_power > inc_power.max() * 0.02)
 
 T_rfx = np.abs(S_total_t[mask])**2 / np.abs(S_inc_t[mask])**2
@@ -257,7 +302,19 @@ print(f"  R+T mean: {np.mean(R_rfx+T_rfx):.4f}, dev max: {cons_rfx.max():.4f}")
 t_ok = T_err_rfx.mean() < 0.05
 r_ok = R_err_rfx.mean() < 0.05
 c_ok = cons_rfx.mean() < 0.05
-rfx_self_ok = bool(t_ok and r_ok and c_ok)
+
+# Per-bin energy-conservation ceiling (ADDED, issue #341; the mean gates above
+# are untouched). Root cause of the pinned envelope (rung C4, job
+# 369367246779): committed config (nx=600, 719 steps) measures
+# max|R+T-1| = 0.0487, worst bin at the 11.87 GHz mask edge, and the error is
+# ENTIRELY order-2 etalon-echo truncation — widening to nx=1500/1940 steps
+# collapses it to 0.0002 while band-mean |dT|,|dR| shift < 0.005 (negligible
+# mean-side bias). Ceiling = measured envelope + headroom; it bounds the
+# previously-silent mask-amplified single-bin spike class (up to ~10) to 6%.
+CONS_MAX_LIMIT = 0.06
+cons_max_ok = bool(cons_rfx.max() <= CONS_MAX_LIMIT)
+
+rfx_self_ok = bool(t_ok and r_ok and c_ok and cons_max_ok and tail_ok)
 
 # =============================================================================
 # PART 3: Meep simulation (OPTIONAL secondary cross-validation reference)
@@ -492,6 +549,17 @@ else:
     print(f"  {'T(f) mean error':<25} {T_err_rfx.mean():>10.4f} {0.05:>10.4f}")
     print(f"  {'R(f) mean error':<25} {R_err_rfx.mean():>10.4f} {0.05:>10.4f}")
     print(f"  {'R+T mean dev (energy)':<25} {cons_rfx.mean():>10.4f} {0.05:>10.4f}")
+
+# Gated per-bin/tail witnesses (issue #341) — rfx-only, independent of Meep
+print("\n  Gated witnesses (issue #341):")
+print(f"  {'max|R+T-1| (per-bin)':<25} {cons_rfx.max():>10.4f} "
+      f"{CONS_MAX_LIMIT:>10.4f}  [{'ok' if cons_max_ok else 'FAIL'}]")
+print(f"  {'tail scat@refl (rel)':<25} {tail_refl_rel:>10.4f} "
+      f"{TAIL_LIMIT:>10.4f}  [{'ok' if tail_refl_rel < TAIL_LIMIT else 'FAIL'}]")
+print(f"  {'tail total@trans (rel)':<25} {tail_trans_rel:>10.4f} "
+      f"{TAIL_LIMIT:>10.4f}  [{'ok' if tail_trans_rel < TAIL_LIMIT else 'FAIL'}]")
+print(f"  {'tail window purity':<25} {tail_inc_rel:>10.2e} "
+      f"{TAIL_PURITY_LIMIT:>10.0e}  [{'ok' if tail_window_clean else 'FAIL'}]")
 
 print(f"\n  rfx accuracy: {'PASS' if rfx_self_ok else 'FAIL'}")
 
