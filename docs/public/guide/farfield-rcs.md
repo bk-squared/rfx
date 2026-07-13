@@ -16,24 +16,36 @@ equivalent currents and integrated to the far field — so the pattern comes fro
 the recorded surface, not from probes sitting in the radiating near field.
 
 ```python
-from rfx import Simulation, compute_far_field, radiation_pattern
+from rfx import GaussianPulse, Simulation, compute_far_field, radiation_pattern
 import numpy as np
 
-sim = Simulation(freq_max=5e9, domain=(0.1, 0.1, 0.1), boundary="cpml")
-# ... add the radiator geometry and its source (see the Materials & Geometry
-#     and Sources & Ports guides) ...
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.20, 0.20, 0.20),
+    boundary="cpml",
+    dx=4e-3,
+    cpml_layers=8,
+)
+sim.add_source(
+    (0.10, 0.10, 0.10),
+    "ez",
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.5),
+)
 
 # NTFF box: encloses the radiator but stays inside the simulation region,
 # clear of the CPML absorber.
 sim.add_ntff_box(
-    corner_lo=(0.02, 0.02, 0.02),
-    corner_hi=(0.08, 0.08, 0.08),
+    corner_lo=(0.045, 0.045, 0.045),
+    corner_hi=(0.155, 0.155, 0.155),
     freqs=np.array([3e9]),
 )
 
 # Inspect coded placement/support advisories and fail on blocking errors.
 preflight = sim.preflight()
 print(preflight.format())
+if (preflight.by_code("absorber_overlap") or
+        preflight.by_code("ntff_near_field")):
+    raise RuntimeError("move the NTFF box before running")
 preflight.raise_for_failure()
 
 result = sim.run(n_steps=1000)
@@ -115,6 +127,8 @@ result = compute_rcs(
     theta_obs=np.linspace(0.01, np.pi - 0.01, 91),
     phi_obs=np.array([0.0, np.pi / 2]),
     freqs=np.array([f0]),
+    # Two-run complex subtraction is required for the validated bistatic path.
+    subtract_incident_reference=True,
 )
 
 # monostatic_rcs is evaluated exactly at the backscatter direction
@@ -129,21 +143,39 @@ exactly at the backscatter direction opposite the incident propagation
 vector, so it does not depend on the observation grid), and the
 `freqs` / `theta` / `phi` axes.
 
-### Validation scope: monostatic yes, bistatic not yet
+### Validation scope: raw backscatter and reference-subtracted bistatic RCS
 
-Only `monostatic_rcs` (the backscatter bin) is cross-validated against the
-exact Mie series — ~0.06 dB at ka ≈ 1 on a PEC sphere. The full
-`rcs_dbsm` / `rcs_linear` **bistatic pattern is not validated** at the
-auto-placed default NTFF box (`ntff_offset=1`, one cell off the TFSF
-boundary, deep in the reactive near field). At off-backscatter angles the
-default setup can be several dB to ~20 dB off — a ka ≈ 1 PEC sphere shows a
-spurious forward-oblique lobe near 25–55° scattering angle measured ~10 dB
-high versus Mie. Enlarging `ntff_offset` alone does **not** close this at
-test scale (it can worsen the backscatter bin), because the oblique error is
-dominated by the staircased curved surface and forward TFSF-face
-contamination, not box distance. Treat off-backscatter cuts as qualitative
-until a converged (finer-resolution) far-field setup is used; only the
-monostatic number carries the cross-method gate.
+`monostatic_rcs` is always evaluated from the unsubtracted run at the exact
+backscatter direction. It agrees with the exact Mie series to about 0.06 dB for
+the committed ka ≈ 1 PEC-sphere case.
+
+With the default `subtract_incident_reference=False`, the full
+`rcs_dbsm` / `rcs_linear` **bistatic pattern is not validated**. An empty-domain
+run produces the same forward-oblique lobe as the target run, showing that the
+dominant raw-pattern lobe is target-independent leakage from the discrete TFSF
+boundary, not a scatterer staircase effect. Increasing `ntff_offset` alone does
+not remove that leakage. Use the default path for the validated monostatic
+quantity; treat its off-backscatter bins as qualitative.
+
+For bistatic work, set `subtract_incident_reference=True`. rfx then performs a
+second vacuum run with the same TFSF and NTFF setup and subtracts the complex
+far fields before forming RCS. This doubles the solve cost. In the committed
+ka ≈ 1 PEC-sphere H-plane comparison against exact Mie, subtraction reduces the
+largest 15–90° forward-oblique difference from 10.5 dB to 1.2 dB, gives a
+full-pattern dB correlation of 0.965 and a mean absolute difference of 0.42 dB,
+and leaves the backscatter difference at about 0.06 dB. That evidence covers
+the stated sphere, frequency, polarization, angle cut, and discretization; it
+does not validate every target or setup. An independent Bempp cube fixture
+confirms the raw forward-oblique discrepancy on a second geometry, but does not
+validate a reference-subtracted cube pattern.
+
+After subtraction, remaining error can come from curved-surface staircasing,
+deep-pattern-null sensitivity, NTFF placement, and CPML reflection. For a new
+target, repeat with finer cells and a longer run, increase the domain until the
+NTFF surface-to-target distance is adequate for the angles of interest, vary
+the NTFF placement and CPML thickness, and compare with an analytic or
+independent reference. The plate example above computes a corrected pattern;
+the sphere evidence does not by itself validate the plate values.
 
 ## Plotting RCS
 
@@ -160,19 +192,25 @@ plot_rcs(result, freq_idx=0, polar=False)   # dBsm vs angle
 
 ## Notes
 
-- Keep NTFF box surfaces in the ordinary simulation region — outside every
-  source, scatterer, and radiator, with margin from the CPML absorber.
-  `sim.preflight()` warns when a box extends into the absorber.
-- Check clearance from **all six NTFF faces** to the nearest relevant geometry
-  or active source. Preflight emits `ntff_near_field` below λ/2 at `f_max`, with
-  a stronger warning below λ/4. This includes lateral edges of finite PEC
-  sheets, not only the sheet's broad face. Move the Huygens surface outward
-  rather than assuming a source-to-box distance alone proves far-field
-  separation.
-- For fixed-period pulsed runs on CPML/UPML, a warning that the run ended above
-  -40 dB of peak means the recorded NTFF data still contains a hot transient.
-  Increase the run length or use `until_decay=...` before interpreting the
-  pattern.
+- Keep all six NTFF faces outside sources, scatterers, radiators, and CPML.
+  `sim.preflight()` warns when a box enters the absorber. Its
+  `ntff_near_field` check measures face-normal clearance to tangentially
+  overlapping geometry boxes or point entries created by `add_source()` and
+  lumped/wire `add_port()`. It warns
+  below λ/2 at `f_max` and more strongly below λ/4. This is a placement
+  heuristic, not a nearest-3-D-distance or Huygens-validity test. TFSF
+  boundaries and MSL source positions are not included and require manual
+  clearance checks. Finite geometry such as PEC sheets is included only where
+  its bounding box overlaps the NTFF face tangentially.
+- The automatic `ring-down truncated` warning examines a recorded probe time
+  series, not the NTFF accumulators. It is emitted only for an
+  absorbing-boundary run with a `GaussianPulse` entry from `add_source()`,
+  lumped/wire `add_port()`, or `add_msl_port()`, automatic `num_periods`, and a
+  probe series. TFSF excitation, non-`GaussianPulse` source entries, and the
+  explicit-`n_steps` example above receive no automatic tail verdict. Repeat
+  the calculation with a longer duration and compare the pattern, or use
+  `until_decay` on the supported uniform CPML/UPML runner; neither method
+  replaces observable-specific convergence testing.
 - `compute_rcs` places the TFSF and NTFF boxes automatically from `cpml_layers`,
   `tfsf_margin`, and `ntff_offset` (the NTFF box sits `ntff_offset` cells outside
   the TFSF boundary); you supply only the grid and the scatterer materials.

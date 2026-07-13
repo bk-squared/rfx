@@ -94,9 +94,10 @@ class ModulatedGaussian:
 
     s(t) = amplitude * sin(2π·f0·t) * exp(-((t - t0) / tau)^2)
 
-    Key property: ∫s(t)dt = 0 exactly (carrier oscillation is symmetric).
-    This eliminates DC accumulation on PEC surfaces, unlike the
-    differentiated Gaussian which has a tiny DC residual (~1e-4).
+    The carrier-centered spectrum generally reduces low-frequency/DC content
+    relative to a differentiated Gaussian. A finite sampled pulse does not in
+    general have an exactly zero integral, so DC-sensitive calculations should
+    inspect the sampled spectrum and fields explicitly.
 
     Parameters
     ----------

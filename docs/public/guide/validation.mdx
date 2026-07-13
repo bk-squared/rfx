@@ -1,44 +1,59 @@
 ---
 title: "Cross-Validation and Accuracy"
-description: "Public validation overview and current support boundaries for rfx."
+description: "Validation overview and current configuration limits for rfx."
 sidebar:
   order: 7
 ---
 
-This page gives the short public version of rfx validation status. For the per-case table, see the [Benchmark Table](/rfx/guide/benchmarks/).
+Use this page to choose a starting configuration and the validation checks for a
+reported RF result. Start with the
+[Recommended Configuration](/rfx/validation/reference-lane/), check the exact
+[Support Boundaries](/rfx/api/support-boundaries/), and use the
+[Benchmarks](/rfx/guide/benchmarks/) for per-case evidence.
 
-## Recommended default lane
+## Recommended configuration
 
-The most mature public path is the **uniform Cartesian Yee RF/FDTD lane**:
+Start with the **uniform Cartesian Yee RF/FDTD configuration** for:
 
-- cavity and waveguide-style RF problems
-- patch-style resonance workflows
-- probes and Harminv resonance extraction
-- selected port and S-parameter workflows
-- benchmarked far-field workflows
+- cavity and waveguide-style RF problems;
+- patch-style resonance workflows;
+- probes and Harminv resonance extraction;
+- selected port and S-parameter calculations; and
+- benchmarked far-field calculations.
 
-Use this lane when you want the safest starting point.
+The Recommended Configuration page lists the applicable boundaries, sources,
+ports, observables, and required checks. A successful run does not replace a
+mesh-convergence study or comparison with an analytic or independent RF
+reference.
 
-## Bounded envelopes
+## Calculations with narrower validated limits
 
-The following workflows are public only within their documented envelope:
+The following calculations require their matching API and documented geometry,
+mesh, frequency, normalization, and placement limits:
 
-- rectangular waveguide S-matrices via `compute_waveguide_s_matrix(...)`
-- specialized microstrip-line S-matrices via `compute_msl_s_matrix(...)`
-- lumped/wire S-parameters via the matching `add_port(...)` calculator
-- one-port coaxial transmission-line reflection via `compute_coaxial_line_reflection(...)`
-- differentiable design loops that use proxy objectives and then validate the final observable through the relevant lane
+- rectangular waveguide S-matrices via `compute_waveguide_s_matrix(...)`;
+- specialized microstrip-line S-matrices via `compute_msl_s_matrix(...)`;
+- lumped/wire S-parameters via the matching `add_port(...)` calculator;
+- one-port coaxial transmission-line reflection via
+  `compute_coaxial_line_reflection(...)`; and
+- differentiable design loops that use proxy objectives and then validate the
+  final RF observable with the applicable convergence and reference checks.
 
-These features may have examples and tests, but their support boundaries are narrower than the default lane and must be described with their current evidence envelope.
+Examples and regression tests do not expand those validated limits. See
+[Support Boundaries](/rfx/api/support-boundaries/) for the current restrictions
+and the [S-parameter guide](/rfx/guide/probes-sparams/) for calculator-specific
+checks.
 
-## Recommended public examples
+## Runnable examples
 
-| Example | Role |
+| Example | Purpose |
 |---|---|
-| `validation/crossval/05_patch_antenna.py` | current patch cross-check and practical antenna reference |
+| `validation/crossval/05_patch_antenna.py` | patch-antenna cross-check |
 | `validation/crossval/11_waveguide_port_wr90.py` | rectangular waveguide-port reference workflow |
-| `examples/inverse_design/multilayer_ar_coating.py` | inverse-design demo with a conservative public scope |
+| `examples/inverse_design/multilayer_ar_coating.py` | inverse-design example; validate the optimized result independently |
 
-## Practical takeaway
+## Applying the result
 
-Lead public messaging with the recommended uniform Yee RF lane. Mention bounded port-family envelopes only when the user specifically needs them, and keep those descriptions scoped to current examples, evidence, and limitations.
+Record the mesh, boundary, source or port family, calculator, frequency range,
+normalization, and comparison criterion used for the result. If a configuration
+falls outside the listed limits, do not describe its RF accuracy as validated.

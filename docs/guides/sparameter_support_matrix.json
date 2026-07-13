@@ -1,16 +1,18 @@
 {
-  "version": 2,
+  "version": 3,
   "updated": "2026-07-13",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
-    "indexing": "S[receiver_port, driven_port, frequency_index]"
+    "indexing": "S[receiver_port, driven_port, frequency_index]",
+    "magnitude_metric": "*_mag_abs_diff is an absolute difference in linear magnitude unless dB is stated explicitly"
   },
   "port_families": [
     {
       "primitive": "add_port(extent=None)",
       "family": "lumped_port",
       "is_port": true,
+      "support_status": "limited",
       "calculation_api": [
         "Simulation.run(compute_s_params=True, s_param_freqs=...)",
         "Simulation.forward(port_s11_freqs=...)"
@@ -19,74 +21,53 @@
         "Result.s_params / Result.freqs",
         "ForwardResult.s_params / ForwardResult.freqs (S11 vectors only)"
       ],
-      "supported_lanes": [
+      "supported_configurations": [
         "uniform_yee_rf"
       ],
-      "validation_status": "closed-form open/short/matched/resistive/reactive/RLC extractor oracles, simple lumped/cavity physical checks, real two-port raw V/I dump replay, a small uniform-Yee replay/passivity/reciprocity sweep, one narrow rfx/openEMS PEC-box magnitude comparison, a three-case rfx/openEMS PEC-box position sweep exists, and that sweep has been reproduced via per-case VESSL jobs; broad calibrated-port accuracy still lacks matched/open/short/load external fixtures and a larger external solver envelope",
+      "validation_status": "Limited to the uniform-grid one-cell impedance model. Analytic extractor, real V/I replay, three-case replay/passivity/reciprocity, and narrow rfx/OpenEMS PEC-box magnitude checks exist. Broad matched/open/short/load external validation is absent.",
       "known_limits": [
-        "non-uniform lumped-port S-parameter extraction is unsupported",
-        "forward(port_s11_freqs=...) is uniform single-device only",
-        "not compatible with TFSF or waveguide-port workflows in one simulation"
+        "nonuniform lumped-port S-parameter extraction is unsupported",
+        "forward(port_s11_freqs=...) is uniform and single-device only",
+        "TFSF, waveguide ports, and mixed port families are unsupported in the same S-parameter calculation",
+        "automatic runtime checks cover non-finite and excessive individual |S| values; they do not apply the full column-power guard"
       ],
       "evidence_level": "E2/E3/E4-partial",
-      "promotion_requirements": [
-        "analytic RLC/open/short/matched-load sweep where applicable",
-        "external cross-solver evidence before broad calibrated-port claims",
-        "mesh/frequency/geometry envelope report before E5 claims",
-        "broader matched/open/short/load external reference envelope before broad calibrated-port claims"
+      "validation_gaps": [
+        "missing broad external matched/open/short/load comparison",
+        "missing broad mesh, frequency, and geometry validation range"
       ],
       "evidence_artifacts": [
         "tests/test_sparam.py",
         "tests/test_physics.py::test_two_port_reciprocity",
         "tests/test_simulation.py::test_s_matrix_two_port_reciprocity",
-        "tests/test_port_dump_replay.py (harness only)",
+        "tests/test_port_dump_replay.py",
         "scripts/diagnostics/generate_lumped_port_vi_dump.py",
         "scripts/diagnostics/replay_port_vi_dump.py",
-        ".omx/physics-gate/2026-05-09-m11-lumped-vi-dump/lumped_twoport_raw_vi_dump.npz",
-        ".omx/physics-gate/2026-05-09-m11-lumped-vi-dump/lumped_vi_replay_cli.json",
         "scripts/diagnostics/report_lumped_analytic_oracles.py",
-        ".omx/physics-gate/2026-05-09-m13-lumped-analytic-oracles/lumped_analytic_oracle_report.json",
         "scripts/diagnostics/report_lumped_replay_sweep.py",
-        ".omx/physics-gate/2026-05-09-m14-lumped-replay-sweep/lumped_replay_sweep_report.json",
         "scripts/diagnostics/build_lumped_openems_sparameter_comparison.py",
-        ".omx/physics-gate/2026-05-09-m33-lumped-openems-generic-comparison/lumped_openems_generic_sparameter_comparison.json",
-        "scripts/diagnostics/build_lumped_openems_sweep_comparison.py",
-        ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/lumped_openems_sweep_sparameter_comparison.json",
-        "tests/test_physics_gate_reporting.py::test_lumped_openems_sweep_summary_requires_all_cases_pass",
-        "scripts/diagnostics/build_lumped_openems_parallel_plan.py",
-        ".omx/physics-gate/2026-05-10-m56-vessl-lumped-openems-no-heredoc-plan/lumped_openems_parallel_plan.json",
-        ".omx/physics-gate/2026-05-10-m56-vessl-lumped-openems-no-heredoc-plan/vessl_lumped_openems_submission_v4.json",
-        ".omx/physics-gate/vessl-2026-05-10-lumped-openems-parallel-v5/lumped_openems_sweep_aggregate/lumped_openems_sweep_sparameter_comparison.json",
-        "tests/test_physics_gate_reporting.py::test_lumped_openems_parallel_plan_writes_case_yamls"
+        "scripts/diagnostics/build_lumped_openems_sweep_comparison.py"
       ],
       "numeric_metrics": [
-        "M33 rfx/openEMS narrow PEC-box magnitude comparator passed: S11 max_mag_abs_diff 0.11224 <= 0.13, S21 max_mag_abs_diff 0.00373 <= 0.13, mean_mag_abs_diff max 0.06100 <= 0.07",
-        "M14 replay sweep passed: 3 uniform-Yee cases, max replay diff 1.58e-7 <= 9.87e-7, max column power 0.971, max reciprocity diff 3.02e-7",
-        "M13 analytic extractor oracles passed: open/short/matched/resistive/capacitor/inductor/series-RLC/parallel-RLC max_abs_diff 7.91e-8 <= 2.20e-6",
-        "M11 two-port real V/I replay passed: max_abs_diff 1.13e-7 <= 9.84e-7 over 9 frequencies / 2 ports",
-        "simple PEC/cavity/RLC-style invariants where present",
-        "no broad calibrated-port E5 envelope yet because external evidence is missing",
-        "M47 lumped/openEMS sweep passed: 3 PEC-box position cases, max case max_mag_abs_diff 0.11835, max case mean_mag_abs_diff 0.06466; E4-enabling only, not broad calibrated E5",
-        "M56 VESSL parallel lumped/openEMS sweep completed: 3/3 per-case jobs completed and aggregate passed, max case max_mag_abs_diff 0.11835, max case mean_mag_abs_diff 0.06466; orchestration-confirmed E4-enabling only, not broad calibrated E5"
+        "analytic open/short/matched/resistive/reactive/RLC extractor max_abs_diff 7.91e-8 <= 2.20e-6",
+        "real two-port V/I replay over 9 frequencies and 2 ports: max_abs_diff 1.13e-7 <= 9.84e-7",
+        "three-case replay check: max replay diff 1.58e-7, max column power 0.971, max reciprocity diff 3.02e-7",
+        "three-case rfx/OpenEMS PEC-box position comparison: max case max_mag_abs_diff 0.11835 and max case mean_mag_abs_diff 0.06466"
       ],
-      "claim_envelope": "uniform Yee, lumped one-cell impedance model; analytic V/I-to-S11 oracles cover extractor algebra; M11 real V/I replay covers a two-port PEC-cavity case; M14 replay/passivity/reciprocity sweep covers three small uniform-Yee two-port geometries; M33/M47 cover narrow rfx/openEMS PEC-box magnitude comparisons, but not broad matched/open/short/load external fixtures; M56 ran the M47 cases as separate VESSL jobs and aggregated their case JSONs, but that orchestration confirmation does not change the narrow PEC-box physics envelope",
+      "validated_scope": "Uniform Yee grid and one-cell lumped impedance model. The listed external cases are narrow PEC-box comparisons, not a general calibrated-port validation.",
       "caveats": [
-        "M33 is one narrow external PEC-box comparison and does not replace a broad calibrated lumped-port E5 envelope",
-        "pytest/API/AD tests remain E0/E1 unless paired with an analytic or replay oracle",
-        "analytic extractor oracles validate the V/I-to-S11 algebra, not the full FDTD calibrated-port envelope",
-        "M14 sweep is an internal uniform-Yee sweep and does not replace external solver evidence",
-        "raw V/I replay validates extraction reproducibility, not broad absolute calibrated RF-port accuracy",
-        "broad E5 still needs external references plus a larger mesh/frequency/geometry envelope",
-        "M47 sweep is still a narrow PEC-box external comparison and does not replace matched/open/short/load broad lumped-port E5 evidence",
-        "M50 adds a VESSL parallelization plan and per-case aggregation path for the M47 lumped/openEMS slow sweep; it is orchestration-only and not additional E4/E5 physics evidence until jobs run and aggregate artifacts pass"
+        "extractor checks validate V/I-to-S algebra, not the full FDTD port calibration",
+        "V/I replay validates reproducibility, not broad absolute RF accuracy",
+        "one-cell feed results must not be generalized to a transmission-line mode"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/test_s11_at_freq.py, tests/test_minimize_s11_at_freq_physical.py"
+      "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/test_s11_at_freq.py and tests/test_minimize_s11_at_freq_physical.py"
     },
     {
       "primitive": "add_port(extent=...)",
       "family": "wire_port",
       "is_port": true,
+      "support_status": "limited_uniform_experimental_nonuniform",
       "calculation_api": [
         "Simulation.run(compute_s_params=True, s_param_freqs=...)",
         "Simulation.forward(port_s11_freqs=...)"
@@ -95,54 +76,43 @@
         "Result.s_params / Result.freqs",
         "ForwardResult.s_params / ForwardResult.freqs (S11 vectors only)"
       ],
-      "supported_lanes": [
+      "supported_configurations": [
         "uniform_yee_rf",
-        "nonuniform_graded_z_shadow"
+        "nonuniform_graded_z_experimental"
       ],
-      "validation_status": "probe-fed resonance/field workflows have partial physics evidence; M12 adds real two-port midpoint V/I replay, M15 adds a small uniform-Yee replay/passivity/reciprocity sweep of the current wire S-matrix extractor convention, and M32 adds a narrow patch/OpenEMS S11 magnitude comparison; absolute broad S-matrix calibration remains caveated; nonuniform is shadow",
+      "validation_status": "Limited one-cell transverse-feed result. Uniform-grid V/I replay, replay/passivity/reciprocity, patch/OpenEMS magnitude, and a three-case mesh/length OpenEMS comparison exist. Absolute modal calibration remains limited. Nonuniform use is experimental.",
       "known_limits": [
-        "wire ports are one-cell transverse feed models, not full microstrip eigenmode ports",
-        "forward(port_s11_freqs=...) is uniform single-device only",
-        "non-uniform support is not promoted to claims-bearing status"
+        "wire ports are one-cell transverse feed models, not full microstrip or modal ports",
+        "forward(port_s11_freqs=...) is uniform and single-device only",
+        "nonuniform regression and AD coverage are not external RF validation",
+        "automatic runtime checks cover non-finite and excessive individual |S| values; they do not apply the full column-power guard"
       ],
       "evidence_level": "E2/E3/E4-partial",
-      "promotion_requirements": [
-        "separate resonance/field-feed claims from absolute S-parameter calibration",
-        "external probe-feed S-parameter envelope if absolute S11/S21 is claimed",
-        "mesh/frequency/geometry sweep envelope before E5 claims",
-        "resolve or document the legacy total-impedance vs per-cell off-diagonal wire calibration convention"
+      "validation_gaps": [
+        "missing a resolved or explicitly bounded absolute calibration convention",
+        "missing broader external validation outside the cited probe-feed cases"
       ],
       "evidence_artifacts": [
         "validation/crossval/05_patch_antenna.py",
         "tests/test_twoport_wire_port.py",
         "tests/test_wire_sparam.py",
         "tests/test_wire_port_sparams_forward.py",
-        "tests/test_port_dump_replay.py (harness only)",
+        "tests/test_port_dump_replay.py",
         "scripts/diagnostics/generate_wire_port_vi_dump.py",
         "scripts/diagnostics/replay_wire_port_vi_dump.py",
-        ".omx/physics-gate/2026-05-09-m12-wire-vi-dump/wire_twoport_raw_vi_dump.npz",
-        ".omx/physics-gate/2026-05-09-m12-wire-vi-dump/wire_vi_replay_cli.json",
-        "scripts/diagnostics/report_wire_replay_sweep.py",
-        ".omx/physics-gate/2026-05-09-m15-wire-replay-sweep/wire_replay_sweep_report.json",
-        ".omx/physics-gate/2026-05-09-m32-patch-wire-openems/crossval05_patch_openems_rfx.json",
-        ".omx/physics-gate/2026-05-09-m32-patch-wire-openems/patch_wire_openems_generic_sparameter_comparison.json"
+        "scripts/diagnostics/report_wire_replay_sweep.py"
       ],
       "numeric_metrics": [
-        "M32 patch/OpenEMS S11 magnitude comparator passed over 1.5--3.4 GHz: max_mag_abs_diff 0.05318 <= 0.06, mean_mag_abs_diff 0.02750 <= 0.04; complex phase intentionally not gated due reference convention",
-        "M15 wire replay sweep passed: 3 uniform-Yee cases, max replay diff 8.20e-8 <= 9.91e-7, max column power 0.979, max reciprocity diff 1.24e-6",
-        "M12 wire two-port real V/I replay passed: max_abs_diff 7.82e-8 <= 9.80e-7 over 7 frequencies / 2 ports",
-        "patch resonance cross-check is primary; rfx lumped/wire S11 dip is secondary",
-        "two-port tests lock nonzero S21 and passivity-style bounds",
-        "no claims-bearing absolute S-matrix calibration E5 envelope yet"
+        "patch/OpenEMS S11 magnitude over 1.5--3.4 GHz: max_mag_abs_diff 0.05318 and mean_mag_abs_diff 0.02750; phase not gated",
+        "three-case replay check: max replay diff 8.20e-8, max column power 0.979, max reciprocity diff 1.24e-6",
+        "real two-port V/I replay over 7 frequencies and 2 ports: max_abs_diff 7.82e-8 <= 9.80e-7",
+        "three OpenEMS mesh/length cases over dx 1--2 mm, wire length 4--8 mm, and 0.8--1.8 GHz: max_mag_abs_diff_across_cases 0.05212"
       ],
-      "claim_envelope": "uniform Yee probe-feed/wire-feed workflows; M32 covers the narrow crossval05 patch resonance lane against OpenEMS in magnitude mode; M12 replay covers one current two-port midpoint-cell extractor convention case; M15 replay/passivity/reciprocity sweep covers three small uniform-Yee two-port geometries; nonuniform path remains shadow",
+      "validated_scope": "Uniform-grid one-cell probe/wire feed in the cited resonance and two-port cases. Nonuniform use is experimental.",
       "caveats": [
-        "M32 is external E4-enabling evidence for a narrow patch resonance lane, not broad absolute wire-port E5",
-        "patch-feed resonance evidence is stronger than absolute S11 calibration",
-        "raw V/I replay validates extraction reproducibility, not broad absolute calibrated RF-port accuracy",
-        "M15 sweep is an internal uniform-Yee sweep and does not replace external solver evidence",
-        "wire off-diagonal replay mirrors the current per-cell impedance convention; do not cite it as a generalized modal port calibration",
-        "nonuniform finite/AD coverage is not physics validation"
+        "patch resonance evidence is stronger than absolute S11 calibration evidence",
+        "V/I replay validates reproducibility, not general calibrated-port accuracy",
+        "the off-diagonal replay follows the current per-cell impedance convention and is not modal-port calibration"
       ],
       "ad_traceable": "yes",
       "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/test_wire_port_sparams_forward.py"
@@ -151,255 +121,259 @@
       "primitive": "add_msl_port(...)",
       "family": "microstrip_line_port",
       "is_port": true,
+      "support_status": "limited_uniform_experimental_nonuniform_eigenmode_unsupported",
       "calculation_api": [
         "Simulation.compute_msl_s_matrix(...)"
       ],
       "result_type": [
         "MSLSMatrixResult.S / freqs / Z0 / beta / port_names / reliable"
       ],
-      "supported_lanes": [
-        "uniform_yee_rf_specialized"
+      "supported_configurations": [
+        "uniform_yee_rf_specialized",
+        "nonuniform_laplace_feed_experimental"
       ],
-      "validation_status": "E5-narrow for the uniform-Yee laplace/quasi-TEM MSL envelope: thru-line, analytic-notch, raw 3-probe replay, and stored-openEMS narrow smoke evidence exist; the non-uniform graded-mesh laplace-feed lane is internally gated but still needs external cross-solver validation; eigenmode is fenced; broad all-mode E5 remains blocked",
+      "validation_status": "E5-narrow for the uniform laplace/quasi-TEM thru and notch configurations. The committed OpenEMS notch comparison is characterized rather than tight. Nonuniform laplace/uniform mode has internal regression coverage only. Eigenmode is unsupported.",
       "known_limits": [
-        "uniform Yee + non-uniform laplace-feed lanes (NU externally unvalidated)",
-        "not wired through Result.s_params",
-        "eager results expose a per-port reliable mask; standing-wave-null bins marked false retain their computed S values but are not usable wave-split data",
-        "not supported with mode='eigenmode' on non-uniform profiles, SBP-SAT subgridding, ADI, TFSF, or mixed port families"
+        "nonuniform mode=laplace or mode=uniform has no external comparison",
+        "Result.s_params is not used; call compute_msl_s_matrix(...)",
+        "outside JAX tracing, reliable[p,k]=false invalidates S[:,p,k] for physical interpretation; true is not an accuracy guarantee",
+        "mode=eigenmode, SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported",
+        "strong-reflector |S11| has a characterized staircase-Z0 floor of about 0.16--0.22",
+        "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee"
       ],
       "evidence_level": "E5-narrow/eigenmode-blocked",
-      "promotion_requirements": [
-        "mode=\"eigenmode\" source/extractor implementation and validation",
-        "external cross-solver validation for the nonuniform MSL laplace-feed lane",
-        "broader mesh/frequency/substrate-cell sweeps beyond the current narrow lane"
+      "validation_gaps": [
+        "missing external validation for nonuniform laplace/uniform mode",
+        "missing broader mesh, frequency, and substrate-cell validation outside the cited configurations"
       ],
       "evidence_artifacts": [
         "tests/test_msl_port_integration.py",
-        "tests/test_msl_plane_extractor_jax.py",
-        "validation/crossval/06b_msl_notch_filter_uniform.py",
-        ".omx/physics-gate/2026-05-09-m5-msl-envelope/msl_envelope_report.json",
-        ".omx/physics-gate/vessl-2026-05-09-m3/msl_openems_reference/msl_openems_comparison.json",
-        "docs/research_notes/msl_thru_openems_80um.json",
-        ".omx/physics-gate/2026-05-09-m10-msl-3probe-dump/msl_thru_raw_3probe_dump.npz",
-        ".omx/physics-gate/2026-05-09-m10-msl-3probe-dump/msl_3probe_replay.json",
-        ".omx/physics-gate/2026-05-09-m10-msl-e5-narrow-envelope/msl_envelope_report.json"
+        "tests/test_msl_null_reliability_mask.py",
+        "tests/fixtures/msl_replay_accumulators.npz",
+        "tests/fixtures/msl_notch_e4/comparison_summary.json",
+        "validation/crossval/06b_msl_notch_filter_uniform.py"
       ],
       "numeric_metrics": [
-        "thru-line gate: |S21| in (0.90, 1.05), Re(Z0) in (40, 65) ohm on dx=80um setup",
-        "cv06b VESSL notch gate: frequency error 1.63%, notch depth -34.3 dB, median Re(Z0) 48.6 ohm",
-        "stored-openEMS MSL thru smoke: S11 mean abs diff 0.02497, S21 mean abs diff 0.02664 over 3.0--4.5 GHz",
-        "plane extractor parity max |S21| diff <=0.005 vs imperative",
-        "raw 3-probe replay: max_abs_diff 0 against production S-matrix over 30 frequencies"
+        "uniform thru-line: |S21| in (0.90, 1.05) and Re(Z0) in (40, 65) ohm for the cited dx=80 um setup",
+        "analytic notch case: frequency error 1.63%, notch depth -34.3 dB, median Re(Z0) 48.6 ohm",
+        "committed OpenEMS notch comparison at dx=50 um: notch frequency difference 5.8%, S21 linear-magnitude mean difference 0.105 and maximum difference 0.2172 over 2.5--6 GHz",
+        "raw three-probe replay: max_abs_diff 0 over 30 frequencies"
       ],
-      "claim_envelope": "uniform Yee laplace/quasi-TEM specialized MSL calculator, dx=80um / h_sub=254um narrow thru/notch lane; all-mode E5 and eigenmode claims are blocked, and the running nonuniform laplace-feed lane remains shadow pending external validation",
+      "validated_scope": "Uniform Yee laplace/quasi-TEM MSL calculator for the cited thru and notch configurations. Nonuniform mode is experimental and eigenmode is unsupported.",
       "caveats": [
-        "mode=\"eigenmode\" is unsupported until a validated source/extractor exists",
-        "nonuniform MSL laplace-feed S-parameters remain outside the claims-bearing envelope",
-        "standing-wave-null bins where reliable is false must be excluded from physical interpretation",
-        "the |S11| floor around 0.10 is acceptable only for narrow/demo wording"
+        "the external notch comparison is characterized, not a tight cross-solver match",
+        "low-signal mask semantics are documented in docs/public/guide/probes-sparams.mdx#low-signal-msl-bins",
+        "do not generalize matched/thru/notch evidence to strong reflectors or arbitrary launches"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "tests/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient, tests/test_sparam_ad_end_to_end.py::test_msl_s_matrix_ad_end_to_end"
+      "ad_evidence": "tests/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient and tests/test_sparam_ad_end_to_end.py::test_msl_s_matrix_ad_end_to_end"
     },
     {
       "primitive": "add_waveguide_port(...)",
       "family": "rectangular_waveguide_port",
       "is_port": true,
+      "support_status": "limited_uniform_experimental_nonuniform",
       "calculation_api": [
-        "Simulation.compute_waveguide_s_matrix(...) for full multi-port S-matrix",
+        "Simulation.compute_waveguide_s_matrix(...) for a full multi-port S-matrix",
         "Simulation.run(...) for single-port waveguide_sparams diagnostics"
       ],
       "result_type": [
         "WaveguideSMatrixResult.s_params / freqs / port_names / port_directions / reference_planes",
         "Result.waveguide_sparams[name] for run() single-port diagnostics"
       ],
-      "supported_lanes": [
+      "supported_configurations": [
         "uniform_yee_rf",
-        "nonuniform_graded_z_shadow_restricted"
+        "nonuniform_transverse_dx_dy_restricted"
       ],
-      "validation_status": "E5-narrow for the documented uniform-Yee rectangular-guide envelope: empty guide, PEC short, passivity, reciprocity, Airy/reference-plane, dump replay, and external references are present; broader branch/multimode/nonuniform claims remain blocked",
+      "validation_status": "Broad magnitude evidence covers documented uniform single-mode rectangular guides: analytic fixtures across five WR bands and Palace WR-90 empty, PEC-short, and slab comparisons. Phase and junction evidence are narrower. Nonuniform single-mode normalize=True and normalize=flux run. A passed Palace magnitude comparison covers normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz; other nonuniform configurations remain experimental.",
       "known_limits": [
-        "compute_waveguide_s_matrix() requires at least two waveguide ports",
-        "non-uniform path requires normalize=True and single-mode ports",
-        "multi-mode normalize=True is unsupported",
-        "not compatible with lumped ports, TFSF, or manual periodic-axis overrides",
-        "interior-PEC junctions (T/branch/septum) need per-port matched-straight-guide references via compute_waveguide_s_matrix(normalize='flux', port_reference_sims=[...]) under the far-port discipline; compact junctions stay non-physical (evidence tests/fixtures/waveguide_tjunction_e4/)"
+        "compute_waveguide_s_matrix(...) requires at least two waveguide ports",
+        "multimode normalize=True is unsupported",
+        "nonuniform external magnitude evidence is limited to normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz",
+        "nonuniform eps_override and sigma_override AD are implemented only for normalize=flux; only eps_override has a nonuniform AD-vs-FD regression test, and that test is not RF validation",
+        "lumped ports, TFSF, and manual periodic-axis overrides are incompatible",
+        "branches, T-junctions, and septa require per-port matched straight-guide references and far-port placement; compact arbitrary junctions are not covered",
+        "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee"
       ],
-      "evidence_level": "E5-broad-magnitude (analytic-Airy oracle; +E4-external WR-90 slab, magnitude-only) + approximately-convention-free TE10 propagation-phase witness vs independent numpy-double beta, ~4deg, z_mode cancels to first order in the ~6-15% CPML residual reflection (test_waveguide_phase_gate, incl. a _shift_modal_waves step_sign de-embed test; NOT yet wired into the broad-E5 auditor verdict)",
-      "promotion_requirements": [
-        "keep exact envelope and blocked branch/T-junction, multi-mode normalize=True, and broad nonuniform claims visible",
-        "add separate reference geometries before promoting arbitrary waveguide networks"
+      "evidence_level": "E5-broad-magnitude/E4-external/phase-narrow",
+      "validation_gaps": [
+        "broader external comparisons for other nonuniform profiles, bands, modes, phase, and junctions",
+        "missing broad phase validation across the magnitude-tested uniform configurations",
+        "missing multimode and arbitrary-junction validation"
       ],
       "evidence_artifacts": [
         "tests/test_waveguide_port_validation_battery.py",
         "tests/test_waveguide_phase_gate.py",
         "tests/test_waveguide_twoport_contract_v1.py",
         "validation/crossval/11_waveguide_port_wr90.py",
-        "scripts/diagnostics/wr90_port/s11_from_dumps.py",
-        ".omx/physics-gate/2026-05-09-m4-waveguide-envelope/waveguide_envelope_report.json",
-        ".omx/physics-gate/2026-05-09-m4-cv11-waveguide-wr90.stdout.txt"
+        "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr28_kaband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr62_kuband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr15_vband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr340_sband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr10_wband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_nu_broad_e5/waveguide_wr90_nu_flux_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_nu_broad_e4/waveguide_wr90_nu_flux_broad_e4_comparison.json",
+        "tests/fixtures/waveguide_tjunction_e4/waveguide_tjunction_meep_external_comparison.json",
+        "tests/test_waveguide_nu_flux_ad.py"
       ],
       "numeric_metrics": [
-        "waveguide_ports gate: 37 passed, coverage_status full",
-        "empty guide max |S11| <0.02 and passivity max column power <1.02",
-        "PEC short min |S11| >=0.99, max |S11| <1.03, mean |S11|-1 <0.02",
-        "symmetric-obstacle reciprocity mean error <0.01",
-        "cv11 slab gates: S11 |S| diff <0.10, S21 |S| diff <0.07, phase gate 60deg with |S|>=0.30 mask, complex-S <=0.30"
+        "uniform empty guide max |S11| < 0.02 and max column power < 1.02",
+        "uniform PEC short min |S11| >= 0.99 and max |S11| < 1.03",
+        "cv11 gates: band-mean linear-magnitude difference < 0.10 for S11 and < 0.07 for S21; masked band-mean phase difference < 60 degrees where reference magnitude >= 0.30; maximum complex-S difference < 0.30",
+        "uniform Palace WR-90 empty/PEC-short/slab comparison over 8.2--12.4 GHz: max_mag_abs_diff 0.0707 and mean_mag_abs_diff 0.00943",
+        "uniform analytic WR-band slabs with normalize=flux: per-case |S11| differences 0.005--0.041",
+        "nonuniform analytic characterization over grading ratios 1--3, eps_r 2 and 4, and 8.2--12.4 GHz: max_mag_abs_diff 0.01561",
+        "stored nonuniform Palace characterization for WR-90 empty/PEC-short/slab: max_mag_abs_diff 0.07009 and mean_mag_abs_diff 0.01042; nonuniform RF status remains experimental"
       ],
-      "claim_envelope": "uniform Yee rectangular guide, TE/TM modal ports, documented WR-90-style port/reference-plane geometry and frequency band; restricted nonuniform path is shadow",
+      "validated_scope": "Uniform single-mode rectangular-guide magnitude for the documented WR-band setups. Nonuniform external magnitude evidence is limited to normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz. Other nonuniform profiles, bands, phase, multimode, and arbitrary junctions require separate evidence. Nonuniform eps_override and sigma_override AD are available only with normalize=flux.",
       "caveats": [
-        "branch/T-junction S-parameters deferred until per-port reference geometry exists",
-        "multi-mode normalize=True unsupported",
-        "broad nonuniform waveguide S-parameters remain shadow/blocked"
+        "broad uniform magnitude evidence does not imply equally broad phase accuracy",
+        "the stored nonuniform Palace result validates only its stated magnitude configurations; AD regression is not RF validation",
+        "junction results require the documented matched-reference geometry and far-port clearance",
+        "choose slab length and frequencies away from analytic reflection nulls and make slab length an integer number of cells"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "tests/test_sparam_ad_end_to_end.py::test_waveguide_s_matrix_ad_end_to_end, tests/test_waveguide_sparam_ad.py::test_wg_smatrix_assembly_ad_traceable (normalize=False V/I path); tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent (normalize='flux' power-flux path, issue #148 — previously raised TracerArrayConversionError)"
+      "ad_evidence": "Uniform checks: tests/test_sparam_ad_end_to_end.py::test_waveguide_s_matrix_ad_end_to_end, tests/test_waveguide_sparam_ad.py::test_wg_smatrix_assembly_ad_traceable, and tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent. Nonuniform eps_override and sigma_override are normalize=flux only; tests/test_waveguide_nu_flux_ad.py finite-difference-checks eps_override, while sigma_override has no corresponding nonuniform AD-vs-FD test."
     },
     {
       "primitive": "add_coaxial_port(...)",
       "family": "coaxial_port",
       "is_port": true,
+      "support_status": "limited_one_port_line_reflection",
       "calculation_api": [
         "Simulation.compute_coaxial_line_reflection(...)",
-        "Simulation.compute_coaxial_s_matrix(...) (deprecated / experimental)"
+        "Simulation.compute_coaxial_s_matrix(...) (deprecated and experimental)"
       ],
       "result_type": [
         "CoaxialLineReflectionResult",
-        "CoaxialSMatrixResult (deprecated / experimental path)"
+        "CoaxialSMatrixResult (deprecated and experimental)"
       ],
-      "supported_lanes": [
-        "uniform_yee_rf_coaxial_line_reflection_envelope"
+      "supported_configurations": [
+        "3d_float32_second_order_uniform_yee_positive_z_cpml_no_periodic_rf_coaxial_line_reflection_exactly_one_top_face_port"
       ],
-      "validation_status": "broad_e5_passed (2026-07-04). broad-E5 physics: analytic Gamma envelope over short/open/matched + resistive 25/100 ohm loads, two characteristic impedances, mesh-resolution sweep; max |Gamma| dev 0.037 <= 0.05 (committed tests/fixtures/coax_broad_e5/, gate tests/test_coax_broad_e5_envelope_gates.py). broad-E4 external: MEEP power-flux short/open comparison 4-12 GHz, max |S11| diff 0.063 (committed tests/fixtures/coax_broad_e4/, gate tests/test_coax_broad_e4_comparison_gates.py). Differentiable: compute_coaxial_line_reflection is end-to-end AD via the eps_scale dielectric channel, composition AD-vs-FD gate tests/test_coax_end_to_end_ad.py (2.6%). The clean-checkout auditor (check_port_external_references.py) returns coaxial_port PASSED on this committed evidence. compute_coaxial_s_matrix(...) is deprecated (older single-plane V/I path, non-physical |S11|>1 on lossless shorts) and must not be used for promoted coaxial claims.",
+      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental.",
       "known_limits": [
-        "compute_coaxial_line_reflection(...) is a one-port coaxial transmission-line reflection envelope, not a general multi-port coaxial network solver",
-        "compute_coaxial_s_matrix(...) is deprecated / experimental and can report non-physical |S11| > 1 for lossless shorts",
-        "nonuniform, Floquet, TFSF, SBP-SAT, and mixed-port combinations remain unsupported unless a guide explicitly states otherwise",
-        "Simulation.run() and Simulation.forward() still reject high-level coaxial S-parameter requests"
+        "compute_coaxial_line_reflection(...) requires exactly one registered coaxial port with face='top' and no mixed port family",
+        "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
+        "compute_coaxial_line_reflection(...) requires mode='3d', solver='yee', precision='float32', stencil_order=2, a uniform grid, and boundary='cpml' with cpml_layers > 0",
+        "compute_coaxial_line_reflection(...) requires positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, and no periodic boundary axes",
+        "compute_coaxial_line_reflection(...) constructs its line, TEM source, DFT planes, and termination; separately registered geometry, thin conductors, lumped RLC elements, probes, field monitors, NTFF boxes, and add_coaxial_* termination helpers are unsupported",
+        "the registered coaxial port contributes x/y position, face, radii, and waveform; its z position, pin_length, and impedance do not set the internally derived line layout or loads; use feed_impedance= and use dut_impedance= only with termination='matched'",
+        "probe_count must be an integer of at least three and all requested probe planes must fit between the DUT and source; the method raises instead of silently using fewer planes",
+        "use about four or more annulus cells; the committed method gate requires at least 3.5",
+        "compute_coaxial_s_matrix(...) can report non-physical |S11| > 1 for a lossless short",
+        "nonuniform, Floquet, TFSF, SBP-SAT, arbitrary launches, and mixed-port combinations are unsupported",
+        "Simulation.run() and Simulation.forward() reject high-level coaxial S-parameter requests",
+        "compute_coaxial_line_reflection(...) has no shared automatic passivity guard; status and residual diagnostics do not replace RF validation"
       ],
       "evidence_level": "E5-broad/E4-broad/differentiable",
-      "promotion_requirements": [
-        "stay inside the one-port coaxial transmission-line reflection envelope for public claims",
-        "add separate external/reference evidence before claiming general multi-port coaxial S-matrices",
-        "add separate nonuniform or mixed-port evidence before broadening lane support"
+      "validation_gaps": [
+        "a broader claim for arbitrary launches or general multi-port coaxial networks requires a separate API and external validation",
+        "separate external validation for any nonuniform or mixed-port use"
       ],
       "evidence_artifacts": [
         "rfx/api/_sparams.py::Simulation.compute_coaxial_line_reflection",
         "rfx/api/_spec.py::CoaxialLineReflectionResult",
         "tests/test_coaxial_line_calibration.py",
         "tests/test_coaxial_line_extraction.py",
-        "scripts/diagnostics/coax_line_broad_e5_envelope.py",
-        "scripts/diagnostics/build_coaxial_line_meep_broad_comparison.py",
-        "scripts/diagnostics/meep_coax_line_reference.py",
-        ".omx/physics-gate/2026-06-07-coaxial-line-broad-e5-envelope/coaxial_line_broad_e5_envelope.json",
-        ".omx/physics-gate/2026-06-08-coaxial-line-meep-broad/coaxial_line_meep_broad_comparison.json",
-        "scripts/diagnostics/port_external_reference_requirements.json::coaxial_port"
+        "tests/test_coax_end_to_end_ad.py",
+        "tests/fixtures/coax_broad_e5/coaxial_line_broad_e5_envelope.json",
+        "tests/fixtures/coax_broad_e4/coaxial_line_meep_broad_comparison.json"
       ],
       "numeric_metrics": [
-        "M74 analytic broad-E5 envelope: short/open/matched plus resistive 25/100 ohm loads, Z0 48.6/63 ohm, annulus-resolution sweep; max |Gamma| deviation 0.037 <= 0.05",
-        "M74 MEEP broad-E4 short/open comparison over 4-12 GHz: max |S11| diff 0.063, mid-band 5-11 GHz <= 0.035",
-        "tests/test_coaxial_line_calibration.py locks short/open/matched/resistive calibration and under-resolved status behaviour",
-        "tests/test_coaxial_line_extraction.py locks the matrix-pencil extraction helpers without FDTD"
+        "analytic 4--12 GHz short/open/matched/resistive 25/100 ohm checks at Z0 48.6 and 63 ohm: method max |Gamma| deviation 0.0372 <= 0.05 and max recurrence residual 0.00588 <= 0.03",
+        "matched single-cell resistor fixture is reported separately with max |Gamma| deviation 0.0929",
+        "MEEP short/open comparison over 4--12 GHz: max_mag_abs_diff 0.0628 and mean_mag_abs_diff 0.0235",
+        "end-to-end eps_scale AD versus finite difference discrepancy 2.6%"
       ],
-      "claim_envelope": "One-port coaxial transmission-line reflection through compute_coaxial_line_reflection(...), covering the stated short/open/matched/resistive loads, frequency range, characteristic impedance cases, and mesh-resolution envelope. General multi-port coaxial S-matrices remain outside the promoted claim.",
+      "validated_scope": "The self-contained TEM coaxial-line model using the documented Simulation, port, and method arguments, in float32 precision on a three-dimensional, second-order uniform Yee grid with positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, no periodic boundary axes, exactly one face='top' coaxial port, at least three requested probe planes that all fit before the source, and the termination, frequency, characteristic-impedance, and mesh ranges in the committed fixtures. Separately registered geometry, sources, monitors, termination helpers, arbitrary launches, face='bottom', mixed port families, and multi-port networks are outside this result.",
       "caveats": [
-        "Do not cite compute_coaxial_s_matrix(...) as the promoted coaxial evidence path; it is deprecated / experimental",
-        "Do not generalize the one-port line-reflection envelope to arbitrary coax launches, multi-port networks, nonuniform meshes, or mixed port families",
-        "The openEMS coax-line path is superseded because the available openEMS v0.0.35 lacks AddCoaxialPort; MEEP is the retained broad-E4 external comparison"
+        "do not use deprecated compute_coaxial_s_matrix(...) as evidence for the documented line-reflection result",
+        "the matched fixture is characterized but excluded from the method-magnitude gate because of the single-cell annular resistor",
+        "MEEP covers short/open; resistive cases are covered by the analytic transmission-line fixture"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "End-to-end differentiable via the eps_scale design channel (grad flows eps_scale -> FDTD -> DFT plane accumulators -> modal voltage (coaxial_line_plane_voltage_jnp) -> matrix-pencil reflection -> Gamma); composition AD-vs-FD gate tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent (2.6% AD-vs-FD). NOTE: promotion of current_status to broad_e5_passed is a separate reviewed step (this records the differentiable capability, not the claim)."
+      "ad_evidence": "eps_scale -> FDTD -> DFT plane accumulators -> modal voltage -> matrix-pencil reflection -> Gamma; tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent"
     },
     {
       "primitive": "add_floquet_port(...)",
       "family": "floquet_port",
       "is_port": true,
+      "support_status": "experimental_no_high_level_sparameter_api",
       "calculation_api": [],
       "result_type": [],
-      "supported_lanes": [
+      "supported_configurations": [
         "floquet_bloch_experimental"
       ],
-      "validation_status": "experimental excitation surface plus M18 synthetic specular-TE modal bookkeeping oracle, M20 real-FDTD Ex/Hy DFT-plane dump replay, M38 empty-space analytic-null S11 comparison, M44 homogeneous-slab analytic oracle, and M49 non-empty rfx-FDTD slab vs analytic reflection-magnitude comparison; no promoted Simulation Floquet S-parameter API, RCWA, or external full-wave crossval",
+      "validation_status": "Experimental Floquet/Bloch excitation and broadside diagnostic helpers only. Synthetic modal, real-FDTD replay, empty-space analytic-null, and homogeneous-slab analytic checks exist. There is no documented high-level calibrated Floquet S-parameter API or independent RCWA/full-wave validation.",
       "known_limits": [
-        "no compute_floquet_s_matrix-style Simulation API is promoted",
-        "not supported on non-uniform meshes",
-        "not compatible with TFSF"
+        "no documented Simulation Floquet S-parameter API",
+        "nonuniform meshes are unsupported",
+        "TFSF combination is unsupported",
+        "off-broadside calibrated results are not documented"
       ],
-      "evidence_level": "E2/E3-modal/slab-analytic/no-promoted-api",
-      "promotion_requirements": [
-        "define and freeze modal coefficient and power normalization for public API outputs",
-        "production API wiring for Floquet modal outputs, if a public S-parameter surface is promoted",
-        "RCWA or external periodic FSS/RIS oracle",
-        "external FSS/RIS reference and power-conservation gate",
-        "mesh/frequency/scan-angle/polarization envelope report before E5 claims"
+      "evidence_level": "E2/E3-modal/slab-analytic/no-public-api",
+      "validation_gaps": [
+        "missing high-level calibrated port API and normalization contract",
+        "missing RCWA or independent periodic full-wave validation",
+        "missing mesh, frequency, scan-angle, and polarization validation range"
       ],
       "evidence_artifacts": [
-        "tests/test_floquet.py internal accumulator/mode tests",
-        "tests/test_sparameter_support_contract.py rejection gate",
+        "tests/test_floquet.py",
+        "tests/test_floquet_s_params_contract.py",
+        "tests/test_sparameter_support_contract.py",
         "scripts/diagnostics/report_floquet_modal_oracles.py",
-        ".omx/physics-gate/2026-05-09-m18-floquet-modal-oracles/floquet_modal_oracle_report.json",
-        "tests/test_physics_gate_reporting.py::test_floquet_modal_oracle_report_passes_synthetic_te_checks",
         "scripts/diagnostics/generate_floquet_modal_field_dump.py",
         "scripts/diagnostics/replay_floquet_modal_field_dump.py",
-        ".omx/physics-gate/2026-05-09-m20-floquet-field-dump/floquet_modal_field_dump.npz",
-        ".omx/physics-gate/2026-05-09-m20-floquet-field-dump/floquet_modal_replay.json",
-        "tests/test_physics_gate_reporting.py::test_floquet_modal_field_dump_replay_matches_helper_arrays",
         "scripts/diagnostics/build_floquet_empty_space_analytic_comparison.py",
-        ".omx/physics-gate/2026-05-10-m38-floquet-empty-space-analytic-comparison/floquet_empty_space_analytic_sparameter_comparison.json",
         "scripts/diagnostics/report_floquet_periodic_slab_oracles.py",
-        ".omx/physics-gate/2026-05-10-m44-floquet-periodic-slab-oracles/floquet_periodic_slab_oracle_report.json",
-        "tests/test_physics_gate_reporting.py::test_floquet_periodic_slab_oracle_report_covers_nonempty_slab",
-        "scripts/diagnostics/build_floquet_slab_analytic_comparison.py",
-        ".omx/physics-gate/2026-05-10-m49-floquet-slab-analytic-comparison/floquet_slab_analytic_sparameter_comparison.json",
-        "tests/test_physics_gate_reporting.py::test_floquet_slab_analytic_builder_uses_magnitude_mode"
+        "scripts/diagnostics/build_floquet_slab_analytic_comparison.py"
       ],
       "numeric_metrics": [
-        "M38 empty-space analytic-null comparison passed: max_abs_diff 0.06067 <= 0.07, mean_abs_diff 0.05306 <= 0.06; this is not RCWA/external evidence",
-        "M44 homogeneous-slab analytic oracle passed: 8 cases x 3 frequencies, max power-balance error 4.44e-16; this is not RCWA/external evidence",
-        "M49 rfx-FDTD homogeneous-slab analytic magnitude comparison passed: max_mag_abs_diff 0.06212 <= 0.07, mean_mag_abs_diff 0.03209 <= 0.04 over 3 frequencies; this is E2/E3-enabling only, not RCWA/external E4 or E5",
-        "M18 synthetic specular-TE modal oracle passed: max phase/vector diff 0, S11 diff 2.89e-7, S21 diff 6.37e-7, power balance error 1.02e-6",
-        "M20 real-FDTD Ex/Hy DFT-plane modal replay passed: max S diff 2.23e-7",
-        "no promoted high-level Floquet S-parameter metric"
+        "empty-space analytic-null diagnostic: max_abs_diff 0.06067 <= 0.07 and mean_abs_diff 0.05306 <= 0.06",
+        "homogeneous-slab analytic oracle: 8 cases x 3 frequencies and max power-balance error 4.44e-16",
+        "rfx-FDTD homogeneous-slab magnitude diagnostic: max_mag_abs_diff 0.06212 <= 0.07 and mean_mag_abs_diff 0.03209 <= 0.04 over 3 frequencies",
+        "synthetic specular-TE check: S11 diff 2.89e-7, S21 diff 6.37e-7, power-balance error 1.02e-6",
+        "real-FDTD Ex/Hy DFT-plane replay: max S diff 2.23e-7"
       ],
-      "claim_envelope": "experimental Floquet/Bloch excitation and diagnostics; M18 covers synthetic specular-TE modal bookkeeping, M20 covers one small broadside real-FDTD DFT-plane dump replay, M38 compares that empty-space diagnostic against analytic zero reflection, M44 covers an analytic non-empty homogeneous dielectric slab, and M49 runs an rfx-FDTD non-empty slab raw Ex/Hy plane decomposition against the analytic reflection magnitude; none promotes add_floquet_port() public S-parameters or replaces RCWA/external evidence",
+      "validated_scope": "Experimental broadside excitation and diagnostic decomposition only. No calibrated public Floquet-port S-parameter result is documented.",
       "caveats": [
-        "M38 and M44 are analytic empty-space/slab oracles, not RCWA/external full-wave periodic-cell validation",
-        "M49 is a narrow broadside rfx-FDTD vs analytic-slab magnitude diagnostic, not RCWA/external full-wave evidence and not a calibrated reference-plane E5 envelope",
-        "modal oracles/replay are reference infrastructure, not validation of a promoted add_floquet_port() S-parameter API",
-        "Simulation.run() and Simulation.forward() still reject high-level Floquet S-parameter requests",
-        "requires RCWA/external periodic-cell references before promotion",
-        "requires mesh/frequency/scan-angle/polarization envelope before E5 promotion"
+        "analytic empty-space and slab checks are not RCWA or independent full-wave validation",
+        "modal replay validates bookkeeping, not a calibrated reference-plane result",
+        "Simulation.run() and Simulation.forward() reject high-level Floquet S-parameter requests"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "first real pytest caller of compute_floquet_s_params plus finite-grad smokes through compute_floquet_s_params and extract_floquet_modes (issue #141): tests/test_floquet_s_params_contract.py::test_compute_floquet_s_params_real_fdtd_runs, ::test_compute_floquet_s_params_grad_finite, ::test_extract_floquet_modes_grad_finite — this is an E0 AD-tape contract, not an accuracy claim; high-level Floquet S-parameters remain experimental — https://github.com/bk-squared/rfx/issues/141"
+      "ad_evidence": "finite-gradient checks through compute_floquet_s_params and extract_floquet_modes in tests/test_floquet_s_params_contract.py; this is an AD execution check, not an RF-accuracy statement"
     },
     {
       "primitive": "add_source(...) / add_polarized_source(...)",
       "family": "soft_current_source",
       "is_port": false,
+      "support_status": "not_a_port",
       "calculation_api": [],
       "result_type": [
         "Result.time_series",
         "Result.find_resonances(...)"
       ],
-      "supported_lanes": [
+      "supported_configurations": [
         "uniform_yee_rf",
-        "nonuniform_graded_z_shadow"
+        "nonuniform_graded_z_limited"
       ],
-      "validation_status": "field/resonance workflows can be validated separately; no port impedance/reference plane",
+      "validation_status": "Field and resonance excitation only; no port impedance or reference plane.",
       "known_limits": [
         "does not populate Result.s_params"
       ],
       "evidence_level": "not_a_port",
       "evidence_artifacts": [
-        "source-specific field/resonance crossvals where applicable"
+        "source-specific field and resonance tests"
       ],
       "numeric_metrics": [
-        "not an S-parameter surface"
+        "not an S-parameter calculation"
       ],
-      "claim_envelope": "field excitation, not impedance-defined port calibration",
+      "validated_scope": "Field excitation only.",
       "caveats": [
-        "do not document as a substitute for ports"
+        "do not use as a substitute for a calibrated port"
       ],
       "ad_traceable": "not_applicable"
     },
@@ -407,31 +381,32 @@
       "primitive": "add_tfsf_source(...)",
       "family": "tfsf_plane_wave_source",
       "is_port": false,
+      "support_status": "not_a_port",
       "calculation_api": [],
       "result_type": [
         "field probes",
         "flux monitors",
-        "NTFF/RCS workflows where supported"
+        "NTFF/RCS where separately supported"
       ],
-      "supported_lanes": [
+      "supported_configurations": [
         "uniform_yee_rf",
-        "nonuniform_graded_z_shadow_restricted"
+        "nonuniform_graded_z_restricted"
       ],
-      "validation_status": "plane-wave field/flux workflow, not S-parameter calibration",
+      "validation_status": "Plane-wave field and flux excitation only; no port impedance or reference plane.",
       "known_limits": [
         "cannot be combined with lumped or waveguide ports",
         "does not populate Result.s_params"
       ],
       "evidence_level": "not_a_port",
       "evidence_artifacts": [
-        "TFSF/flux/NTFF tests and crossvals where applicable"
+        "TFSF, flux, and NTFF tests for the selected observable"
       ],
       "numeric_metrics": [
-        "not an S-parameter surface"
+        "not an S-parameter calculation"
       ],
-      "claim_envelope": "plane-wave field/flux workflow",
+      "validated_scope": "Plane-wave field and flux excitation only.",
       "caveats": [
-        "does not define a port impedance/reference plane"
+        "does not define a port impedance or reference plane"
       ],
       "ad_traceable": "not_applicable"
     },
@@ -439,16 +414,17 @@
       "primitive": "add_probe(...) / add_dft_plane_probe(...) / add_flux_monitor(...)",
       "family": "non_port_observable",
       "is_port": false,
+      "support_status": "not_a_port",
       "calculation_api": [],
       "result_type": [
         "Result.time_series",
         "Result.dft_planes",
         "Result.flux_monitors"
       ],
-      "supported_lanes": [
-        "see support_matrix.md per observable"
+      "supported_configurations": [
+        "see docs/guides/support_matrix.md per observable"
       ],
-      "validation_status": "field/flux observable only; no port impedance/reference plane",
+      "validation_status": "Field, flux, or time observable only; no port impedance or reference plane.",
       "known_limits": [
         "does not define a port impedance or S-matrix reference"
       ],
@@ -457,9 +433,9 @@
         "observable-specific tests"
       ],
       "numeric_metrics": [
-        "not an S-parameter surface"
+        "not an S-parameter calculation"
       ],
-      "claim_envelope": "field/flux/time observable only",
+      "validated_scope": "Field, flux, or time observable only.",
       "caveats": [
         "does not define a port impedance or S-matrix reference"
       ],
@@ -468,37 +444,18 @@
   ],
   "physics_evidence_rule": "docs/guides/physics_validation_evidence_rule.md",
   "dump_replay_schema": "docs/guides/sparameter_dump_replay.md",
-  "future_port_families": [
+  "unavailable_port_families": [
     {
       "family": "generalized_planar_ports",
-      "planned_primitives": [
-        "stripline",
-        "coplanar_waveguide",
-        "microstrip_coax_launch"
-      ],
-      "status": "analytic_quasitem_oracles_and_sweeps_only_planned",
-      "implementation_options": [
-        "generalized MSL-style quasi-TEM de-embedding",
-        "true 2-D eigenmode source/extractor"
-      ],
-      "required_evidence": [
-        "implementation",
-        "independent raw V/I dump replay",
-        "external cross-solver evidence per port family",
-        "mesh/frequency/substrate-cell envelope"
+      "current_primitives": [],
+      "status": "not_implemented",
+      "validation_gaps": [
+        "no current public API or documented RF result"
       ],
       "public_sparameter_api": null,
-      "evidence_level": "E2-planning/envelope-template/no-implementation",
-      "evidence_artifacts": [
-        "scripts/diagnostics/report_generalized_planar_quasitem_oracles.py",
-        ".omx/physics-gate/2026-05-10-m39-generalized-planar-quasitem-oracles/generalized_planar_quasitem_oracle_report.json",
-        ".omx/physics-gate/2026-05-10-m45-generalized-planar-quasitem-sweeps/generalized_planar_quasitem_oracle_report.json",
-        "tests/test_physics_gate_reporting.py::test_generalized_planar_quasitem_oracle_report_is_planning_only"
-      ],
-      "numeric_metrics": [
-        "M39 quasi-TEM oracle report passed: 4 representative planned families, Z0 range 54.04--61.94 ohm, finite positive beta and phase-velocity checks passed",
-        "M45 quasi-TEM sweep report passed: 8 parameter sweeps / 24 sweep rows across microstrip, stripline, CPW, and launch-proxy cases; monotonic Z0/beta checks passed"
-      ]
+      "evidence_level": "not_implemented",
+      "evidence_artifacts": [],
+      "numeric_metrics": []
     }
   ]
 }

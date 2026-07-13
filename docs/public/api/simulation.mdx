@@ -32,10 +32,10 @@ Key constructor arguments:
 | `domain` | `(x, y, z)` domain size in meters | required unless derived by automation |
 | `boundary` | boundary type | `"cpml"`, `"pec"`, `"upml"`, or a per-face `BoundarySpec`; the public examples center on `cpml` |
 | `cpml_layers` | absorber thickness | `Simulation` default is 16 |
-| `pec_faces` | face-based PEC truncation | deprecated (removed in rfx v2.0); encode PEC faces in a `BoundarySpec` instead. Not a substitute for finite antenna ground-plane metal |
+| `pec_faces` | face-based PEC truncation | deprecated and scheduled for removal in rfx v2.0; encode PEC faces in a `BoundarySpec` instead. Not a substitute for finite antenna ground-plane metal |
 | `dx` | base lateral cell size | may be inferred by automation |
 | `dz_profile` / `dx_profile` / `dy_profile` | non-uniform cell profiles | workflow helper for thin-substrate or graded meshes |
-| `solver` | solver family | the public reference lane is currently Yee |
+| `solver` | solver family | public examples and documented RF calculations use Yee |
 
 > **Ground-plane rule:** if the structure needs a finite ground plane, model it
 > as geometry. Do not use PEC face truncation (`pec_faces`, or a `pec` face in a
@@ -48,7 +48,7 @@ Key constructor arguments:
 | `add(shape, material=...)` | fill geometry with a named material | geometry should stay explicit in public examples |
 | `add_material(...)` | register a named material | use this for custom dielectric / conductive / dispersive media |
 | `add_source(...)` | inject a soft point source | preferred for ringdown and Harminv work |
-| `add_port(...)` | add a lumped or wire port | use for impedance-normalized S-parameters within the lumped/wire evidence envelope |
+| `add_port(...)` | add a lumped or wire port | use for impedance-normalized S-parameters within the documented lumped/wire limits |
 | `add_probe(...)` | record a point observable | feeds `Result.find_resonances()` |
 | `add_ntff_box(...)` | accumulate far-field data | use only when the radiation workflow is benchmarked |
 | `preflight(strict=False)` | validate setup before a long run | returns a coded `PreflightReport`; use `.errors`, `.warnings`, `.by_code(...)`, or `.raise_for_failure()` for automation gates |
@@ -58,48 +58,87 @@ Key constructor arguments:
 | `forward(...)` | run the differentiable minimal-observable path | use for `jax.grad` / outer-`jax.jit` objectives; returns a `ForwardResult`, not the full `Result` |
 
 Source, port, and probe builders are documented in detail in
-[Sources & Ports](./sources-ports/); the fields they populate are described in
-[Results & Observables](./results-observables/).
+[Sources & Ports](/rfx/api/sources-ports/); the fields they populate are described in
+[Results & Observables](/rfx/api/results-observables/).
 
 ## Run loop
 
 ```python
-result = sim.run(until_decay=1e-3, compute_s_params=True)
+from rfx import GaussianPulse
+
+# Add the sources and observables required by this run.
+sim.add_source(
+    (0.04, 0.03, 0.0125),
+    "ez",
+    waveform=GaussianPulse(f0=2e9, bandwidth=0.5),
+)
+sim.add_probe((0.05, 0.03, 0.0125), "ez")
+
+# until_decay is implemented on the uniform CPML/UPML runner.
+result = sim.run(until_decay=1e-3)
 ```
 
 `run()` returns a tuple-like `Result` (a `NamedTuple`) with fields such as
 `time_series`, `s_params`, `freqs`, `ntff_data`, and `grid` — see
-[Results & Observables](./results-observables/) for the full field list.
-Non-finite `run()` / `forward()` outputs are setup or numerical failures (rfx
-warns on them), not successful S-parameter evidence.
+[Results & Observables](/rfx/api/results-observables/) for the primary field list.
+Non-finite output is a setup or numerical failure, not successful RF evidence.
+The automatic `run()` warning, and the corresponding warning on the uniform
+single-device `forward()` path, inspect only `time_series` and lumped/wire
+`s_params`. Non-uniform and distributed `forward()` paths return before that
+guard. Inspect every unguarded state, NTFF, DFT-plane, and flux array explicitly
+with `np.isfinite(...)` before using it.
 
-`compute_s_params=True` populates `Result.s_params` only for lumped/wire
-`add_port(...)`; it is not a universal port dispatcher. Microstrip-line,
+After adding a lumped or wire port, `compute_s_params=True` populates
+`Result.s_params` only for that port family. It is not a universal port
+dispatcher. Microstrip-line,
 waveguide, and coaxial-line ports use dedicated calculators
 (`compute_msl_s_matrix()`, `compute_waveguide_s_matrix()`,
-`compute_coaxial_line_reflection()`). See [Sources & Ports](./sources-ports/)
+`compute_coaxial_line_reflection()`). See [Sources & Ports](/rfx/api/sources-ports/)
 for the calculator that matches each port family.
 
 ### Preflight and post-run signals
 
 Unless `skip_preflight=True`, `run()` checks the configured geometry, sources,
-ports, mesh, absorber, and selected workflow before allocating the full run. An
-eager run then reports measured output problems without changing the returned
-arrays:
+ports, mesh, absorber, and selected calculation before allocating the full run.
+During normal Python execution outside JAX tracing, it may also report measured
+output problems without changing the returned arrays. Each warning is
+conditional on the recorded data described below; the absence of a warning is
+not a convergence or validation result.
+
+The no-field and ring-down witnesses run only on the uniform runner and the
+single-device non-uniform runner. The ring-down witness further requires a
+recorded probe series and a `GaussianPulse` registered through `add_source()`,
+`add_polarized_source()`, lumped/wire `add_port()`, or `add_msl_port()`; it does
+not inspect waveguide, TFSF, or Floquet excitations. Other lanes and source
+families must be checked explicitly.
 
 | Signal | Interpretation | Action |
 |---|---|---|
-| `no field energy was recorded` | the configured source did not couple to a recorded field | check position, component, amplitude, boundary placement, and probe coverage |
-| `ring-down truncated` | the last 5% of an open-boundary pulsed run remains above -40 dB of its peak | use `until_decay=...` or more periods before reading Harminv, DFT, or NTFF data |
-| non-finite output | the solver or setup produced NaN/Inf | treat the run as failed; fix setup or stability before post-processing |
-| passivity or per-frequency `|S|` advisory | a passive S-parameter result exceeds its calculator's reliability envelope | inspect mesh, settling, reference plane, normalization, and port-family guidance; do not interpret the affected bin as device physics |
+| `no field energy was recorded` | the recorded probe series, or all returned final-state fields when no series exists, is exactly zero | check source position, component, amplitude, boundary placement, and probe coverage |
+| `ring-down truncated` | the final 5% of a recorded probe series is above -40 dB of its peak for an absorbing-boundary Gaussian-pulse run that used automatic `num_periods` | the probe suggests incomplete settling; increase `num_periods`, or use `until_decay` where supported, and verify the actual observable separately |
+| non-finite `time_series` or lumped/wire `s_params` | the solver or setup produced NaN/Inf in an automatically inspected field | treat the run as failed; fix setup or stability, and check other result fields explicitly |
+| passivity or per-frequency `\|S\|` advisory | an automatically guarded S-parameter path exceeds its documented tolerance | inspect mesh, settling, reference plane, normalization, and port-family guidance; do not interpret the affected bin as device physics |
 
-On CPML/UPML runs, `until_decay=1e-3` stops from the total non-absorber-domain
-field energy after consecutive checks, which avoids the nulls of a single-cell
-monitor. Closed PEC domains do not normally lose total energy; use a fixed run
-length there unless the model contains a real loss mechanism. Explicit
-`n_steps` remains appropriate when a workflow requires an exact accumulation
-window.
+Automatic passivity coverage is calculator-specific. Lumped/wire `run()` and
+uniform single-device `forward()` warn on a non-finite entry or an individual
+`|S| > 1.1`; they do not test total outgoing column power. MSL and waveguide
+full-matrix calculators use column-power and per-entry checks with
+normalization-specific tolerances.
+`compute_coaxial_line_reflection()` has no automatic shared passivity warning:
+inspect its `status`, residual fields, `s11` finiteness, and magnitude directly.
+No warning means only that an implemented check did not fire; it is not a
+passivity or convergence certificate.
+
+On the uniform CPML/UPML runner, `until_decay=1e-3` monitors the sum of squared
+field components outside the absorber as an interior field-norm proxy. It stops
+after that proxy remains below `1e-3` of its peak for the required consecutive
+checks. This avoids a false stop at a null of a single-cell monitor, but it does
+not directly prove convergence of every DFT, S-parameter, Harminv, or NTFF
+observable. Other runners may warn or reject `until_decay`; consult the emitted
+message instead of assuming it was applied. Closed PEC domains do not normally
+lose their field norm, so use a fixed run length unless the model contains a
+real loss mechanism. Explicit `n_steps` remains appropriate when an exact
+accumulation window is required.
 
 ## Differentiable `forward(...)` path
 
@@ -116,16 +155,16 @@ Common differentiable inputs are:
 | `eps_override=...` / `sigma_override=...` | continuous material arrays with `grid.shape` |
 | `port_s11_freqs=...` | lumped/wire per-port differentiable S11 vectors on the uniform single-device path |
 | `rlc_values_override={index: {"R": R, "L": L, "C": C}}` | scalar values for registered `add_lumped_rlc(...)` elements on the uniform single-device path |
-| `checkpoint_segments=...` / `checkpoint_every=...` | reverse-mode memory reduction on their documented lanes |
+| `checkpoint_segments=...` / `checkpoint_every=...` | reverse-mode memory reduction where the selected runner documents support |
 
-Keep setup choices that change shapes, registered geometry, or support lanes
-outside the jitted objective. Unsupported lane combinations raise rather than
-silently falling back.
+Keep setup choices that change array shapes, registered geometry, or the
+selected runner outside the jitted objective. Unsupported combinations raise
+instead of silently falling back.
 
 ## Automation entry points
 
 `Simulation` also exposes a convenience constructor that derives `dx`, `domain`,
-CPML thickness, and step count from the analysis frequency range:
+and CPML thickness from the analysis frequency range:
 
 ```python
 sim = Simulation.auto(freq_range=(1.5e9, 3.5e9), accuracy="standard")
@@ -135,7 +174,7 @@ sim = Simulation.auto(freq_range=(1.5e9, 3.5e9), accuracy="standard")
 sized from the frequency range rather than from your structure, `auto()` emits a
 warning reminding you to add geometry after construction (or to pass `domain` /
 `dx` overrides). Use the plain constructor when you need to inspect or override
-the derived setup. See [Automation](./automation/) for the underlying
+the derived setup. See [Automation](/rfx/api/automation/) for the underlying
 `auto_configure()` helper.
 
 Configured simulations can also produce the same planning artifact:
@@ -152,10 +191,13 @@ mesh_plan = sim.plan_mesh(
 paths, but it does not claim solver replay or physics validation by itself.
 Passing `artifact_root` only fills intended paths; it does not write files.
 Configured-simulation plans use `plan_source="configured_simulation"`,
-`freq_range[0] = null`, and `accuracy = null` because no auto-configure
-accuracy preset or lower-band edge is implied by an existing `Simulation`.
+`freq_range[0] = None`, and `accuracy = None` in Python (`null` after JSON
+serialization) because no auto-configure accuracy preset or lower-band edge is
+implied by an existing `Simulation`.
 
 ## Current public boundary
 
-This page covers the supported builder surface only.
-Lower-level solver internals, private symbol inventories, and internal extensions are outside this curated public API until documented. For what is recommended, bounded, or unsupported, see [Support Boundaries](./support-boundaries/).
+This page covers the documented high-level builder only. Lower-level solver
+internals, private symbols, and internal extensions are outside the public API
+until documented. For recommended, limited, and unsupported configurations, see
+[Support Boundaries](/rfx/api/support-boundaries/).

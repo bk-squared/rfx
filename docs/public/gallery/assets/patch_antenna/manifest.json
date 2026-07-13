@@ -2,11 +2,11 @@
   "schema_version": "rfx-gallery-manifest-v2",
   "generated_at": "2026-06-30T03:21:23.108647Z",
   "case_id": "patch_antenna",
-  "title": "2.4 GHz Patch Antenna (FR4)",
-  "description": "Probe-fed rectangular microstrip patch antenna on FR4; the S11 resonance dip vs the analytic transmission-line (Balanis) estimate.",
+  "title": "Patch Antenna Diagnostics",
+  "description": "Plots, file-format output, and AD/FD data from a port setup that fails current preflight; no RF metric is reported.",
   "application": "antenna",
   "capability": [
-    "validated-vs-exact",
+    "diagnostic-artifact",
     "field-animation",
     "autodiff-gradient",
     "touchstone-export"
@@ -25,7 +25,7 @@
       "dx_m": 0.001,
       "cpml_layers": 8,
       "s_param_n_steps": 12000,
-      "notes": "Single-cell lumped-port S11 has parasitic reactance, so the patch resonance appears as a local dip. Reference is OpenEMS Harminv resonance frequency (E4 resonance agreement, not calibrated S)."
+      "notes": "The stored S11 setup does not pass current port/PEC preflight and is not the configuration in validation/crossval/05_patch_antenna.py."
     },
     "runtime_seconds": 5.41,
     "hostname": "run-execution-bomtddem7h6t-0",
@@ -35,18 +35,20 @@
     "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.35"
   },
   "validation": {
-    "tier": "E4",
-    "metric": "resonance dip vs first-order analytic estimate; |resonance error| within 20% (tier E4)",
-    "metric_value": "resonance dip f=2.360 GHz vs analytic 2.423 GHz (2.6% err)",
-    "tolerance": "resonance within 20%, passive |S11| <= 1.05",
-    "reference_solver": "analytic transmission-line (Balanis) estimate",
-    "passed": true
+    "tier": "unqualified",
+    "metric": "Current preflight reports port/PEC overlap and under-resolution; no RF metric is reported.",
+    "metric_value": null,
+    "tolerance": null,
+    "reference_solver": null,
+    "passed": null
   },
   "reproducibility": {
     "status": "provenance-only",
     "limitations": [
       "Precomputed artifact: the public site does not re-run a solver.",
-      "Validated runs are produced on GPU/VESSL."
+      "The generator bypassed unresolved preflight findings with skip_preflight=True.",
+      "The field images use a separate soft-source run from the stored port sweep.",
+      "No committed mesh and absorber convergence study supports the displayed resonance or S11 values."
     ]
   },
   "assets": [

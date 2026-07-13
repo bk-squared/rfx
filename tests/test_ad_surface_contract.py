@@ -33,7 +33,6 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 import rfx
 from rfx import Simulation
@@ -196,10 +195,10 @@ def test_coaxial_reflection_extraction_is_traceable():
     Gates: (a) the concrete witness ``|Γ|=0.3/0.7`` is unchanged, (b) ``jax.grad``
     flows and is finite, (c) the AD gradient matches the closed form.
 
-    SCOPE: this is EXTRACTOR-level. The enclosing
-    ``Simulation.compute_coaxial_line_reflection`` method is still not end-to-end
-    differentiable (numpy DFT-field line integral in ``coaxial_line_plane_voltage``,
-    no traced design DoF), so its ``AD_CLASSIFICATION`` stays ``not-traceable``.
+    SCOPE: this is an extractor-level check. The separate
+    ``Simulation.compute_coaxial_line_reflection(..., eps_scale=...)`` path is
+    end-to-end differentiable and is covered by
+    ``tests/test_coax_end_to_end_ad.py``.
     """
     from rfx.sources.coaxial_port import coaxial_line_reflection_from_plane_voltages
 

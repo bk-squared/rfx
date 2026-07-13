@@ -5,8 +5,8 @@ sidebar:
   order: 1
 ---
 
-This guide uses the **current stable public API** and avoids older pre-release examples that
-used outdated keyword names for source/port waveforms.
+This guide uses the high-level `Simulation` API for a field probe and a
+lumped/wire S-parameter example.
 
 ## 1. Minimal high-level run
 
@@ -21,8 +21,7 @@ sim = Simulation(
     cpml_layers=8,
 )
 
-# A small loss keeps the open-domain Q finite (a lossless dielectric in an open
-# CPML domain reports an artificially infinite Q).
+# A small material loss supplies a finite dissipative mechanism.
 sim.add_material("slab", eps_r=2.2, sigma=0.01)
 sim.add(Box((0.07, 0.0, 0.0), (0.09, 0.06, 0.05)), material="slab")
 
@@ -35,13 +34,21 @@ sim.add_source(
 sim.add_probe((0.11, 0.03, 0.025), "ez")
 
 result = sim.run(until_decay=1e-3)
-modes = result.find_resonances(freq_range=(1e9, 4e9))  # mode.freq, mode.Q — see Probes & S-params guide
+modes = result.find_resonances(freq_range=(1e9, 4e9))
 ```
+
+This open-domain pulse example demonstrates the run and resonance-analysis APIs;
+it does not guarantee a resonant mode in the selected band, so `modes` may be
+empty. For a structure that does return modes, treat each Q as a finite-window
+estimate. Repeat with longer run lengths and finer meshes, and include every
+physical radiation, dielectric, conductor, and load-loss mechanism needed by
+the intended Q definition. Use the cavity validation workflow when Q itself is
+the target observable.
 
 Use `add_source()` for **unloaded resonance studies**.  
 Use `add_port()` when you actually want S-parameters against a reference
-impedance. Treat quickstart S-parameters as an API example; evidence levels and
-claim envelopes live in the S-parameter support matrix.
+impedance. Treat quickstart S-parameters as an API example; the S-parameter
+support matrix states the validated configurations and remaining limits.
 
 ## 2. Minimal port / S-parameter run
 
@@ -49,8 +56,14 @@ claim envelopes live in the S-parameter support matrix.
 import numpy as np
 from rfx import Simulation, Box, GaussianPulse
 
-sim = Simulation(freq_max=5e9, domain=(0.10, 0.04, 0.02), boundary="cpml")
-sim.add_material("dielectric", eps_r=4.0)
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.10, 0.04, 0.02),
+    dx=1.5e-3,
+    boundary="cpml",
+    cpml_layers=8,
+)
+sim.add_material("dielectric", eps_r=4.0, sigma=0.01)
 sim.add(Box((0.03, 0.0, 0.0), (0.05, 0.04, 0.02)), material="dielectric")
 
 sim.add_port(
@@ -60,6 +73,10 @@ sim.add_port(
     waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
 )
 
+preflight = sim.preflight()
+print(preflight.format())
+preflight.raise_for_failure()
+
 result = sim.run(n_steps=800, compute_s_params=True)
 s11 = result.s_params[0, 0, :]
 s11_db = 20 * np.log10(np.abs(s11) + 1e-12)
@@ -68,15 +85,15 @@ s11_db = 20 * np.log10(np.abs(s11) + 1e-12)
 ## 3. Auto-configured thin-substrate setup
 
 ```python
-from rfx import Simulation, Box, auto_configure
+from rfx import Box, auto_configure
 
 geometry = [
-    (Box((0, 0, 0), (0.06, 0.06, 0.0016)), "fr4"),
-    (Box((0, 0, 0), (0.06, 0.06, 0.0)), "pec"),
+    (Box((0, 0, 35e-6), (0.06, 0.06, 1.635e-3)), "substrate"),
+    (Box((0, 0, 0), (0.06, 0.06, 35e-6)), "ground"),
 ]
 materials = {
-    "fr4": {"eps_r": 4.4, "sigma": 0.025},
-    "pec": {"eps_r": 1.0, "sigma": 1e10},
+    "substrate": {"eps_r": 4.4, "sigma": 0.025},
+    "ground": {"eps_r": 1.0, "sigma": 5.8e7},
 }
 
 cfg = auto_configure(
@@ -88,11 +105,24 @@ cfg = auto_configure(
 
 print(cfg.summary())
 
-sim = Simulation(**cfg.to_sim_kwargs())
+mesh_kwargs = cfg.to_sim_kwargs()
+# mesh_kwargs is a planning result, not a complete Simulation.
 ```
 
 When `auto_configure()` detects a thin z-feature, it can switch to a
 **non-uniform z mesh** via `dz_profile` while keeping `dx`/`dy` coarser.
+`cfg.to_sim_kwargs()` transfers mesh and boundary constructor settings only;
+it does not include the derived `cfg.n_steps`. Materials,
+geometry, sources, ports, and probes must be registered on the `Simulation`.
+Before registering the final geometry, align thin material boundaries with the
+actual `dz_profile` edges as shown in the [Non-Uniform Mesh
+guide](/rfx/guide/nonuniform-mesh/). A zero-thickness `Box` rasterizes no
+volume. Represent the 35 µm ground shape with the finite bounds above for mesh
+planning, then register it with `sim.add_thin_conductor(..., thickness=35e-6)`
+rather than as a volumetric material. Add the substrate, source, and observables,
+run preflight, and resolve every relevant issue before `run()`.
+When the planned time budget is intended, call `sim.run(n_steps=cfg.n_steps)`
+explicitly.
 
 ## 4. Common next steps
 
@@ -100,5 +130,5 @@ When `auto_configure()` detects a thin z-feature, it can switch to a
 - [Probes & S-parameters](/rfx/guide/probes-sparams/) — resonance fields (`mode.freq`, `mode.Q`), the S-matrix shape `(n_ports, n_ports, n_freqs)`, and flux monitors
 - [Sources & Ports](/rfx/guide/sources-ports/) — when to use `add_source()` vs `add_port()`
 - [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) — `dz_profile` and thin-substrate workflow
-- [Studio and Durable Experiments](/rfx/guide/studio-experiments/) — versioned specs, local CPU runs, replay bundles, and MCP approvals
+- [Studio, CLI, and MCP Experiments](/rfx/guide/studio-experiments/) — versioned specs, local CPU runs, replay bundles, and MCP approvals
 - [Validation](/rfx/guide/validation/) — what is strongly benchmarked today

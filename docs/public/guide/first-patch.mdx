@@ -1,226 +1,163 @@
 ---
 title: "Your First Patch Antenna"
-description: "This tutorial designs a 2.4 GHz rectangular microstrip patch on FR4 and walks through the soft-source resonance workflow."
+description: "Build a 2.4 GHz rectangular patch model that passes preflight, then apply the checks required before reporting resonance or Q."
 sidebar:
   order: 2
 ---
 
+This tutorial builds a finite-ground-plane patch model and runs a short setup
+check. It does not assign a resonant frequency, return loss, or Q to the model
+without a mesh/time-window study and an independent reference.
 
-This tutorial designs a 2.4 GHz rectangular microstrip patch on FR4, runs the
-FDTD simulation, and extracts the resonant frequency with Harminv. Estimated
-time: 20 minutes.
+## 1. Calculate starting dimensions
 
-For an **external-solver** cross-check of this structure, continue to
-[Tutorial: Patch Antenna Design](./tutorial-patch-antenna/).
-
----
-
-## 1. Analytical patch design
-
-The standard rectangular patch formulas (Bahl & Trivedi 1977) give the physical dimensions:
-
-```
-W     = c / (2·f₀) · √(2 / (εᵣ+1))
-εₑff  = (εᵣ+1)/2 + (εᵣ−1)/2 · (1 + 12h/W)^−½
-ΔL    = 0.412·h · [(εₑff+0.3)(W/h+0.264)] / [(εₑff−0.258)(W/h+0.8)]
-L     = c / (2·f₀·√εₑff) − 2·ΔL
-```
-
-In Python:
+The usual transmission-line formulas provide starting dimensions, not a solver
+validation target:
 
 ```python
 import numpy as np
-C0 = 299_792_458.0  # m/s
 
-f0    = 2.4e9        # target resonance
-eps_r = 4.4          # FR4
-h     = 1.6e-3       # substrate thickness (1.6 mm)
-tan_d = 0.02         # loss tangent at 2.4 GHz
+C0 = 299_792_458.0
+f0 = 2.4e9
+eps_r = 4.4
+h = 1.5e-3
+tan_d = 0.02
 
-W       = C0 / (2*f0) * np.sqrt(2 / (eps_r + 1))
-eps_eff = (eps_r+1)/2 + (eps_r-1)/2 * (1 + 12*h/W)**(-0.5)
-dL      = 0.412*h * ((eps_eff+0.3)*(W/h+0.264) / ((eps_eff-0.258)*(W/h+0.8)))
-L       = C0 / (2*f0*np.sqrt(eps_eff)) - 2*dL
+W = C0 / (2 * f0) * np.sqrt(2 / (eps_r + 1))
+eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 * (1 + 12 * h / W) ** -0.5
+dL = 0.412 * h * (
+    (eps_eff + 0.3) * (W / h + 0.264)
+    / ((eps_eff - 0.258) * (W / h + 0.8))
+)
+L = C0 / (2 * f0 * np.sqrt(eps_eff)) - 2 * dL
 
-# FR4 conductivity from loss tangent
-sigma_fr4 = 2*np.pi*f0 * 8.854e-12 * eps_r * tan_d
-
-print(f"L = {L*1e3:.2f} mm,  W = {W*1e3:.2f} mm")
-print(f"eps_eff = {eps_eff:.3f},  dL = {dL*1e3:.3f} mm")
-# Typical output: L = 29.38 mm,  W = 38.01 mm
+# Constant-conductivity approximation to tan(delta) at f0 only.
+sigma_fr4 = 2 * np.pi * f0 * 8.854_187_8128e-12 * eps_r * tan_d
+print(f"L={L * 1e3:.2f} mm, W={W * 1e3:.2f} mm")
 ```
 
----
+FR4 permittivity and loss vary by material system, frequency, copper roughness,
+and manufacturing process. Replace these nominal values with the data needed by
+the intended comparison.
 
-## 2. Set up the Simulation
+## 2. Build a graded z mesh
 
-Use a quarter-wavelength margin around the patch and a non-uniform z-profile to resolve the thin substrate without inflating the cell count.
+The model keeps the structure outside eight CPML cells, uses six cells through
+the substrate, and grades between 1 mm air cells and 0.25 mm substrate cells
+with adjacent ratios below 1.3.
 
 ```python
-from rfx import Simulation, Box, GaussianPulse
-import numpy as np
+from rfx import Box, GaussianPulse, Simulation
 
-# Domain: patch + λ/4 margin on all sides
-lam0   = C0 / f0            # free-space wavelength ~125 mm
-margin = lam0 / 4           # 31 mm absorber margin
+dx = 1.0e-3
+dz_sub = h / 6
 
-dom_x = L + 2*margin
-dom_y = W + 2*margin
-dom_z = h + margin          # substrate + air above
+# 1.0 mm -> 0.25 mm transition; max adjacent ratio is below 1.3.
+transition = np.array([1.000, 0.780, 0.610, 0.477, 0.373, 0.291, 0.250]) * 1e-3
+lower_air = np.concatenate([np.full(10, dx), transition[1:]])
+upper_air = np.concatenate([transition[-2::-1], np.full(24, dx)])
+dz_profile = np.concatenate([lower_air, np.full(6, dz_sub), upper_air])
 
-# Non-uniform z profile: fine cells inside substrate, coarse in air
-dz_sub = h / 6              # 6 cells through 1.6 mm substrate
-dz_air = 1.5e-3             # 1.5 mm cells in air
-n_air  = max(1, int(round(margin / dz_air)))
+z_sub_lo = float(lower_air.sum())
+z_sub_hi = z_sub_lo + h
 
-dz_profile = np.concatenate([
-    np.full(6, dz_sub),
-    np.full(n_air, dz_air),
-])
-
+dom_x, dom_y = 0.100, 0.095
 sim = Simulation(
     freq_max=4e9,
-    domain=(dom_x, dom_y, dom_z),
-    boundary="cpml",
-    cpml_layers=12,
-    dx=5e-4,              # 0.5 mm lateral cell
+    domain=(dom_x, dom_y, 0.0),  # z extent is the sum of dz_profile
+    dx=dx,
     dz_profile=dz_profile,
+    boundary="cpml",
+    cpml_layers=8,
 )
 ```
 
-!!! note
-    The substrate→air step in `dz_profile` (0.27 mm → 1.5 mm) is an abrupt grading
-    jump. `Simulation` warns when adjacent cells differ by more than 1.3×, since
-    large ratios seed spurious reflections. Smooth it with
-    `rfx.smooth_grading(dz_profile)` before passing it in — see
-    [Non-uniform mesh](./nonuniform-mesh/).
+Do not specify an independent nonzero z-domain length with a `dz_profile`; its
+sum defines the z extent. Preserve 1 mm first and last cells so the z-boundary
+cell size matches `dx`.
 
-!!! tip
-    `auto_configure()` can derive `dz_profile` automatically. Pass the material
-    properties so it sizes cells for the dielectric (a bare name resolves to
-    vacuum, `εᵣ=1`, when you call `auto_configure` directly):
+## 3. Register the stack, source, and probe
 
-    ```python
-    from rfx import auto_configure
-    geom = [(Box((0,0,0),(dom_x,dom_y,h)), "fr4")]
-    cfg  = auto_configure(
-        geom,
-        freq_range=(1e9, 4e9),
-        materials={"fr4": {"eps_r": eps_r, "sigma": sigma_fr4}},
-        accuracy="standard",
-    )
-    sim  = Simulation(**cfg.to_sim_kwargs())
-    ```
-
----
-
-## 3. Define materials and geometry
+The ground and patch are subcell sheets. A zero-thickness `Box` passed to
+`sim.add()` would rasterize no volume, so the sheets use
+`add_thin_conductor()` instead.
 
 ```python
-# Register FR4 with frequency-accurate loss tangent at 2.4 GHz
-sim.add_material("fr4_24ghz", eps_r=4.4, sigma=sigma_fr4)
+sim.add_material("fr4_design", eps_r=eps_r, sigma=sigma_fr4)
 
-# Ground plane (z = 0, one cell thick)
-sim.add(Box((0, 0, 0), (dom_x, dom_y, dz_sub)), material="pec")
-
-# Substrate slab
-sim.add(Box((0, 0, 0), (dom_x, dom_y, h)), material="fr4_24ghz")
-
-# Patch (sitting on top of substrate; one cell thick in z)
-px0, py0 = margin, margin
-sim.add(Box((px0, py0, h), (px0+L, py0+W, h+dz_sub)), material="pec")
-```
-
-!!! note
-    rfx rasterises geometry onto the Yee grid. A patch of physical thickness `dz_sub`
-    is only one cell thick in z, which is standard practice for printed conductors.
-
----
-
-## 4. Add source and probe
-
-The probe-feed is placed at one-third of the patch length from the radiating edge:
-
-```python
-feed_x = px0 + L/3
-feed_y = py0 + W/2
-feed_z = h / 2           # midpoint of substrate
-
-sim.add_source(
-    (feed_x, feed_y, feed_z),
-    component="ez",
-    waveform=GaussianPulse(f0=f0, bandwidth=0.8),
+gx_lo, gx_hi = 0.020, 0.080
+gy_lo, gy_hi = 0.020, 0.075
+sim.add(
+    Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)),
+    material="fr4_design",
 )
-sim.add_probe((feed_x, feed_y, feed_z), "ez")
+
+# Copper values above 1e6 S/m are routed to the PEC sheet mask.
+ground = Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_lo))
+sim.add_thin_conductor(ground, sigma_bulk=5.8e7, thickness=35e-6)
+
+px0 = dom_x / 2 - L / 2
+px1 = dom_x / 2 + L / 2
+py0 = dom_y / 2 - W / 2
+py1 = dom_y / 2 + W / 2
+patch = Box((px0, py0, z_sub_hi), (px1, py1, z_sub_hi))
+sim.add_thin_conductor(patch, sigma_bulk=5.8e7, thickness=35e-6)
+
+src_z = z_sub_lo + 2.5 * dz_sub
+feed = (px0 + 8e-3, dom_y / 2, src_z)
+probe = (dom_x / 2 + 5e-3, dom_y / 2 + 5e-3, src_z)
+sim.add_source(feed, "ez", waveform=GaussianPulse(f0=f0, bandwidth=0.8))
+sim.add_probe(probe, "ez")
+
+sim.preflight(strict=True)
 ```
 
-`add_source` injects a soft point source (no impedance loading) — ideal for resonance characterization, where a port's resistive load would damp the cavity. Use `add_port` (default 50 Ω) when you need S-parameter extraction against a reference impedance.
+The thin-conductor calls warn that the copper sheet is routed to PEC. That is
+the represented model: conductor skin depth, surface roughness, and finite
+copper loss are not included. A finite sheet-resistance approximation requires
+an explicitly justified `sigma_bulk < 1e6` S/m.
 
----
+## 4. Check execution before interpreting RF results
 
-## 5. Run the simulation
+A short run verifies execution and finite probe data only:
 
 ```python
-# run() sizes the time stepping for you. num_periods counts cycles of the
-# resolved band (freq_max = 4 GHz here), so 40 periods ≈ 10 ns. The realized
-# dt and step count are reported on the result — no private grid access needed.
-result = sim.run(num_periods=40)
-n_steps = result.time_series.shape[0]   # realized number of timesteps
-print(f"dt={result.dt*1e12:.2f} ps, n_steps={n_steps}")
+import numpy as np
+
+short_run = sim.run(num_periods=2)
+assert short_run.time_series.size > 0
+assert np.isfinite(np.asarray(short_run.time_series)).all()
 ```
 
----
+It is too short to establish resonance or Q. For a resonance study, use a much
+longer fixed window, discard the driven portion, and handle the case where
+`find_resonances(...)` returns no modes. Repeat with finer x/y and z meshes,
+larger air margins, and longer windows. Report the movement of the selected
+mode, not just the finest result.
 
-## 6. Extract resonance with Harminv
+The short run may emit the ring-down-truncated advisory. That is expected for
+this short window and is another reason not to interpret its spectrum.
 
-```python
-modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
+The source above is a soft field source, not a 50-ohm feed. It cannot establish
+return loss. An impedance-referenced study must use the matching port family and
+calculator from [Sources and Ports](/rfx/guide/sources-ports/) and remain within
+its support limits.
 
-if modes:
-    best = min(modes, key=lambda m: abs(m.freq - f0))
-    err  = abs(best.freq - f0) / f0 * 100
-    print(f"FDTD resonance : {best.freq/1e9:.4f} GHz")
-    print(f"Analytical     : {f0/1e9:.4f} GHz")
-    print(f"Error          : {err:.2f} %")
-    print(f"Q              : {best.Q:.0f}")
-```
+## 5. External comparison
 
-!!! note
-    The ~3 % difference between FDTD and the analytical formula is expected: it is a
-    known limitation of the closed-form fringe correction (§1), not an rfx accuracy
-    problem. For an external-solver check of rfx itself, see
-    [Cross-Validation](./validation/).
+From a source checkout, `validation/crossval/05_patch_antenna.py` runs the
+repository's rfx/OpenEMS patch comparison. OpenEMS and CSXCAD are separate
+requirements. If either is unavailable, the script reports a skipped comparison
+and exits with status `2`, not a pass.
+The script's evidence applies only to its committed geometry, mesh, frequency
+band, metric, and tolerances. Do not transfer its frequency or Q to the model
+above or to a modified feed without a new comparison.
 
----
+See [Cross-Validation and Accuracy](/rfx/guide/validation/) for evidence levels
+and [S-Parameters and Ports](/rfx/guide/probes-sparams/) for
+calculator-specific limits.
 
-## 7. S-parameter follow-up
-
-This tutorial deliberately uses a soft source plus Harminv, not an
-impedance-referenced port. Do not pair the non-uniform `dz_profile` above with
-the single-cell lumped-port S-parameter path (`add_port` +
-`run(compute_s_params=True)`): that combination is outside the validated
-S-parameter envelope. For impedance-referenced patch or feed studies, use the
-documented wire-port or microstrip-line workflow — see
-[Probes & S-parameters](./probes-sparams/).
-
----
-
-## Expected results
-
-| Quantity | Value |
-|---|---|
-| FDTD resonance | ~2.33–2.38 GHz |
-| Analytical prediction | 2.40 GHz |
-| Discrepancy | ~1–3 % (formula limitation) |
-| Q factor | 20–60 (lossy FR4) |
-
----
-
-## Full script
-
-The full patch workflow you just built is validated by
-`validation/crossval/05_patch_antenna.py` — our accuracy fixture paired with the
-OpenEMS external cross-check described in
-[Tutorial: Patch Antenna Design](./tutorial-patch-antenna/). That script is a
-measurement fixture, not a lesson; for learning, continue with the ordered
-tutorials in `examples/tutorials/` (see `examples/README.md`).
+For the ordered learning sequence, continue with
+[Examples](/rfx/examples/). A source checkout lists the exact tutorial order in
+`examples/README.md`; the cross-validation script above remains an accuracy
+fixture rather than a lesson.

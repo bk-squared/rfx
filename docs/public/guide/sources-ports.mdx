@@ -12,7 +12,10 @@ rfx distinguishes between **sources** (field injection without impedance loading
 
 ## Waveforms
 
-All sources accept a waveform object that defines the time-domain excitation envelope.
+`add_source()` and lumped/wire `add_port()` accept waveform objects.
+Waveguide and TFSF sources use their own excitation arguments. The verified
+`add_polarized_source()` scope below is linear and uses
+`GaussianPulse`-compatible `f0`, `bandwidth`, and `amplitude` attributes.
 
 ### GaussianPulse
 
@@ -33,15 +36,16 @@ pulse = GaussianPulse(
 a larger `bandwidth` gives broader (more wideband) excitation, a smaller one a
 narrower band. The class default is `bandwidth=0.5`, but when rfx auto-builds
 the pulse for a source or port it uses `0.8`. The differentiated Gaussian
-carries a small DC residual (~1e-4); use `ModulatedGaussian` below when exact
-zero-DC excitation matters.
+can carry a small numerical DC residual. Compare the low-frequency spectrum
+and resulting fields when DC sensitivity matters.
 
 ### ModulatedGaussian
 
-A Gaussian-envelope modulated carrier (Meep-style): its integral is exactly
-zero, so it adds no DC and avoids static charge buildup on PEC surfaces. Its
-spectrum is centered at `f0` with fractional width `bandwidth`, which makes it
-the preferred choice for resonance-focused `add_source()` runs:
+A Gaussian-envelope modulated carrier (Meep-style). It usually reduces
+low-frequency/DC content relative to the differentiated Gaussian, but a finite
+sampled pulse does not generally have an exactly zero integral. Its spectrum is
+centered near `f0` with fractional width `bandwidth`, which makes it useful for
+resonance-focused `add_source()` runs:
 
 ```python
 from rfx import ModulatedGaussian
@@ -50,8 +54,9 @@ waveform = ModulatedGaussian(f0=3e9, bandwidth=0.6)
 ```
 
 When `waveform` is omitted, `add_source`/`add_port` default to `GaussianPulse`
-(not `ModulatedGaussian`); pass `ModulatedGaussian(...)` explicitly to get
-zero-DC excitation.
+(not `ModulatedGaussian`); pass `ModulatedGaussian(...)` explicitly when its
+carrier-centered spectrum is preferable, then check the sampled spectrum if a
+low-frequency component would affect the result.
 
 ### CWSource
 
@@ -102,7 +107,7 @@ Use `add_source` for resonance characterization (Harminv) where port loading wou
 
 ## Polarized source (`add_polarized_source`)
 
-Injects a source with a specified Jones-vector polarization:
+Injects one or two Cartesian source components. The documented scope is linear:
 
 ```python
 # Linear
@@ -111,22 +116,19 @@ sim.add_polarized_source((0.025, 0.025, 0.01), polarization="ez")
 # 45-degree slant linear
 sim.add_polarized_source((0.025, 0.025, 0.01), polarization="slant45")
 
-# Right-hand circular
+# Arbitrary real linear combination
 sim.add_polarized_source(
     (0.025, 0.025, 0.01),
-    polarization="rhcp",
-    waveform=GaussianPulse(f0=3e9),
-)
-
-# Arbitrary Jones vector (complex)
-sim.add_polarized_source(
-    (0.025, 0.025, 0.01),
-    polarization=(1.0, 1j),   # (Ex, Ey) — normalized internally
+    polarization=(1.0, -0.5),  # real (Ex, Ey), normalized internally
     waveform=GaussianPulse(f0=3e9),
 )
 ```
 
-Supported string shortcuts: `"ex"`, `"ey"`, `"ez"`, `"circular"` / `"rhcp"`, `"lhcp"`, `"slant45"`.
+Verified shortcuts are `"ex"`, `"ey"`, `"ez"`, and `"slant45"`.
+`"circular"`/`"rhcp"`, `"lhcp"`, and complex Jones tuples are accepted by
+the API, but the generated components' time-domain quadrature has not been
+independently verified. Do not infer circular/elliptical polarization, axial
+ratio, or polarization sense from those inputs.
 
 ---
 
@@ -151,7 +153,7 @@ result = sim.run(n_steps=2000, compute_s_params=True)
 s11 = result.s_params[0, 0, :]   # s_params shape (n_ports, n_ports, n_freqs), complex
 ```
 
-See [Probes and S-parameters](./probes-sparams/#s-parameter-extraction) for the
+See [Probes and S-parameters](/rfx/guide/probes-sparams/#s-parameter-extraction) for the
 full extraction, plotting, and Touchstone-export path.
 
 !!! tip
@@ -250,7 +252,7 @@ feed plane with an N-probe (default `n_probes=5`) least-squares
 wave-decomposition extractor. It is a uniform-mesh path; unsupported
 mesh/source/port combinations are rejected rather than silently returning
 `None`. `num_periods` defaults to 40 because MSL transients drain slowly. The
-thru-line and notch examples define the public uniform-Yee envelope.
+thru-line and notch examples define the tested uniform-Yee configurations.
 
 ---
 
@@ -292,12 +294,13 @@ S = wg.s_params    # (n_ports, n_ports, n_freqs) complex
 
 `normalize=True` cancels one-way Yee dispersion in the transmission
 (off-diagonal) terms and is the right choice for S21. It does **not** correct
-the round-trip dispersion in reflection, so for the S11 of a strong reflector
-use `normalize=False` (default) or `normalize="flux"`. If a passive
+the round-trip dispersion in reflection. On a uniform grid, S11 studies may use
+`normalize=False` (default) or `normalize="flux"`; non-uniform waveguide runs
+reject `normalize=False` and require `normalize="flux"`. If a passive
 `normalize=False` result rises above the documented single-run over-unity
-envelope, rfx emits a soft advisory rather than silently treating it as ordinary
-evidence; use the guide-recommended flux normalization or a reference check
-before promoting that number.
+range, rfx emits a soft advisory rather than silently treating it as ordinary
+evidence. Use the guide-recommended flux normalization or a reference check
+before reporting that number.
 
 A plain `run(...)` also populates `result.waveguide_sparams` — per-port,
 plane-calibrated `s11`/`s21` from that single excitation. This is a diagnostic
@@ -310,7 +313,7 @@ sp = result.waveguide_sparams["port1"]
 # sp.freqs, sp.s11, sp.s21
 ```
 
-See [Waveguide ports](./waveguide-ports/) for mode selection, calibration
+See [Waveguide ports](/rfx/guide/waveguide-ports/) for mode selection, calibration
 planes, and validated gates.
 
 ---
@@ -342,11 +345,21 @@ sim.add_tfsf_source(
 | Method | Use case | S-parameter extraction |
 |---|---|---|
 | `add_source()` | Resonance, field visualization | none (soft source, no port) |
-| `add_polarized_source()` | Antenna / polarimetry excitation | none (soft source, no port) |
+| `add_polarized_source()` | Linear antenna excitation; circular/elliptical outputs are not validated | none (soft source, no port) |
 | `add_port(extent=None)` | Lumped-port S-params | `run(compute_s_params=True)`; validated on uniform-Yee examples |
 | `add_port(extent=...)` | Wire / probe-feed S-params | `run(compute_s_params=True)`; probe-feed examples, calibration caveated |
-| `add_lumped_rlc()` | Lumped circuit/load element | no direct S-parameter calculator; can be a differentiable scalar load via `forward(rlc_values_override=...)` on the uniform single-device lane |
-| `add_msl_port()` | Full-strip microstrip S-matrix | `compute_msl_s_matrix()`; uniform mesh only |
+| `add_lumped_rlc()` | Lumped circuit/load element | no direct S-parameter calculator; can be a differentiable scalar load via `forward(rlc_values_override=...)` in a uniform single-device calculation |
+| `add_msl_port()` | Full-strip microstrip S-matrix | `compute_msl_s_matrix()`; uniform mesh is externally compared; nonuniform `laplace`/`uniform` modes have internal checks only; `eigenmode` is unsupported |
 | `add_waveguide_port()` | Modal waveguide S-matrix | `compute_waveguide_s_matrix()`; rectangular guide, cpml + 3D |
-| `add_coaxial_port()` | One-port coaxial line reflection | `compute_coaxial_line_reflection()`; one-port line envelope |
+| `add_coaxial_port()` | One-port coaxial line reflection | `compute_coaxial_line_reflection()`; float32 precision; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` port; see the [API constraints](/rfx/api/sources-ports/) |
 | `add_tfsf_source()` | RCS / scattering plane wave | none (not a port) |
+
+`compute_coaxial_line_reflection()` constructs its own line, TEM source, DFT
+planes, and termination. Do not add separate geometry, thin conductors, lumped
+RLC elements, probes, field monitors, NTFF boxes, or `add_coaxial_*`
+termination helpers to that simulation; the method rejects them. The port's z
+position, `pin_length`, and `impedance` do not set the internally derived line
+layout or loads. Use `feed_impedance`, and use `dut_impedance` only with
+`termination="matched"`. At least three probe planes are required, and every
+requested plane must fit before the source. See the
+[complete calculator rules](/rfx/api/sources-ports/) before a long run.

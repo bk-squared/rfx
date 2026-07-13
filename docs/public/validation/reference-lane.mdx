@@ -1,42 +1,49 @@
 ---
-title: "Reference Lane"
-description: "Public summary of the current recommended rfx lane."
+title: "Recommended Configuration"
+description: "Where to start and which RF calculations need additional limits."
 sidebar:
   order: 41
 ---
 
-## Recommended default lane
+## Start with the uniform grid
 
-Start with the **uniform Cartesian Yee RF/FDTD lane**:
+Use the **uniform Cartesian Yee** solver for ordinary RF examples and public
+reports. The commonly documented setup includes:
 
-- PEC, CPML, or bounded UPML boundaries
-- point/current sources
-- lumped and wire ports
-- specialized microstrip-line and rectangular waveguide workflows where documented
-- probes, flux monitors, Harminv resonance extraction, selected S-parameter workflows, and benchmarked far-field workflows
+- PEC, CPML, or UPML boundaries within their stated limits;
+- point/current sources and the port type appropriate to the structure;
+- probes, flux monitors, Harminv resonance extraction, selected S-parameter
+  calculations, and the documented far-field workflows; and
+- convergence checks and an analytic or independent solver comparison suited
+  to the reported observable.
 
-This is the lane to use first for ordinary RF examples and public tutorials.
+The [support matrix](/rfx/api/support-boundaries/) gives the general limits.
+For port calculations, also read the
+[S-parameter guidance](/rfx/guide/probes-sparams/).
 
-## Bounded envelopes
+## Calculations with narrower limits
 
-The following surfaces are narrower than the default lane and must be described with their exact calculator and support limits:
-
-| Surface | Public status |
+| Configuration | Current use and restriction |
 |---|---|
-| rectangular waveguide S-matrix | documented rectangular-guide envelope via `compute_waveguide_s_matrix(...)` |
-| microstrip-line S-matrix | specialized uniform-Yee workflow via `compute_msl_s_matrix(...)` |
-| lumped/wire S-parameters | calculator-specific support envelope via `run(compute_s_params=True)` or `forward(port_s11_freqs=...)` |
-| coaxial transmission-line reflection | one-port line-reflection envelope via `compute_coaxial_line_reflection(...)`; not a general coaxial network solver |
-| differentiable design loops | proxy-objective optimization; final claims inherit the observable/port-family evidence |
+| rectangular waveguide S-matrix | Use `compute_waveguide_s_matrix(...)` for the documented rectangular-guide modes, frequency bands, normalization, reference planes, and port placement. Magnitude evidence is broader than phase and arbitrary-junction evidence. |
+| microstrip-line S-matrix | Use `compute_msl_s_matrix(...)` for the documented quasi-TEM configurations. Exclude a driven-port column wherever `reliable[p, k]` is false. |
+| lumped or wire-port S-parameters | Use `run(compute_s_params=True)` or the documented differentiable S11 path. These discrete lumped/wire feed models are not modal transmission-line ports. |
+| coaxial transmission-line reflection | Use `compute_coaxial_line_reflection(...)` only with float32 precision, a nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` coaxial port. It builds its own line, source, probes, and termination, is not a general multi-port coaxial-network solver, and has no shared automatic passivity guard. See [Sources and Ports](/rfx/api/sources-ports/). |
+| nonuniform graded-z mesh | Check the limit for each source, port, and observable. Regression or finite-gradient coverage alone does not establish RF accuracy. |
+| differentiable design | Treat the optimization quantity as a proxy objective. Validate the final design independently with the applicable RF observable. |
 
-## S-parameter API boundaries
+## S-parameter API selection
 
-- `run(compute_s_params=True)` is the full S-matrix API for lumped/wire `add_port(...)` workflows.
-- `compute_msl_s_matrix()` is the microstrip-line S-matrix API.
-- `compute_waveguide_s_matrix()` is the rectangular waveguide S-matrix API.
-- `compute_coaxial_line_reflection(...)` is the bounded coaxial line-reflection method.
-- Field sources, TFSF, probes, DFT planes, and flux monitors are not port calculators.
+- `run(compute_s_params=True)` computes lumped/wire-port S-parameters.
+- `compute_msl_s_matrix(...)` computes the microstrip-line result.
+- `compute_waveguide_s_matrix(...)` computes the rectangular-waveguide result.
+- `compute_coaxial_line_reflection(...)` computes the one-port line-reflection
+  result for the float32, nonperiodic 3D second-order uniform Yee and all-face
+  CPML setup described above. Separately registered geometry, circuit elements,
+  monitors, and coaxial termination helpers are rejected.
+- Field sources, TFSF, probes, DFT planes, and flux monitors do not define a
+  port impedance or S-matrix reference plane.
 
-## Practical rule
-
-If a feature is not in the recommended default lane or a bounded envelope above, keep it out of public docs until the support matrix covers it.
+Do not substitute one calculator for another port family. A completed run or
+an absent warning does not establish convergence, passivity, reference-plane
+correctness, or agreement with an independent RF reference.

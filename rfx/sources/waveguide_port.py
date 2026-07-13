@@ -360,7 +360,7 @@ def cutoff_frequency(a: float, b: float, m: int, n: int) -> float:
 # AD tape) live in a sibling module; re-imported here so every existing
 # import path (``rfx.sources.waveguide_port._second_diff_1d``, the
 # eigenmode helpers, tests) keeps resolving unchanged.
-from rfx.sources._waveguide_modes import (
+from rfx.sources._waveguide_modes import (  # noqa: E402
     _aperture_area,
     _cell_centred_gradient,
     _galerkin_eigh_separable_laplacian_2d,
@@ -369,7 +369,7 @@ from rfx.sources._waveguide_modes import (
     _pick_eigenmode_by_overlap,
     _pick_eigenmode_by_target_then_overlap,
     _scale_h_to_unit_cross,
-    _second_diff_1d,
+    _second_diff_1d as _second_diff_1d,
     _shift_profile_to_dual,
 )
 
@@ -867,8 +867,9 @@ def init_waveguide_port(
         # scale by ``cfg.src_amp`` at runtime so ``_reset_cfg(drive=False)``
         # zeros both corrections together.
         if waveform == "modulated_gaussian":
-            # Meep's GaussianSource shape. No DC content — no sub-cutoff
-            # filter needed, which eliminates the raised-cosine filter tail
+            # Meep-style carrier-centered shape. Its low-frequency content is
+            # negligible for this configured source, so no sub-cutoff filter is
+            # applied; this eliminates the raised-cosine filter tail
             # that drives directional leakage in the differentiated-Gaussian
             # path. The hard ±5·width cutoff (= ±t0) matches Meep's
             # gaussian_src_time::dipole and kills any residual early/late

@@ -798,9 +798,11 @@ class Simulation(
         position : (x, y, z) in metres
         polarization : str or tuple
             - "ez", "ex", "ey" — linear single-component
-            - "circular" or "rhcp" — right-hand circular (Ex + jEy)
-            - "lhcp" — left-hand circular (Ex - jEy)
-            - (Ex, Ey) tuple — arbitrary Jones vector (complex)
+            - "circular" or "rhcp" — accepted complex-component shortcut;
+              time-domain quadrature is not independently verified
+            - "lhcp" — accepted complex-component shortcut; same limitation
+            - (Ex, Ey) tuple — normalized component weights; real tuples are
+              the documented linear-polarization scope
             - "slant45" — 45° linear (Ex = Ey)
         waveform : excitation pulse (default: GaussianPulse)
         """
@@ -830,7 +832,8 @@ class Simulation(
             raise ValueError("Jones vector magnitude is zero")
         jx, jy = jones[0] / norm, jones[1] / norm
 
-        # For complex Jones (circular): use two sources with phase-shifted waveforms
+        # Complex weights use two separately constructed waveforms. Their
+        # quadrature is not part of the verified public polarization scope.
         if _np.isreal(jx) and _np.isreal(jy):
             # Real Jones — simple amplitude scaling
             if abs(float(jx.real)) > 1e-10:
@@ -843,7 +846,7 @@ class Simulation(
                         amplitude=waveform.amplitude * float(jy.real))
                 self.add_source(position, "ey", waveform=wy)
         else:
-            # Complex Jones — use CW-modulated source for phase control
+            # Complex Jones — build carrier-modulated components.
             from rfx.sources.sources import ModulatedGaussian as MG
             # Ex component (reference phase)
             if abs(jx) > 1e-10:
@@ -855,7 +858,7 @@ class Simulation(
                 # Phase of jy relative to jx
                 import cmath
                 phase = cmath.phase(jy) - cmath.phase(jx) if abs(jx) > 1e-10 else 0
-                # For ±90° (circular): use cosine instead of sine carrier
+                # Construct the second carrier from the requested relative phase.
                 from rfx.sources.sources import CustomWaveform
                 import jax.numpy as _jnp
                 tau = 1.0 / (waveform.f0 * waveform.bandwidth * 3.14159)

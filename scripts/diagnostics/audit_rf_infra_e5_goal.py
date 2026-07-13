@@ -136,7 +136,7 @@ def _evidence_is_unblocked_e5(level: str) -> bool:
 
 def _evidence_is_narrow_e5(level: str) -> bool:
     normalized = level.lower()
-    return normalized.startswith("e5") and "narrow" in normalized
+    return normalized.split("/", 1)[0].startswith("e5-narrow")
 
 
 def _family_result(entry: dict[str, Any]) -> dict[str, Any]:
@@ -171,12 +171,28 @@ def _family_result(entry: dict[str, Any]) -> dict[str, Any]:
 
     known_limits = [str(x) for x in entry.get("known_limits", [])]
     caveats = [str(x) for x in entry.get("caveats", [])]
-    promotion_requirements = [str(x) for x in entry.get("promotion_requirements", [])]
-    for text in known_limits + caveats + promotion_requirements:
+    validation_gaps = [
+        str(x)
+        for x in entry.get(
+            "validation_gaps", entry.get("promotion_requirements", [])
+        )
+    ]
+    for text in known_limits + caveats:
         lowered = text.lower()
         if any(token in lowered for token in ("blocked", "requires", "needs", "not promoted", "no broad", "caveat")):
             if text not in blockers:
                 blockers.append(text)
+
+    for text in validation_gaps:
+        if text not in blockers:
+            blockers.append(text)
+
+    # A broad-E5 result can be complete for its documented API while still
+    # being incomplete for this auditor's broader all-port-family objective.
+    # Do not silently pass that objective when the matrix names an outstanding
+    # requirement (for example, a separate arbitrary-launch or multi-port API).
+    if validation_gaps and status == "passed":
+        status = "partial"
 
     if missing_artifacts and is_port:
         blockers.append(
@@ -235,7 +251,9 @@ def _family_result(entry: dict[str, Any]) -> dict[str, Any]:
         "evidence_level": evidence_level,
         "status": status,
         "validation_status": entry.get("validation_status"),
-        "claim_envelope": entry.get("claim_envelope"),
+        "validated_scope": entry.get(
+            "validated_scope", entry.get("claim_envelope")
+        ),
         "artifact_checks": artifacts,
         "blockers": blockers,
     }
@@ -249,9 +267,12 @@ def _future_family_result(entry: dict[str, Any]) -> dict[str, Any]:
         if status is not None
     ]
     missing_artifacts = [item for item in artifacts if not item["exists"]]
+    validation_gaps = entry.get(
+        "validation_gaps", entry.get("required_evidence", [])
+    )
     blockers = [
-        "planned/future port family is not promoted to E5",
-        *[str(x) for x in entry.get("required_evidence", [])],
+        "port family has no implemented public S-parameter API",
+        *[str(x) for x in validation_gaps],
     ]
     if missing_artifacts:
         blockers.append(
@@ -261,9 +282,9 @@ def _future_family_result(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         "family": entry.get("family"),
         "status": "blocked",
-        "evidence_level": entry.get("evidence_level", entry.get("status", "planned_not_promoted")),
+        "evidence_level": entry.get("evidence_level", entry.get("status", "not_implemented")),
         "blockers": blockers,
-        "required_evidence": entry.get("required_evidence", []),
+        "validation_gaps": validation_gaps,
         "artifact_checks": artifacts,
         "public_sparameter_api": entry.get("public_sparameter_api"),
     }
@@ -344,11 +365,13 @@ def build_goal_audit(
         matrix_path,
     )
     family_results = [_family_result(entry) for entry in data.get("port_families", [])]
-    future_results = [
+    unavailable_results = [
         _future_family_result(entry)
-        for entry in data.get("future_port_families", [])
+        for entry in data.get(
+            "unavailable_port_families", data.get("future_port_families", [])
+        )
     ]
-    all_results = family_results + future_results
+    all_results = family_results + unavailable_results
     incomplete = [
         item
         for item in all_results
@@ -367,7 +390,7 @@ def build_goal_audit(
         external_manifest_path=external_manifest_path,
         external_audit=external_audit,
         family_results=family_results,
-        future_results=future_results,
+        future_results=unavailable_results,
         incomplete=incomplete,
     )
     return {
@@ -384,7 +407,7 @@ def build_goal_audit(
         "summary": {
             "port_family_count": len(port_families),
             "passed_port_family_count": len(passed_ports),
-            "future_family_count": len(future_results),
+            "future_family_count": len(unavailable_results),
             "incomplete_count": len(incomplete),
             "external_reference_status": external_reference_status,
             "external_reference_schema_status": external_reference_schema_status,
@@ -392,7 +415,7 @@ def build_goal_audit(
             "not_applicable_count": len([x for x in family_results if x["status"] == "not_applicable"]),
         },
         "family_results": family_results,
-        "future_family_results": future_results,
+        "future_family_results": unavailable_results,
         "incomplete": incomplete,
         "completion_decision": (
             "Do not call update_goal: at least one port family, planned RF "

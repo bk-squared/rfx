@@ -8,14 +8,15 @@ sidebar:
 
 ## How to read these docs
 
-| Surface | What to expect |
+| Configuration | What is documented |
 |---|---|
 | **Recommended default** | uniform Cartesian Yee RF workflows: cavity, waveguide, patch-style resonance, probes, Harminv, selected S-parameter workflows, and benchmarked far-field workflows |
-| **Bounded port-family envelopes** | lumped/wire, microstrip-line, rectangular waveguide, and coaxial-line workflows each use their matching calculator and stated limits |
+| **Port-specific calculations** | lumped/wire, microstrip-line, rectangular waveguide, and coaxial-line workflows each use their matching calculator and stated geometry, mesh, and frequency limits |
 | **Curated public API** | user-facing builders, observables, and reporting helpers; lower-level symbols are supporting reference |
 | **Other repository code** | may exist in the repository, but is not a documented public workflow unless a guide and support entry cover it |
 
-Start with the recommended default lane unless a public guide explicitly routes you to a bounded envelope.
+Start with the recommended default configuration unless a public guide states
+the exact limits for another configuration.
 
 ## Getting Started
 
@@ -23,8 +24,8 @@ Start with the recommended default lane unless a public guide explicitly routes 
 |---|---|
 | [Installation](/rfx/guide/installation/) | Python/JAX install, GPU notes, dev setup |
 | [Quick Start](/rfx/guide/quickstart/) | First simulation with the current high-level API |
-| [Your First Patch Antenna](/rfx/guide/first-patch/) | First end-to-end resonance workflow |
-| [Studio and Durable Experiments](/rfx/guide/studio-experiments/) | Local Studio, versioned CPU experiments, replay bundles, and approval-gated MCP |
+| [Your First Patch Antenna](/rfx/guide/first-patch/) | Build a patch model, run a short check, and see what is required before reporting RF results |
+| [Studio, CLI, and MCP Experiments](/rfx/guide/studio-experiments/) | Local Studio, versioned CPU experiments, replay bundles, and MCP approvals |
 
 ## Modeling & Setup
 
@@ -32,7 +33,7 @@ Start with the recommended default lane unless a public guide explicitly routes 
 |---|---|
 | [Simulation API](/rfx/guide/api-reference/) | `Simulation`, `Result`, materials, sources, probes, ports, and NTFF helpers |
 | [Materials & Geometry](/rfx/guide/materials-geometry/) | Material library, Debye/Lorentz models, CSG shapes, and PCB stackup basics |
-| [Sources & Ports](/rfx/guide/sources-ports/) | Soft sources, lumped/wire ports, microstrip-line ports, waveguide ports, and bounded coaxial-line reflection |
+| [Sources & Ports](/rfx/guide/sources-ports/) | Soft sources, lumped/wire ports, microstrip-line ports, waveguide ports, and coaxial-line reflection for exactly one `face="top"` port within its stated limits |
 | [Probes & S-Parameters](/rfx/guide/probes-sparams/) | DFT probes, S-matrix helpers, Harminv, de-embedding, and exports |
 | [Memory Reduction](/rfx/guide/memory-reduction/) | How to reduce FDTD/AD memory without crossing validation boundaries |
 | [Waveguide Ports](/rfx/guide/waveguide-ports/) | Modal waveguide excitation and S-matrix extraction |
@@ -42,7 +43,7 @@ Start with the recommended default lane unless a public guide explicitly routes 
 | Guide | Description |
 |---|---|
 | [Validation](/rfx/guide/validation/) | Public validation overview and support status |
-| [Benchmark Table](/rfx/guide/benchmarks/) | Current A/B cross-validation cases and reproduce commands |
+| [Benchmarks](/rfx/guide/benchmarks/) | Current reference cases, pass criteria, and reproduce commands |
 | [Convergence Study](/rfx/guide/tutorial-convergence/) | Mesh-refinement workflow |
 | [Far-Field & RCS](/rfx/guide/farfield-rcs/) | NTFF radiation patterns and scattering workflows |
 | [Visualization & Analysis](/rfx/guide/visualization-and-analysis/) | Plots, exports, post-processing, and result interpretation |

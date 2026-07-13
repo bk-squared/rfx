@@ -45,8 +45,8 @@ Library materials are available directly by name; no `add_material()` call is ne
 from rfx import Simulation, Box
 
 sim = Simulation(freq_max=10e9, domain=(0.05, 0.05, 0.02), boundary="cpml")
-sim.add(Box((0, 0, 0), (0.05, 0.05, 0.0016)), material="fr4")
-sim.add(Box((0, 0, 0), (0.05, 0.05, 0.0)), material="pec")
+sim.add(Box((0.005, 0.005, 0.005), (0.045, 0.045, 0.0066)), material="fr4")
+sim.add(Box((0.005, 0.005, 0.004), (0.045, 0.045, 0.005)), material="pec")
 ```
 
 ---
@@ -72,8 +72,12 @@ sim.add(Box((0.01, 0.01, 0.0), (0.04, 0.04, 0.002)), material="my_ceramic")
  .add_material("sub", eps_r=3.55, sigma=0.0)
  .add_material("metal", eps_r=1.0, sigma=5.8e7)
  .add(Box((0, 0, 0), (0.05, 0.03, 0.001)), material="sub")
- .add(Box((0.005, 0.005, 0.001), (0.045, 0.025, 0.001)), material="metal"))
+ .add(Box((0.005, 0.005, 0.001), (0.045, 0.025, 0.0015)), material="metal"))
 ```
+
+`Box` is volumetric: every upper bound must exceed its lower bound. Use
+`add_thin_conductor(...)` for a sheet whose physical thickness is below one
+cell; a zero-thickness `Box` added with `sim.add()` rasterizes no volume.
 
 ---
 
@@ -162,7 +166,7 @@ from rfx import Box
 
 # Box(corner_lo, corner_hi)  — axis-aligned rectangular prism
 slab  = Box((0.0,  0.0,  0.0),  (0.05, 0.05, 0.002))
-patch = Box((0.01, 0.01, 0.002),(0.04, 0.04, 0.002))
+metal_volume = Box((0.01, 0.01, 0.002), (0.04, 0.04, 0.0025))
 ```
 
 Coordinates are in meters. `corner_lo` and `corner_hi` are `(x, y, z)` tuples.

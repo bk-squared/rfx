@@ -1,25 +1,35 @@
 ---
 title: "Cross-Solver Validation"
-description: "Current public cross-solver and cross-check framing for rfx."
+description: "Runnable rfx comparisons with analytic results and other solvers."
 sidebar:
   order: 42
 ---
 
-Cross-solver checks are useful for confidence, but they should stay scoped to the workflow being checked.
+Use these scripts to reproduce a comparison for a specific RF configuration.
+They are available in a source checkout and are not installed with the Python
+wheel.
 
-## Current public anchors
+## RF checks
 
-| Script | Role |
-|---|---|
-| `validation/crossval/05_patch_antenna.py` | current practical patch cross-check |
-| `validation/crossval/11_waveguide_port_wr90.py` | rectangular waveguide-port workflow |
+| Script | What it checks | Important limit |
+|---|---|---|
+| `validation/crossval/05_patch_antenna.py` | 2.4 GHz finite-ground-plane patch resonance against an analytic estimate and OpenEMS | Harminv resonance is the primary result; absolute probe-feed S11 is secondary |
+| `validation/crossval/11_waveguide_port_wr90.py` | WR-90 empty guide, PEC short, and dielectric slab | Analytic checks, including the Airy slab result, determine the exit status. Optional local Meep, OpenEMS, and Palace files add diagnostic columns but are not required for exit code `0`; see [Benchmarks](/rfx/guide/benchmarks/) for the numerical ranges and checks. |
 
-## How to read cross-checks
+Run a script from the repository root, for example:
 
-- A cross-check supports the specific geometry, mesh, source, and observable it exercises.
-- It is not a blanket guarantee for every related RF design.
-- If a result comes from an workflow outside the documented support scope, say so.
+```bash
+python validation/crossval/05_patch_antenna.py
+```
 
-## Broader checks
+An exit code of `0` means all configured checks passed. Exit code `1` means a
+check failed. Exit code `2` means a required external solver or reference was
+unavailable, so the comparison is inconclusive.
 
-The repo also contains tests and scripts for cavity, waveguide, material, and port behavior. Public pages should summarize outcomes at the feature level and avoid run-log detail.
+## Interpret the result
+
+A comparison applies to the geometry, mesh, frequency range, source, port,
+material model, boundary, and output used by that script. It is not a general
+accuracy guarantee for related designs. Record those settings and the numerical
+thresholds when citing a result. In a source checkout, `validation/README.md`
+lists the remaining cavity, waveguide, material, and port checks.

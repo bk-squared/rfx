@@ -11,10 +11,10 @@ sidebar:
 
 | Field | Meaning | Public use |
 |---|---|---|
-| `state` | solver state / checkpoint payload | restart and debugging |
+| `state` | final solver state / checkpoint payload | inspection, checkpoint export, and debugging; no high-level resume API accepts it as an initial state |
 | `time_series` | recorded probe values over time | ringdown, transient response, Harminv |
 | `s_params` | lumped/wire port S-matrix | matching, filters, de-embedding |
-| `freqs` | frequency axis for frequency-domain outputs | pair with S-parameter and DFT outputs |
+| `freqs` | frequency axis paired with `Result.s_params` | lumped/wire S-parameter output; DFT-plane and flux-monitor objects carry their own frequency axes |
 | `ntff_data` | near-to-far-field accumulation | radiation patterns where documented |
 | `dft_planes` | frequency-domain plane observables | slices and field maps |
 | `flux_monitors` | plane flux accumulations | transmission / reflection analysis |
@@ -29,9 +29,9 @@ sidebar:
 |---|---|---|
 | `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result.s_params`, `Result.freqs` | documented path for the matching port family |
 | `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult.s_params`, `ForwardResult.freqs` | differentiable S11 vectors, not a full multi-port matrix |
-| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` with `.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, and eager `.reliable` mask | specialized microstrip-line workflow; exclude standing-wave-null bins marked unreliable |
+| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` with `.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, and `.reliable` | specialized microstrip-line calculation; exclude driven-port columns marked unreliable |
 | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | rectangular waveguide workflow |
-| `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | one-port coaxial transmission-line reflection envelope |
+| `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | reflection with float32 precision, a nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` coaxial port; see [Sources and Ports](/rfx/api/sources-ports/) for the self-contained model limits |
 | `run(...)` with a single waveguide port | `Result.waveguide_sparams[name]` | diagnostic per-port output |
 
 Sources, TFSF, probes, DFT planes, and flux monitors do not automatically define a high-level S-matrix workflow. Coaxial reports should use the documented line-reflection method.
@@ -71,19 +71,41 @@ print(report.summary())
 
 These helpers are useful for regression checks. They do not turn an undocumented workflow into the recommended default path.
 
-The eager calculation paths also surface result-quality warnings without
-mutating the arrays. `run()` checks for non-finite data, no recorded field
-energy, and a hot ring-down tail. S-parameter calculators check finiteness and
-their configured passivity envelope. MSL results additionally expose a
-per-port, per-frequency `reliable` mask for bins where both voltage and current
-collapse at a standing-wave node. Treat an affected bin as unusable until the
-setup, settling, reference plane, or independent comparison resolves it.
+During normal Python execution outside JAX tracing, some calculation paths emit
+warnings without changing the arrays. Coverage is deliberately narrow:
+
+- the generic `run()` warning and uniform single-device `forward()` warning
+  inspect `time_series` and lumped/wire `s_params`, not state, NTFF, DFT-plane,
+  or flux arrays; non-uniform and distributed `forward()` paths do not invoke
+  this guard;
+- lumped/wire `run()` and uniform single-device `forward()` check individual
+  entries for non-finite values or `|S| > 1.1`, but do not test total outgoing
+  column power;
+- MSL and waveguide full-matrix calculators apply per-entry and column-power
+  checks with calculator-specific tolerances;
+- `compute_coaxial_line_reflection()` requires float32 precision, a nonperiodic
+  3D second-order uniform Yee grid, CPML on all six boundary faces with positive
+  thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"`
+  coaxial port. It builds its own line, source, probes, and termination and
+  rejects unsupported registered objects. It returns `status`, fit/recurrence
+  residuals, and `s11`, but does not run the shared passivity guard. See
+  [Sources and Ports](/rfx/api/sources-ports/) before configuring this method.
+
+The ring-down advisory likewise requires a probe time series and is not a
+direct NTFF or DFT convergence test. Inspect unguarded arrays explicitly. The
+absence of a warning is not a passivity, convergence, or accuracy result.
+
+For MSL results, `reliable[p, k] = False` excludes the driven-port column
+`S[:, p, k]` from physical interpretation because the measured signal is too
+low for a stable wave split. A `True` entry is not an accuracy guarantee. See
+[Probes and S-Parameters](/rfx/guide/probes-sparams/#low-signal-msl-bins) for the
+threshold and filtering example.
 
 ## Validated observables
 
 For public docs, describe observables in simple terms:
 
 - `time_series` and Harminv are the recommended resonance path.
-- lumped/wire, MSL, waveguide, and coaxial-line S-parameter/reflection workflows each have their own calculator and envelope.
+- lumped/wire, MSL, waveguide, and coaxial-line S-parameter/reflection workflows each have their own calculator and stated limits.
 - NTFF/far-field outputs should be used where the relevant guide documents the workflow.
-- Other fields are useful analysis surfaces; use them with the documented support status for the workflow.
+- Other fields are useful analysis outputs; apply the documented support status for the calculation that produced them.

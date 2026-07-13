@@ -136,7 +136,10 @@ def _support_lookup(support_matrix: dict[str, Any]) -> dict[str, dict[str, Any]]
         family = str(row.get("family", ""))
         if family:
             rows[family] = row
-    for row in support_matrix.get("future_port_families", []):
+    for row in support_matrix.get(
+        "unavailable_port_families",
+        support_matrix.get("future_port_families", []),
+    ):
         family = str(row.get("family", ""))
         if family:
             rows[family] = row

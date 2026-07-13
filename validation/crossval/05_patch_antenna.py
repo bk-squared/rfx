@@ -614,7 +614,7 @@ s11_surround = max(float(S11_dB[idx_below]), float(S11_dB[idx_above]))
 contrast = s11_surround - s11_min_dB
 
 print("\nrfx S11 analysis:")
-print(f"  Passivity |S11| ≤ 1: {'PASS' if passive else 'FAIL'} (max={np.max(np.abs(S11)):.3f})")
+print(f"  Passivity advisory |S11| < 1.05: {'PASS' if passive else 'FAIL'} (max={np.max(np.abs(S11)):.3f})")
 print(f"  Local resonance dip: {f_res_rfx/1e9:.3f} GHz")
 print(f"  |S11| at dip:        {s11_min_dB:.2f} dB")
 print(f"  Dip contrast:        {contrast:.2f} dB")
@@ -714,7 +714,7 @@ print(f"  rfx vs analytic (< 10 %):         "
       f"{'PASS' if pass_vs_analyt else 'FAIL'}  ({harminv_err_pct:.2f} %)")
 print(f"  rfx vs OpenEMS (< 20 %):          "
       f"{'PASS' if pass_vs_openems else 'FAIL'}  ({rfx_vs_oe_pct:.2f} %)")
-print(f"  S11 passivity (|S11| ≤ 1):        "
+print(f"  S11 passivity advisory (|S11| < 1.05): "
       f"{'PASS' if pass_passivity else 'FAIL'}  "
       f"(max|S11|={np.max(np.abs(S11)):.3f})")
 print(f"  Overall:                          {'PASS' if all_ok else 'FAIL'}")

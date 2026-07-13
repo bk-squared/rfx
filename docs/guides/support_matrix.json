@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "reference_lane": "uniform_yee_rf",
-  "lanes": {
+  "version": 2,
+  "recommended_configuration": "uniform_yee_rf",
+  "configurations": {
     "uniform_yee_rf": {
       "status": "supported",
       "boundaries": [
@@ -31,69 +31,102 @@
       ],
       "sparameter_contract": "docs/guides/sparameter_support_matrix.json"
     },
-    "nonuniform_graded_z": {
-      "status": "shadow",
-      "role": "preserved_thin_substrate_lane",
-      "supported_subset": [
-        "probe",
-        "current_source",
-        "selected_dispersive_smoke_coverage",
-        "benchmarked_ntff_dipole",
-        "shadow_dft_plane_and_full_plane_flux",
-        "restricted_normal_incidence_x_tfsf",
-        "shadow_single_mode_waveguide_flux",
-        "shadow_msl_laplace_feed",
-        "field_only_lumped_rlc"
+    "nonuniform_mesh": {
+      "status": "limited_by_feature",
+      "use": "check_each_source_port_and_observable",
+      "feature_status_summary": [
+        "limited_probe_and_current_source_workflows",
+        "limited_benchmarked_ntff_dipole",
+        "experimental_dft_plane_and_full_plane_flux",
+        "experimental_normal_incidence_x_tfsf",
+        "experimental_single_mode_waveguide_magnitude",
+        "experimental_msl_laplace_feed",
+        "limited_field_only_lumped_rlc"
       ],
-      "unsupported_combinations": {
-        "floquet": "hard_fail",
-        "ntff": "benchmarked dipole-directivity envelope; other geometries remain shadow",
-        "dft_plane": "shadow; runs on the graded path and requires observable-specific validation",
-        "tfsf": "normal +/-x incidence only; oblique and +/-z incidence hard_fail",
-        "waveguide_port": "shadow single-mode TE10 with normalize=True/'flux'; analytic broad-E5 and external Palace broad-E4 magnitude fixtures exist; AD material overrides and unsupported combinations hard_fail",
-        "lumped_rlc": "field-only ADE update; no nonuniform S-parameter or component-value AD claim",
-        "lumped_port_sparameters": "hard_fail",
-        "msl_s_matrix": "mode='laplace'/'uniform' runs under internal settled-S11 coverage but remains shadow without an external nonuniform envelope; mode='eigenmode' hard_fail",
-        "coaxial_port": "hard_fail"
-      },
-      "resolved_combinations": {
-        "pec_volume_scatterer": "shadow: interior PEC is applied to the device run and stripped only from the two-run vacuum reference; reflector response is regression-locked but not claims-bearing"
+      "combinations": {
+        "floquet": {
+          "status": "unsupported",
+          "limits": "hard_fail"
+        },
+        "ntff": {
+          "status": "limited",
+          "limits": "limited to the benchmarked short-dipole directivity case; other sources and geometries need separate validation"
+        },
+        "dft_plane": {
+          "status": "experimental",
+          "limits": "experimental; runs on the graded path without a general RF-accuracy statement"
+        },
+        "tfsf": {
+          "status": "experimental",
+          "limits": "experimental for normal +/-x incidence only; oblique and +/-z incidence hard_fail"
+        },
+        "waveguide_port": {
+          "status": "experimental",
+          "limits": "experimental single-mode normalize=True or normalize='flux'; a passed Palace magnitude comparison covers normalize='flux', graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz; other profiles, bands, phase, modes, and junctions are unvalidated; eps_override and sigma_override AD are available only for normalize='flux', but only eps_override has a nonuniform AD-vs-FD regression test"
+        },
+        "lumped_rlc": {
+          "status": "limited",
+          "limits": "limited to the field update; no nonuniform S-parameter or component-value AD result"
+        },
+        "lumped_port_sparameters": {
+          "status": "unsupported",
+          "limits": "hard_fail"
+        },
+        "msl_s_matrix": {
+          "status": "experimental",
+          "limits": "experimental for mode='laplace'/'uniform' with internal settled-S11 coverage only; mode='eigenmode' hard_fail"
+        },
+        "coaxial_port": {
+          "status": "unsupported",
+          "limits": "hard_fail"
+        },
+        "pec_volume_scatterer": {
+          "status": "experimental",
+          "limits": "experimental: device/reference handling is regression-tested, but arbitrary iris, post, septum, branch, and T-junction RF results are not validated"
+        }
       }
     },
     "sbp_sat_subgridding": {
-      "status": "outside_public_support_scope",
-      "role": "local_refinement_code_path",
-      "public_docs_policy": "exclude_from_public_guides_until_support_matrix_and_public_workflow_are_added"
+      "status": "not_documented",
+      "public_docs_policy": "no_current_public_workflow",
+      "use": "local_refinement_code_path"
     },
     "adi": {
-      "status": "outside_public_support_scope"
+      "status": "not_documented"
     },
     "distributed": {
-      "status": "outside_public_support_scope"
+      "status": "not_documented"
     },
     "floquet_bloch": {
-      "status": "outside_public_support_scope"
+      "status": "experimental",
+      "public_sparameter_api": "none"
     },
     "coaxial_line_reflection": {
-      "status": "bounded_envelope",
-      "role": "one_port_coaxial_transmission_line_reflection",
-      "calculator": "Simulation.compute_coaxial_line_reflection(...)",
+      "status": "limited",
+      "calculator": "Simulation.compute_coaxial_line_reflection(...) only",
       "evidence": "analytic_broad_E5_plus_MEEP_broad_E4_short_open",
       "deprecated_related_api": "Simulation.compute_coaxial_s_matrix(...)",
       "limits": [
+        "requires exactly one registered coaxial port with face='top' and no mixed port family",
         "not a general multi-port coaxial network solver",
-        "uniform Yee envelope only",
-        "claims must cite docs/guides/sparameter_support_matrix.json"
-      ]
+        "requires mode='3d', solver='yee', precision='float32', stencil_order=2, and a uniform grid",
+        "requires boundary='cpml' with cpml_layers > 0",
+        "requires positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, and no periodic boundary axes",
+        "constructs its own line, source, DFT planes, and termination; separate geometry, RLC elements, monitors, and termination helpers are unsupported",
+        "derives the axial layout internally; the port z position, pin_length, and impedance do not set layout or loads; use feed_impedance= and use dut_impedance= only with termination='matched'",
+        "requires an integer probe_count of at least three and enough z-domain length for every requested probe plane",
+        "use only the termination, frequency, impedance, and mesh ranges in docs/guides/sparameter_support_matrix.json"
+      ],
+      "use": "one_top_face_port_coaxial_transmission_line_reflection"
     }
   },
-  "promotion_rule": [
-    "support_matrix_entry",
-    "explicit_contract",
-    "unit_and_integration_evidence",
-    "analytic_dump_external_or_benchmark_evidence",
-    "docs_examples_api_alignment",
-    "public_route_wording_free_of_development_log_or_diagnostic_only_detail"
+  "support_requirements": [
+    "current_support_matrix_entry",
+    "explicit_source_and_observable_restrictions",
+    "unit_and_integration_tests",
+    "analytic_replay_external_solver_or_convergence_evidence",
+    "documentation_and_api_agree",
+    "public_wording_states_current_limits"
   ],
   "sparameter_support_matrix": "docs/guides/sparameter_support_matrix.json",
   "physics_evidence_rule": "docs/guides/physics_validation_evidence_rule.md",

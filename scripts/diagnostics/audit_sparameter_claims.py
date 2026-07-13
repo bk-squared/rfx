@@ -15,9 +15,9 @@ EXPECTED_FAMILY_LEVELS = {
     "lumped_port": "E2/E3/E4-partial",
     "wire_port": "E2/E3/E4-partial",
     "microstrip_line_port": "E5-narrow/eigenmode-blocked",
-    "rectangular_waveguide_port": "E5-narrow",
+    "rectangular_waveguide_port": "E5-broad-magnitude/E4-external/phase-narrow",
     "coaxial_port": "E5-broad/E4-broad/differentiable",
-    "floquet_port": "E2/E3-modal/slab-analytic/no-promoted-api",
+    "floquet_port": "E2/E3-modal/slab-analytic/no-public-api",
     "soft_current_source": "not_a_port",
     "tfsf_plane_wave_source": "not_a_port",
     "non_port_observable": "not_a_port",
@@ -25,21 +25,21 @@ EXPECTED_FAMILY_LEVELS = {
 
 CURRENT_DOC_REQUIRED_SNIPPETS = {
     "README.md": [
-        "strict xfails are tracked as blocked claims",
         "docs/guides/sparameter_support_matrix.md",
+        "compute_coaxial_line_reflection",
     ],
     "docs/guides/sparameter_support_matrix.md": [
-        "E5-narrow / eigenmode-blocked",
-        "E5-narrow current port",
-        "real raw V/I replay",
+        "broad magnitude evidence",
+        "raw voltage/current replay",
     ],
     "docs/public/validation/reference-lane.mdx": [
-        "E5-narrow / eigenmode-blocked",
-        "E5-narrow",
+        "uniform Cartesian Yee",
+        "compute_coaxial_line_reflection(...)"
     ],
     "docs/public/api/support-boundaries.mdx": [
-        "E5-narrow / eigenmode-blocked",
-        "E5-narrow strongest current port",
+        "compute_msl_s_matrix()",
+        "compute_waveguide_s_matrix()",
+        "compute_coaxial_line_reflection(...)"
     ],
 }
 
@@ -87,8 +87,11 @@ def audit_support_matrix(matrix_path: Path) -> list[dict[str, Any]]:
                     "message": f"expected {expected_level!r}, got {actual!r}",
                 }
             )
-        for key in ("validation_status", "claim_envelope"):
-            if not entry.get(key):
+        for key, legacy_key in (
+            ("validation_status", "validation_status"),
+            ("validated_scope", "claim_envelope"),
+        ):
+            if not entry.get(key, entry.get(legacy_key)):
                 findings.append(
                     {
                         "severity": "error",
@@ -107,7 +110,7 @@ def audit_support_matrix(matrix_path: Path) -> list[dict[str, Any]]:
                             "path": _rel(matrix_path),
                             "family": family,
                             "check": key,
-                            "message": f"promoted/calculating family lacks {key}",
+                            "message": f"family with a calculation API lacks {key}",
                         }
                     )
     return findings

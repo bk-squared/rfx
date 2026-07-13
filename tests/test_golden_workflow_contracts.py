@@ -51,7 +51,11 @@ def test_golden_inputs_and_evidence_are_repo_confined_and_present():
         manifest_path = _repo_path(fixture["inputs"]["evidence_manifest"])
         assert canonical.is_file()
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        assert manifest["validation"]["passed"] is True
+        if fixture["support_lane"]["evidence_tier"] == "unqualified":
+            assert manifest["validation"]["passed"] is None
+            assert manifest["validation"]["tier"] == "unqualified"
+        else:
+            assert manifest["validation"]["passed"] is True
 
         cpu_smoke = fixture["inputs"]["cpu_smoke_spec"]
         if cpu_smoke is not None:

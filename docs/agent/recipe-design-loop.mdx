@@ -1,6 +1,6 @@
 ---
 title: "Recipe: End-to-End Design Loop"
-description: "From device class to a gradient-optimized design with a validation verdict: port selection, AD-safe compute path, objective, optimizer, and final checks — with the currently-blocked lanes stated honestly."
+description: "From device class to a gradient-optimized design with a validation verdict: port selection, AD-safe compute path, objective, optimizer, final checks, and unsupported paths."
 sidebar:
   order: 12
 ---
@@ -9,29 +9,32 @@ Use this recipe to run a complete gradient-based design loop. It chains the
 pages that each cover one decision: device class → port family → AD-safe
 compute path → objective → optimizer → validation verdict. The
 [prompt templates](./prompt-templates) stop before optimization; this page
-goes to the end — including which lanes are *not* ready for closed-loop
-design today.
+goes to the end and identifies paths that are not ready for closed-loop design.
 
 ## The chain
 
 1. **Device class → port family.** Use the
    [port selection page](./port-selection). The port family determines the
-   compute path and therefore which design lane (below) applies.
+   compute path and therefore which optimization method below applies.
 2. **Check the compute path is AD-safe.** The
    [support matrix](../guides/sparameter_support_matrix.json) carries an
    `ad_traceable` column per family with the evidence test named in
    `ad_evidence`. Two verified nuances:
-   - Coaxial is `no` — `compute_coaxial_line_reflection` breaks the tape
-     by construction (numpy matrix-pencil).
+   - Coaxial is `yes` for the documented scalar `eps_scale` path through
+     `compute_coaxial_line_reflection`. The end-to-end AD/finite-difference
+     check is
+     `tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent`.
+     This does not extend the result to arbitrary coaxial geometry parameters
+     or the deprecated `compute_coaxial_s_matrix` API.
    - Waveguide `yes` covers BOTH the default extraction
      (`normalize=False`) and the power-flux extraction
      (`normalize='flux'`), which is AD-traceable
      (evidence: `tests/test_waveguide_flux_ad.py`) — you can optimize
      directly through the production-recommended flux path.
-3. **Pick the design lane.**
+3. **Pick the optimization method.**
 4. **Validate the final design — never ship the loss number alone.**
 
-## Lane A — `optimize()` / `forward(port_s11_freqs=...)` (SUPPORTED)
+## `optimize()` / `forward(port_s11_freqs=...)` for lumped and wire ports
 
 For lumped and wire-port devices, this is the supported end-to-end loop,
 and it is CI-gated: `tests/test_minimize_s11_at_freq_physical.py` runs a
@@ -49,7 +52,7 @@ physical S11 design objective through `forward()` on every PR.
   `distributed=True` raise).
 - Pass `port_s11_freqs=...` whenever the objective reads port S11.
 
-## Lane B — direct `jax.grad` through the S-matrix API (waveguide: verified)
+## Direct `jax.grad` through a waveguide S-matrix calculation
 
 `jax.grad` flows end-to-end through `sim.compute_waveguide_s_matrix(...,
 eps_override=eps(theta))` and `compute_msl_s_matrix` — the gradient itself
@@ -66,9 +69,9 @@ of the requested band, and preflight flags `port_source_below_cutoff` /
 `port_freqs_below_cutoff`. Always pass measurement `freqs` (and ideally an
 explicit in-band `f0`), keep every bin above the mode cutoff, and check
 the final design at 2× `n_steps` (run-length invariance) before trusting
-it. MSL Lane B does not have an equivalent verified toy yet.
+it. The direct MSL path does not have an equivalent verified design example.
 
-## Validation step (both lanes)
+## Validate either method
 
 - `rfx.validate_port_smatrix(result)` — passivity/shape verdict. A
   `passivity_violation` issue means the *extraction* is not trustworthy

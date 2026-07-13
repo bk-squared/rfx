@@ -1,51 +1,51 @@
 ---
-title: "Memory-Reduction Path"
-description: "How to reduce rfx FDTD memory while preserving JAX autodiff and RF validation boundaries."
+title: "Reduce Memory Use"
+description: "Estimate and reduce FDTD and reverse-mode AD memory use in rfx."
 sidebar:
   order: 5
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+Use the memory APIs to size a run, select a supported checkpointing option,
+and identify the largest static memory costs. The limits of each report are
+listed with the relevant API below.
 
-<Aside type="caution" title="Plan first, then validate physics">
-  Memory reports and cell-savings factors are planning evidence. They do not
-  replace a uniform-grid, analytic, or external-solver physics check for the RF
-  observable you want to claim.
-</Aside>
+## Choose a method
 
-The memory-reduction goal in `rfx` is to keep JAX-native FDTD workflows small enough to run while preserving the support boundary for the observable being claimed.
+| Need | Method |
+|---|---|
+| Select a checkpointing option for an AD run | Start with `ad_memory_preflight(...)`. |
+| Inspect the components of a static AD estimate | Use `explain_ad_memory(...)`. |
+| Inspect what JAX saves for reverse mode | Use `diagnose_ad_saved_residuals(...)`, or `inspect_ad_saved_residuals(...)` for the low-level output. |
+| Check the compiler estimate for an exact compiled executable | Use `ad_memory_compiled_certificate(...)` after compiling that executable. |
+| Reduce cells for a thin feature along one axis | Use a supported non-uniform z mesh, then use `checkpoint_every` if the AD plan selects it. |
+| Reduce reverse-mode storage on a uniform grid | Use `checkpoint_segments` if the AD plan selects it. |
 
-## Memory evidence levels
+For S-parameters, ports, and far-field results, the supported solver and
+calculator combinations remain those documented in the relevant support
+guide. Changing the mesh or checkpointing configuration does not extend that
+support.
 
-Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory(...)` artifacts are not certificates and are not a universal guaranteed peak predictor. They are planning evidence for sizing reverse-mode AD runs, choosing supported checkpoint knobs, and explaining static memory drivers.
+## What the reports measure
 
-| Evidence class | Produced by current APIs | Meaning |
+Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory(...)` artifacts are not certificates. Their `evidence_class` values distinguish the type of information returned:
+
+| `evidence_class` | Available | Meaning |
 |---|---:|---|
-| `static_estimate` | yes | Formula/static metadata estimate for planning. It may include shape, dtype, NTFF, active-step, and design-mask metadata, but it is not a compiled-executable peak-memory proof. |
-| `calibrated_conservative_plan` | yes | Budget-fitting helper result built from static estimates plus safety margins. It can say whether a conservative plan fits the configured budget target, not whether runtime peak memory is guaranteed. |
-| `static_ad_explainability` | yes | Decomposition of the selected static AD estimate into field state, material/CPML state, reverse-mode saved state, and monitor state so users can see why a run is large. It is diagnostic planning evidence, not profiling. |
-| `jax_saved_residuals_inspection` | yes | Low-level JAX trace-time saved-residual listing from `inspect_ad_saved_residuals(...)`. It preserves what JAX says reverse-mode AD would save for one function and sample argument set; it is not an XLA memory report or runtime peak-memory profile. |
-| `rfx_ad_saved_residuals_diagnostic` | yes | rfx-owned report from `diagnose_ad_saved_residuals(...)` that adds JAX version, parser health, top residuals, grouped summaries, optional artifact snapshots, and deterministic recommendations over the low-level listing. It is still trace-time explainability, not a certificate. |
-| `composite_ad_memory_preflight` | yes | One-call planning bundle from `ad_memory_preflight(...)`: budget-fit status, the selected supported checkpoint knob, static explainability, optional mesh report, optional saved-residual diagnostic, and action hints. |
-| `static_action_hint` | yes | Deterministic next-action row attached to the preflight bundle. It is a planning instruction such as `use_checkpoint_every`, not proof that a run will fit at runtime. |
-| `observed_profile` | no | A future or external measured run artifact for calibration/regression. It records one environment/run and must not be reused as proof for changed scope. |
-| `bounded_certificate` | yes | A fail-closed compiler-memory certificate from `ad_memory_compiled_certificate(...)` for one exact caller-supplied JAX compiled executable, complete exact-scope metadata, and `Compiled.memory_analysis()` byte fields. It is a compiler memory *estimate* for that exact compiled object and scope, not a runtime peak-memory guarantee. |
+| `static_estimate` | yes | Formula-based estimate from static metadata such as shape, dtype, NTFF monitors, active steps, and design-mask metadata. |
+| `calibrated_conservative_plan` | yes | Budget check built from the static estimates and a safety multiplier. |
+| `static_ad_explainability` | yes | Breakdown of field, material/CPML, reverse-mode saved-state, and monitor memory in the selected static estimate. |
+| `jax_saved_residuals_inspection` | yes | Trace-time listing from `inspect_ad_saved_residuals(...)`; it is not an XLA memory report or runtime profile. |
+| `rfx_ad_saved_residuals_diagnostic` | yes | rfx report from `diagnose_ad_saved_residuals(...)`, including JAX version, parser health, grouped residuals, optional snapshots, and recommendations. It is trace-time information, not profiling. |
+| `composite_ad_memory_preflight` | yes | Combined budget status, checkpoint selection, static explanation, optional mesh report, optional saved-residual diagnostic, and action hints from `ad_memory_preflight(...)`. |
+| `static_action_hint` | yes | Deterministic action attached to the preflight report, such as `use_checkpoint_every`. |
+| `bounded_certificate` | yes | Compiler memory estimate from `ad_memory_compiled_certificate(...)` for one exact caller-supplied compiled executable and complete scope metadata. |
 
-## Decision ladder
+## Run the AD memory preflight
 
-| Need | Preferred lane | Public status |
-|---|---|---|
-| Ordinary RF reference, general S-parameters, ports, far-field claims | Uniform Cartesian Yee | validated default |
-| Thin substrate or layered z structure that would force a tiny uniform cell everywhere | Non-uniform z mesh + `checkpoint_every` segmented AD | limited-support path; verify against a uniform or external reference before public claims |
-| Large uniform inverse-design run where reverse-mode tape is the memory limit | Uniform segmented scan via `checkpoint_segments` | planning tool, not validation evidence |
-| Large non-uniform inverse-design run where reverse-mode tape is the memory limit | `checkpoint_every` / segmented scan where the selected runner supports the physics | planning tool, not validation evidence |
-| Need to reduce memory for a port-family S-parameter claim | Use the calculator-supported lane first, then document the memory plan | validation scope still follows the port-family support matrix |
-
-Use the documented memory-planning and non-uniform workflows for public examples; other local-refinement code paths require an explicit support entry before publication.
-
-## One-call AD memory preflight
-
-Use `ad_memory_preflight(...)` before launching memory-heavy AD or inverse-design work. It composes `plan_ad_memory(...)`, `explain_ad_memory(...)`, `mesh_intelligence_report(...)`, and optionally `diagnose_ad_saved_residuals(...)` into one deterministic JSON artifact without running FDTD.
+Run `ad_memory_preflight(...)` before a memory-heavy AD or inverse-design job.
+It calls `plan_ad_memory(...)`, `explain_ad_memory(...)`,
+`mesh_intelligence_report(...)`, and, when requested,
+`diagnose_ad_saved_residuals(...)`. It does not run FDTD.
 
 ```python
 preflight = sim.ad_memory_preflight(
@@ -74,12 +74,16 @@ print(preflight.recommendation)
 print([hint.to_dict() for hint in preflight.action_hints])
 preflight_json = preflight.to_json()
 
-# After choosing a supported lane and running the required physics checks,
+# After choosing a supported configuration and running the required physics checks,
 # pass the selected knob into the launch path:
 # result = sim.forward(n_steps=10_000, **checkpoint_kwargs)
 ```
 
-For JAX-level trace context, pass a small representative objective through `residual_fun`. `residual_context` is snapshotted before the diagnostic runs: JSON primitives, mappings, sequences, NumPy/JAX scalar or array `.tolist()` values, and valid `to_dict()` / `to_json()` outputs are accepted; unsupported objects raise `TypeError`, and non-finite JSON values raise `ValueError`.
+To include JAX trace information, pass a small representative objective through
+`residual_fun`. `residual_context` is copied before the diagnostic runs. It
+accepts JSON primitives, mappings, sequences, NumPy/JAX scalar or array
+`.tolist()` values, and valid `to_dict()` or `to_json()` outputs. Unsupported
+objects raise `TypeError`; non-finite JSON values raise `ValueError`.
 
 ```python
 import jax.numpy as jnp
@@ -97,7 +101,7 @@ preflight = sim.ad_memory_preflight(
 )
 ```
 
-Canonical `ad_memory_preflight(...)` evidence boundaries are:
+The preflight report has these evidence boundaries:
 
 - `static memory planning only`
 - `trace-time JAX saved-residual explainability only when residual_diagnostic is present`
@@ -107,11 +111,13 @@ Canonical `ad_memory_preflight(...)` evidence boundaries are:
 - `not a certificate`
 - `not RF validation`
 
-The preflight bundle is the preferred UX when deciding whether to use full AD, `checkpoint_every`, or `checkpoint_segments`. It still does not replace physics validation, gradient checks, profiler measurement, or XLA/compiler memory analysis; use the compiled certificate below only after compiling the exact executable you want to bound.
+## Check an exact compiled executable
 
-## Compiled executable memory certificate
-
-After `ad_memory_preflight(...)` chooses a candidate lane, compile the exact AD objective or runner you intend to launch and pass that already-compiled object to `ad_memory_compiled_certificate(...)`. Reuse the same selected checkpoint kwargs from the preflight decision so the supplied preflight scope and certificate scope match. The certificate reads `Compiled.memory_analysis()` once and fails closed unless the exact scope and compiler byte fields are complete.
+After selecting the configuration, compile the exact AD objective or runner to
+be launched. Pass that compiled object to
+`ad_memory_compiled_certificate(...)`, using the same checkpoint arguments and
+scope as the preflight report. The API reads `Compiled.memory_analysis()` once
+and fails closed if the scope or compiler byte fields are incomplete.
 
 ```python
 certificate = sim.ad_memory_compiled_certificate(
@@ -131,28 +137,55 @@ certificate = sim.ad_memory_compiled_certificate(
 )
 ```
 
-You may provide compact signature dictionaries as above or pass representative NumPy/JAX arrays / `jax.ShapeDtypeStruct` leaves inside `input_signature` and `static_signature`; rfx records only shape, dtype, and weak-type metadata for array-like leaves, not full array values. Keep semantic labels such as `"role": "design"` in explicit dictionaries when they matter for audit readability.
+Signature dictionaries may contain representative NumPy/JAX arrays or
+`jax.ShapeDtypeStruct` leaves. rfx stores shape, dtype, and weak-type metadata
+for those array-like leaves, not full array values. Use explicit dictionary
+fields such as `"role": "design"` when a semantic label matters for an audit.
 
 ```python
-# `compiler_estimate_within_budget` means the JAX compiler's memory *estimate*
-# fits the target budget for this exact scope. It is a compiler estimate, not a
-# runtime guarantee: allocator fragmentation and runtime scratch are not
-# modeled, so a fit at high utilization can still OOM. Gate deliberately.
+# `compiler_estimate_within_budget` means the JAX compiler's memory estimate
+# fits the target budget for this exact scope. Allocator fragmentation and
+# runtime scratch are not modeled, so a fit at high utilization can still OOM.
 if certificate.status == "compiler_estimate_within_budget":
     launch()
 else:
     raise RuntimeError(certificate.recommendations[0])
 ```
 
-A green certificate is bounded to the supplied compiled object, backend/device metadata, input/static signatures, precision, `n_steps`, warmup count, checkpoint mode, and target budget. Missing or non-JSON-safe exact-scope metadata returns `scope_incomplete`; contradictions with supplied preflight metadata or compiled-object introspection return `scope_mismatch`; missing `memory_analysis()`, a raised call, or a `None` result returns `analysis_unavailable`; missing or invalid byte fields return `analysis_incomplete`.
+The certificate scope includes the compiled object, backend/device metadata,
+input and static signatures, precision, `n_steps`, warmup count, checkpoint
+mode, and target budget. The other statuses are:
 
-The required compiler byte fields are `temp_size_in_bytes`, `argument_size_in_bytes`, `output_size_in_bytes`, and `alias_size_in_bytes`. rfx computes required bytes exactly as `temp + argument + output - alias` and compares that value with `available_memory_gb * target_fraction`.
+- `compiler_estimate_exceeds_budget`: the complete-scope compiler estimate is
+  larger than `available_memory_gb * target_fraction`; do not launch that
+  scope under the stated budget.
+- `scope_incomplete`: required exact-scope metadata is missing or not JSON-safe.
+- `scope_mismatch`: preflight metadata contradicts the supplied scope or
+  compiled-object introspection.
+- `analysis_unavailable`: `memory_analysis()` is missing, raises, or returns
+  `None`.
+- `analysis_incomplete`: a required byte field is missing or invalid.
 
-`scope_digest`, `config_digest`, and `environment_digest` are audit identities over canonical JSON. They are not proof that source code, Python callables, or simulation configuration correspond to the opaque compiled executable unless separate introspection establishes that relationship. JAX documents memory analysis as estimated/debugging-oriented compiler metadata; it is version/backend dependent and may be unavailable. Treat `bounded_certificate` as a compiler memory *estimate* for one exact scope, not profiler evidence, RF validation, or a runtime peak-memory guarantee.
+The required byte fields are `temp_size_in_bytes`,
+`argument_size_in_bytes`, `output_size_in_bytes`, and
+`alias_size_in_bytes`. rfx computes required bytes as
+`temp + argument + output - alias`, then compares the result with
+`available_memory_gb * target_fraction`.
 
-## Non-uniform + segmented AD workflow
+`scope_digest`, `config_digest`, and `environment_digest` are audit identities
+over canonical JSON. They do not establish that Python source, callables, or a
+simulation configuration correspond to an opaque compiled executable unless
+separate introspection establishes that relationship. JAX memory analysis is
+estimated, version/backend dependent and may be unavailable. A
+`bounded_certificate` is therefore a compiler estimate for one exact scope,
+not profiler evidence, RF validation, or a runtime peak-memory guarantee.
 
-Start with the non-uniform lane when a small feature only needs fine cells along one axis, such as a thin substrate in a much larger air volume.
+## Configure checkpointing and the mesh
+
+A non-uniform z mesh can reduce the number of cells when a small feature needs
+fine resolution along one axis. Use the [non-uniform mesh
+guide](/rfx/guide/nonuniform-mesh/) to check supported combinations and mesh
+restrictions.
 
 ```python
 plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=24.0)
@@ -162,6 +195,7 @@ if not (plan.full_ad_fits or plan.segmented_fits):
 report = sim.mesh_intelligence_report(
     n_steps=10_000,
     checkpoint_every=plan.checkpoint_every if plan.segmented_fits else None,
+    checkpoint_segments=plan.checkpoint_segments if plan.segmented_fits else None,
     available_memory_gb=24.0,
 )
 
@@ -173,8 +207,7 @@ plan_json = plan.to_json()
 report_json = report.to_json()
 ```
 
-For a more actionable memory diagnostic, generate an explainability artifact next
-to the plan:
+Use `explain_ad_memory(...)` to inspect the selected estimate:
 
 ```python
 explain = sim.explain_ad_memory(
@@ -189,14 +222,75 @@ print(explain.recommendations)
 explain_json = explain.to_json()
 ```
 
-`explain_ad_memory(...)` reports the selected memory field (`ad_full_gb` or
-`ad_segmented_gb`), the active AD strategy, and a component breakdown. Use it to
-decide whether the dominant cost is full field tape, segmented boundary state,
-the live-segment rematerialization tape, CPML/material state, or NTFF monitor
-state.
+The report selects `ad_full_gb` or `ad_segmented_gb` and breaks the estimate
+into full field tape, segmented boundary state, live-segment rematerialization
+tape, CPML/material state, and NTFF monitor state. The mesh report also returns:
 
-For a JAX-level saved-residual diagnostic on a small loss function or reduced
-problem, use `diagnose_ad_saved_residuals(...)`:
+- `cell_savings_factor`: comparison with a uniform grid at the smallest
+  configured cell size;
+- `preflight_issues`: geometry, resolution, and feature-support warnings;
+- `ad_memory.ad_segmented_gb` and
+  `ad_memory.ad_segmented_active_segments`: the segmented estimate and active
+  segment count when either segmented checkpoint mode is used;
+- `recommendation`: the suggested next action for the configuration.
+
+`plan_ad_memory(...)` returns both checkpoint values as `None` when full AD
+fits. In that case, `full_ad_fits=True` and `segmented_fits=False` because no
+segmented candidate is needed. Otherwise it selects `checkpoint_every` on a
+non-uniform grid or `checkpoint_segments` on a uniform grid. Use
+`checkpoint_mode` only when `segmented_fits` is true. If both fit flags are
+false, follow `plan.recommendation` rather than launching the returned
+least-memory candidate.
+
+`checkpoint_every` is a chunk length in timesteps for the non-uniform
+scan-of-scan implementation. `checkpoint_segments` is the number of equal
+segments for the uniform segmented scan and must divide `n_steps`. The
+segmented estimate includes carry and cotangent state at active segment
+boundaries (`2 x active_segments` field states) plus one live segment's
+rematerialization tape. These terms balance near `sqrt(2 x n_steps)` timesteps
+per segment; either extreme can increase peak memory, so use the value chosen
+by `plan_ad_memory(...)` rather than minimizing the segment count manually.
+
+`n_warmup` reduces the active reverse-mode timestep count and must satisfy
+`0 <= n_warmup < n_steps`. `design_mask` records active-design metadata but
+does not reduce the primary full-grid estimate. It must be a boolean array with
+the simulation grid shape and at least one selected cell. The plan applies a
+conservative safety multiplier before setting the fit flags and records it in
+`plan.fit_safety_factor`.
+
+For a uniform run, gate execution on the fit flags before applying the selected
+checkpoint value:
+
+```python
+plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=24.0)
+if plan.full_ad_fits:
+    result = sim.forward(n_steps=10_000)
+    report = sim.mesh_intelligence_report(n_steps=10_000, available_memory_gb=24.0)
+elif plan.segmented_fits and plan.checkpoint_mode == "checkpoint_segments":
+    result = sim.forward(n_steps=10_000, checkpoint_segments=plan.checkpoint_segments)
+    report = sim.mesh_intelligence_report(
+        n_steps=10_000,
+        checkpoint_segments=plan.checkpoint_segments,
+        available_memory_gb=24.0,
+    )
+else:
+    raise RuntimeError(plan.recommendation)
+```
+
+From a source checkout, generate the same planning artifact without running
+FDTD. `scripts/` is not installed with the wheel, and `--output` keeps the
+artifact out of the documentation tree:
+
+```bash
+python scripts/memory_reduction_planning_artifact.py \
+  --n-steps 10000 \
+  --available-memory-gb 8.0 \
+  --output /tmp/rfx-memory-plan.json
+```
+
+## Inspect saved residuals
+
+Use a small loss function or reduced problem for the JAX trace diagnostic:
 
 ```python
 import jax.numpy as jnp
@@ -217,16 +311,17 @@ print(diagnostic.top_residuals)
 print(diagnostic.recommendations)
 ```
 
-This wraps `jax.ad_checkpoint.print_saved_residuals(...)`, preserves the raw
-JAX lines, and adds parsed dtype/shape/byte estimates, original line indices,
-JAX version, top residuals, grouped summaries, parser health, optional context
-and memory-artifact snapshots, and deterministic recommendations. Use
-`inspect_ad_saved_residuals(...)` when you need the low-level adapter output
-only. Treat both artifacts as trace-time AD explainability, not profiling,
-compiler memory analysis, RF validation, or a certificate.
+The report preserves the raw output of
+`jax.ad_checkpoint.print_saved_residuals(...)` and adds parsed dtype, shape,
+byte estimates, original line indices, JAX version, grouped summaries, parser
+health, optional snapshots, and deterministic recommendations. Use
+`inspect_ad_saved_residuals(...)` when only the low-level adapter output is
+needed.
 
-For compiled invariant checks inside reduced AD examples, wrap a function with
-`checkify_invariants(...)` and place checks in the traced body:
+## Add transformed runtime checks
+
+Use `checkify_invariants(...)` for bounds or other invariant checks that must
+survive JAX transforms:
 
 ```python
 import jax.numpy as jnp
@@ -241,78 +336,17 @@ err, value = checked_loss(jnp.ones((16,)))
 assert err.get() is None
 ```
 
-These checks are runtime diagnostics that survive JAX transforms; they are not
-physics validation and do not replace a convergence or external-reference check.
+These checks report runtime invariant failures; they do not assess the RF
+physics.
 
-Use the mesh intelligence report to check:
+## Archive a run
 
-- `cell_savings_factor`: comparison against a uniform-fine grid at the smallest configured cell size,
-- `preflight_issues`: geometry, resolution, and feature-support warnings to resolve before trusting results,
-- `ad_memory.ad_segmented_gb` and `ad_memory.ad_segmented_active_segments`: reverse-mode AD planning estimate and active segment count when the report uses `checkpoint_every`,
-- `recommendation`: compact next action for the configured case.
-
-`plan_ad_memory(...)` is the budget-fitting helper: it returns both checkpoint knobs as `None` when full reverse-mode AD already fits, with `full_ad_fits=True` and `segmented_fits=False` because no segmented candidate was needed. Otherwise it returns a segmented candidate: `checkpoint_every` on non-uniform grids or `checkpoint_segments` on uniform grids, matching the runner support boundary. Treat `checkpoint_mode` as a knob selector only after `segmented_fits` is true; when `segmented_fits` is false and `full_ad_fits` is also false, follow `plan.recommendation` instead of launching the returned least-memory candidate.
-
-`checkpoint_every` and `checkpoint_segments` are different knobs. Use
-`checkpoint_every` for the non-uniform scan-of-scan path, where it means chunk
-length in timesteps. Use `checkpoint_segments` for the uniform segmented-scan
-path, where it means the number of equal segments and must divide `n_steps`.
-The segmented estimate counts two tape terms: carry + cotangent state at the
-active segment boundaries (`2 x active_segments` field states), plus the
-live-segment rematerialization tape — the backward pass replays one segment at
-a time, so that segment's per-step field tape (its full length in timesteps) is
-resident on top of the boundary storage. The estimate is minimized where the
-two terms balance, near `sqrt(2 x n_steps)` timesteps per segment; pushing a
-checkpoint knob to either extreme *increases* peak memory, so let
-`plan_ad_memory(...)` pick the knob rather than hand-tuning it to the smallest
-segment count.
-`n_warmup` reduces the reported active reverse-mode timestep count. `design_mask`
-is recorded as active-design metadata only; the primary memory estimates stay
-full-grid until masked-state memory has observed calibration. `n_warmup` must be
-an integer with `0 <= n_warmup < n_steps`. `design_mask` must be a boolean array
-with the simulation grid shape and at least one selected cell; arbitrary numeric
-masks, scalars, and shape-mismatched masks are rejected instead of being coerced.
-`plan_ad_memory(...)` uses a conservative safety multiplier before setting
-`full_ad_fits` or `segmented_fits`; the multiplier is stored in
-`plan.fit_safety_factor` for artifacts.
-
-For a uniform inverse-design run, gate execution on the fit flags before wiring
-the selected knob:
-
-```python
-plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=24.0)
-if plan.full_ad_fits:
-    result = sim.forward(n_steps=10_000)
-    report = sim.mesh_intelligence_report(n_steps=10_000, available_memory_gb=24.0)
-elif plan.segmented_fits and plan.checkpoint_mode == "checkpoint_segments":
-    result = sim.forward(n_steps=10_000, checkpoint_segments=plan.checkpoint_segments)
-    report = sim.mesh_intelligence_report(
-        n_steps=10_000,
-        checkpoint_segments=plan.checkpoint_segments,
-        available_memory_gb=24.0,
-    )
-else:
-    raise RuntimeError(plan.recommendation)
-```
-
-For a reusable JSON artifact without running FDTD, use:
-
-```bash
-python scripts/memory_reduction_planning_artifact.py --available-memory-gb 24.0
-```
-
-Then run the physics validation appropriate to the observable: analytic resonance, uniform-grid convergence, Meep/openEMS comparison, or an existing cross-validation script. Do not treat a green memory report as an accuracy claim by itself.
-
-## What to archive with a memory-reduction run
-
-For a validated memory-reduction result, keep these artifacts together:
+Keep the following artifacts with a memory-reduced result:
 
 1. `mesh_intelligence_report(...).to_json()`,
-2. `plan_ad_memory(...).to_json()` when reverse-mode AD memory is part of the claim,
-3. `explain_ad_memory(...).to_json()` when deciding why AD memory is large,
-4. the exact run command and version/commit,
-5. the physics validation artifact for the claimed observable,
-6. any unsupported-feature decisions or validation errors,
-7. gradient evidence if the result depends on `jax.grad`.
-
-This keeps the memory story separate from the physics claim: saving cells or AD tape is useful only when the RF observable and gradient path remain inside their validated support boundary.
+2. `plan_ad_memory(...).to_json()` when reverse-mode AD memory is relevant,
+3. `explain_ad_memory(...).to_json()` when the memory breakdown informed the configuration,
+4. the exact run command and version or commit,
+5. the validation artifact for the reported RF observable,
+6. feature-support warnings or validation errors, and
+7. gradient evidence when the result depends on `jax.grad`.

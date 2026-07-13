@@ -1,32 +1,36 @@
 ---
 title: "Validation"
-description: "Public validation and support overview for rfx."
+description: "Validation evidence and current configuration limits for rfx."
 sidebar:
   order: 40
 ---
 
-Use this hub to decide how strongly to describe a public rfx result.
+Use this page to select a documented configuration and the evidence required for
+an rfx result. Begin with the
+[Recommended Configuration](/rfx/validation/reference-lane/) and then check
+[Support Boundaries](/rfx/api/support-boundaries/) for the exact mesh, source,
+port, calculator, and observable restrictions.
 
-## Simple public rule
+## Configuration and required validation
 
-| Surface | Public wording |
+| Configuration | Required validation |
 |---|---|
-| uniform Cartesian Yee RF/FDTD workflows | recommended default path |
-| rectangular waveguide S-matrices | bounded rectangular-guide claim envelope |
-| lumped, wire, microstrip-line, and coaxial-line workflows | use only with the matching calculator and support envelope |
-| differentiable design loops | valid optimization workflows, but final physics claims still require the matching validation evidence |
-| other repository code | not public documentation unless a guide and support entry cover it |
+| uniform Cartesian Yee RF/FDTD workflows | use the documented boundaries, sources, observables, convergence checks, and analytic or independent reference |
+| rectangular waveguide S-matrices | use `compute_waveguide_s_matrix(...)` only for the documented guide geometry, modes, frequency range, normalization, reference planes, and placement |
+| lumped, wire, microstrip-line, and coaxial-line calculations | use the calculator for that port family and remain within its stated limits |
+| differentiable design loops | treat the optimization quantity as a proxy and validate the final RF observable separately |
+| other repository code | treat RF accuracy as unvalidated unless a public guide and support entry define the configuration and evidence |
 
-## Current practical anchors
+## Runnable examples
 
-- `validation/crossval/05_patch_antenna.py` — practical patch antenna cross-check
+- `validation/crossval/05_patch_antenna.py` — patch-antenna cross-check
 - `validation/crossval/11_waveguide_port_wr90.py` — rectangular waveguide-port workflow
-- `examples/inverse_design/multilayer_ar_coating.py` — conservative inverse-design demo
-
-## Practical takeaway
-
-Lead with the recommended default lane. Mention port-family envelopes only with their current limits, and use the public guide pages as the source for user-facing examples.
+- `examples/inverse_design/multilayer_ar_coating.py` — inverse-design example;
+  validate the optimized result independently
 
 ## Evidence, artifacts, and reports
 
-Plots, Touchstone files, HDF5 snapshots, CSV tables, and report bundles are useful review artifacts. They become validation evidence only when paired with a documented analytic oracle, dump replay, external-solver comparison, convergence study, or benchmark envelope.
+Plots, Touchstone files, HDF5 snapshots, CSV tables, and report bundles are
+useful review artifacts. They become validation evidence only when paired with
+a documented analytic result, dump replay, external-solver comparison,
+convergence study, or benchmark acceptance criterion.

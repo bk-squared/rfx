@@ -1650,10 +1650,11 @@ def coaxial_line_reflection_from_plane_voltages(
     (:func:`_coaxial_line_reflection_jnp`), while *concrete* inputs keep the
     NumPy (float64) path so the validated-precision residual gates stay
     byte-identical. Plane *positions* are static geometry. This is an
-    ``extractor``-level AD property; the enclosing
-    ``Simulation.compute_coaxial_line_reflection`` method is NOT yet end-to-end
-    differentiable (it concretizes the DFT fields in ``coaxial_line_plane_voltage``
-    and exposes no traced design DoF). Verified by
+    ``extractor``-level AD property. The enclosing
+    ``Simulation.compute_coaxial_line_reflection(..., eps_scale=...)`` method
+    uses ``coaxial_line_plane_voltage_jnp`` and is checked end to end by
+    ``tests/test_coax_end_to_end_ad.py``. This extractor is checked separately
+    by
     ``tests/test_ad_surface_contract.py::test_coaxial_reflection_extraction_is_traceable``
     and ``tests/test_coaxial_line_extraction.py``.
     """

@@ -2206,6 +2206,29 @@ class _SparamMixin:
         The conductors deliberately stop ~2 cells short of the +z PML — running
         PEC into CPML is numerically unstable.
 
+        The enclosing :class:`Simulation` must use float32 precision and the
+        three-dimensional, second-order uniform Yee solver with
+        ``boundary="cpml"`` and ``cpml_layers > 0``. Unsupported precision,
+        solver, grid, boundary, TFSF, and refinement settings raise before the
+        grid is built. The line feed requires positive CPML on both z faces,
+        ``cpml_axes="z"``, and no periodic-axis override.
+
+        This method constructs its own coaxial line, TEM source, DFT planes, and
+        termination. Do not add separate geometry, thin conductors, lumped RLC
+        elements, probes or field monitors, NTFF boxes, or ``add_coaxial_*``
+        termination helpers; those registrations are rejected rather than
+        ignored. Use the documented :class:`Simulation`, port, and method
+        arguments instead.
+
+        The registered coaxial port supplies its x/y centre, ``face``, inner
+        and outer radii, and excitation waveform. The method derives its axial
+        layout internally, so the port's z coordinate and ``pin_length`` do not
+        place the line, and the port's ``impedance`` does not set either load.
+        Use ``feed_impedance`` for the feed and ``dut_impedance`` only with
+        ``termination="matched"``. ``probe_count`` must be an integer of at
+        least three, and every requested plane must fit between the DUT and
+        source; otherwise the method raises before starting the FDTD run.
+
         Differentiable (``eps_scale``)
         ------------------------------
         Pass ``eps_scale`` (a scalar or ``(nx, ny, nz)`` ``jnp`` array) to make
@@ -2220,6 +2243,100 @@ class _SparamMixin:
         ``eps_scale=None`` the result is byte-identical to the validated numpy
         path. The AD↔FD gate is ``tests/test_coax_end_to_end_ad.py``.
         """
+
+        if self._boundary != "cpml" or self._cpml_layers <= 0:
+            raise ValueError(
+                "compute_coaxial_line_reflection() requires boundary='cpml' "
+                "with cpml_layers > 0 for its absorbing feed."
+            )
+        z_boundary = self._boundary_spec.z
+        if (
+            z_boundary.lo != "cpml"
+            or z_boundary.hi != "cpml"
+            or z_boundary.resolved_lo_thickness(self._cpml_layers) <= 0
+            or z_boundary.resolved_hi_thickness(self._cpml_layers) <= 0
+        ):
+            raise ValueError(
+                "compute_coaxial_line_reflection() requires positive CPML "
+                "thickness on both z faces."
+            )
+        if cpml_axes != "z":
+            raise ValueError(
+                "compute_coaxial_line_reflection() requires cpml_axes='z'."
+            )
+        if self._periodic_axes:
+            raise ValueError(
+                "compute_coaxial_line_reflection() does not support periodic "
+                "boundary axes."
+            )
+        if any(token != "cpml" for _, _, token in self._boundary_spec.faces()):
+            raise ValueError(
+                "compute_coaxial_line_reflection() requires CPML tokens on all "
+                "six boundary faces; mixed BoundarySpec faces are not supported."
+            )
+        if self._mode != "3d":
+            raise ValueError(
+                "compute_coaxial_line_reflection() requires mode='3d'."
+            )
+        if self._solver != "yee":
+            raise ValueError(
+                "compute_coaxial_line_reflection() supports solver='yee' only; "
+                "solver='adi' is not supported."
+            )
+        if self._precision != "float32":
+            raise ValueError(
+                "compute_coaxial_line_reflection() requires precision='float32'."
+            )
+        if self._stencil_order != 2:
+            raise ValueError(
+                "compute_coaxial_line_reflection() requires stencil_order=2."
+            )
+        if self._tfsf is not None:
+            raise ValueError(
+                "compute_coaxial_line_reflection() creates its own TEM TFSF "
+                "source and does not accept an existing TFSF source."
+            )
+        if (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        ):
+            raise ValueError(
+                "compute_coaxial_line_reflection() supports only a uniform Yee "
+                "grid; dx_profile, dy_profile, and dz_profile are not supported."
+            )
+        if self._refinement is not None:
+            raise ValueError(
+                "compute_coaxial_line_reflection() does not support SBP-SAT "
+                "refinement; remove add_refinement() from this simulation."
+            )
+        if self._geometry or self._thin_conductors:
+            raise ValueError(
+                "compute_coaxial_line_reflection() constructs the complete line "
+                "geometry; registered geometry and thin conductors are not "
+                "supported. Use the documented Simulation, port, and method "
+                "arguments instead."
+            )
+        if self._lumped_rlc:
+            raise ValueError(
+                "compute_coaxial_line_reflection() does not support registered "
+                "lumped RLC elements."
+            )
+        if self._probes or self._dft_planes or self._flux_monitors or self._ntff:
+            raise ValueError(
+                "compute_coaxial_line_reflection() does not consume registered "
+                "probes, DFT planes, flux monitors, or NTFF boxes."
+            )
+        if (
+            self._coaxial_terminations
+            or self._coaxial_open_terminations
+            or self._coaxial_pec_end_caps
+        ):
+            raise ValueError(
+                "compute_coaxial_line_reflection() does not consume registered "
+                "add_coaxial_* termination helpers; use termination= and "
+                "dut_impedance= instead."
+            )
 
         from rfx.probes.probes import init_dft_plane_probe
         from rfx.simulation import run as _run
@@ -2239,6 +2356,18 @@ class _SparamMixin:
             raise ValueError(
                 f"termination must be 'short', 'open' or 'matched', got {termination!r}"
             )
+        if dut_impedance is not None and termination != "matched":
+            raise ValueError(
+                "dut_impedance is used only with termination='matched'; remove "
+                "it for short or open terminations."
+            )
+        if isinstance(probe_count, bool) or not isinstance(
+            probe_count, (int, np.integer)
+        ):
+            raise ValueError("probe_count must be an integer of at least 3.")
+        requested_probe_count = int(probe_count)
+        if requested_probe_count < 3:
+            raise ValueError("probe_count must be at least 3.")
         if len(self._coaxial_ports) != 1:
             raise ValueError(
                 "compute_coaxial_line_reflection() is a one-port method; register "
@@ -2280,13 +2409,14 @@ class _SparamMixin:
             )
         probes_z = [
             z_dut + int(probe_start_cells) + int(probe_spacing_cells) * k
-            for k in range(int(probe_count))
+            for k in range(requested_probe_count)
         ]
         probes_z = [z for z in probes_z if z < z_src - 4]
-        if len(probes_z) < 3:
+        if len(probes_z) != requested_probe_count:
             raise ValueError(
-                "fewer than 3 usable probe planes; reduce probe_spacing_cells or "
-                "lengthen the z domain."
+                f"only {len(probes_z)} of {requested_probe_count} requested "
+                "probe planes fit before the source; increase the z domain or "
+                "reduce probe_count, probe_start_cells, or probe_spacing_cells."
             )
 
         z_tem = coaxial_tem_characteristic_impedance(a, b)
