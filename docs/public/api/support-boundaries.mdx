@@ -42,6 +42,16 @@ This page summarizes the public support scope for user-facing rfx workflows.
 
 Some repository code exists for compatibility, testing, or qualification. It should not be used for public claims unless the workflow is documented in a public guide and has a matching support-matrix entry.
 
+## Studio and experiment workflow boundary
+
+Studio, the experiment CLI, and the MCP control plane provide versioned specs,
+preflight, isolated CPU runs, immutable revisions, comparisons, studies, and
+replay bundles. Their success states establish workflow completion and
+provenance, not a broader electromagnetic accuracy claim. The observable still
+inherits the mesh, source, port-family, and validation envelope documented on
+this page. MCP writes and costly actions additionally require the server-side
+approval flow described in [Studio and Durable Experiments](/rfx/guide/studio-experiments/).
+
 ## Unsupported combinations
 
 Unsupported combinations should fail clearly. Common examples include using a calculator with the wrong port family, mixing non-default mesh profiles with S-parameter calculators that only support the uniform lane, or treating field probes and flux monitors as impedance-defined ports.

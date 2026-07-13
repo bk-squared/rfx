@@ -26,7 +26,7 @@ Status legend:
 | Rectangular waveguide S-matrix | **bounded envelope** | claims-bearing rectangular-guide path | use the documented `compute_waveguide_s_matrix(...)` envelope |
 | Microstrip-line S-matrix | **bounded envelope** | specialized uniform-Yee path | use `compute_msl_s_matrix(...)`; broader all-mode/nonuniform claims remain outside scope |
 | Lumped / wire port S-parameters | **bounded envelope** | calculator-specific RF workflow | use the port-family support matrix; do not generalize beyond the envelope |
-| Coaxial line reflection | **bounded envelope / re-validation pending** | one-port transmission-line reflection lane | use `compute_coaxial_line_reflection(...)` only inside the stated envelope; older `compute_coaxial_s_matrix(...)` is outside the coaxial claim surface |
+| Coaxial line reflection | **bounded envelope** | claims-bearing one-port transmission-line reflection lane | `compute_coaxial_line_reflection(...)` carries analytic broad-E5, external broad-E4, and end-to-end AD evidence inside the stated envelope; older `compute_coaxial_s_matrix(...)` is outside the coaxial claim surface |
 | Nonuniform graded-z | **shadow** | preserved thin-substrate lane | no silent fallback; not a public default |
 | SBP-SAT / subgridding | **outside public support scope** | local-refinement code path | keep out of public guides unless a future support entry and public workflow are added |
 | ADI | **outside public support scope** | compatibility code path | not part of the public correctness baseline |
@@ -59,25 +59,18 @@ Canonical API rule:
 
 ## Nonuniform graded-z shadow lane
 
-Current retained subset:
-- graded-z thin-substrate workflows with probes and current-style excitation
-- smoke/convergence coverage in `tests/test_nonuniform_api.py` and `tests/test_nonuniform_convergence.py`
-- selected dispersive-material smoke coverage
-- NU waveguide-port flux (TE10, single-mode, forward-only): **broad-E5-analytic
-  evidence committed + gated** vs independent analytic Airy across the graded-`dy`
-  transverse mesh axis (grading 1-3x, eps_r {2,4}, 16/16 ≤0.0157; gpu-rtx4090
-  VESSL 369367244527 @ `ff9bfcb`). Lives in
-  `tests/fixtures/waveguide_nu_broad_e5/` + `tests/test_waveguide_nu_broad_e5_envelope_gates.py`
-  and the np=40 power/reciprocity live gate `tests/test_waveguide_nu_nontrivial.py`.
-  This is a **broad-E5-analytic tier (analytic-oracle, no external solver / no AD),
-  NOT a claims-bearing promotion** — the lane stays
-  shadow. Remaining ladder rungs before any uniform-class flip: (1) a broad-E4
-  external-solver (Meep/OpenEMS) cross-check on a graded mesh, and (2)
-  AD-traceability of the NU waveguide S-matrix (`eps_override`/`sigma_override`
-  are currently `NotImplementedError` on the NU path). `check_port_external_references.py`
-  correctly blocks `broad_e5_passed` until both exist.
+Retained subset:
+- graded-axis thin-substrate workflows with probes and current-style excitation;
+- NTFF on graded z for the benchmarked dipole-directivity envelope;
+- DFT planes and full-plane flux monitors as shadow observables;
+- normal-incidence ±x TFSF as a restricted shadow path;
+- single-mode TE10 waveguide flux with `normalize=True` or `normalize="flux"`,
+  backed by analytic broad-E5 and external Palace broad-E4 magnitude fixtures;
+- MSL `mode="laplace"` / `"uniform"` on a graded mesh, internally gated but
+  still lacking an external nonuniform cross-solver envelope;
+- lumped RLC field updates, without nonuniform S-parameter output.
 
-Current policy:
+Policy:
 - preserved for continuity and qualification work
 - **not** part of the claims-bearing reference lane
 - no silent fallback / no silent feature dropping
@@ -91,12 +84,12 @@ Current policy:
 | NTFF + nonuniform | benchmarked (dipole) | graded-z far-field runs and a short-dipole directivity benchmarks within ~0.05 dB of the 1.76 dBi theory (`tests/test_farfield_nonuniform.py`); other observables/geometries remain shadow — validate before any public claim |
 | DFT planes + nonuniform | shadow | runs on graded-z path; validate observable before any public claim |
 | TFSF + nonuniform | shadow / restricted | normal ±x incidence (`direction='+x'`/`'-x'`, `angle_deg=0`) runs on graded-z path (shadow); oblique or ±z incidence raises |
-| Waveguide ports + nonuniform | shadow / restricted | `compute_waveguide_s_matrix(normalize=True/'flux')` single-mode TE10 validated at settled `num_periods`; **broad-E5-analytic envelope committed + gated** (graded-`dy` 1-3x, eps_r 2/4, vs analytic Airy, `tests/test_waveguide_nu_broad_e5_envelope_gates.py`); still **shadow / not claims-bearing** pending broad-E4 external cross-solver + AD-traceability; otherwise hard-fail |
+| Waveguide ports + nonuniform | shadow / restricted | `compute_waveguide_s_matrix(normalize=True/'flux')` single-mode TE10 has analytic broad-E5 and external Palace broad-E4 magnitude fixtures; remains shadow and does not accept AD material overrides; unsupported combinations hard-fail |
 | Lumped-port S-parameters + nonuniform | unsupported | hard-fail |
-| `compute_msl_s_matrix()` + nonuniform | unsupported | hard-fail |
+| `compute_msl_s_matrix()` + nonuniform | shadow / restricted | `mode='laplace'/'uniform'` runs under internal settled-S11 coverage; external nonuniform validation is absent; `mode='eigenmode'` hard-fails |
 | Coaxial port + nonuniform | unsupported | hard-fail |
-| Lumped RLC + nonuniform | unsupported | hard-fail |
-| Volumetric PEC scatterer (iris / post / septum) + nonuniform waveguide | **RESOLVED 2026-06-25** | The earlier "NU is dielectric-only / `pec_mask` not effective" note was **WRONG**: the interior PEC IS applied to the NU device run. Root cause was the NU two-run S-matrix **vacuum reference** retaining the device's interior `pec_mask` (the vacuum override replaced only eps/sigma, never `pec_mask`) → device and reference flux DFTs bit-identical → \|S11\|=0 for any reflector. Fixed by `run_nonuniform_path(..., strip_interior_pec=True)` on the reference (drops interior PEC, keeps the boundary guide walls). The PEC iris now reflects on the NU graded scan (\|S11\|~1.4-1.6, a full short ~0.6-2.1), matching the uniform reflector class; empty NU stays \|S11\|~0. Gate: `tests/test_nonuniform_pec_scatterer_limit.py::test_nonuniform_pec_iris_reflects` (was xfail-strict, now a hard gate). |
+| Lumped RLC + nonuniform | field-only / restricted | R/L/C ADE elements participate in the nonuniform time-domain field update; no nonuniform S-parameter or component-value AD claim |
+| Volumetric PEC scatterer (iris / post / septum) + nonuniform waveguide | shadow | interior PEC is applied to the device run and stripped only from the two-run vacuum reference; reflector response is regression-locked, but the lane remains outside the claims-bearing default |
 
 ## Reporting and export artifact rule
 

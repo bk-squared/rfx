@@ -65,6 +65,12 @@ Use the calculator that matches the port family:
 
 `run(compute_s_params=True)` is **not** a universal port dispatcher. MSL, waveguide, and coaxial-line workflows use specialized calculators.
 
+Eager `compute_msl_s_matrix()` results include
+`MSLSMatrixResult.reliable` with shape `(n_ports, n_freqs)`. A false entry marks
+a standing-wave-null bin where both port voltage and current are too small for
+a reliable single-run wave split; the numeric `S` value remains present but is
+not valid physical data for that bin.
+
 `add_lumped_rlc(...)` is deliberately absent from the S-parameter calculators table above: it embeds an R/L/C circuit element in the FDTD update, but it is **not** a reflection-referenced port and does not by itself yield a transmission-line-referenced load reflection coefficient. A single-cell lumped element read directly reports its own near-field self-interaction, not a `Z0`-referenced `S11`. To measure the reflection a load presents to a reference line, drive the structure with `add_port(..., impedance=Z0)` — which fixes the reference impedance — and read `run(compute_s_params=True)` (or `forward(port_s11_freqs=...)`); place the `add_lumped_rlc` element inside that structure as the load.
 
 For differentiable component-value studies, the uniform single-device `forward(...)` lane accepts `rlc_values_override={index: {"R": R, "L": L, "C": C}}` so a registered lumped element's scalar values can enter the AD tape. That override changes the circuit element inside the run; it still does not turn `add_lumped_rlc(...)` into a port.

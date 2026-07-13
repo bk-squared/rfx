@@ -74,6 +74,16 @@ plane = result.dft_planes["ez_cross_section"]
     Omit `freqs` and set `n_freqs` to let rfx choose a frequency array automatically
     from `freq_max / 10` to `freq_max`.
 
+### Exactly-zero flux diagnostics
+
+`flux_spectrum(...)` checks eager float32 results that are exactly zero at every
+frequency even though their DFT accumulators are nonzero. If a float64 recompute
+of the same Poynting sum is nonzero, rfx warns that the per-cell `E × H*`
+products underflowed and were flushed to zero. The returned float32 array is not
+rewritten. Enable x64 for that computation, increase the source amplitude, or
+recompute from the healthy accumulators in float64; do not interpret the exact
+zeros as a physical transmission null.
+
 ---
 
 ## S-parameter extraction
@@ -107,6 +117,12 @@ This helper reports finite-data, passivity, reciprocity, max-magnitude, and
 column-power checks. These are host-side report diagnostics; they do not
 alter any solver path and are not a substitute for physically validating the
 S-parameters themselves.
+
+The eager S-parameter calculators also run their matching finiteness and
+passivity checks before returning. Warnings identify the worst affected bin but
+leave every computed value intact. A passive result with a material `|S| > 1`
+or column power above its calculator envelope is an extraction, settling,
+normalization, or reference-plane problem until a cross-check proves otherwise.
 
 ### Lumped port S-matrix
 
@@ -152,11 +168,29 @@ msl = sim.compute_msl_s_matrix(n_freqs=101, num_periods=40)
 S = msl.S          # (n_ports, n_ports, n_freqs)
 freqs = msl.freqs  # (n_freqs,) Hz
 Z0 = msl.Z0        # extracted characteristic impedance
+reliable = msl.reliable  # (n_ports, n_freqs) bool, or None while tracing
 ```
 
 `num_periods=40` is the docstring default; values below that may under-settle
 the fields. Do not expect `run(compute_s_params=True)` to include MSL ports in
 `Result.s_params`.
+
+A deep standing-wave node can collapse both voltage and current at an MSL port
+plane, making the single-run wave split ill-conditioned. When eager phasors are
+available, `MSLSMatrixResult.reliable[p, k]` is `False` if both `|V|` and `|I|`
+at port `p`, frequency bin `k` fall below 10% of their per-port band medians.
+The corresponding `S` values remain present but should not be plotted, fitted,
+or optimized as physical data without another reference plane or independent
+calculation:
+
+```python
+import numpy as np
+
+if msl.reliable is not None:
+    usable_bins = np.all(msl.reliable, axis=0)
+    S_usable = msl.S[..., usable_bins]
+    freqs_usable = msl.freqs[usable_bins]
+```
 
 ### Waveguide S-parameters
 
@@ -260,6 +294,13 @@ dt = 1e-12  # timestep in seconds
 signal = np.loadtxt("probe_data.txt")
 modes = harminv(signal, dt, f_min=1e9, f_max=5e9)
 ```
+
+Standalone `harminv(...)` uses `decimate="auto"` by default. When the sample
+rate is more than eight times `f_max`, it applies staged, anti-aliased FIR
+decimation before the matrix-pencil solve while preserving the record duration
+and using the effective timestep. This removes redundant oversampling from a
+calculation whose cost grows steeply with sample count. Pass `decimate=False`
+when exact full-rate reproduction is required.
 
 ---
 

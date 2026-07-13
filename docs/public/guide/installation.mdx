@@ -20,6 +20,17 @@ The package name on PyPI is `rfx-fdtd`, while the Python import remains:
 import rfx
 ```
 
+For the packaged local Studio, durable experiment CLI, and MCP server, install
+the Studio extra:
+
+```bash
+pip install "rfx-fdtd[studio]"
+rfx studio --workspace .rfx-studio
+```
+
+See [Studio and Durable Experiments](/rfx/guide/studio-experiments/) for the
+workspace, replay, approval, and remote-deployment boundaries.
+
 ## Verify your install
 
 After installing, confirm the environment can actually run a simulation.

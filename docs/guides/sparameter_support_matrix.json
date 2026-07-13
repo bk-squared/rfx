@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated": "2026-06-11",
+  "updated": "2026-07-13",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -155,21 +155,22 @@
         "Simulation.compute_msl_s_matrix(...)"
       ],
       "result_type": [
-        "MSLSMatrixResult.S / freqs / Z0 / beta / port_names"
+        "MSLSMatrixResult.S / freqs / Z0 / beta / port_names / reliable"
       ],
       "supported_lanes": [
         "uniform_yee_rf_specialized"
       ],
-      "validation_status": "E5-narrow for the uniform-Yee laplace/quasi-TEM MSL envelope: thru-line, analytic-notch, raw 3-probe replay, and stored-openEMS narrow smoke evidence exist; the non-uniform graded-mesh lane runs via the laplace feed since PR #239 (internally gated, external cross-solver validation owed); eigenmode is a falsified dead-end (fenced); broad all-mode E5 remains blocked",
+      "validation_status": "E5-narrow for the uniform-Yee laplace/quasi-TEM MSL envelope: thru-line, analytic-notch, raw 3-probe replay, and stored-openEMS narrow smoke evidence exist; the non-uniform graded-mesh laplace-feed lane is internally gated but still needs external cross-solver validation; eigenmode is fenced; broad all-mode E5 remains blocked",
       "known_limits": [
         "uniform Yee + non-uniform laplace-feed lanes (NU externally unvalidated)",
         "not wired through Result.s_params",
+        "eager results expose a per-port reliable mask; standing-wave-null bins marked false retain their computed S values but are not usable wave-split data",
         "not supported with mode='eigenmode' on non-uniform profiles, SBP-SAT subgridding, ADI, TFSF, or mixed port families"
       ],
       "evidence_level": "E5-narrow/eigenmode-blocked",
       "promotion_requirements": [
         "mode=\"eigenmode\" source/extractor implementation and validation",
-        "nonuniform MSL S-parameter implementation and validation",
+        "external cross-solver validation for the nonuniform MSL laplace-feed lane",
         "broader mesh/frequency/substrate-cell sweeps beyond the current narrow lane"
       ],
       "evidence_artifacts": [
@@ -190,11 +191,12 @@
         "plane extractor parity max |S21| diff <=0.005 vs imperative",
         "raw 3-probe replay: max_abs_diff 0 against production S-matrix over 30 frequencies"
       ],
-      "claim_envelope": "uniform Yee laplace/quasi-TEM specialized MSL calculator, dx=80um / h_sub=254um narrow thru/notch lane; all-mode E5, eigenmode, and nonuniform MSL claims are blocked",
+      "claim_envelope": "uniform Yee laplace/quasi-TEM specialized MSL calculator, dx=80um / h_sub=254um narrow thru/notch lane; all-mode E5 and eigenmode claims are blocked, and the running nonuniform laplace-feed lane remains shadow pending external validation",
       "caveats": [
-        "mode=\"eigenmode\" is strict-xfailed / unsupported until Path-B/FDFD eigenmode validation lands",
-        "nonuniform MSL S-parameters remain unsupported",
-        "current |S11| floor around 0.10 is acceptable only for narrow/demo wording"
+        "mode=\"eigenmode\" is unsupported until a validated source/extractor exists",
+        "nonuniform MSL laplace-feed S-parameters remain outside the claims-bearing envelope",
+        "standing-wave-null bins where reliable is false must be excluded from physical interpretation",
+        "the |S11| floor around 0.10 is acceptable only for narrow/demo wording"
       ],
       "ad_traceable": "yes",
       "ad_evidence": "tests/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient, tests/test_sparam_ad_end_to_end.py::test_msl_s_matrix_ad_end_to_end"

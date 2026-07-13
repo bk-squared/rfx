@@ -6,7 +6,8 @@
         "rfx/guide",
         "rfx/guide/installation",
         "rfx/guide/quickstart",
-        "rfx/guide/first-patch"
+        "rfx/guide/first-patch",
+        "rfx/guide/studio-experiments"
       ]
     },
     {

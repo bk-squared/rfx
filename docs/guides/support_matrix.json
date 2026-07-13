@@ -37,21 +37,27 @@
       "supported_subset": [
         "probe",
         "current_source",
-        "selected_dispersive_smoke_coverage"
+        "selected_dispersive_smoke_coverage",
+        "benchmarked_ntff_dipole",
+        "shadow_dft_plane_and_full_plane_flux",
+        "restricted_normal_incidence_x_tfsf",
+        "shadow_single_mode_waveguide_flux",
+        "shadow_msl_laplace_feed",
+        "field_only_lumped_rlc"
       ],
       "unsupported_combinations": {
         "floquet": "hard_fail",
-        "ntff": "hard_fail",
-        "dft_plane": "hard_fail",
-        "tfsf": "hard_fail",
-        "waveguide_port": "shadow_te10_single_mode: normalize=True/'flux' validated at settled num_periods; broad-E5-ANALYTIC envelope committed+gated (graded-dy 1-3x, eps_r 2/4, vs analytic Airy, 16/16<=0.0157); NOT claims-bearing (broad-E4 external cross-solver + AD-traceability pending); other combinations hard_fail",
-        "lumped_rlc": "hard_fail",
+        "ntff": "benchmarked dipole-directivity envelope; other geometries remain shadow",
+        "dft_plane": "shadow; runs on the graded path and requires observable-specific validation",
+        "tfsf": "normal +/-x incidence only; oblique and +/-z incidence hard_fail",
+        "waveguide_port": "shadow single-mode TE10 with normalize=True/'flux'; analytic broad-E5 and external Palace broad-E4 magnitude fixtures exist; AD material overrides and unsupported combinations hard_fail",
+        "lumped_rlc": "field-only ADE update; no nonuniform S-parameter or component-value AD claim",
         "lumped_port_sparameters": "hard_fail",
-        "msl_s_matrix": "laplace lane RUNS since PR #239 (mode='laplace' quasi-TEM accepted on the graded mesh; internally gated by tests/test_msl_nu_sparam_gate.py, gpu+slow — externally UNVALIDATED, not claims-bearing); mode='eigenmode' hard_fail (falsified dead-end, raises NotImplementedError)",
+        "msl_s_matrix": "mode='laplace'/'uniform' runs under internal settled-S11 coverage but remains shadow without an external nonuniform envelope; mode='eigenmode' hard_fail",
         "coaxial_port": "hard_fail"
       },
       "resolved_combinations": {
-        "pec_volume_scatterer": "RESOLVED 2026-06-25: a volumetric PEC obstacle (iris/post/septum) now reflects on the NU graded scan (|S11|~1.4-1.6 for the iris, ~0.6-2.1 for a full short), matching the uniform reflector class; empty NU stays |S11|~0. The earlier 'NU dielectric-only / pec_mask from rasterize_geometry not effective' framing was WRONG: the interior PEC IS applied to the NU device run. Root cause = the NU two-run S-matrix vacuum REFERENCE run retained the device's interior pec_mask (the vacuum override replaced only eps_r/sigma, never pec_mask) -> device and reference flux DFTs bit-identical -> S11=0 for any reflector. Fixed via run_nonuniform_path(strip_interior_pec=True) on the reference (drops interior PEC, keeps boundary guide walls). Gate tests/test_nonuniform_pec_scatterer_limit.py::test_nonuniform_pec_iris_reflects (was xfail-strict, now hard gate)"
+        "pec_volume_scatterer": "shadow: interior PEC is applied to the device run and stripped only from the two-run vacuum reference; reflector response is regression-locked but not claims-bearing"
       }
     },
     "sbp_sat_subgridding": {
@@ -69,7 +75,7 @@
       "status": "outside_public_support_scope"
     },
     "coaxial_line_reflection": {
-      "status": "bounded_envelope_revalidation_pending",
+      "status": "bounded_envelope",
       "role": "one_port_coaxial_transmission_line_reflection",
       "calculator": "Simulation.compute_coaxial_line_reflection(...)",
       "evidence": "analytic_broad_E5_plus_MEEP_broad_E4_short_open",

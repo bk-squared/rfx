@@ -1,0 +1,175 @@
+---
+title: "Studio and Durable Experiments"
+description: "Run versioned CPU experiments from the local Studio, CLI, or approval-gated MCP control plane."
+sidebar:
+  order: 4
+---
+
+rfx provides three interfaces over the same versioned experiment model:
+
+| Interface | Use it for | Execution boundary |
+|---|---|---|
+| **Studio** | create and revise a spec, inspect geometry and generated Python, run preflight, compare runs, and review approvals | local web application with isolated CPU workers |
+| **Experiment CLI** | validate, run, submit, inspect, cancel, bundle, replay, and compare JSON specs | local command line with durable workspace state |
+| **MCP control plane** | let an agent inspect experiments and request bounded actions | RF-domain tools only; mutations and costly actions require server-side approval |
+
+All three preserve canonical spec hashes and durable run records. Studio and
+MCP additionally expose immutable experiment revisions; version-2 CLI specs are
+linked to the same revision store. These are workflow and provenance tools: a
+successful run or replay does not by itself establish a new physics-validation
+envelope.
+
+## Install and launch Studio
+
+```bash
+python -m pip install "rfx-fdtd[studio]"
+rfx studio --workspace .rfx-studio
+```
+
+The installed wheel contains the compiled frontend, so Studio does not require
+Node.js at runtime. The default server listens on loopback only and opens the
+local application at `http://127.0.0.1:8765/`.
+
+Use the workspace path consistently. It contains the SQLite metadata database,
+run inputs and logs, and exported artifacts.
+
+## Studio workflow
+
+1. Start from a bundled patch-antenna, multilayer-Fresnel, or WR-90 template, or
+   load an existing `ExperimentSpec`.
+2. Edit the canonical JSON spec. Generated Python is a read-only view of that
+   spec rather than a second editable source.
+3. Inspect the semantic diff, geometry preview, preflight report, and CPU cost
+   estimate before creating a revision or starting a run.
+4. Run in the isolated CPU worker and inspect S-parameter, Smith-chart, field,
+   comparison, or study outputs that the selected workflow produces.
+5. Export a replay bundle when the run and its declared metrics need to travel
+   together.
+
+Revisions are append-only. A proposal preview does not create a revision, and a
+revision does not start a run until the corresponding action is accepted.
+
+## Experiment CLI
+
+The CLI accepts a versioned JSON spec. `validate` compiles and preflights the
+spec without running FDTD:
+
+```bash
+rfx experiment validate experiment.json
+```
+
+Run synchronously, or submit a durable worker and poll it later:
+
+```bash
+rfx experiment run experiment.json --workspace .rfx-experiments
+
+rfx experiment submit experiment.json --workspace .rfx-experiments
+rfx experiment status RUN_ID --workspace .rfx-experiments
+rfx experiment cancel RUN_ID --workspace .rfx-experiments
+```
+
+Succeeded runs can be compared or exported as checksummed replay bundles:
+
+```bash
+rfx experiment compare RUN_ID_A RUN_ID_B --workspace .rfx-experiments
+rfx experiment bundle RUN_ID_A \
+  --workspace .rfx-experiments \
+  --output run-a.rfx-replay.zip
+rfx experiment replay run-a.rfx-replay.zip --workspace .rfx-experiments
+```
+
+Replay verifies the bundle manifest and declared metric tolerances. It does not
+promise bit-identical fields across JAX, device, or compiler versions.
+
+## Design Copilot boundary
+
+When `OPENAI_API_KEY` is present, Studio can request a bounded JSON Patch from
+the OpenAI Responses API. Select an entitled model with `RFX_OPENAI_MODEL` when
+needed:
+
+```bash
+export OPENAI_API_KEY=...
+export RFX_OPENAI_MODEL=YOUR_ENTITLED_MODEL
+rfx studio --workspace .rfx-studio
+```
+
+Provider requests use `store=false`. The key stays in the process environment,
+and the provider cannot execute Python, shell commands, or solver tools through
+the Copilot surface. Studio applies the proposed patch in memory, compiles it,
+runs preflight, and shows the diff before any revision or run is created.
+
+Without a key, Studio labels and uses its narrower deterministic offline planner.
+It does not present that fallback as an LLM result.
+
+## MCP control plane
+
+The Studio server exposes Streamable HTTP MCP at:
+
+```text
+http://127.0.0.1:8765/mcp/
+```
+
+Local MCP clients can launch the equivalent stdio server:
+
+```bash
+rfx-agent-mcp --workspace .rfx-studio
+```
+
+Read tools can inspect capabilities, experiments, revisions, runs, artifacts,
+analyses, comparisons, and studies. Write or costly tools return
+`approval_required`; review the exact arguments and SHA-256 in Studio's
+**Approvals** panel, then retry the same call with the one-shot `approval_id`.
+Client-side tool approval does not replace this server-side gate.
+
+The MCP surface exposes domain operations, not arbitrary shell, Python, or
+filesystem access. Keep a deny-by-default client allowlist so tools introduced
+by a later package version are not enabled automatically.
+
+## Workspace backup and restore
+
+```bash
+rfx workspace migrate --workspace .rfx-studio
+rfx workspace backup --workspace .rfx-studio -o studio.rfx-backup.zip
+rfx workspace restore studio.rfx-backup.zip --workspace .rfx-studio
+```
+
+Migration is additive and idempotent. Backup uses SQLite's online backup plus
+the run and artifact trees, excludes credential-like filenames, and records a
+checksum for every archived file. Restore verifies the manifest and swaps the
+workspace atomically.
+
+## Remote deployment boundary
+
+Loopback is the default and recommended mode. A non-loopback bind is rejected
+unless all of the following are supplied:
+
+- a 32-character-or-longer token in a mode-0600 file;
+- an exact HTTPS origin allowlist;
+- `--tls-terminated`, confirming that an HTTPS reverse proxy is in front.
+
+```bash
+rfx studio \
+  --host 0.0.0.0 \
+  --workspace /srv/rfx-studio \
+  --auth-token-file /secure/rfx-studio.token \
+  --allowed-origin https://rfx.lab.example \
+  --tls-terminated \
+  --no-browser
+```
+
+Place organization authentication and network policy in front of a shared lab
+deployment. The packaged filesystem/SQLite adapter is a single-node workspace,
+not a public multi-tenant authorization service. Never put API keys or tokens
+in an experiment spec, prompt, artifact, or Studio field.
+
+## What a green workflow means
+
+| Signal | What it proves |
+|---|---|
+| spec validation | schema, compilation, and preflight completed |
+| succeeded run | the declared CPU worker completed and produced finite workflow outputs |
+| replay pass | the bundle is intact and declared metrics remain within their tolerances |
+| comparison | cited run metrics were evaluated under one comparison report |
+
+For RF accuracy claims, also apply the relevant [Support Boundaries](/rfx/api/support-boundaries/),
+[Validation](/rfx/guide/validation/), and per-port-family guidance.

@@ -31,6 +31,11 @@ sim.add_ntff_box(
     freqs=np.array([3e9]),
 )
 
+# Inspect coded placement/support advisories and fail on blocking errors.
+preflight = sim.preflight()
+print(preflight.format())
+preflight.raise_for_failure()
+
 result = sim.run(n_steps=1000)
 
 # Far field over a (theta, phi) grid. run() stores the raw NTFF data,
@@ -158,6 +163,16 @@ plot_rcs(result, freq_idx=0, polar=False)   # dBsm vs angle
 - Keep NTFF box surfaces in the ordinary simulation region — outside every
   source, scatterer, and radiator, with margin from the CPML absorber.
   `sim.preflight()` warns when a box extends into the absorber.
+- Check clearance from **all six NTFF faces** to the nearest relevant geometry
+  or active source. Preflight emits `ntff_near_field` below λ/2 at `f_max`, with
+  a stronger warning below λ/4. This includes lateral edges of finite PEC
+  sheets, not only the sheet's broad face. Move the Huygens surface outward
+  rather than assuming a source-to-box distance alone proves far-field
+  separation.
+- For fixed-period pulsed runs on CPML/UPML, a warning that the run ended above
+  -40 dB of peak means the recorded NTFF data still contains a hot transient.
+  Increase the run length or use `until_decay=...` before interpreting the
+  pattern.
 - `compute_rcs` places the TFSF and NTFF boxes automatically from `cpml_layers`,
   `tfsf_margin`, and `ntff_offset` (the NTFF box sits `ntff_offset` cells outside
   the TFSF boundary); you supply only the grid and the scatterer materials.

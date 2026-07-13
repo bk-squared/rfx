@@ -64,7 +64,7 @@ Source, port, and probe builders are documented in detail in
 ## Run loop
 
 ```python
-result = sim.run(n_steps=8000, compute_s_params=True)
+result = sim.run(until_decay=1e-3, compute_s_params=True)
 ```
 
 `run()` returns a tuple-like `Result` (a `NamedTuple`) with fields such as
@@ -79,6 +79,27 @@ waveguide, and coaxial-line ports use dedicated calculators
 (`compute_msl_s_matrix()`, `compute_waveguide_s_matrix()`,
 `compute_coaxial_line_reflection()`). See [Sources & Ports](./sources-ports/)
 for the calculator that matches each port family.
+
+### Preflight and post-run signals
+
+Unless `skip_preflight=True`, `run()` checks the configured geometry, sources,
+ports, mesh, absorber, and selected workflow before allocating the full run. An
+eager run then reports measured output problems without changing the returned
+arrays:
+
+| Signal | Interpretation | Action |
+|---|---|---|
+| `no field energy was recorded` | the configured source did not couple to a recorded field | check position, component, amplitude, boundary placement, and probe coverage |
+| `ring-down truncated` | the last 5% of an open-boundary pulsed run remains above -40 dB of its peak | use `until_decay=...` or more periods before reading Harminv, DFT, or NTFF data |
+| non-finite output | the solver or setup produced NaN/Inf | treat the run as failed; fix setup or stability before post-processing |
+| passivity or per-frequency `|S|` advisory | a passive S-parameter result exceeds its calculator's reliability envelope | inspect mesh, settling, reference plane, normalization, and port-family guidance; do not interpret the affected bin as device physics |
+
+On CPML/UPML runs, `until_decay=1e-3` stops from the total non-absorber-domain
+field energy after consecutive checks, which avoids the nulls of a single-cell
+monitor. Closed PEC domains do not normally lose total energy; use a fixed run
+length there unless the model contains a real loss mechanism. Explicit
+`n_steps` remains appropriate when a workflow requires an exact accumulation
+window.
 
 ## Differentiable `forward(...)` path
 

@@ -24,6 +24,7 @@ Start with the recommended default lane unless a public guide explicitly routes 
 | [Installation](/rfx/guide/installation/) | Python/JAX install, GPU notes, dev setup |
 | [Quick Start](/rfx/guide/quickstart/) | First simulation with the current high-level API |
 | [Your First Patch Antenna](/rfx/guide/first-patch/) | First end-to-end resonance workflow |
+| [Studio and Durable Experiments](/rfx/guide/studio-experiments/) | Local Studio, versioned CPU experiments, replay bundles, and approval-gated MCP |
 
 ## Modeling & Setup
 

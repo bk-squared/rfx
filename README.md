@@ -33,10 +33,11 @@ Start with the **uniform Cartesian Yee RF/FDTD lane**; the table below scopes ea
 | **Per-family S-parameters** | lumped/wire, microstrip-line, rectangular waveguide, and coaxial-line paths use distinct calculators |
 | **Cross-validated** | public cases mapped to Meep / OpenEMS / Palace / analytic references, each with a reproduce command |
 
-## Current Highlights
+## Reliability and Workflow Contracts
 
 - **Documented workflows**: uniform Yee RF simulation; rectangular-waveguide, MSL, lumped, and wire ports; one-port coaxial-line reflection; and conservative differentiable design loops.
-- **Structured preflight and runtime guards**: `preflight()` and `preflight_sparameters()` return a coded `PreflightReport` (a `list` subclass, so existing list/string checks still work); `run()`, `forward()`, the S-matrix calculators, sweeps, and optimizers surface NaN / passivity / setup problems early.
+- **Structured preflight and runtime guards**: `preflight()` and `preflight_sparameters()` return a coded `PreflightReport` (a `list` subclass, so existing list/string checks still work); eager runs surface non-finite data, weak source coupling, truncated ring-down, S-parameter passivity violations, and unreliable MSL standing-wave-null bins without rewriting the numeric result.
+- **Versioned experiment workflow**: Studio, the experiment CLI, and the approval-gated MCP control plane share canonical spec hashes, isolated CPU runs, comparisons, studies, and replay bundles; Studio/MCP also expose immutable revisions.
 - **Waveguide S-matrices** are the most mature port family; consult the [S-parameter support matrix](docs/guides/sparameter_support_matrix.md) for exact limits rather than broadening the claim.
 - **Coaxial-line reflection**: `compute_coaxial_line_reflection(...)` is the one-port coaxial transmission-line reflection path — not a general coaxial network solver.
 - **Curated star-import surface**: `rfx.__all__` is the supported public API; per-step kernels and bookkeeping helpers stay importable for back-compatibility but sit outside it.
@@ -75,10 +76,9 @@ rfx-dashboard
 
 ### Versioned CPU experiments
 
-The first AI-native execution lane accepts a strict JSON patch-antenna spec,
+The versioned execution lane accepts a strict JSON experiment spec,
 compiles it to native rfx configuration/Python, runs preflight and simulation
-in a CPU-only subprocess, and stores S11 in an immutable content-addressed
-artifact:
+in a CPU-only subprocess, and stores immutable run and analysis artifacts:
 
 ```bash
 rfx experiment validate tests/fixtures/experiments/patch_antenna_cpu_v1.json
@@ -114,7 +114,7 @@ narrow deterministic offline planner:
 
 ```bash
 export OPENAI_API_KEY=...              # never stored in the workspace
-export RFX_OPENAI_MODEL=gpt-5.5        # optional; choose an entitled model
+export RFX_OPENAI_MODEL=...            # optional; choose an entitled model
 rfx studio --workspace .rfx-studio
 ```
 
@@ -122,10 +122,9 @@ Provider responses use `store=false`. The model cannot execute Python, shell,
 or solver tools from this surface, and a proposal never creates a revision or
 starts a run. Generated Python remains read-only because the canonical editable
 source is the spec; direct users edit the synchronized ExperimentSpec JSON.
-Authenticated lab-server deployment, migration/backup/restore, and TLS/Origin
-requirements are documented in
-[`docs/guides/studio_operations.md`](docs/guides/studio_operations.md); MCP client
-setup is in [`docs/agent/mcp-studio.mdx`](docs/agent/mcp-studio.mdx).
+The [Studio and Durable Experiments](docs/public/guide/studio-experiments.mdx)
+guide covers the UI, CLI, MCP approval flow, workspace backup/restore, and the
+authenticated remote-deployment boundary.
 
 ## Quick Start
 
@@ -293,6 +292,7 @@ Gitops-side snapshot/build CI lives in the deploy repo:
 
 ### Start here
 - [Public landing page](docs/public/index.mdx)
+- [Studio and Durable Experiments](docs/public/guide/studio-experiments.mdx) — local UI, versioned CPU runs, replay, and MCP approvals
 - [Validation hub](docs/public/validation/index.mdx) — support overview and lane labels
 - [Examples hub](docs/public/examples/index.mdx) — current runnable entry points
 

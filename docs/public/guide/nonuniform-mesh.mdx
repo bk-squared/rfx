@@ -13,7 +13,7 @@ follow the same rules.) This is a bounded workflow, not the recommended default
 reference lane: use the uniform Cartesian Yee lane first unless the thin feature
 would force an impractically small uniform cell.
 
-### Current support status
+### Support status
 
 - suitable for thin-substrate or layered-z RF setup studies when the observable
   remains inside a documented support envelope;
@@ -23,7 +23,7 @@ would force an impractically small uniform cell.
   instead run on the graded-z path but stay outside the validated reference
   lane — see the table below.
 
-Current unsupported or restricted combinations:
+Unsupported or restricted combinations:
 
 | Combination | Public status |
 |---|---|
@@ -107,6 +107,26 @@ To repair an existing profile that trips the `Simulation` grading warning, use
 `rfx.smooth_grading(dz_profile)` (default `max_ratio=1.3`). Keep grading
 conservative, document the generated profile, and verify the observable against
 the relevant reference lane.
+
+### Verify geometry against the final cell edges
+
+Transition insertion changes the final cell sequence. A fine band requested
+near a thin `Box` can therefore shift outside the box span, leaving the material
+with fewer cells than its local fine-cell size suggests. Always inspect the
+cumulative edges of the final profile and run preflight after the geometry is
+registered:
+
+```python
+report = sim.preflight()
+for issue in report.by_code("graded_box_rasterization"):
+    print(issue)
+```
+
+The `graded_box_rasterization` advisory reports the actual and implied z-cell
+counts when a `Box` occupies at most four cells and less than half of the count
+implied by the nearby fine spacing. Pin material boundaries to the final profile
+edges or rebuild the grading region; do not dismiss the warning based only on
+the pre-grading cell request.
 
 ---
 

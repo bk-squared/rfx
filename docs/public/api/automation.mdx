@@ -75,3 +75,10 @@ automatically (surfaced in `MeshPlan.cell_sizes` via `profiles_present`). To
 hand-build one, use `smooth_grading()` to bound the adjacent-cell ratio on an
 existing cell array. That is useful setup evidence, but it does not by itself make
 a graded-z workflow a validated reference path.
+
+Grading inserts transition cells, so physical material coordinates must be
+checked against the **final** cumulative cell edges. After adding geometry, run
+`sim.preflight()` and resolve `graded_box_rasterization` advisories: they flag a
+`Box` that occupies far fewer z cells than the nearby fine spacing implies. See
+the [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) guide for the alignment
+workflow.

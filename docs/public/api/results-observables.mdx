@@ -29,7 +29,7 @@ sidebar:
 |---|---|---|
 | `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result.s_params`, `Result.freqs` | documented path for the matching port family |
 | `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult.s_params`, `ForwardResult.freqs` | differentiable S11 vectors, not a full multi-port matrix |
-| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` | specialized microstrip-line workflow |
+| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` with `.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, and eager `.reliable` mask | specialized microstrip-line workflow; exclude standing-wave-null bins marked unreliable |
 | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | rectangular waveguide workflow |
 | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | one-port coaxial transmission-line reflection envelope |
 | `run(...)` with a single waveguide port | `Result.waveguide_sparams[name]` | diagnostic per-port output |
@@ -70,6 +70,14 @@ print(report.summary())
 ```
 
 These helpers are useful for regression checks. They do not turn an undocumented workflow into the recommended default path.
+
+The eager calculation paths also surface result-quality warnings without
+mutating the arrays. `run()` checks for non-finite data, no recorded field
+energy, and a hot ring-down tail. S-parameter calculators check finiteness and
+their configured passivity envelope. MSL results additionally expose a
+per-port, per-frequency `reliable` mask for bins where both voltage and current
+collapse at a standing-wave node. Treat an affected bin as unusable until the
+setup, settling, reference plane, or independent comparison resolves it.
 
 ## Validated observables
 
