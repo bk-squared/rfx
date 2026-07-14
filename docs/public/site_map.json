@@ -18,6 +18,7 @@
         "rfx/guide/sources-ports",
         "rfx/guide/probes-sparams",
         "rfx/guide/memory-reduction",
+        "rfx/guide/adi-solver",
         "rfx/guide/waveguide-ports"
       ]
     },

@@ -303,8 +303,9 @@ class Simulation(
     solver : str
         ``"yee"`` (default) for the standard explicit scheme or
         ``"adi"`` for the ADI-FDTD path. ADI is unconditionally stable in
-        both 2D TMz (``mode="2d_tmz"``, 2% cavity-resonance gate at 50x
-        CFL) and 3D (full Zheng–Chen–Zhang two-sub-step scheme since
+        both 2D TMz (``mode="2d_tmz"``, 2% cavity-resonance gate at 5x
+        CFL, ``test_adi_cavity_resonance``; stable well beyond) and 3D
+        (full Zheng–Chen–Zhang two-sub-step scheme since
         2026-07-13, issue #338: 2% PEC-cavity eigenfrequency gate at 2x
         CFL, ~15 cells/wavelength). 3D dispersion error grows ~dt^2, so
         preflight emits an ``adi_3d_accuracy`` envelope advisory when
