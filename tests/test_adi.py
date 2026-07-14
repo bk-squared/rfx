@@ -458,6 +458,58 @@ class TestADI3DCavityPhysics:
         assert float(jnp.max(jnp.abs(ey_f[0, :, :]))) < 1e-10, "PEC violated at x=0"
         assert float(jnp.max(jnp.abs(ez_f[0, :, :]))) < 1e-10, "PEC violated at x=0"
 
+    def test_internal_pec_post_solve_projection_3d(self):
+        """3D ADI's internal pec_mask is a post-solve projection, not an exact
+        Dirichlet row (rfx/adi.py:748-750 docstring caveat) — previously only
+        exercised in 2D (test_simulation_adi_internal_pec_geometry_masks_ez,
+        mode='2d_tmz'). This adds the missing 3D coverage: an interior PEC
+        post inside a 3D ADI cavity must (a) stay exactly zero at every probe
+        location the mask covers, and (b) measurably perturb the field
+        elsewhere versus the same cavity without the post — proving the
+        projection is both applied and physically consequential in 3D, not a
+        silent no-op.
+        """
+        def _run(with_post: bool):
+            sim = Simulation(
+                freq_max=10e9, domain=(0.02, 0.02, 0.02), boundary="pec",
+                mode="3d", solver="adi", adi_cfl_factor=2.0, dx=2e-3,
+            )
+            if with_post:
+                sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.02)),
+                        material="pec")
+            sim.add_source(
+                (0.005, 0.01, 0.01), "ez",
+                waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2),
+            )
+            sim.add_probe((0.015, 0.01, 0.01), "ez")   # opposite side of the post
+            sim.add_probe((0.010, 0.010, 0.01), "ez")  # inside the post footprint
+            result = sim.run(n_steps=300)
+            far_probe = np.asarray(result.time_series[:, 0])
+            inside_probe = np.asarray(result.time_series[:, 1])
+            assert not np.any(np.isnan(far_probe))
+            assert not np.any(np.isnan(inside_probe))
+            return far_probe, inside_probe
+
+        far_empty, _ = _run(with_post=False)
+        far_post, inside_post = _run(with_post=True)
+
+        # (a) the mask must actually zero the field it covers — not a
+        # decorative no-op.
+        assert np.max(np.abs(inside_post)) < 1e-10, (
+            "internal pec_mask did not zero the field inside the PEC post "
+            f"under 3D ADI: max|Ez| = {np.max(np.abs(inside_post)):.2e}"
+        )
+
+        # (b) the post must measurably perturb the field elsewhere versus the
+        # same cavity without it — the post-solve projection is doing real
+        # physics, not just clamping an already-zero field.
+        diff = np.max(np.abs(far_post - far_empty))
+        scale = np.max(np.abs(far_empty)) + 1e-30
+        assert diff / scale > 0.05, (
+            "internal PEC post had no measurable effect on the field beyond "
+            f"itself under 3D ADI: relative perturbation = {diff / scale:.4f}"
+        )
+
 
 def test_simulation_adi_3d_run():
     """Simulation(solver='adi', mode='3d') should run without errors."""

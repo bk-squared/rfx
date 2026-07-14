@@ -19,6 +19,8 @@ Geometry constants mirror the cv05 patch (L=29.5, W=38, h=1.5 mm) and the
 
 from __future__ import annotations
 
+import warnings
+
 from rfx import Box, Simulation
 
 
@@ -139,3 +141,27 @@ def test_advisory_tier_fires_too():
     advisory: run() is the entry point that actually computes patterns."""
     report = _patch_sim(60e-3, 55e-3).preflight(check_ntff="advisory")
     assert len(_gp_issues(report)) == 1, list(report)
+
+
+def test_advisory_surfaces_through_run_not_just_preflight():
+    """The test above only calls .preflight(check_ntff="advisory") directly,
+    mirroring what run() is believed to pass internally — it does not
+    exercise run() itself. This calls the actual public sim.run() entry
+    point (rfx/api/_execute.py's _auto_preflight(context="run",
+    check_ntff="advisory") wiring, line ~2397) and checks the advisory
+    surfaces as a real UserWarning. A future refactor that drops or changes
+    that check_ntff="advisory" argument would not be caught by
+    test_advisory_tier_fires_too, but would be caught here.
+    """
+    sim = _patch_sim(60e-3, 55e-3)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sim.run(n_steps=5)
+
+    messages = [str(w.message) for w in caught
+                if issubclass(w.category, UserWarning)]
+    assert any("expected physics" in msg and "60.0mm × 55.0mm" in msg
+               for msg in messages), (
+        "expected the ntff_small_ground_plane advisory text to surface via "
+        f"sim.run(); got warnings: {messages}"
+    )
