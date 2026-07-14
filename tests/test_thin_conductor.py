@@ -173,6 +173,49 @@ def test_thin_conductor_nonuniform_reflects_like_box():
         f"#369 regression: PEC thin sheet must ring like a box PEC on the NU "
         f"path (box={box_e:.3e}, thin={thin_e:.3e}, ratio={thin_e / box_e:.3f})")
 
+    # R5: don't trust the aggregate energy alone — assert cell-identity on the
+    # assembled pec_mask itself, which a small cell mismatch can't hide behind a
+    # resonance that happens not to move. On a UNIFORM-valued NU profile the thin
+    # sheet and the matching-thickness box coincide cell-for-cell. (On a
+    # genuinely graded dz_profile they can diverge by one z-layer via the
+    # argmin-vs-half-open split in Box.mask_on_coords — a pre-existing csg issue,
+    # tracked in #371, NOT introduced by this fix; hence this identity is asserted
+    # only for the uniform profile.)
+    from rfx.runners.nonuniform import (build_nonuniform_grid,
+                                        assemble_materials_nu)
+
+    def nu_pec_mask(kind):
+        sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
+                         boundary="cpml", cpml_layers=8)
+        px_lo, px_hi = L / 2 - 6 * dx, L / 2 + 6 * dx
+        py_lo, py_hi = L / 2 - 4 * dx, L / 2 + 4 * dx
+        if kind == "box":
+            sim.add(Box((px_lo, py_lo, 15 * dx), (px_hi, py_hi, 16 * dx)),
+                    material="pec")
+        else:
+            sim.add_thin_conductor(Box((px_lo, py_lo, zc), (px_hi, py_hi, zc)),
+                                   sigma_bulk=5.8e7, thickness=35e-6)
+        grid = build_nonuniform_grid(
+            sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
+            sim._dz_profile, dx_profile=sim._dx_profile,
+            dy_profile=sim._dy_profile,
+            pec_faces=(sim._boundary_spec.pec_faces()
+                       if sim._boundary_spec is not None else None),
+            pmc_faces=(sim._boundary_spec.pmc_faces()
+                       if sim._boundary_spec is not None else None),
+            cpml_axes="".join(a for a in "xyz"
+                              if a not in (sim._periodic_axes or "")),
+        )
+        return np.asarray(assemble_materials_nu(sim, grid)[3])
+
+    box_mask = nu_pec_mask("box")
+    thin_mask = nu_pec_mask("thin")
+    assert thin_mask is not None and int(thin_mask.sum()) > 0, \
+        "#369: PEC thin conductor must produce a non-empty pec_mask on the NU path"
+    assert np.array_equal(box_mask, thin_mask), \
+        ("on a uniform NU profile a PEC thin sheet and a matching-thickness box "
+         "must select identical pec_mask cells")
+
 
 def test_thin_conductor_lossy_warns_on_nonuniform():
     """A lossy (non-PEC) thin conductor is not yet supported on the NU path;

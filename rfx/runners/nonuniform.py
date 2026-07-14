@@ -86,6 +86,11 @@ def assemble_materials_nu(
     # the field AD-clean (no float op enters the gradient path). Lossy
     # (non-PEC) sheets need a grid-dependent surface-conductivity fold the
     # coords path cannot yet express — warn rather than silently drop.
+    # Caveat (tracked in #371): on a GENUINELY graded dz_profile, the sheet's
+    # cell can differ by one z-layer from a matching-thickness volume box at the
+    # same nominal z, via the argmin-vs-half-open split in Box.mask_on_coords.
+    # That is a pre-existing csg rasterization issue, not introduced here; this
+    # code uses the same mask_on_coords a thin conductor always has.
     if sim._thin_conductors:
         pec_tcs = [tc for tc in sim._thin_conductors
                    if getattr(tc, "is_pec", False)]
