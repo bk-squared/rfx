@@ -1932,8 +1932,8 @@ class _PreflightMixin:
         at 5x). Runs stay unconditionally STABLE at any factor — accuracy,
         not stability, is what degrades. Advise (WARNING severity, envelope
         advisory — not an error) when ``adi_cfl_factor > 2.0`` on a 3D grid.
-        The 2D TMz path keeps its separately validated 50x envelope and is
-        not flagged here.
+        The 2D TMz path (2% resonance gate at 5x CFL, and stable — verified
+        bounded — well beyond) is not flagged here.
         """
         if self._solver != "adi" or self._mode != "3d":
             return

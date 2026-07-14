@@ -1,0 +1,90 @@
+---
+title: "ADI Solver (Experimental)"
+description: "Unconditionally stable ADI-FDTD for stiff meshes: the timestep trade, the accuracy envelope, and what is and is not yet validated."
+sidebar:
+  order: 9
+---
+
+The default `solver="yee"` is an explicit scheme. Its timestep is bounded by the
+Courant (CFL) limit, which is set by the **smallest cell in the mesh** — a thin
+substrate, a coating, or a narrow gap forces a small timestep on the whole
+domain even when the wavelength is large. That is the stiff-mesh problem.
+
+`solver="adi"` (Alternating-Direction-Implicit, the Zheng–Chen–Zhang two-sub-step
+3D scheme) is **unconditionally stable**: it stays bounded at any timestep.
+`adi_cfl_factor` sets how far past the standard limit you push. Stability is
+free; wavelength-scale accuracy is not.
+
+## When to reach for it
+
+Reach for ADI when a geometrically stiff mesh — features far below the
+wavelength — is forcing an explicit run to take an impractical number of steps,
+and you can tolerate the dispersion cost below. For ordinary
+wavelength-resolved models, the explicit Yee solver is the right default and is
+more accurate step-for-step.
+
+```python
+sim = Simulation(
+    freq_max=12e9,
+    domain=(a, b, d),
+    dx=dx,
+    boundary=BoundarySpec.uniform("pec"),
+    solver="adi",
+    adi_cfl_factor=2.0,   # accuracy setting; see the envelope below
+)
+```
+
+## The timestep trade (read before choosing `adi_cfl_factor`)
+
+The ADI scheme adds a temporal dispersion error that grows with the timestep,
+roughly as `dt²`. `adi_cfl_factor` is therefore a **throughput** knob, not an
+accuracy knob. On a lossless 3D PEC cavity at ~15 cells per wavelength:
+
+| `adi_cfl_factor` | eigenfrequency error | notes |
+|---|---|---|
+| 2 | −1.4% | at or below the 2% accuracy gate |
+| 3 | −2.8% | von Neumann analysis |
+| 5 (default) | −6.7% | von Neumann analysis; stable but coarse |
+
+The default is `5.0` — a stiff-mesh throughput default. **Set
+`adi_cfl_factor <= 2` when the resonance frequency, not the timestep, is what
+you need to be accurate.** Preflight emits an `adi_3d_accuracy` advisory
+whenever `adi_cfl_factor > 2` on a 3D grid, quoting this envelope.
+
+At finer resolution the error shrinks: the runnable demo below, at ~27 cells per
+wavelength, reads a cavity TE101 at **−0.54% (factor 2)** and **−2.6% (factor
+5)** against the analytic value, versus **−0.06%** for explicit Yee.
+
+## What is validated, and what is not
+
+- **3D accuracy is validated against an analytic oracle.** A lossless 3D PEC
+  cavity eigenfrequency matches the closed-form mode within the 2% gate at
+  `adi_cfl_factor = 2` (`tests/test_review_tier1_validation_battery.py`,
+  measured 1.2%). The 2D TMz path (`mode="2d_tmz"`) holds a 2% resonance gate at
+  5× CFL (`tests/test_adi.py::test_adi_cavity_resonance`) and is unconditionally
+  stable well beyond it.
+- **The stiff-mesh throughput advantage is not yet demonstrated.** The larger
+  timestep is a real property of an unconditionally stable scheme, but a
+  measured end-to-end speed-and-accuracy result on a genuinely stiff production
+  mesh has not been published. Do not read ADI as a validated speed-up.
+- ADI is an **experimental solver lane**. Use the explicit Yee solver for
+  claims-bearing 3D physics.
+
+## Gradients
+
+`solver="adi"` differentiates end-to-end — `jax.grad` flows through the
+tridiagonal solve — so the ADI path is usable inside an optimization loop where
+the stiff-mesh timestep matters.
+
+## Try it
+
+```bash
+python examples/tutorials/adi_solver_demo.py
+```
+
+The demo resonates a vacuum PEC cavity three ways — explicit Yee, ADI at factor
+2, ADI at factor 5 — and prints the frequency error each way, so the
+accuracy-versus-timestep trade is visible rather than asserted.
+
+_The Zheng–Chen–Zhang 3D scheme replaced the earlier LOD path in issue #338;
+earlier releases carried the older, over-dissipative LOD implementation._
