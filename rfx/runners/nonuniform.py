@@ -57,7 +57,8 @@ def assemble_materials_nu(
     """Build material arrays and dispersion specs for non-uniform grid.
 
     Delegates to the shared rasterize_geometry() with non-uniform coordinates.
-    Now supports all shape types, Debye/Lorentz poles, chi3, and thin conductors.
+    Supports all shape types, Debye/Lorentz poles, chi3, and PEC thin
+    conductors (lossy thin conductors are not yet supported here — see below).
 
     Returns
     -------
@@ -67,8 +68,6 @@ def assemble_materials_nu(
 
     coords = coords_from_nonuniform_grid(grid)
 
-    # Thin conductors require mask(grid) which needs uniform Grid.
-    # Skip on NU path for now — the shape won't resolve.
     result = rasterize_geometry(
         sim._geometry,
         sim._resolve_material,
@@ -76,6 +75,42 @@ def assemble_materials_nu(
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
     )
     materials, debye_spec, lorentz_spec, pec_mask, _pec_shapes, _kerr_chi3 = result
+
+    # Thin conductors (#369): a PEC thin sheet rasterizes on the coords-based
+    # mask exactly like geometry PEC — ``mask_on_coords`` resolves fine on
+    # non-uniform axes, so the earlier "needs a uniform Grid, skip for now"
+    # shortcut was wrong. Before this fix the NU (dz_profile) path silently
+    # dropped EVERY thin conductor: an ``add_thin_conductor()`` PEC sheet on a
+    # graded-z grid produced no pec_mask, so the patch neither reflected nor
+    # resonated (box-PEC rang, thin-sheet decayed). ORing a boolean mask keeps
+    # the field AD-clean (no float op enters the gradient path). Lossy
+    # (non-PEC) sheets need a grid-dependent surface-conductivity fold the
+    # coords path cannot yet express — warn rather than silently drop.
+    # Caveat (tracked in #371): on a GENUINELY graded dz_profile, the sheet's
+    # cell can differ by one z-layer from a matching-thickness volume box at the
+    # same nominal z, via the argmin-vs-half-open split in Box.mask_on_coords.
+    # That is a pre-existing csg rasterization issue, not introduced here; this
+    # code uses the same mask_on_coords a thin conductor always has.
+    if sim._thin_conductors:
+        pec_tcs = [tc for tc in sim._thin_conductors
+                   if getattr(tc, "is_pec", False)]
+        lossy_tcs = [tc for tc in sim._thin_conductors
+                     if not getattr(tc, "is_pec", False)]
+        if pec_tcs:
+            if pec_mask is None:
+                pec_mask = jnp.zeros(coords.shape, dtype=jnp.bool_)
+            for tc in pec_tcs:
+                pec_mask = pec_mask | tc.shape.mask_on_coords(
+                    coords.x, coords.y, coords.z)
+        if lossy_tcs:
+            import warnings as _warnings
+            _warnings.warn(
+                f"{len(lossy_tcs)} lossy (non-PEC) thin conductor(s) are not "
+                "yet supported on the non-uniform (dz_profile) path and were "
+                "skipped; use a uniform grid, or a PEC thin conductor "
+                "(sigma_bulk high enough to be treated as PEC).",
+                stacklevel=2,
+            )
     return materials, debye_spec, lorentz_spec, pec_mask
 
 
