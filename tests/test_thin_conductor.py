@@ -306,5 +306,7 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
         f"(sheet={sheet_z}, matching-box={mbox_z})")
     # sanity: the nearest-centre layer really is the min-error placement
     assert sheet_err <= abs(float(zc[onecell_z[0]]) - z_req) + 1e-12
-    # documented: a one-cell VOLUME box is a different object -> may differ
-    assert onecell_z != sheet_z or True   # informational; not required to match
+    # A one-cell VOLUME box is a physically different object (1-cell slab vs a
+    # zero-thickness sheet); on this graded profile it lands one layer away
+    # (onecell_z=[16] vs sheet_z=[15]). That divergence is expected and correct,
+    # not a placement bug — it is exactly what #371 originally mis-read as one.
