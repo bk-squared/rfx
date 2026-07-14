@@ -176,11 +176,12 @@ def test_thin_conductor_nonuniform_reflects_like_box():
     # R5: don't trust the aggregate energy alone — assert cell-identity on the
     # assembled pec_mask itself, which a small cell mismatch can't hide behind a
     # resonance that happens not to move. On a UNIFORM-valued NU profile the thin
-    # sheet and the matching-thickness box coincide cell-for-cell. (On a
-    # genuinely graded dz_profile they can diverge by one z-layer via the
-    # argmin-vs-half-open split in Box.mask_on_coords — a pre-existing csg issue,
-    # tracked in #371, NOT introduced by this fix; hence this identity is asserted
-    # only for the uniform profile.)
+    # sheet and the matching-thickness box coincide cell-for-cell. (#371, resolved
+    # as not-a-placement-bug: even on a GENUINELY graded dz_profile a thin sheet
+    # and a genuinely MATCHING-THICKNESS (sub-cell) box still select the same
+    # z-layer, because both take the argmin-nearest-centre thin branch. Only a
+    # >=1-cell VOLUME box — a physically different object — lands a layer away.
+    # See test_thin_conductor_graded_matches_matching_thickness_box_not_onecell.)
     from rfx.runners.nonuniform import (build_nonuniform_grid,
                                         assemble_materials_nu)
 
@@ -242,3 +243,70 @@ def test_thin_conductor_lossy_warns_on_nonuniform():
     assert any("non-uniform" in str(wi.message).lower()
                and "thin conductor" in str(wi.message).lower() for wi in w), \
         "lossy thin conductor on NU path must emit a skip warning"
+
+
+def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
+    """#371: on a GENUINELY graded dz_profile, a PEC thin sheet selects the same
+    z-layer as a genuinely MATCHING-THICKNESS (sub-cell) box — because both take
+    the argmin thin branch, which realizes the conductor at the nearest cell
+    CENTRE (apply_pec_mask zeros collocated tangential Ex/Ey there). A one-cell
+    VOLUME box is a different object and legitimately lands one layer away; the
+    sheet's layer is the one whose centre is NEAREST z0 (minimum realized-plane
+    error), which the one-cell box is NOT required to match.
+    """
+    import numpy as np
+    from rfx.api import Simulation
+    from rfx.runners.nonuniform import (build_nonuniform_grid,
+                                        assemble_materials_nu)
+    from rfx.geometry.rasterize import coords_from_nonuniform_grid
+    from rfx.geometry.csg import Box
+
+    dx = 0.5e-3
+    dz = [0.5e-3] * 8 + [1.5e-3] * 8          # genuinely graded: fine then coarse
+    L = 24 * dx
+    px = (L / 2 - 6 * dx, L / 2 + 6 * dx)
+    py = (L / 2 - 4 * dx, L / 2 + 4 * dx)
+    z_req = 4.1e-3
+    t = 35e-6
+
+    def nu_pec_z(add_fn):
+        sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
+                         boundary="cpml", cpml_layers=8)
+        add_fn(sim)
+        grid = build_nonuniform_grid(
+            sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
+            dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
+            pec_faces=(sim._boundary_spec.pec_faces() if sim._boundary_spec else None),
+            pmc_faces=(sim._boundary_spec.pmc_faces() if sim._boundary_spec else None),
+            cpml_axes="".join(a for a in "xyz" if a not in (sim._periodic_axes or "")))
+        coords = coords_from_nonuniform_grid(grid)
+        pm = np.asarray(assemble_materials_nu(sim, grid)[3])
+        zc = np.asarray(coords.z)
+        zl = sorted(set(np.argwhere(pm)[:, 2].tolist()))
+        return zl, zc
+
+    sheet_z, zc = nu_pec_z(lambda s: s.add_thin_conductor(
+        Box((px[0], py[0], z_req), (px[1], py[1], z_req)),
+        sigma_bulk=5.8e7, thickness=t))
+    mbox_z, _ = nu_pec_z(lambda s: s.add(
+        Box((px[0], py[0], z_req - t / 2), (px[1], py[1], z_req + t / 2)),
+        material="pec"))
+    onecell_z, _ = nu_pec_z(lambda s: s.add(
+        Box((px[0], py[0], 4.0e-3), (px[1], py[1], 5.5e-3)), material="pec"))
+
+    # R5 witness: realized plane (selected cell centre) vs requested z0.
+    k = sheet_z[0]
+    sheet_err = abs(float(zc[k]) - z_req)
+    nearest = int(np.argmin(np.abs(zc - z_req)))
+    assert sheet_z == [nearest], (
+        f"#371: thin sheet must land on the NEAREST-centre layer {nearest} "
+        f"(realized {float(zc[nearest])*1e3:.3f}mm); got {sheet_z}")
+    assert sheet_z == mbox_z, (
+        f"#371: sheet must equal a genuinely matching-thickness box "
+        f"(sheet={sheet_z}, matching-box={mbox_z})")
+    # sanity: the nearest-centre layer really is the min-error placement
+    assert sheet_err <= abs(float(zc[onecell_z[0]]) - z_req) + 1e-12
+    # A one-cell VOLUME box is a physically different object (1-cell slab vs a
+    # zero-thickness sheet); on this graded profile it lands one layer away
+    # (onecell_z=[16] vs sheet_z=[15]). That divergence is expected and correct,
+    # not a placement bug — it is exactly what #371 originally mis-read as one.
