@@ -101,6 +101,11 @@ class Box:
                     jnp.searchsorted(coords, mid) - 1, 0, coords.size - 2)
                 dc_local = coords[k_mid + 1] - coords[k_mid]
             # Thin sheet: the single cell whose centre is nearest ``mid``.
+            # (#371) On the collocated scheme, apply_pec_mask zeros tangential
+            # Ex/Ey at this cell's CENTRE, so nearest-centre = minimum realized-
+            # plane placement error. A matching-thickness (sub-cell) box takes
+            # this same thin branch and agrees; only a >=1-cell VOLUME box
+            # (different object) selects a different layer on a graded axis.
             nearest_idx = jnp.argmin(jnp.abs(coords - mid))
             thin_mask = jnp.zeros(coords.shape, dtype=bool).at[
                 nearest_idx].set(True)

@@ -389,6 +389,21 @@ class _ExecuteMixin:
             if mname not in materials_dict and mname in MATERIAL_LIBRARY:
                 materials_dict[mname] = MATERIAL_LIBRARY[mname]
 
+        # Thin conductors are PEC/lossy sheets absent from self._geometry
+        # (issue #371 Bug 2). They add no wavelength constraint, but their
+        # IN-PLANE feature size must feed the feature-based dx. Register each
+        # under a synthetic material so analyze_features() folds its bbox dims
+        # into min_thickness while classifying it by sigma (PEC vs lossy), NOT
+        # as a dielectric: sigma_bulk>=1e6 => has_pec (kept out of max_eps_r),
+        # and a sheet's zero z-extent (< 1e-12, plus the sigma<pec_threshold
+        # guard) keeps it out of z_features (no false non-uniform-z). The
+        # zero z-extent is dropped by the nonzero-dims filter, so min_thickness
+        # resolves to the in-plane extent.
+        for i, tc in enumerate(self._thin_conductors):
+            tc_mat = f"__thin_conductor_{i}__"
+            materials_dict[tc_mat] = {"eps_r": tc.eps_r, "sigma": tc.sigma_bulk}
+            geometry_pairs.append((tc.shape, tc_mat))
+
         config = auto_configure(
             geometry=geometry_pairs,
             freq_range=(self._freq_max / 10, self._freq_max),
@@ -2351,7 +2366,7 @@ class _ExecuteMixin:
         fixed_num_periods = n_steps is None
 
         # ---- P1: Auto mesh when dx not specified and geometry exists ----
-        if self._dx is None and self._geometry:
+        if self._dx is None and (self._geometry or self._thin_conductors):
             self._auto_configure_mesh()
 
         # ---- Stage 1 conformal PEC auto-routing ----

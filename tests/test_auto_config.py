@@ -341,3 +341,40 @@ def test_thin_pec_adds_to_pec_mask():
 
     # Should complete without error — PEC sheet handled via mask
     assert result is not None
+
+
+def test_auto_mesh_thin_conductor_only_configures_dx():
+    """#371 Bug 2(a): a sim whose ONLY PEC content is a thin conductor (no dx=,
+    empty self._geometry) must auto-configure dx from the sheet's in-plane size."""
+    from rfx.api import Simulation
+    from rfx.geometry.csg import Box
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.002), boundary="pec")
+    w = 2.0e-3
+    sim.add_thin_conductor(Box((0.005, 0.005, 0.001), (0.015, 0.005 + w, 0.001)),
+                           sigma_bulk=5.8e7, thickness=35e-6)
+    assert sim._dx is None and not sim._geometry and sim._thin_conductors
+    sim._auto_configure_mesh()
+    assert sim._dx is not None, "thin-conductor-only sim must set dx (Bug 2a)"
+    # Bug 2(b): feature-driven, not the empty-geometry lambda/10 fallback.
+    assert sim._dx <= w, f"dx={sim._dx} not resolving the {w*1e3:.1f} mm feature"
+    assert sim._dx < 0.02 / 10, "dx must be finer than the empty-geometry fallback"
+
+
+def test_auto_mesh_trigger_fires_thin_only_end_to_end():
+    """#371 Bug 2(a) at the real trigger (_execute.py:2354): reaching run() with a
+    thin-only sim and no dx= must auto-configure via _auto_configure_mesh."""
+    import warnings
+    from rfx.api import Simulation
+    from rfx.sources.sources import GaussianPulse
+    from rfx.geometry.csg import Box
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.002),
+                     boundary="cpml", cpml_layers=6)
+    sim.add_thin_conductor(Box((0.006, 0.006, 0.001), (0.014, 0.009, 0.001)),
+                           sigma_bulk=5.8e7, thickness=35e-6)
+    sim.add_source(position=(0.007, 0.01, 0.001), component="ez",
+                   waveform=GaussianPulse(f0=6e9, bandwidth=1.0))
+    assert sim._dx is None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim.run(n_steps=5, skip_preflight=True)
+    assert sim._dx is not None, "run() trigger must auto-configure a thin-only sim"
