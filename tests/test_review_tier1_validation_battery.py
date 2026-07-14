@@ -16,8 +16,10 @@ Convention:
 Confirmed items here are candidates for promotion to
 ``docs/agent-memory/rfx-known-issues.md`` once a fix lands.
 
-Covered: CORE-C2, GEO-C1, PROBE-C1, RIS-C2. (OPT-C1 — adi_step_3d
-3D-cavity eigenfrequency — lives in its own slower test.)
+Covered: CORE-C2, GEO-C1, PROBE-C1, RIS-C2, OPT-C1 (adi_step_3d
+3D-cavity eigenfrequency — FIXED 2026-07-13 by the ZCZ full 3D ADI
+scheme; the former strict-xfail marker was removed on XPASS per the
+convention above).
 """
 
 from __future__ import annotations
@@ -241,22 +243,29 @@ def test_risc2_np_interp_complex_part_behavior():
 
 
 # ===========================================================================
-# OPT-C1 — adi_step_3d 3D PEC-cavity eigenfrequency
+# OPT-C1 — adi_step_3d 3D PEC-cavity eigenfrequency  (FIXED 2026-07-13)
 # ===========================================================================
 #
-# adi_step_3d uses an LOD split that, by its own code comment (adi.py,
-# "NOTE: This simplified LOD..."), "applies the tridiagonal solve to ALL
-# E components along each axis, which adds artificial diffusion for
-# components whose curl has no derivative along that axis". The only 3D
-# ADI tests check bounded/oscillating fields — none checks a physical
-# eigenfrequency, while the 2D path has test_adi_cavity_resonance
-# (2% gate).
+# HISTORY: adi_step_3d used an LOD split that, by its own code comment,
+# applied the tridiagonal solve to ALL E components along each axis —
+# artificial diffusion on components whose curl has no derivative along
+# that axis. Under the honest comparator (below) the 12^3-cavity peak at
+# 2x CFL was 2.077 GHz, a 46% miss, and the mode energy decayed within
+# ~4 ns. This test was xfail(strict) against that scheme.
+#
+# VERDICT (2026-07-13, marker removed per module convention): adi_step_3d
+# now implements the full Zheng–Chen–Zhang two-sub-step 3D ADI (issue
+# #338 follow-up — the "fully unconditionally-stable 3D ADI" the
+# 2026-05-30 R2-STOP verdict sanctioned). Measured on this test's
+# committed settings: f_peak = 3.8079 GHz vs analytic 3.8543 GHz ->
+# rel_err = 1.204% < 2% (PASS), late/early probe RMS 0.999 (the mode
+# rings; no artificial dissipation), and the CFL-5x stability rung in
+# tests/test_adi.py stays green (bounded at 10x/50x as free witnesses).
+# Evidence: scripts/diagnostics/gate_honesty_20260713/lane_338_adi_redesign/.
 #
 # This test runs a lossless 3D PEC cubic cavity at a modest CFL factor
 # (where splitting error is small) and compares the dominant resonance
 # to the analytic mode  f_mnp = (C0/2)*sqrt((m/Lx)^2+(n/Ly)^2+(p/Lz)^2).
-# A modest CFL is the FAIR setting: a structural scheme error shows up
-# even there, so a large miss is strong evidence for OPT-C1.
 #
 # COMPARATOR CONVENTION (issue #338): _apply_pec_3d zeroes tangential E
 # at node indices 0 and N-1, so the PEC walls sit L_eff = (N-1)*dx apart
@@ -268,13 +277,6 @@ def test_risc2_np_interp_complex_part_behavior():
 # known-good explicit Yee scheme on the SAME 12^3 node cavity lands
 # 0.21% from the corrected analytic and 8.9% from the biased one.
 
-@pytest.mark.xfail(strict=True, reason=(
-    "OPT-C1: adi_step_3d LOD applies the implicit solve to off-axis E "
-    "components (artificial diffusion, see adi.py LOD NOTE). Under the "
-    "honest comparator (L_eff=(N-1)*dx=55 mm -> f=3.854 GHz) the "
-    "measured 12^3-cavity peak at 2x CFL is 2.077 GHz — a 46% miss "
-    "(2026-07-13), and the mode energy itself decays within ~4 ns "
-    "(over-dissipation). Adjudication test — roadmap Part A, issue #338."))
 def test_optc1_adi_3d_cavity_eigenfrequency():
     L = 0.06           # nominal 60 mm cube
     dx = dy = dz = 0.005   # 12 cells per side

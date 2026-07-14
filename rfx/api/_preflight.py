@@ -1915,37 +1915,41 @@ class _PreflightMixin:
             )
 
     def _validate_cfg_adi_3d_accuracy(self, _w) -> None:
-        """Warn when ``solver='adi'`` is combined with a 3D grid (OPT-C1).
+        """Advise on the 3D ADI large-timestep accuracy envelope (OPT-C1 fixed).
 
-        The 3D ADI path (``adi_step_3d``) uses an LOD split that applies the
-        implicit tridiagonal solve to ALL E components along each sweep axis —
-        artificial diffusion on components whose curl has no derivative along
-        that axis. Measured: a lossless 3D PEC cubic cavity misses the analytic
-        eigenfrequency by ~41% even at a modest 2x CFL (2.077 vs 3.533 GHz),
-        and over-dissipates ~42% at 5x CFL. The 2D TMz ADI path is unaffected
-        (holds a 2% cavity-resonance gate). Note ``mode='3d'`` is the
-        constructor DEFAULT, so ``Simulation(solver='adi')`` lands here.
+        HISTORY: until 2026-07-13 the 3D ADI path was an LOD split with
+        artificial diffusion (OPT-C1) and this validator flagged it as
+        KNOWN-INACCURATE unconditionally. ``adi_step_3d`` now implements the
+        full Zheng–Chen–Zhang two-sub-step 3D ADI (issue #338 follow-up):
+        eigenfrequency error measured 1.2% at 2x CFL on the 12^3 PEC-cavity
+        adjudication test (``tests/test_review_tier1_validation_battery.py::
+        test_optc1_adi_3d_cavity_eigenfrequency``, 2% gate, ~15 cells/wave).
 
-        WARNING severity (NOT error): 3D ADI stays runnable for qualitative
-        stability/divergence studies, and a hard-fail would block the very
-        tests characterising it. MAINTENANCE: the strict-xfail adjudication
-        test ``tests/test_review_tier1_validation_battery.py::
-        test_optc1_adi_3d_cavity_eigenfrequency`` will hard-fail (XPASS) when
-        the scheme is fixed, forcing this warning's removal.
+        What remains is the honest large-dt envelope of ANY Crank–Nicolson-
+        class implicit scheme: dispersion error grows ~dt^2, so at ~15
+        cells per wavelength the <2% eigenfrequency envelope holds only for
+        CFL factors up to ~2x (von Neumann: -1.4% at 2x, -2.8% at 3x, -6.7%
+        at 5x). Runs stay unconditionally STABLE at any factor — accuracy,
+        not stability, is what degrades. Advise (WARNING severity, envelope
+        advisory — not an error) when ``adi_cfl_factor > 2.0`` on a 3D grid.
+        The 2D TMz path keeps its separately validated 50x envelope and is
+        not flagged here.
         """
         if self._solver != "adi" or self._mode != "3d":
             return
+        if self._adi_cfl_factor <= 2.0:
+            return
         _w.warn(
             PreflightWarning(
-                "solver='adi' with a 3D grid (mode='3d' is the default): the "
-                "3D ADI (LOD) scheme is KNOWN-INACCURATE for physical "
-                "results — the implicit solve is applied to E components "
-                "whose curl has no derivative along the sweep axis "
-                "(artificial diffusion). Measured: a lossless 3D PEC cubic "
-                "cavity misses the analytic eigenfrequency by ~41% even at "
-                "2x CFL (~42% over-dissipation at 5x CFL). Use the explicit "
-                "Yee solver (solver='yee') for 3D physics; ADI is validated "
-                "only on the 2D TMz path (mode='2d_tmz', 2% resonance gate).",
+                f"solver='adi' with a 3D grid at adi_cfl_factor="
+                f"{self._adi_cfl_factor:g}: the 3D ADI scheme is "
+                f"unconditionally stable, but its dispersion error grows "
+                f"~dt^2 — at ~15 cells/wavelength the <2% eigenfrequency "
+                f"envelope holds only up to ~2x CFL (measured -1.4% at 2x; "
+                f"-2.8% at 3x, -6.7% at 5x by von Neumann analysis). Use "
+                f"adi_cfl_factor <= 2 for wavelength-scale accuracy, or "
+                f"reserve large factors for geometrically stiff meshes "
+                f"(features far below the wavelength).",
                 code="adi_3d_accuracy",
                 severity="warning",
                 source="_validate_cfg_adi_3d_accuracy",
