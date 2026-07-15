@@ -105,14 +105,36 @@ def assemble_materials_nu(
             for tc in pec_tcs:
                 pec_mask = pec_mask | tc.shape.mask_on_coords(
                     coords.x, coords.y, coords.z)
-        if lossy_tcs:
-            import warnings as _warnings
-            _warnings.warn(
-                f"{len(lossy_tcs)} lossy (non-PEC) thin conductor(s) are not "
-                "yet supported on the non-uniform (dz_profile) path and were "
-                "skipped; use a uniform grid, or a PEC thin conductor "
-                "(sigma_bulk high enough to be treated as PEC).",
-                stacklevel=2,
+        # #373: lossy (non-PEC) thin conductors fold into sigma using the LOCAL
+        # cell size NORMAL to the sheet, not a uniform grid.dx. The sheet has
+        # bulk conductivity sigma_bulk and physical thickness t but occupies one
+        # Yee cell of size d_norm along its normal; preserving the sheet
+        # resistance R_s = 1/(sigma_bulk*t) needs sigma_eff = sigma_bulk*t/d_norm
+        # with d_norm the LOCAL cell size at the sheet's cell (grid.dz varies on
+        # a graded mesh). AD-safe: sigma_eff is a smooth function of the
+        # sigma_bulk*t DoF times a grid constant, and jnp.where keeps the
+        # sigma field (an AD-live material) differentiable.
+        for tc in lossy_tcs:
+            lo = getattr(tc.shape, "corner_lo", None)
+            hi = getattr(tc.shape, "corner_hi", None)
+            if lo is None or hi is None:
+                import warnings as _warnings
+                _warnings.warn(
+                    "lossy thin conductor with a non-Box shape is not yet "
+                    "supported on the non-uniform path and was skipped.",
+                    stacklevel=2)
+                continue
+            extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
+            n_axis = min(range(3), key=lambda i: extents[i])  # sheet normal axis
+            d_norm = jnp.asarray((grid.dx_arr, grid.dy_arr, grid.dz)[n_axis])
+            bshape = [1, 1, 1]
+            bshape[n_axis] = int(d_norm.shape[0])
+            sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
+            m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
+            materials = MaterialArrays(
+                eps_r=jnp.where(m, tc.eps_r, materials.eps_r),
+                sigma=jnp.where(m, sigma_eff, materials.sigma),
+                mu_r=materials.mu_r,
             )
     return materials, debye_spec, lorentz_spec, pec_mask
 

@@ -218,9 +218,12 @@ def test_thin_conductor_nonuniform_reflects_like_box():
          "must select identical pec_mask cells")
 
 
-def test_thin_conductor_lossy_warns_on_nonuniform():
-    """A lossy (non-PEC) thin conductor is not yet supported on the NU path;
-    it must warn (not silently drop) so the omission is visible."""
+def test_thin_conductor_lossy_nonuniform_runs_no_skip_warn():
+    """#373: a lossy (non-PEC) thin conductor now RUNS end-to-end on the NU
+    (dz_profile) path (folded into sigma), no longer warning-and-skipping.
+    (Superseded the earlier #370 warn-and-skip lock — end-to-end coverage
+    complementing the unit-level test_lossy_thin_conductor_nonuniform_uses_local_dz.)
+    """
     import warnings
     from rfx.api import Simulation
     from rfx.sources.sources import GaussianPulse
@@ -239,10 +242,11 @@ def test_thin_conductor_lossy_warns_on_nonuniform():
                    waveform=GaussianPulse(f0=6e9, bandwidth=1.0))
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        sim.run(n_steps=10, skip_preflight=True)
-    assert any("non-uniform" in str(wi.message).lower()
-               and "thin conductor" in str(wi.message).lower() for wi in w), \
-        "lossy thin conductor on NU path must emit a skip warning"
+        res = sim.run(n_steps=10, skip_preflight=True)
+    assert res is not None, "lossy thin conductor on NU must run end-to-end"
+    assert not any("not yet supported" in str(wi.message).lower()
+                   and "thin conductor" in str(wi.message).lower() for wi in w), \
+        "#373: lossy thin conductor on NU must no longer warn-and-skip"
 
 
 def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
@@ -310,3 +314,64 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
     # zero-thickness sheet); on this graded profile it lands one layer away
     # (onecell_z=[16] vs sheet_z=[15]). That divergence is expected and correct,
     # not a placement bug — it is exactly what #371 originally mis-read as one.
+
+
+def test_lossy_thin_conductor_nonuniform_uses_local_dz():
+    """#373: a LOSSY (non-PEC) thin conductor on the non-uniform (dz_profile)
+    path folds into sigma using the LOCAL cell size normal to the sheet, not a
+    uniform grid.dx — so the sheet resistance R_s = 1/(sigma_bulk*t) is
+    preserved on a graded mesh. Before this, lossy sheets warned and were
+    silently skipped on the NU path.
+    """
+    import warnings
+    from rfx.api import Simulation
+    from rfx.runners.nonuniform import (build_nonuniform_grid,
+                                        assemble_materials_nu)
+
+    dx = 0.5e-3
+    dz = [0.5e-3] * 8 + [1.5e-3] * 8       # graded: coarse region has dz=3*dx
+    L = 24 * dx
+    zc = 8.0e-3                            # deep in the coarse (1.5mm) region
+    sigma_bulk, t = 1.0e3, 35e-6          # lossy: sigma_eff << PEC threshold
+
+    sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
+                     boundary="cpml", cpml_layers=6)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        sim.add_thin_conductor(Box((6 * dx, 6 * dx, zc), (18 * dx, 18 * dx, zc)),
+                               sigma_bulk=sigma_bulk, thickness=t)
+        grid = build_nonuniform_grid(
+            sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
+            sim._dz_profile, dx_profile=sim._dx_profile,
+            dy_profile=sim._dy_profile,
+            pec_faces=(sim._boundary_spec.pec_faces()
+                       if sim._boundary_spec is not None else None),
+            pmc_faces=(sim._boundary_spec.pmc_faces()
+                       if sim._boundary_spec is not None else None),
+            cpml_axes="".join(a for a in "xyz"
+                              if a not in (sim._periodic_axes or "")))
+        sigma = np.asarray(assemble_materials_nu(sim, grid)[0].sigma)
+
+    assert not any("not yet supported" in str(wi.message).lower() for wi in w), \
+        "#373: lossy thin conductor on NU must no longer warn-and-skip"
+
+    nz = np.argwhere(sigma > 0)
+    assert len(nz) > 0, "#373: lossy thin conductor produced no sigma cells"
+    k = int(nz[0][2])
+    dz_local = float(np.asarray(grid.dz)[k])
+    assert abs(dz_local - 1.5e-3) < 1e-9, "sheet must land in the coarse region"
+    sigma_cell = float(sigma[tuple(nz[len(nz) // 2])])
+
+    # Uses LOCAL dz (1.5mm), NOT the uniform grid.dx (0.5mm, which would be 3x).
+    sigma_local = sigma_bulk * t / dz_local
+    sigma_uniform_bug = sigma_bulk * t / dx
+    assert abs(sigma_cell - sigma_local) / sigma_local < 1e-4, \
+        f"sigma_eff must use local dz ({sigma_local:.3e}), got {sigma_cell:.3e}"
+    assert abs(sigma_cell - sigma_uniform_bug) / sigma_uniform_bug > 0.5, \
+        "sigma_eff must NOT use the uniform grid.dx (the pre-fix bug)"
+
+    # Sheet resistance preserved: R_s = 1/(sigma_eff * dz_local) = 1/(sigma_bulk*t).
+    R_s = 1.0 / (sigma_cell * dz_local)
+    R_s_true = 1.0 / (sigma_bulk * t)
+    assert abs(R_s - R_s_true) / R_s_true < 1e-3, \
+        f"sheet resistance not preserved: {R_s:.3f} vs {R_s_true:.3f}"
