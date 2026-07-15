@@ -375,3 +375,63 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
     R_s_true = 1.0 / (sigma_bulk * t)
     assert abs(R_s - R_s_true) / R_s_true < 1e-3, \
         f"sheet resistance not preserved: {R_s:.3f} vs {R_s_true:.3f}"
+
+
+def test_lossy_thin_conductor_nonuniform_ad_gate():
+    """#373 AD gate (hard constraint): the lossy σ fold must stay on the
+    gradient path. Differentiate through assemble_materials_nu w.r.t. the
+    sheet thickness (thickness avoids the is_pec Python-bool routing on
+    sigma_bulk) and check the gradient is finite, non-zero, and matches the
+    closed form d/dt Σσ = n_cells · sigma_bulk / dz_local.
+    """
+    import jax
+    import jax.numpy as jnp
+    from rfx.api import Simulation
+    from rfx.materials.thin_conductor import ThinConductor
+    from rfx.runners.nonuniform import (build_nonuniform_grid,
+                                        assemble_materials_nu)
+
+    dx = 0.5e-3
+    dz = [0.5e-3] * 8 + [1.5e-3] * 8
+    L = 24 * dx
+    zc = 8.0e-3                      # coarse region, dz_local = 1.5mm
+    sigma_bulk, t0 = 1.0e3, 35e-6
+
+    sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_thin_conductor(Box((6 * dx, 6 * dx, zc), (18 * dx, 18 * dx, zc)),
+                           sigma_bulk=sigma_bulk, thickness=t0)
+    shape = sim._thin_conductors[0].shape
+    grid = build_nonuniform_grid(
+        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
+        dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
+        pec_faces=(sim._boundary_spec.pec_faces()
+                   if sim._boundary_spec is not None else None),
+        pmc_faces=(sim._boundary_spec.pmc_faces()
+                   if sim._boundary_spec is not None else None),
+        cpml_axes="".join(a for a in "xyz"
+                          if a not in (sim._periodic_axes or "")))
+
+    # Closed form computed from the CONCRETE state first (before grad mutates
+    # the conductor): Σσ = n_cells · sigma_bulk · t / dz_local
+    # ⇒ dΣσ/dt = n_cells · sigma_bulk / dz_local.
+    sigma0 = np.asarray(assemble_materials_nu(sim, grid)[0].sigma)
+    n_cells = int((sigma0 > 0).sum())
+    k = int(np.argwhere(sigma0 > 0)[0][2])
+    dz_local = float(np.asarray(grid.dz)[k])
+    g_analytic = n_cells * sigma_bulk / dz_local
+
+    def loss(thickness):
+        sim._thin_conductors[0] = ThinConductor(
+            shape=shape, sigma_bulk=sigma_bulk, thickness=thickness)
+        return jnp.sum(assemble_materials_nu(sim, grid)[0].sigma)
+
+    g = float(jax.grad(loss)(t0))
+    # restore the concrete conductor so the mutated (traced) one does not leak.
+    sim._thin_conductors[0] = ThinConductor(
+        shape=shape, sigma_bulk=sigma_bulk, thickness=t0)
+
+    assert np.isfinite(g), "#373: gradient through the lossy σ fold is non-finite"
+    assert abs(g) > 0, "#373: gradient through the lossy σ fold is zero (fold off the AD path)"
+    assert abs(g - g_analytic) / g_analytic < 1e-3, \
+        f"#373: grad {g:.4e} != closed form {g_analytic:.4e}"
