@@ -96,10 +96,30 @@ class Box:
             if coords.size <= 1:             # static (shape, not values)
                 dc_local = 1e-3
             else:
-                # Local dc from the midpoint's neighbouring cell spacing.
+                # Local cell WIDTH at the midpoint cell — the smaller of the two
+                # neighbouring centre-to-centre spacings, NOT the single forward
+                # spacing coords[k+1]-coords[k] the legacy code used (#374). At a
+                # fine/coarse grading transition the forward spacing is the mean
+                # of the two adjacent widths and over-counts, mis-classifying a
+                # shape that spans >1 fine cell as thin (which then collapses it
+                # onto a single argmin cell, losing extent). ``min`` is exact for
+                # interior cells and the fine side of a transition, and errs on
+                # the safe side (toward the volume branch, preserving extent) on
+                # the coarse side. Exact cell widths are not recoverable from
+                # centres alone; a fully exact classification would need the
+                # grid's per-cell width array threaded through mask_on_coords.
+                # On a uniform axis s_left==s_right==dx so this is bit-identical
+                # to the legacy centre-spacing.
                 k_mid = jnp.clip(
                     jnp.searchsorted(coords, mid) - 1, 0, coords.size - 2)
-                dc_local = coords[k_mid + 1] - coords[k_mid]
+                im1 = jnp.clip(k_mid - 1, 0, coords.size - 1)
+                ip1 = jnp.clip(k_mid + 1, 0, coords.size - 1)
+                s_left = coords[k_mid] - coords[im1]    # 0 at the lo end
+                s_right = coords[ip1] - coords[k_mid]   # 0 at the hi end
+                dc_local = jnp.where(
+                    (s_left > 0) & (s_right > 0),
+                    jnp.minimum(s_left, s_right),
+                    jnp.maximum(s_left, s_right))
             # Thin sheet: the single cell whose centre is nearest ``mid``.
             # (#371) On the collocated scheme, apply_pec_mask zeros tangential
             # Ex/Ey at this cell's CENTRE, so nearest-centre = minimum realized-

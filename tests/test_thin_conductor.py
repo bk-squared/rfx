@@ -435,3 +435,42 @@ def test_lossy_thin_conductor_nonuniform_ad_gate():
     assert abs(g) > 0, "#373: gradient through the lossy σ fold is zero (fold off the AD path)"
     assert abs(g - g_analytic) / g_analytic < 1e-3, \
         f"#373: grad {g:.4e} != closed form {g_analytic:.4e}"
+
+
+def test_is_thin_classification_uses_local_cell_width():
+    """#374: Box.mask_on_coords classifies thin-vs-volume by the LOCAL cell
+    width (min of the two neighbouring centre spacings), not the single forward
+    spacing. Bit-identical on a uniform axis; on a graded axis it no longer
+    over-counts the cell size at a fine/coarse transition (which collapsed a
+    >1-fine-cell shape onto a single argmin cell).
+    """
+    import jax.numpy as jnp
+    from rfx.geometry.csg import Box
+
+    zero = jnp.zeros(1)
+
+    def n_cells(coords, lo, hi):
+        m = np.asarray(Box((0, 0, lo), (0, 0, hi)).mask_on_coords(zero, zero, coords))
+        return int(m.sum())
+
+    # --- Uniform axis: unchanged (thin <= 1 cell, volume otherwise) ---
+    xu = jnp.asarray(np.arange(20) * 1e-3 + 0.5e-3)   # 1mm cells, centres at k+0.5
+    assert n_cells(xu, 5e-3, 5.2e-3) == 1              # sub-cell sheet → 1
+    assert n_cells(xu, 5e-3, 7.5e-3) == 2              # 2.5mm span → volume, 2 centres
+
+    # --- Graded axis: fine 0.5mm (cells 0-7) then coarse 1.5mm (cells 8-15) ---
+    dz = np.array([0.5e-3] * 8 + [1.5e-3] * 8)
+    edges = np.concatenate([[0.0], np.cumsum(dz)])
+    zc = jnp.asarray(0.5 * (edges[:-1] + edges[1:]))
+    zc_np = np.asarray(zc)
+
+    # A genuine sub-cell sheet still resolves to exactly one cell (the nearest).
+    z0 = 2.75e-3                                       # a fine-region centre
+    assert n_cells(zc, z0, z0) == 1
+    k = int(np.argmin(np.abs(zc_np - z0)))
+    m = np.asarray(Box((0, 0, z0), (0, 0, z0)).mask_on_coords(zero, zero, zc))
+    assert int(np.argwhere(m)[0][2]) == k             # z-index lands on nearest cell
+
+    # The local cell width at a fine-region centre is the fine size (0.5mm), so a
+    # 1.2mm-extent box there spans multiple fine cells (volume), not one.
+    assert n_cells(zc, 2.0e-3, 3.2e-3) >= 2
