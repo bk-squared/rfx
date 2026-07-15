@@ -12,11 +12,20 @@ Structure (stack from bottom to top):
     ``pec_faces={"z_lo"}`` — an infinite boundary GP turns the antenna
     into a cavity and shifts the resonance ~8 % high (see build_patch
     docstring).
-  - FR4 substrate: εr=4.3, 1.5 mm nominal. NOTE: with the committed
-    graded z-mesh the substrate Box RASTERIZES to 2 coarse cells, not
-    the intended 6 fine cells (issue #325); re-pinning it onto the fine
-    band was measured to DEGRADE the resonance agreement, so the
-    committed envelope is kept as-is. (OpenEMS side: 4 uniform z-cells.)
+  - FR4 substrate: εr=4.3, 1.5 mm nominal, now correctly RASTERIZED to
+    6 fine cells / 1.5 mm (issue #325 fixed): smooth_grading shifts the
+    fine block up in absolute z, so the stack is registered to where the
+    fine cells actually land (see the #325 block below). An earlier note
+    kept the mis-registered 2-cell/1.361 mm substrate because re-pinning
+    "degraded resonance agreement" — but that agreement was
+    harminv-vs-analytic under a mode-AMBIGUOUS selector (closest-to-
+    analytic), which flips between modes as the geometry/subpixel changes.
+    This script now IDs the radiating mode by far-field broadside (below),
+    which is stable, and the primary gate is rfx-vs-OpenEMS (not analytic),
+    re-verified on the VESSL external-crossval lane. The corrected 6-cell
+    substrate reads ~9 % above the (5-8 %-approximate) analytic — the
+    coarse-mesh high-bias of the radiating mode, not a registration bug.
+    (OpenEMS side: 4 uniform z-cells.)
   - Patch: PEC rectangle on top of the substrate
   - Air region above the patch (MUR / CPML open boundaries)
 
@@ -193,6 +202,7 @@ from rfx.boundaries.spec import BoundarySpec
 from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 from rfx.auto_config import smooth_grading
 from rfx.harminv import harminv
+from rfx.farfield import compute_far_field, directivity
 import jax.numpy as jnp
 
 # Non-uniform z mesh: coarse air below, fine substrate, coarse air above
@@ -202,7 +212,34 @@ raw_dz = np.concatenate([
     np.full(n_sub, dz_sub),               # substrate
     np.full(n_above, dx),                 # air above the patch
 ])
-dz_profile = smooth_grading(raw_dz, max_ratio=1.3)
+dz_profile = smooth_grading(
+    raw_dz, max_ratio=1.3,
+    preserve_regions=[(n_below, n_below + 1 + n_sub)])
+
+# #325: smooth_grading inserts transition cells BELOW the fine block to ramp the
+# coarse air down to the 0.25mm stack within max_ratio, which shifts the fine
+# block UP in absolute z. preserve_regions keeps the fine cells' sizes/contiguity
+# but does NOT hold their position — so REGISTER the ground/substrate/patch stack
+# to where the fine (dz_sub) cells ACTUALLY land in the built grid, not the
+# pre-smoothing intended coordinates. Without this the substrate Box lands on
+# coarse transition cells and builds as 2 cells / 1.361mm instead of 6 / 1.5mm.
+_z_edges = np.concatenate([[0.0], np.cumsum(dz_profile)])
+_fine = np.where(np.isclose(dz_profile, dz_sub, rtol=1e-6))[0]
+assert len(_fine) == 1 + n_sub and np.all(np.diff(_fine) == 1), (
+    f"#325: expected {1 + n_sub} contiguous fine (0.25mm) cells (1 GP + {n_sub} "
+    f"substrate), got {len(_fine)} at {_fine.tolist()} — check preserve_regions")
+z_gnd_lo = float(_z_edges[_fine[0]])          # first fine cell = ground plane
+z_gnd_hi = float(_z_edges[_fine[0] + 1])
+z_sub_lo = z_gnd_hi                            # next n_sub fine cells = substrate
+z_sub_hi = float(_z_edges[_fine[-1] + 1])
+z_patch_lo = z_sub_hi
+z_patch_hi = z_sub_hi + dz_sub
+assert abs((z_sub_hi - z_sub_lo) - h_sub) < 1e-9, (
+    f"#325: substrate must build to {h_sub*1e3:.3f}mm ({n_sub} cells), got "
+    f"{(z_sub_hi - z_sub_lo)*1e3:.4f}mm")
+print(f"  [#325] stack registered to grid: substrate z=[{z_sub_lo*1e3:.3f}, "
+      f"{z_sub_hi*1e3:.3f}]mm = {n_sub} cells / {(z_sub_hi-z_sub_lo)*1e3:.3f}mm "
+      f"(was 2 cells / 1.361mm at the pre-smoothing fixed z)")
 
 
 def _refined_xy_profile(dom_len: float, boundary: float, interior_lo: float,
@@ -229,6 +266,11 @@ def _refined_xy_profile(dom_len: float, boundary: float, interior_lo: float,
     ])
     # smooth_grading keeps adjacent cell ratios ≤ 1.3
     return smooth_grading(raw, max_ratio=1.3)
+
+
+# NTFF far-field frequency sweep spanning the patch band (radiating-mode ID lane).
+# 2.0-3.2 GHz @ 0.05 GHz — brackets the ~2.4 GHz TM10 and its neighbours.
+ntff_freqs = np.round(np.arange(2.00e9, 3.201e9, 0.05e9), 6)
 
 
 def build_patch(with_port: bool,
@@ -295,6 +337,21 @@ def build_patch(with_port: bool,
             position=(dom_x / 2 + 5e-3, dom_y / 2 + 5e-3, src_z),
             component="ez",
         )
+        # NTFF far-field box for radiating-mode identification. The CPML occupies
+        # the OUTER n_cpml cells on every axis, so the box must sit inside that
+        # absorber shell yet still ENCLOSE the finite GP (Huygens box must contain
+        # every radiator/scatterer). The GP (x[10,70], y[10,65] mm) nearly fills
+        # the xy interior ([8,72]x[8,67] mm at n_cpml=8, dx=1mm), so the xy faces
+        # sit one cell inside the CPML — ~1 cell of GP clearance. The z faces have
+        # room: bottom just under the GP, top ~19mm above the patch but below the
+        # top absorber (interior z ~[8, 36] mm). ~1-cell GP clearance means the
+        # pattern integrates reactive near-field — acceptable here: the fixture IDs
+        # which resonance radiates broadside, not a calibrated pattern.
+        z_top = float(_z_edges[-1])
+        pad = (n_cpml + 1) * dx           # 9mm: one cell inside the 8mm CPML shell
+        ntff_lo = (pad, pad, max(pad, z_gnd_lo - 3 * dx))
+        ntff_hi = (dom_x - pad, dom_y - pad, z_top - pad)
+        sim.add_ntff_box(corner_lo=ntff_lo, corner_hi=ntff_hi, freqs=ntff_freqs)
     return sim
 
 
@@ -313,18 +370,80 @@ signal = ts[skip:]
 print(f"Harminv on last {len(signal)} samples (ringdown region)")
 modes = harminv(signal, dt_h, 1.5e9, 3.5e9)
 modes_good = [m for m in modes if m.Q > 2 and m.amplitude > 1e-8]
-if modes_good:
-    modes_good.sort(key=lambda m: abs(m.freq - f_resonance_an))
-    best = modes_good[0]
-    f_res_harminv = float(best.freq)
-    Q_harminv = float(best.Q)
-else:
-    f_res_harminv = float("nan")
-    Q_harminv = float("nan")
 
-print("\nHarminv modes (Q > 2) near analytic target:")
-for m in sorted(modes_good, key=lambda m: m.freq)[:6]:
+# R5: dump every harminv candidate BEFORE selecting one.
+print("\nHarminv modes (Q > 2, amp > 1e-8):")
+for m in sorted(modes_good, key=lambda m: m.freq):
     print(f"  f = {m.freq/1e9:.4f} GHz, Q = {m.Q:.1f}, amp = {m.amplitude:.2e}")
+
+# --- FAR-FIELD BROADSIDE mode identification (replaces closest-to-analytic) ---
+# The patch is multi-mode; picking the harminv mode nearest the analytic value
+# flips between physical modes when subpixel smoothing is toggled (#330 / R-A).
+# Instead, evaluate the NTFF far-field at each candidate's frequency and select
+# the RADIATING TM10: the mode whose E- and H-plane patterns peak BROADSIDE
+# (|theta_peak| small) with the highest directivity. This is independent of the
+# analytic value, which is now used only as a printed reference.
+BROADSIDE_DEG = 20.0
+f_res_harminv = float("nan")
+Q_harminv = float("nan")
+ff_pick = None
+ff_diag = []
+
+ntff_ok = (getattr(res_h, "ntff_data", None) is not None
+           and getattr(res_h, "ntff_box", None) is not None)
+if modes_good and ntff_ok:
+    theta = np.linspace(-np.pi / 2, np.pi / 2, 91)     # signed E/H-plane cut
+    tdeg = np.degrees(theta)
+    # E-plane (phi=0) and H-plane (phi=pi/2) cuts for the broadside-angle test,
+    # plus a coarse full sphere for a meaningful directivity value.
+    ffE = compute_far_field(res_h.ntff_data, res_h.ntff_box, res_h.grid,
+                            np.abs(theta), np.array([0.0]))
+    ffH = compute_far_field(res_h.ntff_data, res_h.ntff_box, res_h.grid,
+                            np.abs(theta), np.array([np.pi / 2]))
+    ffD = compute_far_field(res_h.ntff_data, res_h.ntff_box, res_h.grid,
+                            np.linspace(0, np.pi, 46), np.linspace(0, 2 * np.pi, 25))
+    D_dbi = directivity(ffD)                            # (nf,) dBi over the sphere
+    for m in modes_good:
+        fi = int(np.argmin(np.abs(ntff_freqs - m.freq)))
+        f_sweep = float(ntff_freqs[fi])
+        off_band = abs(f_sweep - m.freq) > 0.05e9       # nearest swept freq > 1 step
+        pE = np.abs(ffE.E_theta[fi, :, 0]) ** 2 + np.abs(ffE.E_phi[fi, :, 0]) ** 2
+        pH = np.abs(ffH.E_theta[fi, :, 0]) ** 2 + np.abs(ffH.E_phi[fi, :, 0]) ** 2
+        eE = float(tdeg[int(np.argmax(pE))])
+        eH = float(tdeg[int(np.argmax(pH))])
+        broadside = (abs(eE) <= BROADSIDE_DEG and abs(eH) <= BROADSIDE_DEG
+                     and not off_band)
+        ff_diag.append(dict(m=m, f_sweep=f_sweep, off_band=off_band,
+                            E_peak=eE, H_peak=eH, D=float(D_dbi[fi]),
+                            broadside=broadside))
+    print("\nFar-field broadside mode-ID (per harminv candidate):")
+    for d in sorted(ff_diag, key=lambda d: d["m"].freq):
+        tag = " <== broadside" if d["broadside"] else \
+              (" (off-band)" if d["off_band"] else "")
+        print(f"  f_hv={d['m'].freq/1e9:.4f} GHz -> ff@{d['f_sweep']/1e9:.3f} GHz  "
+              f"Epk={d['E_peak']:+6.1f} Hpk={d['H_peak']:+6.1f} deg  "
+              f"D={d['D']:6.2f} dBi{tag}")
+    cand = [d for d in ff_diag if d["broadside"]]
+    if cand:
+        # radiating TM10 = broadside mode with the largest directivity
+        ff_pick = max(cand, key=lambda d: d["D"])
+        f_res_harminv = float(ff_pick["m"].freq)
+        Q_harminv = float(ff_pick["m"].Q)
+        print(f"  -> RADIATING TM10 (broadside, max D): f = {f_res_harminv/1e9:.4f} "
+              f"GHz, Q = {Q_harminv:.1f}, D = {ff_pick['D']:.2f} dBi "
+              f"(Epk={ff_pick['E_peak']:+.1f} Hpk={ff_pick['H_peak']:+.1f} deg)")
+
+if np.isnan(f_res_harminv) and modes_good:
+    # Fallback: NTFF could not disambiguate a broadside radiating mode. Do NOT
+    # silently revert to closest-to-analytic — flag it loudly, then use it only
+    # as a labelled last resort so the downstream comparison still has a number.
+    fb = min(modes_good, key=lambda m: abs(m.freq - f_resonance_an))
+    f_res_harminv = float(fb.freq)
+    Q_harminv = float(fb.Q)
+    reason = "no NTFF data" if not ntff_ok else "no broadside mode found"
+    print(f"\n  [WARN] far-field mode-ID could not disambiguate ({reason}); "
+          f"FALLING BACK to closest-to-analytic = {f_res_harminv/1e9:.4f} GHz "
+          f"(UNRELIABLE for a multi-mode patch — see #330).")
 
 if not np.isnan(f_res_harminv):
     harminv_err_pct = 100 * abs(f_res_harminv - f_resonance_an) / f_resonance_an
