@@ -89,18 +89,18 @@
     {
       "id": "05_patch_antenna",
       "script": "validation/crossval/05_patch_antenna.py",
-      "role": "claims-bearing",
+      "role": "diagnostic-reporter",
       "public_group": "B",
       "execution_tiers": ["cpu-runner", "vessl-external"],
-      "evidence_levels": ["E2", "E4"],
+      "evidence_levels": ["E2"],
       "references": [
-        {"kind": "analytic", "name": "Balanis transmission-line patch resonance", "required_for_script_pass": true},
-        {"kind": "external-solver", "name": "OpenEMS Simple Patch Antenna", "required_for_script_pass": true}
+        {"kind": "analytic", "name": "Balanis transmission-line patch resonance (printed reference, NOT a pass gate)", "required_for_script_pass": false},
+        {"kind": "external-solver", "name": "OpenEMS Simple Patch Antenna (coarse, no thirds-rule; presence required for a full run, numeric comparison reported not gated)", "required_for_script_pass": true}
       ],
-      "claim_scope": "2.4 GHz finite-ground-plane patch resonance; Harminv frequency is stronger evidence than absolute probe-feed S11 calibration",
+      "claim_scope": "INTEGRATION/SMOKE diagnostic-reporter only (demoted from claims-bearing 2026-07-15, see docs/research_notes/20260715_cv05_first_principles_review.md): exercises probe-fed patch + finite-GP + CPML + NU-graded-z + openEMS lumped port end-to-end and REPORTS a coarse-mesh (dx=1mm) resonance. It does NOT establish accuracy: the 20% openEMS gate provably passes over two physically different geometries (broken 2-cell and split 6-cell substrate, #325), the ~2.65% agreement is a documented z-under-res/staircase error cancellation, and the openEMS reference omits the thirds-rule + reproduce-gate. Authoritative patch-accuracy evidence is DELEGATED to the committed tests in gate_paths.",
       "external_dependencies": ["openEMS", "CSXCAD"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["validation/crossval/05_patch_antenna.py"],
+      "gate_paths": ["tests/test_issue80_patch_resonance_harminv.py", "tests/test_issue80_patch_s11_regression.py", "tests/test_patch_cavity_eps_oracle.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 3},
       "scheduled_external_order": null,
