@@ -318,6 +318,18 @@ print(f"Done in {time.time()-t0:.1f}s")
 
 ts = np.asarray(res_h.time_series).ravel()
 dt_h = float(res_h.dt)
+
+# Settling witness (#332/G1): in a CPML-open domain a trustworthy Harminv needs
+# the ring-down to have decayed well below the post-source peak. Report the
+# end-of-run probe amplitude vs the post-source peak in dB BEFORE any frequency;
+# < -40 dB is the healthy bar, above it flags truncation (num_periods too low).
+_amp = np.abs(ts)
+_peak = float(_amp[int(len(_amp) * 0.15):].max()) if len(_amp) else 0.0
+_end = float(_amp[-max(1, len(_amp) // 20):].mean())
+_settle_db = 20.0 * np.log10(_end / _peak) if _peak > 0 and _end > 0 else float("-inf")
+print(f"Settling witness (#332/G1): end/peak = {_settle_db:.1f} dB "
+      f"({'OK (<-40)' if _settle_db < -40 else 'UNDERSETTLED (>-40): Harminv freq/Q suspect, raise num_periods'})")
+
 # Skip source decay phase (first 30% of signal), keep ringdown
 skip = int(len(ts) * 0.3)
 signal = ts[skip:]
@@ -735,11 +747,13 @@ print(f"  S11 passivity advisory (|S11| < 1.05): "
       f"(max|S11|={np.max(np.abs(S11)):.3f})")
 print(f"  Overall:                          {'PASS' if all_ok else 'FAIL'}")
 print()
-print("  FINDING: rfx and OpenEMS Harminv agree within the coarse-mesh")
-print(f"  gate on the TM010 patch resonance ({rfx_vs_oe_pct:.2f} %, limit")
-print("  20 %), and rfx remains within the Balanis TL analytic tolerance")
-print(f"  ({harminv_err_pct:.2f} %, limit 10 %). This is narrow patch")
-print("  resonance evidence, not broad absolute wire-port S-parameter E5.")
+print("  DIAGNOSTIC REPORT (not an accuracy gate): rfx and OpenEMS Harminv")
+print(f"  agree to {rfx_vs_oe_pct:.2f} % (smoke bound 20 %) on the TM010 patch")
+print(f"  resonance; rfx vs the Balanis TL estimate is {harminv_err_pct:.2f} %")
+print("  (reported, NOT gated — the TL model is 5-8 % approximate). This is a")
+print("  coarse-mesh integration check; the smoke bound passes over two")
+print("  different substrate geometries (#325), so it does not validate")
+print("  accuracy — see the committed patch tests (manifest gate_paths).")
 print()
 print("  Root-cause history (see research note 2026-04-11_crossval12):")
 print("   • Before the ground-plane fix, rfx used `pec_faces={\"z_lo\"}`")
@@ -771,8 +785,11 @@ if json_out:
     payload = {
         "status": "passed" if all_ok else "failed",
         "claim_scope": (
-            "probe-fed patch resonance cross-validation; useful wire/lumped "
-            "port evidence but not broad calibrated S-parameter E5"
+            "diagnostic-reporter (demoted from claims-bearing 2026-07-15): "
+            "coarse-mesh probe-fed patch resonance integration check, reported "
+            "not gated; the 20% openEMS smoke bound passes over two different "
+            "substrate geometries (#325). Patch-accuracy evidence is delegated "
+            "to committed tests (manifest gate_paths)."
         ),
         "analytic_resonance_hz": float(f_resonance_an),
         "openems_harminv_hz": float(f_res_oe),
