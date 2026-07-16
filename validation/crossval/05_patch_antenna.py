@@ -14,9 +14,20 @@ Structure (stack from bottom to top):
     docstring).
   - FR4 substrate: εr=4.3, 1.5 mm nominal. NOTE: with the committed
     graded z-mesh the substrate Box RASTERIZES to 2 coarse cells, not
-    the intended 6 fine cells (issue #325); re-pinning it onto the fine
-    band was measured to DEGRADE the resonance agreement, so the
-    committed envelope is kept as-is. (OpenEMS side: 4 uniform z-cells.)
+    the intended 6 fine cells (issue #325). Re-registering it to 6 fine
+    cells was tried and STOPPED by a pre-declared falsifier (research
+    note 20260711): on this graded mesh the 6-cell substrate sits next
+    to a fine↔coarse transition that SPLITS the mode and makes the
+    openEMS agreement WORSE (2.65% → 6.45%). A correct 6-cell build
+    needs a uniform-fine substrate band (no adjacent transition), which
+    is a redesign, not a re-pin. THIS SCRIPT IS A DIAGNOSTIC-REPORTER
+    (demoted from claims-bearing 2026-07-15,
+    docs/research_notes/20260715_cv05_first_principles_review.md): it
+    reports a coarse-mesh resonance and exercises the end-to-end path;
+    it does NOT gate accuracy. Patch-accuracy evidence is delegated to
+    the committed tests (test_issue80_patch_resonance_harminv,
+    test_issue80_patch_s11_regression, test_patch_cavity_eps_oracle).
+    (OpenEMS side: 4 uniform z-cells.)
   - Patch: PEC rectangle on top of the substrate
   - Air region above the patch (MUR / CPML open boundaries)
 
@@ -698,21 +709,26 @@ print(f"  rfx vs OpenEMS Harminv:                        "
       f"{rfx_vs_oe_pct:.2f} %")
 print()
 
-# Pass criteria — honest coarse-mesh tolerances:
+# Diagnostic-reporter checks (demoted 2026-07-15). These are SMOKE checks that
+# the end-to-end run is not grossly broken, NOT accuracy gates:
 #  - rfx self-consistent to 5 % (Harminv ≈ its own lumped-S11 dip)
-#  - rfx within the TL-analytic's own ±10 % uncertainty
-#  - rfx within 20 % of OpenEMS (both FDTDs at coarse mesh — see NOTES)
+#  - rfx within 20 % of OpenEMS (both FDTDs at coarse mesh; a loose "resonated
+#    roughly where a patch should" bound — it provably passes over two different
+#    substrate geometries, so it does NOT validate accuracy; see #325)
+#  - passivity advisory
+# Balanis vs-analytic (harminv_err_pct) is REPORTED but NOT gated: the TL model
+# is 5-8 % approximate, so gating against it risks tuning to an approximation.
 pass_internal   = rfx_internal_pct < 5.0
-pass_vs_analyt  = harminv_err_pct < 10.0
 pass_vs_openems = rfx_vs_oe_pct < 20.0
 pass_passivity  = passive
-all_ok = pass_internal and pass_vs_analyt and pass_vs_openems and pass_passivity
+# NOTE: pass_vs_analyt (harminv_err_pct < 10 %) intentionally NOT in all_ok.
+all_ok = pass_internal and pass_vs_openems and pass_passivity
 
 print(f"  rfx self-consistency (< 5 %):     "
       f"{'PASS' if pass_internal else 'FAIL'}  ({rfx_internal_pct:.2f} %)")
-print(f"  rfx vs analytic (< 10 %):         "
-      f"{'PASS' if pass_vs_analyt else 'FAIL'}  ({harminv_err_pct:.2f} %)")
-print(f"  rfx vs OpenEMS (< 20 %):          "
+print(f"  rfx vs analytic (report, not gated): "
+      f"{harminv_err_pct:.2f} %  (Balanis TL is 5-8% approximate)")
+print(f"  rfx vs OpenEMS (< 20 %, smoke):   "
       f"{'PASS' if pass_vs_openems else 'FAIL'}  ({rfx_vs_oe_pct:.2f} %)")
 print(f"  S11 passivity advisory (|S11| < 1.05): "
       f"{'PASS' if pass_passivity else 'FAIL'}  "
