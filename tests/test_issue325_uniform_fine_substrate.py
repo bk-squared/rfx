@@ -88,7 +88,16 @@ def test_uniform_fine_substrate_builds_n_sub_cells_with_clearance(n_buf):
 
 def test_committed_cv05_geometry_fails_the_lock():
     """Fails-closed guard: the committed cv05 geometry (fixed air_below=12mm, no
-    buffer) rasterizes the substrate to 2 coarse cells — the lock must reject it."""
+    buffer) rasterizes the substrate to 2 coarse cells — the lock must reject it.
+
+    NOTE (drift risk, PR #379 review): cv05's z-mesh is inline module-level code
+    (`05_patch_antenna.py`), not an importable function, so this test HAND-COPIES
+    cv05's raw_dz construction (N_BELOW=12, N_ABOVE=25, DX=1mm, fixed substrate
+    z=[12,13.5]mm — verified matching today). If cv05's air_below/dx/n_sub ever
+    change, this frozen copy would silently stop reflecting cv05. When cv05 adopts
+    build_uniform_fine_z (pending the §1-B physics witness), refactor this to
+    import cv05's real construction so the guard tracks the live geometry.
+    """
     raw = np.concatenate([
         np.full(N_BELOW, DX), np.full(1, DZ_SUB), np.full(N_SUB, DZ_SUB),
         np.full(N_ABOVE, DX),
