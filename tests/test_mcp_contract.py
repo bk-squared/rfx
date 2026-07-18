@@ -6,6 +6,12 @@ import os
 from pathlib import Path
 import sys
 
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("mcp")
+pytest.importorskip("httpx")
+
 from rfx.studio.api import create_app
 
 

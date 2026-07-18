@@ -5,6 +5,10 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("fastapi")
+pytest.importorskip("mcp")
+pytest.importorskip("httpx")
+
 from rfx.experiments import ExperimentService
 from rfx.operations import (
     backup_workspace,
