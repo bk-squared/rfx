@@ -125,9 +125,12 @@ def test_reference_fixture_pins_the_recorded_openems_numbers():
 
 def test_reference_fixture_provenance_and_reproduce_gate_are_recorded():
     """Provenance is part of the reference: recipe, producing script, run id, and an
-    HONEST reproduce-gate status (substance satisfied, docstring artifact retroactive,
-    values labelled as OUR run's measurements — envelope lock, not a published-number
-    match). Fails closed if someone strips the honesty block."""
+    HONEST reproduce-gate record. The gate's LETTER was closed 2026-07-18 by the
+    literal-tutorial-first external re-verification (unmodified upstream tutorial run
+    + external post-processing of its own port data), and the fixture must carry both
+    that closure AND the history that the record-first artifact was once retroactive.
+    Values stay labelled as OUR runs' measurements — envelope lock, not a
+    published-number match. Fails closed if someone strips the honesty block."""
     meta = _load_reference()["meta"]
     assert "AddEdges2Grid" in meta["recipe"] and "thirds-rule" in meta["recipe"]
     assert meta["source_script"].startswith("scripts/diagnostics/patch_tutorial_openems.py")
@@ -135,10 +138,18 @@ def test_reference_fixture_provenance_and_reproduce_gate_are_recorded():
     assert (_REPO_ROOT / "scripts/diagnostics/patch_tutorial_rfx.py").is_file()
     assert meta["run"]["vessl_run_good"] == "369367246713"
     rg = meta["reproduce_gate"]
-    assert rg["status"].startswith("substance-satisfied")
+    assert rg["status"].startswith("satisfied")
     assert "retroactively" in rg["status"] or "retroactively" in rg["detail"]
     assert "ENVELOPE LOCK" in rg["consequence"]
+    assert rg["follow_up"].startswith("COMPLETED 2026-07-18")
     assert meta["comparison_kind"] == "committed_external_reference_envelope_lock"
+    # the literal tutorial's own reproduced number (the reproduce-gate letter)
+    lit = meta["literal_tutorial_reproduction"]
+    assert lit["f_s11_dip_ghz"] == 2.4325 and lit["s11_min_db"] == -33.0
+    assert lit["vessl_run"] == "369367247478"
+    # the fresh independent-build re-verification of the committed numbers
+    fresh = meta["fresh_reverification"]
+    assert fresh["f_res_ghz"] == 2.4222 and fresh["directivity_dbi"] == 6.80
     # the reference run itself clears the settling bar this test enforces on rfx
     assert meta["run"]["end_energy_db"] <= SETTLING_BAR_DB
 

@@ -41,13 +41,32 @@
   "source_result_json": "scripts/diagnostics/cv05_investigation_results/patch_tutorial_openems_GOOD.json (local-only investigation dir, untracked; byte-identical sibling copy patch_tutorial_openems.json verified with diff)",
   "log_path": "docs/research_notes/vessl_logs/patch_tutorial_openems_GOOD_369367246713.log (docs/research_notes is local-only/gitignored in this public repo; log lines quoted verbatim in the reproduce_gate detail below)",
   "reproduce_gate": {
-   "status": "substance-satisfied; script-docstring artifact added retroactively 2026-07-18",
+   "status": "satisfied: substance (2026-07-11 GOOD run) + letter CLOSED 2026-07-18 by the literal-tutorial-first external re-verification; the record-first docstring artifact had been added retroactively before the letter was closed",
    "detail": "SUBSTANCE: satisfied \u2014 the producing script IS the tutorial replication (the target geometry is the canonical Simple_Patch geometry; no geometry swap ever occurred) and the GOOD run reproduced the tutorial's expected known-good behaviour: clean broadside pattern, D=6.79 dBi vs the '~7 dBi' published anchor, f_res=2.4221 GHz vs the ~2.4 GHz tutorial design. Log prints verbatim: 'harminv-port-V f_res=2.4221 GHz Q=20.1 | S11 dip 2.4300 (-27.8 dB)' and 'directivity 6.79 dBi | BROADSIDE OK'. LETTER: the research/CLAUDE.md reproduce-gate asks the script itself to record the reproduced number + log path + delta list BEFORE any geometry change; that docstring artifact was missing at the time of the run and was added retroactively (2026-07-18, with the delta list vs upstream python/Tutorials/Simple_Patch_Antenna.py). The strict record-first ordering therefore cannot be retroactively satisfied, but no geometry swap occurred that the ordering exists to guard against.",
-   "consequence": "no precise upstream-published number (f_res / S11 / D with an openEMS-project citation) is recorded anywhere in this repo \u2014 only the loose '~7 dBi broadside' anchor. 2.4221 GHz / 6.79 dBi are therefore OUR source-built-openEMS run's measured values, and this fixture is a committed-openEMS-reference ENVELOPE LOCK (the cv06b precedent, tests/fixtures/msl_notch_e4/), NOT a claim of matching openEMS's published tutorial result.",
-   "follow_up": "tracked follow-up before any claim stronger than an envelope lock: a fresh external-lane re-verification with the literal-tutorial-first structure (run the upstream tutorial verbatim, record its number and log, then re-run our instrumented variant)"
+   "consequence": "the literal upstream tutorial's OWN measured number now exists on record (S11 dip 2.4325 GHz / -33.0 dB, external lumped-port decomposition of the UNMODIFIED tutorial's saved port data, run 369367247478). It is a measured-on-our-source-build number, still not an openEMS-project PUBLISHED citation, so this fixture remains a committed-openEMS-reference ENVELOPE LOCK (the cv06b precedent, tests/fixtures/msl_notch_e4/), NOT a claim of matching a published tutorial result. 2.4221 GHz / 6.79 dBi are OUR instrumented-variant run's measured values.",
+   "follow_up": "COMPLETED 2026-07-18: literal-tutorial-first external-lane re-verification. Run 369367247470 (stage-2 fresh confirmation: f_res 2.4222 GHz Q 20.1, D 6.80 dBi, S11 dip 2.4300/-29.8 dB) and run 369367247478 (stage-1 literal tutorial executed unmodified to -41.6 dB energy, exit 0; stage-1b external post-processing of its own port data: S11 dip 2.4325 GHz / -33.0 dB; stage-2 repeat: f_res 2.4222 Q 20.2, D 6.80, dip 2.4300/-30.2). Literal-vs-instrumented dip delta 0.1% (frame/mesh deltas ledgered in the instrumented script header). Artifacts: .omx/canonical-nf2ff-reverify/20260718T044838Z + 20260718T053908Z (NFS, local); logs: docs/research_notes/vessl_logs/canonical_nf2ff_reverify_369367247470_completed.log (+ 369367247478 backup)."
   },
   "comparison_kind": "committed_external_reference_envelope_lock",
-  "claim": "canonical-patch far-field reference for tests/test_patch_canonical_farfield_e4.py: the identical-geometry rfx lane (scripts/diagnostics/patch_tutorial_rfx.py) measured broadside D within 0.08 dB (6.71 vs 6.79 dBi, np=250 research frame) and a documented coarse-dx (dx=2 mm) resonance offset of -8.6% (2.2143 vs 2.4221 GHz) \u2014 an envelope regression lock, not an accuracy claim"
+  "claim": "canonical-patch far-field reference for tests/test_patch_canonical_farfield_e4.py: the identical-geometry rfx lane (scripts/diagnostics/patch_tutorial_rfx.py) measured broadside D within 0.08 dB (6.71 vs 6.79 dBi, np=250 research frame) and a documented coarse-dx (dx=2 mm) resonance offset of -8.6% (2.2143 vs 2.4221 GHz) \u2014 an envelope regression lock, not an accuracy claim",
+  "literal_tutorial_reproduction": {
+   "f_s11_dip_ghz": 2.4325,
+   "s11_min_db": -33.0,
+   "method": "unmodified upstream Simple_Patch_Antenna.py run to completion; S11 from external lumped-port decomposition (Z0=50) of its saved port_ut_1/port_it_1",
+   "vessl_run": "369367247478",
+   "date": "2026-07-18"
+  },
+  "fresh_reverification": {
+   "f_res_ghz": 2.4222,
+   "Q": 20.2,
+   "s11_dip_ghz": 2.43,
+   "directivity_dbi": 6.8,
+   "vessl_runs": [
+    "369367247470",
+    "369367247478"
+   ],
+   "date": "2026-07-18",
+   "delta_vs_fixture": "f_res +0.004%, D +0.01 dB, Q +0.1 - independent source build reproduces the committed reference"
+  }
  },
  "source_solver": "openEMS",
  "source_geometry": "tutorial_patch_32x40_eps3.38",
