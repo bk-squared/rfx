@@ -2361,8 +2361,11 @@ class _ExecuteMixin:
             are weighted faithfully). Closed-boundary NU sims warn and run
             the fixed ``n_steps`` (no point-field fallback on the NU lane).
             On the NU decay path all step-sized buffers are allocated at
-            ``decay_max_steps``; flux monitors must keep the default
-            rectangular DFT window and ``checkpoint_every`` is rejected.
+            ``decay_max_steps`` and flux monitors must keep the default
+            rectangular DFT window. (The non-uniform runner additionally
+            rejects its internal ``checkpoint_every`` segmentation option
+            when a decay stop is requested; that option belongs to the
+            ``forward()`` lane and is not reachable through ``run()``.)
         decay_check_interval : int
             Check decay every N steps (default 50).
         decay_min_steps : int

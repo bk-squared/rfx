@@ -44,7 +44,7 @@ from rfx.sources.sources import GaussianPulse
 
 # Gate C envelope. Predeclared target was np.allclose(rtol=1e-6, atol=1e-10)
 # (the uniform AB-identity precedent). Measured red at first run:
-#   probe series  max abs diff 2.000e+01 on ~1.97e7 magnitudes (rel 1.251e-6)
+#   probe series  max abs diff 2.000e+01 at scale 1.9682e7 (rel 1.0161e-6)
 #   E components  max abs diff <= 3.27e-7 of the dominant E scale
 #   H components  max abs diff <= 3.15e-5 of the dominant H scale
 #     (hz is a physically-null component here — max|hz| ~ 3.5 vs
@@ -142,6 +142,12 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness():
     k_dec = int(np.argmax(spec_dec))
     ratio = spec_dec[k_ref] / spec_ref[k_ref]
 
+    # NOTE: the probe sits in the deep near field (2 mm from the source,
+    # lambda ~ 30 mm at f0), so the reference spectrum peaks at the DC
+    # bin — argmax stays at k=0 even under heavy truncation, which makes
+    # the two peak-bin assertions below weak frequency gates on this
+    # fixture. They are kept as predeclared; the BINDING frequency-domain
+    # gate is the in-band sweep that follows.
     assert abs(k_dec - k_ref) <= 1, (
         f"peak bin moved by {abs(k_dec - k_ref)} bins (> 1); "
         f"U trace:\n{trace}"
@@ -149,6 +155,20 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness():
     assert abs(ratio - 1.0) <= 0.02, (
         f"peak amplitude ratio {ratio:.5f} deviates more than 2% from the "
         f"3x fixed-run reference; U trace:\n{trace}"
+    )
+
+    # In-band sweep (reviewer-validated, #383 review): over every
+    # reference bin carrying >= 5% of the nonzero-bin (k >= 1) maximum,
+    # the per-bin amplitude ratio must stay within 1e-2. Measured
+    # discrimination on this exact fixture: 2.418e-3 at the true decay
+    # stop, 7.295e-3 at 90% truncation (both pass), 9.146e-2 at 70%
+    # truncation (fails) — ~30x sharper than the DC-amplitude ratio,
+    # which only degrades to 0.973 even at 70% truncation.
+    band = spec_ref >= 0.05 * float(np.max(spec_ref[1:]))
+    inband_err = float(np.max(np.abs(spec_dec[band] / spec_ref[band] - 1.0)))
+    assert inband_err <= 1e-2, (
+        f"in-band per-bin amplitude error {inband_err:.3e} exceeds 1e-2 "
+        f"vs the 3x fixed-run reference; U trace:\n{trace}"
     )
 
 

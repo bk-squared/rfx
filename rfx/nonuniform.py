@@ -1646,8 +1646,11 @@ def run_nonuniform_until_decay(
         Same schema as :func:`run_nonuniform` (assembled by the shared
         :func:`_assemble_nu_result`), plus a ``"decay_checks"``
         diagnostic: a list of ``(step, U, peak_U)`` host-float tuples,
-        one per eligible energy check, so callers can verify the fire
-        condition actually held (workspace rule R5).
+        one per eligible energy check. The trace exists only on THIS
+        runner-dict return — ``run_nonuniform_path`` does not copy it
+        onto the public ``Result`` — so consumers that need to verify
+        the fire condition actually held (workspace rule R5) must call
+        this module function directly.
     """
     if check_interval < 1:
         raise ValueError(
