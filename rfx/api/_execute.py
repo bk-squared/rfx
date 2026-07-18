@@ -173,8 +173,22 @@ class _ExecuteMixin:
     def _run_nonuniform(self, *, n_steps, compute_s_params=None,
                         s_param_freqs=None,
                         subpixel_smoothing: bool | str = False,
-                        checkpoint: bool = False):
-        """Run simulation on non-uniform grid with graded dz."""
+                        checkpoint: bool = False,
+                        until_decay: float | None = None,
+                        decay_check_interval: int = 50,
+                        decay_min_steps: int = 100,
+                        decay_max_steps: int = 50_000,
+                        decay_energy_consecutive: int = 2):
+        """Run simulation on non-uniform grid with graded dz.
+
+        ``until_decay`` (issue #383) is threaded through to
+        ``run_nonuniform_path`` only when the caller has already gated on
+        absorbing boundaries — ``run()`` passes ``None`` (warn-and-drop)
+        for closed-boundary NU sims, where the interior energy does not
+        decay. ``decay_monitor_component`` / ``decay_monitor_position``
+        are NOT threaded: they parameterize the uniform lane's
+        closed/PEC point-field fallback, which has no NU counterpart.
+        """
         # Defense-in-depth: the NU runner does not honour stencil_order.
         self._check_stencil_order_supported()
         self._reject_refplane_ports_off_uniform_lane("non-uniform mesh",
@@ -196,6 +210,11 @@ class _ExecuteMixin:
             s_param_freqs=s_param_freqs,
             subpixel_smoothing=subpixel_smoothing,
             checkpoint=checkpoint,
+            until_decay=until_decay,
+            decay_check_interval=decay_check_interval,
+            decay_min_steps=decay_min_steps,
+            decay_max_steps=decay_max_steps,
+            decay_energy_consecutive=decay_energy_consecutive,
         )
 
     @staticmethod
@@ -293,7 +312,8 @@ class _ExecuteMixin:
 
     @staticmethod
     def _warn_unsupported_run_kwargs(path_name: str,
-                                     unsupported_kwargs: dict) -> None:
+                                     unsupported_kwargs: dict,
+                                     reason_overrides: dict | None = None) -> None:
         """Emit ``UserWarning`` for any Simulation.run kwarg that a given
         dispatch path drops. Only non-default values are surfaced.
 
@@ -302,6 +322,11 @@ class _ExecuteMixin:
         the drop explicit at the API boundary so users can tell their
         request was not honoured. See GitHub tracking issue for the
         feature-request backlog to actually propagate these kwargs.
+
+        ``reason_overrides`` lets a caller replace the shared per-kwarg
+        reason string with a lane-accurate one (e.g. the NU lane drops
+        ``until_decay`` only on closed boundaries, for a different reason
+        than the distributed/subgridded lanes drop it).
         """
         import warnings as _w
         # Per-kwarg "silent" values — the kwarg is dropped only if the
@@ -330,8 +355,9 @@ class _ExecuteMixin:
             "snapshot":
                 "scan-body field snapshotting is not wired on this path",
             "until_decay":
-                "scan body runs for exactly n_steps; no decay-based "
-                "termination on this path (use the uniform-mesh path)",
+                "scan body runs for exactly n_steps; decay-based "
+                "termination is supported on the uniform lane and the "
+                "absorbing-boundary (cpml/upml) non-uniform lane only",
             "conformal_pec":
                 "Dey-Mittra conformal weights are computed on a uniform "
                 "staircase mesh only",
@@ -342,6 +368,8 @@ class _ExecuteMixin:
             "s_param_n_steps":
                 "S-matrix assembly is not plumbed through this path",
         }
+        if reason_overrides:
+            reasons.update(reason_overrides)
         for kw, val in unsupported_kwargs.items():
             silent = silent_values.get(kw, (None,))
             if val in silent:
@@ -2326,6 +2354,15 @@ class _ExecuteMixin:
             — use a fixed ``n_steps`` there, see
             ``validation/crossval/03_straight_waveguide_flux.py`` and the
             :func:`rfx.simulation.run_until_decay` note).
+            **Non-uniform (dx/dy/dz-profile) meshes (issue #383):** the same
+            interior-energy stop runs on absorbing (``cpml``/``upml``)
+            boundaries via a chunked host loop over the NU scan step
+            (dV-weighted energy — per-cell ``dx*dy*dz`` — so graded cells
+            are weighted faithfully). Closed-boundary NU sims warn and run
+            the fixed ``n_steps`` (no point-field fallback on the NU lane).
+            On the NU decay path all step-sized buffers are allocated at
+            ``decay_max_steps``; flux monitors must keep the default
+            rectangular DFT window and ``checkpoint_every`` is rejected.
         decay_check_interval : int
             Check decay every N steps (default 50).
         decay_min_steps : int
@@ -2452,17 +2489,44 @@ class _ExecuteMixin:
 
         # ---- Non-uniform mesh lane ----
         if plan.lane == "run_nonuniform":
-            self._warn_unsupported_run_kwargs("non-uniform mesh", {
+            # #383: until_decay is supported on the NU lane for absorbing
+            # boundaries (the interior-energy criterion, same class as the
+            # uniform #169 stop). Closed/PEC NU domains keep warn-and-drop
+            # with a lane-accurate reason: their interior energy does not
+            # decay, and the NU lane has no point-field fallback.
+            _nu_until_decay = (
+                until_decay
+                if self._boundary in ("cpml", "upml")
+                else None
+            )
+            _nu_dropped = {
                 "snapshot": snapshot,
-                "until_decay": until_decay,
                 "conformal_pec": conformal_pec,
-            })
+            }
+            if _nu_until_decay is None:
+                _nu_dropped["until_decay"] = until_decay
+            self._warn_unsupported_run_kwargs(
+                "non-uniform mesh", _nu_dropped,
+                reason_overrides={
+                    "until_decay":
+                        "the interior-energy decay stop needs absorbing "
+                        "boundaries (cpml/upml); this closed-boundary "
+                        "non-uniform run executes a fixed n_steps, and the "
+                        "non-uniform lane has no point-field fallback "
+                        "(issue #383)",
+                },
+            )
             _res = self._run_nonuniform(
                 n_steps=n_steps,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
                 subpixel_smoothing=subpixel_smoothing,
                 checkpoint=checkpoint,
+                until_decay=_nu_until_decay,
+                decay_check_interval=decay_check_interval,
+                decay_min_steps=decay_min_steps,
+                decay_max_steps=decay_max_steps,
+                decay_energy_consecutive=decay_energy_consecutive,
             )
             self._warn_run_sparams_if_nonpassive(_res)
             self._warn_postrun_energy_witness(
