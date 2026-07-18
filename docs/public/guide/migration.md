@@ -22,7 +22,7 @@ boundary, source or port, and observable restrictions.
 | Source | `EigenModeSource`, `Source` | `AddExcitation` | `add_port()`, `add_source()` |
 | S-parameters | `add_flux()` + post-processing | `CalcPort` | port-family-specific: lumped/wire `run(compute_s_params=True)`, MSL `compute_msl_s_matrix()`, waveguide `compute_waveguide_s_matrix()` |
 | Resonance finding | `harminv(...)` | Manual FFT | `result.find_resonances()` |
-| Auto-stop | `stop_when_fields_decayed` | `EndCriteria` | `run(until_decay=1e-3)` on the uniform CPML/UPML runner; use fixed `n_steps` for a closed PEC cavity |
+| Auto-stop | `stop_when_fields_decayed` | `EndCriteria` | `run(until_decay=1e-3)` on the uniform and non-uniform CPML/UPML runners; use fixed `n_steps` for a closed PEC cavity |
 | Materials | `Medium(epsilon=...)` | `AddMaterial` | `sim.add(shape, material="fr4")` or `sim.add_material(...)` |
 | PEC | `PerfectElectricalConductor` | `AddMetal` | `material="pec"` |
 | PML / ABC | `PML(thickness)` | `AddPML` | `boundary="cpml"` |
