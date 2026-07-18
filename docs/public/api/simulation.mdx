@@ -74,7 +74,8 @@ sim.add_source(
 )
 sim.add_probe((0.05, 0.03, 0.0125), "ez")
 
-# until_decay is implemented on the uniform CPML/UPML runner.
+# until_decay is implemented on the uniform CPML/UPML runner and on the
+# non-uniform (dx/dy/dz-profile) runner with CPML/UPML boundaries.
 result = sim.run(until_decay=1e-3)
 ```
 
@@ -134,11 +135,17 @@ field components outside the absorber as an interior field-norm proxy. It stops
 after that proxy remains below `1e-3` of its peak for the required consecutive
 checks. This avoids a false stop at a null of a single-cell monitor, but it does
 not directly prove convergence of every DFT, S-parameter, Harminv, or NTFF
-observable. Other runners may warn or reject `until_decay`; consult the emitted
-message instead of assuming it was applied. Closed PEC domains do not normally
-lose their field norm, so use a fixed run length unless the model contains a
-real loss mechanism. Explicit `n_steps` remains appropriate when an exact
-accumulation window is required.
+observable. The non-uniform (`dx_profile` / `dy_profile` / `dz_profile`) runner
+supports the same stop on CPML/UPML boundaries, weighting each cell's squared
+fields by that cell's `dx*dy*dz` volume so graded cells contribute in
+proportion to their size. On that lane every step-sized buffer is allocated at
+`decay_max_steps` and flux monitors must keep the default rectangular DFT
+window; a non-uniform run with closed boundaries warns and executes the fixed
+`n_steps` instead (that lane has no single-cell monitor stop). Other runners may warn or reject `until_decay`; consult the
+emitted message instead of assuming it was applied. Closed PEC domains do not
+normally lose their field norm, so use a fixed run length unless the model
+contains a real loss mechanism. Explicit `n_steps` remains appropriate when an
+exact accumulation window is required.
 
 ## Differentiable `forward(...)` path
 

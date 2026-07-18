@@ -8,9 +8,12 @@ the NU path was fixed in commit ``1a2e6c5``; this test pins the rest of
 the class:
 
 1. **NU path**: emits an explicit ``UserWarning`` for ``snapshot``,
-   ``until_decay``, ``conformal_pec`` when set to non-default values.
+   ``conformal_pec`` when set to non-default values.
    ``subpixel_smoothing`` and ``checkpoint`` are *propagated* on the NU
-   path and therefore must NOT warn.
+   path and therefore must NOT warn. ``until_decay`` is propagated on
+   ABSORBING (cpml/upml) NU boundaries since #383 (must NOT warn there)
+   and still warn-and-drops on closed/PEC NU boundaries, with a
+   lane-accurate reason (the interior-energy stop needs an absorber).
 
 2. **Subgridded path**: emits a ``UserWarning`` for each unsupported
    kwarg (including ``subpixel_smoothing`` and ``checkpoint`` which
@@ -130,6 +133,43 @@ def test_nu_path_warns_on_dropped_kwargs(kw, val):
     assert any(kw in m and "non-uniform mesh" in m for m in msgs), (
         f"expected a non-uniform-mesh silent-drop warning for {kw}={val!r}, "
         f"got: {msgs}"
+    )
+    if kw == "until_decay":
+        # #383: _make_nu_sim is a closed (PEC, cpml_layers=0) NU sim, so
+        # the drop must carry the lane-accurate reason — the
+        # interior-energy stop needs absorbing boundaries.
+        assert any("until_decay" in m and "absorbing" in m for m in msgs), (
+            f"closed-boundary NU until_decay drop must state the "
+            f"absorbing-boundary reason (#383), got: {msgs}"
+        )
+
+
+def test_nu_path_until_decay_not_dropped_on_absorbing_boundary():
+    """#383: until_decay is propagated (no drop warning) on a CPML NU sim."""
+    dz = np.full(8, 1e-3)
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(4e-3, 4e-3, 8e-3),
+        dx=1e-3,
+        dz_profile=dz,
+        boundary="cpml",
+        cpml_layers=4,
+    )
+    sim.add_source((2e-3, 2e-3, 2e-3), "ez")
+    sim.add_probe((2e-3, 2e-3, 5e-3), "ez")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sim.run(
+            until_decay=1e-3,
+            decay_check_interval=20,
+            decay_min_steps=20,
+            decay_max_steps=200,
+        )
+    msgs = [str(w.message) for w in caught]
+    assert not any("until_decay" in m and "silently ignored" in m
+                   for m in msgs), (
+        f"until_decay must be honoured on the absorbing-boundary NU path "
+        f"(#383), got: {msgs}"
     )
 
 

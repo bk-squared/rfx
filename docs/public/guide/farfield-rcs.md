@@ -220,8 +220,8 @@ plot_rcs(result, freq_idx=0, polar=False)   # dBsm vs angle
   probe series. TFSF excitation, non-`GaussianPulse` source entries, and the
   explicit-`n_steps` example above receive no automatic tail verdict. Repeat
   the calculation with a longer duration and compare the pattern, or use
-  `until_decay` on the supported uniform CPML/UPML runner; neither method
-  replaces observable-specific convergence testing.
+  `until_decay` on the supported uniform or non-uniform CPML/UPML runners;
+  neither method replaces observable-specific convergence testing.
 - `compute_rcs` places the TFSF and NTFF boxes automatically from `cpml_layers`,
   `tfsf_margin`, and `ntff_offset` (the NTFF box sits `ntff_offset` cells outside
   the TFSF boundary); you supply only the grid and the scatterer materials.

@@ -701,7 +701,37 @@ def _update_e_nu_dispersive(
     return new_fdtd, new_debye, new_lor
 
 
-def run_nonuniform(
+class _NUScanSetup(NamedTuple):
+    """Host-side bundle built by :func:`_build_nu_scan` (#383 code motion).
+
+    Carries the scan step function, its initial carry, the stacked source
+    table, and the post-scan assembly metadata shared by
+    :func:`run_nonuniform` (single ``lax.scan``) and
+    :func:`run_nonuniform_until_decay` (chunked host loop). This tuple
+    never crosses a JAX transform boundary — ``step_fn`` is a Python
+    closure and the ``use_*`` flags are Python bools.
+    """
+    step_fn: object
+    carry_init: dict
+    src_waveforms: jnp.ndarray
+    dt: object
+    sources: list
+    probes: list
+    wire_ports: list
+    dft_planes: list
+    flux_monitors: list
+    waveguide_meta: tuple
+    wp_meta: list
+    sp_freqs: object
+    use_wire_ports: bool
+    use_dft_planes: bool
+    use_flux_monitors: bool
+    use_lumped_rlc: bool
+    use_ntff: bool
+    use_waveguide_ports: bool
+
+
+def _build_nu_scan(
     grid: NonUniformGrid,
     materials: MaterialArrays,
     n_steps: int,
@@ -724,28 +754,17 @@ def run_nonuniform(
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
     flux_monitors: list | None = None,
-    checkpoint: bool = False,
     emit_time_series: bool = True,
-    checkpoint_every: int | None = None,
-    n_warmup: int = 0,
     design_mask: jnp.ndarray | None = None,
     aniso_eps: tuple | None = None,
-) -> dict:
-    """Run non-uniform FDTD via jax.lax.scan.
+) -> _NUScanSetup:
+    """Build the NU scan carry + step function (pure code motion, #383).
 
-    Parameters
-    ----------
-    sources : list of (i, j, k, component, waveform_array)
-    probes : list of (i, j, k, component)
-    wire_ports : list of dict with keys:
-        mid_i, mid_j, mid_k, component, impedance, waveform_array
-    s_param_freqs : (n_freqs,) array for S-param DFT
-    debye : (DebyeCoeffs, DebyeState) or None
-    lorentz : (LorentzCoeffs, LorentzState) or None
-    dft_planes : list of DFTPlaneProbe or None
-        Frequency-domain plane accumulators. The accumulation is
-        identical to the uniform path (acc += field * exp(-j2pi f t) * dt);
-        dt is scalar on both paths so no per-axis weighting is required.
+    Extracted verbatim from :func:`run_nonuniform` so the until-decay
+    entry point can drive the SAME ``step_fn`` / carry through a chunked
+    host loop. ``n_steps`` is used only to size the zero-source
+    placeholder table; the source waveform arrays themselves define the
+    table length when sources are present.
     """
     sources = sources or []
     probes = probes or []
@@ -840,6 +859,10 @@ def run_nonuniform(
         carry_init["lorentz"] = lorentz_state
 
     # Wire port S-param DFT accumulators
+    # (defaults bound unconditionally so _NUScanSetup can carry them;
+    # both stay unused unless the branch below runs — no behavior change)
+    sp_freqs = None
+    wp_meta: list = []
     if use_wire_ports and s_param_freqs is not None:
         sp_freqs = jnp.asarray(s_param_freqs, dtype=jnp.float32)
         nf = len(sp_freqs)
@@ -1212,6 +1235,102 @@ def run_nonuniform(
             new_carry["tfsf"] = tfsf_new
         return new_carry, probe_out
 
+    return _NUScanSetup(
+        step_fn=step_fn,
+        carry_init=carry_init,
+        src_waveforms=src_waveforms,
+        dt=dt,
+        sources=sources,
+        probes=probes,
+        wire_ports=wire_ports,
+        dft_planes=dft_planes,
+        flux_monitors=flux_monitors,
+        waveguide_meta=waveguide_meta,
+        wp_meta=wp_meta,
+        sp_freqs=sp_freqs,
+        use_wire_ports=use_wire_ports,
+        use_dft_planes=use_dft_planes,
+        use_flux_monitors=use_flux_monitors,
+        use_lumped_rlc=use_lumped_rlc,
+        use_ntff=use_ntff,
+        use_waveguide_ports=use_waveguide_ports,
+    )
+
+
+def run_nonuniform(
+    grid: NonUniformGrid,
+    materials: MaterialArrays,
+    n_steps: int,
+    *,
+    pec_mask=None,
+    pec_occupancy=None,
+    sources: list = None,
+    probes: list = None,
+    wire_ports: list = None,
+    s_param_freqs=None,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    pec_faces: set[str] | None = None,
+    pmc_faces: set[str] | None = None,
+    dft_planes: list | None = None,
+    rlc_metas: tuple = (),
+    rlc_states: tuple = (),
+    ntff_box=None,
+    ntff_data=None,
+    waveguide_ports: list | None = None,
+    tfsf: tuple | None = None,
+    flux_monitors: list | None = None,
+    checkpoint: bool = False,
+    emit_time_series: bool = True,
+    checkpoint_every: int | None = None,
+    n_warmup: int = 0,
+    design_mask: jnp.ndarray | None = None,
+    aniso_eps: tuple | None = None,
+) -> dict:
+    """Run non-uniform FDTD via jax.lax.scan.
+
+    Parameters
+    ----------
+    sources : list of (i, j, k, component, waveform_array)
+    probes : list of (i, j, k, component)
+    wire_ports : list of dict with keys:
+        mid_i, mid_j, mid_k, component, impedance, waveform_array
+    s_param_freqs : (n_freqs,) array for S-param DFT
+    debye : (DebyeCoeffs, DebyeState) or None
+    lorentz : (LorentzCoeffs, LorentzState) or None
+    dft_planes : list of DFTPlaneProbe or None
+        Frequency-domain plane accumulators. The accumulation is
+        identical to the uniform path (acc += field * exp(-j2pi f t) * dt);
+        dt is scalar on both paths so no per-axis weighting is required.
+    """
+    setup = _build_nu_scan(
+        grid, materials, n_steps,
+        pec_mask=pec_mask,
+        pec_occupancy=pec_occupancy,
+        sources=sources,
+        probes=probes,
+        wire_ports=wire_ports,
+        s_param_freqs=s_param_freqs,
+        debye=debye,
+        lorentz=lorentz,
+        pec_faces=pec_faces,
+        pmc_faces=pmc_faces,
+        dft_planes=dft_planes,
+        rlc_metas=rlc_metas,
+        rlc_states=rlc_states,
+        ntff_box=ntff_box,
+        ntff_data=ntff_data,
+        waveguide_ports=waveguide_ports,
+        tfsf=tfsf,
+        flux_monitors=flux_monitors,
+        emit_time_series=emit_time_series,
+        design_mask=design_mask,
+        aniso_eps=aniso_eps,
+    )
+    step_fn = setup.step_fn
+    carry_init = setup.carry_init
+    src_waveforms = setup.src_waveforms
+
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
 
     # ---- n_warmup split --------------------------------------------------
@@ -1288,6 +1407,29 @@ def run_nonuniform(
         time_series = jnp.concatenate([warmup_ys, opt_ys], axis=0)
     else:
         time_series = opt_ys
+
+    return _assemble_nu_result(setup, final, time_series)
+
+
+def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
+    """Assemble the NU result dict (pure code motion from run_nonuniform,
+    #383). Shared by :func:`run_nonuniform` and
+    :func:`run_nonuniform_until_decay` so the two paths return the exact
+    same schema (state, time_series, dt, conditional dft_planes /
+    flux_monitors / ntff_data / waveguide_ports / s_params...)."""
+    dt = setup.dt
+    dft_planes = setup.dft_planes
+    flux_monitors = setup.flux_monitors
+    wire_ports = setup.wire_ports
+    waveguide_meta = setup.waveguide_meta
+    wp_meta = setup.wp_meta
+    sp_freqs = setup.sp_freqs
+    use_wire_ports = setup.use_wire_ports
+    use_dft_planes = setup.use_dft_planes
+    use_flux_monitors = setup.use_flux_monitors
+    use_lumped_rlc = setup.use_lumped_rlc
+    use_ntff = setup.use_ntff
+    use_waveguide_ports = setup.use_waveguide_ports
 
     result = {
         "state": final["fdtd"],
@@ -1409,4 +1551,212 @@ def run_nonuniform(
         result["s_params"] = S
         result["s_param_freqs"] = _np.array(sp_freqs)
 
+    return result
+
+
+def run_nonuniform_until_decay(
+    grid: NonUniformGrid,
+    materials: MaterialArrays,
+    *,
+    decay_by: float = 1e-3,
+    check_interval: int = 50,
+    min_steps: int = 100,
+    max_steps: int = 50_000,
+    decay_energy_consecutive: int = 2,
+    pec_mask=None,
+    pec_occupancy=None,
+    sources: list = None,
+    probes: list = None,
+    wire_ports: list = None,
+    s_param_freqs=None,
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    pec_faces: set[str] | None = None,
+    pmc_faces: set[str] | None = None,
+    dft_planes: list | None = None,
+    rlc_metas: tuple = (),
+    rlc_states: tuple = (),
+    ntff_box=None,
+    ntff_data=None,
+    waveguide_ports: list | None = None,
+    tfsf: tuple | None = None,
+    flux_monitors: list | None = None,
+    emit_time_series: bool = True,
+    aniso_eps: tuple | None = None,
+) -> dict:
+    """Run non-uniform FDTD until the interior-domain energy decays (#383).
+
+    NU port of the issue #169 total-domain-energy stop criterion: a
+    Python loop drives constant-length jitted chunks (``chunk =
+    check_interval`` steps) of the SAME ``step_fn`` that
+    :func:`run_nonuniform` scans, threading the SAME carry (NTFF Kahan
+    compensation arrays included) across chunks. Per-chunk ``xs``
+    continue the GLOBAL step indices, exactly like the ``n_warmup``
+    split in :func:`run_nonuniform`, so source waveforms / DFT phases
+    are identical to a fixed-step run of the same length.
+
+    Stop criterion (absorbing boundaries — the ONLY supported class on
+    this entry point; the routing layer in ``rfx/api/_execute.py`` gates
+    on ``boundary in ('cpml', 'upml')``):
+
+    * At each chunk boundary (after ``k * check_interval`` steps), once
+      ``steps_done >= min_steps``, compute the host-side dV-weighted
+      interior energy ``U = sum((Ex^2 + ... + Hz^2) * dV)`` over the
+      non-CPML interior slice, with ``dV = dx[i] * dy[j] * dz[k]`` the
+      per-cell primal volume (all six components weighted by the primal
+      cell dV — the same staggering simplification the uniform path
+      makes; on a uniform mesh this reduces to the uniform criterion up
+      to the constant dV factor).
+    * ``peak_U`` is updated at checks only, BEFORE the compare.
+    * The stop fires after ``decay_energy_consecutive`` CONSECUTIVE
+      sub-threshold checks (``U < decay_by * peak_U``); any
+      above-threshold check resets the counter. ``>= 2`` is mandatory
+      for the same reason as the uniform path: the interior energy is
+      not null-free (transient inter-packet minima recover).
+    * ``decay_by = 0.0`` preserves the forced-N escape (``U < 0`` is
+      never true for ``U >= 0``), so the loop runs exactly
+      ``max_steps`` steps.
+    * The loop is hard-bounded by ``max_steps``; a final partial chunk
+      (shorter than ``check_interval``) is allowed so the bound is
+      exact.
+
+    Check cadence note: the uniform ``run_until_decay`` checks after
+    steps ``k * interval + 1`` (its 0-based ``step % interval == 0``
+    fires at step index ``k * interval``); the chunked NU loop checks
+    after ``k * interval`` steps. The <= 1-step cadence difference is
+    deliberate (one XLA program per chunk length) — cross-lane stop-step
+    equality is NOT a contract (host/device float order already differs
+    between the lanes).
+
+    On a closed domain (no absorbing pads) the interior energy does not
+    decay and this function runs to ``max_steps``; there is NO
+    point-field fallback on the NU lane (no legacy behavior to
+    preserve). The routing layer warn-and-drops ``until_decay`` for
+    non-absorbing NU boundaries instead of calling this.
+
+    Forward-only: this is a host loop (not ``lax.scan``); it is not
+    reachable from ``forward()``/``optimize()`` and carries no AD tape
+    contract. ``checkpoint`` / ``checkpoint_every`` / ``n_warmup`` are
+    deliberately absent from the signature (the caller raises before
+    dispatching here).
+
+    Returns
+    -------
+    dict
+        Same schema as :func:`run_nonuniform` (assembled by the shared
+        :func:`_assemble_nu_result`), plus a ``"decay_checks"``
+        diagnostic: a list of ``(step, U, peak_U)`` host-float tuples,
+        one per eligible energy check. The trace exists only on THIS
+        runner-dict return — ``run_nonuniform_path`` does not copy it
+        onto the public ``Result`` — so consumers that need to verify
+        the fire condition actually held (workspace rule R5) must call
+        this module function directly.
+    """
+    if check_interval < 1:
+        raise ValueError(
+            f"check_interval must be >= 1, got {check_interval}")
+    if max_steps < 1:
+        raise ValueError(f"max_steps must be >= 1, got {max_steps}")
+
+    setup = _build_nu_scan(
+        grid, materials, max_steps,
+        pec_mask=pec_mask,
+        pec_occupancy=pec_occupancy,
+        sources=sources,
+        probes=probes,
+        wire_ports=wire_ports,
+        s_param_freqs=s_param_freqs,
+        debye=debye,
+        lorentz=lorentz,
+        pec_faces=pec_faces,
+        pmc_faces=pmc_faces,
+        dft_planes=dft_planes,
+        rlc_metas=rlc_metas,
+        rlc_states=rlc_states,
+        ntff_box=ntff_box,
+        ntff_data=ntff_data,
+        waveguide_ports=waveguide_ports,
+        tfsf=tfsf,
+        flux_monitors=flux_monitors,
+        emit_time_series=emit_time_series,
+        design_mask=None,
+        aniso_eps=aniso_eps,
+    )
+    step_fn = setup.step_fn
+    carry = setup.carry_init
+
+    # Source table: pad/truncate to max_steps so every chunk slice is
+    # full-length (mirrors the uniform run_until_decay pad/truncate).
+    src_waveforms = jnp.asarray(setup.src_waveforms)
+    n_have = int(src_waveforms.shape[0])
+    if n_have < max_steps:
+        src_waveforms = jnp.pad(
+            src_waveforms, ((0, max_steps - n_have), (0, 0)))
+    elif n_have > max_steps:
+        src_waveforms = src_waveforms[:max_steps]
+
+    # One compiled program per chunk length: full chunks share one XLA
+    # executable; the final partial chunk (if any) compiles once more.
+    @jax.jit
+    def _run_chunk(carry_in, xs):
+        return jax.lax.scan(step_fn, carry_in, xs)
+
+    # Non-CPML interior slice bounds + per-cell primal volume dV
+    # (Python ints / concrete arrays — the reduction below is host-side;
+    # NonUniformGrid is always 3D).
+    _ix0, _ix1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
+    _iy0, _iy1 = grid.pad_y_lo, grid.ny - grid.pad_y_hi
+    _iz0, _iz1 = grid.pad_z_lo, grid.nz - grid.pad_z_hi
+    _dV = (
+        jnp.asarray(grid.dx_arr)[_ix0:_ix1, None, None]
+        * jnp.asarray(grid.dy_arr)[None, _iy0:_iy1, None]
+        * jnp.asarray(grid.dz)[None, None, _iz0:_iz1]
+    )
+
+    def _interior_energy(state) -> float:
+        """dV-weighted interior field energy (host float)."""
+        sx, sy, sz = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
+        u = (state.ex[sx, sy, sz] ** 2 + state.ey[sx, sy, sz] ** 2
+             + state.ez[sx, sy, sz] ** 2 + state.hx[sx, sy, sz] ** 2
+             + state.hy[sx, sy, sz] ** 2 + state.hz[sx, sy, sz] ** 2)
+        return float(jnp.sum(u * _dV))
+
+    peak_U = 0.0           # running peak, updated at checks only
+    energy_below = 0       # consecutive sub-threshold energy checks
+    decay_checks: list = []
+    ys_chunks = []
+    steps_done = 0
+
+    while steps_done < max_steps:
+        this_chunk = min(int(check_interval), max_steps - steps_done)
+        xs = (
+            jnp.arange(steps_done, steps_done + this_chunk, dtype=jnp.int32),
+            src_waveforms[steps_done:steps_done + this_chunk],
+        )
+        carry, ys = _run_chunk(carry, xs)
+        ys_chunks.append(ys)
+        steps_done += this_chunk
+
+        # Interior-energy check at the chunk boundary (check-step-only —
+        # the whole-domain reduction is the expensive part).
+        if steps_done >= min_steps:
+            U = _interior_energy(carry["fdtd"])
+            if U > peak_U:
+                peak_U = U
+            decay_checks.append((steps_done, U, peak_U))
+            # decay_by=0.0 forced-N escape: U >= 0 so U < 0 never fires.
+            if U < decay_by * peak_U:
+                energy_below += 1
+                if energy_below >= decay_energy_consecutive:
+                    break
+            else:
+                energy_below = 0
+
+    # Per-chunk ys concatenate to exactly steps_done rows; the
+    # emit_time_series=False convention ((steps, 0)) is preserved
+    # because each chunk emits (this_chunk, 0).
+    time_series = jnp.concatenate(ys_chunks, axis=0)
+
+    result = _assemble_nu_result(setup, carry, time_series)
+    result["decay_checks"] = decay_checks
     return result

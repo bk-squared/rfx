@@ -102,7 +102,10 @@ frequency resolution determine the required run time. Do not infer convergence
 from `n_steps` alone.
 
 On the supported uniform CPML/UPML runner, `until_decay` monitors an interior
-sum-of-squared-fields proxy outside the absorber. It does not measure total
+sum-of-squared-fields proxy outside the absorber. The non-uniform
+(`dx/dy/dz`-profile) runner supports the same stop on CPML/UPML boundaries,
+weighting each cell by its own volume; closed-boundary non-uniform runs warn
+and execute the fixed step count. The proxy does not measure total
 electromagnetic energy and does not prove convergence of every DFT,
 S-parameter, Harminv, or NTFF quantity. Other runners may reject or ignore that
 option as documented by their emitted diagnostics.

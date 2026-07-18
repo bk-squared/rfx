@@ -9,7 +9,13 @@ from rfx.grid import C0
 from rfx.core.yee import MaterialArrays
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
-from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source
+from rfx.nonuniform import (
+    NonUniformGrid,
+    make_nonuniform_grid,
+    run_nonuniform,
+    run_nonuniform_until_decay,
+    make_current_source,
+)
 
 
 def build_nonuniform_grid(
@@ -344,7 +350,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         n_warmup=0, design_mask=None,
                         subpixel_smoothing: bool = False,
                         attach_waveguide_flux: bool = False,
-                        strip_interior_pec: bool = False):
+                        strip_interior_pec: bool = False,
+                        until_decay: float | None = None,
+                        decay_check_interval: int = 50,
+                        decay_min_steps: int = 100,
+                        decay_max_steps: int = 50_000,
+                        decay_energy_consecutive: int = 2):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -353,6 +364,28 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         The Simulation instance (read-only access to its fields).
     n_steps : int
         Number of timesteps.
+    until_decay : float or None
+        When not None, run via :func:`run_nonuniform_until_decay`
+        (issue #383 — NU port of the #169 interior-energy stop): every
+        step-count-sized build (source tables, waveguide port record
+        buffers, DFT planes, flux monitors) is sized with
+        ``decay_max_steps`` instead of ``n_steps``, and the scan is
+        replaced by the chunked host loop that stops when the
+        dV-weighted interior energy has decayed to this fraction of
+        peak. The routing layer only sends this on absorbing
+        (cpml/upml) boundaries. ``checkpoint`` (the jax.checkpoint grad
+        tape flag) is accepted-and-ignored on the decay path — it is a
+        forward-only host loop (mirrors the uniform run_until_decay);
+        ``checkpoint_every`` / ``n_warmup`` raise NotImplementedError
+        below. Flux monitors must use the rectangular DFT window (the
+        NU default) — a streaming windowed DFT needs the true total
+        step count in advance, which a decay-terminated run does not
+        have, so non-rect windows raise ValueError instead of silently
+        mis-windowing.
+    decay_check_interval, decay_min_steps, decay_max_steps,
+    decay_energy_consecutive :
+        Threaded to :func:`run_nonuniform_until_decay` (same semantics
+        as ``Simulation.run``'s ``decay_*`` kwargs).
     compute_s_params : bool or None
     s_param_freqs : array or None
     eps_override, sigma_override : jnp.ndarray or None
@@ -396,6 +429,45 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 "edges is not implemented. Use a full-plane flux monitor "
                 "(omit size=) or the uniform lane."
             )
+
+    # ---- until_decay (issue #383) fences + sizing ----
+    if until_decay is not None:
+        if checkpoint_every is not None:
+            raise NotImplementedError(
+                "checkpoint_every is not supported with until_decay on the "
+                "non-uniform path: the decay stop drives a chunked host "
+                "loop, not a single lax.scan, so segmented remat does not "
+                "apply (mirrors run_until_decay's checkpoint_segments "
+                "raise on the uniform lane). Use a fixed n_steps run for "
+                "checkpoint_every."
+            )
+        if n_warmup:
+            raise NotImplementedError(
+                "n_warmup is not supported with until_decay on the "
+                "non-uniform path: the decay stop is a forward-only host "
+                "loop, so the warmup AD-tape split does not apply."
+            )
+        for _fm in getattr(sim, "_flux_monitors", None) or []:
+            _win = getattr(_fm, "dft_window", "rect")
+            if _win != "rect":
+                raise ValueError(
+                    f"flux monitor {_fm.name!r} uses dft_window={_win!r}, "
+                    "which is not supported with until_decay on the "
+                    "non-uniform path: a streaming windowed DFT needs the "
+                    "true total step count in advance, and a "
+                    "decay-terminated run does not know it (sizing by "
+                    "decay_max_steps would silently mis-weight every "
+                    "sample). Use dft_window='rect' (the default) or a "
+                    "fixed n_steps run."
+                )
+
+    # Step-count-sized builds use ``sizing_n``: on the decay path every
+    # source table / waveguide-port record buffer / DFT accumulator is
+    # allocated for the worst case (decay_max_steps) so nothing truncates
+    # before the stop fires; stopping early is safe (the waveguide
+    # post-scan rect DFT masks by n_steps_recorded, and the streaming
+    # DFT-plane / flux / wire-port accumulators simply stop accumulating).
+    sizing_n = int(decay_max_steps) if until_decay is not None else n_steps
 
     grid = build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
@@ -515,7 +587,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         if pe.impedance == 0.0:
             # Current source with dV normalization
             src = make_current_source(
-                grid, idx, pe.component, pe.waveform, n_steps, materials_concrete)
+                grid, idx, pe.component, pe.waveform, sizing_n, materials_concrete)
             sources.append(src)
         elif pe.extent is not None:
             # Wire port on non-uniform grid
@@ -599,7 +671,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         continue
                     src = make_current_source(
                         grid, cell_ijk, pe.component,
-                        pe.waveform, n_steps, materials_concrete)
+                        pe.waveform, sizing_n, materials_concrete)
                     # Scale by 1/n_live for distributed excitation
                     scaled_wf = np.array(src[4]) / n_live
                     sources.append(
@@ -644,7 +716,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 pec_mask = pec_mask.at[i, j, k].set(False)
             if pe.excite:
                 src = make_current_source(
-                    grid, idx, pe.component, pe.waveform, n_steps, materials_concrete)
+                    grid, idx, pe.component, pe.waveform, sizing_n, materials_concrete)
                 sources.append(src)
 
     for pe in sim._probes:
@@ -675,7 +747,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     component=pe.component,
                     freqs=freqs_arr,
                     grid_shape=(grid.nx, grid.ny, grid.nz),
-                    dft_total_steps=n_steps,
+                    dft_total_steps=sizing_n,
                 )
             )
 
@@ -711,7 +783,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     grid_shape=(grid.nx, grid.ny, grid.nz),
                     d1=d1_arr,
                     d2=d2_arr,
-                    dft_total_steps=n_steps,
+                    dft_total_steps=sizing_n,
                     dft_window=getattr(pe, "dft_window", "rect"),
                     dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
                 )
@@ -750,7 +822,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         for pe in sim._waveguide_ports:
             waveguide_port_cfgs.append(
                 _build_waveguide_port_config_nu(
-                    sim, pe, grid, wg_freqs, n_steps,
+                    sim, pe, grid, wg_freqs, sizing_n,
                 )
             )
 
@@ -759,7 +831,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # registered by compute_msl_s_matrix via add_dft_plane_probe.
     if getattr(sim, "_msl_ports", None):
         materials, pec_mask = _setup_msl_ports_nu(
-            sim, grid, materials, materials_concrete, sources, n_steps, pec_mask,
+            sim, grid, materials, materials_concrete, sources, sizing_n, pec_mask,
         )
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
@@ -787,7 +859,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     grid_shape=(grid.nx, grid.ny, grid.nz),
                     d1=d1a,
                     d2=d2a,
-                    dft_total_steps=n_steps,
+                    dft_total_steps=sizing_n,
                     lo1=cfg.u_lo, hi1=cfg.u_hi,
                     lo2=cfg.v_lo, hi2=cfg.v_hi,
                 )
@@ -857,8 +929,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         )
         ntff_data_init = init_ntff_data(ntff_box)
 
-    r = run_nonuniform(
-        grid, materials, n_steps,
+    _shared_run_kwargs = dict(
         aniso_eps=aniso_eps,
         pec_mask=pec_mask,
         pec_occupancy=pec_occupancy_override,
@@ -881,12 +952,33 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_data=ntff_data_init,
         waveguide_ports=waveguide_port_cfgs if waveguide_port_cfgs else None,
         tfsf=tfsf_pair,
-        checkpoint=checkpoint,
         emit_time_series=emit_time_series,
-        checkpoint_every=checkpoint_every,
-        n_warmup=n_warmup,
-        design_mask=design_mask,
     )
+    if until_decay is not None:
+        # #383: chunked host loop with the interior-energy stop. The
+        # fences above already rejected checkpoint_every / n_warmup /
+        # non-rect flux windows; ``checkpoint`` is accepted-and-ignored
+        # (forward-only host loop — mirrors uniform run_until_decay's
+        # treatment of the grad-tape flag); ``design_mask`` is a
+        # forward()-only kwarg and cannot reach this branch.
+        r = run_nonuniform_until_decay(
+            grid, materials,
+            decay_by=until_decay,
+            check_interval=decay_check_interval,
+            min_steps=decay_min_steps,
+            max_steps=decay_max_steps,
+            decay_energy_consecutive=decay_energy_consecutive,
+            **_shared_run_kwargs,
+        )
+    else:
+        r = run_nonuniform(
+            grid, materials, n_steps,
+            checkpoint=checkpoint,
+            checkpoint_every=checkpoint_every,
+            n_warmup=n_warmup,
+            design_mask=design_mask,
+            **_shared_run_kwargs,
+        )
 
     s_params = r.get("s_params")
     freqs_out = r.get("s_param_freqs")

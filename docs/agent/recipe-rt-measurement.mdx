@@ -37,11 +37,16 @@ sim.add_flux_monitor(axis="x", coordinate=trans_x, freqs=freqs_rt, name="trans")
 
 ### `run(until_decay=...)`
 
-Decay-adaptive termination (`rfx/api/_execute.py`, line 1593). Runs until the
-field at a chosen monitor position decays to `until_decay * peak`. This kwarg
-is load-bearing for accuracy: a fixed `n_steps` truncates the signal and aliases
-residual energy into the spectrum. `decay_monitor_component` and
-`decay_monitor_position` control which field and where to sample the decay.
+Decay-adaptive termination (see the `Simulation.run()` docstring for the
+authoritative lane-by-lane description). The stop criterion depends on the
+boundary: on absorbing (CPML/UPML) boundaries — including the non-uniform
+`dx/dy/dz`-profile runner — the run stops when the total interior-domain
+energy decays to `until_decay * peak` (issue #169); on closed/PEC boundaries
+the uniform runner falls back to the field at a single monitor position, and
+`decay_monitor_component` / `decay_monitor_position` control which field and
+where to sample that fallback. This kwarg is load-bearing for accuracy: a
+fixed `n_steps` truncates the signal and aliases residual energy into the
+spectrum.
 
 ### Two-run reference subtraction
 
