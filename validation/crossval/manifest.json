@@ -92,16 +92,17 @@
       "role": "diagnostic-reporter",
       "public_group": "B",
       "execution_tiers": ["cpu-runner", "vessl-external"],
-      "evidence_levels": ["E2"],
+      "evidence_levels": ["E2", "E4"],
       "references": [
         {"kind": "analytic", "name": "Balanis transmission-line patch resonance (printed reference, NOT a pass gate)", "required_for_script_pass": false},
-        {"kind": "external-solver", "name": "OpenEMS Simple Patch Antenna (coarse, no thirds-rule; presence required for a full run, numeric comparison reported not gated)", "required_for_script_pass": true}
+        {"kind": "external-solver", "name": "OpenEMS Simple Patch Antenna (coarse, no thirds-rule; presence required for a full run, numeric comparison reported not gated)", "required_for_script_pass": true},
+        {"kind": "external-solver", "name": "openEMS Simple_Patch thirds-rule canonical recipe — COMMITTED reference fixture tests/fixtures/patch_canonical_farfield_e4/ (f_res 2.4221 GHz, D 6.79 dBi, our 2026-07-11 run; envelope-locked by tests/test_patch_canonical_farfield_e4.py)", "required_for_script_pass": false}
       ],
-      "claim_scope": "INTEGRATION/SMOKE diagnostic-reporter only (demoted from claims-bearing 2026-07-15, see docs/research_notes/20260715_cv05_first_principles_review.md): exercises probe-fed patch + finite-GP + CPML + NU-graded-z + openEMS lumped port end-to-end and REPORTS a coarse-mesh (dx=1mm) resonance. It does NOT establish accuracy: the 20% openEMS gate provably passes over two physically different geometries (broken 2-cell and split 6-cell substrate, #325), the ~2.65% agreement is a documented z-under-res/staircase error cancellation, and the openEMS reference omits the thirds-rule + reproduce-gate. Authoritative patch-accuracy evidence is DELEGATED to the committed tests in gate_paths.",
+      "claim_scope": "INTEGRATION/SMOKE diagnostic-reporter only (demoted from claims-bearing 2026-07-15, see docs/research_notes/20260715_cv05_first_principles_review.md): exercises probe-fed patch + finite-GP + CPML + NU-graded-z + openEMS lumped port end-to-end and REPORTS a coarse-mesh (dx=1mm) resonance. It does NOT establish accuracy: the 20% openEMS gate provably passes over two physically different geometries (broken 2-cell and split 6-cell substrate, #325), the ~2.65% agreement is a documented z-under-res/staircase error cancellation, and the openEMS reference omits the thirds-rule + reproduce-gate. Authoritative patch-accuracy evidence is DELEGATED to the committed tests in gate_paths, including the canonical thirds-rule far-field ENVELOPE LOCK test_patch_canonical_farfield_e4.py (committed openEMS reference 2.4221 GHz / 6.79 dBi; D within 0.5 dB, f_res inside the documented [-12%, -5%] coarse-dx bias band — a regression lock, not an accuracy claim).",
       "external_dependencies": ["openEMS", "CSXCAD"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["tests/test_issue80_patch_resonance_harminv.py", "tests/test_issue80_patch_s11_regression.py", "tests/test_patch_cavity_eps_oracle.py"],
-      "artifact_paths": [],
+      "gate_paths": ["tests/test_issue80_patch_resonance_harminv.py", "tests/test_issue80_patch_s11_regression.py", "tests/test_patch_cavity_eps_oracle.py", "tests/test_patch_canonical_farfield_e4.py"],
+      "artifact_paths": ["tests/fixtures/patch_canonical_farfield_e4/patch_farfield_openems.json", "scripts/diagnostics/patch_tutorial_openems.py", "scripts/diagnostics/patch_tutorial_rfx.py"],
       "cpu_runner": {"order": 3},
       "scheduled_external_order": null,
       "failure_sentinel": null
