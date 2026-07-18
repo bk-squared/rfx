@@ -7,6 +7,10 @@ import zipfile
 
 import pytest
 
+pytest.importorskip("fastapi")
+pytest.importorskip("mcp")
+pytest.importorskip("httpx")
+
 from rfx.studio.api import create_app
 from rfx.studio.cli import build_parser, validate_launch_security
 
