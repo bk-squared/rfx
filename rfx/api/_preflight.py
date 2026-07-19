@@ -1725,6 +1725,7 @@ class _PreflightMixin:
         self._validate_cfg_floating_single_cell_port(_w)
         self._validate_cfg_pec_boundary_open_structure(_w)
         self._validate_cfg_no_sources(_w)
+        self._validate_cfg_unresolved_pulse(_w, dx)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
         self._validate_cfg_graded_box_rasterization(_w)
         self._validate_cfg_subgrid_limitations(_w)
@@ -2728,6 +2729,57 @@ class _PreflightMixin:
                 ),
                 stacklevel=3,
             )
+
+    def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
+        """Warn when a pulse waveform is unresolved by the time step (#386).
+
+        ``tau < 3*dt`` means the sampled excitation is a sub-dt spike: the
+        pulse's spectrum extends far past the grid Nyquist limit and the
+        discrete time integral no longer cancels, so a soft source leaves a
+        static charge field that CPML cannot absorb. The canonical way to
+        get here is passing an absolute-Hz number as ``bandwidth`` where a
+        FRACTIONAL one is expected (``tau = 1/(f0*bandwidth*pi)`` then
+        misses by ~9 orders of magnitude), so this fires regardless of
+        ``until_decay`` — a sub-dt spike is always broken.
+
+        ``dt`` is estimated from the preflight ``dx`` via the uniform-lane
+        3D Courant formula (``Grid.courant_dt``). A concrete ``dz_profile``
+        only makes the actual dt smaller (finer cells), so the estimate
+        errs toward firing — appropriate for a mistake that misses the
+        threshold by orders of magnitude, not by percent.
+        """
+        dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
+        entries = list(self._ports) + list(self._msl_ports)
+        if self._tfsf is not None:
+            entries.append(self._tfsf)
+        for entry in entries:
+            wf = getattr(entry, "waveform", None)
+            if wf is None or isinstance(wf, str):
+                continue
+            try:
+                tau = float(wf.tau)
+            except (AttributeError, TypeError, ValueError,
+                    ZeroDivisionError):
+                continue
+            if not math.isfinite(tau) or tau <= 0.0:
+                continue
+            if tau < 3.0 * dt:
+                _w.warn(
+                    PreflightWarning(
+                        f"waveform tau={tau:.3g}s is below 3*dt "
+                        f"(dt~{dt:.3g}s, tau/dt={tau/dt:.3g}): pulse "
+                        "unresolved by the time step — an absolute-Hz "
+                        "bandwidth was likely passed where a FRACTIONAL "
+                        "one is expected; the discrete DC residue leaves "
+                        "a static charge field CPML cannot absorb "
+                        "(issue #386)",
+                        code="unresolved_pulse",
+                        loc=f"waveform {type(wf).__name__} at "
+                            f"{getattr(entry, 'position', None)}",
+                        source="_validate_cfg_unresolved_pulse",
+                    ),
+                    stacklevel=3,
+                )
 
     def _validate_cfg_nonuniform_limitations(
         self, _w, cpml_thickness: float

@@ -291,6 +291,69 @@ class _ExecuteMixin:
                 stacklevel=3,
             )
 
+    def _warn_until_decay_dc_floor(self, *, dt, n_table: int) -> None:
+        """#388 predictor: warn when a soft source will floor ``until_decay``.
+
+        A soft current source deposits its waveform's discrete time integral
+        as a net static end-charge ``q = S/((1+loss)*dz_src)`` with
+        ``S = sum s(t_n)*dt`` — measured exactly on both the uniform and
+        non-uniform lanes (issue #388). The remnant's energy is the
+        discrete-Poisson self-energy of that charge: it does not decay and
+        CPML cannot absorb a static field, so it floors the interior-energy
+        decay criterion and ``until_decay`` cap-hits instead of stopping.
+
+        For each soft source (``impedance == 0`` port entries), compute
+        ``rel_DC = |sum s(t_n)*dt| / sum |s(t_n)|*dt`` over the planned
+        table length (``decay_max_steps`` — the decay lanes' buffer size)
+        and warn quantitatively above 1e-3 (the demo-scale GaussianPulse
+        sits at ~6e-5; a bandwidth=1.2 ModulatedGaussian at ~0.68).
+
+        Lives with the run()-path warning helpers (not preflight) because
+        ``preflight()`` does not receive run kwargs and this advisory is
+        meaningful only when ``until_decay`` is requested.
+        """
+        import warnings
+
+        from rfx.core.jax_utils import is_tracer
+
+        if is_tracer(dt):
+            return  # traced dt: advisory host math is impossible here
+        dt = float(dt)
+        if not dt > 0.0 or n_table <= 0:
+            return
+        t = np.arange(int(n_table), dtype=np.float64) * dt
+        for pe in self._ports:
+            if pe.impedance != 0.0 or not getattr(pe, "excite", True):
+                continue
+            wf = pe.waveform
+            if wf is None or isinstance(wf, str):
+                continue
+            try:
+                s = np.asarray(wf(jnp.asarray(t)), dtype=np.float64)
+            except Exception:
+                continue  # non-vectorizable CustomWaveform etc. — skip
+            if s.shape != t.shape or not np.all(np.isfinite(s)):
+                continue
+            denom = float(np.sum(np.abs(s))) * dt
+            if denom == 0.0:
+                continue
+            s_int = float(np.sum(s)) * dt
+            rel_dc = abs(s_int) / denom
+            if rel_dc > 1e-3:
+                warnings.warn(
+                    f"soft source at {pe.position} ({pe.component}): "
+                    f"waveform {type(wf).__name__} deposits relative DC "
+                    f"{rel_dc:.2e} (|sum s*dt| = {abs(s_int):.3e} over the "
+                    f"planned {int(n_table)}-step table) — the deposited "
+                    "static charge will floor the interior-energy criterion "
+                    "(a static field neither decays nor is absorbed by "
+                    "CPML); until_decay may cap-hit (issue #388). Reduce "
+                    "the waveform's DC content: a higher GaussianPulse "
+                    "cutoff (e.g. cutoff=4.5), ModulatedGaussian with "
+                    "bandwidth <= 0.5, or run with a fixed n_steps.",
+                    UserWarning, stacklevel=3,
+                )
+
     def _reject_refplane_ports_off_uniform_lane(self, path_name: str,
                                                 compute_s_params) -> None:
         """Fail loudly when reference-plane ports hit a non-uniform lane.
@@ -2366,6 +2429,13 @@ class _ExecuteMixin:
             rejects its internal ``checkpoint_every`` segmentation option
             when a decay stop is requested; that option belongs to the
             ``forward()`` lane and is not reachable through ``run()``.)
+            **DC floor (issue #388):** a soft-source waveform with net DC
+            content deposits a static end-charge whose self-energy floors
+            the interior-energy criterion; ``run()`` warns quantitatively
+            when a planned soft-source waveform's relative DC exceeds 1e-3
+            (raise the ``GaussianPulse`` cutoff, narrow a
+            ``ModulatedGaussian`` to bandwidth <= 0.5, or use a fixed
+            ``n_steps``).
         decay_check_interval : int
             Check decay every N steps (default 50).
         decay_min_steps : int
@@ -2519,6 +2589,19 @@ class _ExecuteMixin:
                         "(issue #383)",
                 },
             )
+            if _nu_until_decay is not None:
+                # #388 DC-floor predictor for the NU decay stop. The grid
+                # build is pure (no sim-state mutation) and cheap; an
+                # advisory must never block the run, so any build failure
+                # simply skips the check (the runner will surface it).
+                try:
+                    _nu_dt_for_dc = self._build_nonuniform_grid().dt
+                except Exception:
+                    _nu_dt_for_dc = None
+                if _nu_dt_for_dc is not None:
+                    self._warn_until_decay_dc_floor(
+                        dt=_nu_dt_for_dc, n_table=decay_max_steps
+                    )
             _res = self._run_nonuniform(
                 n_steps=n_steps,
                 compute_s_params=compute_s_params,
@@ -2596,6 +2679,12 @@ class _ExecuteMixin:
         # ---- Uniform path ----
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
+
+        if until_decay is not None:
+            # #388 DC-floor predictor for the decay stop.
+            self._warn_until_decay_dc_floor(
+                dt=grid.dt, n_table=decay_max_steps
+            )
 
         from rfx.runners.uniform import run_uniform
         _field_dtype = jnp.float16 if self._precision == "mixed" else None
