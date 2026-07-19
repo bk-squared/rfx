@@ -19,6 +19,7 @@ import numpy as np  # noqa: F401  (used by moved method bodies)
 from rfx.grid import Grid, C0  # noqa: F401  (used by moved method bodies)
 from rfx.core.yee import MaterialArrays  # noqa: F401
 from rfx.geometry.csg import Box
+from rfx.geometry.rasterize import _accumulate_pole_mask, _spec_from_pole_masks
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.materials.thin_conductor import apply_thin_conductor
@@ -146,9 +147,12 @@ class _CompileMixin:
         has_pec_cells = False
 
         # Collect per-pole masks so distinct materials do not inherit
-        # each other's dispersion poles.
-        debye_masks_by_pole: dict[DebyePole, jnp.ndarray] = {}
-        lorentz_masks_by_pole: dict[LorentzPole, jnp.ndarray] = {}
+        # each other's dispersion poles. Keyed per
+        # ``rfx.geometry.rasterize._pole_key`` (#274): pole value when
+        # hashable (equal poles dedupe/merge as before), ``id(pole)``
+        # only for unhashable traced poles. Values are (pole, mask).
+        debye_masks_by_pole: dict[DebyePole | int, tuple[DebyePole, jnp.ndarray]] = {}
+        lorentz_masks_by_pole: dict[LorentzPole | int, tuple[LorentzPole, jnp.ndarray]] = {}
 
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
@@ -170,17 +174,11 @@ class _CompileMixin:
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:
-                    if pole in debye_masks_by_pole:
-                        debye_masks_by_pole[pole] = debye_masks_by_pole[pole] | mask
-                    else:
-                        debye_masks_by_pole[pole] = mask
+                    _accumulate_pole_mask(debye_masks_by_pole, pole, mask)
 
             if mat.lorentz_poles:
                 for pole in mat.lorentz_poles:
-                    if pole in lorentz_masks_by_pole:
-                        lorentz_masks_by_pole[pole] = lorentz_masks_by_pole[pole] | mask
-                    else:
-                        lorentz_masks_by_pole[pole] = mask
+                    _accumulate_pole_mask(lorentz_masks_by_pole, pole, mask)
 
         # Extend material properties into CPML padding so that guided
         # modes in dielectric waveguides see an impedance-matched absorber
@@ -299,17 +297,8 @@ class _CompileMixin:
                 pec_shapes.append(_bpec_box)
                 boundary_pec_shapes.append(_bpec_box)
 
-        debye_spec = None
-        if debye_masks_by_pole:
-            debye_poles = list(debye_masks_by_pole)
-            debye_masks = [debye_masks_by_pole[pole] for pole in debye_poles]
-            debye_spec = (debye_poles, debye_masks)
-
-        lorentz_spec = None
-        if lorentz_masks_by_pole:
-            lorentz_poles = list(lorentz_masks_by_pole)
-            lorentz_masks = [lorentz_masks_by_pole[pole] for pole in lorentz_poles]
-            lorentz_spec = (lorentz_poles, lorentz_masks)
+        debye_spec = _spec_from_pole_masks(debye_masks_by_pole)
+        lorentz_spec = _spec_from_pole_masks(lorentz_masks_by_pole)
 
         # Eager path keeps the exact ``jnp.any`` test (a PEC shape whose mask is
         # empty -- e.g. entirely outside the grid -- still returns None, so the

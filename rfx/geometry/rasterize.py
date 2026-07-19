@@ -92,6 +92,51 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 
 
+def _pole_key(pole):
+    """Mask-dict key for a dispersion pole (issue #274).
+
+    Key by VALUE when the pole is hashable: equal-valued poles from
+    different ``add_material`` calls merge into one ``(pole, mask)``
+    entry, so overlapping geometry cannot apply the same pole twice
+    (``init_debye`` / ``init_lorentz`` sum contributions over entries —
+    a duplicate entry would silently double delta_eps on overlap
+    cells). Fall back to object IDENTITY only for unhashable poles
+    (JAX-traced fields), where value equality is undecidable at trace
+    time and identity is the only stable key. Plain id-keying for all
+    poles is the recorded do-not-repeat (PR #272 branch: overlap-cell
+    beta ratio 2.000 vs 1.000).
+    """
+    try:
+        hash(pole)
+        return pole
+    except TypeError:
+        return id(pole)
+
+
+def _accumulate_pole_mask(masks_by_pole: dict, pole, mask) -> None:
+    """Merge ``mask`` into the entry for ``pole`` (see ``_pole_key``).
+
+    Values are ``(pole, mask)`` pairs so iteration yields the pole
+    object regardless of whether the key is the pole itself (concrete)
+    or ``id(pole)`` (traced). The first-seen pole object is kept on
+    merge, matching the historical dict-key behaviour byte-for-byte.
+    """
+    key = _pole_key(pole)
+    prev = masks_by_pole.get(key)
+    if prev is not None:
+        masks_by_pole[key] = (prev[0], prev[1] | mask)
+    else:
+        masks_by_pole[key] = (pole, mask)
+
+
+def _spec_from_pole_masks(masks_by_pole: dict):
+    """Build a ``(poles, masks)`` spec tuple, or None when empty."""
+    if not masks_by_pole:
+        return None
+    entries = list(masks_by_pole.values())
+    return ([p for p, _ in entries], [m for _, m in entries])
+
+
 def coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off) -> GridCoords:
     """Extract cell-center coordinates for a subgridded fine region.
 
@@ -156,8 +201,10 @@ def rasterize_geometry(
     pec_shapes = []
     has_kerr = False
 
-    debye_masks_by_pole: dict[DebyePole, jnp.ndarray] = {}
-    lorentz_masks_by_pole: dict[LorentzPole, jnp.ndarray] = {}
+    # Keyed per _pole_key (#274): pole value when hashable, id(pole) for
+    # traced poles. Values are (pole, mask) pairs.
+    debye_masks_by_pole: dict[DebyePole | int, tuple[DebyePole, jnp.ndarray]] = {}
+    lorentz_masks_by_pole: dict[LorentzPole | int, tuple[LorentzPole, jnp.ndarray]] = {}
 
     for entry in geometry_entries:
         mat = material_resolver(entry.material_name)
@@ -177,17 +224,11 @@ def rasterize_geometry(
 
         if mat.debye_poles:
             for pole in mat.debye_poles:
-                if pole in debye_masks_by_pole:
-                    debye_masks_by_pole[pole] = debye_masks_by_pole[pole] | mask
-                else:
-                    debye_masks_by_pole[pole] = mask
+                _accumulate_pole_mask(debye_masks_by_pole, pole, mask)
 
         if mat.lorentz_poles:
             for pole in mat.lorentz_poles:
-                if pole in lorentz_masks_by_pole:
-                    lorentz_masks_by_pole[pole] = lorentz_masks_by_pole[pole] | mask
-                else:
-                    lorentz_masks_by_pole[pole] = mask
+                _accumulate_pole_mask(lorentz_masks_by_pole, pole, mask)
 
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
@@ -199,17 +240,8 @@ def rasterize_geometry(
             if tc.is_pec:
                 pec_shapes.append(tc.shape)
 
-    debye_spec = None
-    if debye_masks_by_pole:
-        debye_poles = list(debye_masks_by_pole)
-        debye_masks = [debye_masks_by_pole[pole] for pole in debye_poles]
-        debye_spec = (debye_poles, debye_masks)
-
-    lorentz_spec = None
-    if lorentz_masks_by_pole:
-        lorentz_poles = list(lorentz_masks_by_pole)
-        lorentz_masks = [lorentz_masks_by_pole[pole] for pole in lorentz_poles]
-        lorentz_spec = (lorentz_poles, lorentz_masks)
+    debye_spec = _spec_from_pole_masks(debye_masks_by_pole)
+    lorentz_spec = _spec_from_pole_masks(lorentz_masks_by_pole)
 
     has_pec = bool(jnp.any(pec_mask))
     kerr_chi3 = chi3_arr if has_kerr else None
