@@ -19,7 +19,12 @@ import numpy as np  # noqa: F401  (used by moved method bodies)
 from rfx.grid import Grid, C0  # noqa: F401  (used by moved method bodies)
 from rfx.core.yee import MaterialArrays  # noqa: F401
 from rfx.geometry.csg import Box
-from rfx.geometry.rasterize import _accumulate_pole_mask, _spec_from_pole_masks
+# NOTE: import from _pole_keying, NOT rfx.geometry.rasterize — importing
+# that SUBMODULE at import-rfx time setattr's the module over the public
+# ``rasterize`` FUNCTION on the rfx.geometry package (name collision;
+# broke the rcs_scattering tutorial's ``from rfx.geometry import
+# rasterize``).
+from rfx.geometry._pole_keying import _accumulate_pole_mask, _spec_from_pole_masks
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.materials.thin_conductor import apply_thin_conductor

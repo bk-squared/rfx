@@ -143,11 +143,12 @@ def test_id_keying_regression_is_detected_by_the_overlap_lock(monkeypatch):
     #272-branch do-not-repeat) and assert the measured signature is the
     recorded regression — 2 entries, overlap-cell beta ratio 2.0 —
     i.e. the value the double-count locks above would fail on. Both
-    ``_assemble_materials`` and ``rasterize_geometry`` route through
-    ``rfx.geometry.rasterize._pole_key``, so one patch covers both.
+    ``_assemble_materials`` and ``rasterize_geometry`` call
+    ``_accumulate_pole_mask``, which resolves ``_pole_key`` from
+    ``rfx.geometry._pole_keying``'s globals — one patch covers both.
     """
-    import rfx.geometry.rasterize as rast
-    monkeypatch.setattr(rast, "_pole_key", lambda pole: id(pole))
+    import rfx.geometry._pole_keying as pole_keying
+    monkeypatch.setattr(pole_keying, "_pole_key", lambda pole: id(pole))
 
     n_entries, ratio = _debye_overlap_entries_and_ratio(
         lambda: DebyePole(delta_eps=1.5, tau=8e-12))
@@ -163,7 +164,7 @@ def test_id_keying_regression_is_detected_by_the_overlap_lock(monkeypatch):
 def test_non_coercible_pole_fields_warn_and_stay_distinct():
     """Fail-loud path: non-scalar eager fields cannot be value-keyed —
     the key falls back to id() WITH a UserWarning naming the pole."""
-    from rfx.geometry.rasterize import _pole_key
+    from rfx.geometry._pole_keying import _pole_key
 
     pole = DebyePole(delta_eps=jnp.ones(3), tau=8e-12)
     with pytest.warns(UserWarning, match="will NOT dedupe"):
@@ -383,3 +384,46 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
     g = jax.grad(loss)(jnp.float32(3.0))
     assert np.isfinite(float(g))
     assert float(g) != 0.0
+
+
+def test_import_rfx_preserves_geometry_rasterize_function():
+    """Landmine lock: after ``import rfx``, ``from rfx.geometry import
+    rasterize`` must yield the public CSG ``rasterize`` FUNCTION, not
+    the ``rfx.geometry.rasterize`` SUBMODULE.
+
+    ``rfx/geometry/__init__.py`` re-exports the function while a
+    same-named submodule exists; any module-level import of that
+    submodule during ``import rfx`` setattr's the module object over
+    the function attribute (this broke the rcs_scattering tutorial when
+    the #274 helpers briefly lived in the submodule — they now live in
+    ``rfx/geometry/_pole_keying.py``). The check runs in a subprocess
+    pinned to this repo's rfx so it is deterministic w.r.t. the import
+    history of the surrounding pytest process (function-scoped imports
+    of the submodule, e.g. the non-uniform runner's, still clobber the
+    attribute later in-process — that pre-existing name collision is
+    tracked as its own issue).
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import rfx
+
+    repo_root = Path(rfx.__file__).resolve().parents[1]
+    env = dict(os.environ, PYTHONPATH=str(repo_root))
+    code = (
+        "import rfx\n"
+        "from rfx.geometry import rasterize\n"
+        "assert callable(rasterize), (\n"
+        "    'rfx.geometry.rasterize is %r -- the submodule clobbered '\n"
+        "    'the public rasterize function at import-rfx time'\n"
+        "    % (rasterize,))\n"
+        "print('rasterize callable ok')\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env, capture_output=True, text=True, timeout=120,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "rasterize callable ok" in completed.stdout
