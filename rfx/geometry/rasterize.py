@@ -7,6 +7,7 @@ via a coordinate-provider abstraction.
 
 from __future__ import annotations
 
+import warnings
 from typing import NamedTuple
 
 import numpy as np
@@ -95,21 +96,54 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
 def _pole_key(pole):
     """Mask-dict key for a dispersion pole (issue #274).
 
-    Key by VALUE when the pole is hashable: equal-valued poles from
-    different ``add_material`` calls merge into one ``(pole, mask)``
-    entry, so overlapping geometry cannot apply the same pole twice
-    (``init_debye`` / ``init_lorentz`` sum contributions over entries —
-    a duplicate entry would silently double delta_eps on overlap
-    cells). Fall back to object IDENTITY only for unhashable poles
-    (JAX-traced fields), where value equality is undecidable at trace
-    time and identity is the only stable key. Plain id-keying for all
-    poles is the recorded do-not-repeat (PR #272 branch: overlap-cell
-    beta ratio 2.000 vs 1.000).
+    Key by VALUE whenever value equality is decidable: equal-valued
+    poles from different ``add_material`` calls merge into one
+    ``(pole, mask)`` entry, so overlapping geometry cannot apply the
+    same pole twice (``init_debye`` / ``init_lorentz`` sum
+    contributions over entries — a duplicate entry would silently
+    double delta_eps on overlap cells). Plain id-keying for all poles
+    is the recorded do-not-repeat (PR #272 branch: overlap-cell beta
+    ratio 2.000 vs 1.000).
+
+    Key resolution order:
+
+    1. Hashable pole (plain Python-float fields) — the pole itself.
+       Byte-identical to the historical dict-key behaviour.
+    2. Unhashable but EAGER fields (e.g. ``jnp.float32(1.5)``, an
+       unhashable scalar ``jax.Array``) — a plain tuple of
+       ``float()``-coerced fields. Value equality IS decidable here;
+       a NamedTuple hashes/compares equal to the plain tuple of the
+       same values, so eager-array and Python-float spellings of the
+       same pole also merge with each other.
+    3. Fields carrying JAX TRACERS — ``id(pole)``. Value equality is
+       undecidable at trace time; identity is the only stable key
+       (the documented differentiable-dispersion path, #273).
+    4. Eager but not ``float()``-coercible (non-scalar fields) —
+       ``id(pole)`` plus a loud ``UserWarning``: such poles will not
+       dedupe against value-equal duplicates (fail-loud beats silent
+       double-counting).
     """
     try:
         hash(pole)
         return pole
     except TypeError:
+        pass
+    if any(is_tracer(f) for f in pole):
+        return id(pole)
+    try:
+        # NamedTuples hash/compare equal to plain tuples of the same
+        # values, so this key merges with value-equal hashable poles.
+        return tuple(float(f) for f in pole)
+    except (TypeError, ValueError):
+        warnings.warn(
+            f"Dispersion pole {pole!r} has unhashable, non-scalar "
+            f"fields; keying its geometry mask by object identity. "
+            f"Value-equal duplicates of this pole will NOT dedupe and "
+            f"can double-apply delta_eps on overlapping geometry "
+            f"(issue #274).",
+            UserWarning,
+            stacklevel=3,
+        )
         return id(pole)
 
 
@@ -117,9 +151,9 @@ def _accumulate_pole_mask(masks_by_pole: dict, pole, mask) -> None:
     """Merge ``mask`` into the entry for ``pole`` (see ``_pole_key``).
 
     Values are ``(pole, mask)`` pairs so iteration yields the pole
-    object regardless of whether the key is the pole itself (concrete)
-    or ``id(pole)`` (traced). The first-seen pole object is kept on
-    merge, matching the historical dict-key behaviour byte-for-byte.
+    object regardless of key form (pole itself, coerced value tuple,
+    or ``id(pole)``). The first-seen pole object is kept on merge,
+    matching the historical dict-key behaviour byte-for-byte.
     """
     key = _pole_key(pole)
     prev = masks_by_pole.get(key)

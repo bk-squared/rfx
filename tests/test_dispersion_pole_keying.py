@@ -2,17 +2,22 @@
 
 The per-pole mask dicts in ``Simulation._assemble_materials``
 (``rfx/api/_compile.py``) and ``rasterize_geometry``
-(``rfx/geometry/rasterize.py``) key by pole VALUE when the pole is
-hashable, falling back to ``id(pole)`` ONLY for unhashable poles
-(JAX-traced fields). These tests lock both directions of that contract:
+(``rfx/geometry/rasterize.py``) key by pole VALUE whenever value
+equality is decidable — hashable poles directly, eager-but-unhashable
+fields (scalar ``jax.Array``) via ``float()``-coerced tuples — using
+``id(pole)`` only for JAX-TRACED fields (undecidable at trace time)
+and, with a loud UserWarning, for non-coercible non-scalar fields.
+These tests lock every direction of that contract:
 
-1. Value-dedupe (double-count lock): equal concrete poles registered
-   through separate ``add_material`` calls on overlapping boxes merge
-   into ONE (pole, mask) entry — ``init_debye``/``init_lorentz`` sum
+1. Value-dedupe (double-count lock): equal poles registered through
+   separate ``add_material`` calls on overlapping boxes merge into ONE
+   (pole, mask) entry — ``init_debye``/``init_lorentz`` sum
    contributions over entries, so a duplicate entry would silently
-   double delta_eps on overlap cells. Plain id-keying is the recorded
+   double delta_eps on overlap cells. Locked for plain-float poles AND
+   eager-jnp-field poles. Plain id-keying is the recorded
    do-not-repeat from the closed PR #272 branch (overlap-cell beta
-   ratio 2.000 vs 1.000 on main).
+   ratio 2.000 vs 1.000 on main); a committed falsifier test
+   monkeypatches id-keying back in and asserts the lock detects it.
 2. Traced poles compile: a pole carrying a traced field must not raise
    TypeError in ``_assemble_materials``, and ``jax.grad`` flows through
    the full ``forward()`` pass w.r.t. a pole parameter (prerequisite
@@ -59,36 +64,27 @@ def _overlap_cell(grid):
     return tuple(np.argwhere(overlap)[0])
 
 
-def test_equal_debye_poles_on_overlapping_boxes_apply_once():
-    """PUBLIC-API double-count lock (Debye).
+def _debye_overlap_entries_and_ratio(make_pole):
+    """(n merged entries, overlap-cell beta ratio) for the two-material
+    overlap sim vs a single-pole reference.
 
-    Two ``add_material`` calls with EQUAL Debye poles on overlapping
-    boxes: on an overlap cell the applied beta equals the single-pole
-    value (ratio 1.0). Under the PR #272-branch id-keying regression the
-    ratio was 2.0 (delta_eps applied twice).
+    ``make_pole`` is called once per material so each pole is a
+    DISTINCT object; correct value keying gives (1, 1.0), id-keying
+    gives (2, 2.0) — the PR #272-branch repro.
     """
-    pole_kwargs = dict(delta_eps=1.5, tau=8e-12)
-
     sim = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
-    sim.add_material("mat_a", eps_r=2.0,
-                     debye_poles=[DebyePole(**pole_kwargs)])
-    sim.add_material("mat_b", eps_r=2.0,
-                     debye_poles=[DebyePole(**pole_kwargs)])
+    sim.add_material("mat_a", eps_r=2.0, debye_poles=[make_pole()])
+    sim.add_material("mat_b", eps_r=2.0, debye_poles=[make_pole()])
     sim.add(Box(*_BOX_A), material="mat_a")
     sim.add(Box(*_BOX_B), material="mat_b")
 
     grid = sim._build_grid()
     _, debye, _ = sim._build_materials(grid)
     coeffs, _state = debye
+    n_entries = int(coeffs.beta.shape[0])
 
-    # Structural lock: ONE merged pole entry, not two.
-    assert coeffs.beta.shape[0] == 1, (
-        f"equal poles must merge into one entry, got "
-        f"{coeffs.beta.shape[0]}")
-
-    # Physics lock: applied beta on an overlap cell == single-pole value.
     ref = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
-    ref.add_material("mat", eps_r=2.0, debye_poles=[DebyePole(**pole_kwargs)])
+    ref.add_material("mat", eps_r=2.0, debye_poles=[make_pole()])
     ref.add(Box(*_BOX_UNION), material="mat")
     ref_grid = ref._build_grid()
     _, ref_debye, _ = ref._build_materials(ref_grid)
@@ -98,10 +94,87 @@ def test_equal_debye_poles_on_overlapping_boxes_apply_once():
     beta_two_mats = float(jnp.sum(coeffs.beta, axis=0)[cell])
     beta_single = float(jnp.sum(ref_coeffs.beta, axis=0)[cell])
     assert beta_single > 0.0
-    ratio = beta_two_mats / beta_single
+    return n_entries, beta_two_mats / beta_single
+
+
+def test_equal_debye_poles_on_overlapping_boxes_apply_once():
+    """PUBLIC-API double-count lock (Debye).
+
+    Two ``add_material`` calls with EQUAL Debye poles on overlapping
+    boxes: on an overlap cell the applied beta equals the single-pole
+    value (ratio 1.0). Under the PR #272-branch id-keying regression the
+    ratio was 2.0 (delta_eps applied twice).
+    """
+    n_entries, ratio = _debye_overlap_entries_and_ratio(
+        lambda: DebyePole(delta_eps=1.5, tau=8e-12))
+
+    assert n_entries == 1, (
+        f"equal poles must merge into one entry, got {n_entries}")
     assert ratio == pytest.approx(1.0, rel=1e-6), (
         f"overlap-cell beta ratio {ratio} != 1.0 — equal poles were "
         f"double-applied (the #272-branch id-keying regression)")
+
+
+def test_equal_eager_jnp_field_debye_poles_apply_once():
+    """Double-count lock for EAGER-jnp-field poles (review finding).
+
+    ``DebyePole(delta_eps=jnp.float32(1.5), tau=8e-12)`` is unhashable
+    (``jax.Array``), but its value IS decidable eagerly — two
+    value-equal such poles must merge (float-coerced tuple key), not
+    take the id() path. On main this input crashed loudly at compile;
+    a bare id() fallback would instead silently double-apply beta on
+    the overlap cells.
+    """
+    n_entries, ratio = _debye_overlap_entries_and_ratio(
+        lambda: DebyePole(delta_eps=jnp.float32(1.5), tau=8e-12))
+
+    assert n_entries == 1, (
+        f"value-equal eager-jnp poles must merge into one entry, got "
+        f"{n_entries}")
+    assert ratio == pytest.approx(1.0, rel=1e-6), (
+        f"overlap-cell beta ratio {ratio} != 1.0 — eager-jnp poles "
+        f"were double-applied via the id() path")
+
+
+def test_id_keying_regression_is_detected_by_the_overlap_lock(monkeypatch):
+    """Committed falsifier: the overlap lock genuinely discriminates.
+
+    Monkeypatch ``_pole_key`` back to plain id-keying (the PR
+    #272-branch do-not-repeat) and assert the measured signature is the
+    recorded regression — 2 entries, overlap-cell beta ratio 2.0 —
+    i.e. the value the double-count locks above would fail on. Both
+    ``_assemble_materials`` and ``rasterize_geometry`` route through
+    ``rfx.geometry.rasterize._pole_key``, so one patch covers both.
+    """
+    import rfx.geometry.rasterize as rast
+    monkeypatch.setattr(rast, "_pole_key", lambda pole: id(pole))
+
+    n_entries, ratio = _debye_overlap_entries_and_ratio(
+        lambda: DebyePole(delta_eps=1.5, tau=8e-12))
+
+    assert n_entries == 2, (
+        f"id-keying must produce 2 entries (got {n_entries}) — if this "
+        f"fails the falsifier no longer reproduces the #272 regression")
+    assert ratio == pytest.approx(2.0, rel=1e-6), (
+        f"id-keying overlap beta ratio {ratio} != 2.0 — the lock's "
+        f"discrimination target has drifted")
+
+
+def test_non_coercible_pole_fields_warn_and_stay_distinct():
+    """Fail-loud path: non-scalar eager fields cannot be value-keyed —
+    the key falls back to id() WITH a UserWarning naming the pole."""
+    from rfx.geometry.rasterize import _pole_key
+
+    pole = DebyePole(delta_eps=jnp.ones(3), tau=8e-12)
+    with pytest.warns(UserWarning, match="will NOT dedupe"):
+        key = _pole_key(pole)
+    assert key == id(pole)
+
+    # A value-equal duplicate gets a DIFFERENT key (documented caveat).
+    dup = DebyePole(delta_eps=jnp.ones(3), tau=8e-12)
+    with pytest.warns(UserWarning):
+        key_dup = _pole_key(dup)
+    assert key_dup != key
 
 
 def test_equal_lorentz_poles_on_overlapping_boxes_apply_once():
