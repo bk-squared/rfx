@@ -58,6 +58,15 @@ class GaussianPulse:
 
     s(t) = -2 * ((t - t0) / tau) * exp(-((t - t0) / tau)^2)
 
+    The onset truncation at t=0 leaves a nonzero time integral: over the
+    sampled table, S = sum s(t_n)*dt ~ -amplitude * tau * exp(-cutoff^2).
+    A soft current source deposits exactly that integral as a net static
+    end-charge q = S/((1+loss)*dz_src) (issue #388), so the deposited DC
+    scales as e^(-cutoff^2): raising ``cutoff`` from 3.0 to 4.5 cuts the
+    deposited charge by e^(4.5^2 - 3^2) ~ 7.7e4 — about 5 decades.
+    Use a higher cutoff when a static source remnant matters (e.g. the
+    ``until_decay`` interior-energy stop on absorbing boundaries).
+
     Parameters
     ----------
     f0 : float
@@ -66,11 +75,17 @@ class GaussianPulse:
         Fractional bandwidth (0–1). Default 0.5.
     amplitude : float
         Peak amplitude (V/m). Default 1.0.
+    cutoff : float
+        Number of tau between t=0 and the pulse peak: t0 = cutoff * tau.
+        Default 3.0 (historical value; waveform values are unchanged at
+        the default). Higher values buy an e^(-cutoff^2) reduction of the
+        deposited-DC integral at the cost of a longer onset (issue #388).
     """
 
     f0: float
     bandwidth: float = 0.5
     amplitude: float = 1.0
+    cutoff: float = 3.0
 
     @property
     def tau(self) -> float:
@@ -79,8 +94,8 @@ class GaussianPulse:
 
     @property
     def t0(self) -> float:
-        """Pulse delay (3*tau ensures smooth onset)."""
-        return 3.0 * self.tau
+        """Pulse delay (cutoff*tau ensures smooth onset)."""
+        return self.cutoff * self.tau
 
     def __call__(self, t: float) -> float:
         """Evaluate pulse at time t."""
@@ -98,6 +113,16 @@ class ModulatedGaussian:
     relative to a differentiated Gaussian. A finite sampled pulse does not in
     general have an exactly zero integral, so DC-sensitive calculations should
     inspect the sampled spectrum and fields explicitly.
+
+    DC suppression is set by the envelope width: the spectrum is a Gaussian
+    centered at f0, and its value at DC relative to the carrier peak is
+    e^(-1/bandwidth^2) — about 0.5 at bandwidth=1.2 but 0.018 at
+    bandwidth=0.5. Wide fractional bandwidths therefore keep substantial DC
+    drive; when the net deposited charge of a soft source matters (e.g. the
+    ``until_decay`` interior-energy stop, issue #388), use bandwidth <= 0.4
+    (measured relative DC 4.0e-4 at the issue-#388 demo scale — below the
+    run() warning's 1e-3 threshold, which bandwidth=0.5 at ~2.6e-2 still
+    exceeds) or a :class:`GaussianPulse` with a higher ``cutoff``.
 
     Parameters
     ----------

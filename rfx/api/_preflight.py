@@ -1725,6 +1725,7 @@ class _PreflightMixin:
         self._validate_cfg_floating_single_cell_port(_w)
         self._validate_cfg_pec_boundary_open_structure(_w)
         self._validate_cfg_no_sources(_w)
+        self._validate_cfg_unresolved_pulse(_w, dx)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
         self._validate_cfg_graded_box_rasterization(_w)
         self._validate_cfg_subgrid_limitations(_w)
@@ -2728,6 +2729,75 @@ class _PreflightMixin:
                 ),
                 stacklevel=3,
             )
+
+    def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
+        """Warn when a pulse waveform is unresolved by the time step (#386).
+
+        ``tau < 3*dt`` means the sampled excitation is a sub-dt spike: the
+        pulse's spectrum extends far past the grid Nyquist limit and the
+        discrete time integral no longer cancels, so a soft source leaves a
+        static charge field that CPML cannot absorb. The canonical way to
+        get here is passing an absolute-Hz number as ``bandwidth`` where a
+        FRACTIONAL one is expected (``tau = 1/(f0*bandwidth*pi)`` then
+        misses by ~9 orders of magnitude), so this fires regardless of
+        ``until_decay`` — a sub-dt spike is always broken.
+
+        ``dt`` is estimated from the preflight ``dx`` via the uniform-lane
+        3D Courant formula (``Grid.courant_dt``). A refining ``dz_profile``
+        makes the actual dt smaller, so the estimate errs toward firing; a
+        strictly coarsening profile can raise the NU dt above this estimate
+        by at most sqrt(3/2) ~ 1.22x (the NU dt combines per-axis minimum
+        cell sizes, ``rfx/nonuniform.py``), so the check can under-fire by
+        <= 22% — harmless against a mistake that misses the threshold by
+        ~9 orders of magnitude, not by percent.
+        """
+        dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
+        entries = list(self._ports) + list(self._msl_ports)
+        if self._tfsf is not None:
+            entries.append(self._tfsf)
+        for entry in entries:
+            wf = getattr(entry, "waveform", None)
+            tau = None
+            if wf is not None and not isinstance(wf, str):
+                try:
+                    tau = float(wf.tau)
+                except (AttributeError, TypeError, ValueError,
+                        ZeroDivisionError):
+                    tau = None
+            else:
+                # String-named waveforms (the TFSF entry's
+                # "differentiated_gaussian" / "modulated_gaussian"): both
+                # pulse families share tau = 1/(pi*f0*bandwidth), so the
+                # absolute-Hz-bandwidth footgun on
+                # add_tfsf_source(bandwidth=...) is computable from the
+                # entry's own f0/bandwidth attributes when both are set.
+                f0 = getattr(entry, "f0", None)
+                bw = getattr(entry, "bandwidth", None)
+                if f0 and bw:
+                    try:
+                        tau = 1.0 / (math.pi * float(f0) * float(bw))
+                    except (TypeError, ValueError, ZeroDivisionError):
+                        tau = None
+            if tau is None or not math.isfinite(tau) or tau <= 0.0:
+                continue
+            if tau < 3.0 * dt:
+                _wf_name = wf if isinstance(wf, str) else type(wf).__name__
+                _w.warn(
+                    PreflightWarning(
+                        f"waveform tau={tau:.3g}s is below 3*dt "
+                        f"(dt~{dt:.3g}s, tau/dt={tau/dt:.3g}): pulse "
+                        "unresolved by the time step — an absolute-Hz "
+                        "bandwidth was likely passed where a FRACTIONAL "
+                        "one is expected; the discrete DC residue leaves "
+                        "a static charge field CPML cannot absorb "
+                        "(issue #386)",
+                        code="unresolved_pulse",
+                        loc=f"waveform {_wf_name} at "
+                            f"{getattr(entry, 'position', None)}",
+                        source="_validate_cfg_unresolved_pulse",
+                    ),
+                    stacklevel=3,
+                )
 
     def _validate_cfg_nonuniform_limitations(
         self, _w, cpml_thickness: float
