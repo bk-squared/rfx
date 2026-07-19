@@ -350,7 +350,7 @@ class _ExecuteMixin:
                     "CPML); until_decay may cap-hit (issue #388). Reduce "
                     "the waveform's DC content: a higher GaussianPulse "
                     "cutoff (e.g. cutoff=4.5), ModulatedGaussian with "
-                    "bandwidth <= 0.5, or run with a fixed n_steps.",
+                    "bandwidth <= 0.4, or run with a fixed n_steps.",
                     UserWarning, stacklevel=3,
                 )
 
@@ -2434,7 +2434,7 @@ class _ExecuteMixin:
             the interior-energy criterion; ``run()`` warns quantitatively
             when a planned soft-source waveform's relative DC exceeds 1e-3
             (raise the ``GaussianPulse`` cutoff, narrow a
-            ``ModulatedGaussian`` to bandwidth <= 0.5, or use a fixed
+            ``ModulatedGaussian`` to bandwidth <= 0.4, or use a fixed
             ``n_steps``).
         decay_check_interval : int
             Check decay every N steps (default 50).

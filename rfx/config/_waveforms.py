@@ -12,8 +12,9 @@ from __future__ import annotations
 
 from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 
-# type-string -> waveform class. Each class takes (f0, bandwidth, amplitude)
-# as its leading constructor args (ModulatedGaussian also accepts cutoff).
+# type-string -> waveform class. Each class takes (f0, bandwidth, amplitude,
+# cutoff) as its constructor args (GaussianPulse gained cutoff for the
+# issue-#388 deposited-DC mitigation).
 WAVEFORM_REGISTRY = {
     "gaussian_pulse": GaussianPulse,
     "modulated_gaussian": ModulatedGaussian,
@@ -23,7 +24,7 @@ WAVEFORM_REGISTRY = {
 # precise error on an unexpected key rather than a bare TypeError from the
 # dataclass constructor.
 _ALLOWED_KEYS = {
-    "gaussian_pulse": {"f0", "bandwidth", "amplitude"},
+    "gaussian_pulse": {"f0", "bandwidth", "amplitude", "cutoff"},
     "modulated_gaussian": {"f0", "bandwidth", "amplitude", "cutoff"},
 }
 
@@ -36,8 +37,7 @@ def waveform_from_config(cfg: dict):
     cfg : dict
         Must contain ``type`` (one of :data:`WAVEFORM_REGISTRY`) and at
         least ``f0``. Remaining keys are passed through to the waveform
-        constructor (``bandwidth``, ``amplitude``, and ``cutoff`` for
-        modulated_gaussian).
+        constructor (``bandwidth``, ``amplitude``, ``cutoff``).
 
     Returns
     -------

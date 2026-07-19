@@ -198,6 +198,22 @@ def test_waveform_unknown_type_raises():
         waveform_from_config({"type": "sawtooth", "f0": 1e9})
 
 
+def test_waveform_gaussian_pulse_accepts_cutoff():
+    """The #388 DC-floor warning's primary remedy (cutoff=4.5) must be
+    reachable from the config/YAML lane for both pulse families."""
+    wf = waveform_from_config(
+        {"type": "gaussian_pulse", "f0": 2.2e9, "bandwidth": 1.2,
+         "cutoff": 4.5}
+    )
+    assert isinstance(wf, GaussianPulse)
+    assert wf.cutoff == 4.5
+    # Default stays at the byte-identical historical value.
+    wf_default = waveform_from_config(
+        {"type": "gaussian_pulse", "f0": 2.2e9, "bandwidth": 1.2}
+    )
+    assert wf_default.cutoff == 3.0
+
+
 def test_shape_box_and_unsupported():
     box = shape_from_config(
         {"shape": "box", "bounds": [[0, 0, 0], [1, 2, 3]]}

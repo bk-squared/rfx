@@ -119,8 +119,10 @@ class ModulatedGaussian:
     e^(-1/bandwidth^2) — about 0.5 at bandwidth=1.2 but 0.018 at
     bandwidth=0.5. Wide fractional bandwidths therefore keep substantial DC
     drive; when the net deposited charge of a soft source matters (e.g. the
-    ``until_decay`` interior-energy stop, issue #388), use bandwidth <= 0.5
-    or a :class:`GaussianPulse` with a higher ``cutoff``.
+    ``until_decay`` interior-energy stop, issue #388), use bandwidth <= 0.4
+    (measured relative DC 4.0e-4 at the issue-#388 demo scale — below the
+    run() warning's 1e-3 threshold, which bandwidth=0.5 at ~2.6e-2 still
+    exceeds) or a :class:`GaussianPulse` with a higher ``cutoff``.
 
     Parameters
     ----------

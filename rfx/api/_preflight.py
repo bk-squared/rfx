@@ -2743,10 +2743,13 @@ class _PreflightMixin:
         ``until_decay`` — a sub-dt spike is always broken.
 
         ``dt`` is estimated from the preflight ``dx`` via the uniform-lane
-        3D Courant formula (``Grid.courant_dt``). A concrete ``dz_profile``
-        only makes the actual dt smaller (finer cells), so the estimate
-        errs toward firing — appropriate for a mistake that misses the
-        threshold by orders of magnitude, not by percent.
+        3D Courant formula (``Grid.courant_dt``). A refining ``dz_profile``
+        makes the actual dt smaller, so the estimate errs toward firing; a
+        strictly coarsening profile can raise the NU dt above this estimate
+        by at most sqrt(3/2) ~ 1.22x (the NU dt combines per-axis minimum
+        cell sizes, ``rfx/nonuniform.py``), so the check can under-fire by
+        <= 22% — harmless against a mistake that misses the threshold by
+        ~9 orders of magnitude, not by percent.
         """
         dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
         entries = list(self._ports) + list(self._msl_ports)
@@ -2754,16 +2757,31 @@ class _PreflightMixin:
             entries.append(self._tfsf)
         for entry in entries:
             wf = getattr(entry, "waveform", None)
-            if wf is None or isinstance(wf, str):
-                continue
-            try:
-                tau = float(wf.tau)
-            except (AttributeError, TypeError, ValueError,
-                    ZeroDivisionError):
-                continue
-            if not math.isfinite(tau) or tau <= 0.0:
+            tau = None
+            if wf is not None and not isinstance(wf, str):
+                try:
+                    tau = float(wf.tau)
+                except (AttributeError, TypeError, ValueError,
+                        ZeroDivisionError):
+                    tau = None
+            else:
+                # String-named waveforms (the TFSF entry's
+                # "differentiated_gaussian" / "modulated_gaussian"): both
+                # pulse families share tau = 1/(pi*f0*bandwidth), so the
+                # absolute-Hz-bandwidth footgun on
+                # add_tfsf_source(bandwidth=...) is computable from the
+                # entry's own f0/bandwidth attributes when both are set.
+                f0 = getattr(entry, "f0", None)
+                bw = getattr(entry, "bandwidth", None)
+                if f0 and bw:
+                    try:
+                        tau = 1.0 / (math.pi * float(f0) * float(bw))
+                    except (TypeError, ValueError, ZeroDivisionError):
+                        tau = None
+            if tau is None or not math.isfinite(tau) or tau <= 0.0:
                 continue
             if tau < 3.0 * dt:
+                _wf_name = wf if isinstance(wf, str) else type(wf).__name__
                 _w.warn(
                     PreflightWarning(
                         f"waveform tau={tau:.3g}s is below 3*dt "
@@ -2774,7 +2792,7 @@ class _PreflightMixin:
                         "a static charge field CPML cannot absorb "
                         "(issue #386)",
                         code="unresolved_pulse",
-                        loc=f"waveform {type(wf).__name__} at "
+                        loc=f"waveform {_wf_name} at "
                             f"{getattr(entry, 'position', None)}",
                         source="_validate_cfg_unresolved_pulse",
                     ),

@@ -194,3 +194,25 @@ def test_unresolved_pulse_silent_on_demo_class_config():
     codes = {getattr(i, "code", None)
              for i in _demo_class_sim(1.2).preflight()}
     assert "unresolved_pulse" not in codes
+
+
+def _tfsf_sim(bandwidth):
+    """TFSF carries a string waveform name; tau comes from f0/bandwidth."""
+    sim = Simulation(freq_max=4e9, domain=(0.06, 0.06, 0.03), dx=2e-3,
+                     cpml_layers=4, boundary="cpml")
+    sim.add_tfsf_source(f0=2.2e9, bandwidth=bandwidth)
+    return sim
+
+
+def test_unresolved_pulse_fires_on_tfsf_absolute_hz_bandwidth():
+    """add_tfsf_source(bandwidth=<absolute Hz>) is the same #386 footgun;
+    the string-named waveform must not shield it from the check."""
+    codes = {getattr(i, "code", None)
+             for i in _tfsf_sim(2.64e9).preflight()}
+    assert "unresolved_pulse" in codes
+
+
+def test_unresolved_pulse_silent_on_tfsf_fractional_bandwidth():
+    codes = {getattr(i, "code", None)
+             for i in _tfsf_sim(1.2).preflight()}
+    assert "unresolved_pulse" not in codes
