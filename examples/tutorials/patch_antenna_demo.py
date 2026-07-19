@@ -52,12 +52,13 @@ Run as::
 
     python examples/tutorials/patch_antenna_demo.py
 
-Takes roughly 15 minutes on a many-core CPU.  ``NUM_PERIODS = 125`` is chosen
-from measurement, not hope: this fixture's probe envelope decays at about
-0.141 dB per period (measured between an instrumented 90-period run, -36.5 dB,
-and a 204-period run, -52.6 dB), which puts the -40 dB settling bar at about
-115 periods; 125 leaves ~1.4 dB of margin.  The witness below still measures
-and prints the end-of-run envelope every run — proof, not promise.
+Takes roughly 15 minutes on a many-core CPU.  ``NUM_PERIODS = 125`` is sized
+from measurement: instrumented runs bracket the -40 dB settling bar near 115
+periods (-36.5 dB at 90 periods, -52.6 dB at 204 — an average fall of about
+0.14 dB per period, though the multi-mode tail beats rather than decaying
+linearly), and a direct verification run at 125 measured -43.1 dB, SETTLED.
+The witness below still measures and prints the end-of-run envelope every
+run — proof, not promise.
 """
 
 from __future__ import annotations
@@ -113,17 +114,21 @@ AIR_BELOW = 30.0e-3
 # moved the resonance by only 0.1 %, so the frame is not a sensitive knob.)
 AIR_ABOVE = 84.0e-3
 
-# 125 periods settles this fixture past the -40 dB bar by measurement: the
-# probe envelope decays ~0.141 dB/period (-36.5 dB at 90 periods, -52.6 dB at
-# 204), so the bar lands near 115 periods and 125 adds margin (verified:
-# -43.1 dB SETTLED at 125 periods, reference machine, 2026-07-19).  The
-# earlier "roughly 105 settles fully" note in this file predated that slope
-# measurement and was optimistic.  The fully settled research run of this
-# geometry measured f_res = 2.2143 GHz and D = 6.71 dBi.  (A self-terminating
-# until_decay conversion was attempted and R2-STOPPED: the soft feed deposits
-# static charge across the ground-patch gap — measured floor 1.0e-2 of peak
-# interior energy, 96% in the feed column, pure E field — which the
-# total-energy criterion can never decay through.  See issue #388.)
+# 125 periods settles this fixture past the -40 dB bar by direct measurement:
+# a verification run at 125 periods measured -43.1 dB, SETTLED (reference
+# machine, 2026-07-19).  Sizing rationale: measured endpoints -36.5 dB at 90
+# periods and -52.6 dB at 204 average ~0.14 dB/period, putting the bar near
+# 115 — but the multi-mode tail beats rather than decaying linearly (a
+# sibling test measured ~-45 dB at 110 on this fixture), so the shipped
+# number rests on its own measured witness, not on the slope model.  An
+# earlier revision of this file claimed "roughly 105 settles fully"; that
+# predated these measurements and was optimistic.  The fully settled research
+# run of this geometry measured f_res = 2.2143 GHz and D = 6.71 dBi.  (A
+# self-terminating until_decay conversion was attempted and abandoned after
+# two instrumented attempts: the soft feed deposits static charge across the
+# ground-patch gap — measured floor 1.0e-2 of peak interior energy, 96% in
+# the feed column, pure E field — which the total-interior-energy stop can
+# never decay through.  See issue #388.)
 NUM_PERIODS = 125
 
 # Far-field bins: a ladder around the expected coarse-grid resonance plus one
