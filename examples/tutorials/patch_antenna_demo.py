@@ -45,17 +45,20 @@ Honest accuracy at this deliberately coarse resolution (dx = 2 mm):
   0.08 dB of openEMS (6.71 vs 6.79 dBi), measured on this same geometry and
   mesh registration in the research frame of this fixture (95 mm of air above
   the patch, ``num_periods=250``).  This demo trims the extra air above the
-  patch to stay in the ~10-minute class and prints its own directivity so the
+  patch to stay in the ~15-minute class and prints its own directivity so the
   agreement can be checked live.
 
 Run as::
 
     python examples/tutorials/patch_antenna_demo.py
 
-Takes roughly 10 minutes on a many-core CPU.  The default ``NUM_PERIODS = 90``
-ends a few dB shy of the -40 dB settling bar, and the printed witness says so
-honestly; raise it to about 105 (a couple more minutes) for a fully settled
-run before quoting numbers anywhere that matters.
+Takes roughly 15 minutes on a many-core CPU.  ``NUM_PERIODS = 125`` is sized
+from measurement: instrumented runs bracket the -40 dB settling bar near 115
+periods (-36.5 dB at 90 periods, -52.6 dB at 204 — an average fall of about
+0.14 dB per period, though the multi-mode tail beats rather than decaying
+linearly), and a direct verification run at 125 measured -43.1 dB, SETTLED.
+The witness below still measures and prints the end-of-run envelope every
+run — proof, not promise.
 """
 
 from __future__ import annotations
@@ -98,7 +101,7 @@ SIGMA_SUB = 2 * math.pi * 2.45e9 * EPS0 * SUB_EPS_R * TAN_DELTA
 OPENEMS_F_RES = 2.4221e9
 OPENEMS_D_DBI = 6.79
 
-# ---- Mesh and domain (coarse on purpose: dx = 2 mm, ~10 min CPU class) ----
+# ---- Mesh and domain (coarse on purpose: dx = 2 mm, ~15 min CPU class) ----
 DX = 2.0e-3
 N_CPML = 8
 N_SUB = 4                  # fine cells across the substrate thickness
@@ -106,19 +109,27 @@ DZ_SUB = SUB_THICK / N_SUB
 MARGIN_XY = 85.0e-3        # air beyond the ground-plane edge, x and y
 AIR_BELOW = 30.0e-3
 # 84 mm keeps the top NTFF face half a wavelength above the patch at F_DESIGN
-# while staying in the ~10-minute CPU class.  (The research lane behind the
+# while staying in the ~15-minute CPU class.  (The research lane behind the
 # quoted validation numbers used 95 mm of air; its lean-frame cross-check
 # moved the resonance by only 0.1 %, so the frame is not a sensitive knob.)
 AIR_ABOVE = 84.0e-3
 
-# 90 periods keeps this demo in the ~10-minute CPU class.  Measured on the
-# reference machine it ends near -36.5 dB — about 3.5 dB shy of the -40 dB
-# settling bar; the witness below prints the measured number every run and
-# says so.  Roughly 105 periods settles this fixture fully; the fully settled
-# research run of this geometry measured f_res = 2.2143 GHz and D = 6.71 dBi,
-# within 0.03 % and 0.03 dB of what the 90-period run prints — small here,
-# but check the witness before quoting anything tighter.
-NUM_PERIODS = 90
+# 125 periods settles this fixture past the -40 dB bar by direct measurement:
+# a verification run at 125 periods measured -43.1 dB, SETTLED (reference
+# machine, 2026-07-19).  Sizing rationale: measured endpoints -36.5 dB at 90
+# periods and -52.6 dB at 204 average ~0.14 dB/period, putting the bar near
+# 115 — but the multi-mode tail beats rather than decaying linearly (a
+# sibling test measured ~-45 dB at 110 on this fixture), so the shipped
+# number rests on its own measured witness, not on the slope model.  An
+# earlier revision of this file claimed "roughly 105 settles fully"; that
+# predated these measurements and was optimistic.  The fully settled research
+# run of this geometry measured f_res = 2.2143 GHz and D = 6.71 dBi.  (A
+# self-terminating until_decay conversion was attempted and abandoned after
+# two instrumented attempts: the soft feed deposits static charge across the
+# ground-patch gap — measured floor 1.0e-2 of peak interior energy, 96% in
+# the feed column, pure E field — which the total-interior-energy stop can
+# never decay through.  See issue #388.)
+NUM_PERIODS = 125
 
 # Far-field bins: a ladder around the expected coarse-grid resonance plus one
 # bin near the second ring-down mode, so every harminv candidate gets a
