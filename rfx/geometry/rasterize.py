@@ -14,6 +14,10 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
+from rfx.geometry._pole_keying import (
+    _accumulate_pole_mask,
+    _spec_from_pole_masks,
+)
 
 
 class GridCoords(NamedTuple):
@@ -156,8 +160,10 @@ def rasterize_geometry(
     pec_shapes = []
     has_kerr = False
 
-    debye_masks_by_pole: dict[DebyePole, jnp.ndarray] = {}
-    lorentz_masks_by_pole: dict[LorentzPole, jnp.ndarray] = {}
+    # Keyed per _pole_key (#274): pole value when hashable, id(pole) for
+    # traced poles. Values are (pole, mask) pairs.
+    debye_masks_by_pole: dict[DebyePole | int, tuple[DebyePole, jnp.ndarray]] = {}
+    lorentz_masks_by_pole: dict[LorentzPole | int, tuple[LorentzPole, jnp.ndarray]] = {}
 
     for entry in geometry_entries:
         mat = material_resolver(entry.material_name)
@@ -177,17 +183,11 @@ def rasterize_geometry(
 
         if mat.debye_poles:
             for pole in mat.debye_poles:
-                if pole in debye_masks_by_pole:
-                    debye_masks_by_pole[pole] = debye_masks_by_pole[pole] | mask
-                else:
-                    debye_masks_by_pole[pole] = mask
+                _accumulate_pole_mask(debye_masks_by_pole, pole, mask)
 
         if mat.lorentz_poles:
             for pole in mat.lorentz_poles:
-                if pole in lorentz_masks_by_pole:
-                    lorentz_masks_by_pole[pole] = lorentz_masks_by_pole[pole] | mask
-                else:
-                    lorentz_masks_by_pole[pole] = mask
+                _accumulate_pole_mask(lorentz_masks_by_pole, pole, mask)
 
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
@@ -199,17 +199,8 @@ def rasterize_geometry(
             if tc.is_pec:
                 pec_shapes.append(tc.shape)
 
-    debye_spec = None
-    if debye_masks_by_pole:
-        debye_poles = list(debye_masks_by_pole)
-        debye_masks = [debye_masks_by_pole[pole] for pole in debye_poles]
-        debye_spec = (debye_poles, debye_masks)
-
-    lorentz_spec = None
-    if lorentz_masks_by_pole:
-        lorentz_poles = list(lorentz_masks_by_pole)
-        lorentz_masks = [lorentz_masks_by_pole[pole] for pole in lorentz_poles]
-        lorentz_spec = (lorentz_poles, lorentz_masks)
+    debye_spec = _spec_from_pole_masks(debye_masks_by_pole)
+    lorentz_spec = _spec_from_pole_masks(lorentz_masks_by_pole)
 
     has_pec = bool(jnp.any(pec_mask))
     kerr_chi3 = chi3_arr if has_kerr else None
