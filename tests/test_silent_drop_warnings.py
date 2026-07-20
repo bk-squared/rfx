@@ -171,6 +171,20 @@ def test_nu_path_until_decay_not_dropped_on_absorbing_boundary():
         f"until_decay must be honoured on the absorbing-boundary NU path "
         f"(#383), got: {msgs}"
     )
+    # Post-#392 review: this fixture's planned 200-step table (0.38 ns)
+    # ends inside the default source pulse (completion t0+3*tau ~
+    # 0.48 ns), so its high rel_DC (measured 2.2e-2) is a pure
+    # truncation artifact. The #388 advisory must classify it as
+    # truncation-dominated (longer decay_max_steps / fixed n_steps) —
+    # NOT recommend a higher cutoff, which lengthens the onset and
+    # makes truncation worse.
+    dc_msgs = [m for m in msgs if "issue #388" in m]
+    assert dc_msgs, "the #388 advisory should fire on this fixture"
+    assert "truncation-dominated" in dc_msgs[0], (
+        f"table-truncated rel_DC must take the truncation branch, "
+        f"got: {dc_msgs[0]}"
+    )
+    assert "higher GaussianPulse cutoff" not in dc_msgs[0]
 
 
 def test_nu_path_checkpoint_does_not_warn():

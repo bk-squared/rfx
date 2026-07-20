@@ -153,7 +153,7 @@ class _CompileMixin:
 
         # Collect per-pole masks so distinct materials do not inherit
         # each other's dispersion poles. Keyed per
-        # ``rfx.geometry.rasterize._pole_key`` (#274): pole value when
+        # ``rfx.geometry._pole_keying._pole_key`` (#274): pole value when
         # hashable (equal poles dedupe/merge as before), ``id(pole)``
         # only for unhashable traced poles. Values are (pole, mask).
         debye_masks_by_pole: dict[DebyePole | int, tuple[DebyePole, jnp.ndarray]] = {}

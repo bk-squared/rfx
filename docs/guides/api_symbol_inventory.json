@@ -415,7 +415,8 @@
         "dx_override",
         "margin_override",
         "n_steps_override",
-        "max_memory_mb"
+        "max_memory_mb",
+        "waveform"
       ]
     },
     "auto_refine": {

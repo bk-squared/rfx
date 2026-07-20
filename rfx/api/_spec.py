@@ -632,6 +632,26 @@ def _warn_if_nonfinite_result(result, *, context: str) -> None:
     )
 
 
+def _auto_source_decay_time(fr, waveform=None) -> float:
+    """Auto Harminv window start: twice the source pulse-completion scale.
+
+    The historical hardcode was ``2.0*3.0*tau`` — the cutoff=3
+    ``GaussianPulse`` envelope (``t0 = 3*tau``). A waveform exposing its
+    own ``t0`` (``GaussianPulse``/``ModulatedGaussian``:
+    ``t0 = cutoff*tau``) makes the window scale with the actual onset —
+    ``2*t0`` = ``9*tau`` at cutoff=4.5 — instead of assuming the cutoff=3
+    envelope (post-#392 review). Without a waveform this returns
+    ``2.0*(3.0*tau)``, bitwise-identical to the historical
+    ``2.0*3.0*tau`` (scaling by 2.0 is exact in binary floating point),
+    with ``tau`` derived from the frequency range at the historical
+    bw=0.8.
+    """
+    f_center = (fr[0] + fr[1]) / 2
+    bw = 0.8
+    tau = 1.0 / (f_center * bw * np.pi)
+    return 2.0 * float(getattr(waveform, "t0", 3.0 * tau))
+
+
 class Result(NamedTuple):
     """Structured simulation result.
 
@@ -678,7 +698,8 @@ class Result(NamedTuple):
     freq_range: tuple | None = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
-                         source_decay_time=None, bandpass=None):
+                         source_decay_time=None, bandpass=None,
+                         waveform=None):
         """Extract resonant modes from probe time series via Harminv.
 
         Parameters
@@ -693,6 +714,14 @@ class Result(NamedTuple):
             Apply FFT bandpass before Harminv. Default: auto (True for
             CPML results where DC/surface-wave artifacts exist, False
             for PEC cavities where signal is clean).
+        waveform : source waveform or None
+            Used only when ``source_decay_time`` is None: when the
+            waveform exposes ``t0`` (``GaussianPulse`` /
+            ``ModulatedGaussian``: ``t0 = cutoff*tau``), the auto window
+            starts at ``2*t0`` so a longer-onset pulse (e.g.
+            ``cutoff=4.5`` → ``9*tau``) is fully skipped. Without a
+            waveform the historical cutoff=3 envelope (``2*(3*tau)``) is
+            used, bitwise-identical to the previous hardcode.
 
         Returns
         -------
@@ -721,10 +750,7 @@ class Result(NamedTuple):
             bandpass = stored_boundary == 'cpml'
 
         if source_decay_time is None:
-            f_center = (fr[0] + fr[1]) / 2
-            bw = 0.8
-            tau = 1.0 / (f_center * bw * np.pi)
-            source_decay_time = 2.0 * 3.0 * tau
+            source_decay_time = _auto_source_decay_time(fr, waveform)
 
         start = int(np.ceil(source_decay_time / self.dt))
         start = min(start, max(len(ts) - 20, 0))
