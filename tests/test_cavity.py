@@ -127,8 +127,9 @@ def test_pec_cavity_resonance(cavity_params):
     # Resolution-honest gate. This bounds a MEASURED Yee discretization +
     # PEC-boundary-registration error, NOT an FFT-bin window. On main harminv
     # reads 2.0794 GHz => 1.91% low; independently confirmed by zero-padded-FFT +
-    # parabolic-peak (1.84%) and by convergence under refinement (1.91% @ this dx
-    # -> 0.47% at 2× dx), proving it is genuine discretization, not extraction
+    # parabolic-peak (~1.8-1.9%, method-dependent) and by convergence under mesh
+    # REFINEMENT (1.91% at this dx -> ~0.47% at half dx / 2x resolution),
+    # proving it is genuine discretization, not extraction
     # noise. The old 0.5% "gate" passed only by luck: the true 2.08 GHz peak
     # rounded up into the 2.1244 GHz bin (0.22%). 2.5% = measured 1.91% + margin;
     # because harminv resolves <0.05% this now actually binds — a regression past

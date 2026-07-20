@@ -139,7 +139,8 @@ def run_gate() -> Stage1NUGateResult:
         )
     # Resolution-honest gate. harminv measures ~2.54% error here (HIGH; a one-cell
     # effective-a registration effect, stable across record lengths 20→160 periods
-    # and confirmed by zero-padded-FFT + parabolic-peak ≈2.58%). This is a MEASURED
+    # and corroborated by zero-padded-FFT + parabolic-peak ~2.55-2.58% (the exact
+    # secondary number is window/pad-factor dependent). This is a MEASURED
     # NU-air-cavity discretization envelope, consistent with the sibling analytic
     # gate test_nonuniform_cavity_accuracy.py (2.66% @ dx=1mm, gated 4%). The old
     # "1%" gate was luck: the true 5.433 GHz peak snapped down into the 5.298 GHz
