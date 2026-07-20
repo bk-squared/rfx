@@ -2,10 +2,23 @@
 
 Validates:
 1. Coefficients match hand-computed values
-2. Drude pole constructor
-3. Lorentz medium slows propagation
-4. Energy bounded (no ADE instability)
-5. Integration with simulation runner
+2. Drude / Lorentz pole constructors
+3. Energy bounded (no ADE instability)
+4. Integration with the simulation runner (Lorentz-only + mixed Debye/Lorentz)
+5. Poles stay scoped to their own material
+
+The dispersive ε(ω) itself — that the Lorentz ADE reproduces the analytic
+Lorentz permittivity, hence the below-resonance phase-velocity slowdown — is
+NOT re-measured here. It is validated end-to-end (FDTD broadband R(f) of an
+in-band-resonant Lorentz slab vs a rigorous transfer-matrix oracle fed the
+identical ε(ω)) in
+``tests/test_dispersive_fresnel_validation.py::test_dispersive_fresnel_lorentz``
+(``slow_physics`` opt-in lane). A time-domain "slows propagation" gate is
+deliberately NOT kept here: on a small PEC-walled cavity the pulse-arrival
+peak is dominated by wall reflections (a domain-size-dependent artifact — the
+global-argmax ratio measured 1.97× at nx=200 but 0.71× at nx=400), while the
+true reflection-immune leading-edge slowdown is only ~1.19× — too weak to
+gate. This file pins the ADE coefficient / stability / runner mechanics only.
 """
 
 import numpy as np

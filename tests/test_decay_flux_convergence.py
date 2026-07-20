@@ -1,46 +1,54 @@
-"""Witness harness for issue #169 — ``run_until_decay`` point-field stopper
-fires before the flux-DFT has converged on low-group-velocity guided geometries.
+"""Witness harness for issue #169 — ``run_until_decay`` stop quality on
+low-group-velocity guided geometries. **RESOLVED** by Criterion A (total
+interior-domain-energy decay); this harness keeps both the historical bug
+signature and the fix honest.
 
-Root cause (verified at source, ``rfx/simulation.py:1954-1960``): the decay
-stop predicate compares the *instantaneous squared point field at one cell*
+Historical root cause (the PRE-FIX predicate): the old decay stopper compared
+the *instantaneous squared point field at one cell*
 (``val_sq = float(monitor_val) ** 2``) against ``decay_by * running_peak``.
 On a dielectric guide (cv03, eps=12) the point ``ez`` at the flux_out cell
 dips through a transient null between wave packets while the flux DFT — the
 quantity the decay run is meant to gate — is still integrating the slow tail.
-The point ratio is NON-MONOTONE (it climbs back up after the null), so it is
-not a convergence witness at all.
+That point ratio is NON-MONOTONE (it climbs back up after the null), so it was
+not a convergence witness at all, and the run stopped ~7% short of the
+converged transmission. The FIX (now shipped in ``rfx/simulation.py``) makes
+the absorbing-boundary stop gate on the whole-domain energy
+``U = Σ(E² + H²)`` over the non-CPML interior, declared decayed once
+``U < decay_by * peak_U`` on ``decay_energy_consecutive`` consecutive checks;
+whole-domain energy does not pass through per-cell interference nulls, so the
+stop now lands at the flux-converged value.
 
 Two witnesses live here:
 
 1. ``test_issue169_recorded_divergence_witness`` — FAST (<1s, no FDTD). Replays
-   the *current* point-field predicate against the committed diagnostic JSON
-   (the full cv03 trace produced by
+   the OLD point-field predicate against the committed diagnostic JSON (the
+   full cv03 trace produced by
    ``scripts/diagnostics/issue169_decay/reproduce_decay_vs_flux.py``) and pins
-   the bug signature: the predicate fires at the recorded quiet step, the
-   point ratio is non-monotone, and the flux at that stop is materially below
-   the converged value. This is an always-pass regression SENTINEL — it keeps
-   the recorded witness honest and is collectable in the fast PR lane. It does
-   NOT exercise ``simulation.py`` and so cannot itself flip when the fix lands;
-   that job belongs to test 2.
+   the historical bug signature: the predicate fires at the recorded quiet
+   step, the point ratio is non-monotone, and the flux at that stop is
+   materially below the converged value. This is an always-pass regression
+   SENTINEL that locks the recorded evidence of *why the point-field stopper
+   was wrong*; it is collectable in the fast PR lane. It does NOT exercise
+   ``simulation.py`` (pure JSON replay) and so cannot itself flip — proving the
+   live fix is test 2's job.
 
 2. ``test_issue169_decay_reaches_flux_converged_value`` — the ACCEPTANCE test.
-   It actually drives ``Simulation.run(until_decay=...)`` on the smallest
-   faithful cv03-class guided geometry that still shows the under-run, and
-   asserts the decay stop reaches the flux-converged transmission (within tol
-   of the fixed-duration truth). It is ``xfail(strict=True)`` because the bug
-   is present TODAY: it flips to PASS the moment the criterion is made
-   flux-aware (architect Candidate C — flux-residual stopping when flux
-   monitors are present). It is ``pytest.mark.gpu`` because the decay path
-   JIT-dispatches each step in a Python loop, so a faithful repro is ~50s+
-   (the cost floor is the ~2150-step point-stop, set by source cutoff + guide
-   transit — it cannot be shrunk below the fast-lane budget without destroying
-   the under-run signature; this was measured across four geometries). It
-   therefore lives in the gpu suite, matching ``test_decay_convergence.py``.
+   It drives the real ``Simulation.run(until_decay=...)`` path on the smallest
+   faithful cv03-class guided geometry that showed the under-run, and asserts
+   the decay stop now reaches the flux-converged transmission (within tol of
+   the fixed-duration truth) AND lands well past the old ~2151-step
+   point-field under-run. It PASSES on current main under Criterion A — it is a
+   plain gate, NOT ``xfail``. It is ``pytest.mark.gpu`` because the decay path
+   JIT-dispatches each step in a Python loop, so a faithful repro is ~50s+ (the
+   cost floor is the ~2150-step stop, set by source cutoff + guide transit — it
+   cannot be shrunk below the fast-lane budget without destroying the signature;
+   measured across four geometries). It therefore lives in the gpu suite,
+   matching ``test_decay_convergence.py``.
 
-IMPORTANT: this harness does NOT modify ``rfx/simulation.py`` or any core
-file. The criterion change is deferred to an explicit user go-ahead — see
-``docs/research_notes/20260613_issue169_decay_criterion.md`` for the
-architect's recommended spec and the R2 gate.
+NOTE: this harness does NOT itself modify ``rfx/simulation.py``; the Criterion A
+change landed in the core separately. See
+``docs/research_notes/20260613_issue169_decay_criterion.md`` for the original
+spec and the R2 gate.
 """
 
 import json

@@ -4,7 +4,15 @@ Validates the Debye ADE implementation against analytical predictions:
 1. Coefficients match hand-computed values
 2. Debye medium slows propagation (higher effective ε at low freq)
 3. Energy is bounded (no ADE instability)
-4. Frequency-dependent permittivity matches Debye formula
+4. Dispersion is mask-selective and multi-pole capable
+
+The frequency-dependent permittivity ε(ω) itself — that the Debye ADE
+reproduces the analytic Debye formula ε(ω) = ε_∞ + Σ Δε/(1 + jωτ) — is NOT
+re-measured here. It is validated end-to-end (FDTD R(f) of a Debye slab vs a
+rigorous transfer-matrix oracle fed the identical ε(ω)) in
+``tests/test_dispersive_fresnel_validation.py::test_dispersive_fresnel_debye``
+(``slow_physics`` opt-in lane). This file pins the ADE
+coefficient / stability / masking mechanics only.
 """
 
 import numpy as np

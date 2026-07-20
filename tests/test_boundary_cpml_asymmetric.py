@@ -9,12 +9,17 @@ These tests pin the PADDED-PROFILE MECHANISM shipped in
   in the padded no-op region, and σ_max at the outer-boundary end for
   the (pre-flipped) hi-face.
 
-The QUANTITATIVE physics (between-face reflection ratio R_lo/R_hi > 10
-at the source dominant frequency, control sym (16, 16) within 1.5×)
-is asserted separately in
-``tests/test_boundary_cpml_oracle.py::test_asymmetric_reflection_between_face_ratio``
-— that oracle is what makes the asymmetric-CPML claim load-bearing;
-this file only guarantees the mechanism wiring.
+The QUANTITATIVE asymmetric-CPML evidence is COEFFICIENT-LEVEL (σ_max),
+not a field-reflection ratio. ``tests/test_boundary_cpml_oracle.py`` pins
+σ_max on the 4-layer face at exactly 4× the 16-layer face
+(``test_asymmetric_sigma_max_ratio_matches_analytic``), the polynomial
+grading shape, and that the per-face σ arrays differ
+(``test_asymmetric_sigma_arrays_differ``) — that is what makes the
+asymmetric-CPML claim load-bearing. A between-face FIELD-reflection ratio
+is deliberately NOT asserted: the Gaussian source pulse (~200 steps) is
+longer than the source-to-face round trip (~30 steps), so it cannot be
+time-gated in a single asymmetric sim (see that oracle's docstring). This
+file only guarantees the mechanism wiring.
 """
 
 from __future__ import annotations
