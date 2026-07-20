@@ -378,3 +378,50 @@ def test_auto_mesh_trigger_fires_thin_only_end_to_end():
         warnings.simplefilter("ignore")
         sim.run(n_steps=5, skip_preflight=True)
     assert sim._dx is not None, "run() trigger must auto-configure a thin-only sim"
+
+
+# ---------------------------------------------------------------------------
+# Waveform-aware source-time window (post-#392 review): the n_steps
+# estimate hardcoded t_source = 6*tau (the cutoff=3 Gaussian envelope).
+# ---------------------------------------------------------------------------
+
+def test_auto_configure_waveform_default_byte_identical():
+    """waveform=None (and a cutoff=3 waveform at the internal f_center /
+    bw=0.8) reproduce the historical 6*tau n_steps exactly."""
+    import math
+    import pytest
+    from rfx import GaussianPulse
+
+    f1, f2 = 1e9, 3e9
+    base = auto_configure([], freq_range=(f1, f2))
+    explicit_none = auto_configure([], freq_range=(f1, f2), waveform=None)
+    assert explicit_none.n_steps == base.n_steps
+
+    # The load-bearing float identity: 2.0*(3.0*tau) == 6*tau bitwise.
+    f_center = (f1 + f2) / 2
+    tau = 1.0 / (f_center * 0.8 * math.pi)
+    assert 2.0 * (3.0 * tau) == 6 * tau
+
+    # A cutoff=3 waveform at the same f_center/bandwidth has t0 = 3*tau
+    # of the SAME tau -> identical n_steps.
+    wf3 = GaussianPulse(f0=f_center, bandwidth=0.8)
+    same = auto_configure([], freq_range=(f1, f2), waveform=wf3)
+    assert same.n_steps == base.n_steps
+
+
+def test_auto_configure_waveform_cutoff_extends_source_window():
+    """cutoff=4.5 -> t_source 9*tau instead of 6*tau -> strictly more
+    steps, by (2*t0_45 - 2*t0_3)/dt up to ceil rounding."""
+    import pytest
+    from rfx import GaussianPulse
+
+    f1, f2 = 1e9, 3e9
+    f_center = (f1 + f2) / 2
+    base = auto_configure([], freq_range=(f1, f2))
+    wf45 = GaussianPulse(f0=f_center, bandwidth=0.8, cutoff=4.5)
+    longer = auto_configure([], freq_range=(f1, f2), waveform=wf45)
+
+    assert longer.n_steps > base.n_steps
+    expected_extra = (2.0 * wf45.t0 - 6.0 * wf45.tau) / base.dt
+    assert longer.n_steps - base.n_steps == pytest.approx(
+        expected_extra, abs=1.0)

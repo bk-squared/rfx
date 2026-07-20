@@ -108,13 +108,13 @@ def test_cutoff_45_reduces_deposited_dc_by_predicted_factor():
 # 3. until_decay DC-floor warning — predeclared four-case matrix (#388)
 # ---------------------------------------------------------------------------
 
-def _dc_floor_fires(waveform) -> list[str]:
+def _dc_floor_fires(waveform, n_table=50_000) -> list[str]:
     sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3,
                      cpml_layers=4)
     sim.add_source((0.01, 0.01, 0.01), "ez", waveform=waveform)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        sim._warn_until_decay_dc_floor(dt=DEMO_DT, n_table=50_000)
+        sim._warn_until_decay_dc_floor(dt=DEMO_DT, n_table=n_table)
     return [str(w.message) for w in caught if "issue #388" in str(w.message)]
 
 
@@ -141,6 +141,13 @@ def test_until_decay_dc_floor_matrix(label, waveform, expect_fire):
         assert fired, f"{label}: expected the #388 DC-floor warning"
         # Quantitative: the message must carry the rel_DC number.
         assert "relative DC" in fired[0] and "cap-hit" in fired[0]
+        # All matrix fire-cases run a 50k-step table that covers the
+        # full pulse — they must take the INTRINSIC-DC branch (with its
+        # cutoff/bandwidth remedies AND the honesty note about
+        # thin-source-cell-amplified floors this advisory cannot see),
+        # not the truncation branch.
+        assert "truncation-dominated" not in fired[0]
+        assert "thin source cells" in fired[0]
     else:
         assert not fired, f"{label}: unexpected #388 warning: {fired}"
 
@@ -165,6 +172,120 @@ def test_until_decay_dc_floor_wired_into_run():
     assert not [w for w in caught if "issue #388" in str(w.message)], (
         "#388 DC-floor warning must fire only when until_decay is set"
     )
+
+
+# ---------------------------------------------------------------------------
+# 3b. truncation-aware branch (post-#392 review): rel_DC over the planned
+#     table conflates intrinsic waveform DC with table-truncation DC.
+# ---------------------------------------------------------------------------
+
+def test_dc_floor_truncation_branch_when_table_ends_inside_pulse():
+    """A 200-step table at the demo dt (0.24 ns) ends inside the default
+    pulse (completion t0+3*tau ~ 0.48 ns at f0=5 GHz, bw=0.8): the high
+    rel_DC (~1.0) is pure truncation artifact. The message must say so,
+    recommend a longer decay_max_steps / fixed n_steps, and must NOT
+    recommend raising the cutoff (that lengthens the onset and makes
+    truncation worse)."""
+    fired = _dc_floor_fires(GaussianPulse(f0=5e9, bandwidth=0.8),
+                            n_table=200)
+    assert fired, "truncated-table high rel_DC must still warn"
+    msg = fired[0]
+    assert "truncation-dominated" in msg
+    assert "decay_max_steps" in msg and "n_steps" in msg
+    assert "WORSE" in msg
+    assert "higher GaussianPulse cutoff" not in msg
+
+
+def test_dc_floor_truncation_worsens_with_higher_cutoff():
+    """Raising cutoff — the #392 intrinsic-DC remedy — makes TRUNCATION
+    worse: at n_table=400 (0.48 ns table, f0=5 GHz, bw=0.8) cutoff=3 is
+    silent (table covers the pulse, measured rel_DC 5.7e-6) while
+    cutoff=4.5 pushes completion to 7.5*tau ~ 0.60 ns past the table end
+    and fires the truncation branch (measured rel_DC 5.1e-2)."""
+    silent = _dc_floor_fires(GaussianPulse(f0=5e9, bandwidth=0.8),
+                             n_table=400)
+    assert not silent, f"cutoff=3 must be silent at n_table=400: {silent}"
+    fired = _dc_floor_fires(
+        GaussianPulse(f0=5e9, bandwidth=0.8, cutoff=4.5), n_table=400)
+    assert fired, "cutoff=4.5 must fire at n_table=400 (longer onset)"
+    assert "truncation-dominated" in fired[0]
+
+
+def test_dc_floor_covers_msl_ports():
+    """MSL ports launch via the same soft-Ez deposit mechanism; a
+    high-DC waveform on an MSL port must fire the #388 advisory
+    (post-#392 review; entry access mirrors the #386 validator)."""
+    sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3,
+                     cpml_layers=4)
+    sim.add_msl_port((0.004, 0.01, 0.002), width=4e-3, height=2e-3,
+                     waveform=ModulatedGaussian(f0=2.2e9, bandwidth=1.2))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sim._warn_until_decay_dc_floor(dt=DEMO_DT, n_table=50_000)
+    fired = [str(w.message) for w in caught
+             if "issue #388" in str(w.message)]
+    assert fired, "MSL-port high-DC waveform must fire the #388 warning"
+    assert "relative DC" in fired[0]
+
+
+# ---------------------------------------------------------------------------
+# 3c. add_polarized_source must thread the waveform cutoff (post-#392
+#     review): the real-Jones reconstruction rebuilds GaussianPulse and
+#     previously dropped cutoff — silently reverting the #392 remedy.
+# ---------------------------------------------------------------------------
+
+def test_polarized_source_threads_cutoff():
+    sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3,
+                     cpml_layers=4)
+    wf = GaussianPulse(f0=2.2e9, bandwidth=1.2, cutoff=4.5)
+    sim.add_polarized_source((0.01, 0.01, 0.01), polarization="slant45",
+                             waveform=wf)
+    comps = {pe.component: pe.waveform for pe in sim._ports}
+    assert set(comps) == {"ex", "ey"}
+    for comp, w in comps.items():
+        assert w.cutoff == 4.5, (
+            f"{comp} component waveform lost cutoff (got {w.cutoff}) — "
+            f"the #392 remedy is silently ineffective on this path")
+        assert w.f0 == wf.f0 and w.bandwidth == wf.bandwidth
+
+
+# ---------------------------------------------------------------------------
+# 3d. decay-parameter sanity advisories (post-#392 review; behaviour-
+#     neutral, single run()-level site covering both honoured lanes).
+# ---------------------------------------------------------------------------
+
+def _tiny_decay_sim():
+    sim = Simulation(freq_max=36e9, domain=(6e-3, 6e-3, 6e-3),
+                     dx=1e-3, cpml_layers=4, boundary="cpml")
+    sim.add_source((3e-3, 3e-3, 3e-3), "ez")
+    return sim
+
+
+def test_decay_min_steps_above_max_steps_warns():
+    """decay_min_steps > decay_max_steps: every check index lies past
+    the table end — zero energy checks, forced decay_max_steps run."""
+    with pytest.warns(UserWarning, match="zero energy checks"):
+        _tiny_decay_sim().run(until_decay=1e-3, decay_min_steps=80,
+                              decay_max_steps=40)
+
+
+def test_until_decay_at_or_above_one_warns():
+    """until_decay >= 1: U < until_decay*peak_U is met while the energy
+    is still rising — the stop can fire immediately."""
+    with pytest.warns(UserWarning, match="still rising"):
+        _tiny_decay_sim().run(until_decay=1.5, decay_min_steps=20,
+                              decay_max_steps=60)
+
+
+def test_sane_decay_params_do_not_warn():
+    """The advisories are precise: a sane parameter set emits neither."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _tiny_decay_sim().run(until_decay=1e-3, decay_min_steps=20,
+                              decay_max_steps=60)
+    msgs = [str(w.message) for w in caught]
+    assert not any("zero energy checks" in m or "still rising" in m
+                   for m in msgs), msgs
 
 
 # ---------------------------------------------------------------------------
