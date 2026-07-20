@@ -86,10 +86,12 @@ def _s_matrix(sim, *, normalize, num_periods=40):
 
 
 def _assert_cpml(sim):
-    # Cheap constructor guard (echoes the boundary kwarg). The REAL absorbing-
-    # boundary witness (m3 / #169) is downstream: the empty-guide |S11|≈0 in
-    # test_live_empty_guide_s21_anchor — a non-absorbing boundary could not give
-    # a matched-load reflection near zero.
+    # Cheap constructor guard (echoes the boundary kwarg). NOTE (issue #395):
+    # the empty-guide |S11|≈0 in test_live_empty_guide_s21_anchor is NOT an
+    # absorbing-boundary witness — on the flux path device==reference makes it
+    # ~0 by construction regardless of CPML quality. The real waveguide-lane
+    # PML-reflection gate is the single-run test_matched_load_s11_empty_waveguide
+    # in the validation battery.
     assert sim._boundary == "cpml", (
         f"live anchor requires a CPML (absorbing) boundary, got {sim._boundary!r}"
     )
@@ -160,12 +162,19 @@ def test_live_empty_guide_s21_anchor():
         f"LIVE empty-guide min|S21|={s21.min():.4f} < 0.98 — transmission "
         f"extraction regression in compute_waveguide_s_matrix"
     )
-    # Absorbing-boundary witness (m3 / #169): a matched empty guide reflects ~0
-    # ONLY because the boundary is genuinely absorbing — this is the real
-    # downstream CPML check (vs the constructor-echo in _assert_cpml).
+    # By-construction determinism bound (NOT a CPML witness — issue #395).
+    # On the flux path the empty-guide diagonal is
+    # |S11|^2 = |F_ref - F_dev| / |F_ref| and the empty device run equals the
+    # vacuum reference run bit-for-bit, so |S11| ~ 0 REGARDLESS of boundary
+    # quality — a crippled CPML would not move it. This asserts only that the
+    # two-run flux cancellation is deterministic. The real waveguide-lane
+    # PML-reflection gate is the single-run (normalize=False)
+    # test_matched_load_s11_empty_waveguide in the validation battery, which
+    # trebles when the CPML is crippled.
     assert s11.max() < 0.05, (
-        f"LIVE empty-guide max|S11|={s11.max():.4f} >= 0.05 — boundary is not "
-        f"absorbing as expected (or matched-load extraction regressed)"
+        f"LIVE empty-guide max|S11|={s11.max():.4f} >= 0.05 — the two-run flux "
+        f"cancellation is not deterministic (plumbing regression); this is NOT "
+        f"a CPML-absorption check (see battery test_matched_load_s11_empty_waveguide)"
     )
     assert power.max() <= 1.05, (
         f"LIVE empty-guide max(|S11|²+|S21|²)={power.max():.4f} > 1.05 — "

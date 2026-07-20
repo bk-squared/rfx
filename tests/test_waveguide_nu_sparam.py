@@ -42,7 +42,7 @@ import numpy as np
 # it permanently flips x64 ON for the whole pytest process and leaks into
 # downstream same-process tests (test_wire_*/test_verification then fail with
 # lax.scan carry-dtype TypeErrors). These NU tests need only float32 (they check
-# finite/shape/xfail, no f64-precision assertion). If a future test here needs
+# finite/shape/liveness, no f64-precision assertion). If a future test here needs
 # x64, scope it with `with jax.experimental.enable_x64(True):` like
 # tests/test_msl_sparam_ad.py — never module-level.
 
@@ -152,7 +152,9 @@ def test_nu_s_params_finite():
 
     R5: per-frequency dump — full trace, not a bare scalar.
     NOTE: with the NU-DRIVE-FIX applied, S is now physically correct (|S21|≈1,
-    |S11|≈0). Finite check still passes. Physics gate in test_nu_s_params_passive_ish.
+    |S11|≈0). Finite check still passes. Liveness/identity gate in
+    test_nu_s_params_dispatch_and_dft_liveness (real NU physics:
+    test_waveguide_nu_nontrivial.py).
     """
     res = _get_result()
     s = np.array(res.s_params)
@@ -177,31 +179,42 @@ def test_nu_s_params_finite():
 
 
 # ---------------------------------------------------------------------------
-# Test 3: physical passivity gate (fixed NU-DRIVE-FIX 2026-05-25)
+# Test 3: NU dispatch / DFT-liveness gate on the air-thru identity
+# (NOT a physical passivity gate — issue #395)
 # ---------------------------------------------------------------------------
 
 
 
-def test_nu_s_params_passive_ish():
-    """Loose passivity + activity gate for a 2-period air-filled WR-90 thru.
+def test_nu_s_params_dispatch_and_dft_liveness():
+    """NU air-thru returns the two-run identity (dispatch + DFT are live).
 
-    FIXED (NU-DRIVE-FIX 2026-05-25): _compute_waveguide_s_matrix_nu now returns
-    physical S-parameters (|S21|≈1, |S11|≈0) for a WR-90 air thru with
-    dx_profile grading. Two bugs were fixed:
+    ISSUE #395 — what this actually binds: this is an air-filled WR-90 THRU
+    with ``normalize=True``, so the device run *is* the reference run and
+    ``|S21|≈1`` / ``|S11|≈0`` hold BY CONSTRUCTION (device==reference
+    cancellation), independent of NU physics. Verified 2026-07-20: |S11|
+    range [0.0000, 0.0000], |S21| range [1.0000, 1.0000]. This is therefore
+    a DISPATCH + DFT-liveness gate — it catches the NU-DRIVE-FIX failure mode
+    (all-zero S, i.e. |S21| collapses to 0 when the DFT runs with dt=0), NOT
+    a physical passivity/reflection measurement. Real NU S-physics on a
+    device != reference geometry lives in ``test_waveguide_nu_nontrivial.py``
+    (live invariants) and the ``nu_broad_e4`` Palace replay.
+
+    FIXED (NU-DRIVE-FIX 2026-05-25): _compute_waveguide_s_matrix_nu now
+    produces the live identity instead of all-zero S. Two bugs were fixed:
       1. rfx/runners/nonuniform.py _build_waveguide_port_config_nu: missing
          dt=float(grid.dt) in init_waveguide_port call — e_inc_table/h_inc_table
          remained size-1 sentinels (dt=0 path), so _rect_dft used dt=0 → all
-         DFT outputs zero.
+         DFT outputs zero (|S21| would read 0, tripping the liveness assert).
       2. rfx/api/_sparams.py _compute_waveguide_s_matrix_nu: off-diagonal
          safe_b guard threshold 1e-30 too aggressive — NU TFSF operates at
          float32 signal level ~1e-31 (dt/dx scaling), causing the guard to
          substitute 1.0 for b_ref, breaking the b_dev/b_ref≈1 cancellation.
          Lowered to 1e-60.
 
-    Expected:
-      - max |S_ij| < 2.0  (no energy explosion)
-      - |S11| < 0.50  (low reflection for air-filled straight guide)
-      - |S21| > 0.05  (some transmission must be present)
+    Gates (liveness/identity bounds, not physics):
+      - max |S_ij| < 2.0  (no assembly explosion)
+      - |S11| < 0.50  (air-thru identity keeps the diagonal near 0)
+      - |S21| > 0.05  (DFT is live — the all-zero-S regression drops it to 0)
     """
     res = _get_result()
     s = np.array(res.s_params)
@@ -216,11 +229,13 @@ def test_nu_s_params_passive_ish():
         f"max|S|={np.abs(s).max():.4f} >= 2.0 — energy explosion in _nu run."
     )
     assert s11_mag.max() < 0.50, (
-        f"|S11| max = {s11_mag.max():.4f}; expected < 0.50 for air WR-90 thru."
+        f"|S11| max = {s11_mag.max():.4f}; air-thru two-run identity should "
+        "keep the diagonal near 0."
     )
     assert s21_mag.max() > 0.05, (
-        f"|S21| max = {s21_mag.max():.4f}; expected > 0.05 — no transmission signal. "
-        "BUG: NU path returns zero S21 while uniform path gives ~1.0."
+        f"|S21| max = {s21_mag.max():.4f}; expected > 0.05 — DFT not live. "
+        "BUG: NU path returns zero S21 (dt=0 sentinel) while the live identity "
+        "gives ~1.0."
     )
 
 
@@ -231,13 +246,15 @@ def test_nu_s_params_passive_ish():
 def test_nu_vs_uniform_finite_and_comparable():
     """Side-by-side NU vs uniform S-parameter dump (R5 mandate).
 
-    Documents the known bug: NU returns all-zero while uniform returns
-    |S21|=|S12|≈1 for the same air WR-90 geometry.
-
-    The loose numeric gate (max|delta| < 1.5) passes because both paths
-    are finite; the physics divergence is captured in test_nu_s_params_passive_ish
-    (xfail). This test is NOT marked xfail — it verifies both paths return
-    finite arrays of the same shape and that the comparison infrastructure works.
+    Post NU-DRIVE-FIX (2026-05-25) the NU and uniform air-thru paths AGREE:
+    both return the two-run identity |S21|=|S12|≈1, |S11|≈0, so the
+    per-freq deviation is ~0 (measured max|delta|=0.0000 on 2026-07-20 —
+    NOT the ~1.0 the pre-fix all-zero bug produced; the stale "NU returns
+    all-zero" note was removed in issue #395). The loose numeric gate
+    (max|delta| < 1.5) still passes and guards against an assembly-level
+    NaN/explosion on either path; it is not a physics-accuracy gate (both
+    sides are the device==reference identity, so agreement is expected by
+    construction — real NU physics is in test_waveguide_nu_nontrivial.py).
     """
     # Nonuniform result (already cached)
     res_nu = _get_result()
@@ -298,11 +315,13 @@ def test_nu_vs_uniform_finite_and_comparable():
 
     max_dev = np.abs(s_nu - s_u).max()
     print(f"\n[G-NU] max |S_nu - S_uniform| = {max_dev:.4f}")
-    # NOTE: max_dev ≈ 1.0 here due to the bug (NU gives 0, uniform gives 1).
-    # Gate is loose (< 1.5) — verifies both are finite and comparable, not correct.
+    # Post NU-DRIVE-FIX: max_dev ≈ 0 (both paths give the air-thru identity
+    # |S21|≈1, |S11|≈0). Gate is loose (< 1.5) — it verifies both are finite
+    # and assembly-comparable, not that either is physically correct.
     assert max_dev < 1.5, (
         f"NU vs uniform max deviation {max_dev:.4f} >= 1.5 — "
-        "suggests assembly-level NaN/explosion, not just the known zero-S bug."
+        "suggests assembly-level NaN/explosion (the all-zero-S regression "
+        "would show max_dev≈1.0)."
     )
 
 
@@ -322,10 +341,11 @@ def test_nu_assembly_ad_traceable():
     ASSEMBLY OUTPUT (s_params is a jax.Array whose downstream ops are
     differentiable) by differentiating a post-assembly scale parameter.
 
-    NOTE: with the current all-zero bug, grad = 0 (since |0 * scale|^2 = 0
-    for all scale). Zero is finite, so the AD traceability structural
-    requirement is met. The non-trivial gradient test will be meaningful
-    once the zero-S bug is fixed.
+    NOTE: post NU-DRIVE-FIX the assembled S is the live air-thru identity
+    (|S21|≈1), so grad(sum|S*scale|^2)|_{scale=1} = 2*sum|S|^2 ≈ 20 — finite
+    and non-zero (measured 2.0e+01 on 2026-07-20), confirming AD traceability
+    of the assembly output. (The stale "all-zero bug => grad = 0" note was
+    removed in issue #395.)
     """
     res = _get_result()
     s = res.s_params  # jax.Array

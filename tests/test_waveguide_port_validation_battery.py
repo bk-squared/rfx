@@ -157,68 +157,155 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
 
 
 # =============================================================================
-# Test 1 — Matched-load |S11| on an empty waveguide (industry anchor)
+# Test 1 — Matched-load |S11| reflection at the CPML termination (BINDING)
 # =============================================================================
 #
-# Empty lossless two-port waveguide with both ends absorbed by CPML.
-# There is no obstacle: the forward wave should be perfectly absorbed
-# at the far CPML and S11 should be ~0. This is the single most-telling
-# diagnostic for extractor + PML quality on the waveguide port.
+# An empty lossless guide terminated by CPML on both ends: the CPML *is*
+# the matched load. We measure the SINGLE-RUN (``normalize=False``)
+# reflection coefficient |S11| off that termination — the incident modal
+# power that fails to be absorbed and returns to the driven port. A good
+# matched load reflects ~0; a degraded absorber reflects more.
 #
-# Meep class: <1 %.  OpenEMS class: <5 %.  Current rfx target: <10 %.
+# ISSUE #395 — why NOT ``normalize=True`` here: with ``normalize=True`` on
+# an empty guide the device run *is* the reference run, so
+# ``S11 = (b_dev - b_ref)/a_inc`` is identically ZERO by construction and
+# no PML/extractor regression that touches both runs equally can move it
+# (probe 2026-07-20: cpml_layers 10 and 4 BOTH give max|S11| = 0.000000).
+# The pre-#395 gate (``normalize=True``, threshold 0.02) was therefore
+# VACUOUS — a determinism/plumbing tripwire mislabeled "the single
+# most-telling diagnostic for extractor + PML quality". Switching to the
+# single-run ``normalize=False`` reflection is a STRENGTHENING, not a
+# loosening: it is the correct tool for an absorber-quality claim and it
+# moves with the boundary (measured max|S11| = 0.156 at 10 layers vs
+# 0.418 at 4 layers). This test carries that crippled-CPML falsifier
+# inline, mirroring the phase-gate's in-test perturbation witness.
+#
+# This is the direct waveguide-lane PML-reflection witness the family
+# previously lacked. The PEC-short |S11|=1 gate (Test 7) binds the
+# extractor on TOTAL reflection; this binds the ABSORBER on near-zero
+# reflection — complementary, and neither is an identity.
+#
+# Meep class: <1 %.  OpenEMS class: <5 %. rfx single-run reflection sits
+# ~13-16 % (dominated by the source-plane Z_TE residual, not the absorber);
+# the gate binds absorber DEGRADATION, which trebles it.
 
 def test_matched_load_s11_empty_waveguide():
     freqs = np.linspace(4.5e9, 8.0e9, 10)
-    sim = _build_sim(freqs, waveform="modulated_gaussian")
-    s, sim_freqs, port_idx = _s_matrix(sim, num_periods=40, normalize=True)
+    # normalize=False: single-run wave decomposition (OpenEMS convention),
+    # the correct tool for a reflection/absorber-quality gate. The two-run
+    # normalize=True subtraction cancels ALL reflection (real included) on
+    # an empty guide, which is why the pre-#395 gate could not fail.
+    sim = _build_sim(freqs, cpml_layers=10, waveform="modulated_gaussian")
+    s, sim_freqs, port_idx = _s_matrix(sim, num_periods=40, normalize=False)
 
     s11 = np.abs(s[port_idx["left"], port_idx["left"], :])
     s22 = np.abs(s[port_idx["right"], port_idx["right"], :])
-    max_s11 = float(max(s11.max(), s22.max()))
+    max_refl = float(max(s11.max(), s22.max()))
+    min_absorbed = float(min((1.0 - s11**2).min(), (1.0 - s22**2).min()))
 
     print("\n[matched-load] |S11| per freq:", np.array2string(s11, precision=3))
     print("[matched-load] |S22| per freq:", np.array2string(s22, precision=3))
-    print(f"[matched-load] max(|S11|, |S22|) = {max_s11:.4f}")
-    print("[matched-load] Meep-class target <0.01; rfx gate <0.10")
+    print(f"[matched-load] max reflection = {max_refl:.4f}; "
+          f"min absorbed fraction (1-|S11|^2) = {min_absorbed:.4f}")
+    print("[matched-load] measured 2026-07-20: max|S11|=0.156, min_absorbed=0.976 "
+          "(10 layers); crippled 4-layer -> 0.418 / 0.825")
 
-    # Gate ratcheted 2026-04-22 from 0.10 to 0.02. Post diagonal-subtraction
-    # + CPML retune + discrete-β consistency the empty-guide matched-load
-    # measurement returns bit-identical zeros on the canonical battery
-    # geometry. 0.02 catches a regression to the pre-fix >0.05 regime.
-    assert max_s11 < 0.02, (
-        f"Matched-load |S11| too large: {max_s11:.4f} (gate 0.02). "
-        "Extractor or PML regression — check empty-guide reflection."
+    # Binding gate: reflection off the matched CPML termination. Measured
+    # 0.156 (10 layers, 2026-07-20); gate 0.20. NOT a loosening of the old
+    # 0.02 gate — that gate read a two-run identity (always 0, issue #395).
+    # Headroom note: healthy 0.156 sits at ~78% of the 0.20 gate (the ~13-16%
+    # floor is the documented source-plane Z_TE residual). FDTD here is
+    # deterministic (bit-identical reruns) so this is stable in-process; if a
+    # cross-machine float-drift false-alarm ever appears, re-measure the floor
+    # and ratchet — do NOT just widen the gate (the crippled-4-layer falsifier
+    # below clears 0.25, so there is a real 0.05 separation to protect).
+    assert max_refl < 0.20, (
+        f"Matched-load reflection |S11|={max_refl:.4f} exceeds 0.20 — the "
+        "CPML termination is not absorbing as well as the validated "
+        "envelope, or the single-run extractor regressed."
+    )
+    # Absorbed-power witness: the matched load must absorb >=95% of the
+    # incident modal power at every frequency (measured 0.976).
+    assert min_absorbed > 0.95, (
+        f"Matched load absorbs only {min_absorbed:.4f} of incident power "
+        "(<0.95) — degraded CPML absorber."
+    )
+
+    # In-test discrimination falsifier (issue #395): the SAME geometry with
+    # a crippled 4-layer CPML must FAIL the 0.20 gate, proving this gate
+    # observes real absorber quality and is not vacuous. A regression that
+    # re-vacuumed the gate (e.g. reverting to normalize=True) would let the
+    # crippled run pass and trip this witness.
+    sim_bad = _build_sim(freqs, cpml_layers=4, waveform="modulated_gaussian")
+    s_bad, _, idx_bad = _s_matrix(sim_bad, num_periods=40, normalize=False)
+    bad_refl = float(max(
+        np.abs(s_bad[idx_bad["left"], idx_bad["left"], :]).max(),
+        np.abs(s_bad[idx_bad["right"], idx_bad["right"], :]).max(),
+    ))
+    print(f"[matched-load] crippled 4-layer CPML max reflection = {bad_refl:.4f} "
+          f"(must exceed the 0.20 gate to prove non-vacuity)")
+    assert bad_refl > 0.25, (
+        f"Crippled-CPML witness failed: 4-layer reflection {bad_refl:.4f} did "
+        "not rise clear of the 0.20 gate — the matched-load gate may have "
+        "gone vacuous again (issue #395)."
     )
 
 
 # =============================================================================
-# Test 2 — Tight passivity on empty waveguide
+# Test 2 — Passivity / energy conservation on a reflecting DUT (BINDING)
 # =============================================================================
 #
-# Tighter variant of test_passivity_two_port_empty_waveguide. The
-# existing test passes at threshold 1.15 (15% power excess allowed). For
-# an empty lossless guide a correct extractor should stay within a few
-# percent of unity. Use this as a regression lock at 1.05 — the
-# current extractor (post-retune, post-subtraction) is expected to sit
-# here or tighter.
+# Energy cannot be created: for a lossless two-port the column power
+# ``sum_i |S_ij|^2`` must stay <= 1. ISSUE #395 — the pre-#395 version
+# measured this on an EMPTY guide with ``normalize=True``, where the
+# device run *is* the reference run, so S11=0 and S21=1 exactly and the
+# column power is 1.0000 by construction (probe 2026-07-20: identical at
+# cpml_layers 10 and 4). No energy-injection bug that affects both runs
+# equally could trip it.
+#
+# Fix: put a real reflecting DUT in the guide (eps_r=4 box) so
+# device != reference, and read the ENERGY (flux) extractor
+# (``normalize='flux'``) whose |S11| and |S21| are two INDEPENDENT power
+# measurements. Their sum is a genuine conservation check. Measured max
+# column power 1.0005 (2026-07-20); a non-passive (energy-injection)
+# extractor bug pushes it above the gate.
+#
+# ``normalize=True`` is deliberately NOT used here: its diagonal |S11| on
+# a reflector carries a documented +-10-20% inflation (column power ~1.21
+# on this same obstacle) that is an extraction limitation, not physics —
+# the flux path is the honest tool for a passivity-magnitude claim.
 
-def test_tight_passivity_empty_waveguide():
+def test_tight_passivity_reflecting_dut():
     freqs = np.linspace(4.5e9, 8.0e9, 10)
-    sim = _build_sim(freqs, waveform="modulated_gaussian")
-    s, _, _ = _s_matrix(sim, num_periods=40, normalize=True)
+    obstacles = [((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)]
+    sim = _build_sim(freqs, obstacles=obstacles, waveform="modulated_gaussian")
+    s, _, port_idx = _s_matrix(sim, num_periods=40, normalize="flux")
 
+    s11 = np.abs(s[port_idx["left"], port_idx["left"], :])
+    s21 = np.abs(s[port_idx["right"], port_idx["left"], :])
     col_power = np.sum(np.abs(s) ** 2, axis=0)
     max_power = float(col_power.max())
 
-    print(f"\n[tight-passivity] max column |S|^2 = {max_power:.4f}")
-    print("[tight-passivity] gate 1.05; loose legacy gate was 1.15")
+    print(f"\n[passivity] |S11| = {np.array2string(s11, precision=3)}")
+    print(f"[passivity] |S21| = {np.array2string(s21, precision=3)}")
+    print(f"[passivity] max column |S|^2 = {max_power:.4f} (gate 1.02; measured 1.0005)")
 
-    # Gate ratcheted 2026-04-22 from 1.05 to 1.02. Current state measures
-    # 1.0000 on the canonical battery — 1.02 catches a 2% regression before
-    # the old legacy 1.15 gate would.
+    # Non-vacuity witness (issue #395): the obstacle must actually reflect
+    # AND attenuate (device != reference), else this degenerates into the
+    # old empty-guide identity. Measured max|S11|~0.73, min|S21|~0.69.
+    assert s11.max() > 0.30, (
+        f"DUT not reflecting (max|S11|={s11.max():.4f}<=0.30) — the passivity "
+        "gate would be vacuous; check the eps_r=4 obstacle was built."
+    )
+    assert s21.min() < 0.95, (
+        f"DUT not attenuating (min|S21|={s21.min():.4f}>=0.95) — transmission "
+        "should drop below unity behind an eps_r=4 step."
+    )
+    # Binding energy-conservation gate: measured 1.0005; 1.02 catches a 2%
+    # energy-injection regression on a real reflecting DUT.
     assert max_power < 1.02, (
-        f"Empty-guide passivity exceeded tight gate: {max_power:.4f} "
-        "(1.02). Extractor or PML regression."
+        f"Reflecting-DUT column power {max_power:.4f} exceeds 1.02 — "
+        "non-passive extractor (energy injection) on a lossless obstacle."
     )
 
 
