@@ -138,8 +138,9 @@ def compute_rcs(
     bandwidth : float
         Fractional bandwidth of the pulse.
     theta_inc : float
-        Incident angle in degrees (0 = +x propagation). Currently only
-        normal incidence (0) is supported.
+        Incident angle in degrees (0 = +x propagation). Only normal incidence
+        (0) is supported; a non-zero value raises ``NotImplementedError`` (the
+        oblique TFSF reflection path is unvalidated — issue #404).
     phi_inc : float
         Incident azimuth in degrees (reserved for future oblique support).
     polarization : str
@@ -237,6 +238,18 @@ def compute_rcs(
     len(freqs_arr)
     dx = grid.dx
     dt = grid.dt
+
+    # Fail-loud guard (#404): a non-zero theta_inc silently dispatches init_tfsf
+    # to the 2D-aux oblique path, whose reflection accuracy is UNVALIDATED (the
+    # extracted |R| does not track the injection angle — issue #404, R2-STOP
+    # 2026-07-20). Only normal incidence is supported here; refuse rather than
+    # return an unvalidated oblique RCS.
+    if abs(float(theta_inc)) > 1e-6:
+        raise NotImplementedError(
+            f"compute_rcs(theta_inc={theta_inc}) — oblique incidence is not "
+            "supported: the oblique TFSF path's reflection accuracy is "
+            "unvalidated (issue #404). Use theta_inc=0.0 (normal incidence)."
+        )
 
     # --- 1. Set up TFSF source ---
     tfsf_cfg, tfsf_st = init_tfsf(
