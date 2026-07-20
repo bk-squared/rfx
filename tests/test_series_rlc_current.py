@@ -51,6 +51,14 @@ def _series_rlc_current_spectrum(R, L, C, *, dx=0.5e-3, n=40000, pad=8):
     (non-circular: the drive imposes no frequency). All arithmetic is float32
     (the concrete ``run()`` dtype); no module-level x64 flip.
 
+    SCOPE (review nit #399): this oracle binds the series-RLC ADE *circuit*
+    equations (f0, Q of ``_update_series``). It does NOT exercise the
+    current->E-field injection coupling that a full ``run()`` applies at the
+    element cell — that end-to-end path stays covered only by the direction-only
+    tests below. A quantitative full-``run()`` f0 gate is a warranted follow-up
+    (it needs a resolved broadband source + harminv on the driven-cell current,
+    heavier than this isolated ADE probe).
+
     Returns ``(freqs, |I_s(freqs)|, dt)``.
     """
     sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01),
