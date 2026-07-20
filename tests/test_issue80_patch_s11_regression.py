@@ -32,11 +32,30 @@ witness, plus a soft bound:
 Evidence: ``scripts/diagnostics/issue118_match_vs_resonance_witness.py`` derives Zin(f) =
 Z0(1+S11)/(1-S11) on this exact geometry and shows Im(Zin)=0 (resonance) well below the dip.
 
-Marked ``gpu`` + ``slow``: dx=0.197 mm over a ~30x18x13 mm domain with num_periods=200 —
+RING-DOWN SETTLING WITNESS (repo mandatory rule; issue #402)
+------------------------------------------------------------
+The DFT-extracted |S11| is only trustworthy from a drained record. A cavity Ez probe is now
+added so the internal ``compute_msl_s_matrix`` run records a point-probe time series and the
+framework's #332 energy witness computes; the test captures that advisory and asserts it does
+NOT fire (domain drained below -40 dB of peak). The witness fires on the SLOWEST-draining
+monitored field — here the feed-line standing wave, which is exactly the settling the S11
+extraction depends on. FINDING (issue #402): the previous ``num_periods=200`` left that
+standing wave at -36.2 dB of peak (N_SUB=2 witness) — ABOVE the -40 dB bar — because the
+badly-matched patch reflects strongly and the feed drains slowly. Under-settling also inflated
+|S11| slightly (max|S11| = 1.062 at np=120 -> 1.001 at np=200 -> 0.989 at np=280, N_SUB=2), so
+the OLD 1.008 reading was a truncation-biased over-estimate, still passive but not settled. The
+gated ``num_periods`` is raised to 280 (N_SUB=2 ladder: 120->-23.8, 200->-36.2, 280->settled;
+~0.16 dB/period); the physics VERDICTS (passivity <= 1.05, edge-fed signature) are unchanged —
+the settled max|S11| = 0.989 sits further inside the passive envelope, not outside it. The
+GPU harness confirms the witness at the committed N_SUB=4 mesh.
+
+Marked ``gpu`` + ``slow``: dx=0.197 mm over a ~30x18x13 mm domain with num_periods=280 —
 GPU-scale, run by the VESSL validation harness, excluded from the default CPU suite. The
 resonance physics has CPU coverage via the Harminv companion gate (``slow``).
 """
 from __future__ import annotations
+
+import warnings
 
 import jax.numpy as jnp
 import numpy as np
@@ -86,6 +105,18 @@ def _build_patch_sim() -> Simulation:
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
+    # #402 settling witness: the framework's #332 ring-down witness evaluates the
+    # tail-vs-peak envelope of a POINT-PROBE time series, so the internal
+    # compute_msl_s_matrix run needs at least one probe or the witness has no
+    # data and can never fire. This Ez probe under the patch (0.7·L along it)
+    # supplies that series; its slow ring-down tail is the settling the DFT-based
+    # S11 extraction depends on. (The test below guards that this probe stays
+    # present, so removing it fails loudly rather than silently disarming #332.)
+    x_patch0 = PORT_MARGIN + L_MSL
+    sim.add_probe(
+        position=(x_patch0 + 0.7 * L, Y_C - 0.2 * W, 4e-3 + DX + H_SUB * 0.5),
+        component="ez",
+    )
     return sim
 
 
@@ -97,11 +128,43 @@ def test_issue80_patch_s11_passive_and_edge_fed_match():
     is validated by the Harminv companion gate."""
     sim = _build_patch_sim()
 
+    # #402 guard: the settling assertion below is only meaningful if a point probe
+    # exists to feed the #332 witness. Without it, #332 has no series, never fires,
+    # and `assert not _trunc` becomes silently always-green. Fail loudly instead.
+    assert getattr(sim, "_probes", None), (
+        "settling-witness probe missing — #332 ring-down witness cannot evaluate; "
+        "the settling assertion would be vacuous (issue #402)"
+    )
+
     # R: never ignore preflight — surface any warning before trusting |S| numbers.
-    sim.preflight()
+    advisories = [str(a) for a in sim.preflight()]
+    print(f"\n[ISSUE80/118-REG] preflight advisories ({len(advisories)}) — quoted verbatim:")
+    for a in advisories:
+        print(f"  ! {a}")
 
     freqs = np.linspace(6e9, 14e9, 81)
-    res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs), num_periods=200.0)
+    # #402: num_periods=200 left the ring-down at -36.2 dB of peak (N_SUB=2
+    # witness) — above the -40 dB bar; the badly-matched patch reflects strongly
+    # so it drains slowly. 280 clears the bar on the N_SUB=2 ladder. CAVEAT: 280
+    # is validated only at N_SUB=2 (CPU); the committed gate runs N_SUB=4 (gpu),
+    # never exercised on a CPU/committed path. This is fail-safe by design — if
+    # N_SUB=4 drains slower and 280 does NOT settle, #332 fires and this test goes
+    # RED (surfacing the truncation), it does not pass silently. Re-pin from the
+    # first N_SUB=4 GPU run if it reds.
+    with warnings.catch_warnings(record=True) as _settling:
+        warnings.simplefilter("always")
+        res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs), num_periods=280.0)
+    _trunc = [
+        str(w.message) for w in _settling
+        if "#332" in str(w.message) or "ring-down truncated" in str(w.message)
+    ]
+    print("[ISSUE80/118-SETTLING] framework #332 ring-down energy witness: "
+          f"{_trunc if _trunc else 'no truncation advisory — domain drained below -40 dB of peak'}")
+    assert not _trunc, (
+        "ring-down NOT settled at the gated num_periods — the DFT-extracted |S11| may carry "
+        f"truncation error (issue #402; framework #332 witness fired): {_trunc}. Raise "
+        "num_periods; do NOT trust the |S11| envelope from a truncated record."
+    )
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
     s = np.asarray(res.S)[0, 0, :]
