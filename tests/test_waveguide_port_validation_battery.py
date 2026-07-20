@@ -213,6 +213,12 @@ def test_matched_load_s11_empty_waveguide():
     # Binding gate: reflection off the matched CPML termination. Measured
     # 0.156 (10 layers, 2026-07-20); gate 0.20. NOT a loosening of the old
     # 0.02 gate — that gate read a two-run identity (always 0, issue #395).
+    # Headroom note: healthy 0.156 sits at ~78% of the 0.20 gate (the ~13-16%
+    # floor is the documented source-plane Z_TE residual). FDTD here is
+    # deterministic (bit-identical reruns) so this is stable in-process; if a
+    # cross-machine float-drift false-alarm ever appears, re-measure the floor
+    # and ratchet — do NOT just widen the gate (the crippled-4-layer falsifier
+    # below clears 0.25, so there is a real 0.05 separation to protect).
     assert max_refl < 0.20, (
         f"Matched-load reflection |S11|={max_refl:.4f} exceeds 0.20 — the "
         "CPML termination is not absorbing as well as the validated "
