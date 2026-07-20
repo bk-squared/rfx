@@ -222,7 +222,7 @@ def test_oblique_tfsf_fresnel():
         n1=1, n2=2, theta_i=30 deg
         theta_t = arcsin(sin(30)/2) = 14.48 deg
         R_TE = (cos(30) - 2*cos(14.48)) / (cos(30) + 2*cos(14.48))
-        |R_TE| ≈ 0.397
+        |R_TE| ≈ 0.382
 
     The analytic incident field at the TFSF boundary planes carries
     the oblique phase, so the scattered field probe (outside TFSF box)
