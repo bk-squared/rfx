@@ -13,10 +13,32 @@ Supports two modes:
 Both modes use the same cell size ``dx`` as the 3D simulation so
 numerical dispersion matches exactly at any angle.
 
-The oblique plane wave source is a soft line source at a fixed x
-with per-cell transverse delay that encodes the oblique angle.
+Oblique wavevector — Bloch field-transformation (#404)
+-------------------------------------------------------
+The intended oblique transverse wavenumber is ``k_y = k0·sinθ`` (``k0 =
+2π·f0/c``).  A plain-periodic transverse wrap (``jnp.roll`` with no phase)
+cannot sustain a non-commensurate ``k_y`` and pulls the effective angle DOWN
+(the #404 under-tilt: 60° injected as ~25°).  The fix uses the standard
+**field-transformation** method: write the physical field as
+``F_phys(x,y,t) = P(x,y,t)·exp(-j·k_y·y)`` with ``P`` genuinely L_y-periodic.
+A **y-uniform** complex ``P`` then represents the oblique wave exactly.  The
+transverse difference operators pick up ``exp(∓j·k_y·dx)`` on the rolled
+neighbour (the wrap stays a plain ``jnp.roll``); ``(e^{-j k_y dx}-1)/dx`` is
+the exact discrete Yee y-derivative for wavenumber ``k_y``, so 3D-grid
+dispersion match — and thus low TFSF leakage — is preserved.  Fields are
+COMPLEX on the aux grid; the physical (real) incident field re-applied to the
+3D faces is ``Re(P·exp(-j·k_y·y))``.
 
-Reference: S. C. Tan and G. E. Potter, IEEE T-AP 58(9), 2010.
+Because ``k_y`` is fixed at f0, the oblique source is **narrowband**: a
+complex analytic modulated Gaussian (carrier ``exp(-j·2π·f0·(t-t0))``,
+y-uniform).  Accuracy is best when the pulse energy sits at f0 (fractional
+``bandwidth`` ≲ 0.3 keeps the injected Poynting angle within a few % of the
+request; broadband oblique would need a 1D-aux-along-k̂ method).  Normal
+incidence (``angle_deg=0``) does NOT use this path — it stays on the 1D aux
+grid (``rfx/sources/tfsf.py``) and is unaffected.
+
+Reference: Taflove & Hagness Ch. 5/13 (field-transformation / periodic FDTD);
+S. C. Tan and G. E. Potter, IEEE T-AP 58(9), 2010.
 """
 
 from __future__ import annotations
@@ -63,9 +85,11 @@ class TFSF2DConfig(NamedTuple):
     src_amp: float
     src_t0: float
     src_tau: float
+    src_fcen: float   # carrier frequency f0 for the analytic modulated-Gaussian source
     theta: float
     cos_theta: float
     sin_theta: float
+    k_transverse: float  # signed transverse wavenumber k_y = k0·sinθ (Bloch/field-transform)
     electric_component: str
     magnetic_component: str
     curl_sign: float
@@ -200,6 +224,14 @@ def init_tfsf_2d(
 
     direction_sign = 1.0 if direction == "+x" else -1.0
 
+    # Signed transverse wavenumber for the Bloch field-transformation (#404).
+    # k_y = k0·sinθ at the carrier f0; the sign is chosen so that a positive
+    # angle_deg tilts the injected energy flow toward +transverse (matching the
+    # legacy time-delay convention). Verified against poynting_angle.py.
+    c0 = 1.0 / np.sqrt(EPS_0 * MU_0)
+    k0 = 2.0 * np.pi * f0 / c0
+    k_transverse = -direction_sign * k0 * sin_theta
+
     config = TFSF2DConfig(
         x_lo=x_lo, x_hi=x_hi,
         n2x=n2x, n2y=n2y,
@@ -208,9 +240,11 @@ def init_tfsf_2d(
         src_amp=float(amplitude),
         src_t0=float(t0),
         src_tau=float(tau),
+        src_fcen=float(f0),
         theta=float(theta),
         cos_theta=cos_theta,
         sin_theta=sin_theta,
+        k_transverse=float(k_transverse),
         electric_component=electric_component,
         magnetic_component=magnetic_component,
         curl_sign=float(curl_sign),
@@ -227,14 +261,17 @@ def init_tfsf_2d(
         mode=mode,
     )
 
+    # Aux-grid fields are COMPLEX (Bloch field-transformation, #404). The
+    # complexity is contained here; apply_tfsf_2d_e/h re-apply exp(-j k_y y)
+    # and take the real part before touching the (real) 3D grid.
     state = TFSF2DState(
-        ez_2d=jnp.zeros((n2x, n2y), dtype=jnp.float32),
-        hx_2d=jnp.zeros((n2x, n2y), dtype=jnp.float32),
-        hy_2d=jnp.zeros((n2x, n2y), dtype=jnp.float32),
-        psi_ez_xlo=jnp.zeros((n_cpml_2d, n2y), dtype=jnp.float32),
-        psi_ez_xhi=jnp.zeros((n_cpml_2d, n2y), dtype=jnp.float32),
-        psi_hy_xlo=jnp.zeros((n_cpml_2d, n2y), dtype=jnp.float32),
-        psi_hy_xhi=jnp.zeros((n_cpml_2d, n2y), dtype=jnp.float32),
+        ez_2d=jnp.zeros((n2x, n2y), dtype=jnp.complex64),
+        hx_2d=jnp.zeros((n2x, n2y), dtype=jnp.complex64),
+        hy_2d=jnp.zeros((n2x, n2y), dtype=jnp.complex64),
+        psi_ez_xlo=jnp.zeros((n_cpml_2d, n2y), dtype=jnp.complex64),
+        psi_ez_xhi=jnp.zeros((n_cpml_2d, n2y), dtype=jnp.complex64),
+        psi_hy_xlo=jnp.zeros((n_cpml_2d, n2y), dtype=jnp.complex64),
+        psi_hy_xhi=jnp.zeros((n_cpml_2d, n2y), dtype=jnp.complex64),
         step=jnp.array(0, dtype=jnp.int32),
     )
 
@@ -301,11 +338,13 @@ def _update_h_tmz(cfg, st, dx, dt):
     hx, hy = st.hx_2d, st.hy_2d
     coeff_h = dt / MU_0
 
-    # dEz/dy -- periodic (roll -1 along y=axis1)
-    dez_dy = (jnp.roll(ez, -1, axis=1) - ez) / dx
+    # dEz/dy -- Bloch field-transform (#404): plain roll + exp(-j k_y dx) on the
+    # forward neighbour. k_y=0 (normal) -> pshift=1 -> ordinary periodic diff.
+    pshift = jnp.exp(-1j * cfg.k_transverse * dx)
+    dez_dy = (jnp.roll(ez, -1, axis=1) * pshift - ez) / dx
 
     # dEz/dx -- zero-pad forward difference along x=axis0
-    dez_dx = (jnp.concatenate([ez[1:, :], jnp.zeros((1, ez.shape[1]))], axis=0) - ez) / dx
+    dez_dx = (jnp.concatenate([ez[1:, :], jnp.zeros((1, ez.shape[1]), ez.dtype)], axis=0) - ez) / dx
 
     hx = hx - coeff_h * dez_dy
     hy = hy + coeff_h * dez_dx
@@ -326,24 +365,26 @@ def _update_e_tmz(cfg, st, dx, dt, t):
     coeff_e = dt / EPS_0
 
     # dHy/dx -- zero-pad backward difference along x
-    dhy_dx = (hy - jnp.concatenate([jnp.zeros((1, hy.shape[1])), hy[:-1, :]], axis=0)) / dx
+    dhy_dx = (hy - jnp.concatenate([jnp.zeros((1, hy.shape[1]), hy.dtype), hy[:-1, :]], axis=0)) / dx
 
-    # dHx/dy -- periodic (roll +1 along y for backward difference)
-    dhx_dy = (hx - jnp.roll(hx, 1, axis=1)) / dx
+    # dHx/dy -- Bloch field-transform (#404): plain roll + exp(+j k_y dx) on the
+    # backward neighbour (conjugate of the forward pshift; k_y=0 -> plain diff).
+    pconj = jnp.exp(1j * cfg.k_transverse * dx)
+    dhx_dy = (hx - jnp.roll(hx, 1, axis=1) * pconj) / dx
 
     ez = ez + coeff_e * (dhy_dx - dhx_dy)
 
     # CFS-CPML for Ez (x-direction, from dHy/dx)
     ez, psi_ez_xlo, psi_ez_xhi = _apply_cpml_e(cfg, st, dhy_dx, ez, coeff_e)
 
-    # ---- Inject oblique plane-wave source along a line ----
-    c0 = 1.0 / jnp.sqrt(jnp.float32(EPS_0 * MU_0))
-    j_indices = jnp.arange(ez.shape[1], dtype=jnp.float32)
-    y_offset = j_indices * dx
-    t_delay = cfg.direction_sign * cfg.sin_theta * y_offset / c0
-    arg = (t - t_delay - cfg.src_t0) / cfg.src_tau
-    src_line = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
-    ez = ez.at[cfg.src_x, :].add(src_line)
+    # ---- Inject oblique plane wave: y-uniform complex analytic modulated
+    # Gaussian (carrier at f0). The transverse k_y is carried by the transformed
+    # derivatives above, not by a per-cell time delay. ----
+    arg = (t - cfg.src_t0) / cfg.src_tau
+    src_val = (cfg.src_amp
+               * jnp.exp(-1j * 2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+               * jnp.exp(-(arg ** 2)))
+    ez = ez.at[cfg.src_x, :].add(src_val)
 
     return st._replace(
         ez_2d=ez,
@@ -370,11 +411,13 @@ def _update_h_tez(cfg, st, dx, dt):
     hz = st.hy_2d   # Hz stored in hy_2d slot
     coeff_h = dt / MU_0
 
-    # dEy/dz -- periodic (roll -1 along z=axis1)
-    dey_dz = (jnp.roll(ey, -1, axis=1) - ey) / dx
+    # dEy/dz -- Bloch field-transform (#404): plain roll + exp(-j k_z dz) on the
+    # forward neighbour (transverse axis is z here; k_z=0 -> plain periodic diff).
+    pshift = jnp.exp(-1j * cfg.k_transverse * dx)
+    dey_dz = (jnp.roll(ey, -1, axis=1) * pshift - ey) / dx
 
     # dEy/dx -- zero-pad forward difference along x=axis0
-    dey_dx = (jnp.concatenate([ey[1:, :], jnp.zeros((1, ey.shape[1]))], axis=0) - ey) / dx
+    dey_dx = (jnp.concatenate([ey[1:, :], jnp.zeros((1, ey.shape[1]), ey.dtype)], axis=0) - ey) / dx
 
     # TEz Faraday: Hx += coeff * dEy/dz,  Hz -= coeff * dEy/dx
     hx = hx + coeff_h * dey_dz
@@ -397,11 +440,13 @@ def _update_e_tez(cfg, st, dx, dt, t):
     hz = st.hy_2d   # Hz stored in hy_2d slot
     coeff_e = dt / EPS_0
 
-    # dHx/dz -- periodic (roll +1 along z for backward difference)
-    dhx_dz = (hx - jnp.roll(hx, 1, axis=1)) / dx
+    # dHx/dz -- Bloch field-transform (#404): plain roll + exp(+j k_z dz) on the
+    # backward neighbour (conjugate of the forward pshift; k_z=0 -> plain diff).
+    pconj = jnp.exp(1j * cfg.k_transverse * dx)
+    dhx_dz = (hx - jnp.roll(hx, 1, axis=1) * pconj) / dx
 
     # dHz/dx -- zero-pad backward difference along x
-    dhz_dx = (hz - jnp.concatenate([jnp.zeros((1, hz.shape[1])), hz[:-1, :]], axis=0)) / dx
+    dhz_dx = (hz - jnp.concatenate([jnp.zeros((1, hz.shape[1]), hz.dtype), hz[:-1, :]], axis=0)) / dx
 
     # TEz Ampere: Ey += coeff * (dHx/dz - dHz/dx)
     ey = ey + coeff_e * (dhx_dz - dhz_dx)
@@ -410,14 +455,14 @@ def _update_e_tez(cfg, st, dx, dt, t):
     # The x-derivative contribution is -coeff_e * dHz/dx, so CPML sign is -coeff_e
     ey, psi_ez_xlo, psi_ez_xhi = _apply_cpml_e(cfg, st, dhz_dx, ey, -coeff_e)
 
-    # ---- Inject oblique plane-wave source along a line ----
-    c0 = 1.0 / jnp.sqrt(jnp.float32(EPS_0 * MU_0))
-    j_indices = jnp.arange(ey.shape[1], dtype=jnp.float32)
-    z_offset = j_indices * dx
-    t_delay = cfg.direction_sign * cfg.sin_theta * z_offset / c0
-    arg = (t - t_delay - cfg.src_t0) / cfg.src_tau
-    src_line = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
-    ey = ey.at[cfg.src_x, :].add(src_line)
+    # ---- Inject oblique plane wave: z-uniform complex analytic modulated
+    # Gaussian (carrier at f0). The transverse k_z is carried by the transformed
+    # derivatives above, not by a per-cell time delay. ----
+    arg = (t - cfg.src_t0) / cfg.src_tau
+    src_val = (cfg.src_amp
+               * jnp.exp(-1j * 2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+               * jnp.exp(-(arg ** 2)))
+    ey = ey.at[cfg.src_x, :].add(src_val)
 
     return st._replace(
         ez_2d=ey,
@@ -484,6 +529,17 @@ _sample_ez_at_x = _sample_e_at_x
 _sample_hy_at_x = _sample_h2_at_x
 
 
+def _transverse_phase(cfg: TFSF2DConfig, n_trans: int, dx: float) -> jnp.ndarray:
+    """Transverse Bloch phase exp(-j·k_y·y) to re-apply to the (complex,
+    y-uniform) aux fields when injecting into the real 3D grid (#404).
+
+    ``k_y = cfg.k_transverse`` is 0 for normal incidence (this path is oblique
+    only), giving phase = 1 and recovering the plain broadcast.
+    """
+    y = jnp.arange(n_trans, dtype=jnp.float32) * dx
+    return jnp.exp(-1j * cfg.k_transverse * y)
+
+
 # ---------------------------------------------------------------------------
 # 3D TFSF corrections using 2D auxiliary grid
 # ---------------------------------------------------------------------------
@@ -510,15 +566,17 @@ def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
 
     if cfg.mode == "TEz":
         # TEz: 2D grid transverse axis is z, broadcast along y
-        h_inc_lo = _sample_h2_at_x(cfg, tfsf_st, i0 - 1, nz_3d)
-        h_inc_hi = _sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), nz_3d)
+        phase = _transverse_phase(cfg, nz_3d, dx)  # exp(-j k_z z), (nz,)
+        h_inc_lo = jnp.real(_sample_h2_at_x(cfg, tfsf_st, i0 - 1, nz_3d) * phase)
+        h_inc_hi = jnp.real(_sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), nz_3d) * phase)
 
         h_lo_3d = jnp.broadcast_to(h_inc_lo[None, :], (ny_3d, nz_3d))
         h_hi_3d = jnp.broadcast_to(h_inc_hi[None, :], (ny_3d, nz_3d))
     else:
         # TMz: 2D grid transverse axis is y, broadcast along z
-        h_inc_lo = _sample_h2_at_x(cfg, tfsf_st, i0 - 1, ny_3d)
-        h_inc_hi = _sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), ny_3d)
+        phase = _transverse_phase(cfg, ny_3d, dx)  # exp(-j k_y y), (ny,)
+        h_inc_lo = jnp.real(_sample_h2_at_x(cfg, tfsf_st, i0 - 1, ny_3d) * phase)
+        h_inc_hi = jnp.real(_sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), ny_3d) * phase)
 
         h_lo_3d = jnp.broadcast_to(h_inc_lo[:, None], (ny_3d, nz_3d))
         h_hi_3d = jnp.broadcast_to(h_inc_hi[:, None], (ny_3d, nz_3d))
@@ -552,15 +610,17 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
 
     if cfg.mode == "TEz":
         # TEz: 2D grid transverse axis is z, broadcast along y
-        e_inc_lo = _sample_e_at_x(cfg, tfsf_st, i0, nz_3d)
-        e_inc_hi = _sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), nz_3d)
+        phase = _transverse_phase(cfg, nz_3d, dx)  # exp(-j k_z z), (nz,)
+        e_inc_lo = jnp.real(_sample_e_at_x(cfg, tfsf_st, i0, nz_3d) * phase)
+        e_inc_hi = jnp.real(_sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), nz_3d) * phase)
 
         e_lo_3d = jnp.broadcast_to(e_inc_lo[None, :], (ny_3d, nz_3d))
         e_hi_3d = jnp.broadcast_to(e_inc_hi[None, :], (ny_3d, nz_3d))
     else:
         # TMz: 2D grid transverse axis is y, broadcast along z
-        e_inc_lo = _sample_e_at_x(cfg, tfsf_st, i0, ny_3d)
-        e_inc_hi = _sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), ny_3d)
+        phase = _transverse_phase(cfg, ny_3d, dx)  # exp(-j k_y y), (ny,)
+        e_inc_lo = jnp.real(_sample_e_at_x(cfg, tfsf_st, i0, ny_3d) * phase)
+        e_inc_hi = jnp.real(_sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), ny_3d) * phase)
 
         e_lo_3d = jnp.broadcast_to(e_inc_lo[:, None], (ny_3d, nz_3d))
         e_hi_3d = jnp.broadcast_to(e_inc_hi[:, None], (ny_3d, nz_3d))
