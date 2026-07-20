@@ -228,6 +228,22 @@ def test_dc_floor_covers_msl_ports():
     assert "relative DC" in fired[0]
 
 
+def test_dc_floor_silent_on_passive_msl_port():
+    """A passive (excite=False) MSL port is a matched termination — it
+    deposits no source waveform, so the #388 advisory must stay silent
+    even with a high-DC waveform registered on the entry."""
+    sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3,
+                     cpml_layers=4)
+    sim.add_msl_port((0.004, 0.01, 0.002), width=4e-3, height=2e-3,
+                     excite=False,
+                     waveform=ModulatedGaussian(f0=2.2e9, bandwidth=1.2))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sim._warn_until_decay_dc_floor(dt=DEMO_DT, n_table=50_000)
+    assert not [w for w in caught if "issue #388" in str(w.message)], (
+        "excite=False MSL port must not fire the #388 DC-floor warning")
+
+
 # ---------------------------------------------------------------------------
 # 3c. add_polarized_source must thread the waveform cutoff (post-#392
 #     review): the real-Jones reconstruction rebuilds GaussianPulse and
@@ -282,6 +298,19 @@ def test_sane_decay_params_do_not_warn():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         _tiny_decay_sim().run(until_decay=1e-3, decay_min_steps=20,
+                              decay_max_steps=60)
+    msgs = [str(w.message) for w in caught]
+    assert not any("zero energy checks" in m or "still rising" in m
+                   for m in msgs), msgs
+
+
+def test_until_decay_zero_forced_n_escape_stays_silent():
+    """until_decay=0.0 is the documented forced-N escape (U < 0 never
+    fires; the run executes exactly decay_max_steps): the run()-level
+    sanity advisories must stay silent on it."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _tiny_decay_sim().run(until_decay=0.0, decay_min_steps=20,
                               decay_max_steps=60)
     msgs = [str(w.message) for w in caught]
     assert not any("zero energy checks" in m or "still rising" in m
