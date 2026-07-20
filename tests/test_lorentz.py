@@ -2,10 +2,23 @@
 
 Validates:
 1. Coefficients match hand-computed values
-2. Drude pole constructor
-3. Lorentz medium slows propagation
-4. Energy bounded (no ADE instability)
-5. Integration with simulation runner
+2. Drude / Lorentz pole constructors
+3. Energy bounded (no ADE instability)
+4. Integration with the simulation runner (Lorentz-only + mixed Debye/Lorentz)
+5. Poles stay scoped to their own material
+
+The dispersive ε(ω) itself — that the Lorentz ADE reproduces the analytic
+Lorentz permittivity, hence the below-resonance phase-velocity slowdown — is
+NOT re-measured here. It is validated end-to-end (FDTD broadband R(f) of an
+in-band-resonant Lorentz slab vs a rigorous transfer-matrix oracle fed the
+identical ε(ω)) in
+``tests/test_dispersive_fresnel_validation.py::test_dispersive_fresnel_lorentz``
+(``slow_physics`` opt-in lane). A time-domain "slows propagation" gate is
+deliberately NOT kept here: on a small PEC-walled cavity the pulse-arrival
+peak is dominated by wall reflections (a domain-size-dependent artifact — the
+global-argmax ratio measured 1.97× at nx=200 but 0.71× at nx=400), while the
+true reflection-immune leading-edge slowdown is only ~1.19× — too weak to
+gate. This file pins the ADE coefficient / stability / runner mechanics only.
 """
 
 import numpy as np
@@ -84,105 +97,6 @@ def test_lorentz_pole_constructor():
     assert abs(pole.omega_0 - omega_0) < 1.0
     assert abs(pole.delta - d) < 1e-6
     assert abs(pole.kappa - delta_eps * omega_0**2) / (delta_eps * omega_0**2) < 1e-6
-
-
-def test_lorentz_medium_slower_propagation():
-    """Pulse in a below-resonance Lorentz medium arrives later downstream.
-
-    Arrival-time approach mirroring the Debye analog in ``test_debye.py``:
-    record ``|Ez|`` at a fixed monitor and compare the step of peak arrival.
-    Well BELOW the Lorentz resonance the medium is near-lossless with an
-    (almost) static ``Re(ε) ≈ ε_∞ + Δε``, so the pulse must arrive later than
-    in vacuum (``v ≈ c/√Re(ε)``).  Here ``ε_∞=1, Δε=8, ω₀=2π·30 GHz`` give
-    ``Re(ε) ≈ 10`` in the 10 GHz band (ω/ω₀ = 1/3, well below resonance),
-    which slows the peak arrival by ``~2×`` (measured 1.97× on CPU) while
-    retaining ~83% of the vacuum peak amplitude (near-lossless).
-
-    Unlike the Debye analog — which raises ``ε_∞`` to 4 and adds only a
-    tiny Δε pole — the slowdown here is produced by the LORENTZ pole itself
-    (both runs use ``ε_∞ = 1``), so this binds the dispersive contribution.
-    """
-    from rfx.core.yee import update_e
-
-    nx = 200
-    shape = (nx, 6, 6)
-    dx = 0.0005  # 0.5 mm
-    dt = 0.99 * dx / (C0 * np.sqrt(3))
-
-    f0 = 10e9
-    tau_pulse = 1.0 / (f0 * 0.5 * np.pi)
-    t0_pulse = 3.0 * tau_pulse
-    src_x = 20
-    mon_x = 80   # 30 mm downstream
-    cy, cz = 3, 3
-    n_steps = 600
-
-    # Below-resonance Lorentz pole: resonance at 30 GHz, Δε=8 → Re(ε)≈10 in
-    # the 10 GHz band, near-lossless (light damping δ=1 GHz).
-    lor_pole = lorentz_pole(8.0, 2.0 * np.pi * 30e9, 1e9)
-
-    peaks = {}
-    amps = {}
-    for label, use_lorentz in [("vacuum", False), ("lorentz", True)]:
-        materials = init_materials(shape)  # ε_∞ = 1 in BOTH runs
-
-        if use_lorentz:
-            coeffs, lstate = init_lorentz([lor_pole], materials, dt)
-        else:
-            coeffs, lstate = None, None
-
-        state = init_state(shape)
-        mon_series = []
-
-        for step in range(n_steps):
-            t = step * dt
-            state = update_h(state, materials, dt, dx)
-
-            if coeffs is not None:
-                state, lstate = update_e_lorentz(state, coeffs, lstate, dt, dx)
-            else:
-                state = update_e(state, materials, dt, dx)
-
-            state = apply_pec(state)
-
-            if t < 6 * t0_pulse:
-                arg = (t - t0_pulse) / tau_pulse
-                src_val = (-2.0 * arg) * np.exp(-(arg**2))
-                state = state._replace(
-                    ez=state.ez.at[src_x, :, :].add(src_val)
-                )
-
-            mon_series.append(float(state.ez[mon_x, cy, cz]))
-
-        arr = np.abs(np.array(mon_series))
-        peaks[label] = int(np.argmax(arr))
-        amps[label] = float(np.max(arr))
-
-    vac_step = peaks["vacuum"]
-    lor_step = peaks["lorentz"]
-
-    print(f"\nArrival at monitor x={mon_x} ({(mon_x-src_x)*dx*1e3:.0f} mm):")
-    print(f"  Vacuum  peak step: {vac_step}  (|Ez|={amps['vacuum']:.3e})")
-    print(f"  Lorentz peak step: {lor_step}  (|Ez|={amps['lorentz']:.3e})")
-
-    # (1) Direction: the Lorentz medium slows the pulse.
-    assert lor_step > vac_step, \
-        f"Lorentz peak ({lor_step}) should arrive after vacuum ({vac_step})"
-
-    # (2) Magnitude: peak-step ratio ~2× (measured 1.97×). Gate at 1.4×,
-    # comfortably above the near-vacuum floor (a low-Δε / no-dispersion
-    # regression collapses this toward 1.0) and below the measured value.
-    assert vac_step > 0
-    ratio = lor_step / vac_step
-    print(f"  Time ratio: {ratio:.2f}x (expected ~2x; Re(ε)≈10 → √ε≈3.2)")
-    assert ratio > 1.4, f"Expected >1.4x arrival-time ratio, got {ratio:.2f}"
-
-    # (3) R5 witness: the timed Lorentz peak is the real (near-lossless)
-    # pulse, not a decayed remnant — it retains most of the vacuum amplitude.
-    assert amps["lorentz"] > 0.5 * amps["vacuum"], (
-        f"Lorentz peak amplitude {amps['lorentz']:.3e} collapsed vs vacuum "
-        f"{amps['vacuum']:.3e}; the timed peak may be a lossy remnant"
-    )
 
 
 def test_lorentz_energy_bounded():
