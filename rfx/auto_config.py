@@ -256,6 +256,7 @@ def auto_configure(
     margin_override: float | None = None,
     n_steps_override: int | None = None,
     max_memory_mb: float | None = None,
+    waveform=None,
 ) -> SimConfig:
     """Derive all simulation parameters from geometry + frequency range.
 
@@ -287,6 +288,14 @@ def auto_configure(
         - 8 GB GPU:  ``max_memory_mb=6000``
         - 24 GB GPU: ``max_memory_mb=18000``
         - 48 GB GPU: ``max_memory_mb=36000``
+    waveform : source waveform or None
+        Used only for the source-time term of the ``n_steps`` estimate:
+        when the waveform exposes ``t0`` (``GaussianPulse`` /
+        ``ModulatedGaussian``: ``t0 = cutoff*tau``), the source window is
+        ``2*t0`` so a longer-onset pulse (e.g. ``cutoff=4.5`` →
+        ``9*tau``) is fully covered. Without a waveform the historical
+        cutoff=3 envelope (``6*tau`` at bw=0.8) is used, bitwise-identical
+        to the previous hardcode.
 
     Returns
     -------
@@ -463,10 +472,14 @@ def auto_configure(
         dt = 0.99 * dx / (C0 * math.sqrt(3))
 
     # 5. Number of steps
-    # Source time: 6*tau for Gaussian pulse
+    # Source time: the pulse completes at t0 + cutoff*tau = 2*t0
+    # (= 6*tau for the historical cutoff=3 Gaussian envelope; the
+    # waveform's own t0, when provided, makes this cutoff-aware —
+    # e.g. 9*tau at cutoff=4.5). Default 2.0*(3.0*tau) is bitwise-
+    # identical to the historical 6*tau (doubling is exact).
     bw = 0.8  # default bandwidth
     tau = 1.0 / (f_center * bw * math.pi)
-    t_source = 6 * tau
+    t_source = 2.0 * float(getattr(waveform, "t0", 3.0 * tau))
 
     # Ring-down time: Q / (pi * f_min)
     # Compute Q from stored sigma/eps_r ratio + frequency:

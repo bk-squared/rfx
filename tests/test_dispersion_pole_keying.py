@@ -411,7 +411,12 @@ def test_import_rfx_preserves_geometry_rasterize_function():
     import rfx
 
     repo_root = Path(rfx.__file__).resolve().parents[1]
-    env = dict(os.environ, PYTHONPATH=str(repo_root))
+    # Prepend to (never overwrite) the inherited PYTHONPATH — the
+    # surrounding environment may rely on it to resolve dependencies.
+    _inherited = os.environ.get("PYTHONPATH")
+    env = dict(os.environ, PYTHONPATH=(
+        str(repo_root) + os.pathsep + _inherited if _inherited
+        else str(repo_root)))
     code = (
         "import rfx\n"
         "from rfx.geometry import rasterize\n"

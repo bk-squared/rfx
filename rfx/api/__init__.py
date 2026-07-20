@@ -838,15 +838,23 @@ class Simulation(
         # Complex weights use two separately constructed waveforms. Their
         # quadrature is not part of the verified public polarization scope.
         if _np.isreal(jx) and _np.isreal(jy):
-            # Real Jones — simple amplitude scaling
+            # Real Jones — simple amplitude scaling. Thread the source
+            # waveform's cutoff through the reconstruction (post-#392
+            # review): dropping it silently reverted the #388/#392
+            # deposited-DC remedy (cutoff=4.5) to the default 3.0 on
+            # this path. getattr default 3.0 = GaussianPulse's default,
+            # so cutoff-less waveforms are unchanged.
             if abs(float(jx.real)) > 1e-10:
                 from rfx.sources.sources import GaussianPulse as GP
                 wx = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
-                        amplitude=waveform.amplitude * float(jx.real))
+                        amplitude=waveform.amplitude * float(jx.real),
+                        cutoff=getattr(waveform, 'cutoff', 3.0))
                 self.add_source(position, "ex", waveform=wx)
             if abs(float(jy.real)) > 1e-10:
+                from rfx.sources.sources import GaussianPulse as GP
                 wy = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
-                        amplitude=waveform.amplitude * float(jy.real))
+                        amplitude=waveform.amplitude * float(jy.real),
+                        cutoff=getattr(waveform, 'cutoff', 3.0))
                 self.add_source(position, "ey", waveform=wy)
         else:
             # Complex Jones — build carrier-modulated components.

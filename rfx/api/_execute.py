@@ -302,11 +302,24 @@ class _ExecuteMixin:
         CPML cannot absorb a static field, so it floors the interior-energy
         decay criterion and ``until_decay`` cap-hits instead of stopping.
 
-        For each soft source (``impedance == 0`` port entries), compute
+        For each soft source (``impedance == 0`` port entries, plus MSL
+        ports — the same soft-Ez deposit mechanism drives them), compute
         ``rel_DC = |sum s(t_n)*dt| / sum |s(t_n)|*dt`` over the planned
         table length (``decay_max_steps`` — the decay lanes' buffer size)
         and warn quantitatively above 1e-3 (the demo-scale GaussianPulse
         sits at ~6e-5; a bandwidth=1.2 ModulatedGaussian at ~0.68).
+
+        The message is TRUNCATION-AWARE: rel_DC over the planned table
+        conflates intrinsic waveform DC with table-truncation DC. When the
+        table ends inside the source pulse (``n_table*dt`` below the
+        pulse-completion time ``t_done = t0 + 3*tau``), the estimate is
+        truncation-dominated — the remedy is a longer ``decay_max_steps``
+        (or a fixed ``n_steps``), and raising the waveform ``cutoff``
+        makes it WORSE because it lengthens the onset (measured: default
+        pulse + decay_max_steps=200 → rel_DC 2.14e-2 pure truncation
+        artifact; cutoff=4.5 at n_table~500 fires while cutoff=3 is
+        silent). Only past pulse completion do the intrinsic-DC remedies
+        (higher cutoff / narrower ModulatedGaussian) apply.
 
         Lives with the run()-path warning helpers (not preflight) because
         ``preflight()`` does not receive run kwargs and this advisory is
@@ -322,10 +335,20 @@ class _ExecuteMixin:
         if not dt > 0.0 or n_table <= 0:
             return
         t = np.arange(int(n_table), dtype=np.float64) * dt
-        for pe in self._ports:
-            if pe.impedance != 0.0 or not getattr(pe, "excite", True):
-                continue
-            wf = pe.waveform
+        soft_entries = [
+            pe for pe in self._ports
+            if pe.impedance == 0.0 and getattr(pe, "excite", True)
+        ]
+        # MSL ports launch through the same soft-Ez deposit across the
+        # trace cross-section, so their waveform DC floors the criterion
+        # identically. Entry access mirrors the sibling #386
+        # unresolved-pulse validator: read the ``waveform`` attribute,
+        # skip string-named waveforms (below).
+        soft_entries += [
+            pe for pe in self._msl_ports if getattr(pe, "excite", True)
+        ]
+        for pe in soft_entries:
+            wf = getattr(pe, "waveform", None)
             if wf is None or isinstance(wf, str):
                 continue
             try:
@@ -339,9 +362,41 @@ class _ExecuteMixin:
                 continue
             s_int = float(np.sum(s)) * dt
             rel_dc = abs(s_int) / denom
-            if rel_dc > 1e-3:
+            if rel_dc <= 1e-3:
+                continue
+            # Pulse-completion time t_done = t0 + 3*tau (the waveform's
+            # own t0 property when present, 3*tau otherwise). A table
+            # ending before t_done makes rel_DC truncation-dominated.
+            _loc = f"{pe.position} ({getattr(pe, 'component', 'msl port')})"
+            t_done = None
+            try:
+                _tau = float(wf.tau)
+            except (AttributeError, TypeError, ValueError):
+                _tau = None
+            if _tau is not None and math.isfinite(_tau) and _tau > 0.0:
+                try:
+                    _t0 = float(wf.t0)
+                except (AttributeError, TypeError, ValueError):
+                    _t0 = 3.0 * _tau
+                t_done = _t0 + 3.0 * _tau
+            if t_done is not None and n_table * dt < t_done:
                 warnings.warn(
-                    f"soft source at {pe.position} ({pe.component}): "
+                    f"soft source at {_loc}: waveform {type(wf).__name__} "
+                    f"shows relative DC {rel_dc:.2e} over the planned "
+                    f"{int(n_table)}-step table, but the planned "
+                    f"decay_max_steps window ends inside the source pulse "
+                    f"(table {n_table * dt:.3e} s < pulse completion "
+                    f"t0+3*tau ~ {t_done:.3e} s) — the DC estimate is "
+                    "truncation-dominated, not intrinsic waveform DC; "
+                    "until_decay may cap-hit (issue #388). Increase "
+                    "decay_max_steps (or run with a fixed n_steps) so the "
+                    "table covers the full pulse; raising the waveform "
+                    "cutoff makes this WORSE (it lengthens the onset).",
+                    UserWarning, stacklevel=3,
+                )
+            else:
+                warnings.warn(
+                    f"soft source at {_loc}: "
                     f"waveform {type(wf).__name__} deposits relative DC "
                     f"{rel_dc:.2e} (|sum s*dt| = {abs(s_int):.3e} over the "
                     f"planned {int(n_table)}-step table) — the deposited "
@@ -350,9 +405,55 @@ class _ExecuteMixin:
                     "CPML); until_decay may cap-hit (issue #388). Reduce "
                     "the waveform's DC content: a higher GaussianPulse "
                     "cutoff (e.g. cutoff=4.5), ModulatedGaussian with "
-                    "bandwidth <= 0.4, or run with a fixed n_steps.",
+                    "bandwidth <= 0.4, or run with a fixed n_steps. Note: "
+                    "this advisory does NOT catch low-rel_DC floors "
+                    "amplified by thin source cells (the #388 patch class "
+                    "measured the floor at rel_DC ~6e-5) — see issue #388.",
                     UserWarning, stacklevel=3,
                 )
+
+    def _warn_decay_param_sanity(self, *, until_decay, decay_min_steps,
+                                 decay_max_steps) -> None:
+        """Behaviour-NEUTRAL sanity advisories on the decay-stop params.
+
+        Warn-only, single ``run()``-level site so both lanes that honour
+        ``until_decay`` (uniform and absorbing-boundary non-uniform) are
+        covered by one check (post-#392 review):
+
+        * ``decay_min_steps > decay_max_steps`` — every check index lies
+          past the table end, so zero energy checks occur and the run is
+          a forced ``decay_max_steps`` run (the stop can never fire).
+        * ``until_decay >= 1`` — the criterion ``U < until_decay*peak_U``
+          is satisfied while the field energy is still rising, so the
+          stop can fire immediately after ``decay_min_steps``.
+          (``until_decay == 0.0`` is the documented forced-N escape on
+          the NU lane and is deliberately not warned about.)
+        """
+        import warnings
+
+        if until_decay is None:
+            return
+        if decay_min_steps > decay_max_steps:
+            warnings.warn(
+                f"decay_min_steps ({decay_min_steps}) > decay_max_steps "
+                f"({decay_max_steps}): zero energy checks will occur — "
+                "the decay stop can never fire and this is a forced "
+                "decay_max_steps run. Lower decay_min_steps or raise "
+                "decay_max_steps.",
+                UserWarning, stacklevel=3,
+            )
+        try:
+            _ud = float(until_decay)
+        except (TypeError, ValueError):
+            return
+        if _ud >= 1.0:
+            warnings.warn(
+                f"until_decay={until_decay} >= 1: the energy criterion "
+                "(U < until_decay * peak_U) is met while the field energy "
+                "is still rising, so the stop can fire immediately after "
+                "decay_min_steps; use a fraction well below 1 (e.g. 1e-3).",
+                UserWarning, stacklevel=3,
+            )
 
     def _reject_refplane_ports_off_uniform_lane(self, path_name: str,
                                                 compute_s_params) -> None:
@@ -2435,7 +2536,9 @@ class _ExecuteMixin:
             when a planned soft-source waveform's relative DC exceeds 1e-3
             (raise the ``GaussianPulse`` cutoff, narrow a
             ``ModulatedGaussian`` to bandwidth <= 0.4, or use a fixed
-            ``n_steps``).
+            ``n_steps``). This advisory does NOT catch low-rel_DC floors
+            amplified by thin source cells (the #388 patch class measured
+            the floor at rel_DC ~6e-5) — see issue #388.
         decay_check_interval : int
             Check decay every N steps (default 50).
         decay_min_steps : int
@@ -2474,6 +2577,16 @@ class _ExecuteMixin:
         Result
         """
         fixed_num_periods = n_steps is None
+
+        # Behaviour-neutral decay-parameter sanity advisories (post-#392
+        # review): single run()-level site, before dispatch, so both lanes
+        # that honour until_decay (uniform + absorbing-boundary
+        # non-uniform) are covered by one check.
+        self._warn_decay_param_sanity(
+            until_decay=until_decay,
+            decay_min_steps=decay_min_steps,
+            decay_max_steps=decay_max_steps,
+        )
 
         # ---- P1: Auto mesh when dx not specified and geometry exists ----
         if self._dx is None and (self._geometry or self._thin_conductors):

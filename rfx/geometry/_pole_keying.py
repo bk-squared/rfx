@@ -40,14 +40,22 @@ def _pole_key(pole):
        ``float()``-coerced fields. Value equality IS decidable here;
        a NamedTuple hashes/compares equal to the plain tuple of the
        same values, so eager-array and Python-float spellings of the
-       same pole also merge with each other.
+       same pole also merge with each other. CAVEAT: that cross-
+       spelling merge holds only for values exactly representable in
+       the array dtype — ``jnp.float32(0.1)`` ``float()``-coerces to
+       0.10000000149011612, which differs from Python ``0.1``, so the
+       two spellings key as TWO entries and overlapping geometry
+       applies the pole twice (double delta_eps on the overlap
+       cells). Spell a shared pole consistently, or use exactly
+       representable values (0.5, 1.5, ...).
     3. Fields carrying JAX TRACERS — ``id(pole)``. Value equality is
        undecidable at trace time; identity is the only stable key
        (the documented differentiable-dispersion path, #273).
-    4. Eager but not ``float()``-coercible (non-scalar fields) —
-       ``id(pole)`` plus a loud ``UserWarning``: such poles will not
-       dedupe against value-equal duplicates (fail-loud beats silent
-       double-counting).
+    4. Eager but not ``float()``-coercible — fields that are
+       non-scalar arrays OR scalars ``float()`` rejects (e.g. a
+       complex 0-d array) — ``id(pole)`` plus a loud ``UserWarning``:
+       such poles will not dedupe against value-equal duplicates
+       (fail-loud beats silent double-counting).
     """
     try:
         hash(pole)
@@ -62,8 +70,10 @@ def _pole_key(pole):
         return tuple(float(f) for f in pole)
     except (TypeError, ValueError):
         warnings.warn(
-            f"Dispersion pole {pole!r} has unhashable, non-scalar "
-            f"fields; keying its geometry mask by object identity. "
+            f"Dispersion pole {pole!r} has unhashable fields that "
+            f"cannot be coerced to float (non-scalar arrays or "
+            f"non-float-coercible scalars, e.g. a complex 0-d array); "
+            f"keying its geometry mask by object identity. "
             f"Value-equal duplicates of this pole will NOT dedupe and "
             f"can double-apply delta_eps on overlapping geometry "
             f"(issue #274).",
