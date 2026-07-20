@@ -117,7 +117,8 @@ def test_errors_self_consistent(fixture):
 # --------------------------------------------------------------------------- #
 def test_ladder_within_measured_envelope(fixture):
     """Every committed rfx-vs-Mie error is within the measured envelope gate.
-    Measured max |err| = 13.17 dB; gate_db = 15 dB (clamped to the GO floor)."""
+    Measured max |err| = 9.28 dB; gate_db = 13.9 dB (= 1.5 × measured, under
+    the 15 dB GO floor — not clamped). Values regenerated after PR #279."""
     gate = fixture["envelope"]["gate_db"]
     for rung in fixture["ka_ladder"]:
         for res in (rung["coarse"], rung["fine"]):
@@ -144,7 +145,7 @@ def test_envelope_no_regression(fixture):
 def test_convergence_witness(fixture):
     """Convergence witness: refinement (lambda/10 -> lambda/15) does not blow the
     error up beyond a measured margin. Recorded convergence_delta == |fine err| -
-    |coarse err|; measured max is +5.76 dB (refinement does NOT close the gap --
+    |coarse err|; measured max is +4.89 dB (refinement does NOT close the gap --
     an honest curved-PEC staircase floor), gated <= 6.5 dB so a future regression
     that made refinement diverge would trip."""
     deltas = fixture["envelope"]["convergence_delta_db"]

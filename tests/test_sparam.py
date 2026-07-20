@@ -1,8 +1,15 @@
-"""S-parameter extraction validation.
+"""S-parameter extraction validation (lumped-port limiting cases).
 
 Tests:
-1. Lumped port in a PEC cavity: S11 ≈ 0 dB off-resonance (full reflection)
-2. Lumped port matched load: S11 < -20 dB (absorbed by port impedance)
+1. Lumped port in a PEC cavity: S11 near 0 dB in-band (full reflection).
+   A lossless PEC cavity dissipates nothing, so |S11| ≈ 1; pinned as a
+   loose limiting-case bound (mid-band mean |S11| > -3 dB).
+2. Lumped port injects energy: E and H fields become non-zero after
+   driving the port (excitation smoke test).
+
+There is NO matched-load absorption gate (S11 < -20 dB) here: a lumped port
+terminated in its own impedance in an open (CPML) domain is not exercised in
+this file, so that absorption physics is not asserted.
 """
 
 import numpy as np
