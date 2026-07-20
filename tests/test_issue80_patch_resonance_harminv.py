@@ -43,8 +43,9 @@ architectural, not incidental:
     the CPML (an effectively infinite ground).
 
 A closed 6-face Huygens NTFF box cannot enclose these radiators — any side face crosses the
-feed PEC and the infinite ground PEC, so ``sim.preflight()`` raises "NTFF box must enclose all
-radiators with no PEC crossing any face", and a box placed anyway integrates reactive
+feed PEC and the infinite ground PEC, so ``sim.preflight()`` COLLECTS "NTFF box must enclose all
+radiators with no PEC crossing any face" as an error-severity advisory in the returned
+report (it raises only under ``strict=True``), and a box placed anyway integrates reactive
 near-field: on this geometry the measured pattern shows unphysical DOWNWARD radiation (beam
 peaks at θ = 140-180°, i.e. below an infinite ground plane) and the radiated-power peak lands
 on a non-broadside bin. A far-field verdict from that box would be a corrupted-observable pass

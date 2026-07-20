@@ -105,11 +105,13 @@ def _build_patch_sim() -> Simulation:
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
-    # #402 settling witness: a cavity Ez probe under the patch gives the internal
-    # compute_msl_s_matrix run a point-probe time series so the framework's #332
-    # ring-down ENERGY witness fires (it reports the slowest-draining monitored
-    # field — the feed-line standing wave — which is the settling the DFT-based
-    # S11 extraction depends on).
+    # #402 settling witness: the framework's #332 ring-down witness evaluates the
+    # tail-vs-peak envelope of a POINT-PROBE time series, so the internal
+    # compute_msl_s_matrix run needs at least one probe or the witness has no
+    # data and can never fire. This Ez probe under the patch (0.7·L along it)
+    # supplies that series; its slow ring-down tail is the settling the DFT-based
+    # S11 extraction depends on. (The test below guards that this probe stays
+    # present, so removing it fails loudly rather than silently disarming #332.)
     x_patch0 = PORT_MARGIN + L_MSL
     sim.add_probe(
         position=(x_patch0 + 0.7 * L, Y_C - 0.2 * W, 4e-3 + DX + H_SUB * 0.5),
@@ -126,6 +128,14 @@ def test_issue80_patch_s11_passive_and_edge_fed_match():
     is validated by the Harminv companion gate."""
     sim = _build_patch_sim()
 
+    # #402 guard: the settling assertion below is only meaningful if a point probe
+    # exists to feed the #332 witness. Without it, #332 has no series, never fires,
+    # and `assert not _trunc` becomes silently always-green. Fail loudly instead.
+    assert getattr(sim, "_probes", None), (
+        "settling-witness probe missing — #332 ring-down witness cannot evaluate; "
+        "the settling assertion would be vacuous (issue #402)"
+    )
+
     # R: never ignore preflight — surface any warning before trusting |S| numbers.
     advisories = [str(a) for a in sim.preflight()]
     print(f"\n[ISSUE80/118-REG] preflight advisories ({len(advisories)}) — quoted verbatim:")
@@ -133,9 +143,14 @@ def test_issue80_patch_s11_passive_and_edge_fed_match():
         print(f"  ! {a}")
 
     freqs = np.linspace(6e9, 14e9, 81)
-    # #402: num_periods=200 left the feed-line standing wave at -36.2 dB of peak
-    # (N_SUB=2 witness) — above the -40 dB bar; the badly-matched patch reflects
-    # strongly so the feed drains slowly. 280 clears the bar (N_SUB=2 ladder).
+    # #402: num_periods=200 left the ring-down at -36.2 dB of peak (N_SUB=2
+    # witness) — above the -40 dB bar; the badly-matched patch reflects strongly
+    # so it drains slowly. 280 clears the bar on the N_SUB=2 ladder. CAVEAT: 280
+    # is validated only at N_SUB=2 (CPU); the committed gate runs N_SUB=4 (gpu),
+    # never exercised on a CPU/committed path. This is fail-safe by design — if
+    # N_SUB=4 drains slower and 280 does NOT settle, #332 fires and this test goes
+    # RED (surfacing the truncation), it does not pass silently. Re-pin from the
+    # first N_SUB=4 GPU run if it reds.
     with warnings.catch_warnings(record=True) as _settling:
         warnings.simplefilter("always")
         res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs), num_periods=280.0)
