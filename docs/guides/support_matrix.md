@@ -17,7 +17,13 @@ Status terms:
 ## Current documented baseline
 
 The general baseline is a uniform Cartesian Yee grid with `pec`, `cpml`, or
-`upml` where the selected feature is listed as supported. Documented sources
+`upml` where the selected feature is listed as supported. **Boundary caveat
+(measured 2026-07-20, #403):** for open-domain absorption prefer `cpml` — rfx's
+`upml` reflects ~25 dB more than `cpml` at the same layer count (measured floor
+−43 dB vs −68 dB at 2 GHz / 8 layers; the UPML parallel-E component is attenuated
+only indirectly via curl coupling, `rfx/boundaries/upml.py`). `upml` still
+absorbs (interior energy decays), but use `cpml` where reflection floor matters.
+Documented sources
 include point/current sources and the port families listed in the
 [S-parameter support matrix](sparameter_support_matrix.md).
 Documented observables include time-series probes, flux monitors, Harminv
