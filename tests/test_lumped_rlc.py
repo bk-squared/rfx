@@ -1,7 +1,11 @@
 """Lumped RLC element tests.
 
-Validates:
-1. Series RLC resonance frequency matches analytical f0 = 1/(2*pi*sqrt(LC))
+Validates (direction-only / smoke coverage; the quantitative f0 = 1/(2*pi*
+sqrt(LC)) and Q = (1/R)*sqrt(L/C) oracle lives in
+``test_series_rlc_current.py::test_series_rlc_current_peaks_at_f0``):
+1. Adding an LC element measurably shifts the driven-cell spectrum near f0
+   (the resonance itself is quantitatively gated on the series CURRENT, not
+   the E-field probe — see the observable note in test_series_rlc_current.py).
 2. Pure capacitor and pure inductor elements run without error
 3. Parallel RLC topology runs without error
 4. Validation catches bad inputs
@@ -242,7 +246,13 @@ class TestParallelRLC:
         assert result.time_series.shape == (200, 1)
 
     def test_parallel_rlc_resonance(self):
-        """Parallel RLC anti-resonance at f0 = 1/(2*pi*sqrt(LC))."""
+        """Parallel RLC runs and produces a non-trivial field (smoke test).
+
+        NOTE: this only checks the field is non-zero, not the anti-resonance
+        location. The quantitative resonance oracle is the series-current gate
+        in test_series_rlc_current.py; a parallel-current oracle is not yet
+        added.
+        """
         R = 200.0      # Higher R for parallel (high impedance at resonance)
         L = 10e-9      # 10 nH
         C = 1e-12      # 1 pF
