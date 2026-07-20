@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
+from rfx import Simulation
 from rfx.grid import Grid
 from rfx.farfield import NTFFBox
 
@@ -62,29 +63,83 @@ def test_asymmetric_integer_motion_under_from_grid():
     assert box.cpml_hi_x == 16
 
 
-def test_physical_validity_ntff_box_outside_active_cpml():
-    """Physical-validity assertion: the NTFF integration surface must sit
-    in the scattered-field region (outside active CPML) on every face.
+def _preflight_codes(corner_lo, corner_hi, *, cpml_layers=8, dx=2e-3,
+                     domain=(0.120, 0.120, 0.120), freq=10e9):
+    """Build a real Simulation with a CPML boundary and an NTFF box, run the
+    production preflight, and return the set of issue codes it emitted."""
+    sim = Simulation(freq_max=freq, domain=domain, dx=dx,
+                     boundary="cpml", cpml_layers=cpml_layers)
+    sim.add_source((domain[0] / 2, domain[1] / 2, domain[2] / 2), "ez")
+    sim.add_ntff_box(corner_lo, corner_hi, freqs=(freq,))
+    report = sim.preflight()
+    return {getattr(i, "code", None) for i in report}
 
-    Asserts k_lo >= z_lo_active_thickness and k_hi <= nz - z_hi_active_thickness
-    on a sim-like grid built with asymmetric face_layers. A box placed
-    inside active CPML cells would silently corrupt the FFRP."""
+
+def test_ntff_box_outside_cpml_has_no_absorber_overlap():
+    """Positive control: an NTFF box wholly inside the interior must NOT
+    trip the production absorber-overlap validator.
+
+    Exercises the real ``_validate_cfg_ntff_absorber_overlap`` reached by
+    ``sim.preflight()`` (rfx/api/_preflight.py) — the production code that
+    guards against an NTFF integration surface sitting in active CPML."""
+    # cpml thickness = 8 * 2 mm = 16 mm; box spans [30, 90] mm on every axis.
+    codes = _preflight_codes((0.030, 0.030, 0.030), (0.090, 0.090, 0.090))
+    assert "absorber_overlap" not in codes, (
+        f"clean interior box wrongly flagged as absorber overlap; codes={codes}"
+    )
+
+
+def test_ntff_box_inside_cpml_trips_absorber_overlap_lo_and_hi():
+    """Negative control that MUST fail if the production placement guard is
+    removed: an NTFF box whose lo (or hi) corner is inside the 16 mm CPML
+    region must trip ``absorber_overlap`` via the real preflight path.
+
+    This replaces a prior tautology (``k_lo = z_lo + offset; assert
+    k_lo >= z_lo``) that re-asserted the test's own arithmetic and could not
+    detect a real inside-CPML placement bug."""
+    # lo corner x = 5 mm < 16 mm CPML -> extends into the lo-face absorber.
+    codes_lo = _preflight_codes((0.005, 0.030, 0.030), (0.090, 0.090, 0.090))
+    assert "absorber_overlap" in codes_lo, (
+        f"lo-face inside-CPML NTFF box was NOT flagged; codes={codes_lo}"
+    )
+    # hi corner z = 118 mm > 120 - 16 = 104 mm -> extends into the hi-face
+    # absorber. Verifies the guard is two-sided, not just lo-face.
+    codes_hi = _preflight_codes((0.030, 0.030, 0.030), (0.090, 0.090, 0.118))
+    assert "absorber_overlap" in codes_hi, (
+        f"hi-face inside-CPML NTFF box was NOT flagged; codes={codes_hi}"
+    )
+
+
+def test_ntffbox_from_grid_places_faces_outside_per_face_active_cpml():
+    """Per-face bookkeeping check on the real ``NTFFBox.from_grid`` output:
+    the constructed box's stored per-face CPML layer counts must leave the
+    requested integration indices outside the active absorber on each face,
+    read from the box's OWN production-populated fields (not recomputed here).
+
+    Asymmetric face_layers (z_lo=4, z_hi=16) means the box may legally sit
+    closer to the thin lo face than the thick hi face."""
     grid = _make_grid(
         cpml_layers=16,
         face_layers={"z_lo": 4, "z_hi": 16, "x_lo": 16, "x_hi": 16,
                      "y_lo": 16, "y_hi": 16},
     )
-    ntff_offset = 3
-    fl = grid.face_layers
-    k_lo = fl["z_lo"] + ntff_offset
-    k_hi = grid.nz - fl["z_hi"] - ntff_offset
-    assert k_lo >= fl["z_lo"], (
-        f"NTFF k_lo={k_lo} inside active CPML (z_lo={fl['z_lo']}) - physics bug"
+    k_lo, k_hi = 6, grid.nz - 18
+    box = NTFFBox.from_grid(
+        grid,
+        i_lo=18, i_hi=grid.nx - 18,
+        j_lo=18, j_hi=grid.ny - 18,
+        k_lo=k_lo, k_hi=k_hi,
+        freqs=jnp.array([3e9], dtype=jnp.float32),
     )
-    assert k_hi <= grid.nz - fl["z_hi"], (
-        f"NTFF k_hi={k_hi} inside active hi-face CPML - physics bug"
+    # The box stores the per-face active-CPML thickness verbatim from the
+    # grid; the requested indices must clear it on each z face independently.
+    assert k_lo >= box.cpml_lo_z, (
+        f"k_lo={k_lo} sits inside active lo-z CPML (={box.cpml_lo_z})"
     )
-    # Symmetric sanity: the asymmetric case moves k_lo closer to grid edge
-    # than the pre-refactor scalar would.
-    assert k_lo == 7  # 4 + 3
-    assert k_hi == grid.nz - 19  # nz - 16 - 3
+    assert k_hi <= grid.nz - box.cpml_hi_z, (
+        f"k_hi={k_hi} sits inside active hi-z CPML (={box.cpml_hi_z})"
+    )
+    # Asymmetry is real: the thin lo face (4) admits a closer box than the
+    # thick hi face (16) — a genuine per-face property, not tautological.
+    assert box.cpml_lo_z == 4
+    assert box.cpml_hi_z == 16

@@ -137,20 +137,32 @@ def test_cfs_cpml_evanescent_absorption():
     print(f"Standard CPML PML energy: {energy_std:.6e}")
     print(f"CFS-CPML PML energy:      {energy_cfs:.6e}")
 
-    if energy_std > 1e-30:
-        improvement = energy_std / max(energy_cfs, 1e-30)
-        print(f"CFS improvement factor: {improvement:.1f}x")
-        # Threshold 1.4 matches the m=3 polynomial grading (~1.48x typical).
-        # m=2 previously produced ~1.5-1.8x; the higher polynomial concentrates
-        # absorption at the outer boundary, slightly reducing the CFS/standard
-        # contrast in this evanescent-regime test. Physics claim (CFS >
-        # standard) holds; threshold adjusted to preserve the regression
-        # signal while matching the retuned polynomial order.
-        assert improvement > 1.4, (
-            f"CFS-CPML improvement {improvement:.1f}x is below 1.4x threshold"
-        )
-    else:
-        print("Both negligible — pass")
+    # Nonzero-signal precondition: the physics assert below used to sit inside
+    # `if energy_std > 1e-30:`, so a regression that zeroed the injected
+    # evanescent field printed "Both negligible — pass" and asserted nothing.
+    # Require real field energy in the PML region FIRST — a dead source /
+    # PEC-everywhere regression must FAIL here, not pass vacuously. Measured
+    # energy_std ~ 5.2e-12 (baseline 2026-07-20), so 1e-20 is a dead-field
+    # floor eight orders below the live value, not a physics threshold.
+    assert energy_std > 1e-20, (
+        f"Standard-CPML PML energy {energy_std:.3e} is ~zero — the evanescent "
+        f"field was never injected; fixture/source is dead."
+    )
+    assert energy_cfs > 1e-20, (
+        f"CFS-CPML PML energy {energy_cfs:.3e} is ~zero — the evanescent field "
+        f"was never injected; fixture/source is dead."
+    )
+
+    improvement = energy_std / energy_cfs
+    print(f"CFS improvement factor: {improvement:.1f}x")
+    # Threshold 1.4 matches the m=3 polynomial grading (~1.48x typical).
+    # m=2 previously produced ~1.5-1.8x; the higher polynomial concentrates
+    # absorption at the outer boundary, slightly reducing the CFS/standard
+    # contrast in this evanescent-regime test. Physics claim (CFS >
+    # standard) holds; threshold matches the retuned polynomial order.
+    assert improvement > 1.4, (
+        f"CFS-CPML improvement {improvement:.1f}x is below 1.4x threshold"
+    )
 
 
 def test_cfs_cpml_backward_compatible():
