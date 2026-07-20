@@ -218,7 +218,9 @@ def test_cpml_reflection_gate_discriminates_layer_degradation():
     # Degraded 2-layer floors (caught by these gates): 1GHz -38.8, 5GHz -77.3.
     (1e9, 8, -50.0),   # clean floor -56.3 dB (was contaminated -49.7)
     (5e9, 8, -75.0),   # clean floor -92.8 dB (was contaminated -65.4)
-    (1e9, 4, -40.0),   # clean floor -45.7 dB (minimum-viable config)
+    (1e9, 4, -40.0),   # clean floor -45.7 dB (min-viable config: this leg is a
+                       # clean-reference RE-PIN of the old -40, only 5.7 dB margin;
+                       # the two 8-layer legs above are the strengthened ones)
 ])
 def test_cpml_reflectivity_regression(f0, n_layers, gate_db):
     """Cross-frequency regression against CLEAN per-config reflection envelopes.

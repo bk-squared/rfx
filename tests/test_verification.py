@@ -210,9 +210,11 @@ def test_oblique_tfsf_fresnel():
     |R_TE|=0.382 and the normal-incidence |R|=0.333 differ by only 12.7%, below
     this gate's 35% tolerance, and the measured value (~0.35-0.51) sits between
     them — a normal-incidence injection would also pass. A discriminating steep
-    angle exposes the gap: at 60 deg the analytic oblique |R_TE|=0.566 but the
-    2D-aux extraction measures ~0.38 (near NORMAL, 33% off the oblique target).
-    Treat oblique-reflection ACCURACY as unvalidated pending a corrected
+    angle exposes the gap: at 60 deg the analytic oblique |R_TE|=0.566 but this
+    test's single-point extraction measures ~1.14 (101% off the oblique target;
+    the DFT-plane method in the companion test lands ~0.38, near normal) — either
+    way the oblique ANGLE is not reproduced. Treat oblique-reflection ACCURACY as
+    unvalidated pending a corrected
     oblique-phase extraction; do not cite this test as an oblique-Fresnel
     accuracy claim.
 
