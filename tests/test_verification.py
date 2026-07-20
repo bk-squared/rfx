@@ -196,9 +196,25 @@ def test_gradient_through_dft_plane():
 def test_oblique_tfsf_fresnel():
     """Oblique TFSF (angle_deg=30) reflection matches Fresnel TE coefficient.
 
-    Unlike test_fresnel_oblique_te (which uses effective-eps trick with
-    normal incidence), this test actually uses the oblique TFSF code path
-    with dispersion-matched 1D auxiliary grid.
+    Unlike the effective-eps surrogate in test_physics.py
+    (``test_fresnel_normal_incidence_effective_eps_consistency``, which runs a
+    NORMAL-incidence 1D-aux run and never invokes the oblique path), this test
+    actually exercises the oblique TFSF code path (2D dispersion-matched
+    auxiliary grid, ``is_tfsf_2d`` True).
+
+    VALIDATED SCOPE / KNOWN LIMITATION (issue #397, probe 2026-07-20)
+    ----------------------------------------------------------------
+    This gate confirms the 2D-aux oblique path RUNS and injects a tilted wave
+    with low TFSF leakage, yielding a physical-magnitude |R|. It does NOT
+    validate oblique-ANGLE Fresnel accuracy: at 30 deg / eps_r=4 the oblique
+    |R_TE|=0.382 and the normal-incidence |R|=0.333 differ by only 12.7%, below
+    this gate's 35% tolerance, and the measured value (~0.35-0.51) sits between
+    them — a normal-incidence injection would also pass. A discriminating steep
+    angle exposes the gap: at 60 deg the analytic oblique |R_TE|=0.566 but the
+    2D-aux extraction measures ~0.38 (near NORMAL, 33% off the oblique target).
+    Treat oblique-reflection ACCURACY as unvalidated pending a corrected
+    oblique-phase extraction; do not cite this test as an oblique-Fresnel
+    accuracy claim.
 
     For Ez polarization at 30 deg onto eps_r=4:
         n1=1, n2=2, theta_i=30 deg
@@ -386,6 +402,12 @@ def test_oblique_tfsf_fresnel_plane_dft():
     Validated by tests/test_fresnel_investigation.py which showed
     per-cell spectral ratios match analytic |R_TE| to ~2.6% for the
     best-illuminated cells.
+
+    Same VALIDATED-SCOPE caveat as ``test_oblique_tfsf_fresnel`` (issue #397):
+    at 30 deg / eps_r=4 the oblique and normal-incidence |R| are only 12.7%
+    apart (below this 15% gate), so a passing result confirms the 2D-aux path
+    runs and yields a physical-magnitude |R| but does NOT establish oblique-
+    angle accuracy (the 60 deg extraction lands near normal, ~33% off analytic).
     """
     eps_r_val = 4.0
     theta_deg = 30.0
@@ -524,8 +546,18 @@ def test_oblique_tfsf_fresnel_plane_dft():
     assert R_aligned > 0.01, "DFT plane probe detected no reflection"
     assert not np.isnan(R_aligned), "NaN in plane DFT Fresnel computation"
 
-    # Best-aligned extraction should achieve < 15% error (vs 28% single-point)
-    R_result = min(R_aligned, R_bright, key=lambda r: abs(r - R_analytic))
-    err_result = abs(R_result - R_analytic) / R_analytic * 100
-    assert err_result < 15.0, \
-        f"Plane DFT Fresnel error {err_result:.1f}% exceeds 15% tolerance"
+    # Gate on the PRIMARY 'best_aligned' extractor DECLARED up front — not on
+    # whichever of {best_aligned, bright_min} happens to land closest to the
+    # analytic target. The old `min(..., key=|r - R_analytic|)` fit the
+    # estimator to the oracle: a run where the physical method drifted but the
+    # other method coincidentally matched would still pass. `best_aligned` is
+    # the method validated in test_fresnel_investigation.py (per-cell
+    # phase-aligned ratio ~2.6% on the best cells); it measures ~7.7% here
+    # (baseline 2026-07-20), well inside the 15% oblique-DFT envelope while a
+    # broken 2D-aux injection (wrong amplitude/angle) pushes it out. `R_bright`
+    # is kept as a printed diagnostic only.
+    assert err_aligned < 15.0, (
+        f"Oblique best-aligned Fresnel error {err_aligned:.1f}% exceeds 15% "
+        f"(R_aligned={R_aligned:.4f} vs analytic {R_analytic:.4f}); "
+        f"bright-min diagnostic={R_bright:.4f} ({err_bright:.1f}%)"
+    )

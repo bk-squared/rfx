@@ -2,7 +2,8 @@
 
 Tests:
 1. Fresnel normal-incidence reflection (periodic BC + CPML)
-2. Fresnel oblique TE incidence (TFSF + periodic BC)
+2. Normal-incidence effective-eps consistency (does NOT simulate an oblique
+   wave — the genuine oblique-injection gate lives in test_verification.py)
 3. Two-port reciprocity (S21 ≈ S12, passivity)
 4. CPML grazing-incidence reflection benchmark
 5. Mesh convergence (2nd-order Yee scheme)
@@ -155,17 +156,32 @@ def test_fresnel_normal_incidence():
 
 
 # =========================================================================
-# Test 2: Fresnel oblique TE incidence (TFSF)
+# Test 2: Normal-incidence effective-eps consistency (NOT an oblique test)
 # =========================================================================
 
-def test_fresnel_oblique_te():
-    """Oblique TE reflection from dielectric interface at 30°.
+def test_fresnel_normal_incidence_effective_eps_consistency():
+    """Consistency of the oblique-TE -> effective-eps ALGEBRA under a
+    normal-incidence 1D-aux TFSF run. This is NOT an oblique-injection test.
 
-    TE Fresnel: R_te = (n1*cos(theta_i) - n2*cos(theta_t)) /
-                       (n1*cos(theta_i) + n2*cos(theta_t))
+    The 30 deg TE Fresnel coefficient is mapped to an equivalent
+    normal-incidence permittivity ``eps_eff = ((1-R_te)/(1+R_te))**2`` and a
+    NORMAL-incidence 1D-aux TFSF is run against ``eps_eff``. Because the
+    analytic target is reconstructed from that same ``eps_eff`` mapping, this
+    gate can only confirm the effective-eps algebra plus the normal-incidence
+    TFSF probe — it has ZERO discrimination over the real oblique-injection
+    code path (2D dispersion-matched auxiliary grid), which is never invoked
+    here (``init_tfsf`` is called WITHOUT ``angle_deg``/``ny`` below).
 
-    Uses TFSF source with effective-eps approach: maps the oblique TE
-    Fresnel coefficient to an equivalent normal-incidence 1D problem.
+    The GENUINE oblique-injection gate — a real 30 deg TE plane wave through
+    the 2D-aux TFSF path compared to analytic Fresnel-at-30-deg — lives in
+    ``tests/test_verification.py::test_oblique_tfsf_fresnel`` and
+    ``::test_oblique_tfsf_fresnel_plane_dft``. Renamed from the former
+    ``test_fresnel_oblique_te`` (issue #397): the old name/header claimed an
+    oblique simulation that never ran.
+
+    TE Fresnel (for the eps_eff mapping only):
+        R_te = (n1*cos(theta_i) - n2*cos(theta_t)) /
+               (n1*cos(theta_i) + n2*cos(theta_t))
     """
     from rfx.sources.tfsf import (
         init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e,
@@ -246,18 +262,22 @@ def test_fresnel_oblique_te():
         R_num = spec_scat[band] / np.maximum(spec_inc[band], 1e-30)
         R_mean = np.mean(R_num)
 
-        print(f"\nFresnel oblique TE TFSF (theta={theta_deg}°, eps_r={eps_r}):")
-        print(f"  Analytic |R_TE|: {R_analytic:.4f}")
-        print(f"  Effective eps:   {float(eps_eff):.4f}")
-        print(f"  Numerical |R|:   {R_mean:.4f}")
+        print(f"\nNormal-incidence eps_eff consistency "
+              f"(theta_map={theta_deg}°, eps_r={eps_r}, NOT an oblique run):")
+        print(f"  Target |R| from eps_eff map: {R_analytic:.4f}")
+        print(f"  Effective eps:               {float(eps_eff):.4f}")
+        print(f"  Numerical |R| (normal 1D):   {R_mean:.4f}")
         print(f"  Error: {abs(R_mean - R_analytic) / R_analytic * 100:.1f}%")
 
         results.append((theta_deg, R_analytic, R_mean))
 
     for theta_deg, R_ana, R_num in results:
         err = abs(R_num - R_ana) / R_ana
-        assert err < 0.10, \
-            f"Oblique TE at {theta_deg}°: error {err*100:.1f}% exceeds 10%"
+        assert err < 0.10, (
+            f"eps_eff-mapped normal-incidence |R| error {err*100:.1f}% "
+            f"exceeds 10% (theta_map={theta_deg}°) — the effective-eps algebra "
+            f"or the normal-incidence TFSF probe regressed"
+        )
 
 
 # =========================================================================
