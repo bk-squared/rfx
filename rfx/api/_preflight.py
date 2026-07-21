@@ -1725,6 +1725,7 @@ class _PreflightMixin:
         self._validate_cfg_floating_single_cell_port(_w)
         self._validate_cfg_pec_boundary_open_structure(_w)
         self._validate_cfg_no_sources(_w)
+        self._validate_cfg_tfsf_with_lumped_rlc(_w)
         self._validate_cfg_unresolved_pulse(_w, dx)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
         self._validate_cfg_graded_box_rasterization(_w)
@@ -1739,6 +1740,32 @@ class _PreflightMixin:
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
+
+    def _validate_cfg_tfsf_with_lumped_rlc(self, _w) -> None:
+        """Warn: a lumped RLC element illuminated by a TFSF plane wave is unstable.
+
+        A bare ``add_lumped_rlc(...)`` element driven by a TFSF plane wave has no
+        defined series circuit, so its ADE current-tracking is ill-posed and the
+        fields diverge (measured: blow-up to ~1e35 by ~250 steps, C-independent).
+        The tunable-load (varactor) gradient IS validated for the PORT-fed lane
+        (``add_port`` + ``forward(rlc_values_override=...)`` — tests/test_lumped_rlc_ad.py),
+        not for a bare plane-wave load. For RIS/reconfigurable-surface design the
+        element must sit in a supporting PEC-gap structure (patch/aperture + gap +
+        ground) so it carries a defined current. Advisory warning (a proper gap
+        structure may be stable); see the tracking issue.
+        """
+        if self._tfsf is None or not self._lumped_rlc:
+            return
+        _w.warn(PreflightWarning(
+            "add_lumped_rlc(...) + a TFSF plane-wave source: a bare lumped element "
+            "in a plane wave has no defined series circuit and is numerically "
+            "unstable (fields diverge). Embed it in a supporting PEC-gap structure "
+            "(the RIS unit cell) so it carries a defined current. The varactor/"
+            "tunable-load gradient is validated for the PORT-fed lane (add_port + "
+            "forward(rlc_values_override=...)), not for bare plane-wave loads.",
+            code="tfsf_lumped_rlc_unstable",
+            source="_validate_cfg_tfsf_with_lumped_rlc",
+        ))
 
     def _validate_cfg_graded_box_rasterization(self, _w) -> None:
         """Warn when a Box misses the fine cells implied by its z-span."""
