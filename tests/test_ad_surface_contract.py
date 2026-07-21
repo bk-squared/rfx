@@ -86,7 +86,13 @@ AD_CLASSIFICATION = {
     ),
     "compute_rcs": (
         NOT_TRACEABLE,
-        "numpy RCS post-processor on top of compute_far_field",
+        "numpy RCS post-processor on top of compute_far_field; the AD path is compute_rcs_jax",
+    ),
+    "compute_rcs_jax": (
+        GRAD_SAFE,
+        "differentiable RCS post-processor on compute_far_field_jax; equivalence to the "
+        "Mie-validated numpy compute_rcs + FD-convergent gradient: "
+        "tests/test_rcs_jax_differentiable.py::test_rcs_jax_gradient_fd_convergence",
     ),
     "compute_floquet_s_params": (
         GRAD_SAFE,

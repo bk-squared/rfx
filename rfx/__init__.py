@@ -76,7 +76,7 @@ from rfx.farfield import (
     radiation_pattern, directivity,
     axial_ratio, axial_ratio_dB, polarization_tilt, polarization_sense,
 )
-from rfx.rcs import compute_rcs, RCSResult
+from rfx.rcs import compute_rcs, compute_rcs_jax, RCSResult
 from rfx.antenna import (
     antenna_gain, antenna_gain_dB, antenna_efficiency,
     half_power_beamwidth, front_to_back_ratio,
@@ -268,7 +268,7 @@ __all__ = [
     "extract_waveguide_s_matrix", "extract_waveguide_sparams",
     "extract_waveguide_s11", "extract_waveguide_s21",
     "extract_s_matrix_wire", "compute_floquet_s_params",
-    "compute_rcs", "RCSResult",
+    "compute_rcs", "compute_rcs_jax", "RCSResult",
     # materials / dispersion / fitting
     "DebyePole", "LorentzPole", "drude_pole", "lorentz_pole",
     "ThinConductor", "MATERIAL_LIBRARY",

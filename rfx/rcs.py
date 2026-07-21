@@ -29,7 +29,7 @@ import numpy as np
 from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays
 from rfx.farfield import (
-    FarFieldResult, NTFFBox, compute_far_field,
+    FarFieldResult, NTFFBox, compute_far_field, compute_far_field_jax,
 )
 from rfx.sources.tfsf import init_tfsf
 from rfx.simulation import run
@@ -101,6 +101,60 @@ def _incident_spectrum_amplitude(
         amplitudes[i] = np.sum(waveform * phase) * dt
 
     return amplitudes
+
+
+def compute_rcs_jax(
+    ntff_data,
+    box: NTFFBox,
+    grid: Grid,
+    theta,
+    phi,
+    e_inc_amplitude,
+):
+    """JAX-differentiable RCS(θ,φ) from NTFF data — the AD counterpart of ``compute_rcs``.
+
+    ``compute_rcs`` orchestrates (TFSF setup → ``run`` → far-field → RCS) with a numpy
+    post-processor, so it is NOT on the AD tape. This function is the differentiable
+    POST-PROCESSING half: given ``ntff_data`` accumulated by a differentiable
+    ``run(..., tfsf=…, ntff=…)`` (whose accumulators flow through the ``lax.scan`` AD
+    tape w.r.t. the scatterer materials), it returns σ as a ``jnp`` array so
+    ``jax.grad`` flows scatterer-ε → RCS. It is the primitive behind differentiable
+    RCS-reduction / -shaping inverse design.
+
+    Same formula as ``compute_rcs`` (σ = 4π·|E_far|²/|E_inc|², ``compute_far_field``'s
+    ``E_θ``/``E_φ`` already carry the ``jk/4π`` factor so ``|E_θ|²+|E_φ|²`` is the
+    r-scaled scattered power), evaluated with ``compute_far_field_jax``. For the
+    monostatic (backscatter) bin at normal +x incidence pass ``theta=[π/2], phi=[π]``.
+
+    Parameters
+    ----------
+    ntff_data : NTFFData
+        NTFF surface accumulators from ``run(..., tfsf=…, ntff=…)`` (JAX arrays, on tape).
+    box : NTFFBox
+    grid : Grid
+    theta, phi : arrays in radians
+        Observation directions. Backscatter for +x incidence is ``(π/2, π)``.
+    e_inc_amplitude : (n_freqs,) complex array
+        Incident plane-wave spectral amplitude for normalization — source-only, hence a
+        CONSTANT for the gradient. Use :func:`_incident_spectrum_amplitude`
+        (``f0, bandwidth, freqs, dt, n_steps``) with the same TFSF waveform.
+
+    Returns
+    -------
+    jnp.ndarray
+        ``rcs_linear`` (n_freqs, n_theta, n_phi) in m², differentiable in ``ntff_data``
+        (hence in the scatterer permittivity upstream). Take ``10·log10`` for dBsm.
+
+    See Also
+    --------
+    compute_rcs : the numpy orchestrator (Mie-validated monostatic bin).
+    compute_far_field_jax : the differentiable far-field this builds on.
+    """
+    ff = compute_far_field_jax(ntff_data, box, grid, theta, phi)
+    power_scat = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2  # (nf, nθ, nφ)
+    power_inc = jnp.abs(jnp.asarray(e_inc_amplitude)) ** 2          # (nf,)
+    safe_power_inc = jnp.where(power_inc > 0, power_inc, 1e-30)
+    return 4.0 * jnp.pi * power_scat / safe_power_inc[:, None, None]
 
 
 def compute_rcs(
