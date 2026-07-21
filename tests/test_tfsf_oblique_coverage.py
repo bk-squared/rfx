@@ -17,30 +17,46 @@ from rfx.sources.tfsf import (
     update_tfsf_1d_h, update_tfsf_1d_e,
 )
 from rfx.sources.tfsf_2d import (
-    update_tfsf_2d_h, update_tfsf_2d_e,
+    update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
 )
 from rfx.core.yee import init_state, init_materials, update_h, update_e
 
+# Oblique leakage needs a narrowband source + long run (#404 Phase-B); marked slow.
+_OBLIQUE_BW = 0.15
+_OBLIQUE_STEPS = 1700
 
-def _run_tfsf_leakage(nx, ny, nz, dx, dt, angle_deg, polarization, direction, n_steps):
-    """Run TFSF and measure scattered-to-total field energy ratio."""
+
+def _run_tfsf_leakage(nx, ny, nz, dx, dt, angle_deg, polarization, direction,
+                      n_steps, bandwidth=0.5):
+    """Run TFSF and measure scattered-to-total field energy ratio.
+
+    Oblique (angle != 0) uses the #404 Phase-B transformed complex Bloch frame;
+    normal incidence stays on the real 1D-aux path. Energy uses ``|.|**2`` (the
+    SF/TF ratio is phase-invariant).
+    """
     cfg, st = init_tfsf(
         nx, dx, dt, ny=ny, nz=nz, cpml_layers=10,
-        f0=5e9, bandwidth=0.5, amplitude=1.0,
+        f0=5e9, bandwidth=bandwidth, amplitude=1.0,
         polarization=polarization, direction=direction,
         angle_deg=angle_deg,
     )
 
     materials = init_materials((nx, ny, nz))
-    sim_state = init_state((nx, ny, nz))
     periodic = (False, True, True)
     is_2d = is_tfsf_2d(cfg)
+    if is_2d:
+        sim_state = init_state((nx, ny, nz), field_dtype=jnp.complex64)
+        bloch = bloch_phase_tuple(cfg, dx)
+    else:
+        sim_state = init_state((nx, ny, nz))
+        bloch = None
 
     for step in range(n_steps):
         t = step * dt
 
         # H update
-        sim_state = update_h(sim_state, materials, dt, dx, periodic=periodic)
+        sim_state = update_h(sim_state, materials, dt, dx, periodic=periodic,
+                             bloch=bloch)
         sim_state = apply_tfsf_h(sim_state, cfg, st, dx, dt)
 
         # Advance aux grid H
@@ -50,7 +66,8 @@ def _run_tfsf_leakage(nx, ny, nz, dx, dt, angle_deg, polarization, direction, n_
             st = update_tfsf_1d_h(cfg, st, dx, dt)
 
         # E update
-        sim_state = update_e(sim_state, materials, dt, dx, periodic=periodic)
+        sim_state = update_e(sim_state, materials, dt, dx, periodic=periodic,
+                             bloch=bloch)
         sim_state = apply_tfsf_e(sim_state, cfg, st, dx, dt)
 
         # Advance aux grid E + source
@@ -60,8 +77,8 @@ def _run_tfsf_leakage(nx, ny, nz, dx, dt, angle_deg, polarization, direction, n_
             st = update_tfsf_1d_e(cfg, st, dx, dt, t)
 
     component = getattr(sim_state, polarization)
-    sf_energy = float(jnp.sum(component[:cfg.x_lo - 2, :, :] ** 2))
-    tf_energy = float(jnp.sum(component[cfg.x_lo:cfg.x_hi, :, :] ** 2))
+    sf_energy = float(jnp.sum(jnp.abs(component[:cfg.x_lo - 2, :, :]) ** 2))
+    tf_energy = float(jnp.sum(jnp.abs(component[cfg.x_lo:cfg.x_hi, :, :]) ** 2))
     return sf_energy / tf_energy if tf_energy > 0 else 1.0
 
 
@@ -104,62 +121,68 @@ class TestObliqueTFSFCoverage:
         print(f"\ney normal -x TFSF: leakage={leakage:.6f}")
         assert leakage < 0.001, f"ey normal -x leakage {leakage:.5f} > 0.1%"
 
+    @pytest.mark.slow
     def test_ey_oblique_45_leakage(self, grid_params_ey_oblique):
-        """ey + oblique 45-deg: TEz 2D aux grid leakage < 1%."""
+        """ey + oblique 45-deg: TEz 2D aux grid leakage < 1% (#404 Phase-B)."""
         nx, ny, nz, dx, dt = grid_params_ey_oblique
         leakage = _run_tfsf_leakage(
             nx, ny, nz, dx, dt,
             angle_deg=45.0, polarization="ey",
-            direction="+x", n_steps=500,
+            direction="+x", n_steps=_OBLIQUE_STEPS, bandwidth=_OBLIQUE_BW,
         )
         print(f"\ney oblique 45-deg TFSF: leakage={leakage:.6f}")
         assert leakage < 0.01, f"ey oblique 45 deg leakage {leakage:.5f} > 1%"
 
+    @pytest.mark.slow
     def test_ey_oblique_30_leakage(self, grid_params_ey_oblique):
-        """ey + oblique 30-deg: TEz 2D aux grid leakage < 1%."""
+        """ey + oblique 30-deg: TEz 2D aux grid leakage < 1% (#404 Phase-B)."""
         nx, ny, nz, dx, dt = grid_params_ey_oblique
         leakage = _run_tfsf_leakage(
             nx, ny, nz, dx, dt,
             angle_deg=30.0, polarization="ey",
-            direction="+x", n_steps=500,
+            direction="+x", n_steps=_OBLIQUE_STEPS, bandwidth=_OBLIQUE_BW,
         )
         print(f"\ney oblique 30-deg TFSF: leakage={leakage:.6f}")
         assert leakage < 0.01, f"ey oblique 30 deg leakage {leakage:.5f} > 1%"
 
+    @pytest.mark.slow
     def test_ey_oblique_neg30_leakage(self, grid_params_ey_oblique):
-        """ey + oblique -30-deg: TEz 2D aux grid leakage < 1%."""
+        """ey + oblique -30-deg: TEz 2D aux grid leakage < 1% (#404 Phase-B)."""
         nx, ny, nz, dx, dt = grid_params_ey_oblique
         leakage = _run_tfsf_leakage(
             nx, ny, nz, dx, dt,
             angle_deg=-30.0, polarization="ey",
-            direction="+x", n_steps=500,
+            direction="+x", n_steps=_OBLIQUE_STEPS, bandwidth=_OBLIQUE_BW,
         )
         print(f"\ney oblique -30-deg TFSF: leakage={leakage:.6f}")
         assert leakage < 0.01, f"ey oblique -30 deg leakage {leakage:.5f} > 1%"
 
+    @pytest.mark.slow
     def test_ez_oblique_e_correction_sign_regression(self, grid_params):
-        """ez oblique must still have near-zero leakage (sign fix regression guard).
+        """ez oblique must have near-zero leakage (sign fix regression guard).
 
         The E-field correction in apply_tfsf_2d_e uses fixed signs
         (-coeff, +coeff) that are independent of curl_sign.  This test
-        ensures the fix does not regress ez oblique performance.
+        ensures the fix does not regress ez oblique performance.  With the
+        #404 Phase-B transformed frame the cancellation is machine-clean.
         """
         nx, ny, nz, dx, dt = grid_params
         leakage = _run_tfsf_leakage(
             nx, ny, nz, dx, dt,
             angle_deg=45.0, polarization="ez",
-            direction="+x", n_steps=500,
+            direction="+x", n_steps=_OBLIQUE_STEPS, bandwidth=_OBLIQUE_BW,
         )
         print(f"\nez oblique 45-deg TFSF: leakage={leakage:.6f}")
         assert leakage < 0.001, f"ez oblique 45 deg leakage {leakage:.5f} > 0.1%"
 
+    @pytest.mark.slow
     def test_negative_x_direction_oblique_30_ez(self, grid_params):
         """-x direction with ez at 30 deg oblique should have < 1% leakage."""
         nx, ny, nz, dx, dt = grid_params
         leakage = _run_tfsf_leakage(
             nx, ny, nz, dx, dt,
             angle_deg=30.0, polarization="ez",
-            direction="-x", n_steps=500,
+            direction="-x", n_steps=_OBLIQUE_STEPS, bandwidth=_OBLIQUE_BW,
         )
         print(f"\nez oblique 30-deg -x TFSF: leakage={leakage:.6f}")
         assert leakage < 0.01, f"-x ez oblique 30 deg leakage {leakage:.4f} > 1%"

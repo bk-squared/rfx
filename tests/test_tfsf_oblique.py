@@ -10,8 +10,16 @@ Tests:
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx.core.yee import init_state, init_materials, update_h, update_e
+
+# Oblique leakage runs need a narrowband source (bw<=0.15: off-f0 content carries
+# the wrong single-f0 k_y and breaks TFSF cancellation) which in turn needs a long
+# run (~1700 steps) for the pulse to fully develop — hence @pytest.mark.slow. See
+# docs/research_notes/2026-07-21_issue404_phaseB_session_findings.md.
+_OBLIQUE_BW = 0.15
+_OBLIQUE_STEPS = 1700
 
 
 # ---------------------------------------------------------------------------
@@ -21,13 +29,21 @@ from rfx.core.yee import init_state, init_materials, update_h, update_e
 def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
                        f0=5e9, bandwidth=0.5, cpml_layers=10,
                        tfsf_margin=3):
-    """Run TFSF simulation and return (leakage_ratio, tf_energy, sf_energy)."""
+    """Run TFSF simulation and return (leakage_ratio, tf_energy, sf_energy).
+
+    Oblique (angle != 0) runs the #404 Phase-B transformed complex Bloch frame
+    (complex fields + per-axis Bloch phase); normal incidence stays on the real
+    1D-aux path. Energy uses ``|.|**2`` (the SF/TF ratio is phase-invariant, so
+    it matches the real ``**2`` for the normal path).
+    """
     from rfx.sources.tfsf import (
         init_tfsf, apply_tfsf_e, apply_tfsf_h,
         update_tfsf_1d_h, update_tfsf_1d_e,
         is_tfsf_2d,
     )
-    from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
+    from rfx.sources.tfsf_2d import (
+        update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+    )
 
     dx = 1e-3
     dt = 0.5 * dx / 3e8
@@ -45,15 +61,22 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
     )
 
     materials = init_materials((nx, ny, nz))
-    sim_state = init_state((nx, ny, nz))
     periodic = (False, True, True)
     is_2d = is_tfsf_2d(cfg)
+    # #404 Phase-B: oblique 3D grid carries the complex Bloch envelope P.
+    if is_2d:
+        sim_state = init_state((nx, ny, nz), field_dtype=jnp.complex64)
+        bloch = bloch_phase_tuple(cfg, dx)
+    else:
+        sim_state = init_state((nx, ny, nz))
+        bloch = None
 
     for step in range(n_steps):
         t = step * dt
 
         # H update
-        sim_state = update_h(sim_state, materials, dt, dx, periodic=periodic)
+        sim_state = update_h(sim_state, materials, dt, dx, periodic=periodic,
+                             bloch=bloch)
         sim_state = apply_tfsf_h(sim_state, cfg, state, dx, dt)
 
         # Advance aux grid H
@@ -63,7 +86,8 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
             state = update_tfsf_1d_h(cfg, state, dx, dt)
 
         # E update
-        sim_state = update_e(sim_state, materials, dt, dx, periodic=periodic)
+        sim_state = update_e(sim_state, materials, dt, dx, periodic=periodic,
+                             bloch=bloch)
         sim_state = apply_tfsf_e(sim_state, cfg, state, dx, dt)
 
         # Advance aux grid E + source
@@ -72,10 +96,10 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
         else:
             state = update_tfsf_1d_e(cfg, state, dx, dt, t)
 
-    # Measure leakage
+    # Measure leakage (envelope energy; phase-invariant SF/TF ratio)
     ez = sim_state.ez
-    sf_energy = float(jnp.sum(ez[:cfg.x_lo - 2, :, :] ** 2))
-    tf_energy = float(jnp.sum(ez[cfg.x_lo:cfg.x_hi, :, :] ** 2))
+    sf_energy = float(jnp.sum(jnp.abs(ez[:cfg.x_lo - 2, :, :]) ** 2))
+    tf_energy = float(jnp.sum(jnp.abs(ez[cfg.x_lo:cfg.x_hi, :, :]) ** 2))
 
     leakage = sf_energy / tf_energy if tf_energy > 0 else float('inf')
     return leakage, tf_energy, sf_energy
@@ -110,20 +134,24 @@ class TestObliqueTFSF:
         max_ez = float(jnp.max(jnp.abs(state.ez_2d)))
         assert max_ez > 1e-6, f"2D aux grid has no signal: max |Ez| = {max_ez}"
 
+    @pytest.mark.slow
     def test_oblique_45deg_leakage_below_1pct(self):
-        """45-degree oblique incidence leakage < 1%."""
+        """45-degree oblique incidence leakage < 1% (transformed Bloch frame, #404)."""
         leakage, tf_energy, sf_energy = _run_tfsf_leakage(
-            angle_deg=45.0, nx=100, ny=100, nz=3, n_steps=600,
+            angle_deg=45.0, nx=100, ny=100, nz=3, n_steps=_OBLIQUE_STEPS,
+            bandwidth=_OBLIQUE_BW,
         )
         print(f"\n45-deg oblique TFSF: leakage={leakage:.6f}, "
               f"tf_energy={tf_energy:.6e}, sf_energy={sf_energy:.6e}")
         assert tf_energy > 0, "No total-field energy detected"
         assert leakage < 0.01, f"Oblique TFSF leakage {leakage:.4f} > 1%"
 
+    @pytest.mark.slow
     def test_oblique_30deg_leakage_below_1pct(self):
-        """30-degree oblique incidence leakage < 1%."""
+        """30-degree oblique incidence leakage < 1% (transformed Bloch frame, #404)."""
         leakage, tf_energy, sf_energy = _run_tfsf_leakage(
-            angle_deg=30.0, nx=100, ny=100, nz=3, n_steps=600,
+            angle_deg=30.0, nx=100, ny=100, nz=3, n_steps=_OBLIQUE_STEPS,
+            bandwidth=_OBLIQUE_BW,
         )
         print(f"\n30-deg oblique TFSF: leakage={leakage:.6f}, "
               f"tf_energy={tf_energy:.6e}, sf_energy={sf_energy:.6e}")
@@ -154,10 +182,12 @@ class TestObliqueTFSF:
         cfg_2d, _ = init_tfsf(60, dx, dt, cpml_layers=8, angle_deg=30.0, ny=60)
         assert isinstance(cfg_2d, TFSF2DConfig)
 
+    @pytest.mark.slow
     def test_oblique_negative_angle(self):
         """Negative oblique angle (-30 deg) should also have low leakage."""
         leakage, tf_energy, sf_energy = _run_tfsf_leakage(
-            angle_deg=-30.0, nx=100, ny=100, nz=3, n_steps=600,
+            angle_deg=-30.0, nx=100, ny=100, nz=3, n_steps=_OBLIQUE_STEPS,
+            bandwidth=_OBLIQUE_BW,
         )
         print(f"\n-30-deg oblique TFSF: leakage={leakage:.6f}, "
               f"tf_energy={tf_energy:.6e}, sf_energy={sf_energy:.6e}")

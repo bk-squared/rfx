@@ -307,6 +307,7 @@ def _update_e_with_optional_dispersion(
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     stencil_order: int = 2,
+    bloch: tuple | None = None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """Update E with standard, Debye, Lorentz, or mixed dispersion.
 
@@ -337,7 +338,7 @@ def _update_e_with_optional_dispersion(
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
                                   dt, dx, periodic=periodic), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order), None, None
+                        stencil_order=stencil_order, bloch=bloch), None, None
 
     if debye is not None and lorentz is None:
         from rfx.materials.debye import update_e_debye
@@ -650,6 +651,36 @@ def _build_step_setup(
     use_kerr = kerr_chi3 is not None
     use_mag_sources = len(mag_sources) > 0
 
+    # ---- #404 oblique-periodic complex Bloch path activation ----
+    # An oblique (2D-aux) TFSF injects a tilted plane wave that a plain-periodic
+    # REAL grid cannot sustain (the pre-#404 under-tilt). Drive the shared solver
+    # on a complex Bloch-envelope path instead: fields carry the envelope P and a
+    # per-axis phase rides the periodic roll; the physical field is
+    # Re(P·exp(-j k_t·y)). Gated strictly on the 2D-aux discriminator, so normal
+    # incidence and every non-TFSF run stay real float32 and byte-identical.
+    _oblique_bloch = False
+    if use_tfsf:
+        from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_early
+        _oblique_bloch = _is_tfsf_2d_early(tfsf[0])
+    if _oblique_bloch:
+        # Frequency-domain monitors accumulate the complex envelope P, not the
+        # physical spectrum — fail loud rather than return truncated garbage.
+        _unsupported_ob = []
+        if use_ntff:
+            _unsupported_ob.append("NTFF box")
+        if use_dft_planes:
+            _unsupported_ob.append("DFT plane probe")
+        if use_flux_monitors:
+            _unsupported_ob.append("flux monitor")
+        if _unsupported_ob:
+            raise NotImplementedError(
+                "Oblique (angle_deg != 0) TFSF uses the #404 complex Bloch path; "
+                "frequency-domain monitors are not yet transform-aware on it. "
+                "Unsupported: " + ", ".join(_unsupported_ob) + ". Use field "
+                "snapshots / final state (returned as physical fields), or "
+                "compute_rcs for open-domain oblique scattering."
+            )
+
     # ---- (2,4) fourth-order-in-space stencil (PR-1b) ----
     # order=2 is the default and BYTE-IDENTICAL: dt and every kernel call are
     # untouched.  order=4 is reachable ONLY on the plain uniform-Cartesian
@@ -699,6 +730,7 @@ def _build_step_setup(
     update_tfsf_2d_h = update_tfsf_2d_e = None
     _tfsf_is_2d = False
     tfsf_cfg = None
+    _bloch = None
     init_ntff_data_fn = accumulate_ntff_fn = None
     apply_kerr_ade = None
     update_rlc_element = None
@@ -706,13 +738,18 @@ def _build_step_setup(
 
     # ---- initialise states ----
     _field_dtype = field_dtype if field_dtype is not None else jnp.float32
+    if _oblique_bloch:
+        # Complex envelope P; overrides mixed-precision (float16) for this path.
+        _field_dtype = jnp.complex64
     fdtd = init_state(grid.shape, field_dtype=_field_dtype)
     carry_init: dict = {"fdtd": fdtd}
 
     if use_cpml:
         from rfx.boundaries.cpml import init_cpml
         from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h
-        cpml_params, cpml_state = init_cpml(grid)
+        # psi carry dtype follows the field dtype so the scan carry stays
+        # dtype-consistent when fields are complex (#404 oblique path).
+        cpml_params, cpml_state = init_cpml(grid, field_dtype=_field_dtype)
         carry_init["cpml"] = cpml_state
     elif use_upml:
         from rfx.boundaries.upml import init_upml
@@ -740,7 +777,12 @@ def _build_step_setup(
         carry_init["tfsf"] = tfsf_state
         _tfsf_is_2d = is_tfsf_2d(tfsf_cfg)
         if _tfsf_is_2d:
-            from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
+            from rfx.sources.tfsf_2d import (
+                update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+            )
+            # Per-axis Bloch phase on the 3D periodic roll (transverse axis),
+            # matching the 2D-aux grid's transform (#404).
+            _bloch = bloch_phase_tuple(tfsf_cfg, grid.dx)
 
     if use_ntff:
         from rfx.farfield import init_ntff_data as _init_ntff_data
@@ -902,6 +944,7 @@ def _build_step_setup(
         upml_coeffs=upml_coeffs,
         tfsf_cfg=tfsf_cfg,
         tfsf_is_2d=_tfsf_is_2d,
+        bloch=_bloch,
         debye_coeffs=debye_coeffs,
         lorentz_coeffs=lorentz_coeffs,
         aniso_eps=aniso_eps,
@@ -1043,6 +1086,7 @@ class _StepContext:
     upml_coeffs: Any = None
     tfsf_cfg: Any = None
     tfsf_is_2d: bool = False
+    bloch: Any = None  # per-axis Bloch phase for oblique-periodic TFSF (#404); None = real path
     debye_coeffs: Any = None
     lorentz_coeffs: Any = None
     aniso_eps: Any = None
@@ -1125,7 +1169,7 @@ def make_core_step(ctx: _StepContext):
                 st = ctx.apply_upml_h(st, ctx.upml_coeffs, periodic=periodic)
             else:
                 st = update_h(st, materials, dt, dx, periodic=periodic,
-                              stencil_order=ctx.stencil_order)
+                              stencil_order=ctx.stencil_order, bloch=ctx.bloch)
             if ctx.use_tfsf:
                 st = ctx.apply_tfsf_h(st, ctx.tfsf_cfg, carry["tfsf"], dx, dt)
             if ctx.use_waveguide_ports:
@@ -1207,6 +1251,7 @@ def make_core_step(ctx: _StepContext):
                     aniso_eps=aniso_eps,
                     aniso_inv_eps=aniso_inv_eps,
                     stencil_order=ctx.stencil_order,
+                    bloch=ctx.bloch,
                 )
 
             # Kerr nonlinear ADE correction (after linear E-update)

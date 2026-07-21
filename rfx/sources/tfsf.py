@@ -4,10 +4,18 @@ Normal incidence along ``+x`` or ``-x`` with transverse polarization in
 ``Ez`` or ``Ey``.
 Uses a 1D auxiliary FDTD with CPML to generate the incident field.
 
-Oblique incidence (angle_deg != 0) uses a dispersion-matched 1D auxiliary
-grid with dx_1d = dx / cos(theta) (Schneider / Taflove Ch. 5.6).
-At TFSF boundaries, the 1D waveform is sampled with a per-cell transverse
-phase delay implemented as spatial interpolation in the 1D grid.
+Oblique incidence (``angle_deg != 0``) dispatches to a **2D auxiliary grid**
+(``rfx/sources/tfsf_2d.py``), which shares the 3D cell size so numerical
+dispersion matches at any angle. That grid carries the oblique transverse
+wavenumber ``k_y = k0·sinθ`` via a **Bloch field-transformation** (#404); as a
+consequence the oblique source is **narrowband** (single-frequency at ``f0``).
+Two caveats for oblique runs — see ``tfsf_2d.py`` for the full discussion:
+  - keep the fractional ``bandwidth`` small (≲0.15) or off-``f0`` components
+    carry the wrong ``k_y`` and raise TFSF leakage;
+  - the injected wave tracks the requested angle in **open / CPML-transverse**
+    domains; a **periodic** transverse domain additionally needs
+    ``k_y·L_y = 2πm`` (commensurate) or a 3D Bloch-periodic BC (not yet
+    implemented) — otherwise the plain-periodic 3D seam re-distorts steep angles.
 
 TFSF boundary cleanly separates:
   - Total-field region (x_lo <= x <= x_hi): incident + scattered
@@ -121,7 +129,11 @@ def init_tfsf(
         Propagation direction along the x-axis.
     angle_deg : float
         Signed oblique angle in degrees away from the x-axis. Positive
-        angles tilt toward the positive transverse axis.
+        angles tilt toward the positive transverse axis. Non-zero angles
+        dispatch to the 2D-aux grid and produce a **narrowband** (single-f0)
+        oblique wave via a Bloch field-transformation (#404); use a small
+        fractional ``bandwidth`` (≲0.15) and an open/commensurate transverse
+        domain (see the module docstring and ``tfsf_2d.py``).
     ny : int | None
         Number of cells in y (3D grid).  Required for oblique incidence
         with ez polarization (2D TMz auxiliary grid).  Ignored for

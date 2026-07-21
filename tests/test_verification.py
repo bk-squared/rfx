@@ -9,6 +9,7 @@ Validates that:
 import numpy as np
 import jax
 import jax.numpy as jnp
+import pytest
 
 from rfx.grid import Grid, C0
 from rfx.core.yee import (
@@ -193,373 +194,133 @@ def test_gradient_through_dft_plane():
 # Test 3: Oblique TFSF produces correct Fresnel TE reflection
 # =========================================================================
 
-def test_oblique_tfsf_fresnel():
-    """Oblique TFSF (angle_deg=30) reflection matches Fresnel TE coefficient.
+def _run_oblique_fresnel(theta_deg, eps_r_val, bw=0.15):
+    """Run the #404 Phase-B transformed (complex Bloch) oblique-TFSF path against a
+    dielectric half-space; return (|R|, injected_angle_deg, incident_plateau_flatness).
 
-    Unlike the effective-eps surrogate in test_physics.py
-    (``test_fresnel_normal_incidence_effective_eps_consistency``, which runs a
-    NORMAL-incidence 1D-aux run and never invokes the oblique path), this test
-    actually exercises the oblique TFSF code path (2D dispersion-matched
-    auxiliary grid, ``is_tfsf_2d`` True).
-
-    VALIDATED SCOPE / KNOWN LIMITATION (issue #397, probe 2026-07-20)
-    ----------------------------------------------------------------
-    This gate confirms the 2D-aux oblique path RUNS and injects a tilted wave
-    with low TFSF leakage, yielding a physical-magnitude |R|. It does NOT
-    validate oblique-ANGLE Fresnel accuracy: at 30 deg / eps_r=4 the oblique
-    |R_TE|=0.382 and the normal-incidence |R|=0.333 differ by only 12.7%, below
-    this gate's 35% tolerance, and the measured value (~0.35-0.51) sits between
-    them — a normal-incidence injection would also pass. A discriminating steep
-    angle exposes the gap: at 60 deg the analytic oblique |R_TE|=0.566 but this
-    test's single-point extraction measures ~1.14 (101% off the oblique target;
-    the DFT-plane method in the companion test lands ~0.38, near normal) — either
-    way the oblique ANGLE is not reproduced. Treat oblique-reflection ACCURACY as
-    unvalidated pending a corrected
-    oblique-phase extraction; do not cite this test as an oblique-Fresnel
-    accuracy claim.
-
-    For Ez polarization at 30 deg onto eps_r=4:
-        n1=1, n2=2, theta_i=30 deg
-        theta_t = arcsin(sin(30)/2) = 14.48 deg
-        R_TE = (cos(30) - 2*cos(14.48)) / (cos(30) + 2*cos(14.48))
-        |R_TE| ≈ 0.382
-
-    The analytic incident field at the TFSF boundary planes carries
-    the oblique phase, so the scattered field probe (outside TFSF box)
-    measures only the reflected component.
+    Extraction (robust, transformed frame): the 3D grid evolves the complex Bloch
+    envelope P.  Accumulate its f0 phasor along x with the CONJUGATE kernel
+    ``exp(+j 2 pi f0 t)`` — P is a complex ANALYTIC signal (~exp(-j 2 pi f0 t)); a
+    ``-j`` kernel yields exp(-j 4 pi f0 t) which integrates to noise (the earlier
+    |R|~=1 artifact).  Two-run subtraction ``dft_slab - dft_vac`` isolates the pure
+    reflected wave; ``|R| = <|reflected|> / <|incident|>`` over the clean vacuum
+    region between the TFSF face and the slab.  A pure incident traveling wave has a
+    FLAT ``|amplitude|`` plateau — the extractor's known-good witness.
     """
-    eps_r_val = 4.0
-    n1, n2 = 1.0, np.sqrt(eps_r_val)
-    theta_deg = 30.0
-    theta_i = np.radians(theta_deg)
-    theta_t = np.arcsin(n1 / n2 * np.sin(theta_i))
-    R_te = (n1 * np.cos(theta_i) - n2 * np.cos(theta_t)) / \
-           (n1 * np.cos(theta_i) + n2 * np.cos(theta_t))
-    R_analytic = abs(R_te)
-
-    # Use a larger transverse domain for oblique (beam tilts in y)
-    grid = Grid(freq_max=10e9, domain=(0.60, 0.12, 0.006),
-                dx=0.002, cpml_layers=10)
-    dt, dx = grid.dt, grid.dx
-    nc = grid.cpml_layers
-    periodic = (False, True, True)
-
-    tfsf_cfg, tfsf_st = init_tfsf(
-        grid.nx, dx, dt, cpml_layers=nc, tfsf_margin=5,
-        f0=5e9, bandwidth=0.3, amplitude=1.0,
-        polarization="ez", angle_deg=theta_deg,
-        ny=grid.ny,
+    from rfx.sources.tfsf_2d import (
+        update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
     )
+    grid = Grid(freq_max=10e9, domain=(0.60, 0.12, 0.006), dx=0.002, cpml_layers=10)
+    dt, dx = grid.dt, grid.dx
+    periodic = (False, True, True)
+    f0 = 5e9
+    cfg, aux0 = init_tfsf(grid.nx, dx, dt, cpml_layers=grid.cpml_layers,
+                          tfsf_margin=5, f0=f0, bandwidth=bw, amplitude=1.0,
+                          polarization="ez", angle_deg=theta_deg, ny=grid.ny)
+    assert is_tfsf_2d(cfg)
+    bloch = bloch_phase_tuple(cfg, dx)
+    x_iface = grid.nx // 4
+    x_diel_end = cfg.x_hi - 10
+    jy, kz = grid.ny // 2, grid.nz // 2
+    slab_thick = (x_diel_end - x_iface) * dx
+    t_safe = (x_iface - cfg.x_lo) * dx / C0 + 2 * slab_thick / (C0 / np.sqrt(eps_r_val))
+    n_steps = max(min(int(t_safe / dt) - 50, 1500), 900)
 
-    # Detect 2D auxiliary grid for oblique incidence
-    _is_2d = is_tfsf_2d(tfsf_cfg)
-    if _is_2d:
-        from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
-
-    def _update_aux_h(cfg, st):
-        if _is_2d:
-            return update_tfsf_2d_h(cfg, st, dx, dt)
-        return update_tfsf_1d_h(cfg, st, dx, dt)
-
-    def _update_aux_e(cfg, st, t_val):
-        if _is_2d:
-            return update_tfsf_2d_e(cfg, st, dx, dt, t_val)
-        return update_tfsf_1d_e(cfg, st, dx, dt, t_val)
-
-    # Dielectric slab well inside TFSF box
-    x_interface = grid.nx // 4
-    x_diel_end = tfsf_cfg.x_hi - 10
-
-    # Probe in scattered-field region
-    probe_x = tfsf_cfg.x_lo - 3
-    probe = (probe_x, grid.ny // 2, grid.nz // 2)
-
-    # For the incident reference, use a separate clean run without dielectric
-    # (since oblique TFSF uses 2D aux grid for dispersion matching)
-
-    # Avoid back-face reflection
-    slab_thick = (x_diel_end - x_interface) * dx
-    t_backface = (2 * slab_thick) / (C0 / np.sqrt(eps_r_val))
-    t_front = (x_interface - tfsf_cfg.x_lo) * dx / C0
-    t_safe = t_front + t_backface
-    n_steps = min(int(t_safe / dt) - 50, 1500)
-    n_steps = max(n_steps, 600)
-
-    def run_tfsf_sim(eps_slab):
-        """Run TFSF sim with given slab permittivity, return Ez at probe."""
+    def one(eps_slab, want_angle=False):
         mat = init_materials(grid.shape)
-        mat = mat._replace(
-            eps_r=mat.eps_r.at[x_interface:x_diel_end, :, :].set(eps_slab)
-        )
-        state = init_state(grid.shape)
+        if eps_slab > 1:
+            mat = mat._replace(
+                eps_r=mat.eps_r.at[x_iface:x_diel_end, :, :].set(eps_slab))
+        st = init_state(grid.shape, field_dtype=jnp.complex64)
         cp, cs = init_cpml(grid)
-        tfsf_state = tfsf_st
-
-        ts = np.zeros(n_steps)
+        aux = aux0
+        dft = np.zeros(grid.nx, np.complex128)
+        yph = np.exp(-1j * cfg.k_transverse * (np.arange(grid.ny) * dx))
+        Sx = Sy = 0.0
         for step in range(n_steps):
             t = step * dt
-            state = update_h(state, mat, dt, dx, periodic)
-            state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, dx, dt)
-            state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-            tfsf_state = _update_aux_h(tfsf_cfg, tfsf_state)
+            st = update_h(st, mat, dt, dx, periodic=periodic, bloch=bloch)
+            st = apply_tfsf_h(st, cfg, aux, dx, dt)
+            st, cs = apply_cpml_h(st, cp, cs, grid, axes="x")
+            aux = update_tfsf_2d_h(cfg, aux, dx, dt)
+            st = update_e(st, mat, dt, dx, periodic=periodic, bloch=bloch)
+            st = apply_tfsf_e(st, cfg, aux, dx, dt)
+            st, cs = apply_cpml_e(st, cp, cs, grid, axes="x")
+            aux = update_tfsf_2d_e(cfg, aux, dx, dt, t)
+            dft += np.asarray(st.ez[:, jy, kz]) * np.exp(1j * 2 * np.pi * f0 * t) * dt
+            if want_angle and step >= n_steps // 3:
+                xl, xh = cfg.x_lo + 20, x_iface - 15
+                ez = np.asarray(st.ez[xl:xh, :, kz]) * yph[None, :]
+                hx = np.asarray(st.hx[xl:xh, :, kz]) * yph[None, :]
+                hy = np.asarray(st.hy[xl:xh, :, kz]) * yph[None, :]
+                Sx += float(np.sum(-ez.real * hy.real))
+                Sy += float(np.sum(ez.real * hx.real))
+        ang = np.degrees(np.arctan2(Sy, Sx)) if want_angle else None
+        return dft, ang
 
-            state = update_e(state, mat, dt, dx, periodic)
-            state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, dx, dt)
-            state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
-            tfsf_state = _update_aux_e(tfsf_cfg, tfsf_state, t)
-
-            ts[step] = float(state.ez[probe])
-
-        return ts
-
-    # Run with dielectric slab (reflected = scattered probe signal)
-    ts_scat = run_tfsf_sim(eps_r_val)
-
-    # Run without dielectric (incident reference — should be ~0 in scattered region)
-    ts_ref_vacuum = run_tfsf_sim(1.0)
-
-    # For incident normalization, run with dielectric and probe INSIDE total-field region
-    # The total field = incident + scattered; in the forward direction the incident dominates
-    probe_inc = (tfsf_cfg.x_lo + 5, grid.ny // 2, grid.nz // 2)
-    mat_vac = init_materials(grid.shape)
-    state = init_state(grid.shape)
-    cp, cs = init_cpml(grid)
-    tfsf_state = tfsf_st
-    ts_inc = np.zeros(n_steps)
-    for step in range(n_steps):
-        t = step * dt
-        state = update_h(state, mat_vac, dt, dx, periodic)
-        state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, dx, dt)
-        state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        tfsf_state = _update_aux_h(tfsf_cfg, tfsf_state)
-        state = update_e(state, mat_vac, dt, dx, periodic)
-        state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, dx, dt)
-        state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
-        tfsf_state = _update_aux_e(tfsf_cfg, tfsf_state, t)
-        ts_inc[step] = float(state.ez[probe_inc])
-
-    assert not np.any(np.isnan(ts_scat)), "NaN in oblique TFSF simulation"
-    assert np.max(np.abs(ts_scat)) > 1e-10, "No scattered field detected"
-
-    # Verify vacuum TFSF leakage is small
-    leak = np.max(np.abs(ts_ref_vacuum)) / np.max(np.abs(ts_inc))
-    print(f"\n  TFSF vacuum leakage: {leak:.4e}")
-    assert leak < 0.05, f"TFSF leakage too large: {leak:.4e}"
-
-    # Spectral reflection coefficient
-    freqs = np.fft.rfftfreq(n_steps, d=dt)
-    spec_inc = np.abs(np.fft.rfft(ts_inc))
-    spec_scat = np.abs(np.fft.rfft(ts_scat))
-
-    band = (freqs > 3e9) & (freqs < 7e9)
-    R_num = spec_scat[band] / np.maximum(spec_inc[band], 1e-30)
-    R_mean = np.mean(R_num)
-
-    print(f"\nOblique TFSF Fresnel (theta={theta_deg}°, eps_r={eps_r_val}):")
-    print(f"  Analytic |R_TE|: {R_analytic:.4f}")
-    print(f"  Numerical |R|:   {R_mean:.4f}")
-    print(f"  Error: {abs(R_mean - R_analytic) / R_analytic * 100:.1f}%")
-
-    # Allow 30% tolerance — diagnosed as a probe normalization artifact,
-    # NOT a 2D auxiliary grid physics error.
-    #
-    # Root cause (see tests/test_fresnel_investigation.py):
-    #   The scattered-field probe sits at x_lo-3 while the incident-field
-    #   normalization probe sits at x_lo+5.  For oblique incidence the
-    #   transverse phase front shifts between these x-positions, so the
-    #   spectral ratio at a single y-cell depends on which phase of the
-    #   oblique wavefront is sampled.  Per-y-cell analysis shows that the
-    #   best-aligned cell matches analytic |R_TE| to ~2.6%, confirming the
-    #   2D aux grid amplitude and Fresnel physics are correct.
-    #
-    # The max-over-y incident amplitude ratio (oblique/normal) is 1.02,
-    # proving the 2D grid preserves plane-wave amplitude.
-    #
-    # Tightening this tolerance would require either:
-    #   (a) matching scattered/incident probe x-positions (not possible
-    #       with TFSF: one must be inside, one outside the box), or
-    #   (b) a DFT plane probe with oblique phase de-rotation.
-    assert abs(R_mean - R_analytic) / R_analytic < 0.35, \
-        f"Oblique TFSF Fresnel error {abs(R_mean - R_analytic)/R_analytic*100:.1f}% exceeds 35%"
+    dft_vac, ang = one(1.0, want_angle=True)
+    dft_slab, _ = one(eps_r_val)
+    a, b = cfg.x_lo + 8, x_iface - 12
+    inc = np.abs(dft_vac[a:b])
+    refl = np.abs(dft_slab[a:b] - dft_vac[a:b])
+    flatness = float(inc.std() / max(inc.mean(), 1e-30))
+    R = float(refl.mean()) / max(float(inc.mean()), 1e-30)
+    return R, float(ang), flatness
 
 
-# =========================================================================
-# Test 4: Oblique TFSF Fresnel via DFT plane probe with per-cell spectral ratio
-# =========================================================================
+@pytest.mark.slow
+def test_oblique_tfsf_fresnel():
+    """Oblique TFSF (30 deg) reflection matches analytic Fresnel |R_TE| (#404 Phase-B).
 
-def test_oblique_tfsf_fresnel_plane_dft():
-    """Fresnel coefficient via multi-frequency DFT plane probe.
-
-    Uses the same oblique TFSF setup as test_oblique_tfsf_fresnel, but
-    instead of a single-point probe, records Ez on entire yz-planes at
-    the scattered and incident probe x-positions using DFT plane probes
-    at multiple frequencies spanning the excitation band.
-
-    The extraction computes per-cell spectral magnitude ratios
-    |E_scat(y,f)| / |E_inc(y,f)|, averages over the frequency band
-    per cell, then takes the median over y-cells.  This is robust to
-    the oblique phase-front mismatch that causes ~28% error with
-    single-point probes.
-
-    Validated by tests/test_fresnel_investigation.py which showed
-    per-cell spectral ratios match analytic |R_TE| to ~2.6% for the
-    best-illuminated cells.
-
-    Same VALIDATED-SCOPE caveat as ``test_oblique_tfsf_fresnel`` (issue #397):
-    at 30 deg / eps_r=4 the oblique and normal-incidence |R| are only 12.7%
-    apart (below this 15% gate), so a passing result confirms the 2D-aux path
-    runs and yields a physical-magnitude |R| but does NOT establish oblique-
-    angle accuracy (the 60 deg extraction lands near normal, ~33% off analytic).
+    With the transformed complex Bloch frame the 2D-aux oblique injection produces a
+    correctly-tilted plane wave (validated angle + machine-clean TFSF leakage), so
+    |R| now tracks the analytic TE Fresnel coefficient — the oblique-ANGLE accuracy
+    that the pre-#404 path could NOT reproduce (it measured ~normal-incidence |R|;
+    the old single-point/best-aligned extractors were oracle-fitted, giving 1.14 at
+    60 deg).  |R| is compared to R_TE at the MEASURED injected angle to separate
+    reflection accuracy from the small numerical-dispersion angle deficit; the
+    incident-plateau flatness is the extractor known-good.
     """
     eps_r_val = 4.0
     theta_deg = 30.0
-    R_analytic = fresnel_r_te(theta_deg, eps_r_val)
-    f0 = 5e9
+    R, inj_angle, flatness = _run_oblique_fresnel(theta_deg, eps_r_val)
+    R_at_injected = fresnel_r_te(inj_angle, eps_r_val)
+    R_at_request = fresnel_r_te(theta_deg, eps_r_val)
+    print(f"\nOblique TFSF Fresnel (req {theta_deg} deg, injected {inj_angle:.1f} deg,"
+          f" eps_r={eps_r_val}):")
+    print(f"  |R|={R:.4f}  R_TE@injected={R_at_injected:.4f}  "
+          f"R_TE@request={R_at_request:.4f}  flatness={flatness:.4f}")
+    assert flatness < 0.05, \
+        f"incident plateau not flat ({flatness:.3f}); |R| extractor unreliable"
+    assert abs(inj_angle - theta_deg) < 8.0, \
+        f"injected angle {inj_angle:.1f} far from requested {theta_deg}"
+    err = abs(R - R_at_injected) / R_at_injected
+    assert err < 0.12, (f"oblique |R|={R:.3f} vs analytic {R_at_injected:.3f} "
+                        f"(injected {inj_angle:.1f} deg) err {err*100:.1f}% > 12%")
 
-    # Grid setup (same as test_oblique_tfsf_fresnel)
-    grid = Grid(freq_max=10e9, domain=(0.60, 0.12, 0.006),
-                dx=0.002, cpml_layers=10)
-    dt, dx = grid.dt, grid.dx
-    nc = grid.cpml_layers
-    periodic = (False, True, True)
 
-    tfsf_cfg, tfsf_st = init_tfsf(
-        grid.nx, dx, dt, cpml_layers=nc, tfsf_margin=5,
-        f0=f0, bandwidth=0.3, amplitude=1.0,
-        polarization="ez", angle_deg=theta_deg,
-        ny=grid.ny,
-    )
+# =========================================================================
+# Test 4: Oblique Fresnel accuracy at a second angle (45 deg)
+# =========================================================================
 
-    _is_2d = is_tfsf_2d(tfsf_cfg)
-    if _is_2d:
-        from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
+@pytest.mark.slow
+def test_oblique_tfsf_fresnel_45deg():
+    """Second-angle oblique Fresnel accuracy (45 deg) via the transformed Bloch path.
 
-    def _update_aux_h(cfg, st):
-        if _is_2d:
-            return update_tfsf_2d_h(cfg, st, dx, dt)
-        return update_tfsf_1d_h(cfg, st, dx, dt)
-
-    def _update_aux_e(cfg, st, t_val):
-        if _is_2d:
-            return update_tfsf_2d_e(cfg, st, dx, dt, t_val)
-        return update_tfsf_1d_e(cfg, st, dx, dt, t_val)
-
-    # Dielectric slab inside TFSF box
-    x_interface = grid.nx // 4
-    x_diel_end = tfsf_cfg.x_hi - 10
-
-    # Probe x-positions: scattered (outside TFSF) and incident (inside, vacuum run)
-    scat_probe_x = tfsf_cfg.x_lo - 3
-    inc_probe_x = tfsf_cfg.x_lo + 5
-
-    # Multi-frequency DFT: 20 frequencies spanning the 3-7 GHz band
-    dft_freqs = jnp.linspace(3e9, 7e9, 20, dtype=jnp.float32)
-
-    # Time limit to avoid back-face reflection
-    slab_thick = (x_diel_end - x_interface) * dx
-    t_backface = (2 * slab_thick) / (C0 / np.sqrt(eps_r_val))
-    t_front = (x_interface - tfsf_cfg.x_lo) * dx / C0
-    t_safe = t_front + t_backface
-    n_steps = min(int(t_safe / dt) - 50, 1500)
-    n_steps = max(n_steps, 600)
-
-    # --- Scattered-field simulation (with dielectric) ---
-    scat_plane = init_dft_plane_probe(
-        axis=0, index=scat_probe_x, component="ez",
-        freqs=dft_freqs, grid_shape=grid.shape,
-    )
-
-    mat = init_materials(grid.shape)
-    mat = mat._replace(
-        eps_r=mat.eps_r.at[x_interface:x_diel_end, :, :].set(eps_r_val)
-    )
-    state = init_state(grid.shape)
-    cp, cs = init_cpml(grid)
-    tfsf_state = tfsf_st
-
-    for step in range(n_steps):
-        t = step * dt
-        state = update_h(state, mat, dt, dx, periodic)
-        state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, dx, dt)
-        state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        tfsf_state = _update_aux_h(tfsf_cfg, tfsf_state)
-
-        state = update_e(state, mat, dt, dx, periodic)
-        state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, dx, dt)
-        state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
-        tfsf_state = _update_aux_e(tfsf_cfg, tfsf_state, t)
-
-        scat_plane = update_dft_plane_probe(scat_plane, state, dt)
-
-    # --- Incident reference simulation (vacuum, probe inside total-field) ---
-    inc_plane = init_dft_plane_probe(
-        axis=0, index=inc_probe_x, component="ez",
-        freqs=dft_freqs, grid_shape=grid.shape,
-    )
-
-    mat_vac = init_materials(grid.shape)
-    state = init_state(grid.shape)
-    cp, cs = init_cpml(grid)
-    tfsf_state = tfsf_st
-
-    for step in range(n_steps):
-        t = step * dt
-        state = update_h(state, mat_vac, dt, dx, periodic)
-        state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, dx, dt)
-        state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        tfsf_state = _update_aux_h(tfsf_cfg, tfsf_state)
-
-        state = update_e(state, mat_vac, dt, dx, periodic)
-        state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, dx, dt)
-        state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
-        tfsf_state = _update_aux_e(tfsf_cfg, tfsf_state, t)
-
-        inc_plane = update_dft_plane_probe(inc_plane, state, dt)
-
-    # --- Extract Fresnel coefficient via per-cell spectral ratio ---
-    # DFT plane accumulator shape: (n_freqs, ny, nz) for axis=0
-    #
-    # The "best_aligned" method selects well-illuminated cells (top 50%
-    # by incident power) and takes the minimum per-cell ratio.  For
-    # oblique TFSF with non-commensurate periodic domains, the per-cell
-    # ratio oscillates sinusoidally: the minimum corresponds to the cell
-    # where scattered/incident phase fronts are most aligned, giving
-    # the true |R|.  This was validated in test_fresnel_investigation.py
-    # (best per-cell matches analytic to ~2.6%).
-    R_aligned = extract_fresnel_from_planes(
-        scat_plane.accumulator, inc_plane.accumulator,
-        dft_freqs, freq_range=(3e9, 7e9), method="best_aligned",
-    )
-    R_bright = extract_fresnel_from_planes(
-        scat_plane.accumulator, inc_plane.accumulator,
-        dft_freqs, freq_range=(3e9, 7e9), method="bright_min",
-    )
-
-    err_aligned = abs(R_aligned - R_analytic) / R_analytic * 100
-    err_bright = abs(R_bright - R_analytic) / R_analytic * 100
-
-    print("\nOblique TFSF Fresnel — Multi-freq DFT Plane Probe:")
-    print(f"  theta = {theta_deg} deg, eps_r = {eps_r_val}")
-    print(f"  Analytic |R_TE|:       {R_analytic:.4f}")
-    print(f"  Best-aligned |R|:      {R_aligned:.4f}  (error {err_aligned:.1f}%)")
-    print(f"  Bright-min |R|:        {R_bright:.4f}  (error {err_bright:.1f}%)")
-    print("  (Single-point reference: ~28% error)")
-
-    assert R_aligned > 0.01, "DFT plane probe detected no reflection"
-    assert not np.isnan(R_aligned), "NaN in plane DFT Fresnel computation"
-
-    # Gate on the PRIMARY 'best_aligned' extractor DECLARED up front — not on
-    # whichever of {best_aligned, bright_min} happens to land closest to the
-    # analytic target. The old `min(..., key=|r - R_analytic|)` fit the
-    # estimator to the oracle: a run where the physical method drifted but the
-    # other method coincidentally matched would still pass. `best_aligned` is
-    # the method validated in test_fresnel_investigation.py (per-cell
-    # phase-aligned ratio ~2.6% on the best cells); it measures ~7.7% here
-    # (baseline 2026-07-20), well inside the 15% oblique-DFT envelope while a
-    # broken 2D-aux injection (wrong amplitude/angle) pushes it out. `R_bright`
-    # is kept as a printed diagnostic only.
-    assert err_aligned < 15.0, (
-        f"Oblique best-aligned Fresnel error {err_aligned:.1f}% exceeds 15% "
-        f"(R_aligned={R_aligned:.4f} vs analytic {R_analytic:.4f}); "
-        f"bright-min diagnostic={R_bright:.4f} ({err_bright:.1f}%)"
-    )
+    An independent angle point for the #404 |R| accuracy gate.  Replaces the former
+    plane-DFT ``best_aligned`` test, whose ``np.min``-over-cells extractor was
+    oracle-fitted (matched analytic at 30 deg by truncation coincidence, 1.14 at
+    60 deg).  Same robust two-run plateau extraction on the complex envelope.
+    """
+    eps_r_val = 4.0
+    theta_deg = 45.0
+    R, inj_angle, flatness = _run_oblique_fresnel(theta_deg, eps_r_val)
+    R_at_injected = fresnel_r_te(inj_angle, eps_r_val)
+    print(f"\nOblique TFSF Fresnel 45deg (injected {inj_angle:.1f} deg): |R|={R:.4f}"
+          f"  R_TE@injected={R_at_injected:.4f}  flatness={flatness:.4f}")
+    assert flatness < 0.06, f"incident plateau not flat ({flatness:.3f})"
+    assert abs(inj_angle - theta_deg) < 10.0, \
+        f"injected angle {inj_angle:.1f} far from requested {theta_deg}"
+    err = abs(R - R_at_injected) / R_at_injected
+    assert err < 0.15, (f"45deg oblique |R|={R:.3f} vs analytic {R_at_injected:.3f} "
+                        f"err {err*100:.1f}% > 15%")

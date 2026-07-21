@@ -127,12 +127,24 @@ def _ribbon_2nd(d4, d2, axis):
     return d4
 
 
-def _diff_fwd_o(arr, axis, periodic, order):
+def _diff_fwd_o(arr, axis, periodic, order, bloch=None):
     """Forward staggered first difference (f[i+1]-f[i] family), at i+1/2; the
-    caller divides by dx. order=2 is byte-identical to ``_shift_fwd(arr)-arr``."""
+    caller divides by dx. order=2 is byte-identical to ``_shift_fwd(arr)-arr``
+    when ``bloch is None``.
+
+    ``bloch`` (oblique-periodic Bloch field-transformation, #404): a length-3
+    tuple of per-axis complex phases ``exp(-j·k_axis·dx)``.  On a PERIODIC axis
+    the forward-rolled neighbour is multiplied by ``bloch[axis]`` so the plain
+    ``jnp.roll`` wrap represents the exact discrete Yee derivative of a wave with
+    transverse wavenumber ``k_axis``.  ``bloch=None`` (default) leaves the real
+    path untouched; ``bloch`` is only threaded on order-2 (guarded upstream)."""
     if order == 2:
-        nxt = jnp.roll(arr, -1, axis) if periodic[axis] else _shift_fwd(arr, axis)
-        return nxt - arr
+        if periodic[axis]:
+            nxt = jnp.roll(arr, -1, axis)
+            if bloch is not None:
+                nxt = nxt * bloch[axis]
+            return nxt - arr
+        return _shift_fwd(arr, axis) - arr
     # order == 4:  c1*(f[i+1]-f[i]) + c2*(f[i+2]-f[i-1])
     if periodic[axis]:
         near = jnp.roll(arr, -1, axis) - arr
@@ -143,12 +155,21 @@ def _diff_fwd_o(arr, axis, periodic, order):
     return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
 
 
-def _diff_bwd_o(arr, axis, periodic, order):
+def _diff_bwd_o(arr, axis, periodic, order, bloch=None):
     """Backward staggered first difference (f[i]-f[i-1] family), at i-1/2; the
-    caller divides by dx. order=2 is byte-identical to ``arr-_shift_bwd(arr)``."""
+    caller divides by dx. order=2 is byte-identical to ``arr-_shift_bwd(arr)``
+    when ``bloch is None``.
+
+    For the Bloch field-transformation (#404) the BACKWARD-rolled neighbour
+    carries the CONJUGATE phase ``exp(+j·k_axis·dx)`` (``bloch[axis].conjugate()``),
+    the exact discrete adjoint of the forward stagger.  See ``_diff_fwd_o``."""
     if order == 2:
-        prv = jnp.roll(arr, 1, axis) if periodic[axis] else _shift_bwd(arr, axis)
-        return arr - prv
+        if periodic[axis]:
+            prv = jnp.roll(arr, 1, axis)
+            if bloch is not None:
+                prv = prv * bloch[axis].conjugate()
+            return arr - prv
+        return arr - _shift_bwd(arr, axis)
     # order == 4:  c1*(f[i]-f[i-1]) + c2*(f[i+1]-f[i-2])
     if periodic[axis]:
         near = arr - jnp.roll(arr, 1, axis)
@@ -159,10 +180,11 @@ def _diff_bwd_o(arr, axis, periodic, order):
     return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
 
 
-@partial(jax.jit, static_argnums=(4, 5))
+@partial(jax.jit, static_argnums=(4, 5, 6))
 def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
-             stencil_order: int = 2) -> FDTDState:
+             stencil_order: int = 2,
+             bloch: tuple | None = None) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
@@ -173,46 +195,58 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     periodic: tuple of 3 bools selecting periodic boundary per axis (x, y, z).
     stencil_order: 2 (default, byte-identical) or 4 (Fang (2,4) wide stencil,
         reverting to 2nd order in the 1-cell ribbon at non-periodic faces).
+    bloch: None (default, real path, byte-identical) or a length-3 tuple of
+        per-axis complex phases ``exp(-j·k_axis·dx)`` for the oblique-periodic
+        Bloch field-transformation (#404).  When set, the fields must be a
+        complex dtype (the transformed envelope P); requires stencil_order=2.
     """
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
+    if bloch is not None and so != 2:
+        raise ValueError(
+            f"bloch phase (oblique-periodic BC, #404) requires stencil_order=2, got {so}"
+        )
 
-    # Upcast to float32 for arithmetic when using reduced-precision fields
+    # Compute dtype: the oblique-periodic Bloch path carries a complex field
+    # envelope P; the real path stays float32 (upcast for reduced-precision
+    # fields) and is byte-identical.
     _fdtype = state.ex.dtype
-    ex = state.ex.astype(jnp.float32)
-    ey = state.ey.astype(jnp.float32)
-    ez = state.ez.astype(jnp.float32)
+    _cdtype = jnp.complex64 if jnp.iscomplexobj(state.ex) else jnp.float32
+    ex = state.ex.astype(_cdtype)
+    ey = state.ey.astype(_cdtype)
+    ez = state.ez.astype(_cdtype)
     mu = materials.mu_r * MU_0
 
     # curl E components via forward staggered differences (order=2 byte-identical)
     # dEz/dy - dEy/dz
     curl_x = (
-        _diff_fwd_o(ez, 1, periodic, so) / dx
-        - _diff_fwd_o(ey, 2, periodic, so) / dx
+        _diff_fwd_o(ez, 1, periodic, so, bloch) / dx
+        - _diff_fwd_o(ey, 2, periodic, so, bloch) / dx
     )
     # dEx/dz - dEz/dx
     curl_y = (
-        _diff_fwd_o(ex, 2, periodic, so) / dx
-        - _diff_fwd_o(ez, 0, periodic, so) / dx
+        _diff_fwd_o(ex, 2, periodic, so, bloch) / dx
+        - _diff_fwd_o(ez, 0, periodic, so, bloch) / dx
     )
     # dEy/dx - dEx/dy
     curl_z = (
-        _diff_fwd_o(ey, 0, periodic, so) / dx
-        - _diff_fwd_o(ex, 1, periodic, so) / dx
+        _diff_fwd_o(ey, 0, periodic, so, bloch) / dx
+        - _diff_fwd_o(ex, 1, periodic, so, bloch) / dx
     )
 
-    hx = (state.hx.astype(jnp.float32) - (dt / mu) * curl_x).astype(_fdtype)
-    hy = (state.hy.astype(jnp.float32) - (dt / mu) * curl_y).astype(_fdtype)
-    hz = (state.hz.astype(jnp.float32) - (dt / mu) * curl_z).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - (dt / mu) * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - (dt / mu) * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - (dt / mu) * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-@partial(jax.jit, static_argnums=(4, 5))
+@partial(jax.jit, static_argnums=(4, 5, 6))
 def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
-             stencil_order: int = 2) -> FDTDState:
+             stencil_order: int = 2,
+             bloch: tuple | None = None) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -224,16 +258,26 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     periodic: tuple of 3 bools selecting periodic boundary per axis (x, y, z).
     stencil_order: 2 (default, byte-identical) or 4 (Fang (2,4) wide stencil,
         reverting to 2nd order in the 1-cell ribbon at non-periodic faces).
+    bloch: None (default, real path, byte-identical) or a length-3 tuple of
+        per-axis complex phases ``exp(-j·k_axis·dx)`` for the oblique-periodic
+        Bloch field-transformation (#404); requires stencil_order=2 and complex
+        fields.  The backward differences use the conjugate phase automatically.
     """
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
+    if bloch is not None and so != 2:
+        raise ValueError(
+            f"bloch phase (oblique-periodic BC, #404) requires stencil_order=2, got {so}"
+        )
 
-    # Upcast to float32 for arithmetic when using reduced-precision fields
+    # Compute dtype: complex for the Bloch envelope path, float32 for the real
+    # path (byte-identical; upcast covers reduced-precision fields).
     _fdtype = state.ex.dtype
-    hx = state.hx.astype(jnp.float32)
-    hy = state.hy.astype(jnp.float32)
-    hz = state.hz.astype(jnp.float32)
+    _cdtype = jnp.complex64 if jnp.iscomplexobj(state.ex) else jnp.float32
+    hx = state.hx.astype(_cdtype)
+    hy = state.hy.astype(_cdtype)
+    hz = state.hz.astype(_cdtype)
     eps = materials.eps_r * EPS_0
     sigma = materials.sigma
 
@@ -245,23 +289,23 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     # curl H components via backward staggered differences (order=2 byte-identical)
     # dHz/dy - dHy/dz
     curl_x = (
-        _diff_bwd_o(hz, 1, periodic, so) / dx
-        - _diff_bwd_o(hy, 2, periodic, so) / dx
+        _diff_bwd_o(hz, 1, periodic, so, bloch) / dx
+        - _diff_bwd_o(hy, 2, periodic, so, bloch) / dx
     )
     # dHx/dz - dHz/dx
     curl_y = (
-        _diff_bwd_o(hx, 2, periodic, so) / dx
-        - _diff_bwd_o(hz, 0, periodic, so) / dx
+        _diff_bwd_o(hx, 2, periodic, so, bloch) / dx
+        - _diff_bwd_o(hz, 0, periodic, so, bloch) / dx
     )
     # dHy/dx - dHx/dy
     curl_z = (
-        _diff_bwd_o(hy, 0, periodic, so) / dx
-        - _diff_bwd_o(hx, 1, periodic, so) / dx
+        _diff_bwd_o(hy, 0, periodic, so, bloch) / dx
+        - _diff_bwd_o(hx, 1, periodic, so, bloch) / dx
     )
 
-    ex = (ca * state.ex.astype(jnp.float32) + cb * curl_x).astype(_fdtype)
-    ey = (ca * state.ey.astype(jnp.float32) + cb * curl_y).astype(_fdtype)
-    ez = (ca * state.ez.astype(jnp.float32) + cb * curl_z).astype(_fdtype)
+    ex = (ca * state.ex.astype(_cdtype) + cb * curl_x).astype(_fdtype)
+    ey = (ca * state.ey.astype(_cdtype) + cb * curl_y).astype(_fdtype)
+    ez = (ca * state.ez.astype(_cdtype) + cb * curl_z).astype(_fdtype)
 
     return state._replace(
         ex=ex, ey=ey, ez=ez,

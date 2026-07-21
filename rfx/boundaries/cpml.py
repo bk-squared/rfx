@@ -271,7 +271,8 @@ def _cpml_noop_profile(n_layers: int) -> CPMLParams:
 
 def init_cpml(grid, *, kappa_max: float | None = None,
               pec_faces: set[str] | None = None,
-              pmc_faces: set[str] | None = None) -> tuple[CPMLAxisParams, CPMLState]:
+              pmc_faces: set[str] | None = None,
+              field_dtype=jnp.float32) -> tuple[CPMLAxisParams, CPMLState]:
     """Initialize CPML parameters and zero-valued auxiliary fields.
 
     Creates per-axis CPML profiles so that each face uses the correct
@@ -352,7 +353,11 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     nx, ny, nz = grid.shape if hasattr(grid, 'shape') else (grid.nx, grid.ny, grid.nz)
 
     def _zeros(dim_size: int, perp1: int, perp2: int) -> jnp.ndarray:
-        return jnp.zeros((n, perp1, perp2), dtype=jnp.float32)
+        # psi carry dtype follows the field dtype so the lax.scan carry contract
+        # holds when fields are complex (#404 oblique Bloch path). Default
+        # float32 keeps the real path byte-identical. Real profile coeffs
+        # (b/c/kappa) stay float32 and multiply the psi carry without truncation.
+        return jnp.zeros((n, perp1, perp2), dtype=field_dtype)
 
     state = CPMLState(
         # E-field psi (12 faces)
