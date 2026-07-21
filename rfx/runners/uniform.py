@@ -19,6 +19,46 @@ from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
 
 
+def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
+    """#404: convert the complex Bloch envelope P back to the physical real field
+    ``Re(P·exp(-j k_t·x_t))`` for the oblique-periodic path.
+
+    Reconstructs the final ``state`` (per-cell transverse phase ramp along the
+    periodic axis) and point-probe ``time_series`` (fixed phase at each probe's
+    transverse cell). Other outputs are fenced upstream. The sign convention is
+    ``cfg.k_transverse`` — the same one the 2D-aux injection and the hand-rolled
+    acceptance tests use (``exp(-1j·k_transverse·y)``).
+    """
+    import jax.numpy as _jnp
+    k_t = float(tfsf_cfg.k_transverse)
+    taxis = 1 if tfsf_cfg.transverse_axis == "y" else 2
+    d_t = float(getattr(grid, "dy", grid.dx)) if taxis == 1 \
+        else float(getattr(grid, "dz", grid.dx))
+    n_t = grid.shape[taxis]
+    ramp = _jnp.exp(-1j * k_t * _jnp.arange(n_t) * d_t)
+
+    new_state = sim_result.state
+    if new_state is not None and _jnp.iscomplexobj(new_state.ex):
+        shp = [1, 1, 1]
+        shp[taxis] = n_t
+        ramp3 = ramp.reshape(shp)
+        new_state = new_state._replace(**{
+            f: _jnp.real(getattr(new_state, f) * ramp3)
+            for f in ("ex", "ey", "ez", "hx", "hy", "hz")
+        })
+
+    new_ts = sim_result.time_series
+    if new_ts is not None and _jnp.iscomplexobj(new_ts):
+        if probes:  # time_series is (n_steps, n_probes) in probe order
+            idxs = _jnp.array([(p.j if taxis == 1 else p.k) for p in probes])
+            ph = _jnp.exp(-1j * k_t * idxs * d_t)
+            new_ts = _jnp.real(new_ts * ph[None, :])
+        else:
+            new_ts = _jnp.real(new_ts)
+
+    return sim_result._replace(state=new_state, time_series=new_ts)
+
+
 def run_uniform(
     sim,
     *,
@@ -461,6 +501,25 @@ def run_uniform(
         sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
         periodic = (False, True, True)
         cpml_axes = "x"
+        # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
+        # Bloch-envelope path; final `state` and point-probe time series are
+        # reconstructed to physical fields after the run, but the streaming/
+        # frequency-domain output paths are not yet transform-aware on it.
+        from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_ru
+        if _is_tfsf_2d_ru(tfsf[0]):
+            _ob_unsup = []
+            if snapshot is not None:
+                _ob_unsup.append("snapshot= (read the final `state` instead)")
+            if until_decay is not None:
+                _ob_unsup.append("until_decay= (use a fixed n_steps)")
+            if _ob_unsup:
+                raise NotImplementedError(
+                    "Oblique (angle_deg != 0) TFSF uses the #404 complex Bloch "
+                    "path; not yet supported on it: " + "; ".join(_ob_unsup)
+                    + ". Supported: final `state` and `add_probe` time series "
+                    "(returned as physical fields), or `compute_rcs` for "
+                    "open-domain oblique scattering."
+                )
 
     # Floquet port sources — inject plane wave via standard source mechanism
     floquet_port_configs = []
@@ -738,6 +797,14 @@ def run_uniform(
                 reference_plane=reference_plane,
                 probe_plane=probe_plane,
             )
+
+    # #404: oblique 2D-aux TFSF evolved the complex Bloch envelope P; convert the
+    # returned state + point probes back to physical real fields (real path and
+    # normal incidence are untouched — sim_result stays real there).
+    if sim._tfsf is not None:
+        from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_out
+        if _is_tfsf_2d_out(tfsf[0]):
+            sim_result = _reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
     return Result(
         state=sim_result.state,

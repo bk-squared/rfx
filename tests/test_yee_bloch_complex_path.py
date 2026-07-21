@@ -151,6 +151,45 @@ def test_oblique_injection_angle_tracks_request():
         assert ys < 1e-3, f"{req}deg envelope not y-uniform (yStd={ys:.1e})"
 
 
+def test_bloch_path_is_differentiable():
+    """AD gate (#404 new numerics path — hard constraint): jax.grad w.r.t. a
+    material permittivity flows FINITE and NONZERO through the complex+Bloch
+    update_e/h path, so oblique-periodic scattering is usable for inverse design.
+    """
+    from rfx.core.yee import init_state, init_materials
+    nx, ny = 80, 16
+    shape = (nx, ny, 1)
+    dx = 0.002
+    dt = 0.5 * dx / C0
+    f0 = 5e9
+    k0 = 2 * np.pi * f0 / C0
+    kY = -k0 * np.sin(np.radians(45.0))
+    bloch = (1.0 + 0j, complex(np.exp(-1j * kY * dx)), 1.0 + 0j)
+    per = (False, True, True)
+    tau = 1.0 / (np.pi * f0 * 0.15)
+    t0 = 5 * tau
+
+    def obj(eps_slab):
+        mat = init_materials(shape)
+        mat = mat._replace(eps_r=mat.eps_r.at[nx // 2:, :, :].set(eps_slab))
+        st = init_state(shape, field_dtype=jnp.complex64)
+
+        def body(st, step):
+            t = step * dt
+            st = update_h(st, mat, dt, dx, periodic=per, bloch=bloch)
+            st = update_e(st, mat, dt, dx, periodic=per, bloch=bloch)
+            src = jnp.exp(-1j * 2 * jnp.pi * f0 * (t - t0)) * jnp.exp(-((t - t0) / tau) ** 2)
+            st = st._replace(ez=st.ez.at[20, :, 0].add(src.astype(jnp.complex64)))
+            return st, None
+
+        st, _ = jax.lax.scan(body, st, jnp.arange(300))
+        return jnp.sum(jnp.abs(st.ez[nx // 2 - 10:nx // 2, :, 0]) ** 2).real
+
+    g = jax.grad(obj)(4.0)
+    assert np.isfinite(g), f"grad not finite: {g}"
+    assert abs(float(g)) > 0.0, "grad is zero through the complex Bloch path"
+
+
 def test_oblique_injection_angle_domain_size_invariant():
     """The fix is domain-size INVARIANT (the broken plain-periodic baseline swung
     46.9->57.6deg with transverse size). A correct Bloch BC gives the same angle
