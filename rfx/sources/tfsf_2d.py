@@ -540,6 +540,35 @@ def _transverse_phase(cfg: TFSF2DConfig, n_trans: int, dx: float) -> jnp.ndarray
     return jnp.exp(-1j * cfg.k_transverse * y)
 
 
+def bloch_phase_tuple(cfg: TFSF2DConfig, dx: float) -> tuple:
+    """Per-axis Bloch phase ``exp(-j·k_transverse·dx)`` for the 3D
+    ``update_e``/``update_h`` on the transverse periodic axis (#404 Phase-B).
+
+    The transformed-frame 3D grid evolves the Bloch envelope ``P`` and must carry
+    the SAME transverse phase on its periodic roll as the 2D-aux grid, on the axis
+    matching ``cfg.transverse_axis`` (``y``=axis 1 for TMz, ``z``=axis 2 for TEz).
+    All other axes are 1.0.  Pass the result as ``update_e/h(..., bloch=...)``.
+    """
+    ph = complex(jnp.exp(-1j * cfg.k_transverse * dx))
+    if cfg.transverse_axis == "z":
+        return (1.0 + 0j, 1.0 + 0j, ph)
+    return (1.0 + 0j, ph, 1.0 + 0j)
+
+
+def _face_incident(sample_vals, cfg: TFSF2DConfig, n_trans: int, dx: float,
+                   transformed: bool):
+    """Per-transverse-cell incident field to inject at a TFSF face.
+
+    Transformed frame (complex 3D grid — #404 Phase-B): the 3D grid evolves the
+    SAME Bloch envelope ``P`` as the aux grid, so inject ``P`` DIRECTLY (complex,
+    no phase re-application, no ``jnp.real``).  Real frame (Phase-A / open /
+    CPML-transverse): reconstruct the physical field ``Re(P·exp(-j·k_t·y))``.
+    """
+    if transformed:
+        return sample_vals
+    return jnp.real(sample_vals * _transverse_phase(cfg, n_trans, dx))
+
+
 # ---------------------------------------------------------------------------
 # 3D TFSF corrections using 2D auxiliary grid
 # ---------------------------------------------------------------------------
@@ -563,20 +592,20 @@ def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     e_ref = getattr(state, cfg.electric_component)
     ny_3d = e_ref.shape[1]
     nz_3d = e_ref.shape[2]
+    # Complex 3D field ⇒ transformed (Bloch-envelope) frame — inject P directly.
+    transformed = bool(jnp.iscomplexobj(e_ref))
 
     if cfg.mode == "TEz":
         # TEz: 2D grid transverse axis is z, broadcast along y
-        phase = _transverse_phase(cfg, nz_3d, dx)  # exp(-j k_z z), (nz,)
-        h_inc_lo = jnp.real(_sample_h2_at_x(cfg, tfsf_st, i0 - 1, nz_3d) * phase)
-        h_inc_hi = jnp.real(_sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), nz_3d) * phase)
+        h_inc_lo = _face_incident(_sample_h2_at_x(cfg, tfsf_st, i0 - 1, nz_3d), cfg, nz_3d, dx, transformed)
+        h_inc_hi = _face_incident(_sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), nz_3d), cfg, nz_3d, dx, transformed)
 
         h_lo_3d = jnp.broadcast_to(h_inc_lo[None, :], (ny_3d, nz_3d))
         h_hi_3d = jnp.broadcast_to(h_inc_hi[None, :], (ny_3d, nz_3d))
     else:
         # TMz: 2D grid transverse axis is y, broadcast along z
-        phase = _transverse_phase(cfg, ny_3d, dx)  # exp(-j k_y y), (ny,)
-        h_inc_lo = jnp.real(_sample_h2_at_x(cfg, tfsf_st, i0 - 1, ny_3d) * phase)
-        h_inc_hi = jnp.real(_sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), ny_3d) * phase)
+        h_inc_lo = _face_incident(_sample_h2_at_x(cfg, tfsf_st, i0 - 1, ny_3d), cfg, ny_3d, dx, transformed)
+        h_inc_hi = _face_incident(_sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), ny_3d), cfg, ny_3d, dx, transformed)
 
         h_lo_3d = jnp.broadcast_to(h_inc_lo[:, None], (ny_3d, nz_3d))
         h_hi_3d = jnp.broadcast_to(h_inc_hi[:, None], (ny_3d, nz_3d))
@@ -607,20 +636,20 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     h_ref = getattr(state, cfg.magnetic_component)
     ny_3d = h_ref.shape[1]
     nz_3d = h_ref.shape[2]
+    # Complex 3D field ⇒ transformed (Bloch-envelope) frame — inject P directly.
+    transformed = bool(jnp.iscomplexobj(h_ref))
 
     if cfg.mode == "TEz":
         # TEz: 2D grid transverse axis is z, broadcast along y
-        phase = _transverse_phase(cfg, nz_3d, dx)  # exp(-j k_z z), (nz,)
-        e_inc_lo = jnp.real(_sample_e_at_x(cfg, tfsf_st, i0, nz_3d) * phase)
-        e_inc_hi = jnp.real(_sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), nz_3d) * phase)
+        e_inc_lo = _face_incident(_sample_e_at_x(cfg, tfsf_st, i0, nz_3d), cfg, nz_3d, dx, transformed)
+        e_inc_hi = _face_incident(_sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), nz_3d), cfg, nz_3d, dx, transformed)
 
         e_lo_3d = jnp.broadcast_to(e_inc_lo[None, :], (ny_3d, nz_3d))
         e_hi_3d = jnp.broadcast_to(e_inc_hi[None, :], (ny_3d, nz_3d))
     else:
         # TMz: 2D grid transverse axis is y, broadcast along z
-        phase = _transverse_phase(cfg, ny_3d, dx)  # exp(-j k_y y), (ny,)
-        e_inc_lo = jnp.real(_sample_e_at_x(cfg, tfsf_st, i0, ny_3d) * phase)
-        e_inc_hi = jnp.real(_sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), ny_3d) * phase)
+        e_inc_lo = _face_incident(_sample_e_at_x(cfg, tfsf_st, i0, ny_3d), cfg, ny_3d, dx, transformed)
+        e_inc_hi = _face_incident(_sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), ny_3d), cfg, ny_3d, dx, transformed)
 
         e_lo_3d = jnp.broadcast_to(e_inc_lo[:, None], (ny_3d, nz_3d))
         e_hi_3d = jnp.broadcast_to(e_inc_hi[:, None], (ny_3d, nz_3d))
