@@ -318,6 +318,72 @@ def fresnel_reflection_coefficient(
     return jnp.mean(gamma_p)
 
 
+def oblique_reflection_magnitude(
+    total_series: jnp.ndarray,
+    incident_series: jnp.ndarray,
+    *,
+    f0: float,
+    dt: float,
+    n_gate: int | None = None,
+) -> jnp.ndarray:
+    """Differentiable |Γ|(θ) MAGNITUDE for OBLIQUE incidence from the complex Bloch envelope.
+
+    For oblique TFSF, ``Simulation.forward()`` returns the RAW complex Bloch envelope P
+    (``time_series`` is complex64), not a real physical field. Two differences from the
+    normal-incidence :func:`fresnel_reflection_coefficient`:
+
+    * **+j (conjugate) DFT kernel** — the envelope ``P(t) ∝ exp(-j2πf0t)`` has its f0 content
+      at ``-f0``, so it is extracted with ``exp(+j2πf0t)``. A ``-j`` kernel averages the
+      incident to noise ⇒ nonphysical |Γ|≫1 (the #404 trap).
+    * **magnitude ratio, de-embed-free** — ``mean|T−I| / mean|I|``. At oblique the reflected
+      phase varies by many π across the plateau, so a de-embedded COMPLEX mean cancels
+      (a wrong/nominal k_x gives |Γ|→0). The magnitude ratio is robust; the reflected phase
+      is NOT recovered here (see Notes).
+
+    Same physics protocol as :func:`fresnel_reflection_coefficient` but OBLIQUE-specific:
+    narrowband source (``bandwidth≲0.15`` — the Bloch phase ``k_y=k0 sinθ`` is single-f0),
+    finite THICK slab before the CPML, time-gate to the front-face, plateau probes.
+
+    Parameters
+    ----------
+    total_series, incident_series : (n_steps, n_probes) COMPLEX arrays
+        Bloch-envelope probe series from the scatterer and vacuum runs (oblique forward()).
+    f0, dt : float
+    n_gate : int, optional
+        DFT window (time-gate). Defaults to the full series.
+
+    Returns
+    -------
+    jnp.ndarray
+        Real scalar |Γ|(f0) at the injected oblique angle, differentiable in ``total_series``.
+
+    Notes
+    -----
+    MAGNITUDE ONLY. The reflected PHASE (complex Γ, the RIS phase-steering knob) is not
+    provided: de-embedding to the interface needs the exact DISCRETE k_x (the injected angle
+    is dispersion-shifted from the nominal, e.g. 29.5° for a 30° request), which is an open
+    follow-up. Validated vs analytic ``fresnel_r_te`` at θ=30°/45° to ~4–7%.
+
+    See Also
+    --------
+    fresnel_reflection_coefficient : normal-incidence COMPLEX Γ (amplitude + phase).
+    fresnel_r_te : analytic |R_TE|(θ) ground truth.
+    """
+    total = jnp.asarray(total_series)
+    inc = jnp.asarray(incident_series)
+    if total.ndim != 2 or inc.shape != total.shape:
+        raise ValueError(
+            "total_series and incident_series must both be (n_steps, n_probes) and "
+            f"equal-shaped; got {total.shape} and {inc.shape}"
+        )
+    ns = total.shape[0] if n_gate is None else int(n_gate)
+    t = jnp.arange(ns) * dt
+    kern = jnp.exp(+1j * 2.0 * jnp.pi * f0 * t) * dt  # +j conjugate kernel (oblique envelope)
+    tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    return jnp.mean(jnp.abs(tp - ip)) / jnp.mean(jnp.abs(ip))
+
+
 def fresnel_r_te(angle_deg: float, eps_r: float) -> float:
     """Analytical TE Fresnel reflection coefficient magnitude.
 
