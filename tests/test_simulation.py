@@ -465,19 +465,32 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
         probes=[probe],
     )
 
-    # Detect 2D auxiliary grid for oblique incidence
+    # Detect 2D auxiliary grid for oblique incidence. #404: the oblique 2D-aux
+    # TFSF drives the shared solver on the COMPLEX Bloch-envelope path (the
+    # compiled `run()` above does the same via _build_step_setup), so the manual
+    # loop mirrors it: complex fields + per-axis roll phase + complex CPML carry.
+    # The low-level `run()` returns the (unreconstructed) envelope, so we compare
+    # envelopes directly.
     _is_2d = is_tfsf_2d(tfsf_cfg)
     if _is_2d:
-        from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
+        from rfx.sources.tfsf_2d import (
+            update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+        )
+        _bloch = bloch_phase_tuple(tfsf_cfg, grid.dx)
+        _fdt = jnp.complex64
+    else:
+        _bloch = None
+        _fdt = jnp.float32
 
-    state = init_state(grid.shape)
-    cp, cpml_state = init_cpml(grid)
+    state = init_state(grid.shape, field_dtype=_fdt)
+    cp, cpml_state = init_cpml(grid, field_dtype=_fdt)
     tfsf_state = tfsf_state0
     manual_ts = []
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic,
+                         bloch=_bloch)
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         if _is_2d:
@@ -485,7 +498,8 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
         else:
             tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
-        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic,
+                         bloch=_bloch)
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -493,7 +507,7 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
             tfsf_state = update_tfsf_2d_e(tfsf_cfg, tfsf_state, grid.dx, grid.dt, t)
         else:
             tfsf_state = update_tfsf_1d_e(tfsf_cfg, tfsf_state, grid.dx, grid.dt, t)
-        manual_ts.append(float(state.ez[probe.i, probe.j, probe.k]))
+        manual_ts.append(complex(state.ez[probe.i, probe.j, probe.k]))
 
     compiled_ts = np.array(compiled.time_series[:, 0])
     manual_ts = np.array(manual_ts)
