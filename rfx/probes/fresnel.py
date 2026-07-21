@@ -287,6 +287,14 @@ def fresnel_reflection_coefficient(
         Complex scalar Γ(f0) de-embedded to the reference plane. Differentiable
         in ``total_series`` (and hence in the scatterer permittivity upstream).
 
+    Notes
+    -----
+    The complex output differentiates correctly through a phase-sensitive RIS loss
+    ``|Γ − Γ_target|²`` (FD-verified). Precision (ch08): Γ is formed from ``(T − I)``,
+    a difference of two similar phasors, accumulated in complex64. For a WEAK reflector
+    (``|Γ| ≲ 1e-4``) this cancellation loses digits — run the two forwards under a
+    per-test ``jax.experimental.enable_x64`` context (never flip x64 at module level).
+
     See Also
     --------
     fresnel_r_te : analytic |R_TE| ground-truth for validation.

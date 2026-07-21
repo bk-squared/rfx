@@ -174,3 +174,28 @@ def test_fresnel_gamma_differentiable(fresnel_run):
     g_fd = (float(abs_gamma(4.0 + h)) - float(abs_gamma(4.0 - h))) / (2 * h)
     assert np.isfinite(g_ad), "NaN/Inf gradient (P0)"
     assert abs(g_ad - g_fd) < 0.05 * abs(g_fd) + 1e-6, f"AD={g_ad:.4e} vs FD={g_fd:.4e}"
+
+
+@pytest.mark.slow
+def test_fresnel_complex_target_gradient(fresnel_run):
+    """ch07 conjugation: the RIS loss |Γ−Γ_target|² (phase-sensitive) differentiates correctly.
+
+    Unlike |Γ|, a complex-target loss depends on BOTH Re(Γ) and Im(Γ), so its gradient
+    exercises the phase path — where a mishandled e^{±jωt} DFT-sign / Wirtinger conjugation
+    would silently corrupt the gradient (the #404 trap). FD is the ground truth.
+    """
+    sim, shape, xi, xe = fresnel_run["sim"], fresnel_run["shape"], fresnel_run["xi"], fresnel_run["xe"]
+    dists, dt, ns = fresnel_run["dists"], fresnel_run["dt"], fresnel_run["ns"]
+    inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns, ckpt=True)
+    g_target = 0.30 * np.exp(1j * 2.5)  # arbitrary complex RIS target (amplitude + phase)
+
+    def loss(eps):
+        tot = _series(sim, jnp.ones(shape, jnp.float32).at[xi:xe, :, :].set(eps), ns, ckpt=True)
+        g = fresnel_reflection_coefficient(tot, inc, f0=F0, dt=dt, probe_distances=dists, n_gate=ns)
+        return jnp.abs(g - g_target) ** 2
+
+    g_ad = float(jax.grad(loss)(4.0))
+    h = 0.05
+    g_fd = (float(loss(4.0 + h)) - float(loss(4.0 - h))) / (2 * h)
+    assert np.isfinite(g_ad), "NaN/Inf gradient (P0)"
+    assert abs(g_ad - g_fd) < 0.06 * abs(g_fd) + 1e-6, f"complex-target AD={g_ad:.4e} vs FD={g_fd:.4e}"
