@@ -213,6 +213,103 @@ def extract_fresnel_coefficient(
         raise ValueError(f"ez_plane_dft must be 1D or 2D, got shape {arr.shape}")
 
 
+def fresnel_reflection_coefficient(
+    total_series: jnp.ndarray,
+    incident_series: jnp.ndarray,
+    *,
+    f0: float,
+    dt: float,
+    probe_distances: jnp.ndarray,
+    n_gate: int | None = None,
+    background_index: float = 1.0,
+) -> jnp.ndarray:
+    """Differentiable COMPLEX reflection coefficient Γ(f0) from two probe-line runs.
+
+    Unlike the numpy siblings above (magnitude-only, DFT-plane, concretizing),
+    this is **jax.numpy-native and grad-safe**: the returned Γ stays on the AD
+    tape, so ``jax.grad`` flows from a scatterer permittivity (via
+    ``Simulation.forward(eps_override=…)``) through this extractor to a
+    reflection-amplitude/phase objective. It is the primitive behind
+    differentiable RIS / FSS / coating design.
+
+    Method (the #404/#414-validated recipe; see the physics protocol below):
+    two-run reference subtraction of a spatial **plateau** — a line of probes in
+    the scattered-field-free total-field region in front of the scatterer. The
+    reflected phasor ``T - I`` (scatterer run minus vacuum run) is a pure
+    traveling wave whose |amplitude| is flat along the line; averaging the
+    per-probe, reference-plane-de-embedded Γ suppresses discretization noise::
+
+        Γ = mean_p[ (T_p - I_p) / I_p · exp(+j·2k·d_p) ],   k = 2π·f0·n_bg / c
+
+    where ``T_p``/``I_p`` are the f0 DFT phasors at probe ``p`` and ``d_p`` is its
+    distance in front of the reference plane.
+
+    Physics protocol the CALLER must satisfy (this function does only the
+    extraction math — it cannot see the geometry):
+
+    1. **Finite scatterer ending before the absorber.** A CPML filled with
+       dielectric is not impedance-matched and reflects; keep the slab/scatterer
+       clear of the CPML.
+    2. **Time-gate** ``n_gate`` to the FRONT-face reflection only (stop before the
+       back-face reflection reaches the plateau) ⇒ a half-space Fresnel Γ with no
+       Fabry–Pérot ripple. For a spectrum, drop the gate and place the absorber to
+       swallow the transmitted wave instead.
+    3. **Broadband source** (e.g. ``bandwidth≈0.5``) so the pulse develops within
+       the short gated window — this resolves the narrowband↔time-gating tension.
+    4. **Plateau probes** in the total-field region, clear of the scatterer's
+       evanescent near-field.
+
+    Parameters
+    ----------
+    total_series : (n_steps, n_probes) real array
+        Probe time series from the run WITH the scatterer.
+    incident_series : (n_steps, n_probes) real array
+        Probe time series from the vacuum reference run (same probes).
+    f0 : float
+        Extraction frequency in Hz.
+    dt : float
+        Time step in seconds.
+    probe_distances : (n_probes,) float array
+        Distance from each probe to the reference plane, in metres, positive when
+        the probe is in FRONT of (before) the plane. This is where you choose the
+        reference plane — Γ's phase is reported relative to it. A residual ~half-
+        cell (Yee) offset remains: it is an εr-independent constant, calibratable
+        against a known reference, not a physics error.
+    n_gate : int, optional
+        DFT window length (time-gate). Defaults to the full series.
+    background_index : float
+        Refractive index of the medium the probes sit in (1.0 for vacuum), used
+        for the de-embedding wavenumber ``k``.
+
+    Returns
+    -------
+    jnp.ndarray
+        Complex scalar Γ(f0) de-embedded to the reference plane. Differentiable
+        in ``total_series`` (and hence in the scatterer permittivity upstream).
+
+    See Also
+    --------
+    fresnel_r_te : analytic |R_TE| ground-truth for validation.
+    extract_fresnel_from_planes : numpy magnitude-only DFT-plane extractor.
+    """
+    total = jnp.asarray(total_series)
+    inc = jnp.asarray(incident_series)
+    if total.ndim != 2 or inc.shape != total.shape:
+        raise ValueError(
+            "total_series and incident_series must both be (n_steps, n_probes) and "
+            f"equal-shaped; got {total.shape} and {inc.shape}"
+        )
+    ns = total.shape[0] if n_gate is None else int(n_gate)
+    t = jnp.arange(ns) * dt
+    kern = jnp.exp(-1j * 2.0 * jnp.pi * f0 * t) * dt  # real field -> standard -j DFT
+    tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)  # (n_probes,)
+    ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    k = 2.0 * jnp.pi * f0 * background_index / _C0
+    deembed = jnp.exp(+1j * 2.0 * k * jnp.asarray(probe_distances))  # probe -> reference plane
+    gamma_p = (tp - ip) / ip * deembed
+    return jnp.mean(gamma_p)
+
+
 def fresnel_r_te(angle_deg: float, eps_r: float) -> float:
     """Analytical TE Fresnel reflection coefficient magnitude.
 
