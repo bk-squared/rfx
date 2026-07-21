@@ -2358,6 +2358,22 @@ class _ExecuteMixin:
                 "S11 objectives."
             )
 
+        # TFSF plane-wave sources are not wired into the differentiable forward
+        # path: _forward_from_materials builds sources from lumped/wire ports
+        # only, so a TFSF source would be SILENTLY DROPPED (no injection → zero
+        # gradients — the "TFSF→forward silent-drop" footgun). Fail loud instead.
+        # (The distributed forward path rejects TFSF separately; guard the
+        # single-device path here so both normal and oblique TFSF are surfaced.)
+        if self._tfsf is not None and not distributed:
+            raise NotImplementedError(
+                "TFSF plane-wave sources are not wired into Simulation.forward() "
+                "— the differentiable path builds sources from lumped/wire ports "
+                "only and would silently drop the TFSF source (zero gradients). "
+                "Use run() for TFSF forward simulation (normal or oblique, #404); "
+                "differentiable TFSF/plane-wave inverse design is not yet "
+                "implemented."
+            )
+
         if port_s11_freqs is not None:
             self._validate_forward_sparameter_request()
 
