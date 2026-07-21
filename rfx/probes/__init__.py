@@ -10,4 +10,5 @@ from rfx.probes.fresnel import (
     extract_fresnel_from_planes,  # noqa: F401
     fresnel_reflection_coefficient,  # noqa: F401
     fresnel_r_te,  # noqa: F401
+    oblique_reflection_magnitude,  # noqa: F401
 )
