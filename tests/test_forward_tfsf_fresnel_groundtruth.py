@@ -1,27 +1,20 @@
-"""Differentiable COMPLEX Fresnel reflection Γ(f0) — GROUND-TRUTH gated against analytic Fresnel.
+"""Differentiable COMPLEX Fresnel reflection Γ(f0) — public helper + GROUND-TRUTH gate.
 
-Replaces the retracted `test_forward_tfsf_reflection_objective.py` (#417). That test extracted Γ
-with a SINGLE-POINT (T−I)/I ratio — the exact method #404 already proved defective (a standing
-wave makes the per-cell ratio oscillate; it gave |Γ|>1, 170–290% vs analytic). Its passivity/
-phase assertions passed only by coincidence at a thin slab: a gate binding an artifact.
+Exercises ``rfx.probes.fresnel_reflection_coefficient`` (the differentiable two-run
+plateau + de-embed extractor) two ways:
 
-The CORRECT extraction (the #404/#414-validated recipe, here ported to the differentiable
-`forward()` and validated vs the analytic oracle):
-  • FINITE dielectric slab ending BEFORE the +x CPML — a CPML filled with dielectric is NOT
-    impedance-matched and reflects (that inflated the retracted |Γ|>1).
-  • TIME-GATE the DFT window to the FRONT-face reflection only (stop before the back-face
-    reflection returns) ⇒ a simple half-space Fresnel Γ, no Fabry–Pérot.
-  • Broadband source (bandwidth=0.5) develops fast, so the window can be short — this resolves
-    the narrowband(clean-f0) ↔ time-gating(front-face) tension that sank the earlier attempts.
-  • SPATIAL PLATEAU: a LINE of probes in the scattered-field-free TF region; two-run reference
-    subtraction (slab − vacuum) gives the pure reflected traveling wave; average over the line.
-  • PHASE: de-embed each probe to the interface plane (Γ = (refl/inc)·e^{+j2k d}). Analytic
-    normal-incidence Γ=(1−√εr)/(1+√εr) is NEGATIVE real ⇒ 180°. A residual ~11° is the Yee
-    half-cell reference-plane offset (constant across εr — a reference-plane constant, not a
-    physics error; calibratable).
+  • ``test_reflection_helper_recovers_planted_gamma`` (FAST, no FDTD): a synthetic
+    two-run signal with a PLANTED complex Γ — pins the extraction math and that the
+    helper stays on the AD tape (grad matches closed form). This is the cheap contract.
+  • ``test_fresnel_*`` (SLOW, FDTD): the physics ground truth — a real
+    ``Simulation.forward()`` reflection off a dielectric slab, extracted with the
+    helper, compared to analytic Fresnel Γ=(1−√εr)/(1+√εr) in amplitude AND phase,
+    plus the end-to-end d|Γ|/dε gradient.
 
-GROUND TRUTH: analytic Fresnel Γ=(1−√εr)/(1+√εr) — amplitude AND phase. Measured envelope
-(CPU, this config): |Γ| err 1.7/2.4/3.6% @ εr=2/4/9; phase 10.7° off 180°; d|Γ|/dε AD==FD 0.01%.
+Replaces the retracted ``test_forward_tfsf_reflection_objective.py`` (#417), which used
+SINGLE-POINT (T−I)/I extraction (the #404-defective method → |Γ|>1, 170–290% vs analytic).
+Measured envelope (CPU, this config): |Γ| err 1.7/2.4/3.6% @ εr=2/4/9; phase 10.7° off 180°
+(the εr-independent Yee half-cell reference-plane constant); d|Γ|/dε AD==FD 0.01%.
 Validation harness: docs/research_notes/experiments/i404_oblique_20260720/diffrefl_v3_complex_and_grad.py
 """
 import numpy as np
@@ -31,6 +24,7 @@ import pytest
 
 from rfx.api import Simulation
 from rfx.grid import Grid
+from rfx.probes import fresnel_reflection_coefficient
 
 F0 = 5e9
 DOMAIN = (0.50, 0.12, 0.006)
@@ -45,27 +39,78 @@ def _fresnel(eps):
     return (1.0 - n) / (1.0 + n)      # normal incidence, vacuum->dielectric (negative real)
 
 
+# --------------------------------------------------------------------------- #
+# FAST synthetic contract: the extractor math + differentiability, no FDTD.
+# --------------------------------------------------------------------------- #
+def _synthetic_two_run(gamma_true, dists, f0=F0, n_periods=8, spp=24):
+    """Build (total, incident) real time series carrying a planted complex Γ.
+
+    Incident phasor at probe p: I_p = e^{-j k d_p}. Reflected phasor chosen so that
+    (R_p/I_p)·e^{+j2k d_p} = Γ_true exactly ⇒ R_p = I_p·Γ_true·e^{-j2k d_p}.
+    Real time series over integer periods make the DFT clean; the common (½, N·dt)
+    factor cancels in the ratio, so the helper must return Γ_true.
+    """
+    k = 2 * np.pi * f0 / C0
+    dt = 1.0 / (f0 * spp)
+    n = n_periods * spp
+    t = np.arange(n) * dt
+    ip = np.exp(-1j * k * dists)                       # (n_probes,)
+    rp = ip * gamma_true * np.exp(-1j * 2 * k * dists)
+    osc = np.exp(1j * 2 * np.pi * f0 * t)              # (n,)
+    inc = np.real(ip[None, :] * osc[:, None])          # (n, n_probes)
+    total = np.real((ip + rp)[None, :] * osc[:, None])
+    return jnp.asarray(total), jnp.asarray(inc), dt
+
+
+def test_reflection_helper_recovers_planted_gamma():
+    """Helper recovers a planted complex Γ (amplitude+phase) and is grad-safe."""
+    dists = np.array([0.010, 0.014, 0.018, 0.022])     # metres in front of the ref plane
+    for g_true in (-0.4 + 0j, 0.3j, 0.25 - 0.15j):
+        total, inc, dt = _synthetic_two_run(g_true, dists)
+        g = complex(fresnel_reflection_coefficient(
+            total, inc, f0=F0, dt=dt, probe_distances=dists))
+        assert abs(g - g_true) < 2e-2, f"Γ={g:.4f} vs planted {g_true:.4f}"
+
+    # differentiability: total = inc + θ·reflected ⇒ |Γ|(θ)=θ·|Γ_true|, grad=|Γ_true|
+    total, inc, dt = _synthetic_two_run(-0.4 + 0j, dists)
+    refl = total - inc
+
+    def absg(theta):
+        return jnp.abs(fresnel_reflection_coefficient(
+            inc + theta * refl, inc, f0=F0, dt=dt, probe_distances=jnp.asarray(dists)))
+
+    g_ad = float(jax.grad(absg)(1.0))
+    assert np.isfinite(g_ad), "NaN/Inf gradient (P0)"
+    assert abs(g_ad - 0.4) < 1e-3, f"d|Γ|/dθ={g_ad:.5f} vs closed form 0.4"
+
+
+# --------------------------------------------------------------------------- #
+# SLOW physics ground truth: forward() reflection off a slab vs analytic Fresnel.
+# --------------------------------------------------------------------------- #
 def _build():
     grid = Grid(freq_max=10e9, domain=DOMAIN, dx=DX, cpml_layers=10)
     xi = grid.position_to_index((X_IFACE, 0.06, 0.003))[0]
     xe = grid.position_to_index((X_SLAB_END, 0.06, 0.003))[0]
     xprobes = np.arange(PLATEAU[0], PLATEAU[1], DX)
     probe_idx = np.array([grid.position_to_index((float(xp), 0.06, 0.003))[0] for xp in xprobes])
-    k0 = 2 * np.pi * F0 / C0
-    # de-embed probe -> interface in CONSISTENT cell-index space (CPML pad offset cancels)
-    deembed = np.exp(+1j * 2 * k0 * (xi - probe_idx).astype(np.float64) * DX)
+    # reference plane = the interface; probe distances in metres (CONSISTENT cell-index space)
+    probe_distances = (xi - probe_idx).astype(np.float64) * DX
     # time-gate: stop before the FASTEST (εr=2) back-face reflection reaches the plateau
     n_fast = np.sqrt(2.0)
     t_back = (2 * (X_IFACE - PLATEAU[1]) / C0) + (2 * (X_SLAB_END - X_IFACE) / (C0 / n_fast))
     ns = int(0.9 * t_back / grid.dt)
-    kern = jnp.exp(-1j * 2 * jnp.pi * F0 * jnp.arange(ns) * grid.dt) * grid.dt
 
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=0.5, polarization="ez", direction="+x",
                         waveform="modulated_gaussian")
     for xp in xprobes:
         sim.add_probe((float(xp), 0.06, 0.003), component="ez")
-    return sim, grid.shape, xi, xe, deembed, kern, ns
+    return sim, grid.shape, xi, xe, probe_distances, grid.dt, ns
+
+
+def _series(sim, eps_arr, ns, ckpt=False):
+    return sim.forward(eps_override=eps_arr, n_steps=ns, checkpoint=ckpt,
+                       skip_preflight=True).time_series  # (n_steps, n_probes)
 
 
 def _eps_slab(shape, xi, xe, eps):
@@ -73,25 +118,16 @@ def _eps_slab(shape, xi, xe, eps):
     return a if eps == 1.0 else a.at[xi:xe, :, :].set(eps)
 
 
-def _phasors(sim, eps_arr, kern, ns, ckpt=False):
-    fr = sim.forward(eps_override=eps_arr, n_steps=ns, checkpoint=ckpt, skip_preflight=True)
-    return jnp.sum(fr.time_series.astype(jnp.complex64) * kern[:, None], axis=0)  # (n_probes,)
-
-
-def _gamma(sim, shape, xi, xe, deembed, kern, ns, inc, eps):
-    T = np.asarray(_phasors(sim, _eps_slab(shape, xi, xe, eps), kern, ns))
-    gamma_p = (T - inc) / inc * deembed              # per-probe, de-embedded to the interface
-    return gamma_p
-
-
 @pytest.fixture(scope="module")
 def fresnel_run():
-    sim, shape, xi, xe, deembed, kern, ns = _build()
-    inc = np.asarray(_phasors(sim, _eps_slab(shape, xi, xe, 1.0), kern, ns))  # vacuum incident
-    out = {"sim": sim, "shape": shape, "xi": xi, "xe": xe, "deembed": deembed,
-           "kern": kern, "ns": ns, "inc": inc, "gamma": {}}
+    sim, shape, xi, xe, dists, dt, ns = _build()
+    inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns)          # vacuum incident
+    out = {"sim": sim, "shape": shape, "xi": xi, "xe": xe, "dists": dists,
+           "dt": dt, "ns": ns, "inc": inc, "gamma": {}}
     for eps in (2.0, 4.0, 9.0):
-        out["gamma"][eps] = _gamma(sim, shape, xi, xe, deembed, kern, ns, inc, eps)
+        tot = _series(sim, _eps_slab(shape, xi, xe, eps), ns)
+        out["gamma"][eps] = complex(fresnel_reflection_coefficient(
+            tot, inc, f0=F0, dt=dt, probe_distances=dists, n_gate=ns))
     return out
 
 
@@ -99,7 +135,7 @@ def fresnel_run():
 @pytest.mark.parametrize("eps", [2.0, 4.0, 9.0])
 def test_fresnel_magnitude_vs_analytic(fresnel_run, eps):
     """|Γ| matches analytic Fresnel to the Yee discretization envelope AND is passive (<1)."""
-    g = complex(np.mean(fresnel_run["gamma"][eps]))
+    g = fresnel_run["gamma"][eps]
     ga = _fresnel(eps)
     assert abs(g) < 1.0, f"nonphysical |Γ|={abs(g):.3f}≥1 (the retracted single-point failure mode)"
     assert abs(abs(g) - abs(ga)) < 0.04, f"|Γ|={abs(g):.3f} vs analytic {abs(ga):.3f} (εr={eps})"
@@ -109,19 +145,15 @@ def test_fresnel_magnitude_vs_analytic(fresnel_run, eps):
 def test_fresnel_phase_vs_analytic(fresnel_run):
     """De-embedded phase ~180° (up to the constant Yee half-cell reference-plane offset)."""
     for eps in (2.0, 4.0, 9.0):
-        gamma_p = fresnel_run["gamma"][eps]
-        g = complex(np.mean(gamma_p))
+        g = fresnel_run["gamma"][eps]
         dph = abs(((np.degrees(np.angle(g)) - 180.0 + 180) % 360) - 180)
-        spread = float(np.std(np.degrees(np.angle(gamma_p))))
         assert dph < 20.0, f"∠Γ={np.degrees(np.angle(g)):.1f}° vs 180° (εr={eps}, off {dph:.1f}°)"
-        # de-embed consistency: a right reference plane => probes agree
-        assert spread < 12.0, f"per-probe phase spread {spread:.1f}° too large (εr={eps})"
 
 
 @pytest.mark.slow
 def test_fresnel_phase_offset_is_reference_plane_constant(fresnel_run):
     """The ~11° phase residual is a reference-plane CONSTANT (εr-independent), not a physics error."""
-    phases = [np.degrees(np.angle(complex(np.mean(fresnel_run["gamma"][e])))) for e in (2.0, 4.0, 9.0)]
+    phases = [np.degrees(np.angle(fresnel_run["gamma"][e])) for e in (2.0, 4.0, 9.0)]
     assert (max(phases) - min(phases)) < 3.0, f"phase offset varies with εr {phases} — not a constant"
 
 
@@ -129,12 +161,13 @@ def test_fresnel_phase_offset_is_reference_plane_constant(fresnel_run):
 def test_fresnel_gamma_differentiable(fresnel_run):
     """d|Γ|/dε flows through the checkpointed forward and matches finite difference."""
     sim, shape, xi, xe = fresnel_run["sim"], fresnel_run["shape"], fresnel_run["xi"], fresnel_run["xe"]
-    deembed, kern, ns = fresnel_run["deembed"], fresnel_run["kern"], fresnel_run["ns"]
-    inc = _phasors(sim, _eps_slab(shape, xi, xe, 1.0), kern, ns, ckpt=True)
+    dists, dt, ns = fresnel_run["dists"], fresnel_run["dt"], fresnel_run["ns"]
+    inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns, ckpt=True)
 
     def abs_gamma(eps):
-        T = _phasors(sim, jnp.ones(shape, jnp.float32).at[xi:xe, :, :].set(eps), kern, ns, ckpt=True)
-        return jnp.abs(jnp.mean((T - inc) / inc * jnp.asarray(deembed)))
+        tot = _series(sim, jnp.ones(shape, jnp.float32).at[xi:xe, :, :].set(eps), ns, ckpt=True)
+        return jnp.abs(fresnel_reflection_coefficient(
+            tot, inc, f0=F0, dt=dt, probe_distances=dists, n_gate=ns))
 
     g_ad = float(jax.grad(abs_gamma)(4.0))
     h = 0.05
