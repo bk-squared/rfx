@@ -17,11 +17,28 @@ Method (repo-blessed two-run reference subtraction, "never FFT-of-probe"):
 import numpy as np
 import jax
 import jax.numpy as jnp
-import optax
 import pytest
 
 from rfx.api import Simulation
 from rfx.grid import Grid
+
+
+def _adam(v_and_g, x0, steps, lr=0.2, lo=1.0, hi=8.0):
+    """Minimal Adam (optax is an optional extra not in [dev] — avoid importing it
+    at module level so the fast-suite collection never breaks)."""
+    x, m, v = float(x0), 0.0, 0.0
+    b1, b2, eps = 0.9, 0.999, 1e-8
+    hist = []
+    for i in range(1, steps + 1):
+        val, g = v_and_g(x)
+        hist.append(float(val))
+        g = float(g)
+        assert np.isfinite(g), "P0: non-finite gradient during optimization"
+        m = b1 * m + (1 - b1) * g
+        v = b2 * v + (1 - b2) * g * g
+        mh, vh = m / (1 - b1 ** i), v / (1 - b2 ** i)
+        x = float(np.clip(x - lr * mh / (np.sqrt(vh) + eps), lo, hi))
+    return x, hist
 
 _F0 = 5e9
 _NS = 700
@@ -104,15 +121,6 @@ def test_forward_tfsf_ris_phase_inverse_design():
         return (g.real - gr) ** 2 + (g.imag - gi) ** 2
 
     v_and_g = jax.value_and_grad(loss)
-    opt = optax.adam(0.2)
-    eps = jnp.array(5.0)
-    state = opt.init(eps)
-    hist = []
-    for _ in range(8):
-        v, g = v_and_g(eps)
-        hist.append(float(v))
-        assert np.isfinite(float(g)), "P0: non-finite gradient in RIS inverse design"
-        upd, state = opt.update(g, state, eps)
-        eps = jnp.clip(optax.apply_updates(eps, upd), 1.0, 8.0)
+    eps, hist = _adam(lambda e: v_and_g(e), 5.0, steps=8, lr=0.2)
     hist.append(float(loss(eps)))
     assert hist[-1] < hist[0] * 0.5, f"RIS reflection-target loss did not converge: {hist}"

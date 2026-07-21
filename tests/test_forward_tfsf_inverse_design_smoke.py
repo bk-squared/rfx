@@ -10,10 +10,27 @@ doctrine (test_forward_tfsf_gradient_doctrine.py).
 import numpy as np
 import jax
 import jax.numpy as jnp
-import optax
 import pytest
 
 from rfx.api import Simulation
+
+
+def _adam(v_and_g, x0, steps, lr=0.25, lo=1.0, hi=8.0):
+    """Minimal Adam (no optax dependency — optax is an optional extra not in [dev]).
+    Returns the value history (last entry is the final objective)."""
+    x, m, v = float(x0), 0.0, 0.0
+    b1, b2, eps = 0.9, 0.999, 1e-8
+    hist = []
+    for i in range(1, steps + 1):
+        val, g = v_and_g(x)
+        hist.append(float(val))
+        g = float(g)
+        assert np.isfinite(g), "P0: non-finite gradient during optimization"
+        m = b1 * m + (1 - b1) * g
+        v = b2 * v + (1 - b2) * g * g
+        mh, vh = m / (1 - b1 ** i), v / (1 - b2 ** i)
+        x = float(np.clip(x - lr * mh / (np.sqrt(vh) + eps), lo, hi))
+    return x, hist
 
 
 @pytest.mark.slow
@@ -37,20 +54,9 @@ def test_forward_tfsf_inverse_design_optimizes():
         return jnp.sum(jnp.abs(fr.time_series) ** 2).real
 
     v_and_g = jax.value_and_grad(objective)
-    opt = optax.adam(0.25)
-    eps = jnp.array(4.0)
-    state = opt.init(eps)
-    history = []
-    for _ in range(8):
-        v, g = v_and_g(eps)
-        history.append(float(v))
-        assert np.isfinite(float(g)), "P0: non-finite gradient during optimization"
-        updates, state = opt.update(g, state, eps)
-        eps = jnp.clip(optax.apply_updates(eps, updates), 1.0, 8.0)
-
-    final = float(objective(eps))
-    history.append(final)
-    assert final < history[0] * 0.9, (
+    eps, history = _adam(lambda e: v_and_g(e), 4.0, steps=8, lr=0.25)
+    history.append(float(objective(eps)))
+    assert history[-1] < history[0] * 0.9, (
         f"Adam did not reduce the plane-wave objective through forward(): {history}"
     )
-    assert float(eps) != 4.0, "design variable never moved"
+    assert eps != 4.0, "design variable never moved"
