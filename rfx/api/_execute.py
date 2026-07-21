@@ -1293,6 +1293,37 @@ class _ExecuteMixin:
         cpml_axes_run = grid.cpml_axes
         pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
 
+        # Differentiable TFSF plane-wave (#404): build the 2D/1D-aux TFSF cfg and
+        # force its boundary (transverse-periodic + CPML on the propagation axis),
+        # mirroring rfx/runners/uniform.py. The shared scan (_build_step_setup ->
+        # make_core_step) injects it and auto-activates the complex Bloch path for
+        # oblique (field_dtype -> complex64, per-axis roll phase). Gradients flow
+        # w.r.t. the scatterer materials through the same validated kernel as run().
+        tfsf_run = None
+        if self._tfsf is not None:
+            from rfx.sources.tfsf import init_tfsf as _init_tfsf_fwd
+            tfsf_run = _init_tfsf_fwd(
+                grid.nx, grid.dx, grid.dt,
+                cpml_layers=grid.cpml_layers,
+                tfsf_margin=self._tfsf.margin,
+                f0=self._tfsf.f0 if self._tfsf.f0 is not None else self._freq_max / 2,
+                bandwidth=self._tfsf.bandwidth,
+                amplitude=self._tfsf.amplitude,
+                polarization=self._tfsf.polarization,
+                direction=self._tfsf.direction,
+                angle_deg=self._tfsf.angle_deg,
+                ny=grid.ny,
+                nz=grid.nz,
+                waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
+            )
+            # NOTE: the TFSF vacuum-boundary check runs at forward() entry via
+            # _auto_preflight on the concrete config; it is NOT re-run here because
+            # `materials` may be a jax tracer under jax.grad (eps_override), and the
+            # check concretizes.
+            periodic_bool = (False, True, True)
+            cpml_axes_run = "x"
+            pec_axes_run = ""
+
         # Stage 2 Kottke for AD-traceable PEC density (opt-in via env
         # ``RFX_PEC_OCC_KOTTKE=1``).  When enabled and
         # ── Port-aware Kottke dilation guard (issue #82) ──────────
@@ -1372,6 +1403,7 @@ class _ExecuteMixin:
             cpml_axes=cpml_axes_run,
             pec_axes=pec_axes_run,
             periodic=periodic_bool,
+            tfsf=tfsf_run,
             debye=debye,
             lorentz=lorentz,
             sources=sources,
@@ -2358,22 +2390,6 @@ class _ExecuteMixin:
                 "S11 objectives."
             )
 
-        # TFSF plane-wave sources are not wired into the differentiable forward
-        # path: _forward_from_materials builds sources from lumped/wire ports
-        # only, so a TFSF source would be SILENTLY DROPPED (no injection → zero
-        # gradients — the "TFSF→forward silent-drop" footgun). Fail loud instead.
-        # (The distributed forward path rejects TFSF separately; guard the
-        # single-device path here so both normal and oblique TFSF are surfaced.)
-        if self._tfsf is not None and not distributed:
-            raise NotImplementedError(
-                "TFSF plane-wave sources are not wired into Simulation.forward() "
-                "— the differentiable path builds sources from lumped/wire ports "
-                "only and would silently drop the TFSF source (zero gradients). "
-                "Use run() for TFSF forward simulation (normal or oblique, #404); "
-                "differentiable TFSF/plane-wave inverse design is not yet "
-                "implemented."
-            )
-
         if port_s11_freqs is not None:
             self._validate_forward_sparameter_request()
 
@@ -2405,6 +2421,17 @@ class _ExecuteMixin:
                 "Lumped RLC component-value gradients require the uniform mesh "
                 "path (non-uniform / distributed forward do not process "
                 "add_lumped_rlc elements)."
+            )
+
+        # Differentiable TFSF/plane-wave forward is wired on the uniform
+        # single-device lane only (the shared scan + complex Bloch path, #404).
+        # The non-uniform and distributed forward lanes have no TFSF handling and
+        # would silently drop the source (zero gradients) — fail loud instead.
+        if self._tfsf is not None and plan.lane != "fwd_uniform":
+            raise NotImplementedError(
+                "Differentiable TFSF plane-wave forward is supported only on the "
+                f"uniform single-device forward lane, not {plan.lane!r}. Use a "
+                "uniform mesh + single device for TFSF/plane-wave inverse design."
             )
 
         if plan.lane == "fwd_distributed_nu":
