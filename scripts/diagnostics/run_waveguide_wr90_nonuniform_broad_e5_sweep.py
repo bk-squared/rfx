@@ -7,7 +7,8 @@ adjacent-cell ratio up to 3x); geometry axis is the dielectric slab eps_r.
 
 WR-90 X-band single-mode TE10, centered slab L=4mm (no Fabry-Perot null in
 band so |S11| stays above the floor). dx=0.25mm base. Truth: analytic Airy
-(independent). NU path supports normalize=True single-mode only.
+(independent). NU path supports single-mode normalize=True or normalize='flux';
+this sweep exercises normalize=True.
 """
 from __future__ import annotations
 import json, sys, time
