@@ -1751,25 +1751,27 @@ class _PreflightMixin:
     def _validate_cfg_tfsf_with_lumped_rlc(self, _w) -> None:
         """Warn: a lumped RLC element illuminated by a TFSF plane wave is unstable.
 
-        A bare ``add_lumped_rlc(...)`` element driven by a TFSF plane wave has no
-        defined series circuit, so its ADE current-tracking is ill-posed and the
-        fields diverge (measured: blow-up to ~1e35 by ~250 steps, C-independent).
-        The tunable-load (varactor) gradient IS validated for the PORT-fed lane
-        (``add_port`` + ``forward(rlc_values_override=...)`` — tests/test_lumped_rlc_ad.py),
-        not for a bare plane-wave load. For RIS/reconfigurable-surface design the
-        element must sit in a supporting PEC-gap structure (patch/aperture + gap +
-        ground) so it carries a defined current. Advisory warning (a proper gap
-        structure may be stable); see the tracking issue.
+        A ``add_lumped_rlc(...)`` element driven by a TFSF plane wave diverges
+        (measured: blow-up to ~1e35 by ~250 steps, C-independent). The root cause is
+        the TFSF total/scattered-field decomposition coupling into the lumped ADE
+        current, NOT a missing circuit path: embedding the element in a PEC-gap
+        structure does NOT cure it (tested 2026-07-22, #425 — a two-electrode PEC gap
+        still grows 0.1→1e25→NaN over ~800 steps; see
+        docs/research_notes/experiments/tfsf_lumped_pec_gap_stability.py). So there is
+        no geometry fix at the API level; a stable plane-wave lumped lane needs a
+        solver-level fix to the TFSF↔lumped coupling. The tunable-load (varactor)
+        gradient IS validated on the PORT-fed lane (``add_port`` +
+        ``forward(rlc_values_override=...)`` — tests/test_lumped_rlc_ad.py); use that
+        for varactor/RIS design. See the tracking issue (#425).
         """
         if self._tfsf is None or not self._lumped_rlc:
             return
         _w.warn(PreflightWarning(
-            "add_lumped_rlc(...) + a TFSF plane-wave source: a bare lumped element "
-            "in a plane wave has no defined series circuit and is numerically "
-            "unstable (fields diverge). Embed it in a supporting PEC-gap structure "
-            "(the RIS unit cell) so it carries a defined current. The varactor/"
-            "tunable-load gradient is validated for the PORT-fed lane (add_port + "
-            "forward(rlc_values_override=...)), not for bare plane-wave loads.",
+            "add_lumped_rlc(...) + a TFSF plane-wave source is numerically unstable "
+            "(fields diverge, C-independent). This is the TFSF↔lumped-ADE coupling, "
+            "not a missing circuit path — a PEC-gap structure does NOT cure it "
+            "(tested, #425). Use the validated PORT-fed lane (add_port + "
+            "forward(rlc_values_override=...)) for varactor/tunable-load design.",
             code="tfsf_lumped_rlc_unstable",
             source="_validate_cfg_tfsf_with_lumped_rlc",
         ))
