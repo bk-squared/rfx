@@ -318,6 +318,91 @@ def test_until_decay_zero_forced_n_escape_stays_silent():
 
 
 # ---------------------------------------------------------------------------
+# 3e. MEASURED static-remnant cap-hit advisory (#388 candidate 3). Complements the
+#     pre-run waveform-DC advisory: it fires on the ACTUAL run outcome (final-state
+#     physical E/H energy share), catching thin-source-cell floors the pre-run
+#     advisory cannot predict. Physical energy (½εE² vs ½μH²) separates a static
+#     electrostatic remnant (H-share ~1e-10) from a still-ringing field (H-share ~0.2+).
+# ---------------------------------------------------------------------------
+
+def _run_capture(sim, **run_kw):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        res = sim.run(**run_kw)
+    fired = [str(w.message) for w in caught
+             if "issue #388" in str(w.message) and "H-share" in str(w.message)]
+    return len(res.time_series), fired
+
+
+def _soft_ez_sim(waveform):
+    sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     cpml_layers=4, boundary="cpml")
+    sim.add_source((0.01, 0.01, 0.01), "ez", waveform=waveform)
+    sim.add_probe((0.006, 0.006, 0.006), "ez")
+    return sim
+
+
+def test_static_remnant_cap_hit_advisory_fires():
+    """A high-DC soft source cap-hits (energy floors); the measured advisory fires."""
+    n, fired = _run_capture(_soft_ez_sim(ModulatedGaussian(f0=2.2e9, bandwidth=1.2)),
+                            until_decay=1e-3, decay_min_steps=200, decay_max_steps=1500)
+    assert n == 1500, "high-DC soft source must cap-hit (criterion cannot self-terminate)"
+    assert fired, "measured #388 static-remnant advisory must fire on the cap-hit"
+    assert "electrostatic" in fired[0] and "H-share" in fired[0]
+
+
+def test_static_remnant_advisory_silent_on_settled_run():
+    """A low-DC source settles (the criterion fires) — no cap-hit, no advisory."""
+    n, fired = _run_capture(_soft_ez_sim(GaussianPulse(f0=2.2e9, bandwidth=0.8)),
+                            until_decay=1e-3, decay_min_steps=200, decay_max_steps=1500)
+    assert n < 1500, "low-DC source should settle before the cap"
+    assert not fired, f"advisory must stay silent on a settled run: {fired}"
+
+
+def test_static_remnant_advisory_fires_on_nonuniform_lane():
+    """The NU (dz_profile) lane floors the same way (#388 measured both lanes)."""
+    dz = np.array([0.4e-3] * 4 + [0.5e-3] * 6)
+    sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.01), dx=1e-3, dz_profile=dz,
+                     cpml_layers=4, boundary="cpml")
+    sim.add_source((0.01, 0.01, 0.003), "ez",
+                   waveform=ModulatedGaussian(f0=2.2e9, bandwidth=1.2))
+    sim.add_probe((0.006, 0.006, 0.003), "ez")
+    n, fired = _run_capture(sim, until_decay=1e-3, decay_min_steps=200, decay_max_steps=1500)
+    assert n == 1500 and fired, f"NU cap-hit static-remnant advisory must fire (steps={n})"
+
+
+def test_static_remnant_advisory_silent_when_field_balanced():
+    """False-fire guard (the 2f-slosh concern): a genuine still-ringing cap-hit has a
+    BALANCED physical E/H share (H-share ~0.5), NOT a static remnant. Directly exercise
+    the detector on synthetic states so the threshold logic is pinned without a fixture.
+    """
+    from rfx.simulation import _warn_static_remnant_cap_hit
+    from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
+    from rfx.grid import Grid
+
+    grid = Grid(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3, cpml_layers=2)
+    mats = init_materials(grid.shape)
+    st = init_state(grid.shape)
+    eta = math.sqrt(MU_0 / EPS_0)  # |E| = eta*|H| -> ½εE² == ½μH² (H-share 0.5)
+
+    # (a) balanced propagating-like field: E=eta, H=1 -> H-share ~0.5 -> SILENT
+    bal = st._replace(ex=st.ex + eta, hy=st.hy + 1.0)
+    with warnings.catch_warnings(record=True) as c:
+        warnings.simplefilter("always")
+        _warn_static_remnant_cap_hit(bal, mats, grid)
+    assert not [w for w in c if "issue #388" in str(w.message)], \
+        "balanced E/H (still-ringing) must NOT trigger the static-remnant advisory"
+
+    # (b) pure electrostatic remnant: E only, H=0 -> H-share 0 -> FIRES
+    stat = st._replace(ex=st.ex + eta)
+    with warnings.catch_warnings(record=True) as c:
+        warnings.simplefilter("always")
+        _warn_static_remnant_cap_hit(stat, mats, grid)
+    assert [w for w in c if "issue #388" in str(w.message)], \
+        "an E-only (electrostatic) remnant must trigger the advisory"
+
+
+# ---------------------------------------------------------------------------
 # 4. unresolved-pulse preflight advisory (#386)
 # ---------------------------------------------------------------------------
 

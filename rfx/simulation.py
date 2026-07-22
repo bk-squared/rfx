@@ -18,7 +18,7 @@ import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
-    update_e, update_e_aniso, update_e_aniso_inv, update_h, EPS_0, _shift_bwd,
+    update_e, update_e_aniso, update_e_aniso_inv, update_h, EPS_0, MU_0, _shift_bwd,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_faces, apply_pec_occupancy
@@ -1939,6 +1939,56 @@ def run(
 # Field-decay-based stopping criterion (Python loop + JIT step)
 # ---------------------------------------------------------------------------
 
+def _warn_static_remnant_cap_hit(state, materials, grid) -> None:
+    """#388: on an ``until_decay`` CAP-HIT, warn if the interior remnant is electrostatic.
+
+    A soft current source deposits net charge; the remnant's discrete-Poisson self-energy
+    neither radiates nor is absorbed by CPML, so it floors the interior-energy criterion and
+    ``until_decay`` silently cap-hits even though the radiating field has settled. This is a
+    MEASURED post-run advisory (complements the waveform-predicted pre-run
+    :meth:`_warn_until_decay_dc_floor`, which cannot see thin-source-cell-amplified floors).
+
+    Detection uses PHYSICAL energy (½ε|E|² vs ½μ|H|²): a propagating/radiating field is
+    equipartitioned (H-share ~0.5, and its instantaneous H-energy stays ~0.2 even at an E-max
+    2f-slosh instant), while a static electrostatic remnant is E-only (H-share ~1e-10). The
+    ``H-share < 1e-2`` gate separates them with enormous margin — no false-fire on a genuine
+    still-ringing cap-hit.
+    """
+    import warnings as _w
+    is_2d = getattr(grid, "is_2d", False)  # NonUniformGrid is always 3D (no is_2d attr)
+    ix0, ix1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
+    iy0, iy1 = grid.pad_y_lo, grid.ny - grid.pad_y_hi
+    iz0, iz1 = (0, grid.nz) if is_2d else (grid.pad_z_lo, grid.nz - grid.pad_z_hi)
+    sl = (slice(ix0, ix1), slice(iy0, iy1), slice(iz0, iz1))
+    eps_r = materials.eps_r[sl]
+    mu_r = getattr(materials, "mu_r", None)
+    mu_r = mu_r[sl] if (mu_r is not None and jnp.ndim(mu_r) > 0) else 1.0
+    if is_2d:
+        e2 = state.ez[sl] ** 2
+        h2 = state.hx[sl] ** 2 + state.hy[sl] ** 2
+    else:
+        e2 = state.ex[sl] ** 2 + state.ey[sl] ** 2 + state.ez[sl] ** 2
+        h2 = state.hx[sl] ** 2 + state.hy[sl] ** 2 + state.hz[sl] ** 2
+    u_e = 0.5 * EPS_0 * float(jnp.sum(eps_r * e2))
+    u_h = 0.5 * MU_0 * float(jnp.sum(mu_r * h2))
+    tot = u_e + u_h
+    if tot <= 0.0:
+        return
+    h_share = u_h / tot
+    if h_share < 1e-2:
+        _w.warn(
+            f"run(until_decay=...) cap-hit at max_steps without the energy criterion firing, and "
+            f"{100 * (1 - h_share):.1f}% of the final interior energy is electrostatic "
+            f"(H-share {h_share:.1e}). A static soft-source charge remnant (discrete-Poisson "
+            f"self-energy that neither radiates nor is absorbed by CPML) held the interior energy "
+            f"above decay_by*peak_U while the radiating field settled, so the energy criterion "
+            f"could not self-terminate. Remedies: reduce the source's deposited DC (GaussianPulse "
+            f"cutoff / lower bandwidth), run a fixed n_steps, or confirm settling from the probe "
+            f"envelope. (issue #388)",
+            UserWarning,
+        )
+
+
 def run_until_decay(
     grid: Grid,
     materials: MaterialArrays,
@@ -2220,6 +2270,7 @@ def run_until_decay(
     peak_sq = 0.0          # closed/PEC point-field running peak
     peak_U = 0.0           # absorbing interior-energy running peak (at checks)
     energy_below = 0       # consecutive sub-threshold energy checks
+    decayed_fired = False  # #388: did the energy criterion fire (vs silently cap-hit)?
     all_probes = []
     actual_steps = 0
 
@@ -2246,6 +2297,7 @@ def run_until_decay(
                 if U < decay_by * peak_U:
                     energy_below += 1
                     if energy_below >= decay_energy_consecutive:
+                        decayed_fired = True
                         break
                 else:
                     energy_below = 0
@@ -2259,6 +2311,11 @@ def run_until_decay(
             if actual_steps >= min_steps and step % check_interval == 0 and peak_sq > 0.0:
                 if val_sq < decay_by * peak_sq:
                     break
+
+    # #388: measured static-remnant advisory on an absorbing-lane cap-hit (the energy
+    # criterion never fired). Complements the pre-run waveform-DC advisory.
+    if use_absorbing and not decayed_fired:
+        _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
 
     # ---- assemble result ----
     time_series = jnp.stack(all_probes, axis=0)
