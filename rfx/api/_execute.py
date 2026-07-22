@@ -2423,6 +2423,23 @@ class _ExecuteMixin:
                 "add_lumped_rlc elements)."
             )
 
+        # Kerr χ³ (nonlinear) materials are threaded only on the run() path
+        # (uniform.py -> apply_kerr_ade).  The differentiable forward() lanes
+        # discard kerr_chi3 from _assemble_materials, so a Kerr material would
+        # silently give LINEAR physics (and a linear gradient) with no error.
+        # Fail loud rather than optimise against physics the caller did not ask
+        # for.  There is no chi3_override, so a configured Kerr material is the
+        # only way χ³ enters — self._materials is the complete signal.
+        if any(getattr(m, "chi3", 0.0) != 0.0 for m in self._materials.values()):
+            raise NotImplementedError(
+                "forward() does not support Kerr χ³ (nonlinear) materials: the "
+                "differentiable forward path ignores chi3, so the simulation "
+                "would run LINEAR physics and jax.grad would return a linear "
+                "gradient with no warning. Use run() for nonlinear simulations, "
+                "or remove the chi3 term from the material for a linear "
+                "differentiable forward."
+            )
+
         # Differentiable TFSF/plane-wave forward is wired on the uniform
         # single-device lane only (the shared scan + complex Bloch path, #404).
         # The non-uniform and distributed forward lanes have no TFSF handling and
