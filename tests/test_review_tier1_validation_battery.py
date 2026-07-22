@@ -156,34 +156,41 @@ def test_corec2_e_update_uses_mean_spacing():
 
 def _kerr_setup():
     shape = (2, 2, 2)
-    E0 = 3.0
-    dt = 1.0e-12
-    target_factor = 0.30  # large enough that explicit vs implicit differ
-    chi3 = target_factor * EPS_0 / (dt * E0 ** 2)
-    state = _state(shape, ex=jnp.full(shape, E0, jnp.float32))
+    E0 = 3.0        # E^n (pre-update, sets the intensity |E^n|^2)
+    E_lin = 5.0     # E_lin (post-linear-update field)
+    eps_r = 2.0
+    target_factor = 0.30                     # factor = chi3*E0^2/eps_r
+    chi3 = target_factor * eps_r / E0 ** 2
+    e_prev = (jnp.full(shape, E0, jnp.float32),
+              jnp.zeros(shape, jnp.float32), jnp.zeros(shape, jnp.float32))
+    state = _state(shape, ex=jnp.full(shape, E_lin, jnp.float32))
     chi3_arr = jnp.full(shape, chi3, jnp.float32)
-    factor = (dt / EPS_0) * chi3 * E0 ** 2
-    return state, chi3_arr, dt, E0, factor
+    eps_r_arr = jnp.full(shape, eps_r, jnp.float32)
+    return state, e_prev, chi3_arr, eps_r_arr, E0, E_lin, target_factor
 
 
-def test_geoc1_kerr_ade_uses_exact_implicit_solve():
-    """GEO-C1 regression — apply_kerr_ade returns the exact implicit
-    E/(1+factor), not the old explicit E*(1-factor).
+def test_geoc1_kerr_ade_reactive_increment_solve():
+    """GEO-C1 (#437 redesign) — apply_kerr_ade scales the INCREMENT (reactive ε_eff),
+    NOT the whole field.
 
-    Was ``xfail(strict=True)`` pre-fix; passes post-fix (Stage 1,
-    2026-05-17). The reference is the analytic solution of the discrete
-    relation E^{n+1}(1+factor) = E^n stated in the apply_kerr_ade
-    docstring.
+    Reactive Kerr is ε_eff = ε_r + χ³|E|² (lossless index change).  The correct update
+    scales only the newly-integrated increment::
+
+        E^{n+1} = E^n + (E_lin - E^n) / (1 + χ³·|E^n|²/ε_r)
+
+    The pre-#437 code scaled the WHOLE field (E_lin/(1+factor)) — a nonlinear absorber
+    that reduced |E| with zero phase shift (docs/research_notes/2026-07-22_kerr_operator_defect.md).
+    This pins the reactive increment form and that it differs from the old dissipative one.
     """
-    state, chi3_arr, dt, E0, factor = _kerr_setup()
-    out = apply_kerr_ade(state, chi3_arr, dt)
+    state, e_prev, chi3_arr, eps_r_arr, E0, E_lin, factor = _kerr_setup()
+    out = apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr)
     got = float(np.asarray(out.ex)[0, 0, 0])
 
-    implicit = E0 / (1.0 + factor)
-    explicit = E0 * (1.0 - factor)
-    assert got == pytest.approx(implicit, rel=1e-4)
-    # The fix is a genuine change: explicit and implicit differ at factor=0.3.
-    assert abs(got - explicit) > 0.01 * E0
+    reactive = E0 + (E_lin - E0) / (1.0 + factor)   # increment-scaled (correct)
+    dissipative = E_lin / (1.0 + factor)            # whole-field (the old bug)
+    assert got == pytest.approx(reactive, rel=1e-4)
+    # genuinely different from the old dissipative operator at factor=0.3
+    assert abs(got - dissipative) > 0.01 * E_lin
 
 
 # ===========================================================================

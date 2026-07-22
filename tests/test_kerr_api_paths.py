@@ -13,15 +13,16 @@ Two gaps this closes:
    ``_assemble_materials`` — a Kerr material gave LINEAR physics and a LINEAR gradient with
    no error (a silent-wrong footgun for differentiable nonlinear design). Now guarded.
 
-WHY a wiring/monotonicity/stability oracle and NOT a quantitative SPM(Δφ) match: the naive
-pulsed-transmission-phase comparator is run-length-artifact-dominated (∠ flips sign between
-NP=30 and NP=40) AND at gateable χ³ the ADE per-step factor (dt/ε0)·χ³·E²≈0.4 is STRONGLY
-nonlinear (perturbative Δn=χ³⟨E²⟩/2n0 breaks down). A tight quantitative Kerr oracle needs a
-CW steady-state intensity comparator in the weak regime — a dedicated session (issue filed).
-This oracle instead gates the ROBUST observable: the probe field-difference norm ||E(χ³)−E(0)||
-is run-length-robust (0.8426 vs 0.8415 @ NP=30/40), domain-size INVARIANT (0.8426 across
-0.5/0.6 m × 0.06/0.10 m), null-controlled (χ³=0 ⇒ exactly 0), and monotonic in χ³
-(0.70/0.78/0.84 @ χ³=1/2/4). Harness: docs/research_notes/experiments/kerr_spm_*.py
+The run() oracle gates the REACTIVE Kerr (#437: apply_kerr_ade is now ε_eff=ε_r+χ³|E|²
+increment-scaling, lossless — NOT the pre-#437 dissipative absorber). Robust, discriminating
+observables: χ³=0 byte-identical to a linear run; the probe field-difference ‖E(χ³)−E(0)‖ is
+monotone in χ³ (0.25/0.46/0.88 @ χ³=0.5/1/2) and finite; and — the key reactive signature —
+the peak field amplitude is PRESERVED (0.93–1.14× across χ³, a lossless index change), which
+the pre-#437 dissipative operator would have driven well below 1. The exact quantitative SPM
+magnitude (matching k0·L·χ³⟨E²⟩/(2n0) to a few %) still needs a clean CW ⟨E²⟩ comparator; the
+operator's correctness against analytic ε_eff is pinned in 1D by
+docs/research_notes/experiments/kerr_reactive_1d_verify.py.
+Harness: docs/research_notes/experiments/kerr_spm_*.py, kerr_operator_decider.py.
 """
 import numpy as np
 import pytest
@@ -80,39 +81,58 @@ def _run_probe_series(chi3):
     return np.asarray(_kerr_sim(chi3).run(num_periods=30, skip_preflight=True).time_series)
 
 
+CHI3S = (0.5, 1.0, 2.0)   # moderate reactive regime (χ³=4 is strongly nonlinear)
+
+
 @pytest.fixture(scope="module")
 def kerr_run_diffs():
     base = _run_probe_series(0.0)
     denom = float(np.linalg.norm(base))
-    diffs = {}
-    series = {0.0: base}
-    for chi3 in (1.0, 2.0, 4.0):
+    peak0 = float(np.max(np.abs(base)))
+    diffs, peaks, series = {}, {}, {0.0: base}
+    for chi3 in CHI3S:
         s = _run_probe_series(chi3)
         series[chi3] = s
         diffs[chi3] = float(np.linalg.norm(s - base)) / denom
-    return {"diffs": diffs, "series": series}
+        peaks[chi3] = float(np.max(np.abs(s))) / peak0
+    return {"diffs": diffs, "peaks": peaks, "series": series}
 
 
 @pytest.mark.slow
-def test_run_wires_kerr(kerr_run_diffs):
-    """run() with χ³>0 measurably changes the field vs χ³=0 — the public API threads Kerr.
-    DISCRIMINATING: if run() dropped χ³ (like forward() did), every diff would be ~0."""
-    diffs = kerr_run_diffs["diffs"]
-    for chi3, d in diffs.items():
-        assert d > 0.3, f"χ³={chi3} barely changed the field (||Δ||/||E||={d:.4f}) — Kerr not wired?"
+def test_run_wires_kerr_byte_identity_and_change(kerr_run_diffs):
+    """χ³=0 is byte-identical to a truly-linear (no-Kerr) run, and χ³>0 measurably changes the
+    field — the public run() API threads χ³. If run() dropped it (like forward() did), the
+    χ³>0 diffs would be ~0."""
+    # byte-identity: a chi3=0 Kerr material == the same geometry with a plain linear material
+    lin = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
+    lin.add_material("lin", eps_r=EPS_R)
+    lin.add(Box((X_IFACE, -1, -1), (X_SLAB_END, 1, 1)), material="lin")
+    lin.add_tfsf_source(f0=F0, bandwidth=0.3, amplitude=1.0, polarization="ez",
+                        direction="+x", waveform="modulated_gaussian")
+    for xp in XPROBES:
+        lin.add_probe((xp, DOMAIN[1] / 2, DOMAIN[2] / 2), component="ez")
+    lin_ts = np.asarray(lin.run(num_periods=30, skip_preflight=True).time_series)
+    assert float(np.max(np.abs(kerr_run_diffs["series"][0.0] - lin_ts))) == 0.0, \
+        "chi3=0 must be byte-identical to a linear run"
+    for chi3, d in kerr_run_diffs["diffs"].items():
+        assert d > 0.15, f"χ³={chi3} barely changed the field (||Δ||={d:.4f}) — Kerr not wired?"
 
 
 @pytest.mark.slow
 def test_run_kerr_monotonic_in_chi3(kerr_run_diffs):
-    """Stronger χ³ ⇒ larger field change (monotone). A wrong-sign or clipped coupling breaks this."""
+    """Stronger χ³ ⇒ larger field change (monotone). A wrong-sign/clipped coupling breaks this."""
     d = kerr_run_diffs["diffs"]
-    assert d[4.0] > d[2.0] > d[1.0], f"non-monotone in χ³: {d}"
+    assert d[2.0] > d[1.0] > d[0.5], f"non-monotone in χ³: {d}"
 
 
 @pytest.mark.slow
-def test_run_kerr_stable_and_bounded(kerr_run_diffs):
-    """The nonlinear run stays finite and bounded (no ADE blow-up); the change is physical,
-    not a divergence (||Δ||/||E|| well below the ~√2 two-uncorrelated-signals ceiling)."""
+def test_run_kerr_reactive_lossless_and_stable(kerr_run_diffs):
+    """The KEY #437 signature: the reactive Kerr PRESERVES the field amplitude (a lossless index
+    change), unlike the pre-#437 dissipative absorber which drove |E| well below 1. Peak-amplitude
+    ratio stays near 1 across χ³, and every run is finite."""
     for chi3, s in kerr_run_diffs["series"].items():
         assert np.all(np.isfinite(s)), f"non-finite field at χ³={chi3}"
-    assert kerr_run_diffs["diffs"][4.0] < 1.2, "field change looks like a blow-up, not Kerr"
+    for chi3, r in kerr_run_diffs["peaks"].items():
+        assert 0.7 < r < 1.5, (
+            f"χ³={chi3}: peak|E| ratio {r:.3f} — reactive Kerr must preserve amplitude "
+            "(a dissipative absorber would push it far below 1)")

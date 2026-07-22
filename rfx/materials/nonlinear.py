@@ -41,52 +41,54 @@ class KerrMaterial(NamedTuple):
 # ADE (Auxiliary Differential Equation) Kerr correction
 # ---------------------------------------------------------------------------
 
-def apply_kerr_ade(state, chi3_arr, dt):
-    """Apply Kerr nonlinear correction to E-field (ADE formulation).
+def apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr):
+    """Apply the instantaneous **reactive** Kerr correction to the E-field (#437).
 
-    After the standard linear E-update the nonlinear polarisation
-    current introduces an additional term:
+    A Kerr χ³ nonlinearity is a REACTIVE, intensity-dependent permittivity
+    (LOSSLESS — it changes the phase velocity, not the amplitude):
 
-        P_NL = eps0 * chi3 * |E|^2 * E
+        ε_eff = ε_r + χ³·|E|²
 
-    In discrete form the correction is:
+    The linear E-update already produced ``E_lin = E^n + ΔE`` with
+    ``ΔE = (dt/(ε0·ε_r))·(∇×H)``.  The ε_eff update is obtained algebraically by
+    scaling the **increment** (not the whole field)::
 
-        E^{n+1} -= (dt / eps0) * chi3 * |E^n|^2 * E^{n+1}
+        E^{n+1} = E^n + ΔE·ε_r/ε_eff = E^n + (E_lin − E^n) / (1 + χ³·|E^n|²/ε_r)
 
-    where ``|E^n|^2 = Ex^2 + Ey^2 + Ez^2`` evaluated component-wise
-    (co-located approximation suitable for weakly nonlinear media).
+    Scaling the increment is what makes this reactive and lossless — the
+    equilibrium field ``E^n`` is preserved and only the newly-integrated increment
+    is slowed by the higher effective permittivity.  Scaling the whole field
+    (``E → E/(1+factor)``, the pre-#437 behaviour) monotonically shrinks |E| and is
+    a nonlinear **absorber**, not reactive χ³ (phase-neutral to first order — see
+    docs/research_notes/2026-07-22_kerr_operator_defect.md).  The factor
+    ``χ³·|E^n|²/ε_r`` is dimensionless and dt-independent, as a material index
+    change must be.  ``|E^n|²`` is the co-located pre-update intensity (explicit
+    ε_eff; suitable for weakly-to-moderately nonlinear media).
 
     Parameters
     ----------
     state : FDTDState
-        State **after** the standard E-update (contains E^{n+1}).
-        The previous-step |E^n|^2 is approximated by the updated
-        field for an explicit scheme.
+        State **after** the linear E-update (contains ``E_lin``).
+    e_prev : tuple(jnp.ndarray, jnp.ndarray, jnp.ndarray)
+        The E-field components (ex, ey, ez) **before** the linear update (``E^n``),
+        used to form the increment and the pre-update intensity.
     chi3_arr : jnp.ndarray, shape (Nx, Ny, Nz)
-        Third-order susceptibility at each cell (m^2/V^2).
-        Zero where the medium is linear.
-    dt : float
-        Timestep in seconds.
+        Third-order susceptibility at each cell (m^2/V^2).  Zero where linear;
+        there the increment is scaled by 1 ⇒ the field is unchanged (byte-identical).
+    eps_r_arr : jnp.ndarray, shape (Nx, Ny, Nz)
+        Relative permittivity per cell (ε_r ≥ 1) — the ε_eff denominator.
 
     Returns
     -------
-    FDTDState with corrected E-field components.
+    FDTDState with the reactive-Kerr-corrected E-field components.
     """
-    # |E|^2 from the just-updated field.
-    e_sq = state.ex ** 2 + state.ey ** 2 + state.ez ** 2
-
-    # Correction factor: dt * chi3 / eps0 * |E|^2.
-    factor = (dt / EPS_0) * chi3_arr * e_sq
-
-    # GEO-C1: exact solve of the documented implicit relation
-    #   E^{n+1} (1 + factor) = E^n  ->  E^{n+1} = E^n / (1 + factor).
-    # The prior code used the explicit linearisation E*(1-factor) — only
-    # first-order in ``factor`` and divergent once ``factor`` is not
-    # << 1. The implicit form is the same cost and unconditionally
-    # stable for this term.
-    ex = state.ex / (1.0 + factor)
-    ey = state.ey / (1.0 + factor)
-    ez = state.ez / (1.0 + factor)
+    ex_p, ey_p, ez_p = e_prev
+    # |E^n|^2 (co-located, pre-update) so ε_eff is explicit in the increment scale.
+    e_sq = ex_p ** 2 + ey_p ** 2 + ez_p ** 2
+    denom = 1.0 + chi3_arr * e_sq / eps_r_arr        # = ε_eff / ε_r  (>= 1)
+    ex = ex_p + (state.ex - ex_p) / denom
+    ey = ey_p + (state.ey - ey_p) / denom
+    ez = ez_p + (state.ez - ez_p) / denom
 
     return state._replace(ex=ex, ey=ey, ez=ez)
 
