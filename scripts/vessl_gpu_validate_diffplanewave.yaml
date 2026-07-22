@@ -37,6 +37,7 @@ run: |-
     tests/test_forward_tfsf_fresnel_groundtruth.py \
     tests/test_rcs_jax_differentiable.py \
     tests/test_oblique_fresnel_magnitude.py \
+    tests/test_oblique_fresnel_phase.py \
     tests/test_rcs_reduction_inverse_design.py \
     > "$out/validate.log" 2>&1
   rc=$?
