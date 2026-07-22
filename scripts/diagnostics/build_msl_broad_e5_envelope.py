@@ -49,6 +49,10 @@ THRESH = dict(
     thru_max_q=1.0,
     stub_freq_err_pct=10.0,
     stub_depth_db=15.0,
+    # HIT-7a: stub-gate passivity ceiling (the THRU gate has max_q<1 but the STUB gate
+    # enforced only freq+depth). 1.05 sits above the committed notch fixture's 1.0063
+    # (MSL Yee/band-edge envelope) and catches over-unity extraction artifacts (#337 class).
+    stub_max_col_power=1.05,
     extractor_residual_norm=1e-2,
 )
 
@@ -137,9 +141,17 @@ def _gate_open_stub(case_npz: dict, summary: dict) -> dict:
     band_mean_db = float(np.mean(s21_band_db))
     depth_db = float(band_mean_db - s21_dip_db)
 
+    # HIT-7a passivity ceiling: a passive stub cannot scatter more power than it receives,
+    # so max over band+column of sum_i |S_ij|^2 must stay <= 1 (+ Yee margin). The gate
+    # documented a passive-line criterion but only the THRU gate enforced it — an over-unity
+    # stub S-matrix (extraction/normalization artifact, #337 class) previously passed.
+    s_band = s[:, :, mask]                                       # (2, 2, nband)
+    max_col_power = float(np.max(np.sum(np.abs(s_band) ** 2, axis=0)))
+
     gates = {
         "freq_err_lt_10pct": freq_err_pct < THRESH["stub_freq_err_pct"],
         "depth_gt_15db": depth_db > THRESH["stub_depth_db"],
+        "passive_col_power_le_1p05": max_col_power <= THRESH["stub_max_col_power"],
     }
     return dict(
         passed=all(gates.values()),
@@ -151,6 +163,7 @@ def _gate_open_stub(case_npz: dict, summary: dict) -> dict:
             dip_s21_dB=s21_dip_db,
             band_mean_s21_dB=band_mean_db,
             dip_depth_dB=depth_db,
+            max_col_power_over_band=max_col_power,
             n_freqs_in_band=int(mask.sum()),
         ),
     )
