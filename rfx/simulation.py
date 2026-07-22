@@ -1233,6 +1233,10 @@ def make_core_step(ctx: _StepContext):
                         mag_src_vals[idx_m].astype(h_field.dtype))
                     st = st._replace(**{mc: h_field})
 
+            # Snapshot E^n before the linear E-update for the reactive Kerr
+            # increment (#437): E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
+            e_prev_kerr = (st.ex, st.ey, st.ez) if ctx.use_kerr else None
+
             if ctx.use_upml:
                 if ctx.use_debye or ctx.use_lorentz:
                     raise ValueError("boundary='upml' does not yet support dispersion")
@@ -1254,9 +1258,9 @@ def make_core_step(ctx: _StepContext):
                     bloch=ctx.bloch,
                 )
 
-            # Kerr nonlinear ADE correction (after linear E-update)
+            # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff (#437).
             if ctx.use_kerr:
-                st = ctx.apply_kerr_ade(st, ctx.kerr_chi3, dt)
+                st = ctx.apply_kerr_ade(st, e_prev_kerr, ctx.kerr_chi3, materials.eps_r)
 
             if ctx.use_tfsf:
                 st = ctx.apply_tfsf_e(st, ctx.tfsf_cfg, tfsf_h_state, dx, dt)
