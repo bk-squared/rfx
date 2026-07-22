@@ -1,0 +1,50 @@
+name: rfx-gpu-validate-diffplanewave
+description: "Pre-release GPU validation of the new differentiable plane-wave / RCS slow tests (#418-#426): forward-TFSF Fresnel Gamma, compute_rcs_jax, oblique |Gamma|, RCS-reduction. Run before the next release tag."
+tags: [rfx, gpu-validate, diffplanewave, rcs, pre-release]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # full float32 matmul precision (disable TF32) so the jnp-vs-numpy RCS equivalence
+  # gate (rel<1e-4) reflects the algorithm, not TF32 rounding in the NTFF einsum.
+  JAX_DEFAULT_MATMUL_PRECISION: "highest"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== rfx GPU validation: differentiable plane-wave / RCS slow tests (#418-#426) ==="
+  echo "=== provenance ==="
+  git rev-parse HEAD || true
+  git status --short || true
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  out=".omx/gpu-validate/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  mkdir -p "$out"
+  echo "=== new slow tests on GPU (-m slow, 4 files: Fresnel Gamma / RCS jax / oblique |Gamma| / RCS reduction) ==="
+  # POSIX-safe rc capture (the VESSL runner shell chokes on ${PIPESTATUS[0]}; see gpu_suite.yaml).
+  set +e
+  timeout 9000 python -m pytest -m slow -q -ra -p no:cacheprovider \
+    tests/test_forward_tfsf_fresnel_groundtruth.py \
+    tests/test_rcs_jax_differentiable.py \
+    tests/test_oblique_fresnel_magnitude.py \
+    tests/test_rcs_reduction_inverse_design.py \
+    > "$out/validate.log" 2>&1
+  rc=$?
+  set -e
+  tail -n 80 "$out/validate.log"
+  echo "$rc" > "$out/validate.rc"
+  echo "=== summary ==="
+  tail -n 30 "$out/validate.log" | grep -E "passed|failed|error|skipped" || true
+  echo "validate_rc=$rc"
+  echo "artifacts: $out"
+  exit "$rc"
