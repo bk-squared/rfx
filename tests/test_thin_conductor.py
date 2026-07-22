@@ -262,7 +262,7 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
     from rfx.api import Simulation
     from rfx.runners.nonuniform import (build_nonuniform_grid,
                                         assemble_materials_nu)
-    from rfx.geometry.rasterize import coords_from_nonuniform_grid
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
     from rfx.geometry.csg import Box
 
     dx = 0.5e-3

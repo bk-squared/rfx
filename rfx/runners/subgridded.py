@@ -197,7 +197,7 @@ def _run_subgridded_once(
     y_off = (fj_lo - grid_coarse.pad_y_lo) * dx_c
     z_off = (fk_lo - grid_coarse.pad_z_lo) * dx_c
 
-    from rfx.geometry.rasterize import coords_from_fine_grid, rasterize_geometry
+    from rfx.geometry.rasterize_grid import coords_from_fine_grid, rasterize_geometry
 
     coords_f = coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off)
     mats_f, _, _, pec_mask_f, _, _ = rasterize_geometry(

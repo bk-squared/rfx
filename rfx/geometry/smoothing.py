@@ -305,7 +305,7 @@ def compute_smoothed_eps_nonuniform(
     local cell sizes — first-order accurate for non-cubic Yee cells, in
     line with the SDF-to-fill approximation in the uniform path.
     """
-    from rfx.geometry.rasterize import coords_from_nonuniform_grid
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 
     coords = coords_from_nonuniform_grid(nu_grid)
     centers_x = coords.x  # (nx,)
