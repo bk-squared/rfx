@@ -9,9 +9,11 @@ Two gaps this closes:
    ``apply_kerr_ade`` (simulation.py). If run() silently dropped Kerr (as forward() did),
    every existing test would still pass. This gates that wiring.
 
-2. ``forward()`` (the differentiable path) discarded ``kerr_chi3`` from
-   ``_assemble_materials`` — a Kerr material gave LINEAR physics and a LINEAR gradient with
-   no error (a silent-wrong footgun for differentiable nonlinear design). Now guarded.
+2. ``forward()`` (the differentiable path) once discarded ``kerr_chi3`` from
+   ``_assemble_materials`` — a Kerr material gave LINEAR physics + a LINEAR gradient with no
+   error. It now threads χ³ through the shared ``_run`` scan on the UNIFORM lane: reactive
+   Kerr, byte-identical to run(), and differentiable through the operator (NU/distributed
+   forward lanes stay guarded — they still discard χ³).
 
 The run() oracle gates the REACTIVE Kerr (#437: apply_kerr_ade is now ε_eff=ε_r+χ³|E|²
 increment-scaling, lossless — NOT the pre-#437 dissipative absorber). Robust, discriminating
@@ -39,7 +41,8 @@ XPROBES = (0.16, 0.18, 0.20, 0.22, 0.33)
 
 
 # --------------------------------------------------------------------------- #
-# FAST: forward() must fail loud on a Kerr material (no silent linear physics).
+# forward(): the differentiable path RUNS reactive Kerr on the uniform lane (#437),
+# byte-identical to run(), and is differentiable THROUGH the Kerr operator.
 # --------------------------------------------------------------------------- #
 def _kerr_sim(chi3):
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml",
@@ -53,25 +56,46 @@ def _kerr_sim(chi3):
     return sim
 
 
-def test_forward_rejects_kerr_material():
-    """forward() with a χ³ material raises (rather than silently running LINEAR physics)."""
-    sim = _kerr_sim(0.1)
-    with pytest.raises(NotImplementedError, match="Kerr"):
-        sim.forward(n_steps=50, skip_preflight=True)
-
-
-def test_forward_guard_message_points_to_run():
-    """The guard tells the caller to use run() — the path that does thread χ³."""
-    sim = _kerr_sim(0.1)
-    with pytest.raises(NotImplementedError, match="run"):
-        sim.forward(n_steps=50, skip_preflight=True)
+def test_forward_kerr_matches_run():
+    """forward()+Kerr runs on the uniform lane and is byte-identical to run() (shared _run scan
+    with the reactive apply_kerr_ade). A silent χ³-drop (the pre-#437 forward behaviour) would
+    diverge from run()."""
+    fwd = np.asarray(_kerr_sim(0.2).forward(n_steps=300, skip_preflight=True).time_series)
+    run = np.asarray(_kerr_sim(0.2).run(n_steps=300, skip_preflight=True).time_series)
+    assert np.all(np.isfinite(fwd))
+    assert float(np.max(np.abs(fwd - run))) == 0.0, "forward() Kerr must match run() (same scan)"
 
 
 def test_forward_without_kerr_is_unaffected():
-    """A χ³=0 (linear) material does NOT trip the guard — the forward path still runs."""
-    sim = _kerr_sim(0.0)  # chi3=0 ⇒ not a Kerr material
-    res = sim.forward(n_steps=50, skip_preflight=True)
+    """A χ³=0 (linear) material leaves the forward path unchanged."""
+    res = _kerr_sim(0.0).forward(n_steps=50, skip_preflight=True)
     assert res.time_series is not None and np.all(np.isfinite(res.time_series))
+
+
+@pytest.mark.slow
+def test_forward_kerr_differentiable():
+    """The forward is differentiable THROUGH the reactive Kerr operator: d(field-energy)/d(eps)
+    with a Kerr medium present matches finite difference — the differentiable nonlinear-design
+    surface (RIS/low-observable) the #437 fix unlocks."""
+    import jax
+    import jax.numpy as jnp
+    sim = _kerr_sim(0.2)
+    grid = sim._build_grid()
+    shape = grid.shape
+    xi = grid.position_to_index((X_IFACE, DOMAIN[1] / 2, DOMAIN[2] / 2))[0]
+    xe = grid.position_to_index((X_SLAB_END, DOMAIN[1] / 2, DOMAIN[2] / 2))[0]
+
+    def obj(eps_val):
+        eps = jnp.ones(shape, jnp.float32).at[xi:xe, :, :].set(eps_val)
+        ts = _kerr_sim(0.2).forward(eps_override=eps, n_steps=400, checkpoint=True,
+                                    skip_preflight=True).time_series
+        return jnp.sum(ts ** 2)
+
+    g_ad = float(jax.grad(obj)(2.0))
+    h = 0.02
+    g_fd = (float(obj(2.0 + h)) - float(obj(2.0 - h))) / (2 * h)
+    assert np.isfinite(g_ad), "NaN/Inf gradient through Kerr"
+    assert abs(g_ad - g_fd) < 0.03 * abs(g_fd) + 1e-6, f"AD={g_ad:.4e} vs FD={g_fd:.4e}"
 
 
 # --------------------------------------------------------------------------- #

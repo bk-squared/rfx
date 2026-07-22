@@ -838,6 +838,7 @@ class _ExecuteMixin:
         checkpoint_segments: int | None = None,
         pec_mask: jnp.ndarray | None = None,
         pec_occupancy: jnp.ndarray | None = None,
+        kerr_chi3: jnp.ndarray | None = None,
         port_s11_freqs: object | None = None,
         rlc_values_override: dict | None = None,
         _sparam_drive_idx: int | None = None,
@@ -1420,6 +1421,7 @@ class _ExecuteMixin:
             wire_port_sparams=wire_port_sparam_specs or None,
             wire_refplane_sparams=wire_refplane_specs or None,
             lumped_rlc=rlc_metas,
+            kerr_chi3=kerr_chi3,
             dft_planes=dft_planes if dft_planes else None,
             return_state=False,
             stencil_order=self._stencil_order,
@@ -2423,21 +2425,17 @@ class _ExecuteMixin:
                 "add_lumped_rlc elements)."
             )
 
-        # Kerr χ³ (nonlinear) materials are threaded only on the run() path
-        # (uniform.py -> apply_kerr_ade).  The differentiable forward() lanes
-        # discard kerr_chi3 from _assemble_materials, so a Kerr material would
-        # silently give LINEAR physics (and a linear gradient) with no error.
-        # Fail loud rather than optimise against physics the caller did not ask
-        # for.  There is no chi3_override, so a configured Kerr material is the
-        # only way χ³ enters — self._materials is the complete signal.
-        if any(getattr(m, "chi3", 0.0) != 0.0 for m in self._materials.values()):
+        # Reactive Kerr χ³ (#437) is threaded through the shared _run scan on the
+        # UNIFORM forward lane only.  The non-uniform / distributed forward lanes
+        # discard kerr_chi3, so a Kerr material there would silently give LINEAR
+        # physics (and a linear gradient) — fail loud on those lanes only.
+        if (plan.lane != "fwd_uniform"
+                and any(getattr(m, "chi3", 0.0) != 0.0 for m in self._materials.values())):
             raise NotImplementedError(
-                "forward() does not support Kerr χ³ (nonlinear) materials: the "
-                "differentiable forward path ignores chi3, so the simulation "
-                "would run LINEAR physics and jax.grad would return a linear "
-                "gradient with no warning. Use run() for nonlinear simulations, "
-                "or remove the chi3 term from the material for a linear "
-                "differentiable forward."
+                "forward() supports Kerr χ³ (nonlinear) materials only on the uniform "
+                f"single-device lane, not {plan.lane!r} (which discards chi3 → silent "
+                "linear physics + linear gradient). Use a uniform mesh + single device "
+                "for differentiable nonlinear (Kerr) design."
             )
 
         # Differentiable TFSF/plane-wave forward is wired on the uniform
@@ -2485,7 +2483,7 @@ class _ExecuteMixin:
         # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----
         n_steps = plan.n_steps
         grid = self._build_grid()
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = self._assemble_materials(grid)
+        materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = self._assemble_materials(grid)
 
         if eps_override is not None or sigma_override is not None:
             materials = MaterialArrays(
@@ -2510,6 +2508,7 @@ class _ExecuteMixin:
             checkpoint_segments=checkpoint_segments,
             pec_mask=pec_mask,
             pec_occupancy=pec_occupancy_override,
+            kerr_chi3=kerr_chi3,
             port_s11_freqs=port_s11_freqs,
             rlc_values_override=rlc_values_override,
         )
