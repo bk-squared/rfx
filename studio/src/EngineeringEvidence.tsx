@@ -40,16 +40,25 @@ export function EngineeringEvidence({ artifact, run, revision, fieldSlice, field
   const minimumIndex = points.indexOf(minimum);
   const gamma = Math.hypot(minimum.real, minimum.imag);
   const vswr = gamma < 1 ? (1 + gamma) / (1 - gamma) : Number.POSITIVE_INFINITY;
-  let bandStart = minimumIndex;
-  let bandStop = minimumIndex;
-  if (minimum.magnitude_db <= -10) {
-    while (bandStart > 0 && points[bandStart - 1].magnitude_db <= -10) bandStart -= 1;
-    while (bandStop < points.length - 1 && points[bandStop + 1].magnitude_db <= -10) bandStop += 1;
-  }
-  const sampledBandPoints = minimum.magnitude_db <= -10 ? bandStop - bandStart + 1 : 0;
+  let bandStart = -1;
+  let bandStop = -1;
+  let currentBandStart = -1;
+  points.forEach((point, index) => {
+    if (point.magnitude_db < -10) {
+      if (currentBandStart < 0) currentBandStart = index;
+      if (bandStart < 0 || index - currentBandStart > bandStop - bandStart) {
+        bandStart = currentBandStart;
+        bandStop = index;
+      }
+    } else {
+      currentBandStart = -1;
+    }
+  });
+  const sampledBandPoints = bandStart >= 0 ? bandStop - bandStart + 1 : 0;
   const sampledBandwidth = sampledBandPoints >= 2
     ? points[bandStop].frequency_hz - points[bandStart].frequency_hz
     : null;
+  const passivitySuspect = minimum.magnitude_db > 0;
   const frequencySteps = points.slice(1).map((point, index) => point.frequency_hz - points[index].frequency_hz);
   const minimumStep = frequencySteps.length ? Math.min(...frequencySteps) : null;
   const maximumStep = frequencySteps.length ? Math.max(...frequencySteps) : null;
@@ -115,11 +124,12 @@ export function EngineeringEvidence({ artifact, run, revision, fieldSlice, field
         <div><span>Sweep coverage</span><strong>{formatFrequency(points[0].frequency_hz)} – {formatFrequency(points[points.length - 1].frequency_hz)}</strong><small>{stepLabel}</small></div>
         <div><span>Run duration</span><strong>{duration(run)}</strong><small>submit to saved output</small></div>
       </div>
-      {(minimumAtSweepEdge || points.length < 21 || fieldCoordinateSnapped) && (
+      {(minimumAtSweepEdge || points.length < 21 || fieldCoordinateSnapped || passivitySuspect) && (
         <div className="result-advisories" aria-label="RF result advisories">
           {minimumAtSweepEdge && <p><strong>Sweep boundary</strong> The minimum S11 occurs at the {minimumIndex === 0 ? "lower" : "upper"} sweep edge; extend the sweep before interpreting it as a resolved resonance.</p>}
           {points.length < 21 && <p><strong>Sample density</strong> Only {points.length} frequency points were sampled; bandwidth and narrow resonances may be under-resolved.</p>}
           {fieldCoordinateSnapped && <p><strong>Field plane</strong> The requested plane was snapped by {(fieldCoordinateDelta! * 1e3).toFixed(3)} mm to the nearest solved grid plane.</p>}
+          {passivitySuspect && <p><strong>Passivity witness</strong> The sampled minimum has |S11| &gt; 1; treat this as a port-extraction, normalization, or convergence-instability suspect, not a physical gain result.</p>}
         </div>
       )}
       <div className="evidence-columns">

@@ -245,16 +245,29 @@ class LocalCopilotProvider:
             r"(?:([0-9]+)\s*(?:points?|포인트|샘플)|(?:points?|포인트|샘플)\s*[:=]?\s*([0-9]+))",
             lowered,
         )
-        stop_hz = (
-            float(frequency_matches[-1]) * 1e9
-            if sweep_requested and frequency_matches
+        explicit_stop_match = re.search(
+            r"(?:\b(?:to|until|through)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:ghz|기가헤르츠)|([0-9]+(?:\.[0-9]+)?)\s*(?:ghz|기가헤르츠)\s*까지)",
+            lowered,
+        )
+        range_match = re.search(
+            r"[0-9]+(?:\.[0-9]+)?\s*(?:ghz|기가헤르츠)?\s*(?:-|–|—|~|부터)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:ghz|기가헤르츠)",
+            lowered,
+        )
+        explicit_stop = (
+            next(group for group in explicit_stop_match.groups() if group)
+            if explicit_stop_match
+            else range_match.group(1) if range_match
+            else frequency_matches[-1] if len(frequency_matches) >= 2
             else None
         )
+        stop_hz = float(explicit_stop) * 1e9 if sweep_requested and explicit_stop else None
         points = (
             int(next(group for group in points_match.groups() if group))
             if points_match
             else None
         )
+        needs_clarification = False
+        question = ""
         if stop_hz is not None or points is not None:
             sweep_targets: list[tuple[str, Mapping[str, Any]]] = []
             for index, observation in enumerate(base_spec.get("observations", [])):
@@ -265,6 +278,25 @@ class LocalCopilotProvider:
             for index, excitation in enumerate(base_spec.get("excitations", [])):
                 if all(key in excitation for key in ("start_hz", "stop_hz", "points")):
                     sweep_targets.append((f"/excitations/{index}", excitation))
+            if stop_hz is not None:
+                start_frequencies = [float(target["start_hz"]) for _, target in sweep_targets]
+                center_frequencies = [
+                    float(excitation["f0_hz"])
+                    for excitation in base_spec.get("excitations", [])
+                    if "f0_hz" in excitation
+                ]
+                stop_is_valid = (
+                    bool(sweep_targets)
+                    and all(start_hz < stop_hz for start_hz in start_frequencies)
+                    and all(f0_hz <= stop_hz for f0_hz in center_frequencies)
+                )
+                if not stop_is_valid:
+                    stop_hz = None
+                    points = None
+                    patch.clear()
+                    expected.clear()
+                    needs_clarification = True
+                    question = "Choose a sweep stop above both the sweep start and excitation center frequency."
             for path, target in sweep_targets:
                 if stop_hz is not None and "stop_hz" in target:
                     patch.append(
@@ -275,17 +307,25 @@ class LocalCopilotProvider:
                         {"op": "replace", "path": f"{path}/points", "value": points}
                     )
             if stop_hz is not None and sweep_targets:
-                patch.append(
-                    {
-                        "op": "replace",
-                        "path": "/simulation/freq_max_hz",
-                        "value": stop_hz,
-                    }
+                existing_maximum = float(base_spec["simulation"]["freq_max_hz"])
+                if stop_hz > existing_maximum:
+                    patch.append(
+                        {
+                            "op": "replace",
+                            "path": "/simulation/freq_max_hz",
+                            "value": stop_hz,
+                        }
+                    )
+                current_stops = [float(target["stop_hz"]) for _, target in sweep_targets]
+                direction = (
+                    "Extend" if stop_hz > max(current_stops)
+                    else "Shorten" if stop_hz < min(current_stops)
+                    else "Set"
                 )
-                expected.append(f"Extend the frequency sweep to {stop_hz / 1e9:g} GHz.")
+                expected.append(f"{direction} the frequency sweep to {stop_hz / 1e9:g} GHz.")
             if points is not None and sweep_targets:
                 expected.append(f"Sample the sweep at {points} points.")
-        if not patch:
+        if not patch and not needs_clarification:
             title = _intent_title(intent, str(base_spec["metadata"]["title"]))
             patch.extend(
                 [
@@ -311,8 +351,8 @@ class LocalCopilotProvider:
             "patch": patch,
             "expected_effects": expected,
             "caveats": caveats,
-            "needs_clarification": False,
-            "question": "",
+            "needs_clarification": needs_clarification,
+            "question": question,
         }
 
 

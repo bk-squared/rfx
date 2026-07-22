@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { Component, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { api, ApiError } from "./api";
 import { CodeEditor } from "./CodeEditor";
@@ -37,6 +37,31 @@ const recordArray = (value: JsonValue | undefined): Array<Record<string, JsonVal
       Boolean(item) && typeof item === "object" && !Array.isArray(item))
     : [];
 
+const isRecord = (value: JsonValue | undefined): value is Record<string, JsonValue> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+class StudioErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <main className="welcome" role="alert" aria-labelledby="studio-error-heading">
+          <p className="eyebrow">Studio recovered</p>
+          <h2 id="studio-error-heading">This view could not be rendered</h2>
+          <p>Your saved experiments are unchanged. Reload Studio to restore the last persisted revision.</p>
+          <button className="primary" onClick={() => window.location.reload()}>Reload Studio</button>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const terminalStates = new Set(["succeeded", "failed", "cancelled"]);
 
 const errorText = (error: unknown) => {
@@ -73,7 +98,7 @@ function FieldOutput({
 
 const deepCopy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-export function App() {
+function StudioApp() {
   const queryClient = useQueryClient();
   const [selectedExperimentId, setSelectedExperimentId] = useState(
     () => localStorage.getItem("rfx:selected-experiment") ?? "",
@@ -342,14 +367,16 @@ export function App() {
   const updateMetadataTitle = (title: string) => {
     if (!draft) return;
     const next = deepCopy(draft);
-    const metadata = next.metadata as Record<string, JsonValue>;
+    if (!isRecord(next.metadata)) return;
+    const metadata = next.metadata;
     metadata.title = title;
     updateDraft(next);
   };
   const updateCellSize = (cellSize: number) => {
     if (!draft || !Number.isFinite(cellSize)) return;
     const next = deepCopy(draft);
-    const simulation = next.simulation as Record<string, JsonValue>;
+    if (!isRecord(next.simulation)) return;
+    const simulation = next.simulation;
     simulation.cell_size_m = cellSize;
     updateDraft(next);
   };
@@ -386,8 +413,23 @@ export function App() {
     next.observations = observations;
     next.excitations = excitations;
     if (key === "stop_hz") {
-      const simulation = next.simulation as Record<string, JsonValue>;
-      simulation.freq_max_hz = value * 1e9;
+      const simulation = isRecord(next.simulation) ? next.simulation : null;
+      if (simulation) {
+        const existingMaximum = Number(simulation.freq_max_hz);
+        const excitationMaximum = excitations.reduce((maximum, excitation) => {
+          const f0 = Number(excitation.f0_hz);
+          const bandwidth = Number(excitation.bandwidth);
+          return Number.isFinite(f0) && Number.isFinite(bandwidth)
+            ? Math.max(maximum, f0 * (1 + bandwidth))
+            : maximum;
+        }, converted);
+        // Preserve mesh-design headroom and never undershoot the injected spectrum.
+        simulation.freq_max_hz = Math.max(
+          Number.isFinite(existingMaximum) ? existingMaximum : 0,
+          converted,
+          excitationMaximum,
+        );
+      }
     }
     updateDraft(next);
   };
@@ -407,7 +449,8 @@ export function App() {
   const updateDraftText = (text: string) => {
     setDraftText(text);
     try {
-      const parsed = JSON.parse(text) as SpecDocument;
+      const parsed = JSON.parse(text) as JsonValue;
+      if (!isRecord(parsed)) throw new Error("the ExperimentSpec must be a JSON object");
       setDraft(parsed);
       setPreviewError("");
     } catch (error) {
@@ -461,9 +504,9 @@ export function App() {
   const copilotProviderLabel = capabilities.data?.design_copilot.llm
     ? `OpenAI · ${capabilities.data.design_copilot.model}`
     : `Offline rules · ${capabilities.data?.design_copilot.model ?? "loading"}`;
-  const draftMetadata = draft ? draft.metadata as Record<string, JsonValue> : {};
-  const draftSimulation = draft ? draft.simulation as Record<string, JsonValue> : {};
-  const draftValidation = draft ? draft.validation as Record<string, JsonValue> : {};
+  const draftMetadata = isRecord(draft?.metadata) ? draft.metadata : {};
+  const draftSimulation = isRecord(draft?.simulation) ? draft.simulation : {};
+  const draftValidation = isRecord(draft?.validation) ? draft.validation : {};
   const draftExcitations = draft ? recordArray(draft.excitations) : [];
   const draftObservations = draft ? recordArray(draft.observations) : [];
   const primaryExcitation = draftExcitations.find((item) => Number.isFinite(Number(item.f0_hz)));
@@ -945,4 +988,8 @@ export function App() {
       )}
     </div>
   );
+}
+
+export function App() {
+  return <StudioErrorBoundary><StudioApp /></StudioErrorBoundary>;
 }

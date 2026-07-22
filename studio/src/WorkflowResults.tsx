@@ -93,36 +93,74 @@ function Provenance({
 
 export function SMatrixEvidence({ artifact, run, revision, fieldStatus }: EvidenceProps<SParametersArtifact>) {
   const points = [...artifact.points].sort((left, right) => left.frequency_hz - right.frequency_hz);
-  const s11 = points.map((point) => ({ frequency_hz: point.frequency_hz, value: point.matrix[0][0] }));
-  const s21 = points.map((point) => ({ frequency_hz: point.frequency_hz, value: point.matrix[1]?.[0] }));
-  const s12 = points.map((point) => ({ frequency_hz: point.frequency_hz, value: point.matrix[0]?.[1] }));
-  const worstReflection = s11.reduce((worst, point) =>
+  const s11 = points.flatMap((point) => {
+    const value = point.matrix[0]?.[0];
+    return value ? [{ frequency_hz: point.frequency_hz, value }] : [];
+  });
+  if (!points.length || !s11.length) {
+    return (
+      <section className="panel engineering-evidence workflow-evidence" aria-labelledby="s-matrix-summary-heading">
+        <header className="panel-heading">
+          <div><p className="eyebrow">Solved network result</p><h2 id="s-matrix-summary-heading">S-matrix run summary</h2></div>
+          <span className="schema-pill">no S-parameter data</span>
+        </header>
+        <p className="evidence-boundary">No reflection samples were recorded, so network witnesses cannot be calculated.</p>
+      </section>
+    );
+  }
+  const s21 = points.flatMap((point) => {
+    const value = point.matrix[1]?.[0];
+    return value ? [{ frequency_hz: point.frequency_hz, value }] : [];
+  });
+  const s12 = points.flatMap((point) => {
+    const value = point.matrix[0]?.[1];
+    return value ? [{ frequency_hz: point.frequency_hz, value }] : [];
+  });
+  const hasTransmission = artifact.port_names.length >= 2
+    && s21.length === points.length
+    && s12.length === points.length;
+  const worstReflection = s11.slice(1).reduce((worst, point) =>
     point.value.magnitude_db > worst.value.magnitude_db ? point : worst, s11[0]);
-  const weakestTransmission = s21.reduce((worst, point) =>
-    point.value.magnitude_db < worst.value.magnitude_db ? point : worst, s21[0]);
-  const reciprocityDelta = Math.max(...s21.map((point, index) =>
-    Math.abs(magnitude(point.value) - magnitude(s12[index].value))));
-  const maximumInputPower = Math.max(...points.flatMap((point) =>
-    point.matrix[0].map((_, input) =>
-      point.matrix.reduce((sum, row) => sum + magnitude(row[input]) ** 2, 0))));
+  const weakestTransmission = hasTransmission
+    ? s21.slice(1).reduce((worst, point) =>
+      point.value.magnitude_db < worst.value.magnitude_db ? point : worst, s21[0])
+    : null;
+  const reciprocityDelta = hasTransmission
+    ? Math.max(...s21.map((point, index) => {
+      const reverse = s12[index];
+      return reverse ? Math.abs(magnitude(point.value) - magnitude(reverse.value)) : 0;
+    }))
+    : null;
+  const inputPowerSamples = points.flatMap((point) => point.matrix[0]?.map((_, input) =>
+    point.matrix.reduce((sum, row) => {
+      const value = row[input];
+      return value ? sum + magnitude(value) ** 2 : sum;
+    }, 0)) ?? []);
+  const maximumInputPower = inputPowerSamples.length ? Math.max(...inputPowerSamples) : null;
   const labels = metadataLabels(revision);
   return (
     <section className="panel engineering-evidence workflow-evidence" aria-labelledby="s-matrix-summary-heading">
       <header className="panel-heading">
-        <div><p className="eyebrow">Solved two-port network</p><h2 id="s-matrix-summary-heading">S-matrix run summary</h2></div>
+        <div><p className="eyebrow">Solved {hasTransmission ? "multi-port" : "single-port"} network</p><h2 id="s-matrix-summary-heading">S-matrix run summary</h2></div>
         <span className="schema-pill">{artifact.port_names.length} ports · {points.length} frequencies</span>
       </header>
       <div className="evidence-kpis">
         <div><span>Worst S11</span><strong>{worstReflection.value.magnitude_db.toFixed(2)} dB</strong><small>{frequency(worstReflection.frequency_hz)}</small></div>
-        <div><span>Weakest S21</span><strong>{weakestTransmission.value.magnitude_db.toFixed(2)} dB</strong><small>{frequency(weakestTransmission.frequency_hz)}</small></div>
-        <div><span>Reciprocity Δ</span><strong>{reciprocityDelta.toExponential(2)}</strong><small>max ||S21| − |S12||</small></div>
-        <div><span>Input power sum</span><strong>{maximumInputPower.toFixed(3)}</strong><small>max sampled column Σ|Sij|²</small></div>
-        <div><span>Sweep coverage</span><strong>{frequency(points[0].frequency_hz)} – {frequency(points.at(-1)!.frequency_hz)}</strong><small>{points.length} solved samples</small></div>
+        {weakestTransmission && reciprocityDelta !== null ? (
+          <>
+            <div><span>Weakest S21</span><strong>{weakestTransmission.value.magnitude_db.toFixed(2)} dB</strong><small>{frequency(weakestTransmission.frequency_hz)}</small></div>
+            <div><span>Reciprocity Δ</span><strong>{reciprocityDelta.toExponential(2)}</strong><small>max ||S21| − |S12||</small></div>
+          </>
+        ) : (
+          <div><span>Network scope</span><strong>Single-port result</strong><small>no transmission or reciprocity data</small></div>
+        )}
+        <div><span>Input power sum</span><strong>{maximumInputPower === null ? "Not available" : maximumInputPower.toFixed(3)}</strong><small>max sampled column Σ|Sij|²</small></div>
+        <div><span>Sweep coverage</span><strong>{frequency(points[0].frequency_hz)} – {frequency(points[points.length - 1].frequency_hz)}</strong><small>{points.length} solved samples</small></div>
       </div>
-      {(points.length < 21 || maximumInputPower > 1.05) && (
+      {(points.length < 21 || (maximumInputPower !== null && maximumInputPower > 1.05)) && (
         <div className="result-advisories">
           {points.length < 21 && <p><strong>Sample density</strong>{points.length} points are suitable for a structural sweep, not a resolved narrow-band network claim.</p>}
-          {maximumInputPower > 1.05 && <p><strong>Power witness</strong>The sampled input-column power sum exceeds 1.05; inspect normalization and convergence before interpreting passivity.</p>}
+          {maximumInputPower !== null && maximumInputPower > 1.05 && <p><strong>Power witness</strong>The sampled input-column power sum exceeds 1.05; inspect normalization and convergence before interpreting passivity.</p>}
         </div>
       )}
       <div className="evidence-columns">
@@ -133,7 +171,7 @@ export function SMatrixEvidence({ artifact, run, revision, fieldStatus }: Eviden
         </div></div>
         <div><h3>Run provenance</h3><Provenance run={run} specSha={artifact.spec_sha256} compiledSha={artifact.compiled_sha256} backend={artifact.runtime.backend} /></div>
       </div>
-      <p className="evidence-boundary"><strong>{labels.fidelity}</strong> · {labels.claim}. Reciprocity and power values are sampled witnesses, not convergence evidence.</p>
+      <p className="evidence-boundary"><strong>{labels.fidelity}</strong> · {labels.claim}. {hasTransmission ? "Reciprocity and power values" : "Reflection and power values"} are sampled witnesses, not convergence evidence.</p>
     </section>
   );
 }
@@ -147,7 +185,8 @@ export function SMatrixPlot({ artifact }: { artifact: SParametersArtifact }) {
   ].filter((trace) => artifact.points[0]?.matrix[trace.output]?.[trace.input]);
   return (
     <section className="result-card network-plot" aria-labelledby="s-matrix-plot-heading">
-      <header className="card-header"><div><p className="eyebrow">Network magnitude</p><h3 id="s-matrix-plot-heading">Two-port S-parameters</h3></div><div className="chart-legend">{traces.map((trace) => <span className={trace.className} key={trace.label}>{trace.label}</span>)}</div></header>
+      <header className="card-header"><div><p className="eyebrow">Network magnitude</p><h3 id="s-matrix-plot-heading">S-parameters</h3></div><div className="chart-legend">{traces.map((trace) => <span className={trace.className} key={trace.label}>{trace.label}</span>)}</div></header>
+      {!artifact.points.length ? <p className="evidence-boundary">No network samples were recorded.</p> : (
       <svg viewBox={`0 0 ${chart.width} ${chart.height}`} role="img" aria-label="S11 S21 S12 and S22 magnitude in decibels over frequency">
         <line x1={chart.left} x2={chart.width - chart.right} y1={chart.height - chart.bottom} y2={chart.height - chart.bottom} className="chart-axis" />
         <line x1={chart.left} x2={chart.left} y1={chart.top} y2={chart.height - chart.bottom} className="chart-axis" />
@@ -156,12 +195,21 @@ export function SMatrixPlot({ artifact }: { artifact: SParametersArtifact }) {
         <text x={chart.width / 2} y={chart.height - 8} textAnchor="middle" className="chart-label">Frequency (GHz)</text>
         <text x="14" y={chart.height / 2} textAnchor="middle" transform={`rotate(-90 14 ${chart.height / 2})`} className="chart-label">Magnitude (dB)</text>
       </svg>
+      )}
     </section>
   );
 }
 
 export function SMatrixSnapshot({ artifact }: { artifact: SParametersArtifact }) {
   const point = artifact.points[Math.floor(artifact.points.length / 2)];
+  if (!point) {
+    return (
+      <section className="result-card compact matrix-card" aria-labelledby="matrix-snapshot-heading">
+        <header className="card-header"><div><p className="eyebrow">Complex network sample</p><h3 id="matrix-snapshot-heading">S-matrix snapshot</h3></div></header>
+        <p className="evidence-boundary">No matrix sample was recorded.</p>
+      </section>
+    );
+  }
   return (
     <section className="result-card compact matrix-card" aria-labelledby="matrix-snapshot-heading">
       <header className="card-header"><div><p className="eyebrow">Complex network sample</p><h3 id="matrix-snapshot-heading">S-matrix snapshot</h3></div><div className="metric"><strong>{frequency(point.frequency_hz)}</strong><span>middle sweep bin</span></div></header>
