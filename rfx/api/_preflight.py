@@ -1324,7 +1324,14 @@ class _PreflightMixin:
         *,
         normalize: bool | str,
     ) -> None:
-        """Mirror ``compute_waveguide_s_matrix`` family-routing checks."""
+        """Mirror ``compute_waveguide_s_matrix`` family-routing checks.
+
+        Only the simulation-visible clauses are mirrored (``normalize`` and
+        multi-mode on the non-uniform fence); ``compute_waveguide_s_matrix``
+        call-time parameters (``subpixel_smoothing``, ``port_reference_sims``,
+        ``eps_override`` / ``sigma_override``) are not exposed to preflight and
+        stay method-only checks.
+        """
 
         if not self._waveguide_ports:
             raise ValueError(
@@ -1360,15 +1367,15 @@ class _PreflightMixin:
             )
         if self._dx_profile is not None or self._dy_profile is not None:
             unsupported = []
-            if normalize is not True:
-                unsupported.append("normalize=True is required")
+            if normalize is not True and normalize != "flux":
+                unsupported.append("normalize=True or normalize='flux' is required")
             if any(entry.n_modes > 1 for entry in entries):
                 unsupported.append("multi-mode ports (n_modes>1) are not supported")
             if unsupported:
                 raise NotImplementedError(
                     "compute_waveguide_s_matrix() on a non-uniform mesh "
-                    "(dx_profile / dy_profile) supports normalize=True "
-                    "and single-mode ports. "
+                    "(dx_profile / dy_profile) supports normalize=True or "
+                    "normalize='flux' and single-mode ports. "
                     + "; ".join(unsupported)
                     + ". Drop the dx/dy profile to use the uniform lane."
                 )

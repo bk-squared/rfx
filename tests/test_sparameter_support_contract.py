@@ -250,3 +250,70 @@ def test_msl_nu_fence_message_parity_sparams_vs_preflight():
         "fence message drift: _sparams vs _preflight must stay byte-identical.\n"
         f"  _sparams:        {msg_sparams!r}\n  _preflight issue: {fence_issues[0]!r}"
     )
+
+
+def _nu_waveguide_sim(n_modes: int = 1) -> "Simulation":
+    sim = Simulation(
+        freq_max=12e9,
+        domain=(0.10, 0.023, 0.010),
+        dx=1e-3,
+        dy_profile=np.full(23, 1e-3),
+        boundary="cpml",
+        cpml_layers=4,
+    )
+    for x_position, direction, name in ((0.010, "+x", "wg1"), (0.090, "-x", "wg2")):
+        sim.add_waveguide_port(
+            x_position=x_position,
+            y_range=(0.0, 0.023),
+            z_range=(0.0, 0.010),
+            direction=direction,
+            f0=10e9,
+            n_modes=n_modes,
+            name=name,
+        )
+    return sim
+
+
+def test_preflight_waveguide_nu_accepts_flux_route():
+    """normalize='flux' is a supported NU waveguide route (the NU flux extractor
+    and its AD channel are wired in _sparams; graded-dy Airy fixtures cover it).
+    preflight must not red-flag a config compute_waveguide_s_matrix() accepts."""
+    report = _nu_waveguide_sim().preflight_sparameters(
+        calculator="waveguide", normalize="flux"
+    )
+    fence_issues = [str(i) for i in report.issues if "non-uniform mesh" in str(i)]
+    assert not fence_issues, (
+        f"preflight red-flags the supported NU flux route: {fence_issues}"
+    )
+
+
+@pytest.mark.parametrize(
+    "normalize, n_modes",
+    [(False, 1), (True, 2)],
+    ids=["normalize-clause", "multimode-clause"],
+)
+def test_waveguide_nu_fence_message_parity_sparams_vs_preflight(normalize, n_modes):
+    """Same governance as the MSL parity test above: the NU fence message must
+    stay byte-identical between compute_waveguide_s_matrix (_sparams) and
+    preflight_sparameters (_preflight), clause by clause. Regression lock for
+    the drift where preflight kept rejecting normalize='flux' after _sparams
+    started accepting it (uniform PR #172 flux-AD mirror on the NU lane)."""
+    sim_a = _nu_waveguide_sim(n_modes=n_modes)
+    try:
+        sim_a.compute_waveguide_s_matrix(n_steps=1, normalize=normalize)
+        msg_sparams = None
+    except NotImplementedError as e:
+        msg_sparams = str(e)
+    assert msg_sparams is not None, "_sparams must fence this config on NU"
+
+    sim_b = _nu_waveguide_sim(n_modes=n_modes)
+    report = sim_b.preflight_sparameters(calculator="waveguide", normalize=normalize)
+    fence_issues = [str(i) for i in report.issues if "non-uniform mesh" in str(i)]
+    assert len(fence_issues) == 1, (
+        f"_preflight must surface the NU fence exactly once; "
+        f"got {[str(i) for i in report.issues]}"
+    )
+    assert msg_sparams in fence_issues[0], (
+        "fence message drift: _sparams vs _preflight must stay byte-identical.\n"
+        f"  _sparams:        {msg_sparams!r}\n  _preflight issue: {fence_issues[0]!r}"
+    )
