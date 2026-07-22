@@ -70,7 +70,7 @@ def assemble_materials_nu(
     -------
     materials, debye_spec, lorentz_spec, pec_mask
     """
-    from rfx.geometry.rasterize import rasterize_geometry, coords_from_nonuniform_grid
+    from rfx.geometry.rasterize_grid import rasterize_geometry, coords_from_nonuniform_grid
 
     coords = coords_from_nonuniform_grid(grid)
 

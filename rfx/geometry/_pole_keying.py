@@ -1,15 +1,13 @@
 """Dispersion-pole mask keying helpers (issue #274).
 
-Lives in its own module — NOT in ``rfx/geometry/rasterize.py`` — so that
-``rfx/api/_compile.py`` can import these helpers at ``import rfx`` time
-without initializing the ``rfx.geometry.rasterize`` SUBMODULE. That
-submodule's name collides with the public ``rasterize`` FUNCTION that
-``rfx/geometry/__init__.py`` re-exports from ``csg.py``: initializing
-the submodule setattr's the module object onto the package, clobbering
-the function attribute, and ``from rfx.geometry import rasterize`` then
-yields a non-callable module (broke the rcs_scattering tutorial).
-The underlying name collision is a pre-existing landmine tracked
-separately; this module keeps #274 out of its blast radius.
+Lives in its own module (imported by ``rfx/api/_compile.py`` at ``import
+rfx`` time). It was split out to dodge the ``rfx.geometry.rasterize``
+submodule/function name collision that once clobbered the public
+``rasterize`` FUNCTION (broke the rcs_scattering tutorial). That landmine
+is now fixed at the source — the offending submodule was renamed to
+``rfx/geometry/rasterize_grid.py`` (issue #393), so no ``rasterize``
+submodule exists to shadow the function. This module stays separate for
+organisation; the split is no longer load-bearing.
 """
 
 from __future__ import annotations

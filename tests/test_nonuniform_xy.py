@@ -22,7 +22,7 @@ import jax.numpy as jnp
 from rfx import Simulation, Box
 from rfx.sources.sources import GaussianPulse
 from rfx.nonuniform import make_nonuniform_grid, position_to_index, make_current_source
-from rfx.geometry.rasterize import coords_from_nonuniform_grid
+from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 
 
 # ---------------------------------------------------------------------

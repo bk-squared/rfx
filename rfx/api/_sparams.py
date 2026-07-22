@@ -2669,7 +2669,7 @@ class _SparamMixin:
 
         # Build the grid directly so we can restrict ``cpml_axes`` to
         # axes that are not fully PEC/PMC-bounded. The rasteriser (see
-        # ``rfx/geometry/rasterize.py::coords_from_nonuniform_grid``)
+        # ``rfx/geometry/rasterize_grid.py::coords_from_nonuniform_grid``)
         # uses a single ``grid.cpml_layers`` offset for every axis;
         # when a fully PEC-bounded axis is shorter than
         # ``cpml_layers + 1`` cells the offset slice hits IndexError.

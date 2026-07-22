@@ -37,7 +37,7 @@ import jax.numpy as jnp
 
 from rfx.api import Simulation
 from rfx.geometry.csg import Box
-from rfx.geometry.rasterize import (
+from rfx.geometry.rasterize_grid import (
     coords_from_uniform_grid,
     rasterize_geometry,
 )
@@ -387,21 +387,18 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
 
 
 def test_import_rfx_preserves_geometry_rasterize_function():
-    """Landmine lock: after ``import rfx``, ``from rfx.geometry import
-    rasterize`` must yield the public CSG ``rasterize`` FUNCTION, not
-    the ``rfx.geometry.rasterize`` SUBMODULE.
+    """Landmine lock (#393 FIXED): ``from rfx.geometry import rasterize``
+    must yield the public CSG ``rasterize`` FUNCTION.
 
-    ``rfx/geometry/__init__.py`` re-exports the function while a
-    same-named submodule exists; any module-level import of that
-    submodule during ``import rfx`` setattr's the module object over
-    the function attribute (this broke the rcs_scattering tutorial when
-    the #274 helpers briefly lived in the submodule — they now live in
-    ``rfx/geometry/_pole_keying.py``). The check runs in a subprocess
-    pinned to this repo's rfx so it is deterministic w.r.t. the import
-    history of the surrounding pytest process (function-scoped imports
-    of the submodule, e.g. the non-uniform runner's, still clobber the
-    attribute later in-process — that pre-existing name collision is
-    tracked as its own issue).
+    The old ``rfx/geometry/rasterize.py`` submodule name collided with the
+    public ``rasterize`` FUNCTION that ``rfx/geometry/__init__.py`` re-exports
+    from ``csg.py``: importing the submodule setattr'd the module object over
+    the function attribute (broke the rcs_scattering tutorial). #393 fixed it
+    at the source — the submodule was renamed to ``rasterize_grid.py``, so no
+    ``rasterize`` submodule exists to shadow the function. This subprocess
+    check pins the import-time case;
+    ``test_nonuniform_run_preserves_geometry_rasterize_function`` below covers
+    the once-"still armed" post-run case (runners' function-scoped imports).
     """
     import os
     import subprocess
@@ -432,3 +429,29 @@ def test_import_rfx_preserves_geometry_rasterize_function():
     )
     assert completed.returncode == 0, completed.stderr
     assert "rasterize callable ok" in completed.stdout
+
+
+def test_nonuniform_run_preserves_geometry_rasterize_function():
+    """#393 post-run lock (the once-"still armed" case): a non-uniform run triggers the
+    runner's function-scoped ``from rfx.geometry.rasterize_grid import ...``; the RENAMED
+    submodule must not clobber the public ``rfx.geometry.rasterize`` FUNCTION in-process.
+
+    Pre-fix the submodule was named ``rasterize`` and this import shadowed the function
+    after ANY non-uniform run (the collision the import-time subprocess test could not
+    cover). This runs a real NU sim in-process and asserts the function survives.
+    """
+    import numpy as np
+    import rfx.geometry
+    from rfx.api import Simulation
+
+    assert callable(rfx.geometry.rasterize), "precondition: rasterize function present"
+    dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+    sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01),
+                     dx=0.5e-3, dz_profile=dz, cpml_layers=8)
+    sim.add_source((0.01, 0.01, 0.001), "ez")
+    sim.add_probe((0.01, 0.01, 0.001), "ez")
+    sim.run(n_steps=10)  # exercises rfx/runners/nonuniform.py's rasterize_grid import
+    assert callable(rfx.geometry.rasterize), (
+        "a non-uniform run clobbered rfx.geometry.rasterize (the public FUNCTION) — the "
+        "rasterize submodule name collision (#393) has regressed"
+    )

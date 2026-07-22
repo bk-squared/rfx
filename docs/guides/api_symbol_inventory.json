@@ -679,6 +679,17 @@
         "subtract_incident_reference"
       ]
     },
+    "compute_rcs_jax": {
+      "kind": "function",
+      "params": [
+        "ntff_data",
+        "box",
+        "grid",
+        "theta",
+        "phi",
+        "e_inc_amplitude"
+      ]
+    },
     "convergence_study": {
       "kind": "function",
       "params": [
