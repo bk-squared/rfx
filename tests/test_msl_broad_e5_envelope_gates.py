@@ -144,6 +144,20 @@ def test_stub_off_target_freq_fails():
     assert res["gates"]["freq_err_lt_10pct"] is False
 
 
+def test_stub_over_unity_col_power_fails():
+    """HIT-7a: an over-unity stub S-matrix (extraction/normalization artifact) must fail the
+    new passivity ceiling even though freq + depth would pass — previously the stub gate
+    checked only freq+depth, so a non-physical column power > 1 slipped through unflagged."""
+    npz = _make_stub_case_npz(f_dip=10e9, dip_db=-30.0)
+    npz["s_matrix"] = npz["s_matrix"] * 1.3          # column power ~1.69 >> 1.05
+    res = _gate_open_stub(npz, _stub_summary())
+    assert not res["passed"]
+    assert res["gates"]["passive_col_power_le_1p05"] is False
+    # the passivity gate is what fails — freq + depth are untouched (isolates the new gate)
+    assert res["gates"]["freq_err_lt_10pct"] is True
+    assert res["gates"]["depth_gt_15db"] is True
+
+
 def test_stub_shallow_dip_fails():
     # Dip at right freq but only -10 dB below the band mean
     npz = _make_stub_case_npz(f_dip=10e9, dip_db=-5.0, bandwidth=2e9)
